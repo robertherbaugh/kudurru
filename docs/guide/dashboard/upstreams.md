@@ -22,8 +22,8 @@ locks still apply; remove upstream overrides on every node before adoption.
 **Edit proposed upstreams as JSON** control generates YAML for a proposed
 complete section while leaving the live configuration unchanged.
 
-To switch back, choose **Return to GitOps**, generate the current values,
-commit and apply them, and wait for the settings volume to update on every
+To switch back, choose **Return to GitOps** and generate the current values.
+Commit and apply them, and wait for the settings volume to update on every
 replica. Then **Refresh YAML preview**, confirm that the values were applied,
 and choose **Release to GitOps**. A stale revision or mismatched file
 configuration on the serving replica is refused; refresh and review before

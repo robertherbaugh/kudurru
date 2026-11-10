@@ -39,7 +39,7 @@ It sends all other queries to the upstream group `default`.
 
 The column **Serial** shows the SOA serial. kudurru increases it when you
 change a primary record. Secondary serials and availability are labeled with
-the responding node; different replicas may temporarily report different
+the responding node; different replicas can temporarily report different
 copies. Shared Kubernetes status does not assert that every secondary is ready.
 
 ### Create a primary zone
@@ -119,7 +119,7 @@ carry local records only; use object backups to preserve fallback settings.
 Local overrides are unsigned, even when the public zone uses DNSSEC. Clients
 that validate DNSSEC themselves can reject these local answers because they
 do not match the signed public zone. Public-only answers retain the resolver's
-validation result; an answer combining a local alias with a public target
+validation result. An answer combining a local alias with a public target
 does not claim DNSSEC validation for the whole chain.
 
 The zones list marks these zones as **Public fallback**. A selected
@@ -186,7 +186,7 @@ to retain copies across restarts; an ephemeral replacement needs a new transfer.
 Changes to the secondary configuration or its credentials also require a fresh
 transfer. Other zones can continue to answer while this secondary is unavailable.
 
-Primaries may send NOTIFY to any replica's UDP, TCP, or DoT listener. The source
+Primaries can send NOTIFY to any replica's UDP, TCP, or DoT listener. The source
 address must match a configured primary, and the configured TSIG key is required
 when present. For primary hostnames, address authorization is refreshed every
 30 seconds and expires after two minutes if resolution fails. The receiving
@@ -196,7 +196,7 @@ the next SOA refresh. NOTIFY never extends expiry by itself.
 
 Choose TCP or TLS in the transfer settings. TLS checks the primary certificate
 against each node's trust store and requires its hostname or IP in the
-certificate; install a private CA in each node's trust store when needed.
+certificate. Install a private CA in each node's trust store when needed.
 The default port is 53 for either transport, so include `:853` for a primary
 listening on the standard TLS port. Failed TLS verification never falls back
 to plaintext.
@@ -204,14 +204,17 @@ to plaintext.
 Initial copies use AXFR. Later serial changes use IXFR with automatic AXFR
 fallback when the primary lacks incremental history. Expired copies and
 credential changes require a fresh AXFR. Invalid deltas retain the last-good
-copy until its existing expiry. Signed secondaries preserve and serve their
-transferred signatures with NSEC or NSEC3 proofs (including opt-out). Malformed
-or incomplete signed copies are rejected. Ordinary queries requesting DNSSEC
-material fail with SERVFAIL if a required signature has expired, even when
-SOA expiry has not elapsed. Queries without DO can still use the copy until
-SOA expiry. Explicit RRSIG queries retain the original signature bytes for
-diagnostics. The secondary does not sign locally or assert validation through
-AD. Local secondary export is not available yet.
+copy until its existing expiry.
+
+Signed secondaries preserve and serve their transferred signatures with NSEC
+or NSEC3 proofs (including opt-out). Malformed or incomplete signed copies are
+rejected. Ordinary queries requesting DNSSEC material fail with SERVFAIL if a
+required signature has expired, even when SOA expiry has not elapsed. Queries
+without DO can still use the copy until SOA expiry.
+
+Explicit RRSIG queries retain the original signature bytes for diagnostics.
+The secondary does not sign locally or assert validation through AD. Local
+secondary export is not available yet.
 
 ### Create a stub zone
 
@@ -551,7 +554,7 @@ never its secret. Clearing the key uses the first transfer key, or unsigned
 NOTIFY if neither is configured. A missing selected key fails delivery rather
 than sending unsigned traffic. These options apply when the zone's existing
 NOTIFY mode enables delivery; they do not enable NOTIFY or change which keys
-may request a transfer.
+can request a transfer.
 
 The source is a literal local IPv4 or IPv6 unicast address. Clearing it inherits
 the global `notify.source`, then system selection. Hostnames, ports, scoped or
@@ -593,8 +596,8 @@ server=/public.corp.example/#
 ```
 
 Repeated rules for a suffix combine servers in their original order. Imported
-conditional groups use strict failover and names `dnsmasq-1`, `dnsmasq-2`, etc.;
-`#` selects the normal default group. Global `server=192.0.2.53` or plain server
+conditional groups use strict failover and the names `dnsmasq-1`, `dnsmasq-2`
+and so on; `#` selects the normal default group. Global `server=192.0.2.53` or plain server
 lines can replace the compiled default when no explicit default group is set.
 This translates routing, not dnsmasq's adaptive upstream selection strategy.
 
@@ -604,8 +607,9 @@ answer rules, `address=`, DHCP options, source-interface selectors and wildcard
 selectors require explicit Kudurru configuration. Blank lines and full-line
 comments are supported; shell expansions and inline comments are not.
 
-Limits are 4 MiB per regular file, 64 KiB per line, 65,536 rules and suffixes,
-4,096 conditional groups, 256 servers per suffix and 1,024 default servers.
+Limits are 4 MiB per regular file and 64 KiB per line. A file holds at most
+65,536 rules and suffixes, 4,096 conditional groups, 256 servers per suffix
+and 1,024 default servers.
 Expansion is also capped at 65,536 suffix/server assignments and 4 MiB of
 server-address bytes, preventing short input from multiplying into large routes.
 Up to 64 unsupported-line reports are retained. No partial import is installed.
