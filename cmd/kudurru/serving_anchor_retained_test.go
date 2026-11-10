@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/servingdns"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
+	upstreamstage "github.com/robertherbaugh/kudurru/internal/stages/upstream"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
@@ -115,6 +117,14 @@ func TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation(t *testing.T) {
 		{"unavailable", pipeline.OriginUnknown, pipeline.StatusServfailUnsynced, dns.RcodeServerFailure, true},
 		{"unavailable success", pipeline.OriginUnknown, pipeline.StatusServfailUnsynced, dns.RcodeSuccess, false},
 		{"authoritative special status", pipeline.OriginAuthoritative, pipeline.StatusSpecialDomain, dns.RcodeSuccess, false},
+		{"upstream failure", pipeline.OriginUnknown, pipeline.StatusServfailUpstream, dns.RcodeServerFailure, true},
+		{"upstream timeout", pipeline.OriginUnknown, pipeline.StatusTimeoutUpstream, dns.RcodeServerFailure, true},
+		{"failed target", pipeline.OriginFailure, pipeline.StatusServfailUpstream, dns.RcodeServerFailure, true},
+		{"upstream failure success", pipeline.OriginUnknown, pipeline.StatusServfailUpstream, dns.RcodeSuccess, false},
+		{"authoritative upstream failure", pipeline.OriginAuthoritative, pipeline.StatusServfailUpstream, dns.RcodeServerFailure, false},
+		{"local upstream failure", pipeline.OriginLocal, pipeline.StatusServfailUpstream, dns.RcodeServerFailure, false},
+		{"mixed upstream timeout", pipeline.OriginMixed, pipeline.StatusTimeoutUpstream, dns.RcodeServerFailure, false},
+		{"synthesized upstream failure", pipeline.OriginSynthetic, pipeline.StatusServfailUpstream, dns.RcodeServerFailure, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			output, err := captureRootAnchorOutput(req)
@@ -140,6 +150,85 @@ func TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation(t *testing.T) {
 				t.Fatal("retained DNS output authorized a transfer continuation")
 			}
 		})
+	}
+	// The actual upstream stage against a port nothing listens on, with and
+	// without EDNS: its empty SERVFAIL is the answer the client would have had
+	// before the commit, and the only form the retained check lets through.
+	closed, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dead := closed.LocalAddr().String()
+	if err := closed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	forward, err := upstreamstage.New("default", []string{dead}, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = forward.Set().Close() })
+	address := &dns.A{Hdr: dns.RR_Header{Name: "upstream-failure.example.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60}, A: net.IPv4(192, 0, 2, 1)}
+	for _, edns := range []bool{false, true} {
+		query := new(dns.Msg)
+		query.SetQuestion("upstream-failure.example.", dns.TypeA)
+		if edns {
+			query.SetEdns0(1232, false)
+		}
+		failed, err := forward.Serve(&pipeline.Request{Ctx: ctx, Msg: query}, nil)
+		if err != nil || failed == nil || failed.Msg == nil || failed.Msg.Rcode != dns.RcodeServerFailure ||
+			failed.Status != pipeline.StatusServfailUpstream && failed.Status != pipeline.StatusTimeoutUpstream {
+			t.Fatal("upstream stage did not report its failure", err, failed)
+		}
+		extended := false
+		if opt := failed.Msg.IsEdns0(); opt != nil {
+			for _, option := range opt.Option {
+				_, ok := option.(*dns.EDNS0_EDE)
+				extended = extended || ok
+			}
+		}
+		if extended != edns {
+			t.Fatal("upstream failure lost or invented its extended error", failed.Msg)
+		}
+		for _, tc := range []struct {
+			name  string
+			alter func(*dns.Msg)
+			allow bool
+		}{
+			{"empty", func(*dns.Msg) {}, true},
+			{"answer", func(m *dns.Msg) { m.Answer = []dns.RR{address} }, false},
+			{"authority", func(m *dns.Msg) { m.Ns = []dns.RR{address} }, false},
+			{"additional", func(m *dns.Msg) { m.Extra = append(m.Extra, address) }, false},
+			{"authoritative", func(m *dns.Msg) { m.Authoritative = true }, false},
+		} {
+			name := "actual upstream failure " + tc.name
+			if edns {
+				name += " edns"
+			}
+			t.Run(name, func(t *testing.T) {
+				response := *failed
+				response.Msg = failed.Msg.Copy()
+				tc.alter(response.Msg)
+				output, err := captureRootAnchorOutput(&pipeline.Request{Ctx: ctx, Msg: query, Serving: req.Serving})
+				if err != nil {
+					t.Fatal(err)
+				}
+				o := output.(*rootAnchorOutput)
+				if o.seal.current() || !o.seal.dnsCurrent() {
+					t.Fatal("fixture did not retain an old data generation")
+				}
+				if err := o.BindResponse(&response); err != nil {
+					t.Fatal(err)
+				}
+				called := false
+				err = o.Emit(func() error { called = true; return nil })
+				if called != tc.allow || (err == nil) != tc.allow {
+					t.Fatal("wrong upstream failure disposition", called, err)
+				}
+				if err := o.Next(); err == nil {
+					t.Fatal("upstream failure authorized a transfer continuation")
+				}
+			})
+		}
 	}
 	// Actual first Managed acceptance still retires all old static output and
 	// cache attempts; permitting a skipped cache insertion grants no fallback.
