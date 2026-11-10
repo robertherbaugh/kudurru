@@ -30,12 +30,23 @@ import (
 // canonical settings document. It does not mount an automatic writer worker.
 func anchorOperationFixture(t *testing.T, endpoint string, seeds []string) (*servingRuntime, context.Context, serving.TermActivation, providercoordinator.HostCapture) {
 	t.Helper()
+	return anchorOperationFixtureTopology(t, endpoint, seeds, "")
+}
+
+// anchorOperationFixtureTopology is anchorOperationFixture with a host managed
+// topology. With "direct" the same runtime also has root admission, so it
+// publishes its accepted managed owner once it holds a supervised role.
+func anchorOperationFixtureTopology(t *testing.T, endpoint string, seeds []string, topology string) (*servingRuntime, context.Context, serving.TermActivation, providercoordinator.HostCapture) {
+	t.Helper()
 	base := newServingRuntimeFixture(t)
 	cfg, err := config.FromFlat(config.Flatten(base.opts.Config))
 	if err != nil {
 		t.Fatal(err)
 	}
 	cfg.Auth.IdentityProviders = nil
+	if topology != "" {
+		cfg.Upstreams.Recursion.ManagedTopology = topology
+	}
 	cfg.Upstreams.Recursion.AnchorMode = config.RootAnchorsManaged
 	cfg.Upstreams.Recursion.TrustAnchors = seeds
 	cfg.Upstreams.Recursion.RootHints = []string{endpoint}
@@ -55,6 +66,16 @@ func anchorOperationFixture(t *testing.T, endpoint string, seeds []string) (*ser
 		}
 	})
 	runServingFixture(t, s)
+	original, target, host := anchorElectedWriter(t, s)
+	return s, original, target, host
+}
+
+// anchorElectedWriter runs an actual elector on a running runtime whose store
+// is writable and returns its original writer context, activation and host
+// capture with the production complete pin current. The context lives for 25
+// seconds, so every operation captured under it is already bounded.
+func anchorElectedWriter(t *testing.T, s *servingRuntime) (context.Context, serving.TermActivation, providercoordinator.HostCapture) {
+	t.Helper()
 	parent, cancel := context.WithTimeout(t.Context(), 25*time.Second)
 	writer := make(chan context.Context, 1)
 	done := make(chan error, 1)
@@ -116,7 +137,7 @@ func anchorOperationFixture(t *testing.T, endpoint string, seeds []string) (*ser
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
-	return s, original, target, host
+	return original, target, host
 }
 
 func TestAnchorOperationActualBootstrapOriginalPinsAndReceipt(t *testing.T) {
