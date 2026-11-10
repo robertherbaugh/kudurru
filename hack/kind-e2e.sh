@@ -29,7 +29,11 @@
 # Needs docker, kind, helm, kubectl, jq, curl and dig on PATH; runs on
 # GitHub's runners (.github/workflows/kind.yml). KEEP_CLUSTER=1 keeps the
 # cluster for debugging; FORWARD_CHECK=0 skips the forwarded query (no
-# internet access to 1.1.1.1/9.9.9.9); DATABASE=0 skips part 2.
+# internet access to 1.1.1.1/9.9.9.9); DATABASE=0 skips part 2. BUILD=0 with
+# IMAGE=<reference> tests an image that is already in the local Docker
+# daemon instead of building one (as hack/compose-e2e.sh does); it has to be
+# a -tags licensetest build, because the cluster installs the test license
+# key. The log names the image and the binary inside it either way.
 # The jq filters are single-quoted on purpose: $name is a jq variable.
 # shellcheck disable=SC2016
 set -euo pipefail
@@ -41,6 +45,7 @@ METALLB_VERSION=${METALLB_VERSION:-v0.16.1}
 REPLICAS=${REPLICAS:-3}
 FORWARD_CHECK=${FORWARD_CHECK:-1}
 DATABASE=${DATABASE:-1}
+BUILD=${BUILD:-1}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 WORK=$(mktemp -d)
 # The pods of the Deployment (chart label helpers kudurru.selectorLabels).
@@ -309,12 +314,19 @@ rolling_restart_under_load() {
 
 # --- the cluster ---
 
-log "build $IMAGE"
-# -tags licensetest: the cluster runs three replicas and writes through the API,
-# which needs a license key, and CI has no signing key. The image trusts the
-# throwaway key of internal/license/testdata (installed below); it is loaded into
-# kind and never pushed.
-docker build -q -t "$IMAGE" --build-arg VERSION=kind-e2e --build-arg COMMIT="$(git -C "$ROOT" rev-parse --short HEAD)" --build-arg GOTAGS=licensetest "$ROOT"
+if [ "$BUILD" = 1 ]; then
+  log "build $IMAGE"
+  # -tags licensetest: the cluster runs three replicas and writes through the API,
+  # which needs a license key, and CI has no signing key. The image trusts the
+  # throwaway key of internal/license/testdata (installed below); it is loaded into
+  # kind and never pushed.
+  docker build -q -t "$IMAGE" --build-arg VERSION=kind-e2e --build-arg COMMIT="$(git -C "$ROOT" rev-parse --short HEAD)" --build-arg GOTAGS=licensetest "$ROOT"
+else
+  log "prebuilt $IMAGE (BUILD=0)"
+fi
+# The artifact under test, for the record of the run.
+docker run --rm --network none "$IMAGE" version
+docker image inspect --format 'image {{.Id}}' "$IMAGE"
 
 log "kind cluster $CLUSTER (control-plane and three workers)"
 kind create cluster --name "$CLUSTER" --config "$ROOT/hack/kind/cluster.yaml" --wait 180s

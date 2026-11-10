@@ -27,8 +27,11 @@
 # (9.18 or later for DoT and DoH) on PATH; runs on GitHub's runners
 # (.github/workflows/compose.yml). KEEP=1 keeps the projects and volumes for
 # debugging; FORWARD_CHECK=0 skips the forwarded query (no internet access
-# to 1.1.1.1/9.9.9.9); EDGE=0 skips part 2. The jq filters are
-# single-quoted on purpose: $name is a jq variable.
+# to 1.1.1.1/9.9.9.9); EDGE=0 skips part 2; BUILD=0 with IMAGE=<reference>
+# (and DNSDIST_IMAGE for part 2) tests prebuilt -tags licensetest images
+# instead of building them. The log names the image and the binary inside it
+# either way. The jq filters are single-quoted on purpose: $name is a jq
+# variable.
 # shellcheck disable=SC2016
 set -euo pipefail
 
@@ -262,6 +265,10 @@ if [ "$BUILD" = 1 ]; then
     docker build -q -t "$DNSDIST_IMAGE" --build-arg KUDURRU_IMAGE="$IMAGE" "$ROOT/images/dnsdist"
   fi
 fi
+# The artifact under test, for the record of the run (BUILD=0 IMAGE=... tests
+# a prebuilt one).
+docker run --rm --network none "$IMAGE" version
+docker image inspect --format 'image {{.Id}}' "$IMAGE"
 TOKEN=$(docker run --rm "$IMAGE" token generate)
 # The audit trail and the edge supervisor need a license key: the test key,
 # which the licensetest images trust (the compose files read
