@@ -84,20 +84,27 @@ these two fields.
 |---|---|
 | `update` | `deny` (the default) accepts no update. `allow` accepts updates that a grant covers. |
 | `updatePolicies[].tsigKeyRef` | The name of the TSIG key, with or without the final dot. A grant for a key that the node does not have gives nothing. |
-| `updatePolicies[].name` | The owner name the key may change: one exact name, or `*.` followed by a name for every name below it. `*.home.example.` covers `nas.home.example.` and `a.b.home.example.`, but not `home.example.` itself. The name must be inside the zone. |
-| `updatePolicies[].types` | The record types the key may change at those names, for example `[A, AAAA]`. An empty list or `ANY` means every type. |
+| `updatePolicies[].name` | The owner name the key may change: one exact name, or `*.` followed by a name for every name below it. `*.home.example.` covers `nas.home.example.` and `a.b.home.example.`, but not `home.example.` itself. The name must end with a dot and must be inside the zone. |
+| `updatePolicies[].types` | The record types the key may change at those names, for example `[A, AAAA]`. Each entry is the name of a record type, or `TYPE` followed by its number (`TYPE65280`). An empty list or `ANY` means every type. |
 
 `allow` without a grant accepts nothing. A zone holds at most 4,096 grants.
 
-CAUTION: Use only `deny` and `allow` for `update`, and only grant names
-inside the zone. The API accepts the other values of the `update` field
-(`allowOnlyPrivate`, `allowOnlyZoneNameServers`, `useNetworkACL`,
-`zoneNameServersAndACL`) and a grant name outside the zone, but kudurru
-cannot use such a policy. On SQLite the whole zone then goes out of service:
-queries for it answer `SERVFAIL`, `kudurru zones list` shows `READY False`
-(reason `AwaitingCommittedPrimary`) and the node reports not ready until you
-correct the policy; the zone is back a moment later. On Kubernetes the zone
-keeps answering and every update for it is answered `REFUSED`.
+CAUTION: The API does not check these fields completely. It accepts
+policies that kudurru cannot use, and on SQLite such a policy takes the
+whole zone out of service: queries for it answer `SERVFAIL`,
+`kudurru zones list` shows `READY False` (reason `AwaitingCommittedPrimary`)
+and the node reports not ready until you correct the policy; the zone is back
+a moment later. On Kubernetes the zone keeps answering and every update for
+it is answered `REFUSED`. Check four things before you apply a policy:
+
+- `update` is `deny` or `allow`. The field also accepts `allowOnlyPrivate`,
+  `allowOnlyZoneNameServers`, `useNetworkACL` and `zoneNameServersAndACL`,
+  which kudurru cannot use for updates.
+- Every grant `name` ends with a dot: `"*.home.example."`, not
+  `"*.home.example"`. Only `tsigKeyRef` may be written without it.
+- Every grant `name` is inside the zone.
+- Every entry of `types` is the name of a record type that a zone can hold.
+  `BOGUS` is not one, and neither are `OPT` and `AXFR`.
 
 ## Send an update
 
