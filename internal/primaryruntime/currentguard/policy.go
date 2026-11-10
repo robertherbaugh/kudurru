@@ -21,6 +21,20 @@ const maxPolicyBytes int64 = 4 << 20
 func (o *Owner) policyBudget() int64 { return min(maxPolicyBytes, o.options.Limits.MaxAggregateBytes) }
 
 func (o *Owner) compile(ctx context.Context, keys *dnsserver.StaticKeyring, z *public.DNSZone) (*zonestate.Policy, error) {
+	return compilePolicy(ctx, keys, z, o.policyBudget())
+}
+
+// CompileUpdatePolicy derives a primary zone's current RFC 2136 credentials and
+// grants from its update policy and the current verification ring. Drivers
+// without a committed policy head (Kubernetes) use it on every UPDATE.
+func CompileUpdatePolicy(ctx context.Context, keys *dnsserver.StaticKeyring, z *public.DNSZone, budget int64) (*zonestate.Policy, error) {
+	if budget <= 0 || budget > maxPolicyBytes {
+		budget = maxPolicyBytes
+	}
+	return compilePolicy(ctx, keys, z, budget)
+}
+
+func compilePolicy(ctx context.Context, keys *dnsserver.StaticKeyring, z *public.DNSZone, budget int64) (*zonestate.Policy, error) {
 	if keys == nil || z == nil || z.Spec.Type != public.ZoneTypePrimary || z.Name == "" || z.UID == "" || z.ResourceVersion == "" {
 		return nil, pr.ErrUnavailable
 	}
@@ -34,7 +48,7 @@ func (o *Owner) compile(ctx context.Context, keys *dnsserver.StaticKeyring, z *p
 	if z.Spec.Policy.Update != "" && z.Spec.Policy.Update != public.AccessDeny && z.Spec.Policy.Update != public.AccessAllow {
 		return nil, pr.ErrUnavailable
 	}
-	if err := o.preflight(z.Spec.Policy.UpdatePolicies); err != nil {
+	if err := preflight(z.Spec.Policy.UpdatePolicies, budget); err != nil {
 		return nil, err
 	}
 	policy := &zonestate.Policy{Enabled: z.Spec.Policy.Update == public.AccessAllow, AuthEpoch: 1}
@@ -116,17 +130,17 @@ func (o *Owner) compile(ctx context.Context, keys *dnsserver.StaticKeyring, z *p
 		y, _ := json.Marshal(b.Types)
 		return string(x) < string(y)
 	})
-	if _, err := dynamicupdate.PolicyAllocation(policy.Credentials, policy.Grants, nil, o.policyBudget()); err != nil {
+	if _, err := dynamicupdate.PolicyAllocation(policy.Credentials, policy.Grants, nil, budget); err != nil {
 		return nil, pr.ErrCapacity
 	}
 	return policy, nil
 }
 
-func (o *Owner) preflight(grants []public.UpdatePolicy) error {
+func preflight(grants []public.UpdatePolicy, budget int64) error {
 	if len(grants) > dynamicupdate.MaxPolicyEntries {
 		return pr.ErrCapacity
 	}
-	left, typesLeft := o.policyBudget(), dynamicupdate.MaxTotalGrantTypes
+	left, typesLeft := budget, dynamicupdate.MaxTotalGrantTypes
 	charge := func(n int64) bool {
 		if n > left {
 			return false

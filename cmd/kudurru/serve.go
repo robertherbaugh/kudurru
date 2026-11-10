@@ -59,6 +59,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/domainlist"
+	"github.com/robertherbaugh/kudurru/internal/dynamicupdate"
 	"github.com/robertherbaugh/kudurru/internal/health"
 	"github.com/robertherbaugh/kudurru/internal/inventory"
 	"github.com/robertherbaugh/kudurru/internal/license"
@@ -903,6 +904,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	auth.Notify = notifyReceiver.Handle
 	if kubeTSIG != nil {
 		auth.Notify = kubeTSIG.doctorNotify(auth.Notify)
+		// RFC 2136 on Kubernetes: one UPDATE-owned record set per zone,
+		// committed by resourceVersion CAS (F12a, D366).
+		auth.Update = (&kubeUpdate{store: kubeStore, keys: kubeTSIG.keys, namespace: releaseNamespace,
+			limits: dynamicupdate.Limits{}.Defaults(), now: time.Now, log: logger}).Handle
 	}
 	auth.StubQuery = stubClient.Exchange
 

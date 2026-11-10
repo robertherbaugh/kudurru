@@ -880,9 +880,51 @@ and child boundaries survive the static replacement.
 ## Remaining work
 
 Catalog zones and DNSSEC signing remain planned. SQLite mounts the atomic
-RFC 2136 handler and durable primary history described above; Kubernetes update
-barriers and authenticated HA forwarding remain integration work. Unknown DNS
+RFC 2136 handler and durable primary history described above; On Kubernetes, RFC 2136
+uses one UPDATE-owned DNSRecordSet per zone (described below). Unknown DNS
 opcodes remain NOTIMP.
+
+### RFC 2136 on Kubernetes
+
+Kubernetes has no multi-object transactions, and a zone's records span several
+API objects. RFC 2136 section 3.7 requires atomicity with respect to other
+concurrent UPDATE transactions, so each zone has exactly one UPDATE-owned
+DNSRecordSet, `rfc2136-<zone>` in the release namespace (or the first namespace
+the zone's `recordSetSelector` admits), managed by `dns-update` (D366).
+
+Each UPDATE reads the zone and every record set referencing it from the store,
+builds the served zone with the same selection and builder as serving, and runs
+the shared `dynamicupdate.Plan`: prerequisites over the whole zone, key x owner x
+type grants compiled by `currentguard.CompileUpdatePolicy`, and reservations for
+the SOA, apex NS and every RRset another source owns. The UPDATE-owned part of
+the planned zone is then written to that one object with an exact
+resourceVersion CAS (create-only, versioned update, or versioned delete when it
+becomes empty). Concurrent UPDATEs on one node queue on a per-zone lock; across
+nodes, a lost CAS re-plans against fresh data within a bound, and exhaustion
+answers SERVFAIL without a write. A prerequisite or policy refusal writes
+nothing. The controller advances `status.serial`, which drives NOTIFY. API, file
+and integration writers keep their own objects; an UPDATE cannot change their
+records, and the API cannot edit the `dns-update`-owned object.
+
+```mermaid
+sequenceDiagram
+    participant C as nsupdate client
+    participant N as Kubernetes node
+    participant K as Kubernetes API
+    C->>N: TSIG-signed UPDATE
+    N->>N: Verify TSIG, per-zone lock
+    N->>K: Read zone and its record sets
+    N->>N: dynamicupdate.Plan (prerequisites, grants, reservations)
+    alt prerequisites or policy refuse
+        N-->>C: YXDOMAIN / NXRRSET / REFUSED (no write)
+    else changed
+        N->>K: Write rfc2136-zone at exact resourceVersion
+        alt conflict (another node won)
+            N->>K: Re-read and re-plan (bounded)
+        end
+        N-->>C: NOERROR (signed)
+    end
+```
 
 ### Captured HTTP diagnostics
 

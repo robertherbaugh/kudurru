@@ -14,6 +14,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- RFC 2136 dynamic updates on Kubernetes. Each zone's updates live in one
+  `rfc2136-<zone>` DNSRecordSet written by exact resourceVersion CAS, so concurrent
+  UPDATEs on any node are serialized and a prerequisite failure writes nothing.
+  The same key x owner x type grants apply as on SQLite, and records owned by
+  API, file or integration sources cannot be changed by an UPDATE.
+
 - Stored TSIG keys can be created, replaced, resealed and revoked through the API
   on Kubernetes, and every node reloads the stored source without a restart. A
   changed source that cannot be prepared withdraws signing rather than keeping a

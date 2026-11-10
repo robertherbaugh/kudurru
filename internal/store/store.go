@@ -69,6 +69,9 @@ const (
 	ManagerAPI       = "api"
 	ManagerBootstrap = "bootstrap"
 	ManagerSystem    = "system"
+	// ManagerDynamicUpdate owns the per-zone RFC 2136 record set on drivers
+	// without committed zone heads (Kubernetes, D366).
+	ManagerDynamicUpdate = "dns-update"
 )
 
 // ManagerFile builds the manager string for a file-managed object.

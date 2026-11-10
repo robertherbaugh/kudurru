@@ -4125,5 +4125,43 @@ designs, none implemented in this pass:
 3. Explicitly not advertise RFC 2136 on Kubernetes in v0.2 (CRD/docs refusal of
    `policy.update` other than `deny` on that driver) and defer it.
 
-F12a remains open for Kubernetes pending the owner's choice; SQLite behavior and
-evidence are unchanged.
+On November 10 the owner asked for the standards-conforming option that meets the
+goal; option 1 was implemented as D366 (recorded below).
+
+
+### F12a RFC 2136 on Kubernetes — November 10, 2026 (D366)
+
+Following the owner's direction to use the standards-conforming option that meets
+the goal, Kubernetes now answers RFC 2136 UPDATE. RFC 2136 section 3.7 requires
+atomicity with respect to concurrent UPDATE transactions; Kubernetes offers
+single-object CAS but no multi-object transactions. Each zone therefore has one
+UPDATE-owned DNSRecordSet, `rfc2136-<zone>` (manager `dns-update`), and every UPDATE
+is one exact-resourceVersion write of that object.
+
+Each UPDATE verifies TSIG, takes a per-zone node lock, reads the zone and every
+record set referencing it from the store, builds the served zone with the serving
+selection/builder, and runs the shared `dynamicupdate.Plan` with grants from
+`currentguard.CompileUpdatePolicy` (now shared with SQLite) and reservations for
+SOA, apex NS and every RRset another source owns. The UPDATE-owned part of the plan
+is written by create-only, versioned update or versioned delete. A lost cross-node
+CAS re-plans from fresh data up to eight times, then answers SERVFAIL without a
+write. Prerequisite and policy refusals write nothing. The controller's status
+serial advances and drives NOTIFY; API, file and integration sources keep their
+own objects and cannot be changed by UPDATE.
+
+Evidence under `.context/kube-update-20261110/`: envtest
+`TestRunServeKubeDynamicUpdateAtomicityAndOwnership` passes four times (`race05`,
+`race06` x3): signed add with a signed response and the `dns-update`-owned object,
+serial advance, YXDOMAIN prerequisite failure without a write, refused ungranted
+type, refused unsigned UPDATE, an API-owned record unchanged, 12 of 12 concurrent
+UPDATEs on one node committed, 16 of 16 concurrent UPDATEs split across two nodes
+acknowledged and present on both, restart durability, a granted name-wide delete,
+and deletion of the emptied UPDATE-owned object. `TestKubeUpdateEndpointsRoundTrip`
+covers A/AAAA/TXT (including quotes)/MX/SRV/CNAME round trips and reservation/SOA
+exclusion. Default race with envtest assets across `internal/primaryruntime`,
+`internal/dynamicupdate`, `internal/zone` and `internal/store/kube` (`lib-race01`):
+exit 0, 876 passes, three opt-in measurement skips. Root selection (Update, Kube,
+Kubernetes, Primary, TSIG, Notify; `root-race01`): exit 0, 173 passes, no skips.
+Scoped lint passes. Retained earlier runs: `race01` (test used an invalid `ANY` RR
+literal), `race02`/`race03` (a test assumption about name-wide deletes; the first
+concurrency run committed 6 of 12 before the per-zone lock was added).
