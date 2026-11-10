@@ -804,10 +804,11 @@ follower is never promoted automatically. The enrolled SQLite path below is
 mounted: first-primary activation, invitation issuance, initial remote
 joining, retained follower acquisition, reviewed operator promotion, peer
 authority observation and offline conflict resolution. An enrolled follower
-forwards a closed set of typed commands to its primary (the blocking toggle,
-canonical object writes, four zone commands and local password login); the
-paragraph on the root member-command executor below names what is not
-forwarded. Static file-managed twins
+forwards typed commands to its primary, including the blocking toggle,
+canonical object writes, four zone commands and local password login. Each
+forwarded domain has its own executor on the primary; the paragraph on the
+root member-command executor below names what is not forwarded. Static
+file-managed twins
 and authenticated remote health reads are available separately. See [the design record §4](../../dev-docs/design-record.md#4-data-model-storage-replication-ha)
 for the plan.
 
@@ -1440,8 +1441,8 @@ the CLI reports pending publication. Failed/expired output may follow a real
 commit, so clients must not interpret loss as rollback or automatically retry.
 Canonical object writes, four zone commands and local password login use the
 same member transport with their own typed executors (described with the root
-member-command executor above). Mutation domains outside that set are not
-forwarded.
+member-command executor above). A mutation domain without such an executor is
+not forwarded.
 
 ```mermaid
 sequenceDiagram
