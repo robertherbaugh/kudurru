@@ -401,8 +401,8 @@ type SinkStatus struct {
 	// Queued and QueueSize are the events waiting and the bound.
 	Queued    int `json:"queued"`
 	QueueSize int `json:"queue_size"`
-	// Sent, Dropped and Errors count events written, events lost (queue
-	// overflow or an abandoned batch) and failed attempts.
+	// Sent, Dropped and Errors count events written, events lost for the
+	// name (kudurru_querylog_dropped_total{stage="sink"}) and failed attempts.
 	Sent    uint64 `json:"sent"`
 	Dropped uint64 `json:"dropped"`
 	Errors  uint64 `json:"errors"`

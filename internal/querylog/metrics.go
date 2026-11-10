@@ -7,8 +7,9 @@ const (
 	// DropStageQueue counts events the collector queue refused.
 	DropStageQueue = "queue"
 	// DropStageSink counts events in batches a sink failed to write and,
-	// for an additional sink (querylog.sinks), events its own queue refused.
-	// The sink label names the sink.
+	// for an additional sink (querylog.sinks), every event that sink lost:
+	// refused by its own queue, left unwritten when it retired, or offered
+	// to it after its entry had been replaced. The sink label names the sink.
 	DropStageSink = "sink"
 	// DropStageTail counts events a slow live-tail subscriber missed.
 	DropStageTail = "tail"
