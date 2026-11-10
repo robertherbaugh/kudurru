@@ -92,14 +92,28 @@ func memberForwardRoute(method, prefix, escaped string) bool {
 	return method == http.MethodPost && len(parts) == 1 && strings.HasSuffix(parts[0], ":batchDelete")
 }
 
+// memberEarlierBound reports the requests that a follower bounded before
+// memberForwardRoute named the forwarded routes: every POST, PUT and DELETE
+// under /objects/ and /zones/. Of the registered routes only POST
+// /zones/{zone}/notify is one that the predicate does not cover. A follower
+// does not forward it, and it keeps the deadline that it had.
+func memberEarlierBound(method, prefix, path string) bool {
+	if method != http.MethodPost && method != http.MethodPut && method != http.MethodDelete {
+		return false
+	}
+	return strings.HasPrefix(path, prefix+"/objects/") || strings.HasPrefix(path, prefix+"/zones/")
+}
+
 // boundMemberObjectWrites starts the one original 30-second lifetime of an
 // enrolled follower's forwarded mutation before Huma acquires its body. A
 // request with several items (POST /apply, :batchDelete) sends one command for
-// each item inside this single lifetime. Primary, standalone and static nodes
-// keep their ordinary route lifetime, as does every route that is not forwarded.
+// each item inside this single lifetime. The other unsafe requests under
+// /objects/ and /zones/ keep the same bound, which they had before the
+// forwarded routes were named. Primary, standalone and static nodes keep their
+// ordinary route lifetime, as does every other route on a follower.
 func (h *servingHTTP) boundMemberObjectWrites(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !memberForwardRoute(r.Method, h.opts.RoutePrefix, r.URL.EscapedPath()) {
+		if !memberForwardRoute(r.Method, h.opts.RoutePrefix, r.URL.EscapedPath()) && !memberEarlierBound(r.Method, h.opts.RoutePrefix, r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}

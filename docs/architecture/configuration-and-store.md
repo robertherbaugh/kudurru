@@ -1101,10 +1101,14 @@ commit together. A clean pre-mutation client refusal (`400`, `404`, `409`,
 other failure rolls back. Every public route that writes one canonical object
 reaches this seam: the `/objects` routes, `POST /apply`, the `/blocklists`,
 `/clientgroups` and `/policies` routes and `POST /{kind}:batchDelete`. The
-follower starts one 30-second request lifetime for exactly those routes before
-it reads the body, because capture refuses an unbounded request. An apply or
-batch delete sends one command for each document or name inside that single
-request and reports one result for each item. Every item captures the request's
+follower starts one 30-second request lifetime for those routes and the four
+zone convenience commands before it reads the body, because capture refuses an
+unbounded request. Every other `POST`, `PUT` and `DELETE` under `/objects/` and
+`/zones/` keeps the same bound on a follower, as it had before the forwarded
+routes were named; `POST /zones/{zone}/notify` is the only registered one, and
+it is not forwarded. An apply or batch delete sends one command for each
+document or name inside that single request and reports one result for each
+item. Every item captures the request's
 original source again, so an item is refused, not applied and not replayed once
 the lifetime has ended or the follower has installed a newer image (typically
 its next pull, which carries the request's earlier items); the refusal names
