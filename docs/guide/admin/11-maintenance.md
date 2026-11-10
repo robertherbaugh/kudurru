@@ -174,6 +174,42 @@ docker exec kudurru kudurru admin list-users
 NOTE: Only `root`, the user of the server, and a group that you set with
 `auth.adminSocket.group` can use these commands. Keep this access limited.
 
+## Recover a lost authenticator
+
+Use this procedure when the only administrator lost the authenticator
+(Chapter 9). If a different administrator can sign in, use the tab
+**Identity** of the dashboard. You need access to the host.
+
+NOTE: A new password does not remove an authenticator.
+
+1. Make a token on the host. The command prints it one time:
+
+   ```sh
+   docker exec kudurru kudurru admin create-token --expires-in 1h
+   ```
+
+2. Connect the command line with the token. Enter the token on the standard
+   input:
+
+   ```sh
+   kudurru login --server https://dns.example.net:8080 --token-stdin
+   ```
+
+3. Find the `uid` of the account in the list of users:
+
+   ```sh
+   kudurru api /iam/users
+   ```
+
+4. Remove the authenticator. Replace `<uid>` with the value from step 3:
+
+   ```sh
+   kudurru api POST /iam/users/admin/totp/recover --data '{"uid":"<uid>"}'
+   ```
+
+kudurru removes the authenticator and signs out the browser sessions of the
+account. Sign in with the password only. Then set up a new authenticator.
+
 ## Rotate the encryption key
 
 Do not replace the encryption key without a plan. If you replace it

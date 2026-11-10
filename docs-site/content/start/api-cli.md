@@ -27,6 +27,13 @@ Flags (`--server`, `--token`, `--context`) and the environment
 which suits CI. A server with the default self-signed certificate needs
 `--ca-file`, or `--insecure-skip-tls-verify` in a lab.
 
+An account with an authenticator adds `--totp` to the password login. With
+single sign-on, `kudurru login --server https://dns.example:8080 --provider corp`
+signs in through the browser, and `--device` shows a code to enter on another
+device when the machine has no browser. Both need a node with the SQLite store
+and a public client for the CLI at the provider:
+[command-line sign-in](/guide/dashboard/access/#command-line-sign-in).
+
 ## Everyday commands
 
 ```sh

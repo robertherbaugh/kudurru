@@ -50,15 +50,14 @@ message **Not permitted** with the name of the missing permission.
 
 Figure 1 shows the page.
 
-![The Access page on the You and tokens tab. It shows the account admin with the role admin, and the API tokens section with a form and a table.](../images/access.png)
+![The Access page on the You and tokens tab. It shows the account admin with the role admin, the sections Authenticator and Browser sessions, and the API tokens section with a form and a table.](../images/access.png)
 
 *Figure 1. The page Access.*
 
 ## Give a role to a person
 
-In version 0.1, the dashboard shows users, role bindings and identity
-providers but does not change them. You set them in files or in
-Kubernetes objects. The page shows the label **Read-only in this release**.
+The dashboard shows role bindings and identity providers but does not
+change them. You set them in files, in objects or with the command line.
 
 A role binding gives a role to users, groups or service accounts. Add
 bindings in `kudurru.yaml`:
@@ -82,6 +81,10 @@ identifier of the identity provider and a colon.
 
 In Kubernetes, use `RoleBinding` objects. They add to the bindings in the
 file.
+
+On a node with SQLite storage, the command `kudurru iam rolebindings` also
+makes, changes and deletes `RoleBinding` objects. See
+[Reviewed RoleBinding commands](../../deploy/rolebindings.md).
 
 NOTE: A change to `rbac.bindings` needs a restart of the node.
 
@@ -136,15 +139,16 @@ hours at the most. You can change these times with
 
 Click the tab **Identity** on the page **Access**. Figure 2 shows it.
 
-![The tab Identity with the message Read-only in this release, and the tables Local users, Service accounts, Role bindings and Identity providers.](../images/access-identity.png)
+![The tab Identity with the message Identity management, and the sections Local users, External accounts, Service accounts and Role bindings.](../images/access-identity.png)
 
 *Figure 2. The tab Identity.*
 
-The tab has four tables.
+The tab has five sections.
 
-| Table | Content |
+| Section | Content |
 |---|---|
-| **Local users** | The local accounts, their groups and the time of the last sign-in |
+| **Local users** | The local accounts, their groups and the time of the last sign-in. The column **Actions** removes the authenticator of a person. |
+| **External accounts** | The accounts of people who signed in with single sign-on. Only a node with SQLite storage has this list. |
 | **Service accounts** | Accounts for programs, with the number of tokens |
 | **Role bindings** | The role, the scope, the subjects, and where the binding comes from |
 | **Identity providers** | The single sign-on providers |
@@ -159,6 +163,109 @@ The tab has four tables.
 4. Click **Change password**.
 
 kudurru signs out all the other sessions of the account.
+
+## Use an authenticator
+
+An authenticator is an app that shows a new code of 6 digits every 30
+seconds. With an authenticator, kudurru asks for the password and the code
+each time that you sign in.
+
+NOTE: Only local accounts on a node with SQLite storage have this function.
+A node with Kubernetes storage and a static node do not have it. In a
+cluster of SQLite nodes, use the dashboard of the primary.
+
+The section **Authenticator** is on the tab **You & tokens** of the page
+**Access**. It shows if an authenticator is enabled.
+
+### Set up an authenticator
+
+1. Open **System** > **Access**.
+2. In the section **Authenticator**, click **Set up authenticator**.
+3. Enter the **Current password**.
+4. Click **Next**. The dialog shows the **Authenticator key**.
+5. Add a new account in your authenticator app.
+6. Enter the **Authenticator key** as the key of that account.
+7. Click **Next**.
+8. Enter the **Current password again**.
+9. Enter the code from the app in **New authenticator code**.
+10. Click **Confirm authenticator**.
+
+kudurru signs out all the browser sessions of the account. The API tokens
+of the account continue to work. Sign in again. Enter the password and the
+next code from the app in **Authenticator code**.
+
+NOTE: The key is valid for 5 minutes. If you are not ready in that time,
+start the procedure again.
+
+The app must use these values: a code that changes with the time, SHA1,
+6 digits and 30 seconds. Most apps use them by default.
+
+To move to a different app or telephone, click **Replace authenticator**.
+The steps are the same. The dialog also asks for codes from the old
+authenticator.
+
+### Remove your authenticator
+
+1. In the section **Authenticator**, click **Disable authenticator**.
+2. Enter the **Current password**.
+3. Enter the **Current authenticator code**.
+4. Click **Disable authenticator**.
+
+kudurru signs out all the browser sessions of the account. Sign in again
+with the password only.
+
+### Remove the authenticator of a different person
+
+Use this procedure for a person who lost the authenticator. You must have
+the role Admin.
+
+1. Open **System** > **Access**.
+2. Click the tab **Identity**.
+3. In the table **Local users**, find the row of the person.
+4. Click **Recover authenticator…** in that row.
+5. Make sure that the dialog shows the correct account.
+6. Click **Recover authenticator**.
+
+kudurru removes the authenticator of the account and signs out its browser
+sessions. The person signs in with the password only. Then the person can
+set up a new authenticator.
+
+If you lost the authenticator of the only administrator, use a token from
+the host. Chapter 11 has the procedure:
+[Recover a lost authenticator](11-maintenance.md#recover-a-lost-authenticator).
+
+## See and end your browser sessions
+
+A browser session starts when you sign in to the dashboard. The section
+**Browser sessions** on the tab **You & tokens** lists the sessions of your
+account. Use it to end a session on a computer that you do not use now.
+
+NOTE: Only a node with SQLite storage has this function. On a node with
+Kubernetes storage, the section shows the message **Session inventory is
+unavailable on this server.** In a cluster of SQLite nodes, end a session
+on the dashboard of the primary.
+
+| Column | Meaning |
+|---|---|
+| **Session** | The identifier of the session |
+| **Issued** | The time of the sign-in |
+| **Lifetime ends** | The time when the session ends at the latest |
+| **Idle deadline** | The time when the session ends if you do not use it |
+| **Flags** | **Current session** is the session of this browser. **Revoked** is a session that someone ended. |
+
+To end a session:
+
+1. Find the row of the session.
+2. Click the button in the column **Actions**. Its name starts with
+   **Revoke session**.
+3. Make sure that the dialog shows the correct session.
+4. Click **Revoke selected session**.
+5. Click **Refresh sessions** to see the new state.
+
+For the session of this browser, the button is **Revoke this session**.
+After you click it, the browser shows the sign-in page.
+
+A change of your password also ends the other sessions of the account.
 
 ## API tokens
 

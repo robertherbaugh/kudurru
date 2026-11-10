@@ -11,13 +11,20 @@
 1. Open **System** > **Access**.
 2. Select **Identity**.
 3. Read **Local users** for configured local accounts.
-4. Read **Service accounts** for program accounts and token counts.
-5. Read **Role bindings** for subjects, roles and scopes.
-6. Read **Identity providers** for configured sign-in providers.
+4. Read **External accounts** for accounts from single sign-on.
+5. Read **Service accounts** for program accounts and token counts.
+6. Read **Role bindings** for subjects, roles and scopes.
+7. Read **Identity providers** for configured sign-in providers.
 
-![The Identity tab with read-only local users, service accounts, role bindings and providers.](../images/access-identity.png)
+![The Identity tab with the Identity management message, local users, external accounts, service accounts and role bindings.](../images/access-identity.png)
 
-*Figure 1. Identity configuration is read-only in the dashboard in this release.*
+*Figure 1. The dashboard shows the identity configuration. You change role bindings and providers at their source.*
+
+The tab has two kinds of action. In **Local users**, an administrator can
+[remove the authenticator of a person](../admin/09-people-and-tokens.md#remove-the-authenticator-of-a-different-person).
+In **External accounts**, an administrator can disable, enable or sign out an
+account ([External accounts](access.md#external-accounts)). A node with
+Kubernetes storage does not have these actions.
 
 A role binding connects a user, group or service account to a role.
 A zone scope limits a `zone-admin` binding to one zone.

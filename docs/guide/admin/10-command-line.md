@@ -64,10 +64,51 @@ input, use `--password-stdin --totp-stdin` and provide the password line followe
 by the code line. Leading zeros matter. The code is never saved; there is no
 flag that takes its value or environment variable for it.
 
-Login and token creation do not follow redirects or retry automatically. Use
-the final server address. If a response is lost, inspect your sessions and tokens
-in the dashboard before starting a fresh attempt: the server may have completed
-the request even though the command could not confirm it.
+Login and token creation do not follow redirects and do not try again. Use
+the final address of the server. If you do not get an answer, look at your
+sessions and tokens in the dashboard first. It is possible that the server
+completed the request. Then start a new attempt.
+
+### Sign in with single sign-on
+
+The command can use an identity provider instead of a password or a token.
+
+You need these items:
+
+- A node with SQLite storage and a license key for single sign-on.
+- A public client for the command line at the provider. The entry of the
+  provider in `auth.identityProviders` has its client ID in `cliClientID`.
+- HTTPS for the API and for the provider, with certificates that your
+  computer trusts.
+
+1. Start the sign-in. Replace `corp` with the identifier of the provider:
+
+   ```sh
+   kudurru login --server https://dns.example.net:8080 --provider corp
+   ```
+
+2. Sign in to the provider in the browser that opens.
+3. Go back to the terminal. The command stores the context.
+
+If only one provider has a client for the command line, you can omit
+`--provider`.
+
+On a computer without a browser, add `--device`:
+
+```sh
+kudurru login --server https://dns.example.net:8080 --provider corp --device
+```
+
+The command shows an address and a code. Open the address on a different
+device and enter the code there.
+
+CAUTION: Approve only a request that you started. Compare the provider, the
+client and the code with the text in the terminal.
+
+The command stores the ID token of the provider. It does not make a kudurru
+token or a browser session. When the ID token expires, sign in again.
+[Command-line sign-in](../dashboard/access.md#command-line-sign-in) has the
+details of the setup at the provider.
 
 NOTE: The default certificate of kudurru is self-signed. Use `--ca-file`
 with the certificate to trust it. For a test only, use
@@ -237,6 +278,19 @@ Chapter 11 explains what a backup holds.
 | `kudurru license status` | Show the license that a node uses (state, plan, nodes, features) |
 | `kudurru license verify <key>` | Check a license key without a running node |
 | `kudurru version` | Show the version |
+
+These command groups are for special tasks. Each has a page with the
+procedure.
+
+| Command | Use | Procedure |
+|---|---|---|
+| `kudurru cluster` | Show the cluster state. Make and change a cluster of SQLite nodes. | [Enrolled SQLite cluster](../../deploy/sqlite-cluster.md) |
+| `kudurru iam rolebindings` | Make, change and delete role bindings on SQLite | [Reviewed RoleBinding commands](../../deploy/rolebindings.md) |
+| `kudurru iam external-users` | Disable, enable and sign out accounts from single sign-on | [External accounts](../dashboard/access.md#external-accounts) |
+| `kudurru iam migrate` | Move the identity data of a Kubernetes installation to version 0.2 | [Kubernetes IAM upgrade](../../deploy/iam-upgrade.md) |
+| `kudurru integrations` | Show, check and run integrations | [Background integrations](../../deploy/integrations.md) |
+| `kudurru anchors` | Read and recover the managed root trust anchors on a stopped node | [Runbooks](../../deploy/runbooks.md#recover-a-quarantined-managed-root-anchor) |
+| `kudurru api` | Send a request to an API path that has no command | [Stored TSIG keys](../../deploy/tsig-keys.md) |
 
 Use `kudurru <command> --help` for the options of each command. The
 [command reference](../../../docs-site/content/reference/cli.md) has all of

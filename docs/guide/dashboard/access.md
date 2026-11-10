@@ -12,13 +12,19 @@
 3. Read **Signed in as** and your assigned roles.
 4. Click **Permissions** to inspect allowed actions.
 
-![Access on You and tokens with account roles and the token creation form.](../images/access.png)
+![Access on You and tokens with the account roles, the Authenticator and Browser sessions sections, and the token creation form.](../images/access.png)
 
 *Figure 1. Tokens use your roles or a narrower scope that you select.*
 
 For a local account, use **Change password**.
 Enter the current password, the new password and its confirmation, then save.
 Changing a password signs out the account's other sessions.
+
+On a node with SQLite storage, the tab has two more sections.
+**Authenticator** adds a code from an authenticator app to the sign-in of a local account.
+**Browser sessions** lists the sign-in sessions of your account and ends one of them.
+See [Use an authenticator](../admin/09-people-and-tokens.md#use-an-authenticator)
+and [See and end your browser sessions](../admin/09-people-and-tokens.md#see-and-end-your-browser-sessions).
 
 ## Create a token for one program
 
@@ -60,8 +66,8 @@ same display name. Reading requires `users.read`; changes require `users.write`.
 Review the exact account in the confirmation dialog. A conflict means its
 reviewed revision changed; refresh and review again. After an uncertain network
 result, refresh before choosing another action. The dashboard never retries the
-mutation automatically. A successful command may precede its published read
-snapshot; refresh to observe the new revision.
+mutation automatically. A successful command can come before its published
+read snapshot; refresh to observe the new revision.
 
 The equivalent CLI commands return UID and revision explicitly:
 
