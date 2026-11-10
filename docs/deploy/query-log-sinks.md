@@ -323,7 +323,9 @@ sink, whatever the settings name.
 A sink reads its credential when it starts, and again when the destination
 answers 401 or 403. To rotate a credential, change the file or the Secret:
 the next batch that is refused makes the sink read the new value and send
-the batch again. No restart or settings change is needed.
+the batch again. No restart or settings change is needed. The CA
+certificates of `caRef` are read only when the sink starts; after replacing
+them, change the sink's entry (any field) or restart the server.
 
 A sink whose reference cannot be read (a path that is not allowed, a Secret
 without the label, a missing Secret or key) does not start. It keeps trying,
