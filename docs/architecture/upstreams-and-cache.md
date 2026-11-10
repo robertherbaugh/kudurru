@@ -303,8 +303,9 @@ that every client reaches the node's listeners without dnsdist or another cachin
 proxy; configured PROXYv2 peers are rejected. This declaration cannot discover
 undeclared proxies. It is host-only, requires restart, and is separate from the
 cluster's root policy. The default `disabled` topology never activates managed
-serving. Enrolled primary writers use the elected updater; enrolled followers
-mount an independent deny-only supervisor. Edge deployments use the explicit
+serving. Enrolled primary writers use the elected updater; every member without
+one (a follower, and a fenced or conflicted member serving its last-good DNS)
+mounts an independent deny-only supervisor. Edge deployments use the explicit
 `edges` topology described below. Full enrolled HA orchestration/acceptance
 is still separate.
 
@@ -325,6 +326,10 @@ under the Store's original-token barrier. Missing credentials, any unavailable
 or mismatched peer, expired work or an intervening local image/authority change
 refuses startup without replay. An empty follower must receive its initial image
 before starting with edge topology; direct followers can wait for installation.
+A fenced or conflicted backend restarts under the same complete fleet
+observation, adopted with its token's own DNS-only disposition; it is refused
+like any other backend when one edge is missing, mismatched or the local
+authority changes during the observation.
 Neither declaration discovers omitted proxies or unmanaged independent daemons.
 
 Successful edge admission retains the runtime lifetime. Its safety across an
@@ -473,11 +478,12 @@ refuses a normal response. A separate explicit authenticated-normal result lets
 the private follower poller schedule a new independent acquisition without
 creating accepted progress.
 
-That poller retains one member and authority term, plus its own session clock.
-Each operation retains its exact local incarnation. Only after an authenticated
-normal observation completes with its original authority check may a later fresh
-capture adopt a newer installed incarnation in that same member/term. No failed
-or held operation can use this path; its original token remains immutable.
+That poller retains one member, authority term and role, plus its own session
+clock. Each operation retains its exact local incarnation. Only after an
+authenticated normal observation completes with its original authority check may
+a later fresh capture adopt a newer installed incarnation in that same member,
+term and role. No failed or held operation can use this path; its original token
+remains immutable.
 Its first observation is immediate; a normal receipt imposes
 only a local one-hour minimum refresh cadence. Incomplete transport uses the
 accepted state's retry interval. Both cooldowns bind the exact owner, policy and
@@ -489,15 +495,44 @@ and wait. The admitted direct runtime mounts a supervisor around this worker.
 Before the first operation, only absent initial images and actual awaiting or
 dormant owners may wait for a managed install. Once started, a captured operation's
 refusal is terminal. Its supervisor retains that result across ordinary installs,
-which increment SQLite's local incarnation; only a different member or authority
-term can admit another child. It cancels and joins old children before moving to
-a successor term, and parks failures without stopping unrelated serving work.
+which increment SQLite's local incarnation; only a different member, authority
+term or role can admit another child. It cancels and joins old children before
+moving to a successor, and parks failures without stopping unrelated serving work.
 A successful local denial retires the exact published input and survives reopen;
 no follower observation changes the canonical accepted owner. A same-term install
 can invalidate an in-flight operation's exact incarnation, but cannot rescue that
 refused operation. A completed normal operation may be followed by a new captured
 source; an unchanged owner/settings identity retains its existing cooldown. Full automatic HA enrollment, forwarding and partition/rejoin
 qualification remain separate.
+
+#### Fenced and conflicted members (D369)
+
+Managed admission is split in two. Serving admission lets a member publish and
+answer from its last accepted managed owner in every role that can hold one.
+Updater admission stays with the elected writer of the original term.
+
+| Local authority | Publication | Root-anchor worker |
+|---|---|---|
+| Writable standalone or primary | Complete | Elected updater; the only path that advances accepted history |
+| Follower | Complete | Deny-only supervisor |
+| Fenced (a higher term was observed, or the installed image diverged) | DNS-only last-good | Deny-only supervisor |
+| Conflict (another term in the same epoch was observed) | DNS-only last-good | Deny-only supervisor |
+| Unenrolled or no installed image | None | None |
+
+Every follower is fenced from the moment it observes a promoted successor until
+it installs that term's image, an old primary is fenced when it returns, and a
+conflicted member stays in that role until an operator runs
+`cluster resolve --offline`. In each case the member keeps answering DNS from its
+last-good image with its last accepted trust anchors, restarts in that role
+(direct and edges topology), keeps protected HTTP, authentication and writer
+work closed, and never polls as a writer. Its supervisor still acquires the
+root DNSKEY set independently. A signed revocation commits the same durable
+local denial as on a follower and retires the DNS-only output; no observation
+in these roles changes accepted history or authority. The supervisor starts one
+child per member, term and role. A role change inside a term (fenced to follower
+by install, or to conflict or divergence) is a durable authority transition, so
+it joins the old child and admits one new child; ordinary installs still cannot
+rearm a terminal result.
 
 The `resolverstate` projection derives canonical SHA-256 DS records
 only from Valid/Missing keys. Dormant and quarantined histories yield explicit

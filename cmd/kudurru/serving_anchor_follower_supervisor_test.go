@@ -274,3 +274,91 @@ func TestAnchorFollowerSupervisorPromotionJoinsHeldAcquisition(t *testing.T) {
 		t.Fatal("old follower continued under promoted authority")
 	}
 }
+
+// Every follower is fenced from the moment it observes a higher term until it
+// installs that term's image, and stays fenced if it cannot. Before D369 the
+// supervisor ran for the follower role only, so that member served nothing and
+// watched nothing. It now keeps serving its last accepted managed owner as
+// DNS-only data under a new child for the fenced role, whose independent signed
+// REVOKE still retires the output durably, including across a physical reopen
+// of the fenced database.
+func TestAnchorFollowerSupervisorFencedRoleKeepsDenyOnlyPollingAcrossReopen(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	endpoint, seeds, reads := anchorOperationServer(t, 3, func(n int) {
+		if n == 3 {
+			close(entered)
+			<-release
+		}
+	})
+	f, ctx, _ := anchorFollowerPollerFixture(t, endpoint, seeds)
+	stop := startAnchorFollowerFixture(ctx, t, f)
+	awaitServingRuntime(t, f.s, func() bool { return reads.Load() == 2 && f.s.publisher.Status().ProtectedReady })
+	before := anchorFollowerImage(ctx, t, f.store)
+	term := f.store.Authority().Term
+	term.Epoch++
+	term.PrimaryID, term.PromotionID = "successor", "later"
+	if _, err := f.store.ObserveAuthority(ctx, term); err != nil {
+		t.Fatal(err)
+	}
+	fenced := f.store.Authority()
+	if fenced.Mode != replication.Fenced || !fenced.Installed.Same(before.Generation()) {
+		t.Fatal("fixture did not fence the follower on its installed image", fenced.Mode)
+	}
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("fenced follower never acquired its own independent receipt")
+	}
+	awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().Reason == "dns_only" })
+	if _, err := f.s.publisher.CaptureHTTP(ctx); err == nil {
+		t.Fatal("fenced follower admitted protected HTTP")
+	}
+	lease, err := f.s.publisher.Capture()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Release()
+	request := func() *pipeline.Request { return &pipeline.Request{Ctx: ctx, Serving: servingdns.Wrap(lease)} }
+	served, err := captureRootAnchorOutput(request())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := served.Emit(func() error { return nil }); err != nil {
+		t.Fatal("fenced follower refused its last-good DNS-only output", err)
+	}
+	held, err := captureRootAnchorOutput(request())
+	if err != nil {
+		t.Fatal(err)
+	}
+	unblock()
+	denied := func() bool {
+		_, token, err := f.store.ReadServingCandidate(ctx)
+		if err != nil {
+			return false
+		}
+		_, err = f.store.CaptureAnchorPublication(ctx, token)
+		return errors.Is(err, sqlite.ErrAnchorUnavailable)
+	}
+	awaitServingRuntime(t, f.s, denied)
+	if err := held.Emit(func() error { t.Error("fenced follower emitted after durable denial"); return nil }); err == nil {
+		t.Fatal("held fenced output survived local denial")
+	}
+	if _, err := captureRootAnchorOutput(request()); err == nil {
+		t.Fatal("retired fenced input admitted a new output attempt")
+	}
+	if reads.Load() != 3 || !anchorFollowerSameImage(before, anchorFollowerImage(ctx, t, f.store)) || !reflect.DeepEqual(fenced, f.store.Authority()) {
+		t.Fatal("fenced supervision changed canonical history or authority", reads.Load())
+	}
+	stop()
+	// Startup admission accepts the fenced database; the denial is still there.
+	f.reopen(ctx, t)
+	reopened := f.store.Authority()
+	if reopened.Mode != replication.Fenced || !reopened.Term.Same(fenced.Term) || !reopened.Installed.Same(fenced.Installed) || !f.s.anchors.admission.current() || !denied() {
+		t.Fatal("fenced reopen lost its authority, admission or durable denial", reopened.Mode)
+	}
+	if reads.Load() != 3 {
+		t.Fatal("fenced reopen acquired without a running supervisor", reads.Load())
+	}
+}

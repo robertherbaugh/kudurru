@@ -199,3 +199,16 @@ unknown result: run `cluster resolution` again and decide from the current state
 The command needs the member's data directory and its retained
 `member-identity.json`, and makes no network connection. Running it on a member
 without a recorded conflict or divergence refuses without changes.
+
+
+## Managed root anchors on fenced and conflicted members
+
+With `upstreams.recursion.anchorMode: managed` (RFC 5011), a member that is
+fenced or holds an unresolved conflict keeps answering DNS from its last valid
+local data and its last accepted root trust anchors, and it restarts in that
+state. It does not update trust anchors: only the current primary does. It still
+checks the root DNSKEY set on its own, about once an hour. If it sees a signed
+revocation of a trusted key, it retires its current trust-anchor state
+immediately and answers `SERVFAIL` until it installs a newer state from the
+primary. These members therefore still need outbound TCP 53 to the configured
+root servers.

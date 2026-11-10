@@ -14,7 +14,8 @@ import (
 
 // Readiness precedes the first operation capture and raw acquisition. Only an
 // absent first image or an actual awaiting/dormant owner may wait. Once a poller
-// starts, no source wake can reinterpret its refusal as startup readiness.
+// starts, no source wake can reinterpret its refusal as startup readiness. A
+// fenced or conflicted member is classified from its own DNS-only cut (D369).
 func (s *servingRuntime) anchorFollowerReady(ctx context.Context, epoch anchorFollowerEpoch) (bool, error) {
 	original, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -26,7 +27,7 @@ func (s *servingRuntime) anchorFollowerReady(ctx context.Context, epoch anchorFo
 		}
 		return false, err
 	}
-	if image == nil || !image.Generation().Same(token.Generation()) || token.Authority().Mode != replication.Follower || !epoch.same(followerEpoch(token.Authority())) || token.DNSOnly() {
+	if image == nil || !image.Generation().Same(token.Generation()) || !supervisedAnchorRole(token.Authority()) || !epoch.same(followerEpoch(token.Authority())) {
 		return false, replication.ErrFenced
 	}
 	ready := false
@@ -66,8 +67,9 @@ func (s *servingRuntime) anchorFollowerReady(ctx context.Context, epoch anchorFo
 		}
 	}
 	// This read-only classification belongs to the same original installed cut.
-	// It grants no publication, receipt, writer or operation continuation.
-	if err := s.opts.Store.PublishIfCurrent(original, token, sqlite.PublicationOptions{}, func() error { return nil }); err != nil {
+	// It grants no publication, receipt, writer or operation continuation. The
+	// check carries the token's own disposition, never a writable one.
+	if err := s.opts.Store.PublishIfCurrent(original, token, sqlite.PublicationOptions{DNSOnly: token.DNSOnly()}, func() error { return nil }); err != nil {
 		return false, err
 	}
 	return ready, nil
@@ -87,8 +89,14 @@ func (s *servingRuntime) startAnchorFollower(ctx context.Context, epoch anchorFo
 
 // Run mounts this once for the admitted runtime. Its terminal record survives
 // ordinary generation/installed-image changes, including their incarnation
-// increments. Only a real member/term change admits another child, after joining the old
-// one. Failure parks this worker without taking unrelated serving workers down.
+// increments. Only a real member, term or role change admits another child,
+// after joining the old one. Failure parks this worker without taking unrelated
+// serving workers down. Every role without an elected updater is supervised:
+// a fenced or conflicted member keeps serving last-good DNS, so it keeps its
+// own deny-only polling too (D369). A role change inside one term is a durable
+// authority transition (fenced to follower by install, follower or fenced to
+// conflict or divergence), not an ordinary install, and each can happen only a
+// bounded number of times per term.
 func (s *servingRuntime) superviseAnchorFollower(ctx context.Context) error {
 	var epoch anchorFollowerEpoch
 	var terminal bool
@@ -110,7 +118,7 @@ func (s *servingRuntime) superviseAnchorFollower(ctx context.Context) error {
 		changed, authority := s.opts.Store.GenerationChanges(), s.opts.Store.AuthorityChanges()
 		a, blocked := s.opts.Store.ServingAuthority()
 		next := followerEpoch(a)
-		if epoch.member != next.member || !epoch.term.Same(next.term) {
+		if !epoch.sameRole(next) {
 			join()
 			epoch, terminal = next, false
 			nextRead = time.Time{}
@@ -119,7 +127,7 @@ func (s *servingRuntime) superviseAnchorFollower(ctx context.Context) error {
 			// image. After capture, that same change cannot rearm a refusal.
 			epoch = next
 		}
-		if blocked || a.Mode != replication.Follower || !s.anchors.admission.current() {
+		if blocked || !supervisedAnchorRole(a) || !s.anchors.admission.current() {
 			if child != nil {
 				join()
 				terminal = true

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 )
 
@@ -143,5 +145,91 @@ func TestAnchorEdgeActivationRefusesChangedOriginal(t *testing.T) {
 				t.Fatal("edge admission replayed or acquired without credentials", calls.Load())
 			}
 		})
+	}
+}
+
+// A fenced or conflicted backend used to be refused at startup before any edge
+// was contacted, so it could not restart behind its edges at all. D369 admits
+// that DNS-only cut, but only with the same complete authenticated fleet
+// observation a writable backend needs, adopted under the same original token.
+func TestAnchorEdgeActivationAdmitsDNSOnlyCutOnlyWithCompleteFleet(t *testing.T) {
+	for _, role := range []replication.Mode{replication.Fenced, replication.Conflict} {
+		for _, name := range []string{"complete", "unavailable-edge", "missing-member", "authority"} {
+			t.Run(string(role)+"/"+name, func(t *testing.T) {
+				base := newServingRuntimeFixture(t)
+				st := base.opts.Store
+				term := st.Authority().Term
+				term.PrimaryID, term.PromotionID = "replacement", "new"
+				if role == replication.Fenced {
+					term.Epoch++
+				}
+				if _, err := st.ObserveAuthority(t.Context(), term); err != nil && !errors.Is(err, replication.ErrPromotionConflict) {
+					t.Fatal(err)
+				}
+				lost := st.Authority()
+				if lost.Mode != role {
+					t.Fatal("fixture did not reach the DNS-only role", lost.Mode)
+				}
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+				defer cancel()
+				var calls atomic.Int32
+				observe := func(_ context.Context, id string) (internalapi.EdgeBypassState, error) {
+					n := calls.Add(1)
+					state := anchorEdgeState(id)
+					if n != 2 {
+						return state, nil
+					}
+					switch name {
+					case "unavailable-edge":
+						return state, errors.New("original child unavailable")
+					case "missing-member":
+						state.Backends[0].Name = "other-backend"
+					case "authority":
+						// Another real authority change after the local cut was
+						// captured: the original DNS-only token no longer matches.
+						next := st.Authority().Term
+						next.Epoch = st.Authority().MaxObservedEpoch + 1
+						next.PrimaryID, next.PromotionID = "third", "later"
+						if _, err := st.ObserveAuthority(t.Context(), next); err != nil {
+							return state, err
+						}
+					}
+					return state, nil
+				}
+				first, client := anchorEdgePeer(t, "edge-a", strings.Repeat("a", 64), observe)
+				second, _ := anchorEdgePeer(t, "edge-b", strings.Repeat("b", 64), observe)
+				s, err := newServingRuntime(ctx, edgeAnchorOptions(t, base, []anchorEdgeRequirement{first, second}, client))
+				if name != "complete" {
+					if err == nil {
+						_ = s.Close(t.Context())
+						t.Fatal("partial or changed fleet evidence admitted a DNS-only backend")
+					}
+					if calls.Load() != 2 {
+						t.Fatal("refused DNS-only admission replayed or skipped its fleet", calls.Load())
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal("complete fleet did not admit the DNS-only backend", err)
+				}
+				t.Cleanup(func() { _ = s.Close(t.Context()) })
+				if calls.Load() != 2 || !s.anchors.admission.current() || s.anchors.admission.edges == nil {
+					t.Fatal("DNS-only backend did not adopt its complete fleet observation", calls.Load())
+				}
+				runServingFixture(t, s)
+				awaitServingRuntime(t, s, func() bool { return s.publisher.Status().Reason == "dns_only" })
+				if _, err := s.publisher.CaptureHTTP(t.Context()); err == nil {
+					t.Fatal("edge admission reopened protected HTTP on a DNS-only backend")
+				}
+				lease, err := s.publisher.Capture()
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer lease.Release()
+				if !lease.Bundle().DNSOnly() || !reflect.DeepEqual(lost, st.Authority()) || calls.Load() != 2 {
+					t.Fatal("edge admission changed the DNS-only disposition, authority or fleet evidence")
+				}
+			})
+		}
 	}
 }

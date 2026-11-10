@@ -16,6 +16,8 @@ import (
 // primary writer, normal update, bootstrap or continuation. The eventual
 // follower worker must create its finite lifetime before capture; it cannot
 // feed leader-received, held or forwarded bytes into this socket-only adapter.
+// It serves every supervised role: a fenced or conflicted member captures its
+// own DNS-only cut and can only deny locally, exactly like a follower (D369).
 type anchorFollowerDenial struct {
 	runtime  *servingRuntime
 	ctx      context.Context
@@ -42,7 +44,7 @@ func (s *servingRuntime) captureAnchorFollowerDenial(ctx context.Context, clock 
 	if err != nil {
 		return nil, err
 	}
-	if image == nil || !image.Generation().Same(token.Generation()) || token.Authority().Mode != replication.Follower || token.DNSOnly() {
+	if image == nil || !image.Generation().Same(token.Generation()) || !supervisedAnchorRole(token.Authority()) {
 		return nil, errAnchorPolicy
 	}
 	settings, err := anchorImageSettings(image)
@@ -86,7 +88,8 @@ func (s *servingRuntime) captureAnchorFollowerDenial(ctx context.Context, clock 
 			settingsUID: string(settings.UID), settingsVersion: settings.ResourceVersion}}
 	// Close image-read -> local driver capture interposition with an inert
 	// callback. No source I/O or additional pin is acquired under Store wmu.
-	if err := s.opts.Store.PublishIfCurrent(ctx, token, sqlite.PublicationOptions{}, func() error { return nil }); err != nil {
+	// The check carries the token's own disposition, never a writable one.
+	if err := s.opts.Store.PublishIfCurrent(ctx, token, sqlite.PublicationOptions{DNSOnly: token.DNSOnly()}, func() error { return nil }); err != nil {
 		return nil, err
 	}
 	if err := op.checkOriginal(); err != nil {
@@ -106,7 +109,7 @@ func (op *anchorFollowerDenial) checkOriginal() error {
 		return errAnchorPolicy
 	}
 	authority, blocked := op.runtime.opts.Store.ServingAuthority()
-	if blocked || authority.Mode != replication.Follower || !op.token.Matches(authority) {
+	if blocked || !supervisedAnchorRole(authority) || !op.token.Matches(authority) {
 		return replication.ErrFenced
 	}
 	return nil

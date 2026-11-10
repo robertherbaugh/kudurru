@@ -28,6 +28,12 @@ type rootAnchorAdmission struct {
 	edges  *anchorEdgeObservation
 }
 
+// current is serving admission only (D369). It lets this member publish and
+// answer from its last accepted managed owner in every role that can hold one,
+// including a fenced or conflicted cut, which the Store publishes as DNS-only.
+// It is not updater admission: the elected updater separately requires its
+// original writable term through writerCurrent, and an unelected role never
+// receives a writer token.
 func (a *rootAnchorAdmission) current() bool {
 	if a == nil || a.owner == nil || a.owner.admission != a || a.life.Err() != nil {
 		return false
@@ -36,11 +42,21 @@ func (a *rootAnchorAdmission) current() bool {
 		return false
 	}
 	authority, blocked := a.owner.store.ServingAuthority()
-	return !blocked && directAnchorRole(authority) && authority.MemberID == a.member
+	return !blocked && servingAnchorRole(authority) && authority.MemberID == a.member
 }
 
-func directAnchorRole(a replication.Authority) bool {
-	return a.Writable() || a.Mode == replication.Follower
+// servingAnchorRole names every role that may serve accepted managed history.
+// An unenrolled receiver has none, and a writer mode without an uncontested
+// writable term is refused instead of being guessed at.
+func servingAnchorRole(a replication.Authority) bool {
+	return a.Writable() || supervisedAnchorRole(a)
+}
+
+// supervisedAnchorRole names the roles without an elected updater. They keep
+// the independent deny-only supervisor: a follower, and a fenced or conflicted
+// member that still serves its last-good DNS. None can advance accepted trust.
+func supervisedAnchorRole(a replication.Authority) bool {
+	return a.Mode == replication.Follower || a.Mode == replication.Fenced || a.Mode == replication.Conflict
 }
 
 func (s *servingRuntime) admitAnchors(ctx context.Context) error {
@@ -54,7 +70,7 @@ func (s *servingRuntime) admitAnchors(ctx context.Context) error {
 		return nil
 	}
 	authority, blocked := s.opts.Store.ServingAuthority()
-	if blocked || !directAnchorRole(authority) || authority.MemberID == "" {
+	if blocked || !servingAnchorRole(authority) || authority.MemberID == "" {
 		return errAnchorPolicy
 	}
 	if err := original.Err(); err != nil {
@@ -74,7 +90,9 @@ func (s *servingRuntime) admitAnchors(ctx context.Context) error {
 // Capture the complete local cut before any remote acquisition. The final
 // barrier adopts only the exact issued observation, once, before startup ends.
 // Empty followers must install their initial image before using edge topology;
-// an absent image is never recaptured after a remote observation.
+// an absent image is never recaptured after a remote observation. A fenced or
+// conflicted cut needs the same complete fleet observation and is adopted under
+// its own DNS-only disposition (D369); it gains nothing a writable cut lacks.
 func (s *servingRuntime) admitAnchorEdges(original context.Context, admission *rootAnchorAdmission) error {
 	if s.opts.InternalClient == nil {
 		return internalapi.ErrNoCredentials
@@ -83,7 +101,7 @@ func (s *servingRuntime) admitAnchorEdges(original context.Context, admission *r
 	if err != nil {
 		return err
 	}
-	if token.DNSOnly() || token.Authority().MemberID != admission.member {
+	if !servingAnchorRole(token.Authority()) || token.Authority().MemberID != admission.member {
 		return errAnchorPolicy
 	}
 	fleet := make([]anchorEdgeRequirement, 0, len(s.opts.Config.Upstreams.Recursion.ManagedEdges))
@@ -99,7 +117,7 @@ func (s *servingRuntime) admitAnchorEdges(original context.Context, admission *r
 	if err != nil {
 		return err
 	}
-	return s.opts.Store.PublishIfCurrent(original, token, sqlite.PublicationOptions{}, func() error {
+	return s.opts.Store.PublishIfCurrent(original, token, sqlite.PublicationOptions{DNSOnly: token.DNSOnly()}, func() error {
 		if err := observed.check(); err != nil {
 			return err
 		}

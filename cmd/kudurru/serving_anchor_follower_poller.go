@@ -11,21 +11,28 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/trustanchors"
 )
 
-// Every captured operation retains its original member/term/incarnation. Only
-// a completed normal observation permits a later fresh capture to move to a
-// newer installed incarnation in the same member/term; no refusal can do so.
+// Every captured operation retains its original member/term/role/incarnation.
+// Only a completed normal observation permits a later fresh capture to move to
+// a newer installed incarnation in the same member, term and role; no refusal
+// can do so, and no operation crosses a role change (D369).
 type anchorFollowerEpoch struct {
 	member      string
 	term        replication.Term
+	mode        replication.Mode
 	incarnation uint64
 }
 
 func followerEpoch(a replication.Authority) anchorFollowerEpoch {
-	return anchorFollowerEpoch{member: a.MemberID, term: a.Term, incarnation: a.Incarnation}
+	return anchorFollowerEpoch{member: a.MemberID, term: a.Term, mode: a.Mode, incarnation: a.Incarnation}
 }
 
 func (e anchorFollowerEpoch) same(other anchorFollowerEpoch) bool {
-	return e.member == other.member && e.term.Same(other.term) && e.incarnation == other.incarnation
+	return e.sameRole(other) && e.incarnation == other.incarnation
+}
+
+// sameRole ignores only the local incarnation, which every install advances.
+func (e anchorFollowerEpoch) sameRole(other anchorFollowerEpoch) bool {
+	return e.member == other.member && e.term.Same(other.term) && e.mode == other.mode
 }
 
 type anchorFollowerPoller struct {
@@ -69,7 +76,7 @@ func (u *anchorFollowerPoller) step(ctx context.Context) (step anchorFollowerSte
 	if u.epoch == (anchorFollowerEpoch{}) {
 		u.epoch = epoch
 	} else if !u.epoch.same(epoch) {
-		if !u.normalCompleted || u.epoch.member != epoch.member || !u.epoch.term.Same(epoch.term) {
+		if !u.normalCompleted || !u.epoch.sameRole(epoch) {
 			return step, replication.ErrFenced
 		}
 		// The previous operation has completed successfully. This new operation
