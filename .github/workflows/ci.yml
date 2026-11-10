@@ -346,10 +346,15 @@ jobs:
           path: bin/dex-*
           key: dex-${{ runner.os }}-${{ hashFiles('Makefile') }}
       - name: kudurru end to end and BIND interop
+        id: e2e
         run: make e2e
       # The BIND tests that live in internal packages: the go job has no
-      # named, so they only run here.
+      # named, so they only run here. They do not depend on the step above
+      # and run after a failure in it too (not after a failed setup step),
+      # so that one failing end-to-end test does not take their results out
+      # of the log.
       - name: BIND interop of response policy zones, signed secondaries and stub zones
+        if: ${{ !cancelled() && (success() || steps.e2e.conclusion == 'failure') }}
         run: make interop-internal
       - name: Recursive denial proof reuse against BIND
         env:
