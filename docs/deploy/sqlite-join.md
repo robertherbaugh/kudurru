@@ -96,9 +96,12 @@ The dashboard and CLI distinguish the receipt from that observation. There are
 no automatic retries or redirects. A lost or expired response does not prove
 rollback; inspect state before deciding on another mutation.
 
-Canonical object writes are forwarded the same way: `POST`, `PUT` and `DELETE`
-under `/api/v1/objects/` for DNS zones, record sets, block lists, client groups
-and policies (including `kudurru apply` and the dashboard object editors). The
+Canonical object writes are forwarded the same way for DNS zones, record sets,
+block lists, client groups and policies: `POST`, `PUT` and `DELETE` under
+`/api/v1/objects/`, `POST /api/v1/apply` (`kudurru apply`), the `POST`, `PUT`
+and `DELETE` routes of `/api/v1/blocklists`, `/api/v1/clientgroups` and
+`/api/v1/policies` that the dashboard object editors use, and
+`POST /api/v1/{kind}:batchDelete`. The
 follower normalizes the document, sends it once and returns the primary's exact
 public result: the committed object, or the primary's own refusal such as `412`
 for a stale `If-Match` or `409` for an existing object. The primary repeats
@@ -108,7 +111,30 @@ command's deduplication record together. The follower serves the result only
 after its next pull, so an immediate read on the follower can still show the
 previous state. An unreachable primary refuses the write (`503`); an exchange
 lost after sending answers `503 completion_unknown`, and the object must be
-inspected before a new decision. The zone convenience commands the dashboard's
+inspected before a new decision.
+
+A follower request has one 30-second lifetime, which starts before the body is
+read, and stays bound to the data the follower had installed when the request
+began. `POST /api/v1/apply` and `:batchDelete` send one command for each
+document or name, in order, inside that single request, and answer `200` with
+one result for each item as they do on the primary. An item carries its own
+error and is not applied (`errorKey` `unavailable`) when the lifetime has ended
+("the request's 30-second forwarding lifetime ended") or when the follower
+installed newer data in the meantime ("the follower's source changed"). The
+last case is the usual one for a long apply: the follower's next pull, five
+seconds by default, installs the earlier documents of the same request. An item
+whose exchange with the primary fails, including an unreachable primary,
+reports `completion_unknown`: the follower cannot tell whether the primary
+received it, so inspect that object before a new decision. The primary also
+withholds its acknowledgment when its own state advances again before the
+answer is sent, so a later item can report `completion_unknown` although it
+was committed. That happens most often right after an earlier item of the same
+request created an object, while the primary writes that object's status.
+Earlier items stay committed and nothing is replayed. Check the per-item
+results and run the apply again (committed documents report `unchanged`), or
+send a multi-document apply or a large restore to the primary.
+
+The zone convenience commands the dashboard's
 record editor uses (`POST /zones/{zone}/records`, `DELETE
 /zones/{zone}/records/{name}/{type}`, `POST /zones/{zone}/import` and `DELETE
 /zones/{zone}`) are forwarded the same way: the primary runs the route's own

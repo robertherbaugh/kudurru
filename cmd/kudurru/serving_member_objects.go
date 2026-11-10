@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -28,15 +30,76 @@ import (
 const (
 	memberObjectWrite  = "objects.write"
 	memberObjectDelete = "objects.delete"
+	// memberForwardLifetime is the longest request lifetime that a follower
+	// may capture for forwarding (sqlite.Store.CaptureMemberForward).
+	memberForwardLifetime = 30 * time.Second
 )
 
+// memberForwardRoute reports whether a public request is one of the routes
+// whose effect an enrolled follower sends to its primary as an objects.write,
+// objects.delete or zones.command member command: the /objects routes, POST
+// /apply, the /blocklists, /clientgroups and /policies routes, POST
+// /{kind}:batchDelete and the four zone convenience commands. escaped is the
+// request's escaped path. Segments are compared as the router compares them,
+// so an encoded separator stays inside its segment.
+// TestMemberForwardRouteCoversEveryForwardedRoute holds this predicate to the
+// registered routes.
+func memberForwardRoute(method, prefix, escaped string) bool {
+	if method != http.MethodPost && method != http.MethodPut && method != http.MethodDelete {
+		return false
+	}
+	segments := strings.Split(escaped, "/")
+	for i, segment := range segments {
+		unescaped, err := url.PathUnescape(segment)
+		if err != nil {
+			return false
+		}
+		segments[i] = unescaped
+	}
+	base := strings.Split(prefix, "/")
+	if len(segments) <= len(base) || !slices.Equal(segments[:len(base)], base) || slices.Contains(segments[len(base):], "") {
+		return false
+	}
+	parts := segments[len(base):]
+	switch parts[0] {
+	case "apply":
+		return method == http.MethodPost && len(parts) == 1
+	case "objects":
+		switch method {
+		case http.MethodPost:
+			return len(parts) == 2
+		case http.MethodPut, http.MethodDelete:
+			return len(parts) == 3 || len(parts) == 4
+		}
+		return false
+	case "blocklists", "clientgroups", "policies":
+		switch method {
+		case http.MethodPost:
+			return len(parts) == 1
+		case http.MethodPut, http.MethodDelete:
+			return len(parts) == 3
+		}
+		return false
+	case "zones":
+		switch method {
+		case http.MethodPost:
+			return len(parts) == 3 && (parts[2] == "records" || parts[2] == "import")
+		case http.MethodDelete:
+			return len(parts) == 2 || len(parts) == 5 && parts[2] == "records"
+		}
+		return false
+	}
+	return method == http.MethodPost && len(parts) == 1 && strings.HasSuffix(parts[0], ":batchDelete")
+}
+
 // boundMemberObjectWrites starts the one original 30-second lifetime of an
-// enrolled follower's object or zone mutation before Huma acquires its body. Primary,
-// standalone and static nodes keep their ordinary route lifetime.
+// enrolled follower's forwarded mutation before Huma acquires its body. A
+// request with several items (POST /apply, :batchDelete) sends one command for
+// each item inside this single lifetime. Primary, standalone and static nodes
+// keep their ordinary route lifetime, as does every route that is not forwarded.
 func (h *servingHTTP) boundMemberObjectWrites(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		unsafe := r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodDelete
-		if !unsafe || !strings.HasPrefix(r.URL.Path, h.opts.RoutePrefix+"/objects/") && !strings.HasPrefix(r.URL.Path, h.opts.RoutePrefix+"/zones/") {
+		if !memberForwardRoute(r.Method, h.opts.RoutePrefix, r.URL.EscapedPath()) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -45,7 +108,7 @@ func (h *servingHTTP) boundMemberObjectWrites(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), memberForwardLifetime)
 		defer cancel()
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -145,7 +208,7 @@ func (s *servingRuntime) forwardMemberCommand(ctx context.Context, token sqlite.
 	}
 	request, err := s.memberForward.Capture(ctx, token)
 	if err != nil {
-		return objectForwardUnavailable("the follower's source changed; review current state before a new decision")
+		return memberCaptureError(ctx, err)
 	}
 	issued := s.opts.Now().UTC()
 	commandID := uuid.NewString()
@@ -195,6 +258,27 @@ func (s *servingRuntime) forwardMemberCommand(ctx context.Context, token sqlite.
 
 func objectForwardUnavailable(message string) error {
 	return &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: api.KeyUnavailable, Message: message}}
+}
+
+// memberCaptureError explains why a follower could not bind its request for
+// forwarding. Capture sends nothing, so in every case the write was not
+// applied; only a changed source needs a review of current state first.
+func memberCaptureError(ctx context.Context, err error) error {
+	deadline, finite := ctx.Deadline()
+	switch {
+	case errors.Is(err, replication.ErrCAS):
+		return objectForwardUnavailable("the follower's source changed; review current state before a new decision")
+	case errors.Is(ctx.Err(), context.Canceled):
+		return objectForwardUnavailable("the request was canceled before this write was sent; it was not applied")
+	case !finite || time.Until(deadline) > memberForwardLifetime:
+		// boundMemberObjectWrites bounds every forwarded route, so this request
+		// came through a route that a follower does not forward.
+		return objectForwardUnavailable("this route is not forwarded from a follower; the write was not applied; send it to the enrolled primary")
+	case ctx.Err() != nil || !time.Now().Before(deadline):
+		return objectForwardUnavailable("the request's 30-second forwarding lifetime ended before this write was sent; it was not applied")
+	default:
+		return objectForwardUnavailable("this follower cannot forward writes now; the write was not applied")
+	}
 }
 
 // objectForwardError keeps clean primary refusals distinct from an uncertain

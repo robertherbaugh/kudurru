@@ -384,6 +384,70 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	apiB.request(t, http.MethodDelete, "/zones/e2e-test/records/editor/A", nil, http.StatusNoContent, nil)
 	awaitDNS(follower, "editor", "", dns.RcodeNameError)
 	awaitDNS(primary, "editor", "", dns.RcodeNameError)
+	// Every other route that writes one canonical object uses the same forward:
+	// `kudurru apply`, the dashboard's list editors and batch deletion.
+	listDoc := func(name string) map[string]any {
+		return map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "BlockList",
+			"metadata": map[string]any{"name": name, "namespace": "default"},
+			"spec":     map[string]any{"mode": "block", "sources": []any{map[string]any{"name": "inline", "inline": []string{name + ".blocked.test"}}}}}
+	}
+	recordDoc := func(name, ip string) map[string]any {
+		return map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSRecordSet",
+			"metadata": map[string]any{"name": name, "namespace": "default"},
+			"spec": map[string]any{"zoneRef": map[string]any{"name": "e2e-test"}, "endpoints": []any{
+				map[string]any{"dnsName": name + ".e2e.test.", "recordType": "A", "targets": []string{ip}}}}}
+	}
+	hasList := func(name string, want bool) func([]byte) bool {
+		return func(body []byte) bool {
+			var page struct {
+				Items []struct {
+					Metadata struct {
+						Name string `json:"name"`
+					} `json:"metadata"`
+				} `json:"items"`
+			}
+			if json.Unmarshal(body, &page) != nil {
+				return false
+			}
+			found := false
+			for _, item := range page.Items {
+				found = found || item.Metadata.Name == name
+			}
+			return found == want
+		}
+	}
+	var applied api.List[api.ApplyResult]
+	apiB.request(t, http.MethodPost, "/apply", []any{listDoc("via-apply")}, http.StatusOK, &applied)
+	if len(applied.Items) != 1 || applied.Items[0].Result != api.ResultCreated || applied.Items[0].ErrorKey != "" || applied.Items[0].ResourceVersion == "" {
+		t.Fatalf("apply through the follower did not commit: %+v", applied.Items)
+	}
+	enrolledProcessRead(t, apiA, "/blocklists", hasList("via-apply", true))
+	enrolledProcessRead(t, apiB, "/blocklists", hasList("via-apply", true))
+	// Two documents are two exchanges in one request, each with its own
+	// result. The first is already stored, so it writes nothing on the primary:
+	// the primary withholds its acknowledgment (completion_unknown) from a
+	// write when its state advances again before the answer, as it does while
+	// it reconciles a document just created by the same request.
+	apiB.request(t, http.MethodPost, "/apply", []any{listDoc("via-apply"), recordDoc("applied", "192.0.2.49")}, http.StatusOK, &applied)
+	if len(applied.Items) != 2 || applied.Items[0].Result != api.ResultUnchanged || applied.Items[1].Result != api.ResultCreated ||
+		applied.Items[0].ErrorKey != "" || applied.Items[1].ErrorKey != "" || applied.Items[1].ResourceVersion == "" {
+		t.Fatalf("two-document apply through the follower lost a per-document result: %+v", applied.Items)
+	}
+	awaitDNS(primary, "applied", "192.0.2.49", dns.RcodeSuccess)
+	awaitDNS(follower, "applied", "192.0.2.49", dns.RcodeSuccess)
+	apiB.request(t, http.MethodPut, "/blocklists/default/via-editor", listDoc("via-editor"), http.StatusCreated, nil)
+	enrolledProcessRead(t, apiA, "/blocklists", hasList("via-editor", true))
+	enrolledProcessRead(t, apiB, "/blocklists", hasList("via-editor", true))
+	apiB.request(t, http.MethodDelete, "/blocklists/default/via-editor", nil, http.StatusNoContent, nil)
+	enrolledProcessRead(t, apiA, "/blocklists", hasList("via-editor", false))
+	enrolledProcessRead(t, apiB, "/blocklists", hasList("via-editor", false))
+	var removed api.Processed
+	apiB.request(t, http.MethodPost, "/dnsrecordsets:batchDelete", map[string]any{"names": []string{"applied"}}, http.StatusOK, &removed)
+	if len(removed.Processed.Success) != 1 || len(removed.Processed.Errors) != 0 {
+		t.Fatal("batch deletion through the follower did not commit")
+	}
+	awaitDNS(primary, "applied", "", dns.RcodeNameError)
+	awaitDNS(follower, "applied", "", dns.RcodeNameError)
 	relay.partition(true)
 	if !checkDNS(follower, "seed", "192.0.2.42", dns.RcodeSuccess) {
 		t.Fatal("partition interrupted valid local DNS")
@@ -396,11 +460,29 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		"spec": map[string]any{"zoneRef": map[string]any{"name": "e2e-test"}, "endpoints": []any{
 			map[string]any{"dnsName": "partitioned.e2e.test.", "recordType": "A", "targets": []string{"192.0.2.46"}}}}}
 	apiB.request(t, http.MethodPost, "/objects/dnsrecordsets", refused, http.StatusServiceUnavailable, nil)
+	// A kind route answers 503. Apply keeps its per-item answer: the document
+	// is an error whose key says either that nothing was sent or that the
+	// outcome of the lost exchange is unknown. It never reports a commit.
+	apiB.request(t, http.MethodPut, "/blocklists/default/partitioned-list", listDoc("partitioned-list"), http.StatusServiceUnavailable, nil)
+	var unreached api.List[api.ApplyResult]
+	apiB.request(t, http.MethodPost, "/apply", []any{recordDoc("partitioned-apply", "192.0.2.51")}, http.StatusOK, &unreached)
+	if len(unreached.Items) != 1 || unreached.Items[0].Result != api.ResultError || unreached.Items[0].ResourceVersion != "" ||
+		unreached.Items[0].ErrorKey != api.KeyUnavailable && unreached.Items[0].ErrorKey != "completion_unknown" {
+		t.Fatalf("partitioned apply did not report its document as an explicit failure: %+v", unreached.Items)
+	}
 	newRecord := map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSRecordSet",
 		"metadata": map[string]any{"name": "successor", "namespace": "default"},
 		"spec": map[string]any{"zoneRef": map[string]any{"name": "e2e-test"}, "endpoints": []any{
 			map[string]any{"dnsName": "later.e2e.test.", "recordType": "A", "targets": []string{"192.0.2.43"}}}}}
 	apiA.request(t, http.MethodPost, "/objects/dnsrecordsets", newRecord, http.StatusCreated, nil)
+	// A batch deletion through the partitioned follower reports its item as
+	// an error. The later assertions on this record prove that it was neither
+	// applied nor replayed.
+	var retained api.Processed
+	apiB.request(t, http.MethodPost, "/dnsrecordsets:batchDelete", map[string]any{"names": []string{"successor"}}, http.StatusOK, &retained)
+	if len(retained.Processed.Success) != 0 || len(retained.Processed.Errors) != 1 || retained.Processed.Errors[0].Error == "" {
+		t.Fatalf("partitioned batch deletion did not report its item as an explicit failure: %+v", retained.Processed)
+	}
 	apiA.request(t, http.MethodDelete, "/objects/dnsrecordsets/default/hosts", nil, http.StatusNoContent, nil)
 	awaitDNS(primary, "seed", "", dns.RcodeNameError)
 	awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)
@@ -414,6 +496,13 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	if !checkDNS(follower, "partitioned", "", dns.RcodeNameError) || !checkDNS(primary, "partitioned", "", dns.RcodeNameError) {
 		t.Fatal("refused partitioned write was applied or replayed")
 	}
+	for _, node := range []*kudurrutest.Node{primary, follower} {
+		if !checkDNS(node, "partitioned-apply", "", dns.RcodeNameError) || !checkDNS(node, "later", "192.0.2.43", dns.RcodeSuccess) {
+			t.Fatal("refused partitioned apply or batch deletion was applied or replayed", node.Name)
+		}
+	}
+	enrolledProcessRead(t, apiA, "/blocklists", hasList("partitioned-list", false))
+	enrolledProcessRead(t, apiB, "/blocklists", hasList("partitioned-list", false))
 	stop(follower)
 	follower = kudurrutest.StartReady(t, bin, b, kudurrutest.Options{Env: env})
 	awaitDNS(follower, "later", "192.0.2.43", dns.RcodeSuccess)

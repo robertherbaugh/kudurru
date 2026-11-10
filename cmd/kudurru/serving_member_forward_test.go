@@ -83,6 +83,15 @@ func newMemberForwardHTTPFixture(t *testing.T, http2 bool) *memberForwardHTTPFix
 			filepath.Join(s.opts.Config.Node.DataDir, memberIdentityFile), filepath.Join(dir, memberIdentityFile))
 	})
 	p := f.primary.s
+	// Forwarded object and zone commands run the primary's own public command
+	// bodies, as runServe mounts them.
+	primaryAPI, err := api.New(api.Options{Store: p.opts.Store, Validator: p.opts.Validator, Config: p.opts.Config, CanonicalSettings: p,
+		ObjectCommand: p.ObjectCommand, ZoneCommand: p.ZoneCommand, Logger: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(primaryAPI.Close)
+	p.objectAPI.Store(primaryAPI)
 	if err := mirror.Enroll(t.Context(), p.opts.Store.Authority().Term); err != nil {
 		t.Fatal(err)
 	}
@@ -149,6 +158,8 @@ func newMemberForwardHTTPFixture(t *testing.T, http2 bool) *memberForwardHTTPFix
 	}
 	apiServer, err := api.New(api.Options{Store: mirror, Validator: opts.Validator, Config: opts.Config, CanonicalSettings: f.follower,
 		BlockingCommand: f.follower.BlockingCommand, BlockingReads: servingbuild.NewBlockingReads(),
+		ObjectCommand: f.follower.ObjectCommand, ObjectForward: f.follower.ObjectForward,
+		ZoneCommand: f.follower.ZoneCommand, ZoneForward: f.follower.ZoneForward,
 		Authenticate: h.Middleware, AuthHandler: h.Handler(), Authorizer: h.Authorizer(), Roles: h.Roles, Logger: slog.New(slog.DiscardHandler)})
 	if err != nil {
 		t.Fatal(err)

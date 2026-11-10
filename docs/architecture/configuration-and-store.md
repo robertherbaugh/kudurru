@@ -1081,7 +1081,17 @@ re-authorizes the original raw credential against the exact old/new scopes of
 the object the primary reads, so the write, its audit row and the dedup record
 commit together. A clean pre-mutation client refusal (`400`, `404`, `409`,
 `412`, `413`) is retained as the command's result and relayed unchanged; any
-other failure rolls back. A `zones.command` runs the primary's own zone route
+other failure rolls back. Every public route that writes one canonical object
+reaches this seam: the `/objects` routes, `POST /apply`, the `/blocklists`,
+`/clientgroups` and `/policies` routes and `POST /{kind}:batchDelete`. The
+follower starts one 30-second request lifetime for exactly those routes before
+it reads the body, because capture refuses an unbounded request. An apply or
+batch delete sends one command for each document or name inside that single
+request and reports one result for each item. Every item captures the request's
+original source again, so an item is refused, not applied and not replayed once
+the lifetime has ended or the follower has installed a newer image (typically
+its next pull, which carries the request's earlier items); the refusal names
+which. A `zones.command` runs the primary's own zone route
 function with its plan executed in the member transaction: the plan's sealed
 requirements are reauthorized exactly as in `ZoneCommand`, and a plan whose
 `Apply` started but did not finish always rolls back rather than being retained
