@@ -112,7 +112,7 @@ after its next pull, so an immediate read on the follower can still show the
 previous state. A write whose exchange with the primary fails for any reason,
 including an unreachable primary, answers `503 completion_unknown`: the
 follower cannot tell whether the primary received it, so inspect the object
-before a new decision. A primary that answers but cannot run the command now
+before a new decision. A primary that answers but cannot run the command
 refuses it with `503 unavailable`, and the write was not applied.
 
 A follower request has one 30-second lifetime, which starts before the body is
