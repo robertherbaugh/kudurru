@@ -109,9 +109,11 @@ normalization and validation, re-authorizes the original credential against
 the object it actually reads, and commits the write, its audit event and the
 command's deduplication record together. The follower serves the result only
 after its next pull, so an immediate read on the follower can still show the
-previous state. An unreachable primary refuses the write (`503`); an exchange
-lost after sending answers `503 completion_unknown`, and the object must be
-inspected before a new decision.
+previous state. A write whose exchange with the primary fails for any reason,
+including an unreachable primary, answers `503 completion_unknown`: the
+follower cannot tell whether the primary received it, so inspect the object
+before a new decision. A primary that answers but cannot run the command now
+refuses it with `503 unavailable`, and the write was not applied.
 
 A follower request has one 30-second lifetime, which starts before the body is
 read, and stays bound to the data the follower had installed when the request
