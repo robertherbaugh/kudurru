@@ -17,7 +17,10 @@ import (
 	"testing"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -77,6 +80,34 @@ func TestKubeAuditAcrossReplicas(t *testing.T) {
 	kc.CurrentContext = "envtest"
 	if err := clientcmd.WriteToFile(*kc, kubeconfig); err != nil {
 		t.Fatal(err)
+	}
+
+	// AuditLog trust is provisioned by the operator, never invented by a
+	// replica: a signing-key ring bound to this cluster and namespace, in
+	// the Secret audit.keySecret names (docs/deploy/runbooks.md). Without
+	// it the replicas keep their events in the local spool and GET /audit
+	// stays empty.
+	kubeClient, err := kubernetes.NewForConfig(restCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	system, err := kubeClient.CoreV1().Namespaces().Get(t.Context(), "kube-system", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("cluster identity: %v", err)
+	}
+	ringFile := filepath.Join(dir, "audit-ring.json")
+	if out, err := exec.Command(auditBin, "audit", "keys", "init", "--file", ringFile, "--cluster-id", string(system.UID), "--namespace", "default").CombinedOutput(); err != nil { //nolint:gosec // the test's binary
+		t.Fatalf("audit keys init: %v\n%s", err, out)
+	}
+	ring, err := os.ReadFile(ringFile) //nolint:gosec // the file written above
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kubeClient.CoreV1().Secrets("default").Create(t.Context(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "kudurru-audit-keys", Namespace: "default"},
+		Data:       map[string][]byte{"ring.json": ring},
+	}, metav1.CreateOptions{}); err != nil {
+		t.Fatalf("provision the audit key Secret: %v", err)
 	}
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {

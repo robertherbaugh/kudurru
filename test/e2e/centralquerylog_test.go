@@ -24,10 +24,23 @@ func TestCentralQuerylogTwoNodes(t *testing.T) {
 	dsn := centraltest.DSN(t)
 	dir := t.TempDir()
 	env := []string{"KUDURRU_DATABASE__DSN=" + dsn}
+	// The nodes forward to a resolver that answers. The harness default (the
+	// discard port) gives an upstream-failure SERVFAIL, which a node does
+	// not send when its configuration changed while the query was in
+	// flight, and the token created just before each query is such a
+	// change; a forwarded answer is sent all the same (D332).
+	answers := map[string]string{"node-a": "198.51.100.11", "node-b": "198.51.100.12"}
+	up := kudurrutest.StartUpstream(t, map[string]string{
+		"node-a.central-e2e.example.": answers["node-a"],
+		"node-b.central-e2e.example.": answers["node-b"],
+	})
 	var nodes []*kudurrutest.Node
 	tokens := map[string]string{}
 	for _, name := range []string{"node-a", "node-b"} {
 		spec, cfg := kudurrutest.NewNodeSpec(t, dir, name)
+		cfg["upstreams"].(map[string]any)["groups"] = map[string]any{
+			"default": map[string]any{"servers": []any{up.Addr}, "timeout": "5s"},
+		}
 		kudurrutest.WriteConfig(t, spec.Config, cfg)
 		n := kudurrutest.StartReady(t, kudurruBin, spec, kudurrutest.Options{Env: env})
 		nodes = append(nodes, n)
@@ -37,14 +50,17 @@ func TestCentralQuerylogTwoNodes(t *testing.T) {
 		}
 		tokens[name] = strings.TrimSpace(string(out))
 	}
-	// Each node answers a query for its own name (forwarded to the
-	// discard port: SERVFAIL, logged all the same).
+	// Each node answers a query for its own name.
 	c := &dns.Client{Timeout: 5 * time.Second}
 	for _, n := range nodes {
 		m := new(dns.Msg)
 		m.SetQuestion(n.Name+".central-e2e.example.", dns.TypeA)
-		if _, _, err := c.Exchange(m, n.Ports.DNS); err != nil {
+		r, _, err := c.Exchange(m, n.Ports.DNS)
+		if err != nil {
 			t.Fatalf("query %s: %v", n.Name, err)
+		}
+		if got := firstA(r); got != answers[n.Name] {
+			t.Fatalf("query %s: answer %q (%s), want %s", n.Name, got, dns.RcodeToString[r.Rcode], answers[n.Name])
 		}
 	}
 	type page struct {
