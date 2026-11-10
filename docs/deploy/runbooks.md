@@ -393,6 +393,12 @@ finds a newer on-disk version refuses to start (`state.db was written by a
 newer kudurru`); an older version is migrated in one transaction. Downgrades
 across a schema change are therefore not supported: back up first.
 
+**Kubernetes, from v0.1 to v0.2:** v0.2 keeps ServiceAccount, RoleBinding and
+IdentityProvider configuration in public objects. Before the Helm steps
+below, follow [Kubernetes IAM upgrade to v0.2](iam-upgrade.md). It is an
+offline migration with every kudurru process stopped, so this one upgrade is
+not a rolling upgrade.
+
 **Helm:**
 
 1. Read the release notes for CRD changes. Helm never upgrades CRDs; upgrade
