@@ -482,8 +482,11 @@ That poller retains one member, authority term and role, plus its own session
 clock. Each operation retains its exact local incarnation. Only after an
 authenticated normal observation completes with its original authority check may
 a later fresh capture adopt a newer installed incarnation in that same member,
-term and role. No failed or held operation can use this path; its original token
-remains immutable.
+term and role. The one other case is a poller that has started no acquisition
+and whose last operation only deferred for this node's clock (below): nothing
+was held, received or refused, so its next fresh capture may adopt a newer
+installed incarnation in the same way. No failed or held operation can use
+either path; its original token remains immutable.
 Its first observation is immediate; a normal receipt imposes
 only a local one-hour minimum refresh cadence. Incomplete transport uses the
 accepted state's retry interval. Both cooldowns bind the exact owner, policy and
@@ -540,8 +543,13 @@ checkpoint by at most five minutes (`trustanchors.ClockTolerance`) waits until
 its own clock reaches it and then continues: the follower or DNS-only poller
 acquires once, and the updater returns to the accepted refresh schedule. The
 wait acquires nothing, writes nothing and logs a time-synchronization warning.
-A larger gap remains a terminal clock refusal for that authority epoch or
-writer term. Hold-down credit is unaffected: it still comes only from
+Ordinary writes and replica installs that land during the wait do not end it.
+A poller child that has only waited captures the newly installed cut on its next
+step, in the same member, term and role, and keeps waiting or polls; a role
+change still ends it, and a child whose acquisition already failed still cannot
+move. The updater captures a fresh operation under its original writer term on
+every step. A larger gap remains a terminal clock refusal for that authority
+epoch or writer term. Hold-down credit is unaffected: it still comes only from
 checkpointed monotonic progress inside one process session.
 
 The `resolverstate` projection derives canonical SHA-256 DS records

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors"
@@ -428,4 +429,177 @@ func TestAnchorFollowerPollerCheckpointBeyondClockToleranceIsTerminal(t *testing
 	if !anchorFollowerSameImage(before, anchorFollowerImage(ctx, t, f.store)) {
 		t.Fatal("refused follower step changed canonical history")
 	}
+}
+
+// anchorHeldWall is a member wall clock that reads a fixed time before the
+// installed checkpoint until the test lets it reach real time. Like
+// anchorTrailingWall it replaces only the checkpoint comparison; every sample,
+// receipt and stored state still comes from the real session clock. reads
+// counts the comparisons, so a test can tell that a captured operation got as
+// far as the clock check without sleeping for it.
+type anchorHeldWall struct {
+	at      time.Time
+	reached atomic.Bool
+	reads   atomic.Int32
+}
+
+func (w *anchorHeldWall) now() time.Time {
+	w.reads.Add(1)
+	if w.reached.Load() {
+		return time.Now()
+	}
+	return w.at
+}
+
+// anchorOrdinaryInstall commits one ordinary primary write and installs it on
+// the follower: the same member, term and role with a newer local incarnation
+// and an unchanged anchor checkpoint.
+func anchorOrdinaryInstall(ctx context.Context, t *testing.T, f *anchorFollowerFixture, primary *servingRuntime, ordinary func(string), name string) (*replication.Image, replication.Authority) {
+	t.Helper()
+	before, checkpoint := f.store.Authority(), anchorInstalledCheckpoint(ctx, t, f.s)
+	ordinary(name)
+	installed := installAnchorFollower(ctx, t, f, primary)
+	after := f.store.Authority()
+	if after.Mode != before.Mode || !after.Term.Same(before.Term) || after.MemberID != before.MemberID || after.Incarnation <= before.Incarnation {
+		t.Fatal("fixture install was not an ordinary same-role install", before.Mode, after.Mode, before.Incarnation, after.Incarnation)
+	}
+	if !anchorInstalledCheckpoint(ctx, t, f.s).Equal(checkpoint) {
+		t.Fatal("ordinary write changed the anchor checkpoint")
+	}
+	return installed, after
+}
+
+// A child that is still waiting for its own clock has started no acquisition
+// and has been refused nothing. An ordinary replicated install during that wait
+// used to pin it to its first capture and end it with ErrFenced, which the
+// supervisor then kept for the whole member, term and role: the outcome the
+// clock wait exists to remove, on any freshly started child. The poller is
+// built exactly as runAnchorFollowerEpoch builds it, with the supervisor's
+// epoch preset.
+func TestAnchorFollowerPollerClockWaitAdoptsOrdinaryInstall(t *testing.T) {
+	endpoint, seeds, reads := anchorSupervisorServer(t, func(int32, *dns.Msg) {})
+	primary, ordinary := anchorBootstrappedPrimary(t, endpoint, seeds)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	t.Cleanup(cancel)
+	f := newAnchorFollowerFixture(ctx, t, primary)
+	clock, err := trustanchors.NewSessionClock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wall := &anchorHeldWall{at: anchorInstalledCheckpoint(ctx, t, f.s).Add(-2 * time.Second)}
+	u := &anchorFollowerPoller{runtime: f.s, clock: clock, epoch: followerEpoch(f.store.Authority()), wall: wall.now}
+	first, err := u.step(ctx)
+	if err != nil || first.attempted || first.clockWait != 2*time.Second || reads.Load() != 1 {
+		t.Fatal("fixture poller did not defer for its clock", first, err, reads.Load())
+	}
+	var installed *replication.Image
+	var authority replication.Authority
+	for _, name := range []string{"skew-first", "skew-second"} {
+		installed, authority = anchorOrdinaryInstall(ctx, t, f, primary, ordinary, name)
+		waiting, err := u.step(ctx)
+		if err != nil || u.stopped != nil {
+			t.Fatalf("an ordinary install during the checkpoint wait ended this poller for its epoch: err=%v reads=%d", err, reads.Load())
+		}
+		if waiting.attempted || waiting.clockWait != 2*time.Second || reads.Load() != 1 || u.offset != 0 || !u.epoch.same(followerEpoch(authority)) {
+			t.Fatal("waiting poller acquired, or did not capture the newly installed cut", waiting, reads.Load())
+		}
+	}
+	wall.reached.Store(true)
+	polled, err := u.step(ctx)
+	if err != nil || !polled.attempted || polled.clockWait != 0 || polled.result.branch != sqlite.AnchorPollNormal || polled.acquisitionError != nil || reads.Load() != 2 {
+		t.Fatal("poller did not poll once its clock reached the checkpoint", polled, err, reads.Load())
+	}
+	cooled, err := u.step(ctx)
+	if err != nil || cooled.attempted || !cooled.next.Equal(polled.next) || reads.Load() != 2 || u.offset != 1 {
+		t.Fatal("poller polled more than once after the wait", cooled, err, reads.Load())
+	}
+	if !anchorFollowerSameImage(installed, anchorFollowerImage(ctx, t, f.store)) || !reflect.DeepEqual(authority, f.store.Authority()) {
+		t.Fatal("waiting or polling changed canonical data or authority")
+	}
+}
+
+// The wait is not a general permission to move. It cannot carry an operation
+// across a role change, it cannot rescue a poller whose acquisition already
+// failed, and a first capture that never waited still has to match the cut its
+// supervisor classified (D318).
+func TestAnchorFollowerPollerClockWaitKeepsRefusalRules(t *testing.T) {
+	t.Run("role-change", func(t *testing.T) {
+		endpoint, seeds, reads := anchorSupervisorServer(t, func(int32, *dns.Msg) {})
+		primary, _ := anchorBootstrappedPrimary(t, endpoint, seeds)
+		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+		t.Cleanup(cancel)
+		f := newAnchorFollowerFixture(ctx, t, primary)
+		clock, err := trustanchors.NewSessionClock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		wall := &anchorHeldWall{at: anchorInstalledCheckpoint(ctx, t, f.s).Add(-2 * time.Second)}
+		u := &anchorFollowerPoller{runtime: f.s, clock: clock, epoch: followerEpoch(f.store.Authority()), wall: wall.now}
+		if first, err := u.step(ctx); err != nil || first.attempted || first.clockWait <= 0 {
+			t.Fatal("fixture poller did not defer for its clock", first, err)
+		}
+		term := f.store.Authority().Term
+		term.Epoch++
+		term.PrimaryID, term.PromotionID = "successor", "later"
+		if _, err := f.store.ObserveAuthority(ctx, term); err != nil {
+			t.Fatal(err)
+		}
+		if f.store.Authority().Mode != replication.Fenced {
+			t.Fatal("fixture did not fence the follower", f.store.Authority().Mode)
+		}
+		wall.reached.Store(true)
+		step, err := u.step(ctx)
+		if !errors.Is(err, replication.ErrFenced) || step.attempted || u.stopped == nil || reads.Load() != 1 {
+			t.Fatal("a waiting follower operation crossed a role change", step, err, reads.Load())
+		}
+		if _, next := u.step(ctx); next != err || reads.Load() != 1 {
+			t.Fatal("role-change refusal was recaptured", next, reads.Load())
+		}
+	})
+	t.Run("failed-acquisition", func(t *testing.T) {
+		// The follower's only receipt is cut short: a transport failure with a
+		// retry schedule, which no later install may move (D318).
+		endpoint, seeds, reads := anchorFollowerPollerServer(t, func(net.Conn, []byte) []byte { return nil })
+		primary, ordinary := anchorBootstrappedPrimary(t, endpoint, seeds)
+		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+		t.Cleanup(cancel)
+		f := newAnchorFollowerFixture(ctx, t, primary)
+		clock, err := trustanchors.NewSessionClock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		u := &anchorFollowerPoller{runtime: f.s, clock: clock, epoch: followerEpoch(f.store.Authority())}
+		failed, err := u.step(ctx)
+		if err != nil || !failed.attempted || failed.acquisitionError == nil || reads.Load() != 2 {
+			t.Fatal("fixture did not reach one failed follower acquisition", failed, err, reads.Load())
+		}
+		// This node's clock is then set back to before the installed checkpoint.
+		wall := &anchorHeldWall{at: anchorInstalledCheckpoint(ctx, t, f.s).Add(-2 * time.Second)}
+		u.wall = wall.now
+		if waiting, err := u.step(ctx); err != nil || waiting.attempted || waiting.clockWait <= 0 {
+			t.Fatal("poller did not defer for its clock after the failed acquisition", waiting, err)
+		}
+		anchorOrdinaryInstall(ctx, t, f, primary, ordinary, "skew-failed")
+		step, err := u.step(ctx)
+		if !errors.Is(err, replication.ErrFenced) || step.attempted || u.stopped == nil || reads.Load() != 2 {
+			t.Fatal("a clock wait let a failed acquisition move to a newer install", step, err, reads.Load())
+		}
+	})
+	t.Run("unwaited-first-capture", func(t *testing.T) {
+		endpoint, seeds, reads := anchorSupervisorServer(t, func(int32, *dns.Msg) {})
+		primary, ordinary := anchorBootstrappedPrimary(t, endpoint, seeds)
+		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+		t.Cleanup(cancel)
+		f := newAnchorFollowerFixture(ctx, t, primary)
+		clock, err := trustanchors.NewSessionClock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		u := &anchorFollowerPoller{runtime: f.s, clock: clock, epoch: followerEpoch(f.store.Authority())}
+		anchorOrdinaryInstall(ctx, t, f, primary, ordinary, "unwaited")
+		step, err := u.step(ctx)
+		if !errors.Is(err, replication.ErrFenced) || step.attempted || reads.Load() != 1 {
+			t.Fatal("a first capture that never waited left the cut its supervisor classified", step, err, reads.Load())
+		}
+	})
 }

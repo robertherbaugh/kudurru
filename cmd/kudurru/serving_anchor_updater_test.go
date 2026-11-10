@@ -220,3 +220,54 @@ func TestAnchorUpdaterCheckpointSkewWaitsWithinToleranceAndRefusesBeyond(t *test
 		t.Fatal("terminal clock refusal was recaptured", next)
 	}
 }
+
+// The elected updater has no installed incarnation to keep: every step captures
+// a fresh operation under its original writer term. Ordinary writes that land
+// while a newly elected writer waits for its clock therefore neither stop it nor
+// make it due, and it returns to the exact accepted refresh afterwards.
+func TestAnchorUpdaterCheckpointWaitSurvivesOrdinaryWrites(t *testing.T) {
+	endpoint, seeds, reads := anchorOperationServer(t, 2, nil)
+	s, ctx, target, host := anchorOperationFixture(t, endpoint, seeds)
+	clock, err := trustanchors.NewSessionClock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := &anchorUpdater{runtime: s, target: target, host: host, clock: clock}
+	if first, err := original.step(ctx); err != nil || !first.attempted || reads.Load() != 1 {
+		t.Fatal("fixture did not commit one original bootstrap checkpoint", err, reads.Load())
+	}
+	owner := anchorOperationOwner(ctx, t, s)
+	state, err := owner.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := state.Inspect()
+	successor, err := trustanchors.NewSessionClock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wall := &anchorHeldWall{at: view.Checkpoint.Wall.Add(-2 * time.Second)}
+	skewed := &anchorUpdater{runtime: s, target: target, host: host, clock: successor, wall: wall.now}
+	if step, err := skewed.step(ctx); err != nil || step.attempted || step.clockWait != 2*time.Second {
+		t.Fatal("fixture updater did not wait for its clock", step, err)
+	}
+	for _, name := range []string{"updater-skew-first", "updater-skew-second"} {
+		before := anchorFollowerImage(ctx, t, s.opts.Store)
+		anchorOrdinaryWrite(ctx, t, s.opts.Store, target.Term, name)
+		if anchorFollowerImage(ctx, t, s.opts.Store).Generation().Same(before.Generation()) {
+			t.Fatal("fixture write did not advance the canonical generation")
+		}
+		step, err := skewed.step(ctx)
+		if err != nil || skewed.stopped != nil || step.attempted || step.clockWait != 2*time.Second || !step.next.Equal(view.Schedule.NextRefresh) || skewed.offset != 0 {
+			t.Fatal("an ordinary write during the checkpoint wait stopped or advanced the updater", step, err)
+		}
+	}
+	wall.reached.Store(true)
+	due, err := skewed.step(ctx)
+	if err != nil || due.attempted || due.clockWait != 0 || !due.next.Equal(view.Schedule.NextRefresh) || reads.Load() != 1 {
+		t.Fatal("updater did not return to the exact accepted refresh after the wait", due, err)
+	}
+	if anchorOperationOwner(ctx, t, s).Version() != owner.Version() {
+		t.Fatal("waiting updater changed accepted history")
+	}
+}

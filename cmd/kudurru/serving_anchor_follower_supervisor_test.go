@@ -540,3 +540,52 @@ func TestAnchorFollowerSupervisorPromotionFencedThenInstallResumes(t *testing.T)
 		t.Fatal("supervision across the promotion changed canonical data, accepted trust history or authority")
 	}
 }
+
+// The mounted form of TestAnchorFollowerPollerClockWaitAdoptsOrdinaryInstall:
+// the supervisor, its child and the child's wake loop, with this member's wall
+// clock held two seconds before the installed checkpoint. An ordinary install
+// during that wait used to end the child with ErrFenced, and the supervisor
+// kept that for the whole member, term and role, so the member never polled.
+func TestAnchorFollowerSupervisorClockWaitSurvivesOrdinaryInstall(t *testing.T) {
+	endpoint, seeds, reads := anchorSupervisorServer(t, func(int32, *dns.Msg) {})
+	primary, ordinary := anchorBootstrappedPrimary(t, endpoint, seeds)
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	t.Cleanup(cancel)
+	f := newAnchorFollowerFixture(ctx, t, primary)
+	wall := &anchorHeldWall{at: anchorInstalledCheckpoint(ctx, t, f.s).Add(-2 * time.Second)}
+	f.runtime.AnchorWall = wall.now
+	stop := startAnchorFollowerFixture(ctx, t, f)
+	// The supervisor's child has captured its first operation and deferred.
+	awaitServingRuntime(t, f.s, func() bool { return wall.reads.Load() >= 1 && f.s.publisher.Status().ProtectedReady })
+	if reads.Load() != 1 {
+		t.Fatal("waiting child acquired before its clock reached the checkpoint", reads.Load())
+	}
+	// Install right after a clock check. The child then sleeps for at least a
+	// second, so the install lands between two captures and cannot interpose on
+	// one (a captured operation refuses that under D318, wait or no wait).
+	checked := wall.reads.Load()
+	awaitServingRuntime(t, f.s, func() bool { return wall.reads.Load() > checked })
+	installed, authority := anchorOrdinaryInstall(ctx, t, f, primary, ordinary, "supervised-skew")
+	// A step that was already in flight can add one comparison. Two more prove
+	// that a step which captured after the install reached its clock check.
+	seen, until := wall.reads.Load(), time.Now().Add(15*time.Second)
+	for wall.reads.Load() < seen+2 {
+		if time.Now().After(until) {
+			t.Fatalf("an ordinary install during the checkpoint wait ended supervision for this term: clock checks %d -> %d, root reads %d", seen, wall.reads.Load(), reads.Load())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if reads.Load() != 1 || !f.s.publisher.Status().ProtectedReady {
+		t.Fatal("waiting child acquired, or the wait interrupted serving", reads.Load())
+	}
+	wall.reached.Store(true)
+	awaitServingRuntime(t, f.s, func() bool { return reads.Load() == 2 })
+	time.Sleep(1200 * time.Millisecond)
+	if reads.Load() != 2 || !f.s.publisher.Status().ProtectedReady {
+		t.Fatal("supervised member did not poll exactly once after the wait", reads.Load())
+	}
+	stop()
+	if !anchorFollowerSameImage(installed, anchorFollowerImage(ctx, t, f.store)) || !reflect.DeepEqual(authority, f.store.Authority()) {
+		t.Fatal("waiting or polling changed canonical data or authority")
+	}
+}

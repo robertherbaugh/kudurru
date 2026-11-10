@@ -12,9 +12,12 @@ import (
 )
 
 // Every captured operation retains its original member/term/role/incarnation.
-// Only a completed normal observation permits a later fresh capture to move to
-// a newer installed incarnation in the same member, term and role; no refusal
-// can do so, and no operation crosses a role change (D369).
+// A later fresh capture may move to a newer installed incarnation in the same
+// member, term and role only when the poller's earlier operations left nothing
+// that install could replay: the last acquisition completed as a normal
+// observation, or no acquisition has started and the last operation only
+// deferred for this node's clock. No refusal or failed acquisition can do so,
+// and no operation crosses a role change (D369).
 type anchorFollowerEpoch struct {
 	member      string
 	term        replication.Term
@@ -47,6 +50,16 @@ type anchorFollowerPoller struct {
 	// final original-authority check succeeded. It cannot represent an error,
 	// local denial, incomplete transport or a merely staged observation.
 	normalCompleted bool
+	// acquired records that this poller has started a wire acquisition. It is
+	// never cleared, so a clock wait after a failed acquisition changes nothing.
+	acquired bool
+	// clockDeferred records that this poller has started no acquisition and that
+	// its last captured operation was discarded unused because this node's clock
+	// had not reached the installed checkpoint. Nothing was held, received or
+	// refused. Like the supervisor's readiness wait, it may then observe a newly
+	// installed image; without it an ordinary install during the wait would end
+	// supervision for the whole member, term and role.
+	clockDeferred bool
 	// wall reads this node's wall clock for the checkpoint comparison only; nil
 	// means time.Now. Samples, receipts and stored state never use it.
 	wall func() time.Time
@@ -99,12 +112,13 @@ func (u *anchorFollowerPoller) step(ctx context.Context) (step anchorFollowerSte
 	if u.epoch == (anchorFollowerEpoch{}) {
 		u.epoch = epoch
 	} else if !u.epoch.same(epoch) {
-		if !u.normalCompleted || !u.epoch.sameRole(epoch) {
+		if (!u.normalCompleted && !u.clockDeferred) || !u.epoch.sameRole(epoch) {
 			return step, replication.ErrFenced
 		}
-		// The previous operation has completed successfully. This new operation
-		// already captured its own installed source, local carrier and lifetime
-		// before any wire acquisition. Its checks never use the old token.
+		// The previous operation completed successfully, or was discarded before
+		// any acquisition while this node waited for its clock. This new
+		// operation already captured its own installed source, local carrier and
+		// lifetime before any wire acquisition. Its checks never use the old token.
 		u.epoch = epoch
 	}
 	state, err := op.owner.State()
@@ -123,6 +137,7 @@ func (u *anchorFollowerPoller) step(ctx context.Context) (step anchorFollowerSte
 	if step.clockWait > 0 {
 		// Nothing was acquired. A later step captures a fresh operation once
 		// this node's own clock has reached the installed checkpoint.
+		u.clockDeferred = !u.acquired
 		step.next = checkpoint
 		return step, nil
 	}
@@ -134,6 +149,7 @@ func (u *anchorFollowerPoller) step(ctx context.Context) (step anchorFollowerSte
 	step.attempted = true
 	u.offset++
 	u.normalCompleted = false
+	u.acquired, u.clockDeferred = true, false
 	step.result, err = op.observe()
 	if err == nil {
 		switch step.result.branch {
@@ -197,7 +213,7 @@ func (s *servingRuntime) runAnchorFollowerEpoch(ctx context.Context, epoch ancho
 	if err != nil {
 		return err
 	}
-	u := anchorFollowerPoller{runtime: s, clock: clock, epoch: epoch}
+	u := anchorFollowerPoller{runtime: s, clock: clock, epoch: epoch, wall: s.opts.AnchorWall}
 	for {
 		changed, authority := s.opts.Store.GenerationChanges(), s.opts.Store.AuthorityChanges()
 		step, err := u.step(ctx)

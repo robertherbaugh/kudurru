@@ -60,6 +60,10 @@ type servingRuntimeOptions struct {
 	Logging        *querylogRuntime
 	TSIG           *tsigRuntime
 	InternalClient *internalapi.Client
+	// AnchorWall replaces this node's wall clock in the mounted follower
+	// poller's checkpoint comparison only (D369). Nil means time.Now; only tests
+	// set it. Samples, receipts and stored state never use it.
+	AnchorWall func() time.Time
 }
 
 // servingRuntime owns the complete publisher and provider/primary workers.
