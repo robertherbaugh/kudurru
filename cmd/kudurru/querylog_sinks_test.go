@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -188,6 +189,79 @@ func logRecords(t *testing.T, logs *syncBuffer, msg string) []map[string]any {
 		}
 	}
 	return out
+}
+
+// TestQuerylogRuntimeSlogSinkWritesQueryLines runs the one shipped sink type
+// through its production factory, on the real runtime: next to the local
+// database every recorded query is one info-level log line that names the
+// sink, and the line carries what the privacy mode keeps.
+func TestQuerylogRuntimeSlogSinkWritesQueryLines(t *testing.T) {
+	cfg, err := config.Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Node.DataDir = t.TempDir()
+	cfg.Querylog.Exclude.SUDN = false
+	cfg.Querylog.Privacy = "hide_domains"
+	cfg.Querylog.Sinks = []config.QuerylogSink{{Name: "log-lines", Type: config.QuerylogSinkSlog, BatchSize: 1}}
+	logs := &syncBuffer{}
+	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	r, err := newQuerylogRuntime(t.Context(), cfg, prometheus.NewRegistry(), logger, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := false
+	t.Cleanup(func() {
+		if !closed {
+			_ = r.close(context.Background())
+		}
+	})
+	names := []string{"one.example.", "two.example."}
+	for _, name := range names {
+		if !r.async.Enqueue(&querylog.Event{Time: time.Now(), Name: name, Client: netip.MustParseAddr("192.0.2.9"), QType: dns.TypeA, QClass: dns.ClassINET}) {
+			t.Fatal("collector refused", name)
+		}
+	}
+	// The lines are in addition to the database, not instead of it.
+	rows := func() int64 {
+		t.Helper()
+		page, err := r.reader().Queries(t.Context(), sqlitelog.QueryFilter{Limit: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return page.RecordsTotal
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for len(logRecords(t, logs, "query")) < len(names) || rows() < int64(len(names)) {
+		if time.Now().After(deadline) {
+			t.Fatalf("%d of %d query lines, %d of %d rows in querylog.db:\n%s", len(logRecords(t, logs, "query")), len(names), rows(), len(names), logs.String())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	// The collector's drain and the sink's drain are both complete after a
+	// clean close, so the lines below are all there will ever be.
+	if err := r.close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	closed = true
+	lines := logRecords(t, logs, "query")
+	if len(lines) != len(names) {
+		t.Fatalf("%d query lines for %d queries: one line per query, and none from the primary sqlite sink:\n%s", len(lines), len(names), logs.String())
+	}
+	for i, line := range lines {
+		if line["level"] != "INFO" || line["sink"] != "log-lines" || line["log"] != "query" {
+			t.Errorf("line %d is not an info-level query line of sink log-lines: %v", i, line)
+		}
+		if line["name"] != querylog.HiddenName || line["client"] != "192.0.2.9" || line["qtype"] != "A" {
+			t.Errorf("line %d does not carry the event as hide_domains keeps it: %v", i, line)
+		}
+	}
+	if strings.Contains(logs.String(), "one.example.") || strings.Contains(logs.String(), "two.example.") {
+		t.Errorf("a hidden query name reached the log:\n%s", logs.String())
+	}
+	if warned := logRecords(t, logs, "additional query-log sink did not drain"); len(warned) != 0 {
+		t.Errorf("a healthy sink was reported as not drained: %v", warned)
+	}
 }
 
 // TestQuerylogRuntimeChangedSinkEntryCountsQueriesInFlight drives the reload

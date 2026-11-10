@@ -186,10 +186,11 @@ audited contract and not part of this host.
 
 Sinks follow the captured-publication model of the primary sink. Preparing a
 configuration builds the sink objects but opens nothing; a sink is opened
-from its own goroutine when the first event reaches it, and reopened with
-backoff while the destination is down, so an unreachable exporter never
-delays startup or a reload. Every prepared route holds one reference on each
-of its sinks:
+from its own goroutine when the first event reaches it, and the open is tried
+again with backoff until it succeeds, so an unreachable exporter never delays
+startup or a reload. The host opens a sink once: a sink type that holds a
+connection re-establishes it inside its own writes. Every prepared route
+holds one reference on each of its sinks:
 
 - an entry that did not change keeps its queue, goroutine and connection
   across reloads and publications;
