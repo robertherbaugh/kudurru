@@ -23,7 +23,8 @@ import (
 type MemberCommandHandler func(context.Context, *sqlite.MemberRequest, Command, func(Outcome) error) error
 
 // MemberScopedCommandHandler uses an enclosing command/output coordinator.
-// emit accepts only the context issued by this request's active
+// emit accepts only the context issued inside this request's active command
+// output scope: the output of Store.MemberCommandWithOutput, or a
 // WithCommandOutput callback. It writes and flushes synchronously without
 // acquiring another Store output scope. Domain proof and dependency exclusions
 // remain the caller's obligation; staged outcomes alone cannot acknowledge.

@@ -982,6 +982,7 @@ authority, owner, certificate and deadline comparisons are unchanged, and a
 refused or failed output still reports the completion separately. An image
 read keeps the two-step form: a newer generation must never be answered with
 an older image.
+
 `replica.NewMemberServer` mounts this boundary for the image and forwarded-command
 HTTP paths. Root assembly (`prepareMemberServices` in `cmd/kudurru`) installs it
 on the enrolled listener with the root command executor. The legacy `NewServer`
@@ -1001,11 +1002,12 @@ acknowledgment leaves under the writer exclusion of the command's own commit.
 
 `providercoordinator.WithMemberCommandOutput` supplies a separate bounded
 composition for a trusted root domain callback. It holds publication, provider
-resources and host exclusions in that order across the actual `MemberCommand`
-and one `WithCommandOutput` scope. The carried elected writer must already match
-the original peer request. It does not substitute membership or a subject name
-for raw user credentials. The callback verifies current domain permission in the
-actual transaction, before effects or dedup reads.
+resources and host exclusions in that order across one `MemberCommandWithOutput`:
+the actual member command and its one Store-admitted output, which leaves before
+the writer lock of that command's commit is released. The carried elected writer
+must already match the original peer request. It does not substitute membership
+or a subject name for raw user credentials. The callback verifies current domain
+permission in the actual transaction, before effects or dedup reads.
 
 The output context keeps the earliest request, peer, host and provider expiry,
 and joins original peer cancellation even when the command has a separate parent.
@@ -1031,7 +1033,7 @@ start a flush. Selecting both executor forms is invalid.
 
 `CommandService.StageSQLite` prepares domain changes and dedup inside the supplied
 active transaction. Its result remains a proposal until the enclosing actual
-`MemberCommand` succeeds. Ended transactions refuse staging. This connects the
+member command succeeds. Ended transactions refuse staging. This connects the
 coordinator to the enrolled HTTP adapter without nesting an output guard or
 mistaking staged results for acknowledgments. The root supplies credential
 handling and the bounded blocking domain described below.
