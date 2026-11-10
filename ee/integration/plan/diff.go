@@ -15,10 +15,14 @@ type currentSet struct {
 	endpoint         public.Endpoint
 	rows             []RemoteRecord
 	owned, adoptable bool
+	// anyOwned: at least one row is this owner's. proven: every provider ID of
+	// every row is in the confirmed ledger baseline of the RRset.
+	anyOwned, proven bool
 }
 
 // Build refuses incomplete snapshots and never removes records at a conflicted
 // owner. Every operation is private and deterministic under reordered inputs.
+// A cleanup input (Input.Cleanup) yields deletes only; see Input.
 func Build(in Input) (*Plan, error) {
 	if !in.DesiredComplete || !in.CurrentComplete {
 		return nil, ErrIncomplete
@@ -37,6 +41,15 @@ func Build(in Input) (*Plan, error) {
 	}
 	if !validPolicy(in.Policy) {
 		return nil, ErrInvalid
+	}
+	if in.Cleanup {
+		// A terminating instance publishes nothing. Refusing leftover desired
+		// state or per-record policies keeps a caller's ordinary input from
+		// being reinterpreted as a delete-everything plan.
+		if len(in.Desired) != 0 || len(in.RecordPolicies) != 0 {
+			return nil, ErrInvalid
+		}
+		in.Policy = PolicySync
 	}
 	limit := in.MaxRecords
 	if limit <= 0 {
@@ -106,6 +119,9 @@ func Build(in Input) (*Plan, error) {
 		desired[k] = n
 	}
 	policyFor := func(k kinds.RecordKey) Policy {
+		if in.Cleanup {
+			return PolicySync
+		}
 		if p, ok := overrides[k]; ok {
 			return p
 		}
@@ -148,6 +164,10 @@ func Build(in Input) (*Plan, error) {
 		}
 		unowned := row.Owner.ClusterID == "" && row.Owner.IntegrationUID == "" && row.Owner.ExternalDNSOwner == ""
 		adoptable := !owned && (unowned && in.AdoptUnowned || row.Owner.ClusterID == "" && row.Owner.IntegrationUID == "" && in.AdoptExternalDNSOwner != "" && row.Owner.ExternalDNSOwner == in.AdoptExternalDNSOwner)
+		proven := true
+		for _, id := range row.IDs {
+			proven = proven && evidence[k][id]
+		}
 		if old, ok := current[k]; ok {
 			old.endpoint, err = merge(old.endpoint, n)
 			if err != nil {
@@ -156,11 +176,13 @@ func Build(in Input) (*Plan, error) {
 			old.rows = append(old.rows, row)
 			old.owned = old.owned && owned
 			old.adoptable = old.adoptable && (owned || adoptable)
+			old.anyOwned = old.anyOwned || owned
+			old.proven = old.proven && proven
 		} else {
-			current[k] = &currentSet{n, []RemoteRecord{row}, owned, owned || adoptable}
+			current[k] = &currentSet{n, []RemoteRecord{row}, owned, owned || adoptable, owned, proven}
 		}
 	}
-	p := &Plan{Owner: in.Owner, Destination: in.Destination, ConfigDigest: in.ConfigDigest, CredentialDigest: in.CredentialDigest, SourceDigest: in.SourceDigest}
+	p := &Plan{Owner: in.Owner, Destination: in.Destination, ConfigDigest: in.ConfigDigest, CredentialDigest: in.CredentialDigest, SourceDigest: in.SourceDigest, Cleanup: in.Cleanup}
 	blocked := map[string]bool{}
 	conflict := func(k kinds.RecordKey, why string) {
 		blocked[k.Name] = true
@@ -203,12 +225,29 @@ func Build(in Input) (*Plan, error) {
 	}
 	slices.SortFunc(ordered, func(a, b kinds.RecordKey) int { return strings.Compare(keyString(a), keyString(b)) })
 	for _, k := range ordered {
+		c := current[k]
+		if in.Cleanup && c != nil && c.anyOwned {
+			// Every row of this owner is either deleted below or reported
+			// here; a cleanup never finishes over rows it silently skipped.
+			reason := ""
+			switch {
+			case blocked[k.Name]:
+				reason = RetainedConflict
+			case !c.owned:
+				reason = RetainedMixed
+			case !c.proven:
+				reason = RetainedUnproven
+			}
+			if reason != "" {
+				p.Retained = append(p.Retained, Retained{Key: k, Reason: reason})
+				continue
+			}
+		}
 		if blocked[k.Name] {
 			continue
 		}
 		d, have := desired[k]
 		policy := policyFor(k)
-		c := current[k]
 		var action string
 		var before, after *public.Endpoint
 		if c == nil {
@@ -280,6 +319,9 @@ func Build(in Input) (*Plan, error) {
 		sortedPolicies = append(sortedPolicies, RecordPolicy{k, p})
 	}
 	slices.SortFunc(sortedPolicies, func(a, b RecordPolicy) int { return strings.Compare(keyString(a.Key), keyString(b.Key)) })
+	// Cleanup is absent from an ordinary plan's encoding (digests issued before
+	// D367 stay valid) and present in a cleanup plan's, so the two never share
+	// a digest or an operation ID even over identical observations.
 	b, _ := json.Marshal(struct {
 		RecordPolicies []RecordPolicy
 		Plan           *Plan
@@ -289,7 +331,8 @@ func Build(in Input) (*Plan, error) {
 		Desired        []public.Endpoint
 		Current        []RemoteRecord
 		Ledger         map[string]string
-	}{sortedPolicies, p, in.Policy, in.AdoptUnowned, in.AdoptExternalDNSOwner, desiredOrdered, observed, ledgerTokens})
+		Cleanup        bool `json:",omitempty"`
+	}{sortedPolicies, p, in.Policy, in.AdoptUnowned, in.AdoptExternalDNSOwner, desiredOrdered, observed, ledgerTokens, in.Cleanup})
 	p.Digest = kinds.Digest(b)
 	for i := range p.Operations {
 		op := &p.Operations[i]

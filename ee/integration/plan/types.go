@@ -53,6 +53,17 @@ type RecordPolicy struct {
 }
 
 // Input binds complete desired, remote, and durable ownership observations.
+//
+// Cleanup selects the terminating plan of an Integration whose deletionPolicy
+// is Delete (D367). It requires an empty Desired set and no RecordPolicies,
+// and plans only deletes: every RRset whose rows all carry this owner's
+// marker (or its ledger-proven legacy marker), whose provider IDs are all in
+// the confirmed ledger baseline of that RRset, and whose name has no
+// conflict. The effective policy is sync for every such RRset, overriding
+// the destination's and the ledger's retained upsert-only or create-only
+// policy, because the sink itself is being removed. Nothing is deleted on a
+// marker alone, and every row of this owner the plan leaves in place is
+// listed in Plan.Retained.
 type Input struct {
 	Owner                                        kinds.Owner
 	Destination                                  kinds.Destination
@@ -66,6 +77,7 @@ type Input struct {
 	Ledger                                       []*kinds.IntegrationLedger
 	DesiredComplete, CurrentComplete             bool
 	MaxRecords                                   int
+	Cleanup                                      bool
 }
 
 // Operation is one deterministic whole-RRset provider action.
@@ -83,7 +95,34 @@ type Operation struct {
 // Conflict preserves an owner without unsafe mutation.
 type Conflict struct{ Name, Type, Reason string }
 
+// Reasons a cleanup plan leaves an RRset of its owner in place.
+const (
+	// RetainedConflict: the name holds a conflict (a foreign or unowned row),
+	// so nothing at that name is touched, exactly as in ordinary planning.
+	RetainedConflict = "conflict at name"
+	// RetainedMixed: the RRset holds rows of this owner next to rows that are
+	// not proven its own; a whole-RRset delete would remove the others.
+	RetainedMixed = "record set shared with rows of another owner"
+	// RetainedUnproven: the rows carry this owner's marker, but the confirmed
+	// ledger baseline does not list every provider ID. A marker can be copied
+	// with a record; it alone never authorizes a delete.
+	RetainedUnproven = "owner marker without ledger evidence"
+)
+
+// Retained is one RRset holding rows of the plan's owner that a cleanup plan
+// does not delete, and why.
+type Retained struct {
+	Key    kinds.RecordKey
+	Reason string
+}
+
 // Plan is a deterministic preview tied to exact observations.
+//
+// Cleanup and Retained are set only by a cleanup plan (Input.Cleanup). A
+// destination is clean of its owner's records exactly when a cleanup plan
+// built from a fresh complete snapshot has neither Operations nor Retained.
+// Both are omitted from the digest encoding of an ordinary plan, whose
+// digests and operation IDs are therefore unchanged.
 type Plan struct {
 	Digest                                       string
 	Owner                                        kinds.Owner
@@ -92,6 +131,8 @@ type Plan struct {
 	Operations                                   []Operation
 	Conflicts                                    []Conflict
 	Unchanged                                    int
+	Cleanup                                      bool       `json:",omitempty"`
+	Retained                                     []Retained `json:",omitempty"`
 }
 
 // Intent materializes a private copy suitable for durable create-only storage.

@@ -11,8 +11,11 @@ import (
 	"testing"
 	"time"
 
+	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/ee/integration/host"
+	"github.com/robertherbaugh/kudurru/ee/integration/plan"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestSDKPreviewApplyPreservesUnchangedIDsAndReceipts(t *testing.T) {
@@ -336,5 +339,79 @@ func TestSDKCadenceCancellationAndDeleteReceipt(t *testing.T) {
 	deletion.Spec.Receipt = &r
 	if err = deletion.Validate(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A cleanup plan (D367) and the SDK adapter agree: on a zone whose policy is
+// upsert-only, the delete of a ledger-proven record set is executed, and rows
+// that merely carry this instance's marker, another owner's marker or no
+// marker at all are neither planned nor touched.
+func TestSDKCleanupPlanDeletesOnlyLedgerProvenRowsOnUpsertOnlyZone(t *testing.T) {
+	f := newFixture(t, public.CloudflareZone{Zone: "example.com", ZoneID: zoneID, Policy: "upsert-only"})
+	if f.pub.Policy != plan.PolicyUpsertOnly {
+		t.Fatal("fixture zone policy", f.pub.Policy)
+	}
+	proven := f.add("www.example.com.", "A", "192.0.2.1", 300, marker(f.h.owner))
+	copied := f.add("copy.example.com.", "A", "192.0.2.2", 300, marker(f.h.owner))
+	previous := f.h.owner
+	previous.UID = "uid-previous"
+	foreign := f.add("old.example.com.", "A", "192.0.2.3", 300, marker(previous))
+	manual := f.add("manual.example.com.", "A", "192.0.2.4", 300, "managed by hand")
+	snapshot := f.snapshot()
+	var published public.Endpoint
+	for _, row := range snapshot.Records {
+		if slices.Contains(row.IDs, proven) {
+			published = row.Endpoint
+		}
+	}
+	record := kinds.RecordIdentity{Owner: f.h.owner, Destination: f.pub.Destination, Key: kinds.RecordKey{Name: "www.example.com.", Type: "A"}}
+	in := plan.Input{Owner: f.h.owner, Destination: f.pub.Destination, ConfigDigest: kinds.Digest([]byte("config")), CredentialDigest: kinds.Digest([]byte("credentials")), SourceDigest: kinds.Digest([]byte("source")),
+		Policy: f.pub.Policy, Current: snapshot.Records, DesiredComplete: true, CurrentComplete: true, Cleanup: true,
+		Ledger: []*kinds.IntegrationLedger{{ObjectMeta: metav1.ObjectMeta{Name: kinds.LedgerName(record), ResourceVersion: "1"}, Spec: kinds.IntegrationLedgerSpec{FormatVersion: kinds.FormatVersion, Record: record, Sequence: 1, ContentHash: kinds.EndpointDigest(&published), ProviderIDs: []string{proven}, Policy: "upsert-only"}}}}
+	p, err := plan.Build(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Operations) != 1 || p.Operations[0].Action != "delete" || !slices.Equal(p.Operations[0].ProviderIDs, []string{proven}) {
+		t.Fatalf("cleanup operations: %+v", p.Operations)
+	}
+	if len(p.Retained) != 1 || p.Retained[0].Key.Name != "copy.example.com." || p.Retained[0].Reason != plan.RetainedUnproven || len(p.Conflicts) != 2 {
+		t.Fatalf("retained=%+v conflicts=%+v", p.Retained, p.Conflicts)
+	}
+	f.mu.Lock()
+	before := map[string]string{}
+	for _, id := range []string{copied, foreign, manual} {
+		raw, _ := json.Marshal(f.rows[id])
+		before[id] = string(raw)
+	}
+	f.mu.Unlock()
+	op := p.Intent(0, time.Now().Add(-time.Second))
+	r, err := f.p.Apply(f.ctx, op)
+	if err != nil || !r.Complete || r.ContentHash != "" || len(r.ProviderIDs) != 0 {
+		t.Fatal("cleanup delete not confirmed", r, err)
+	}
+	op.Spec.Receipt = &r
+	if err = op.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.rows[proven] != nil || len(f.rows) != 3 {
+		t.Fatal("the proven record set was not removed, or more was", len(f.rows))
+	}
+	for id, want := range before {
+		if raw, _ := json.Marshal(f.rows[id]); string(raw) != want {
+			t.Fatalf("row %s changed: %s", id, raw)
+		}
+	}
+	if len(f.batches) != 1 || len(f.batches[0]["deletes"]) != 1 || f.batches[0]["deletes"][0]["id"] != proven || len(f.batches[0]["posts"])+len(f.batches[0]["puts"])+len(f.batches[0]["patches"]) != 0 {
+		t.Fatal("cleanup sent more than the one proven delete", f.batches)
+	}
+	// The same intent under the zone's own policy is refused by the adapter:
+	// only the planner's cleanup mode can authorize this delete.
+	restricted := op.DeepCopy()
+	restricted.Spec.Receipt, restricted.Spec.Policy = nil, "upsert-only"
+	if _, err := f.p.Apply(f.ctx, restricted); !errors.Is(err, ErrInvalid) {
+		t.Fatal("adapter executed a delete under upsert-only", err)
 	}
 }

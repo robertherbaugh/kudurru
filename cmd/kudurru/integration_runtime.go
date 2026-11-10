@@ -57,7 +57,7 @@ type integrationCut struct {
 
 func newIntegrationRuntime(s *servingRuntime, schema *servingbuild.Schema, pin currentguard.PinFunc) (*integrationRuntime, error) {
 	r := &integrationRuntime{s: s, schema: schema, pin: pin}
-	repository, err := ledger.New(ledger.Options{Reader: s.opts.Store, Now: s.opts.Now, Write: r.write})
+	repository, err := ledger.New(ledger.Options{Reader: s.opts.Store, Now: s.opts.Now, Write: r.write, Delete: r.forget})
 	if err != nil {
 		return nil, err
 	}
@@ -484,6 +484,37 @@ func (r *integrationRuntime) write(ctx context.Context, g ledger.Guard, obj stor
 		})
 	})
 	return out, err
+}
+
+// forget commits one ledger.Forget through the same original lease, cut and
+// writer checks as write, in ONE command: every exact UID/version delete
+// happens or none does, and a stale or fenced guard removes nothing. Only the
+// private ledger and operation kinds can be named, so the shared request
+// budget and every desired object stay out of reach of this path (D367).
+func (r *integrationRuntime) forget(ctx context.Context, g ledger.Guard, requests []store.DeleteRequest) error {
+	if len(requests) == 0 {
+		return ih.ErrInvalid
+	}
+	for _, request := range requests {
+		if request.Key.Kind != kinds.KindIntegrationLedger && request.Key.Kind != kinds.KindIntegrationOperation || request.Key.Namespace != "" ||
+			request.Options.ExpectedUID == "" || request.Options.ExpectedResourceVersion == "" || request.Options.Force {
+			return ih.ErrInvalid
+		}
+	}
+	ctx, guard, err := r.requestContext(ctx, g)
+	if err != nil {
+		return err
+	}
+	return r.host.WithLease(ctx, g, func(ctx context.Context) error {
+		return r.command(ctx, guard, func(ctx context.Context, tx *sqlite.CommandTx, _ *integrationCut) error {
+			for _, request := range requests {
+				if err := tx.Delete(ctx, request.Key, request.Options); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	})
 }
 
 // requestContext binds only the original elector's token, never a current

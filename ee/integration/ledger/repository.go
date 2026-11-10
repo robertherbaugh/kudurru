@@ -5,6 +5,8 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"slices"
+	"strings"
 	"time"
 
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
@@ -287,6 +289,115 @@ func (r *Repository) Abandon(ctx context.Context, g Guard, res *Reservation, pro
 	l.Spec.Sequence++
 	l.Spec.Pending = nil
 	return r.putLedger(ctx, g, l, false)
+}
+
+// MaxForgetOperations bounds the operations one Forget removes, and so the
+// size of one carrier commit. A record with a longer history is forgotten in
+// steps: its ledger row with the first operations, then the rest as leftovers
+// of a row that no longer exists.
+const MaxForgetOperations = 1024
+
+// Forget removes the durable ownership state of one record after cleanup
+// (D367): its ledger row and the given operations of that same record, each
+// by the exact UID and resource version read here. It is the only transition
+// that deletes private publication state, and it never touches a request
+// budget, which must survive every instance (D209).
+//
+// The ledger row must have no pending operation: an uncertain provider
+// outcome is resolved by recovery first, never by forgetting it (ErrPending).
+// Its baseline must be absent, which a confirmed delete leaves behind. A
+// baseline that still lists provider content is refused (ErrBaseline) unless
+// absent is the host's fresh complete observation that no row of the record
+// remains (empty BeforeHash, observed within the last minute and not before
+// the baseline was applied); that covers a record removed at the provider by
+// someone else, which no delete receipt will ever confirm.
+//
+// Every operation must be settled: confirmed complete, abandoned, or never
+// started (an intent whose reservation failed has no receipt and conferred no
+// provider permission). An operation with a partial receipt is ErrPending.
+//
+// l may be nil only when the record has no ledger row. Then ops are intents
+// orphaned by a failed reservation, operations beyond MaxForgetOperations of
+// a row already forgotten, or what a carrier without transactions left when
+// it stopped after deleting the row.
+func (r *Repository) Forget(ctx context.Context, g Guard, l *kinds.IntegrationLedger, ops []*kinds.IntegrationOperation, absent Observation) error {
+	if r.delete == nil || g.Validate() != nil || l == nil && len(ops) == 0 || len(ops) > MaxForgetOperations {
+		return ErrInvalid
+	}
+	var record kinds.RecordIdentity
+	if l != nil {
+		if l.Validate() != nil || l.ResourceVersion == "" || l.UID == "" {
+			return ErrInvalid
+		}
+		record = l.Spec.Record
+	} else {
+		if ops[0] == nil {
+			return ErrInvalid
+		}
+		record = ops[0].Spec.Record
+	}
+	if record.Validate() != nil || record.Owner != g.Owner {
+		return ErrInvalid
+	}
+	seen := map[string]bool{}
+	for _, op := range ops {
+		if op == nil || op.Validate() != nil || op.ResourceVersion == "" || op.UID == "" || op.Spec.Record != record || seen[op.Name] {
+			return ErrInvalid
+		}
+		seen[op.Name] = true
+	}
+	current, err := r.ReadLedger(ctx, record)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		if l != nil {
+			return store.ErrConflict
+		}
+	case err != nil:
+		return err
+	case l == nil:
+		// The caller did not present the row that still owns these operations.
+		return store.ErrConflict
+	case current.UID != l.UID || current.ResourceVersion != l.ResourceVersion:
+		return store.ErrConflict
+	case !reflect.DeepEqual(current.Spec, l.Spec):
+		return ErrInvalid
+	case current.Spec.Pending != nil:
+		return ErrPending
+	case current.Spec.ContentHash != "" || len(current.Spec.ProviderIDs) != 0:
+		if absent.BeforeHash != "" || !ValidateObservationTime(absent.ObservedAt, r.now(), time.Minute) || absent.ObservedAt.Before(current.Spec.LastApplied) {
+			return ErrBaseline
+		}
+	}
+	requests := make([]store.DeleteRequest, 0, len(ops)+1)
+	if l != nil {
+		requests = append(requests, forgetRequest(kinds.KindIntegrationLedger, current))
+	}
+	ordered := slices.Clone(ops)
+	slices.SortFunc(ordered, func(a, b *kinds.IntegrationOperation) int { return strings.Compare(a.Name, b.Name) })
+	for _, op := range ordered {
+		saved, err := r.ReadOperation(ctx, op.Spec.OperationID)
+		if errors.Is(err, store.ErrNotFound) {
+			return store.ErrConflict
+		}
+		if err != nil {
+			return err
+		}
+		if saved.UID != op.UID || saved.ResourceVersion != op.ResourceVersion {
+			return store.ErrConflict
+		}
+		if !reflect.DeepEqual(saved.Spec, op.Spec) {
+			return ErrInvalid
+		}
+		if receipt := saved.Spec.Receipt; receipt != nil && !receipt.Complete && saved.Spec.AbandonedAt.IsZero() {
+			return ErrPending
+		}
+		requests = append(requests, forgetRequest(kinds.KindIntegrationOperation, saved))
+	}
+	return r.delete(ctx, g, requests)
+}
+
+func forgetRequest(kind store.Kind, obj metav1.Object) store.DeleteRequest {
+	return store.DeleteRequest{Key: store.Key{Kind: kind, Name: obj.GetName()}, Options: store.DeleteOptions{Manager: manager, ExpectedUID: string(obj.GetUID()), ExpectedResourceVersion: obj.GetResourceVersion()}}
 }
 
 // ValidateObservationTime is available to hosts that pin their current time.

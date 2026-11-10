@@ -283,13 +283,25 @@ func endpointPart(row public.Endpoint, whole *public.Endpoint) bool {
 	return kinds.EndpointDigest(&expected) == kinds.EndpointDigest(&row)
 }
 
-func (h *Host) ledgers(ctx context.Context, owner kinds.Owner, destination kinds.Destination) ([]*kinds.IntegrationLedger, error) {
-	var out []*kinds.IntegrationLedger
+// privateRow is one validated private runtime object of this package's reads.
+type privateRow interface {
+	comparable
+	store.Object
+	Validate() error
+}
+
+// scanPrivate pages one private kind and returns isolated copies of the rows
+// keep selects, with the bounds every background read of this host keeps: at
+// most 100,000 rows scanned, at most plan.MaxSnapshotBytes selected, every
+// selected row valid, versioned and unique, and no repeated continuation.
+func scanPrivate[T privateRow](ctx context.Context, h *Host, kind store.Kind, keep func(T) bool) ([]T, error) {
+	var out []T
+	var absent T
 	continuation := ""
 	seen := map[string]bool{}
 	count, bytes := 0, 0
 	for {
-		page, err := h.opts.Reader.List(ctx, kinds.KindIntegrationLedger, store.ListOptions{Limit: 256, Continue: continuation})
+		page, err := h.opts.Reader.List(ctx, kind, store.ListOptions{Limit: 256, Continue: continuation})
 		if err != nil {
 			return nil, err
 		}
@@ -298,23 +310,23 @@ func (h *Host) ledgers(ctx context.Context, owner kinds.Owner, destination kinds
 			if count > 100000 {
 				return nil, ErrCapacity
 			}
-			l, ok := o.(*kinds.IntegrationLedger)
-			if !ok || l == nil {
+			row, ok := o.(T)
+			if !ok || row == absent {
 				return nil, ErrInvalid
 			}
-			if l.Spec.Record.Owner != owner || l.Spec.Record.Destination != destination {
+			if !keep(row) {
 				continue
 			}
-			if l.Validate() != nil || l.ResourceVersion == "" || seen[l.Name] {
+			if row.Validate() != nil || row.GetResourceVersion() == "" || seen[row.GetName()] {
 				return nil, ErrInvalid
 			}
-			b, _ := json.Marshal(l)
+			b, _ := json.Marshal(row)
 			bytes += len(b)
 			if bytes > plan.MaxSnapshotBytes {
 				return nil, ErrCapacity
 			}
-			seen[l.Name] = true
-			out = append(out, l.DeepCopy())
+			seen[row.GetName()] = true
+			out = append(out, row.DeepCopyObject().(T))
 		}
 		if page.Continue == "" {
 			break
@@ -326,6 +338,47 @@ func (h *Host) ledgers(ctx context.Context, owner kinds.Owner, destination kinds
 		continuation = page.Continue
 	}
 	return out, nil
+}
+
+// ledgers returns the owner's ledger rows of one destination.
+func (h *Host) ledgers(ctx context.Context, owner kinds.Owner, destination kinds.Destination) ([]*kinds.IntegrationLedger, error) {
+	return scanPrivate(ctx, h, kinds.KindIntegrationLedger, func(l *kinds.IntegrationLedger) bool {
+		return l.Spec.Record.Owner == owner && l.Spec.Record.Destination == destination
+	})
+}
+
+// ownerLedgers returns every ledger row of one Integration incarnation,
+// across all destinations. Publications come only from the destinations the
+// current spec names, so ordinary planning never sees the rows of a
+// destination that was removed from the spec; cleanup (D367) must see them
+// before it may conclude that the instance owns nothing.
+func (h *Host) ownerLedgers(ctx context.Context, owner kinds.Owner) ([]*kinds.IntegrationLedger, error) {
+	return scanPrivate(ctx, h, kinds.KindIntegrationLedger, func(l *kinds.IntegrationLedger) bool {
+		return l.Spec.Record.Owner == owner
+	})
+}
+
+// ownerOperations returns every durable operation of one Integration
+// incarnation: confirmed, abandoned, pending and never-reserved intents.
+// ledger.Repository.Forget removes them with their record.
+func (h *Host) ownerOperations(ctx context.Context, owner kinds.Owner) ([]*kinds.IntegrationOperation, error) {
+	return scanPrivate(ctx, h, kinds.KindIntegrationOperation, func(o *kinds.IntegrationOperation) bool {
+		return o.Spec.Record.Owner == owner
+	})
+}
+
+// strandedLedgers returns the rows whose destination is not among published,
+// the destinations the instance's current configuration reaches. No plan is
+// built for such a destination, so its rows can be neither confirmed absent
+// nor forgotten: cleanup reports them and never finishes over them silently.
+func strandedLedgers(rows []*kinds.IntegrationLedger, published []kinds.Destination) []*kinds.IntegrationLedger {
+	var out []*kinds.IntegrationLedger
+	for _, l := range rows {
+		if !slices.Contains(published, l.Spec.Record.Destination) {
+			out = append(out, l)
+		}
+	}
+	return out
 }
 func buildPreview(inputs []publicationInput) (*Preview, error) {
 	p := &Preview{}

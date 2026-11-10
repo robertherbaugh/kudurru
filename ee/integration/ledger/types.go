@@ -19,6 +19,9 @@ var (
 	ErrPending  = errors.New("integration ledger: recovery required")
 	ErrReceipt  = errors.New("integration ledger: receipt regression")
 	ErrOverflow = errors.New("integration ledger: sequence overflow")
+	// ErrBaseline refuses to forget a record whose last confirmed state still
+	// lists provider content and whose absence the host has not observed.
+	ErrBaseline = errors.New("integration ledger: baseline still records provider content")
 )
 
 // Guard pins one captured instance and lease incarnation. Root's writer must
@@ -46,23 +49,36 @@ func (g Guard) Validate() error {
 // is insufficient. It must not use Force or silently retry with fresh RVs.
 type Write func(context.Context, Guard, store.Object, store.ApplyOptions) (store.Object, error)
 
+// Delete must remove exactly the requested objects AND check Guard in the same
+// commit boundary, like Write. Every request carries the UID and resource
+// version the repository observed; a mismatch or a missing object fails the
+// call. A carrier with multi-object transactions commits all requests or
+// none. Any other applies them in the given order and stops at the first
+// failure, which is why the ledger row comes first: its exact-version delete
+// is the point a concurrent reservation of the same record conflicts with.
+// It must not use Force or retry against fresh identities.
+type Delete func(context.Context, Guard, []store.DeleteRequest) error
+
 // Reader provides background-only durable reads.
 type Reader interface {
 	Get(context.Context, store.Key, store.Object) error
 }
 
 // Options requires an injected commit-fenced writer and deterministic clock.
+// Delete is needed only by Forget; a repository without it cannot forget.
 type Options struct {
 	Now    func() time.Time
 	Reader Reader
 	Write  Write
+	Delete Delete
 }
 
 // Repository has no mutable per-instance state or provider access.
 type Repository struct {
-	read  Reader
-	write Write
-	now   func() time.Time
+	read   Reader
+	write  Write
+	delete Delete
+	now    func() time.Time
 }
 
 // New rejects a missing reader or commit-fenced writer.
@@ -73,7 +89,7 @@ func New(o Options) (*Repository, error) {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	return &Repository{read: o.Reader, write: o.Write, now: o.Now}, nil
+	return &Repository{read: o.Reader, write: o.Write, delete: o.Delete, now: o.Now}, nil
 }
 
 // Reservation is the exact durable pending baseline and intent. It permits a
@@ -84,7 +100,9 @@ type Reservation struct {
 	Operation *kinds.IntegrationOperation
 }
 
-// Observation is fresh provider evidence for abandoning an untouched intent.
+// Observation is fresh provider evidence for abandoning an untouched intent,
+// or for forgetting a record the provider no longer holds: BeforeHash is the
+// content digest observed for the RRset, empty for absence.
 // Host must verify complete remote content and ownership in the same capture;
 // the repository cannot authenticate remote evidence itself.
 type Observation struct {
