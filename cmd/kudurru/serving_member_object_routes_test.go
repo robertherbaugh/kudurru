@@ -1,38 +1,72 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
+	"github.com/robertherbaugh/kudurru/internal/api/apitest"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/memory"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
 )
 
 // The follower bounds exactly the registered routes whose effect it forwards
-// as a typed member command. A route added to the public API that matches the
-// predicate, or a forwarded route that it misses, fails here until reviewed.
+// as a typed member command. Which routes forward is observed, not derived
+// from the predicate: every registered unsafe route is requested on an API
+// server whose ObjectForward and ZoneForward hooks record that they were
+// reached, with the documents, name lists and zone inputs that forwarded
+// routes take. A route that reaches a hook without satisfying
+// memberForwardRoute fails here, because a follower would refuse it with "this
+// route is not forwarded from a follower"; so does a route that satisfies the
+// predicate without reaching a hook, and any change of the reviewed table.
+// The probes cover the request shapes below. A new route that needs a body of
+// another shape before it writes a canonical object reaches no hook here and
+// still needs a review.
 func TestMemberForwardRouteCoversEveryForwardedRoute(t *testing.T) {
 	cfg, err := config.Load("", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	cfg.Node.DataDir = t.TempDir()
 	v, err := validator.New()
 	if err != nil {
 		t.Fatal(err)
 	}
 	st := memory.New()
 	t.Cleanup(func() { _ = st.Close() })
-	server, err := api.New(api.Options{Config: cfg, Store: st, Validator: v, Logger: slog.New(slog.DiscardHandler)})
+	// The hooks stand where an enrolled follower mounts its forwards. Each
+	// answers as a handled forward, so no probe writes anything.
+	var reached atomic.Int32
+	refusal := objectForwardUnavailable("route probe")
+	server, err := api.New(api.Options{Config: cfg, Store: st, Validator: v, Logger: slog.New(slog.DiscardHandler),
+		Authenticate: apitest.Authenticate, Authorizer: apitest.Authorizer(apitest.StandardBindings()...),
+		ObjectCommand: func(context.Context, store.Key, func(context.Context, *sqlite.CommandTx, api.ObjectAuthorize) error) error {
+			return refusal
+		},
+		ZoneCommand: func(context.Context, api.ZoneCommandTarget, api.ZoneCommandPrepare) error { return refusal },
+		ObjectForward: func(context.Context, api.ForwardedObject) (api.ForwardedObjectResult, bool, error) {
+			reached.Add(1)
+			return api.ForwardedObjectResult{}, true, refusal
+		},
+		ZoneForward: func(context.Context, api.ForwardedZone) (json.RawMessage, bool, error) {
+			reached.Add(1)
+			return nil, true, refusal
+		}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,17 +98,93 @@ func TestMemberForwardRouteCoversEveryForwardedRoute(t *testing.T) {
 		"PUT /objects/{kind}/{namespace}/{name}",
 		"PUT /policies/{namespace}/{name}",
 	}
+	meta := func(namespaced bool) map[string]any {
+		if namespaced {
+			return map[string]any{"name": "probe", "namespace": "default"}
+		}
+		return map[string]any{"name": "probe"}
+	}
+	// One valid document for each kind that has write routes of its own.
+	documents := map[string]map[string]any{
+		"dnszones": {"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSZone", "metadata": meta(false),
+			"spec": map[string]any{"zoneName": "probe.test.", "type": "primary", "nameservers": []any{"ns1.probe.test."},
+				"soa": map[string]any{"mname": "ns1.probe.test.", "rname": "hostmaster.probe.test."}}},
+		"dnsrecordsets": {"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSRecordSet", "metadata": meta(true),
+			"spec": map[string]any{"zoneRef": map[string]any{"name": "probe"}, "endpoints": []any{
+				map[string]any{"dnsName": "www.probe.test.", "recordType": "A", "targets": []any{"192.0.2.60"}}}}},
+		"blocklists": {"apiVersion": "kudurru.io/v1alpha1", "kind": "BlockList", "metadata": meta(true),
+			"spec": map[string]any{"mode": "block", "sources": []any{map[string]any{"name": "inline", "inline": []any{"blocked.probe.test"}}}}},
+		"clientgroups": {"apiVersion": "kudurru.io/v1alpha1", "kind": "ClientGroup", "metadata": meta(true),
+			"spec": map[string]any{"clients": []any{map[string]any{"ip": "192.0.2.70"}}}},
+		"policies": {"apiVersion": "kudurru.io/v1alpha1", "kind": "Policy", "metadata": meta(true), "spec": map[string]any{}},
+	}
+	encode := func(value any) []byte {
+		raw, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
+	type body struct {
+		contentType string
+		raw         []byte
+	}
 	parameter := regexp.MustCompile(`\{[^}]+\}`)
-	var bounded []string
+	var forwarded, bounded []string
 	for _, route := range server.Routes() {
-		if memberForwardRoute(route.Method, api.BasePath, parameter.ReplaceAllString(route.Path, "example")) {
-			bounded = append(bounded, route.Method+" "+strings.TrimPrefix(route.Path, api.BasePath))
+		if route.Method != http.MethodPost && route.Method != http.MethodPut && route.Method != http.MethodDelete && route.Method != http.MethodPatch {
+			continue
+		}
+		name := route.Method + " " + strings.TrimPrefix(route.Path, api.BasePath)
+		observed, matched := false, false
+		for plural, document := range documents {
+			path := strings.NewReplacer("{kind}", plural, "{namespace}", "default", "{type}", "A").Replace(route.Path)
+			path = parameter.ReplaceAllString(path, "probe")
+			matched = memberForwardRoute(route.Method, api.BasePath, path)
+			bodies := []body{{}}
+			if route.Method != http.MethodDelete {
+				bodies = []body{
+					{"application/json", encode(document)},
+					{"application/json", encode([]any{document})},
+					{"application/json", encode(map[string]any{"names": []string{"probe"}})},
+					{"application/json", encode(map[string]any{"dnsName": "www.probe.test.", "recordType": "A", "targets": []any{"192.0.2.61"}})},
+					{"text/dns", []byte("www 300 IN A 192.0.2.62\n")},
+				}
+			}
+			for _, b := range bodies {
+				before := reached.Load()
+				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+				request := httptest.NewRequest(route.Method, path, bytes.NewReader(b.raw)).WithContext(ctx)
+				if b.contentType != "" {
+					request.Header.Set("Content-Type", b.contentType)
+				}
+				request.Header.Set("Authorization", apitest.Bearer("admin"))
+				server.ServeHTTP(httptest.NewRecorder(), request)
+				cancel()
+				observed = observed || reached.Load() != before
+			}
+		}
+		if observed {
+			forwarded = append(forwarded, name)
+		}
+		if matched {
+			bounded = append(bounded, name)
+		}
+		switch {
+		case observed && !matched:
+			t.Errorf("%s reaches the follower forward but memberForwardRoute does not bound it: a follower refuses it as not forwarded", name)
+		case matched && !observed:
+			t.Errorf("%s is bounded by memberForwardRoute but no probe reached a forward: correct the predicate or give this test the route's request", name)
 		}
 	}
+	slices.Sort(forwarded)
 	slices.Sort(bounded)
 	slices.Sort(reviewed)
+	if !slices.Equal(forwarded, reviewed) {
+		t.Fatalf("forwarded route table changed\nforwarded: %v\nreviewed:  %v", forwarded, reviewed)
+	}
 	if !slices.Equal(bounded, reviewed) {
-		t.Fatalf("forwarded route table changed\nbounded:  %v\nreviewed: %v", bounded, reviewed)
+		t.Fatalf("bounded route table changed\nbounded:  %v\nreviewed: %v", bounded, reviewed)
 	}
 	for _, tc := range []struct {
 		method, path string
