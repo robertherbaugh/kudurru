@@ -517,6 +517,105 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		awaitDNS(primary, name, "", dns.RcodeNameError)
 		awaitDNS(follower, name, "", dns.RcodeNameError)
 	}
+	// A file that does not fit between two of the follower's pulls is cut
+	// through the follower (D375, docs/deploy/sqlite-cluster.md): the pull that
+	// installs the request's first documents changes the follower's source, and
+	// every later document is refused with unavailable ("the follower's source
+	// changed"), is not applied and is not sent again. The documents before
+	// stay committed. The file grows until one is cut: a short one may fit
+	// between two pulls (five seconds by default).
+	followerApply := func(documents []any) (api.List[api.ApplyResult], time.Duration) {
+		t.Helper()
+		data, err := json.Marshal(documents)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+		defer cancel()
+		r, err := http.NewRequestWithContext(ctx, http.MethodPost, apiB.base+"/apply", strings.NewReader(string(data)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set("X-Kudurru-CSRF", apiB.csrf)
+		long := &http.Client{Jar: apiB.client.Jar, Transport: apiB.client.Transport, CheckRedirect: apiB.client.CheckRedirect}
+		began := time.Now()
+		response, err := long.Do(r)
+		if err != nil {
+			t.Fatalf("apply of %d documents through the follower: %v", len(documents), err)
+		}
+		defer func() { _ = response.Body.Close() }()
+		body, err := io.ReadAll(response.Body)
+		var applied api.List[api.ApplyResult]
+		if err != nil || response.StatusCode != http.StatusOK || json.Unmarshal(body, &applied) != nil {
+			t.Fatalf("apply of %d documents through the follower answered %d: %v %s", len(documents), response.StatusCode, err, body)
+		}
+		return applied, time.Since(began)
+	}
+	cut := false
+	for round, size := range []int{40, 160, 640} {
+		enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
+		awaitDNS(follower, "seed", "192.0.2.42", dns.RcodeSuccess)
+		var file []any
+		var names []string
+		for i := range size {
+			name := fmt.Sprintf("cut-%d-%03d", round, i)
+			file = append(file, recordDoc(name, fmt.Sprintf("198.51.100.%d", i%250+1)))
+			names = append(names, name)
+		}
+		applied, took := followerApply(file)
+		if len(applied.Items) != size {
+			t.Fatalf("apply of %d documents through the follower answered %d results", size, len(applied.Items))
+		}
+		committed := 0
+		for committed < size && applied.Items[committed].Result == api.ResultCreated {
+			committed++
+		}
+		t.Logf("apply of %d documents through the follower took %s: %d created before the first refusal", size, took, committed)
+		for i, item := range applied.Items[:committed] {
+			if item.ErrorKey != "" || item.Error != "" || item.ResourceVersion == "" {
+				t.Fatalf("document %d before the cut was not answered as committed: %+v", i, item)
+			}
+		}
+		if committed == size {
+			continue
+		}
+		cut = true
+		// The document at the cut may have been in flight when the pull
+		// landed, so its outcome may be unknown. Every later one was refused
+		// before it was sent.
+		if boundary := applied.Items[committed]; boundary.Result != api.ResultError || boundary.ResourceVersion != "" ||
+			boundary.ErrorKey != api.KeyUnavailable && boundary.ErrorKey != "completion_unknown" {
+			t.Fatalf("the first document after the committed ones is not an explicit failure: %+v", boundary)
+		}
+		for i := committed + 1; i < size; i++ {
+			item := applied.Items[i]
+			if item.Result != api.ResultError || item.ErrorKey != api.KeyUnavailable || item.ResourceVersion != "" || !strings.Contains(item.Error, "the follower's source changed") {
+				t.Fatalf("document %d of %d after the cut at %d was not refused as documented: %+v", i, size, committed, item)
+			}
+		}
+		if committed > 0 {
+			last := committed - 1
+			awaitDNS(primary, names[last], fmt.Sprintf("198.51.100.%d", last%250+1), dns.RcodeSuccess)
+			awaitDNS(follower, names[last], fmt.Sprintf("198.51.100.%d", last%250+1), dns.RcodeSuccess)
+		}
+		// The refused documents were neither applied nor replayed: the node
+		// answers the last committed one and still none of the refused ones.
+		enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
+		for _, i := range []int{committed + 1, size - 1} {
+			if i < size {
+				for _, node := range []*kudurrutest.Node{primary, follower} {
+					if !checkDNS(node, names[i], "", dns.RcodeNameError) {
+						t.Fatalf("document %d, refused after the cut at %d, was applied on %s", i, committed, node.Name)
+					}
+				}
+			}
+		}
+		break
+	}
+	if !cut {
+		t.Fatal("no apply through the follower outlasted one of its pulls, so the documented cut was never observed")
+	}
 	// A second session through the follower, signed out while partitioned.
 	partitionedJar, err := cookiejar.New(nil)
 	if err != nil {
