@@ -51,7 +51,7 @@ func (h *servingHTTP) forwardSignOut(w http.ResponseWriter, r *http.Request, ses
 		return false, nil
 	}
 	signOut := session == ""
-	clear := func(err error) error {
+	dropCookies := func(err error) error {
 		if signOut {
 			if clearErr := h.clearLogoutCookies(w, r); clearErr != nil {
 				return clearErr
@@ -60,11 +60,11 @@ func (h *servingHTTP) forwardSignOut(w http.ResponseWriter, r *http.Request, ses
 		return err
 	}
 	if err != nil {
-		return true, clear(memberLogoutNotSent(err, signOut))
+		return true, dropCookies(memberLogoutNotSent(err, signOut))
 	}
 	s := h.opts.Runtime
 	if s.memberForward == nil || s.opts.Config.Cluster.Role == "static" {
-		return true, clear(memberLogoutUnavailable(signOut, "sessions on this follower are ended by its enrolled primary"))
+		return true, dropCookies(memberLogoutUnavailable(signOut, "sessions on this follower are ended by its enrolled primary"))
 	}
 	ctx := r.Context()
 	if len(session) > 256 {
@@ -80,7 +80,7 @@ func (h *servingHTTP) forwardSignOut(w http.ResponseWriter, r *http.Request, ses
 	}
 	request, err := s.memberForward.Capture(ctx, token)
 	if err != nil {
-		return true, clear(memberLogoutNotSent(memberCaptureError(ctx, err), signOut))
+		return true, dropCookies(memberLogoutNotSent(memberCaptureError(ctx, err), signOut))
 	}
 	proof, err := clusterreplica.NewCredentialProof(raw)
 	if err != nil {
@@ -120,13 +120,13 @@ func (h *servingHTTP) forwardSignOut(w http.ResponseWriter, r *http.Request, ses
 		return nil
 	})
 	if err != nil {
-		return true, clear(memberLogoutError(err, sent, signOut))
+		return true, dropCookies(memberLogoutError(err, sent, signOut))
 	}
 	if refusal != nil {
 		// A credential that the primary no longer accepts is unusable once
 		// this node installs the primary's state; a sign-out still drops it.
 		if refusal.Status == http.StatusUnauthorized {
-			return true, clear(refusal)
+			return true, dropCookies(refusal)
 		}
 		return true, refusal
 	}
@@ -136,7 +136,7 @@ func (h *servingHTTP) forwardSignOut(w http.ResponseWriter, r *http.Request, ses
 	if s.member != nil {
 		_ = s.member.Pull(ctx)
 	}
-	return true, clear(nil)
+	return true, dropCookies(nil)
 }
 
 func memberLogoutUnavailable(signOut bool, message string) error {
