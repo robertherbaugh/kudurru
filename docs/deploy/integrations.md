@@ -116,18 +116,23 @@ declared object.
 
 The cleanup has these limits. It reads each configured zone as a sync does
 (at most 10,000 records per zone), and the store may hold at most 100,000
-ledger rows of all Integrations together. The history of an instance has no
-limit: every create, update and delete of a record set leaves one stored
-operation, nothing removes them while the Integration lives, and the cleanup
-forgets them in bounded steps however many there are. The last two steps, the
-local purge and the finalization, each read every row of the kinds they check
-in one transaction and stop at 200,000 rows of one kind in the store. The
-operations of every other Integration count toward that, and so do those a
-removed `Retain` Integration left behind. A store in which they add up to
-more than 200,000 record changes cannot finalize a `Delete` cleanup: the
-Integration stays `Terminating` with `CapacityExceeded` after its provider
-records are already deleted. Release it, which leaves its remaining local
-rows in the store.
+ledger rows of all Integrations together. Every create, update and delete of
+a record set leaves one stored operation, and nothing removes them while the
+Integration lives; the cleanup forgets them in bounded commits, a stored page
+at a time, so it never holds the whole history at once. A run that made
+progress ends before its 30-second bound would cut its next commit, and a
+commit that the bound cut without any progress is retried at half its size.
+
+What bounds the history is the SQLite store as a whole. Root's integration
+capture starts by reading one complete generation of the store, and that
+read refuses a store of more than 100,000 stored objects or 256 MiB of
+stored documents, all kinds together (the replication image limits). Past
+that, no Integration job gets a frame, cleanup included, and replication
+and the other whole-generation reads stop as well. Operation rows count
+toward it like every other object, so a store whose Integrations, including
+removed `Retain` Integrations, have stored close to 100,000 record changes
+is near the limit. The purge and the finalization have their own scan bound
+of 200,000 rows of one kind, which this store limit always reaches first.
 
 To release an Integration that is `Terminating`, review it and run the
 release command with the exact UID and revision you reviewed:

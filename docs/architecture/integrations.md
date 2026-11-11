@@ -378,9 +378,21 @@ flowchart TD
   met more than it admits, from which nothing was decided: more than 100,000
   ledger rows in the store or more than a sync admits per destination on the
   host side, and on the root side more than 200,000 stored rows of one kind
-  that the purge or the finalization scans in its transaction. The second
-  bound includes the operations of every other Integration, which ordinary
-  life never prunes; that is an open limit.
+  that the purge or the finalization scans in its transaction. That root
+  bound is not reached first: root's capture begins with
+  `ReadGeneration`, which refuses a store of more than 100,000 objects or
+  256 MiB of documents of all kinds (the replication image defaults), and
+  then no integration job gets a frame. Operations, which ordinary life
+  never prunes, count toward that store limit; it is the open limit on an
+  instance's history.
+- **Long histories.** Operations leave in bounded commits: a ledger row with
+  the first of its record's operations, at most
+  `ledger.MaxForgetOperations` (1,024), the rest a stored page at a time once
+  no ledger row is left. A run that already made progress yields before its
+  next commit once less of its bound is left than one and a half times the
+  last commit took (or an eighth of the bound), and a run that its bound cut
+  inside a commit without any progress halves the commit size for the rest
+  of the lease instead of being reported as a provider failure.
 - **Purge.** `integrationRuntime.purge` removes, in one SQLite command, the
   record sets and zones the instance's source owns (each must still be the
   UID and resource version of the captured cut), its source head and chunks,

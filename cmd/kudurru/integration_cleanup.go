@@ -18,7 +18,11 @@ import (
 )
 
 // integrationScanLimit bounds one kind scan of a terminating command. The
-// largest private kind is capped far below it (50,000 name allocations).
+// largest private kind is capped far below it (50,000 name allocations), and
+// a store of more than 100,000 objects of all kinds already fails root's
+// capture (ReadGeneration and the replication image limits), so no
+// terminating command of a frame reaches this bound first. It stays as the
+// command's own bound, independent of those limits.
 const integrationScanLimit = 200000
 
 // integrationScan visits every stored object of one kind inside a command,
