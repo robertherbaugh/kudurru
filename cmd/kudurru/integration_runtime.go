@@ -174,7 +174,7 @@ func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {
 	needsSources := false
 	for _, i := range instances {
 		definition := i.Definition()
-		needsSources = needsSources || definition.Spec.Cloudflare != nil && !definition.Spec.Suspend && definition.DeletionTimestamp.IsZero()
+		needsSources = needsSources || integrationPublishes(definition) && !definition.Spec.Suspend && definition.DeletionTimestamp.IsZero()
 	}
 	var primary *pr.PreparedImage
 	if needsSources {
@@ -266,7 +266,9 @@ func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {
 			}
 			raw, _ := json.Marshal(dependencies)
 			in.ReconcileDigests[i.Owner()] = kinds.Digest(raw)
-		} else {
+		} else if integrationPublishes(i.Definition()) {
+			// Only a publisher selects sources; a webhook instance without
+			// domains is not woken or fenced by record changes (D380).
 			dependencies = append(dependencies, in.Sources)
 		}
 		raw, err := json.Marshal(struct {
@@ -503,6 +505,14 @@ func (r *integrationRuntime) command(ctx context.Context, g ih.ExecutionGuard, f
 	})
 }
 
+// integrationPublishes reports whether an Integration publishes records:
+// Cloudflare always, a webhook when it names domains (D380). Only a
+// publisher selects sources, pins them in its effects and syncs under a
+// reviewed preview digest.
+func integrationPublishes(d *public.Integration) bool {
+	return d.Spec.Cloudflare != nil || d.Spec.Webhook != nil && len(d.Spec.Webhook.Domains) > 0
+}
+
 // integrationInputsCurrent compares desired objects in the actual transaction
 // to retained original versions. A private budget/receipt write changes no
 // reviewed input and never supplies a successor frame or credential. The
@@ -520,7 +530,7 @@ func integrationInputsCurrent(ctx context.Context, tx *sqlite.CommandTx, c *inte
 	}
 	// A terminating instance selects no sources; only a live publisher pins them.
 	var selected []plan.Source
-	if g.Mode == ih.GuardNormal && c.instances[g.Ledger.Owner].Definition().Spec.Cloudflare != nil {
+	if g.Mode == ih.GuardNormal && integrationPublishes(c.instances[g.Ledger.Owner].Definition()) {
 		selected = c.input.Sources
 	}
 	for _, source := range selected {

@@ -183,7 +183,7 @@ func (r *integrationRuntime) IntegrationExecute(ctx context.Context, in api.Inte
 			out.Preview, err = integrationPublicPreview(preview)
 		}
 	case "sync":
-		publisher := op.cut.instances[owner].Definition().Spec.Cloudflare != nil
+		publisher := integrationPublishes(op.cut.instances[owner].Definition())
 		if publisher && (in.Review.Mode != "publish" || !kinds.ValidDigest(in.Review.PreviewDigest)) || !publisher && (in.Review.Mode != "observe" || in.Review.PreviewDigest != "") {
 			return nil, integrationAdminError(ih.ErrInvalid)
 		}
