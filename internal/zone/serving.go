@@ -1,8 +1,12 @@
 package zone
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
+
+	"github.com/miekg/dns"
 
 	"k8s.io/apimachinery/pkg/util/validation/field"
 
@@ -63,8 +67,9 @@ func BuildNonprimary(config *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet, no
 // ServingErrors reports why a complete serving image cannot carry dz, as
 // field errors of the object: a zone type no release serves, a zone name
 // that is not an absolute DNS name, a policy (query, transfer or notify)
-// that does not compile, or an update mode of a primary zone that the
-// primary runtime does not compile (only deny and allow). It is empty exactly when the image accepts the
+// that does not compile, or an update mode or update policy of a primary
+// zone that the primary runtime does not compile (only deny and allow, and
+// grants it can compile). It is empty exactly when the image accepts the
 // configuration: the name rule of its decoder, then its model builders,
 // BuildCommittedUnavailable for a primary zone and BuildNonprimary for the
 // others.
@@ -131,11 +136,80 @@ var servedUpdateModes = []v1alpha1.AccessMode{v1alpha1.AccessDeny, v1alpha1.Acce
 
 func updateModeErrors(dz *v1alpha1.DNSZone) field.ErrorList {
 	mode := dz.Spec.Policy.Update
-	if mode == "" || mode == v1alpha1.AccessDeny || mode == v1alpha1.AccessAllow {
+	if mode != "" && mode != v1alpha1.AccessDeny && mode != v1alpha1.AccessAllow {
+		return field.ErrorList{field.NotSupported(field.NewPath("spec", "policy", "update"), mode, servedUpdateModes)}
+	}
+	return updatePolicyErrors(dz)
+}
+
+// updatePolicyErrors refuses the spec.policy.updatePolicies entries the
+// primary runtime cannot compile, whatever the update mode: it compiles
+// every entry, also of a zone that denies updates, and a zone whose policy
+// does not compile is never committed or served (D373). The rules are
+// those of the runtime (dynamicupdate.PreflightGrantSpecs and
+// CompileGrantSpec): a key name that is not a name, an owner outside the
+// zone or with a "*" other than a leading "*.", a type an update cannot
+// carry, and the count and length bounds. The workspace bound of a zone
+// that allows updates is checked as if every key were in the keyring, so
+// adding a TSIG key later cannot make a stored policy fail.
+func updatePolicyErrors(dz *v1alpha1.DNSZone) field.ErrorList {
+	entries := dz.Spec.Policy.UpdatePolicies
+	if len(entries) == 0 {
 		return nil
 	}
-	return field.ErrorList{field.NotSupported(field.NewPath("spec", "policy", "update"), mode, servedUpdateModes)}
+	path := field.NewPath("spec", "policy", "updatePolicies")
+	refuse := func(e *dynamicupdate.GrantSpecError) field.ErrorList {
+		p := path
+		if e.Index >= 0 {
+			p = path.Index(e.Index).Child(e.Field)
+		}
+		return field.ErrorList{field.Invalid(p, e.Value, e.Detail)}
+	}
+	apex, err := dynamicupdate.CanonicalName(dz.Spec.ZoneName)
+	if err != nil {
+		return nil // reported as spec.zoneName
+	}
+	specs := make([]dynamicupdate.GrantSpec, len(entries))
+	for i, g := range entries {
+		specs[i] = dynamicupdate.GrantSpec{KeyRef: g.TSIGKeyRef, Name: g.Name, Types: g.Types}
+	}
+	if e := dynamicupdate.PreflightGrantSpecs(specs, dynamicupdate.MaxPolicyBytes); e != nil {
+		return refuse(e)
+	}
+	credentials := map[string]dynamicupdate.Credential{}
+	grants := map[string]dynamicupdate.Grant{}
+	version := strings.Repeat("v", dynamicupdate.MaxIdentityBytes)
+	for i, spec := range specs {
+		grant, e := dynamicupdate.CompileGrantSpec(apex, i, spec, tsigKeyName)
+		if e != nil {
+			return refuse(e)
+		}
+		credentials[grant.Key] = dynamicupdate.Credential{Key: grant.Key, Version: version}
+		encoded, _ := json.Marshal(grant)
+		grants[string(encoded)] = grant
+	}
+	if dz.Spec.Policy.Update != v1alpha1.AccessAllow {
+		// A zone that denies updates compiles no grant into its policy.
+		return nil
+	}
+	var cs []dynamicupdate.Credential
+	for _, c := range credentials {
+		cs = append(cs, c)
+	}
+	var gs []dynamicupdate.Grant
+	for _, g := range grants {
+		gs = append(gs, g)
+	}
+	if _, err := dynamicupdate.PolicyAllocation(cs, gs, nil, dynamicupdate.MaxPolicyBytes); err != nil {
+		return field.ErrorList{field.Invalid(path, len(entries), fmt.Sprintf("the policy needs more than its %d-byte workspace", dynamicupdate.MaxPolicyBytes))}
+	}
+	return nil
 }
+
+// tsigKeyName is the TSIG keyring's normalization of a key name
+// (dnsserver.TSIGKeyName, which this package cannot import); a test of the
+// primary runtime's policy compiler keeps the two equal.
+func tsigKeyName(name string) string { return dns.CanonicalName(strings.TrimSpace(name)) }
 
 // appendNew appends the errors of more that errs does not hold yet.
 func appendNew(errs, more field.ErrorList) field.ErrorList {

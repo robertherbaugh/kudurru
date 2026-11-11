@@ -86,6 +86,18 @@ func TestApplyRefusesZonesTheImageCannotCarry(t *testing.T) {
 		"zone name of another DNSZone": {zone: zone("home-again", "HOME.example."), field: "spec.zoneName",
 			say: `Duplicate value: "HOME.example.": the zone is also configured by DNSZone "home"`},
 		"zone name of a forward zone": {zone: zone("corp-again", "corp.example."), field: "spec.zoneName", say: `DNSZone "corp"`},
+		"update grant outside the zone of a zone that denies updates": {zone: func() *v1alpha1.DNSZone {
+			z := zone("grant", "grant.example.")
+			z.Spec.Policy.Update = v1alpha1.AccessDeny
+			z.Spec.Policy.UpdatePolicies = []v1alpha1.UpdatePolicy{{TSIGKeyRef: "ddns", Name: "host.elsewhere.example."}}
+			return z
+		}(), field: "spec.policy.updatePolicies[0].name", say: "at or below the zone grant.example."},
+		"update grant of an unknown type": {zone: func() *v1alpha1.DNSZone {
+			z := zone("grant", "grant.example.")
+			z.Spec.Policy.Update = v1alpha1.AccessAllow
+			z.Spec.Policy.UpdatePolicies = []v1alpha1.UpdatePolicy{{TSIGKeyRef: "ddns", Name: "*.grant.example.", Types: []string{"A", "BOGUS"}}}
+			return z
+		}(), field: "spec.policy.updatePolicies[0].types", say: `"BOGUS"`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := s.Apply(ctx, tc.zone, store.ApplyOptions{Manager: store.ManagerAPI})
@@ -301,6 +313,14 @@ func legacyUpgradeDB(t *testing.T) (*sql.DB, string, []string) {
 	// spec.policy.update was a placeholder in 0.1.0 with every access mode.
 	updateACL := zone("update-acl", "update-acl.example.")
 	updateACL.Spec.Policy.Update = v1alpha1.AccessUseNetworkACL
+	// So were spec.policy.updatePolicies: a grant outside the zone, also of
+	// a zone that denies updates, and a type that does not exist.
+	grantOutside := zone("grant-outside", "grant.example.")
+	grantOutside.Spec.Policy.Update = v1alpha1.AccessDeny
+	grantOutside.Spec.Policy.UpdatePolicies = []v1alpha1.UpdatePolicy{{TSIGKeyRef: "ddns", Name: "host.elsewhere.example."}}
+	grantType := zone("grant-type", "grant-type.example.")
+	grantType.Spec.Policy.Update = v1alpha1.AccessAllow
+	grantType.Spec.Policy.UpdatePolicies = []v1alpha1.UpdatePolicy{{TSIGKeyRef: "ddns", Name: "grant-type.example.", Types: []string{"BOGUS"}}}
 	for i, obj := range []store.Object{
 		zone("home", "home.example."),
 		clientGroup("default", "lan"),
@@ -313,11 +333,13 @@ func legacyUpgradeDB(t *testing.T) (*sql.DB, string, []string) {
 		zone("home-again", "HOME.example."),
 		badACL,
 		updateACL,
+		grantOutside,
+		grantType,
 		policy,
 	} {
 		insertLegacyCredential(t, db, stamp(obj), i+1)
 	}
-	refused := []string{"DNSZone/acl", "DNSZone/catalog", "DNSZone/external", "DNSZone/home", "DNSZone/home-again", "DNSZone/secondary",
+	refused := []string{"DNSZone/acl", "DNSZone/catalog", "DNSZone/external", "DNSZone/grant-outside", "DNSZone/grant-type", "DNSZone/home", "DNSZone/home-again", "DNSZone/secondary",
 		"DNSZone/secondary-empty", "DNSZone/stub", "DNSZone/update-acl", "Policy/default/default"}
 	return db, path, refused
 }
@@ -401,6 +423,8 @@ func TestUpgradeLegacyPlaceholderObjectsAreRefused(t *testing.T) {
 		"DNSZone/home-again":      `spec.zoneName: Duplicate value: "HOME.example.": the zone is also configured by DNSZone "home"`,
 		"DNSZone/acl":             `spec.policy.queryACL[0]: Invalid value: "not-a-network"`,
 		"DNSZone/update-acl":      `spec.policy.update: Unsupported value: "useNetworkACL": supported values: "deny", "allow"`,
+		"DNSZone/grant-outside":   `spec.policy.updatePolicies[0].name: Invalid value: "host.elsewhere.example.": must be an absolute name or a *. wildcard at or below the zone grant.example.`,
+		"DNSZone/grant-type":      `spec.policy.updatePolicies[0].types: Invalid value: "BOGUS"`,
 		"Policy/default/default":  "spec.rewrites[0]: Invalid value: provide either a CNAME or targets, not both",
 	} {
 		if !strings.Contains(reasons[key], want) {
@@ -409,7 +433,7 @@ func TestUpgradeLegacyPlaceholderObjectsAreRefused(t *testing.T) {
 	}
 	msg := err.Error()
 	for _, want := range []string{
-		fmt.Sprintf("state.db (schema 1) cannot be upgraded to schema %d: 10 stored objects are not valid in this release:", store.SchemaVersion),
+		fmt.Sprintf("state.db (schema 1) cannot be upgraded to schema %d: 12 stored objects are not valid in this release:", store.SchemaVersion),
 		"\n  DNSZone stub: spec: Invalid value: stub zones require nameserver configuration",
 		"\n  Policy default/default: spec.rewrites[0]:",
 		"\nstate.db was not changed",
@@ -449,6 +473,7 @@ func TestUpgradeLegacyPlaceholderObjectsAreRefused(t *testing.T) {
 		`UPDATE objects SET data = json_remove(data, '$.spec.policy.queryACL', '$.spec.policy.queryAccess') WHERE kind = 'DNSZone' AND name = 'acl'`,
 		`UPDATE objects SET data = json_remove(data, '$.spec.rewrites') WHERE kind = 'Policy'`,
 		`UPDATE objects SET data = json_set(data, '$.spec.policy.update', 'deny') WHERE kind = 'DNSZone' AND name = 'update-acl'`,
+		`UPDATE objects SET data = json_remove(data, '$.spec.policy.updatePolicies') WHERE kind = 'DNSZone' AND name IN ('grant-outside', 'grant-type')`,
 	} {
 		if _, err := raw.Exec(stmt); err != nil {
 			t.Fatal(err)

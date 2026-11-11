@@ -4,10 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
-	"strconv"
-	"strings"
 
-	"github.com/miekg/dns"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/dynamicupdate"
@@ -16,7 +13,7 @@ import (
 )
 
 // Policy workspace has an independent finite ceiling even with larger RR data.
-const maxPolicyBytes int64 = 4 << 20
+const maxPolicyBytes = dynamicupdate.MaxPolicyBytes
 
 func (o *Owner) policyBudget() int64 { return min(maxPolicyBytes, o.options.Limits.MaxAggregateBytes) }
 
@@ -48,65 +45,30 @@ func compilePolicy(ctx context.Context, keys *dnsserver.StaticKeyring, z *public
 	if z.Spec.Policy.Update != "" && z.Spec.Policy.Update != public.AccessDeny && z.Spec.Policy.Update != public.AccessAllow {
 		return nil, pr.ErrUnavailable
 	}
-	if err := preflight(z.Spec.Policy.UpdatePolicies, budget); err != nil {
-		return nil, err
+	specs := GrantSpecs(z.Spec.Policy.UpdatePolicies)
+	if err := dynamicupdate.PreflightGrantSpecs(specs, budget); err != nil {
+		return nil, pr.ErrCapacity
 	}
 	policy := &zonestate.Policy{Enabled: z.Spec.Policy.Update == public.AccessAllow, AuthEpoch: 1}
 	credentials := map[string]dynamicupdate.Credential{}
 	grants := map[string]dynamicupdate.Grant{}
-	for _, raw := range z.Spec.Policy.UpdatePolicies {
+	for i, spec := range specs {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		key, err := dynamicupdate.CanonicalName(dnsserver.TSIGKeyName(raw.TSIGKeyRef))
-		if err != nil || key == "." || raw.TSIGKeyRef == "" {
+		// zone.ServingErrors refuses to store a zone whose entries do not
+		// compile here: both use dynamicupdate.CompileGrantSpec (D373).
+		grant, bad := dynamicupdate.CompileGrantSpec(apex, i, spec, dnsserver.TSIGKeyName)
+		if bad != nil {
 			return nil, pr.ErrInvalid
 		}
-		owner := raw.Name
-		wild := strings.HasPrefix(owner, "*.")
-		if wild {
-			owner = strings.TrimPrefix(owner, "*.")
-		}
-		owner, err = dynamicupdate.CanonicalName(owner)
-		if err != nil || strings.Contains(owner, "*") || !dns.IsSubDomain(apex, owner) {
-			return nil, pr.ErrInvalid
-		}
-		if wild {
-			owner = "*." + owner
-		}
-		var types []uint16
-		anyType := false
-		for _, name := range raw.Types {
-			typ, err := grantType(name)
-			if err != nil {
-				return nil, err
-			}
-			if typ == dns.TypeANY {
-				anyType = true
-			} else {
-				types = append(types, typ)
-			}
-		}
-		if anyType {
-			types = nil
-		} else {
-			sort.Slice(types, func(i, j int) bool { return types[i] < types[j] })
-			n := 0
-			for _, typ := range types {
-				if n == 0 || types[n-1] != typ {
-					types[n] = typ
-					n++
-				}
-			}
-			types = types[:n]
-		}
+		key := grant.Key
 		// Validate even disabled/missing-key grants before withholding them.
 		identity, found := keys.Identity(key)
 		if !policy.Enabled || !found {
 			continue
 		}
 		credentials[key] = dynamicupdate.Credential{Key: key, Version: identity.CredentialVersion}
-		grant := dynamicupdate.Grant{Key: key, Owner: owner, Types: types}
 		encoded, _ := json.Marshal(grant)
 		grants[string(encoded)] = grant
 	}
@@ -136,48 +98,14 @@ func compilePolicy(ctx context.Context, keys *dnsserver.StaticKeyring, z *public
 	return policy, nil
 }
 
-func preflight(grants []public.UpdatePolicy, budget int64) error {
-	if len(grants) > dynamicupdate.MaxPolicyEntries {
-		return pr.ErrCapacity
+// GrantSpecs is the configured update policy of a zone in the form
+// dynamicupdate compiles.
+func GrantSpecs(policies []public.UpdatePolicy) []dynamicupdate.GrantSpec {
+	out := make([]dynamicupdate.GrantSpec, len(policies))
+	for i, g := range policies {
+		out[i] = dynamicupdate.GrantSpec{KeyRef: g.TSIGKeyRef, Name: g.Name, Types: g.Types}
 	}
-	left, typesLeft := budget, dynamicupdate.MaxTotalGrantTypes
-	charge := func(n int64) bool {
-		if n > left {
-			return false
-		}
-		left -= n
-		return true
-	}
-	for _, g := range grants {
-		if len(g.TSIGKeyRef) > dynamicupdate.MaxNameBytes || len(g.Name) > dynamicupdate.MaxNameBytes+2 || len(g.Types) > typesLeft {
-			return pr.ErrCapacity
-		}
-		typesLeft -= len(g.Types)
-		if !charge(256 + int64(len(g.TSIGKeyRef))*4 + int64(len(g.Name))*4 + int64(len(g.Types))*32) {
-			return pr.ErrCapacity
-		}
-		for _, typ := range g.Types {
-			if len(typ) > 16 || !charge(int64(len(typ))) {
-				return pr.ErrCapacity
-			}
-		}
-	}
-	return nil
-}
-
-func grantType(name string) (uint16, error) {
-	name = strings.ToUpper(name)
-	typ, ok := dns.StringToType[name]
-	if !ok && strings.HasPrefix(name, "TYPE") {
-		n, err := strconv.ParseUint(strings.TrimPrefix(name, "TYPE"), 10, 16)
-		if err == nil {
-			typ, ok = uint16(n), true
-		}
-	}
-	if !ok || (typ != dns.TypeANY && (typ == 0 || typ == 65535 || typ == dns.TypeOPT || (typ >= dns.TypeTKEY && typ <= dns.TypeANY))) {
-		return 0, pr.ErrInvalid
-	}
-	return typ, nil
+	return out
 }
 
 func (o *Owner) checkPolicy(ctx context.Context, keys *dnsserver.StaticKeyring, z *public.DNSZone, observed zonestate.Policy) error {
