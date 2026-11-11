@@ -227,8 +227,11 @@ destination that is stalled or unreachable at that moment therefore holds the
 process for the rest of that deadline, and no longer. Its sink loses what it
 had not written and is named in the warning `additional query-log sink did
 not drain`, with the number of events still queued. The warning `query log
-flush incomplete` is about the collector and `querylog.db` only. A sink that
-ignores cancellation keeps its goroutine and is never closed under its own
+flush incomplete` is about the collector and `querylog.db` only. When the
+collector itself does not flush in time, the deadline has already passed when
+the sinks are stopped, so they are not named one by one: one warning,
+`additional query-log sinks stopped because the query log did not flush`,
+lists every sink that was running. A sink that ignores cancellation keeps its goroutine and is never closed under its own
 write.
 
 The settings schema accepts exactly the types the server can build:

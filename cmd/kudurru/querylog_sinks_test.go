@@ -753,3 +753,121 @@ func TestQuerylogRuntimeSinksLegacyReload(t *testing.T) {
 	unstall()
 	wait("the released sink to close", func() bool { _, closes, _ := stalled.counts(); return closes == 1 })
 }
+
+// heldPrimarySink is a primary sink whose writes wait until release closes.
+type heldPrimarySink struct {
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s *heldPrimarySink) Name() string { return "held" }
+func (s *heldPrimarySink) Open(context.Context, json.RawMessage, prometheus.Registerer) error {
+	return nil
+}
+func (s *heldPrimarySink) Write([]*querylog.Event) error {
+	select {
+	case s.entered <- struct{}{}:
+	default:
+	}
+	<-s.release
+	return nil
+}
+func (s *heldPrimarySink) Flush(context.Context) error { return nil }
+func (s *heldPrimarySink) Close() error                { return nil }
+
+// TestQuerylogRuntimeCloseWithoutCollectorFlushReportsSinksOnce: when the
+// collector itself cannot flush within the shutdown bound, the additional
+// sinks are stopped with a bound that has already ended. Whether an idle
+// sink still finishes in that instant is a race, so it must not be reported
+// on its own as "did not drain" (a healthy sink with nothing queued would be
+// named as often as not). Exactly one line names every sink and says that
+// they were stopped because the query log did not flush, and close returns
+// the collector's error for the caller's "query log flush incomplete".
+func TestQuerylogRuntimeCloseWithoutCollectorFlushReportsSinksOnce(t *testing.T) {
+	cfg, err := config.Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Node.DataDir = t.TempDir()
+	cfg.Querylog.Exclude.SUDN = false
+	cfg.Querylog.Sinks = []config.QuerylogSink{
+		{Name: "lines-a", Type: config.QuerylogSinkSlog, BatchSize: 1},
+		{Name: "lines-b", Type: config.QuerylogSinkSlog, BatchSize: 1},
+	}
+	logs := &syncBuffer{}
+	logger := slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	r, err := newQuerylogRuntime(t.Context(), cfg, prometheus.NewRegistry(), logger, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := &heldPrimarySink{entered: make(chan struct{}, 1), release: make(chan struct{})}
+	released := false
+	release := func() {
+		if !released {
+			released = true
+			close(held.release)
+		}
+	}
+	t.Cleanup(func() {
+		release()
+		_ = r.close(context.Background())
+	})
+	// The route of the running node with a primary sink that holds the
+	// collector in its write, and the same two additional sinks.
+	specs, err := querylog.SinkSpecsFrom(cfg.Querylog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set, err := r.sinks.Prepare(specs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	route := r.async.PrepareCapturedSinks(held, nil, true, 1, r.current.Load(), set)
+	if !r.async.AdoptCaptured(route) {
+		t.Fatal("route not adopted")
+	}
+	t.Cleanup(route.Release)
+	enqueue := func(name string) {
+		t.Helper()
+		if !r.async.Enqueue(&querylog.Event{Time: time.Now(), Name: name, Client: netip.MustParseAddr("192.0.2.9"), QType: dns.TypeA, QClass: dns.ClassINET}) {
+			t.Fatal("collector refused", name)
+		}
+	}
+	enqueue("first.example.")
+	select {
+	case <-held.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the collector did not reach the primary write")
+	}
+	// The first query reached both sinks before the primary write; wait
+	// until they have written it, so that both are idle with nothing queued.
+	deadline := time.Now().Add(10 * time.Second)
+	for len(logRecords(t, logs, "query")) < 2 {
+		if time.Now().After(deadline) {
+			t.Fatalf("the additional sinks did not write the first query:\n%s", logs.String())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	enqueue("second.example.") // waits in the collector's queue
+
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	if err := r.close(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("close with a collector held in its write: %v, want the bound's error", err)
+	}
+	if undrained := logRecords(t, logs, "additional query-log sink did not drain"); len(undrained) != 0 {
+		t.Errorf("idle sinks were reported one by one as not drained: %v", undrained)
+	}
+	stopped := logRecords(t, logs, "additional query-log sinks stopped because the query log did not flush")
+	if len(stopped) != 1 {
+		t.Fatalf("%d lines about the stopped sinks, want exactly one:\n%s", len(stopped), logs.String())
+	}
+	rec := stopped[0]
+	if names, _ := rec["sinks"].([]any); rec["level"] != "WARN" || !reflect.DeepEqual(names, []any{"lines-a", "lines-b"}) || rec["queued"] != float64(0) {
+		t.Errorf("stopped sinks line: %v", rec)
+	}
+	if strings.Contains(logs.String(), `"msg":"additional query-log sinks did not stop"`) {
+		t.Errorf("the sink host refused to stop:\n%s", logs.String())
+	}
+	release()
+}

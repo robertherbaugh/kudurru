@@ -524,6 +524,10 @@ The series of a sink disappear when it is removed from the settings.
   sink loses what it still held, and the server names it in the warning
   `additional query-log sink did not drain` with the number of queries that
   were waiting. The warning `query log flush incomplete` is about the local
-  query log only.
+  query log only. When the local query log itself did not flush in time,
+  that warning comes with a single
+  `additional query-log sinks stopped because the query log did not flush`
+  that lists every sink: they were stopped, not drained, and lose what they
+  still held.
 
 How this is built: [the query log pipeline](../architecture/observability.md#additional-sinks).

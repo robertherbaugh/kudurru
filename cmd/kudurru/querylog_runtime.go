@@ -296,12 +296,14 @@ func (r *querylogRuntime) Purge(ctx context.Context, before time.Time) (int64, e
 // close flushes the collector and closes the local database. Its error is
 // about those two only: the caller reports it as an incomplete local flush.
 // The additional sinks stop within the same bound, and the ones that did
-// not drain are reported on their own (closeSinks).
+// not drain are reported on their own (closeSinks), or together when the
+// collector did not flush (stopSinks).
 func (r *querylogRuntime) close(ctx context.Context) error {
 	if err := r.async.Close(ctx); err != nil {
 		// Never close or reuse a writer while its batch is pending. The
-		// additional sinks still stop within the same bound.
-		r.closeSinks(ctx)
+		// additional sinks still stop within the same bound, which has
+		// already ended: they are stopped, not drained.
+		r.stopSinks(ctx)
 		return err
 	}
 	// The collector has offered everything it accepted, so the database has
@@ -319,6 +321,38 @@ func (r *querylogRuntime) close(ctx context.Context) error {
 	}
 	<-sinks
 	return err
+}
+
+// stopSinks stops the additional sinks after the collector failed to flush
+// within ctx, which has therefore ended. Whether a sink still finishes its
+// last write in that instant is a race, so the sinks are not reported one
+// by one as undrained (an idle sink would be named as often as not): when
+// any sink was running, one line names them all and says that they were
+// stopped with the collector's incomplete flush, which the caller reports
+// as the local loss. queued counts what the sinks that had not finished
+// still held.
+func (r *querylogRuntime) stopSinks(ctx context.Context) {
+	running := r.sinks.Status()
+	err := r.sinks.Close(ctx)
+	var undrained *querylog.SinkDrainError
+	if err != nil && !errors.As(err, &undrained) {
+		r.logger.Warn("additional query-log sinks did not stop", "err", err)
+		return
+	}
+	if len(running) == 0 {
+		return
+	}
+	names := make([]string, len(running))
+	for i, st := range running {
+		names[i] = st.Name
+	}
+	queued := 0
+	if undrained != nil {
+		for _, st := range undrained.Sinks {
+			queued += st.Queued
+		}
+	}
+	r.logger.Warn("additional query-log sinks stopped because the query log did not flush", "sinks", names, "queued", queued, "err", ctx.Err())
 }
 
 // closeSinks stops the additional sinks within ctx. A destination that is
