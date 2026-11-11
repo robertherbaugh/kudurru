@@ -27,9 +27,8 @@ The wizard creates primary, forward, secondary and stub zones. Catalog zones
 are reserved for a later release.
 
 The schema also has the types `external`, `catalog` and `secondaryCatalog`,
-which kudurru does not serve. On a node with the SQLite store the API refuses
-such a zone from a file or a request with `invalid` and names `spec.type`;
-nothing is stored.
+which kudurru does not serve. On the SQLite store the API refuses such a
+zone with `invalid` and names `spec.type`. Nothing is stored.
 
 ### See the zones
 
