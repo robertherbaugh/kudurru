@@ -7,7 +7,7 @@ today's code at an old schema number.
 
 | File | Contents |
 |---|---|
-| `state.db.gz` | An ordinary installation: the first-boot defaults, a zone and record set from an objects directory, a zone, records, a forward zone, a block list and a client group created through the API, the default policy, personal allow and deny entries, the first-boot admin, three API tokens (break-glass, personal, bootstrap) and the audit trail of all of it. |
+| `state.db.gz` | An ordinary installation: the first-boot defaults, a zone and record set from an objects directory, a zone, records, a forward zone, a block list and a client group created through the API, a record set with endpoints the zone cannot hold (an apex CNAME, an apex NS, a CNAME next to an A record) next to one it serves, a block list whose URL was never fetched (0.1.0 published the failure on it), the default policy, personal allow and deny entries, the first-boot admin, three API tokens (break-glass, personal, bootstrap) and the audit trail of all of it. |
 | `state-legacy.db.gz` | The same recipe plus what 0.1.0 accepted and 0.2.0 cannot serve: a secondary and a stub zone without their configuration, an `external` zone, a second DNSZone for the zone name `api.test.` and a policy rewrite that has only a name. |
 
 They are opened by `TestOpenReleasedV01Golden` and

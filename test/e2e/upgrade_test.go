@@ -457,7 +457,9 @@ func writeV01Directory(t *testing.T, name string, legacy bool) (*v01Directory, *
 		},
 	}), http.StatusCreated)
 	// A block list whose URL never downloaded: 0.1.0 stored it, reported
-	// the failed fetch on it and served it empty.
+	// the failed fetch on it and served it empty. The server answers 404;
+	// with the default blocking.allowLocalListURLs both releases refuse the
+	// loopback URL before they ask it, which is the same published failure.
 	deadList := httptest.NewServer(http.NotFoundHandler())
 	t.Cleanup(deadList.Close)
 	api.must(t, http.MethodPost, "/objects/blocklists", object("BlockList", "dead-url", "default", map[string]any{
@@ -1096,9 +1098,9 @@ func bumpSchema(t *testing.T, path string, delta int) {
 }
 
 // databaseSums is the SHA-256 of each database file and of its write-ahead
-// log, when there is one, for before and after comparisons of a start that
-// must not write. The shared-memory index is left out: opening a database
-// in WAL mode may create it without changing any data.
+// log, when that holds frames, for before and after comparisons of a start
+// that must not write. An empty log and the shared-memory index are left
+// out: opening a database in WAL mode creates them without changing data.
 func databaseSums(t *testing.T, paths ...string) map[string]string {
 	t.Helper()
 	sums := map[string]string{}
@@ -1110,6 +1112,9 @@ func databaseSums(t *testing.T, paths ...string) map[string]string {
 			}
 			if err != nil {
 				t.Fatal(err)
+			}
+			if file != path && len(b) == 0 {
+				continue
 			}
 			sum := sha256.Sum256(b)
 			sums[filepath.Base(file)] = hex.EncodeToString(sum[:])

@@ -115,7 +115,7 @@ func TestOpenReleasedV01Golden(t *testing.T) {
 		t.Fatal(err)
 	}
 	// What the fixture must contain to be worth opening.
-	for _, want := range []string{"APIToken 3", "BlockList 4", "ClientGroup 2", "DNSRecordSet 3", "DNSZone 4", "LocalUser 1", "Policy 1", "ServiceAccount 2"} {
+	for _, want := range []string{"APIToken 3", "BlockList 5", "ClientGroup 2", "DNSRecordSet 4", "DNSZone 4", "LocalUser 1", "Policy 1", "ServiceAccount 2"} {
 		if !slices.Contains(kinds, want) {
 			t.Fatalf("the golden file holds %v, want %q among them", kinds, want)
 		}
@@ -169,6 +169,18 @@ func TestOpenReleasedV01Golden(t *testing.T) {
 	var starter v1alpha1.BlockList
 	if err := s.Get(ctx, store.Key{Kind: "BlockList", Namespace: "default", Name: "starter"}, &starter); err != nil || starter.Spec.RefreshInterval.Duration != 24*time.Hour || len(starter.Spec.Sources) == 0 {
 		t.Fatalf("BlockList starter: refreshInterval %s, %d sources, %v", starter.Spec.RefreshInterval.Duration, len(starter.Spec.Sources), err)
+	}
+	// What 0.1.0 stored and served around stays as it was: a block list
+	// whose URL was never fetched, with the failure 0.1.0 published, and a
+	// record set with endpoints the zone cannot hold (D373). The builders
+	// of this release leave those parts out instead of failing the image.
+	var dead v1alpha1.BlockList
+	if err := s.Get(ctx, store.Key{Kind: "BlockList", Namespace: "default", Name: "dead-url"}, &dead); err != nil || len(dead.Status.Sources) != 1 || dead.Status.Sources[0].Digest != "" || dead.Status.Sources[0].Error == "" {
+		t.Fatalf("BlockList dead-url: %+v %v", dead.Status.Sources, err)
+	}
+	var refused v1alpha1.DNSRecordSet
+	if err := s.Get(ctx, store.Key{Kind: "DNSRecordSet", Namespace: "default", Name: "refused-endpoints"}, &refused); err != nil || len(refused.Spec.Endpoints) != 4 {
+		t.Fatalf("DNSRecordSet refused-endpoints: %d endpoints, %v", len(refused.Spec.Endpoints), err)
 	}
 	// Accounts and tokens: the kinds of this release, the same names.
 	after := upgraded(`SELECT kind, count(*) FROM objects GROUP BY kind ORDER BY kind`)
