@@ -159,6 +159,13 @@ or automatic retries.`,
 				if err != nil {
 					return loginStageError("configure login transport", err)
 				}
+				// An enrolled follower forwards the password login but does not
+				// mint the CLI token, so the login would only leave a session on
+				// the primary. Refuse before sending the proof. A status that
+				// cannot be read decides nothing: the login stages answer then.
+				if status, err := c.Status(cmd.Context()); err == nil && status.Role == "follower" {
+					return followerLoginRefusal()
+				}
 				if totpPrompt || totpStdin {
 					_, err = c.LoginWithTOTP(cmd.Context(), username, pw, code)
 				} else {

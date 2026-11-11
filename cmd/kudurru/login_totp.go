@@ -180,10 +180,12 @@ func loginStageError(stage string, err error) error {
 	var response *apiclient.Error
 	if errors.As(err, &response) && response.Key == "primary_required" && response.StatusCode == http.StatusServiceUnavailable {
 		// An enrolled follower refused this step before running it, so the
-		// outcome is known. The key is kept for the hint; the message is the
-		// client's own text.
+		// step's outcome is known. An earlier stage may have succeeded: a
+		// forwarded password login leaves a session on the primary that this
+		// follower cannot end. The key is kept for the hint; the message is
+		// the client's own text.
 		return fmt.Errorf("%s: %w", stage, &apiclient.Error{StatusCode: response.StatusCode, Key: response.Key,
-			Message: "this node is an enrolled follower and does not run this step; nothing was changed; log in against the primary"})
+			Message: "this node is an enrolled follower and did not run this step; a session created by an earlier login step stays valid until it expires or is revoked on the primary; log in against the primary"})
 	}
 	if errors.As(err, &response) && response.StatusCode >= 100 && response.StatusCode <= 599 {
 		message := "request failed; outcome may be unknown; no automatic retry"
@@ -193,4 +195,12 @@ func loginStageError(stage string, err error) error {
 		return fmt.Errorf("%s: %w", stage, &apiclient.Error{StatusCode: response.StatusCode, Message: message})
 	}
 	return fmt.Errorf("%s: response unavailable or invalid; outcome may be unknown; no automatic retry", stage)
+}
+
+// followerLoginRefusal is the answer of `kudurru login --username` when the
+// server reports that it is an enrolled follower: no request with the proof
+// was sent. The primary's name is server text and is not repeated here.
+func followerLoginRefusal() error {
+	return fmt.Errorf("login: %w", &apiclient.Error{StatusCode: http.StatusServiceUnavailable, Key: "primary_required",
+		Message: "this node is an enrolled follower and does not mint CLI tokens; nothing was sent; log in against the primary"})
 }
