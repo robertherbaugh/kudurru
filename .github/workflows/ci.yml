@@ -493,7 +493,15 @@ jobs:
         run: python3 -B -m unittest discover -s hack -p test_sync_version.py
       - name: Release version references are current
         run: make version-check
+      # TestChartUpgradeV01FixtureMatchesTag compares testdata/v0.1.0/chart
+      # with what the chart of the v0.1.0 tag renders; the checkout above has
+      # no tags. With KUDURRU_REQUIRE_PREVIOUS_RELEASE a missing tag fails the
+      # step instead of skipping the comparison.
+      - name: Fetch the v0.1.0 tag for the 0.1.0 chart fixture
+        run: git fetch --no-tags --depth=1 origin +refs/tags/v0.1.0:refs/tags/v0.1.0
       - name: Generated deployment assets are current
+        env:
+          KUDURRU_REQUIRE_PREVIOUS_RELEASE: "1"
         run: |
           make deploy-assets
           git diff --exit-code -- deploy
