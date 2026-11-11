@@ -89,22 +89,25 @@ these two fields.
 
 `allow` without a grant accepts nothing. A zone holds at most 4,096 grants.
 
-CAUTION: The API does not check these fields completely. It accepts
-policies that kudurru cannot use, and on SQLite such a policy takes the
-whole zone out of service: queries for it answer `SERVFAIL`,
-`kudurru zones list` shows `READY False` (reason `AwaitingCommittedPrimary`)
-and the node reports not ready until you correct the policy; the zone is back
-a moment later. On Kubernetes the zone keeps answering and every update for
-it is answered `REFUSED`. Check four things before you apply a policy:
+On SQLite the API refuses a policy that kudurru cannot use, also on a zone
+that denies updates: it answers `invalid`, names the field, and stores
+nothing, so the zone keeps its previous policy. It refuses
 
-- `update` is `deny` or `allow`. The field also accepts `allowOnlyPrivate`,
-  `allowOnlyZoneNameServers`, `useNetworkACL` and `zoneNameServersAndACL`,
-  which kudurru cannot use for updates.
-- Every grant `name` ends with a dot: `"*.home.example."`, not
-  `"*.home.example"`. Only `tsigKeyRef` may be written without it.
-- Every grant `name` is inside the zone.
-- Every entry of `types` is the name of a record type that a zone can hold.
-  `BOGUS` is not one, and neither are `OPT` and `AXFR`.
+- an `update` other than `deny` or `allow`. The schema also has
+  `allowOnlyPrivate`, `allowOnlyZoneNameServers`, `useNetworkACL` and
+  `zoneNameServersAndACL`, which kudurru cannot use for updates;
+- a grant `name` without the final dot (`"*.home.example"`), outside the
+  zone, or with a `*` anywhere but as the whole first label
+  (`_acme-challenge.*.home.example.`, `*.*.home.example.`);
+- an entry of `types` that is not a record type an update can carry, such
+  as `BOGUS`, `OPT` or `AXFR`;
+- an empty or malformed `tsigKeyRef` (`""`, `ddns..key`);
+- more than 4,096 grants.
+
+A grant for a well-formed key name that the node does not have is accepted
+and gives nothing. The Kubernetes store does not run this check: such a
+policy can be stored there, the zone keeps answering, and every update for
+it is answered `REFUSED`.
 
 ## Send an update
 
