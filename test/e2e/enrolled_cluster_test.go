@@ -222,6 +222,11 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		kudurrutest.WriteConfig(t, []kudurrutest.NodeSpec{a, b}[i].Config, cfg)
 	}
 	relay := newEnrolledRelay(t, a.Ports.Internal)
+	// The follower is reached through its own relay as well, so that the
+	// former primary can be kept from pulling after a promotion while the new
+	// primary still reaches it.
+	relayB := newEnrolledRelay(t, b.Ports.Internal)
+	addrB := relayB.listener.Addr().String()
 	primary := kudurrutest.StartReady(t, bin, a, kudurrutest.Options{Env: env})
 	jar, err := cookiejar.New(nil)
 	if err != nil {
@@ -268,7 +273,7 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	}
 	var invitation api.ClusterJoinTokenReceipt
 	apiA.request(t, http.MethodPost, "/cluster/join-token", api.ClusterJoinTokenCommand{ClusterEnrollmentReview: original.ClusterEnrollmentReview,
-		Name: b.Name, Address: b.Ports.Internal, ExpiresAt: time.Now().Add(2 * time.Minute), Reason: "join disposable receiver"}, http.StatusOK, &invitation)
+		Name: b.Name, Address: addrB, ExpiresAt: time.Now().Add(2 * time.Minute), Reason: "join disposable receiver"}, http.StatusOK, &invitation)
 	if !invitation.Committed || invitation.Invitation == "" {
 		t.Fatal("invitation not committed")
 	}
@@ -280,7 +285,7 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	defer cancel()
 	// #nosec G204 -- exact fixture-built binary and private temporary paths; no shell
 	join := exec.CommandContext(ctx, bin, "cluster", "join", "--offline", "--data-dir", b.DataDir,
-		"--invitation-file", invitationPath, "--confirm-name", b.Name, "--confirm-address", b.Ports.Internal)
+		"--invitation-file", invitationPath, "--confirm-name", b.Name, "--confirm-address", addrB)
 	for _, entry := range os.Environ() {
 		if !strings.HasPrefix(entry, "KUDURRU_") {
 			join.Env = append(join.Env, entry)
@@ -735,7 +740,16 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		if answer := enrolledSend(t, apiB, http.MethodPatch, "/settings", map[string]any{}); answer.status != http.StatusBadRequest || answer.Error.Key != api.KeyInvalid {
 			t.Fatalf("promoted node still refuses a settings write for its former role: status=%d key=%q", answer.status, answer.Error.Key)
 		}
-		primary = kudurrutest.StartReady(t, bin, a, kudurrutest.Options{Env: env})
+		// The former primary restarts while it cannot reach the new primary's
+		// internal listener. The new primary's scheduled announcement still
+		// reaches it and fences it, and without a pull it stays fenced: its API
+		// names that state and the newer primary, with no Retry-After, and it
+		// keeps answering DNS from its last valid data.
+		relayB.partition(true)
+		primary = kudurrutest.Start(t, bin, a, kudurrutest.Options{Env: env})
+		enrolledFencedClosed(t, apiA, b.Name)
+		awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)
+		relayB.partition(false)
 		// Only production scheduled peer observations/pulls may fence and install.
 		// No test calls ObserveAuthority, installs an image, or retries a mutation.
 		enrolledProcessRead(t, apiA, "/cluster/enrollment", func(body []byte) bool {
@@ -752,8 +766,35 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 			return json.Unmarshal(body, &info) == nil && info.Role == "follower" && info.Primary == b.Name && info.PrimaryRequired
 		})
 		enrolledPrimaryRequired(t, apiA, b.Name, http.MethodPost, "/allowlist", map[string]any{"domain": "rejoined-allow.e2e.test"})
+		// The rejoined former primary forwards a settings patch to the new
+		// primary, which commits it; both nodes then serve the change.
+		enrolledForwardedSettings(t, apiB, apiA, a.Name, "46s", "47s")
 		awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)
 		awaitDNS(primary, "seed", "", dns.RcodeNameError)
+		// The write that the fenced former primary refused exists on neither
+		// node. The answer is waited for, and every answer that differs is
+		// logged as it was received: right after the forwarded settings patch
+		// above, a one-shot check on the new primary failed once (HA-OPEN
+		// e2e03, e2e05) and the next answers were authoritative NXDOMAIN. An
+		// applied record would answer NOERROR and never converge.
+		for _, node := range []*kudurrutest.Node{primary, follower} {
+			if !kudurrutest.Eventually(20*time.Second, 50*time.Millisecond, func() bool {
+				for _, tcp := range []bool{false, true} {
+					answer, err := exchange(node.Ports.DNS, "refused-fenced.e2e.test.", dns.TypeA, tcp)
+					switch {
+					case err != nil:
+						t.Logf("refused-fenced on %s (tcp=%t): %v", node.Name, tcp, err)
+						return false
+					case answer.Rcode != dns.RcodeNameError || firstA(answer) != "" || !answer.Authoritative:
+						t.Logf("refused-fenced on %s (tcp=%t): rcode=%s aa=%t a=%q", node.Name, tcp, dns.RcodeToString[answer.Rcode], answer.Authoritative, firstA(answer))
+						return false
+					}
+				}
+				return true
+			}) {
+				t.Fatal("a write refused by the fenced former primary was applied", node.Name)
+			}
+		}
 		if identity(a) != aIdentity || identity(b) != bIdentity {
 			t.Fatal("promotion/reconnection replaced private member identities")
 		}

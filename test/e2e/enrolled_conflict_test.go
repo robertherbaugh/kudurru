@@ -442,3 +442,27 @@ func enrolledConflictClosed(t *testing.T, c *staticProcessClient) {
 		}
 	}
 }
+
+// enrolledFencedClosed waits until a former primary that observed a newer
+// primary, and cannot pull from it yet, answers with the keyed refusal of its
+// durable state, then checks that the answer names the newer primary, says
+// what ends the state and carries no Retry-After, for a read and a write. The
+// process may still be starting, so a transport error is waited out.
+func enrolledFencedClosed(t *testing.T, c *staticProcessClient, newer string) {
+	t.Helper()
+	var read enrolledAnswer
+	if !kudurrutest.Eventually(45*time.Second, 100*time.Millisecond, func() bool {
+		answer, err := enrolledTrySend(t, c, http.MethodGet, "/cluster", nil)
+		read = answer
+		return err == nil && answer.status == http.StatusServiceUnavailable && answer.Error.Key == "cluster_fenced"
+	}) {
+		t.Fatalf("fenced former primary never named its state: status=%d key=%q", read.status, read.Error.Key)
+	}
+	write := enrolledSend(t, c, http.MethodPost, "/objects/dnsrecordsets", recordSetBody("refused-fenced", "192.0.2.62"))
+	for name, answer := range map[string]enrolledAnswer{"read": read, "write": write} {
+		if answer.status != http.StatusServiceUnavailable || answer.Error.Key != "cluster_fenced" || answer.retryAfter != "" ||
+			!strings.Contains(answer.Error.Message, "the newer primary "+newer) || !strings.Contains(answer.hint(), "current primary") {
+			t.Fatalf("fenced member %s: status=%d key=%q retry-after=%q message=%q hint=%q", name, answer.status, answer.Error.Key, answer.retryAfter, answer.Error.Message, answer.hint())
+		}
+	}
+}
