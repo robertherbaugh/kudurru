@@ -522,6 +522,41 @@ func TestPostShortAttemptDoesNotWaitForContinue(t *testing.T) {
 	}
 }
 
+// TestPostShortAttemptSeesARefusalAtTheHeaders: an attempt too short to wait
+// for "100 Continue" sends a large body at once, so a destination that
+// refuses the request at its headers resets the connection while the body
+// is still being written. The refusal must still be heard (answerConn hides
+// the write error of the reset), with and without a pause before the reset.
+func TestPostShortAttemptSeesARefusalAtTheHeaders(t *testing.T) {
+	double := sinktest.New(t, http.StatusNoContent, false)
+	client := open(t, httpbatch.Options{Destination: "Loki", URL: mustURL(t, double.URL)})
+	body := largeBatch()
+	for _, linger := range []time.Duration{0, 300 * time.Millisecond} {
+		double.AnswerBeforeBody(http.StatusServiceUnavailable, linger)
+		lost := 0
+		for range 20 {
+			ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+			err := client.Post(ctx, body)
+			cancel()
+			var refused *httpbatch.StatusError
+			if !errors.As(err, &refused) || refused.Status != http.StatusServiceUnavailable {
+				lost++
+				t.Logf("linger %s: early 503 was lost: %v", linger, err)
+			} else if _, again := retryable(t, err); !again {
+				t.Errorf("linger %s: early 503 must be retryable: %v", linger, err)
+			}
+		}
+		if lost > 0 {
+			t.Errorf("linger %s: the early 503 was lost in %d of 20 short attempts", linger, lost)
+		}
+	}
+	for _, req := range double.Requests() {
+		if got := req.Header.Get("Expect"); got != "" {
+			t.Fatalf("a short attempt sent Expect: %q", got)
+		}
+	}
+}
+
 // TestOpenReadsCredentialsAndRefusesUnusableOnes: Open contacts only the
 // credential source, and its errors name the reference kind, never a value.
 func TestOpenReadsCredentialsAndRefusesUnusableOnes(t *testing.T) {
