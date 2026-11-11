@@ -37,8 +37,12 @@ type Config struct {
 	CAFile, BearerFile, CertFile, KeyFile        string
 	Timeout, RequestTimeout                      time.Duration
 	AdjustFile, ChangesFile, EventFile, HMACFile string
-	Action, ParamsFile                           string
-	AllowMutations                               bool
+	// ExpectFile names a read-back expectation (D380): endpoints the record
+	// list must contain and endpoints it must not. It is a read probe and
+	// needs no AllowMutations.
+	ExpectFile         string
+	Action, ParamsFile string
+	AllowMutations     bool
 }
 
 type runner struct {
@@ -48,6 +52,7 @@ type runner struct {
 	requestTimeout                          time.Duration
 	media                                   string
 	adjust, changes, event, hmacKey, params []byte
+	expect                                  *expectation
 	action                                  string
 	explicitAdjust                          bool
 	report                                  Report
@@ -156,6 +161,15 @@ func prepare(ctx context.Context, c Config) (*runner, error) {
 				return nil, e
 			}
 			*input.dst = b
+		}
+	}
+	if c.ExpectFile != "" {
+		b, e := readFile(ctx, c.ExpectFile, MaxBody)
+		if e != nil {
+			return nil, e
+		}
+		if r.expect = decodeExpectation(b); r.expect == nil {
+			return nil, errInput
 		}
 	}
 	if !validEndpoints(r.adjust) || r.changes != nil && !validChanges(r.changes) || r.event != nil && (!validEvent(r.event) || len(r.hmacKey) < 32) || r.params != nil && !jsonObject(r.params) {

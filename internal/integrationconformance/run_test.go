@@ -493,3 +493,75 @@ func TestConformanceCaptureCancellationBoundsOutstandingWork(t *testing.T) {
 		t.Fatal("finished capture retained admission", err)
 	}
 }
+
+// The read-back probe (D380) lets a provider author see read-your-writes and
+// TXT registry support after an explicit apply, with no retry and no cleanup.
+func TestConformanceReadBackAfterExplicitApply(t *testing.T) {
+	v, err := validator.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := memory.New()
+	zone := &v1alpha1.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "example"}, Spec: v1alpha1.DNSZoneSpec{ZoneName: "example.test.", Type: v1alpha1.ZoneTypePrimary, Nameservers: []string{"ns.example.test."}}}
+	if _, err := st.Apply(t.Context(), zone, store.ApplyOptions{Manager: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	server, err := externaldns.New(externaldns.Options{Store: st, Validator: v, Namespace: "external-dns", Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var applies, reads atomic.Int32
+	_, c := tlsTarget(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/records" {
+			if r.Method == http.MethodPost {
+				applies.Add(1)
+			} else {
+				reads.Add(1)
+			}
+		}
+		server.ServeHTTP(w, r)
+	}))
+	registry := `{"dnsName":"_kudurru-a.probe.example.test","targets":["\"heritage=kudurru,kudurru/owner=0000000000000000000000000000000000000000000000000000000000000000\""],"recordType":"TXT","recordTTL":300}`
+	c.AllowMutations = true
+	c.ChangesFile = inputFile(t, []byte(`{"create":[{"dnsName":"probe.example.test","targets":["192.0.2.5"],"recordType":"A","recordTTL":60},`+registry+`]}`))
+	c.ExpectFile = inputFile(t, []byte(`{"contain":[{"dnsName":"probe.example.test.","targets":["192.0.2.5"],"recordType":"A","recordTTL":60},`+registry+`],"absent":[{"dnsName":"gone.example.test","recordType":"A"}]}`))
+	report, err := Run(t.Context(), c)
+	if err != nil || !report.Passed || applies.Load() != 1 || reads.Load() != 2 {
+		t.Fatal("read-back after apply failed", report, err)
+	}
+	names := map[string]string{}
+	for _, check := range report.Checks {
+		names[check.Name] = check.Status
+	}
+	if names["records_contain"] != "passed" || names["records_absent"] != "passed" {
+		t.Fatal("read-back checks missing", report.Checks)
+	}
+	// A pure read probe needs no mutation opt-in and reports what is
+	// missing or present without names.
+	c.AllowMutations, c.ChangesFile = false, ""
+	c.ExpectFile = inputFile(t, []byte(`{"contain":[{"dnsName":"probe.example.test","targets":["192.0.2.6"],"recordType":"A"}],"absent":[{"dnsName":"probe.example.test","recordType":"A"}]}`))
+	report, err = Run(t.Context(), c)
+	if err == nil || report.Passed || applies.Load() != 1 {
+		t.Fatal("a failed read-back passed or applied", report, err)
+	}
+	for _, check := range report.Checks {
+		if check.Name == "records_contain" && check.Reason != "missing" || strings.Contains(check.Reason, "example") {
+			t.Fatal("read-back reason", report.Checks)
+		}
+	}
+	c.ExpectFile = inputFile(t, []byte(`{}`))
+	if _, err := Run(t.Context(), c); !errors.Is(err, errInput) {
+		t.Fatal("an empty expectation was accepted", err)
+	}
+	// A peer without records refuses the probe before any request but the
+	// negotiation.
+	_, hooks := tlsTarget(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", IntegrationMedia)
+		_, _ = io.WriteString(w, `{"filters":[],"capabilities":["actions"],"manifest":{"type":"x","displayName":"X","version":"1","ioClass":"local_polling","capabilities":["Actions"],"configSchema":{}}}`)
+	}))
+	hooks.ExpectFile = inputFile(t, []byte(`{"absent":[{"dnsName":"a.example.test","recordType":"A"}]}`))
+	report, _ = Run(t.Context(), hooks)
+	if report.Passed || len(report.Checks) < 2 || report.Checks[len(report.Checks)-1].Name != "probe_selection" {
+		t.Fatal("read-back ran against a peer without records", report.Checks)
+	}
+}

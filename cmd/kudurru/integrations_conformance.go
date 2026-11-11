@@ -35,6 +35,7 @@ func newIntegrationWebhookCmd() *cobra.Command {
 	f.StringVar(&cfg.AdjustFile, "endpoints-file", "", "Endpoint array for normalization (default empty array)")
 	f.BoolVar(&cfg.AllowMutations, "allow-mutations", false, "Permit only explicitly supplied mutation probes")
 	f.StringVar(&cfg.ChangesFile, "changes-file", "", "Exact external-dns Changes JSON to apply once")
+	f.StringVar(&cfg.ExpectFile, "expect-endpoints-file", "", `Read-back expectation {"contain":[endpoints],"absent":[endpoints]} checked against the record list after any apply`)
 	f.StringVar(&cfg.EventFile, "event-file", "", "Exact event JSON to deliver once")
 	f.StringVar(&cfg.HMACFile, "hmac-file", "", "Raw event HMAC-SHA256 key, 32 to 4096 bytes")
 	f.StringVar(&cfg.Action, "action", "", "Exact advertised action to invoke once")

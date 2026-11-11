@@ -244,3 +244,61 @@ func validInventory(b []byte, clients bool) bool {
 	}
 	return true
 }
+
+// expectation is a read-back probe: the record list must contain every
+// endpoint of Contain (same name, type and set identifier, the same target
+// set and, when given, the same TTL) and none with the name, type and set
+// identifier of an endpoint of Absent.
+type expectation struct {
+	Contain []*externaldns.Endpoint `json:"contain,omitempty"`
+	Absent  []*externaldns.Endpoint `json:"absent,omitempty"`
+}
+
+func decodeExpectation(b []byte) *expectation {
+	var e expectation
+	if !jsonObject(b) || !decode(b, &e) || !endpoints(e.Contain, true) || !endpoints(e.Absent, false) || len(e.Contain)+len(e.Absent) == 0 || len(e.Contain)+len(e.Absent) > MaxItems {
+		return nil
+	}
+	return &e
+}
+
+func endpointIdentity(e *externaldns.Endpoint) string {
+	return strings.ToLower(strings.TrimSuffix(e.DNSName, ".")) + "\x00" + strings.ToUpper(e.RecordType) + "\x00" + e.SetIdentifier
+}
+
+// readBack reports whether listed meets the expectation's two halves.
+func (e *expectation) readBack(listed []*externaldns.Endpoint) (contains, absent bool) {
+	byIdentity := map[string]*externaldns.Endpoint{}
+	for _, l := range listed {
+		byIdentity[endpointIdentity(l)] = l
+	}
+	contains = true
+	for _, want := range e.Contain {
+		got := byIdentity[endpointIdentity(want)]
+		if got == nil || want.RecordTTL != 0 && got.RecordTTL != want.RecordTTL || !sameTargets(got.Targets, want.Targets) {
+			contains = false
+		}
+	}
+	absent = true
+	for _, gone := range e.Absent {
+		if byIdentity[endpointIdentity(gone)] != nil {
+			absent = false
+		}
+	}
+	return contains, absent
+}
+
+func sameTargets(a, b []string) bool {
+	set := map[string]bool{}
+	for _, t := range a {
+		set[t] = true
+	}
+	other := map[string]bool{}
+	for _, t := range b {
+		if !set[t] {
+			return false
+		}
+		other[t] = true
+	}
+	return len(set) == len(other)
+}

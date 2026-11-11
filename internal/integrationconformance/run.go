@@ -9,6 +9,8 @@ import (
 	"errors"
 	"net/http"
 	"time"
+
+	"github.com/robertherbaugh/kudurru/ee/integration/externaldns"
 )
 
 // Check contains only fixed protocol check names and sanitized outcomes.
@@ -125,7 +127,7 @@ func (r *runner) run(ctx context.Context) {
 	}
 	// Refuse operator-supplied probes for unadvertised capabilities before any
 	// effects; a later protocol cannot lend authority to an earlier request.
-	if (r.changes != nil || r.explicitAdjust) && !caps["records"] || r.event != nil && !caps["hooks"] || r.action != "" && !caps["actions"] {
+	if (r.changes != nil || r.explicitAdjust || r.expect != nil) && !caps["records"] || r.event != nil && !caps["hooks"] || r.action != "" && !caps["actions"] {
 		r.failed("probe_selection", "not_advertised")
 		return
 	}
@@ -171,6 +173,37 @@ func (r *runner) run(ctx context.Context) {
 		if r.changes == nil {
 			r.skipped("apply_records")
 		} else if !r.probe(ctx, "apply_records", http.MethodPost, "/records", r.changes, nil, true, func(b []byte, status int, _ string) bool { return status == http.StatusNoContent && len(b) == 0 }) {
+			return
+		}
+	}
+	// The read-back probe rereads the list after any explicit apply, so a
+	// provider author sees read-your-writes and TXT support. It retries
+	// nothing and cleans nothing up (D295, D380).
+	if caps["records"] && r.expect != nil {
+		var listed []*externaldns.Endpoint
+		b, status, media, err := r.request(ctx, http.MethodGet, "/records", nil, nil)
+		if err != nil {
+			r.failed("records_contain", err.Error())
+			return
+		}
+		if status != http.StatusOK || media != r.media || !validEndpoints(b) || !decode(b, &listed) {
+			r.failed("records_contain", "protocol")
+			return
+		}
+		contains, absent := r.expect.readBack(listed)
+		for _, c := range []struct {
+			name, reason string
+			ok, used     bool
+		}{{"records_contain", "missing", contains, len(r.expect.Contain) > 0}, {"records_absent", "present", absent, len(r.expect.Absent) > 0}} {
+			switch {
+			case !c.used:
+			case c.ok:
+				r.report.Checks = append(r.report.Checks, Check{Name: c.name, Status: "passed"})
+			default:
+				r.failed(c.name, c.reason)
+			}
+		}
+		if !r.report.Passed {
 			return
 		}
 	}
