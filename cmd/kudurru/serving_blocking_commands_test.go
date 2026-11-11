@@ -697,7 +697,27 @@ func TestServingBlockingPostcommitExpiryAndExactReceipt(t *testing.T) {
 func TestServingBlockingWriterCanceledAfterCommitBeforeObservation(t *testing.T) {
 	for _, mode := range []string{"helper", "blocking"} {
 		t.Run(mode, func(t *testing.T) {
-			f := newServingCommandFixture(t)
+			// The coordinator below borrows the fixture runtime's provider
+			// resource owner, and Close closes that owner. It is closed only
+			// after the fixture has stopped its writer and its always-on runtime:
+			// the cleanup is registered before the fixture registers those (the
+			// cleanups run in reverse order). Closed while Run is alive, the
+			// borrowed owner ends Run with providerresources.ErrClosed, a failure
+			// of the test's own making and not a product outcome.
+			var coordinator *providercoordinator.Coordinator
+			closeCoordinator := func(*servingRuntime) {
+				t.Cleanup(func() {
+					if coordinator == nil {
+						return
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					if err := coordinator.Close(ctx); err != nil {
+						t.Error(err)
+					}
+				})
+			}
+			f := newServingCommandFixture(t, closeCoordinator)
 			scheme, err := runtimekinds.NewScheme()
 			if err != nil {
 				t.Fatal(err)
@@ -709,7 +729,7 @@ func TestServingBlockingWriterCanceledAfterCommitBeforeObservation(t *testing.T)
 			// Use the SAME real coordinator/current host guard and SQLite store. The
 			// narrow wrapper cancels only after the actual Command returned from the
 			// full host pin: this deterministically exercises pre-callback cancellation.
-			coordinator, err := providercoordinator.New(providercoordinator.Options{
+			coordinator, err = providercoordinator.New(providercoordinator.Options{
 				Store: f.s.opts.Store, Publisher: f.s.publisher, Resources: f.s.resources,
 				Schema: servingauth.Schema{Scheme: scheme, Kinds: schema.PrimaryImageOptions(t.Context(), f.s.opts.Store.Info().ClusterID).Validation.Kinds, SchemaVersion: store.SchemaVersion},
 				Host:   f.s.host.Host, HostChanges: f.s.host.Changes, Admit: f.s.host.CheckAdmission, Now: f.s.opts.Now,
@@ -724,11 +744,6 @@ func TestServingBlockingWriterCanceledAfterCommitBeforeObservation(t *testing.T)
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Cleanup(func() {
-				if err := coordinator.Close(t.Context()); err != nil {
-					t.Error(err)
-				}
-			})
 			commandRuntime := &servingRuntime{opts: f.s.opts, primary: f.s.primary, publisher: f.s.publisher, providers: coordinator}
 			called := false
 			f.http.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
