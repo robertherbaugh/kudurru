@@ -239,14 +239,23 @@ once in the dashboard works the same way, with a result for each name.
   node that is not in a cluster. Each document is its own commit. DNS keeps
   answering throughout, for the node's own zones too, from the configuration
   the node published last; a document becomes visible in DNS when the node
-  has published it. Other API requests, reads included, need a publication
+  has published it. The same holds for every API write: right after a
+  write is acknowledged, DNS can still answer the previous data (or
+  `NXDOMAIN` for a new name, which resolvers may cache negatively), and a
+  node that cannot publish keeps answering it, deleted records and zones
+  included, until it can. Such a node reports `prepare_failed` in
+  `kudurru health --ready` (`/healthz/ready` on the ops port) and logs
+  `complete serving generation not published`. Other API requests, reads included, need a publication
   of everything committed so far and wait up to two seconds for one before
   they answer `503 generation_pending` (retry after one second). The request
-  therefore pauses: when another caller's read waits, and in any case after
-  two seconds of work, it waits until the node has published the documents
+  therefore pauses: when another caller's read (`GET` or `HEAD`) waits, and
+  in any case after two seconds of work, it waits until the node has published the documents
   applied so far, then commits nothing for 200 milliseconds, and goes on.
-  The pauses are bounded, so they make a request at most about twice as
-  slow. A waiting read is served whenever the node publishes within its two
+  A read counts before the node checks its credential, so any client that
+  can reach the API, signed in or not, can make the request pause at every
+  document. The pauses are bounded either way: a request spends at most
+  about as long in them as in its own work, so they make it at most about
+  twice as slow. A waiting read is served whenever the node publishes within its two
   seconds. Measured on a shared test machine: 120 new record sets took 6
   seconds with a second caller reading all the time; DNS answered the whole
   time (the longest gap between two answers was 0.8 seconds) and every read

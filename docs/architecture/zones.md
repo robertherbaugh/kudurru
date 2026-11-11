@@ -721,7 +721,11 @@ original writer, verified key, dependency installations and pre-command output
 attempt. The command's own data-generation advance does not invalidate this
 receipt. Ordinary answers are bound to the publication that is served (D378):
 a commit that is not published yet does not withhold them, a published
-successor does. Response replacement,
+successor does. API writes do not wait for publication, so right after an
+acknowledged write DNS answers the previous data (`NXDOMAIN` for a new name)
+until the node publishes, and for as long as it cannot publish, deleted
+records and zones included; readiness then reports `prepare_failed` and the
+log says `complete serving generation not published`. Response replacement,
 added data, key/writer loss or original deadline expiry refuses emission without
 replaying the mutation or undoing an already committed effect.
 
