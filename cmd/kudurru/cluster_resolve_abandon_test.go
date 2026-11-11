@@ -26,13 +26,19 @@ func resolveAbandonOffline(t *testing.T) context.Context {
 	return ctx
 }
 
-// A member fenced by a newer term whose image it never installed is stranded
-// when that term's primary and every member that followed it are lost for
-// good (for a managed member that refuses that primary's branch, D369). The
-// offline review names the state, and the actual CLI keeps the member's branch
-// only with the exact --abandon-term epoch, committing an audited new term.
-// The member is a real receiver joined through the actual CLI and TLS.
-func TestClusterResolveAbandonsTheLostTermOfAFencedMember(t *testing.T) {
+// resolutionReceiver is a real receiver joined through the actual CLI and TLS,
+// with the actual offline review, resolve and durable-authority readers.
+type resolutionReceiver struct {
+	primary *servingRuntime
+	dir     string
+	run     func(args ...string) (string, error)
+	// review returns the actual offline review and a saved copy of it.
+	review  func() (clusterResolutionReview, string)
+	durable func() replication.Authority
+}
+
+func joinResolutionReceiver(t *testing.T) resolutionReceiver {
+	t.Helper()
 	p, _, issue := joinPrimaryFixture(t)
 	inv := issue("receiver")
 	wire, err := inv.Encode()
@@ -73,8 +79,55 @@ func TestClusterResolveAbandonsTheLostTermOfAFencedMember(t *testing.T) {
 		}
 		return out, path
 	}
-	if following, _ := review(); following.Mode != string(replication.Follower) || following.Resolvable || following.Reason != "no_conflict" {
+	durable := func() replication.Authority {
+		t.Helper()
+		s, _, err := openOfflineMember(resolveAbandonOffline(t), dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = s.Close() }()
+		return s.Authority()
+	}
+	return resolutionReceiver{primary: p, dir: dir, run: run, review: review, durable: durable}
+}
+
+// editedReview saves a copy of a saved review with only its reason replaced.
+func editedReview(t *testing.T, path, from, to string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path) //nolint:gosec // test-owned temporary file
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := `"reason":"` + from + `"`
+	if strings.Count(string(raw), old) != 1 {
+		t.Fatal("saved review does not carry exactly one reason", from, string(raw))
+	}
+	edited := filepath.Join(t.TempDir(), "edited-resolution.json")
+	if err := os.WriteFile(edited, []byte(strings.Replace(string(raw), old, `"reason":"`+to+`"`, 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return edited
+}
+
+// A member fenced by a newer term whose image it never installed is stranded
+// when that term's primary and every member that followed it are lost for
+// good (for a managed member that refuses that primary's branch, D369). The
+// offline review names the state, and the actual CLI keeps the member's branch
+// only with the exact --abandon-term epoch, committing an audited new term.
+// The member is a real receiver joined through the actual CLI and TLS.
+func TestClusterResolveAbandonsTheLostTermOfAFencedMember(t *testing.T) {
+	r := joinResolutionReceiver(t)
+	p, dir, run, review, durable := r.primary, r.dir, r.run, r.review, r.durable
+	following, followingPath := review()
+	if following.Mode != string(replication.Follower) || following.Resolvable || following.Reason != "no_conflict" {
 		t.Fatal("a following member is resolvable", following.Mode, following.Reason)
+	}
+	// A following member cannot abandon its term: its review is not resolvable.
+	beforeFollowing := durable()
+	if out, err := run("resolve", "--offline", "--data-dir", dir, "--review", followingPath, "--confirm-node", "receiver", "--request-id", "abandon-following",
+		"--reason", "not lost", "--abandon-term", strconv.FormatUint(following.Term.Epoch, 10)); err == nil || strings.Contains(out, "committed") ||
+		!strings.Contains(err.Error(), "not a resolvable observation") || !reflect.DeepEqual(beforeFollowing, durable()) {
+		t.Fatal("--abandon-term on a following member was not refused unchanged", err)
 	}
 	// The member observes a newer term of its primary and is fenced by it; it
 	// never installs that term's image.
@@ -97,15 +150,6 @@ func TestClusterResolveAbandonsTheLostTermOfAFencedMember(t *testing.T) {
 		!fenced.Installed.Same(installed) || fenced.Conflict != nil || fenced.Divergence != nil {
 		t.Fatal("offline review does not name a fenced member behind its term", fenced.Mode, fenced.Reason)
 	}
-	durable := func() replication.Authority {
-		t.Helper()
-		s, _, err := openOfflineMember(resolveAbandonOffline(t), dir)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = s.Close() }()
-		return s.Authority()
-	}
 	before := durable()
 	base := []string{"resolve", "--offline", "--data-dir", dir, "--review", path, "--confirm-node", "receiver", "--request-id", "abandon-lost", "--reason", "primary and followers lost"}
 	for _, extra := range [][]string{nil, {"--abandon-term", strconv.FormatUint(lost.Epoch+1, 10)}, {"--abandon-term", strconv.FormatUint(installed.Term.Epoch, 10)}} {
@@ -115,6 +159,24 @@ func TestClusterResolveAbandonsTheLostTermOfAFencedMember(t *testing.T) {
 		}
 		if extra == nil && !strings.Contains(err.Error(), "--abandon-term") {
 			t.Fatal("refusal does not name the remedy", err)
+		}
+	}
+	// A saved review whose reason was edited no longer matches the member's
+	// current review and is refused before the store, with or without the flag.
+	edited := editedReview(t, path, resolutionFencedBehindTerm, "resolvable")
+	editedBase := append(append([]string{}, base[:5]...), edited)
+	editedBase = append(editedBase, base[6:]...)
+	for _, extra := range [][]string{nil, {"--abandon-term", strconv.FormatUint(lost.Epoch, 10)}} {
+		out, err := run(append(append([]string{}, editedBase...), extra...)...)
+		if extra != nil {
+			// The edited review is not fenced_behind_term, so the flag is refused first.
+			if err == nil || !strings.Contains(err.Error(), "--abandon-term applies only") || !reflect.DeepEqual(before, durable()) {
+				t.Fatal("--abandon-term on an edited review was not refused unchanged", err)
+			}
+			continue
+		}
+		if err == nil || strings.Contains(out, "committed") || !strings.Contains(err.Error(), "member state changed") || !reflect.DeepEqual(before, durable()) {
+			t.Fatal("a review with an edited reason was not refused as stale", err)
 		}
 	}
 	raw, err := run(append(append([]string{}, base...), "--abandon-term", strconv.FormatUint(lost.Epoch, 10))...)
@@ -156,5 +218,61 @@ func TestClusterResolveAbandonsTheLostTermOfAFencedMember(t *testing.T) {
 	}
 	if primary, _ := review(); primary.Mode != string(replication.Primary) || primary.Resolvable {
 		t.Fatal("the new primary reads as resolvable", primary.Mode, primary.Reason)
+	}
+}
+
+// --abandon-term applies only to a fenced_behind_term review. A member in a
+// genuine promotion conflict is refused the flag before the store, and a saved
+// conflict review edited to read fenced_behind_term is refused as stale; in
+// both cases the durable authority is unchanged.
+func TestClusterResolveRefusesAbandonTermOnAConflictReview(t *testing.T) {
+	r := joinResolutionReceiver(t)
+	s, node, err := openOfflineMember(resolveAbandonOffline(t), r.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := s.Authority().Term
+	rival := current
+	rival.PromotionID, rival.PrimaryID, rival.PrimaryName = uuid.NewString(), uuid.NewString(), "rival-primary"
+	if _, err := s.ObserveAuthority(resolveAbandonOffline(t), rival); err == nil || s.Authority().Mode != replication.Conflict {
+		t.Fatal("fixture member did not enter a promotion conflict", err, s.Authority().Mode)
+	}
+	if err := s.Close(); err != nil || node != "receiver" {
+		t.Fatal(err, node)
+	}
+	conflict, path := r.review()
+	if conflict.Mode != string(replication.Conflict) || !conflict.Resolvable || conflict.Reason != "resolvable" || conflict.Conflict == nil || !conflict.Conflict.Same(rival) {
+		t.Fatal("offline review does not name a resolvable conflict", conflict.Mode, conflict.Reason)
+	}
+	before := r.durable()
+	epoch := strconv.FormatUint(current.Epoch, 10)
+	resolve := func(review string) (string, error) {
+		return r.run("resolve", "--offline", "--data-dir", r.dir, "--review", review, "--confirm-node", "receiver", "--request-id", "abandon-conflict",
+			"--reason", "not a lost term", "--abandon-term", epoch)
+	}
+	if out, err := resolve(path); err == nil || strings.Contains(out, "committed") || !strings.Contains(err.Error(), "--abandon-term applies only to a fenced_behind_term review") ||
+		!reflect.DeepEqual(before, r.durable()) {
+		t.Fatal("--abandon-term on a conflict review was not refused unchanged", err)
+	}
+	edited := editedReview(t, path, "resolvable", resolutionFencedBehindTerm)
+	if out, err := resolve(edited); err == nil || strings.Contains(out, "committed") || !strings.Contains(err.Error(), "member state changed") ||
+		!reflect.DeepEqual(before, r.durable()) {
+		t.Fatal("a conflict review edited to fenced_behind_term was not refused as stale", err)
+	}
+	s, _, err = openOfflineMember(resolveAbandonOffline(t), r.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := s.ReadAudit(t.Context(), sqlite.AuditQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Action == "cluster.resolve" {
+			t.Fatal("a refused resolution wrote an audit row", e.RequestID)
+		}
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
