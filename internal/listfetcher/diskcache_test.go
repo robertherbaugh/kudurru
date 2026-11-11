@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -200,7 +201,7 @@ func TestDiskCacheReportsAnAwaitedBodyOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key := "https://user:secret@lists.example.test/list.txt?token=hidden"
+	key := (&url.URL{Scheme: "https", User: url.UserPassword("user", "secret"), Host: "lists.example.test", Path: "/list.txt", RawQuery: "token=hidden"}).String()
 	for range 3 {
 		if !cache.AwaitBody(key) {
 			t.Fatal("a body was reported for an empty cache")
