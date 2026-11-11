@@ -68,7 +68,9 @@ func newServingCommandFixture(t *testing.T, beforeStart ...func(*servingRuntime)
 	go func() {
 		done <- f.s.opts.Store.Elector("http-command-test").Run(ctx, func(ctx context.Context) {
 			// RunWriter also derives cancellation from the independent serving
-			// root. That root can stop before the elector's context is canceled.
+			// root. A test may close that root while the elector's context is
+			// alive (TestServingCommandFixtureJoinsRootCancellation). The fixture
+			// itself never does: runServingFixture stops the root after the writer.
 			if err := f.s.RunWriter(ctx); err != nil && ctx.Err() == nil && f.s.life.Err() == nil {
 				t.Error(err)
 			}

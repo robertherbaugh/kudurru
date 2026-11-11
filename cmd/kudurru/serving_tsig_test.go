@@ -116,7 +116,9 @@ func runTSIGCommandFixtureWorkers(t *testing.T, s *servingRuntime) (start, stop 
 	if s.opts.TSIG == nil {
 		t.Fatal("original TSIG fixture source missing")
 	}
-	parent, cancel := context.WithCancel(t.Context())
+	// These workers stand in for s.Run, so they end only in the cleanup below
+	// and never with t.Context() (servingFixtureAlwaysOn).
+	parent, cancel := servingFixtureAlwaysOn(t)
 	bound, finish, err := s.begin(parent, false)
 	if err != nil {
 		cancel()

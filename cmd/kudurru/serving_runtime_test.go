@@ -106,10 +106,31 @@ func newServingRuntimeFixture(t *testing.T) *servingRuntime {
 	return s
 }
 
+// servingFixtureAlwaysOn returns the context a fixture runs always-on work
+// under: the complete runtime's Run and everything else an elected writer
+// works through. It is deliberately not canceled with t.Context(). The testing
+// package cancels t.Context() before it calls the first cleanup, and that
+// cancellation reaches the children of t.Context() in map order, so an
+// always-on context derived from it can end before a sibling elector context.
+// The writer then ends because the runtime under it stopped, while its own
+// term context is alive for a few more microseconds, and the fixture reports a
+// writer failure that never happened ("writer ended context canceled", or the
+// first error of a component that lost its publication). Production stops the
+// elected group and joins it before it cancels the always-on group
+// (cluster.Runner.Run). A fixture keeps that order by ending this context only
+// in its own cleanup: every elector context derived from t.Context() is
+// already canceled when the first cleanup runs.
+func servingFixtureAlwaysOn(t *testing.T) (context.Context, context.CancelFunc) {
+	t.Helper()
+	return context.WithCancel(context.WithoutCancel(t.Context()))
+}
+
+// runServingFixture runs the always-on runtime until its cleanup, which the
+// end of t.Context() does not anticipate (servingFixtureAlwaysOn).
 func runServingFixture(t *testing.T, s *servingRuntime) {
 	t.Helper()
 	done := make(chan error, 1)
-	ctx, cancel := context.WithCancel(t.Context())
+	ctx, cancel := servingFixtureAlwaysOn(t)
 	go func() { done <- s.Run(ctx) }()
 	t.Cleanup(func() {
 		cancel()

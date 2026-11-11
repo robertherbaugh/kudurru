@@ -226,7 +226,9 @@ func tsigABQNewFollower(ctx context.Context, t *testing.T, primary *tsigCommandF
 	if err != nil {
 		t.Fatal("prepare real follower complete runtime")
 	}
-	f.life, f.cancelRun = context.WithCancel(t.Context())
+	// The cleanup above cancels the writer before this always-on context; the
+	// end of t.Context() must not reverse that order (servingFixtureAlwaysOn).
+	f.life, f.cancelRun = servingFixtureAlwaysOn(t)
 	f.done = make(chan error, 1)
 	go func() { f.done <- f.runtime.Run(f.life) }()
 	return f, image

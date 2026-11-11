@@ -495,9 +495,13 @@ func (f *brandingHTTPFixture) start(t *testing.T, opts servingRuntimeOptions) {
 		t.Fatal(err)
 	}
 	f.s = s
+	// One shared context would cancel the always-on runtime and the elector in
+	// map order. The writer is canceled and joined first, as in production
+	// (servingFixtureAlwaysOn).
+	alwaysOn, stopAlwaysOn := servingFixtureAlwaysOn(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	run, writer := make(chan error, 1), make(chan error, 1)
-	go func() { run <- s.Run(ctx) }()
+	go func() { run <- s.Run(alwaysOn) }()
 	go func() {
 		writer <- s.opts.Store.Elector("branding-test").Run(ctx, func(ctx context.Context) {
 			if err := s.RunWriter(ctx); err != nil && ctx.Err() == nil {
@@ -508,10 +512,13 @@ func (f *brandingHTTPFixture) start(t *testing.T, opts servingRuntimeOptions) {
 	var once sync.Once
 	stop := func() {
 		once.Do(func() {
-			cancel()
-			for _, done := range []<-chan error{writer, run} {
+			for _, worker := range []struct {
+				cancel context.CancelFunc
+				done   <-chan error
+			}{{cancel, writer}, {stopAlwaysOn, run}} {
+				worker.cancel()
 				select {
-				case err := <-done:
+				case err := <-worker.done:
 					if err != nil && !errors.Is(err, context.Canceled) {
 						t.Error(err)
 					}
