@@ -116,10 +116,11 @@ func TestFrameMatchesTheDnstapSchema(t *testing.T) {
 	if m.GetUnknown() != nil {
 		t.Fatal("Message fields unknown to dnstap.proto")
 	}
+	sec := uint64(at.Unix()) //nolint:gosec // G115: a fixed time after 1970
 	checks := map[string]any{
 		"type": protoreflect.EnumNumber(6), "socket_family": protoreflect.EnumNumber(2), "socket_protocol": protoreflect.EnumNumber(7),
-		"query_port": uint32(853), "query_time_sec": uint64(at.Unix()), "query_time_nsec": uint32(456),
-		"response_time_sec": uint64(at.Unix()), "response_time_nsec": uint32(1000456),
+		"query_port": uint32(853), "query_time_sec": sec, "query_time_nsec": uint32(456),
+		"response_time_sec": sec, "response_time_nsec": uint32(1000456),
 	}
 	for name, want := range checks {
 		v := get(m, name)

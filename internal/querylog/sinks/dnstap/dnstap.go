@@ -21,6 +21,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -434,7 +435,9 @@ func (s *Sink) appendFrame(out []byte, f *Frame) []byte {
 	out = append(out, 0, 0, 0, 0) // the length, set below
 	out, s.scratch = AppendFrame(out, s.scratch, f)
 	n := len(out) - start - 4
-	out[start], out[start+1], out[start+2], out[start+3] = byte(n>>24), byte(n>>16), byte(n>>8), byte(n)
+	// A frame holds one event: two DNS messages of at most 64 KiB and
+	// short strings, far below 4 GiB.
+	binary.BigEndian.PutUint32(out[start:], uint32(n)) //nolint:gosec // G115: bounded as above
 	return out
 }
 

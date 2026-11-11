@@ -68,7 +68,7 @@ func Decode(b []byte) (Frame, error) {
 			f.Extra = string(raw)
 		case num == 15 && typ == protowire.VarintType:
 			if v != 1 {
-				return fmt.Errorf("Dnstap.type %d is not MESSAGE", v)
+				return fmt.Errorf("dnstap: Dnstap.type %d is not MESSAGE", v)
 			}
 			sawType = true
 		case num == 14 && typ == protowire.BytesType:
@@ -78,7 +78,7 @@ func Decode(b []byte) (Frame, error) {
 			}
 			f.Message, sawMessage = m, true
 		default:
-			return fmt.Errorf("Dnstap: unexpected field %d of wire type %d", num, typ)
+			return fmt.Errorf("dnstap: Dnstap has an unexpected field %d of wire type %d", num, typ)
 		}
 		return nil
 	})
@@ -86,9 +86,9 @@ func Decode(b []byte) (Frame, error) {
 	case err != nil:
 		return Frame{}, err
 	case !sawType:
-		return Frame{}, errors.New("Dnstap.type is missing")
+		return Frame{}, errors.New("dnstap: Dnstap.type is missing")
 	case !sawMessage:
-		return Frame{}, errors.New("Dnstap.message is missing")
+		return Frame{}, errors.New("dnstap: Dnstap.message is missing")
 	}
 	return f, nil
 }
@@ -113,7 +113,7 @@ func decodeMessage(b []byte) (Message, error) {
 			11: protowire.BytesType, 12: protowire.VarintType, 13: protowire.Fixed32Type, 14: protowire.BytesType,
 		}
 		if w, ok := want[num]; !ok || w != typ {
-			return fmt.Errorf("Message: unexpected field %d of wire type %d", num, typ)
+			return fmt.Errorf("dnstap: Message has an unexpected field %d of wire type %d", num, typ)
 		}
 		switch num {
 		case 1:
@@ -151,7 +151,7 @@ func decodeMessage(b []byte) (Message, error) {
 		return Message{}, err
 	}
 	if m.Type == 0 {
-		return Message{}, errors.New("Message.type is missing")
+		return Message{}, errors.New("dnstap: Message.type is missing")
 	}
 	if hasQuerySec {
 		m.QueryTime = time.Unix(int64(querySec), int64(queryNsec)) //nolint:gosec // G115: test decoder
@@ -208,7 +208,6 @@ type Collector struct {
 	conns    map[net.Conn]struct{}
 	accepted int
 	finished int
-	stalled  chan struct{} // closed while reading; nil when stalled
 	resume   chan struct{}
 }
 

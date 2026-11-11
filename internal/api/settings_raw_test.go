@@ -35,7 +35,7 @@ func TestSettingsRawDnstapSinkNeedsQuerylogRaw(t *testing.T) {
 	var written [][]string
 	h := newHarness(t, func(o *Options) {
 		o.Authorizer = settingsOnly{standard: apitest.Authorizer(apitest.StandardBindings()...)}
-		o.Settings = SettingsFunc(func(_ context.Context, next *config.Config, changed []string) error {
+		o.Settings = SettingsFunc(func(_ context.Context, next *config.Config, _ []string) error {
 			written = append(written, config.RawQuerylogSinks(next.Querylog))
 			return nil
 		})

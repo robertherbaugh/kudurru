@@ -38,7 +38,6 @@ type Options struct {
 // Factories returns the factories of the exporter types by querylog.sinks
 // type. A factory validates the entry's settings and builds the sink
 // without I/O; the host opens it from the sink's own goroutine.
-
 func Factories(o Options) map[string]querylog.SinkFactory {
 	return map[string]querylog.SinkFactory{
 		config.QuerylogSinkClickHouse: func(spec querylog.SinkSpec) (querylog.Sink, error) {

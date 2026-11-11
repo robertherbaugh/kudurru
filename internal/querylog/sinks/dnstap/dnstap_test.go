@@ -395,7 +395,7 @@ func TestSinkReconnectsAndDropsBoundedOnTheHost(t *testing.T) {
 	for {
 		send(1, "after.example")
 		frames := collector.Frames()
-		if len(frames) > before && frameNamed(t, frames[before:], "after.example.") {
+		if len(frames) > before && frameNamed(frames[before:], "after.example.") {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -422,7 +422,7 @@ func TestSinkReconnectsAndDropsBoundedOnTheHost(t *testing.T) {
 	}
 }
 
-func frameNamed(t *testing.T, frames []dnstaptest.Frame, name string) bool {
+func frameNamed(frames []dnstaptest.Frame, name string) bool {
 	for _, f := range frames {
 		m := new(dns.Msg)
 		if m.Unpack(f.Message.QueryMessage) == nil && len(m.Question) == 1 && m.Question[0].Name == name {

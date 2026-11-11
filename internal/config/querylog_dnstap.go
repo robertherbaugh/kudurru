@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -105,12 +106,12 @@ func ParseDnstapTarget(raw string) (DnstapTarget, error) {
 	switch scheme {
 	case DnstapSchemeUnix:
 		if !filepath.IsAbs(address) || filepath.Clean(address) != address {
-			return DnstapTarget{}, fmt.Errorf("must name a clean absolute socket path after unix:")
+			return DnstapTarget{}, errors.New("must name a clean absolute socket path after the unix scheme")
 		}
 	case DnstapSchemeTCP, DnstapSchemeTLS:
 		host, port, err := net.SplitHostPort(address)
 		if err != nil || host == "" {
-			return DnstapTarget{}, fmt.Errorf("must be host:port after %s:", scheme)
+			return DnstapTarget{}, fmt.Errorf("must be host:port after the %s scheme", scheme)
 		}
 		if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 {
 			return DnstapTarget{}, fmt.Errorf("has an invalid port")
