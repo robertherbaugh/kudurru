@@ -34,7 +34,7 @@ with its own key, so that column is the same in every row:
 |---|---|---|---|---|
 | Zones, record sets, block lists, client groups and policies (`kudurru apply`, the dashboard editors, `kudurru delete`) | Yes | `read_only`: edit the object files on every node | Forwarded to the primary | Yes |
 | Turning blocking off and on | Yes | Yes, for this node only (`scope: node`) | Forwarded | Yes, for every replica |
-| RFC 2136 updates ([dynamic-updates.md](dynamic-updates.md)) | Yes | Yes | Not forwarded: send them to the primary | Yes |
+| RFC 2136 updates ([dynamic-updates.md](dynamic-updates.md)) | Yes | Yes, for this node only: static twins do not replicate updates | Not forwarded: send them to the primary | Yes |
 | Stored TSIG keys (`/tsigkeys`, [tsig-keys.md](tsig-keys.md)) | Yes | Reads only: changes answer `read_only` | Reads; changes answer `primary_required` | Yes |
 | Cluster settings (`kudurru settings set` of a cluster key) | Yes | `read_only` | Forwarded | Yes |
 | Node settings (`PATCH /node/config`) | Yes, for keys that the node's file or environment does not set (`host_locked`, `env_locked` otherwise) | As standalone | `primary_required`: set them in the node's file or environment | `read_only` (HTTP 501): set them in the chart values or the node's environment |
@@ -59,7 +59,9 @@ against one, start it with a token you generated yourself
 (`kudurru token generate`, passed as `KUDURRU_BOOTSTRAP_TOKEN`) and save it
 with `kudurru login --token-stdin`. `kudurru login --username` against a static
 node ends with `mint a CLI token: ... request failed; outcome may be unknown`:
-the node refused to create the token and nothing was changed.
+no token was created, but the password sign-in before it left a session for
+the account. That session lasts until it expires or you revoke it
+(`DELETE /api/v1/auth/sessions/{id}` works on a static node).
 
 [What a follower forwards, runs itself and refuses](sqlite-join.md#what-a-follower-forwards-runs-itself-and-refuses)
 lists every route of a follower; `GET /api/v1/cluster` on a follower names the
