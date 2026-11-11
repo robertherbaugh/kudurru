@@ -493,6 +493,10 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.PreviewIntegrationWithBody(ctx, parts[1], parts[2], contentType, body, editors...)
 		return response, true, err
 	}
+	if method == "POST" && len(parts) == 4 && parts[0] == "integrations" && parts[3] == "release" {
+		response, err := c.ReleaseIntegrationWithBody(ctx, parts[1], parts[2], contentType, body, editors...)
+		return response, true, err
+	}
 	if method == "POST" && len(parts) == 4 && parts[0] == "integrations" && parts[3] == "sync" {
 		response, err := c.SyncIntegrationWithBody(ctx, parts[1], parts[2], contentType, body, editors...)
 		return response, true, err

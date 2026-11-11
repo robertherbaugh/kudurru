@@ -593,16 +593,19 @@ spec:
                         type: string
                       sinks:
                         description: 'Additional destinations that receive every recorded
-                          query next to querylog.sink, e.g. log lines for a log pipeline
+                          query next to querylog.sink, e.g. a ClickHouse table, Grafana
+                          Loki, a dnstap collector or log lines for a log pipeline
                           while the dashboard keeps its database; at most 8. Each
                           has its own bounded queue: a slow or failing destination
                           loses only its own queries, which are counted, and never
                           delays DNS answers, the local database or the live view.
                           Queries arrive with the privacy mode and exclusions already
                           applied, nothing under the nothing mode, and nothing while
-                          querylog.enabled is off. Changes apply without a restart:
-                          an unchanged entry keeps running, a removed one finishes
-                          what it holds, and a new one starts with new queries only.'
+                          querylog.enabled is off; only a dnstap sink with raw: true,
+                          which an administrator sets, receives queries as they were,
+                          never excluded ones. Changes apply without a restart: an
+                          unchanged entry keeps running, a removed one finishes what
+                          it holds, and a new one starts with new queries only.'
                         items:
                           properties:
                             attempts:
@@ -623,11 +626,488 @@ spec:
                               maximum: 10000
                               minimum: 1
                               type: integer
+                            clickhouse:
+                              description: Destination of a sink of type clickhouse;
+                                required for that type and refused for any other.
+                              properties:
+                                caRef:
+                                  description: Where the CA certificates (PEM) that
+                                    sign the server's certificate are read from, for
+                                    a private CA; empty trusts the system's certificate
+                                    authorities. Set exactly one of secretRef, file
+                                    or env; the value itself never enters the settings.
+                                  properties:
+                                    env:
+                                      description: Name of an environment variable
+                                        that holds the value, e.g. QUERY_LOG_EXPORT_PASSWORD.
+                                        It is read only on nodes that list it in credentials.allowedEnvironment.
+                                      maxLength: 8192
+                                      type: string
+                                    file:
+                                      description: Absolute path of a file that holds
+                                        only the value, e.g. /run/secrets/query-log-export.
+                                        It is read only on nodes that list this exact
+                                        path in credentials.allowedFiles.
+                                      maxLength: 8192
+                                      type: string
+                                    secretRef:
+                                      description: 'Kubernetes only: one key of a
+                                        Secret in the namespace kudurru runs in, as
+                                        {name, key}, e.g. {name: query-log-export,
+                                        key: password}. The Secret must carry the
+                                        label kudurru.io/query-log-sink: "true".'
+                                      properties:
+                                        key:
+                                          description: Key inside the Secret, e.g.
+                                            password.
+                                          maxLength: 8192
+                                          type: string
+                                        name:
+                                          description: Name of the Secret, e.g. query-log-export.
+                                          maxLength: 8192
+                                          type: string
+                                      required:
+                                      - name
+                                      - key
+                                      type: object
+                                  type: object
+                                compression:
+                                  description: gzip (default) compresses each batch
+                                    before it is sent; none sends it as it is, for
+                                    a proxy that cannot pass compressed requests.
+                                  enum:
+                                  - gzip
+                                  - none
+                                  maxLength: 8192
+                                  type: string
+                                database:
+                                  description: 'Database of the table (default kudurru):
+                                    letters, digits and underscores.'
+                                  maxLength: 8192
+                                  type: string
+                                passwordRef:
+                                  description: Where the password of username is read
+                                    from. Set exactly one of secretRef, file or env;
+                                    the value itself never enters the settings.
+                                  properties:
+                                    env:
+                                      description: Name of an environment variable
+                                        that holds the value, e.g. QUERY_LOG_EXPORT_PASSWORD.
+                                        It is read only on nodes that list it in credentials.allowedEnvironment.
+                                      maxLength: 8192
+                                      type: string
+                                    file:
+                                      description: Absolute path of a file that holds
+                                        only the value, e.g. /run/secrets/query-log-export.
+                                        It is read only on nodes that list this exact
+                                        path in credentials.allowedFiles.
+                                      maxLength: 8192
+                                      type: string
+                                    secretRef:
+                                      description: 'Kubernetes only: one key of a
+                                        Secret in the namespace kudurru runs in, as
+                                        {name, key}, e.g. {name: query-log-export,
+                                        key: password}. The Secret must carry the
+                                        label kudurru.io/query-log-sink: "true".'
+                                      properties:
+                                        key:
+                                          description: Key inside the Secret, e.g.
+                                            password.
+                                          maxLength: 8192
+                                          type: string
+                                        name:
+                                          description: Name of the Secret, e.g. query-log-export.
+                                          maxLength: 8192
+                                          type: string
+                                      required:
+                                      - name
+                                      - key
+                                      type: object
+                                  type: object
+                                table:
+                                  description: 'Table the queries are inserted into
+                                    (default queries): letters, digits and underscores.
+                                    Create it first; kudurru does not.'
+                                  maxLength: 8192
+                                  type: string
+                                url:
+                                  description: Base URL of the ClickHouse HTTP interface,
+                                    e.g. https://clickhouse.example:8443 or http://clickhouse:8123.
+                                    No user name, password or query in the URL. Over
+                                    http the password and the queries cross the network
+                                    unencrypted.
+                                  maxLength: 8192
+                                  type: string
+                                username:
+                                  description: ClickHouse user that may insert into
+                                    the table, e.g. kudurru; empty sends no credentials.
+                                  maxLength: 8192
+                                  type: string
+                              required:
+                              - url
+                              type: object
+                            dnstap:
+                              description: Destination of a sink of type dnstap; required
+                                for that type and refused for any other.
+                              properties:
+                                caRef:
+                                  description: 'For a tls: target, where the CA certificates
+                                    (PEM) that sign the collector''s certificate are
+                                    read from; empty trusts the system''s certificate
+                                    authorities. Set exactly one of secretRef, file
+                                    or env; the value itself never enters the settings.'
+                                  properties:
+                                    env:
+                                      description: Name of an environment variable
+                                        that holds the value, e.g. QUERY_LOG_EXPORT_PASSWORD.
+                                        It is read only on nodes that list it in credentials.allowedEnvironment.
+                                      maxLength: 8192
+                                      type: string
+                                    file:
+                                      description: Absolute path of a file that holds
+                                        only the value, e.g. /run/secrets/query-log-export.
+                                        It is read only on nodes that list this exact
+                                        path in credentials.allowedFiles.
+                                      maxLength: 8192
+                                      type: string
+                                    secretRef:
+                                      description: 'Kubernetes only: one key of a
+                                        Secret in the namespace kudurru runs in, as
+                                        {name, key}, e.g. {name: query-log-export,
+                                        key: password}. The Secret must carry the
+                                        label kudurru.io/query-log-sink: "true".'
+                                      properties:
+                                        key:
+                                          description: Key inside the Secret, e.g.
+                                            password.
+                                          maxLength: 8192
+                                          type: string
+                                        name:
+                                          description: Name of the Secret, e.g. query-log-export.
+                                          maxLength: 8192
+                                          type: string
+                                      required:
+                                      - name
+                                      - key
+                                      type: object
+                                  type: object
+                                certRef:
+                                  description: 'For a tls: target that requires mutual
+                                    TLS, where the client certificate (PEM) is read
+                                    from; needs keyRef. Set exactly one of secretRef,
+                                    file or env; the value itself never enters the
+                                    settings.'
+                                  properties:
+                                    env:
+                                      description: Name of an environment variable
+                                        that holds the value, e.g. QUERY_LOG_EXPORT_PASSWORD.
+                                        It is read only on nodes that list it in credentials.allowedEnvironment.
+                                      maxLength: 8192
+                                      type: string
+                                    file:
+                                      description: Absolute path of a file that holds
+                                        only the value, e.g. /run/secrets/query-log-export.
+                                        It is read only on nodes that list this exact
+                                        path in credentials.allowedFiles.
+                                      maxLength: 8192
+                                      type: string
+                                    secretRef:
+                                      description: 'Kubernetes only: one key of a
+                                        Secret in the namespace kudurru runs in, as
+                                        {name, key}, e.g. {name: query-log-export,
+                                        key: password}. The Secret must carry the
+                                        label kudurru.io/query-log-sink: "true".'
+                                      properties:
+                                        key:
+                                          description: Key inside the Secret, e.g.
+                                            password.
+                                          maxLength: 8192
+                                          type: string
+                                        name:
+                                          description: Name of the Secret, e.g. query-log-export.
+                                          maxLength: 8192
+                                          type: string
+                                      required:
+                                      - name
+                                      - key
+                                      type: object
+                                  type: object
+                                identity:
+                                  description: dnstap identity of every message, e.g.
+                                    dns1.home.example; empty sends node.name. At most
+                                    255 characters.
+                                  maxLength: 8192
+                                  type: string
+                                keyRef:
+                                  description: Where the private key (PEM) of certRef
+                                    is read from. Set exactly one of secretRef, file
+                                    or env; the value itself never enters the settings.
+                                  properties:
+                                    env:
+                                      description: Name of an environment variable
+                                        that holds the value, e.g. QUERY_LOG_EXPORT_PASSWORD.
+                                        It is read only on nodes that list it in credentials.allowedEnvironment.
+                                      maxLength: 8192
+                                      type: string
+                                    file:
+                                      description: Absolute path of a file that holds
+                                        only the value, e.g. /run/secrets/query-log-export.
+                                        It is read only on nodes that list this exact
+                                        path in credentials.allowedFiles.
+                                      maxLength: 8192
+                                      type: string
+                                    secretRef:
+                                      description: 'Kubernetes only: one key of a
+                                        Secret in the namespace kudurru runs in, as
+                                        {name, key}, e.g. {name: query-log-export,
+                                        key: password}. The Secret must carry the
+                                        label kudurru.io/query-log-sink: "true".'
+                                      properties:
+                                        key:
+                                          description: Key inside the Secret, e.g.
+                                            password.
+                                          maxLength: 8192
+                                          type: string
+                                        name:
+                                          description: Name of the Secret, e.g. query-log-export.
+                                          maxLength: 8192
+                                          type: string
+                                      required:
+                                      - name
+                                      - key
+                                      type: object
+                                  type: object
+                                raw:
+                                  description: 'false (default): every message follows
+                                    querylog.privacy, as the local query log does:
+                                    the question and the response code only, rebuilt
+                                    from the logged query, with the client address
+                                    truncated or left out and the name replaced by
+                                    hidden where the mode says so, and nothing under
+                                    nothing. true sends the DNS messages exactly as
+                                    received and answered with the real client address
+                                    and port, whatever querylog.privacy says, also
+                                    under nothing. Only an administrator (querylog.raw)
+                                    can save a change of querylog.sinks or querylog.exclude
+                                    while a raw sink is in place, the change is audited,
+                                    and each node records an audit event before it
+                                    sends the first raw message. Excluded clients
+                                    and domains (querylog.exclude) are never sent,
+                                    raw or not.'
+                                  type: boolean
+                                serverName:
+                                  description: 'Name the collector''s certificate
+                                    must carry, for a tls: target; empty uses the
+                                    host of target.'
+                                  maxLength: 8192
+                                  type: string
+                                target:
+                                  description: 'Where the collector listens: unix:/run/dnstap/dnstap.sock,
+                                    tcp:collector.example:6000 or tls:collector.example:6000.
+                                    kudurru connects, completes the bidirectional
+                                    Frame Streams handshake and reconnects after a
+                                    failure. Over tcp the queries cross the network
+                                    unencrypted.'
+                                  maxLength: 8192
+                                  type: string
+                                types:
+                                  description: Which dnstap messages are sent; empty
+                                    sends client_query, client_response, auth_query
+                                    and auth_response. A local zone's answer is sent
+                                    as AUTH_*, every other answer as CLIENT_*.
+                                  items:
+                                    enum:
+                                    - client_query
+                                    - client_response
+                                    - auth_query
+                                    - auth_response
+                                    - forwarder_query
+                                    - forwarder_response
+                                    maxLength: 8192
+                                    type: string
+                                  maxItems: 10000
+                                  type: array
+                              required:
+                              - target
+                              type: object
                             flushInterval:
                               description: Longest time a query waits for its batch
                                 to fill before it is sent, 100ms to 1m (default 1s).
                               maxLength: 8192
                               type: string
+                            loki:
+                              description: Destination of a sink of type loki; required
+                                for that type and refused for any other.
+                              properties:
+                                bearerTokenRef:
+                                  description: Where a bearer token is read from,
+                                    instead of username and passwordRef. Set exactly
+                                    one of secretRef, file or env; the value itself
+                                    never enters the settings.
+                                  properties:
+                                    env:
+                                      description: Name of an environment variable
+                                        that holds the value, e.g. QUERY_LOG_EXPORT_PASSWORD.
+                                        It is read only on nodes that list it in credentials.allowedEnvironment.
+                                      maxLength: 8192
+                                      type: string
+                                    file:
+                                      description: Absolute path of a file that holds
+                                        only the value, e.g. /run/secrets/query-log-export.
+                                        It is read only on nodes that list this exact
+                                        path in credentials.allowedFiles.
+                                      maxLength: 8192
+                                      type: string
+                                    secretRef:
+                                      description: 'Kubernetes only: one key of a
+                                        Secret in the namespace kudurru runs in, as
+                                        {name, key}, e.g. {name: query-log-export,
+                                        key: password}. The Secret must carry the
+                                        label kudurru.io/query-log-sink: "true".'
+                                      properties:
+                                        key:
+                                          description: Key inside the Secret, e.g.
+                                            password.
+                                          maxLength: 8192
+                                          type: string
+                                        name:
+                                          description: Name of the Secret, e.g. query-log-export.
+                                          maxLength: 8192
+                                          type: string
+                                      required:
+                                      - name
+                                      - key
+                                      type: object
+                                  type: object
+                                caRef:
+                                  description: Where the CA certificates (PEM) that
+                                    sign the server's certificate are read from, for
+                                    a private CA; empty trusts the system's certificate
+                                    authorities. Set exactly one of secretRef, file
+                                    or env; the value itself never enters the settings.
+                                  properties:
+                                    env:
+                                      description: Name of an environment variable
+                                        that holds the value, e.g. QUERY_LOG_EXPORT_PASSWORD.
+                                        It is read only on nodes that list it in credentials.allowedEnvironment.
+                                      maxLength: 8192
+                                      type: string
+                                    file:
+                                      description: Absolute path of a file that holds
+                                        only the value, e.g. /run/secrets/query-log-export.
+                                        It is read only on nodes that list this exact
+                                        path in credentials.allowedFiles.
+                                      maxLength: 8192
+                                      type: string
+                                    secretRef:
+                                      description: 'Kubernetes only: one key of a
+                                        Secret in the namespace kudurru runs in, as
+                                        {name, key}, e.g. {name: query-log-export,
+                                        key: password}. The Secret must carry the
+                                        label kudurru.io/query-log-sink: "true".'
+                                      properties:
+                                        key:
+                                          description: Key inside the Secret, e.g.
+                                            password.
+                                          maxLength: 8192
+                                          type: string
+                                        name:
+                                          description: Name of the Secret, e.g. query-log-export.
+                                          maxLength: 8192
+                                          type: string
+                                      required:
+                                      - name
+                                      - key
+                                      type: object
+                                  type: object
+                                compression:
+                                  description: gzip (default) compresses each batch
+                                    before it is sent; none sends it as it is, for
+                                    a proxy that cannot pass compressed requests.
+                                  enum:
+                                  - gzip
+                                  - none
+                                  maxLength: 8192
+                                  type: string
+                                labels:
+                                  additionalProperties:
+                                    maxLength: 8192
+                                    type: string
+                                  description: 'Fixed labels on every stream, e.g.
+                                    {job: kudurru, site: home}; empty means job=kudurru,
+                                    at most 16. The sink adds node and status_class
+                                    itself. Keep labels few and constant: per-query
+                                    values such as the client and the domain travel
+                                    as structured metadata.'
+                                  maxProperties: 10000
+                                  type: object
+                                passwordRef:
+                                  description: Where the password of username is read
+                                    from. Set exactly one of secretRef, file or env;
+                                    the value itself never enters the settings.
+                                  properties:
+                                    env:
+                                      description: Name of an environment variable
+                                        that holds the value, e.g. QUERY_LOG_EXPORT_PASSWORD.
+                                        It is read only on nodes that list it in credentials.allowedEnvironment.
+                                      maxLength: 8192
+                                      type: string
+                                    file:
+                                      description: Absolute path of a file that holds
+                                        only the value, e.g. /run/secrets/query-log-export.
+                                        It is read only on nodes that list this exact
+                                        path in credentials.allowedFiles.
+                                      maxLength: 8192
+                                      type: string
+                                    secretRef:
+                                      description: 'Kubernetes only: one key of a
+                                        Secret in the namespace kudurru runs in, as
+                                        {name, key}, e.g. {name: query-log-export,
+                                        key: password}. The Secret must carry the
+                                        label kudurru.io/query-log-sink: "true".'
+                                      properties:
+                                        key:
+                                          description: Key inside the Secret, e.g.
+                                            password.
+                                          maxLength: 8192
+                                          type: string
+                                        name:
+                                          description: Name of the Secret, e.g. query-log-export.
+                                          maxLength: 8192
+                                          type: string
+                                      required:
+                                      - name
+                                      - key
+                                      type: object
+                                  type: object
+                                structuredMetadata:
+                                  description: Attach client, client_name, domain,
+                                    qtype, status and trace_id to each line as structured
+                                    metadata (default true; needs Loki 3.0 or newer
+                                    with it allowed). false sends them in the JSON
+                                    line only.
+                                  type: boolean
+                                tenant:
+                                  description: Tenant ID sent as X-Scope-OrgID, e.g.
+                                    home; empty for a single-tenant Loki.
+                                  maxLength: 8192
+                                  type: string
+                                url:
+                                  description: Base URL of Loki or its gateway, e.g.
+                                    https://loki.example:3100; /loki/api/v1/push is
+                                    added. No user name, password or query in the
+                                    URL. Over http the credentials and the queries
+                                    cross the network unencrypted.
+                                  maxLength: 8192
+                                  type: string
+                                username:
+                                  description: User name for HTTP basic authentication,
+                                    e.g. the instance ID of Grafana Cloud; needs passwordRef.
+                                  maxLength: 8192
+                                  type: string
+                              required:
+                              - url
+                              type: object
                             name:
                               description: 'Short name of this sink, e.g. log-lines:
                                 lowercase letters, digits and hyphens, at most 32
@@ -661,6 +1141,9 @@ spec:
                               description: What kind of destination this is.
                               enum:
                               - slog
+                              - clickhouse
+                              - loki
+                              - dnstap
                               maxLength: 8192
                               type: string
                           required:
@@ -998,7 +1481,8 @@ spec:
                               defaults. Managed requires explicit root DS seeds and
                               DNSSEC, retains accepted rollover history and revocations,
                               and refuses static fallback after initialization. Applies
-                              only to recursive groups.
+                              only to recursive groups. Managed requires the SQLite
+                              store driver; the Kubernetes driver refuses it.
                             enum:
                             - static
                             - managed

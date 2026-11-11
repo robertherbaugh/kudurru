@@ -478,12 +478,20 @@
             ],
             "type": "string"
           },
+          "primary": {
+            "description": "Name of the primary, set together with role.",
+            "type": "string"
+          },
           "providers": {
             "description": "The OIDC login options.",
             "items": {
               "$ref": "#/components/schemas/AuthProvider"
             },
             "type": "array"
+          },
+          "role": {
+            "description": "follower on an enrolled SQLite follower, which offers local login only: OIDC login runs on the primary. Absent otherwise.",
+            "type": "string"
           },
           "session": {
             "$ref": "#/components/schemas/AuthSessionLimits"
@@ -1491,8 +1499,24 @@
             "minimum": 0,
             "type": "integer"
           },
+          "forwardedOperations": {
+            "description": "operationIds that this follower sends to its primary. Set only while primaryRequired is true.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
+          },
           "leader": {
             "type": "string"
+          },
+          "localOperations": {
+            "description": "operationIds that this follower runs itself, on its own node-local state or by its own role. Set only while primaryRequired is true.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "array"
           },
           "node": {
             "type": "string"
@@ -1501,8 +1525,20 @@
             "format": "int64",
             "type": "integer"
           },
+          "primary": {
+            "description": "Name of the node that holds write authority (SQLite driver).",
+            "type": "string"
+          },
+          "primaryRequired": {
+            "description": "True on an enrolled SQLite follower: every mutating operation that is in neither forwardedOperations nor localOperations answers 503 primary_required.",
+            "type": "boolean"
+          },
           "readOnly": {
             "type": "boolean"
+          },
+          "role": {
+            "description": "Replication role of this node on the SQLite driver: standalone, primary or follower. Absent on other drivers.",
+            "type": "string"
           },
           "took_ms": {
             "description": "Server-side duration of the request in milliseconds.",
@@ -1515,6 +1551,7 @@
           "epoch",
           "nodes",
           "readOnly",
+          "primaryRequired",
           "node",
           "took_ms"
         ],
@@ -4772,6 +4809,28 @@
         ],
         "type": "object"
       },
+      "IntegrationReleaseResult": {
+        "additionalProperties": false,
+        "properties": {
+          "ledgerRows": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "operations": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "released": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "released",
+          "ledgerRows",
+          "operations"
+        ],
+        "type": "object"
+      },
       "IntegrationReview": {
         "additionalProperties": false,
         "properties": {
@@ -4807,6 +4866,21 @@
       "IntegrationSummary": {
         "additionalProperties": false,
         "properties": {
+          "blocked": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deletionPolicy": {
+            "enum": [
+              "Retain",
+              "Delete"
+            ],
+            "type": "string"
+          },
+          "deletionRequestedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
           "lastSync": {
             "format": "date-time",
             "type": "string"
@@ -4826,6 +4900,10 @@
           "reason": {
             "type": "string"
           },
+          "remaining": {
+            "format": "int64",
+            "type": "integer"
+          },
           "revision": {
             "type": "string"
           },
@@ -4835,11 +4913,18 @@
           "suspended": {
             "type": "boolean"
           },
+          "terminating": {
+            "type": "boolean"
+          },
           "type": {
             "type": "string"
           },
           "uid": {
             "type": "string"
+          },
+          "uncertain": {
+            "format": "int64",
+            "type": "integer"
           }
         },
         "required": [
@@ -4849,6 +4934,11 @@
           "revision",
           "type",
           "suspended",
+          "deletionPolicy",
+          "terminating",
+          "remaining",
+          "blocked",
+          "uncertain",
           "statusKnown",
           "phase",
           "reason",
@@ -10927,6 +11017,7 @@
         "tags": [
           "domains"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -11047,6 +11138,7 @@
         "tags": [
           "domains"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -11276,6 +11368,7 @@
         "tags": [
           "domains"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -11517,6 +11610,7 @@
         "tags": [
           "domains"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -11654,6 +11748,7 @@
         "tags": [
           "objects"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resources": [
             "zones",
@@ -12290,6 +12385,7 @@
         "tags": [
           "auth"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": "public"
       }
     },
@@ -12412,6 +12508,7 @@
         "tags": [
           "auth"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": "authenticated"
       }
     },
@@ -12515,6 +12612,7 @@
         "tags": [
           "auth"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": "public"
       }
     },
@@ -12600,6 +12698,7 @@
         "tags": [
           "auth"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": "authenticated"
       }
     },
@@ -12692,6 +12791,7 @@
         "tags": [
           "auth"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": "authenticated"
       }
     },
@@ -13154,6 +13254,7 @@
         "tags": [
           "auth"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": "authenticated"
       }
     },
@@ -13341,6 +13442,7 @@
         "tags": [
           "auth"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": "authenticated"
       }
     },
@@ -13605,6 +13707,7 @@
         "tags": [
           "auth"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": "authenticated"
       }
     },
@@ -13710,6 +13813,7 @@
         "tags": [
           "auth"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": "authenticated"
       },
       "get": {
@@ -13998,6 +14102,7 @@
         "tags": [
           "auth"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": "authenticated"
       }
     },
@@ -14114,6 +14219,7 @@
         "tags": [
           "auth"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": "authenticated"
       }
     },
@@ -14237,6 +14343,7 @@
         "tags": [
           "auth"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": "authenticated"
       }
     },
@@ -14495,6 +14602,7 @@
         "tags": [
           "blocklists"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -14736,6 +14844,7 @@
         "tags": [
           "blocklists"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -15050,6 +15159,7 @@
         "tags": [
           "blocklists"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -15174,6 +15284,7 @@
         "tags": [
           "blocklists"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -15521,6 +15632,7 @@
         "tags": [
           "blocklists"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -15637,6 +15749,7 @@
         "tags": [
           "blocklists"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -15966,6 +16079,7 @@
         "tags": [
           "runtime"
         ],
+        "x-kudurru-follower": "local",
         "x-kudurru-permission": {
           "resource": "cache",
           "scope": "cluster",
@@ -16939,6 +17053,7 @@
         "tags": [
           "clientgroups"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "clientgroups",
           "scope": "cluster",
@@ -17073,6 +17188,7 @@
         "tags": [
           "clientgroups"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "clientgroups",
           "scope": "cluster",
@@ -17387,6 +17503,7 @@
         "tags": [
           "clientgroups"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "clientgroups",
           "scope": "cluster",
@@ -17503,6 +17620,7 @@
         "tags": [
           "clientgroups"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "clientgroups",
           "scope": "cluster",
@@ -17859,6 +17977,7 @@
         "tags": [
           "cluster"
         ],
+        "x-kudurru-follower": "local",
         "x-kudurru-permission": {
           "resource": "cluster",
           "scope": "cluster",
@@ -18063,6 +18182,7 @@
         "tags": [
           "cluster"
         ],
+        "x-kudurru-follower": "local",
         "x-kudurru-permission": {
           "resource": "cluster",
           "scope": "cluster",
@@ -18180,6 +18300,7 @@
         "tags": [
           "cluster"
         ],
+        "x-kudurru-follower": "local",
         "x-kudurru-permission": {
           "resource": "cluster",
           "scope": "cluster",
@@ -18571,6 +18692,7 @@
         "tags": [
           "domains"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -18691,6 +18813,7 @@
         "tags": [
           "domains"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -18920,6 +19043,7 @@
         "tags": [
           "domains"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -19161,6 +19285,7 @@
         "tags": [
           "domains"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -19277,6 +19402,7 @@
         "tags": [
           "dhcpscopes"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "dhcp",
           "scope": "cluster",
@@ -19488,6 +19614,7 @@
         "tags": [
           "runtime"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "blocking",
           "scope": "cluster",
@@ -19604,6 +19731,7 @@
         "tags": [
           "runtime"
         ],
+        "x-kudurru-follower": "local",
         "x-kudurru-permission": {
           "resource": "stats",
           "scope": "cluster",
@@ -19720,6 +19848,7 @@
         "tags": [
           "dnsrecordsets"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "records",
           "scope": "cluster or per object",
@@ -19837,6 +19966,7 @@
         "tags": [
           "dnszones"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "zones",
           "scope": "cluster or per object",
@@ -20268,6 +20398,7 @@
         "tags": [
           "blocklists"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -20788,6 +20919,7 @@
         "tags": [
           "iam"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "users",
           "scope": "cluster",
@@ -20908,6 +21040,7 @@
         "tags": [
           "iam"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "users",
           "scope": "cluster",
@@ -21028,6 +21161,7 @@
         "tags": [
           "iam"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "users",
           "scope": "cluster",
@@ -21315,6 +21449,7 @@
         "tags": [
           "iam"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "rolebindings",
           "scope": "cluster",
@@ -21453,6 +21588,7 @@
         "tags": [
           "iam"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "rolebindings",
           "scope": "cluster",
@@ -21698,6 +21834,7 @@
         "tags": [
           "iam"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "rolebindings",
           "scope": "cluster",
@@ -21985,6 +22122,7 @@
         "tags": [
           "iam"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "users",
           "scope": "cluster",
@@ -22105,6 +22243,7 @@
         "tags": [
           "iam"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "users",
           "scope": "cluster",
@@ -22224,6 +22363,7 @@
         "tags": [
           "iam"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "users",
           "scope": "cluster",
@@ -22340,6 +22480,7 @@
         "tags": [
           "imports"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "settings",
           "scope": "cluster",
@@ -22457,6 +22598,7 @@
         "tags": [
           "imports"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "settings",
           "scope": "cluster",
@@ -22660,6 +22802,7 @@
         "tags": [
           "imports"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "settings",
           "scope": "cluster",
@@ -23009,6 +23152,7 @@
         "tags": [
           "imports"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "settings",
           "scope": "cluster",
@@ -23135,6 +23279,7 @@
         "tags": [
           "imports"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "settings",
           "scope": "cluster",
@@ -23258,6 +23403,7 @@
         "tags": [
           "imports"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "settings",
           "scope": "cluster",
@@ -23997,6 +24143,7 @@
         "tags": [
           "integrations"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "integrations",
           "scope": "cluster",
@@ -24162,6 +24309,7 @@
         "tags": [
           "integrations"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "integrations",
           "scope": "cluster",
@@ -24327,10 +24475,177 @@
         "tags": [
           "integrations"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "integrations",
           "scope": "cluster",
           "verb": "read"
+        }
+      }
+    },
+    "/integrations/{namespace}/{name}/release": {
+      "post": {
+        "operationId": "releaseIntegration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "maxLength": 63,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 253,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationReview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationReleaseResult"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Release one reviewed terminating integration without cleanup",
+        "tags": [
+          "integrations"
+        ],
+        "x-kudurru-follower": "primary",
+        "x-kudurru-permission": {
+          "resource": "integrations",
+          "scope": "cluster",
+          "verb": "release"
         }
       }
     },
@@ -24492,6 +24807,7 @@
         "tags": [
           "integrations"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "integrations",
           "scope": "cluster",
@@ -24789,6 +25105,7 @@
         "tags": [
           "settings"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "node",
           "scope": "cluster",
@@ -25137,6 +25454,7 @@
         "tags": [
           "dhcp"
         ],
+        "x-kudurru-follower": "local",
         "x-kudurru-permission": {
           "resource": "dhcp",
           "scope": "cluster",
@@ -25369,6 +25687,7 @@
         "tags": [
           "dhcp"
         ],
+        "x-kudurru-follower": "local",
         "x-kudurru-permission": {
           "resource": "dhcpleases",
           "scope": "cluster",
@@ -25779,6 +26098,7 @@
         "tags": [
           "dhcp"
         ],
+        "x-kudurru-follower": "local",
         "x-kudurru-permission": {
           "resource": "dhcp",
           "scope": "cluster",
@@ -25936,6 +26256,7 @@
         "tags": [
           "dhcp"
         ],
+        "x-kudurru-follower": "local",
         "x-kudurru-permission": {
           "resource": "dhcp",
           "scope": "cluster",
@@ -26171,6 +26492,7 @@
         "tags": [
           "dhcp"
         ],
+        "x-kudurru-follower": "local",
         "x-kudurru-permission": {
           "resource": "dhcp",
           "scope": "cluster",
@@ -26746,6 +27068,7 @@
         "tags": [
           "objects"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resources": [
             "zones",
@@ -26895,6 +27218,7 @@
         "tags": [
           "objects"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resources": [
             "zones",
@@ -27241,6 +27565,7 @@
         "tags": [
           "objects"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resources": [
             "zones",
@@ -27383,6 +27708,7 @@
         "tags": [
           "objects"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resources": [
             "zones",
@@ -27713,6 +28039,7 @@
         "tags": [
           "objects"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resources": [
             "zones",
@@ -27982,6 +28309,7 @@
         "tags": [
           "policies"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "policies",
           "scope": "cluster",
@@ -28116,6 +28444,7 @@
         "tags": [
           "policies"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "policies",
           "scope": "cluster",
@@ -28430,6 +28759,7 @@
         "tags": [
           "policies"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "policies",
           "scope": "cluster",
@@ -28661,6 +28991,7 @@
         "tags": [
           "policies"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "policies",
           "scope": "cluster",
@@ -29721,6 +30052,7 @@
         "tags": [
           "querylog"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "blocklists",
           "scope": "cluster",
@@ -29849,6 +30181,7 @@
         "tags": [
           "querylog"
         ],
+        "x-kudurru-follower": "local",
         "x-kudurru-permission": {
           "resource": "querylog",
           "scope": "cluster",
@@ -30134,6 +30467,7 @@
         "tags": [
           "querylog"
         ],
+        "x-kudurru-follower": "local",
         "x-kudurru-permission": {
           "resource": "querylog",
           "scope": "cluster",
@@ -30480,6 +30814,7 @@
         "tags": [
           "settings"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "settings",
           "scope": "cluster",
@@ -30700,6 +31035,7 @@
         "tags": [
           "settings"
         ],
+        "x-kudurru-follower": "local",
         "x-kudurru-permission": {
           "resource": "settings",
           "scope": "cluster",
@@ -30826,6 +31162,7 @@
         "tags": [
           "settings"
         ],
+        "x-kudurru-follower": "local",
         "x-kudurru-permission": {
           "resource": "settings",
           "scope": "cluster",
@@ -32021,6 +32358,7 @@
         "tags": [
           "tsigkeys"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "tsigkeys",
           "scope": "cluster",
@@ -32179,6 +32517,7 @@
         "tags": [
           "tsigkeys"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "tsigkeys",
           "scope": "cluster",
@@ -32337,6 +32676,7 @@
         "tags": [
           "tsigkeys"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "tsigkeys",
           "scope": "cluster",
@@ -32495,6 +32835,7 @@
         "tags": [
           "tsigkeys"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "tsigkeys",
           "scope": "cluster",
@@ -32759,6 +33100,7 @@
         "tags": [
           "unblockrequests"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "unblockrequests",
           "scope": "cluster",
@@ -33006,6 +33348,7 @@
         "tags": [
           "unblockrequests"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "unblockrequests",
           "scope": "cluster",
@@ -33140,6 +33483,7 @@
         "tags": [
           "unblockrequests"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "unblockrequests",
           "scope": "cluster",
@@ -33436,6 +33780,7 @@
         "tags": [
           "zones"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "zones",
           "scope": "zone",
@@ -33816,6 +34161,7 @@
         "tags": [
           "zones"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "records",
           "scope": "zone",
@@ -33934,6 +34280,7 @@
         "tags": [
           "zones"
         ],
+        "x-kudurru-follower": "primary",
         "x-kudurru-permission": {
           "resource": "zones",
           "scope": "zone",
@@ -34186,6 +34533,7 @@
         "tags": [
           "zones"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "records",
           "scope": "zone",
@@ -34343,6 +34691,7 @@
         "tags": [
           "zones"
         ],
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": {
           "resource": "records",
           "scope": "zone",

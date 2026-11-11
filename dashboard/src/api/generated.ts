@@ -1790,6 +1790,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/integrations/{namespace}/{name}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Release one reviewed terminating integration without cleanup */
+        post: operations["releaseIntegration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/integrations/{namespace}/{name}/sync": {
         parameters: {
             query?: never;
@@ -2930,8 +2947,12 @@ export interface components {
              * @enum {string}
              */
             localLoginMode: "enabled" | "admins-only" | "disabled";
+            /** @description Name of the primary, set together with role. */
+            primary?: string;
             /** @description The OIDC login options. */
             providers: components["schemas"]["AuthProvider"][];
+            /** @description follower on an enrolled SQLite follower, which offers local login only: OIDC login runs on the primary. Absent otherwise. */
+            role?: string;
             session?: components["schemas"]["AuthSessionLimits"];
         };
         BatchDeleteInputBody: {
@@ -3278,11 +3299,21 @@ export interface components {
             driver: string;
             /** Format: int64 */
             epoch: number;
+            /** @description operationIds that this follower sends to its primary. Set only while primaryRequired is true. */
+            forwardedOperations?: string[] | null;
             leader?: string;
+            /** @description operationIds that this follower runs itself, on its own node-local state or by its own role. Set only while primaryRequired is true. */
+            localOperations?: string[] | null;
             node: string;
             /** Format: int64 */
             nodes: number;
+            /** @description Name of the node that holds write authority (SQLite driver). */
+            primary?: string;
+            /** @description True on an enrolled SQLite follower: every mutating operation that is in neither forwardedOperations nor localOperations answers 503 primary_required. */
+            primaryRequired: boolean;
             readOnly: boolean;
+            /** @description Replication role of this node on the SQLite driver: standalone, primary or follower. Absent on other drivers. */
+            role?: string;
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -4223,6 +4254,13 @@ export interface components {
             ttl: number;
             type: string;
         };
+        IntegrationReleaseResult: {
+            /** Format: int64 */
+            ledgerRows: number;
+            /** Format: int64 */
+            operations: number;
+            released: boolean;
+        };
         IntegrationReview: {
             /** @enum {string} */
             mode?: "publish" | "observe";
@@ -4232,6 +4270,12 @@ export interface components {
             uid: string;
         };
         IntegrationSummary: {
+            /** Format: int64 */
+            blocked: number;
+            /** @enum {string} */
+            deletionPolicy: "Retain" | "Delete";
+            /** Format: date-time */
+            deletionRequestedAt?: string;
             /** Format: date-time */
             lastSync?: string;
             leader: boolean;
@@ -4239,11 +4283,16 @@ export interface components {
             namespace: string;
             phase: string;
             reason: string;
+            /** Format: int64 */
+            remaining: number;
             revision: string;
             statusKnown: boolean;
             suspended: boolean;
+            terminating: boolean;
             type: string;
             uid: string;
+            /** Format: int64 */
+            uncertain: number;
         };
         LatencySummary: {
             /** Format: double */
@@ -16553,6 +16602,124 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IntegrationExecutionResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    releaseIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IntegrationReview"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationReleaseResult"];
                 };
             };
             /** @description Bad Request */

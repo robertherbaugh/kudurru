@@ -32,7 +32,7 @@ Every command accepts these flags.
                                    else "default")
   -o, --output string              output format: table, wide, json, yaml or name
       --request-timeout duration   timeout per API request or complete direct Kubernetes
-                                   command (default 30s)
+                                   command (apply and restore: 5m unless set) (default 30s)
       --server string              API server URL, e.g. https://dns.example (overrides the
                                    context; env KUDURRU_SERVER)
       --token string               API token kdr_… (overrides the context; env KUDURRU_TOKEN)
@@ -103,7 +103,7 @@ Flags:
 
 Operate directly on an existing current-schema SQLite database using local OS file permissions. Stop kudurru and all other readers/writers first, preserve a backup, and keep managed edges uncached. No API credentials or network discovery are used. This command cannot initialize, migrate or repair a database.
 
-Recovery is available only after canonical loss of every trusted root key. Obtain replacement root DS records through an independent trusted channel. The command authenticates one fresh DNSKEY response, preserves all revoked keys and records explicit recovery history plus an audit event in the same transaction. Do not replay an uncertain result: inspect the retained version first. All replicas must support recovery format 2 before installing recovered history.
+Recovery is available only after canonical loss of every trusted root key. Obtain replacement root DS records through an independent trusted channel. The command authenticates one fresh DNSKEY response, preserves all revoked keys and records explicit recovery history plus an audit event in the same transaction. Do not replay an uncertain result: inspect the retained version first. Before distributing recovered history, check that every member runs kudurru v0.2.0 or later. The only earlier release, v0.1.0, has no cluster replication and cannot be a member.
 
 Flags:
 
@@ -488,7 +488,7 @@ Flags:
 
 ### kudurru cluster status
 
-Read the connected node's store driver, epoch, reported leader, member count and read-only mode. Static twins each report their own local leader and store identity. This observation does not establish quorum, peer health or permission to promote a node. Use kudurru nodes for individual node readiness.
+Read the connected node's store driver, replication role, epoch, reported leader, member count and read-only mode. On the SQLite driver ROLE is standalone, primary or follower, and LEADER names the primary. An enrolled follower forwards some commands to its primary and refuses the others with primary\_required; -o json lists both sets. Static twins each report their own local leader and store identity. This observation does not establish quorum, peer health or permission to promote a node. Use kudurru nodes for individual node readiness.
 
 ```text
 kudurru cluster status
@@ -1447,6 +1447,21 @@ Preview complete changes without applying them.
 
 ```text
 kudurru integrations preview NAME [flags]
+```
+
+Flags:
+
+```text
+      --revision string   Exact reviewed resource version
+      --uid string        Exact reviewed integration UID
+```
+
+### kudurru integrations release
+
+Release a reviewed terminating integration without cleanup.
+
+```text
+kudurru integrations release NAME [flags]
 ```
 
 Flags:

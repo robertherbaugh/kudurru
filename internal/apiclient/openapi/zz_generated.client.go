@@ -692,6 +692,24 @@ func (e IntegrationReviewMode) Valid() bool {
 	}
 }
 
+// Defines values for IntegrationSummaryDeletionPolicy.
+const (
+	IntegrationSummaryDeletionPolicyDelete IntegrationSummaryDeletionPolicy = "Delete"
+	IntegrationSummaryDeletionPolicyRetain IntegrationSummaryDeletionPolicy = "Retain"
+)
+
+// Valid indicates whether the value is a known member of the IntegrationSummaryDeletionPolicy enum.
+func (e IntegrationSummaryDeletionPolicy) Valid() bool {
+	switch e {
+	case IntegrationSummaryDeletionPolicyDelete:
+		return true
+	case IntegrationSummaryDeletionPolicyRetain:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MigrationRequestSource.
 const (
 	MigrationRequestSourcePihole     MigrationRequestSource = "pihole"
@@ -2291,9 +2309,15 @@ type AuthStatus struct {
 	// LocalLoginMode auth.localLogin.
 	LocalLoginMode AuthStatusLocalLoginMode `json:"localLoginMode"`
 
+	// Primary Name of the primary, set together with role.
+	Primary *string `json:"primary,omitempty"`
+
 	// Providers The OIDC login options.
-	Providers []AuthProvider     `json:"providers"`
-	Session   *AuthSessionLimits `json:"session,omitempty"`
+	Providers []AuthProvider `json:"providers"`
+
+	// Role follower on an enrolled SQLite follower, which offers local login only: OIDC login runs on the primary. Absent otherwise.
+	Role    *string            `json:"role,omitempty"`
+	Session *AuthSessionLimits `json:"session,omitempty"`
 }
 
 // AuthStatusLocalLoginMode auth.localLogin.
@@ -2677,10 +2701,25 @@ type ClusterInfo struct {
 	ClusterID *string `json:"clusterID,omitempty"`
 	Driver    string  `json:"driver"`
 	Epoch     int64   `json:"epoch"`
-	Leader    *string `json:"leader,omitempty"`
-	Node      string  `json:"node"`
-	Nodes     int64   `json:"nodes"`
-	ReadOnly  bool    `json:"readOnly"`
+
+	// ForwardedOperations operationIds that this follower sends to its primary. Set only while primaryRequired is true.
+	ForwardedOperations *[]string `json:"forwardedOperations,omitempty"`
+	Leader              *string   `json:"leader,omitempty"`
+
+	// LocalOperations operationIds that this follower runs itself, on its own node-local state or by its own role. Set only while primaryRequired is true.
+	LocalOperations *[]string `json:"localOperations,omitempty"`
+	Node            string    `json:"node"`
+	Nodes           int64     `json:"nodes"`
+
+	// Primary Name of the node that holds write authority (SQLite driver).
+	Primary *string `json:"primary,omitempty"`
+
+	// PrimaryRequired True on an enrolled SQLite follower: every mutating operation that is in neither forwardedOperations nor localOperations answers 503 primary_required.
+	PrimaryRequired bool `json:"primaryRequired"`
+	ReadOnly        bool `json:"readOnly"`
+
+	// Role Replication role of this node on the SQLite driver: standalone, primary or follower. Absent on other drivers.
+	Role *string `json:"role,omitempty"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -3760,6 +3799,13 @@ type IntegrationRecord struct {
 	Type    string   `json:"type"`
 }
 
+// IntegrationReleaseResult defines model for IntegrationReleaseResult.
+type IntegrationReleaseResult struct {
+	LedgerRows int64 `json:"ledgerRows"`
+	Operations int64 `json:"operations"`
+	Released   bool  `json:"released"`
+}
+
 // IntegrationReview defines model for IntegrationReview.
 type IntegrationReview struct {
 	Mode          *IntegrationReviewMode `json:"mode,omitempty"`
@@ -3774,18 +3820,27 @@ type IntegrationReviewMode string
 
 // IntegrationSummary defines model for IntegrationSummary.
 type IntegrationSummary struct {
-	LastSync    *time.Time `json:"lastSync,omitempty"`
-	Leader      bool       `json:"leader"`
-	Name        string     `json:"name"`
-	Namespace   string     `json:"namespace"`
-	Phase       string     `json:"phase"`
-	Reason      string     `json:"reason"`
-	Revision    string     `json:"revision"`
-	StatusKnown bool       `json:"statusKnown"`
-	Suspended   bool       `json:"suspended"`
-	Type        string     `json:"type"`
-	Uid         string     `json:"uid"`
+	Blocked             int64                            `json:"blocked"`
+	DeletionPolicy      IntegrationSummaryDeletionPolicy `json:"deletionPolicy"`
+	DeletionRequestedAt *time.Time                       `json:"deletionRequestedAt,omitempty"`
+	LastSync            *time.Time                       `json:"lastSync,omitempty"`
+	Leader              bool                             `json:"leader"`
+	Name                string                           `json:"name"`
+	Namespace           string                           `json:"namespace"`
+	Phase               string                           `json:"phase"`
+	Reason              string                           `json:"reason"`
+	Remaining           int64                            `json:"remaining"`
+	Revision            string                           `json:"revision"`
+	StatusKnown         bool                             `json:"statusKnown"`
+	Suspended           bool                             `json:"suspended"`
+	Terminating         bool                             `json:"terminating"`
+	Type                string                           `json:"type"`
+	Uid                 string                           `json:"uid"`
+	Uncertain           int64                            `json:"uncertain"`
 }
+
+// IntegrationSummaryDeletionPolicy defines model for IntegrationSummary.DeletionPolicy.
+type IntegrationSummaryDeletionPolicy string
 
 // LatencySummary defines model for LatencySummary.
 type LatencySummary struct {
@@ -6709,6 +6764,9 @@ type CheckIntegrationJSONRequestBody = IntegrationReview
 // PreviewIntegrationJSONRequestBody defines body for PreviewIntegration for application/json ContentType.
 type PreviewIntegrationJSONRequestBody = IntegrationReview
 
+// ReleaseIntegrationJSONRequestBody defines body for ReleaseIntegration for application/json ContentType.
+type ReleaseIntegrationJSONRequestBody = IntegrationReview
+
 // SyncIntegrationJSONRequestBody defines body for SyncIntegration for application/json ContentType.
 type SyncIntegrationJSONRequestBody = IntegrationReview
 
@@ -8019,6 +8077,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /integrations/{namespace}/{name}/preview (the `PreviewIntegration` operationId).
 	PreviewIntegration(ctx context.Context, namespace string, name string, body PreviewIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReleaseIntegrationWithBody Release one reviewed terminating integration without cleanup
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/release (the `ReleaseIntegration` operationId).
+	ReleaseIntegrationWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReleaseIntegration Release one reviewed terminating integration without cleanup
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/release (the `ReleaseIntegration` operationId).
+	ReleaseIntegration(ctx context.Context, namespace string, name string, body ReleaseIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SyncIntegrationWithBody Run a reviewed integration sync
 	//
@@ -11467,6 +11539,40 @@ func (c *Client) PreviewIntegrationWithBody(ctx context.Context, namespace strin
 // Corresponds with POST /integrations/{namespace}/{name}/preview (the `PreviewIntegration` operationId).
 func (c *Client) PreviewIntegration(ctx context.Context, namespace string, name string, body PreviewIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPreviewIntegrationRequest(c.Server, namespace, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReleaseIntegrationWithBody Release one reviewed terminating integration without cleanup
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /integrations/{namespace}/{name}/release (the `ReleaseIntegration` operationId).
+func (c *Client) ReleaseIntegrationWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReleaseIntegrationRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReleaseIntegration Release one reviewed terminating integration without cleanup
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /integrations/{namespace}/{name}/release (the `ReleaseIntegration` operationId).
+func (c *Client) ReleaseIntegration(ctx context.Context, namespace string, name string, body ReleaseIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReleaseIntegrationRequest(c.Server, namespace, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -18724,6 +18830,60 @@ func NewPreviewIntegrationRequestWithBody(server string, namespace string, name 
 	return req, nil
 }
 
+// NewReleaseIntegrationRequest calls the generic ReleaseIntegration builder with application/json body
+func NewReleaseIntegrationRequest(server string, namespace string, name string, body ReleaseIntegrationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReleaseIntegrationRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewReleaseIntegrationRequestWithBody constructs an http.Request for the ReleaseIntegration method, with any body, and a specified content type
+func NewReleaseIntegrationRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrations/%s/%s/release", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewSyncIntegrationRequest calls the generic SyncIntegration builder with application/json body
 func NewSyncIntegrationRequest(server string, namespace string, name string, body SyncIntegrationJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -24751,6 +24911,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /integrations/{namespace}/{name}/preview (the `PreviewIntegration` operationId).
 	PreviewIntegrationWithResponse(ctx context.Context, namespace string, name string, body PreviewIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewIntegrationResponse, error)
+
+	// ReleaseIntegrationWithBodyWithResponse Release one reviewed terminating integration without cleanup
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/release (the `ReleaseIntegration` operationId).
+	ReleaseIntegrationWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReleaseIntegrationResponse, error)
+
+	// ReleaseIntegrationWithResponse Release one reviewed terminating integration without cleanup
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /integrations/{namespace}/{name}/release (the `ReleaseIntegration` operationId).
+	ReleaseIntegrationWithResponse(ctx context.Context, namespace string, name string, body ReleaseIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*ReleaseIntegrationResponse, error)
 
 	// SyncIntegrationWithBodyWithResponse Run a reviewed integration sync
 	//
@@ -36267,6 +36441,124 @@ func (r PreviewIntegrationResponse) ContentType() string {
 	return ""
 }
 
+// ReleaseIntegrationResponse200Headers the declared response headers of an HTTP 200 response for ReleaseIntegration
+type ReleaseIntegrationResponse200Headers struct {
+	CacheControl *string
+}
+
+type ReleaseIntegrationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrationReleaseResult
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ReleaseIntegrationResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ReleaseIntegrationResponse) GetJSON200() *IntegrationReleaseResult {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ReleaseIntegrationResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ReleaseIntegrationResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ReleaseIntegrationResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ReleaseIntegrationResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ReleaseIntegrationResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r ReleaseIntegrationResponse) GetJSON413() *Error {
+	return r.JSON413
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ReleaseIntegrationResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ReleaseIntegrationResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r ReleaseIntegrationResponse) GetJSON501() *Error {
+	return r.JSON501
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ReleaseIntegrationResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ReleaseIntegrationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReleaseIntegrationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReleaseIntegrationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReleaseIntegrationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // SyncIntegrationResponse200Headers the declared response headers of an HTTP 200 response for SyncIntegration
 type SyncIntegrationResponse200Headers struct {
 	CacheControl *string
@@ -45661,6 +45953,32 @@ func (c *ClientWithResponses) PreviewIntegrationWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParsePreviewIntegrationResponse(rsp)
+}
+
+// ReleaseIntegrationWithBodyWithResponse Release one reviewed terminating integration without cleanup
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /integrations/{namespace}/{name}/release (the `ReleaseIntegration` operationId).
+func (c *ClientWithResponses) ReleaseIntegrationWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReleaseIntegrationResponse, error) {
+	rsp, err := c.ReleaseIntegrationWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReleaseIntegrationResponse(rsp)
+}
+
+// ReleaseIntegrationWithResponse Release one reviewed terminating integration without cleanup
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /integrations/{namespace}/{name}/release (the `ReleaseIntegration` operationId).
+func (c *ClientWithResponses) ReleaseIntegrationWithResponse(ctx context.Context, namespace string, name string, body ReleaseIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*ReleaseIntegrationResponse, error) {
+	rsp, err := c.ReleaseIntegration(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReleaseIntegrationResponse(rsp)
 }
 
 // SyncIntegrationWithBodyWithResponse Run a reviewed integration sync
@@ -56273,6 +56591,115 @@ func ParsePreviewIntegrationResponse(rsp *http.Response) (*PreviewIntegrationRes
 	switch {
 	case rsp.StatusCode == 200:
 		var headers PreviewIntegrationResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseReleaseIntegrationResponse parses an HTTP response from a ReleaseIntegrationWithResponse call
+func ParseReleaseIntegrationResponse(rsp *http.Response) (*ReleaseIntegrationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReleaseIntegrationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrationReleaseResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ReleaseIntegrationResponse200Headers
 		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
