@@ -693,14 +693,18 @@ func TestQuerylogRuntimeSinksLegacyReload(t *testing.T) {
 	// not close it under that write, and still closes the database. The
 	// collector and the database flushed completely, so close reports no
 	// local loss; the exporter that did not drain is reported on its own.
-	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	// The bound is far above the time the local close takes (up to about
+	// 240 ms under the race detector on two busy cores), so a slow machine
+	// cannot turn the database close into the reported failure, and still
+	// well below the sink host's own five-second drain.
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	start := time.Now()
 	if err := r.close(ctx); err != nil {
 		t.Fatalf("close reported an incomplete local flush although only an exporter did not drain: %v", err)
 	}
 	closed = true
-	if took := time.Since(start); took < 250*time.Millisecond || took > 5*time.Second {
+	if took := time.Since(start); took < 1900*time.Millisecond || took > 4*time.Second {
 		t.Errorf("close with a stalled sink took %s: it must give the sinks the caller's bound and no more", took)
 	}
 	undrained := logRecords(t, logs, "additional query-log sink did not drain")
