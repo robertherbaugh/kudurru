@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -419,5 +420,46 @@ func TestCommandExpiresWhileDomainRunsRollsBack(t *testing.T) {
 	}
 	if !imageOf(t, s).Generation().Same(before.Generation()) {
 		t.Fatal("expired domain execution committed object/dedup")
+	}
+}
+
+// A peer that cannot be dialed received nothing, so a write to it is a known
+// "not sent" (ErrUnavailable), never an unknown outcome. A peer that accepts
+// the connection and drops it may have received the command: that stays
+// ErrOutcomeUnknown.
+func TestWriteToAnUndialablePeerIsNotSent(t *testing.T) {
+	p := openStore(t, replication.Primary)
+	mirror := mirrorOf(t, p)
+	creds := credentials(t, 1)
+	closed, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := closed.Addr().String()
+	if err := closed.Close(); err != nil {
+		t.Fatal(err)
+	}
+	peer := Peer{MemberID: p.Authority().MemberID, ClusterID: p.Authority().Term.ClusterID, Address: address}
+	client := clientFor(t, mirror, creds, func(o *ClientOptions) { o.Timeout = 2 * time.Second })
+	if _, e := client.Write(t.Context(), peer, commandFor(p, "never-dialed")); !errors.Is(e, ErrUnavailable) || errors.Is(e, ErrOutcomeUnknown) {
+		t.Fatalf("undialable peer: %v", e)
+	}
+	dropping, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = dropping.Close() })
+	go func() {
+		for {
+			conn, err := dropping.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+	peer.Address = dropping.Addr().String()
+	if _, e := client.Write(t.Context(), peer, commandFor(p, "dropped-connection")); !errors.Is(e, ErrOutcomeUnknown) {
+		t.Fatalf("dropped connection: %v", e)
 	}
 }

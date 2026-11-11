@@ -453,6 +453,11 @@ func (c *Client) Write(ctx context.Context, peer Peer, command Command) (Outcome
 	}
 	r, err := c.request(ctx, peer, http.MethodPost, PathWrite, b, "")
 	if err != nil {
+		if notDispatched(err) {
+			// No connection was made, so no byte of the command left this
+			// node: the command was not sent, which is a known outcome.
+			return Outcome{}, err
+		}
 		if errors.Is(err, ErrUnavailable) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return Outcome{}, errors.Join(ErrOutcomeUnknown, err)
 		}
@@ -490,4 +495,14 @@ func (c *Client) Write(ctx context.Context, peer Peer, command Command) (Outcome
 		return Outcome{}, errors.Join(ErrOutcomeUnknown, err)
 	}
 	return out, nil
+}
+
+// notDispatched reports a transport failure that happened while dialing the
+// peer, before any connection existed: the request was never written. Every
+// later failure (TLS, a dropped connection, a lost response) may follow the
+// dispatch of a mutation and stays an unknown outcome.
+func notDispatched(err error) bool {
+	var exchange *ExchangeError
+	var op *net.OpError
+	return errors.Is(err, ErrUnavailable) && !errors.As(err, &exchange) && errors.As(err, &op) && op.Op == "dial"
 }
