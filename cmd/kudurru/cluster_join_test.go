@@ -39,6 +39,15 @@ func joinPrimaryFixture(t *testing.T) (*servingRuntime, *internalapi.Credentials
 func joinPrimaryLifetimeFixture(t *testing.T, lifetime time.Duration) (*servingRuntime, *internalapi.Credentials, func(string) enrollment.Invitation) {
 	t.Helper()
 	p := newServingRuntimeFixture(t)
+	credentials, issue := joinPrimaryOn(t, p, lifetime)
+	return p, credentials, issue
+}
+
+// joinPrimaryOn activates enrollment on an existing writable runtime, serves
+// its member listener and returns the invitation issuer. Tests that need a
+// particular primary (for example one with managed root anchors) use it.
+func joinPrimaryOn(t *testing.T, p *servingRuntime, lifetime time.Duration) (*internalapi.Credentials, func(string) enrollment.Invitation) {
+	t.Helper()
 	p.opts.Config.Node.DataDir = t.TempDir()
 	i, err := memberidentity.Create(filepath.Join(p.opts.Config.Node.DataDir, memberIdentityFile), p.opts.Store.Authority().MemberID)
 	if err != nil {
@@ -126,7 +135,7 @@ func joinPrimaryLifetimeFixture(t *testing.T, lifetime time.Duration) (*servingR
 		}
 		return inv
 	}
-	return p, credentials, issue
+	return credentials, issue
 }
 
 func TestClusterJoinActualTLSCLIAndRestart(t *testing.T) {
