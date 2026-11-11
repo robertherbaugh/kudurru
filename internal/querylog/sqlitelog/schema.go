@@ -27,12 +27,15 @@ const SchemaVersion = 3
 // kudurru.
 var ErrSchemaTooNew = errors.New("sqlitelog: querylog.db schema is newer than this binary")
 
-// Pragmas are the connection settings of dev-docs/design-record.md §11.2, applied
-// on every connection open. The writer connection opens before the schema
-// is created, so auto_vacuum=INCREMENTAL takes effect on a fresh file (it
-// cannot change once tables exist without a VACUUM).
+// Pragmas are the connection settings of dev-docs/design-record.md §11.2. The
+// writer connection opens before the schema is created, so
+// auto_vacuum=INCREMENTAL takes effect on a fresh file (it cannot change
+// once tables exist without a VACUUM). The mode is then kept in the file
+// header, and dsn leaves autoVacuumPragma out for an existing file: setting
+// it writes the header on every open, so a start that refuses a newer file
+// would otherwise change it.
 var Pragmas = []string{
-	"auto_vacuum(INCREMENTAL)",
+	autoVacuumPragma,
 	"journal_mode(WAL)",
 	"synchronous(NORMAL)",
 	"wal_autocheckpoint(2000)",
@@ -41,12 +44,17 @@ var Pragmas = []string{
 	"temp_store(MEMORY)",
 }
 
+const autoVacuumPragma = "auto_vacuum(INCREMENTAL)"
+
 // dsn builds the modernc.org/sqlite URI. The writer begins every
 // transaction IMMEDIATE so the write lock is taken up front; readers are
-// query_only.
-func dsn(path string, writer bool) string {
+// query_only. fresh is true for a file that has no database yet.
+func dsn(path string, writer, fresh bool) string {
 	q := url.Values{}
 	for _, p := range Pragmas {
+		if p == autoVacuumPragma && !fresh {
+			continue
+		}
 		q.Add("_pragma", p)
 	}
 	if writer {

@@ -265,12 +265,17 @@ func (w *Writer) Open(ctx context.Context, _ json.RawMessage, _ prometheus.Regis
 			w.closeDBs()
 		}
 	}()
+	// A file without a database yet gets the auto_vacuum mode (dsn).
+	fresh := true
+	if info, err := os.Stat(w.opts.Path); err == nil && info.Size() > 0 {
+		fresh = false
+	}
 	// Create the file 0600 before SQLite does (it would use 0644): the
 	// query log is personal data.
 	if f, err := os.OpenFile(w.opts.Path, os.O_RDWR|os.O_CREATE, 0o600); err == nil { // #nosec G304 -- operator-supplied data path
 		_ = f.Close()
 	}
-	if w.w, err = sql.Open("sqlite", dsn(w.opts.Path, true)); err != nil {
+	if w.w, err = sql.Open("sqlite", dsn(w.opts.Path, true, fresh)); err != nil {
 		return fmt.Errorf("sqlitelog: open %s: %w", w.opts.Path, err)
 	}
 	w.w.SetMaxOpenConns(1)
@@ -287,7 +292,7 @@ func (w *Writer) Open(ctx context.Context, _ json.RawMessage, _ prometheus.Regis
 	if err := w.loadState(ctx, created); err != nil {
 		return err
 	}
-	if w.r, err = sql.Open("sqlite", dsn(w.opts.Path, false)); err != nil {
+	if w.r, err = sql.Open("sqlite", dsn(w.opts.Path, false, false)); err != nil {
 		return fmt.Errorf("sqlitelog: open %s: %w", w.opts.Path, err)
 	}
 	w.r.SetMaxOpenConns(w.opts.ReadConns)
