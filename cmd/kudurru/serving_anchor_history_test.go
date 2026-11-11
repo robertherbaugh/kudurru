@@ -443,3 +443,98 @@ func TestAnchorHistoryRejoiningPrimaryKeepsItsRevocationUntilCanonical(t *testin
 		t.Fatal("quarantine does not hold the abandoned owner", err)
 	}
 }
+
+// The mounted form of the dormant-primary refusal and of the action that ends
+// it. The old primary starts managed anchors after its follower's last pull and
+// the follower is promoted with a dormant owner. The old primary refuses that
+// primary's data, since managed history is never replaced by a dormant owner,
+// and keeps answering DNS-only from its own branch; the offline review an
+// operator can run on such a member shows a fenced member that holds no image
+// of the term it follows. When the promoted primary starts managed anchors
+// from the same configured seeds, through the production root operation, the
+// next production pull adopts that branch and the member publishes completely.
+func TestAnchorHistoryManagedMemberFollowsOnceThePrimaryStartsManagedAnchors(t *testing.T) {
+	root := newAnchorHistoryAuthority(t)
+	s, original, target, host := anchorOperationFixtureTopology(t, root.endpoint, root.seeds, "direct")
+	old := newAnchorHistoryWriter(original, t, s, target, host)
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	t.Cleanup(cancel)
+	// The follower's image predates the old primary's bootstrap.
+	f := newAnchorFollowerFixture(ctx, t, s)
+	if owner := anchorOperationOwner(ctx, t, f.s); owner.Inspect().Phase != accepted.Dormant {
+		t.Fatal("fixture follower does not hold a dormant owner")
+	}
+	own := old.operate(t, root, false)
+	promoted := anchorHistoryPromote(ctx, t, f)
+	polls := root.reads.Load()
+	if _, err := s.opts.Store.ObserveAuthority(ctx, promoted.Term); err != nil {
+		t.Fatal(err)
+	}
+	fenced := s.opts.Store.Authority()
+	if fenced.Mode != replication.Fenced || !fenced.Term.Same(promoted.Term) {
+		t.Fatal("old primary was not fenced by the promoted term", fenced.Mode)
+	}
+	lost := anchorFollowerImage(ctx, t, s.opts.Store)
+	anchorHistoryAwait(t, "fenced old primary did not publish DNS-only with one supervision poll", s, root, func() bool {
+		return s.publisher.Status().Reason == "dns_only" && root.reads.Load() == polls+1
+	})
+	puller := &follower.Puller{Mirror: s.opts.Store, Source: anchorHistorySource{primary: func() *sqlite.Store { return f.store }}}
+	refused := func(stage string) {
+		t.Helper()
+		if err := puller.Pull(ctx); !errors.Is(err, accepted.ErrCAS) {
+			t.Fatalf("%s: old primary replaced its managed history with a dormant owner: %v", stage, err)
+		}
+		if a := s.opts.Store.Authority(); !reflect.DeepEqual(a, fenced) || anchorOperationOwner(ctx, t, s).Version() != own || !anchorFollowerSameImage(lost, anchorFollowerImage(ctx, t, s.opts.Store)) {
+			t.Fatal(stage, "refused pull changed the old primary", a.Mode)
+		}
+		seal, dnsOnly, emit := anchorHistoryPublished(ctx, t, s)
+		if emit != nil || seal == nil || seal.managed == nil || seal.static != nil || !seal.current() || !dnsOnly || !seal.base.Same(lost.Generation()) {
+			t.Fatal(stage, "refused member does not answer DNS-only from its own managed owner", emit)
+		}
+		if _, err := s.publisher.CaptureHTTP(ctx); err == nil {
+			t.Fatal(stage, "fenced member admitted protected HTTP")
+		}
+		// What `cluster resolution --offline` reports for this database.
+		review, err := offlineResolutionReview(ctx, s.opts.Store, "old-primary")
+		if err != nil || review.Mode != string(replication.Fenced) || !review.Term.Same(promoted.Term) || !review.Installed.Same(lost.Generation()) || review.Installed.Term.Epoch >= review.Term.Epoch || review.Resolvable || review.Reason != "no_conflict" {
+			t.Fatal(stage, "offline review does not show a fenced member without an image of its term", err, review.Mode, review.Reason)
+		}
+	}
+	refused("first pull")
+	// The promoted primary starts managed anchors from the same configuration.
+	canonical := anchorHistoryElect(ctx, t, f, promoted).operate(t, root, false)
+	if canonical == own || canonical.Generation != own.Generation {
+		t.Fatal("fixture primary did not start another branch at the same generation")
+	}
+	if a, b := anchorOperationOwner(ctx, t, s).Inspect(), anchorOperationOwner(ctx, t, f.s).Inspect(); a.HistoryID != b.HistoryID || a.PolicyID != b.PolicyID || a.SeedDigest != b.SeedDigest {
+		t.Fatal("fixture branches do not share history, policy and seeds")
+	}
+	if err := puller.Pull(ctx); err != nil {
+		t.Fatal("old primary cannot adopt the primary's first managed owner", err)
+	}
+	image := anchorFollowerImage(ctx, t, s.opts.Store)
+	if a := s.opts.Store.Authority(); a.Mode != replication.Follower || !a.Term.Same(promoted.Term) || a.MemberID != fenced.MemberID {
+		t.Fatal("old primary did not follow the promoted term", a.Mode)
+	}
+	if anchorOperationOwner(ctx, t, s).Version() != canonical || !anchorFollowerSameImage(image, anchorFollowerImage(ctx, t, f.store)) {
+		t.Fatal("members did not converge on the primary's managed owner")
+	}
+	anchorHistoryAwait(t, "member did not publish completely after adopting the primary's managed owner", s, root, func() bool {
+		status := s.publisher.Status()
+		return status.ProtectedReady && !status.DNSOnly && status.Served.Base.Same(image.Generation())
+	})
+	seal, dnsOnly, err := anchorHistoryPublished(ctx, t, s)
+	if err != nil || seal == nil || seal.managed == nil || seal.static != nil || !seal.current() || dnsOnly || !seal.base.Same(image.Generation()) {
+		t.Fatal("member did not publish the adopted managed owner", err)
+	}
+	quarantined, err := s.opts.Store.ReadQuarantined(ctx, lost.Generation())
+	if err != nil {
+		t.Fatal("abandoned branch was not quarantined", err)
+	}
+	if owner, err := accepted.DecodeRows(quarantined.Payload.Runtime, quarantined.Term.ClusterID); err != nil || owner.Version() != own {
+		t.Fatal("quarantine does not hold the abandoned owner", err)
+	}
+	if review, err := offlineResolutionReview(ctx, s.opts.Store, "old-primary"); err != nil || review.Mode != string(replication.Follower) || !review.Installed.Term.Same(review.Term) {
+		t.Fatal("offline review does not show a member that follows", err, review.Mode)
+	}
+}
