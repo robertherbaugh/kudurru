@@ -555,7 +555,7 @@ func TestConformanceReadBackAfterExplicitApply(t *testing.T) {
 	}
 	// A peer without records refuses the probe before any request but the
 	// negotiation.
-	_, hooks := tlsTarget(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	_, hooks := tlsTarget(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", IntegrationMedia)
 		_, _ = io.WriteString(w, `{"filters":[],"capabilities":["actions"],"manifest":{"type":"x","displayName":"X","version":"1","ioClass":"local_polling","capabilities":["Actions"],"configSchema":{}}}`)
 	}))
