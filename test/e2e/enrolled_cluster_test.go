@@ -461,6 +461,53 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		awaitDNS(primary, record, "", dns.RcodeNameError)
 		awaitDNS(follower, record, "", dns.RcodeNameError)
 	}
+	// On the primary one request applies every document itself (D378). Every
+	// item retires the publication the request began on, and the primary
+	// reconciles the object of each item while the next one runs: neither
+	// refuses a later item. The follower's pulls are reads and are no
+	// foreign commit either. The request starts after the primary's own
+	// follow-up work on the deletions above has ended, because its first item
+	// is held to the publication it began on, as a single write is.
+	enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
+	const directDocuments = 5
+	var direct []any
+	var directNames []string
+	for i := range directDocuments {
+		name := fmt.Sprintf("direct-%d", i)
+		direct = append(direct, recordDoc(name, fmt.Sprintf("192.0.2.%d", 80+i)))
+		directNames = append(directNames, name)
+	}
+	var directApplied api.List[api.ApplyResult]
+	apiA.request(t, http.MethodPost, "/apply", direct, http.StatusOK, &directApplied)
+	if len(directApplied.Items) != directDocuments {
+		t.Fatalf("apply on the primary lost a per-document result: %+v", directApplied.Items)
+	}
+	for _, item := range directApplied.Items {
+		if item.Result != api.ResultCreated || item.ErrorKey != "" || item.Error != "" || item.ResourceVersion == "" {
+			t.Fatalf("one apply of %d new documents on the primary did not create all of them: %+v", directDocuments, directApplied.Items)
+		}
+	}
+	for i, name := range directNames {
+		awaitDNS(primary, name, fmt.Sprintf("192.0.2.%d", 80+i), dns.RcodeSuccess)
+		awaitDNS(follower, name, fmt.Sprintf("192.0.2.%d", 80+i), dns.RcodeSuccess)
+	}
+	enrolledZoneSettled(t, apiA, a.Ports.DNS, directNames[directDocuments-1], fmt.Sprintf("192.0.2.%d", 80+directDocuments-1))
+	directApplied = api.List[api.ApplyResult]{}
+	apiA.request(t, http.MethodPost, "/apply", direct, http.StatusOK, &directApplied)
+	for _, item := range directApplied.Items {
+		if len(directApplied.Items) != directDocuments || item.Result != api.ResultUnchanged {
+			t.Fatalf("second identical apply on the primary did not report every document unchanged: %+v", directApplied.Items)
+		}
+	}
+	var directRemoved api.Processed
+	apiA.request(t, http.MethodPost, "/dnsrecordsets:batchDelete", map[string]any{"names": directNames}, http.StatusOK, &directRemoved)
+	if len(directRemoved.Processed.Success) != directDocuments || len(directRemoved.Processed.Errors) != 0 {
+		t.Fatalf("one batch deletion on the primary did not delete every name: %+v", directRemoved.Processed)
+	}
+	for _, name := range directNames {
+		awaitDNS(primary, name, "", dns.RcodeNameError)
+		awaitDNS(follower, name, "", dns.RcodeNameError)
+	}
 	relay.partition(true)
 	if !checkDNS(follower, "seed", "192.0.2.42", dns.RcodeSuccess) {
 		t.Fatal("partition interrupted valid local DNS")
