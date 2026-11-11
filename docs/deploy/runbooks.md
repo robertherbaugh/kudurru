@@ -107,7 +107,10 @@ that changes clusters while keeping valid transport trust is not continuously
 reverified by this guard.
 
 **Upgrade compatibility.** An empty pin preserves online startup, but disables
-offline saved-state admission and cached shared-settings fallback. Before
+offline saved-state admission and cached shared-settings fallback: an
+unpinned node that starts while the API server is unreachable cannot read the
+shared settings and exits with an error, so it neither answers nor reports
+ready until it can reach the API server. Before
 relying on outage recovery, provision the pin while the API is reachable and
 allow a complete live sync to refresh both saved objects and shared settings.
 Old object snapshots without a cluster ID are refused during an outage even
