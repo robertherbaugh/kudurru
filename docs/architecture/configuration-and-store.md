@@ -525,10 +525,12 @@ controller reports them on both drivers. The primary runtime runs its own
 checks on the compiled zone before it commits it (zonestate's normalization
 and `BuildCommittedPrimary` as the prebuild); the compiler keeps every
 record set from reaching one of them, so none stops the zone. That includes
-a record set written at a name that holds a record a dynamic update added:
-without an authorized takeover it is projected `duplicated` with the reason
-and the rest of the zone is committed, while the dynamic record keeps
-answering. Only zone-wide capacity bounds (a million records, 64 MiB of
+an endpoint written at a name that holds a record a dynamic update added:
+without an authorized takeover the compiler checks each endpoint against
+the committed dynamic records before the builder takes it and leaves out
+only the colliding ones, a record set with nothing served is projected
+`duplicated` with the reason, and the rest of the zone is committed, while
+the dynamic record keeps answering. Only zone-wide capacity bounds (a million records, 64 MiB of
 records, a 128 MiB aggregate) still refuse the zone as a whole; it then
 keeps its last commit. `TestCompilerWithholdsEveryRefusalOfThePrimaryRuntime`
 is the table of these checks.
@@ -546,7 +548,9 @@ A source whose digest is published but for which this node holds no body
 as the source is configured now (a lost or never filled cache, a URL
 changed after the last download, a follower that has not pulled the body
 yet) is compiled empty as well, and storing the body wakes the serving
-publisher to prepare again with it. A source for which this node holds a
+publisher to prepare again with it. The list does not block on that node
+meanwhile; the node logs the wait once per source when it starts and again
+when the body is stored. A source for which this node holds a
 body under another digest (a refresh downloaded or pulled before its new
 digest was published) still holds back the candidate until the published
 body is stored, so a node never serves a body nobody published.

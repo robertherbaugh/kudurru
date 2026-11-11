@@ -553,15 +553,19 @@ apex) is left out and reported on its record set, and a block list whose URL
 has never downloaded is served empty and reported as failing until the URL
 answers. A block list whose URL accepts the connection and does not answer
 is also served empty while the download runs, and so is a block list whose
-body this node no longer holds (for example a `state.db` restored without
-its `lists` directory) until the body is downloaded again.
+status names a published body that this node's `lists` directory does not
+hold, until the body is downloaded again. While it waits the list does not
+block on that node; the node logs `listfetcher: list source has a published
+digest but this node holds no body for it` once for the source, and
+`awaited body stored` when the list blocks again.
 
-A record set written at a name that holds a record a dynamic update added
-is not served and is reported `Duplicated` in the zone's source
-diagnostics (the record set's own conditions are computed without the
-dynamic records and may still show it as ready); the dynamic record keeps
-answering and the rest of the zone keeps taking changes. Delete the
-dynamic record (or the record set) to resolve it.
+An endpoint of a record set written at a name that holds a record a dynamic
+update added is not served; the other endpoints of the record set are. A
+record set with nothing served is reported `Duplicated` in the zone's
+source diagnostics (the record set's own conditions are computed without
+the dynamic records and may still show it as ready); the dynamic record
+keeps answering and the rest of the zone keeps taking changes. Delete the
+dynamic record (or the endpoint) to resolve it.
 
 A primary zone that has a child zone (for example `sub.example.test.` under
 `example.test.`) can answer `SERVFAIL` and keep readiness at 503 for up to
