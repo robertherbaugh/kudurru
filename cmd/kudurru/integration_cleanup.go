@@ -126,6 +126,16 @@ func readIntegrationState(ctx context.Context, tx *sqlite.CommandTx, owner kinds
 			}
 			return nil
 		}},
+		// The event cursor is part of the delivery state and counted with it
+		// (D379).
+		{kinds.KindIntegrationEventCursor, func(obj store.Object) error {
+			if row, ok := obj.(*kinds.IntegrationEventCursor); !ok {
+				return ih.ErrInvalid
+			} else if row.Spec.Owner == owner {
+				out.deliveries = append(out.deliveries, obj)
+			}
+			return nil
+		}},
 	}
 	// Record sets precede the zones they belong to.
 	for _, kind := range []store.Kind{"DNSRecordSet", "DNSZone"} {

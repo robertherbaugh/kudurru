@@ -191,6 +191,9 @@ type Options struct {
 	Purge    func(context.Context, ExecutionGuard) (PurgeResult, error)
 	Finalize func(context.Context, ExecutionGuard, CleanupSummary) error
 	Resolve  func(context.Context, dns.Question) (*dns.Msg, error)
+	// Produce derives hook events from root's durable state (D379). Nil
+	// means no automatic production; Host.Deliver still queues events.
+	Produce Producer
 	// In preferred source mode Allowed must be a concurrency-safe, lock-free
 	// memory/clock predicate: it is also invoked by the actual final check.
 	// Root separately excludes original license/resource replacement.

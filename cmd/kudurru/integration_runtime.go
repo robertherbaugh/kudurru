@@ -90,7 +90,7 @@ func (r *integrationRuntime) hostOptions() (ih.Options, error) {
 		default:
 			return nil, ih.ErrUnsupported
 		}
-	}, ValidateSource: r.validateSource, BeforeObserve: r.beforeObserve, CommitSource: r.commitSource, Status: r.status, Purge: r.purge, Finalize: r.finalize, Now: s.opts.Now}, nil
+	}, ValidateSource: r.validateSource, BeforeObserve: r.beforeObserve, CommitSource: r.commitSource, Status: r.status, Purge: r.purge, Finalize: r.finalize, Produce: r.produceEvents, Now: s.opts.Now}, nil
 }
 
 func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {

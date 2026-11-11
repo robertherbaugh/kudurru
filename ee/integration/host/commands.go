@@ -213,6 +213,12 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 			reset(0)
 		case <-eventTick:
 			operationCtx, operationCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
+			// Produce before draining, so a change is delivered in the same
+			// tick it is queued. A refused production never holds back the
+			// events already queued.
+			if err := h.produceEvents(operationCtx, j); err != nil {
+				h.opts.Logger.Warn("integration event production failed", "integration", j.key)
+			}
 			if err := h.drainEvents(operationCtx, j); err != nil {
 				h.opts.Logger.Warn("integration event drain failed", "integration", j.key)
 			}

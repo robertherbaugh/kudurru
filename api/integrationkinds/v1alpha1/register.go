@@ -12,6 +12,9 @@ import (
 var SchemeBuilder = runtime.NewSchemeBuilder(func(s *runtime.Scheme) error {
 	s.AddKnownTypes(public.GroupVersion, &IntegrationLedger{}, &IntegrationLedgerList{}, &IntegrationOperation{}, &IntegrationOperationList{}, &IntegrationBudget{}, &IntegrationBudgetList{}, &IntegrationDelivery{}, &IntegrationDeliveryList{})
 	metav1.AddToGroupVersion(s, public.GroupVersion)
+	if err := addCursorToScheme(s); err != nil {
+		return err
+	}
 	return AddSourceToScheme(s)
 })
 
