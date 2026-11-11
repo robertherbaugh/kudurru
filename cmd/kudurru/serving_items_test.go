@@ -43,6 +43,7 @@ type itemsFixture struct {
 	other    string      // the API token of a second administrator
 	commands int
 	between  func(n int, ctx context.Context)
+	inside   func(n int) // runs in the transaction of item n, before its body
 }
 
 func newItemsFixture(t *testing.T, adapter func(*servingCommandFixture) *servinghttp.Adapter) *itemsFixture {
@@ -81,7 +82,12 @@ func (f *itemsFixture) mount(t *testing.T, authenticate *servinghttp.Adapter) {
 		if f.between != nil {
 			f.between(n, ctx)
 		}
-		return f.s.ObjectCommand(ctx, key, fn)
+		return f.s.ObjectCommand(ctx, key, func(ctx context.Context, tx *sqlite.CommandTx, authorize api.ObjectAuthorize) error {
+			if f.inside != nil {
+				f.inside(n)
+			}
+			return fn(ctx, tx, authorize)
+		})
 	}
 	var err error
 	f.server, err = api.New(api.Options{Store: f.s.opts.Store, Validator: f.s.opts.Validator, Config: f.s.opts.Config,
@@ -468,5 +474,115 @@ func TestServingItemsBindOneWriterEpisode(t *testing.T) {
 	}
 	if err := items.bind(first, later); !errors.Is(err, replication.ErrFenced) {
 		t.Fatal("a later incarnation was adopted", err)
+	}
+}
+
+// A request whose items have run for its pace lets the node publish before
+// its next item (D378): the item's transaction begins while the node has a
+// current publication of everything committed before it, including the node's
+// own follow-up write after the previous item, so local DNS answers and other
+// callers are served between the items of a long request. Every item is still
+// applied, and none is admitted again.
+func TestServingItemsLetTheNodePublishBetweenItems(t *testing.T) {
+	f := newItemsFixture(t, nil)
+	f.s.itemPace = &itemPace{work: time.Nanosecond}
+	f.between = func(n int, _ context.Context) {
+		if n > 0 {
+			f.followUp(t, fmt.Sprintf("paced-%d", n))
+		}
+	}
+	var current []bool
+	f.inside = func(n int) {
+		current = append(current, f.s.publisher.Status().ProtectedReady)
+	}
+	names := []string{"paced-a", "paced-b", "paced-c", "paced-d", "paced-e"}
+	results := f.apply(t, f.server, names...)
+	for _, result := range results {
+		if result.Result != api.ResultCreated {
+			t.Fatalf("a paced request did not create every document: %s", itemsResults(results))
+		}
+	}
+	if f.commands != len(names) || len(current) != len(names) {
+		t.Fatal("an item ran more than once", f.commands, len(current))
+	}
+	for n, ok := range current {
+		if !ok {
+			t.Fatalf("item %d began without a current publication of the request's earlier items: %v", n, current)
+		}
+	}
+
+	// After the node has published, the request commits nothing for the
+	// pace's rest, so that the publication is used.
+	f.settled(t)
+	f.between, f.inside = nil, nil
+	f.s.itemPace = &itemPace{work: time.Nanosecond, rest: 250 * time.Millisecond}
+	started := time.Now()
+	results = f.apply(t, f.server, "rested-a", "rested-b", "rested-c")
+	if elapsed := time.Since(started); elapsed < 500*time.Millisecond {
+		t.Fatal("the request did not rest after the node published its earlier items", elapsed)
+	}
+	for _, result := range results {
+		if result.Result != api.ResultCreated {
+			t.Fatalf("a rested request did not create every document: %s", itemsResults(results))
+		}
+	}
+}
+
+// The wait for a publication runs inside the request's one lifetime. An item
+// whose wait outlives it is not applied and says so.
+func TestServingItemsPaceEndsWithTheRequestLifetime(t *testing.T) {
+	f := newItemsFixture(t, func(f *servingCommandFixture) *servinghttp.Adapter {
+		adapter, err := servinghttp.New(servinghttp.Options{Publisher: f.s.publisher, Now: f.s.opts.Now, MaxDuration: 2 * time.Second})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return adapter
+	})
+	f.s.itemPace = &itemPace{work: time.Nanosecond, rest: time.Minute}
+	started := time.Now()
+	results := f.apply(t, f.server, "waited-a", "waited-b", "waited-c")
+	if elapsed := time.Since(started); elapsed > 20*time.Second {
+		t.Fatal("the wait outlived the request's lifetime", elapsed)
+	}
+	if results[0].Result != api.ResultCreated {
+		t.Fatalf("the item before the wait was not applied: %s", itemsResults(results))
+	}
+	for _, result := range results[1:] {
+		if result.Result != api.ResultError || result.ErrorKey != api.KeyUnavailable || result.Error != itemsLifetime {
+			t.Fatalf("an item whose wait outlived the lifetime was not refused with its cause: %s", itemsResults(results))
+		}
+	}
+	if !f.exists(t, "waited-a") || f.exists(t, "waited-b") || f.exists(t, "waited-c") || f.commands != 3 {
+		t.Fatal("an item was applied after the request's lifetime ended, or replayed", f.commands)
+	}
+}
+
+// The wait for a publication is bounded (D378): when the node does not
+// publish within it, the item goes on without the publication and without
+// the rest, so the pace cannot by itself hold a long request until its
+// lifetime ends. Every item is still applied once.
+func TestServingItemsPaceWaitIsBounded(t *testing.T) {
+	f := newItemsFixture(t, nil)
+	// The rest would hold the request for minutes if an item waited for a
+	// publication; the follow-up commit before each later item makes the
+	// publication stale, so every wait ends at its bound instead.
+	f.s.itemPace = &itemPace{work: time.Nanosecond, rest: time.Minute, wait: time.Nanosecond}
+	f.between = func(n int, _ context.Context) {
+		if n > 0 {
+			f.followUp(t, fmt.Sprintf("bounded-%d", n))
+		}
+	}
+	started := time.Now()
+	results := f.apply(t, f.server, "bounded-a", "bounded-b", "bounded-c")
+	if elapsed := time.Since(started); elapsed > 50*time.Second {
+		t.Fatal("a wait for a publication was not bounded", elapsed)
+	}
+	for _, result := range results {
+		if result.Result != api.ResultCreated {
+			t.Fatalf("a request whose waits ended at their bound did not create every document: %s", itemsResults(results))
+		}
+	}
+	if f.commands != 3 {
+		t.Fatal("an item ran more than once", f.commands)
 	}
 }

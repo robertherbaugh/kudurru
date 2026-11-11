@@ -98,6 +98,9 @@ type servingRuntime struct {
 	// objectAPI is the public API server whose object command bodies execute
 	// follower-forwarded object mutations on this primary. Nil refuses them.
 	objectAPI atomic.Pointer[api.Server]
+
+	// itemPace replaces defaultItemPace for multi-item requests; tests only.
+	itemPace *itemPace
 }
 
 func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *servingRuntime, err error) {

@@ -81,6 +81,7 @@ func (s *servingRuntime) currentAuthCommandThen(ctx context.Context, fn func(con
 		return false, replication.ErrFenced
 	}
 	writer := s.primary.writer.active.Load()
+	request := ctx
 	ctx, release, err := s.primary.writer.bind(ctx, status.Writer)
 	if err != nil {
 		return false, err
@@ -95,6 +96,11 @@ func (s *servingRuntime) currentAuthCommandThen(ctx context.Context, fn func(con
 			return false, err
 		}
 		ctx = providercoordinator.WithChain(ctx, items.chain)
+		if items.chain.Anchored() {
+			if err := s.paceLaterItem(request, ctx, items, target); err != nil {
+				return false, err
+			}
+		}
 	}
 	checkWriter := func(ctx context.Context) error {
 		// Read the original episode directly: its cancellation can precede

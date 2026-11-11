@@ -7,10 +7,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/config"
 )
@@ -121,10 +124,20 @@ func mountedQuiet(t *testing.T, cfg *config.Config, cli *harness) {
 // item and refused another one is returned to the caller or fails the test.
 func mountedRequest(t *testing.T, cfg *config.Config, cli *harness, args ...string) (string, string) {
 	t.Helper()
+	out, stderr, _, _ := mountedRequestWindow(t, cfg, cli, args...)
+	return out, stderr
+}
+
+// mountedRequestWindow is mountedRequest that also returns when the attempt
+// it returns began and ended.
+func mountedRequestWindow(t *testing.T, cfg *config.Config, cli *harness, args ...string) (string, string, time.Time, time.Time) {
+	t.Helper()
 	const stale = "current writable serving generation unavailable"
 	for attempt := 1; ; attempt++ {
 		mountedQuiet(t, cfg, cli)
+		began := time.Now()
 		out, stderr, err := cli.run(args...)
+		ended := time.Now()
 		untouched := false
 		var processed api.Processed
 		switch {
@@ -135,7 +148,8 @@ func mountedRequest(t *testing.T, cfg *config.Config, cli *harness, args ...stri
 				untouched = untouched && strings.Contains(item.Error, stale)
 			}
 		case err == nil:
-			return out, stderr
+			mountedRequestDone(t, args, attempt)
+			return out, stderr, began, ended
 		case strings.Contains(err.Error(), "generation_pending"):
 			untouched = true // refused at capture, before the request was read
 		case !strings.Contains(out, " created") && !strings.Contains(out, " updated") && !strings.Contains(out, " unchanged"):
@@ -153,13 +167,21 @@ func mountedRequest(t *testing.T, cfg *config.Config, cli *harness, args ...stri
 			if err != nil {
 				t.Fatalf("kudurru %s (attempt %d) did not complete in one request: %v\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), attempt, err, out, stderr)
 			}
-			return out, stderr
+			mountedRequestDone(t, args, attempt)
+			return out, stderr, began, ended
 		}
 		if attempt == 5 {
 			t.Fatalf("kudurru %s began five times on a publication that the node retired before the first item\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), out, stderr)
 		}
 		t.Logf("kudurru %s: attempt %d began on a publication that the node retired before the first item; nothing was applied", args[0], attempt)
 	}
+}
+
+// mountedRequestDone logs how many whole requests that applied nothing were
+// sent again, as one countable line, so that a rising rate is seen in logs.
+func mountedRequestDone(t *testing.T, args []string, attempt int) {
+	t.Helper()
+	t.Logf("mounted request kudurru %s: repeated=%d", args[0], attempt-1)
 }
 
 func recordSetDocument(name, zone, host, address string) string {
@@ -289,5 +311,106 @@ func TestRunServeSQLiteMultiFileApplyAndRestoreIntoNewNode(t *testing.T) {
 	awaitMountedDNS(t, target, "y2.multi.test.", "198.51.100.12")
 	if out, _ = mountedRequest(t, target, restored, "restore", "-f", backup); strings.Count(out, " unchanged") != documents {
 		t.Fatalf("a second restore did not report every document unchanged:\n%s", out)
+	}
+}
+
+// One long apply on a standalone complete SQLite node lets the node publish
+// between its items (D378): an existing record of the node's own zone is
+// still answered, and a second signed-in CLI still reads, while the request
+// runs. Every commit makes local answers and other callers wait for the next
+// publication, so without the request's pace neither is served until the
+// request has ended. The CLI's own default timeout of apply is used.
+func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
+	cfg, _ := mountedTestConfig(t)
+	startMountedServe(t, cfg)
+	cli := mountedCLI(t, cfg, "writer")
+	reader := mountedCLI(t, cfg, "reader")
+	mountedRequest(t, cfg, cli, "apply", "-f", writeManifest(t, "zone.yaml", multiZoneDocument))
+	mountedRequest(t, cfg, cli, "apply", "-f", writeManifest(t, "probe.yaml", recordSetDocument("probe", "multi", "probe.multi.test.", "198.51.100.200")))
+	awaitMountedDNS(t, cfg, "probe.multi.test.", "198.51.100.200")
+
+	const count = 120
+	documents := make([]string, 0, count)
+	for i := range count {
+		documents = append(documents, recordSetDocument(fmt.Sprintf("long%03d", i), "multi", fmt.Sprintf("long%03d.multi.test.", i), fmt.Sprintf("198.51.100.%d", i%200+1)))
+	}
+	long := writeManifest(t, "long.yaml", documents...)
+
+	var mu sync.Mutex
+	var answered, read []time.Time
+	var failedReads int
+	stop := make(chan struct{})
+	var probes sync.WaitGroup
+	probes.Go(func() {
+		client := &dns.Client{Timeout: 200 * time.Millisecond}
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			query := new(dns.Msg)
+			query.SetQuestion("probe.multi.test.", dns.TypeA)
+			answer, _, err := client.Exchange(query, cfg.Listeners.DNS[0].Address)
+			if err == nil && answer.Rcode == dns.RcodeSuccess && len(answer.Answer) == 1 {
+				if rr, ok := answer.Answer[0].(*dns.A); ok && rr.A.String() == "198.51.100.200" {
+					mu.Lock()
+					answered = append(answered, time.Now())
+					mu.Unlock()
+				}
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	})
+	probes.Go(func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(200 * time.Millisecond):
+			}
+			_, _, err := reader.run("get", "dnszones", "-o", "name")
+			mu.Lock()
+			if err == nil {
+				read = append(read, time.Now())
+			} else {
+				failedReads++
+			}
+			mu.Unlock()
+		}
+	})
+	out, stderr, began, ended := mountedRequestWindow(t, cfg, cli, "apply", "-f", long)
+	close(stop)
+	probes.Wait()
+	if created := strings.Count(out, " created"); created != count {
+		t.Fatalf("one apply of %d new record sets created %d:\nstdout:\n%s\nstderr:\n%s", count, created, out, stderr)
+	}
+	within := func(times []time.Time) []time.Time {
+		var in []time.Time
+		for _, at := range times {
+			if at.After(began) && at.Before(ended) {
+				in = append(in, at)
+			}
+		}
+		return in
+	}
+	mu.Lock()
+	answers, reads, failed := within(answered), within(read), failedReads
+	mu.Unlock()
+	edges := append(append([]time.Time{began}, answers...), ended)
+	slices.SortFunc(edges, func(a, b time.Time) int { return a.Compare(b) })
+	var gap time.Duration
+	for i := 1; i < len(edges); i++ {
+		gap = max(gap, edges[i].Sub(edges[i-1]))
+	}
+	t.Logf("apply of %d documents took %s: %d correct DNS answers, longest time without one %s, %d reads ok, %d reads failed", count, ended.Sub(began), len(answers), gap, len(reads), failed)
+	// How long the node takes to publish depends on the machine, so the
+	// assertion is that the node served between the request's items at all,
+	// once the request ran longer than two pace budgets.
+	if elapsed := ended.Sub(began); elapsed > 2*defaultItemPace.work && len(answers) == 0 {
+		t.Fatalf("the node answered no query for an existing record during the %s of one request", elapsed)
+	}
+	if elapsed := ended.Sub(began); elapsed > 5*defaultItemPace.work && len(reads) == 0 {
+		t.Fatalf("no read of a second caller was answered during the %s of one request", elapsed)
 	}
 }
