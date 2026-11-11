@@ -84,8 +84,8 @@ flowchart LR
     Receipt -- "uncertain" --> Recover["Inspect remote outcome before retry"]
 ```
 
-IntegrationLedger, IntegrationOperation, IntegrationBudget and IntegrationDelivery
-are bounded private runtime kinds. The shared runtime registry includes them in
+IntegrationLedger, IntegrationOperation, IntegrationBudget, IntegrationDelivery
+and IntegrationEventCursor (D379) are bounded private runtime kinds. The shared runtime registry includes them in
 both store drivers, full backups and complete replication manifests, including
 empty kinds. Safe configuration exports omit them. Real SQLite tests cover
 fenced receipt recovery across restart; carrier tests cover native Kubernetes

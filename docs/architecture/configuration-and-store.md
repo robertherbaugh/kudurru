@@ -378,6 +378,7 @@ erDiagram
 | `IdentityProvider` | cluster | public | an OIDC provider with operator-granted credential references |
 | `IntegrationSourceHead` / `IntegrationSourceChunk` | cluster | internal | bounded original inbound source evidence and its complete version pointer |
 | `IntegrationNameAllocation` | cluster | internal | retained collision reservation bound to Integration and target zone UIDs |
+| `IntegrationEventCursor` | cluster | internal | how far one hook instance's event production has read the change feed (D379) |
 
 Inbound runtime carriers use private Secrets in Kubernetes and private objects in
 SQLite. Full backups and replication include them, with explicit zero-count kind
