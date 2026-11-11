@@ -320,6 +320,13 @@ config:
 A Secret without the label, or in another namespace, is never read for a
 sink, whatever the settings name.
 
+A grant is not bound to a destination. Whoever may change the settings
+(`settings.write`) can name any granted file, any granted variable or any
+labeled Secret in a sink and have its value sent, as a password or bearer
+token, to a URL of their choice, plain `http` included. Grant and label only
+credentials made for these destinations, and not, for example, the token of
+a DNS provider integration.
+
 A referenced value holds at most 64 KiB. That is ample for a password, a
 token or a private CA, but not for a combined system bundle such as
 `/etc/ssl/certs/ca-certificates.crt`: point `caRef` at a file with only the
