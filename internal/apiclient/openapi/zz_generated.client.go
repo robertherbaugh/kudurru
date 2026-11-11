@@ -4650,6 +4650,45 @@ type QueryRow struct {
 	Zone        *string     `json:"zone,omitempty"`
 }
 
+// QuerylogSink defines model for QuerylogSink.
+type QuerylogSink struct {
+	// Dropped Queries lost for this sink (kudurru_querylog_dropped_total{stage="sink"}).
+	Dropped int64 `json:"dropped"`
+
+	// Errors Failed attempts to open, write, flush or close (kudurru_sink_errors_total).
+	Errors int64 `json:"errors"`
+
+	// LastSuccess Time of the last successful write; absent before the first.
+	LastSuccess *time.Time `json:"last_success,omitempty"`
+
+	// Name The name of the querylog.sinks entry; it labels the sink's metrics.
+	Name string `json:"name"`
+
+	// QueueSize The bound of the queue (queueSize of the entry in force).
+	QueueSize int64 `json:"queue_size"`
+
+	// Queued Queries waiting in the sink's queue.
+	Queued int64 `json:"queued"`
+
+	// Raw The sink receives queries as they were, before the privacy transform (a dnstap sink with raw: true, D372).
+	Raw bool `json:"raw"`
+
+	// Sent Queries the destination accepted (kudurru_sink_sent_total).
+	Sent int64 `json:"sent"`
+
+	// Type The sink type of the entry in force: slog, clickhouse, loki or dnstap.
+	Type string `json:"type"`
+}
+
+// QuerylogSinksBody defines model for QuerylogSinksBody.
+type QuerylogSinksBody struct {
+	// Node The node that answered (node.name); every node runs its own sinks.
+	Node string `json:"node"`
+
+	// Sinks The sinks that are running or still draining, by name.
+	Sinks *[]QuerylogSink `json:"sinks"`
+}
+
 // QuerylogStatusBody defines model for QuerylogStatusBody.
 type QuerylogStatusBody struct {
 	Backfill    *RollupBackfillStatus `json:"backfill,omitempty"`
@@ -8434,6 +8473,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /querylog/rollup-evidence/verify (the `VerifyRollupEvidence` operationId).
 	VerifyRollupEvidence(ctx context.Context, params *VerifyRollupEvidenceParams, body VerifyRollupEvidenceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// QuerylogSinks State of this node's additional query-log sinks
+	//
+	// The sinks of querylog.sinks as the node that answers runs them: queue, sent, dropped, failed attempts and last success. Every node runs its own sinks; this route reports only the answering node and asks no other. No credential, error text or query appears.
+	//
+	// Corresponds with GET /querylog/sinks (the `QuerylogSinks` operationId).
+	QuerylogSinks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// QuerylogStatus Query-log size, retention and writer state
 	//
@@ -12466,6 +12512,23 @@ func (c *Client) VerifyRollupEvidenceWithBody(ctx context.Context, params *Verif
 // Corresponds with POST /querylog/rollup-evidence/verify (the `VerifyRollupEvidence` operationId).
 func (c *Client) VerifyRollupEvidence(ctx context.Context, params *VerifyRollupEvidenceParams, body VerifyRollupEvidenceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewVerifyRollupEvidenceRequest(c.Server, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// QuerylogSinks State of this node's additional query-log sinks
+//
+// The sinks of querylog.sinks as the node that answers runs them: queue, sent, dropped, failed attempts and last success. Every node runs its own sinks; this route reports only the answering node and asks no other. No credential, error text or query appears.
+//
+// Corresponds with GET /querylog/sinks (the `QuerylogSinks` operationId).
+func (c *Client) QuerylogSinks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewQuerylogSinksRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -21620,6 +21683,33 @@ func NewVerifyRollupEvidenceRequestWithBody(server string, params *VerifyRollupE
 	return req, nil
 }
 
+// NewQuerylogSinksRequest constructs an http.Request for the QuerylogSinks method
+func NewQuerylogSinksRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/querylog/sinks")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewQuerylogStatusRequest constructs an http.Request for the QuerylogStatus method
 func NewQuerylogStatusRequest(server string, params *QuerylogStatusParams) (*http.Request, error) {
 	var err error
@@ -25322,6 +25412,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /querylog/rollup-evidence/verify (the `VerifyRollupEvidence` operationId).
 	VerifyRollupEvidenceWithResponse(ctx context.Context, params *VerifyRollupEvidenceParams, body VerifyRollupEvidenceJSONRequestBody, reqEditors ...RequestEditorFn) (*VerifyRollupEvidenceResponse, error)
+
+	// QuerylogSinksWithResponse State of this node's additional query-log sinks
+	//
+	// The sinks of querylog.sinks as the node that answers runs them: queue, sent, dropped, failed attempts and last success. Every node runs its own sinks; this route reports only the answering node and asks no other. No credential, error text or query appears.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /querylog/sinks (the `QuerylogSinks` operationId).
+	QuerylogSinksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*QuerylogSinksResponse, error)
 
 	// QuerylogStatusWithResponse Query-log size, retention and writer state
 	//
@@ -40598,6 +40697,89 @@ func (r VerifyRollupEvidenceResponse) ContentType() string {
 	return ""
 }
 
+type QuerylogSinksResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *QuerylogSinksBody
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r QuerylogSinksResponse) GetJSON200() *QuerylogSinksBody {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r QuerylogSinksResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r QuerylogSinksResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r QuerylogSinksResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r QuerylogSinksResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r QuerylogSinksResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r QuerylogSinksResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r QuerylogSinksResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r QuerylogSinksResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r QuerylogSinksResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r QuerylogSinksResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type QuerylogStatusResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -46706,6 +46888,21 @@ func (c *ClientWithResponses) VerifyRollupEvidenceWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseVerifyRollupEvidenceResponse(rsp)
+}
+
+// QuerylogSinksWithResponse State of this node's additional query-log sinks
+//
+// The sinks of querylog.sinks as the node that answers runs them: queue, sent, dropped, failed attempts and last success. Every node runs its own sinks; this route reports only the answering node and asks no other. No credential, error text or query appears.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /querylog/sinks (the `QuerylogSinks` operationId).
+func (c *ClientWithResponses) QuerylogSinksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*QuerylogSinksResponse, error) {
+	rsp, err := c.QuerylogSinks(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseQuerylogSinksResponse(rsp)
 }
 
 // QuerylogStatusWithResponse Query-log size, retention and writer state
@@ -60342,6 +60539,74 @@ func ParseVerifyRollupEvidenceResponse(rsp *http.Response) (*VerifyRollupEvidenc
 			headers.CacheControl = &value
 		}
 		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseQuerylogSinksResponse parses an HTTP response from a QuerylogSinksWithResponse call
+func ParseQuerylogSinksResponse(rsp *http.Response) (*QuerylogSinksResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &QuerylogSinksResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest QuerylogSinksBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
 	}
 
 	return response, nil

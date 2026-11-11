@@ -256,6 +256,7 @@ them from its own copy.
 | DELETE | `/api/v1/querylog` | Delete query-log rows | `querylog.purge` (cluster) | local |
 | GET | `/api/v1/querylog/rollup-evidence` | Capture bounded retained-input recovery evidence | `querylog.read` (cluster) | - |
 | POST | `/api/v1/querylog/rollup-evidence/verify` | Verify recovery evidence without changing history | `querylog.read` (cluster) | local |
+| GET | `/api/v1/querylog/sinks` | State of this node's additional query-log sinks | `querylog.read` (cluster) | - |
 | GET | `/api/v1/querylog/status` | Query-log size, retention and writer state | `querylog.read` (cluster) | - |
 
 ## runtime

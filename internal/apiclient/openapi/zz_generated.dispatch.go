@@ -665,6 +665,10 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.VerifyRollupEvidenceWithBody(ctx, nil, contentType, body, editors...)
 		return response, true, err
 	}
+	if method == "GET" && len(parts) == 2 && parts[0] == "querylog" && parts[1] == "sinks" {
+		response, err := c.QuerylogSinks(ctx, editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 2 && parts[0] == "querylog" && parts[1] == "status" {
 		response, err := c.QuerylogStatus(ctx, nil, editors...)
 		return response, true, err

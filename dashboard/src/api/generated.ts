@@ -2327,6 +2327,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/querylog/sinks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * State of this node's additional query-log sinks
+         * @description The sinks of querylog.sinks as the node that answers runs them: queue, sent, dropped, failed attempts and last success. Every node runs its own sinks; this route reports only the answering node and asks no other. No credential, error text or query appears.
+         */
+        get: operations["querylogSinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/querylog/status": {
         parameters: {
             query?: never;
@@ -5039,6 +5059,50 @@ export interface components {
             ts: string;
             upstream?: string;
             zone?: string;
+        };
+        QuerylogSink: {
+            /**
+             * Format: int64
+             * @description Queries lost for this sink (kudurru_querylog_dropped_total{stage="sink"}).
+             */
+            dropped: number;
+            /**
+             * Format: int64
+             * @description Failed attempts to open, write, flush or close (kudurru_sink_errors_total).
+             */
+            errors: number;
+            /**
+             * Format: date-time
+             * @description Time of the last successful write; absent before the first.
+             */
+            last_success?: string;
+            /** @description The name of the querylog.sinks entry; it labels the sink's metrics. */
+            name: string;
+            /**
+             * Format: int64
+             * @description The bound of the queue (queueSize of the entry in force).
+             */
+            queue_size: number;
+            /**
+             * Format: int64
+             * @description Queries waiting in the sink's queue.
+             */
+            queued: number;
+            /** @description The sink receives queries as they were, before the privacy transform (a dnstap sink with raw: true, D372). */
+            raw: boolean;
+            /**
+             * Format: int64
+             * @description Queries the destination accepted (kudurru_sink_sent_total).
+             */
+            sent: number;
+            /** @description The sink type of the entry in force: slog, clickhouse, loki or dnstap. */
+            type: string;
+        };
+        QuerylogSinksBody: {
+            /** @description The node that answered (node.name); every node runs its own sinks. */
+            node: string;
+            /** @description The sinks that are running or still draining, by name. */
+            sinks: components["schemas"]["QuerylogSink"][] | null;
         };
         QuerylogStatusBody: {
             backfill?: components["schemas"]["RollupBackfillStatus"];
@@ -20776,6 +20840,80 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    querylogSinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuerylogSinksBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

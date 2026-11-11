@@ -7362,6 +7362,91 @@
         ],
         "type": "object"
       },
+      "QuerylogSink": {
+        "additionalProperties": false,
+        "properties": {
+          "dropped": {
+            "description": "Queries lost for this sink (kudurru_querylog_dropped_total{stage=\"sink\"}).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "errors": {
+            "description": "Failed attempts to open, write, flush or close (kudurru_sink_errors_total).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "last_success": {
+            "description": "Time of the last successful write; absent before the first.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "description": "The name of the querylog.sinks entry; it labels the sink's metrics.",
+            "type": "string"
+          },
+          "queue_size": {
+            "description": "The bound of the queue (queueSize of the entry in force).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "queued": {
+            "description": "Queries waiting in the sink's queue.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "raw": {
+            "description": "The sink receives queries as they were, before the privacy transform (a dnstap sink with raw: true, D372).",
+            "type": "boolean"
+          },
+          "sent": {
+            "description": "Queries the destination accepted (kudurru_sink_sent_total).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": {
+            "description": "The sink type of the entry in force: slog, clickhouse, loki or dnstap.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "raw",
+          "queued",
+          "queue_size",
+          "sent",
+          "dropped",
+          "errors"
+        ],
+        "type": "object"
+      },
+      "QuerylogSinksBody": {
+        "additionalProperties": false,
+        "properties": {
+          "node": {
+            "description": "The node that answered (node.name); every node runs its own sinks.",
+            "type": "string"
+          },
+          "sinks": {
+            "description": "The sinks that are running or still draining, by name.",
+            "items": {
+              "$ref": "#/components/schemas/QuerylogSink"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "node",
+          "sinks"
+        ],
+        "type": "object"
+      },
       "QuerylogStatusBody": {
         "additionalProperties": false,
         "properties": {
@@ -30688,6 +30773,93 @@
           "querylog"
         ],
         "x-kudurru-follower": "local",
+        "x-kudurru-permission": {
+          "resource": "querylog",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
+    "/querylog/sinks": {
+      "get": {
+        "description": "The sinks of querylog.sinks as the node that answers runs them: queue, sent, dropped, failed attempts and last success. Every node runs its own sinks; this route reports only the answering node and asks no other. No credential, error text or query appears.",
+        "operationId": "querylogSinks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuerylogSinksBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "State of this node's additional query-log sinks",
+        "tags": [
+          "querylog"
+        ],
         "x-kudurru-permission": {
           "resource": "querylog",
           "scope": "cluster",
