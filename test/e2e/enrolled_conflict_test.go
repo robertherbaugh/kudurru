@@ -251,6 +251,9 @@ func TestEnrolledProcessConflictResolution(t *testing.T) {
 		}) {
 			t.Fatal("healed conflicting primaries kept accepting writes")
 		}
+		// The closed API names the durable state and the offline commands that
+		// end it, and does not ask the client to retry in a second.
+		enrolledConflictClosed(t, c)
 	}
 	describeDNS := func(node *kudurrutest.Node, name string) string {
 		var out []string
@@ -416,5 +419,26 @@ func TestEnrolledProcessConflictResolution(t *testing.T) {
 	}
 	if identity(a) != identities[0] || identity(b) != identities[1] || identity(c) != identities[2] {
 		t.Fatal("conflict/resolution replaced private member identities")
+	}
+}
+
+// enrolledConflictClosed waits until a member whose promotion conflicts
+// answers with the keyed refusal of its durable state, then checks that the
+// answer says what ends it and carries no Retry-After, for a read and a write.
+func enrolledConflictClosed(t *testing.T, c *staticProcessClient) {
+	t.Helper()
+	var read enrolledAnswer
+	if !kudurrutest.Eventually(30*time.Second, 100*time.Millisecond, func() bool {
+		read = enrolledSend(t, c, http.MethodGet, "/cluster", nil)
+		return read.status == http.StatusServiceUnavailable && read.Error.Key == "cluster_conflict"
+	}) {
+		t.Fatalf("conflicted member never named its state: status=%d key=%q", read.status, read.Error.Key)
+	}
+	write := enrolledSend(t, c, http.MethodPost, "/objects/dnsrecordsets", recordSetBody("refused-conflict", "192.0.2.61"))
+	for name, answer := range map[string]enrolledAnswer{"read": read, "write": write} {
+		if answer.status != http.StatusServiceUnavailable || answer.Error.Key != "cluster_conflict" || answer.retryAfter != "" ||
+			!strings.Contains(answer.hint(), "kudurru cluster resolution --offline") || !strings.Contains(answer.hint(), "kudurru cluster resolve --offline") {
+			t.Fatalf("conflicted member %s: status=%d key=%q retry-after=%q hint=%q", name, answer.status, answer.Error.Key, answer.retryAfter, answer.hint())
+		}
 	}
 }

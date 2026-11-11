@@ -354,6 +354,10 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	fresh.csrf = followerLogin.CSRF
 	enrolledProcessRead(t, fresh, "/auth/me", func([]byte) bool { return true })
 	enrolledProcessRead(t, &staticProcessClient{client: fresh.client, base: apiA.base, csrf: fresh.csrf}, "/auth/me", func([]byte) bool { return true })
+	// The follower names its role and primary, answers every mutation that it
+	// does not forward with one typed refusal and runs node-local commands
+	// itself (D368).
+	enrolledFollowerContract(t, apiA, apiB, a.Name, b.Name)
 	// Canonical object writes through the follower commit once on the primary
 	// with its exact public result; the follower serves them after its pull.
 	viaFollower := map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSRecordSet",
@@ -513,6 +517,9 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		t.Fatal("partition interrupted valid local DNS")
 	}
 	apiB.request(t, http.MethodPost, "/dns/blocking", map[string]any{"blocking": true}, http.StatusServiceUnavailable, nil)
+	// A mutation that the follower does not forward is refused for its role,
+	// which needs no exchange with the primary: the answer is the same.
+	enrolledPrimaryRequired(t, apiB, a.Name, http.MethodPatch, "/settings", map[string]any{"blocking": map[string]any{"blockTTL": "32s"}})
 	// A forwarded object write that cannot reach the primary is refused and
 	// is never applied or replayed after reconnection.
 	refused := map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSRecordSet",
@@ -588,6 +595,15 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 			return json.Unmarshal(body, &info) == nil && info.Mode == "primary"
 		})
 		apiB.request(t, http.MethodPost, "/dns/blocking", map[string]any{"blocking": true}, http.StatusOK, nil)
+		// The promoted node answers for its new role: it reports itself as the
+		// primary and runs the route that it refused as a follower.
+		enrolledProcessRead(t, apiB, "/cluster", func(body []byte) bool {
+			var info api.ClusterInfo
+			return json.Unmarshal(body, &info) == nil && info.Role == "primary" && info.Primary == b.Name && info.Leader == b.Name && !info.PrimaryRequired && len(info.ForwardedOperations) == 0
+		})
+		if answer := enrolledSend(t, apiB, http.MethodPatch, "/settings", map[string]any{}); answer.status != http.StatusBadRequest || answer.Error.Key != api.KeyInvalid {
+			t.Fatalf("promoted node still refuses a settings write for its former role: status=%d key=%q", answer.status, answer.Error.Key)
+		}
 		primary = kudurrutest.StartReady(t, bin, a, kudurrutest.Options{Env: env})
 		// Only production scheduled peer observations/pulls may fence and install.
 		// No test calls ObserveAuthority, installs an image, or retries a mutation.
@@ -599,6 +615,12 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 			var status api.BlockingState
 			return json.Unmarshal(body, &status) == nil && status.Blocking
 		})
+		// The former primary now follows, and says so with the new primary's name.
+		enrolledProcessRead(t, apiA, "/cluster", func(body []byte) bool {
+			var info api.ClusterInfo
+			return json.Unmarshal(body, &info) == nil && info.Role == "follower" && info.Primary == b.Name && info.PrimaryRequired
+		})
+		enrolledPrimaryRequired(t, apiA, b.Name, http.MethodPatch, "/settings", map[string]any{"blocking": map[string]any{"blockTTL": "33s"}})
 		awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)
 		awaitDNS(primary, "seed", "", dns.RcodeNameError)
 		if identity(a) != aIdentity || identity(b) != bIdentity {
