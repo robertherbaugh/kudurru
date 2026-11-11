@@ -255,6 +255,20 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			t.Fatalf("%s: %s", name, last)
 			return ""
 		}
+		// exchange asks q as a stub resolver does: a query that gets no
+		// response (dropped at a publication, see above) is asked again,
+		// up to three times. A response is returned as it is, whatever it
+		// says, so the caller's assertion on it is unchanged. Without it a
+		// one-shot probe failed with an i/o timeout in 1 of 20 runs on four
+		// CPUs (evidence QUAL-UPGRADE-OPEN mounted11).
+		exchange := func(q *dns.Msg) (r *dns.Msg, err error) {
+			for range 3 {
+				if r, _, err = (&dns.Client{Timeout: time.Second}).ExchangeContext(t.Context(), q, cfg.Listeners.DNS[0].Address); err == nil {
+					return r, nil
+				}
+			}
+			return nil, err
+		}
 		t.Logf("timing: %s after start: ready", time.Since(began).Round(time.Millisecond))
 		// After readiness the node still commits zone lifecycles and
 		// DNSZone status of its own accord (the zone dname.test. of the
@@ -374,14 +388,14 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 		for _, name := range []string{"twice.api.test.", "pair.api.test."} {
 			q := new(dns.Msg)
 			q.SetQuestion(name, dns.TypeA)
-			if r, _, err := (&dns.Client{Timeout: time.Second}).ExchangeContext(t.Context(), q, cfg.Listeners.DNS[0].Address); err != nil || len(r.Answer) != 0 && r.Answer[0].Header().Rrtype == dns.TypeA {
+			if r, err := exchange(q); err != nil || len(r.Answer) != 0 && r.Answer[0].Header().Rrtype == dns.TypeA {
 				t.Fatalf("%s A of a refused endpoint: %v %v", name, r, err)
 			}
 		}
 		{
 			q := new(dns.Msg)
 			q.SetQuestion("branch.api.test.", dns.TypeDNAME)
-			if r, _, err := (&dns.Client{Timeout: time.Second}).ExchangeContext(t.Context(), q, cfg.Listeners.DNS[0].Address); err != nil || len(r.Answer) != 1 || r.Answer[0].(*dns.DNAME).Target != "a.test." {
+			if r, err := exchange(q); err != nil || len(r.Answer) != 1 || r.Answer[0].(*dns.DNAME).Target != "a.test." {
 				t.Fatalf("branch.api.test. DNAME: %v %v, want the first target only", r, err)
 			}
 		}
@@ -609,7 +623,9 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 		soa := func(name string) bool {
 			q := new(dns.Msg)
 			q.SetQuestion(name, dns.TypeSOA)
-			r, _, err := (&dns.Client{Timeout: time.Second}).ExchangeContext(t.Context(), q, cfg.Listeners.DNS[0].Address)
+			// Through exchange, so that a dropped query is not taken for a
+			// zone that is not served.
+			r, err := exchange(q)
 			return err == nil && r.Rcode == dns.RcodeSuccess && r.Authoritative && len(r.Answer) == 1
 		}
 		temp := object("DNSZone", "temp", "", map[string]any{"zoneName": "temp.test.", "type": "primary", "nameservers": []any{"ns1.temp.test."}})
