@@ -558,14 +558,15 @@ func (r *integrationRuntime) write(ctx context.Context, g ledger.Guard, obj stor
 // forget commits one ledger.Forget through the same original lease, cut and
 // writer checks as write, in ONE command: every exact UID/version delete
 // happens or none does, and a stale or fenced guard removes nothing. Only the
-// private ledger and operation kinds can be named, so the shared request
-// budget and every desired object stay out of reach of this path (D367).
+// private ledger, operation and delivery kinds can be named, so the shared
+// request budget and every desired object stay out of reach of this path
+// (D367; delivery retention, D379).
 func (r *integrationRuntime) forget(ctx context.Context, g ledger.Guard, requests []store.DeleteRequest) error {
 	if len(requests) == 0 {
 		return ih.ErrInvalid
 	}
 	for _, request := range requests {
-		if request.Key.Kind != kinds.KindIntegrationLedger && request.Key.Kind != kinds.KindIntegrationOperation || request.Key.Namespace != "" ||
+		if request.Key.Kind != kinds.KindIntegrationLedger && request.Key.Kind != kinds.KindIntegrationOperation && request.Key.Kind != kinds.KindIntegrationDelivery || request.Key.Namespace != "" ||
 			request.Options.ExpectedUID == "" || request.Options.ExpectedResourceVersion == "" || request.Options.Force {
 			return ih.ErrInvalid
 		}

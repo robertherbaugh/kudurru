@@ -29,6 +29,7 @@ import (
 type requestHost struct {
 	mu        sync.Mutex
 	mutations []bool
+	accounts  []string
 	before    func(context.Context) error
 }
 
@@ -39,11 +40,14 @@ func (*requestHost) Resolve(context.Context, dns.Question) (*dns.Msg, error) {
 }
 func (*requestHost) SetCondition(context.Context, string, string, string, bool) error { return nil }
 func (h *requestHost) Request(ctx context.Context, provider, account string, mutation bool, fn func(context.Context) error) error {
-	if provider != "webhook" || account != "all" {
+	// A bare transport charges the shared account; a provisioned instance
+	// charges its own owner UID (D379).
+	if provider != "webhook" || account != "all" && account != "original" {
 		return host.ErrInvalid
 	}
 	h.mu.Lock()
 	h.mutations = append(h.mutations, mutation)
+	h.accounts = append(h.accounts, account)
 	h.mu.Unlock()
 	if h.before != nil {
 		if err := h.before(ctx); err != nil {

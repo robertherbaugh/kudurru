@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/ee/integration/host"
+	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
 )
 
 const (
@@ -39,6 +40,7 @@ var (
 // reads environment variables. Exactly one authentication mode is required.
 type transportConfig struct {
 	endpoint                     string
+	account                      string
 	timeout                      time.Duration
 	bearer, ca, certificate, key []byte
 }
@@ -49,13 +51,17 @@ type transport struct {
 	client  *http.Client
 	timeout time.Duration
 	token   string
+	account string
 	life    context.Context
 	cancel  context.CancelFunc
 	stop    sync.Once
 }
 
 func newTransport(h host.RequestHost, c transportConfig) (*transport, error) {
-	if h == nil || len(c.endpoint) == 0 || len(c.endpoint) > 2048 {
+	if c.account == "" {
+		c.account = "all"
+	}
+	if h == nil || len(c.endpoint) == 0 || len(c.endpoint) > 2048 || len(c.account) > 128 {
 		return nil, errInput
 	}
 	u, err := url.Parse(c.endpoint)
@@ -108,7 +114,7 @@ func newTransport(h host.RequestHost, c transportConfig) (*transport, error) {
 		DisableKeepAlives: true, DisableCompression: true, Protocols: protocols,
 	}
 	life, cancel := context.WithCancel(context.Background())
-	return &transport{base: *u, host: h, timeout: c.timeout, token: token, life: life, cancel: cancel,
+	return &transport{base: *u, host: h, timeout: c.timeout, token: token, account: c.account, life: life, cancel: cancel,
 		client: &http.Client{Transport: base, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 
@@ -167,13 +173,16 @@ func (t *transport) request(ctx context.Context, method, path, media string, bod
 	}
 	body = slices.Clone(body)
 	headers = headers.Clone()
+	caller := ctx
 	ctx, cancel := context.WithTimeout(ctx, t.timeout)
 	defer cancel()
 	stop := context.AfterFunc(t.life, cancel)
 	defer stop()
 	var out response
 	mutation := method == http.MethodPost && path != "/adjustendpoints"
-	err := t.host.Request(ctx, "webhook", "all", mutation, func(bound context.Context) error {
+	// Each instance has its own request budget account (D379): one slow or
+	// busy peer cannot spend the requests of every other webhook instance.
+	err := t.host.Request(ctx, "webhook", t.account, mutation, func(bound context.Context) error {
 		// The callback must retain the original operation lifetime even if a
 		// future host implementation accidentally supplies a detached context.
 		if bound == nil {
@@ -247,13 +256,34 @@ func (t *transport) request(ctx context.Context, method, path, media string, bod
 		out = response{body: b, status: resp.StatusCode, media: parseMedia(resp.Header.Get("Content-Type")), partial: partial}
 		return nil
 	})
-	if ctx.Err() != nil {
-		return response{}, ctx.Err()
+	return out, requestError(caller, ctx, t.life, err)
+}
+
+// requestError classifies the end of one attempt for the host (D379). The
+// caller's own cancellation or deadline stays a context error and the
+// provider's stop stays ErrUnavailable: both are local refusals the host
+// must not count as a peer failure (a stop that cut the attempt keeps its
+// context error). The attempt's own timeout, or the host
+// bound inside it, while the caller is still live is a slow peer: temporary.
+// An exhausted request budget is rate limited for one budget window share.
+func requestError(caller, attempt, life context.Context, err error) error {
+	if e := caller.Err(); e != nil {
+		return e
 	}
-	if err != nil {
-		return response{}, err
+	if life.Err() != nil {
+		// Stop cancels the attempt, as before; both are local refusals.
+		if e := attempt.Err(); e != nil {
+			return e
+		}
+		return host.ErrUnavailable
 	}
-	return out, nil
+	if errors.Is(err, ledger.ErrBudget) {
+		return &host.Failure{Kind: host.FailureRateLimited, RetryAfter: 5 * time.Minute}
+	}
+	if attempt.Err() != nil || errors.Is(err, context.DeadlineExceeded) {
+		return &host.Failure{Kind: host.FailureTemporary}
+	}
+	return err
 }
 
 func validPath(method, path string) bool {

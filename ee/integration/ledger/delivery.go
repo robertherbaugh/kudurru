@@ -4,8 +4,12 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
+	"strings"
+	"time"
 
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
@@ -88,4 +92,67 @@ func (r *Repository) SaveDelivery(ctx context.Context, g Guard, next *kinds.Inte
 		return nil, ErrInvalid
 	}
 	return r.putDelivery(ctx, g, next, false)
+}
+
+// DeliveryRetention is how long a delivery row outlives its deadline. Past
+// the deadline no queue accepts its event again, so deleting the row cannot
+// turn into a second delivery of the same ID.
+const DeliveryRetention = time.Hour
+
+// MaxPruneDeliveries bounds one PruneDeliveries call.
+const MaxPruneDeliveries = 256
+
+// PruneDeliveries deletes delivery rows by the exact UID and resource version
+// the caller observed, in one Delete (D379). Every row must be past its
+// deadline plus DeliveryRetention. A row of the guard's own instance must be
+// terminal (acknowledged or dead-lettered); a row of any other instance is
+// pruned only when no Integration with that owner UID exists any more, and is
+// skipped while one does. A row that changed or vanished, or an own row that
+// does not qualify, refuses the whole call.
+func (r *Repository) PruneDeliveries(ctx context.Context, g Guard, rows []*kinds.IntegrationDelivery) error {
+	if r.delete == nil || g.Validate() != nil || len(rows) == 0 || len(rows) > MaxPruneDeliveries {
+		return ErrInvalid
+	}
+	now := r.now()
+	seen := map[string]bool{}
+	requests := make([]store.DeleteRequest, 0, len(rows))
+	for _, d := range rows {
+		if d == nil || d.Validate() != nil || d.UID == "" || d.ResourceVersion == "" || seen[d.Name] {
+			return ErrInvalid
+		}
+		seen[d.Name] = true
+		current, err := r.ReadDelivery(ctx, d.Spec.Owner, d.Spec.DeliveryID)
+		if errors.Is(err, store.ErrNotFound) {
+			return store.ErrConflict
+		}
+		if err != nil {
+			return err
+		}
+		if current.UID != d.UID || current.ResourceVersion != d.ResourceVersion {
+			return store.ErrConflict
+		}
+		if now.Before(current.Spec.Deadline.Add(DeliveryRetention)) {
+			return ErrInvalid
+		}
+		if current.Spec.Owner == g.Owner {
+			if !current.Spec.Acknowledged && !current.Spec.DeadLetter {
+				return ErrInvalid
+			}
+		} else {
+			var owner public.Integration
+			err := r.read.Get(ctx, store.Key{Kind: "Integration", Namespace: current.Spec.Owner.Namespace, Name: current.Spec.Owner.Name}, &owner)
+			switch {
+			case err == nil && string(owner.UID) == current.Spec.Owner.UID:
+				continue
+			case err != nil && !errors.Is(err, store.ErrNotFound):
+				return err
+			}
+		}
+		requests = append(requests, forgetRequest(kinds.KindIntegrationDelivery, current))
+	}
+	if len(requests) == 0 {
+		return nil
+	}
+	slices.SortFunc(requests, func(a, b store.DeleteRequest) int { return strings.Compare(a.Key.Name, b.Key.Name) })
+	return r.delete(ctx, g, requests)
 }

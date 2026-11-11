@@ -112,7 +112,7 @@ func (p *provider) Provision(ctx context.Context, h integration.Host, raw json.R
 	if len(key) != 0 && (len(key) < 32 || len(key) > 16<<10) {
 		return host.ErrCredentials
 	}
-	tr, err := newTransport(owner, transportConfig{endpoint: config.Endpoint, timeout: config.Timeout.Duration,
+	tr, err := newTransport(owner, transportConfig{endpoint: config.Endpoint, account: originalOwner.UID, timeout: config.Timeout.Duration,
 		bearer: values["bearerToken"], ca: values["ca"], certificate: values["clientCertificate"], key: values["clientKey"]})
 	if err != nil {
 		return err
