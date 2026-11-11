@@ -1,0 +1,151 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: dhcpleases.dhcp.kudurru.io
+spec:
+  group: dhcp.kudurru.io
+  names:
+    categories:
+    - kudurru-dhcp
+    kind: DHCPLease
+    listKind: DHCPLeaseList
+    plural: dhcpleases
+    shortNames:
+    - dhcplease
+    singular: dhcplease
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.scope
+      name: SCOPE
+      type: string
+    - jsonPath: .spec.address
+      name: ADDRESS
+      type: string
+    - jsonPath: .spec.mac
+      name: MAC
+      type: string
+    - jsonPath: .spec.hostname
+      name: HOSTNAME
+      type: string
+    - jsonPath: .spec.state
+      name: STATE
+      type: string
+    - jsonPath: .spec.expiresAt
+      name: EXPIRES
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          DHCPLease is one DHCPv4 lease of a DHCPScope. kudurru writes these; the
+          object name is "<scope>.<address>", so Kubernetes itself refuses a
+          second owner for an address. Expired leases are deleted by the replica
+          that serves DHCP.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              DHCPLeaseSpec is one address held by a client: offered (a one-minute
+              hold), bound, or declined (a ten-minute quarantine after a conflict).
+            properties:
+              address:
+                maxLength: 15
+                type: string
+              dnsClaim:
+                description: |-
+                  DHCPLeaseClaim is the rank of a lease's local DNS name: the earliest live
+                  claimant owns a name. Ticket zero means no claim.
+                properties:
+                  epoch:
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  name:
+                    maxLength: 254
+                    type: string
+                  ordinal:
+                    format: int64
+                    minimum: 0
+                    type: integer
+                  ticket:
+                    format: int64
+                    minimum: 1
+                    type: integer
+                required:
+                - epoch
+                - name
+                - ticket
+                type: object
+              expiresAt:
+                description: ExpiresAt is when the address becomes free again.
+                format: date-time
+                type: string
+              hostname:
+                maxLength: 253
+                type: string
+              identity:
+                description: |-
+                  DHCPLeaseIdentity is how the client identified itself: its MAC address,
+                  or the opaque client identifier (option 61) as base64.
+                properties:
+                  kind:
+                    enum:
+                    - mac
+                    - client-id
+                    type: string
+                  value:
+                    maxLength: 2800
+                    minLength: 1
+                    type: string
+                required:
+                - kind
+                - value
+                type: object
+              mac:
+                maxLength: 17
+                type: string
+              scope:
+                description: Scope is the DHCPScope name.
+                maxLength: 63
+                minLength: 1
+                type: string
+              state:
+                enum:
+                - offered
+                - bound
+                - declined
+                type: string
+            required:
+            - address
+            - expiresAt
+            - identity
+            - mac
+            - scope
+            - state
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources: {}

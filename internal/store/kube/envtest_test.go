@@ -97,6 +97,12 @@ func startControlPlane(assets string) (*envtest.Environment, *rest.Config, clien
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	return startControlPlaneWith(assets, crds)
+}
+
+// startControlPlaneWith is startControlPlane with the given CRDs installed
+// instead of this checkout's.
+func startControlPlaneWith(assets string, crds []*apiextensionsv1.CustomResourceDefinition) (*envtest.Environment, *rest.Config, client.Client, error) {
 	env := &envtest.Environment{CRDs: crds, BinaryAssetsDirectory: assets}
 	// Hosts without a default route (CI sandboxes) make kube-apiserver
 	// fail to pick an advertise address. Loopback works everywhere once the
