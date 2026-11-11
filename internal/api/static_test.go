@@ -40,6 +40,7 @@ func TestStaticCommandsRefuseBeforeForwardingOrBodyValidation(t *testing.T) {
 		{"DELETE", "/auth/tokens/example"},
 		{"POST", "/integrations/default/example/sync"},
 		{"POST", "/integrations/default/example/actions/restart"},
+		{"POST", "/integrations/default/example/release"},
 		{"POST", "/imports/apply"},
 	} {
 		t.Run(op.method+op.path, func(t *testing.T) {

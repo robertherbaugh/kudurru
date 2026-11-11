@@ -15,22 +15,48 @@ type IntegrationAdministration interface {
 	IntegrationList(context.Context, string) ([]IntegrationSummary, error)
 	IntegrationGet(context.Context, string, string) (*IntegrationSummary, error)
 	IntegrationExecute(context.Context, IntegrationExecution) (*IntegrationExecutionResult, error)
+	// IntegrationRelease ends the cleanup of one exact terminating
+	// Integration without contacting its provider (D367).
+	IntegrationRelease(context.Context, string, string, IntegrationReview) (*IntegrationReleaseResult, error)
 }
 
 // IntegrationSummary deliberately excludes credential references and private
 // provider/ledger identities. Known status must match this exact revision.
+//
+// Terminating is read from the stored object, not from the host's status: it
+// is true once a delete was requested (DeletionRequestedAt) and the object is
+// held by a finalizer, so it is shown even before the host reports Phase
+// Terminating. Remaining, Blocked and Uncertain are the counts of the known
+// Terminating status (record sets still to remove, conflicts that block,
+// uncertain intents); they are zero otherwise.
 type IntegrationSummary struct {
-	Namespace   string     `json:"namespace"`
-	Name        string     `json:"name"`
-	UID         string     `json:"uid"`
-	Revision    string     `json:"revision"`
-	Type        string     `json:"type"`
-	Suspended   bool       `json:"suspended"`
-	StatusKnown bool       `json:"statusKnown"`
-	Phase       string     `json:"phase"`
-	Reason      string     `json:"reason"`
-	Leader      bool       `json:"leader"`
-	LastSync    *time.Time `json:"lastSync,omitempty"`
+	Namespace           string     `json:"namespace"`
+	Name                string     `json:"name"`
+	UID                 string     `json:"uid"`
+	Revision            string     `json:"revision"`
+	Type                string     `json:"type"`
+	Suspended           bool       `json:"suspended"`
+	DeletionPolicy      string     `json:"deletionPolicy" enum:"Retain,Delete"`
+	Terminating         bool       `json:"terminating"`
+	DeletionRequestedAt *time.Time `json:"deletionRequestedAt,omitempty"`
+	Remaining           int        `json:"remaining"`
+	Blocked             int        `json:"blocked"`
+	Uncertain           int        `json:"uncertain"`
+	StatusKnown         bool       `json:"statusKnown"`
+	Phase               string     `json:"phase"`
+	Reason              string     `json:"reason"`
+	Leader              bool       `json:"leader"`
+	LastSync            *time.Time `json:"lastSync,omitempty"`
+}
+
+// IntegrationReleaseResult acknowledges a committed release. The object is
+// gone; what it published and its private ledger stay. LedgerRows and
+// Operations count what was retained for the released incarnation, and are
+// -1 when the store held more rows than one command scans.
+type IntegrationReleaseResult struct {
+	Released   bool `json:"released"`
+	LedgerRows int  `json:"ledgerRows"`
+	Operations int  `json:"operations"`
 }
 
 // IntegrationReview is an operator's exact review, never a request to refresh.
@@ -142,6 +168,14 @@ type integrationActInput struct {
 	Action string `path:"action" minLength:"1" maxLength:"128"`
 	Body   IntegrationReview
 }
+type integrationReleaseInput struct {
+	IntegrationPath
+	Body IntegrationReview
+}
+type integrationReleaseOutput struct {
+	CacheControl string `header:"Cache-Control"`
+	Body         *IntegrationReleaseResult
+}
 type integrationExecutionOutput struct {
 	CacheControl string `header:"Cache-Control"`
 	Body         *IntegrationExecutionResult
@@ -186,6 +220,21 @@ func (s *Server) registerIntegrations() {
 	op.MaxBodyBytes = 64 << 10
 	register(s, op, perm{resource: "integrations", verb: "act"}, func(ctx context.Context, in *integrationActInput) (*integrationExecutionOutput, error) {
 		return s.executeIntegration(ctx, IntegrationExecution{Namespace: in.Namespace, Name: in.Name, Command: "act", Action: in.Action, Review: in.Body})
+	})
+	// Release abandons the cleanup of a terminating Integration whose policy
+	// is Delete and removes the object; its provider records and private
+	// ledger stay (D367). It needs no license, credential or provider.
+	op = integrationOperation(http.MethodPost, base+"/release", "releaseIntegration", "Release one reviewed terminating integration without cleanup", "integrations")
+	op.MaxBodyBytes = 4096
+	register(s, op, perm{resource: "integrations", verb: "release"}, func(ctx context.Context, in *integrationReleaseInput) (*integrationReleaseOutput, error) {
+		if s.opts.Integrations == nil {
+			return nil, errUnavailable("complete integration administration unavailable")
+		}
+		result, err := s.opts.Integrations.IntegrationRelease(ctx, in.Namespace, in.Name, in.Body)
+		if err != nil {
+			return nil, err
+		}
+		return &integrationReleaseOutput{CacheControl: "no-store", Body: result}, nil
 	})
 }
 

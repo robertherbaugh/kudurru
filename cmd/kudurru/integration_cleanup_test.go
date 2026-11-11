@@ -101,12 +101,21 @@ type integrationDeleteFixture struct {
 	owner     kinds.Owner
 	record    *public.DNSRecordSet
 	published []string
+	// stopWriter ends the elected writer of s, as a lost lease does.
+	stopWriter func()
 }
 
 func newIntegrationDeleteFixture(t *testing.T, edit func(*public.Integration)) *integrationDeleteFixture {
 	t.Helper()
+	return newIntegrationDeleteFixtureWith(t, nil, edit)
+}
+
+// newIntegrationDeleteFixtureWith also prepares the runtime's options, as
+// integrationFixture does.
+func newIntegrationDeleteFixtureWith(t *testing.T, prepare func(*servingRuntimeOptions), edit func(*public.Integration)) *integrationDeleteFixture {
+	t.Helper()
 	f := &integrationDeleteFixture{peer: integrationCloudflareTLS(t)}
-	f.s, f.path = integrationFixture(t, nil, nil)
+	f.s, f.path = integrationFixture(t, prepare, nil)
 	t.Cleanup(func() { integrationTerminatingLog(t, f.s, f.peer) })
 	f.record = &public.DNSRecordSet{ObjectMeta: metav1.ObjectMeta{Name: "published", Namespace: "default"}, Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: "home"}, Endpoints: []public.Endpoint{{DNSName: "web.example.", RecordType: "A", RecordTTL: 300, Targets: []string{"192.0.2.80", "192.0.2.81"}}}}}
 	if _, err := f.s.opts.Store.Apply(t.Context(), f.record, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
@@ -120,11 +129,11 @@ func newIntegrationDeleteFixture(t *testing.T, edit func(*public.Integration)) *
 	}
 	f.template = definition.DeepCopy()
 	f.d = integrationApply(t, f.s, definition)
-	if !store.HasFinalizer(f.d, store.IntegrationCleanupFinalizer) {
-		t.Fatal("the Delete instance was stored without its cleanup finalizer")
+	if store.HasFinalizer(f.d, store.IntegrationCleanupFinalizer) != (f.d.Spec.DeletionPolicy == public.IntegrationDeletionDelete) {
+		t.Fatal("the instance's cleanup finalizer does not follow its deletionPolicy", f.d.Spec.DeletionPolicy)
 	}
 	f.owner = integrationOwner(f.s, f.d)
-	integrationRun(t, f.s)
+	f.stopWriter = integrationRun(t, f.s)
 	awaitServingRuntime(t, f.s, func() bool {
 		rows := integrationRows(t, f.s, kinds.KindIntegrationLedger)
 		if len(rows) != 1 || rows[0].(*kinds.IntegrationLedger).Spec.Pending != nil || len(rows[0].(*kinds.IntegrationLedger).Spec.ProviderIDs) != 2 {

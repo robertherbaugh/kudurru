@@ -19,7 +19,7 @@ func staticObjectMutation(op huma.Operation, p perm) bool {
 		return true
 	}
 	switch p.verb {
-	case "write", "delete", "decide", "import", "sync", "act", "join", "promote", "drain":
+	case "write", "delete", "decide", "import", "sync", "act", "release", "join", "promote", "drain":
 		return true
 	}
 	return false

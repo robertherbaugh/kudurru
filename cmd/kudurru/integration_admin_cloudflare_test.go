@@ -40,6 +40,10 @@ type integrationCloudflarePeer struct {
 	// named by delete effects, in order.
 	requests int
 	deleted  []string
+	// hold, when set, holds the next batch before it is applied: the peer
+	// closes entered, waits until hold is closed (without its lock), and then
+	// applies and answers the batch. Each hold is used once.
+	hold, entered chan struct{}
 }
 
 const integrationCloudflareZone = "11111111111111111111111111111111"
@@ -84,6 +88,14 @@ func integrationCloudflareTLS(t *testing.T) *integrationCloudflarePeer {
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "result": rows, "result_info": map[string]any{"page": 1, "per_page": 500, "count": len(rows), "total_count": len(rows), "total_pages": 1}})
 		case "/client/v4/zones/" + integrationCloudflareZone + "/dns_records/batch":
+			if peer.hold != nil {
+				hold, entered := peer.hold, peer.entered
+				peer.hold, peer.entered = nil, nil
+				peer.mu.Unlock()
+				close(entered)
+				<-hold
+				peer.mu.Lock()
+			}
 			if r.Method != http.MethodPost {
 				t.Error("unexpected effect method")
 				w.WriteHeader(http.StatusMethodNotAllowed)

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/apiclient"
@@ -36,16 +37,20 @@ func newIntegrationsCmd(o *cliOpts) *cobra.Command {
 			if err := json.Unmarshal(raw, &body); err != nil {
 				return nil, err
 			}
-			table := &cli.Table{Headers: []string{"NAME", "TYPE", "PHASE", "UID", "REVISION"}}
+			table := &cli.Table{Headers: []string{"NAME", "TYPE", "POLICY", "PHASE", "REASON", "DELETION REQUESTED", "UID", "REVISION"}}
 			for _, item := range body.Items {
-				table.Add(item.Name, item.Type, item.Phase, item.UID, item.Revision)
+				requested := "-"
+				if item.Terminating && item.DeletionRequestedAt != nil {
+					requested = item.DeletionRequestedAt.UTC().Format(time.RFC3339)
+				}
+				table.Add(item.Name, item.Type, item.DeletionPolicy, item.Phase, item.Reason, requested, item.UID, item.Revision)
 			}
 			return table, nil
 		})
 	}}
 	group.AddCommand(list)
 	group.AddCommand(newIntegrationWebhookCmd())
-	for _, command := range []string{"get", "check", "preview", "sync", "actions", "act"} {
+	for _, command := range []string{"get", "check", "preview", "sync", "actions", "act", "release"} {
 		var review api.IntegrationReview
 		var params string
 		use := command + " NAME"
@@ -131,6 +136,8 @@ func integrationCommandHelp(command string) string {
 		return "Run one reviewed publication or observation"
 	case "actions":
 		return "List actions advertised by the reviewed provider"
+	case "release":
+		return "Release a reviewed terminating integration without cleanup"
 	default:
 		return "Invoke one advertised action without retry"
 	}

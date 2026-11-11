@@ -114,7 +114,16 @@ func (r *integrationRuntime) IntegrationGet(ctx context.Context, namespace, name
 }
 
 func (r *integrationRuntime) integrationSummary(d *public.Integration, statuses []ih.InstanceStatus) api.IntegrationSummary {
-	out := api.IntegrationSummary{Namespace: d.Namespace, Name: d.Name, UID: string(d.UID), Revision: d.ResourceVersion, Type: d.Spec.Type, Suspended: d.Spec.Suspend, Phase: "Unknown", Reason: "NoMatchingObservation"}
+	out := api.IntegrationSummary{Namespace: d.Namespace, Name: d.Name, UID: string(d.UID), Revision: d.ResourceVersion, Type: d.Spec.Type, Suspended: d.Spec.Suspend, DeletionPolicy: d.Spec.DeletionPolicy, Phase: "Unknown", Reason: "NoMatchingObservation"}
+	if out.DeletionPolicy == "" {
+		out.DeletionPolicy = public.IntegrationDeletionRetain
+	}
+	if d.DeletionTimestamp != nil {
+		// A published object that is being deleted is held by a finalizer:
+		// without one the store would have removed it in the same write.
+		at := d.DeletionTimestamp.UTC()
+		out.Terminating, out.DeletionRequestedAt = true, &at
+	}
 	for _, status := range statuses {
 		if status.Owner.ClusterID != r.s.opts.Store.Info().ClusterID || status.Owner.UID != out.UID || status.Owner.Namespace != out.Namespace || status.Owner.Name != out.Name || status.Revision != out.Revision {
 			continue
@@ -123,6 +132,9 @@ func (r *integrationRuntime) integrationSummary(d *public.Integration, statuses 
 		out.Phase = status.Phase
 		out.Reason = status.Reason
 		out.Leader = status.Leader
+		if status.Phase == ih.PhaseTerminating {
+			out.Remaining, out.Blocked, out.Uncertain = status.Result.Remaining, status.Result.Conflicts, status.Result.Pending
+		}
 		if !status.LastSync.IsZero() {
 			at := status.LastSync
 			out.LastSync = &at
