@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -326,6 +327,10 @@ func TestCompleteBundleKeepsDNSAndAuthOnOneHeldImage(t *testing.T) {
 	}
 }
 
+// A list body whose digest is published but which this node's cache does not
+// hold keeps the whole earlier bundle and gates HTTP. (A source for which no
+// body was ever published compiles empty instead and holds nothing back,
+// D373.)
 func TestMissingBodyRetainsWholeBundleAndGatesHTTP(t *testing.T) {
 	f := newFixture(t)
 	old, err := f.pub.Capture()
@@ -337,8 +342,13 @@ func TestMissingBodyRetainsWholeBundleAndGatesHTTP(t *testing.T) {
 		if _, err := tx.Apply(ctx, settings("192.0.2.22"), store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
 			return err
 		}
-		_, err := tx.Apply(ctx, &public.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "missing", Namespace: "default"}, Spec: public.BlockListSpec{Mode: "block", Sources: []public.ListSource{{Name: "url", URL: "https://lists.example/missing"}}}}, store.ApplyOptions{Manager: store.ManagerSystem})
-		return err
+		stored, err := tx.Apply(ctx, &public.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "missing", Namespace: "default"}, Spec: public.BlockListSpec{Mode: "block", Sources: []public.ListSource{{Name: "url", URL: "https://lists.example/missing"}}}}, store.ApplyOptions{Manager: store.ManagerSystem})
+		if err != nil {
+			return err
+		}
+		list := stored.(*public.BlockList)
+		list.Status.Sources = []public.SourceStatus{{Name: "url", Digest: strings.Repeat("ab", 32)}}
+		return tx.UpdateStatus(ctx, list)
 	})
 	image, token, err := f.store.ReadServingCandidate(t.Context())
 	if err != nil {
@@ -413,4 +423,26 @@ func TestDependencyChangeRejectsWholeCandidateAndReleasesOwners(t *testing.T) {
 	if f.released.Load() != f.captured.Load() {
 		t.Fatal("owner references leaked", f.captured.Load(), f.released.Load())
 	}
+}
+
+// A block list source whose first download has not finished (no status
+// entry yet: its URL may accept the connection and never answer) compiles
+// empty and does not hold back the candidate, so the rest of the change is
+// published (D373).
+func TestUndownloadedSourceDoesNotHoldBackTheCandidate(t *testing.T) {
+	f := newFixture(t)
+	f.command(t, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		if _, err := tx.Apply(ctx, settings("192.0.2.22"), store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
+			return err
+		}
+		_, err := tx.Apply(ctx, &public.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "silent", Namespace: "default"}, Spec: public.BlockListSpec{Mode: "block", Sources: []public.ListSource{{Name: "url", URL: "https://lists.example/silent"}}}}, store.ApplyOptions{Manager: store.ManagerSystem})
+		return err
+	})
+	f.waitCurrent(t)
+	lease, err := f.pub.CaptureHTTP(t.Context())
+	if err != nil {
+		t.Fatal("a source that never downloaded held back the candidate:", err)
+	}
+	lease.Release()
+	wantIP(t, query(t, f.chain, nil, "blocked.example."), "192.0.2.22")
 }
