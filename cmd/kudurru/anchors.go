@@ -50,8 +50,9 @@ Recovery is available only after canonical loss of every trusted root key. Obtai
 replacement root DS records through an independent trusted channel. The command
 authenticates one fresh DNSKEY response, preserves all revoked keys and records
 explicit recovery history plus an audit event in the same transaction. Do not
-replay an uncertain result: inspect the retained version first. All replicas must
-support recovery format 2 before installing recovered history.`,
+replay an uncertain result: inspect the retained version first. Before distributing
+recovered history, check that every member runs kudurru v0.2.0 or later; older
+releases refuse v0.2.0 images by store schema.`,
 	}
 	cmd.PersistentFlags().StringVar(&opts.database, "database", "", "existing state.db path (required)")
 	cmd.PersistentFlags().BoolVar(&opts.offline, "offline", false, "acknowledge that all database readers and writers are stopped")

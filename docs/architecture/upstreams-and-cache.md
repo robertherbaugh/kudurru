@@ -327,8 +327,14 @@ and a finite startup attempt, then authenticates the installed bypass and exact
 membership of every declared edge. It adopts only that original observation
 under the Store's original-token barrier. Missing credentials, any unavailable
 or mismatched peer, expired work or an intervening local image/authority change
-refuses startup without replay. An empty follower must receive its initial image
-before starting with edge topology; direct followers can wait for installation.
+refuses startup without replay. A node without an installed image never enters
+this lane: an unenrolled receiver (a join that never installed its first image)
+with either topology, and any image-less node with edges, is refused before any
+edge or root contact with an error that names `cluster join --offline` and
+`cluster join-reconcile --offline` (D370). The offline join is the only
+first-image lane; see the [runbook](../deploy/runbooks.md#add-a-follower-behind-managed-edges).
+A direct follower enrolled without an image (no production path creates one)
+still waits for installation.
 A fenced or conflicted backend restarts under the same complete fleet
 observation, adopted with its token's own DNS-only disposition; it is refused
 like any other backend when one edge is missing, mismatched or the local
@@ -388,7 +394,20 @@ writer lock through commit. The hash-chained audit commits with the trust change
 actual completion, including committed-with-error, remains distinct from output
 success. Restart keeps the original configured policy/seeds and publishes through
 the usual complete admission path. See the [recovery runbook](../deploy/runbooks.md#recover-a-quarantined-managed-root-anchor).
-Full mixed-version fleet operational acceptance remains separate.
+
+Mixed versions (D370). Members exchange anchor history only inside complete
+images, and every image exchange requires the exact store schema (9) and the
+exact required-feature list; a member with a different schema or list refuses
+the image as incompatible and keeps its own last image. The inner formats
+(pure format 1 and recovery format 2, owner envelope format 1, local carrier
+format 1) are not negotiated separately. Recovery format 2 was added at
+schema 8, before schema 9, and the only earlier release (v0.1.0, schema 1)
+has no managed anchors, so no binary that can exchange a v0.2.0 image reads
+only format 1. Committed golden documents pin each inner format's bytes, unknown
+inner formats are refused without changing the receiver, and a tripwire test
+pins the whole tuple: a later inner format change must come with a schema or
+required-feature bump. Process-level acceptance against released binaries is
+tracked separately.
 
 ```mermaid
 flowchart LR

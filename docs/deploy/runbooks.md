@@ -10,9 +10,13 @@ trusted owner or a key that was already revoked is not a recovery candidate.
 1. Stop kudurru and every other process using the database. In an enrolled fleet,
    stop writers and coordinate the recovery on the primary; do not recover each
    follower independently. Preserve a backup and retain managed edge cache bypass.
-2. Use a binary supporting recovery format 2 on every reader/replica before
-   distributing recovered history. Older codecs reject this format. Do not roll
-   back the database or old binaries to evade revocation or recovery history.
+2. Check that every member runs kudurru v0.2.0 or later (`kudurru version` on
+   each host). Every release that can exchange cluster images with v0.2.0 (store
+   schema 9 and the same required-feature list) also reads recovered history
+   (recovery format 2), so there is no separate format to check. A member on an
+   older release refuses v0.2.0 images by schema and keeps serving its own last
+   image; upgrade it instead of working around the refusal. Do not roll back the
+   database or the binaries to evade revocation or recovery history.
 3. Read the exact retained accepted-envelope digest with local OS permissions:
 
    ```sh
@@ -54,6 +58,38 @@ and local denials remain permanent. Complete publication, native/cache/output
 retirement and installed edge admission still apply. A successful recovery does
 not credit hold-down time or authorize static fallback. At most 32 recovery records
 are retained; exhaustion refuses further recovery instead of pruning evidence.
+
+## Add a follower behind managed edges
+
+A SQLite node started with `upstreams.recursion.managedTopology: edges` must
+already hold its first cluster image. The offline join is the only way to
+install it; there is no startup lane that waits for one (D370). Use this order:
+
+1. Add the new backend to every edge's static `--backends` list (every edge
+   lists every kudurru node). Each edge child restarts with its retained
+   `managedCacheBypass` identity, so both pools stay uncached.
+2. Join the receiver offline, as described in
+   [Join a new SQLite receiver](sqlite-join.md). Require `primary.committed: true`
+   and a nonempty `installed` generation. If the join was interrupted after the
+   primary accepted it, run `kudurru cluster join-reconcile --offline` with the
+   original invitation instead; never start the node to "wait" for an image.
+   The installed image may have a dormant or a managed anchor owner.
+3. Configure the follower's host settings: `managedTopology: edges` and one
+   `managedEdges` entry per edge with this node's exact `backendAddress` and
+   `backendInternalAddress`, `node.name` matching the backend name, and the
+   same internal credentials as the edges.
+4. Start the follower. Startup authenticates every declared edge once and
+   requires each to list this backend exactly once in its installed membership;
+   any missing or mismatched edge refuses startup. The follower then runs the
+   deny-only supervisor and serves through the edges.
+5. A follower restart repeats the complete fleet observation; nothing from an
+   earlier start is reused.
+
+A node with no installed image refuses `direct` and `edges` startup with
+`managed root topology: this node has no installed cluster image` and names
+both join commands. It contacts no edge and fetches nothing from the root, and
+its database stays unchanged. Finish the join (or `join-reconcile`), then start
+it again.
 
 ## Cold start without the apiserver
 
