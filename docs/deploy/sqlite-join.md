@@ -147,9 +147,12 @@ after its next pull, so an immediate read on the follower can still show the
 previous state. A write whose exchange with the primary fails after the
 follower connected to it answers `503 completion_unknown`: the follower cannot
 tell whether the primary received it, so inspect the object before a new
-decision. When the follower cannot open a connection to the primary at all
-(connection refused or the connection attempt timed out), nothing was sent,
-and the answer is `503 unavailable` saying that the write was not applied. A
+decision. When the primary's host refuses the connection or is reported
+unreachable, the follower never connected, nothing was sent, and the answer is
+`503 unavailable` saying that the write was not applied. A connection attempt
+that is still waiting when the request's deadline ends (a host that silently
+drops packets) answers `503 completion_unknown` after that deadline, because
+the follower does not tell it apart from an exchange that stopped later. A
 primary that answers but cannot run the command refuses it with `503
 unavailable`, and the write was not applied.
 
@@ -171,9 +174,10 @@ authority changed"). The second case is the one to expect for a long
 apply: the follower's next pull, five seconds by default, installs the earlier
 documents of the same request, and every later document is then refused. A
 single-item route answers `503 unavailable` with the same messages. An item
-whose exchange with the primary fails after a connection was made reports
-`completion_unknown`, and one that could not connect reports `unavailable`, as
-a single write does. Earlier items stay
+whose exchange with the primary fails after a connection was made, or whose
+connection attempt runs into the deadline, reports `completion_unknown`, and
+one whose connection was refused or whose host was reported unreachable
+reports `unavailable`, as a single write does. Earlier items stay
 committed and nothing is replayed. Check the per-item results. Running the
 apply again through the follower does not reliably finish a file that was
 cut: the
