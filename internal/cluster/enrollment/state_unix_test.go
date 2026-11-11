@@ -190,6 +190,62 @@ func TestRevocationPreservesIdentityAndCancelsEarlierTargetInvitations(t *testin
 	}
 }
 
+// A receiver that replaces a member cannot take that member's name or internal
+// address while the member is active, and nothing in the product revokes a
+// member today. The replacement is therefore a new member under its own name
+// and address; the member it replaces stays in the roster unchanged.
+func TestReplacementReceiverNeedsItsOwnNameAndAddress(t *testing.T) {
+	s, issuer, now := owner(t)
+	issued, invitation, err := s.Issue(issuer, "follower", "127.0.0.2:8082", now, now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stuck := identity(t)
+	proposal, err := invitation.Propose(stuck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined, err := issued.Accept(proposal, issuer, now.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := encoded(t, joined)
+	for _, target := range []struct{ name, address string }{
+		{"follower", "127.0.0.2:8082"}, {"follower", "127.0.0.3:8082"}, {"follower-b", "127.0.0.2:8082"}, {"primary", "127.0.0.3:8082"}, {"follower-b", "127.0.0.1:8082"},
+	} {
+		if next, _, err := joined.Issue(issuer, target.name, target.address, now.Add(2*time.Second), now.Add(time.Minute)); !errors.Is(err, ErrRefused) || next != nil {
+			t.Fatalf("an invitation for %s at %s, which an active member holds: got %v, want %v", target.name, target.address, err, ErrRefused)
+		}
+	}
+	if !bytes.Equal(before, encoded(t, joined)) {
+		t.Fatal("a refused invitation changed the roster")
+	}
+	reissued, replacement, err := joined.Issue(issuer, "follower-b", "127.0.0.2:8083", now.Add(2*time.Second), now.Add(time.Minute))
+	if err != nil {
+		t.Fatal("a replacement under its own name and address was refused", err)
+	}
+	// The old identity cannot take the new place either.
+	reused, err := replacement.Propose(stuck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reissued.Accept(reused, issuer, now.Add(3*time.Second)); !errors.Is(err, ErrRefused) {
+		t.Fatal("an enrolled identity joined a second time", err)
+	}
+	fresh, err := replacement.Propose(identity(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	replaced, err := reissued.Accept(fresh, issuer, now.Add(3*time.Second))
+	if err != nil || !replaced.RetainsHistory(joined) {
+		t.Fatal("the replacement receiver was not admitted", err)
+	}
+	members := replaced.Members()
+	if len(members) != 3 || members[1].ID != stuck.Trust().MemberID() || members[1].Name != "follower" || members[1].Revoked || members[2].Name != "follower-b" || members[2].Revoked {
+		t.Fatal("the replaced member did not stay in the roster beside its replacement")
+	}
+}
+
 func TestInvitationAndActiveMemberCapacityDoNotPrune(t *testing.T) {
 	s, issuer, now := owner(t)
 	var first Invitation

@@ -129,6 +129,14 @@ func anchorHistoryPromote(t *testing.T, s *Store, request string) replication.Au
 // first key with its self-signed REVOKE bit, which takes the two-phase lane.
 func anchorHistoryPoll(t *testing.T, s *Store, root anchorHistoryRoot, revoke bool) accepted.Snapshot {
 	t.Helper()
+	return anchorHistoryPollSigned(t, s, root.signed(t, revoke), revoke)
+}
+
+// anchorHistoryPollSigned is anchorHistoryPoll for any signed root DNSKEY
+// response. revoke says that the response carries a self-signed REVOKE of a key
+// the writer knows, which takes the two-phase lane.
+func anchorHistoryPollSigned(t *testing.T, s *Store, signed *dns.Msg, revoke bool) accepted.Snapshot {
+	t.Helper()
 	clock, err := trustanchors.NewSessionClock()
 	if err != nil {
 		t.Fatal(err)
@@ -156,7 +164,7 @@ func anchorHistoryPoll(t *testing.T, s *Store, root anchorHistoryRoot, revoke bo
 		if err != nil {
 			t.Fatal(err)
 		}
-		verified, err := denial.Verify(root.signed(t, true))
+		verified, err := denial.Verify(signed)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,7 +181,7 @@ func anchorHistoryPoll(t *testing.T, s *Store, root anchorHistoryRoot, revoke bo
 		if err != nil {
 			t.Fatal(err)
 		}
-		observation, err := trustanchors.Verify(state, root.signed(t, false), clock.Sample())
+		observation, err := trustanchors.Verify(state, signed, clock.Sample())
 		if err != nil {
 			t.Fatal(err)
 		}
