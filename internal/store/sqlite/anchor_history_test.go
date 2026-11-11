@@ -481,7 +481,7 @@ func anchorHistoryRefused(t *testing.T, member, source *Store) {
 	t.Helper()
 	before, installed, local, authority := anchorHistoryCursor(t, member), imageOf(t, member), anchorLocalTestRead(t, member), member.Authority()
 	if err := anchorHistoryInstall(t, member, source); !errors.Is(err, accepted.ErrCAS) {
-		t.Fatalf("adoption of a branch that still trusts a carried key: got %v, want %v", err, accepted.ErrCAS)
+		t.Fatalf("adoption of a branch this member must refuse: got %v, want %v", err, accepted.ErrCAS)
 	}
 	if anchorHistoryCursor(t, member) != before || !installed.Generation().Same(imageOf(t, member).Generation()) || !sameAnchorLocal(local, anchorLocalTestRead(t, member)) || anchorAuthority(authority) != anchorAuthority(member.Authority()) {
 		t.Fatal("refused adoption changed the member")
