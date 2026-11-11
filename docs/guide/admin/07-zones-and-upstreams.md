@@ -30,8 +30,12 @@ CAUTION: Do not apply a zone of the type `external`, `catalog` or
 `secondaryCatalog` from a file or with the API. kudurru does not serve these
 types. On a node with the SQLite store, such a zone stops the answers for your
 own zones and stops all changes. You cannot delete the zone through the API
-then. To recover, stop the node. Then put back a copy of the data directory
-that you made before you applied the zone.
+then. Do not restart the node: after a restart it answers SERVFAIL for every
+name, also for names it forwards.
+
+To recover, stop the node and put back a copy of the data directory that you
+made before you applied the zone. A block list with a URL that kudurru cannot
+download has the same effect until a download succeeds.
 
 ### See the zones
 

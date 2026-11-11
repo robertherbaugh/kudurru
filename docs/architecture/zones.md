@@ -39,14 +39,25 @@ erDiagram
 
 Primary, forward, secondary, and stub zones are served. The other
 types in the schema (`external`, `catalog`, `secondaryCatalog`) are accepted
-by admission and are not served. On Kubernetes the controller gives such a
-zone `Ready=False, reason Unsupported` (`zoneVerdict` in `internal/controller`).
-The complete SQLite runtime has no such verdict: `servingzones.Prepare`
-refuses the whole candidate while the object exists, so the node reports
-`prepare_failed`, answers 503 `generation_pending` on the API, also for the
-deletion of that object, and stops answering for its own zones, across a
-restart. Nothing in the API removes the object then; the data directory has
-to be put back from a copy. Do not apply these types on SQLite.
+by admission and are not served. The zone controller, which runs on both
+stores, gives such a zone `Ready=False, reason Unsupported` (`zoneVerdict` in
+`internal/controller`). On SQLite it writes that verdict to the stored
+object, but `servingzones.Prepare` refuses the whole candidate while the
+object exists, so no generation is published and the API cannot show or
+remove the object. The node reports `prepare_failed`, answers 503
+`generation_pending` on the API, also for the deletion of that object, and
+stops answering for its own zones; forwarded names still answer from the
+generation it had. After a restart it has no generation at all and answers
+SERVFAIL for every name, forwarded names included. Nothing in the API
+removes the object then; the data directory has to be put back from a copy.
+Do not apply these types on SQLite.
+
+A `BlockList` with an enabled URL source that has never been downloaded has
+the same effect on SQLite, even when no policy refers to it: list
+preparation (`internal/listfetcher`, `ErrIncomplete`) refuses the whole
+candidate until the background fetcher has stored a body with its digest.
+Unlike the zone case, this clears by itself at the first successful download
+attempt.
 
 Use one DNSZone per canonical apex. If different objects claim the same
 apex, the serving builder logs the conflict and installs unavailable coverage
