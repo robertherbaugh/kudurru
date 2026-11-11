@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -44,6 +45,9 @@ type memberForwardHTTPFixture struct {
 	cache *cache.Cache
 	// scheduledPull runs the follower's own pull worker, as runServe does.
 	scheduledPull bool
+	// stopMember stops the primary's member server and waits for it, which
+	// closes its listener: the follower can no longer dial the primary.
+	stopMember func(t *testing.T)
 }
 
 // memberForwardScheduledPull starts the follower's scheduled pull worker and
@@ -138,17 +142,22 @@ func newMemberForwardHTTPFixture(t *testing.T, http2 bool, options ...func(*memb
 	serverContext, stop := context.WithCancel(t.Context())
 	serverDone := make(chan error, 1)
 	go func() { serverDone <- server.Serve(serverContext, listener) }()
-	t.Cleanup(func() {
-		stop()
-		select {
-		case err := <-serverDone:
-			if err != nil {
-				t.Error(err)
+	var stopOnce sync.Once
+	f.stopMember = func(t *testing.T) {
+		stopOnce.Do(func() {
+			stop()
+			select {
+			case err := <-serverDone:
+				if err != nil {
+					t.Error(err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Error("member server did not join")
 			}
-		case <-time.After(10 * time.Second):
-			t.Error("member server did not join")
-		}
-	})
+			_ = listener.Close()
+		})
+	}
+	t.Cleanup(func() { f.stopMember(t) })
 	// Real nodes have independent owner locks. Reusing p.opts here shares its
 	// exclusive auth-key owner across the two ends of the member exchange.
 	receiverBase := newServingRuntimeFixture(t)
@@ -405,4 +414,43 @@ func TestRootMemberForwardBlockingStaleViewAndFailedExchange(t *testing.T) {
 		strings.Contains(lost.Error.Message, "authentication operation unavailable") || lost.Error.Message == "" {
 		t.Fatalf("blocking switch while the primary cannot commit: %d %s", lost.status, lost.raw)
 	}
+}
+
+// A follower whose primary cannot be dialed (its member listener is closed,
+// so the connection is refused) sent nothing: every forwarded domain answers
+// 503 unavailable and says that the change was not applied, never
+// completion_unknown (D368). Nothing is committed on the primary.
+func TestRootMemberForwardUndialablePrimaryAnswersNotApplied(t *testing.T) {
+	f := newMemberForwardHTTPFixture(t, false)
+	primaryStore := f.primary.s.opts.Store
+	token := f.primary.token
+	before := roleBindingImage(t, primaryStore)
+	group := map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "ClientGroup",
+		"metadata": map[string]any{"name": "undialed-group", "namespace": "default"},
+		"spec":     map[string]any{"clients": []any{map[string]any{"ip": "192.0.2.90"}}}}
+	f.stopMember(t)
+	for _, c := range []struct {
+		method, path string
+		body         any
+		text         string
+	}{
+		{http.MethodPost, "/dns/blocking", map[string]any{"blocking": false, "timer": 60}, "was not applied"},
+		{http.MethodPost, "/clientgroups", group, "was not applied"},
+		{http.MethodPatch, "/settings", map[string]any{"blocking": map[string]any{"blockTTL": "43s"}}, "was not applied"},
+		{http.MethodPost, "/auth/logout", nil, "was not revoked"},
+	} {
+		answer := f.request(t, nil, c.method, c.path, token, c.body)
+		if answer.status != http.StatusServiceUnavailable || answer.Error.Key != api.KeyUnavailable || !strings.Contains(answer.Error.Message, c.text) {
+			t.Errorf("%s %s with an undialable primary: want 503 unavailable %q, got %d %s", c.method, c.path, c.text, answer.status, answer.raw)
+		}
+	}
+	err := primaryStore.Get(t.Context(), store.Key{Kind: "ClientGroup", Namespace: "default", Name: "undialed-group"}, &public.ClientGroup{})
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("an unsent object write exists on the primary", err)
+	}
+	var settings public.Kudurru
+	if err := primaryStore.Get(t.Context(), store.Key{Kind: "Kudurru", Name: "default"}, &settings); err != nil || strings.Contains(string(settings.Spec.Settings["blocking"].Raw), "43s") || settings.Status.Blocking.Disabled {
+		t.Fatal("an unsent settings patch or blocking switch reached the primary", err)
+	}
+	roleBindingUnchanged(t, primaryStore, before)
 }
