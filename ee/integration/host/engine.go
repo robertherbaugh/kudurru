@@ -509,7 +509,7 @@ func (h *Host) sync(ctx context.Context, j *job, f frame, g ExecutionGuard, expe
 				if expected != "" {
 					return result, ErrStalePreview
 				}
-				if err := h.recover(ctx, j, g, in, l); err != nil {
+				if err := h.recover(ctx, j, g, in, l, nil); err != nil {
 					result.Pending++
 					return result, err
 				}
@@ -538,7 +538,7 @@ func (h *Host) sync(ctx context.Context, j *job, f frame, g ExecutionGuard, expe
 		return result, ErrStalePreview
 	}
 	for _, p := range preview.Plans {
-		if err := h.applyPlan(ctx, j, g, inputs, p, result); err != nil {
+		if err := h.applyPlan(ctx, j, g, inputs, p, result, nil); err != nil {
 			return result, err
 		}
 	}
@@ -550,7 +550,10 @@ func (h *Host) sync(ctx context.Context, j *job, f frame, g ExecutionGuard, expe
 // outcome to result. It refuses to run under ledger versions other than the
 // ones the plan was built from. Ordinary sync and cleanup (D367) share it:
 // a cleanup plan differs only in what it contains.
-func (h *Host) applyPlan(ctx context.Context, j *job, g ExecutionGuard, inputs []publicationInput, p *plan.Plan, result *Result) error {
+//
+// st, the lease of a terminating run (nil in a sync), notes which local
+// steps the run's bound cut.
+func (h *Host) applyPlan(ctx context.Context, j *job, g ExecutionGuard, inputs []publicationInput, p *plan.Plan, result *Result, st *terminatingLease) error {
 	publisher, ok := j.provider.(Publisher)
 	if !ok {
 		return ErrUnsupported
@@ -558,7 +561,7 @@ func (h *Host) applyPlan(ctx context.Context, j *job, g ExecutionGuard, inputs [
 	result.Conflicts += len(p.Conflicts)
 	result.Unchanged += p.Unchanged
 	ledgers, err := h.ledgers(ctx, p.Owner, p.Destination)
-	if err != nil {
+	if st.local(ctx, err) != nil {
 		return err
 	}
 	tokens := map[kinds.RecordKey]string{}
@@ -584,26 +587,26 @@ func (h *Host) applyPlan(ctx context.Context, j *job, g ExecutionGuard, inputs [
 		}
 	}
 	for i := range p.Operations {
-		if err := h.fence(ctx, j, g); err != nil {
+		if err := st.local(ctx, h.fence(ctx, j, g)); err != nil {
 			return err
 		}
 		intent := p.Intent(i, h.opts.Now())
 		res, err := h.opts.Ledger.Begin(ctx, g.Ledger, intent, tokens[intent.Spec.Record.Key])
-		if err != nil {
+		if st.local(ctx, err) != nil {
 			return err
 		}
 		if res.Operation.Spec.Receipt != nil || !res.Operation.Spec.AbandonedAt.IsZero() {
 			result.Pending++
 			return ledger.ErrPending
 		}
-		if err := h.fence(ctx, j, g); err != nil {
+		if err := st.local(ctx, h.fence(ctx, j, g)); err != nil {
 			result.Pending++
 			return err
 		}
 		receipt, applyErr := publisher.Apply(ctx, res.Operation.DeepCopy())
 		if !receipt.ObservedAt.IsZero() {
 			saved, saveErr := h.opts.Ledger.RecordReceipt(ctx, g.Ledger, res.Operation, receipt)
-			if saveErr != nil {
+			if st.local(ctx, saveErr) != nil {
 				result.Pending++
 				return saveErr
 			}
@@ -611,7 +614,7 @@ func (h *Host) applyPlan(ctx context.Context, j *job, g ExecutionGuard, inputs [
 		}
 		if res.Operation.Spec.Receipt != nil && res.Operation.Spec.Receipt.Complete {
 			confirmed, err := h.opts.Ledger.Confirm(ctx, g.Ledger, res)
-			if err != nil {
+			if st.local(ctx, err) != nil {
 				result.Pending++
 				return err
 			}
@@ -631,9 +634,11 @@ func (h *Host) applyPlan(ctx context.Context, j *job, g ExecutionGuard, inputs [
 	return nil
 }
 
-func (h *Host) recover(ctx context.Context, j *job, g ExecutionGuard, in publicationInput, l *kinds.IntegrationLedger) error {
+// recover settles one pending intent from a complete reread; st is as for
+// applyPlan.
+func (h *Host) recover(ctx context.Context, j *job, g ExecutionGuard, in publicationInput, l *kinds.IntegrationLedger, st *terminatingLease) error {
 	op, err := h.opts.Ledger.ReadOperation(ctx, l.Spec.Pending.OperationID)
-	if err != nil {
+	if st.local(ctx, err) != nil {
 		return err
 	}
 	if op.Spec.Record != l.Spec.Record || op.Spec.Record.Owner != g.Ledger.Owner || in.planInput.Owner != op.Spec.Record.Owner || in.planInput.Destination != op.Spec.Record.Destination || op.Spec.PlanDigest != l.Spec.Pending.PlanDigest || op.Spec.AfterHash != l.Spec.Pending.AfterHash {
@@ -642,7 +647,7 @@ func (h *Host) recover(ctx context.Context, j *job, g ExecutionGuard, in publica
 	res := &ledger.Reservation{Ledger: l, Operation: op}
 	if op.Spec.Receipt != nil && op.Spec.Receipt.Complete {
 		_, err := h.opts.Ledger.Confirm(ctx, g.Ledger, res)
-		return err
+		return st.local(ctx, err)
 	}
 	state, err := pendingRows(in.planInput, op)
 	if err != nil {
@@ -663,7 +668,7 @@ func (h *Host) recover(ctx context.Context, j *job, g ExecutionGuard, in publica
 	if state.homogeneous {
 		hash = kinds.EndpointDigest(state.current)
 	}
-	if err := h.fence(ctx, j, g); err != nil {
+	if err := st.local(ctx, h.fence(ctx, j, g)); err != nil {
 		return err
 	}
 	if !op.Spec.AbandonedAt.IsZero() {
@@ -671,7 +676,7 @@ func (h *Host) recover(ctx context.Context, j *job, g ExecutionGuard, in publica
 			return ledger.ErrPending
 		}
 		_, err := h.opts.Ledger.Abandon(ctx, g.Ledger, res, ledger.Observation{BeforeHash: hash, ObservedAt: h.opts.Now()})
-		return err
+		return st.local(ctx, err)
 	}
 	if state.homogeneous && state.resumable && hash == op.Spec.AfterHash && state.owned {
 		// UTC without a monotonic reading, as the adapters record it: the
@@ -683,12 +688,12 @@ func (h *Host) recover(ctx context.Context, j *job, g ExecutionGuard, in publica
 			receipt.Targets = slices.Clone(op.Spec.Receipt.Targets)
 		}
 		saved, err := h.opts.Ledger.RecordReceipt(ctx, g.Ledger, op, receipt)
-		if err != nil {
+		if st.local(ctx, err) != nil {
 			return err
 		}
 		res.Operation = saved
 		_, err = h.opts.Ledger.Confirm(ctx, g.Ledger, res)
-		return err
+		return st.local(ctx, err)
 	}
 	// Untouched work can be safely terminalized after this worker rereads a
 	// complete snapshot. No provider call is in flight in this serial worker.
@@ -696,7 +701,7 @@ func (h *Host) recover(ctx context.Context, j *job, g ExecutionGuard, in publica
 	slices.Sort(beforeIDs)
 	if state.homogeneous && state.resumable && hash == op.Spec.BeforeHash && slices.Equal(state.ids, beforeIDs) && (op.Spec.Receipt == nil || len(op.Spec.Receipt.Targets) == 0) {
 		_, err := h.opts.Ledger.Abandon(ctx, g.Ledger, res, ledger.Observation{BeforeHash: hash, ObservedAt: h.opts.Now()})
-		return err
+		return st.local(ctx, err)
 	}
 	resume, ok := j.provider.(RecoveryPublisher)
 	// An intent is resumed only while the captured configuration and
@@ -712,20 +717,20 @@ func (h *Host) recover(ctx context.Context, j *job, g ExecutionGuard, in publica
 	if !ok || !state.resumable || !authorized || !recoveryDesired(in.planInput, op) {
 		return ledger.ErrPending
 	}
-	if err := h.fence(ctx, j, g); err != nil {
+	if err := st.local(ctx, h.fence(ctx, j, g)); err != nil {
 		return err
 	}
 	receipt, applyErr := resume.Recover(ctx, op.DeepCopy(), in.remote)
 	if !receipt.ObservedAt.IsZero() {
 		saved, err := h.opts.Ledger.RecordReceipt(ctx, g.Ledger, op, receipt)
-		if err != nil {
+		if st.local(ctx, err) != nil {
 			return err
 		}
 		res.Operation = saved
 	}
 	if res.Operation.Spec.Receipt != nil && res.Operation.Spec.Receipt.Complete {
 		_, err := h.opts.Ledger.Confirm(ctx, g.Ledger, res)
-		return err
+		return st.local(ctx, err)
 	}
 	if applyErr != nil {
 		return safeError(ctx, applyErr)

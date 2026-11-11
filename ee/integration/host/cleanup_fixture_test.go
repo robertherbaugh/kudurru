@@ -270,6 +270,9 @@ type cleanupFixture struct {
 	// operationsStalled makes the host's paged reads of operations wait for
 	// their context, as a store too slow for the run's bound does.
 	operationsStalled atomic.Bool
+	// writesStalled makes the ledger repository's writes of operations
+	// (intents, receipts and confirmations) wait for their context.
+	writesStalled atomic.Bool
 }
 
 // refusingReader is the host's reader with ledger reads that can be made to
@@ -312,6 +315,10 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 	repository, err := ledger.New(ledger.Options{Reader: f.st, Now: f.now, Write: func(ctx context.Context, g ledger.Guard, o store.Object, a store.ApplyOptions) (store.Object, error) {
 		var out store.Object
 		err := f.h.WithLease(ctx, g, func(ctx context.Context) error {
+			if _, operation := o.(*kinds.IntegrationOperation); operation && f.writesStalled.Load() {
+				<-ctx.Done()
+				return ctx.Err()
+			}
 			var err error
 			out, err = f.st.Apply(ctx, o, a)
 			return err

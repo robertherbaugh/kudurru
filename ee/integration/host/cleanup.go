@@ -129,8 +129,8 @@ type terminatingLease struct {
 	forgetCut   bool
 	forgetTried int
 	// localCut: the run's bound ended one of its local reads or commits
-	// (a ledger or operation read, a Forget, a fence, the purge or the
-	// finalization), so a run cut without progress names a local failure,
+	// (a ledger or operation read, an intent, receipt or confirmation, a
+	// Forget, a fence, the purge or the finalization), so a run cut without progress names a local failure,
 	// not a provider one.
 	localCut bool
 	// forgetTook is how long the last Forget that committed took.
@@ -146,9 +146,9 @@ func (st *terminatingLease) forgetChunk() int {
 }
 
 // local notes whether the run's bound ended a local step that returned err,
-// and returns err.
+// and returns err. A nil lease (an ordinary sync) notes nothing.
 func (st *terminatingLease) local(ctx context.Context, err error) error {
-	if err != nil && ctx.Err() != nil {
+	if st != nil && err != nil && ctx.Err() != nil {
 		st.localCut = true
 	}
 	return err
@@ -598,7 +598,7 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 				continue
 			}
 			recovered = true
-			if err := h.recover(ctx, j, g, in, l); err != nil {
+			if err := h.recover(ctx, j, g, in, l, st); err != nil {
 				result.Pending++
 				return false, failed(ctx, ReasonCleanupFailed, result, err)
 			}
@@ -617,7 +617,7 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 		if p, applyErr = plan.Build(in.planInput); applyErr != nil {
 			break
 		}
-		if applyErr = h.applyPlan(ctx, j, g, inputs, p, &applied); applyErr != nil {
+		if applyErr = h.applyPlan(ctx, j, g, inputs, p, &applied, st); applyErr != nil {
 			break
 		}
 	}

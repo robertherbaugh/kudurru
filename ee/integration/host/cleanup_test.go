@@ -969,6 +969,35 @@ func TestTerminatingRunCutInALocalReadIsNoProviderFailure(t *testing.T) {
 	}
 }
 
+// Nor is a run that its bound cuts in the local intent commit before its
+// provider delete: nothing reached the provider, and the cleanup finishes
+// once the store writes in time.
+func TestTerminatingRunCutInALocalCommitIsNoProviderFailure(t *testing.T) {
+	f := newCleanupFixture(t, cleanupObject("sink", "Delete", true), func(f *cleanupFixture) {
+		f.timeout = time.Second
+	})
+	f.awaitPublished()
+	f.writesStalled.Store(true)
+	f.requestDelete()
+	f.awaitReason(PhaseTerminating, ReasonCleanupFailed)
+	if _, _, deletes, _ := f.w.counts(); deletes != 0 {
+		t.Fatalf("provider deletes while the intent could not be written: %d", deletes)
+	}
+	f.writesStalled.Store(false)
+	f.wake()
+	summary := f.awaitFinalized()
+	if summary.RecordSetsDeleted != 1 || summary.RecordsForgotten != 1 {
+		t.Fatalf("summary: %+v", summary)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, s := range f.published {
+		if s.Reason == ReasonProviderFailed {
+			t.Fatal("a run cut in a local commit was reported as ProviderFailed")
+		}
+	}
+}
+
 // ledgerFlood serves ledger rows of another incarnation without end.
 type ledgerFlood struct{}
 
