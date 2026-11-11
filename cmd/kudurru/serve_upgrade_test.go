@@ -543,6 +543,66 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 		}
 
 		t.Logf("timing: %s after start: served while a list URL is silent", time.Since(began).Round(time.Millisecond))
+		// A list whose digest is published and whose URL then moves to
+		// one that never answers: this node holds no body for the new URL
+		// while the status still names the old digest. Before D373 the
+		// fetcher kept that status for the whole pass (until the download
+		// gave up) and the preparation waited for the missing body, which
+		// held back every serving generation. Now the fetcher's next pass
+		// rewrites the list's status, and a published digest without a
+		// local body is served empty (DiskCache.AwaitBody); either keeps a
+		// later write served within the same bound as above. With only the
+		// preparation reverted this step still passes (mounted10): the
+		// fetcher change alone clears the digest on a busy leader, and the
+		// preparation change is proven by the servingbuild test
+		// TestPublishedDigestWithoutLocalBodyServesEmptyUntilTheBodyArrives.
+		good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, "listed.example\n")
+		}))
+		t.Cleanup(good.Close)
+		moved := func(url string) map[string]any {
+			return object("BlockList", "moved-url", "default", map[string]any{
+				"sources": []any{map[string]any{"name": "remote", "format": "domains", "url": url}},
+			})
+		}
+		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/blocklists", session.CSRF, moved(good.URL+"/listed.txt"), http.StatusCreated, nil)
+		for deadline := time.Now().Add(silentBound); ; time.Sleep(100 * time.Millisecond) {
+			var list struct {
+				Status struct {
+					Sources []struct {
+						Digest string `json:"digest"`
+					} `json:"sources"`
+				} `json:"status"`
+			}
+			upgradeMountedRequest(t, client, base, http.MethodGet, "/objects/blocklists/default/moved-url", "", nil, http.StatusOK, &list)
+			if len(list.Status.Sources) == 1 && list.Status.Sources[0].Digest != "" {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("the reachable list URL was not published within %s while another URL is silent: %+v", silentBound, list.Status)
+			}
+		}
+		movedAsked := asked.Load()
+		upgradeMountedRequest(t, client, base, http.MethodPut, "/objects/blocklists/default/moved-url", session.CSRF, moved(hanging.URL+"/moved.txt"), http.StatusOK, nil)
+		for deadline := time.Now().Add(30 * time.Second); asked.Load() == movedAsked; time.Sleep(50 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatal("the fetcher never asked the moved URL")
+			}
+		}
+		movedAt := time.Now()
+		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/dnsrecordsets", session.CSRF, object("DNSRecordSet", "after-move", "default", map[string]any{
+			"zoneRef": map[string]any{"name": "api-test"}, "endpoints": []any{map[string]any{"dnsName": "after-move.api.test", "recordType": "A", "targets": []any{"192.0.2.86"}}},
+		}), http.StatusCreated, nil)
+		for q := new(dns.Msg).SetQuestion("after-move.api.test.", dns.TypeA); ; time.Sleep(100 * time.Millisecond) {
+			r, _, err := (&dns.Client{Timeout: time.Second}).ExchangeContext(t.Context(), q, cfg.Listeners.DNS[0].Address)
+			if err == nil && len(r.Answer) == 1 && r.Answer[0].(*dns.A).A.String() == "192.0.2.86" {
+				break
+			}
+			if time.Since(movedAt) > silentBound {
+				t.Fatalf("after-move.api.test. is not answered %s after a list URL moved to one that is silent: %v %v", silentBound, r, err)
+			}
+		}
+		t.Logf("timing: after-move.api.test. answered %s after the list URL moved", time.Since(movedAt).Round(time.Millisecond))
 		// The lifecycle of a deleted zone keeps its name: a zone for it
 		// under another object name is refused, naming the object to use,
 		// and the node keeps serving. The same object name is accepted.
@@ -554,15 +614,47 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 		}
 		temp := object("DNSZone", "temp", "", map[string]any{"zoneName": "temp.test.", "type": "primary", "nameservers": []any{"ns1.temp.test."}})
 		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/dnszones", session.CSRF, temp, http.StatusCreated, nil)
+		// Creating a primary zone takes about six commits one after the
+		// other (the DNSZone, its lifecycle phases, its first head and its
+		// status), and each is served only once the serving generation
+		// after it is published. Under the race detector one publication
+		// took 1.4 to 2.4 s on four CPUs (zone served 14 to 18 s after its
+		// write, evidence QUAL-UPGRADE-OPEN probe01), and several times
+		// that in the composed pre-push run, where a fixed 30 s bound
+		// failed. The wait is therefore bounded by progress, not by the
+		// clock alone: it fails when the zones the API reports (lifecycle,
+		// serial, conditions) and readiness have not changed for 30 s, or
+		// after three minutes. The view changes several times per commit
+		// (readiness turns 503 and back for each publication: 21 changes
+		// in 12.5 s in mounted10), so a count of changes is no bound.
+		zonesView := func() string {
+			response, err := client.Get(base + "/zones")
+			if err != nil {
+				return "unreachable"
+			}
+			body, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+			_ = response.Body.Close()
+			return fmt.Sprintf("%d %d %s", ready(), response.StatusCode, body)
+		}
 		served := func(want bool) {
 			t.Helper()
-			deadline := time.Now().Add(30 * time.Second)
+			from := time.Now()
+			progress, changes, last := from, 0, zonesView()
 			for soa("temp.test.") != want {
-				if time.Now().After(deadline) {
-					t.Fatalf("temp.test. served = %v after 30s", !want)
+				now := time.Now()
+				switch {
+				case now.Sub(progress) > 30*time.Second:
+					t.Fatalf("temp.test. served = %v: nothing changed for 30s (%d changes in %s): %s", !want, changes, now.Sub(from).Round(time.Millisecond), last)
+				case now.Sub(from) > 3*time.Minute:
+					t.Fatalf("temp.test. served = %v after 3 minutes (%d changes): %s", !want, changes, last)
+				}
+				if view := zonesView(); view != last {
+					changes++
+					progress, last = now, view
 				}
 				time.Sleep(100 * time.Millisecond)
 			}
+			t.Logf("timing: temp.test. served = %v after %s and %d changes", want, time.Since(from).Round(time.Millisecond), changes)
 		}
 		served(true)
 		upgradeMountedRequest(t, client, base, http.MethodDelete, "/objects/dnszones/temp", session.CSRF, nil, http.StatusNoContent, nil)
