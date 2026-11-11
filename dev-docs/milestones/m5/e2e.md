@@ -66,6 +66,14 @@ Files: `internal/testutil/kudurrutest` (new), `test/e2e`, `test/interop`,
     `TestCentralQuerylogTwoNodes`.
   - `KUDURRU_REQUIRE_ENVTEST`: kube-apiserver and etcd (`make envtest` or
     `KUBEBUILDER_ASSETS`), for `TestKubeAuditAcrossReplicas`.
+  - `KUDURRU_REQUIRE_PREVIOUS_RELEASE`: the binary of the previous release
+    (0.1.0) for the upgrade tests `TestUpgradeFromV01DataDirectory` and
+    `TestUpgradeFromV01RefusesLegacyObjects`. `kudurrutest.Previous` builds
+    it once per run from the `v0.1.0` tag of the clone, in a temporary
+    directory outside the working tree, or takes the file
+    `KUDURRU_E2E_PREVIOUS_BINARY` names (the published release binary); a
+    binary that does not report version 0.1.0 is refused. A shallow clone
+    has no tags: `git fetch origin tag v0.1.0`.
 
   `TestKnotCatalogConsumer` stays opt-in (`hack/test-knot-catalog.sh`, a
   private Docker daemon).
@@ -81,9 +89,9 @@ Files: `internal/testutil/kudurrutest` (new), `test/e2e`, `test/interop`,
     `usr.sbin.named` AppArmor profile, which would deny a named reading its
     config from `$TMPDIR`. It then runs `make e2e`, `make interop-internal`
     and `make test-auth-e2e` (dex, cached under `bin/`). The job also has
-    the PostgreSQL service and the envtest binaries of the `go` job and sets
-    the three `KUDURRU_REQUIRE_*` variables, so none of those tests can pass
-    there as a skip.
+    the PostgreSQL service and the envtest binaries of the `go` job, fetches
+    the `v0.1.0` tag and sets the four `KUDURRU_REQUIRE_*` variables, so
+    none of those tests can pass there as a skip.
   - `fuzz-targets` emits `hack/fuzz.sh --list` as JSON.
   - `fuzz` is a `fail-fast: false` matrix that runs each target for 60 s in
     parallel and uploads `testdata/fuzz/` and the logs on failure.

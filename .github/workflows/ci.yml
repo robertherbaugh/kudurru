@@ -313,12 +313,17 @@ jobs:
       KUDURRU_REQUIRE_POSTGRES: "1"
       KUDURRU_REQUIRE_BIND: "1"
       KUDURRU_REQUIRE_ENVTEST: "1"
+      KUDURRU_REQUIRE_PREVIOUS_RELEASE: "1"
       KUDURRU_NAMED: /usr/sbin/named
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # The upgrade tests build the previous release from its tag
+      # (kudurrutest.Previous); the checkout above has no tags.
+      - name: Fetch the v0.1.0 tag for the upgrade tests
+        run: git fetch --no-tags --depth=1 origin +refs/tags/v0.1.0:refs/tags/v0.1.0
       - name: Install BIND 9
         run: |
           sudo apt-get update

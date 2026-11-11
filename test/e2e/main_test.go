@@ -20,6 +20,7 @@ var kudurruBin string
 func TestMain(m *testing.M) {
 	code := kudurrutest.MainBuild(m, &kudurruBin)
 	removeLicensedBuild()
+	kudurrutest.RemovePrevious()
 	os.Exit(code)
 }
 

@@ -239,10 +239,21 @@ test-auth-e2e: $(DEX_BIN)
 ## (a release build) and KUDURRU_E2E_LICENSED_BINARY=<path> (the same build
 ## with -tags licensetest, for the multi-node fixtures that need the test
 ## license key). The log names every binary used, built or prebuilt.
-.PHONY: e2e interop interop-internal fuzz
+## The upgrade tests start from a data directory written by the previous
+## release (0.1.0): its binary is built from the v0.1.0 tag of the clone in
+## a temporary directory, or is the file KUDURRU_E2E_PREVIOUS_BINARY names.
+## Without the tag and the variable they skip;
+## KUDURRU_REQUIRE_PREVIOUS_RELEASE=1 turns that into a failure too.
+.PHONY: e2e interop interop-internal fuzz upgrade-fixture
 E2E_FLAGS ?= -race -count=1 -timeout 20m
 e2e:
 	CGO_ENABLED=1 KUDURRU_E2E=1 go test $(E2E_FLAGS) -v ./test/e2e/ ./test/interop/
+
+## upgrade-fixture: regenerate the golden state.db files of the 0.1.0
+## release (internal/store/sqlite/testdata/v0.1.0) with the released binary;
+## see hack/upgrade-fixture.sh before running it.
+upgrade-fixture:
+	hack/upgrade-fixture.sh
 
 ## interop: only the BIND 9 interop (dnf install bind / apt-get install bind9)
 interop:
