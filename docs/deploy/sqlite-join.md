@@ -136,11 +136,14 @@ normalization and validation, re-authorizes the original credential against
 the object it actually reads, and commits the write, its audit event and the
 command's deduplication record together. The follower serves the result only
 after its next pull, so an immediate read on the follower can still show the
-previous state. A write whose exchange with the primary fails for any reason,
-including an unreachable primary, answers `503 completion_unknown`: the
-follower cannot tell whether the primary received it, so inspect the object
-before a new decision. A primary that answers but cannot run the command
-refuses it with `503 unavailable`, and the write was not applied.
+previous state. A write whose exchange with the primary fails after the
+follower connected to it answers `503 completion_unknown`: the follower cannot
+tell whether the primary received it, so inspect the object before a new
+decision. When the follower cannot open a connection to the primary at all
+(connection refused or the connection attempt timed out), nothing was sent,
+and the answer is `503 unavailable` saying that the write was not applied. A
+primary that answers but cannot run the command refuses it with `503
+unavailable`, and the write was not applied.
 
 A follower request has one 30-second lifetime, which starts before the body is
 read, and stays bound to the data the follower had installed when the request
@@ -160,8 +163,9 @@ authority changed"). The second case is the one to expect for a long
 apply: the follower's next pull, five seconds by default, installs the earlier
 documents of the same request, and every later document is then refused. A
 single-item route answers `503 unavailable` with the same messages. An item
-whose exchange with the primary fails, including an unreachable primary,
-reports `completion_unknown`, as a single write does. Earlier items stay
+whose exchange with the primary fails after a connection was made reports
+`completion_unknown`, and one that could not connect reports `unavailable`, as
+a single write does. Earlier items stay
 committed and nothing is replayed. Check the per-item results. Running the
 apply again through the follower does not reliably finish a file that was
 cut: the

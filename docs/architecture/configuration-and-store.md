@@ -1359,7 +1359,11 @@ The output deadline also respects the original command expiration. Failed writes
 flush errors, lost original admission and callback failures abort the HTTP stream
 rather than allowing handler-return buffering to emit protected bytes. After a
 command dispatch, an absent acknowledgment leaves the client's outcome unknown;
-it never triggers automatic replay. Generic early refusals carry no current or
+it never triggers automatic replay. A command whose connection could not even
+be dialed was never dispatched: `Client.Write` reports it as unavailable, not
+unknown, and a forwarding follower answers that the change was not applied
+(D368). Every failure after a connection exists (TLS, a dropped connection, a
+lost response) stays unknown. Generic early refusals carry no current or
 stale authority headers. Actual enrolled HTTP/1 and HTTP/2 tests cover the mount.
 The operator and join routes, the root domain executors and enrolled startup
 are described in the sections that follow.
