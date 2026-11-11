@@ -62,13 +62,13 @@ stateDiagram-v2
   `kudurru login --server https://node-b.example:8080 --name node-b --token-stdin`.
   A follower accepts a new token after its next pull, and it checks a token
   itself, also while the primary is away. Do not plan to sign in to a
-  follower with a password. In this version `kudurru login --username` does
-  not work against a follower, whether or not the primary is up: a follower
-  cannot create the API token that the CLI saves, and the command ends with
-  `mint a CLI token: ... request failed`. A password sign-in in the browser
-  is checked by the primary, so on a follower it works only while the
-  primary is reachable, and it fails in the very situation in which you want
-  to promote.
+  follower with a password. `kudurru login --username` does not work
+  against a follower, whether or not the primary is up: a follower does not
+  create the API token that the CLI saves, and the command answers
+  `primary_required` before it sends the password. A password sign-in in the
+  browser is checked by the primary, so on a follower it works only while
+  the primary is reachable, and it fails in the very situation in which you
+  want to promote.
 - **Synchronized clocks.** An invitation is valid for at most ten minutes, and
   the members authenticate each other with certificates.
 
@@ -191,9 +191,11 @@ further follower.
   the primary: `missedPulls: 0` and `reason: awaiting_missed_pulls` while the
   primary answers.
 
-In this version `kudurru cluster status` and `kudurru nodes` describe only
-the node that answers. They show one node, and every member, also a
-follower, names itself as the leader. Use `cluster enrollment` for the role.
+`kudurru cluster status` shows the role of the node that answers in its
+`ROLE` column (`primary`, `follower` or `standalone`), and on a follower
+`LEADER` names the primary. It counts only the node that answers (`NODES`
+is `1`), and `kudurru nodes` lists only that node. `cluster enrollment`
+shows the member's identity and mode.
 
 A follower keeps answering DNS from the last state it installed for as long as
 the primary is unreachable, and it does so again after a restart.
@@ -208,18 +210,25 @@ without a retry, and returns the primary's answer:
   the dashboard, `kudurru delete` and `kudurru apply`;
 - the record commands of a zone, such as `kudurru records add`;
 - turning blocking off and on (`kudurru blocking disable`);
-- a password sign-in in the browser.
+- a password sign-in in the browser;
+- sign-out and revoking one of your own sessions;
+- a change of the cluster settings (`kudurru settings set` of a cluster
+  key, the dashboard's Settings page).
 
-Every other change answers 503 on a follower, for example a setting, a
-user, an API token, an authenticator or a stored TSIG key: make it on the
-primary. [Commands through a follower](sqlite-join.md#commands-through-a-follower)
-lists the routes and explains the answers. A follower serves a change that
+A follower runs a few commands itself, such as flushing its cache and
+promotion. Every other change answers `503 primary_required` on a follower
+and is not sent anywhere, for example a node setting (`log.level`), a user,
+an API token, an authenticator or a stored TSIG key: make it on the primary.
+[What a follower forwards, runs itself and refuses](sqlite-join.md#what-a-follower-forwards-runs-itself-and-refuses)
+lists the routes, and [commands through a follower](sqlite-join.md#commands-through-a-follower)
+explains the answers. A follower serves a change that
 it passed on after its next pull, so a read immediately after the write can
 still show the previous state.
 
 | Answer of a follower | Meaning | What to do |
 |---|---|---|
-| `503 unavailable` | The change was not made: the follower does not pass this kind of change on, or its data changed while the request ran ("the follower's source changed"). | Make the change on the primary. |
+| `503 primary_required` | The change was not made: the follower does not pass this kind of change on. The message names the primary. | Make the change on the primary. |
+| `503 unavailable` | The change was not made: the follower's data changed while the request ran ("the follower's source changed"), the primary refused it because the cluster's authority changed ("cluster authority changed"), or the request's 30-second lifetime ended. | Read the current state, then make the change on the primary. |
 | `503 completion_unknown` | The follower did not receive the primary's answer and cannot say whether the change was made. This is also the answer while the follower cannot reach the primary. | Read the object, on the primary when you can, before you decide anything else. |
 
 `kudurru apply` and `kudurru restore` send all their documents in one
@@ -282,10 +291,13 @@ once in the dashboard works the same way, with a result for each name.
   follower refuses every later document with `unavailable` ("the follower's
   source changed"), and the documents before stay applied. A file of a few
   documents usually fits between two pulls. A longer file does not, and
-  repeating the command through the follower does not help: the follower
-  passes the documents that are already applied on again, and the primary
-  records each of them, so the follower's data changes again at its next
-  pull.
+  repeating the command through the follower does not reliably finish it:
+  the follower passes the documents that are already applied on again, and
+  the primary records each of them, so the follower's data changes again at
+  its next pull. In two test runs with 200 new record sets, the first run
+  through a follower applied 15 and 116 of them, and four repeats through
+  the follower added 107 and 0 more; the same file sent to the primary
+  then applied the rest in one run.
 
 Send a file of many documents, and every restore, to the primary.
 

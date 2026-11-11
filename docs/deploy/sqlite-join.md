@@ -130,15 +130,18 @@ created, does not disturb the answer for the next item.
 
 An item carries its own error and is not applied (`errorKey` `unavailable`)
 when the lifetime has ended ("the request's 30-second forwarding lifetime
-ended") or when the follower installed newer data in the meantime ("the
-follower's source changed"). The last case is the one to expect for a long
+ended"), when the follower installed newer data in the meantime ("the
+follower's source changed"), or when the primary refused the command because
+the follower's view of the cluster's authority no longer held ("cluster
+authority changed"). The second case is the one to expect for a long
 apply: the follower's next pull, five seconds by default, installs the earlier
 documents of the same request, and every later document is then refused. A
 single-item route answers `503 unavailable` with the same messages. An item
 whose exchange with the primary fails, including an unreachable primary,
 reports `completion_unknown`, as a single write does. Earlier items stay
 committed and nothing is replayed. Check the per-item results. Running the
-apply again through the follower does not finish a file that was cut: the
+apply again through the follower does not reliably finish a file that was
+cut: the
 follower forwards the committed documents again, the primary records every
 forwarded command with its deduplication record, also one whose result is
 `unchanged`, and the follower's next pull therefore changes its source again.
