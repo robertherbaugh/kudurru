@@ -50,7 +50,15 @@ type primaryRuntime struct {
 	driver       *driver.Driver
 	runtime      *pr.Runtime
 	notifyIntent func(context.Context, *sqlite.CommandTx, pr.PrimaryStatusObservation) (sqliteadapter.NotifyIntentResult, error)
-	Update       pipeline.Next
+	// update is the protocol adapter that Update and a forwarded member
+	// command both run, so that both paths select, admit and commit alike.
+	update pipeline.Next
+	// follower answers an UPDATE that this node cannot apply because it is
+	// an enrolled follower: it forwards the verified request to the primary
+	// (D381). handled=false keeps the local SERVFAIL. Root sets it once,
+	// before any listener runs.
+	follower func(*pipeline.Request, string) (*pipeline.Response, bool)
+	Update   pipeline.Next
 }
 
 func newPrimaryRuntime(ctx context.Context, o primaryRuntimeOptions) (*primaryRuntime, error) {
@@ -99,16 +107,25 @@ func newPrimaryRuntime(ctx context.Context, o primaryRuntimeOptions) (*primaryRu
 	if err != nil {
 		return nil, err
 	}
+	p.update = update
 	p.Update = func(req *pipeline.Request) (*pipeline.Response, error) {
 		// The protocol adapter owns malformed/synthetic request responses.
 		if req == nil || req.Msg == nil || req.Client.Synthetic {
 			return update(req)
 		}
-		if _, protocol := dynamicupdate.Parse(req.Msg, o.UpdateLimits); protocol != nil {
+		tx, protocol := dynamicupdate.Parse(req.Msg, o.UpdateLimits)
+		if protocol != nil {
 			return update(req)
 		}
 		status := p.driver.Status()
 		if !status.Running || !status.Ready {
+			// An enrolled follower forwards; every other node that is not the
+			// ready writer (fenced, conflicted, standby) refuses here.
+			if p.follower != nil {
+				if response, handled := p.follower(req, tx.Apex()); handled {
+					return response, nil
+				}
+			}
 			return pipeline.Reply(req, dns.RcodeServerFailure, pipeline.StatusAuthoritative), nil
 		}
 		bound, release, err := p.writer.bind(req.Ctx, status.Writer)
@@ -175,17 +192,37 @@ func (p *primaryRuntime) captureUpdate(req *pipeline.Request, apex string) (pr.V
 		return reject(dns.RcodeServerFailure)
 	}
 	_, keys, current := owner.NotifyKeys()
-	native, ok := dnsserver.VerifiedTSIGFor(req, now)
-	if !ok || keys == nil || current == nil || !current() {
-		return reject(dns.RcodeRefused)
-	}
-	identity, ok := keys.Identity(native.Identity().Key)
-	if !ok || identity != native.Identity() {
-		return reject(dns.RcodeRefused)
-	}
-	proof, err := p.ingress.capture(req, member.Zone)
-	if err != nil {
-		return pr.VerifiedUpdate{}, err
+	var proof pr.VerifiedUpdate
+	if forwarded, ok := forwardedUpdateFrom(req.Ctx); ok {
+		// A follower verified the signature (D381). This node admits only the
+		// exact key identity of its own current keyring: same name, algorithm
+		// and secret-derived credential version.
+		if keys == nil || current == nil || !current() {
+			return reject(dns.RcodeRefused)
+		}
+		identity, ok := keys.Identity(forwarded.key.Key)
+		if !ok || identity.Key != forwarded.key.Key || identity.Algorithm != forwarded.key.Algorithm || identity.CredentialVersion != forwarded.key.CredentialVersion {
+			return reject(dns.RcodeRefused)
+		}
+		var err error
+		proof, err = p.ingress.captureForwarded(req, member.Zone, identity, forwarded, current)
+		if err != nil {
+			return pr.VerifiedUpdate{}, err
+		}
+	} else {
+		native, ok := dnsserver.VerifiedTSIGFor(req, now)
+		if !ok || keys == nil || current == nil || !current() {
+			return reject(dns.RcodeRefused)
+		}
+		identity, ok := keys.Identity(native.Identity().Key)
+		if !ok || identity != native.Identity() {
+			return reject(dns.RcodeRefused)
+		}
+		var err error
+		proof, err = p.ingress.capture(req, member.Zone)
+		if err != nil {
+			return pr.VerifiedUpdate{}, err
+		}
 	}
 	issued, err := p.ingress.Verify(req.Ctx, proof.Proof, proof.Wire)
 	if err != nil || !issued.Term.Same(fence.Term) || issued.AuthorityIncarnation != fence.Incarnation {

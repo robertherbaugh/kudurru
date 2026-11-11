@@ -24,6 +24,44 @@ type rootUpdateAcknowledgment struct {
 	writer   primaryWriterBinding
 	owner    *servingbuild.RuntimeOwner
 	proof    *dnsserver.VerifiedTSIG
+	// forwarded marks a follower's relayed answer (D381). It has no local
+	// writer: the primary committed or refused, and this node's own data
+	// generation is not what the empty acknowledgment depends on.
+	forwarded bool
+}
+
+// completeForwardedUpdate issues the follower's receipt for its exact empty
+// answer to a forwarded UPDATE. It keeps every other check of a native
+// acknowledgment: the original verified key, current dependencies and the
+// unchanged response.
+func (o *rootAnchorOutput) completeForwardedUpdate(req *pipeline.Request, response *pipeline.Response) {
+	if o == nil || req == nil || req.Ctx == nil || req.Msg == nil || response == nil || response.Msg == nil {
+		return
+	}
+	if o.ack != nil || o.state.Load() != anchorOutputReady {
+		o.state.Store(anchorOutputTerminal)
+		return
+	}
+	seal, err := servingdns.Component[*recursiveRootSeal](req, recursiveRootComponent)
+	if err != nil || seal != o.seal {
+		return
+	}
+	owner, err := servingdns.Component[*servingbuild.RuntimeOwner](req, "runtime")
+	if err != nil {
+		return
+	}
+	proof, ok := dnsserver.VerifiedTSIGFor(req, time.Now())
+	if !ok || len(req.Msg.Question) != 1 {
+		return
+	}
+	request := *req
+	request.Msg = req.Msg.Copy()
+	ack := &rootUpdateAcknowledgment{request: request, response: response, message: response.Msg,
+		header: response.Msg.MsgHdr, question: req.Msg.Question[0], owner: owner, proof: proof, forwarded: true}
+	if !ack.matches(response) || !ack.current() {
+		return
+	}
+	o.ack = ack
 }
 
 func (o *rootAnchorOutput) completeUpdate(req *pipeline.Request, response *pipeline.Response, writer *primaryWriter) {
@@ -72,7 +110,7 @@ func (a *rootUpdateAcknowledgment) matches(response *pipeline.Response) bool {
 }
 
 func (a *rootUpdateAcknowledgment) current() bool {
-	if a == nil || a.request.Ctx.Err() != nil || !a.writer.owner.current(a.writer.term) || !a.owner.DependenciesCurrent() {
+	if a == nil || a.request.Ctx.Err() != nil || !a.forwarded && !a.writer.owner.current(a.writer.term) || !a.owner.DependenciesCurrent() {
 		return false
 	}
 	proof, ok := dnsserver.VerifiedTSIGFor(&a.request, time.Now())

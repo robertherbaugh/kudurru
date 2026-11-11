@@ -15,6 +15,14 @@ import (
 // CommandFormat identifies the versioned write command envelope.
 const CommandFormat = "kudurru.replica.command"
 
+// SubjectTSIGKey is the subject kind of the TSIG key that signed a
+// forwarded RFC 2136 UPDATE. Such a subject carries no API credential, is
+// valid only in a version-1 command and grants nothing by itself.
+const SubjectTSIGKey auth.PrincipalKind = "TSIGKey"
+
+// CredentialTSIG is the credential kind of a SubjectTSIGKey subject.
+const CredentialTSIG = "tsig"
+
 // SubjectRef carries identity/credential references, never peer-selected rights.
 // The primary owner must verify current credential validity and reload grants.
 // Version 2 derives CredentialID from Credential.Reference: API token ID or an
@@ -176,13 +184,20 @@ func (c Command) validate(now time.Time, maxLifetime time.Duration) error {
 	if c.Hops != 1 {
 		return ErrLoop
 	}
-	switch c.Subject.Kind {
-	case auth.KindUser, auth.KindServiceAccount, auth.KindKubernetesServiceAccount:
+	// A TSIG key subject names the key that signed a forwarded RFC 2136
+	// UPDATE (D381). It has no API credential, so it exists only in version 1;
+	// the receiving domain checks the key against its own current keyring.
+	tsig := c.Subject.Kind == SubjectTSIGKey || c.Subject.CredentialKind == CredentialTSIG
+	switch {
+	case tsig && (c.Version != 1 || c.Subject.Kind != SubjectTSIGKey || c.Subject.CredentialKind != CredentialTSIG):
+		return ErrProtocol
+	case tsig:
+	case c.Subject.Kind == auth.KindUser, c.Subject.Kind == auth.KindServiceAccount, c.Subject.Kind == auth.KindKubernetesServiceAccount:
 	default:
 		return ErrForbidden
 	}
 	switch c.Subject.CredentialKind {
-	case "session", "api-token", "oidc", "kubernetes":
+	case "session", "api-token", "oidc", "kubernetes", CredentialTSIG:
 	default:
 		return ErrProtocol
 	}

@@ -20,6 +20,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
@@ -461,5 +462,34 @@ func TestWriteToAnUndialablePeerIsNotSent(t *testing.T) {
 	peer.Address = dropping.Addr().String()
 	if _, e := client.Write(t.Context(), peer, commandFor(p, "dropped-connection")); !errors.Is(e, ErrOutcomeUnknown) {
 		t.Fatalf("dropped connection: %v", e)
+	}
+}
+
+// A TSIG key subject (D381) is valid only as a whole, only in version 1 and
+// never with an API credential; mixing it with a principal kind is refused.
+func TestCommandTSIGSubjectOnlyInVersionOne(t *testing.T) {
+	s := openStore(t, replication.Primary)
+	tsig := func() Command {
+		c := commandFor(s, "tsig-subject")
+		c.Subject = SubjectRef{Kind: SubjectTSIGKey, ID: "key.", Provider: "tsig", CredentialKind: CredentialTSIG, CredentialID: "version", IssuedAt: c.IssuedAt}
+		return c
+	}
+	if err := tsig().validate(time.Now(), DefaultCommandLifetime); err != nil {
+		t.Fatal("a whole version-1 TSIG subject was refused", err)
+	}
+	proof, err := NewCredentialProof(servingauth.Credential{Kind: servingauth.APIToken, Value: "kdr_abcdefghijklmnopqrstuvwxyz0123456789"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, mutate := range map[string]func(*Command){
+		"version 2":          func(c *Command) { c.Version, c.Credential = 2, proof },
+		"user kind":          func(c *Command) { c.Subject.Kind = auth.KindUser },
+		"session credential": func(c *Command) { c.Subject.CredentialKind = "session" },
+	} {
+		c := tsig()
+		mutate(&c)
+		if err := c.validate(time.Now(), DefaultCommandLifetime); err == nil {
+			t.Fatal("a partial or version-2 TSIG subject was accepted", name)
+		}
 	}
 }
