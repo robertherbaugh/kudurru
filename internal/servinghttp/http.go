@@ -248,9 +248,12 @@ func (a *Adapter) capture(ctx context.Context) (*serving.Lease, error) {
 		// A follower without its first installed image has no publication to
 		// catch up to. Refuse immediately so health/status probes can observe
 		// the unavailable state without exhausting their own shorter deadlines.
-		// A conflicted member stays closed until an operator resolves it
-		// offline, so waiting cannot produce a lease: refuse at once.
-		if authority := a.options.Publisher.Status().Authority; authority.Installed.Revision == 0 || conflicted(authority) {
+		// A fenced or conflicted member also keeps this bounded wait. Refusing
+		// a conflicted member at once was tried and reverted: the enrolled
+		// conflict scenario then reached its DNS check while the DNS-only
+		// publication was still being prepared (SERVFAIL), a gap that the wait
+		// had hidden and that needs its own fix first.
+		if a.options.Publisher.Status().Authority.Installed.Revision == 0 {
 			return nil, err
 		}
 		select {
