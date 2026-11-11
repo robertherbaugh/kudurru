@@ -648,10 +648,14 @@ they were, and anchor admission stays open. The member repeats the pull at
 every interval (a complete image fetch each time) and refuses again until one
 of the following ends the state. None of them clears a carrier, installs a
 branch that lacks a carried key, or replaces managed history with a dormant or
-static owner. While it refuses, the member cannot become the primary: promotion
-needs a follower, and it holds no conflict or divergence for
-`cluster resolve --offline` to keep. Every recovery below therefore needs the
-current primary, or a member that follows it and can be promoted.
+static owner. While it refuses, the member cannot be promoted, because
+promotion needs a follower. Every recovery in the table therefore needs the
+current primary, or a member that follows it and can be promoted. When the
+primary and every member that followed it are lost for good, the explicit
+abandonment of their term (`cluster resolve --offline --abandon-term`, see
+[configuration-and-store.md](configuration-and-store.md)) makes the refusing
+member the writer of a new term on its own unchanged owner, and a returning
+member of the abandoned term adopts that branch under the same rules.
 
 | State | The member answers | What ends it |
 |---|---|---|
@@ -661,6 +665,7 @@ current primary, or a member that follows it and can be promoted.
 | Fenced; it holds managed history and the primary's owner is dormant | DNS-only from its own branch | The primary bootstraps managed anchors from the same seeds; that owner is another branch of the same history and domain and is adopted by term. With other seeds, or a primary that stays static: replace the member |
 | Fenced; another history, policy or seed digest | DNS-only from its own branch | Nothing. Replace the member |
 | Terminal carrier (the bounded denial list is full) | `SERVFAIL` | Nothing. Replace the member |
+| Fenced or refusing, and the primary and every member that followed it are lost for good | DNS-only from its own branch (or `SERVFAIL` with a pending local denial) | `cluster resolve --offline --abandon-term` with the reviewed term's epoch: a new term on the member's own owner and carrier, unchanged. A pending local denial still ends only with the writer's own observation of the REVOKE |
 | Anchor admission closed for the process: unknown SQL completion, or a verified REVOKE that could not be written because an install replaced the owner it was captured for | `SERVFAIL` | Restart. The committed cut binds again, and the next root check records the REVOKE against it |
 
 Replacing a member is the first-image join of a new receiver (D355). It takes
