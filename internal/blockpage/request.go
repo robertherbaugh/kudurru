@@ -120,12 +120,24 @@ func (s *Server) requestView(st *Settings, client netip.Addr, domain, flash stri
 	book := s.opts.Requests
 	r := book.Lookup(client, domain)
 	if message := s.requestsUnavailable(); message != "" {
-		// This node cannot store a request. An approval that reached it still
-		// shows; everything else is the reason the form is missing.
+		// This node cannot store a request. A request that reached it still
+		// reports its state, without the form and without an invitation to
+		// add details or ask again; the reason the form is missing follows.
 		v.Form, v.Status = false, message
-		if r != nil && r.EffectiveState() == v1alpha1.UnblockApproved && unblock.Active(r, now) {
-			v.Note = r.Status.Note
-			v.Status = "An administrator allowed this name" + approvalUntil(r) + ". Try again in a moment" + retryHint(r, st.BlockTTL, now) + "."
+		if r != nil {
+			switch r.EffectiveState() {
+			case v1alpha1.UnblockApproved:
+				if unblock.Active(r, now) {
+					v.Note = r.Status.Note
+					v.Status = "An administrator allowed this name" + approvalUntil(r) + ". Try again in a moment" + retryHint(r, st.BlockTTL, now) + "."
+				}
+			case v1alpha1.UnblockPending:
+				v.Note = r.Status.Note
+				v.Status = "You asked for access on " + timeText(unblock.RequestedAt(r)) + ". An administrator has not decided yet. " + message
+			case v1alpha1.UnblockDenied:
+				v.Note = r.Status.Note
+				v.Status = "An administrator declined your request" + decidedOn(r) + ". " + message
+			}
 		}
 		return v
 	}

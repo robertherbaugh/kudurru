@@ -294,13 +294,33 @@ func TestRequestFormOnANodeThatCannotStoreRequests(t *testing.T) {
 	if r == nil {
 		t.Fatal("fixture request was not stored")
 	}
+	wantRedirect(t, f.post(url.Values{"reason": {"games"}}, "10.0.20.7:4000"), flashSent)
+	declined := f.book.Lookup(netip.MustParseAddr("10.0.20.7"), "games.example")
+	if declined == nil {
+		t.Fatal("fixture request was not stored")
+	}
+	if _, err := f.book.Deny(context.Background(), "default", declined.Name, "", "user:admin"); err != nil {
+		t.Fatal(err)
+	}
 	f.unavailable = "This server cannot take a request for access right now."
+	if page := f.page("/", "10.0.20.7:4000"); !strings.Contains(page, "An administrator declined your request") || strings.Contains(page, "You can ask again") ||
+		strings.Contains(page, "<form") || !strings.Contains(page, f.unavailable) {
+		t.Fatalf("declined request on a node that cannot store requests:\n%s", page)
+	}
 	for _, remote := range []string{"10.0.20.5:4000", "10.0.20.6:4000"} {
 		page := f.page("/", remote)
 		if strings.Contains(page, "<form") || strings.Contains(page, "Request access</button>") || strings.Contains(page, "Update request") ||
 			strings.Contains(page, "you can add details below") || !strings.Contains(page, f.unavailable) {
 			t.Fatalf("page of %s on a node that cannot store requests:\n%s", remote, page)
 		}
+	}
+	// The pending requester still learns that a decision is outstanding;
+	// the client without a request sees only the reason.
+	if page := f.page("/", "10.0.20.5:4000"); !strings.Contains(page, "An administrator has not decided yet.") {
+		t.Fatalf("pending request lost its status on a node that cannot store requests:\n%s", page)
+	}
+	if page := f.page("/", "10.0.20.6:4000"); strings.Contains(page, "You asked for access") || strings.Contains(page, "declined") {
+		t.Fatalf("a client without a request saw a request status:\n%s", page)
 	}
 	w := f.post(url.Values{"reason": {"again"}}, "10.0.20.6:4000")
 	if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), f.unavailable) {
