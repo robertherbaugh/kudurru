@@ -395,7 +395,9 @@ Do not resolve on more than one member, and never repeat the command after an
 unknown result: run `cluster resolution` again and decide from the current state.
 The command needs the member's data directory and its retained
 `member-identity.json`, and makes no network connection. Running it on a member
-without a recorded conflict or divergence refuses without changes.
+without a recorded conflict or divergence refuses without changes, with one
+exception for a member whose primary is lost for good: see
+[Keep a fenced member's data when its primary is lost for good](#keep-a-fenced-members-data-when-its-primary-is-lost-for-good).
 
 
 ## Managed root anchors on fenced and conflicted members
@@ -437,12 +439,12 @@ no member falls back to the shipped root anchors. The other members and the
 primary are not affected.
 
 A member in this state is not a promotion candidate: `cluster promote` needs a
-follower, and `cluster resolve --offline` needs a recorded conflict or
-divergence, which this member does not have. Until it follows again, the
-cluster depends on the current primary and on the members that follow it. Keep
-that in mind before you take the primary out of service: if the primary is lost
-for good while no member follows it, kudurru v0.2.0 has no command that turns a
-fenced member into the primary.
+follower. Until it follows again, the cluster depends on the current primary
+and on the members that follow it. If a member that follows the primary
+remains, promote that one when the primary is lost. If the primary and every
+member that followed it are lost for good, keep the fenced member's data with
+`cluster resolve --offline --abandon-term`, as described in
+[Keep a fenced member's data when its primary is lost for good](#keep-a-fenced-members-data-when-its-primary-is-lost-for-good).
 
 #### Recognize a member that refuses the primary's data
 
@@ -457,10 +459,11 @@ kudurru does not report this state directly yet. Use what exists today:
    kudurru cluster resolution --offline --data-dir /var/lib/kudurru
    ```
 
-   The output has `"mode":"fenced"`, `"reason":"no_conflict"`,
-   `"resolvable":false`, and an `installed.term.epoch` that is lower than
-   `term.epoch`. A member that follows prints `"mode":"follower"` and the same
-   term in both places. Start the member again afterwards: it answers DNS only
+   The output has `"mode":"fenced"`, `"reason":"fenced_behind_term"`, and an
+   `installed.term.epoch` that is lower than `term.epoch`. A member that
+   follows prints `"mode":"follower"` and the same term in both places.
+   `"resolvable":true` here only means that the member's data could be kept if
+   the primary were lost for good; while the primary runs, do not resolve. Start the member again afterwards: it answers DNS only
    while it runs.
 3. To narrow the cause, compare the trust-anchor version of the stopped member
    with the version of a stopped member that follows the primary (or of the
@@ -503,9 +506,9 @@ kudurru does not report this state directly yet. Use what exists today:
   never contained the key: the member saw a new key appear and then its
   revocation during the split, before any member trusted it. In both cases the
   member stays fenced and never follows that primary. No command clears a
-  revocation a member has seen, records one on the primary by operator
-  decision, or makes a fenced member the primary. Your options are to replace
-  the member, as described below, or to keep it as it is. A replacement holds
+  revocation a member has seen or records one on the primary by operator
+  decision. Your options are to replace the member, as described below, or to
+  keep it as it is. A replacement holds
   the cluster's trust-anchor state: in the first case that state still trusts
   the key the old member saw revoked, and kudurru v0.2.0 gives you no way to
   change that on the primary.
@@ -554,6 +557,52 @@ revoked.
 6. Point anything that addressed the old member directly (a VIP backend list, a
    resolver list) at the new address.
 
+#### Keep a fenced member's data when its primary is lost for good
+
+A fenced member that never installed the current primary's data (the state
+above, or a member that was fenced a moment before the primary failed) cannot
+be promoted, and a replacement needs a primary to join from. When the primary
+of that term **and every member that followed it** are lost for good, make the
+fenced member the primary of a new term on its own data:
+
+1. Make sure that the lost primary and its followers are stopped or isolated
+   and will not be started with their data directories while you decide. If
+   any member still follows that primary, stop here and promote that member
+   instead.
+2. Stop kudurru on the fenced member and review it:
+
+   ```sh
+   kudurru cluster resolution --offline --data-dir /var/lib/kudurru > resolution.json
+   ```
+
+   Check `"mode":"fenced"`, `"reason":"fenced_behind_term"` and
+   `"resolvable":true`. `term.epoch` is the epoch of the lost term.
+3. Keep the member's data and name that epoch:
+
+   ```sh
+   kudurru cluster resolve --offline --data-dir /var/lib/kudurru --review resolution.json \
+     --confirm-node node-a --abandon-term TERM_EPOCH \
+     --request-id abandon-2026-11-11 --reason "primary node-b and its followers are lost"
+   ```
+
+   The command refuses without changes if `--abandon-term` is missing or is not
+   the reviewed epoch, if the member's state changed since the review, or if
+   the member follows a primary, is the primary, or holds a conflict. It writes
+   a `cluster.resolve` audit event whose authorization names the abandoned
+   term.
+4. Start the member. It is the primary of a new term and serves its own data
+   with its own trust anchors: every root key revocation it holds stays
+   recorded, and a member whose own root check had denied a key keeps
+   answering `SERVFAIL` until its own root check records that revocation, as
+   after a promotion. Join new followers from it.
+
+Changes made on the lost primary after this member's last pull are gone; make
+them again on the new primary. If a member of the abandoned term returns after
+all, it is fenced by the new term and takes this member's data on its next
+pull, its own rows kept as private quarantine. With managed root anchors it
+refuses that data, as described above, only if it holds a root key revocation
+that this member does not.
+
 #### Other states in which a managed member answers `SERVFAIL`
 
 - **A member whose own root check saw a revocation.** It answers `SERVFAIL`
@@ -563,7 +612,10 @@ revoked.
   and it cannot record any root-anchor check that omits the revocation. Its own
   check that sees the revocation records it and ends the state. Prefer to
   promote a member that serves. The members that follow such a primary keep
-  serving.
+  serving, but while it is the primary no member's trust anchors are updated.
+  If its own check can never see the revocation (the root has stopped
+  publishing the key), the state does not end by itself: promote a member that
+  serves, then replace this one.
 - **A member that verified a revocation it could not write.** If its own root
   check verifies a signed revocation at the moment new data from the primary is
   installed, the member cannot record it against the data it now holds. It does

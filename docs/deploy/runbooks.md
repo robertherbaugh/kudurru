@@ -290,6 +290,13 @@ installed, also after a restart. Nothing is promoted automatically.
    It becomes a follower by itself
    ([When the old primary returns](sqlite-cluster.md#6-when-the-old-primary-returns)).
 
+If no follower remains and the only surviving members are fenced (each
+`kudurru cluster resolution --offline` prints `"reason":"fenced_behind_term"`),
+follow
+[Keep a fenced member's data when its primary is lost for good](sqlite-join.md#keep-a-fenced-members-data-when-its-primary-is-lost-for-good)
+on one of them only. The others follow it by themselves; replace any that
+still refuses its data.
+
 If two followers were promoted, see
 [Recover from conflicting promotions](sqlite-join.md#recover-from-conflicting-promotions).
 

@@ -1500,6 +1500,20 @@ epoch above `MaxObservedEpoch` with this member as primary and inserts a
 After restart, the member's scheduled peer exchanges fence the other branch,
 whose next pull quarantines its own rows and installs the kept image.
 
+The same transaction has one more entry condition (D369). A member fenced by a
+higher term whose image it never installed, with no conflict or divergence,
+reviews as `fenced_behind_term`. That member cannot be promoted, and a member
+that refuses the current primary's managed trust-anchor branch stays in that
+state indefinitely; if the term's primary and every member that followed it
+are lost for good, nothing else could appoint a writer. `cluster resolve
+--offline --abandon-term <epoch>` sets `ResolveRequest.AbandonTerm` to the exact
+reviewed term. The store then requires `Fenced` mode, no conflict or
+divergence, that exact term, an installed image of a lower epoch and the
+member's own installed image as the kept branch; anything else is
+`replication.ErrCAS` with nothing written. The kept owner is unchanged, so the
+member's trust anchors, revocations and node-local denials carry into the new
+term as they are. The audit row's authorization names the abandoned term.
+
 ```mermaid
 sequenceDiagram
     participant B as Member B (kept branch)

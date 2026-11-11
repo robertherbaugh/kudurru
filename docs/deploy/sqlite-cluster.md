@@ -399,6 +399,14 @@ Choose the member whose data is to survive and follow
 `cluster resolution --offline` and `cluster resolve --offline` on that one
 member, with kudurru stopped.
 
+A member that was fenced by a newer term but never took that term's data (an
+old primary that returned too late, or one that refuses the primary's managed
+trust-anchor state) cannot be promoted. If the primary of that term and every
+member that followed it are lost for good, the same two commands keep that
+member's data under a new term when you also name the lost term with
+`--abandon-term`:
+[Keep a fenced member's data when its primary is lost for good](sqlite-join.md#keep-a-fenced-members-data-when-its-primary-is-lost-for-good).
+
 ## Limits of this version
 
 - There is no automatic failover and no election. A lost primary means no
