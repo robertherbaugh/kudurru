@@ -70,7 +70,7 @@ func TestPushIsLokiJSONWithLowCardinalityStreams(t *testing.T) {
 	sink, err := loki.New(spec(t, config.QuerylogLoki{
 		URL: double.URL + "/gateway/", Tenant: "home", BearerTokenRef: &config.CredentialRef{File: "/run/secrets/loki"},
 		Labels: map[string]string{"job": "dns", "site": "home lab"},
-	}), loki.Options{Resolve: files(map[string]string{"/run/secrets/loki": "glc_token-123=\n"}), Logger: slog.New(slog.DiscardHandler), UserAgent: "kudurru/test"})
+	}), loki.Options{Resolve: files(map[string]string{"/run/secrets/loki": "glc_token-123=\n"}), Logger: slog.New(slog.DiscardHandler), UserAgent: "kudurru/test"}) //nolint:gosec // G101: a made-up token
 	if err != nil {
 		t.Fatal(err)
 	}

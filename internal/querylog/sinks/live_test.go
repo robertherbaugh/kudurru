@@ -38,7 +38,7 @@ import (
 const (
 	envClickHouseURL      = "KUDURRU_TEST_CLICKHOUSE_URL"
 	envClickHouseUser     = "KUDURRU_TEST_CLICKHOUSE_USER"
-	envClickHousePassword = "KUDURRU_TEST_CLICKHOUSE_PASSWORD"
+	envClickHousePassword = "KUDURRU_TEST_CLICKHOUSE_PASSWORD" //nolint:gosec // G101: the name of an environment variable, not a value
 	envLokiURL            = "KUDURRU_TEST_LOKI_URL"
 	envRequireServers     = "KUDURRU_REQUIRE_SINK_SERVERS"
 )

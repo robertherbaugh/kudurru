@@ -168,7 +168,7 @@ func TestNewRefusesWhatTheSettingsValidatorRefuses(t *testing.T) {
 		"no settings":        {querylog.SinkSpec{Name: "a", Type: "clickhouse"}, "the clickhouse settings are missing"},
 		"malformed settings": {querylog.SinkSpec{Name: "a", Type: "clickhouse", Config: json.RawMessage(`[1]`)}, "the clickhouse settings are malformed"},
 		"no URL":             {spec(t, config.QuerylogClickHouse{}), "clickhouse.url is required"},
-		"URL with password":  {spec(t, config.QuerylogClickHouse{URL: "https://u:p@clickhouse.example"}), "must not carry a username or password"},
+		"URL with password":  {spec(t, config.QuerylogClickHouse{URL: "https://u:p@clickhouse.example"}), "must not carry a username or password"}, //nolint:gosec // G101: a made-up password New must refuse
 		"statement in table": {spec(t, config.QuerylogClickHouse{URL: "https://c.example", Table: "q` FORMAT Null; DROP TABLE x --"}), "clickhouse.table:"},
 		"database":           {spec(t, config.QuerylogClickHouse{URL: "https://c.example", Database: "a.b"}), "clickhouse.database:"},
 		"compression":        {spec(t, config.QuerylogClickHouse{URL: "https://c.example", Compression: "zstd"}), "clickhouse.compression is not gzip or none"},

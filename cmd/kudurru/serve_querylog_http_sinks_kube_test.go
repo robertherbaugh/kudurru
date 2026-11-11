@@ -289,7 +289,7 @@ func TestRunServeKubeQuerylogSinksReadSecretCredentials(t *testing.T) {
 	// new value. No settings change and no restart are involved.
 	delivered := sent("warehouse")
 	mu.Lock()
-	password = "kube-rotated-password"
+	password = "kube-rotated-password" //nolint:gosec // G101: a made-up password for the rotation
 	mu.Unlock()
 	export.Data["clickhouse-password"] = []byte("kube-rotated-password")
 	if err := admin.Update(t.Context(), export); err != nil {

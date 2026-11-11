@@ -290,7 +290,7 @@ func TestPostRereadsARefusedCredential(t *testing.T) {
 // credential source, and its errors name the reference kind, never a value.
 func TestOpenReadsCredentialsAndRefusesUnusableOnes(t *testing.T) {
 	target := mustURL(t, "https://127.0.0.1:1/")
-	creds := &credentials{values: map[string]string{
+	creds := &credentials{values: map[string]string{ //nolint:gosec // G101: made-up credential fixtures
 		"/empty": " \n", "/multiline": "line-one\nline-two", "/spaces": "tok en", "/padding": "=abc", "/token": "abc.DEF-123_~+/==", "/not-pem": "not a certificate",
 	}}
 	for name, tc := range map[string]struct {

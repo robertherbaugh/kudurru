@@ -372,7 +372,7 @@ func TestHTTPSinksRetryWithinTheBudgetAndDrop(t *testing.T) {
 			}
 
 			// 429 is "try again" as well.
-			double.Answer(func(n int, _ sinktest.Request) sinktest.Answer {
+			double.Answer(func(_ int, _ sinktest.Request) sinktest.Answer {
 				return sinktest.Answer{Status: http.StatusTooManyRequests}
 			})
 			send("limited.example.", 3)

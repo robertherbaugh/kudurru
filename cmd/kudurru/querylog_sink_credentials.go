@@ -22,7 +22,7 @@ import (
 // change the settings could have any of those Secrets presented to a
 // destination of their choice. The label is set by whoever may write
 // Secrets in the namespace, which the settings API cannot do.
-const querylogSinkSecretLabel = "kudurru.io/query-log-sink"
+const querylogSinkSecretLabel = "kudurru.io/query-log-sink" //nolint:gosec // G101: a label name, not a credential
 
 // errSecretNotDelegated is a Secret without querylogSinkSecretLabel.
 var errSecretNotDelegated = errors.New(`credential reference is not allowed: the Secret needs the label ` + querylogSinkSecretLabel + `: "true"`)

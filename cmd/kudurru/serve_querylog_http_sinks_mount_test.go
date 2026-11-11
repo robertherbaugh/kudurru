@@ -453,8 +453,8 @@ func TestRunServeQuerylogClickHouseAndLokiSinks(t *testing.T) {
 		}
 		return []map[string]any{{"name": "warehouse", "type": "clickhouse", "clickhouse": settings}}
 	}
-	refused("a password in the URL", withClickHouse(map[string]any{"url": "https://kudurru:literal-secret-value@clickhouse.example:8443"}))
-	refused("a password in a URL of another scheme", withClickHouse(map[string]any{"url": "tcp://kudurru:literal-secret-value@clickhouse.example:9000"}))
+	refused("a password in the URL", withClickHouse(map[string]any{"url": "https://kudurru:literal-secret-value@clickhouse.example:8443"}))               //nolint:gosec // G101: a made-up password the validator must refuse
+	refused("a password in a URL of another scheme", withClickHouse(map[string]any{"url": "tcp://kudurru:literal-secret-value@clickhouse.example:9000"})) //nolint:gosec // G101: a made-up password the validator must refuse
 	refused("a Secret reference on SQLite", withClickHouse(map[string]any{"passwordRef": map[string]any{"secretRef": map[string]any{"name": "export", "key": "password"}}}))
 	refused("two reference forms", withClickHouse(map[string]any{"passwordRef": map[string]any{"file": passwordFile, "env": "PASSWORD"}}))
 	refused("a statement in the table name", withClickHouse(map[string]any{"table": "q` FORMAT Null --"}))
