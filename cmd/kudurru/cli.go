@@ -65,7 +65,7 @@ func (o *cliOpts) addFlags(cmd *cobra.Command) {
 	f.StringVarP(&o.output, "output", "o", "", "output format: table, wide, json, yaml or name")
 	f.BoolVar(&o.insecure, "insecure-skip-tls-verify", false, "do not verify the server's TLS certificate (lab use only)")
 	f.StringVar(&o.caFile, "ca-file", "", "PEM bundle to trust for the API server")
-	f.DurationVar(&o.timeout, "request-timeout", 30*time.Second, "timeout per API request or complete direct Kubernetes command")
+	f.DurationVar(&o.timeout, "request-timeout", 30*time.Second, "timeout per API request or complete direct Kubernetes command (apply and restore: 5m unless set)")
 	_ = cmd.RegisterFlagCompletionFunc("output", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 		return cli.Formats, cobra.ShellCompDirectiveNoFileComp
 	})

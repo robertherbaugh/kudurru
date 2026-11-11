@@ -187,12 +187,27 @@ and Kubernetes admission/RBAC. Force ownership is never implied.`,
 	return cmd
 }
 
+// multiItemRequestTimeout is the default --request-timeout of apply and
+// restore. Their one request applies every document with a commit of its own
+// on SQLite (D378), so a file of a few hundred documents can need longer than
+// the global default; the server bounds the request by the same five minutes.
+const multiItemRequestTimeout = 5 * time.Minute
+
+// multiItemTimeout applies multiItemRequestTimeout unless the caller set
+// --request-timeout.
+func (o *cliOpts) multiItemTimeout(cmd *cobra.Command) {
+	if f := cmd.Flags().Lookup("request-timeout"); f != nil && !f.Changed {
+		o.timeout = multiItemRequestTimeout
+	}
+}
+
 // applyManifests posts manifests to /apply and prints one line per
 // document. Namespaced documents without a namespace get the default one.
 func (o *cliOpts) applyManifests(cmd *cobra.Command, ms []cli.Manifest) error {
 	if len(ms) == 0 {
 		return errors.New("no objects found in the given manifests")
 	}
+	o.multiItemTimeout(cmd)
 	c, r, closeClient, err := o.objectClient(cmd)
 	if err != nil {
 		return err
