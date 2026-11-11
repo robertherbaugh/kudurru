@@ -1723,6 +1723,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 	}
+	if len(qlLogs.dnstap) > 0 {
+		if err := add("querylog-dnstap", false, qlLogs.serveDnstap); err != nil {
+			return err
+		}
+	}
 	if err := add("querylog", false, qlLogs.run); err != nil {
 		return err
 	}

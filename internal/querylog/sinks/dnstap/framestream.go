@@ -112,7 +112,16 @@ type Reader struct {
 	r *bufio.Reader
 	// MaxData bounds a data frame; zero means MaxDataLength.
 	MaxData int
+	// SkipOversized, when positive, makes Next read past a data frame above
+	// MaxData of at most this many bytes and return ErrFrameSkipped, so the
+	// stream stays in step (the dnstap listener, D372). A larger frame is
+	// ErrFrameTooLarge, after which the stream cannot be read further.
+	SkipOversized int64
 }
+
+// ErrFrameSkipped is returned for an oversized data frame that Next read
+// past; the next call reads the frame after it.
+var ErrFrameSkipped = errors.New("frame streams: oversized data frame skipped")
 
 // NewReader reads frames from r.
 func NewReader(r io.Reader) *Reader { return &Reader{r: bufio.NewReader(r)} }
@@ -148,6 +157,12 @@ func (fr *Reader) Next(buf []byte) (data []byte, control *Control, err error) {
 		limit = MaxDataLength
 	}
 	if uint64(length) > uint64(limit) {
+		if int64(length) <= fr.SkipOversized {
+			if _, err := io.CopyN(io.Discard, fr.r, int64(length)); err != nil {
+				return nil, nil, noEOF(err)
+			}
+			return nil, nil, ErrFrameSkipped
+		}
 		return nil, nil, ErrFrameTooLarge
 	}
 	if cap(buf) < int(length) {

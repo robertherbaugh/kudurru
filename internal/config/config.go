@@ -112,6 +112,8 @@ type Listeners struct {
 	DoH  []HTTPListener `koanf:"doh" json:"doh"`
 	DoQ  []TLSListener  `koanf:"doq" json:"doq"`
 	DoH3 []HTTPListener `koanf:"doh3" json:"doh3"`
+	// Dnstap receives dnstap from front ends into the query log (D372).
+	Dnstap []DnstapListener `koanf:"dnstap" json:"dnstap"`
 
 	API               APIListener `koanf:"api" json:"api"`
 	Ops               Listener    `koanf:"ops" json:"ops"`
@@ -874,6 +876,7 @@ func (c *Config) Validate() error {
 	}
 	errs = append(errs, c.Listeners.validateTLS()...)
 	errs = append(errs, c.Listeners.validateProxyProtocol()...)
+	errs = append(errs, c.Listeners.validateDnstap()...)
 	for path, value := range map[string]Duration{
 		"listeners.limits.idleTimeout":     c.Listeners.Limits.IdleTimeout,
 		"listeners.limits.quicIdleTimeout": c.Listeners.Limits.QUICIdleTimeout,

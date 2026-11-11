@@ -85,20 +85,22 @@ func (o *Observer) Observe(req *pipeline.Request, resp *pipeline.Response, err e
 		return
 	}
 	ev := &querylog.Event{
-		Time:     req.Received,
-		Latency:  latency,
-		Node:     o.Node,
-		Proto:    req.Client.Proto,
-		Client:   req.Client.Addr.Addr(),
-		Name:     strings.ToLower(q.Name),
-		QType:    q.Qtype,
-		QClass:   q.Qclass,
-		Status:   status,
-		Rcode:    rcode,
-		Upstream: upstream,
-		List:     list,
-		Rule:     rule,
-		Answers:  answers,
+		Time:    req.Received,
+		Latency: latency,
+		Node:    o.Node,
+		Proto:   req.Client.Proto,
+		Client:  req.Client.Addr.Addr(),
+		// For the dedup index of a dnstap listener; never stored.
+		ClientPort: req.Client.Addr.Port(),
+		Name:       strings.ToLower(q.Name),
+		QType:      q.Qtype,
+		QClass:     q.Qclass,
+		Status:     status,
+		Rcode:      rcode,
+		Upstream:   upstream,
+		List:       list,
+		Rule:       rule,
+		Answers:    answers,
 	}
 	ev.ClientName = req.Client.ClientID
 	if len(req.Client.GroupIDs) > 0 {
@@ -209,6 +211,13 @@ func zoneName(z any) (name string) {
 	}()
 	return strings.TrimSuffix(n.Name(), ".")
 }
+
+// ReplyType classifies a response for the query log as the observer does;
+// the dnstap listener uses it for the answers it ingests (D372).
+func ReplyType(qtype uint16, m *dns.Msg) querylog.ReplyType { return replyType(qtype, m) }
+
+// AnswerSummary renders the first answer records as the observer does.
+func AnswerSummary(answer []dns.RR) string { return answerSummary(answer) }
 
 // replyType classifies the response for the query log.
 func replyType(qtype uint16, m *dns.Msg) querylog.ReplyType {

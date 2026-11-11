@@ -391,6 +391,49 @@ for FINISH.
 guide, with the ClickHouse table definition, the Loki mapping and the
 dnstap collectors.
 
+#### dnstap listen
+
+`listeners.dnstap` (D372, host setting, restart) binds Frame Streams
+listeners (`internal/querylog/sinks/dnstap/listen.go`) that turn the dnstap
+messages of a front end into events of the same collector.
+
+```mermaid
+flowchart LR
+    FE["front end<br/>(dnsdist, Unbound)"] -->|"Frame Streams<br/>unix / tcp / tls"| CONN["connection goroutine<br/>(at most maxConnections)<br/>reads at sender speed"]
+    CONN -->|"> 192 KiB, malformed,<br/>other types, own identity,<br/>ignored client"| CNT["counted, dropped"]
+    CONN -->|"non-blocking<br/>(10 000; full: overflow)"| ING["ingest goroutine:<br/>pair query and response (2 s),<br/>hold each row 1 s"]
+    OBS["log observer"] --> COLQ[["collector queue"]]
+    COLQ --> COL["collector"]
+    COL -->|"native query, before privacy:<br/>client, port, name, type, time"| IDX[("DedupIndex<br/>30 s, 65 536 entries")]
+    ING -->|"claim"| IDX
+    ING -->|"unclaimed: Enqueue<br/>Origin = sender identity"| COLQ
+    COL --> SINKS["primary sink, tail,<br/>additional sinks"]
+    SINKS -.->|"Origin set: never sent"| DTS["dnstap sinks"]
+```
+
+`CLIENT_*` and `AUTH_*` messages become events; a query waits up to 2 s for
+its response (same identity, client address and port, DNS ID, name and
+type) and the pair is one event. Each event is held 1 s, so that a query
+this node answered itself has passed the collector, and is then checked
+against the `DedupIndex`: the collector records every query it admits from
+the log observer there, before the privacy transform, keyed by client
+address, source port, name, type and class. A match within the message's
+time window (2 s either side) cancels one message, which is how dnsdist in
+front of kudurru logging every response still gives one row per client
+query (the DNS ID is not part of the key, because dnsdist renumbers forwarded
+queries). The collector clears `ClientPort` before any consumer sees an
+event. An ingested event carries `Origin`, the sender's identity; a dnstap
+sink never sends such an event, and messages with the node's own identity
+(node name or a dnstap sink's identity) are dropped at the listener, so no
+sink and listener pair can loop. Every stage is bounded and none waits:
+connections are read at the sender's pace, overflow is dropped and counted,
+and the collector's `Enqueue` never blocks DNS.
+
+The managed edge renders a dnstap logger and two response rules
+(`kudurru-dnstap-cache-hit`, `kudurru-dnstap-self-answered`) when
+`edge.dnstapTarget` is set (`ee/edge/dnsdist`), so dnsdist reports only the
+answers kudurru never sees.
+
 **Privacy is applied once, at the collector**, before anything is stored or
 shown: `full`, `anonymize_client` (a /24 or /48 prefix, or a daily
 pseudonym), `hide_domains`, `hide_domains_clients`, or `nothing` (only the

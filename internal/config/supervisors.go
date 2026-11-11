@@ -47,6 +47,8 @@ type Edge struct {
 	EBPF                      bool     `koanf:"ebpf" json:"ebpf"`
 	Renderer                  string   `koanf:"renderer" json:"renderer"`
 	ServerID                  string   `koanf:"serverID" json:"serverID"`
+	DnstapTarget              string   `koanf:"dnstapTarget" json:"dnstapTarget"`
+	DnstapIdentity            string   `koanf:"dnstapIdentity" json:"dnstapIdentity"`
 	Threads                   int      `koanf:"threads" json:"threads"`
 	DNSDistBin                string   `koanf:"dnsdistBin" json:"dnsdistBin"`
 	DNSDistUser               string   `koanf:"dnsdistUser" json:"dnsdistUser"`

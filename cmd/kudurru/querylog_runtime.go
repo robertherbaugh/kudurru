@@ -51,6 +51,9 @@ type querylogRuntime struct {
 	// publications own theirs through the bundle's release hook.
 	ownMu sync.Mutex
 	owned *querylog.Captured
+	// dnstap are the bound listeners of listeners.dnstap (D372); they feed
+	// the collector and run under serveDnstap.
+	dnstap []*dnstap.Listener
 }
 
 // querylogSinkInputs are the node's own inputs to the sink types.
@@ -115,6 +118,12 @@ func newQuerylogRuntimeWithSecrets(ctx context.Context, cfg *config.Config, reg 
 	}
 	r.async = querylog.NewAsyncWith(querylog.AsyncOptions{Sink: borrowedQuerylogSink{r.slog}, Tail: r.tail, Metrics: r.metrics, FirstID: 1, Logger: logger})
 	r.sinks = querylog.NewSinkHost(querylog.SinkHostOptions{Collector: r.async, Factories: querylogSinkFactories(querylogSinkInputs{Logger: logger, Credentials: credentials, Node: cfg.Node.Name, AuditRaw: r.rawAudit.record}), Metrics: r.metrics, Registerer: reg, Logger: logger})
+	if err := r.listenDnstap(cfg, reg, logger); err != nil {
+		cleanup, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = r.close(cleanup)
+		return nil, err
+	}
 	route, err := r.prepare(ctx, cfg.Querylog, nil)
 	if err != nil {
 		cleanup, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -125,6 +134,55 @@ func newQuerylogRuntimeWithSecrets(ctx context.Context, cfg *config.Config, reg 
 	r.adopt(route, cfg.Querylog)
 	r.own(route)
 	return r, nil
+}
+
+// listenDnstap binds listeners.dnstap (D372). The collector then indexes
+// every query this node answers, so that a listener can drop the dnstap
+// messages of a front end that describe them. Messages with the identity of
+// this node or of one of its dnstap sinks are this node's own.
+func (r *querylogRuntime) listenDnstap(cfg *config.Config, reg prometheus.Registerer, logger *slog.Logger) error {
+	if len(cfg.Listeners.Dnstap) == 0 {
+		return nil
+	}
+	dedup := querylog.NewDedupIndex(0, 0)
+	metrics := dnstap.NewListenMetrics(reg)
+	self := func(identity string) bool {
+		if identity == r.node {
+			return true
+		}
+		for _, s := range r.settings.Load().Sinks {
+			if s.Type == config.QuerylogSinkDnstap && s.Dnstap != nil && s.Dnstap.Identity == identity {
+				return true
+			}
+		}
+		return false
+	}
+	for _, settings := range cfg.Listeners.Dnstap {
+		l, err := dnstap.Listen(dnstap.ListenOptions{Settings: settings, Collector: r.async, Dedup: dedup, Self: self, Node: r.node, Metrics: metrics, Logger: logger})
+		if err != nil {
+			return err
+		}
+		r.dnstap = append(r.dnstap, l)
+	}
+	r.async.SetDedup(dedup)
+	return nil
+}
+
+// serveDnstap runs the dnstap listeners until ctx ends.
+func (r *querylogRuntime) serveDnstap(ctx context.Context) error {
+	if len(r.dnstap) == 0 {
+		<-ctx.Done()
+		return nil
+	}
+	errs := make(chan error, len(r.dnstap))
+	for _, l := range r.dnstap {
+		go func() { errs <- l.Serve(ctx) }()
+	}
+	var err error
+	for range r.dnstap {
+		err = errors.Join(err, <-errs)
+	}
+	return err
 }
 
 // own makes route the one whose sink references the runtime holds and
@@ -299,6 +357,10 @@ func (r *querylogRuntime) Purge(ctx context.Context, before time.Time) (int64, e
 // not drain are reported on their own (closeSinks), or together when the
 // collector did not flush (stopSinks).
 func (r *querylogRuntime) close(ctx context.Context) error {
+	// The listeners stop first: what they still hold is not recorded.
+	for _, l := range r.dnstap {
+		_ = l.Close()
+	}
 	if err := r.async.Close(ctx); err != nil {
 		// Never close or reuse a writer while its batch is pending. The
 		// additional sinks still stop within the same bound, which has

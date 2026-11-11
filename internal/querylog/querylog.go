@@ -77,6 +77,16 @@ type Event struct {
 	// collector clears it before any consumer but a raw sink sees the event:
 	// it is never stored, shown or sent by any other sink (D372).
 	Wire *Wire `json:"-"`
+	// ClientPort is the client's source port. The collector uses it only to
+	// recognize a dnstap message about a query this node answered itself
+	// (DedupIndex) and clears it before any consumer sees the event.
+	ClientPort uint16 `json:"-"`
+	// Origin is set on an event a dnstap listener ingested (D372): the
+	// identity of the dnstap sender, or "dnstap" when it sent none. Such an
+	// event is recorded like any other, but a dnstap sink never sends it,
+	// so a listener and an emitter can never feed each other in a loop.
+	// Empty for the queries this node answered.
+	Origin string `json:"origin,omitempty"`
 }
 
 // Wire is the DNS messages of one query, kept only for raw sinks.

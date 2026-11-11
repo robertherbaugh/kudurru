@@ -47,6 +47,9 @@ type Async struct {
 	deferred []func()
 	drained  bool
 	wake     chan struct{}
+	// dedup indexes the queries this node answered while a dnstap listener
+	// runs (SetDedup, D372); nil otherwise.
+	dedup atomic.Pointer[DedupIndex]
 }
 
 type destination struct {
@@ -224,6 +227,11 @@ func NewAsyncWith(o AsyncOptions) *Async {
 // is replaced between this call and Enqueue only costs the event its wire
 // messages or has them cleared at admission.
 func (a *Async) RetainsWire() bool { return a.destination.Load().retainsWire() }
+
+// SetDedup makes the collector record every query this node answered in
+// idx before the privacy transform, so that a dnstap listener can drop the
+// messages that describe them. Nil stops recording.
+func (a *Async) SetDedup(idx *DedupIndex) { a.dedup.Store(idx) }
 
 // Enqueue implements Collector.
 func (a *Async) Enqueue(ev *Event) bool {
@@ -405,6 +413,7 @@ func (a *Async) admitWith(ev *Event, privacy *Privacy) bool {
 	// The wire messages are for raw sinks, which received a copy before
 	// the transform; nothing else may store or send them.
 	ev.Wire = nil
+	ev.ClientPort = 0
 	if a.nextID != 0 {
 		ev.ID = a.nextID
 		a.nextID++
@@ -481,6 +490,12 @@ func (a *Async) run(ticker clock.Ticker) {
 		// A raw sink needs the event as it was: copy it before the
 		// transform changes it in place. Only routes with a raw sink pay
 		// for the copy.
+		// The dedup index needs the client address as received, before
+		// the transform hides it. Ingested events describe no query of
+		// this node.
+		if idx := a.dedup.Load(); idx != nil && item.event.Origin == "" {
+			idx.Record(item.event)
+		}
 		var original *Event
 		if current.sinks.Raw() {
 			copied := *item.event

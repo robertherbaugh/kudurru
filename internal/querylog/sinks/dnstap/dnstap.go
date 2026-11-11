@@ -4,7 +4,8 @@
 // Vector or the dnstap command. It runs on the sink host of
 // internal/querylog behind its own bounded queue, like every additional
 // sink, so a collector that stalls or goes away loses only its own
-// messages.
+// messages. It never sends an event that a dnstap listener (listen.go)
+// ingested, so a sink and a listener cannot loop.
 //
 // By default a message follows querylog.privacy exactly as the local query
 // log does: it is rebuilt from the logged event, after the transform, and
@@ -362,6 +363,11 @@ const (
 // exactly as WriteBatch sends them: none, one or two client or auth
 // messages and none, one or two forwarder messages, by the types.
 func (s *Sink) AppendEvent(out []byte, ev *querylog.Event) []byte {
+	// An event a dnstap listener ingested came from dnstap: sending it
+	// again could feed a listener its own messages in a loop (D372).
+	if ev.Origin != "" {
+		return out
+	}
 	r := roleClient
 	if ev.Status == pipeline.StatusAuthoritative || ev.Status == pipeline.StatusLocalRecord {
 		r = roleAuth

@@ -344,6 +344,97 @@ after the sink's `timeout`, a batch that was sent in part is dropped and
 counted, the queue overflows into the drop counter, and the sink connects
 again when the collector reads. Nothing is ever sent twice.
 
+## dnstap listen
+
+The other direction: `listeners.dnstap` lets a front end such as dnsdist or
+Unbound send dnstap to kudurru, so that the queries it answers itself, for
+example from its packet cache, appear in this node's query log next to the
+ones kudurru answered. It is a host setting (the settings file or the
+environment, not the API) and takes effect at restart.
+
+```yaml
+listeners:
+  dnstap:
+    - address: tcp:10.0.0.11:6000       # or unix:/run/kudurru/dnstap.sock, tls:0.0.0.0:6000
+      allowFrom: [10.0.0.21, 10.0.0.22] # required for tcp:
+      # identities: [edge-1, edge-2]    # only these senders; empty accepts any
+      # ignoreClients: [10.0.0.11]      # e.g. kudurru's own address, see below
+      # maxConnections: 16
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `address` | required | `unix:/path` (created with mode 0660: put the sender in the group of the kudurru process), `tcp:ip:port` or `tls:ip:port` |
+| `tls.certFile`, `tls.keyFile` | none | the listener's certificate (`tls:` only, required there); read at startup |
+| `clientCAFile` | none | accept only senders with a client certificate from this CA (`tls:` only) |
+| `allowFrom` | none | addresses or CIDRs that may connect; required for `tcp:`, and for `tls:` without `clientCAFile` |
+| `identities` | any | only messages with one of these dnstap identities are recorded |
+| `ignoreClients` | none | messages about queries from these addresses or CIDRs are not recorded |
+| `maxConnections` | 16 | senders served at a time (at most 256) |
+
+The listener accepts the bidirectional handshake (READY, ACCEPT, START, ...,
+STOP, FINISH) and unidirectional senders (START first). What becomes a row:
+
+- `CLIENT_QUERY`/`CLIENT_RESPONSE` and `AUTH_QUERY`/`AUTH_RESPONSE`. A query
+  and its response (same sender identity, client address and port, DNS ID,
+  name and type) become one row. A response alone is one row; a query whose
+  response does not arrive within 2 seconds is one row without an answer
+  (reply type `unknown`). Such a row has the status `unknown`, because
+  kudurru did not make the decision, the client and protocol of the message,
+  the answer of the response and its latency.
+- Every other type (`FORWARDER_*`, `RESOLVER_*`, `STUB_*`, ...) describes
+  the sender's own upstream query for a client query that its `CLIENT_*`
+  message already describes. It is counted and not recorded, so one client
+  query stays one row.
+- **Queries this node answered itself are not recorded twice.** When a front
+  end forwards a query to kudurru and also logs it (dnsdist in front of
+  kudurru with a rule that logs every response), kudurru has already logged
+  it. Every row from dnstap waits one second and is dropped when this node
+  answered a query with the same client address and port, name, type and
+  class within the message's time window (plus or minus 2 seconds). This
+  needs the real client address and port at kudurru, which the PROXY
+  protocol of a managed edge provides; the DNS ID cannot be used, because
+  dnsdist gives every forwarded query an ID of its own. One answered query
+  cancels one message, so a repeat that the front end answered from its
+  cache is still recorded.
+- Messages with this node's identity (`node.name`) or the identity of one of
+  its dnstap sinks are dropped: a sink pointed at its own node's listener
+  never records anything twice.
+- If the sender is a resolver that kudurru forwards to (kudurru in front of
+  Unbound), its `CLIENT_*` messages describe kudurru's own upstream queries:
+  list kudurru's address in `ignoreClients`.
+
+Rows from dnstap pass `querylog.privacy` and `querylog.exclude` like any
+other query, reach the local database, the live view and every additional
+sink, **except dnstap sinks**: a dnstap sink never sends a query it received
+from dnstap, so two nodes whose sinks and listeners point at each other
+cannot loop. The sender identity is kept in memory with the event and is not
+stored; the row's node is this node.
+
+Bounds: a data frame above 192 KiB is skipped (a frame that announces more
+than 16 MiB ends the connection), a message that does not decode is
+skipped, at most 10,000 messages wait per listener, and further senders
+beyond `maxConnections` are disconnected. The listener reads every
+connection as fast as the sender writes and never waits for the query log;
+what does not fit is dropped. Everything is counted in
+`kudurru_querylog_dnstap_frames_total{listener,result}` (`recorded`,
+`paired`, `duplicate`, `self`, `identity`, `ignored_client`, `type`,
+`malformed`, `oversized`, `overflow`, `dropped`) and
+`kudurru_querylog_dnstap_connections_total{listener,result}` (`accepted`,
+`refused_peer`, `refused_limit`, `handshake_failed`, `broken`).
+
+### A managed dnsdist edge
+
+`kudurru edge run --dnstap-target tcp:10.0.0.11:6000` (settings
+`edge.dnstapTarget` and `edge.dnstapIdentity`, default the server ID) makes
+the supervised dnsdist log, as `CLIENT_RESPONSE`, every answer it gives
+without a backend: packet cache hits (`cache_hit_response_rules`) and its
+own answers such as refused transfers (`self_answered_response_rules`). The
+queries it forwards are logged by the kudurru node that answers them, so
+each client query is one row. dnsdist's Frame Streams loggers support
+`tcp:` and `unix:` only; keep the TCP path on a trusted network and restrict
+`allowFrom` to the edges.
+
 ## Credentials
 
 A sink never holds a password or token in its settings. `passwordRef`,
