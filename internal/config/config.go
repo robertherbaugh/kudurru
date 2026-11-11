@@ -376,6 +376,8 @@ type QuerylogSink struct {
 	// ClickHouse and Loki are the settings of those types (querylog_sinks.go).
 	ClickHouse *QuerylogClickHouse `koanf:"clickhouse" json:"clickhouse,omitempty"`
 	Loki       *QuerylogLoki       `koanf:"loki" json:"loki,omitempty"`
+	// Dnstap is the settings of that type (querylog_dnstap.go, D372).
+	Dnstap *QuerylogDnstap `koanf:"dnstap" json:"dnstap,omitempty"`
 }
 
 // querylogSinkName is a lowercase DNS label of at most 32 characters: the

@@ -316,7 +316,7 @@ func (s *QuerylogSink) validateType(at string) []error {
 	for _, block := range []struct {
 		name string
 		set  bool
-	}{{QuerylogSinkClickHouse, s.ClickHouse != nil}, {QuerylogSinkLoki, s.Loki != nil}} {
+	}{{QuerylogSinkClickHouse, s.ClickHouse != nil}, {QuerylogSinkLoki, s.Loki != nil}, {QuerylogSinkDnstap, s.Dnstap != nil}} {
 		switch {
 		case block.set && s.Type != block.name:
 			errs = append(errs, fmt.Errorf("%s.%s: these settings belong to a sink of type %s, not %s", at, block.name, block.name, s.Type))
@@ -329,6 +329,9 @@ func (s *QuerylogSink) validateType(at string) []error {
 	}
 	if s.Type == QuerylogSinkLoki && s.Loki != nil {
 		errs = append(errs, s.Loki.Validate(at+"."+QuerylogSinkLoki)...)
+	}
+	if s.Type == QuerylogSinkDnstap && s.Dnstap != nil {
+		errs = append(errs, s.Dnstap.Validate(at+"."+QuerylogSinkDnstap)...)
 	}
 	return errs
 }
@@ -344,6 +347,11 @@ func (s *QuerylogSink) credentialRefs(at string) map[string]*CredentialRef {
 		out[at+".loki.passwordRef"] = l.PasswordRef
 		out[at+".loki.bearerTokenRef"] = l.BearerTokenRef
 		out[at+".loki.caRef"] = l.CARef
+	}
+	if d := s.Dnstap; d != nil {
+		out[at+".dnstap.caRef"] = d.CARef
+		out[at+".dnstap.certRef"] = d.CertRef
+		out[at+".dnstap.keyRef"] = d.KeyRef
 	}
 	return out
 }

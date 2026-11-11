@@ -143,7 +143,7 @@ func TestQuerylogSinksValidation(t *testing.T) {
 	}{
 		"missing name":       {func(c *Config) { c.Querylog.Sinks = []QuerylogSink{{Type: "slog"}} }, "querylog.sinks[0].name is required"},
 		"missing type":       {func(c *Config) { c.Querylog.Sinks = []QuerylogSink{{Name: "a"}} }, "querylog.sinks[0].type is required"},
-		"unknown type":       {func(c *Config) { c.Querylog.Sinks = []QuerylogSink{{Name: "a", Type: "kafka"}} }, `querylog.sinks[0].type: unknown value "kafka" (slog, clickhouse, loki)`},
+		"unknown type":       {func(c *Config) { c.Querylog.Sinks = []QuerylogSink{{Name: "a", Type: "kafka"}} }, `querylog.sinks[0].type: unknown value "kafka" (slog, clickhouse, loki, dnstap)`},
 		"reserved name":      {func(c *Config) { c.Querylog.Sinks = []QuerylogSink{{Name: "sqlite", Type: "slog"}} }, `querylog.sinks[0].name: "sqlite" names the primary sink`},
 		"reserved slog name": {func(c *Config) { c.Querylog.Sinks = []QuerylogSink{{Name: "slog", Type: "slog"}} }, `querylog.sinks[0].name: "slog" names the primary sink`},
 		"bad name":           {func(c *Config) { c.Querylog.Sinks = []QuerylogSink{{Name: "Log Lines", Type: "slog"}} }, `querylog.sinks[0].name: "Log Lines" is not a lowercase name`},
