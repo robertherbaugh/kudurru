@@ -180,7 +180,7 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 		// the test ends.
 		var asked atomic.Int32
 		silent := make(chan struct{})
-		hanging := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hanging := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			asked.Add(1)
 			select {
 			case <-silent:
@@ -197,6 +197,7 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 		client := &http.Client{Jar: jar, Transport: transport, Timeout: 10 * time.Second}
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
+		began := time.Now()
 		go func() { done <- runServe(ctx, cfg, "") }()
 		t.Cleanup(func() {
 			transport.CloseIdleConnections()
@@ -253,6 +254,7 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			t.Fatalf("%s: %s", name, last)
 			return ""
 		}
+		t.Logf("timing: %s after start: ready", time.Since(began).Round(time.Millisecond))
 		// The zone created through the API of 0.1.0 and its records.
 		if got := answer("www.api.test."); got != "192.0.2.10" {
 			t.Fatalf("www.api.test. = %s, 0.1.0 stored 192.0.2.10", got)
@@ -323,6 +325,7 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			t.Fatalf("readiness %d with a block list that never downloaded", got)
 		}
 
+		t.Logf("timing: %s after start: refused endpoints served", time.Since(began).Round(time.Millisecond))
 		// A record set that is invalid as a whole, of every kind 0.1.0
 		// stored and reported Invalid, and a CNAME and an A record for one
 		// name in one record set: the zone keeps being served and a later
@@ -357,6 +360,7 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 		if got := ready(); got != http.StatusOK {
 			t.Fatalf("readiness %d with invalid record sets", got)
 		}
+		t.Logf("timing: %s after start: invalid record sets served around", time.Since(began).Round(time.Millisecond))
 		// Each is reported on its record set.
 		for _, name := range []string{"not-an-address", "two-for-a-name", "unknown-type", "mx-no-pref"} {
 			var last string
@@ -385,6 +389,7 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			}
 		}
 
+		t.Logf("timing: %s after start: invalid record sets reported", time.Since(began).Round(time.Millisecond))
 		// Update grants the primary runtime cannot compile are refused at
 		// write, also for a zone that denies updates (D373).
 		for name, policy := range map[string]map[string]any{
@@ -402,6 +407,7 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			}
 		}
 
+		t.Logf("timing: %s after start: update grants refused", time.Since(began).Round(time.Millisecond))
 		// A block list whose URL accepts the connection and never answers
 		// does not hold back the serving generation while its first
 		// download runs: DNS, readiness and later writes go on (D373).
@@ -435,6 +441,7 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			t.Fatalf("the silent URL has a digest: %+v", silentList.Status)
 		}
 
+		t.Logf("timing: %s after start: served while a list URL is silent", time.Since(began).Round(time.Millisecond))
 		// The lifecycle of a deleted zone keeps its name: a zone for it
 		// under another object name is refused, naming the object to use,
 		// and the node keeps serving. The same object name is accepted.
