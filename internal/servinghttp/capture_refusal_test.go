@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -74,6 +75,24 @@ func TestCaptureRefusalNamesFencedAndConflictedAuthority(t *testing.T) {
 			!strings.Contains(body.Error.Hint, "kudurru cluster resolution --offline") || !strings.Contains(body.Error.Hint, "kudurru cluster resolve --offline") ||
 			recorder.Header().Get("Retry-After") != "" {
 			t.Fatalf("conflict refusal: retry-after=%q %s", recorder.Header().Get("Retry-After"), recorder.Body)
+		}
+	})
+	// Only an operator's offline resolution ends a conflict, so the capture
+	// wait is not spent first: the refusal is immediate.
+	t.Run("conflict refuses without the capture wait", func(t *testing.T) {
+		f := newFixture(t)
+		f.adapter.options.CaptureWait = 30 * time.Second
+		observe(t, f, 0, replication.ErrPromotionConflict)
+		started := time.Now()
+		recorder, body := refuse(t, f)
+		if elapsed := time.Since(started); elapsed > 5*time.Second || body.Error.Key != KeyClusterConflict || recorder.Header().Get("Retry-After") != "" {
+			t.Fatalf("conflict refusal after %s: retry-after=%q %s", elapsed, recorder.Header().Get("Retry-After"), recorder.Body)
+		}
+	})
+	t.Run("ordinary authority has no durable refusal", func(t *testing.T) {
+		f := newFixture(t)
+		if refusal := AuthorityRefusal(f.store.Authority()); refusal != nil {
+			t.Fatal("a primary's authority produced a durable refusal", refusal)
 		}
 	})
 	t.Run("pending publication", func(t *testing.T) {

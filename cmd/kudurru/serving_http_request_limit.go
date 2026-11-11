@@ -10,6 +10,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/loginlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/requestlimit"
+	"github.com/robertherbaugh/kudurru/internal/servinghttp"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
@@ -82,6 +83,14 @@ func (h *servingHTTP) requestAdmissionMiddleware(next http.Handler) http.Handler
 			if refusal, follower := s.storePrimaryRequired(providerLoginFollowerHint); follower {
 				servingHTTPError(w, r, refusal)
 				return
+			}
+			// A fenced or conflicted member names its durable state, as every
+			// route behind the lease adapter does, instead of a retryable 503.
+			if s.publisher != nil {
+				if refusal := servinghttp.AuthorityRefusal(s.publisher.Status().Authority); refusal != nil {
+					servingHTTPError(w, r, refusal)
+					return
+				}
 			}
 			servingHTTPError(w, r, servingBrowserUnavailable())
 			return

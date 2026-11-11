@@ -189,13 +189,25 @@ const (
 // captureRefusal explains why this request got no complete lease. A fenced or
 // conflicted member closes its API until its authority changes, which a
 // retry a second later does not bring about: those answers name the state
-// and what ends it, and carry no Retry-After. Every other cause is a
-// publication that is still being prepared. The authority is a local
-// observation that selects the text only; the request is refused either way.
+// and what ends it, and carry no Retry-After (AuthorityRefusal). Every other
+// cause is a publication that is still being prepared. The authority is a
+// local observation that selects the text only; the request is refused
+// either way.
 func (a *Adapter) captureRefusal() *auth.Error {
-	authority := a.options.Publisher.Status().Authority
+	if refusal := AuthorityRefusal(a.options.Publisher.Status().Authority); refusal != nil {
+		return refusal
+	}
+	return &auth.Error{Status: http.StatusServiceUnavailable, Key: "generation_pending", Message: "complete serving generation unavailable", RetryAfter: time.Second}
+}
+
+// AuthorityRefusal is the answer of a member whose durable authority closed
+// its API: cluster_conflict or cluster_fenced, with a hint and without
+// Retry-After. It is nil for every other authority. Routes that refuse
+// before the lease adapter (provider login admission) use it so that they
+// name the same state.
+func AuthorityRefusal(authority replication.Authority) *auth.Error {
 	switch {
-	case authority.Mode == replication.Conflict || authority.Conflict != nil || authority.Divergence != nil:
+	case conflicted(authority):
 		return &auth.Error{Status: http.StatusServiceUnavailable, Key: KeyClusterConflict, NoRetryAfter: true,
 			Message: "this node recorded conflicting promotions and closed its API; it keeps answering DNS from its last valid data",
 			Hint:    "decide which member's data to keep, stop that member and run `kudurru cluster resolution --offline` and then `kudurru cluster resolve --offline` on it; the other members follow it at their next peer exchange"}
@@ -209,7 +221,13 @@ func (a *Adapter) captureRefusal() *auth.Error {
 			Message: "this node observed " + newer + " and closed its API until it follows that primary; it keeps answering DNS from its last valid data",
 			Hint:    "send requests to the current primary; this node becomes a follower after its next successful pull, so check that it reaches the primary's internal listener if this answer persists"}
 	}
-	return &auth.Error{Status: http.StatusServiceUnavailable, Key: "generation_pending", Message: "complete serving generation unavailable", RetryAfter: time.Second}
+	return nil
+}
+
+// conflicted reports a recorded promotion conflict or divergence, which only
+// an operator's offline resolution ends.
+func conflicted(authority replication.Authority) bool {
+	return authority.Mode == replication.Conflict || authority.Conflict != nil || authority.Divergence != nil
 }
 
 // capture waits only before the request owns a lease or authenticates. It never
@@ -230,7 +248,9 @@ func (a *Adapter) capture(ctx context.Context) (*serving.Lease, error) {
 		// A follower without its first installed image has no publication to
 		// catch up to. Refuse immediately so health/status probes can observe
 		// the unavailable state without exhausting their own shorter deadlines.
-		if a.options.Publisher.Status().Authority.Installed.Revision == 0 {
+		// A conflicted member stays closed until an operator resolves it
+		// offline, so waiting cannot produce a lease: refuse at once.
+		if authority := a.options.Publisher.Status().Authority; authority.Installed.Revision == 0 || conflicted(authority) {
 			return nil, err
 		}
 		select {

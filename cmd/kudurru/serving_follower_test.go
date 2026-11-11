@@ -27,6 +27,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
+	"github.com/robertherbaugh/kudurru/internal/servinghttp"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
@@ -428,5 +429,48 @@ func TestRootMemberFollowerCacheFlushIsNodeLocal(t *testing.T) {
 	answer = f.request(t, &browser, http.MethodPost, "/cache/flush", "", nil, "X-Kudurru-CSRF", login.CSRF)
 	if answer.status != http.StatusOK || json.Unmarshal(answer.raw, &flushed) != nil || flushed.Flushed != 2 || f.cache.Len() != 0 {
 		t.Fatalf("cookie cache flush with the CSRF header: %d %s (cache entries left: %d)", answer.status, answer.raw, f.cache.Len())
+	}
+}
+
+// Provider login is admitted before the lease adapter. On a fenced or
+// conflicted member it names the same durable state as every other route,
+// with a hint and without Retry-After, instead of a retryable 503.
+func TestRootMemberClosedMemberProviderLoginNamesDurableState(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		epochs uint64
+		want   error
+		mode   replication.Mode
+		key    string
+	}{
+		{"fenced", 1, nil, replication.Fenced, servinghttp.KeyClusterFenced},
+		{"conflict", 0, replication.ErrPromotionConflict, replication.Conflict, servinghttp.KeyClusterConflict},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newMemberForwardHTTPFixture(t, false)
+			followerStore := f.follower.opts.Store
+			term := followerStore.Authority().Term
+			term.Epoch += tc.epochs
+			term.PrimaryID, term.PromotionID, term.PrimaryName = "other-member", "other-promotion", "node-z"
+			if _, err := followerStore.ObserveAuthority(t.Context(), term); !errors.Is(err, tc.want) {
+				t.Fatal("authority observation", err)
+			}
+			awaitServingRuntime(t, f.follower, func() bool { return f.follower.publisher.Status().Authority.Mode == tc.mode })
+			for _, route := range []struct{ method, path string }{
+				{http.MethodGet, "/cluster"},
+				{http.MethodGet, "/auth/oidc/probe/start"},
+				{http.MethodGet, "/auth/oidc/probe/callback"},
+				{http.MethodPost, "/auth/cli/probe/prepare"},
+			} {
+				var body any
+				if route.method == http.MethodPost {
+					body = map[string]any{"mode": "browser"}
+				}
+				answer := f.request(t, nil, route.method, route.path, "", body)
+				if hint, _ := answer.Error.Hint.(string); answer.status != http.StatusServiceUnavailable || answer.Error.Key != tc.key || hint == "" || answer.header.Get("Retry-After") != "" {
+					t.Errorf("%s %s on a %s member: status=%d retry-after=%q %s", route.method, route.path, tc.name, answer.status, answer.header.Get("Retry-After"), answer.raw)
+				}
+			}
+		})
 	}
 }
