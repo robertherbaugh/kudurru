@@ -28,6 +28,17 @@ func (a enrolledAnswer) hint() string { s, _ := a.Error.Hint.(string); return s 
 // enrolledSend sends one request once. It never retries.
 func enrolledSend(t *testing.T, c *staticProcessClient, method, path string, body any) enrolledAnswer {
 	t.Helper()
+	answer, err := enrolledTrySend(t, c, method, path, body)
+	if err != nil {
+		t.Fatal("enrolled request failed", method, path, err)
+	}
+	return answer
+}
+
+// enrolledTrySend is enrolledSend for a process that may not listen yet: a
+// transport error is returned instead of failing the test.
+func enrolledTrySend(t *testing.T, c *staticProcessClient, method, path string, body any) (enrolledAnswer, error) {
+	t.Helper()
 	var data []byte
 	if body != nil {
 		var err error
@@ -50,13 +61,13 @@ func enrolledSend(t *testing.T, c *staticProcessClient, method, path string, bod
 	}
 	response, err := c.client.Do(r)
 	if err != nil {
-		t.Fatal("enrolled request failed", method, path, err)
+		return enrolledAnswer{}, err
 	}
 	defer func() { _ = response.Body.Close() }()
 	answer := enrolledAnswer{status: response.StatusCode, retryAfter: response.Header.Get("Retry-After")}
 	if answer.raw, err = io.ReadAll(io.LimitReader(response.Body, 128<<10)); err != nil {
-		t.Fatal(err)
+		return enrolledAnswer{}, err
 	}
 	_ = json.Unmarshal(answer.raw, &answer)
-	return answer
+	return answer, nil
 }
