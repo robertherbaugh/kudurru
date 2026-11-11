@@ -165,7 +165,7 @@ func (a *Adapter) Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), a.options.MaxDuration)
 		defer cancel()
-		lease, err := a.capture(ctx)
+		lease, err := a.capture(ctx, r.Method == http.MethodGet || r.Method == http.MethodHead)
 		if err != nil {
 			auth.WriteError(w, r, a.captureRefusal())
 			return
@@ -232,12 +232,22 @@ func conflicted(authority replication.Authority) bool {
 
 // capture waits only before the request owns a lease or authenticates. It never
 // replaces a held proof, invokes a handler twice, or wakes/cancels preparation.
-func (a *Adapter) capture(ctx context.Context) (*serving.Lease, error) {
+// A waiting read is marked on the publisher (Publisher.AwaitHTTP), so that a
+// request of several items lets the node publish for it between two items
+// (D378). Other methods are not marked: such a caller would usually commit in
+// that pause and so stop the rest of the request.
+func (a *Adapter) capture(ctx context.Context, read bool) (*serving.Lease, error) {
 	if a.options.CaptureWait == 0 {
 		return a.options.Publisher.CaptureHTTP(ctx)
 	}
 	wait, cancel := context.WithTimeout(ctx, a.options.CaptureWait)
 	defer cancel()
+	var done func()
+	defer func() {
+		if done != nil {
+			done()
+		}
+	}()
 	for {
 		changed := a.options.Publisher.Subscribe()
 		authority := a.options.Publisher.AuthorityChanges()
@@ -255,6 +265,9 @@ func (a *Adapter) capture(ctx context.Context) (*serving.Lease, error) {
 		// had hidden and that needs its own fix first.
 		if a.options.Publisher.Status().Authority.Installed.Revision == 0 {
 			return nil, err
+		}
+		if read && done == nil {
+			done = a.options.Publisher.AwaitHTTP()
 		}
 		select {
 		case <-wait.Done():

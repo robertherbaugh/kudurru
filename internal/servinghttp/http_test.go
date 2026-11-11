@@ -423,6 +423,13 @@ func TestInitialCaptureWaitUsesPublishedAuthorityAndDispatchesOnce(t *testing.T)
 			if calls.Load() != 0 {
 				t.Fatal("pending publication reached handler")
 			}
+			// A request of several items lets the node publish for a caller
+			// that waits (D378).
+			for until := time.Now().Add(time.Second); !f.publisher.AwaitingHTTP(); time.Sleep(time.Millisecond) {
+				if time.Now().After(until) {
+					t.Fatal("a caller waiting for a publication was not marked")
+				}
+			}
 			f.pause.Store(false)
 			f.publisher.Wake()
 			select {
@@ -436,6 +443,9 @@ func TestInitialCaptureWaitUsesPublishedAuthorityAndDispatchesOnce(t *testing.T)
 			}
 			if response.Code != want || calls.Load() != count {
 				t.Fatalf("status=%d calls=%d, want %d/%d", response.Code, calls.Load(), want, count)
+			}
+			if f.publisher.AwaitingHTTP() {
+				t.Fatal("a caller that owns its lease is still marked as waiting")
 			}
 		})
 	}
@@ -460,5 +470,37 @@ func TestInitialCaptureWaitIsBoundedAndCancelable(t *testing.T) {
 		if response.Code != http.StatusServiceUnavailable || response.Header().Get("Retry-After") != "1" {
 			t.Fatal("unavailable request lost bounded refusal", response.Code)
 		}
+		if f.publisher.AwaitingHTTP() {
+			t.Fatal("a refused caller is still marked as waiting")
+		}
+	}
+}
+
+// Only a waiting read is marked for a request of several items (D378): a
+// waiting write would usually commit in the pause it got and so stop the rest
+// of that request.
+func TestInitialCaptureWaitMarksOnlyReads(t *testing.T) {
+	f := newFixture(t)
+	f.pause.Store(true)
+	f.command(t, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		_, err := tx.Apply(ctx, &publicv1.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "new", Namespace: "default"}, Spec: publicv1.BlockListSpec{Mode: "block", Sources: []publicv1.ListSource{{Inline: []string{"blocked.example"}}}}}, store.ApplyOptions{Manager: store.ManagerSystem})
+		return err
+	})
+	f.adapter.options.CaptureWait = 300 * time.Millisecond
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		f.adapter.Middleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Error("unavailable request reached handler") })).ServeHTTP(httptest.NewRecorder(), f.request(http.MethodPost))
+	}()
+	for {
+		select {
+		case <-done:
+			return
+		default:
+		}
+		if f.publisher.AwaitingHTTP() {
+			t.Fatal("a waiting write was marked as a waiting read")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }

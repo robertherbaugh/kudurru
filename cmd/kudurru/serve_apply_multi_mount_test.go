@@ -314,12 +314,14 @@ func TestRunServeSQLiteMultiFileApplyAndRestoreIntoNewNode(t *testing.T) {
 	}
 }
 
-// One long apply on a standalone complete SQLite node lets the node publish
-// between its items (D378): an existing record of the node's own zone is
-// still answered, and a second signed-in CLI still reads, while the request
-// runs. Every commit makes local answers and other callers wait for the next
-// publication, so without the request's pace neither is served until the
-// request has ended. The CLI's own default timeout of apply is used.
+// One long apply on a standalone complete SQLite node keeps DNS and other
+// callers served (D378): an existing record of the node's own zone is
+// answered throughout, from the publication that is served, and a second
+// signed-in CLI still reads, because a waiting read makes the request let the
+// node publish at its next item. Before, DNS bound local answers to the latest
+// commit and to the provider resource set, and a read waited for the next work
+// budget: an apply of 120 documents left the record unanswered for 80 s and
+// refused 41 of 43 reads. The CLI's own default timeout of apply is used.
 func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	cfg, _ := mountedTestConfig(t)
 	startMountedServe(t, cfg)
@@ -337,8 +339,8 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	long := writeManifest(t, "long.yaml", documents...)
 
 	var mu sync.Mutex
-	var answered, read []time.Time
-	var failedReads int
+	var answered, read, failedRead []time.Time
+	var readError string
 	stop := make(chan struct{})
 	var probes sync.WaitGroup
 	probes.Go(func() {
@@ -369,12 +371,13 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 				return
 			case <-time.After(200 * time.Millisecond):
 			}
-			_, _, err := reader.run("get", "dnszones", "-o", "name")
+			_, stderr, err := reader.run("get", "dnszones", "-o", "name")
 			mu.Lock()
 			if err == nil {
 				read = append(read, time.Now())
 			} else {
-				failedReads++
+				failedRead = append(failedRead, time.Now())
+				readError = strings.TrimSpace(stderr)
 			}
 			mu.Unlock()
 		}
@@ -395,7 +398,7 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 		return in
 	}
 	mu.Lock()
-	answers, reads, failed := within(answered), within(read), failedReads
+	answers, reads, failed := within(answered), within(read), len(within(failedRead))
 	mu.Unlock()
 	edges := append(append([]time.Time{began}, answers...), ended)
 	slices.SortFunc(edges, func(a, b time.Time) int { return a.Compare(b) })
@@ -404,13 +407,23 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 		gap = max(gap, edges[i].Sub(edges[i-1]))
 	}
 	t.Logf("apply of %d documents took %s: %d correct DNS answers, longest time without one %s, %d reads ok, %d reads failed", count, ended.Sub(began), len(answers), gap, len(reads), failed)
-	// How long the node takes to publish depends on the machine, so the
-	// assertion is that the node served between the request's items at all,
-	// once the request ran longer than two pace budgets.
-	if elapsed := ended.Sub(began); elapsed > 2*defaultItemPace.work && len(answers) == 0 {
-		t.Fatalf("the node answered no query for an existing record during the %s of one request", elapsed)
+	// DNS answers the served publication throughout (D378): a commit that is
+	// not published yet, and a replaced provider resource set, withhold
+	// nothing. The probe asks every 50 ms with a 200 ms timeout.
+	if gap > time.Second {
+		t.Fatalf("the node left an existing record unanswered for %s during one request of %s", gap, ended.Sub(began))
+	}
+	// A waiting read makes the request let the node publish at its next item,
+	// so a read is served within its two-second capture wait whenever the
+	// node publishes within it, as it does without the race detector (one
+	// publication of these 120 record sets takes 0.3 to 0.5 s there). Under
+	// the race detector on a loaded machine one publication takes up to ten
+	// seconds by the end of the request, and a read that waits for it is
+	// refused with generation_pending; the request still lets reads through.
+	if !raceEnabled && failed > 0 {
+		t.Fatalf("%d reads of a second caller were refused during one request (%d answered); last: %s", failed, len(reads), readError)
 	}
 	if elapsed := ended.Sub(began); elapsed > 5*defaultItemPace.work && len(reads) == 0 {
-		t.Fatalf("no read of a second caller was answered during the %s of one request", elapsed)
+		t.Fatalf("no read of a second caller was answered during the %s of one request; last refusal: %s", elapsed, readError)
 	}
 }

@@ -586,3 +586,84 @@ func TestServingItemsPaceWaitIsBounded(t *testing.T) {
 		t.Fatal("an item ran more than once", f.commands)
 	}
 }
+
+// Another HTTP caller that waits for a publication makes the next item let the
+// node publish at once, long before the request's work budget is used up
+// (D378): the waiting caller is served within its own capture wait instead of
+// being refused with generation_pending after it. Every item is still applied
+// once and admitted by the chain.
+func TestServingItemsYieldToAWaitingCaller(t *testing.T) {
+	f := newItemsFixture(t, nil)
+	f.s.itemPace = &itemPace{work: time.Hour, rest: 50 * time.Millisecond, wait: 10 * time.Second}
+	waiting := f.s.publisher.AwaitHTTP()
+	defer waiting()
+	f.between = func(n int, _ context.Context) {
+		if n > 0 {
+			f.followUp(t, fmt.Sprintf("yield-%d", n))
+		}
+	}
+	var current []bool
+	f.inside = func(_ int) {
+		current = append(current, f.s.publisher.Status().ProtectedReady)
+	}
+	results := f.apply(t, f.server, "yield-a", "yield-b")
+	for _, result := range results {
+		if result.Result != api.ResultCreated {
+			t.Fatalf("a request that yielded to a waiting caller did not create every document: %s", itemsResults(results))
+		}
+	}
+	if f.commands != 2 || len(current) != 2 {
+		t.Fatal("an item ran more than once", f.commands, len(current))
+	}
+	if !current[1] {
+		t.Fatal("the second item began without a publication for the waiting caller")
+	}
+}
+
+// The pace's arithmetic (D378): the work budget, the adaptive wait bound, and
+// the credit that lets a request yield to waiting callers only while it has
+// not spent more time waiting than working.
+func TestServingItemsPaceArithmetic(t *testing.T) {
+	pace := itemPace{work: 2 * time.Second, rest: 200 * time.Millisecond, wait: 2 * time.Second, maxWait: 10 * time.Second}
+	now := time.Now()
+	i := &requestItems{pace: pace, bound: true, paced: now, began: now}
+	if i.due(false) {
+		t.Fatal("a request that has just begun is due without a waiting caller")
+	}
+	if !i.due(true) {
+		t.Fatal("a request with no waits yet did not yield to a waiting caller")
+	}
+	if i.waitBound() != pace.wait {
+		t.Fatal("the first wait bound is not the pace's wait", i.waitBound())
+	}
+	i.missed(2 * time.Second)
+	if i.waitBound() != 4*time.Second {
+		t.Fatal("a missed wait did not double the bound", i.waitBound())
+	}
+	i.missed(4 * time.Second)
+	i.missed(8 * time.Second)
+	i.missed(10 * time.Second)
+	if i.waitBound() != pace.maxWait {
+		t.Fatal("the bound grew past maxWait", i.waitBound())
+	}
+	i.published(1500 * time.Millisecond)
+	if i.waitBound() != 3*time.Second {
+		t.Fatal("a publication did not set the bound to twice its time", i.waitBound())
+	}
+	i.published(100 * time.Millisecond)
+	if i.waitBound() != pace.wait {
+		t.Fatal("a fast publication set the bound below the pace's wait", i.waitBound())
+	}
+	// The request has waited about 26 s and worked for none of it.
+	if i.due(true) {
+		t.Fatal("a request that waited longer than it worked still yielded to a waiting caller")
+	}
+	i.paced = time.Now().Add(-pace.work)
+	if !i.due(false) {
+		t.Fatal("a request past its work budget is not due")
+	}
+	i.paced, i.began, i.waited = time.Now(), time.Now().Add(-time.Second), 400*time.Millisecond
+	if !i.due(true) {
+		t.Fatal("a request that worked longer than it waited did not yield to a waiting caller")
+	}
+}

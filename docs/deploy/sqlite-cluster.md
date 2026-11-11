@@ -236,25 +236,26 @@ request and report a result for each document. Deleting several objects at
 once in the dashboard works the same way, with a result for each name.
 
 - On the primary, one request applies every document. The same holds for a
-  node that is not in a cluster. Each document is its own commit, and after
-  every commit the node must publish again before it answers DNS queries for
-  its own zones and other API requests: until then those queries get no
-  answer, and other requests, reads included, answer `503
-  generation_pending` (retry after one second). A request that runs longer
-  than two seconds therefore pauses: it waits, for up to two seconds, until
-  the node has published the documents applied so far, then commits nothing
-  for 200 milliseconds, and goes on. A node that needs longer than two
-  seconds to publish is not waited for, so the pauses make a request at most
-  about twice as slow; on such a node local answers stay withheld for the
-  whole request. On a node that publishes quickly a long apply keeps local
-  answers and other callers waiting for about two seconds at a time plus the
-  node's time to publish, not for the whole request. Measured on a shared
-  test machine: 150 new record sets took 3.9 seconds without the pauses, and
-  120 took 4.0 and 4.9 seconds with them, with local answers withheld for at
-  most 4.0 and 2.4 seconds at a time; on the same machine under heavy load
-  (race detector), 120 took 93 seconds and local answers were withheld for
-  84 seconds of them. Split very large files (many hundreds of documents),
-  or apply them when DNS clients of the node's own zones can wait.
+  node that is not in a cluster. Each document is its own commit. DNS keeps
+  answering throughout, for the node's own zones too, from the configuration
+  the node published last; a document becomes visible in DNS when the node
+  has published it. Other API requests, reads included, need a publication
+  of everything committed so far and wait up to two seconds for one before
+  they answer `503 generation_pending` (retry after one second). The request
+  therefore pauses: when another caller's read waits, and in any case after
+  two seconds of work, it waits until the node has published the documents
+  applied so far, then commits nothing for 200 milliseconds, and goes on.
+  The pauses are bounded, so they make a request at most about twice as
+  slow. A waiting read is served whenever the node publishes within its two
+  seconds. Measured on a shared test machine: 120 new record sets took 6
+  seconds with a second caller reading all the time; DNS answered the whole
+  time (the longest gap between two answers was 0.8 seconds) and every read
+  succeeded. Under heavy
+  load (race detector) the same request took about 2 minutes, DNS still
+  answered throughout (no gap above 0.13 seconds), but one publication took
+  up to ten seconds, and most reads were refused. Split very large files
+  (many hundreds of documents), or apply them when other API callers can
+  wait.
 - If something else is changed on the node while the request runs, the
   request stops at that point: every later document reports `unavailable`
   ("another change was committed on this node while the request ran") and is

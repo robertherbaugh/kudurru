@@ -28,35 +28,54 @@ type requestItems struct {
 	bound  bool
 	writer *primaryWriterTerm
 	target serving.TermActivation
-	paced  time.Time // when the node last had a current publication for this request
+	paced  time.Time     // when the node last had a current publication for this request
+	wait   time.Duration // the bound of the next wait for a publication; zero is pace.wait
+	began  time.Time     // when the request's first item was bound
+	waited time.Duration // the request's time in pace waits and rests so far
 }
 
-// itemPace bounds how long one multi-item request may keep the node without a
-// current publication (D378). Every commit makes the publication that DNS
-// answers for local data and every other API request are bound to stale until
-// the node has published again, and the items of one request commit back to
-// back. After work of the request's items, the next item first waits, inside
-// the request's lifetime, until the node has published everything committed
-// so far, and then commits nothing for rest so that DNS clients and other
-// callers are served from that publication. The wait itself is bounded by
-// wait: when the node takes longer to publish (a large data set or a loaded
-// machine), the item goes on without the publication, so that the pace never
-// makes a request more than about twice as slow and cannot by itself run a
-// request out of its lifetime.
+// itemPace bounds how long one multi-item request may keep other callers of
+// the node without a current publication (D378). Every commit makes the
+// publication that every other API request is bound to stale until the node
+// has published again, and the items of one request commit back to back. DNS
+// does not depend on it: ordinary answers use the publication that is served
+// (recursiveRootSeal.servedCurrent). Before a later item, the request first
+// waits, inside its lifetime, until the node has published everything
+// committed so far, and then commits nothing for rest so that other callers
+// are served from that publication. It does so after work of its items, and
+// at once when another caller's read waits for a publication
+// (Publisher.AwaitingHTTP) and the request has not yet spent longer in its
+// waits than in its own work, so that the read is served within its own
+// capture wait whenever the node publishes within it.
+//
+// The wait is bounded and adapts to the node's time to publish: it begins at
+// wait, doubles after every wait that ended without a publication, up to
+// maxWait, and after a publication is twice the time that publication took,
+// never below wait. The work between two waits is at least as long as the
+// next wait's bound. A node that publishes slowly (a large data set or a
+// loaded machine) is therefore still waited for, instead of being given up on
+// after a fixed bound that it never meets, while the waits never take much
+// longer than the request's own work: the pace makes a request at most about
+// twice as slow, and the request's lifetime still bounds it. A zero maxWait
+// keeps every wait at wait and every work budget at work; a zero wait waits
+// without bound.
 type itemPace struct {
-	work time.Duration
-	rest time.Duration
-	wait time.Duration
+	work    time.Duration
+	rest    time.Duration
+	wait    time.Duration
+	maxWait time.Duration
 }
 
-// defaultItemPace keeps a long request's local DNS answers and other callers
-// unavailable for about two seconds at a time, plus the node's own time to
-// publish, instead of for the whole request. A request that ends within two
-// seconds never waits. A shorter work budget costs a long request far more:
-// the node's time to publish grows with the data it serves (measured on 150
-// new record sets without the race detector: 3.9 s unpaced, 26 s with a
-// half-second budget, and waits from 0.2 s to 1.5 s).
-var defaultItemPace = itemPace{work: 2 * time.Second, rest: 200 * time.Millisecond, wait: 2 * time.Second}
+// defaultItemPace keeps a long request's other callers unavailable for about
+// two seconds at a time, plus the node's own time to publish, instead of for
+// the whole request. A request that ends within two seconds never waits. A
+// shorter work budget costs a long request far more: the node's time to
+// publish grows with the data it serves (measured on 150 new record sets
+// without the race detector: 3.9 s unpaced, 26 s with a half-second budget,
+// and waits from 0.2 s to 1.5 s). Under the race detector on a loaded machine
+// a publication of 120 record sets took 1 to 2.5 s, which the earlier fixed
+// two-second bound rarely met (one publication in 66 s of one request).
+var defaultItemPace = itemPace{work: 2 * time.Second, rest: 200 * time.Millisecond, wait: 2 * time.Second, maxWait: 10 * time.Second}
 
 type requestItemsKey struct{}
 
@@ -86,7 +105,8 @@ func (i *requestItems) bind(writer *primaryWriterTerm, target serving.TermActiva
 	defer i.mu.Unlock()
 	if !i.bound {
 		// The first item is admitted only on a current publication.
-		i.bound, i.writer, i.target, i.paced = true, writer, target, time.Now()
+		now := time.Now()
+		i.bound, i.writer, i.target, i.paced, i.began = true, writer, target, now, now
 		return nil
 	}
 	if i.writer != writer || !i.target.Term.Same(target.Term) || i.target.Incarnation != target.Incarnation {
@@ -95,19 +115,59 @@ func (i *requestItems) bind(writer *primaryWriterTerm, target serving.TermActiva
 	return nil
 }
 
-// due reports whether a later item must first let the node publish.
-func (i *requestItems) due() bool {
+// due reports whether a later item must first let the node publish. An
+// adaptive pace works at least as long as its next wait may last, so that the
+// waits never take longer than the work between them. awaiting reports that
+// another HTTP caller is waiting for a publication now (Publisher.AwaitHTTP):
+// the item then lets the node publish for it at once, as long as the request
+// has not spent more time in its waits than in its own work, so that the
+// other caller is served within its own capture wait instead of after the
+// next work budget.
+func (i *requestItems) due(awaiting bool) bool {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	return time.Since(i.paced) >= i.pace.work
+	work := i.pace.work
+	if i.pace.maxWait > 0 {
+		work = max(work, i.wait)
+	}
+	if time.Since(i.paced) >= work {
+		return true
+	}
+	return awaiting && i.waited <= time.Since(i.began)-i.waited
+}
+
+// waitBound is the bound of the next wait for a publication.
+func (i *requestItems) waitBound() time.Duration {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.wait > 0 {
+		return i.wait
+	}
+	return i.pace.wait
 }
 
 // published records that the node had a current publication for this
-// request at the moment the wait returned.
-func (i *requestItems) published() {
+// request at the moment the wait returned, after a wait of took.
+func (i *requestItems) published(took time.Duration) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.paced = time.Now()
+	i.waited += took + max(i.pace.rest, 0)
+	if i.pace.maxWait > 0 {
+		i.wait = min(max(i.pace.wait, 2*took), max(i.pace.wait, i.pace.maxWait))
+	}
+}
+
+// missed records a wait that ended at its bound without a publication: the
+// request goes on, and waits again, for longer, after its next work budget.
+func (i *requestItems) missed(took time.Duration) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.paced = time.Now()
+	i.waited += took
+	if i.pace.maxWait > 0 {
+		i.wait = min(2*max(i.wait, i.pace.wait), max(i.pace.wait, i.pace.maxWait))
+	}
 }
 
 // paceLaterItem lets the node publish the request's earlier items before a
@@ -118,23 +178,24 @@ func (i *requestItems) published() {
 // later item. request is the request's own context, which carries its
 // lifetime; bound additionally ends with the request's writer episode.
 func (s *servingRuntime) paceLaterItem(request, bound context.Context, items *requestItems, target serving.TermActivation) error {
-	if !items.due() {
+	if !items.due(s.publisher.AwaitingHTTP()) {
 		return nil
 	}
 	wait, cancel := bound, context.CancelFunc(func() {})
-	if items.pace.wait > 0 {
-		wait, cancel = context.WithTimeout(bound, items.pace.wait)
+	if limit := items.waitBound(); limit > 0 {
+		wait, cancel = context.WithTimeout(bound, limit)
 	}
+	began := time.Now()
 	err := s.publisher.WaitTerm(wait, target)
 	cancel()
 	if err != nil && bound.Err() == nil && wait.Err() != nil {
 		// The node did not publish within the wait's bound: go on without
-		// the publication, and wait again after the next work budget.
-		items.published()
+		// the publication, and wait longer after the next work budget.
+		items.missed(time.Since(began))
 		return nil
 	}
 	if err == nil {
-		items.published()
+		items.published(time.Since(began))
 		if items.pace.rest <= 0 {
 			return nil
 		}

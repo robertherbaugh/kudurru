@@ -1854,18 +1854,40 @@ follow-up work, but an RFC 2136 update (a TSIG client) and an admin socket
 command (an operator) act for someone else, and a request does not stop for
 them; an item reads nothing they write except in its own transaction.
 
-Every commit retires the publication that DNS answers for local data and
-every other API request are bound to, until the node has published again. A
-request's items commit back to back, so without a bound the node would have
-no current publication for the whole request. Once the items of a request
-have run for two seconds since the node last had a current publication for
-it, the next item first waits, inside the request's lifetime and its writer
-episode and for at most two seconds, until the publisher is current again
-(`Publisher.WaitTerm`), and then commits nothing for 200 milliseconds. A wait
-that reaches its two seconds goes on without the publication and without the
-rest, so the pace makes a request at most about twice as slow. It captures no new lease: the chain's
-compare still decides, so a command that another caller commits in the pause
-stops every later item.
+Every commit retires the publication that every other API request is bound
+to, until the node has published again. A request's items commit back to
+back, so without a bound the node would have no current publication for
+other callers for the whole request. DNS does not wait for it: an ordinary
+answer from local, authoritative or mixed data is bound to the publication
+that is served (`Publisher.Serves`), not to the latest commit, and its
+dependency check (`RuntimeOwner.DNSDependenciesCurrent`) covers only what DNS
+answers are computed from, the root lifetime, the DNS keyring and the
+transferred and catalog zone data, not the provider host, the license cut or
+the provider resource set that only HTTP authentication uses. A published
+successor retires the old answers at once, so no answer from older data is
+sent after a change was published. Transfers, UPDATE acknowledgments, API
+dig, cache insertions and native resolver mutations keep full data currency.
+
+Before a later item the request lets the node publish for other callers: it
+waits, inside its lifetime and writer episode, until the publisher is current
+again (`Publisher.WaitTerm`), and then commits nothing for 200 milliseconds.
+It does so once its items have run for two seconds since the node last had a
+current publication for it, and at once when another caller's read (`GET` or
+`HEAD`) waits for a publication in the HTTP listener's two-second capture wait
+(`Publisher.AwaitHTTP`), as long as the request has not spent longer in its
+waits than in its own work. A waiting write is not counted: it would usually
+commit in the pause and stop the rest of the request. The wait is bounded: it
+starts at two seconds, doubles after a wait that ended without a publication,
+is twice the last publication's time after one that came, and never exceeds
+ten seconds; the work between two timed waits is at least as long as the next
+bound. A wait that reaches its bound goes on without the publication and
+without the rest, so the pace makes a request at most about twice as slow. A
+read is served within its capture wait whenever the node publishes within it;
+a node that needs longer (a large data set, or the race detector on a loaded
+machine, where one publication of 120 record sets reached ten seconds) still
+refuses it with `503 generation_pending`. The pace captures no new lease: the
+chain's compare still decides, so a command that another caller commits in
+the pause stops every later item.
 
 A chained command whose anchor has moved is refused as `unavailable` ("another
 change was committed on this node while the request ran"). It does not run,
@@ -1889,9 +1911,9 @@ flowchart TD
     Request["One request: original lease, credential and lifetime"] --> First["Item admitted on the original lease"]
     First -->|refused cleanly| First
     First -->|completed| Anchor["Chain anchored: own commit receipt, or the current mark for a no-op"]
-    Anchor --> Pace{"Items ran for two seconds?"}
+    Anchor --> Pace{"Items ran for their budget, or a read waits?"}
     Pace -->|no| Next["Next item under the publication gate"]
-    Pace -->|yes| Wait["Wait up to 2 s for a current publication; if it came, rest 200 ms"]
+    Pace -->|yes| Wait["Wait (bounded, 2 to 10 s) for a current publication; if it came, rest 200 ms"]
     Wait --> Next
     Next -->|coordinator mark is the anchor| Run["Reauthorize in transaction, apply, move anchor to own receipt"]
     Run --> Pace

@@ -204,14 +204,15 @@ bounds all items: an item that is reached after it ended reports
 was not applied"). `kudurru apply` and `kudurru restore` wait the same five
 minutes for the answer unless `--request-timeout` is set.
 
-Each item commits on its own, and after every commit the node answers no DNS
-query for its own zones, and answers other requests `503 generation_pending`,
-until it has published again. A request whose items have run for two seconds
-therefore waits, inside its lifetime, until the node has published the items
-so far (for up to two seconds), then commits nothing for 200 milliseconds
-before its next item. Other
-requests, and DNS queries, are served in that pause; a change committed by
-another request in the pause stops the rest of the request as described
+Each item commits on its own. DNS keeps answering throughout, for the node's
+own zones too, from what the node published last. Other requests answer `503
+generation_pending` after two seconds until the node has published again, so
+the request lets the node publish before its next item, inside its lifetime:
+at once when another caller's read is waiting, and after two seconds of work
+in any case. It waits until the node has published the items so far (for a
+bounded time), then commits nothing for 200 milliseconds. Other requests are
+served in that pause; a change committed by another request in the pause
+stops the rest of the request as described
 above. [sqlite-cluster.md](sqlite-cluster.md#4-changes-through-a-follower)
 gives the sizes and the answers of a request that is refused as a whole.
 

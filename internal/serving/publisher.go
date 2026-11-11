@@ -78,6 +78,9 @@ type Publisher struct {
 	preparing   bool
 	reason      string
 	sequence    uint64 // under publication lock
+	// awaiting counts HTTP callers that wait for an eligible publication
+	// before they own a lease (AwaitHTTP).
+	awaiting atomic.Int64
 }
 
 // New validates the complete owner manifest. No partial/zone-only default is
@@ -419,6 +422,23 @@ func (p *Publisher) CheckReadLease(ctx context.Context, lease *Lease) error {
 	}
 	return nil
 }
+
+// AwaitHTTP marks one caller that is waiting for an eligible publication
+// before it owns a lease, until done is called. A request of several items
+// lets the node publish for such callers between its items (D378) instead of
+// committing on while they run out of their capture wait. The mark grants and
+// excludes nothing; done is idempotent.
+func (p *Publisher) AwaitHTTP() (done func()) {
+	if p == nil {
+		return func() {}
+	}
+	p.awaiting.Add(1)
+	var once sync.Once
+	return func() { once.Do(func() { p.awaiting.Add(-1) }) }
+}
+
+// AwaitingHTTP reports whether a caller is marked by AwaitHTTP now.
+func (p *Publisher) AwaitingHTTP() bool { return p != nil && p.awaiting.Load() > 0 }
 
 // Serves reports whether value is, by pointer identity, the named component of
 // the publication that is served now. It answers false once a successor has

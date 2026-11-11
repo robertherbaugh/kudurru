@@ -33,14 +33,15 @@ On SQLite, a standalone node and the primary of a cluster apply every
 document of one request, each in its own commit. A request holds its place
 between two documents against its own commits and the writes that the node
 makes without an API command (status, zone state, RFC 2136 updates, the local
-admin socket and reconciliation), which it does not detect. While its
-documents commit, the node answers no DNS query for its own zones and other
-requests answer `503 generation_pending` until it has published again, so a
-request that has run for two seconds waits, for up to two seconds, until the
-node has published the documents so far and then commits nothing for 200
-milliseconds before its next document. When the node takes longer to publish
-(a large data set or a loaded machine), the request goes on without the
-publication, so the pauses make it at most about twice as slow. When a command of anyone else changes the node's data while
+admin socket and reconciliation), which it does not detect. DNS keeps
+answering while its documents commit, from what the node published last.
+Other requests answer `503 generation_pending` until the node has published
+again, so the request lets the node publish before its next document: at
+once when another caller's read waits for a publication, and after two
+seconds of work in any case. It waits (for a bounded time, two to ten
+seconds) until the node has published the documents so far and then commits
+nothing for 200 milliseconds. The pauses make a request at most about twice
+as slow. When a command of anyone else changes the node's data while
 the request runs (another request admitted in such a pause, a sign-in, a
 write that a follower passes on, a migration step), every later document
 carries `errorKey` `unavailable` with the error "another change was
