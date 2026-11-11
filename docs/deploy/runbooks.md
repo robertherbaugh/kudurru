@@ -13,10 +13,10 @@ trusted owner or a key that was already revoked is not a recovery candidate.
 2. Check that every member runs kudurru v0.2.0 or later (`kudurru version` on
    each host). Every release that can exchange cluster images with v0.2.0 (store
    schema 9 and the same required-feature list) also reads recovered history
-   (recovery format 2), so there is no separate format to check. A member on an
-   older release refuses v0.2.0 images by schema and keeps serving its own last
-   image; upgrade it instead of working around the refusal. Do not roll back the
-   database or the binaries to evade revocation or recovery history.
+   (recovery format 2), so there is no separate format to check. The only
+   earlier release, v0.1.0, has no cluster replication and cannot be a member.
+   Do not roll back the database or the binaries to evade revocation or
+   recovery history.
 3. Read the exact retained accepted-envelope digest with local OS permissions:
 
    ```sh
