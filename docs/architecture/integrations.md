@@ -195,6 +195,7 @@ stateDiagram-v2
     Terminating --> Terminating: apply that keeps Delete
     Terminating --> [*]: Finalize removes the finalizer (cleanup finished)
     Terminating --> [*]: apply Retain, declared or defaulted (release, nothing cleaned)
+    Terminating --> [*]: reviewed release command, exact UID and revision (nothing cleaned)
 ```
 
 - **SQLite** decides the finalizer at admission, inside `Apply`: the
@@ -403,13 +404,32 @@ flowchart TD
   stays behind. SQLite admission already releases such an object in the
   apply that changes the policy, so on SQLite this job only meets state that
   no apply stored; it is the path a Kubernetes host needs.
+- **Reviewed release command.** `POST /integrations/{namespace}/{name}/release`
+  (`kudurru integrations release NAME --uid --revision`, permission
+  `integrations.release`) is root's, not the host's
+  (`integrationRuntime.IntegrationRelease`). It binds the operator's review:
+  the object in the request's published snapshot and the one read in the
+  command must both be the reviewed UID and resource version, be deleting and
+  carry the finalizer, under any policy. ONE current command re-authorizes the
+  original credential, counts what stays, removes the finalizer with
+  `CommandTx.UpdateFinalizer` by that exact identity and records
+  `integration.release`. It needs no license, credential or provider and does
+  not take the per-instance lease: a cleanup run that holds the lease is
+  fenced by the removal at its next effect, and a provider request already in
+  flight leaves its ledger row with a pending intent, like any released
+  incarnation. Summaries (`GET /integrations`, `GET /integrations/{namespace}/{name}`)
+  carry `deletionPolicy`, `terminating` and `deletionRequestedAt` from the
+  stored object and, while the host's status for that revision is
+  `Terminating`, its `remaining`, `blocked` and `uncertain` counts.
 
-Failover is designed to need no extra state: the finalizer, the ledger and
-the operations are durable, a fenced writer can neither record a receipt nor
-finalize, and the next lease starts from a complete reread. Host-level tests
-cover a lease lost between a provider delete and its receipt; a restart or a
-promotion of the whole server in the middle of a cleanup has no mounted test
-yet.
+Failover needs no extra state: the finalizer, the ledger and the operations
+are durable, a fenced writer can neither record a receipt nor finalize, and
+the next lease starts from a complete reread. Mounted tests stop and reopen
+the whole SQLite runtime in the middle of a cleanup (with an unreadable
+record list, and after a batch whose answer was lost), promote a replica
+while the old writer's delete batch is held at the provider, and let the
+license expire while a batch is held; in each the batch is sent once and the
+next writer settles it by a reread.
 
 Automatic inventory-only polling retains its configured future schedule after an
 original-frame fence while both the job and lease remain active. The refused

@@ -51,14 +51,32 @@ A UniFi or webhook instance publishes nothing at its provider, so its cleanup
 is steps 3 and 4 only: it makes no provider call and does not need the
 credential or a reachable controller.
 
-While this runs the Integration is shown with phase `Terminating`. Check,
-preview, sync and actions are refused for it. The cleanup works in bounded
-runs and shares the Cloudflare request budget with every other instance, so a
-large zone can take several budget windows. Everything it needs is in the
-store (the finalizer, the ledger and the recorded operations), so it is
-designed to continue from there after a restart or a failover. In this
-release that is covered by tests of the integration host, not yet by a test
-of a whole server that restarts or fails over in the middle of a cleanup.
+While this runs the Integration is shown with phase `Terminating`, and
+`kudurru integrations get` and `list` (and `GET /api/v1/integrations`) show
+`deletionPolicy`, `terminating: true`, `deletionRequestedAt`, the reason and
+the counts described below (`remaining`, `blocked`, `uncertain`). Check,
+preview, sync and actions are refused for it with `409 Conflict`. The cleanup
+works in bounded runs and shares the Cloudflare request budget with every
+other instance, so a large zone can take several budget windows.
+
+Everything the cleanup needs is in the store (the finalizer, the ledger and
+the recorded operations), so it continues from there:
+
+- After a restart, the new process resumes the cleanup. A delete whose answer
+  was lost (the provider applied it but the connection failed) stays pending
+  and is never sent again: the next run reads the zone completely and
+  confirms that the records are gone.
+- After a failover, the old writer can no longer record a receipt or remove
+  the finalizer, even when its last delete reaches the provider. The promoted
+  writer resolves that delete by a reread and finishes.
+- When the license expires or is suspended in the middle of a cleanup, the
+  cleanup pauses with `LicenseUnavailable` and makes no provider request; the
+  object stays `Terminating`. Installing a valid license resumes it, and a
+  release works without one.
+- When the credential is missing, a publisher's cleanup pauses with
+  `CredentialsUnavailable` and makes no provider request; restoring the
+  credential resumes it. A rotated value of the same reference is accepted,
+  because ownership is proven by the marker and the ledger, not by the token.
 
 The object stays `Terminating` with a reason, and nothing is finalized, while
 any of these holds. With the reason the integration status carries three
@@ -111,7 +129,27 @@ Integration stays `Terminating` with `CapacityExceeded` after its provider
 records are already deleted. Release it, which leaves its remaining local
 rows in the store.
 
-To release an Integration that is `Terminating`, declare it once more with
+To release an Integration that is `Terminating`, review it and run the
+release command with the exact UID and revision you reviewed:
+
+```sh
+kudurru integrations get publisher
+kudurru integrations release publisher --uid <uid> --revision <revision>
+```
+
+(`POST /api/v1/integrations/{namespace}/{name}/release` with the body
+`{"uid": "...", "revision": "..."}`.) It needs the `integrations.release`
+permission, which only the `admin` role has. It refuses a live object, a
+changed UID or revision (`409 Conflict`, review again), and runs only on the
+elected writer. It removes the object without contacting the provider and
+needs neither the license nor the credential. The provider records and the
+ledger rows stay, as under `Retain`, and the answer says how many ledger rows
+and operations were retained. A delete batch that the cleanup had already
+sent may still complete at the provider; its ledger row then keeps its
+unresolved intent. The audit log records `integration.release` with the
+reason `released without cleanup by the reviewed release command: ...`.
+
+You can also release it by declaring it once more with
 `deletionPolicy: Retain`. That removes the terminating object without
 contacting the provider, needs neither the license nor the credential, and
 leaves its remote records and ledger rows where they are. The still-declared
