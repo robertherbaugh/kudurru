@@ -357,7 +357,7 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	// Cluster settings and sign-out are forwarded too (D368): the settings
 	// change converges on both nodes, and the session that the follower
 	// created ends on both.
-	enrolledForwardedSettings(t, apiA, apiB, b.Name, "34s")
+	enrolledForwardedSettings(t, apiA, apiB, b.Name, "33s", "34s")
 	enrolledForwardedSignOut(t, fresh, freshJar, apiB.base, apiA.base)
 	// The follower names its role and primary, answers every mutation that it
 	// does not forward with one typed refusal and runs node-local commands

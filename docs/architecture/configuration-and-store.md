@@ -1213,7 +1213,13 @@ lock and value checks, merges the patch with the transaction's singleton,
 checks branding against the transaction's pinned license and stages one write;
 its object audit row is attributed to the original caller in the same commit.
 Route refusals before the write (`400`, `402`, `409`, `412`) are retained; a
-failed write rolls back. Both routes, with `POST /auth/logout/browser`, get the
+failed write rolls back. After a committed patch the follower pulls once and
+answers when its published view no longer carries the version that the patch
+was made against (at most five seconds, within the route's bound; a failed
+pull or a later publication still answers the committed result). Without that
+wait the caller's next settings change or blocking switch through the same
+follower would carry the follower's own pre-commit version and be refused as
+stale until the scheduled pull. Both routes, with `POST /auth/logout/browser`, get the
 30-second bound before body read. A mutation without a typed command is
 refused on a follower, as described under
 [What a follower does with a mutation](#what-a-follower-does-with-a-mutation).

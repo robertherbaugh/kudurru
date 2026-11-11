@@ -368,8 +368,8 @@ func TestRootMemberForwardSettingsAndSignOutActualHTTP(t *testing.T) {
 	answer := f.request(t, nil, http.MethodPatch, "/settings", token, map[string]any{"blocking": map[string]any{"blockTTL": "41s"}})
 	if !kudurrutestEventually(20*time.Second, func() bool {
 		if answer.status == http.StatusConflict {
-			// The fixture's own password write moved the singleton's
-			// version only if the follower had not installed it yet.
+			// Only while the follower's view still lags a change of the
+			// singleton that the primary made before this first patch.
 			answer = f.request(t, nil, http.MethodPatch, "/settings", token, map[string]any{"blocking": map[string]any{"blockTTL": "41s"}})
 		}
 		return answer.status != http.StatusConflict
@@ -526,5 +526,37 @@ func TestRootMemberForwardSettingsAndSignOutActualHTTP(t *testing.T) {
 	}
 	if followerStore.Authority().InstallSequence == before.InstallSequence {
 		t.Fatal("the follower did not install the primary's revocation")
+	}
+}
+
+// Two settings changes through the follower back to back, as the dashboard's
+// Settings page saves one key per request: the follower answers a committed
+// patch only once it serves it, so neither the next patch nor a blocking
+// switch carries its own pre-commit version and is refused as stale.
+func TestRootMemberForwardSettingsBackToBackActualHTTP(t *testing.T) {
+	f := newMemberForwardHTTPFixture(t, false, memberForwardScheduledPull)
+	token := f.primary.token
+	patch := func(ttl string) followerAnswer {
+		return f.request(t, nil, http.MethodPatch, "/settings", token, map[string]any{"blocking": map[string]any{"blockTTL": ttl}})
+	}
+	// The first patch may meet a view that still lags the primary's startup.
+	var first followerAnswer
+	if !kudurrutestEventually(20*time.Second, func() bool { first = patch("41s"); return first.status != http.StatusConflict }) || first.status != http.StatusOK {
+		t.Fatalf("first settings patch through the follower: %d %s", first.status, first.raw)
+	}
+	for _, ttl := range []string{"42s", "43s"} {
+		if answer := patch(ttl); answer.status != http.StatusOK {
+			t.Fatalf("settings patch %s right after the previous one: %d %s", ttl, answer.status, answer.raw)
+		}
+		if got := f.request(t, nil, http.MethodGet, "/settings", token, nil); got.status != http.StatusOK || !strings.Contains(string(got.raw), `"`+ttl+`"`) {
+			t.Fatalf("the follower does not serve its own committed patch %s: %d %s", ttl, got.status, got.raw)
+		}
+	}
+	if answer := f.request(t, nil, http.MethodPost, "/dns/blocking", token, map[string]any{"blocking": false}); answer.status != http.StatusAccepted {
+		t.Fatalf("blocking switch right after a settings patch: %d %s", answer.status, answer.raw)
+	}
+	var stored public.Kudurru
+	if err := f.primary.s.opts.Store.Get(t.Context(), store.Key{Kind: "Kudurru", Name: "default"}, &stored); err != nil || !strings.Contains(string(stored.Spec.Settings["blocking"].Raw), "43s") || !stored.Status.Blocking.Disabled {
+		t.Fatal("back-to-back changes not committed on the primary", err)
 	}
 }

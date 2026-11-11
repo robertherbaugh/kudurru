@@ -16,12 +16,17 @@ import (
 // enrolledForwardedSettings changes one cluster setting through the follower
 // process (settings.patch, D368): the follower answers with the primary's
 // committed result and both nodes serve the value afterward.
-func enrolledForwardedSettings(t *testing.T, primary, follower *staticProcessClient, followerName, ttl string) {
+// Two changes are sent back to back, as the dashboard's Settings page saves one
+// key per request: the follower answers the first only once it serves it, so
+// the second is made against the follower's own change and commits too.
+func enrolledForwardedSettings(t *testing.T, primary, follower *staticProcessClient, followerName, previous, ttl string) {
 	t.Helper()
-	var body api.SettingsBody
-	follower.request(t, http.MethodPatch, "/settings", map[string]any{"blocking": map[string]any{"blockTTL": ttl}}, http.StatusOK, &body)
-	if body.Node != followerName || !slices.Equal(body.Changed, []string{"blocking.blockTTL"}) || body.Persisted == nil || !*body.Persisted {
-		t.Fatalf("settings patch through the follower did not answer with the primary's committed result: %+v", body)
+	for _, value := range []string{previous, ttl} {
+		var body api.SettingsBody
+		follower.request(t, http.MethodPatch, "/settings", map[string]any{"blocking": map[string]any{"blockTTL": value}}, http.StatusOK, &body)
+		if body.Node != followerName || !slices.Equal(body.Changed, []string{"blocking.blockTTL"}) || body.Persisted == nil || !*body.Persisted {
+			t.Fatalf("settings patch through the follower did not answer with the primary's committed result: %+v", body)
+		}
 	}
 	has := func(raw []byte) bool { return strings.Contains(string(raw), `"`+ttl+`"`) }
 	enrolledProcessRead(t, primary, "/settings", has)

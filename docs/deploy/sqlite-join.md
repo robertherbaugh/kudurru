@@ -220,8 +220,13 @@ Cluster settings changes (`PATCH /settings`, the dashboard's Settings page)
 are forwarded as well. The primary repeats every check of its own route and
 merges the change into the settings that the follower showed: if they changed
 on the primary since the follower installed them, the answer is `409
-conflict` and nothing is applied; reload and review. The follower serves the
-new values after its next pull. Every other change, including node settings
+conflict` and nothing is applied; reload and review. After a change commits,
+the follower pulls once and answers when it serves the new values (it waits at
+most five seconds), so your next change through the same follower, such as the
+next key on the Settings page, is made against your own change and is not
+refused. A `409` therefore means that someone else changed the settings, or that
+the follower could not install the primary's state in time; a reload shows the
+current values once the follower has pulled. Every other change, including node settings
 (`PATCH /node/config`), is refused on a follower, as the next section
 describes.
 

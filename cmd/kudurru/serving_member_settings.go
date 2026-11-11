@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
+	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/servinghttp"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -76,7 +78,61 @@ func (s *servingRuntime) SettingsForward(ctx context.Context, in api.ForwardedSe
 	if err != nil {
 		return nil, true, err
 	}
+	s.awaitForwardedSettings(ctx, current.ResourceVersion)
 	return &body, true, nil
+}
+
+// forwardedSettingsSettle bounds how long a committed forwarded settings patch
+// waits for this follower to serve it before answering.
+const forwardedSettingsSettle = 5 * time.Second
+
+// awaitForwardedSettings runs after the primary committed a forwarded settings
+// patch: one explicit pull installs the primary's state and the follower
+// answers once its published view no longer carries the settings version that
+// the patch was made against. Without it the caller's next change through this
+// follower, or a forwarded blocking switch, would carry this follower's own
+// pre-commit version and the primary would refuse it as stale until the
+// scheduled pull ran. The pull replays nothing. A failed pull or a publication
+// that does not arrive within the bound still answers the committed result;
+// the scheduled pull then installs the state.
+func (s *servingRuntime) awaitForwardedSettings(ctx context.Context, seen string) {
+	if s.member == nil || s.publisher == nil {
+		return
+	}
+	limit := forwardedSettingsSettle
+	if deadline, ok := ctx.Deadline(); ok {
+		limit = min(limit, time.Until(deadline))
+	}
+	ctx, cancel := context.WithTimeout(ctx, limit)
+	defer cancel()
+	if s.member.Pull(ctx) != nil {
+		return
+	}
+	s.publisher.Wake()
+	for {
+		changed := s.publisher.Subscribe()
+		lease, err := s.publisher.CaptureHTTP(ctx)
+		if err == nil {
+			served := false
+			if value, ok := lease.Bundle().Component("auth"); ok {
+				if view, typed := value.(*servingauth.View); typed {
+					current, err := view.Settings()
+					served = err == nil && current.ResourceVersion != "" && current.ResourceVersion != seen
+				}
+			}
+			lease.Release()
+			if served {
+				return
+			}
+		} else if !errors.Is(err, serving.ErrPending) {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-changed:
+		}
+	}
 }
 
 // rootMemberSettingsDomain runs one forwarded cluster settings patch on the
