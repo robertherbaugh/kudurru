@@ -219,7 +219,7 @@ carries it as `x-kudurru-follower`.
 |---|---|---|
 | Forwarded | `POST`, `PUT`, `DELETE` under `/objects/` for DNS zones, record sets, block lists, client groups and policies; `POST /apply`; `POST`, `PUT`, `DELETE` on `/blocklists`, `/clientgroups`, `/policies`; `POST /{kind}:batchDelete` for those five kinds; `POST /zones/{zone}/records`, `DELETE /zones/{zone}/records/{name}/{type}`, `POST /zones/{zone}/import`, `DELETE /zones/{zone}`; `POST /dns/blocking`; `POST /auth/login` | Sends one typed command to the primary and returns the primary's answer, as described above. |
 | Local | `POST /cache/flush`; `DELETE /querylog`; `POST /querylog/rollup-evidence/verify`; `POST /dns/query`; the DHCP routes under `/node/dhcp/v4/`; `POST /cluster/promote`, `POST /cluster/activate`, `POST /cluster/join-token`; the two legacy routes under `/settings/sections/` | Runs the request on this node. The first five act on the node's own cache, query log, resolver and DHCP server. The cluster commands decide from this node's own role: promotion runs on a follower, activation and invitations answer `409 conflict` there. The legacy settings routes answer `503 unavailable` on every SQLite node. |
-| Primary only | Everything else: `PATCH /settings` and `PATCH /node/config`; the allow and deny lists (`/allowlist`, `/denylist`, `/domains/{action}/{kind}`, `/queries/{id}/actions`, a block list's source entries); `POST /blocklists/{namespace}/{name}/refresh`; `POST /zones/{zone}/notify`; sign-out, session revocation, own password, own API tokens and authenticators under `/auth/`; command-line OIDC login; `/iam/` users, external accounts and role bindings; `/tsigkeys`; `/integrations`; `/imports`; unblock request decisions; DHCPScope objects, including `POST /dhcpscopes:batchDelete` | Answers `503 primary_required`. Nothing is sent to the primary and nothing is changed. |
+| Primary only | Everything else: `PATCH /settings` and `PATCH /node/config`; the allow and deny lists (`/allowlist`, `/denylist`, `/domains/{action}/{kind}`, `/queries/{id}/actions`, a block list's source entries); `POST /blocklists/{namespace}/{name}/refresh`; `POST /zones/{zone}/notify`; sign-out, session revocation, own password, own API tokens and authenticators under `/auth/`; command-line OIDC login; `/iam/` users, external accounts and role bindings; `/tsigkeys`; `/integrations`; `/imports`, including the two previews, which write nothing but plan an apply that only the primary runs; unblock request decisions; DHCPScope objects, including `POST /dhcpscopes:batchDelete` | Answers `503 primary_required`. Nothing is sent to the primary and nothing is changed. |
 
 The refusal names the primary and carries a hint, and it has no `Retry-After`
 header, because waiting does not change it:
@@ -248,7 +248,9 @@ status`. Three cases need a different next step:
   command line, runs on the primary. A follower's `GET /auth/status` lists no
   provider and carries `"role": "follower"` and the primary's name, so a login
   page can say where to sign in with a provider. Local password login works on
-  the follower.
+  the follower. `kudurru login --username` does not: a follower does not mint
+  the CLI token, so the command reads `GET /auth/status` first and refuses
+  with `primary_required` before it sends the password.
 - A DHCPScope object written through `/objects/dhcpscopes` or as a document of
   `POST /apply` is refused with `primary_required` for that object or document.
 
@@ -274,8 +276,9 @@ mutual TLS. When it observes an authenticated successor, it durably fences write
 a later independent follower pull validates, installs and publishes that image.
 This does not automatically promote a node or select a conflicting branch.
 Between the observation and that pull the old primary's API is closed: every
-request answers `503 cluster_fenced`, which names the newer primary when its
-term carries a name, with no `Retry-After` header. The member answers again as
+request, including the provider-login routes, answers `503 cluster_fenced`,
+which names the newer primary when its term carries a name, with no
+`Retry-After` header. The member answers again as
 a follower after the pull. If the answer persists, check that the member
 reaches the new primary's internal listener.
 

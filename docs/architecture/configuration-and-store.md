@@ -1259,9 +1259,12 @@ flowchart TD
 A member whose authority is fenced or in conflict publishes DNS-only data, so
 no HTTP request gets a lease. The lease adapter answers those requests itself:
 `503 cluster_fenced` or `503 cluster_conflict`, each with a hint and without
-`Retry-After`, chosen from the publisher's authority observation. A publication
-that is only being prepared keeps `503 generation_pending` with
-`Retry-After: 1`.
+`Retry-After`, chosen from the publisher's authority observation. A conflicted
+member answers at once; a fenced one first spends the bounded capture wait,
+because its next pull can end that state. The provider-login admission, which
+runs before the lease adapter, answers the same two keys from the same
+observation (`servinghttp.AuthorityRefusal`). A publication that is only being
+prepared keeps `503 generation_pending` with `Retry-After: 1`.
 
 At startup, a SQLite runtime reads its complete enrollment owner and authority
 from one bounded transaction. Explicit dormant enrollment retains the legacy
