@@ -42,6 +42,7 @@ func TestQuerylogSinkTypesHaveFactories(t *testing.T) {
 		config.QuerylogSinkSlog:       {},
 		config.QuerylogSinkClickHouse: {ClickHouse: &config.QuerylogClickHouse{URL: "https://clickhouse.invalid:8443"}},
 		config.QuerylogSinkLoki:       {Loki: &config.QuerylogLoki{URL: "https://loki.invalid"}},
+		config.QuerylogSinkDnstap:     {Dnstap: &config.QuerylogDnstap{Target: "tcp:collector.invalid:6000"}},
 	}
 	for name, factory := range querylogSinkFactories(querylogSinkInputs{Logger: slog.New(slog.DiscardHandler)}) {
 		built = append(built, name)

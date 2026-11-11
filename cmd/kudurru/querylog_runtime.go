@@ -14,6 +14,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sinks"
+	"github.com/robertherbaugh/kudurru/internal/querylog/sinks/dnstap"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sinks/httpbatch"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/version"
@@ -23,7 +24,7 @@ import (
 // node lifetime. Immutable captured routes borrow these owners through final
 // DNS emission and queue drain; a reload never closes an old writer underneath
 // them. Local history remains readable when admission is disabled or uses slog.
-// The additional sinks of querylog.sinks run on the sink host (D371): every
+// The additional sinks of querylog.sinks run on the sink host (D371, D372): every
 // route holds one reference on each of its sinks, and a sink stops when the
 // last route that named it is released.
 type querylogRuntime struct {
@@ -42,6 +43,9 @@ type querylogRuntime struct {
 	available   chan struct{}
 	unavailable atomic.Bool
 	sinks       *querylog.SinkHost
+	// rawAudit records the start of every raw dnstap sink (D372); serve
+	// binds the node's audit recorders to it once they exist.
+	rawAudit *rawExportAudit
 	// owned is the route whose sink references this runtime itself holds:
 	// the startup route and every route of a legacy reload. Complete
 	// publications own theirs through the bundle's release hook.
@@ -55,6 +59,10 @@ type querylogSinkInputs struct {
 	// Credentials reads the credential references of an entry with what
 	// this node's operator delegated (querylogSinkCredentials).
 	Credentials httpbatch.Resolver
+	// Node is the dnstap identity of a sink without one.
+	Node string
+	// AuditRaw records the start of a raw dnstap sink; nil refuses them.
+	AuditRaw func(context.Context, dnstap.RawStart) error
 }
 
 // querylogSinkFactories are the types of querylog.sinks (D371): log lines,
@@ -64,7 +72,7 @@ type querylogSinkInputs struct {
 // builds the sink: the host opens it from the sink's own goroutine when the
 // first event arrives.
 var querylogSinkFactories = func(in querylogSinkInputs) map[string]querylog.SinkFactory {
-	factories := sinks.Factories(sinks.Options{Resolve: in.Credentials, Logger: in.Logger, UserAgent: "kudurru/" + version.Get().Version})
+	factories := sinks.Factories(sinks.Options{Resolve: in.Credentials, Logger: in.Logger, UserAgent: "kudurru/" + version.Get().Version, Node: in.Node, AuditRaw: in.AuditRaw})
 	factories[config.QuerylogSinkSlog] = func(spec querylog.SinkSpec) (querylog.Sink, error) {
 		return &querylog.SlogSink{Logger: in.Logger.With("sink", spec.Name), Level: slog.LevelInfo}, nil
 	}
@@ -96,7 +104,7 @@ func newQuerylogRuntimeWithSecrets(ctx context.Context, cfg *config.Config, reg 
 	if err != nil {
 		return nil, err
 	}
-	r := &querylogRuntime{dir: cfg.QuerylogDataDir(), node: cfg.Node.Name, logger: logger, domains: domains, available: make(chan struct{})}
+	r := &querylogRuntime{dir: cfg.QuerylogDataDir(), node: cfg.Node.Name, logger: logger, domains: domains, available: make(chan struct{}), rawAudit: &rawExportAudit{node: cfg.Node.Name}}
 	initial := cfg.Querylog
 	r.settings.Store(&initial)
 	r.metrics = querylog.NewMetrics(reg)
@@ -106,7 +114,7 @@ func newQuerylogRuntimeWithSecrets(ctx context.Context, cfg *config.Config, reg 
 		return nil, err
 	}
 	r.async = querylog.NewAsyncWith(querylog.AsyncOptions{Sink: borrowedQuerylogSink{r.slog}, Tail: r.tail, Metrics: r.metrics, FirstID: 1, Logger: logger})
-	r.sinks = querylog.NewSinkHost(querylog.SinkHostOptions{Collector: r.async, Factories: querylogSinkFactories(querylogSinkInputs{Logger: logger, Credentials: credentials}), Metrics: r.metrics, Registerer: reg, Logger: logger})
+	r.sinks = querylog.NewSinkHost(querylog.SinkHostOptions{Collector: r.async, Factories: querylogSinkFactories(querylogSinkInputs{Logger: logger, Credentials: credentials, Node: cfg.Node.Name, AuditRaw: r.rawAudit.record}), Metrics: r.metrics, Registerer: reg, Logger: logger})
 	route, err := r.prepare(ctx, cfg.Querylog, nil)
 	if err != nil {
 		cleanup, cancel := context.WithTimeout(context.Background(), time.Second)

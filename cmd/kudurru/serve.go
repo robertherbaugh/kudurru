@@ -1297,6 +1297,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			}
 		}
 	}
+	// A raw dnstap sink opens only after its audit event is recorded
+	// (D372); until now it has waited for these recorders.
+	qlLogs.rawAudit.bind(recorders)
 	// audit.store database (D159): every node ships its own audit (the
 	// spool, or state.db) into the central chain; every replica reads it.
 	var auditShipper *audit.Shipper

@@ -42,6 +42,14 @@ func (s *servingRuntime) pinProviderHost(ctx context.Context, fn func() error) e
 // publication waits and network work belong after this method returns. Provider
 // source/authority replacements use the separate exclusive resource protocol.
 func (s *servingRuntime) currentCommand(ctx context.Context, attrs rbac.Attributes, fn func(context.Context, *sqlite.CommandTx, auth.Principal) error) error {
+	return s.currentCommandAlso(ctx, attrs, nil, fn)
+}
+
+// currentCommandAlso is currentCommand for a mutation that needs further
+// permissions besides attrs (querylog.raw for a settings change that keeps
+// a raw dnstap sink, D372): each is checked again against the same original
+// credential in the same transaction.
+func (s *servingRuntime) currentCommandAlso(ctx context.Context, attrs rbac.Attributes, also []rbac.Attributes, fn func(context.Context, *sqlite.CommandTx, auth.Principal) error) error {
 	if s == nil || ctx == nil || fn == nil {
 		return serving.ErrComponents
 	}
@@ -53,6 +61,11 @@ func (s *servingRuntime) currentCommand(ctx context.Context, attrs rbac.Attribut
 		principal, _, err := servingauth.ReauthorizeCurrentWithClock(ctx, tx, deps, proof, attrs, s.opts.Now)
 		if err != nil {
 			return err
+		}
+		for _, extra := range also {
+			if _, _, err := servingauth.ReauthorizeCurrentWithClock(ctx, tx, deps, proof, extra, s.opts.Now); err != nil {
+				return err
+			}
 		}
 		return fn(ctx, tx, principal)
 	})
