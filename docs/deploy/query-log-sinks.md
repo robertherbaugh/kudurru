@@ -368,7 +368,7 @@ default.
 | `batchSize` | 1000 | 1 to 10000, at most `queueSize` | queries per write |
 | `flushInterval` | 1s | 100ms to 1m | longest wait before a partial batch is sent |
 | `timeout` | 10s | 1s to 2m | opening the destination and each write attempt |
-| `attempts` | 3 | 1 to 10 | writes of one batch when the destination reports that it was not stored and may be sent again; 1 never retries |
+| `attempts` | 3 | 1 to 10 | writes of one batch when nothing was sent or the destination answered that it may be sent again; 1 never retries |
 | `retryBackoff` | 1s | 100ms to 1m | wait before the second attempt; doubles up to 30s |
 
 At most eight sinks can be configured.
@@ -381,13 +381,14 @@ the query rate, stalled or failing:
 
 - its queue fills to `queueSize`, and further queries are dropped for that
   sink only;
-- a batch is sent again only when the destination reported that it was not
-  stored; after `attempts` writes, or after any failure with an unknown
-  outcome, the batch is dropped. A batch is never sent twice on a guess, and
-  never moved to another sink;
-- for `clickhouse` and `loki`, "not stored" means that no connection could be
-  established (nothing was sent), or that the destination answered 408, 429
-  or 5xx; a `Retry-After` header is honored up to 30 seconds. Any other
+- a batch is sent again only when nothing was sent or the destination
+  answered that it may be sent again; after `attempts` writes, or after a
+  request that got no answer, the batch is dropped. A batch is never moved
+  to another sink;
+- for `clickhouse` and `loki`, a batch is sent again when no connection
+  could be established (nothing was sent), or when the destination answered
+  408, 429 or 5xx; a `Retry-After` header is honored up to 30 seconds. A 5xx
+  does not always mean that nothing was stored (see below). Any other
   answer drops the batch at once: a 400 or 404 will not get better by
   repeating it. A request that was sent and got no answer before `timeout`
   is an unknown outcome and is dropped too;
@@ -398,7 +399,9 @@ Dropped queries stay in the local database (`querylog.sink: sqlite`); only
 the copy for that destination is lost.
 
 A repeated attempt can store a batch twice when the destination had stored
-it and still answered with an error. ClickHouse ignores the repeated batch
+it and still answered with an error: a ClickHouse insert that failed part
+way, or a 502 or 504 from a proxy in front of the destination that gave up
+waiting for it. ClickHouse ignores the repeated batch
 when the table deduplicates inserts, as the table above does. Loki usually
 drops a line that repeats the stream, timestamp and text of one it holds,
 but does not promise to. Loki can also answer 400 for a batch of which it

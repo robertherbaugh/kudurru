@@ -5,10 +5,14 @@
 // host knows.
 //
 //   - Stored: a 2xx answer.
-//   - Not stored, may be sent again (querylog.Retryable): no connection was
+//   - May be sent again (querylog.Retryable): no connection was
 //     established, so nothing was sent; or the destination answered 408, 429
-//     or 5xx. A 401 or 403 is in this group once, when reading the
-//     credential reference again returned a different value.
+//     or 5xx. A 5xx is not proof that nothing was stored (a gateway's 502 or
+//     504, a ClickHouse insert that failed part way); the repeat is accepted
+//     because the documented ClickHouse table and Loki drop the duplicate,
+//     and attempts: 1 turns it off. A 401 or 403 is in this group once,
+//     when reading the credential reference again returned a different
+//     value.
 //   - Dropped: every other answer, and a request that was sent and got no
 //     answer. Whether that batch was stored is unknown, and an unknown
 //     outcome is never sent twice.

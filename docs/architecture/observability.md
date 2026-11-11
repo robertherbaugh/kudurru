@@ -158,7 +158,7 @@ waiting. Everything behind that offer belongs to the one sink
 | `queueSize` | 10 000 events | memory; when the queue is full the event is dropped for this sink only and counted |
 | `batchSize`, `flushInterval` | 1000 events, 1 s | one write per batch or interval, whichever comes first |
 | `timeout` | 10 s | opening the destination and each write attempt |
-| `attempts`, `retryBackoff` | 3, 1 s doubling to 30 s | how often one batch is written when the destination says it was not stored and may be sent again |
+| `attempts`, `retryBackoff` | 3, 1 s doubling to 30 s | how often one batch is written when nothing was sent or the destination says it may be sent again |
 
 A slow, stalled or failing sink therefore cannot delay a DNS answer, the
 SQLite commit or the live tail: the query path only ever does the
@@ -256,7 +256,7 @@ flowchart LR
     LKB --> POST
     CRED["credential reference<br/>file / env: node grants<br/>secretRef: labeled Secret in<br/>the server's namespace"] -.->|"read at open and<br/>after a 401 or 403"| POST
     POST -->|"2xx"| OK["stored: kudurru_sink_sent_total"]
-    POST -->|"no connection, or<br/>408, 429, 5xx"| RETRY["not stored: querylog.Retryable<br/>(Retry-After honored)"]
+    POST -->|"no connection, or<br/>408, 429, 5xx"| RETRY["may be sent again: querylog.Retryable<br/>(Retry-After honored)"]
     POST -->|"any other answer, or<br/>sent without an answer"| DROPPED["dropped and counted,<br/>never sent twice"]
     RETRY -->|"within attempts"| POST
 ```
@@ -273,9 +273,15 @@ metadata.
 Each batch uses its own connection. That makes the two failure classes
 exact: an error before the connection exists means nothing was sent, and
 every later error without an answer means the outcome is unknown. Only the
-first is repeated. An answer of 408, 429 or 5xx is the destination saying
-"not stored" and is repeated within the attempt budget; every other answer
-drops the batch. Errors name the destination, the status and, for
+first is repeated. A body of 64 KiB or more is sent with
+`Expect: 100-continue` (waiting at most 2 s for the interim answer), so a
+destination that refuses a request at its headers and closes the
+connection is heard instead of resetting it under the body. An answer of
+408, 429 or 5xx is repeated within the attempt budget: the destination
+says that it did not store the batch, or (a 5xx from a gateway, a
+ClickHouse insert that failed half way) does not know, and the documented
+ClickHouse table and Loki drop the duplicate a repeat can then make. Every
+other answer drops the batch. Errors name the destination, the status and, for
 ClickHouse, the numeric exception code. They never repeat a response body,
 which can quote rows.
 
