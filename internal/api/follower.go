@@ -159,6 +159,7 @@ var followerOperations = map[string]FollowerClass{
 	"checkIntegration":        FollowerPrimary,
 	"previewIntegration":      FollowerPrimary,
 	"syncIntegration":         FollowerPrimary,
+	"releaseIntegration":      FollowerPrimary,
 	"invokeIntegrationAction": FollowerPrimary,
 	// Imports and migrations. The two previews write nothing, but each plans
 	// the apply that only the primary runs: the decommission preview's

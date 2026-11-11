@@ -51,10 +51,14 @@ func TestServingWriterEndsWhenAlwaysOnRuntimeStopsFirst(t *testing.T) {
 	runJoined := false
 	defer func() {
 		stopWriter()
-		<-joined
+		if err := <-joined; err != nil {
+			t.Logf("fixture writer ended: %v", err)
+		}
 		stopAlwaysOn()
 		if !runJoined {
-			<-runDone
+			if err := <-runDone; err != nil {
+				t.Logf("fixture runtime ended: %v", err)
+			}
 		}
 	}()
 	awaitServingRuntime(t, s, func() bool { return servingFixtureWriterReady(s) })
