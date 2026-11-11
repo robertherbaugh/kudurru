@@ -1163,7 +1163,12 @@ audit fields; neither peer claims nor raw proof enter audit metadata. The sender
 must resolve relative timers before dispatch: the receiver accepts only a required
 blocking Boolean and an optional absolute whole-second deadline, so delay cannot
 restart a timer. It validates current effective configuration and stages the
-canonical status and dedup result in the same concrete transaction.
+canonical status and dedup result in the same concrete transaction. A command
+whose `Kudurru/default` version is no longer current is a retained `409
+conflict` outcome, as for a forwarded settings patch, which the follower relays
+with its key; the follower answers a command it could not send, or whose
+exchange failed, with the same `unavailable` and `completion_unknown` answers
+as a forwarded object write.
 
 The handler retains the original running writer, provider/host exclusions and
 verified credential lifetime through one Store-admitted HTTP response, which

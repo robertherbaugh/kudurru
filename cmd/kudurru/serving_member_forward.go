@@ -131,7 +131,9 @@ func (h *servingHTTP) forwardBlocking(w http.ResponseWriter, r *http.Request, to
 	if err != nil {
 		return err
 	}
-	return s.withMemberForward(r.Context(), view, raw, blockingToggleAttrs, func(ctx context.Context, principal auth.Principal, lifetime *servingauth.CredentialLifetime, current func(context.Context) error) error {
+	var refusal *api.Error
+	sent := false
+	err = s.withMemberForward(r.Context(), view, raw, blockingToggleAttrs, func(ctx context.Context, principal auth.Principal, lifetime *servingauth.CredentialLifetime, current func(context.Context) error) error {
 		proof, err := clusterreplica.NewCredentialProof(raw)
 		if err != nil {
 			return err
@@ -150,9 +152,24 @@ func (h *servingHTTP) forwardBlocking(w http.ResponseWriter, r *http.Request, to
 			ExpectedTerm: request.OriginalTerm(), Hops: 1, IssuedAt: issued, NotAfter: deadline, Operation: memberBlockingToggle,
 			Subject:    clusterreplica.SubjectRef{Kind: principal.Kind, ID: principal.ID, Provider: principal.Provider, CredentialKind: kind, CredentialID: reference, IssuedAt: principal.CredentialIssuedAt},
 			Credential: proof, Preconditions: []clusterreplica.Precondition{{Kind: "Kudurru", Name: "default", ResourceVersion: settings.ResourceVersion}}, Payload: payload}
-		_, err = s.memberForward.Forward(ctx, request, command, func(scope context.Context, out clusterreplica.Outcome) error {
+		received, err := s.memberForward.Forward(ctx, request, command, func(scope context.Context, out clusterreplica.Outcome) error {
+			if out.Status != http.StatusOK {
+				// A clean refusal of the primary (a stale settings view, an
+				// invalid change) is relayed with its own status and key,
+				// under the same current check as a forwarded object write.
+				if err := current(scope); err != nil {
+					return err
+				}
+				var relayed api.Error
+				if out.Status < 400 || out.Status >= 500 || json.Unmarshal(out.Body, &relayed) != nil || relayed.Body.Key == "" {
+					return clusterreplica.ErrProtocol
+				}
+				relayed.Status = out.Status
+				refusal = &relayed
+				return nil
+			}
 			var receipt blockingReceipt
-			if out.Status != http.StatusOK || decodeReviewedCommandJSON(out.Body, &receipt, "invalid primary command receipt") != nil ||
+			if decodeReviewedCommandJSON(out.Body, &receipt, "invalid primary command receipt") != nil ||
 				!receipt.Committed || receipt.Publication != "pending" || receipt.SettingsUID != string(settings.UID) || receipt.ResourceVersion == "" ||
 				receipt.Disabled != status.Disabled || (receipt.DisabledUntil == nil) != (status.DisabledUntil == nil) {
 				return clusterreplica.ErrProtocol
@@ -168,11 +185,25 @@ func (h *servingHTTP) forwardBlocking(w http.ResponseWriter, r *http.Request, to
 				return emitForwardedBlocking(output, bounded, request, encoded, started, current)
 			})
 		})
-		if err != nil {
-			return errors.Join(clusterreplica.ErrUnavailable, err)
-		}
-		return nil
+		sent = received
+		return err
 	})
+	switch {
+	case err != nil && *started:
+		// The 202 was already being written: the connection is aborted.
+		return err
+	case err != nil && !sent && errors.Is(err, servingauth.ErrCredentials):
+		// The follower's own view no longer accepts the credential.
+		return currentCommandAPIError(err)
+	case err != nil:
+		// The same answers as a forwarded object write: a clean refusal, a
+		// command that was never sent, or an exchange whose outcome is
+		// unknown. Nothing is retried.
+		return objectForwardError(err, sent)
+	case refusal != nil:
+		return refusal
+	}
+	return nil
 }
 
 // The real order is publication -> resources -> host/auth keys -> DNS keys ->

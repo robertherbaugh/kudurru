@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/cluster/enrollment"
 	"github.com/robertherbaugh/kudurru/internal/cluster/enrollment/accepted"
 	"github.com/robertherbaugh/kudurru/internal/cluster/enrollment/persistence"
@@ -215,7 +216,37 @@ func TestRootMemberBlockingCommandActualHTTP(t *testing.T) {
 			if json.Unmarshal(again, &replay) != nil || json.Unmarshal(replay.Body, &retained) != nil || replay.Status != outcome.Status || !reflect.DeepEqual(retained, receipt) {
 				t.Fatal("retained outcome changed actual command receipt")
 			}
-			for _, mode := range []string{"stale-version", "unknown-operation", "relative-timer", "missing-intent", "forged-reference", "invalid-raw"} {
+			if replayed, err := f.s.opts.Store.ReadGeneration(t.Context()); err != nil || !replayed.Generation().Same(image.Generation()) {
+				t.Fatal("exact replay changed state", err)
+			}
+			// A command whose settings version is no longer current (the
+			// original's version, consumed by its own commit) is a clean
+			// refusal: a retained 409 outcome that the follower relays (D368).
+			// Retaining it stores only its dedup record; the settings stay
+			// unchanged, and an exact replay returns the same refusal.
+			stale := command
+			stale.ID = "stale-version"
+			for attempt := range 2 {
+				response, body, err := send(stale)
+				var outcome clusterreplica.Outcome
+				var relayed api.Error
+				if err != nil || response.StatusCode != http.StatusOK || json.Unmarshal(body, &outcome) != nil ||
+					outcome.Status != http.StatusConflict || json.Unmarshal(outcome.Body, &relayed) != nil || relayed.Body.Key != api.KeyConflict {
+					t.Fatal("stale settings version was not a retained conflict", attempt, err)
+				}
+				var unchanged public.Kudurru
+				if err := f.s.opts.Store.Get(t.Context(), store.Key{Kind: "Kudurru", Name: "default"}, &unchanged); err != nil ||
+					unchanged.ResourceVersion != settings.ResourceVersion || !reflect.DeepEqual(unchanged.Status.Blocking, settings.Status.Blocking) {
+					t.Fatal("a stale blocking command changed the settings", attempt, err)
+				}
+			}
+			// Every other refusal below is checked against this generation:
+			// none of them may store anything, not even a dedup record.
+			image, err = f.s.opts.Store.ReadGeneration(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, mode := range []string{"unknown-operation", "relative-timer", "missing-intent", "forged-reference", "invalid-raw"} {
 				t.Run(mode, func(t *testing.T) {
 					bad := command
 					bad.ID = mode

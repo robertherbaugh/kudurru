@@ -123,6 +123,14 @@ The dashboard and CLI distinguish the receipt from that observation. There are
 no automatic retries or redirects. A lost or expired response does not prove
 rollback; inspect state before deciding on another mutation.
 
+When the cluster settings changed on the primary after the follower's last
+pull, the primary refuses the switch and the follower relays that answer:
+`409 conflict`, and the blocking state is not changed. Read the state again and
+repeat the switch if it is still wanted. A switch that the follower could not
+send answers `503 unavailable` and says that nothing was applied; one whose
+exchange failed answers `503 completion_unknown`, because the primary may have
+committed it.
+
 Canonical object writes are forwarded the same way for DNS zones, record sets,
 block lists, client groups and policies: `POST`, `PUT` and `DELETE` under
 `/api/v1/objects/`, `POST /api/v1/apply` (`kudurru apply`), the `POST`, `PUT`

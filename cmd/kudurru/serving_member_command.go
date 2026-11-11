@@ -193,7 +193,12 @@ func (d *rootMemberBlockingDomain) Execute(ctx context.Context, tx clusterreplic
 		return clusterreplica.Outcome{}, err
 	}
 	if settings.ResourceVersion != command.Preconditions[0].ResourceVersion {
-		return clusterreplica.Outcome{}, replication.ErrCAS
+		// The follower's view is older than the settings it would change. A
+		// clean, retained refusal, as for a forwarded settings patch (D368):
+		// the follower relays it instead of an unexplained 503.
+		return retainedRefusal(&api.Error{Status: http.StatusConflict, Body: api.ErrorBody{Key: api.KeyConflict,
+			Message: "the cluster settings changed since this follower's view; the blocking state was not changed",
+			Hint:    "read the blocking state again and repeat the change if it is still wanted"}})
 	}
 	document, err := servingSettingsDocument(settings)
 	if err != nil {
