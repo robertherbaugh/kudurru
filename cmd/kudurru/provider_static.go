@@ -78,6 +78,12 @@ type providerStaticOptions struct {
 	Secret    func(context.Context, string, string, string) ([]byte, error)
 }
 
+// loadProviderPermissions loads the permission table the serving auth view
+// authorizes against: the embedded permissions.yaml. Tests replace it to
+// add a role the built-in table does not have (for example settings.write
+// without querylog.raw).
+var loadProviderPermissions = rbac.LoadPermissions
+
 // loadProviderStatic performs startup/preparation I/O before any publication or
 // command gate. The caller passes the result to providerhost.PrepareStatic and
 // retains LocalProviders as the complete primary config reconciliation manifest.
@@ -110,7 +116,7 @@ func loadProviderStatic(ctx context.Context, o providerStaticOptions) (providerh
 		return providerhost.StaticInput{}, providerhost.ErrStale
 	}
 	material := cut.Value()
-	permissions, err := rbac.LoadPermissions()
+	permissions, err := loadProviderPermissions()
 	if err != nil {
 		return providerhost.StaticInput{}, err
 	}
