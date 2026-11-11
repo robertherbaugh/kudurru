@@ -245,6 +245,15 @@ func primaryStatusProjection(desired *public.DNSZone, owner *RuntimeOwner, o pr.
 	status := desired.DeepCopy().Status
 	status.ObservedGeneration = desired.Generation
 	status.Serial, status.ContentHash, status.RecordCount = 0, "", 0
+	if !exists || o.HeadResourceVersion == "" {
+		// No head is committed for the zone yet. The serial and content
+		// hash in its status are then those an earlier release stamped
+		// (0.1.0), which the first commit continues when the content is
+		// the same (primaryzone.Compiler). The placeholder keeps them
+		// instead of erasing them before that commit reads them; it claims
+		// no records and no readiness (D373).
+		status.Serial, status.ContentHash = desired.Status.Serial, desired.Status.ContentHash
+	}
 	apex, err := dynamicupdate.CanonicalName(desired.Spec.ZoneName)
 	token, tokenErr := primaryzone.SourceToken(desired)
 	aligned := exists && err == nil && tokenErr == nil && o.Member.Zone.ObjectName == desired.Name && o.Member.Zone.UID == string(desired.UID) && o.Member.Zone.Apex == apex && o.Member.Type == public.ZoneTypePrimary && o.ConfigMatchesDesired && o.HeadResourceVersion != "" && o.CommittedSource.UID == token.UID && o.CommittedSource.IntentDigest == token.IntentDigest

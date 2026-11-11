@@ -114,3 +114,66 @@ func TestPrimaryStatusMismatchedCachedObjectCannotBorrowNewLease(t *testing.T) {
 		t.Fatal("old UID changed durable status", err)
 	}
 }
+
+// A primary zone without a committed head keeps the serial and content hash
+// an earlier release stamped in its status: the first commit continues that
+// serial when the content is the same (primaryzone.Compiler), and a
+// placeholder written before it must not erase them. 0.1.0 directories lost
+// their zone serials on some upgrades when this status write won the race
+// (D373). The placeholder still claims no records and no readiness.
+func TestPrimaryStatusPlaceholderKeepsTheSerialOfAnEarlierRelease(t *testing.T) {
+	keys, err := dnsserver.NewStaticKeyring()
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := NewKeyringOwner(keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := newFixtureWithKeyrings(t, owner)
+	status, err := NewPrimaryStatus(PrimaryStatusOptions{Store: f.store, Publisher: f.pub, Pin: owner.PrimaryPin(f.pub), Now: func() time.Time { return f.now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := f.store.WriterToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := sqlite.WithWriterToken(t.Context(), token)
+	read := func() *public.DNSZone {
+		t.Helper()
+		var z public.DNSZone
+		if err := f.store.Get(ctx, store.Key{Kind: "DNSZone", Name: "uncommitted"}, &z); err != nil {
+			t.Fatal(err)
+		}
+		return &z
+	}
+	// What 0.1.0 stamped.
+	z := read()
+	z.Status.Serial, z.Status.ContentHash, z.Status.RecordCount = 1794376393, "sha256:5429400000000000000000000000000000000000000000000000000000000000", 3
+	if err := f.store.UpdateStatus(ctx, z); err != nil {
+		t.Fatal(err)
+	}
+	f.waitCurrent(t)
+	var wrote bool
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		var retry time.Duration
+		if wrote, retry, err = status.Reconcile(ctx, read()); err != nil {
+			t.Fatal(err)
+		}
+		if wrote || retry <= 0 || time.Now().After(deadline) {
+			break
+		}
+	}
+	if !wrote {
+		t.Fatal("placeholder status not written")
+	}
+	z = read()
+	ready := meta.FindStatusCondition(z.Status.Conditions, public.ConditionReady)
+	if ready == nil || ready.Reason != "AwaitingCommittedPrimary" || ready.Status != "False" || z.Status.RecordCount != 0 {
+		t.Fatal("placeholder claimed data", z.Status)
+	}
+	if z.Status.Serial != 1794376393 || z.Status.ContentHash != "sha256:5429400000000000000000000000000000000000000000000000000000000000" {
+		t.Fatalf("placeholder erased the serial of the earlier release: %d %q", z.Status.Serial, z.Status.ContentHash)
+	}
+}
