@@ -773,17 +773,22 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		awaitDNS(primary, "seed", "", dns.RcodeNameError)
 		// The write that the fenced former primary refused exists on neither
 		// node. The answer is waited for, and every answer that differs is
-		// logged as it was received: right after the forwarded settings patch
-		// above, a one-shot check on the new primary failed once (HA-OPEN
-		// e2e03, e2e05) and the next answers were authoritative NXDOMAIN. An
-		// applied record would answer NOERROR and never converge.
+		// logged as it was received. Right after the forwarded settings patch
+		// above, the new primary republishes, and a UDP query whose answer was
+		// resolved from the generation that the republication replaced gets
+		// no answer: the guarded emission refuses the write ("write failed",
+		// "serving: dependency changed", proto=udp, at debug level) and UDP
+		// sends nothing, so the client times out after 3 seconds (HA-OPEN
+		// e2e03, e2e06, fix-03, fix-05). That is a DNS-path follow-up, not
+		// what this check asserts. An applied record would answer NOERROR and
+		// never converge.
 		for _, node := range []*kudurrutest.Node{primary, follower} {
 			if !kudurrutest.Eventually(20*time.Second, 50*time.Millisecond, func() bool {
 				for _, tcp := range []bool{false, true} {
 					answer, err := exchange(node.Ports.DNS, "refused-fenced.e2e.test.", dns.TypeA, tcp)
 					switch {
 					case err != nil:
-						t.Logf("refused-fenced on %s (tcp=%t): %v", node.Name, tcp, err)
+						t.Logf("refused-fenced on %s (tcp=%t) at %s: %v", node.Name, tcp, time.Now().Format(time.RFC3339Nano), err)
 						return false
 					case answer.Rcode != dns.RcodeNameError || firstA(answer) != "" || !answer.Authoritative:
 						t.Logf("refused-fenced on %s (tcp=%t): rcode=%s aa=%t a=%q", node.Name, tcp, dns.RcodeToString[answer.Rcode], answer.Authoritative, firstA(answer))
