@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -168,6 +169,39 @@ func enrolledFollowerUpdates(t *testing.T, primary, follower *kudurrutest.Node, 
 		if !enrolledDynAnswer(node, prereq, dns.TypeA, "", dns.RcodeNameError) || !enrolledDynAnswer(node, ungranted, dns.TypeTXT, "", dns.RcodeNameError) {
 			t.Fatal("a refused forwarded UPDATE was applied", node.Name)
 		}
+	}
+	enrolledFollowerBurst(t, primary, follower, secret, name, ip)
+}
+
+// enrolledFollowerBurst sends committing UPDATEs to the follower back to
+// back, as a DHCP server does, without waiting for the follower to install
+// each commit. Every answer is NOERROR or SERVFAIL (a forward refused before
+// sending because the follower's source changed under the request); the
+// count of each is logged so the ledger can record what this sequence shows.
+// Every NOERROR is served by both nodes.
+func enrolledFollowerBurst(t *testing.T, primary, follower *kudurrutest.Node, secret, name, ip string) {
+	t.Helper()
+	const burst = 8
+	var applied, failed []string
+	for i := range burst {
+		owner := fmt.Sprintf("%s-burst%d.dyn.test.", name, i)
+		answer, err := enrolledSendUpdate(t, follower.Ports.DNS, secret, false, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(owner, ip)}) })
+		switch {
+		case err != nil:
+			t.Fatal("burst UPDATE exchange failed", follower.Name, owner, err)
+		case answer.Rcode == dns.RcodeSuccess:
+			applied = append(applied, owner)
+		case answer.Rcode == dns.RcodeServerFailure:
+			failed = append(failed, owner)
+			t.Logf("burst UPDATE on %s at %s: SERVFAIL (%s)", follower.Name, time.Now().Format(time.RFC3339Nano), owner)
+		default:
+			t.Fatalf("burst UPDATE on %s answered %s (%s)", follower.Name, dns.RcodeToString[answer.Rcode], owner)
+		}
+	}
+	t.Logf("burst of %d UPDATEs on %s: %d NOERROR, %d SERVFAIL", burst, follower.Name, len(applied), len(failed))
+	for _, owner := range applied {
+		enrolledAwaitDyn(t, primary, owner, ip, dns.RcodeSuccess)
+		enrolledAwaitDyn(t, follower, owner, ip, dns.RcodeSuccess)
 	}
 }
 
