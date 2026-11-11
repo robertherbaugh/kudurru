@@ -3,6 +3,8 @@ package servingbuild
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -342,6 +344,13 @@ func TestMissingBodyRetainsWholeBundleAndGatesHTTP(t *testing.T) {
 		if _, err := tx.Apply(ctx, settings("192.0.2.22"), store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
 			return err
 		}
+		// This node holds a body for the source under another digest
+		// (a refresh it downloaded or pulled before the new digest was
+		// published): the published body is missing, and the candidate
+		// waits for it rather than serve a body nobody published.
+		if _, _, err := f.builder.opts.Lists.Put("https://lists.example/missing", strings.NewReader("other.example\n"), listfetcher.PutOptions{MaxSize: 1024}); err != nil {
+			return err
+		}
 		stored, err := tx.Apply(ctx, &public.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "missing", Namespace: "default"}, Spec: public.BlockListSpec{Mode: "block", Sources: []public.ListSource{{Name: "url", URL: "https://lists.example/missing"}}}}, store.ApplyOptions{Manager: store.ManagerSystem})
 		if err != nil {
 			return err
@@ -445,4 +454,53 @@ func TestUndownloadedSourceDoesNotHoldBackTheCandidate(t *testing.T) {
 	}
 	lease.Release()
 	wantIP(t, query(t, f.chain, nil, "blocked.example."), "192.0.2.22")
+}
+
+// TestPublishedDigestWithoutLocalBodyServesEmptyUntilTheBodyArrives: a
+// list whose digest is published but whose body this node does not hold
+// for the source as configured (a lost cache, a changed URL, a follower
+// that has not pulled yet) is compiled empty instead of holding back the
+// candidate, and the generation is prepared again, with the body, once the
+// body is stored (DiskCache.OnAwaitedBody wired to the publisher's Wake as
+// the serving runtime wires it, D373).
+func TestPublishedDigestWithoutLocalBodyServesEmptyUntilTheBodyArrives(t *testing.T) {
+	f := newFixture(t)
+	lists := f.builder.opts.Lists
+	lists.OnAwaitedBody(f.pub.Wake)
+	t.Cleanup(func() { lists.OnAwaitedBody(nil) })
+	const url = "https://lists.example/late"
+	body := "late.example\n"
+	digest := sha256.Sum256([]byte(body))
+	f.command(t, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		if _, err := tx.Apply(ctx, settings("192.0.2.22"), store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
+			return err
+		}
+		stored, err := tx.Apply(ctx, &public.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "deny", Namespace: "default"}, Spec: public.BlockListSpec{Mode: "block", Sources: []public.ListSource{{Name: "url", URL: url}}}}, store.ApplyOptions{Manager: store.ManagerSystem})
+		if err != nil {
+			return err
+		}
+		list := stored.(*public.BlockList)
+		list.Status.Sources = []public.SourceStatus{{Name: "url", Digest: hex.EncodeToString(digest[:])}}
+		return tx.UpdateStatus(ctx, list)
+	})
+	f.waitCurrent(t)
+	blocked := func() bool {
+		r := query(t, f.chain, nil, "late.example.")
+		if r == nil || r.Msg == nil || len(r.Msg.Answer) != 1 {
+			return false
+		}
+		a, ok := r.Msg.Answer[0].(*dns.A)
+		return ok && a.A.String() == "192.0.2.22"
+	}
+	if blocked() {
+		t.Fatal("a body this node does not hold was served")
+	}
+	if _, _, err := lists.Put(url, strings.NewReader(body), listfetcher.PutOptions{MaxSize: 1024}); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); !blocked(); time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the stored body was not served: the generation was not prepared again")
+		}
+	}
 }

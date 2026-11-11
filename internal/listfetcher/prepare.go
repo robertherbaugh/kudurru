@@ -204,8 +204,21 @@ func compileComplete(ctx context.Context, pl plannedList, opts CompleteOptions, 
 			} else {
 				fp.add(ps.name, "pending")
 			}
+		case isHexName(ps.status.Digest) && strings.ToLower(ps.status.Digest) == ps.status.Digest && opts.Cache.AwaitBody(ps.key):
+			// A digest is published, but this node holds no body for the
+			// source as it is configured now: its first download here has
+			// not finished (a cache lost or never filled, a URL changed
+			// after the last download, a follower that has not pulled the
+			// body yet). The source contributes nothing until the body is
+			// stored, which wakes the serving publisher to prepare again
+			// (DiskCache.AwaitBody). Waiting for the body instead would
+			// publish no serving generation at all for as long as the URL
+			// stays unreachable or silent (D373). A body this node holds
+			// under another digest (a refresh not yet published) still
+			// holds back the candidate below.
+			fp.add(ps.name, "awaiting", ps.status.Digest)
 		default:
-			if ps.status == nil || !isHexName(ps.status.Digest) || strings.ToLower(ps.status.Digest) != ps.status.Digest {
+			if !isHexName(ps.status.Digest) || strings.ToLower(ps.status.Digest) != ps.status.Digest {
 				return nil, "", ErrIncomplete
 			}
 			file, entry, err := opts.Cache.Open(ps.key)

@@ -54,11 +54,36 @@ func TestPrepareCompletePinsPublishedDigestsWithoutPartialFallback(t *testing.T)
 	if first.Identity == second.Identity || second.Snapshot.Contains("new.example.test", name)[name] == "" || first.Snapshot.Contains("old.example.test", name)[name] == "" || first.Snapshot.Contains("new.example.test", name)[name] != "" {
 		t.Fatal("compiled generations were mixed")
 	}
+	// A published digest for a source this node holds no body for (here
+	// a URL changed after the download that published the digest): the
+	// source's first download on this node has not finished. It
+	// contributes nothing, no other key's body stands in for it, and the
+	// candidate is not held back; storing its body calls the awaited-body
+	// hook so the preparation runs again (D373).
 	missing := list.DeepCopy()
 	missing.Name = "missing"
 	missing.Spec.Sources[0].URL = "https://lists.example.test/not-cached"
-	if candidate, err := PrepareComplete(t.Context(), []*public.BlockList{list, missing}, opts); err == nil || candidate != nil {
-		t.Fatal("partial list generation accepted")
+	woken := 0
+	cache.OnAwaitedBody(func() { woken++ })
+	candidate, err := PrepareComplete(t.Context(), []*public.BlockList{list, missing}, opts)
+	if err != nil {
+		t.Fatalf("a source without a body on this node held back the candidate: %v", err)
+	}
+	missingName := ListName(missing.Namespace, missing.Name)
+	if candidate.Snapshot.Contains("new.example.test", missingName)[missingName] != "" || candidate.Snapshot.Contains("new.example.test", name)[name] == "" {
+		t.Fatal("another body stood in for a source without one")
+	}
+	if candidate.Identity == second.Identity {
+		t.Fatal("the awaited source left the identity unchanged")
+	}
+	if _, _, err := cache.Put(list.Spec.Sources[0].URL, strings.NewReader("new.example.test\n"), PutOptions{MaxSize: 1024}); err != nil || woken != 0 {
+		t.Fatalf("a body of another key woke the preparation (%d, %v)", woken, err)
+	}
+	if _, _, err := cache.Put(missing.Spec.Sources[0].URL, strings.NewReader("late.example.test\n"), PutOptions{MaxSize: 1024}); err != nil || woken != 1 {
+		t.Fatalf("the awaited body did not wake the preparation once (%d, %v)", woken, err)
+	}
+	if _, _, err := cache.Put(missing.Spec.Sources[0].URL, strings.NewReader("later.example.test\n"), PutOptions{MaxSize: 1024}); err != nil || woken != 1 {
+		t.Fatalf("a body no preparation awaited woke it (%d, %v)", woken, err)
 	}
 	for _, digest := range []string{strings.Repeat("a", 64), strings.ToUpper(entry.Digest)} {
 		list.Status.Sources[0].Digest = digest
@@ -69,7 +94,7 @@ func TestPrepareCompletePinsPublishedDigestsWithoutPartialFallback(t *testing.T)
 	// Without a published digest no body was ever published for the
 	// source: it compiles empty and never from the cache (D373).
 	list.Status.Sources[0].Digest = ""
-	candidate, err := PrepareComplete(t.Context(), []*public.BlockList{list}, opts)
+	candidate, err = PrepareComplete(t.Context(), []*public.BlockList{list}, opts)
 	if err != nil {
 		t.Fatal(err)
 	}

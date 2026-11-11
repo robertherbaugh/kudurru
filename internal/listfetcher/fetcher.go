@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -104,6 +103,14 @@ type Fetcher struct {
 	stats   map[string]listStats    // by list name
 	metered map[string]bool
 	forced  map[string]bool // cache keys RefreshNow asked for
+
+	// inflight are cache keys whose download runs; a later pass skips
+	// them. slots bounds concurrent downloads across passes; publishing
+	// serializes status writes.
+	inflight   map[string]bool
+	slots      chan struct{}
+	publishing sync.Mutex
+	workers    sync.WaitGroup
 
 	kick    chan struct{}
 	refresh atomic.Int64 // default interval; each pass pins one value
@@ -201,6 +208,7 @@ func New(opts Options) (*Fetcher, error) {
 		opts: opts, log: opts.Logger.With("component", "listfetcher"), m: m,
 		state: map[string]*sourceState{}, stats: map[string]listStats{}, metered: map[string]bool{},
 		forced: map[string]bool{}, kick: make(chan struct{}, 1),
+		inflight: map[string]bool{}, slots: make(chan struct{}, opts.Concurrency),
 	}
 	f.refresh.Store(int64(opts.RefreshInterval))
 	return f, nil
@@ -223,8 +231,10 @@ func (f *Fetcher) Run(ctx context.Context) error {
 	case <-f.opts.Objects.Initialized():
 	}
 	changes := f.opts.Objects.Subscribe()
+	// Downloads may outlive the pass that started them; Run joins them.
+	defer f.workers.Wait()
 	for {
-		next := f.Reconcile(ctx)
+		next := f.reconcile(ctx, changes)
 		wait := max(next.Sub(f.opts.Now()), time.Second)
 		t := time.NewTimer(wait)
 		select {
@@ -251,7 +261,20 @@ type keyPlan struct {
 // concurrency), then publish the owned status fields of every list whose
 // view changed. It returns when the next source is due.
 func (f *Fetcher) Reconcile(ctx context.Context) time.Time {
+	return f.reconcile(ctx, nil)
+}
+
+// reconcile is Reconcile. When yield receives (a BlockList changed) or the
+// Fetcher is kicked while downloads of this pass still run, it returns at
+// once for a new pass: the downloads go on, publish their lists when they
+// end and are skipped by later passes until then, so a URL that never
+// answers does not keep a list added or changed meanwhile from its first
+// download (D373).
+func (f *Fetcher) reconcile(ctx context.Context, yield <-chan struct{}) time.Time {
 	now := f.opts.Now()
+	if ctx.Err() != nil {
+		return now
+	}
 	refresh := time.Duration(f.refresh.Load())
 	next := now.Add(maxIdle)
 	var plans []plannedList
@@ -282,6 +305,12 @@ func (f *Fetcher) Reconcile(ctx context.Context) time.Time {
 	var due []string
 	for _, key := range order {
 		kp := keys[key]
+		f.mu.Lock()
+		running := f.inflight[key]
+		f.mu.Unlock()
+		if running {
+			continue
+		}
 		at := f.dueAt(key, kp, now)
 		if !at.After(now) {
 			due = append(due, key)
@@ -291,16 +320,65 @@ func (f *Fetcher) Reconcile(ctx context.Context) time.Time {
 	}
 
 	if len(due) > 0 {
-		g, gctx := errgroup.WithContext(ctx)
-		g.SetLimit(f.opts.Concurrency)
+		// The status of the lists of a source is published as soon as its
+		// download ends, not when the whole pass ends: a URL that accepts
+		// the connection and never answers holds its own attempt for the
+		// HTTP timeout, but not the published bodies of every other list
+		// (D373). The pass still publishes every list at its end.
+		index := map[string]int{}
+		for i := range plans {
+			index[plans[i].name] = i
+		}
+		finished := make(chan struct{}, len(due))
 		for _, key := range due {
 			kp := keys[key]
-			g.Go(func() error {
-				f.fetch(gctx, kp)
-				return nil
-			})
+			f.mu.Lock()
+			f.inflight[key] = true
+			f.mu.Unlock()
+			f.workers.Add(1)
+			go func() {
+				defer f.workers.Done()
+				defer func() {
+					f.mu.Lock()
+					delete(f.inflight, key)
+					f.mu.Unlock()
+					finished <- struct{}{}
+					select {
+					case f.kick <- struct{}{}:
+					default:
+					}
+				}()
+				select {
+				case f.slots <- struct{}{}:
+				case <-ctx.Done():
+					return
+				}
+				f.fetch(ctx, kp)
+				<-f.slots
+				if ctx.Err() != nil {
+					return
+				}
+				f.publishing.Lock()
+				defer f.publishing.Unlock()
+				for _, name := range kp.lists {
+					if i, ok := index[name]; ok {
+						if err := f.publish(ctx, &plans[i]); err != nil && ctx.Err() == nil {
+							f.log.Warn("listfetcher: status write failed", "list", name, "err", err)
+						}
+					}
+				}
+			}()
 		}
-		_ = g.Wait()
+		for range due {
+			select {
+			case <-finished:
+				continue
+			case <-ctx.Done():
+			case <-yield:
+				return now
+			}
+			break
+		}
 		if ctx.Err() != nil {
 			return next
 		}
@@ -312,6 +390,8 @@ func (f *Fetcher) Reconcile(ctx context.Context) time.Time {
 	}
 
 	seen := map[string]bool{}
+	f.publishing.Lock()
+	defer f.publishing.Unlock()
 	for i := range plans {
 		seen[plans[i].name] = true
 		if err := f.publish(ctx, &plans[i]); err != nil && ctx.Err() == nil {

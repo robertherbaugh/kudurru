@@ -231,6 +231,10 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	if err != nil {
 		return nil, err
 	}
+	// A list source compiled empty because this node holds no body for it
+	// yet prepares again once the body is stored (listfetcher.AwaitBody,
+	// D373). Wake is buffered and never blocks.
+	o.Lists.OnAwaitedBody(s.publisher.Wake)
 	s.host, err = providerhost.New(providerhost.Options{Store: o.Store, Publisher: s.publisher, Resources: s.resources, License: o.License, Schema: authSchema, Static: prepared, Now: o.Now, PinAuthKeys: o.AuthKeys.withCurrent, Withdraw: func(ctx context.Context, tx *sqlite.CommandTx, at time.Time) error {
 		return security.AcceptProviderAuthorities(ctx, tx, []providerregistry.DesiredAuthority{}, at)
 	}})
@@ -336,6 +340,7 @@ func (s *servingRuntime) Close(ctx context.Context) error {
 		return ctx.Err()
 	case <-done:
 	}
+	s.opts.Lists.OnAwaitedBody(nil)
 	if s.publisher != nil {
 		s.publisher.Close()
 	}
