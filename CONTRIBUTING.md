@@ -59,6 +59,17 @@ a failed batch fails the suite without replaying it or omitting later batches.
 
 The security scans (`.github/workflows/security.yml`, and publish.yml's scan of a release candidate's pushed images, `make trivy-published`) fail on a finding. Fix it, or, for a false positive, add a `// nosemgrep: <rule> -- <reason>` comment above the line or an entry with its reason to `.trivyignore.yaml`.
 
+Two optional targets run tests against real servers in Docker. `make
+test-postgres` runs the central-database tests against PostgreSQL
+(`KUDURRU_TEST_POSTGRES_DSN`). `make test-sinks` runs the `TestLive*` tests
+of `internal/querylog/sinks` against ClickHouse and Loki
+(`CLICKHOUSE_IMAGE` and `LOKI_IMAGE` choose the images). Without Docker,
+point the tests at servers of your own with `KUDURRU_TEST_CLICKHOUSE_URL`
+(and `KUDURRU_TEST_CLICKHOUSE_USER`, `KUDURRU_TEST_CLICKHOUSE_PASSWORD` for
+a user that may create a database) and `KUDURRU_TEST_LOKI_URL`. The tests
+skip when a URL is empty; `KUDURRU_REQUIRE_SINK_SERVERS=1` makes that a
+failure.
+
 Go 1.27 is required. `CGO_ENABLED=0` is a release requirement; do not add cgo dependencies.
 
 ## Branches and releases

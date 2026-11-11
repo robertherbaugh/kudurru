@@ -30,6 +30,7 @@ import (
 // tests are the proof of the sinks' behavior; these check the two things a
 // double cannot: that ClickHouse reads the rows into the documented table,
 // and that Loki accepts the push and serves the documented mapping.
+// `make test-sinks` starts both in Docker and runs these tests.
 //
 //	KUDURRU_TEST_CLICKHOUSE_URL       http://127.0.0.1:8123
 //	KUDURRU_TEST_CLICKHOUSE_USER      user that may create a database (default "default")

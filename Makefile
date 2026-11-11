@@ -18,7 +18,7 @@ GOLANGCI_LINT  ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@
 SETUP_ENVTEST  ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.2
 ENVTEST_K8S_VERSION ?= 1.37.x
 
-.PHONY: test-postgres all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
+.PHONY: test-postgres test-sinks all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest dashboard-install dashboard-build dashboard-test dashboard-lint dashboard-dev dashboard-e2e
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images kind-e2e compose-e2e check-generated-code
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork docker-dhcp hostnetwork-check volume-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
@@ -118,6 +118,22 @@ test-postgres:
 	KUDURRU_TEST_POSTGRES_DSN='postgres://postgres:kudurru@127.0.0.1:55432/postgres?sslmode=disable' KUDURRU_REQUIRE_POSTGRES=1 \
 		go test -count=1 $$(go list ./... | grep -E '/internal/(central|audit|querylog)|/cmd/kudurru'); \
 		status=$$?; docker rm -f kudurru-test-postgres >/dev/null; exit $$status
+
+## test-sinks: the query-log sinks of querylog.sinks (D371) against real
+## ClickHouse and Loki in Docker: the documented table reads the rows and
+## Loki serves the documented mapping. Optional; not run in CI.
+CLICKHOUSE_IMAGE ?= clickhouse/clickhouse-server:25.8
+LOKI_IMAGE ?= grafana/loki:3.7.9
+test-sinks:
+	docker rm -f kudurru-test-clickhouse kudurru-test-loki >/dev/null 2>&1 || true
+	docker run -d --rm --name kudurru-test-clickhouse -e CLICKHOUSE_PASSWORD=kudurru -p 58123:8123 $(CLICKHOUSE_IMAGE) >/dev/null
+	docker run -d --rm --name kudurru-test-loki -p 53100:3100 $(LOKI_IMAGE) >/dev/null
+	until curl -fsS http://127.0.0.1:58123/ping >/dev/null 2>&1; do sleep 1; done
+	until curl -fsS http://127.0.0.1:53100/ready >/dev/null 2>&1; do sleep 1; done
+	KUDURRU_TEST_CLICKHOUSE_URL=http://127.0.0.1:58123 KUDURRU_TEST_CLICKHOUSE_USER=default KUDURRU_TEST_CLICKHOUSE_PASSWORD=kudurru \
+		KUDURRU_TEST_LOKI_URL=http://127.0.0.1:53100 KUDURRU_REQUIRE_SINK_SERVERS=1 \
+		go test -count=1 -run TestLive -v ./internal/querylog/sinks/; \
+		status=$$?; docker rm -f kudurru-test-clickhouse kudurru-test-loki >/dev/null; exit $$status
 
 vet:
 	go vet ./...
