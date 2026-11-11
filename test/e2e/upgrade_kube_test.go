@@ -265,18 +265,23 @@ func upgradeCRDs(t *testing.T, restCfg *rest.Config) {
 		t.Fatalf("%d CRDs in this checkout, want 14", len(names))
 	}
 	for _, name := range names {
+		var last string
 		if !kudurrutest.Eventually(30*time.Second, 100*time.Millisecond, func() bool {
 			var cur apiextensionsv1.CustomResourceDefinition
-			if c.Get(t.Context(), client.ObjectKey{Name: name}, &cur) != nil {
+			if err := c.Get(t.Context(), client.ObjectKey{Name: name}, &cur); err != nil {
+				last = err.Error()
 				return false
 			}
 			established := false
+			var conds []string
 			for _, cond := range cur.Status.Conditions {
 				established = established || cond.Type == apiextensionsv1.Established && cond.Status == apiextensionsv1.ConditionTrue
+				conds = append(conds, fmt.Sprintf("%s=%s (%s: %s)", cond.Type, cond.Status, cond.Reason, cond.Message))
 			}
+			last = fmt.Sprintf("conditions %v, stored versions %v", conds, cur.Status.StoredVersions)
 			return established && slices.Equal(cur.Status.StoredVersions, []string{"v1alpha1"})
 		}) {
-			t.Fatalf("CRD %s is not established with stored versions [v1alpha1] after the upgrade", name)
+			t.Fatalf("CRD %s is not established with stored versions [v1alpha1] after the upgrade: %s", name, last)
 		}
 	}
 }
@@ -287,17 +292,21 @@ func upgradeCRDs(t *testing.T, restCfg *rest.Config) {
 //
 //  1. The 0.1.0 binary (kudurrutest.Previous) runs with the kube driver on
 //     an envtest API server that has the 0.1.0 CRDs. Through its API it
-//     stores a zone and a record set, mints a break-glass and a personal
-//     token (private Secrets) and ships HMAC-sealed AuditLog batches.
+//     stores a zone and a record set, mints break-glass tokens and a
+//     personal token (private Secrets) and ships HMAC-sealed AuditLog
+//     batches.
 //  2. It stops. The CRDs of this release replace the 0.1.0 ones.
 //  3. `kudurru iam migrate status`, `plan` and `begin --offline` move the
-//     private IAM configuration to public objects and report it complete.
+//     private IAM configuration to public objects and report it complete,
+//     with one token unbound: the first break-glass token, issued in the
+//     second 0.1.0 created its service account.
 //  4. `kudurru audit keys init` with the 0.1.0 encryption key as the legacy
 //     master key and a cutoff after the last 0.1.0 batch writes the ring,
 //     which the operator publishes as the kudurru-audit-keys Secret.
 //  5. This release starts on the same data directory with the cluster ID
-//     pinned: it gives the same answers over UDP and TCP, both 0.1.0 tokens
-//     authenticate as the same principal, `kudurru audit verify` accepts the
+//     pinned: it gives the same answers over UDP and TCP, the bound 0.1.0
+//     tokens authenticate as the same principal and the unbound one is
+//     refused, `kudurru audit verify` accepts the
 //     retained trail including the 0.1.0 batches, and a write still works.
 //
 // The final node is the licensed fixture's binary only because
@@ -340,6 +349,16 @@ func TestKubeUpgradeFromV01(t *testing.T) {
 	if log := old.Log(); !strings.Contains(log, "version="+kudurrutest.PreviousRelease) {
 		t.Fatalf("not a %s node:\n%s", kudurrutest.PreviousRelease, log)
 	}
+	// Kubernetes creation timestamps have one-second resolution, and the
+	// migration leaves a UID-less 0.1.0 token issued in the same second as
+	// its account unbound (docs/deploy/iam-upgrade.md). 0.1.0 creates the
+	// break-glass service account in the request that mints the first
+	// break-glass token, so that token is always unbound: it is minted first
+	// and must be refused after the upgrade. The admin user was created
+	// during startup. The tokens that must keep working are issued in a
+	// later second than both accounts.
+	first := adminSocketToken(t, previous, spec, "--description", "first break-glass")
+	time.Sleep(time.Until(time.Now().Truncate(time.Second).Add(time.Second + 100*time.Millisecond)))
 	tokens := map[string]string{
 		"break-glass": adminSocketToken(t, previous, spec, "--description", "break-glass", "--expires-in", "720h"),
 		"personal":    adminSocketToken(t, previous, spec, "--user", "admin", "--description", "personal"),
@@ -377,6 +396,9 @@ func TestKubeUpgradeFromV01(t *testing.T) {
 			strings.HasPrefix(before["txt.kube-upgrade.test. TXT tcp=false"], "NOERROR aa=true [txt")
 	}) {
 		t.Fatalf("%s never served the zone: %v", kudurrutest.PreviousRelease, before)
+	}
+	if got := (upgradeAPI{addr: spec.Ports.API, token: first}).principal(t); !strings.Contains(got, "[admin]") {
+		t.Fatalf("first break-glass token on %s: %s", kudurrutest.PreviousRelease, got)
 	}
 	principals := map[string]string{}
 	for label, token := range tokens {
@@ -431,8 +453,12 @@ func TestKubeUpgradeFromV01(t *testing.T) {
 	}
 	migrate("plan")
 	migrate("begin", "--offline")
-	if status := migrate("status"); status["State"] != "complete" || status["RemoteAllowed"] != true {
+	status := migrate("status")
+	if status["State"] != "complete" || status["RemoteAllowed"] != true {
 		t.Fatalf("iam migrate status after begin: %v", status)
+	}
+	if counts, _ := status["Counts"].(map[string]any); counts["BoundTokens"] != float64(len(tokens)) || counts["UnboundTokens"] != float64(1) {
+		t.Fatalf("iam migrate bound %v and left %v unbound of the %d %s tokens, want %d and 1 (the first break-glass token)", counts["BoundTokens"], counts["UnboundTokens"], len(tokens)+1, kudurrutest.PreviousRelease, len(tokens))
 	}
 
 	// 4. AuditLog trust, with the 0.1.0 key as the legacy master key.
@@ -479,6 +505,9 @@ func TestKubeUpgradeFromV01(t *testing.T) {
 		}) {
 			t.Fatalf("the %s token of %s after the upgrade: %s, was %s", label, kudurrutest.PreviousRelease, got, principals[label])
 		}
+	}
+	if got := (upgradeAPI{addr: spec.Ports.API, token: first}).principal(t); !strings.HasPrefix(got, "401 ") {
+		t.Fatalf("the unbound first break-glass token of %s after the upgrade: %s, want 401", kudurrutest.PreviousRelease, got)
 	}
 	api = upgradeAPI{addr: spec.Ports.API, token: tokens["break-glass"]}
 	record(api, "new.kube-upgrade.test", "A", "192.0.2.30")
