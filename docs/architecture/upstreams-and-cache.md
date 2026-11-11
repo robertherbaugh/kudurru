@@ -640,6 +640,34 @@ independently. A restart restores exactly the same gate from the committed
 carrier. A denial receipt that named a generation above the adopted owner is
 restated at the adopted owner.
 
+##### States that hold a member back, and what ends each
+
+A refused install or resolution changes nothing on the member: owner rows,
+image, carrier, authority, quarantine and the published resolver input stay as
+they were, and anchor admission stays open. The member repeats the pull at
+every interval (a complete image fetch each time) and refuses again until one
+of the following ends the state. None of them clears a carrier, installs a
+branch that lacks a carried key, or replaces managed history with a dormant or
+static owner.
+
+| State | The member answers | What ends it |
+|---|---|---|
+| Fenced; its owner revoked a key that the primary's owner has not revoked | DNS-only from its own branch | The primary's writer records the same REVOKE at its own refresh, then the next pull adopts. Never, if the root has stopped publishing the key (the primary keeps it as Missing, which stays trusted) or if the primary's history never held the key (a REVOKE of an unknown key is not recorded): replace the member |
+| Follower or fenced; its own root check denied a key (pending local denial) | `SERVFAIL` | It installs an owner that revokes every denied key. Promotion does not end it: as the writer it cannot commit an observation that omits the REVOKE, and its own observation of the REVOKE commits the tombstone |
+| Fenced; the recovery records of the two branches disagree (`RetainsRecoveryHistory`) | DNS-only from its own branch | Nothing; a second recovery writes another record. Replace the member |
+| Fenced; it holds managed history and the primary's owner is dormant | DNS-only from its own branch | The primary bootstraps managed anchors from the same seeds; that owner is another branch of the same history and domain and is adopted by term. With other seeds, or a primary that stays static: replace the member |
+| Fenced; another history, policy or seed digest | DNS-only from its own branch | Nothing. Replace the member |
+| Terminal carrier (the bounded denial list is full) | `SERVFAIL` | Nothing. Replace the member |
+| Anchor admission closed for the process: unknown SQL completion, or a verified REVOKE that could not be written because an install replaced the owner it was captured for | `SERVFAIL` | Restart. The committed cut binds again, and the next root check records the REVOKE against it |
+
+Replacing a member is the first-image join of a new receiver (D355). It takes
+the primary's owner and a carrier that denies exactly the keys that owner
+revokes; nothing of the replaced database is transferred. Enrollment refuses an
+invitation for the name or the internal address of an active member, and no
+member revocation is mounted, so the replacement needs its own name and
+address and the replaced member stays in the roster. Operator steps are in
+[docs/deploy/sqlite-join.md](../deploy/sqlite-join.md).
+
 The `resolverstate` projection derives canonical SHA-256 DS records
 only from Valid/Missing keys. Dormant and quarantined histories yield explicit
 states with no fallback keys. Detached domain and owner identities bind history,

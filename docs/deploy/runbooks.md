@@ -59,6 +59,19 @@ retirement and installed edge admission still apply. A successful recovery does
 not credit hold-down time or authorize static fallback. At most 32 recovery records
 are retained; exhaustion refuses further recovery instead of pruning evidence.
 
+## A member with managed root anchors stays fenced or answers SERVFAIL
+
+On an enrolled SQLite cluster with `upstreams.recursion.anchorMode: managed`, a
+member that returns after a promotion or a conflict resolution normally takes
+the current primary's trust-anchor state on its next pull. When it cannot, it
+refuses the primary's data and stays fenced, and it never trusts a revoked root
+key again or falls back to the shipped anchors to get out of that state.
+[A member returns with different trust-anchor state](sqlite-join.md#a-member-returns-with-different-trust-anchor-state)
+says how to recognize such a member with the offline commands, what ends each
+case (the primary's next root-anchor check, managed trust anchors started on the
+primary from the same seeds, a restart, or a replacement receiver), and how to
+replace a member under a new node name and internal address.
+
 ## Add a follower behind managed edges
 
 A SQLite node started with `upstreams.recursion.managedTopology: edges` must

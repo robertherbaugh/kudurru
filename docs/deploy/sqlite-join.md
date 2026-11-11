@@ -379,43 +379,141 @@ trust-anchor state with the rest of that primary's data on its next scheduled
 pull. Its own state is kept with its other discarded rows as private quarantine.
 You do not need to do anything.
 
-Three cases need attention:
+A member that cannot take the primary's trust-anchor state refuses that
+primary's data as a whole, at every pull, before it writes anything. It stays
+fenced. It keeps answering DNS from its own last-good data, with zones and
+records as they were when it last followed and with its own trust anchors, and
+it restarts in that state. Its HTTP API stays closed and it accepts no writes.
+Changes made on the primary after the split do not appear in its answers.
+Nothing a member does in this state restores trust in a revoked root key, and
+no member falls back to the shipped root anchors. The other members and the
+primary are not affected.
+
+#### Recognize a member that refuses the primary's data
+
+kudurru does not report this state directly yet. Use what exists today:
+
+1. The member's HTTP API stays closed (`generation_pending`) long after the
+   other members follow the current primary.
+2. Stop the member and review its durable state. A member in this state is
+   fenced by the current primary's term and holds no image of that term:
+
+   ```sh
+   kudurru cluster resolution --offline --data-dir /var/lib/kudurru
+   ```
+
+   The output has `"mode":"fenced"`, `"reason":"no_conflict"`,
+   `"resolvable":false`, and an `installed.term.epoch` that is lower than
+   `term.epoch`. A member that follows prints `"mode":"follower"` and the same
+   term in both places. Start the member again afterwards: it answers DNS only
+   while it runs.
+3. To narrow the cause, compare the trust-anchor version of the stopped member
+   with the version of a stopped member that follows the primary (or of the
+   primary itself, during a maintenance stop):
+
+   ```sh
+   kudurru anchors status --offline --database /var/lib/kudurru/state.db
+   ```
+
+   - `recoveries` is above 0 on either side: see "The two disagree about
+     `anchors recover` history" below.
+   - The following member prints `version.pure.generation` `"0"`: the primary
+     never started managed trust anchors.
+   - Otherwise the refusing member holds a key revocation that the primary has
+     not recorded. No command lists the keys yet.
+
+#### What ends the state
 
 - **The returning member saw a key revocation that the current primary has not
-  recorded yet.** The member does not trust that key again. It refuses the
-  primary's data, stays fenced and keeps answering DNS from its own last-good
-  data, which already treats the key as revoked. (A member whose own root check
-  saw the revocation while it was a follower already answers `SERVFAIL`, as
-  described above, and keeps doing so.) While it refuses, it takes no later data
-  from the primary: changes made on the primary after the split do not appear
-  in its answers. It follows the primary on its own, on the first scheduled pull
-  after the primary's next root-anchor check records the same revocation. That
-  follows the primary's refresh schedule (at the real root, within about a
-  day). Check that the primary can reach the configured root servers on TCP 53.
-  If the primary can no longer observe that revocation, for example because the
-  root has stopped publishing the revoked key, the member stays fenced and
-  never follows the primary again. No command clears a revocation a member has
-  seen. Your options are to replace the member with a newly joined receiver (a
-  new invitation and a new data directory, as described at the top of this
-  page), which accepts the cluster's trust-anchor state that still trusts the
-  key, or to keep the member out of service. kudurru does not yet report this
-  state directly: recognize it by a member that stays fenced long after the
-  other members follow the current primary, while the primary's own
-  trust-anchor state still lists that key as trusted.
+  recorded yet.** The member does not trust that key again. An old primary that
+  recorded the revocation itself answers DNS from its own data, which already
+  treats the key as revoked. A member whose own root check saw the revocation
+  while it was a follower, or while it was fenced, answers `SERVFAIL`, as
+  described above, and keeps doing so; take it out of your DNS path meanwhile.
+  The state ends on its own, on the first scheduled pull after the primary's
+  next root-anchor check has recorded the same revocation. If the member
+  carries more than one such key, the primary has to record all of them. That
+  check follows the primary's refresh schedule (at the real root, about once a
+  day; never more than 15 days after its last successful check) and nothing
+  starts it earlier. What you can do is make sure it can happen: the primary
+  needs outbound TCP 53 to the configured root servers and a synchronized
+  clock. If the primary logged `root anchor updater stopped for this writer
+  term`, its trust-anchor updates have stopped; fix the cause named in that
+  line and restart the primary. After a restart it checks the root as soon as
+  its stored refresh time has passed.
+
+  The primary can never record the revocation in two cases. The root has
+  stopped publishing the revoked key: the primary then records the key as
+  missing and keeps trusting it, as RFC 5011 requires. Or the primary's history
+  never contained the key: the member saw a new key appear and then its
+  revocation during the split, before any member trusted it. In both cases the
+  member stays fenced and never follows that primary. No command clears a
+  revocation a member has seen, records one on the primary by operator
+  decision, or makes a fenced member the primary. Your options are to replace
+  the member, as described below, or to keep it as it is. A replacement holds
+  the cluster's trust-anchor state: in the first case that state still trusts
+  the key the old member saw revoked, and kudurru v0.2.0 gives you no way to
+  change that on the primary.
 - **The two disagree about `anchors recover` history.** The returning member
   holds a recovery record that the current primary does not have, or the primary
   recovered after the split while the returning member's own trust-anchor state
-  had already moved at least as far. The member refuses the primary's data,
-  stays fenced and keeps serving its own last-good DNS. That database cannot
-  follow the current primary. Replace the member with a newly joined receiver
-  (a new invitation and a new data directory, as described at the top of this
-  page).
+  had already moved at least as far. Running `anchors recover` on the primary as
+  well does not reconcile them, even with the same replacement key: each
+  recovery writes its own record. That database cannot follow the current
+  primary. Replace the member.
 - **The returning member had managed trust anchors and the current primary never
-  started them.** The member refuses in the same way and stays fenced until
-  the primary has bootstrapped managed trust anchors with the same seeds, or
-  until you replace the member with a newly joined receiver.
+  started them.** The state ends without a replacement when the primary starts
+  managed trust anchors from the same seeds: set
+  `upstreams.recursion.anchorMode: managed` with the same
+  `upstreams.recursion.trustAnchors` records the returning member started from
+  (their order does not matter). The primary's first root-anchor check then
+  creates its own trust-anchor state for those seeds, and the member takes it
+  on its next scheduled pull. If the primary starts from other seeds, or stays
+  on static trust anchors, replace the member.
 
-In all three cases the member stays fenced after the other members have
-followed the current primary, and it keeps answering DNS from its own last-good
-data in the meantime (or `SERVFAIL`, if its own root check had already retired
-its trust-anchor state).
+#### Replace a member that cannot follow
+
+A replacement is a new member with a new database. It never held the old
+member's trust-anchor state, so it takes the primary's state exactly: it trusts
+what the primary trusts and treats as revoked what the primary recorded as
+revoked.
+
+1. Leave the old member running while it still answers DNS from its own data.
+   Stop it first if it answers `SERVFAIL`.
+2. On the primary, issue a join token for a **new node name and a new internal
+   address**. kudurru v0.2.0 has no command that removes a member, so the old
+   member's name and internal address stay reserved, and `cluster join-token`
+   refuses an invitation that reuses either one. Another port or another
+   address on the same host is enough.
+3. Join the receiver with a new data directory, as described at the top of
+   this page, and configure its host settings for the new name and address. For
+   a node behind managed edges, follow "Add a follower behind managed edges" in
+   the [runbooks](runbooks.md).
+4. Start it and check that its API answers (`kudurru cluster status`); the API
+   of a member that does not follow stays closed.
+5. Stop the old member for good. Keep its data directory and
+   `member-identity.json` offline as evidence if you want them. Never start
+   that directory again as a second node, and never copy its database or
+   identity into the replacement's directory. The old member stays listed in
+   the cluster's membership and counts toward the limit of 64 active members.
+6. Point anything that addressed the old member directly (a VIP backend list, a
+   resolver list) at the new address.
+
+#### Other states in which a managed member answers `SERVFAIL`
+
+- **A member whose own root check saw a revocation.** It answers `SERVFAIL`
+  until it installs trust-anchor state from the primary that records the same
+  revocation (see above). A member in that state that is promoted stays in it
+  as the primary: it still cannot publish, so it keeps answering `SERVFAIL`,
+  and it cannot record any root-anchor check that omits the revocation. Its own
+  check that sees the revocation records it and ends the state. Prefer to
+  promote a member that serves. The members that follow such a primary keep
+  serving.
+- **A member that verified a revocation it could not write.** If its own root
+  check verifies a signed revocation at the moment new data from the primary is
+  installed, the member cannot record it against the data it now holds. It does
+  not continue as if it had seen nothing: it answers `SERVFAIL` until it is
+  restarted. After the restart it serves the installed data, and its next root
+  check records the revocation.
+- **A member whose list of locally seen revocations is full** (256 keys) stays
+  retired for good. Replace it.
