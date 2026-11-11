@@ -1,7 +1,8 @@
 // Package sinktest provides local HTTP doubles that stand where ClickHouse
 // and Loki would in tests of the querylog.sinks exporters (D371). A double
 // records every request with its body decompressed and answers as the test
-// says: a status, a stalled answer or a dropped connection.
+// says: a status, a stalled answer, a dropped connection or an answer given
+// before the body was read.
 package sinktest
 
 import (
@@ -12,6 +13,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -35,6 +37,10 @@ type Request struct {
 	// CloseAfter reports whether the client asked for the connection to be
 	// closed after this request.
 	CloseAfter bool
+	// SentAfterAnswer is, for a double set with AnswerBeforeBody, how many
+	// bytes the client sent after the answer had been written (the body it
+	// went on writing). It is zero when the client waited for the answer.
+	SentAfterAnswer int
 }
 
 // Answer is what a double does with one request.
@@ -62,6 +68,13 @@ type Double struct {
 	mu       sync.Mutex
 	requests []Request
 	answer   func(n int, req Request) Answer
+	early    *early
+}
+
+// early is an answer given before the request body is read.
+type early struct {
+	status int
+	linger time.Duration
 }
 
 // New starts a double that answers status ok to every request (200 for
@@ -97,6 +110,23 @@ func (d *Double) Answer(fn func(n int, req Request) Answer) {
 	d.answer = fn
 }
 
+// AnswerBeforeBody makes the double answer every request with status as
+// soon as its headers have arrived, without reading the body and without
+// sending "100 Continue", the way a server refuses a request at its
+// headers. The double then counts, for up to linger, the bytes the client
+// still sends, and closes the connection with a reset (SO_LINGER 0): a
+// client that was still writing the body can lose the answer. Status 0
+// restores normal answers.
+func (d *Double) AnswerBeforeBody(status int, linger time.Duration) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if status == 0 {
+		d.early = nil
+		return
+	}
+	d.early = &early{status: status, linger: linger}
+}
+
 // Requests returns the requests received so far.
 func (d *Double) Requests() []Request {
 	d.mu.Lock()
@@ -104,10 +134,35 @@ func (d *Double) Requests() []Request {
 	return append([]Request(nil), d.requests...)
 }
 
+// WaitRequests returns the requests once there are at least n. A double set
+// with AnswerBeforeBody records a request only when it has closed the
+// connection, which can be after the client has its answer.
+func (d *Double) WaitRequests(t testing.TB, n int) []Request {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		reqs := d.Requests()
+		if len(reqs) >= n {
+			return reqs
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d requests, want %d:\n%s", len(reqs), n, Describe(reqs))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // Close stops the double; later connections are refused.
 func (d *Double) Close() { d.server.Close() }
 
 func (d *Double) serve(w http.ResponseWriter, r *http.Request) {
+	d.mu.Lock()
+	e := d.early
+	d.mu.Unlock()
+	if e != nil {
+		d.serveEarly(w, r, e)
+		return
+	}
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 64<<20))
 	if err != nil {
 		http.Error(w, "read", http.StatusBadRequest)
@@ -157,6 +212,46 @@ func (d *Double) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(a.Status)
 	_, _ = io.WriteString(w, a.Body)
+}
+
+func (d *Double) serveEarly(w http.ResponseWriter, r *http.Request, e *early) {
+	req := Request{Method: r.Method, Path: r.URL.Path, Query: r.URL.Query(), Header: r.Header.Clone(), CloseAfter: r.Close}
+	defer func() {
+		d.mu.Lock()
+		d.requests = append(d.requests, req)
+		d.mu.Unlock()
+	}()
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		return
+	}
+	conn, rw, err := hj.Hijack()
+	if err != nil {
+		return
+	}
+	defer func() { _ = conn.Close() }()
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		_ = tcp.SetLinger(0)
+	}
+	// Whatever of the body has already arrived counts as sent after the
+	// answer: a client that waits sends nothing before it.
+	req.SentAfterAnswer = rw.Reader.Buffered()
+	_, _ = rw.Reader.Discard(req.SentAfterAnswer)
+	if _, err := fmt.Fprintf(conn, "HTTP/1.1 %d %s\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", e.status, http.StatusText(e.status)); err != nil {
+		return
+	}
+	if e.linger <= 0 {
+		return
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(e.linger))
+	buf := make([]byte, 32<<10)
+	for {
+		n, err := rw.Read(buf)
+		req.SentAfterAnswer += n
+		if err != nil {
+			return
+		}
+	}
 }
 
 // Basic returns the Authorization header value of HTTP basic authentication.

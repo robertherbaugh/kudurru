@@ -1,8 +1,11 @@
 package httpbatch_test
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -283,6 +286,111 @@ func TestPostRereadsARefusedCredential(t *testing.T) {
 		if creds.calls != 4 {
 			t.Fatalf("the reference was read %d times, want 4", creds.calls)
 		}
+	}
+}
+
+// largeBatch is a batch of about 4 MB, more than the socket buffers of a
+// loopback connection hold, as a batch of 10,000 rows can be.
+func largeBatch() []byte { return bytes.Repeat([]byte(batchBody), 4<<20/len(batchBody)) }
+
+// TestPostLargeBatchSeesARefusalAtTheHeaders: a destination that refuses a
+// request at its headers and resets the connection without reading the body
+// must still be heard. A large batch asks for "100 Continue" first, so the
+// body is never written into the reset: the 403 reads the credential again,
+// the 503 is repeated, and nothing is reported as an unknown outcome.
+func TestPostLargeBatchSeesARefusalAtTheHeaders(t *testing.T) {
+	double := sinktest.New(t, http.StatusNoContent, false)
+	creds := &credentials{values: map[string]string{"/run/secrets/token": "old-token"}}
+	client := open(t, httpbatch.Options{Destination: "Loki", URL: mustURL(t, double.URL), Bearer: file("/run/secrets/token"), Resolve: creds.resolve})
+	body := largeBatch()
+
+	// The double waits to see whether the body follows the answer.
+	double.AnswerBeforeBody(http.StatusForbidden, 300*time.Millisecond)
+	creds.set("/run/secrets/token", "new-token")
+	err := client.Post(t.Context(), body)
+	var refused *httpbatch.StatusError
+	if !errors.As(err, &refused) || refused.Status != http.StatusForbidden || !refused.Reloaded {
+		t.Fatalf("early 403 with a rotated token: %v", err)
+	}
+	if _, again := retryable(t, err); !again {
+		t.Fatal("early 403 with a rotated token must be retryable")
+	}
+	reqs := double.WaitRequests(t, 1)
+	if reqs[0].SentAfterAnswer != 0 {
+		t.Errorf("the client wrote %d bytes of the body into a refusal", reqs[0].SentAfterAnswer)
+	}
+	if reqs[0].Header.Get("Expect") != "100-continue" {
+		t.Errorf("a large batch did not ask for 100 Continue")
+	}
+
+	// An immediate reset, repeated: the status arrives every time.
+	double.AnswerBeforeBody(http.StatusServiceUnavailable, 0)
+	lost := 0
+	for range 20 {
+		err := client.Post(t.Context(), body)
+		if !errors.As(err, &refused) || refused.Status != http.StatusServiceUnavailable {
+			lost++
+			t.Logf("early 503 was lost: %v", err)
+		} else if _, again := retryable(t, err); !again {
+			t.Errorf("early 503 must be retryable: %v", err)
+		}
+	}
+	if lost > 0 {
+		t.Errorf("the early 503 was lost in %d of 20 attempts", lost)
+	}
+
+	// A destination that accepts reads the body after "100 Continue".
+	double.AnswerBeforeBody(0, 0)
+	if err := client.Post(t.Context(), body); err != nil {
+		t.Fatalf("large batch: %v", err)
+	}
+	reqs = double.Requests()
+	if last := reqs[len(reqs)-1]; !bytes.Equal(last.Body, body) {
+		t.Fatalf("large batch arrived with %d bytes, want %d", len(last.Body), len(body))
+	}
+	// A small batch fits the socket buffers and does not wait for an answer.
+	if err := client.Post(t.Context(), []byte(batchBody)); err != nil {
+		t.Fatal(err)
+	}
+	reqs = double.Requests()
+	if got := reqs[len(reqs)-1].Header.Get("Expect"); got != "" {
+		t.Fatalf("a small batch sent Expect: %q", got)
+	}
+}
+
+// TestPostLargeBatchToAServerThatIgnoresExpect: a server that never answers
+// "100 Continue" still gets the body, after a short wait.
+func TestPostLargeBatchToAServerThatIgnoresExpect(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	got := make(chan int, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		r := bufio.NewReader(conn)
+		req, err := http.ReadRequest(r)
+		if err != nil {
+			got <- -1
+			return
+		}
+		// Read the body without sending 100 Continue.
+		n, _ := io.Copy(io.Discard, req.Body)
+		got <- int(n)
+		_, _ = io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+	}()
+	client := open(t, httpbatch.Options{Destination: "ClickHouse", URL: mustURL(t, "http://"+listener.Addr().String()+"/")})
+	body := largeBatch()
+	if err := client.Post(t.Context(), body); err != nil {
+		t.Fatalf("server without 100 Continue: %v", err)
+	}
+	if n := <-got; n != len(body) {
+		t.Fatalf("the server read %d bytes, want %d", n, len(body))
 	}
 }
 

@@ -45,6 +45,19 @@ const (
 	// maxCredentialBytes bounds a password or token; maxCABytes a bundle.
 	maxCredentialBytes = 16 << 10
 	maxCABytes         = 1 << 20
+
+	// expectContinueBytes is the body size from which a request asks for
+	// "100 Continue" before it sends the body, and expectContinueWait how
+	// long it waits for that answer before it sends the body anyway (a
+	// server that ignores the header). A destination that refuses a request
+	// at its headers (a wrong password, 429, 503) and closes the connection
+	// at once would otherwise reset it under a body still being written, and
+	// the client would see the write error instead of the answer: the batch
+	// would be dropped as an unknown outcome, a 401 or 403 would not read the
+	// credential again, and the log would not name the status. Small bodies
+	// fit the socket buffers and are sent without the extra round trip.
+	expectContinueBytes = 64 << 10
+	expectContinueWait  = 2 * time.Second
 )
 
 // Resolver reads the current value of a credential reference: a Secret key,
@@ -169,11 +182,15 @@ func (c *Client) Open(ctx context.Context) error {
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	c.transport = &http.Transport{
-		Proxy:           http.ProxyFromEnvironment,
-		DialContext:     (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
-		TLSClientConfig: tlsConfig, TLSHandshakeTimeout: 30 * time.Second,
+		Proxy:                  http.ProxyFromEnvironment,
+		DialContext:            (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
+		TLSClientConfig:        tlsConfig,
+		TLSHandshakeTimeout:    30 * time.Second,
 		MaxResponseHeaderBytes: 64 << 10,
-		DisableKeepAlives:      true, DisableCompression: true, Protocols: protocols,
+		ExpectContinueTimeout:  expectContinueWait,
+		DisableKeepAlives:      true,
+		DisableCompression:     true,
+		Protocols:              protocols,
 	}
 	// A redirect is an answer like any other: the credential and the batch
 	// are never sent to a second host.
@@ -273,6 +290,9 @@ func (c *Client) Post(ctx context.Context, body []byte) error {
 	}
 	if c.opts.Gzip {
 		req.Header.Set("Content-Encoding", "gzip")
+	}
+	if len(payload) >= expectContinueBytes {
+		req.Header.Set("Expect", "100-continue")
 	}
 	if c.authorization != "" {
 		req.Header.Set("Authorization", c.authorization)
