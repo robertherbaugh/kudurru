@@ -47,6 +47,11 @@ type cleanupWorld struct {
 	// beforeDelete runs before the provider's delete request, outside the
 	// world's lock, with the context of the run that asked for it.
 	beforeDelete func(context.Context)
+	// hangAfterDelete makes a delete request, once it reached the world,
+	// wait for its context and answer like the Cloudflare adapter does when
+	// the reread after an unacknowledged batch fails: a partial receipt
+	// that marks the target ambiguous, with the context's error.
+	hangAfterDelete bool
 	// observer builds providers that only observe.
 	observer bool
 	now      func() time.Time
@@ -210,6 +215,13 @@ func (p cleanupPublisher) effect(ctx context.Context, op *kinds.IntegrationOpera
 	}
 	if hook != nil {
 		return kinds.Receipt{}, hook
+	}
+	p.w.mu.Lock()
+	hang := p.w.hangAfterDelete && op.Spec.After == nil
+	p.w.mu.Unlock()
+	if hang {
+		<-ctx.Done()
+		return kinds.Receipt{ObservedAt: p.w.now(), Targets: []kinds.TargetResult{{Target: op.Spec.Record.Key.Name, ErrorClass: "ambiguous"}}}, ctx.Err()
 	}
 	return receipt, nil
 }

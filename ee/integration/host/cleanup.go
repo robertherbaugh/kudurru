@@ -130,9 +130,14 @@ type terminatingLease struct {
 	forgetTried int
 	// localCut: the run's bound ended one of its local reads or commits
 	// (a ledger or operation read, an intent, receipt or confirmation, a
-	// Forget, a fence, the purge or the finalization), so a run cut without progress names a local failure,
-	// not a provider one.
+	// Forget, a fence, the purge or the finalization), so a run cut without
+	// progress names a local failure, not a provider one.
 	localCut bool
+	// providerCut: a provider request of the run returned only after the
+	// run's bound. The provider took the bound, so the local commits that
+	// follow it on the expired context (such as recording the partial
+	// receipt it returned) do not make the run a local failure.
+	providerCut bool
 	// forgetTook is how long the last Forget that committed took.
 	forgetTook time.Duration
 }
@@ -152,6 +157,14 @@ func (st *terminatingLease) local(ctx context.Context, err error) error {
 		st.localCut = true
 	}
 	return err
+}
+
+// provided notes whether a provider request returned only after the run's
+// bound. A nil lease (an ordinary sync) notes nothing.
+func (st *terminatingLease) provided(ctx context.Context) {
+	if st != nil && ctx.Err() != nil {
+		st.providerCut = true
+	}
 }
 
 // errYield ends a run that made progress before its bound would cut the next
@@ -252,7 +265,7 @@ func (h *Host) runTerminating(leaseCtx context.Context, j *job) {
 		}
 		runCtx, runCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
 		st.summary.Runs++
-		st.progress, st.forgetCut, st.localCut = false, false, false
+		st.progress, st.forgetCut, st.localCut, st.providerCut = false, false, false, false
 		out, f, g := h.terminate(runCtx, j, st)
 		bounded := runCtx.Err() != nil && ctx.Err() == nil
 		runCancel()
@@ -263,14 +276,16 @@ func (h *Host) runTerminating(leaseCtx context.Context, j *job) {
 			// commit is too large for the bound, which the next run retries
 			// with half of it, or another local step (a read, a fence, a
 			// commit) was too slow for it, a failure of the store that backs
-			// off like any other, or a provider that hangs.
+			// off like any other, or a provider that hangs. A provider
+			// request that returned after the bound wins over the local
+			// commits it left to run on the expired context.
 			switch {
 			case st.progress:
 				out.again, out.reason = true, ReasonCleanup
 			case st.forgetCut && st.forgetTried > 1:
 				st.forgetLimit = st.forgetTried / 2
 				out.again, out.reason, out.err = true, ReasonCleanup, nil
-			case st.localCut:
+			case st.localCut && !st.providerCut:
 				out.err = &Failure{Kind: FailureTemporary}
 				out.reason = ReasonCleanupFailed
 			default:

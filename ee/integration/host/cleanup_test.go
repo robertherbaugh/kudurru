@@ -998,6 +998,43 @@ func TestTerminatingRunCutInALocalCommitIsNoProviderFailure(t *testing.T) {
 	}
 }
 
+// A provider request that hangs until the run's bound is a provider failure
+// even when it answers with a partial receipt: recording that receipt on the
+// expired context fails too, and that local commit must not turn the run
+// into a CleanupFailed one. The next run settles the delete from a reread.
+func TestTerminatingRunCutInAProviderRequestIsAProviderFailure(t *testing.T) {
+	f := newCleanupFixture(t, cleanupObject("sink", "Delete", true), func(f *cleanupFixture) {
+		f.timeout = time.Second
+		f.w.hangAfterDelete = true
+	})
+	f.awaitPublished()
+	f.requestDelete()
+	f.awaitReason(PhaseTerminating, ReasonProviderFailed)
+	if _, _, deletes, _ := f.w.counts(); deletes != 1 {
+		t.Fatalf("provider deletes: %d", deletes)
+	}
+	f.w.mu.Lock()
+	f.w.hangAfterDelete = false
+	f.w.mu.Unlock()
+	f.wake()
+	// The reread confirms the delete that hung; it is not sent again, and
+	// it counts as recovered, not as a delete this lease confirmed.
+	summary := f.awaitFinalized()
+	if summary.RecordsForgotten != 1 {
+		t.Fatalf("summary: %+v", summary)
+	}
+	if _, _, deletes, _ := f.w.counts(); deletes != 1 {
+		t.Fatalf("provider deletes after recovery: %d", deletes)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, s := range f.published {
+		if s.Reason == ReasonCleanupFailed {
+			t.Fatal("a run cut in a provider request was reported as CleanupFailed")
+		}
+	}
+}
+
 // ledgerFlood serves ledger rows of another incarnation without end.
 type ledgerFlood struct{}
 

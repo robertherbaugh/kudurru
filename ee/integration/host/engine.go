@@ -552,7 +552,7 @@ func (h *Host) sync(ctx context.Context, j *job, f frame, g ExecutionGuard, expe
 // a cleanup plan differs only in what it contains.
 //
 // st, the lease of a terminating run (nil in a sync), notes which local
-// steps the run's bound cut.
+// steps the run's bound cut and whether a provider request outlasted it.
 func (h *Host) applyPlan(ctx context.Context, j *job, g ExecutionGuard, inputs []publicationInput, p *plan.Plan, result *Result, st *terminatingLease) error {
 	publisher, ok := j.provider.(Publisher)
 	if !ok {
@@ -604,6 +604,7 @@ func (h *Host) applyPlan(ctx context.Context, j *job, g ExecutionGuard, inputs [
 			return err
 		}
 		receipt, applyErr := publisher.Apply(ctx, res.Operation.DeepCopy())
+		st.provided(ctx)
 		if !receipt.ObservedAt.IsZero() {
 			saved, saveErr := h.opts.Ledger.RecordReceipt(ctx, g.Ledger, res.Operation, receipt)
 			if st.local(ctx, saveErr) != nil {
@@ -721,6 +722,7 @@ func (h *Host) recover(ctx context.Context, j *job, g ExecutionGuard, in publica
 		return err
 	}
 	receipt, applyErr := resume.Recover(ctx, op.DeepCopy(), in.remote)
+	st.provided(ctx)
 	if !receipt.ObservedAt.IsZero() {
 		saved, err := h.opts.Ledger.RecordReceipt(ctx, g.Ledger, op, receipt)
 		if st.local(ctx, err) != nil {
