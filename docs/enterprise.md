@@ -28,9 +28,13 @@ deployments.
 | Long-term statistics | Query statistics for periods older than 24 hours, using rollups without retaining every query | [Long-term statistics](guide/admin/03-watch-the-network.md#read-the-long-term-statistics) |
 | Unblock requests | A request-access form on the block page and an administrator review workflow | [Access requests](guide/admin/06-access-requests.md) |
 | Edge and virtual IP | kudurru supervisors for dnsdist load balancing and keepalived VIP failover, with backend health and VIP visibility | [Compose HA](deploy/compose-ha.md) |
-| Integrations | The external-dns webhook provider for DNSRecordSet objects, and background integrations on a SQLite node: Cloudflare record publication, UniFi client inventory and webhook providers | [Background integrations](deploy/integrations.md) |
+| Integrations | The external-dns webhook provider for DNSRecordSet objects | [Configuration and stores](architecture/configuration-and-store.md) |
 
-Background integrations run on a licensed SQLite node.
+The Cloudflare split-horizon and UniFi inventory integrations stay on the
+roadmap. This version runs a first, partial form of them only on a licensed
+SQLite node, as background integrations (Cloudflare record publication,
+UniFi client inventory and webhook providers). They do not run on
+Kubernetes, and parts such as their management UI are not done.
 [Background integrations](deploy/integrations.md) states what this version
 covers and what it leaves out.
 
