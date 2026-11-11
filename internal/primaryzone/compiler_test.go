@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -518,5 +519,62 @@ func TestCompilerWithholdsEveryRefusalOfTheBuilder(t *testing.T) {
 				t.Fatalf("a change next to the refused record set was not committed: %v", a)
 			}
 		})
+	}
+}
+
+// TestCompilerKeepsServedEndpointsOfARecordSetThatGainsADynamicName edits
+// a served record set with several endpoints (one large record set, as an
+// external-dns style controller writes) to add one endpoint at a name a
+// dynamic update owns. Only that endpoint is left out: the records the set
+// was serving stay served, as for every other refusal of the compiler
+// (D373). Identical colliding record sets are all reported in one
+// compilation.
+func TestCompilerKeepsServedEndpointsOfARecordSetThatGainsADynamicName(t *testing.T) {
+	z := desiredZone()
+	c := NewCompiler(CompilerOptions{})
+	multi := desiredSet("multi", endpoint("www", "192.0.2.10"), endpoint("extra", "192.0.2.11"))
+	head := compile(t, c, blank(z), &zonestate.DesiredInputs{Zone: z, RecordSets: []*public.DNSRecordSet{multi}, Complete: true}, fixedNow)
+	rr, _ := dns.NewRR("dyn.example. 60 IN A 192.0.2.9")
+	r, _ := zonestate.FromRR(rr, zonestate.Provenance{Key: "key.", CredentialVersion: "v1"})
+	a := *head.Aggregate
+	a.Records = append(append([]zonestate.Record(nil), a.Records...), r)
+	for i, r := range a.Records {
+		rr, _, _ := dns.UnpackRR(r.Wire, 0)
+		if soa, ok := rr.(*dns.SOA); ok {
+			soa.Serial++
+			a.Records[i], _ = zonestate.FromRR(soa, r.Provenance)
+		}
+	}
+	dynamic := prepareView(t, &a, head.Head)
+	edited := desiredSet("multi", endpoint("www", "192.0.2.10"), endpoint("extra", "192.0.2.11"), endpoint("dyn", "192.0.2.64"))
+	edited.ResourceVersion = "multi-edited"
+	sets := []*public.DNSRecordSet{edited}
+	for i := 0; i < 50; i++ {
+		sets = append(sets, desiredSet(fmt.Sprintf("dup%02d", i), endpoint("dyn", "192.0.2.64")))
+	}
+	result, err := c.Project(context.Background(), dynamic, &zonestate.DesiredInputs{Zone: z, RecordSets: sets, Complete: true}, fixedNow.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range result.Diagnostics {
+		switch {
+		case d.SourceID == store.KeyOf(edited).String():
+			if d.Outcome != "served" || d.Reason != "" {
+				t.Errorf("the edited record set is reported %+v", d)
+			}
+		case strings.HasPrefix(d.SourceID, "DNSRecordSet/"):
+			if d.Outcome != "duplicated" || d.Reason != dynamicOwnerReason {
+				t.Errorf("a colliding record set is reported %+v", d)
+			}
+		}
+	}
+	model := built(t, prepareView(t, result.Aggregate, dynamic.Head))
+	for _, name := range []string{"www.example.", "extra.example."} {
+		if a := model.Lookup(name, dns.TypeA).Answer; len(a) != 1 {
+			t.Errorf("%s was withdrawn: %v", name, a)
+		}
+	}
+	if a := model.Lookup("dyn.example.", dns.TypeA).Answer; len(a) != 1 || a[0].(*dns.A).A.String() != "192.0.2.9" {
+		t.Errorf("the dynamic record was not kept: %v", a)
 	}
 }

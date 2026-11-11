@@ -88,62 +88,50 @@ func ReplaceStatic(base *View, static *Aggregate, takeover bool, now time.Time, 
 }
 
 func projectionConflicts(rr dns.RR, reservations []dynamicupdate.Reservation) bool {
-	return conflictingSources(rr, reservations, nil)
-}
-
-// conflictingSources reports whether the dynamic record rr conflicts with
-// any of reservations, and adds the Source of every reservation it
-// conflicts with to into (when into is not nil). A name that is not
-// canonical conflicts with everything and is attributed to no source.
-func conflictingSources(rr dns.RR, reservations []dynamicupdate.Reservation, into map[string]bool) bool {
 	name, err := dynamicupdate.CanonicalName(rr.Header().Name)
 	if err != nil {
 		return true
 	}
-	conflict := false
 	for _, r := range reservations {
 		n, err := dynamicupdate.CanonicalName(r.Name)
 		if err != nil {
 			return true
 		}
-		if (name == n && (r.Type == 0 || r.Type == rr.Header().Rrtype || r.Type == dns.TypeCNAME || rr.Header().Rrtype == dns.TypeCNAME)) ||
-			(r.Subtree && dns.IsSubDomain(n, name)) ||
-			(rr.Header().Rrtype == dns.TypeDNAME && dns.IsSubDomain(name, n)) {
-			conflict = true
-			if into == nil {
-				return true
-			}
-			into[r.Source] = true
+		if name == n && (r.Type == 0 || r.Type == rr.Header().Rrtype || r.Type == dns.TypeCNAME || rr.Header().Rrtype == dns.TypeCNAME) {
+			return true
+		}
+		if r.Subtree && dns.IsSubDomain(n, name) {
+			return true
+		}
+		if rr.Header().Rrtype == dns.TypeDNAME && dns.IsSubDomain(name, n) {
+			return true
 		}
 	}
-	return conflict
+	return false
 }
 
-// StaticConflicts names the desired sources (the Source of a static record
-// or reservation) whose projection conflicts with a dynamic record of base:
-// the sources ReplaceStatic would refuse without a takeover. A primary
-// compiler leaves those sources out and reports them instead of failing the
-// whole candidate, so one record set written at a name a dynamic update
-// owns never keeps the rest of the zone from its commit (D373). A
-// conflict no source can be named for is not reported here; ReplaceStatic
-// still refuses it.
-func StaticConflicts(base *View, static *Aggregate) (map[string]bool, error) {
-	sources := map[string]bool{}
-	if base == nil || base.Head == nil || base.Aggregate == nil || static == nil {
-		return sources, nil
-	}
-	protected := append([]dynamicupdate.Reservation(nil), static.Reservations...)
-	for _, r := range static.Records {
-		rr, n, err := dns.UnpackRR(r.Wire, 0)
-		if err != nil || n != len(r.Wire) {
-			return nil, ErrInvalid
-		}
-		protected = append(protected, dynamicupdate.Reservation{Name: rr.Header().Name, Type: rr.Header().Rrtype, Subtree: rr.Header().Rrtype == dns.TypeDNAME, Source: r.Provenance.SourceID})
-	}
-	for _, r := range base.Aggregate.Reservations {
-		if r.Source == "system" {
-			protected = append(protected, r)
-		}
+// DynamicOwnership indexes the records a dynamic update added to a
+// committed view, so a compiler can check each static endpoint against
+// them before it takes the endpoint. Conflicts applies the rule
+// ReplaceStatic applies to the static records and reservations of a
+// whole candidate, one static record at a time: a primary compiler
+// leaves out only the endpoints that collide, so one endpoint written at
+// a name a dynamic update owns never withdraws the rest of its record set
+// or keeps the rest of the zone from its commit (D373). A dynamic record
+// whose name is not canonical is not indexed; ReplaceStatic still
+// refuses the candidate for it.
+type DynamicOwnership struct {
+	byName map[string][]dns.RR
+	all    []dns.RR
+	dnames []dns.RR
+}
+
+// NewDynamicOwnership indexes the dynamic records of base. A view without
+// a committed head has none: ReplaceStatic checks nothing against it.
+func NewDynamicOwnership(base *View) (*DynamicOwnership, error) {
+	o := &DynamicOwnership{byName: map[string][]dns.RR{}}
+	if base == nil || base.Head == nil || base.Aggregate == nil {
+		return o, nil
 	}
 	for _, r := range base.Aggregate.Records {
 		if r.Provenance.SourceID != "" {
@@ -153,7 +141,46 @@ func StaticConflicts(base *View, static *Aggregate) (map[string]bool, error) {
 		if err != nil || n != len(r.Wire) {
 			return nil, ErrInvalid
 		}
-		conflictingSources(rr, protected, sources)
+		name, err := dynamicupdate.CanonicalName(rr.Header().Name)
+		if err != nil {
+			continue
+		}
+		o.byName[name] = append(o.byName[name], rr)
+		o.all = append(o.all, rr)
+		if rr.Header().Rrtype == dns.TypeDNAME {
+			o.dnames = append(o.dnames, rr)
+		}
 	}
-	return sources, nil
+	return o, nil
+}
+
+// Conflicts reports whether the static record rr (served, or reserved for
+// an endpoint that is not served now) conflicts with a dynamic record.
+func (o *DynamicOwnership) Conflicts(rr dns.RR) bool {
+	if o == nil || len(o.all) == 0 {
+		return false
+	}
+	name, err := dynamicupdate.CanonicalName(rr.Header().Name)
+	if err != nil {
+		// ReplaceStatic refuses a name that is not canonical.
+		return false
+	}
+	r := []dynamicupdate.Reservation{{Name: name, Type: rr.Header().Rrtype, Subtree: rr.Header().Rrtype == dns.TypeDNAME}}
+	candidates := o.byName[name]
+	if r[0].Subtree {
+		// A static DNAME conflicts with every dynamic record at or below it.
+		candidates = o.all
+	}
+	for _, d := range candidates {
+		if projectionConflicts(d, r) {
+			return true
+		}
+	}
+	// A dynamic DNAME conflicts with every static record at or below it.
+	for _, d := range o.dnames {
+		if projectionConflicts(d, r) {
+			return true
+		}
+	}
+	return false
 }

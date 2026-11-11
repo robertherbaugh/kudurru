@@ -13,9 +13,10 @@ import (
 
 // TestPrimaryRuntimeRecordSetAtDynamicNameKeepsZoneCommitting writes a
 // DNSRecordSet at a name a signed dynamic update already owns, on the
-// mounted primary runtime with a real SQLite store. The record set is left
-// out and reported, the dynamic record keeps answering, and a record set
-// written afterwards is committed and answered. Before D373 the compiler
+// mounted primary runtime with a real SQLite store. The colliding endpoint
+// is left out and reported, the other endpoint of its record set and the
+// dynamic record keep answering, and a record set written afterwards is
+// committed and answered. Before D373 the compiler
 // refused the whole projection for the conflict, so the zone took no
 // change at all while the dynamic record existed.
 func TestPrimaryRuntimeRecordSetAtDynamicNameKeepsZoneCommitting(t *testing.T) {
@@ -54,8 +55,15 @@ func TestPrimaryRuntimeRecordSetAtDynamicNameKeepsZoneCommitting(t *testing.T) {
 		}
 	}
 	apply(set("collides", "dyn.example.", "192.0.2.40"))
+	// A record set with one endpoint at the dynamic name and one elsewhere
+	// keeps serving the other endpoint: only the colliding endpoint is
+	// left out.
+	mixed := set("mixed", "kept.example.", "192.0.2.42")
+	mixed.Spec.Endpoints = append(mixed.Spec.Endpoints, public.Endpoint{DNSName: "dyn.example.", RecordType: "A", Targets: []string{"192.0.2.43"}})
+	apply(mixed)
 	apply(set("later", "later.example.", "192.0.2.41"))
 	f.wait(t, func() bool { return lookup("later.example.") == "192.0.2.41" })
+	f.wait(t, func() bool { return lookup("kept.example.") == "192.0.2.42" })
 	if got := lookup("dyn.example."); got != "192.0.2.33" {
 		t.Fatalf("dyn.example. = %q, the dynamic update stored 192.0.2.33", got)
 	}

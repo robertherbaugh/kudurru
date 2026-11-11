@@ -58,6 +58,11 @@ func TestCompilerWithholdsEveryRefusalOfThePrimaryRuntime(t *testing.T) {
 		return public.Endpoint{DNSName: name, RecordType: typ, Targets: targets}
 	}
 	setID := func(ep public.Endpoint, id string) public.Endpoint { ep.SetIdentifier = id; return ep }
+	expired := func(ep public.Endpoint) public.Endpoint {
+		at := metav1.NewTime(fixedNow)
+		ep.Kudurru = &public.EndpointExt{ExpiresAt: &at}
+		return ep
+	}
 	type row struct {
 		site, handling string
 		// sets are the record sets of the shape, after "ok" (www A).
@@ -69,49 +74,72 @@ func TestCompilerWithholdsEveryRefusalOfThePrimaryRuntime(t *testing.T) {
 		// record sets of the shape are written.
 		gone  string
 		gtype uint16
+		// keep is a name whose A record must be served when the record
+		// sets of the shape are written.
+		keep string
+		// outcomes, when set, is the projection each record set of the
+		// shape must report.
+		outcomes []string
 	}
 	rows := []row{
 		{"zonestate.normalized: RDATA (ValidateData), and BuildCommittedPrimary ValidateData", "committable (zonestate.FromRR) before the builder takes the endpoint",
-			[][]public.Endpoint{{typed("empty-rdata.example.", "A", `\# 0`)}}, false, "empty-rdata.example.", dns.TypeA},
+			[][]public.Endpoint{{typed("empty-rdata.example.", "A", `\# 0`)}}, false, "empty-rdata.example.", dns.TypeA, "", nil},
 		{"zonestate.normalized: record framing, uncompressed record required", "committable: the record is stored in the codec's own wire form (dynamicupdate.Wire)",
-			[][]public.Endpoint{{typed("raw.example.", "A", `\# 4 c0000201`)}}, false, "", 0},
+			[][]public.Endpoint{{typed("raw.example.", "A", `\# 4 c0000201`)}}, false, "", 0, "", nil},
 		{"zonestate.normalized: owner/class/type; BuildCommittedPrimary: invalid owner/class/type", "the builder parses class IN, in-zone owners and no meta type (sweep below); outside-zone owners are withheld",
-			[][]public.Endpoint{{typed("opt.example.", "TYPE41", `\# 0`)}, {typed("tsig.example.", "TYPE250", `\# 0`)}, {typed("any.example.", "TYPE255", `\# 0`)}, {typed("reserved.example.", "TYPE65535", `\# 0`)}, {typed("www.elsewhere.", "A", "192.0.2.60")}}, false, "opt.example.", 41},
+			[][]public.Endpoint{{typed("opt.example.", "TYPE41", `\# 0`)}, {typed("tsig.example.", "TYPE250", `\# 0`)}, {typed("any.example.", "TYPE255", `\# 0`)}, {typed("reserved.example.", "TYPE65535", `\# 0`)}, {typed("www.elsewhere.", "A", "192.0.2.60")}}, false, "opt.example.", 41, "", nil},
 		{"zonestate.normalized: duplicate record; BuildCommittedPrimary: duplicate/invalid RR", "the builder keeps the oldest record set of an identity, a later one is duplicated",
-			[][]public.Endpoint{{typed("twin.example.", "A", "192.0.2.61")}, {typed("twin.example.", "A", "192.0.2.61")}}, false, "", 0},
+			[][]public.Endpoint{{typed("twin.example.", "A", "192.0.2.61")}, {typed("twin.example.", "A", "192.0.2.61")}}, false, "", 0, "", nil},
 		{"zonestate.normalized: apex SOA/NS required; BuildCommittedPrimary: apex SOA and configured NS", "the builder generates apex SOA and NS; apex SOA, NS and CNAME endpoints are withheld",
-			[][]public.Endpoint{{typed("example.", "SOA", "ns.example. host.example. 1 2 3 4 5")}, {typed("example.", "NS", "other.test.")}, {typed("example.", "CNAME", "other.test.")}}, false, "", 0},
+			[][]public.Endpoint{{typed("example.", "SOA", "ns.example. host.example. 1 2 3 4 5")}, {typed("example.", "NS", "other.test.")}, {typed("example.", "CNAME", "other.test.")}}, false, "", 0, "", nil},
 		{"BuildCommittedPrimary: one apex SOA with committed serial required", "the builder generates the one SOA; an SOA endpoint below the apex is refused",
-			[][]public.Endpoint{{typed("deep.example.", "SOA", "ns.example. host.example. 1 2 3 4 5")}}, false, "deep.example.", dns.TypeSOA},
+			[][]public.Endpoint{{typed("deep.example.", "SOA", "ns.example. host.example. 1 2 3 4 5")}}, false, "deep.example.", dns.TypeSOA, "", nil},
 		{"BuildCommittedPrimary: invalid CNAME RRset", "the builder keeps one CNAME target at a name, across set identifiers and record sets",
-			[][]public.Endpoint{{setID(typed("alias.example.", "CNAME", "a.test."), "x"), setID(typed("alias.example.", "CNAME", "b.test."), "y")}, {typed("alias.example.", "CNAME", "c.test.")}}, false, "", 0},
+			[][]public.Endpoint{{setID(typed("alias.example.", "CNAME", "a.test."), "x"), setID(typed("alias.example.", "CNAME", "b.test."), "y")}, {typed("alias.example.", "CNAME", "c.test.")}}, false, "", 0, "", nil},
 		{"BuildCommittedPrimary: invalid DNAME RRset", "the builder keeps one DNAME target at a name, across set identifiers and record sets",
-			[][]public.Endpoint{{setID(typed("tree.example.", "DNAME", "a.test."), "x"), setID(typed("tree.example.", "DNAME", "b.test."), "y")}, {typed("tree.example.", "DNAME", "c.test.")}}, false, "", 0},
+			[][]public.Endpoint{{setID(typed("tree.example.", "DNAME", "a.test."), "x"), setID(typed("tree.example.", "DNAME", "b.test."), "y")}, {typed("tree.example.", "DNAME", "c.test.")}}, false, "", 0, "", nil},
 		{"BuildCommittedPrimary: CNAME coexists with data", "the builder refuses a CNAME next to data and data next to a CNAME, in either order",
-			[][]public.Endpoint{{typed("both.example.", "A", "192.0.2.62")}, {typed("both.example.", "CNAME", "a.test.")}, {typed("both2.example.", "CNAME", "a.test."), typed("both2.example.", "TXT", "x")}}, false, "", 0},
+			[][]public.Endpoint{{typed("both.example.", "A", "192.0.2.62")}, {typed("both.example.", "CNAME", "a.test.")}, {typed("both2.example.", "CNAME", "a.test."), typed("both2.example.", "TXT", "x")}}, false, "", 0, "", nil},
 		{"BuildCommittedPrimary: data below DNAME", "the builder reports data below a DNAME owner as occluded",
-			[][]public.Endpoint{{typed("branch.example.", "DNAME", "a.test.")}, {typed("leaf.branch.example.", "A", "192.0.2.63")}}, false, "leaf.branch.example.", dns.TypeA},
-		{"zonestate.ReplaceStatic: static projection conflicts with dynamic ownership", "StaticConflicts names the record set; the compiler leaves it out (duplicated) and compiles the rest",
-			[][]public.Endpoint{{typed("dyn.example.", "A", "192.0.2.64")}, {typed("dyn.example.", "CNAME", "a.test.")}, {typed("example.", "DNAME", "a.test.")}, {typed("dyn.example.", "DNAME", "a.test.")}}, true, "", 0},
+			[][]public.Endpoint{{typed("branch.example.", "DNAME", "a.test.")}, {typed("leaf.branch.example.", "A", "192.0.2.63")}}, false, "leaf.branch.example.", dns.TypeA, "", nil},
+		{"zonestate.ReplaceStatic: static projection conflicts with dynamic ownership", "the compiler checks each endpoint against the dynamic records before the builder takes it, leaves out only the colliding endpoints, and reports a record set with nothing served duplicated",
+			[][]public.Endpoint{
+				{typed("dyn.example.", "A", "192.0.2.64")},
+				{typed("dyn.example.", "CNAME", "a.test.")},
+				// A static DNAME above a dynamic name.
+				{typed("example.", "DNAME", "a.test.")},
+				{typed("dyn.example.", "DNAME", "a.test.")},
+				// A static name below a dynamic DNAME.
+				{typed("leaf.sub.example.", "A", "192.0.2.66")},
+				// The reservation of an expired endpoint.
+				{expired(typed("dyn.example.", "A", "192.0.2.67"))},
+				// One colliding endpoint of a record set leaves out only
+				// that endpoint.
+				{typed("kept.example.", "A", "192.0.2.65"), typed("dyn.example.", "A", "192.0.2.68")},
+			}, true, "", 0, "kept.example.", []string{"duplicated", "duplicated", "duplicated", "duplicated", "duplicated", "duplicated", "served"}},
 		// Zone-wide bounds, not record set shapes, and open: a zone over
 		// one of them is refused as a whole (ErrCapacity) and keeps its
 		// last commit. zonestate.Limits: MaxRecords 1,000,000,
 		// MaxWireBytes 64 MiB, MaxAggregateBytes 128 MiB, MaxChunks 1024;
 		// BuildCommittedPrimary: 1,000,000 records and 64 MiB; the
 		// compiler: the source objects within MaxAggregateBytes.
-		{"capacity: zonestate.Limits and BuildCommittedPrimary bounds", "open: zone-wide, not left out per record set", nil, false, "", 0},
+		{"capacity: zonestate.Limits and BuildCommittedPrimary bounds", "open: zone-wide, not left out per record set", nil, false, "", 0, "", nil},
 	}
 	z := desiredZone()
 	ok := desiredSet("ok", endpoint("www", "192.0.2.10"))
 	ok.CreationTimestamp = metav1.NewTime(fixedNow.Add(-time.Hour))
 	c := NewCompiler(CompilerOptions{})
 	head := compile(t, c, blank(z), &zonestate.DesiredInputs{Zone: z, RecordSets: []*public.DNSRecordSet{ok}, Complete: true}, fixedNow)
-	// A record a dynamic update added at dyn.example. next to the head.
+	// Records a dynamic update added next to the head: an A record at
+	// dyn.example. and a DNAME at sub.example.
 	dynamic := func() *zonestate.View {
-		rr, _ := dns.NewRR("dyn.example. 60 IN A 192.0.2.9")
-		r, _ := zonestate.FromRR(rr, zonestate.Provenance{Key: "key.", CredentialVersion: "v1"})
 		a := *head.Aggregate
-		a.Records = append(append([]zonestate.Record(nil), a.Records...), r)
+		a.Records = append([]zonestate.Record(nil), a.Records...)
+		for _, text := range []string{"dyn.example. 60 IN A 192.0.2.9", "sub.example. 60 IN DNAME b.test."} {
+			rr, _ := dns.NewRR(text)
+			r, _ := zonestate.FromRR(rr, zonestate.Provenance{Key: "key.", CredentialVersion: "v1"})
+			a.Records = append(a.Records, r)
+		}
 		for i, r := range a.Records {
 			rr, _, _ := dns.UnpackRR(r.Wire, 0)
 			if soa, ok := rr.(*dns.SOA); ok {
@@ -162,15 +190,34 @@ func TestCompilerWithholdsEveryRefusalOfThePrimaryRuntime(t *testing.T) {
 						t.Errorf("%s (%s): %s %s is served: %v", r.site, label, r.gone, dns.TypeToString[r.gtype], a)
 					}
 				}
+				if r.keep != "" && len(sets) == len(all) {
+					if a := model.Lookup(r.keep, dns.TypeA).Answer; len(a) != 1 {
+						t.Errorf("%s (%s): %s A is not served: %v", r.site, label, r.keep, a)
+					}
+				}
 				if base == dynamic {
 					if a := model.Lookup("dyn.example.", dns.TypeA).Answer; len(a) != 1 || a[0].(*dns.A).A.String() != "192.0.2.9" {
 						t.Errorf("%s (%s): the dynamic record is not kept: %v", r.site, label, a)
+					}
+					if a := model.Lookup("sub.example.", dns.TypeDNAME).Answer; len(a) != 1 || a[0].(*dns.DNAME).Target != "b.test." {
+						t.Errorf("%s (%s): the dynamic DNAME is not kept: %v", r.site, label, a)
 					}
 				}
 				for _, rs := range sets {
 					d := diagnostics[store.KeyOf(rs).String()]
 					if d.Outcome != "served" && d.Reason == "" {
 						t.Errorf("%s (%s): %s is %s without a reason", r.site, label, d.SourceID, d.Outcome)
+					}
+					if r.outcomes == nil {
+						continue
+					}
+					var index int
+					if _, err := fmt.Sscanf(rs.Name, "shape%d", &index); err != nil {
+						t.Fatal(err)
+					}
+					want := r.outcomes[index]
+					if d.Outcome != want || (want == "duplicated" && d.Reason != dynamicOwnerReason) {
+						t.Errorf("%s (%s, %d record sets): %s is %s (%q), want %s", r.site, label, len(sets), d.SourceID, d.Outcome, d.Reason, want)
 					}
 				}
 			}
