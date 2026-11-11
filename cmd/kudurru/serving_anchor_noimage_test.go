@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,9 +20,11 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/cluster/memberidentity"
 	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	"github.com/robertherbaugh/kudurru/internal/store/validator"
 )
 
 // anchorNoImageDigest hashes every file of a closed SQLite data directory, so
@@ -270,5 +273,96 @@ func TestAnchorNoImageStartupRefusesWithRemedy(t *testing.T) {
 	}
 	if st.Authority().Mode != replication.Follower || calls.Load() != 2 || reads.Load() != 0 || s.anchors.admission == nil || s.anchors.admission.edges == nil || !s.anchors.admission.current() {
 		t.Fatal("reconciled follower did not adopt one complete fleet observation", st.Authority().Mode, calls.Load())
+	}
+}
+
+// D370 (F28-EF-2) through the real serve path. TestAnchorNoImageStartupRefusesWithRemedy
+// stops at newServingRuntime; this starts runServe itself on an unenrolled
+// receiver's data directory, with managed anchors and each managed topology.
+// The about 850 lines of startup before the serving runtime must not contact
+// the declared edge or the root, and the database stays byte-identical.
+func TestRunServeAnchorNoImageRefusesBeforeContact(t *testing.T) {
+	for _, topology := range []string{"direct", "edges"} {
+		t.Run(topology, func(t *testing.T) {
+			cfg, _ := mountedTestConfig(t)
+			t.Setenv(license.EnvKey, "")
+			t.Setenv(license.EnvKeyFile, "")
+			cfg.Auth.IdentityProviders = nil
+			cfg.Blocking.Enabled = false
+			scheme, err := runtimekinds.NewScheme()
+			if err != nil {
+				t.Fatal(err)
+			}
+			v, err := validator.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			opts := sqlite.Options{Scheme: scheme, Validator: v, InternalKinds: privateStoreKinds(), Identity: cfg.Node.Name, ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage}
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			defer cancel()
+			s, err := sqlite.CreateJoinReceiver(ctx, filepath.Join(cfg.Node.DataDir, sqlite.FileName), opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := memberidentity.Create(filepath.Join(cfg.Node.DataDir, memberIdentityFile), s.Authority().MemberID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.BindAnchorLifecycle(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if s.Authority().Mode != replication.Unenrolled {
+				t.Fatal("fixture is not an unenrolled receiver", s.Authority().Mode)
+			}
+			if err := s.Close(); err != nil {
+				t.Fatal(err)
+			}
+			before := anchorNoImageDigest(t, cfg.Node.DataDir)
+			// The declared edge is a plain TCP listener that counts every
+			// connection; the root hint is a counting DNS server.
+			var accepts atomic.Int32
+			edge, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			go func() {
+				for {
+					c, err := edge.Accept()
+					if err != nil {
+						return
+					}
+					accepts.Add(1)
+					_ = c.Close()
+				}
+			}()
+			t.Cleanup(func() { _ = edge.Close() })
+			seed, reply := anchorWireSignedReply(t)
+			root, reads := anchorWireServer(t, "tcp", reply)
+			r := &cfg.Upstreams.Recursion
+			r.AnchorMode, r.TrustAnchors, r.RootHints, r.IPv6 = config.RootAnchorsManaged, seed.DS, []string{root.String()}, "off"
+			r.ManagedTopology = topology
+			if topology == "edges" {
+				r.ManagedEdges = []config.ManagedRootEdge{{Node: "edge-a", Address: edge.Addr().String(), Deployment: strings.Repeat("a", 64), BackendAddress: "127.0.0.1:5353", BackendInternalAddress: "127.0.0.1:8082"}}
+			}
+			if err := cfg.Validate(); err != nil {
+				t.Fatal("fixture configuration invalid", err)
+			}
+			run, stop := context.WithTimeout(t.Context(), 30*time.Second)
+			defer stop()
+			err = runServe(run, cfg, "")
+			if !errors.Is(err, errAnchorNoImage) || run.Err() != nil {
+				t.Fatal("runServe did not refuse the image-less managed start with its remedy", err)
+			}
+			for _, remedy := range []string{"kudurru cluster join --offline", "kudurru cluster join-reconcile --offline"} {
+				if !strings.Contains(err.Error(), remedy) {
+					t.Fatalf("refusal %q does not name %q", err, remedy)
+				}
+			}
+			if accepts.Load() != 0 || reads.Load() != 0 {
+				t.Fatal("refused serve contacted the edge or the root", accepts.Load(), reads.Load())
+			}
+			if anchorNoImageDigest(t, cfg.Node.DataDir) != before {
+				t.Fatal("refused serve wrote to the database")
+			}
+		})
 	}
 }
