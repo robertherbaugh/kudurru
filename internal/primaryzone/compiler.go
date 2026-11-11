@@ -3,6 +3,7 @@ package primaryzone
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -52,7 +53,52 @@ func NewCompiler(o CompilerOptions) *Compiler {
 
 // Project compiles the complete static projection, then preserves dynamic data
 // and makes one content/serial decision against the exact committed base.
+//
+// A record set whose projection conflicts with a record a dynamic update
+// owns is left out and reported `duplicated` unless a takeover is
+// authorized, and the rest of the zone is compiled without it: refusing
+// the whole candidate would keep every later change of the zone from its
+// commit for as long as the dynamic record exists (D373).
 func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonestate.DesiredInputs, now time.Time) (*zonestate.Compilation, error) {
+	excluded := map[string]bool{}
+	for {
+		result, conflicts, err := c.project(ctx, base, in, now, excluded)
+		if len(conflicts) == 0 {
+			return result, err
+		}
+		for source := range conflicts {
+			excluded[source] = true
+		}
+		// Each pass leaves out at least one more record set.
+		if len(excluded) > len(in.RecordSets) {
+			return nil, fmt.Errorf("%w: static projection conflicts with dynamic ownership", zonestate.ErrConflict)
+		}
+	}
+}
+
+// dynamicOwnerReason is the reason of a record set left out because a
+// record a dynamic update added owns one of its names.
+var dynamicOwnerReason = withheldReason(public.ReasonDuplicated, "a name of this record set holds a record a dynamic update (RFC 2136) added; delete that record, or this record set, to resolve it")
+
+func (c *Compiler) project(ctx context.Context, base *zonestate.View, in *zonestate.DesiredInputs, now time.Time, excluded map[string]bool) (*zonestate.Compilation, map[string]bool, error) {
+	result, err := c.projectOnce(ctx, base, in, now, excluded)
+	var conflict *dynamicConflict
+	if errors.As(err, &conflict) {
+		return nil, conflict.sources, err
+	}
+	return result, nil, err
+}
+
+// dynamicConflict carries the record sets of one pass whose projection
+// conflicts with dynamic ownership.
+type dynamicConflict struct{ sources map[string]bool }
+
+func (e *dynamicConflict) Error() string {
+	return "primaryzone: static projection conflicts with dynamic ownership"
+}
+func (e *dynamicConflict) Unwrap() error { return zonestate.ErrConflict }
+
+func (c *Compiler) projectOnce(ctx context.Context, base *zonestate.View, in *zonestate.DesiredInputs, now time.Time, excluded map[string]bool) (*zonestate.Compilation, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -157,6 +203,10 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 		}
 		source := store.KeyOf(rs).String()
 		reasons[source] = "disabled, expired, view-scoped or outside zone"
+		if excluded[source] {
+			projections[source], reasons[source] = "duplicated", dynamicOwnerReason
+			continue
+		}
 		parsedSet := builder.ParseRecordSet(rs)
 		for i := range rs.Spec.Endpoints {
 			ep := &rs.Spec.Endpoints[i]
@@ -359,6 +409,24 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 		takeover, err = c.options.Takeover(ctx, base, in)
 		if err != nil {
 			return nil, err
+		}
+	}
+	if !takeover {
+		// A conflict with generated apex data, or one no source can be
+		// named for, has no record set to leave out: ReplaceStatic
+		// refuses it below.
+		conflicts, err := zonestate.StaticConflicts(base, static)
+		if err != nil {
+			return nil, err
+		}
+		leaveOut := map[string]bool{}
+		for source := range conflicts {
+			if strings.HasPrefix(source, "DNSRecordSet/") && !excluded[source] {
+				leaveOut[source] = true
+			}
+		}
+		if len(leaveOut) > 0 {
+			return nil, &dynamicConflict{sources: leaveOut}
 		}
 	}
 	result, err := zonestate.ReplaceStatic(base, static, takeover, now, c.options.Limits)

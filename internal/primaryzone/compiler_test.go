@@ -210,8 +210,28 @@ func TestCompilerDynamicCollisionRequiresExplicitTakeoverAndExpiryKeepsReservati
 	}
 	dynamic := prepareView(t, &a, expired.Head)
 	in.RecordSets = append(in.RecordSets, desiredSet("collision", endpoint("new", "192.0.2.3")))
-	if _, err := c.Project(context.Background(), dynamic, in, expires.Time); !errors.Is(err, zonestate.ErrConflict) {
-		t.Fatalf("ownership conflict %v", err)
+	// Without a takeover the record set that collides with the dynamic
+	// record is left out and reported, and the rest of the zone is still
+	// committed: refusing the whole projection would freeze every later
+	// change of the zone while the dynamic record exists (D373).
+	later := desiredSet("later", endpoint("later", "192.0.2.4"))
+	withLater := &zonestate.DesiredInputs{Zone: z, RecordSets: append(append([]*public.DNSRecordSet(nil), in.RecordSets...), later), Complete: true}
+	kept, err := c.Project(context.Background(), dynamic, withLater, expires.Time)
+	if err != nil {
+		t.Fatalf("a record set at a dynamically owned name kept the zone from its commit: %v", err)
+	}
+	collision := store.KeyOf(in.RecordSets[len(in.RecordSets)-1]).String()
+	for _, d := range kept.Diagnostics {
+		if d.SourceID == collision && (d.Outcome != "duplicated" || !strings.HasPrefix(d.Reason, public.ReasonDuplicated+": ")) {
+			t.Fatalf("collision reported %+v", d)
+		}
+	}
+	keptView := prepareView(t, kept.Aggregate, dynamic.Head)
+	if a := built(t, keptView).Lookup("new.example.", dns.TypeA).Answer; len(a) != 1 || a[0].(*dns.A).A.String() != "192.0.2.9" {
+		t.Fatalf("the dynamic record was not kept: %v", a)
+	}
+	if a := built(t, keptView).Lookup("later.example.", dns.TypeA).Answer; len(a) != 1 {
+		t.Fatalf("a later record set was not committed next to the collision: %v", a)
 	}
 	takeover := NewCompiler(CompilerOptions{Takeover: func(context.Context, *zonestate.View, *zonestate.DesiredInputs) (bool, error) { return true, nil }})
 	taken := compile(t, takeover, dynamic, in, expires.Time)
