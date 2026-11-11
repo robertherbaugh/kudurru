@@ -140,14 +140,8 @@ func Prepare(o Options) (*Prepared, error) {
 		if config.Spec.Type == public.ZoneTypePrimary {
 			continue
 		}
-		var model *zone.Zone
-		var err error
-		switch config.Spec.Type {
-		case public.ZoneTypeSecondary:
-			model, err = zone.BuildSecondaryPlaceholder(config)
-		case public.ZoneTypeStub:
-			model, err = zone.BuildStubPlaceholder(config)
-		default:
+		var served []*public.DNSRecordSet
+		if config.Spec.Type != public.ZoneTypeSecondary && config.Spec.Type != public.ZoneTypeStub {
 			sets := o.Objects.RecordSetsForZone(config.Name)
 			owned := make([]*public.DNSRecordSet, 0, len(sets))
 			for _, rs := range sets {
@@ -156,24 +150,19 @@ func Prepare(o Options) (*Prepared, error) {
 				}
 				owned = append(owned, rs.DeepCopy())
 			}
-			var errors zone.Errors
-			model, errors = zone.Build(config, zone.ServedRecordSets(config, owned), zone.BuildOptions{Now: o.Now})
-			if !errors.Empty() {
-				err = fmt.Errorf("servingzones: invalid nonprimary records/policy")
-			}
+			served = zone.ServedRecordSets(config, owned)
 		}
+		// An unsupported type or a policy that does not compile rejects the
+		// whole candidate: such a configuration must not keep an earlier
+		// usable zone silently, and the store refuses to admit one
+		// (zone.ServingErrors, D373). A record set that names a forward zone
+		// is not such a configuration error: the zone holds no records, so
+		// its model is the same with or without that record set.
+		model, closed, err := zone.BuildNonprimary(config, served, o.Now)
 		if err != nil {
-			return nil, fmt.Errorf("servingzones: nonprimary build failed: %w", err)
+			return nil, fmt.Errorf("servingzones: nonprimary build failed: DNSZone %q: %w", config.Name, err)
 		}
-		if model == nil {
-			return nil, fmt.Errorf("servingzones: nonprimary build returned no model")
-		}
-		closed := config.DeepCopy()
-		closed.Spec.Type = public.ZoneTypePrimary
-		coverage[apex], err = zone.BuildCommittedUnavailable(closed)
-		if err != nil {
-			return nil, err
-		}
+		coverage[apex] = closed
 		eligible, applies := membership(o.Primary, cut, config, o.Now)
 		if !eligible {
 			model = coverage[apex]

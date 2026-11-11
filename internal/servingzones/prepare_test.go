@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -381,6 +382,74 @@ func TestPrepareRejectsMismatchedOrUnboundedCut(t *testing.T) {
 	o.Objects.Zones()[0].Spec.Type = public.ZoneTypeCatalog
 	if _, err := Prepare(o); err == nil {
 		t.Fatal("invalid nonprimary builder succeeded")
+	}
+}
+
+// A record set that names a forward zone cannot change that zone. v0.1.0
+// stored such record sets and the API still admits them, so one of them must
+// not withdraw the complete serving image; a zone configuration that does
+// not compile still does, naming the zone.
+func TestPrepareKeepsAForwardZoneWithARecordSet(t *testing.T) {
+	f := newFixture(t)
+	forward := f.config("route", "corp.example.", public.ZoneTypeForward)
+	f.apply(&public.DNSRecordSet{ObjectMeta: metav1.ObjectMeta{Name: "local", Namespace: "apps"}, Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: forward.Name}, Endpoints: []public.Endpoint{{DNSName: "www.corp.example.", RecordType: "A", Targets: []string{"192.0.2.1"}}}}})
+	o := f.options(f.image())
+	if sets := o.Objects.RecordSetsForZone(forward.Name); len(sets) != 1 {
+		t.Fatalf("the record set is not part of the cut: %d", len(sets))
+	}
+	p := mustPrepare(t, o)
+	route := p.Zones(f.now).Match("www.corp.example.")
+	if route == nil || route.Type() != public.ZoneTypeForward || route.UpstreamGroup() != "corp" || route.RecordCount() != 0 {
+		t.Fatalf("forward zone with a record set: %v", route)
+	}
+	// The policy of the zone itself is a configuration error.
+	o.Objects.Zones()[0].Spec.Policy.QueryAccess, o.Objects.Zones()[0].Spec.Policy.QueryACL = public.AccessUseNetworkACL, []string{"10.0.0.0/33"}
+	if _, err := Prepare(o); err == nil || !strings.Contains(err.Error(), `DNSZone "route"`) || !strings.Contains(err.Error(), "spec.policy.queryACL[0]") {
+		t.Fatalf("zone policy that does not compile: %v", err)
+	}
+}
+
+// The store admits a zone exactly when Prepare can carry it
+// (zone.ServingErrors): no admitted shape may fail the image, and every
+// refused shape does.
+func TestPrepareAgreesWithStoreAdmission(t *testing.T) {
+	shapes := map[string]func(*public.DNSZone){
+		"valid": func(*public.DNSZone) {},
+		"query ACL": func(z *public.DNSZone) {
+			z.Spec.Policy.QueryAccess, z.Spec.Policy.QueryACL = public.AccessUseNetworkACL, []string{"not-a-network"}
+		},
+		"transfer ACL": func(z *public.DNSZone) {
+			z.Spec.Policy.ZoneTransfer, z.Spec.Policy.TransferACL = public.AccessUseNetworkACL, []string{"192.168.1"}
+		},
+		"notify target": func(z *public.DNSZone) {
+			z.Spec.Policy.Notify, z.Spec.Policy.NotifyTargets = public.NotifySpecified, []string{"ns2.example.net"}
+		},
+		"fallback":          func(z *public.DNSZone) { z.Spec.Fallback = &public.ZoneFallbackSpec{} },
+		"external":          func(z *public.DNSZone) { z.Spec.Type = public.ZoneTypeExternal },
+		"catalog":           func(z *public.DNSZone) { z.Spec.Type = public.ZoneTypeCatalog },
+		"secondary catalog": func(z *public.DNSZone) { z.Spec.Type = public.ZoneTypeSecondaryCatalog },
+	}
+	for _, typ := range []public.ZoneType{public.ZoneTypeForward, public.ZoneTypeSecondary, public.ZoneTypeStub} {
+		for name, mutate := range shapes {
+			t.Run(string(typ)+"/"+name, func(t *testing.T) {
+				f := newFixture(t)
+				f.config("zone", "shape.example.", typ)
+				o := f.options(f.image())
+				desired := o.Objects.Zones()[0]
+				mutate(desired)
+				admitted := len(zone.ServingErrors(desired)) == 0
+				_, err := Prepare(o)
+				if admitted != (err == nil) {
+					t.Fatalf("store admission %v, but Prepare says %v", zone.ServingErrors(desired), err)
+				}
+				if name == "valid" && err != nil {
+					t.Fatal(err)
+				}
+				if name != "valid" && name != "fallback" && err == nil {
+					t.Fatal("an invalid configuration was prepared")
+				}
+			})
+		}
 	}
 }
 

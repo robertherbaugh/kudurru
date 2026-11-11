@@ -120,6 +120,15 @@ func migrate2(ctx context.Context, tx *sql.Tx) error {
 // runs every step above the recorded version, and initialises the identity
 // rows (cluster_id once, cluster_epoch, counters) when they are missing.
 func migrate(ctx context.Context, db *sql.DB, steps []migration, target int, now func() time.Time) error {
+	return migrateAdmitted(ctx, db, steps, target, now, nil)
+}
+
+// migrateAdmitted is migrate with the last word of the release that opens
+// the database: when the transaction moved an existing database to a newer
+// schema, admit sees the upgraded contents (and the version it came from)
+// before the commit, and its error leaves the database unchanged
+// (Store.admitUpgrade).
+func migrateAdmitted(ctx context.Context, db *sql.DB, steps []migration, target int, now func() time.Time, admit func(ctx context.Context, tx *sql.Tx, from int) error) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store/sqlite: begin migration: %w", err)
@@ -143,6 +152,7 @@ func migrate(ctx context.Context, db *sql.DB, steps []migration, target int, now
 		return fmt.Errorf("%w: state.db is at schema version %d, this binary supports up to %d; "+
 			"run the newer kudurru release or restore a backup taken with this one", ErrSchemaTooNew, current, target)
 	}
+	from := current
 	for _, m := range steps {
 		if m.version <= current || m.version > target {
 			continue
@@ -157,6 +167,11 @@ func migrate(ctx context.Context, db *sql.DB, steps []migration, target int, now
 	}
 	if current != target {
 		return fmt.Errorf("store/sqlite: no migration reaches schema %d (stopped at %d)", target, current)
+	}
+	if target >= zoneNameIndexSchema {
+		if _, err := tx.ExecContext(ctx, sqlZoneNameIndex); err != nil {
+			return fmt.Errorf("store/sqlite: index zone names: %w", err)
+		}
 	}
 	defaults := map[string]string{
 		metaClusterID:       uuid.NewString(),
@@ -176,6 +191,11 @@ func migrate(ctx context.Context, db *sql.DB, steps []migration, target int, now
 	}
 	if target >= 6 {
 		if err := validateAuditFormats(ctx, tx); err != nil {
+			return err
+		}
+	}
+	if admit != nil && from > 0 && from < target {
+		if err := admit(ctx, tx, from); err != nil {
 			return err
 		}
 	}

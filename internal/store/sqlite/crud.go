@@ -19,6 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
@@ -237,6 +238,9 @@ type mutation struct {
 	action  string // audit verb: create, update, status, delete, finalize
 	reason  string
 	noop    bool // nothing changed; result is prev
+	// apex is the canonical zone name of a DNSZone that this mutation
+	// creates: writeMutation refuses it when another DNSZone has the name.
+	apex string
 }
 
 // mutate prepares and commits a write. plan reads the current row and
@@ -376,6 +380,11 @@ func (s *Store) writeMutation(ctx context.Context, q cachedTx, m *mutation) (uin
 	default:
 		if m.prev == nil || uint64(curRV) != m.prev.rv { // #nosec G115 -- resourceVersions are positive
 			return 0, errRaced
+		}
+	}
+	if m.apex != "" {
+		if err := s.admitZoneName(ctx, q, m); err != nil {
+			return 0, err
 		}
 	}
 
@@ -583,6 +592,17 @@ func (s *Store) planApply(ctx context.Context, ki *kindInfo, key store.Key, obj 
 		}
 	} else if err := copyStatus(next, ki.newObject()); err != nil {
 		return nil, err
+	}
+	// A zone that is being removed is never refused: its last writes clear
+	// finalizers.
+	if dz, ok := next.(*v1alpha1.DNSZone); ok && m.typ != store.Deleted && next.GetDeletionTimestamp() == nil {
+		apex, err := s.admitZone(ki, key, dz)
+		if err != nil {
+			return nil, err
+		}
+		if prev == nil {
+			m.apex = apex
+		}
 	}
 	m.obj = next
 	return m, nil

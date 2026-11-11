@@ -50,6 +50,18 @@ duplicate lets the affected zone publish its current data. Cross-object
 admission does not reject duplicates, so remove the conflicting object
 to recover serving at that apex.
 
+The SQLite store is stricter than the two paragraphs above, which describe
+Kubernetes. Its serving image is complete or absent: one zone that the image
+cannot build, whether by its type (`external`, `catalog`,
+`secondaryCatalog`), a second object for its apex or a query, transfer or
+notify policy that does not compile, would withdraw every zone, readiness
+and the API. The store therefore refuses such a zone when it is written, as
+an `invalid` object that names the field (and, for a second object, the
+first), and an upgrade from a release that stored one stops before it
+changes the database ([the store](configuration-and-store.md#the-store),
+D373). A record set that names a forward zone is not such an error on either
+driver: it is reported on the record set and the zone is served.
+
 | Type | kudurru does | Example |
 |---|---|---|
 | `primary` | answers from its own records, with SOA and serial | `home.example.com.` |

@@ -486,9 +486,37 @@ the bootstrap and the sqlite driver all call it. Cross-object problems (a
 record outside its zone, a duplicate) are not validation errors: the
 controller reports them as conditions.
 
+The sqlite driver adds what the schema cannot say. Its serving image is
+complete or absent ([Complete serving publication](#complete-serving-publication)):
+a stored DNSZone that the image cannot build would stop DNS, readiness and
+the API together, and the API would then not be there to correct it. `Apply`
+therefore refuses a DNSZone of a type no release serves (`external`,
+`catalog`, `secondaryCatalog`), with a query, transfer or notify policy that
+does not compile, or with the zone name of another DNSZone, as an ordinary
+`invalid` error that names the field (D373). `zone.ServingErrors` is that
+rule; it asks the builders the image itself uses, and the zone-name check
+runs inside the write transaction. On Kubernetes the apiserver admits these
+objects and the controller reports them on the one zone. A record set that
+names a forward zone is stored by both drivers and reported on the record
+set; the zone holds no records and is served as before.
+
 Each database carries a schema version. A file newer than the binary stops
 the process with an explanation; an older one is migrated in one
 transaction.
+
+A release may tighten its schemas, so the last step of a `state.db`
+migration, still inside that transaction, checks every stored object the way
+the complete image will: strict decoding, the current CRD schema or the
+kind's own validation, and the DNSZone rule above. If an object fails, the
+transaction is rolled back and the process exits naming every such object.
+`state.db` is then byte for byte what the earlier release wrote, that
+release still runs on it, and the objects are corrected there
+([runbook](../deploy/runbooks.md#upgrade-refused-stored-objects-are-not-valid-in-this-release)).
+0.1.0 stored secondary and stub zones without their configuration, zones of
+types it did not serve, several DNSZones for one zone name and free-form
+policy rewrites; without this check the migration committed and the node
+then served nothing, on a schema 0.1.0 no longer opens. A database that is
+already on the current schema is opened as it is.
 
 Schema 7 reserves durable root-anchor history with a non-granting physical
 marker. Schema 8 adds a private receiver-local denial carrier in the same
@@ -1591,7 +1619,12 @@ policy, global controls, resolution, response processing, cache behavior,
 blocking, inventory, authentication and runtime data. Owner preparation must provide every component
 with the same canonical generation and verified dependency identity. An error,
 panic, missing component, changed dependency or stale generation retains the
-entire previous bundle.
+entire previous bundle. Readiness and the API then report only that the
+generation is unavailable (`prepare_failed`, `generation_pending`); the
+server log names what the candidate failed on, once per failure, and says
+when a generation is published again (`complete serving generation not
+published`). The store keeps a zone that the image cannot build from being
+written in the first place ([The store](#the-store)).
 
 SQLite issues an opaque token in the same read transaction as the image. The
 publisher checks that token under the SQLite writer barrier before swapping one

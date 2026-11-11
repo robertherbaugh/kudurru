@@ -142,8 +142,10 @@ func TestCurrentAdoptionPrevalidationAndBoundsLeaveNoJournal(t *testing.T) {
 				case "already-adopted":
 					z.Annotations[migrationRunAnnotation] = "other-run"
 				case "non-import":
-					z.Name = "handmade"
-					reviewed[1].Name = z.Name
+					// A zone of its own, not a second DNSZone for the zone
+					// name of the import: the store refuses that (D373).
+					z.Name, z.Spec.ZoneName = "handmade", "handmade.test."
+					reviewed[1].Name, reviewed[1].ZoneName = z.Name, z.Spec.ZoneName
 				case "secondary":
 					z.Spec.Type = public.ZoneTypeSecondary
 					z.Spec.Secondary = &public.SecondarySpec{Primaries: []string{"192.0.2.53:53"}}

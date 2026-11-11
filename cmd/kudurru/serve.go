@@ -183,6 +183,12 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 		switch {
 		case errors.Is(err, sqlite.ErrSchemaTooNew):
 			return nil, nil, nil, fmt.Errorf("state.db was written by a newer kudurru: %w", err)
+		case errors.Is(err, sqlite.ErrUpgradeRefused):
+			// The store lists every object and leaves the database as the
+			// earlier release wrote it (D373), so that release still runs on it.
+			return nil, nil, nil, fmt.Errorf("state.db was written by an earlier kudurru: %w. "+
+				"Start that earlier release on this data directory, correct or delete the listed objects "+
+				"(in the configuration file or the objects directory when they are managed there), stop it and start this release again", err)
 		case errors.Is(err, sqlite.ErrLocked):
 			return nil, nil, nil, fmt.Errorf("another kudurru process owns state.db: %w", err)
 		case err != nil:
@@ -789,6 +795,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	qlLogs, err = newQuerylogRuntime(ctx, cfg, reg, logger, listedDomains)
 	if err != nil {
+		if errors.Is(err, sqlitelog.ErrSchemaTooNew) {
+			return fmt.Errorf("querylog.db was written by a newer kudurru: %w", err)
+		}
 		return err
 	}
 	defer func() {

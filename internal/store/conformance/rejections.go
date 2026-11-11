@@ -172,6 +172,11 @@ func testRejection(t *testing.T, s store.Store, v *validator.Validator, tc inval
 	// barrier, avoiding a sleep-based assertion that no rejection event exists.
 	sentinel := tc.base()
 	sentinel.SetName("barrier")
+	if z, ok := sentinel.(*v1alpha1.DNSZone); ok {
+		// Another zone, not a second object for the zone name of the
+		// fixture: the sqlite driver refuses that (D373).
+		z.Spec.ZoneName = "barrier.example."
+	}
 	if _, err := s.Apply(ctx, sentinel, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
 		t.Fatal(err)
 	}

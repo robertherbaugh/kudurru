@@ -130,7 +130,11 @@ func TestZoneCommandCascadeChecksEveryOwnerAndDryRun(t *testing.T) {
 			t.Fatal("cascade omitted current reference", key)
 		}
 	}
-	zoneSeed(t, st, store.ManagerBootstrap, zoneObj("root", "."))
+	root := zoneObj("root", ".")
+	// zoneObj derives "ns1.." for the root, which is not a name: the store
+	// refuses a zone that the serving image cannot build (D373).
+	root.Spec.Nameservers = []string{"ns1.root.test."}
+	zoneSeed(t, st, store.ManagerBootstrap, root)
 	if got := h.do(http.MethodDelete, "/api/v1/zones/root?dryRun=true", "admin", nil).want(http.StatusConflict).errKey(); got != KeyDefaultZone {
 		t.Fatal(got)
 	}

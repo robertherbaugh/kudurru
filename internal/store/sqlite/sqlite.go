@@ -323,7 +323,7 @@ func openStore(ctx context.Context, path string, opts Options, existing bool) (*
 			return fail(err)
 		}
 	} else {
-		if err := migrate(ctx, s.w, migrations, store.SchemaVersion, opts.Now); err != nil {
+		if err := migrateAdmitted(ctx, s.w, migrations, store.SchemaVersion, opts.Now, s.admitUpgrade); err != nil {
 			return fail(err)
 		}
 	}

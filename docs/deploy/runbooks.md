@@ -434,6 +434,50 @@ VIP holder last.
 kudurru` replace the binary and keep `/etc/kudurru`; the post-install script
 restarts the service only if it was running.
 
+## Upgrade refused: stored objects are not valid in this release
+
+Docker, systemd and the chart's `standalone` mode keep their objects in
+`state.db`. Before a release migrates that file it checks every stored
+object against its own rules. If one fails, kudurru does not start:
+
+```text
+error: state.db was written by an earlier kudurru: store/sqlite: state.db (schema 1) cannot be upgraded to schema 9: 2 stored objects are not valid in this release:
+  DNSZone lab-secondary: spec: Invalid value: secondary zones require secondary configuration
+  Policy default/default: spec.rewrites[0]: Invalid value: provide either a CNAME or targets, not both
+state.db was not changed. Start that earlier release on this data directory, correct or delete the listed objects (in the configuration file or the objects directory when they are managed there), stop it and start this release again
+```
+
+Nothing was migrated. The data directory is as the earlier release left it,
+and that release still serves it:
+
+1. An object that a file manages (`objectsDir`, or `objects:` in
+   `kudurru.yaml`) is corrected in, or removed from, that file first.
+2. Start the earlier release on the same data directory (the previous image
+   tag or package version). DNS answers as before, and the files are applied
+   when it starts.
+3. Correct or delete every other object the message lists, with the
+   dashboard, `kudurru delete <kind> <name>` or `kudurru apply -f`.
+4. Stop it and start the new release. If the message appears again with
+   other objects or other fields, repeat: some rules are only checked once
+   an object is structurally valid.
+
+What 0.1 stored and 0.2 does not accept:
+
+| Object | What to do |
+|---|---|
+| DNSZone of type `secondary` or `stub` without `spec.secondary.primaries` or `spec.stub.nameservers` | 0.1 did not serve these types. Add the configuration or delete the zone. |
+| DNSZone of type `external`, `catalog` or `secondaryCatalog` | No release serves these types yet. Delete the zone. |
+| Two or more DNSZones with one `spec.zoneName` | Keep one and delete the others. 0.1 kept serving the zone as it was before the second object appeared, and later changes to either object had no effect. |
+| DNSZone with an entry in `spec.policy.queryACL` or `transferACL` that is not an address or a network, or an entry in `notifyTargets` that is not an address | 0.1 reported it on the zone and did not serve the zone. Correct the entry. |
+| Policy with `spec.rewrites` entries that have neither `targets` nor `cname`, have both, or have a `type` that is not one of the listed record types in upper case | 0.1 stored rewrites and did not apply them. Correct or remove the entries. |
+
+A secondary or stub zone that 0.1 stored with its configuration is valid: it
+was not served by 0.1 and is served by 0.2, which starts transferring it
+after the upgrade. Remove it first if that is not wanted.
+
+After the upgrade the same rules apply to every change: the API answers
+`400 invalid` and names the field, and the object is not stored.
+
 ## Central database unavailable
 
 Symptoms: the `KudurruCentralDatabaseDown` alert, `CentralUnreachable` on the
