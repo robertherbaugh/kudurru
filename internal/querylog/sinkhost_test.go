@@ -954,3 +954,66 @@ func TestCrossedPowerOfTen(t *testing.T) {
 		}
 	}
 }
+
+// lockedBuffer collects log output written from several goroutines.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// TestSinkHostClosedUnderARunningCollectorCountsLateEvents: the host is
+// closed while the collector still holds accepted events (here, behind a
+// primary write that does not return). The sink drains what it had and
+// closes; the events the collector offers it afterwards are lost with the
+// shutdown and counted for the sink, with the reason "sink host stopped",
+// not "sink replaced", and the sink receives none of them.
+func TestSinkHostClosedUnderARunningCollectorCountsLateEvents(t *testing.T) {
+	primary := &gatedSink{recSink: &recSink{}}
+	f := newFanFixture(t, primary, nil)
+	logs := &lockedBuffer{}
+	// Before the first route: no sink goroutine reads the logger yet.
+	f.host.logger = slog.New(slog.NewTextHandler(logs, nil))
+	route := f.route(nil, nil, spec("x"))
+	t.Cleanup(route.Release)
+
+	// The collector offers the first event to x and then waits in the
+	// primary write; two more events wait in its queue.
+	primary.hold()
+	route.Enqueue(ev("192.0.2.1", "1."))
+	waitFor(t, "x to write the first event", func() bool { return len(f.get("x").names()) == 1 })
+	waitFor(t, "the collector to enter the primary write", func() bool { return len(f.async.queue) == 0 })
+	route.Enqueue(ev("192.0.2.1", "2."))
+	route.Enqueue(ev("192.0.2.1", "3."))
+
+	if err := f.host.Close(t.Context()); err != nil {
+		t.Fatalf("closing a host whose only sink is idle: %v", err)
+	}
+	if _, closes, _ := f.get("x").state(); closes != 1 {
+		t.Fatalf("x was closed %d times by the host's close, want once", closes)
+	}
+	primary.open()
+	waitFor(t, "the primary sink to receive every event", func() bool { _, n := primary.count(); return n == 3 })
+	waitFor(t, "the two late events to be counted", func() bool { return f.dropped("x") == 2 })
+	if got := f.get("x").names(); !reflect.DeepEqual(got, []string{"1."}) {
+		t.Errorf("the closed sink received %v after it closed", got)
+	}
+	out := logs.String()
+	if !strings.Contains(out, "query log sink dropped events") || !strings.Contains(out, `reason="sink host stopped"`) {
+		t.Errorf("the late events were not reported as lost with the shutdown:\n%s", out)
+	}
+	if strings.Contains(out, "sink replaced") {
+		t.Errorf("a shutdown loss was reported as a replacement:\n%s", out)
+	}
+}
