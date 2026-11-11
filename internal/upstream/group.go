@@ -44,9 +44,10 @@ type Error struct {
 	Msg      *dns.Msg
 	Upstream string
 	// Attempted reports that at least one server was actually asked: a
-	// forwarder received the query, or the native resolver ran a resolution
-	// rather than refusing its cache mutation admission (D377). It is false
-	// when the query ended before any server was tried.
+	// forwarder received the query, or the native resolver sent a query to
+	// at least one authority before it failed (it marks its own refusals
+	// recursor.IsAdmission; D377). It is false when the query ended before
+	// any server was tried.
 	Attempted bool
 }
 

@@ -148,6 +148,7 @@ func (q *query) exchangeOnce(server netip.AddrPort, name string, qtype uint16, u
 		if q.st.budget < 0 {
 			return nil, time.Since(start), errBudget
 		}
+		q.st.contacted = true
 		resp, err := r.ex.Exchange(wireCtx, m, server, retry.tcp)
 		if err == nil {
 			err = matchResponse(resp, m)

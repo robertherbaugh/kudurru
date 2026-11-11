@@ -32,9 +32,11 @@ var ErrCacheAdmission = errors.New("recursor: original cache mutation admission 
 
 // admissionError marks an error the resolver returns because its original
 // cache mutation admission refused the query (an unavailable or foreign
-// source, a refused capture or mutation attempt). The node produced it; it is
-// not evidence that any authority was asked. It unwraps to the original error
-// and keeps its text.
+// source, a refused capture or mutation attempt, or the query's end noticed
+// there) before any authority was sent a query. The node produced it; it is
+// not evidence that any authority was asked. Once an authority was asked, the
+// same errors are returned unmarked. It unwraps to the original error and
+// keeps its text.
 type admissionError struct{ err error }
 
 func (e admissionError) Error() string { return e.err.Error() }

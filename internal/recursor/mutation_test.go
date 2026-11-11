@@ -416,3 +416,109 @@ func TestNativeMutationElapsedDeadlineBeforeCancellationSignal(t *testing.T) {
 		t.Fatal("elapsed original deadline admitted native data before timer signal")
 	}
 }
+
+// skippingSource admits every cache attempt and consumes it without running
+// its writes, as the node's root source does after an ordinary canonical
+// commit (D377): the attempt is still checked, but no write of a superseded
+// data generation reaches the native cache.
+type skippingSource struct{ captures, applies int }
+
+func (*skippingSource) Domain() [32]byte { return [32]byte{} }
+func (s *skippingSource) Capture(context.Context) (CacheMutation, error) {
+	s.captures++
+	return &skippingAttempt{source: s}, nil
+}
+
+type skippingAttempt struct {
+	source *skippingSource
+	used   bool
+}
+
+func (a *skippingAttempt) Apply(func() error) error {
+	if a.used {
+		return ErrCacheAdmission
+	}
+	a.used = true
+	a.source.applies++
+	return nil
+}
+
+// TestNativeMutationSkippedWritesStillResolve: a validating resolution whose
+// every native cache write is skipped (the window after an ordinary canonical
+// commit, before the successor publication) gives the same response code,
+// security state and answers as a normal resolution, across delegations,
+// CNAMEs and DNAMEs between zones, glueless name servers, insecure
+// delegations and NSEC/NSEC3 denials. Without its own cache the resolution
+// asks the authorities again for delegations and DNSSEC keys it would
+// otherwise remember; the logged counts measure that cost.
+func TestNativeMutationSkippedWritesStillResolve(t *testing.T) {
+	w := newWorld(t)
+	for _, tc := range []struct {
+		name  string
+		qtype uint16
+	}{
+		{"www.example.com.", dns.TypeA},
+		{"www.example.com.", dns.TypeAAAA},
+		{"www.example.com.", dns.TypeMX},
+		{"alias.example.com.", dns.TypeA},
+		{"far.example.com.", dns.TypeA},
+		{"x.wild.example.com.", dns.TypeA},
+		{"a.b.deep.example.com.", dns.TypeA},
+		{"www.old.example.com.", dns.TypeA},
+		{"txt.example.com.", dns.TypeTXT},
+		{"nope.example.com.", dns.TypeA},
+		{"www.insecure.com.", dns.TypeA},
+		{"www.unsigned.org.", dns.TypeA},
+		{"www.nsec3.org.", dns.TypeA},
+		{"x.wild.nsec3.org.", dns.TypeA},
+		{"nope.nsec3.org.", dns.TypeA},
+		{"www.glueless.org.", dns.TypeA},
+	} {
+		t.Run(tc.name+"/"+dns.TypeToString[tc.qtype], func(t *testing.T) {
+			// Both start cold, so the counts compare one uncached lookup.
+			reference := w.resolver()
+			reference.requireCacheMutations = true
+			skipped := w.resolver()
+			skipped.requireCacheMutations = true
+			w.net.reset()
+			wantMsg, wantV, err := reference.ExchangeWithValidation(mutationTestContext(t, &mutationTestSource{}), clientQuery(tc.name, tc.qtype))
+			if err != nil {
+				t.Fatal(err)
+			}
+			refAsked := len(w.net.queries())
+			w.net.reset()
+			source := &skippingSource{}
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			gotMsg, gotV, err := skipped.ExchangeWithValidation(WithCacheMutations(ctx, source), clientQuery(tc.name, tc.qtype))
+			if err != nil {
+				t.Fatal("skipped writes failed the resolution", err)
+			}
+			skipAsked := len(w.net.queries())
+			if gotMsg.Rcode != wantMsg.Rcode || gotV.State != wantV.State || len(gotMsg.Answer) != len(wantMsg.Answer) || len(gotMsg.Ns) != len(wantMsg.Ns) {
+				t.Fatalf("skipped writes changed the result: %s %s %d/%d answer/authority, want %s %s %d/%d\n%v",
+					dns.RcodeToString[gotMsg.Rcode], gotV.State, len(gotMsg.Answer), len(gotMsg.Ns),
+					dns.RcodeToString[wantMsg.Rcode], wantV.State, len(wantMsg.Answer), len(wantMsg.Ns), gotMsg)
+			}
+			for i := range wantMsg.Answer {
+				if gotMsg.Answer[i].String() != wantMsg.Answer[i].String() {
+					t.Fatalf("answer %d is %v, want %v", i, gotMsg.Answer[i], wantMsg.Answer[i])
+				}
+			}
+			// An attempt with no queued write is never applied.
+			if source.applies == 0 || source.applies > source.captures {
+				t.Fatal("cache attempts not consumed", source.captures, source.applies)
+			}
+			if skipped.CacheLen() != 0 {
+				t.Fatal("a skipped write reached the native cache", skipped.CacheLen())
+			}
+			// The worst case of this world (an NSEC3 denial) asks 60; keep a
+			// cold lookup with skipped writes well inside the per-query budget.
+			if skipAsked > maxQueries*3/4 {
+				t.Fatalf("skipped writes cost %d authority queries of the budget %d", skipAsked, maxQueries)
+			}
+			t.Logf("%s %s: %s %s, authority queries %d with writes, %d with writes skipped",
+				tc.name, dns.TypeToString[tc.qtype], dns.RcodeToString[gotMsg.Rcode], gotV.State, refAsked, skipAsked)
+		})
+	}
+}

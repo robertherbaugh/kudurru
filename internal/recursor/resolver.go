@@ -440,8 +440,15 @@ func (r *Resolver) ExchangeWithValidation(ctx context.Context, req *dns.Msg) (*d
 			q.st.exceptionUntil = time.Time{}
 		}
 		a = q.resolve(question.Name, question.Qtype)
-		if q.st.cacheErr != nil {
-			return nil, Validation{}, admission(q.st.cacheErr)
+		if err := q.st.cacheErr; err != nil {
+			// Once an authority was sent a query, the resolution ran: even a
+			// deadline or refusal noticed later at a cache commit is the
+			// outcome of an asked upstream, not of the node's own admission
+			// (D377).
+			if q.st.contacted {
+				return nil, Validation{}, err
+			}
+			return nil, Validation{}, admission(err)
 		}
 		validUntil = q.st.denialUntil
 		if until := q.st.denialUntil; !until.IsZero() {
@@ -512,6 +519,7 @@ type clientState struct {
 	hashBudget      int
 	inKeys          map[string]bool
 	tooDeep         bool // a lookup hit maxDepth
+	contacted       bool // a query was handed to the exchanger for an authority
 }
 
 // query is one (possibly nested) lookup.

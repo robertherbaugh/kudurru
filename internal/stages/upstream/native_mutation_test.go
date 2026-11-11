@@ -127,6 +127,41 @@ func (refusedNativeSource) Capture(context.Context) (recursor.CacheMutation, err
 	return nil, errors.New("retired source")
 }
 
+// silentExchange counts each query and never answers it.
+type silentExchange struct{ asked *int }
+
+func (e silentExchange) Exchange(ctx context.Context, _ *dns.Msg, _ netip.AddrPort, _ bool) (*dns.Msg, error) {
+	*e.asked++
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// expiringNativeSource admits each cache attempt, but its writes find the
+// query's deadline passed.
+type expiringNativeSource struct{}
+
+func (expiringNativeSource) Domain() [32]byte { return [32]byte{} }
+func (expiringNativeSource) Capture(ctx context.Context) (recursor.CacheMutation, error) {
+	return expiringNativeMutation{ctx}, nil
+}
+
+type expiringNativeMutation struct{ ctx context.Context }
+
+func (m expiringNativeMutation) Apply(fn func() error) error {
+	<-m.ctx.Done()
+	return fn()
+}
+
+// endingNativeSource refuses its cache admission and ends the query at the
+// same moment.
+type endingNativeSource struct{ cancel context.CancelFunc }
+
+func (endingNativeSource) Domain() [32]byte { return [32]byte{} }
+func (s endingNativeSource) Capture(context.Context) (recursor.CacheMutation, error) {
+	s.cancel()
+	return nil, errors.New("retired source")
+}
+
 // TestFailureUpstreamContacted: only a failure of an exchange that asked a
 // server carries UpstreamContacted (D377). Refusals the stage produces before
 // any server is asked carry the same status without it.
@@ -159,11 +194,11 @@ func TestFailureUpstreamContacted(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name      string
-		stage     func(*testing.T) (*Stage, *int)
+		stage     func(*testing.T, context.CancelFunc) (*Stage, *int)
 		deadline  time.Duration
 		contacted bool
 	}{
-		{"forwarder failed", func(t *testing.T) (*Stage, *int) {
+		{"forwarder failed", func(t *testing.T, _ context.CancelFunc) (*Stage, *int) {
 			s, err := New("default", []string{dead}, time.Second)
 			if err != nil {
 				t.Fatal(err)
@@ -171,7 +206,7 @@ func TestFailureUpstreamContacted(t *testing.T) {
 			t.Cleanup(func() { _ = s.Set().Close() })
 			return s, nil
 		}, 3 * time.Second, true},
-		{"query ended before any server", func(t *testing.T) (*Stage, *int) {
+		{"query ended before any server", func(t *testing.T, _ context.CancelFunc) (*Stage, *int) {
 			s, err := New("default", []string{dead}, time.Second)
 			if err != nil {
 				t.Fatal(err)
@@ -179,7 +214,7 @@ func TestFailureUpstreamContacted(t *testing.T) {
 			t.Cleanup(func() { _ = s.Set().Close() })
 			return s, nil
 		}, -time.Second, false},
-		{"serving capture failed", func(t *testing.T) (*Stage, *int) {
+		{"serving capture failed", func(t *testing.T, _ context.CancelFunc) (*Stage, *int) {
 			s, err := New("default", []string{dead}, time.Second)
 			if err != nil {
 				t.Fatal(err)
@@ -188,23 +223,74 @@ func TestFailureUpstreamContacted(t *testing.T) {
 			s.Capture = func(*pipeline.Request) (*View, error) { return nil, errors.New("retired generation") }
 			return s, nil
 		}, 3 * time.Second, false},
-		{"native recursion refused", func(t *testing.T) (*Stage, *int) {
+		{"native recursion refused", func(t *testing.T, _ context.CancelFunc) (*Stage, *int) {
 			return recursive(t, func(*pipeline.Request) (recursor.CacheMutationSource, error) {
 				return nil, errors.New("retired source")
 			})
 		}, 3 * time.Second, false},
-		{"native cache admission refused", func(t *testing.T) (*Stage, *int) {
+		{"native cache admission refused", func(t *testing.T, _ context.CancelFunc) (*Stage, *int) {
 			return recursive(t, func(*pipeline.Request) (recursor.CacheMutationSource, error) { return refusedNativeSource{}, nil })
 		}, 3 * time.Second, false},
-		{"native authorities failed", func(t *testing.T) (*Stage, *int) {
+		{"native authorities failed", func(t *testing.T, _ context.CancelFunc) (*Stage, *int) {
 			return recursive(t, func(*pipeline.Request) (recursor.CacheMutationSource, error) { return &stageNativeSource{}, nil })
 		}, 3 * time.Second, true},
+		{"native authorities timed out", func(t *testing.T, _ context.CancelFunc) (*Stage, *int) {
+			cfg := recursor.DefaultConfig()
+			cfg.DNSSEC = false
+			cfg.IPv6 = recursor.IPv6Off
+			cfg.RootHints = []string{"10.0.0.1:53"}
+			asked := new(int)
+			r, err := recursor.New(cfg, recursor.Options{RequireCacheMutations: true, Exchanger: silentExchange{asked}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			set, err := upstreamset.New(upstreamset.Config{Groups: map[string]upstreamset.GroupConfig{"default": {Recursive: true}}, Recursion: cfg}, upstreamset.Options{Recursor: r})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = set.Close() })
+			stage := NewStage(set)
+			stage.CaptureNative = func(*pipeline.Request) (recursor.CacheMutationSource, error) { return &stageNativeSource{}, nil }
+			return stage, asked
+		}, 500 * time.Millisecond, true},
+		// The authorities answered, but the attempt's deadline (the group
+		// timeout, before the query's own) passed while its first cache
+		// attempt was committed: the resolution still ran.
+		{"native cache commit reached the deadline after asking", func(t *testing.T, _ context.CancelFunc) (*Stage, *int) {
+			cfg := recursor.DefaultConfig()
+			cfg.DNSSEC = false
+			cfg.IPv6 = recursor.IPv6Off
+			cfg.RootHints = []string{"10.0.0.1:53"}
+			asked := new(int)
+			r, err := recursor.New(cfg, recursor.Options{RequireCacheMutations: true, Exchanger: stageNativeExchange{func() { *asked++ }}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			set, err := upstreamset.New(upstreamset.Config{Groups: map[string]upstreamset.GroupConfig{"default": {Recursive: true, Timeout: 300 * time.Millisecond}}, Recursion: cfg}, upstreamset.Options{Recursor: r})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = set.Close() })
+			stage := NewStage(set)
+			stage.CaptureNative = func(*pipeline.Request) (recursor.CacheMutationSource, error) { return expiringNativeSource{}, nil }
+			return stage, asked
+		}, 3 * time.Second, true},
+		// The node refused the native cache admission just as the query
+		// ended: the end of the query does not turn the refusal into an
+		// asked upstream.
+		{"native cache admission refused as the query ended", func(t *testing.T, cancel context.CancelFunc) (*Stage, *int) {
+			return recursive(t, func(*pipeline.Request) (recursor.CacheMutationSource, error) {
+				return endingNativeSource{cancel}, nil
+			})
+		}, 3 * time.Second, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			stage, asked := tc.stage(t)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			stage, asked := tc.stage(t, cancel)
 			m := new(dns.Msg)
 			m.SetQuestion("contact.example.", dns.TypeA)
-			response, err := stage.Serve(&pipeline.Request{Ctx: t.Context(), Msg: m, Deadline: time.Now().Add(tc.deadline)}, nil)
+			response, err := stage.Serve(&pipeline.Request{Ctx: ctx, Msg: m, Deadline: time.Now().Add(tc.deadline)}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

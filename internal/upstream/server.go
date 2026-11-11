@@ -168,7 +168,14 @@ func (s *server) exchange(parent context.Context, m *dns.Msg, timeout time.Durat
 		a.msg = nil
 		if parent.Err() != nil {
 			// The race was decided or the client gave up: not the server's fault.
-			a.err = fmt.Errorf("%s: %w", s.name, parent.Err())
+			// A native admission refusal keeps its mark, so a query that
+			// ended as the node refused it is still not counted as asked
+			// (D377).
+			if recursor.IsAdmission(a.err) {
+				a.err = fmt.Errorf("%s: %w: %w", s.name, parent.Err(), a.err)
+			} else {
+				a.err = fmt.Errorf("%s: %w", s.name, parent.Err())
+			}
 			return a
 		}
 		reason := reasonNetwork
