@@ -26,16 +26,10 @@ zone always get an answer.
 The wizard creates primary, forward, secondary and stub zones. Catalog zones
 are reserved for a later release.
 
-CAUTION: Do not apply a zone of the type `external`, `catalog` or
-`secondaryCatalog` from a file or with the API. kudurru does not serve these
-types. On a node with the SQLite store, such a zone stops the answers for your
-own zones and stops all changes. You cannot delete the zone through the API
-then. Do not restart the node: after a restart it answers SERVFAIL for every
-name, also for names it forwards.
-
-To recover, stop the node and put back a copy of the data directory that you
-made before you applied the zone. A block list with a URL that kudurru cannot
-download has the same effect until a download succeeds.
+The schema also has the types `external`, `catalog` and `secondaryCatalog`,
+which kudurru does not serve. On a node with the SQLite store the API refuses
+such a zone from a file or a request with `invalid` and names `spec.type`;
+nothing is stored.
 
 ### See the zones
 

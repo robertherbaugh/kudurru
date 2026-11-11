@@ -92,14 +92,15 @@ unconfirmed final reports return an error. Canceling the wait leaves the
 accepted job running; its run ID remains in the diagnostic output. Inspect it
 with `kudurru import runs RUN_ID`.
 
-CAUTION: In this version, on the SQLite store, a converted `BlockList` with
-a URL source that the kudurru host cannot download stops the node's own zones
-and its whole API until a later download attempt succeeds, even when no
-policy refers to the list, and a restart then makes the node answer SERVFAIL
-for every name. Download each list URL of the preview once from the kudurru
-host before `--apply`, select the lists with URLs one at a time with
-`--select-object`, and keep a copy of the data directory. See
-[apply results](/migrate/cutover/#apply-results) for the recovery.
+NOTE: A converter puts the URL sources of one product into as few `BlockList`
+objects as it can (up to 256 sources and 1 MiB each; the filters of an AdGuard
+Home configuration become `adguard-block`, then `adguard-block-2` and so on),
+so `--select-object` selects lists, not single URLs. A URL that the kudurru
+host cannot download, or does not accept as a list, does not stop the node:
+that source contributes no rules and the list reports the download error under
+`Degraded`. After the import, read the list's conditions (`kudurru get
+blocklists -o yaml`) and correct or remove the sources that failed ([migration
+overview](/migrate/#feature-comparison)).
 
 Successful objects remain if another item fails. Settings apply only after every
 selected object succeeds. The report distinguishes skipped items, object errors,

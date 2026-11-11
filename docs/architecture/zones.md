@@ -39,25 +39,25 @@ erDiagram
 
 Primary, forward, secondary, and stub zones are served. The other
 types in the schema (`external`, `catalog`, `secondaryCatalog`) are accepted
-by admission and are not served. The zone controller, which runs on both
-stores, gives such a zone `Ready=False, reason Unsupported` (`zoneVerdict` in
-`internal/controller`). On SQLite it writes that verdict to the stored
-object, but `servingzones.Prepare` refuses the whole candidate while the
-object exists, so no generation is published and the API cannot show or
-remove the object. The node reports `prepare_failed`, answers 503
-`generation_pending` on the API, also for the deletion of that object, and
-stops answering for its own zones; forwarded names still answer from the
-generation it had. After a restart it has no generation at all and answers
-SERVFAIL for every name, forwarded names included. Nothing in the API
-removes the object then; the data directory has to be put back from a copy.
-Do not apply these types on SQLite.
+by Kubernetes admission and are not served. The zone controller, which runs
+on both stores, gives such a zone `Ready=False, reason Unsupported`
+(`zoneVerdict` in `internal/controller`). The SQLite store does not store
+one: `zone.ServingErrors` refuses the type at write as `invalid` with
+`spec.type: Unsupported value`, and the state.db upgrade refuses a data
+directory that holds one (see below).
 
-A `BlockList` with an enabled URL source that has never been downloaded has
-the same effect on SQLite, even when no policy refers to it: list
-preparation (`internal/listfetcher`, `ErrIncomplete`) refuses the whole
-candidate until the background fetcher has stored a body with its digest.
-Unlike the zone case, this clears by itself at the first successful download
-attempt.
+A `BlockList` source that never published a body does not hold back the
+SQLite candidate, even when no policy refers to the list. List preparation
+(`notDownloaded` in `internal/listfetcher/prepare.go`) compiles such a
+source empty, whether its first download is still running or failed (an
+unreachable host, an HTTP error, or a body the downloader refuses), and the
+list reports the failure as `Degraded` (`ListFetchFailed`). The download
+that publishes the source's digest changes the object and prepares the next
+candidate. A cached body without a published digest is never used, and a
+published digest whose body this node lacks still holds the candidate back
+(`ErrIncomplete`). The fetcher retries a failed source after one minute,
+doubling up to one hour (`DefaultCooldown`, `DefaultMaxCooldown`); a refresh
+request fetches at once (D373).
 
 Use one DNSZone per canonical apex. If different objects claim the same
 apex, the serving builder logs the conflict and installs unavailable coverage
