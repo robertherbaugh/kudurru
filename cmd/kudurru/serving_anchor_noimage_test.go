@@ -37,7 +37,7 @@ func anchorNoImageDigest(t *testing.T, dir string) [32]byte {
 		if !strings.HasPrefix(e.Name(), sqlite.FileName) {
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		b, err := os.ReadFile(filepath.Join(dir, e.Name())) //nolint:gosec // G304: the test's temp directory
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,7 +61,7 @@ func anchorNoImageCopy(t *testing.T, from, to string) {
 		if e.IsDir() {
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join(from, e.Name()))
+		b, err := os.ReadFile(filepath.Join(from, e.Name())) //nolint:gosec // G304: the test's temp directory
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -69,7 +69,7 @@ func anchorNoImageCopy(t *testing.T, from, to string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(to, e.Name()), b, info.Mode().Perm()); err != nil {
+		if err := os.WriteFile(filepath.Join(to, e.Name()), b, info.Mode().Perm()); err != nil { //nolint:gosec // G703: the test's temp directory
 			t.Fatal(err)
 		}
 	}
@@ -164,7 +164,7 @@ func TestAnchorNoImageStartupRefusesWithRemedy(t *testing.T) {
 			}
 		},
 	}
-	start := func(t *testing.T, dir, topology string, managed bool) (*servingRuntime, error, *atomic.Int32, *atomic.Int32, *sqlite.Store) {
+	start := func(t *testing.T, dir, topology string, managed bool) (*servingRuntime, *atomic.Int32, *atomic.Int32, *sqlite.Store, error) {
 		t.Helper()
 		opening, opened := context.WithTimeout(t.Context(), 10*time.Second)
 		st, err := sqlite.OpenExisting(opening, filepath.Join(dir, sqlite.FileName), opts)
@@ -200,7 +200,7 @@ func TestAnchorNoImageStartupRefusesWithRemedy(t *testing.T) {
 		if s != nil {
 			t.Cleanup(func() { _ = s.Close(context.Background()) })
 		}
-		return s, err, &calls, reads, st
+		return s, &calls, reads, st, err
 	}
 	parent, templates := t, map[string]string{}
 	for _, name := range []string{"unenrolled", "incomplete-join", "empty-follower"} {
@@ -213,7 +213,7 @@ func TestAnchorNoImageStartupRefusesWithRemedy(t *testing.T) {
 				dir := t.TempDir()
 				anchorNoImageCopy(t, templates[name], dir)
 				before := anchorNoImageDigest(t, dir)
-				s, err, calls, reads, st := start(t, dir, topology, true)
+				s, calls, reads, st, err := start(t, dir, topology, true)
 				authority := st.Authority()
 				if name == "empty-follower" && topology == "direct" {
 					// The existing direct wait (TestDirectAnchorEnrolledFollowerWaitsWithoutInitializing).
@@ -264,7 +264,7 @@ func TestAnchorNoImageStartupRefusesWithRemedy(t *testing.T) {
 	if err := json.Unmarshal(output.Bytes(), &result); err != nil || !result.Observed || result.Installed.Validate() != nil {
 		t.Fatal("join-reconcile did not install the first image", err)
 	}
-	s, err, calls, reads, st := start(t, incompleteDir, "edges", false)
+	s, calls, reads, st, err := start(t, incompleteDir, "edges", false)
 	if err != nil {
 		t.Fatal("reconciled receiver did not start behind its edges", err)
 	}

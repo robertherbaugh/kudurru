@@ -29,7 +29,7 @@ var ownerGoldens = []struct {
 
 func readOwnerGolden(t *testing.T, name string) []replication.Entry {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("testdata", name))
+	b, err := os.ReadFile(filepath.Join("testdata", name)) //nolint:gosec // G304: a golden file under testdata
 	if err != nil {
 		t.Fatal(err)
 	}
