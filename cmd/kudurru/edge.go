@@ -57,6 +57,7 @@ type edgeFlags struct {
 	renderer, dnsdistBin, configDir string
 	dnsdistUser                     string
 	serverID                        string
+	dnstapTarget, dnstapIdentity    string
 	threads                         int
 	// run only
 	healthAddr                                string
@@ -104,6 +105,8 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 	fl.StringVar(&f.renderer, "renderer", "yaml", "configuration format: yaml (dnsdist.yml + functions-only dnsdist.lua) or lua (dnsdist.conf)")
 	fl.StringVar(&f.serverID, "server-id", "", "dnsdist general.server_id; default the host name")
 	fl.IntVar(&f.threads, "threads", 2, "Do53 listener threads")
+	fl.StringVar(&f.dnstapTarget, "dnstap-target", "", "send dnstap of the answers dnsdist gives itself (packet cache, own rules) to a kudurru listeners.dnstap entry: tcp:ip:port or unix:/path")
+	fl.StringVar(&f.dnstapIdentity, "dnstap-identity", "", "dnstap identity of the edge's messages; default the server id")
 	if run {
 		fl.StringVar(&f.dnsdistBin, "dnsdist-bin", "dnsdist", "dnsdist executable")
 		fl.StringVar(&f.dnsdistUser, "dnsdist-user", "", "uid[:gid] dnsdist switches to after binding its sockets and creating the eBPF maps (dnsdist --uid/--gid), for a supervisor started as root; dnsdist keeps only capabilities_to_retain")
@@ -166,6 +169,11 @@ func (f *edgeFlags) options() (edge.Options, error) {
 		ACL: f.acl, TransferSources: f.transferSources, AuthoritativeZones: f.authZones,
 		Threads: f.threads,
 		EBPF:    edge.EBPF{Enabled: f.ebpf},
+	}
+	if f.dnstapTarget != "" {
+		o.Dnstap = &edge.Dnstap{Target: f.dnstapTarget, Identity: f.dnstapIdentity}
+	} else if f.dnstapIdentity != "" {
+		return o, errors.New("--dnstap-identity needs --dnstap-target")
 	}
 	if f.dynblocks {
 		o.DynBlocks = edge.DynBlocks{Enabled: true, QueryRate: f.dynQPS, NXDomainRate: f.dynNX}

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
@@ -256,6 +257,47 @@ type Topology struct {
 	// empty only for loopback-only edges (D56).
 	ProxyProtocolSecret string
 	EBPF                EBPF
+	// Dnstap, when set, sends dnstap of the answers dnsdist gives itself
+	// (D372).
+	Dnstap *Dnstap
+}
+
+// Dnstap is the dnstap output of an edge (D372): dnsdist logs every answer
+// it gives without a backend, from its packet cache (cache-hit response
+// rules) or from its own rules (self-answered response rules), as
+// CLIENT_RESPONSE messages to a kudurru listener (listeners.dnstap). The
+// queries it forwards are logged by the kudurru node that answers them, so
+// together every client query is one row. kudurru also drops a message
+// about a query it answered itself, so an operator rule that logs every
+// response does not double them either.
+type Dnstap struct {
+	// Target is unix:/path or tcp:ip:port (dnsdist's Frame Streams loggers
+	// have no TLS).
+	Target string
+	// Identity is the dnstap identity; empty uses ServerID.
+	Identity string
+}
+
+// DnstapLogger is the name of the rendered dnstap logger.
+const DnstapLogger = "kudurru-dnstap"
+
+// Transport splits Target into dnsdist's transport (unix or tcp) and
+// address.
+func (d *Dnstap) Transport() (transport, address string, err error) {
+	scheme, address, ok := strings.Cut(d.Target, ":")
+	switch {
+	case !ok || address == "":
+	case scheme == "unix":
+		if strings.HasPrefix(address, "/") && filepath.Clean(address) == address && safeValue(address) {
+			return "unix", address, nil
+		}
+	case scheme == "tcp":
+		if err := validAddrPort(address); err != nil {
+			return "", "", fmt.Errorf("dnstap target %q: %w", d.Target, err)
+		}
+		return "tcp", address, nil
+	}
+	return "", "", fmt.Errorf("dnstap target %q is not unix:/path or tcp:ip:port", d.Target)
 }
 
 // DefaultACL is dnsdist's own default client ACL (private and loopback
@@ -530,6 +572,14 @@ func (t *Topology) Validate() error {
 	if s := t.ProxyProtocolSecret; s != "" {
 		if err := ValidSecret([]byte(s)); err != nil {
 			add("proxy protocol secret: %v", err)
+		}
+	}
+	if d := t.Dnstap; d != nil {
+		if _, _, err := d.Transport(); err != nil {
+			add("%v", err)
+		}
+		if d.Identity == "" || len(d.Identity) > 255 || !safeValue(d.Identity) {
+			add("dnstap identity %q must be 1 to 255 printable ASCII characters without spaces, quotes or backslashes", d.Identity)
 		}
 	}
 	if t.DynBlocks.Enabled {

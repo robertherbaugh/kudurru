@@ -54,6 +54,9 @@ const (
 	ruleManagedNoCache  = "kudurru-managed-no-cache"
 	ruleAuthoritative   = "kudurru-authoritative-zones"
 	ruleResolver        = "kudurru-resolver-default"
+	// The dnstap response rules (D372).
+	ruleDnstapCacheHit     = "kudurru-dnstap-cache-hit"
+	ruleDnstapSelfAnswered = "kudurru-dnstap-self-answered"
 )
 
 // ruleUUID is the deterministic uuid of a rendered rule.

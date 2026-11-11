@@ -115,6 +115,10 @@ func goldenCases(t *testing.T) map[string]*edge.Topology {
 			AuthoritativeZones: []string{"Example.com", "10.in-addr.arpa.", "example.com.", "."},
 			TransferSources:    []string{"192.0.2.53", "2001:db8::/64"}},
 			[]edge.Backend{{Name: "node-a", Address: "10.0.0.11:5353"}, {Name: "node-b", Address: "10.0.0.12:5353"}}),
+		// dnstap of the edge's own answers to a kudurru listener (D372).
+		"dnstap": build(edge.Options{ServerID: "edge-1", ProxyProtocolSecret: goldenSecret,
+			Dnstap: &edge.Dnstap{Target: "tcp:10.0.0.11:6000"}},
+			[]edge.Backend{{Name: "node-a", Address: "10.0.0.11:5353"}}),
 		// Opt-ins: DynBlocks and the eBPF filter.
 		"dynblocks-ebpf": build(edge.Options{ServerID: "node-a", ProxyProtocolSecret: goldenSecret, Threads: 4,
 			DynBlocks: edge.DynBlocks{Enabled: true, QueryRate: 50, NXDomainRate: 20, Exclude: []string{"10.0.0.0/8"}},

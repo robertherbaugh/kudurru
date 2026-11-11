@@ -60,6 +60,46 @@ func TestEdgeRender(t *testing.T) {
 	}
 }
 
+// TestEdgeRenderDnstap: --dnstap-target renders the dnstap logger and the
+// cache-hit and self-answered response rules (D372) in both formats, the
+// identity defaults to the server ID, and a target dnsdist cannot reach or
+// an identity without a target is refused.
+func TestEdgeRenderDnstap(t *testing.T) {
+	out := run(t, "edge", "render", "--backends", "127.0.0.1:5353", "--server-id", "edge-1", "--dnstap-target", "tcp:127.0.0.1:6000")
+	for _, want := range []string{"remote_logging:", "transport: tcp", "address: 127.0.0.1:6000", "cache_hit_response_rules:", "self_answered_response_rules:",
+		"type: DnstapLog", "identity: edge-1", "logger_name: kudurru-dnstap"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render output lacks %q:\n%s", want, out)
+		}
+	}
+	dir := t.TempDir()
+	run(t, "edge", "render", "--backends", "127.0.0.1:5353", "--renderer", "lua", "--dnstap-target", "unix:/run/kudurru/dnstap.sock", "--dnstap-identity", "edge-2", "--out", dir)
+	b, err := os.ReadFile(filepath.Join(dir, "dnsdist.conf")) //nolint:gosec // test-owned path
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`newFrameStreamUnixLogger("/run/kudurru/dnstap.sock")`, `addCacheHitResponseAction(AllRule(), DnstapLogResponseAction("edge-2", kudurru_dnstap)`,
+		`addSelfAnsweredResponseAction(AllRule(), DnstapLogResponseAction("edge-2", kudurru_dnstap)`} {
+		if !bytes.Contains(b, []byte(want)) {
+			t.Errorf("lua render lacks %q:\n%s", want, b)
+		}
+	}
+	if out := run(t, "edge", "render", "--backends", "127.0.0.1:5353"); strings.Contains(out, "DnstapLog") || strings.Contains(out, "remote_logging") {
+		t.Errorf("dnstap rendered without a target:\n%s", out)
+	}
+	for name, args := range map[string][]string{
+		"tls target":           {"--dnstap-target", "tls:127.0.0.1:6000"},
+		"host name":            {"--dnstap-target", "tcp:collector:6000"},
+		"relative socket":      {"--dnstap-target", "unix:run/dnstap.sock"},
+		"identity with quotes": {"--dnstap-target", "tcp:127.0.0.1:6000", "--dnstap-identity", `edge"1`},
+		"identity alone":       {"--dnstap-identity", "edge-1"},
+	} {
+		if _, err := runErr(append([]string{"edge", "render", "--backends", "127.0.0.1:5353"}, args...)...); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
 func writeTemp(t *testing.T, content string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "f")

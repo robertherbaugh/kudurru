@@ -52,6 +52,9 @@ type Options struct {
 	EBPF               EBPF
 	// Threads is the Do53 listener thread count; default 2.
 	Threads int
+	// Dnstap sends the answers dnsdist gives itself to a kudurru dnstap
+	// listener; nil sends none. An empty identity uses ServerID.
+	Dnstap *Dnstap
 }
 
 // Build returns the Topology for o, the given backends and credentials.
@@ -100,6 +103,13 @@ func Build(o Options, backends []Backend, creds Credentials) (*Topology, error) 
 		DynBlocks:           o.DynBlocks,
 		EBPF:                o.EBPF,
 		ProxyProtocolSecret: o.ProxyProtocolSecret,
+	}
+	if o.Dnstap != nil {
+		d := *o.Dnstap
+		if d.Identity == "" {
+			d.Identity = o.ServerID
+		}
+		t.Dnstap = &d
 	}
 	creds.Apply(t)
 	for _, p := range o.Protocols {

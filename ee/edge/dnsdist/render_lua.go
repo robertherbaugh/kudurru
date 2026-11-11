@@ -141,6 +141,18 @@ func (r LuaRenderer) render(in *edge.Topology, initialDown map[string]bool) ([]F
 			luaStrings(t.Rules.AuthoritativeZones), luaString(edge.PoolAuthoritative), luaString(ruleAuthoritative), luaString(ruleUUID(ruleAuthoritative)))
 	}
 	w("addAction(AllRule(), PoolAction(%s), {name=%s, uuid=%s})", luaString(edge.PoolResolver), luaString(ruleResolver), luaString(ruleUUID(ruleResolver)))
+	if d := t.Dnstap; d != nil {
+		transport, address, _ := d.Transport() // validated by prepare
+		w("")
+		w("-- dnstap of the answers dnsdist gives without a backend (D372)")
+		if transport == "unix" {
+			w("local kudurru_dnstap = newFrameStreamUnixLogger(%s)", luaString(address))
+		} else {
+			w("local kudurru_dnstap = newFrameStreamTcpLogger(%s)", luaString(address))
+		}
+		w("addCacheHitResponseAction(AllRule(), DnstapLogResponseAction(%s, kudurru_dnstap), {name=%s, uuid=%s})", luaString(d.Identity), luaString(ruleDnstapCacheHit), luaString(ruleUUID(ruleDnstapCacheHit)))
+		w("addSelfAnsweredResponseAction(AllRule(), DnstapLogResponseAction(%s, kudurru_dnstap), {name=%s, uuid=%s})", luaString(d.Identity), luaString(ruleDnstapSelfAnswered), luaString(ruleUUID(ruleDnstapSelfAnswered)))
+	}
 	if t.EBPF.Enabled {
 		w("")
 		w("-- eBPF socket filter (opt-in; DynBlocks drops are pushed into it)")

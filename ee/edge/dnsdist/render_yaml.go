@@ -35,6 +35,7 @@ func (r YAMLRenderer) render(in *edge.Topology, initialDown map[string]bool) ([]
 		return nil, err
 	}
 	cfg := buildYAML(t)
+	yamlDnstap(&cfg, t)
 	for i := range cfg.Backends {
 		if initialDown[cfg.Backends[i].ID] {
 			cfg.Backends[i].HealthChecks.Mode = "down"
@@ -72,6 +73,9 @@ type yConfig struct {
 	Backends              []yBackend      `yaml:"backends"`
 	QueryRules            []yRule         `yaml:"query_rules"`
 	DynamicRules          []yDynamicGroup `yaml:"dynamic_rules,omitempty"`
+	RemoteLogging         *yRemoteLogging `yaml:"remote_logging,omitempty"`
+	CacheHitRules         []yRule         `yaml:"cache_hit_response_rules,omitempty"`
+	SelfAnsweredRules     []yRule         `yaml:"self_answered_response_rules,omitempty"`
 	EBPF                  *yEBPF          `yaml:"ebpf,omitempty"`
 }
 
@@ -186,11 +190,37 @@ type ySelector struct {
 }
 
 type yAction struct {
-	Type      string `yaml:"type"`
-	RCode     string `yaml:"rcode,omitempty"`
-	PoolName  string `yaml:"pool_name,omitempty"`
-	ProxyType *int   `yaml:"proxy_type,omitempty"`
-	Value     string `yaml:"value,omitempty"`
+	Type       string `yaml:"type"`
+	RCode      string `yaml:"rcode,omitempty"`
+	PoolName   string `yaml:"pool_name,omitempty"`
+	ProxyType  *int   `yaml:"proxy_type,omitempty"`
+	Value      string `yaml:"value,omitempty"`
+	Identity   string `yaml:"identity,omitempty"`
+	LoggerName string `yaml:"logger_name,omitempty"`
+}
+
+type yRemoteLogging struct {
+	DnstapLoggers []yDnstapLogger `yaml:"dnstap_loggers"`
+}
+
+type yDnstapLogger struct {
+	Name      string `yaml:"name"`
+	Transport string `yaml:"transport"`
+	Address   string `yaml:"address"`
+}
+
+// yamlDnstap adds the dnstap logger and the two response rules that log
+// what dnsdist answers without a backend (D372).
+func yamlDnstap(cfg *yConfig, t *edge.Topology) {
+	d := t.Dnstap
+	if d == nil {
+		return
+	}
+	transport, address, _ := d.Transport() // validated by prepare
+	cfg.RemoteLogging = &yRemoteLogging{DnstapLoggers: []yDnstapLogger{{Name: edge.DnstapLogger, Transport: transport, Address: address}}}
+	action := yAction{Type: "DnstapLog", Identity: d.Identity, LoggerName: edge.DnstapLogger}
+	cfg.CacheHitRules = []yRule{{Name: ruleDnstapCacheHit, UUID: ruleUUID(ruleDnstapCacheHit), Selector: ySelector{Type: "All"}, Action: action}}
+	cfg.SelfAnsweredRules = []yRule{{Name: ruleDnstapSelfAnswered, UUID: ruleUUID(ruleDnstapSelfAnswered), Selector: ySelector{Type: "All"}, Action: action}}
 }
 
 type yDynamicGroup struct {
