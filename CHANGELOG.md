@@ -804,7 +804,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   Of two such DNAME targets the first is kept. A record set that becomes
   invalid as a whole is left out instead of keeping its earlier records (D373).
 - A zone serial no longer changes on the first start after an upgrade from 0.1
-  on SQLite (D373).
+  on SQLite, unless a name holds two DNAME targets, or two CNAME targets of
+  which the dropped one has the lower TTL: only the first target is kept, with
+  its own TTL, so the served content changes and the serial advances (D373).
 - Managed root anchors: a SQLite member that is fenced or holds an unresolved
   promotion conflict keeps answering DNS from its last valid local data and
   last accepted trust anchors, and restarts in that state, with
@@ -885,9 +887,10 @@ hints to peers so every replica transfers independently.
   cannot be undone: `state.db` goes from schema 1 to 9, `querylog.db` from 2 to
   3 and the `local.db` marker from 1 to 9, and the 0.1.0 binary then refuses
   the directory (`state.db was written by a newer kudurru`) without changing
-  it. In the directories the upgrade tests use, answers, zone serials, object
-  UIDs and generations, API tokens, the admin password, the query log and the
-  audit trail carry over. A setting saved from the 0.1 Settings page is
+  it. In the directories the upgrade tests use, answers, zone serials (except
+  for the CNAME and DNAME shapes in the next note), object UIDs and
+  generations, API tokens, the admin password, the query log and the audit
+  trail carry over. A setting saved from the 0.1 Settings page is
   effective after the upgrade; from then on cluster settings live in
   `state.db` and the settings file no longer overrides them. The response
   cache starts empty. A secondary or stub zone that 0.1 stored with its
@@ -896,6 +899,13 @@ hints to peers so every replica transfers independently.
   first start. For a moment after readiness turns 200 an API write can be
   answered `503 unavailable` or `generation_pending` without effect;
   automation should repeat such a request.
+- SQLite: a name that 0.1 served with two CNAME targets (different set
+  identifiers, or sources merged under `MergeUnion`) still answers with the
+  first target, but now with that target's own TTL instead of the lower TTL
+  of the two; when that changes the TTL, the zone gets a new serial on the
+  first start. A name that 0.1 served with two DNAME targets now answers with
+  the first one only, and the zone gets a new serial. Give each such name one
+  target before the upgrade to keep the zone unchanged.
 - Kubernetes (verified with the 0.1.0 binary built from the tag on envtest):
   the CRDs stay `kudurru.io/v1alpha1` with no conversion; apply the CRD chart
   (or `deploy/kustomize/crd`) first. Objects 0.1.0 stored keep their UID,
