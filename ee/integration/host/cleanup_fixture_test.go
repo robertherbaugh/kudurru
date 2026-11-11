@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strconv"
 	"sync"
@@ -52,6 +53,14 @@ type cleanupWorld struct {
 	// the reread after an unacknowledged batch fails: a partial receipt
 	// that marks the target ambiguous, with the context's error.
 	hangAfterDelete bool
+	// partialDelete makes a delete request reach the world, remove nothing
+	// and answer with a partial receipt that marks the first target it was
+	// to remove ambiguous, with errCleanupTest, so the intent stays pending
+	// and is resumed through Recover.
+	partialDelete bool
+	// hung counts the requests that hangAfterDelete held until their
+	// context ended.
+	hung int
 	// observer builds providers that only observe.
 	observer bool
 	now      func() time.Time
@@ -177,6 +186,7 @@ func (p cleanupPublisher) Recover(ctx context.Context, op *kinds.IntegrationOper
 func (p cleanupPublisher) effect(ctx context.Context, op *kinds.IntegrationOperation) (kinds.Receipt, error) {
 	var receipt kinds.Receipt
 	var hook error
+	var partial bool
 	p.w.mu.Lock()
 	before := p.w.beforeDelete
 	p.w.mu.Unlock()
@@ -185,6 +195,11 @@ func (p cleanupPublisher) effect(ctx context.Context, op *kinds.IntegrationOpera
 	}
 	err := p.request(ctx, true, func() error {
 		d, key := op.Spec.Record.Destination, op.Spec.Record.Key
+		if op.Spec.After == nil && p.w.partialDelete {
+			p.w.deletes++
+			partial = true
+			return nil
+		}
 		p.w.remote[d] = slices.DeleteFunc(p.w.remote[d], func(row plan.RemoteRecord) bool {
 			n, err := plan.Normalize(row.Endpoint)
 			return err == nil && n.DNSName == key.Name && n.RecordType == key.Type && row.Owner.IntegrationUID == p.owner.UID
@@ -216,11 +231,17 @@ func (p cleanupPublisher) effect(ctx context.Context, op *kinds.IntegrationOpera
 	if hook != nil {
 		return kinds.Receipt{}, hook
 	}
+	if partial {
+		return kinds.Receipt{ObservedAt: p.w.now(), Targets: []kinds.TargetResult{{Target: op.Spec.Before.Targets[0], ErrorClass: "ambiguous"}}}, errCleanupTest
+	}
 	p.w.mu.Lock()
 	hang := p.w.hangAfterDelete && op.Spec.After == nil
 	p.w.mu.Unlock()
 	if hang {
 		<-ctx.Done()
+		p.w.mu.Lock()
+		p.w.hung++
+		p.w.mu.Unlock()
 		return kinds.Receipt{ObservedAt: p.w.now(), Targets: []kinds.TargetResult{{Target: op.Spec.Record.Key.Name, ErrorClass: "ambiguous"}}}, ctx.Err()
 	}
 	return receipt, nil
@@ -285,6 +306,39 @@ type cleanupFixture struct {
 	// writesStalled makes the ledger repository's writes of operations
 	// (intents, receipts and confirmations) wait for their context.
 	writesStalled atomic.Bool
+	// reasons is every terminating reason the host set, in order, as its
+	// log reports them; unlike published, a status write that a later
+	// change of the object fenced does not hide one.
+	reasonMu sync.Mutex
+	reasons  []string
+}
+
+// reasonHandler records the reasons of the host's terminating log lines and
+// writes every record on as the default logger does.
+type reasonHandler struct {
+	slog.Handler
+	f *cleanupFixture
+}
+
+func (r reasonHandler) Handle(ctx context.Context, rec slog.Record) error {
+	if rec.Message == "integration terminating" {
+		rec.Attrs(func(a slog.Attr) bool {
+			if a.Key == "reason" {
+				r.f.reasonMu.Lock()
+				r.f.reasons = append(r.f.reasons, a.Value.String())
+				r.f.reasonMu.Unlock()
+			}
+			return true
+		})
+	}
+	return r.Handler.Handle(ctx, rec)
+}
+
+// terminatingReasons returns the reasons the host set so far, in order.
+func (f *cleanupFixture) terminatingReasons() []string {
+	f.reasonMu.Lock()
+	defer f.reasonMu.Unlock()
+	return slices.Clone(f.reasons)
 }
 
 // refusingReader is the host's reader with ledger reads that can be made to
@@ -430,6 +484,7 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 			f.object = nil
 			return nil
 		},
+		Logger:       slog.New(reasonHandler{Handler: slog.Default().Handler(), f: f}),
 		PollInterval: time.Millisecond, OperationTimeout: f.timeout, StopTimeout: time.Second, MaxConcurrent: f.slots})
 	if err != nil {
 		t.Fatal(err)

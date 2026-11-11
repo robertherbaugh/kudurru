@@ -1033,6 +1033,54 @@ func TestTerminatingRunCutInAProviderRequestIsAProviderFailure(t *testing.T) {
 			t.Fatal("a run cut in a provider request was reported as CleanupFailed")
 		}
 	}
+	if reasons := f.terminatingReasons(); slices.Contains(reasons, ReasonCleanupFailed) {
+		t.Fatalf("a run cut in a provider request was set to CleanupFailed: %v", reasons)
+	}
+}
+
+// The same holds for a partial delete resumed through Recover: a recovery
+// that hangs until the run's bound and answers with a partial receipt is a
+// provider failure, not a CleanupFailed one, although recording that receipt
+// on the expired context fails too.
+func TestTerminatingRecoveryCutInAProviderRequestIsAProviderFailure(t *testing.T) {
+	f := newCleanupFixture(t, cleanupObject("sink", "Delete", true), func(f *cleanupFixture) {
+		f.timeout = time.Second
+	})
+	f.awaitPublished()
+	// The first delete removes nothing and answers with a partial receipt,
+	// so its intent stays pending with a target fact to resume from.
+	f.w.mu.Lock()
+	f.w.partialDelete = true
+	f.w.mu.Unlock()
+	f.requestDelete()
+	f.awaitReason(PhaseTerminating, ReasonProviderFailed)
+	f.w.mu.Lock()
+	f.w.partialDelete, f.w.hangAfterDelete = false, true
+	f.w.mu.Unlock()
+	f.wake()
+	// The recovery deletes the rows and hangs until the run's bound.
+	f.await("the recovery cut by the bound", func() bool {
+		f.w.mu.Lock()
+		defer f.w.mu.Unlock()
+		return f.w.recoveries == 1 && f.w.hung == 1
+	})
+	f.wake()
+	// The next run settles the delete from a reread, without a provider call.
+	summary := f.awaitFinalized()
+	if summary.RecordsForgotten != 1 {
+		t.Fatalf("summary: %+v", summary)
+	}
+	f.w.mu.Lock()
+	deletes, recoveries := f.w.deletes, f.w.recoveries
+	f.w.mu.Unlock()
+	if deletes != 2 || recoveries != 1 {
+		t.Fatalf("provider deletes=%d recoveries=%d", deletes, recoveries)
+	}
+	// The host's own reasons, not the published ones: the wake above can
+	// fence the status write of the run it follows.
+	if reasons := f.terminatingReasons(); slices.Contains(reasons, ReasonCleanupFailed) {
+		t.Fatalf("a run cut in a recovery request was reported as CleanupFailed: %v", reasons)
+	}
 }
 
 // ledgerFlood serves ledger rows of another incarnation without end.
