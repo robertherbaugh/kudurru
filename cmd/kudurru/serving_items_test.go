@@ -492,7 +492,7 @@ func TestServingItemsLetTheNodePublishBetweenItems(t *testing.T) {
 		}
 	}
 	var current []bool
-	f.inside = func(n int) {
+	f.inside = func(_ int) {
 		current = append(current, f.s.publisher.Status().ProtectedReady)
 	}
 	names := []string{"paced-a", "paced-b", "paced-c", "paced-d", "paced-e"}
