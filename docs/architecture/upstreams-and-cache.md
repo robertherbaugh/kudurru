@@ -470,7 +470,15 @@ transport acquisition can schedule a new attempt using `RetryDue`, or the minimu
 refresh interval before bootstrap. Its cooldown binds the exact owner, policy and
 settings identity. A complete malformed response, authentication refusal, changed
 admission or SQL/completion error stops that scheduler permanently; actual denial
-and update dispositions remain separate from errors. Generation broadcasts and
+and update dispositions remain separate from errors. One refusal is not terminal
+(D370). An ordinary commit, such as a zone status write at startup or an API
+change, can move the canonical generation between the image read and the
+capture, or while the reply is in flight. Then the capture or the update
+transaction refuses with the store's authority CAS and a definite rollback. That
+refusal changes nothing, and the scheduler discards the reply without replaying
+it. A later step captures the new generation and makes a new acquisition, paced
+at 1, 2, 4 and so on up to 64 seconds while the race repeats. An accepted-owner
+change, an uncertain outcome, a committed denial or a lost term stays terminal. Generation broadcasts and
 bounded checks wake scheduling without consuming the publisher's local-denial
 notice. Cancellation joins the original socket/wait before return. The writer
 episode mounts it only with the root runtime's private topology admission.

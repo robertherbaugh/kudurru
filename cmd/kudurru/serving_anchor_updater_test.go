@@ -271,3 +271,58 @@ func TestAnchorUpdaterCheckpointWaitSurvivesOrdinaryWrites(t *testing.T) {
 		t.Fatal("waiting updater changed accepted history")
 	}
 }
+
+// D370. An ordinary commit (here a zone write, in production typically the
+// startup zone status write) that lands while the root reply is in flight
+// rolls the bootstrap back with the store's authority CAS. That refusal is
+// definite and changes nothing, so it must not park the updater for the whole
+// writer term: a later step makes one NEW acquisition and commits it. The
+// raced reply is never replayed, and retries are paced.
+func TestAnchorUpdaterRacedCommitAcquiresAgain(t *testing.T) {
+	var write func()
+	endpoint, seeds, reads := anchorOperationServer(t, 3, func(n int) {
+		if n == 1 {
+			write()
+		}
+	})
+	s, ctx, target, host := anchorOperationFixture(t, endpoint, seeds)
+	write = func() { anchorOrdinaryWrite(ctx, t, s.opts.Store, target.Term, "raced-bootstrap") }
+	clock, err := trustanchors.NewSessionClock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := &anchorUpdater{runtime: s, target: target, host: host, clock: clock}
+	before := anchorOperationOwner(ctx, t, s).Version()
+	started := time.Now()
+	raced, err := u.step(ctx)
+	if err != nil || u.stopped != nil || !raced.attempted || raced.completion.Update.Outcome() != sqlite.AnchorRolledBack || reads.Load() != 1 {
+		t.Fatal("a raced bootstrap stopped the updater or was not a definite rollback", err, raced.completion.Update.Outcome(), reads.Load())
+	}
+	if raced.next.Before(started.Add(time.Second)) || raced.next.After(time.Now().Add(time.Second)) || raced.acquisitionError != nil {
+		t.Fatal("raced bootstrap was not paced by one second", raced.next.Sub(started))
+	}
+	if anchorOperationOwner(ctx, t, s).Version() != before {
+		t.Fatal("raced bootstrap changed accepted history")
+	}
+	held, err := u.step(ctx)
+	if err != nil || held.attempted || reads.Load() != 1 {
+		t.Fatal("raced bootstrap retried before its pace", err, reads.Load())
+	}
+	time.Sleep(time.Until(raced.next) + 50*time.Millisecond)
+	again, err := u.step(ctx)
+	if err != nil || !again.attempted || again.completion.Update.Outcome() != sqlite.AnchorCommitted || reads.Load() != 2 || u.raced != 0 {
+		t.Fatal("updater did not bootstrap with one new acquisition after the race", err, again.completion.Update.Outcome(), reads.Load())
+	}
+	owner := anchorOperationOwner(ctx, t, s)
+	if owner.Version() == before {
+		t.Fatal("new acquisition did not commit managed trust")
+	}
+	state, err := owner.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := u.step(ctx)
+	if err != nil || next.attempted || !next.next.Equal(state.Inspect().Schedule.NextRefresh) || reads.Load() != 2 || !u.retryAt.IsZero() {
+		t.Fatal("updater did not return to the accepted schedule", err, reads.Load())
+	}
+}
