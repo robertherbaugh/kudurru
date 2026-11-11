@@ -112,6 +112,56 @@ func mountedQuiet(t *testing.T, cfg *config.Config, cli *harness) {
 	}
 }
 
+// mountedRequest runs one CLI command that sends ONE multi-item request and
+// returns its output. A request is held to the publication it began on until
+// its first item, exactly as a single write is, so the node's own work between
+// the request's capture and that item (a status write, a replaced provider
+// resource set) refuses the whole request before anything is applied. Only
+// that outcome is tried again, as a new request. A request that applied one
+// item and refused another one is returned to the caller or fails the test.
+func mountedRequest(t *testing.T, cfg *config.Config, cli *harness, args ...string) (string, string) {
+	t.Helper()
+	const stale = "current writable serving generation unavailable"
+	for attempt := 1; ; attempt++ {
+		mountedQuiet(t, cfg, cli)
+		out, stderr, err := cli.run(args...)
+		untouched := false
+		var processed api.Processed
+		switch {
+		case err == nil && args[0] == "api" && json.Unmarshal([]byte(out), &processed) == nil:
+			// The raw API command exits 0 with per-name results.
+			untouched = len(processed.Processed.Success) == 0 && len(processed.Processed.Errors) > 0
+			for _, item := range processed.Processed.Errors {
+				untouched = untouched && strings.Contains(item.Error, stale)
+			}
+		case err == nil:
+			return out, stderr
+		case strings.Contains(err.Error(), "generation_pending"):
+			untouched = true // refused at capture, before the request was read
+		case !strings.Contains(out, " created") && !strings.Contains(out, " updated") && !strings.Contains(out, " unchanged"):
+			refused := 0
+			untouched = true
+			for _, line := range strings.Split(stderr, "\n") {
+				if strings.Contains(line, ": error: ") {
+					refused++
+					untouched = untouched && strings.Contains(line, stale)
+				}
+			}
+			untouched = untouched && refused > 0
+		}
+		if !untouched {
+			if err != nil {
+				t.Fatalf("kudurru %s (attempt %d) did not complete in one request: %v\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), attempt, err, out, stderr)
+			}
+			return out, stderr
+		}
+		if attempt == 5 {
+			t.Fatalf("kudurru %s began five times on a publication that the node retired before the first item\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), out, stderr)
+		}
+		t.Logf("kudurru %s: attempt %d began on a publication that the node retired before the first item; nothing was applied", args[0], attempt)
+	}
+}
+
 func recordSetDocument(name, zone, host, address string) string {
 	return fmt.Sprintf(`apiVersion: kudurru.io/v1alpha1
 kind: DNSRecordSet
@@ -147,20 +197,15 @@ func TestRunServeSQLiteMultiDocumentApplyCLI(t *testing.T) {
 	startMountedServe(t, cfg)
 	cli := mountedCLI(t, cfg, "mounted")
 
-	mountedQuiet(t, cfg, cli)
 	zone := writeManifest(t, "zone.yaml", multiZoneDocument)
-	if out, stderr, err := cli.run("apply", "-f", zone); err != nil || !strings.Contains(out, "dnszone/multi created") {
-		t.Fatalf("zone apply failed: %v\nstdout:\n%s\nstderr:\n%s", err, out, stderr)
+	if out, _ := mountedRequest(t, cfg, cli, "apply", "-f", zone); !strings.Contains(out, "dnszone/multi created") {
+		t.Fatalf("zone apply failed:\n%s", out)
 	}
-	mountedQuiet(t, cfg, cli)
 	three := writeManifest(t, "three.yaml",
 		recordSetDocument("x0", "multi", "x0.multi.test.", "198.51.100.1"),
 		recordSetDocument("x1", "multi", "x1.multi.test.", "198.51.100.2"),
 		recordSetDocument("x2", "multi", "x2.multi.test.", "198.51.100.3"))
-	out, stderr, err := cli.run("apply", "-f", three)
-	if err != nil {
-		t.Fatalf("one apply of three new record sets did not complete: %v\nstdout:\n%s\nstderr:\n%s", err, out, stderr)
-	}
+	out, _ := mountedRequest(t, cfg, cli, "apply", "-f", three)
 	for _, name := range []string{"x0", "x1", "x2"} {
 		if !strings.Contains(out, "dnsrecordset/default/"+name+" created") {
 			t.Fatalf("document %s was not created in the one request:\n%s", name, out)
@@ -169,17 +214,16 @@ func TestRunServeSQLiteMultiDocumentApplyCLI(t *testing.T) {
 	awaitMountedDNS(t, cfg, "x0.multi.test.", "198.51.100.1")
 	awaitMountedDNS(t, cfg, "x1.multi.test.", "198.51.100.2")
 	awaitMountedDNS(t, cfg, "x2.multi.test.", "198.51.100.3")
-	mountedQuiet(t, cfg, cli)
-	out, stderr, err = cli.run("apply", "-f", three)
-	if err != nil || strings.Count(out, " unchanged") != 3 {
-		t.Fatalf("second identical apply did not report three unchanged documents: %v\nstdout:\n%s\nstderr:\n%s", err, out, stderr)
+	if out, _ = mountedRequest(t, cfg, cli, "apply", "-f", three); strings.Count(out, " unchanged") != 3 {
+		t.Fatalf("second identical apply did not report three unchanged documents:\n%s", out)
 	}
 
-	mountedQuiet(t, cfg, cli)
-	out, stderr, err = cli.run("api", "POST", "/dnsrecordsets:batchDelete", "--data", `{"names":["x0","x1","x2"]}`)
+	// The raw API command prints the per-name result and exits 0 also when a
+	// name failed, so the result itself is the assertion.
+	out, stderr := mountedRequest(t, cfg, cli, "api", "POST", "/dnsrecordsets:batchDelete", "--data", `{"names":["x0","x1","x2"]}`)
 	var deleted api.Processed
-	if err != nil || json.Unmarshal([]byte(out), &deleted) != nil || len(deleted.Processed.Success) != 3 || len(deleted.Processed.Errors) != 0 {
-		t.Fatalf("one batch delete of three record sets did not delete all of them: %v\nstdout:\n%s\nstderr:\n%s", err, out, stderr)
+	if json.Unmarshal([]byte(out), &deleted) != nil || len(deleted.Processed.Success) != 3 || len(deleted.Processed.Errors) != 0 {
+		t.Fatalf("one batch delete of three record sets did not delete all of them:\nstdout:\n%s\nstderr:\n%s", out, stderr)
 	}
 	for _, name := range []string{"x0", "x1", "x2"} {
 		awaitMountedDNSAbsent(t, cfg, name+".multi.test.")
@@ -197,20 +241,16 @@ func TestRunServeSQLiteMultiFileApplyAndRestoreIntoNewNode(t *testing.T) {
 	source, _ := mountedTestConfig(t)
 	stop := startMountedServe(t, source)
 	cli := mountedCLI(t, source, "source")
-	mountedQuiet(t, source, cli)
 	zone := writeManifest(t, "zone.yaml", multiZoneDocument)
-	if out, stderr, err := cli.run("apply", "-f", zone); err != nil {
-		t.Fatalf("zone apply failed: %v\nstdout:\n%s\nstderr:\n%s", err, out, stderr)
-	}
-	mountedQuiet(t, source, cli)
+	mountedRequest(t, source, cli, "apply", "-f", zone)
 	files := []string{
 		writeManifest(t, "a.yaml", recordSetDocument("y0", "multi", "y0.multi.test.", "198.51.100.10")),
 		writeManifest(t, "b.yaml", recordSetDocument("y1", "multi", "y1.multi.test.", "198.51.100.11")),
 		writeManifest(t, "c.yaml", recordSetDocument("y2", "multi", "y2.multi.test.", "198.51.100.12")),
 	}
-	out, stderr, err := cli.run("apply", "-f", files[0], "-f", files[1], "-f", files[2])
-	if err != nil || strings.Count(out, " created") != 3 {
-		t.Fatalf("one apply of three files did not create three record sets: %v\nstdout:\n%s\nstderr:\n%s", err, out, stderr)
+	out, _ := mountedRequest(t, source, cli, "apply", "-f", files[0], "-f", files[1], "-f", files[2])
+	if strings.Count(out, " created") != 3 {
+		t.Fatalf("one apply of three files did not create three record sets:\n%s", out)
 	}
 	awaitMountedDNS(t, source, "y2.multi.test.", "198.51.100.12")
 	mountedQuiet(t, source, cli)
@@ -218,7 +258,7 @@ func TestRunServeSQLiteMultiFileApplyAndRestoreIntoNewNode(t *testing.T) {
 	if out, stderr, err := cli.run("backup", "--exclude-managed", "--out", backup); err != nil {
 		t.Fatalf("backup failed: %v\nstdout:\n%s\nstderr:\n%s", err, out, stderr)
 	}
-	raw, err := os.ReadFile(backup)
+	raw, err := os.ReadFile(backup) // #nosec G304 -- the backup this test wrote in t.TempDir
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,10 +271,9 @@ func TestRunServeSQLiteMultiFileApplyAndRestoreIntoNewNode(t *testing.T) {
 	target, _ := mountedTestConfig(t)
 	startMountedServe(t, target)
 	restored := mountedCLI(t, target, "target")
-	mountedQuiet(t, target, restored)
-	out, stderr, err = restored.run("restore", "-f", backup)
-	if err != nil || strings.Contains(stderr, "error") {
-		t.Fatalf("one restore into a new node did not apply every document: %v\nstdout:\n%s\nstderr:\n%s", err, out, stderr)
+	out, stderr := mountedRequest(t, target, restored, "restore", "-f", backup)
+	if strings.Contains(stderr, "error") {
+		t.Fatalf("one restore into a new node did not apply every document:\nstdout:\n%s\nstderr:\n%s", out, stderr)
 	}
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	if len(lines) != documents || !strings.Contains(out, "dnszone/multi created") || strings.Count(out, "dnsrecordset/default/y") != 3 {
@@ -248,9 +287,7 @@ func TestRunServeSQLiteMultiFileApplyAndRestoreIntoNewNode(t *testing.T) {
 	awaitMountedDNS(t, target, "y0.multi.test.", "198.51.100.10")
 	awaitMountedDNS(t, target, "y1.multi.test.", "198.51.100.11")
 	awaitMountedDNS(t, target, "y2.multi.test.", "198.51.100.12")
-	mountedQuiet(t, target, restored)
-	out, stderr, err = restored.run("restore", "-f", backup)
-	if err != nil || strings.Count(out, " unchanged") != documents {
-		t.Fatalf("a second restore did not report every document unchanged: %v\nstdout:\n%s\nstderr:\n%s", err, out, stderr)
+	if out, _ = mountedRequest(t, target, restored, "restore", "-f", backup); strings.Count(out, " unchanged") != documents {
+		t.Fatalf("a second restore did not report every document unchanged:\n%s", out)
 	}
 }

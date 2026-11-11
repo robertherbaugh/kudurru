@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -173,7 +174,7 @@ func TestServingItemsApplyFollowsOwnCommitsAcrossFollowUpWrites(t *testing.T) {
 	f := newItemsFixture(t, nil)
 	f.between = func(n int, _ context.Context) {
 		if n > 0 {
-			f.followUp(t, "between-"+string(rune('a'+n)))
+			f.followUp(t, fmt.Sprintf("between-%d", n))
 		}
 	}
 	before := f.s.opts.Store.Authority().Installed.Revision
