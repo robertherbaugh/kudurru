@@ -1710,6 +1710,65 @@ flowchart LR
     Leases --> Retire["Retire after final release"]
 ```
 
+### Requests with several items
+
+A current command of an HTTP request is admitted only while the request's
+original lease is still the current publication, in memory and again at the
+final commit check. A command's own commit retires that lease, so a request
+can run a second command only when it says so. Two routes do: `POST /apply`
+and `POST /{kind}:batchDelete` run one object command for each document or
+name (D378). `ObjectItems` gives such a request one command chain of the
+provider coordinator, which keeps the mark of the last command that changed
+canonical state through it.
+
+Until one of the request's commands has completed, every command is admitted
+on the original lease, exactly as a single command is. The first completed
+command anchors the chain: on its own commit receipt, which the Store issues
+in the command's finalizer under the writer lock (`sqlite.CommandReceipt`), or,
+when it changed nothing, on the mark that the coordinator held at that moment.
+Each later command is admitted under the publication gate only if the
+coordinator's mark is still the chain's anchor, and it moves the anchor to its
+own receipt when it commits a change. The compare is by identity of the mark,
+and every command through the coordinator installs a new mark when it changes
+state: public API mutations of any credential, including sign-in, member
+commands forwarded from followers, operator-started integration operations,
+migration steps and the unblock-request sweep. A command whose SQL outcome is
+unknown installs a mark that no chain equals. Writers that take only the Store
+lock or the primary pin install none: status reconciliation, the zone
+lifecycle and its committed heads, which is also how an RFC 2136 update
+commits, list fetch status and integration reconciliation. They are not
+commands of an API caller, and an item reads nothing they write except in its
+own transaction.
+
+A chained command whose anchor has moved is refused as `unavailable` ("another
+change was committed on this node while the request ran"). It does not run,
+and no later command of that request can be admitted again; the request still
+answers 200 with one result for each item. In place of the retired lease
+comparison, a chained command checks the original elected writer episode and
+that the Store's authority equals the lease's own authority in every field
+except an advanced installed revision. The lease's dependency installations
+are not compared again: the node replaces them on its own schedule, for
+example whenever the provider resource owner installs a new resource set, and
+each command pins the installations that are current when it runs through its
+commit. The raw credential, grants, ownership, preconditions and limits are
+read again in each command's transaction, so nothing is decided from the
+retired image. The request's one lifetime bounds all of its commands, and an
+item reached after it ended is answered as such. A follower forwards each item
+as its own member command and keeps its original-source rule; its chain is
+never used.
+
+```mermaid
+flowchart TD
+    Request["One request: original lease, credential and lifetime"] --> First["Item admitted on the original lease"]
+    First -->|refused cleanly| First
+    First -->|completed| Anchor["Chain anchored: own commit receipt, or the current mark for a no-op"]
+    Anchor --> Next["Next item under the publication gate"]
+    Next -->|coordinator mark is the anchor| Run["Reauthorize in transaction, apply, move anchor to own receipt"]
+    Run --> Next
+    Next -->|another command changed state| Stop["unavailable for this and every later item"]
+    Follow["Status, zone lifecycle and other ungated writers"] -.->|advance the revision only| Next
+```
+
 The DNS adapters capture one lease before identification and read typed policy,
 zone, inventory, control, resolver, response, cache and blocking views from
 that lease.

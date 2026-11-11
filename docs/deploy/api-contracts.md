@@ -29,6 +29,21 @@ and exits unsuccessfully if any document failed. Earlier successful documents
 are not rolled back when another document fails. Do not automatically replay
 the batch after a refusal or an uncertain transport outcome.
 
+On SQLite, a standalone node and the primary of a cluster apply every
+document of one request. A request holds its place between two documents
+only against its own commits and the node's own follow-up writes. When a
+command of anyone else changes the node's data while the request runs
+(another request, a sign-in, a write that a follower passes on), every later
+document carries `errorKey` `unavailable` with the error "another change was
+committed on this node while the request ran; this item was not applied;
+review current state before a new decision". Those documents were not
+applied. Read the results, then send the request again as a new decision:
+documents that are already applied report `unchanged`. A follower of a
+cluster passes each document on to the primary and stops when its own data
+changes; [sqlite-join.md](sqlite-join.md#commands-through-a-follower)
+describes both cases. `POST /{kind}:batchDelete` follows the same rule for
+its names and reports them under `processed.success` and `processed.errors`.
+
 ## Reviewing and replacing zone options
 
 Review the complete specification before changing it:

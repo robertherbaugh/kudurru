@@ -137,9 +137,41 @@ documents of the same request, and every later document is then refused. A
 single-item route answers `503 unavailable` with the same messages. An item
 whose exchange with the primary fails, including an unreachable primary,
 reports `completion_unknown`, as a single write does. Earlier items stay
-committed and nothing is replayed. Check the per-item results and run the
-apply again (committed documents report `unchanged`), or send an apply of many
-documents or a large restore to the primary.
+committed and nothing is replayed. Check the per-item results. Running the
+apply again through the follower does not finish a file that was cut: the
+follower forwards the committed documents again, the primary records every
+forwarded command with its deduplication record, also one whose result is
+`unchanged`, and the follower's next pull therefore changes its source again.
+Send an apply of many documents, and every restore, to the primary.
+
+On the primary, and on a standalone node, `POST /api/v1/apply` and
+`:batchDelete` run one command for each document or name inside the one
+request, and one request applies every item. Until an item of the request
+has completed, each item is admitted on the publication that the request
+began on, exactly as a single write is. The request's first commit retires
+this publication, so each later item is admitted by a different comparison:
+the last command that changed the node's data must still be the one it was
+when the request's previous item ended, which is the request's own commit
+whenever that item changed something. The node's own
+follow-up writes, such as object status and the published state of a zone,
+are not commands and do not count. A command of anyone else in between does:
+another request that changes data under any credential, a sign-in, a write
+forwarded from a follower, a migration step. Every later item then carries
+`errorKey` `unavailable` ("another change was committed on this node while
+the request ran; this item was not applied; review current state before a new
+decision"). It is not applied and never tried again, and the earlier items
+stay committed. Run the apply again: it is a new request on current state,
+and committed documents report `unchanged`.
+
+Every item verifies the original credential and its permissions again in its
+own transaction, so a token that is revoked or loses its grant between two
+items stops the later ones with the credential's own error. The node must
+stay the writer in the same term for the whole request. Its keys, license and
+provider data may be replaced while the request runs: each item uses the ones
+that are current when it runs. The request's one lifetime of five minutes
+bounds all items: an item that is reached after it ended reports
+`unavailable` ("the request's lifetime ended before this item was reached; it
+was not applied").
 
 The zone convenience commands the dashboard's
 record editor uses (`POST /zones/{zone}/records`, `DELETE

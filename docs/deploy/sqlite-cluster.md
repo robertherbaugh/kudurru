@@ -223,22 +223,31 @@ still show the previous state.
 | `503 completion_unknown` | The follower did not receive the primary's answer and cannot say whether the change was made. This is also the answer while the follower cannot reach the primary. | Read the object, on the primary when you can, before you decide anything else. |
 
 `kudurru apply` and `kudurru restore` send all their documents in one
-request and report a result for each document. With one document they work
-through a follower like any other object write. In this version one request
-does not apply every document of a larger file:
+request and report a result for each document. Deleting several objects at
+once in the dashboard works the same way, with a result for each name.
 
+- On the primary, one request applies every document. The same holds for a
+  node that is not in a cluster. If something else is changed on the node
+  while the request runs, the request stops at that point: every later
+  document reports `unavailable` ("another change was committed on this node
+  while the request ran") and is not applied, and the documents before stay
+  applied. Such a change is another request that changes something, a
+  sign-in, or a change that a follower passes on. The node's own work on the
+  documents of the request, such as writing their status, does not stop it.
+  Run the command again: it reports the documents that are already applied
+  as `unchanged` and applies the rest.
 - Through a follower, a request applies documents until the follower's data
-  changes, for example when its next pull brings the request's own first
-  changes. It refuses every later document with `unavailable`, and the
-  documents before stay applied. Repeating the command through the follower
-  does not reliably apply the rest.
-- On the primary, a request applies its first new or changed document and
-  refuses every later document with `unavailable` ("current writable
-  serving generation unavailable").
+  changes. That happens at the follower's next pull after the primary has
+  received the first document, at most five seconds later by default. The
+  follower refuses every later document with `unavailable` ("the follower's
+  source changed"), and the documents before stay applied. A file of a few
+  documents usually fits between two pulls. A longer file does not, and
+  repeating the command through the follower does not help: the follower
+  passes the documents that are already applied on again, and the primary
+  records each of them, so the follower's data changes again at its next
+  pull.
 
-Run such a file against the primary, and run the same command again until
-it reports no error. A run applies one more document at most, and it reports
-the documents that are already applied as `unchanged`.
+Send a file of many documents, and every restore, to the primary.
 
 RFC 2136 updates are not passed on: send them to the primary
 ([dynamic-updates.md](dynamic-updates.md#enrolled-sqlite-cluster)).
