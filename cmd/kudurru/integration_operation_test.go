@@ -119,14 +119,14 @@ func TestIntegrationOperationActualTLSRequestsAcrossBudgetPublications(t *testin
 		if err != nil || !checked.Authenticated || !checked.Reachable {
 			t.Fatalf("two original requests: %v", err)
 		}
-		if err := op.finish(); err != nil {
+		if err := op.finish(nil); err != nil {
 			t.Fatalf("final operation acknowledgment: %v", err)
 		}
 	})
 	if f.calls.Load()-before != 2 {
 		t.Fatal("outbound request replay or missing request")
 	}
-	if err := held.finish(); !errors.Is(err, ih.ErrInvalid) {
+	if err := held.finish(nil); !errors.Is(err, ih.ErrInvalid) {
 		t.Fatal("finished operation reused")
 	}
 	if err := held.check(held.ctx); err == nil {
@@ -187,7 +187,7 @@ func TestIntegrationOperationOriginalSourceAndProofRefusals(t *testing.T) {
 				} else if err == nil {
 					t.Fatal("changed original authority admitted provider check")
 				}
-				if err := op.finish(); err == nil {
+				if err := op.finish(nil); err == nil {
 					t.Fatal("failed original operation acknowledged")
 				}
 				if f.calls.Load()-before != want {
@@ -208,7 +208,7 @@ func TestIntegrationOperationSourceCommitAndFinalStatus(t *testing.T) {
 		if op.status.Load() == nil {
 			t.Fatal("manual status was not retained for final acknowledgment")
 		}
-		if err := op.finish(); err != nil {
+		if err := op.finish(nil); err != nil {
 			t.Fatalf("final own-status transaction: %v", err)
 		}
 	})

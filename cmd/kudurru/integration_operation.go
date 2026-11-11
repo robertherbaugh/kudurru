@@ -7,6 +7,7 @@ import (
 	"time"
 
 	ih "github.com/robertherbaugh/kudurru/ee/integration/host"
+	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/servinghttp"
@@ -36,6 +37,15 @@ type integrationOperation struct {
 	// The host worker writes this before returning its answer on the command
 	// channel. The HTTP goroutine reads it only after that synchronous answer.
 	status atomic.Pointer[ih.InstanceStatus]
+	// principal is the reauthorized caller of the current final transaction,
+	// set by integrationRuntime.command before it applies the transaction.
+	principal auth.Principal
+}
+
+// integrationAuditRow is the audit row of a reviewed sync or act (D379).
+type integrationAuditRow struct {
+	action, name string
+	uncertain    bool
 }
 
 func (*integrationOperation) String() string     { return "private integration operation" }
@@ -193,7 +203,10 @@ func (o *integrationOperation) credentialsCurrent(ctx context.Context) error {
 
 // finish is one final current transaction, including deferred status. A failed
 // acknowledgment does not roll back earlier external effects or replay them.
-func (o *integrationOperation) finish() error {
+// A reviewed sync or act records its audit row in this same transaction
+// (D379): when the transaction is refused, neither the status nor the row
+// exists, and the caller reports the outcome as uncertain.
+func (o *integrationOperation) finish(audit *integrationAuditRow) error {
 	if o == nil || !o.finishStarted.CompareAndSwap(false, true) {
 		return ih.ErrInvalid
 	}
@@ -204,7 +217,14 @@ func (o *integrationOperation) finish() error {
 	r := o.runtime
 	err := r.host.WithLease(o.ctx, o.guard.Ledger, func(ctx context.Context) error {
 		return r.command(ctx, o.guard, func(ctx context.Context, tx *sqlite.CommandTx, cut *integrationCut) error {
-			if status := o.status.Load(); status != nil {
+			if audit != nil {
+				if err := tx.RecordAudit(ctx, o.auditEntry(cut, *audit)); err != nil {
+					return err
+				}
+			}
+			// An uncertain outcome records only what was asked; the status
+			// of a refused or unacknowledged effect is not staged.
+			if status := o.status.Load(); status != nil && (audit == nil || !audit.uncertain) {
 				return stageIntegrationStatus(ctx, tx, cut, o.guard, *status)
 			}
 			return nil
@@ -216,4 +236,28 @@ func (o *integrationOperation) finish() error {
 	// Our final status may advance the source. Check only original lifetime,
 	// writer and time here; current proof was checked in that same final tx.
 	return o.check(o.ctx)
+}
+
+func (o *integrationOperation) auditEntry(cut *integrationCut, a integrationAuditRow) sqlite.AuditEntry {
+	owner := o.guard.Ledger.Owner
+	outcome, result := "completed", sqlite.AuditSuccess
+	if a.uncertain {
+		outcome, result = "uncertain: effects may have occurred and were not replayed", sqlite.AuditError
+	}
+	subject := "reviewed sync"
+	if a.action == "integration.act" {
+		subject = "reviewed action " + a.name
+	}
+	revision := ""
+	if i := cut.instances[owner]; i != nil {
+		revision = i.Definition().ResourceVersion
+	}
+	return sqlite.AuditEntry{Action: a.action, Actor: string(o.principal.Kind) + ":" + o.principal.Name, Authz: "integrations:" + o.proofVerb(a), Key: store.Key{Kind: "Integration", Namespace: owner.Namespace, Name: owner.Name}, ResourceVersion: revision, Manager: store.ManagerAPI, Result: result, Reason: subject + " of uid " + owner.UID + ": " + outcome}
+}
+
+func (*integrationOperation) proofVerb(a integrationAuditRow) string {
+	if a.action == "integration.act" {
+		return "act"
+	}
+	return "sync"
 }

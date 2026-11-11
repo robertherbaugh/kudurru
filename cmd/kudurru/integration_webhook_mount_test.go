@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -214,6 +215,7 @@ func TestIntegrationWebhookMountedOriginalClientObservation(t *testing.T) {
 		_ = json.Unmarshal(w.Body.Bytes(), &refusal)
 		t.Fatalf("mounted source sync: status=%d key=%q committed=%t published=%t uncertain=%t reads=%d", w.Code, refusal.Error.Key, result.SourceCommitted || refusal.Error.Hint.SourceCommitted, result.SourcePublished || refusal.Error.Hint.SourcePublished, refusal.Error.Hint.Uncertain, p.reads.Load()-before)
 	}
+	webhookMountActAudit(t, f, "integration.sync", sqlite.AuditSuccess)
 	// Later operation/status commits may supersede the publication acknowledged
 	// by Sync. Wait only for a read of the resulting complete serving snapshot.
 	var nextSnapshot *inventory.Snapshot
@@ -275,6 +277,8 @@ func TestIntegrationWebhookMountedActionsAndOriginalRefusals(t *testing.T) {
 					t.Fatal("uncertain action was replayed or acknowledged", w.Code)
 				}
 			}
+			want := map[string]string{"valid": sqlite.AuditSuccess, "uncertain": sqlite.AuditError}[mode]
+			webhookMountActAudit(t, f, "integration.act", want)
 			integrationNoSource(t, f.s, integrationOwner(f.s, f.d))
 			if p.reads.Load() != 0 || p.unexpected.Load() != 0 {
 				t.Fatal("actions-only provider polled inventory")
@@ -330,5 +334,26 @@ func TestIntegrationWebhookMountedOriginalCredentialRefusal(t *testing.T) {
 	c := snapshot.Lookup(netip.MustParseAddr("192.0.2.80"), time.Now())
 	if c == nil || !c.ObservedAt.Equal(p.at) || !c.ExpiresAt.Equal(p.at.Add(3*time.Minute)) {
 		t.Fatal("refused poll changed the durable original observation lifetime")
+	}
+}
+
+// webhookMountActAudit requires exactly one audit row of a reviewed command
+// with the given result, or none when result is empty (D379).
+func webhookMountActAudit(t *testing.T, f *integrationOperationFixture, action, result string) {
+	t.Helper()
+	var rows []sqlite.AuditEntry
+	for _, entry := range integrationAudit(t, f.s, f.d) {
+		if entry.Action == action {
+			rows = append(rows, entry)
+		}
+	}
+	if result == "" {
+		if len(rows) != 0 {
+			t.Fatalf("a refused %s was audited: %+v", action, rows)
+		}
+		return
+	}
+	if len(rows) != 1 || rows[0].Result != result || rows[0].Actor != "User:operation-admin" || !strings.Contains(rows[0].Reason, string(f.d.UID)) {
+		t.Fatalf("%s audit: %+v", action, rows)
 	}
 }

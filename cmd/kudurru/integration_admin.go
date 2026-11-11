@@ -219,12 +219,23 @@ func (r *integrationRuntime) IntegrationExecute(ctx context.Context, in api.Inte
 	if err == nil {
 		err = integrationProjectionSafe(op, out)
 	}
+	var audit *integrationAuditRow
+	if in.Command == "sync" || in.Command == "act" {
+		audit = &integrationAuditRow{action: "integration." + in.Command, name: in.Action}
+	}
 	if err == nil {
-		err = op.finish()
+		err = op.finish(audit)
 	}
 	if err != nil {
-		if !refusedBeforeEffect && (in.Command == "sync" || in.Command == "act") {
+		if !refusedBeforeEffect && audit != nil {
 			out.Uncertain = true
+			// An effect that failed before the final transaction is still
+			// audited as uncertain when that transaction can commit. A
+			// refused final transaction leaves no row, as it leaves no status.
+			if !op.finishStarted.Load() {
+				audit.uncertain = true
+				_ = op.finish(audit)
+			}
 			return nil, &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: "integration_uncertain", Message: "integration operation was not acknowledged; effects may have occurred and were not replayed", Hint: out}}
 		}
 		return nil, integrationAdminError(err)

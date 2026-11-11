@@ -473,9 +473,13 @@ func (r *integrationRuntime) command(ctx context.Context, g ih.ExecutionGuard, f
 			if err := tx.RequireCommitCheck(op.check); err != nil {
 				return err
 			}
-			if _, err := servingauth.ReauthorizeOperationCurrent(ctx, tx, deps, op.proof, r.s.opts.Now); err != nil {
+			principal, err := servingauth.ReauthorizeOperationCurrent(ctx, tx, deps, op.proof, r.s.opts.Now)
+			if err != nil {
 				return err
 			}
+			// The final transaction of a reviewed sync or act names this
+			// principal in its audit row (D379); fn runs in this goroutine.
+			op.principal = principal
 			return apply(ctx, tx)
 		})
 	}
