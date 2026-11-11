@@ -186,14 +186,22 @@ func compileComplete(ctx context.Context, pl plannedList, opts CompleteOptions, 
 		case ps.key == "":
 			spec.Sources = append(spec.Sources, ps.compileSource())
 			fp.add(ps.fp(inlineDigest(ps.inline))...)
-		case unavailableSource(ps):
-			// The fetcher tried, failed and published that no body was
-			// ever fetched: the source contributes nothing, and the list
-			// reports the failure (Degraded). Waiting for the body instead
-			// would publish nothing at all, on every start, for as long as
-			// the URL stays unreachable (D373). The cache is not consulted:
-			// a body without a published digest never authorizes itself.
-			fp.add(ps.name, "unavailable")
+		case notDownloaded(ps):
+			// No body of the source was ever published: the fetcher has not
+			// finished a first download (it may be waiting on a URL that
+			// never answers), or it tried and failed. The source
+			// contributes nothing until a download publishes its digest,
+			// which changes the object and so prepares a new candidate;
+			// the list reports the failure (Degraded) meanwhile. Waiting
+			// for the body instead would publish no serving generation at
+			// all, for as long as the URL stays unreachable or silent
+			// (D373). The cache is not consulted: a body without a
+			// published digest never authorizes itself.
+			if ps.status != nil && ps.status.Error != "" {
+				fp.add(ps.name, "unavailable")
+			} else {
+				fp.add(ps.name, "pending")
+			}
 		default:
 			if ps.status == nil || !isHexName(ps.status.Digest) || strings.ToLower(ps.status.Digest) != ps.status.Digest {
 				return nil, "", ErrIncomplete
@@ -241,11 +249,14 @@ func compileComplete(ctx context.Context, pl plannedList, opts CompleteOptions, 
 	return list, fp.String(), nil
 }
 
-// unavailableSource reports a downloaded source (URL or ConfigMap) whose
-// published status has an error and no digest: no body was ever fetched.
-// A source that was never attempted has no status entry and still waits.
-func unavailableSource(ps *plannedSource) bool {
-	return ps.key != "" && ps.status != nil && ps.status.Digest == "" && ps.status.Error != ""
+// notDownloaded reports a downloaded source (URL or ConfigMap) for which no
+// body was ever published: no status entry yet (the first download has not
+// finished), or an entry without a digest (with the error of a failed
+// download, or none while the first one is still running). A source whose
+// status has a digest is compiled from that verified body and waits while
+// this node's cache does not hold it.
+func notDownloaded(ps *plannedSource) bool {
+	return ps.key != "" && (ps.status == nil || ps.status.Digest == "")
 }
 
 type contextReader struct {

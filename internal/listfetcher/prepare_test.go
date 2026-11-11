@@ -60,11 +60,21 @@ func TestPrepareCompletePinsPublishedDigestsWithoutPartialFallback(t *testing.T)
 	if candidate, err := PrepareComplete(t.Context(), []*public.BlockList{list, missing}, opts); err == nil || candidate != nil {
 		t.Fatal("partial list generation accepted")
 	}
-	for _, digest := range []string{"", strings.Repeat("a", 64), strings.ToUpper(entry.Digest)} {
+	for _, digest := range []string{strings.Repeat("a", 64), strings.ToUpper(entry.Digest)} {
 		list.Status.Sources[0].Digest = digest
 		if candidate, err := PrepareComplete(t.Context(), []*public.BlockList{list}, opts); err == nil || candidate != nil {
 			t.Fatal("unproven digest accepted")
 		}
+	}
+	// Without a published digest no body was ever published for the
+	// source: it compiles empty and never from the cache (D373).
+	list.Status.Sources[0].Digest = ""
+	candidate, err := PrepareComplete(t.Context(), []*public.BlockList{list}, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidate.Snapshot.Contains("new.example.test", name)[name] != "" || candidate.Snapshot.Contains("old.example.test", name)[name] != "" {
+		t.Fatal("a cached body without a published digest was served")
 	}
 }
 
@@ -149,34 +159,47 @@ func TestPrepareCompleteBoundsAndCancellation(t *testing.T) {
 	}
 }
 
-// A URL source whose fetch failed before any body arrived is published with
-// an error and no digest. It compiles empty, as 0.1.0 served it, instead of
-// holding back every candidate while the URL stays unreachable (D373). A
-// source that was never attempted still waits, and a cached body without a
-// published digest is never used.
+// A URL source for which no body was ever published compiles empty, as
+// 0.1.0 served it, instead of holding back every candidate (D373): a source
+// whose first download has not finished (no status entry, or an entry with
+// neither digest nor error, as while the URL accepts the connection and
+// never answers), and one whose fetch failed before any body arrived. A
+// cached body without a published digest is never used, the identity tells
+// the states apart, and a published digest is again served from the cache.
 func TestPrepareCompleteServesAFailedFirstFetchEmpty(t *testing.T) {
 	_, list, opts := completeFixture(t)
 	name := ListName(list.Namespace, list.Name)
 	inline := public.ListSource{Name: "inline", Format: "domains", Inline: []string{"inline.example.test"}}
 	list.Spec.Sources = append(list.Spec.Sources, inline)
+	published := list.Status.Sources[0]
 
-	list.Status.Sources = nil
-	if got, err := PrepareComplete(t.Context(), []*public.BlockList{list}, opts); !errors.Is(err, ErrIncomplete) || got != nil {
-		t.Fatal("a source that was never attempted did not wait", err)
+	identities := map[string]string{}
+	for state, status := range map[string][]public.SourceStatus{
+		"never attempted":          nil,
+		"first download running":   {{Name: "source"}},
+		"first download failed":    {{Name: "source", Error: "listfetcher: GET https://lists.example.test/domains: 404 Not Found"}},
+		"first download timed out": {{Name: "source", Error: "listfetcher: GET https://lists.example.test/domains: context deadline exceeded"}},
+	} {
+		list.Status.Sources = status
+		got, err := PrepareComplete(t.Context(), []*public.BlockList{list}, opts)
+		if err != nil {
+			t.Fatalf("%s: the source held back the candidate: %v", state, err)
+		}
+		if got.Snapshot.Contains("old.example.test", name)[name] != "" {
+			t.Fatalf("%s: a cached body without a published digest was served", state)
+		}
+		if got.Snapshot.Contains("inline.example.test", name)[name] == "" {
+			t.Fatalf("%s: the other sources of the list were not served", state)
+		}
+		identities[state] = got.Identity
 	}
-	list.Status.Sources = []public.SourceStatus{{Name: "source", Error: "listfetcher: GET https://lists.example.test/domains: 404 Not Found"}}
-	failed, err := PrepareComplete(t.Context(), []*public.BlockList{list}, opts)
-	if err != nil {
-		t.Fatal("a failed first fetch held back the candidate:", err)
+	if identities["never attempted"] != identities["first download running"] || identities["first download failed"] != identities["first download timed out"] ||
+		identities["never attempted"] == identities["first download failed"] {
+		t.Fatalf("identities %v", identities)
 	}
-	if failed.Snapshot.Contains("old.example.test", name)[name] != "" {
-		t.Fatal("a cached body without a published digest was served")
-	}
-	if failed.Snapshot.Contains("inline.example.test", name)[name] == "" {
-		t.Fatal("the other sources of the list were not served")
-	}
-	list.Status.Sources[0].Error = ""
-	if got, err := PrepareComplete(t.Context(), []*public.BlockList{list}, opts); !errors.Is(err, ErrIncomplete) || got != nil {
-		t.Fatal("an empty status entry without an error was served", err)
+	list.Status.Sources = []public.SourceStatus{published}
+	got, err := PrepareComplete(t.Context(), []*public.BlockList{list}, opts)
+	if err != nil || got.Snapshot.Contains("old.example.test", name)[name] == "" || got.Identity == identities["never attempted"] {
+		t.Fatal("the published body was not served", err)
 	}
 }
