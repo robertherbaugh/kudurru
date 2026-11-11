@@ -142,3 +142,32 @@ func TestCanonicalSettingsExcludeLegacyOwnership(t *testing.T) {
 		t.Fatal("canonical API mutated legacy ownership")
 	}
 }
+
+// D370 (F28-GATE-1). A settings PATCH on the Kubernetes driver that switches
+// the UI-owned upstreams section to anchorMode managed fails validation
+// before anything is stored, and the running configuration stays static.
+func TestSettingsPatchRefusesManagedRootAnchorsOnKube(t *testing.T) {
+	h, m := ownershipHarness(t)
+	if err := m.Transition(t.Context(), "upstreams", "adopt", m.Status().Sections["upstreams"].Revision); err != nil {
+		t.Fatal(err)
+	}
+	seed := "12345 15 2 " + strings.Repeat("ab", 32)
+	h.do(http.MethodPatch, "/api/v1/settings", "admin", map[string]any{"upstreams": map[string]any{"recursion": map[string]any{"dnssec": true, "trustAnchors": []string{seed}}}}).want(http.StatusOK)
+	before, status := m.Snapshot()
+	file := before.SettingsFile
+	raw, err := os.ReadFile(file) //nolint:gosec // G304: the test's temp directory
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := h.do(http.MethodPatch, "/api/v1/settings", "admin", map[string]any{"upstreams": map[string]any{"recursion": map[string]any{"anchorMode": "managed"}}}).want(http.StatusBadRequest)
+	if !strings.Contains(resp.Body.String(), "require store.driver sqlite") {
+		t.Fatal("refusal does not name the driver requirement", resp.Body.String())
+	}
+	after, afterStatus := m.Snapshot()
+	if after != before || after.Upstreams.Recursion.AnchorMode != config.RootAnchorsStatic || !reflect.DeepEqual(afterStatus, status) {
+		t.Fatal("refused PATCH changed the running configuration")
+	}
+	if now, err := os.ReadFile(file); err != nil || string(now) != string(raw) { //nolint:gosec // G304: the test's temp directory
+		t.Fatal("refused PATCH wrote the settings source", err)
+	}
+}

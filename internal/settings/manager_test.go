@@ -383,3 +383,51 @@ func TestNodeEditsPreserveConcurrentSharedChanges(t *testing.T) {
 		t.Fatal("node edit overwrote shared settings")
 	}
 }
+
+// D370 (F28-GATE-1). On the Kubernetes driver the settings watcher runs
+// Manager.Refresh, not Reloadable.Reload. A shared upstreams section that
+// another replica or a hand edit of the settings ConfigMap switched to
+// anchorMode managed is refused there, and the running static configuration
+// and section status stay the last good ones.
+func TestKubeRefreshRefusesManagedRootAnchors(t *testing.T) {
+	seed := "12345 15 2 " + strings.Repeat("ab", 32)
+	backend := &memoryBackend{}
+	m := newManager(t, backend, "", []string{"KUDURRU_STORE__DRIVER=kube"})
+	if err := m.Transition(t.Context(), "upstreams", "adopt", revision(m)); err != nil {
+		t.Fatal(err)
+	}
+	next := *m.Reload.Current()
+	next.Upstreams.Recursion.DNSSEC = true
+	next.Upstreams.Recursion.TrustAnchors = []string{seed}
+	if err := m.Write(t.Context(), revision(m), &next, []string{"upstreams.recursion.dnssec", "upstreams.recursion.trustAnchors"}); err != nil {
+		t.Fatal(err)
+	}
+	before, status := m.Snapshot()
+	if before.Store.Driver != "kube" || before.Upstreams.Recursion.AnchorMode != config.RootAnchorsStatic || len(before.Upstreams.Recursion.TrustAnchors) != 1 {
+		t.Fatal("fixture is not a static UI-owned section on the Kubernetes driver")
+	}
+	backend.mu.Lock()
+	var d Document
+	if err := json.Unmarshal(backend.raw, &d); err != nil {
+		backend.mu.Unlock()
+		t.Fatal(err)
+	}
+	upstreams, _ := d.Values["upstreams"].(map[string]any)
+	recursion, _ := upstreams["recursion"].(map[string]any)
+	if recursion == nil {
+		backend.mu.Unlock()
+		t.Fatal("stored section has no recursion values")
+	}
+	recursion["anchorMode"] = "managed"
+	backend.raw, _ = json.Marshal(d)
+	backend.version++
+	backend.mu.Unlock()
+	changed, err := m.Refresh(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "require store.driver sqlite") || len(changed) != 0 {
+		t.Fatal("Kubernetes refresh accepted managed root anchors", changed, err)
+	}
+	after, afterStatus := m.Snapshot()
+	if after != before || after.Upstreams.Recursion.AnchorMode != config.RootAnchorsStatic || !reflect.DeepEqual(afterStatus, status) {
+		t.Fatal("refused refresh replaced the last good static configuration")
+	}
+}
