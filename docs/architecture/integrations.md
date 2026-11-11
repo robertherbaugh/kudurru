@@ -772,6 +772,11 @@ credential fingerprint, host lease and writer episode remain required through
 final acknowledgment. Provider I/O and installed-reference reads occur outside
 publication and SQLite gates. Final status is deferred until the operation has
 finished its effects, avoiding invalidation by its own resource-version update.
+A reviewed sync or action records one audit row (`integration.sync` or
+`integration.act`, naming the principal and the instance UID) in that same final
+transaction. An effect that failed before it is audited as uncertain (result
+`error`) when the final transaction can still commit; a refused final
+transaction leaves neither status nor row (D379).
 
 Reads expose public identity/type and a local status only when its observed
 UID/revision matches the reviewed object. Status can conservatively be unknown
@@ -798,9 +803,14 @@ all-driver/restart release gates remain separate work.
 ## Tier-B runtime client status
 
 The SQLite production factory supports Cloudflare, UniFi and Tier-B webhook
-clients/actions. The registered `ee/integration/webhook` constructor advertises
-only client inventory and actions. Peers requiring hooks or record publication
-refuse negotiation; the public constructor does not acquire an unused HMAC key.
+clients, actions and hooks. The registered `ee/integration/webhook` constructor
+advertises client inventory, actions and hooks, and names the separate
+`hmacKey` signing credential. Peers requiring record publication refuse
+negotiation, and so does a hooks peer without an `hmacKey`. One Go type serves
+every Tier-B capability, so the provider reports the roles its peer negotiated
+(`host.RoleProvider`): the host polls only an inventory peer, drains and
+produces events only for a hooks peer, and never treats the webhook type as a
+publisher (D379). Cloudflare and UniFi keep the type-assertion default.
 
 It captures named bearer or mTLS material and request bytes, then routes each
 bounded attempt through the original host request scope. Verified TLS, fresh
@@ -818,8 +828,8 @@ credential echoes; a later peer declaration cannot silently replace the retained
 one. Action parameter semantics remain subject to host validation. The lifecycle
 retains named credentials, freezes the first accepted
 advertisement, and fences the instance after an observed change. It sends declared
-actions once. A private delivery prerequisite signs host-supplied stable events
-with a separate HMAC key; it is excluded from the registered constructor.
+actions once. Hook events are signed with the separate HMAC key, as described in
+[Tier-B hook events](#tier-b-hook-events).
 
 The inventory adapter requires complete bounded clients and networks
 lists under one original operation. Genuine `LastSeen` determines a fixed
@@ -835,9 +845,70 @@ actions-only peers disable inventory sync, while client polling has a one-minute
 maximum interval. A shorter `resync` wins; the generic ten-minute stored default
 cannot exceed the provider's cap. This never extends observation expiry.
 
-The signed delivery callback and durable host queue are also prerequisites.
-Automatic root event-topic production is not yet connected; enabling a factory
-alone would not establish working hook subscriptions.
+## Tier-B hook events
+
+Root produces hook events from its own durable state on the instance's
+elected lease (D379). There is no in-memory diff and no per-command outbox:
+on every two-second event tick the host asks root for what changed since the
+instance's durable cursor, queues the resulting events, advances the cursor,
+then drains the queue.
+
+```mermaid
+flowchart TD
+    Tick["Event tick (2 s) on the instance lease"] --> Pending{"256 undelivered rows?"}
+    Pending -- yes --> Drain
+    Pending -- no --> Cursor["Read IntegrationEventCursor"]
+    Cursor --> Feed["Root reads the store change feed after the cursor<br/>DNSZone, DNSRecordSet, Integration, Kudurru, current term"]
+    Feed -- "feed compacted or lineage changed" --> Resync["One zone.changed per zone, then a fresh baseline"]
+    Feed --> Map["At most 32 events: subject UID + monotone version"]
+    Resync --> Map
+    Map --> Known{"Row with this delivery ID exists?"}
+    Known -- yes --> Skip["Skip (a reproduction after a crash)"]
+    Known -- no --> Queue["QueueDelivery (fenced ledger write)"]
+    Skip --> Save["Save the cursor by exact CAS"]
+    Queue --> Save
+    Save --> Drain["Prune dead rows, then deliver due rows"]
+    Drain --> Post["POST /events: signed body, X-Kudurru-Delivery"]
+    Post -- 2xx --> Ack["Acknowledged"]
+    Post -- "5xx, attempt timeout, exhausted budget" --> Retry["Backoff, same ID and body"]
+    Post -- "4xx (including 429)" --> Dead["Dead letter; Degraded EventDeadLettered"]
+    Post -- "fence, stop, caller cancel" --> Keep["Row unchanged; next lease retries"]
+```
+
+- **Source.** The store's resumable change feed (SQLite `changes`). A new
+  instance takes a baseline and reports only later changes. A cursor the feed
+  can no longer resume (compaction, a replica replacement or promotion that
+  changed the watch lineage) degrades to one `zone.changed` per zone with
+  `change: "resync"`, then a fresh baseline: never one event per object.
+- **Topics shipped in v0.2.** `record.changed` (a DNSRecordSet generation or
+  its deletion), `zone.changed` (a DNSZone's committed serial or deletion),
+  `blocking.toggled` (Kudurru `status.blocking`), `integration.error` (an
+  Integration's Ready condition turned False; versioned by reason and
+  transition time) and `cluster.leader_changed` (a new writer term). The
+  provider advertises exactly these. `query.blocked`, `vip.master_changed`,
+  `client.seen` and `client.left` are deferred: the first is per node on the
+  query path, the second has no replay outside the node, and the client
+  topics carry names and addresses that need the hide and redaction rules.
+- **Guarantees.** At-least-once with a stable delivery ID, the SHA-256 of the
+  instance UID, topic, subject UID and version. Producing the same change
+  again (a crash between the queue and the cursor commit, a status write that
+  does not change what the topic reports) finds the row and queues nothing.
+  Delivery is unordered across retries; each payload carries its version.
+  The tick is the debounce. Rows expire 24 hours after creation and are
+  pruned an hour after that, by exact UID and resource version; rows of an
+  instance that no longer exists are pruned too.
+- **Wire format.** The signed body is the JSON of `integration.Event`,
+  `{"topic":...,"time":...,"payload":{...}}`, with lowercase payload keys
+  that name identities and versions, never record data or credentials. The
+  signature is `X-Kudurru-Signature: sha256=<hex HMAC-SHA256 of the exact
+  body>` with the instance's `hmacKey` (32 to 4096 bytes); a retry sends the
+  same body, ID and signature, and a rotated key re-signs pending rows.
+- **Budgets.** Each HTTP attempt charges one request against the instance's
+  own budget account (its UID), 1,000 requests per 300 seconds; an exhausted
+  budget is retried after five minutes, never dropped.
+- **Status.** A dead letter (a 4xx answer or a row past its day) sets the
+  instance Degraded with reason `EventDeadLettered` and publishes it, which in
+  turn is an `integration.error` event.
 
 ## Standalone webhook protocol checks
 

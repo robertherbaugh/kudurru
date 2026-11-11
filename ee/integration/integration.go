@@ -107,26 +107,28 @@ type RecordSink interface {
 	ApplyChanges(ctx context.Context, zone string, ch Changes) (ApplyResult, error)
 }
 
-// Network is a client network (VLAN) from an inventory source.
+// Network is a client network (VLAN) from an inventory source. The JSON
+// names are the Tier-B wire format, frozen for v0.2 (D379); decoding stays
+// case-insensitive, so peers that sent the field names still decode.
 type Network struct {
-	Name   string
-	VLAN   int
-	CIDR   string
-	Domain string
+	Name   string `json:"name"`
+	VLAN   int    `json:"vlan"`
+	CIDR   string `json:"cidr"`
+	Domain string `json:"domain"`
 }
 
 // Client is one inventory entry.
 type Client struct {
-	ID         string
-	MACs       []string
-	IPs        []string
-	Name       string
-	Hostname   string
-	Network    Network
-	FixedIP    string
-	Tags       []string
-	LastSeen   time.Time
-	Attributes map[string]string
+	ID         string            `json:"id"`
+	MACs       []string          `json:"macs"`
+	IPs        []string          `json:"ips"`
+	Name       string            `json:"name"`
+	Hostname   string            `json:"hostname"`
+	Network    Network           `json:"network"`
+	FixedIP    string            `json:"fixedIP"`
+	Tags       []string          `json:"tags"`
+	LastSeen   time.Time         `json:"lastSeen"`
+	Attributes map[string]string `json:"attributes"`
 }
 
 // ClientSource provides inventory.
@@ -135,11 +137,13 @@ type ClientSource interface {
 	ListNetworks(ctx context.Context) ([]Network, error)
 }
 
-// Event is a lifecycle event delivered at-least-once.
+// Event is a lifecycle event delivered at-least-once. Its JSON encoding is
+// the signed body of POST /events, frozen for v0.2 (D379):
+// {"topic":...,"time":...,"payload":...}.
 type Event struct {
-	Topic   string
-	Time    time.Time
-	Payload json.RawMessage
+	Topic   string          `json:"topic"`
+	Time    time.Time       `json:"time"`
+	Payload json.RawMessage `json:"payload"`
 }
 
 // Hook subscribes to events.

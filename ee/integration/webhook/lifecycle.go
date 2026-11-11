@@ -21,7 +21,7 @@ import (
 
 // provider retains one negotiated incarnation. The host owns pacing,
 // schema/RBAC admission and durable delivery retries; this lifecycle never
-// starts a scheduler. Public construction excludes unmounted event sources.
+// starts a scheduler.
 type provider struct {
 	mu              sync.RWMutex
 	checkSlot       chan struct{}
@@ -35,7 +35,6 @@ type provider struct {
 	hmacKey         []byte
 	secrets         []string
 	now             func() time.Time
-	deliveryAllowed bool // immutable; private delivery prerequisite only
 }
 
 var (
@@ -47,10 +46,10 @@ var (
 
 func newProvider() *provider {
 	life, cancel := context.WithCancel(context.Background())
-	return &provider{life: life, cancel: cancel, now: time.Now, checkSlot: make(chan struct{}, 1), deliveryAllowed: true}
+	return &provider{life: life, cancel: cancel, now: time.Now, checkSlot: make(chan struct{}, 1)}
 }
 
-func (p *provider) Manifest() integration.Manifest { return manifest(p.deliveryAllowed) }
+func (p *provider) Manifest() integration.Manifest { return manifest() }
 
 // Provision resolves only delegated names. A failed named resolution cannot
 // be interpreted as absence except for the resolver's explicit ErrDenied.
@@ -87,10 +86,7 @@ func (p *provider) Provision(ctx context.Context, h integration.Host, raw json.R
 	}
 	values := make(map[string][]byte)
 	var captured []string
-	names := []string{"bearerToken", "ca", "clientCertificate", "clientKey"}
-	if p.deliveryAllowed {
-		names = append(names, "hmacKey")
-	}
+	names := []string{"bearerToken", "ca", "clientCertificate", "clientKey", "hmacKey"}
 	for _, name := range names {
 		value, err := secrets.Resolve(ctx, name)
 		if err != nil {
@@ -109,7 +105,8 @@ func (p *provider) Provision(ctx context.Context, h integration.Host, raw json.R
 		captured = append(captured, value)
 	}
 	key := values["hmacKey"]
-	if len(key) != 0 && (len(key) < 32 || len(key) > 16<<10) {
+	// The same bounds as the conformance command (D379).
+	if len(key) != 0 && (len(key) < 32 || len(key) > maxHMACKey) {
 		return host.ErrCredentials
 	}
 	tr, err := newTransport(owner, transportConfig{endpoint: config.Endpoint, account: originalOwner.UID, timeout: config.Timeout.Duration,
@@ -184,8 +181,9 @@ func (p *provider) Check(ctx context.Context) (integration.Status, error) {
 		p.changed = true
 		return integration.Status{}, host.ErrFenced
 	}
-	// The initial tranche cannot claim complete execution of these capabilities.
-	if a.has("records") || a.has("hooks") && (!p.deliveryAllowed || len(p.hmacKey) == 0) {
+	// Records cannot claim complete execution yet; hooks need the separate
+	// signing key, never the bearer credential.
+	if a.has("records") || a.has("hooks") && len(p.hmacKey) == 0 {
 		return integration.Status{}, host.ErrUnsupported
 	}
 	raw, err := json.Marshal(a.declaration)
@@ -288,7 +286,10 @@ func (p *provider) Invoke(ctx context.Context, name string, params json.RawMessa
 	return r.body, nil
 }
 
-var eventTopics = []string{"zone.changed", "record.changed", "client.seen", "client.left", "query.blocked", "blocking.toggled", "integration.error", "cluster.leader_changed", "vip.master_changed"}
+// eventTopics are exactly the topics root produces in v0.2 (D379). The
+// deferred client.seen, client.left, query.blocked and vip.master_changed
+// are not advertised, so no peer subscribes to an event that never comes.
+var eventTopics = []string{"zone.changed", "record.changed", "blocking.toggled", "integration.error", "cluster.leader_changed"}
 
 func (p *provider) Topics() []string {
 	p.mu.RLock()

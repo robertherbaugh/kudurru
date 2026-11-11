@@ -30,6 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/ee/integration"
 	"github.com/robertherbaugh/kudurru/ee/integration/externaldns"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/memory"
@@ -121,7 +122,11 @@ const tierDeclaration = `{"filters":[],"capabilities":["records","clients","hook
 
 func TestConformanceTierBOriginalInputs(t *testing.T) {
 	key := bytes.Repeat([]byte{0x42}, 32)
-	event := []byte("{\n\"Topic\":\"test\",\"Time\":\"2026-11-02T00:00:00Z\",\"Payload\":{\"public\":true}}\n")
+	// The provider's own signed body shape, frozen for v0.2 (D379).
+	event, err := json.Marshal(integration.Event{Topic: "zone.changed", Time: time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC), Payload: json.RawMessage(`{"public":true}`)})
+	if err != nil || string(event) != `{"topic":"zone.changed","time":"2026-11-02T00:00:00Z","payload":{"public":true}}` {
+		t.Fatalf("event wire format changed: %s %v", event, err)
+	}
 	tokenFile := inputFile(t, []byte("original-test-token"))
 	eventFile := inputFile(t, event)
 	var events, actions, changes atomic.Int32

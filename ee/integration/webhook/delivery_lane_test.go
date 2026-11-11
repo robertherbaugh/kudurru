@@ -83,6 +83,10 @@ func TestLifecycleHeldResponsePastTimeoutIsRetriedWithSameDelivery(t *testing.T)
 		t.Fatal(err)
 	}
 	want, _ := json.Marshal(event)
+	// The frozen wire format of the signed body (D379).
+	if exact := `{"topic":"zone.changed","time":"` + event.Time.Format(time.RFC3339Nano) + `","payload":{"zone":"example.test"}}`; string(want) != exact {
+		t.Fatalf("event body %s, want %s", want, exact)
+	}
 	mac := hmac.New(sha256.New, []byte(key))
 	_, _ = mac.Write(want)
 	signature := "sha256=" + hex.EncodeToString(mac.Sum(nil))

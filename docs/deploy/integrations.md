@@ -12,9 +12,9 @@ This mount does not close every integration capability. Kubernetes execution is
 currently disabled: its per-object CAS cannot atomically admit source objects,
 allocations and global inventory. Native Kubernetes Secrets are not resolved by
 the SQLite host. Both deletion policies are supported on SQLite; see
-[Deleting an integration](#deleting-an-integration). Tier-B hooks and
-record publication, optional UniFi mutations and remaining management UI work
-remain separate. The external-dns webhook listener is a separate inbound feature.
+[Deleting an integration](#deleting-an-integration). Tier-B record
+publication, optional UniFi mutations and remaining management UI work remain
+separate. The external-dns webhook listener is a separate inbound feature.
 
 ## Deleting an integration
 
@@ -230,8 +230,8 @@ spec:
 
 Grant those exact files in `credentials.allowedFiles`. Mutual TLS uses named
 `clientCertificate` and `clientKey` references. The peer must speak the versioned
-Tier-B protocol and advertise supported clients/actions capabilities; peers
-requiring hooks or records are refused. Actions use the reviewed integration
+Tier-B protocol and advertise supported clients, actions or hooks
+capabilities; peers requiring records are refused. Actions use the reviewed integration
 API/CLI and their advertised parameter schemas. An uncertain action is reported
 without automatically replaying it.
 
@@ -240,6 +240,35 @@ expires after three minutes; another poll cannot renew it. `FixedIP` does not
 establish an observed address. This adapter creates no desired DNS records or
 ClientGroup membership. Actions-only peers do not poll inventory. Client polling
 is capped at one minute, or the configured shorter resync interval.
+
+### Hook events
+
+A peer that advertises `hooks` receives events at `POST /events`. It needs a
+separate signing key, named `hmacKey`, of 32 to 4096 raw bytes (not hex):
+
+```yaml
+  credentials:
+    bearerToken: {file: /run/secrets/webhook-token}
+    ca: {file: /run/secrets/webhook-ca.pem}
+    hmacKey: {file: /run/secrets/webhook-hmac}
+```
+
+A hooks peer without `hmacKey` is refused. Each event is one JSON body,
+`{"topic":"record.changed","time":"2026-11-10T12:00:00Z","payload":{...}}`,
+with `X-Kudurru-Delivery` (a stable ID; deduplicate on it) and
+`X-Kudurru-Signature: sha256=<hex HMAC-SHA256 of the exact body>`. Answer 2xx
+to acknowledge. A 5xx answer, a timeout or a busy request budget is retried
+with backoff under the same ID and body for up to 24 hours; a 4xx answer drops
+the event and sets the instance Degraded (`EventDeadLettered`). Events are
+at-least-once and unordered across retries; every payload carries a version.
+
+The topics are `record.changed`, `zone.changed`, `blocking.toggled`,
+`integration.error` and `cluster.leader_changed`. A new instance reports
+changes from its start on, not existing objects. Events survive restarts and
+failover through a durable per-instance cursor; when that cursor can no longer
+resume, the peer receives one `zone.changed` per zone with `change: "resync"`.
+`query.blocked`, `vip.master_changed`, `client.seen` and `client.left` are not
+produced in this release.
 
 ## UniFi inventory
 
