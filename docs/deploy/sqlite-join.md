@@ -389,6 +389,14 @@ Nothing a member does in this state restores trust in a revoked root key, and
 no member falls back to the shipped root anchors. The other members and the
 primary are not affected.
 
+A member in this state is not a promotion candidate: `cluster promote` needs a
+follower, and `cluster resolve --offline` needs a recorded conflict or
+divergence, which this member does not have. Until it follows again, the
+cluster depends on the current primary and on the members that follow it. Keep
+that in mind before you take the primary out of service: if the primary is lost
+for good while no member follows it, kudurru v0.2.0 has no command that turns a
+fenced member into the primary.
+
 #### Recognize a member that refuses the primary's data
 
 kudurru does not report this state directly yet. Use what exists today:

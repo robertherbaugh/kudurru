@@ -648,7 +648,10 @@ they were, and anchor admission stays open. The member repeats the pull at
 every interval (a complete image fetch each time) and refuses again until one
 of the following ends the state. None of them clears a carrier, installs a
 branch that lacks a carried key, or replaces managed history with a dormant or
-static owner.
+static owner. While it refuses, the member cannot become the primary: promotion
+needs a follower, and it holds no conflict or divergence for
+`cluster resolve --offline` to keep. Every recovery below therefore needs the
+current primary, or a member that follows it and can be promoted.
 
 | State | The member answers | What ends it |
 |---|---|---|
