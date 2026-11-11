@@ -521,17 +521,35 @@ hold (outside the zone, a CNAME or NS endpoint at the apex), and one whose
 endpoints conflict with an earlier record set is projected `duplicated`. A
 record set that has some endpoints served is projected `served`. In every
 case the record set's status conditions name each refused endpoint, as the
-controller reports them on both drivers. A block list source (URL or
-ConfigMap) for which no body was ever published is compiled empty: its
-first download has not finished (the URL may accept the connection and
-never answer), or it failed. A failed download is reported on the list
-(`Degraded`, `ListFetchFailed`); while a first download is still running
-nothing is reported, for up to the fetcher's attempts (three of at most
-five minutes each), and the status writes of the other lists wait for that
-pass of the fetcher as well. The download that publishes the source's
-digest prepares a new candidate with the body. A source whose published digest this node's cache does not
-hold (another node fetched it) still holds back the candidate until the
-body arrives.
+controller reports them on both drivers. The primary runtime runs its own
+checks on the compiled zone before it commits it (zonestate's normalization
+and `BuildCommittedPrimary` as the prebuild); the compiler keeps every
+record set from reaching one of them, so none stops the zone. That includes
+a record set written at a name that holds a record a dynamic update added:
+without an authorized takeover it is projected `duplicated` with the reason
+and the rest of the zone is committed, while the dynamic record keeps
+answering. Only zone-wide capacity bounds (a million records, 64 MiB of
+records, a 128 MiB aggregate) still refuse the zone as a whole; it then
+keeps its last commit. `TestCompilerWithholdsEveryRefusalOfThePrimaryRuntime`
+is the table of these checks.
+
+A block list source (URL or ConfigMap) for which no body was ever published
+is compiled empty: its first download has not finished (the URL may accept
+the connection and never answer), or it failed. A failed download is
+reported on the list (`Degraded`, `ListFetchFailed`); while a first download
+is still running nothing is reported, for up to the fetcher's attempts
+(three of at most five minutes each). The fetcher writes the status of a
+list as soon as the downloads of that list's sources end, so a silent URL
+holds back only its own lists' status, not the other lists'. The download
+that publishes the source's digest prepares a new candidate with the body.
+A source whose digest is published but for which this node holds no body
+as the source is configured now (a lost or never filled cache, a URL
+changed after the last download, a follower that has not pulled the body
+yet) is compiled empty as well, and storing the body wakes the serving
+publisher to prepare again with it. A source for which this node holds a
+body under another digest (a refresh downloaded or pulled before its new
+digest was published) still holds back the candidate until the published
+body is stored, so a node never serves a body nobody published.
 
 Each database carries a schema version. A file newer than the binary stops
 the process with an explanation; an older one is migrated in one
