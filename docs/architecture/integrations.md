@@ -374,8 +374,13 @@ flowchart TD
 - **Local failures.** `CleanupFailed` is a failed read or write of the local
   store, `ProviderUnavailable` a type this build has no provider for, and
   `ReleaseFailed` a release whose finalizer removal was refused. All are
-  repeated at the resync interval. `CapacityExceeded` is a bounded read that
-  met more than it admits, from which nothing was decided: more than 100,000
+  repeated at the resync interval, except a `CleanupFailed` run that its
+  30-second bound cut without any progress in one of the cleanup's own local
+  steps (a ledger count, a ledger or history read, a fence, a forget, the
+  purge or the finalization): a store too slow for the bound backs off and
+  retries like a provider failure, and is not reported as `ProviderFailed`.
+  `CapacityExceeded` is a bounded read that met more than it admits, from
+  which nothing was decided: more than 100,000
   ledger rows in the store or more than a sync admits per destination on the
   host side, and on the root side more than 200,000 stored rows of one kind
   that the purge or the finalization scans in its transaction. That root

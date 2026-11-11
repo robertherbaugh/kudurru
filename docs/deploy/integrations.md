@@ -100,7 +100,7 @@ what is left.
 | `DestinationRemoved` | The ledger has records of a zone the spec no longer names. | Name the zone again, or release. |
 | `LocalStateRemains` | A record set or zone the instance generated could not be removed, or a row of the instance was stored after the purge. | Check that object's own finalizers; a later run removes late rows. |
 | `CapacityExceeded` | The store holds more rows than a bounded read of the cleanup admits (see the limits below). Nothing was decided from a partial read. | Release. |
-| `CleanupFailed` | A read or a write of the local store failed. | Usually nothing; check the server log if it stays, or release. |
+| `CleanupFailed` | A read or a write of the local store failed, or was too slow for the run's 30-second bound (then retried with backoff). | Usually nothing; check the server log if it stays, or release. |
 | `ProviderUnavailable` | This build has no provider of the Integration's type. | Run a build that has it, or release. |
 | `ReleaseFailed` | A release could not remove the finalizer yet. | Usually nothing; check the server log if it stays. |
 
