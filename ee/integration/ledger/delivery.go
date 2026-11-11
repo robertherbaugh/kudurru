@@ -105,10 +105,13 @@ const MaxPruneDeliveries = 256
 // PruneDeliveries deletes delivery rows by the exact UID and resource version
 // the caller observed, in one Delete (D379). Every row must be past its
 // deadline plus DeliveryRetention. A row of the guard's own instance must be
-// terminal (acknowledged or dead-lettered); a row of any other instance is
-// pruned only when no Integration with that owner UID exists any more, and is
-// skipped while one does. A row that changed or vanished, or an own row that
-// does not qualify, refuses the whole call.
+// terminal (acknowledged or dead-lettered). A terminal row of any other
+// instance is pruned too: it can never be attempted again, whether or not
+// its owner still runs a hook lease. An undelivered row of another instance
+// is pruned only when no Integration with that owner UID exists any more,
+// and is skipped while one does (its owner dead-letters it and raises
+// Degraded). A row that changed or vanished, or an own row that does not
+// qualify, refuses the whole call.
 func (r *Repository) PruneDeliveries(ctx context.Context, g Guard, rows []*kinds.IntegrationDelivery) error {
 	if r.delete == nil || g.Validate() != nil || len(rows) == 0 || len(rows) > MaxPruneDeliveries {
 		return ErrInvalid
@@ -134,11 +137,12 @@ func (r *Repository) PruneDeliveries(ctx context.Context, g Guard, rows []*kinds
 		if now.Before(current.Spec.Deadline.Add(DeliveryRetention)) {
 			return ErrInvalid
 		}
+		terminal := current.Spec.Acknowledged || current.Spec.DeadLetter
 		if current.Spec.Owner == g.Owner {
-			if !current.Spec.Acknowledged && !current.Spec.DeadLetter {
+			if !terminal {
 				return ErrInvalid
 			}
-		} else {
+		} else if !terminal {
 			var owner public.Integration
 			err := r.read.Get(ctx, store.Key{Kind: "Integration", Namespace: current.Spec.Owner.Namespace, Name: current.Spec.Owner.Name}, &owner)
 			switch {
@@ -152,6 +156,45 @@ func (r *Repository) PruneDeliveries(ctx context.Context, g Guard, rows []*kinds
 	}
 	if len(requests) == 0 {
 		return nil
+	}
+	slices.SortFunc(requests, func(a, b store.DeleteRequest) int { return strings.Compare(a.Key.Name, b.Key.Name) })
+	return r.delete(ctx, g, requests)
+}
+
+// EvictDeliveries deletes terminal rows of the guard's own instance before
+// their retention ran out, by the exact UID and resource version the caller
+// observed, in one Delete (D379). The host evicts its oldest terminal rows
+// once the instance holds more than its terminal budget, so the rows of an
+// instance stay bounded by count as well as by time. An evicted ID no longer
+// dedups a reproduction of the same change: it is delivered again under the
+// same ID, which the at-least-once contract allows. A row of another
+// instance, an undelivered row, or a row that changed or vanished refuses
+// the whole call.
+func (r *Repository) EvictDeliveries(ctx context.Context, g Guard, rows []*kinds.IntegrationDelivery) error {
+	if r.delete == nil || g.Validate() != nil || len(rows) == 0 || len(rows) > MaxPruneDeliveries {
+		return ErrInvalid
+	}
+	seen := map[string]bool{}
+	requests := make([]store.DeleteRequest, 0, len(rows))
+	for _, d := range rows {
+		if d == nil || d.Validate() != nil || d.UID == "" || d.ResourceVersion == "" || seen[d.Name] || d.Spec.Owner != g.Owner {
+			return ErrInvalid
+		}
+		seen[d.Name] = true
+		current, err := r.ReadDelivery(ctx, d.Spec.Owner, d.Spec.DeliveryID)
+		if errors.Is(err, store.ErrNotFound) {
+			return store.ErrConflict
+		}
+		if err != nil {
+			return err
+		}
+		if current.UID != d.UID || current.ResourceVersion != d.ResourceVersion {
+			return store.ErrConflict
+		}
+		if !current.Spec.Acknowledged && !current.Spec.DeadLetter {
+			return ErrInvalid
+		}
+		requests = append(requests, forgetRequest(kinds.KindIntegrationDelivery, current))
 	}
 	slices.SortFunc(requests, func(a, b store.DeleteRequest) int { return strings.Compare(a.Key.Name, b.Key.Name) })
 	return r.delete(ctx, g, requests)

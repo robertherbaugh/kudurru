@@ -119,3 +119,70 @@ func TestProductionWaitsAtThePendingCap(t *testing.T) {
 		t.Fatal("unbounded batch accepted", err)
 	}
 }
+
+// A peer that acknowledges every event promptly gets no back-pressure from
+// the pending cap, so retention must bound the rows by count: the instance
+// never holds more than maxInstanceDeliveries rows, its oldest terminal
+// rows are evicted above maxTerminalDeliveries, and production keeps going
+// (D379).
+func TestProductionRowsStayBoundedByCount(t *testing.T) {
+	h, j, st, now := deliveryFixture(t)
+	delivered := 0
+	j.provider = &fakeHook{handle: func(context.Context, string, integration.Event) error { delivered++; return nil }}
+	next := 0
+	h.opts.Produce = func(_ context.Context, _ ExecutionGuard, positions map[string]string, _ []string, limit int) (EventBatch, error) {
+		if positions == nil {
+			return EventBatch{Positions: map[string]string{"feed": "0"}}, nil
+		}
+		var out EventBatch
+		for range limit {
+			next++
+			out.Events = append(out.Events, ProducedEvent{Topic: "zone.changed", Subject: fmt.Sprintf("zone-%d", next), Version: "1", Payload: json.RawMessage(`{}`)})
+		}
+		out.Positions = map[string]string{"feed": fmt.Sprint(next)}
+		return out, nil
+	}
+	rows := func() (all, terminal int) {
+		page, err := st.List(context.Background(), kinds.KindIntegrationDelivery, store.ListOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range page.Items {
+			if d := item.(*kinds.IntegrationDelivery); d.Spec.Acknowledged || d.Spec.DeadLetter {
+				terminal++
+			}
+		}
+		return len(page.Items), terminal
+	}
+	for tick := range 40 {
+		*now = now.Add(2 * time.Second)
+		if err := h.produceEvents(context.Background(), j); err != nil {
+			t.Fatal(tick, err)
+		}
+		if all, _ := rows(); all > maxInstanceDeliveries {
+			t.Fatalf("tick %d: %d rows after production", tick, all)
+		}
+		if err := h.drainEvents(context.Background(), j); err != nil {
+			t.Fatal(tick, err)
+		}
+		// Retention runs before this tick's attempts, so the rows those
+		// attempts acknowledged wait for the next tick.
+		if _, terminal := rows(); terminal > maxTerminalDeliveries+maxProducePerTick {
+			t.Fatalf("tick %d: %d terminal rows after retention", tick, terminal)
+		}
+	}
+	// Forty ticks of 32 events: production was never held back for long.
+	if delivered < 35*maxProducePerTick {
+		t.Fatal("production stalled at the row budget", delivered)
+	}
+	// The newest terminal rows are the ones kept.
+	page, err := st.List(context.Background(), kinds.KindIntegrationDelivery, store.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range page.Items {
+		if d := item.(*kinds.IntegrationDelivery); d.Spec.CreatedAt.Before(now.Add(-time.Duration(maxTerminalDeliveries/maxProducePerTick+2) * 2 * time.Second)) {
+			t.Fatal("an old terminal row was kept over a newer one", d.Spec.CreatedAt, *now)
+		}
+	}
+}

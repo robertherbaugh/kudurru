@@ -140,3 +140,162 @@ func TestPruneDeliveriesExactVersionAndRetention(t *testing.T) {
 		t.Fatal("pending row removed", err)
 	}
 }
+
+// A terminal row of a live Integration that no longer runs a hook lease is
+// pruned by any other lease once its retention ran out; an undelivered one
+// stays for its owner (D379).
+func TestPruneDeliveriesTerminalRowOfLiveOwner(t *testing.T) {
+	ctx := context.Background()
+	g, _ := fixture(t)
+	st := memory.New()
+	now := testTime
+	base := repository(t, st, nil)
+	r, err := New(Options{Reader: st, Write: base.write, Now: func() time.Time { return now }, Delete: func(ctx context.Context, _ Guard, requests []store.DeleteRequest) error {
+		return st.DeleteMany(ctx, requests)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := kinds.Owner{ClusterID: g.Owner.ClusterID, Namespace: "dns", Name: "other", UID: "uid-other"}
+	og := g
+	og.Owner = other
+	queue := func(name string) *kinds.IntegrationDelivery {
+		id := kinds.Digest([]byte(name))
+		d := &kinds.IntegrationDelivery{ObjectMeta: metav1.ObjectMeta{Name: kinds.DeliveryName(other, id)}, Spec: kinds.IntegrationDeliverySpec{FormatVersion: 1, Owner: other, DeliveryID: id, Topic: "zone.changed", Payload: json.RawMessage(`{}`), CreatedAt: testTime, Deadline: testTime.Add(24 * time.Hour), NextAttempt: testTime}}
+		saved, err := r.QueueDelivery(ctx, og, d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return saved
+	}
+	pending := queue("pending")
+	acked := queue("acked")
+	next := acked.DeepCopy()
+	next.Spec.Attempts, next.Spec.Acknowledged = 1, true
+	if acked, err = r.SaveDelivery(ctx, og, next); err != nil {
+		t.Fatal(err)
+	}
+	live := &public.Integration{ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: "dns", UID: "uid-other"}, Spec: public.IntegrationSpec{Type: "webhook"}}
+	if _, err := st.Apply(ctx, live, store.ApplyOptions{Manager: "test", CreateOnly: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.PruneDeliveries(ctx, g, []*kinds.IntegrationDelivery{acked}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("pruned a foreign row before its retention ran out", err)
+	}
+	now = testTime.Add(24*time.Hour + DeliveryRetention)
+	if err := r.PruneDeliveries(ctx, g, []*kinds.IntegrationDelivery{acked, pending}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.ReadDelivery(ctx, other, acked.Spec.DeliveryID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("a terminal row of a live owner was kept", err)
+	}
+	if _, err := r.ReadDelivery(ctx, other, pending.Spec.DeliveryID); err != nil {
+		t.Fatal("an undelivered row of a live owner was pruned", err)
+	}
+}
+
+// Eviction deletes only the guard's own terminal rows, by exact version,
+// before their retention ran out (D379).
+func TestEvictDeliveriesOwnTerminalRowsOnly(t *testing.T) {
+	ctx := context.Background()
+	g, _ := fixture(t)
+	st := memory.New()
+	base := repository(t, st, nil)
+	r, err := New(Options{Reader: st, Write: base.write, Now: func() time.Time { return testTime }, Delete: func(ctx context.Context, _ Guard, requests []store.DeleteRequest) error {
+		return st.DeleteMany(ctx, requests)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue := func(owner kinds.Owner, name string, ack bool) *kinds.IntegrationDelivery {
+		id := kinds.Digest([]byte(name))
+		og := g
+		og.Owner = owner
+		d := &kinds.IntegrationDelivery{ObjectMeta: metav1.ObjectMeta{Name: kinds.DeliveryName(owner, id)}, Spec: kinds.IntegrationDeliverySpec{FormatVersion: 1, Owner: owner, DeliveryID: id, Topic: "zone.changed", Payload: json.RawMessage(`{}`), CreatedAt: testTime, Deadline: testTime.Add(24 * time.Hour), NextAttempt: testTime}}
+		saved, err := r.QueueDelivery(ctx, og, d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ack {
+			return saved
+		}
+		next := saved.DeepCopy()
+		next.Spec.Attempts, next.Spec.Acknowledged = 1, true
+		if saved, err = r.SaveDelivery(ctx, og, next); err != nil {
+			t.Fatal(err)
+		}
+		return saved
+	}
+	acked := queue(g.Owner, "acked", true)
+	pending := queue(g.Owner, "pending", false)
+	other := kinds.Owner{ClusterID: g.Owner.ClusterID, Namespace: "dns", Name: "other", UID: "uid-other"}
+	foreign := queue(other, "foreign", true)
+	if err := r.EvictDeliveries(ctx, g, []*kinds.IntegrationDelivery{acked, pending}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("evicted an undelivered row", err)
+	}
+	if err := r.EvictDeliveries(ctx, g, []*kinds.IntegrationDelivery{foreign}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("evicted another instance's row", err)
+	}
+	stale := acked.DeepCopy()
+	stale.ResourceVersion = "stale"
+	if err := r.EvictDeliveries(ctx, g, []*kinds.IntegrationDelivery{stale}); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("evicted with a stale version", err)
+	}
+	if err := r.EvictDeliveries(ctx, g, []*kinds.IntegrationDelivery{acked}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.ReadDelivery(ctx, g.Owner, acked.Spec.DeliveryID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("terminal row kept", err)
+	}
+	for owner, id := range map[kinds.Owner]string{g.Owner: pending.Spec.DeliveryID, other: foreign.Spec.DeliveryID} {
+		if _, err := r.ReadDelivery(ctx, owner, id); err != nil {
+			t.Fatal("row removed", err)
+		}
+	}
+}
+
+func TestPruneEventCursorsOnlyOrphans(t *testing.T) {
+	ctx := context.Background()
+	g, _ := fixture(t)
+	st := memory.New()
+	base := repository(t, st, nil)
+	r, err := New(Options{Reader: st, Write: base.write, Now: func() time.Time { return testTime }, Delete: func(ctx context.Context, _ Guard, requests []store.DeleteRequest) error {
+		return st.DeleteMany(ctx, requests)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	save := func(owner kinds.Owner) *kinds.IntegrationEventCursor {
+		og := g
+		og.Owner = owner
+		c, err := r.SaveEventCursor(ctx, og, &kinds.IntegrationEventCursor{ObjectMeta: metav1.ObjectMeta{Name: kinds.EventCursorName(owner)}, Spec: kinds.IntegrationEventCursorSpec{FormatVersion: 1, Owner: owner, Positions: map[string]string{"feed": "1"}, UpdatedAt: testTime}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	own := save(g.Owner)
+	gone := save(kinds.Owner{ClusterID: g.Owner.ClusterID, Namespace: "dns", Name: "gone", UID: "uid-gone"})
+	liveOwner := kinds.Owner{ClusterID: g.Owner.ClusterID, Namespace: "dns", Name: "live", UID: "uid-live"}
+	live := save(liveOwner)
+	if _, err := st.Apply(ctx, &public.Integration{ObjectMeta: metav1.ObjectMeta{Name: "live", Namespace: "dns", UID: "uid-live"}, Spec: public.IntegrationSpec{Type: "webhook"}}, store.ApplyOptions{Manager: "test", CreateOnly: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.PruneEventCursors(ctx, g, []*kinds.IntegrationEventCursor{own}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("pruned the guard's own cursor", err)
+	}
+	stale := gone.DeepCopy()
+	stale.ResourceVersion = "stale"
+	if err := r.PruneEventCursors(ctx, g, []*kinds.IntegrationEventCursor{stale}); !errors.Is(err, store.ErrConflict) {
+		t.Fatal("pruned with a stale version", err)
+	}
+	if err := r.PruneEventCursors(ctx, g, []*kinds.IntegrationEventCursor{gone, live}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.ReadEventCursor(ctx, gone.Spec.Owner); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("orphaned cursor kept", err)
+	}
+	if _, err := r.ReadEventCursor(ctx, liveOwner); err != nil {
+		t.Fatal("a live owner's cursor was pruned", err)
+	}
+}

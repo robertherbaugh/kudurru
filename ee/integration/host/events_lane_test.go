@@ -125,13 +125,19 @@ func TestEventRetentionPrunesOnlyDeadRows(t *testing.T) {
 	ok := &fakeHook{handle: func(context.Context, string, integration.Event) error { return nil }}
 	acked := queueOne(t, h, j, start, "acked", ok)
 	dead := queueOne(t, h, j, start, "dead", &fakeHook{handle: func(context.Context, string, integration.Event) error { return &Failure{Kind: FailurePermanent} }})
-	// Rows of other owners: one whose Integration is gone, one still live.
+	// Rows of other owners: an undelivered one whose Integration is gone,
+	// and an acknowledged and an undelivered one of a live Integration
+	// that runs no hook lease (D379).
 	gone := kinds.Owner{ClusterID: j.guard.Owner.ClusterID, Namespace: "dns", Name: "gone", UID: "uid-gone"}
 	liveOwner := kinds.Owner{ClusterID: j.guard.Owner.ClusterID, Namespace: "dns", Name: "live", UID: "uid-live"}
-	for _, owner := range []kinds.Owner{gone, liveOwner} {
-		id := kinds.Digest([]byte(owner.Name))
-		row := &kinds.IntegrationDelivery{ObjectMeta: metav1.ObjectMeta{Name: kinds.DeliveryName(owner, id)}, Spec: kinds.IntegrationDeliverySpec{FormatVersion: kinds.FormatVersion, Owner: owner, DeliveryID: id, Topic: "zone.changed", Payload: json.RawMessage(`{}`), CreatedAt: start, Deadline: start.Add(24 * time.Hour), NextAttempt: start, Acknowledged: true}}
-		if _, err := st.Apply(context.Background(), row, store.ApplyOptions{Manager: "integration-ledger", CreateOnly: true}); err != nil {
+	for _, row := range []struct {
+		owner kinds.Owner
+		name  string
+		acked bool
+	}{{gone, "gone", false}, {liveOwner, "live", true}, {liveOwner, "live-pending", false}} {
+		id := kinds.Digest([]byte(row.name))
+		d := &kinds.IntegrationDelivery{ObjectMeta: metav1.ObjectMeta{Name: kinds.DeliveryName(row.owner, id)}, Spec: kinds.IntegrationDeliverySpec{FormatVersion: kinds.FormatVersion, Owner: row.owner, DeliveryID: id, Topic: "zone.changed", Payload: json.RawMessage(`{}`), CreatedAt: start, Deadline: start.Add(24 * time.Hour), NextAttempt: start, Acknowledged: row.acked}}
+		if _, err := st.Apply(context.Background(), d, store.ApplyOptions{Manager: "integration-ledger", CreateOnly: true}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -144,8 +150,8 @@ func TestEventRetentionPrunesOnlyDeadRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The capture of this fixture does not contain "live", so the host
-	// takes its row for an orphan; the ledger's own read of the Integration
-	// keeps it.
+	// takes its undelivered row for an orphan; the ledger's own read of the
+	// Integration keeps it.
 	if string(stored.UID) != liveOwner.UID {
 		t.Fatal("fixture UID changed", stored.UID)
 	}
@@ -162,7 +168,7 @@ func TestEventRetentionPrunesOnlyDeadRows(t *testing.T) {
 	// Inside the retention window nothing goes.
 	*now = start.Add(24*time.Hour + 30*time.Minute)
 	j.provider = ok
-	if err := h.drainEvents(context.Background(), j); err != nil || count() != 5 {
+	if err := h.drainEvents(context.Background(), j); err != nil || count() != 6 {
 		t.Fatal("pruned inside the retention window", err, count())
 	}
 	*now = start.Add(25 * time.Hour)
@@ -180,7 +186,41 @@ func TestEventRetentionPrunesOnlyDeadRows(t *testing.T) {
 	if _, err := h.opts.Ledger.ReadDelivery(context.Background(), gone, kinds.Digest([]byte("gone"))); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("orphan row kept", err)
 	}
-	if _, err := h.opts.Ledger.ReadDelivery(context.Background(), liveOwner, kinds.Digest([]byte("live"))); err != nil {
-		t.Fatal("a live owner's row was pruned by another instance", err)
+	if _, err := h.opts.Ledger.ReadDelivery(context.Background(), liveOwner, kinds.Digest([]byte("live"))); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("a live owner's expired terminal row was kept", err)
+	}
+	if _, err := h.opts.Ledger.ReadDelivery(context.Background(), liveOwner, kinds.Digest([]byte("live-pending"))); err != nil {
+		t.Fatal("a live owner's undelivered row was pruned by another instance", err)
+	}
+}
+
+// The event cursor of an instance that no longer exists (deleted under the
+// Retain policy) is pruned by another hook lease; the cursor of a live
+// Integration and the lease's own cursor stay (D379).
+func TestEventRetentionPrunesOrphanedCursors(t *testing.T) {
+	h, j, st, now := deliveryFixture(t)
+	j.provider = &fakeHook{handle: func(context.Context, string, integration.Event) error { return nil }}
+	gone := kinds.Owner{ClusterID: j.guard.Owner.ClusterID, Namespace: "dns", Name: "gone", UID: "uid-gone"}
+	liveOwner := kinds.Owner{ClusterID: j.guard.Owner.ClusterID, Namespace: "dns", Name: "live", UID: "uid-live"}
+	for _, owner := range []kinds.Owner{gone, liveOwner, j.guard.Owner} {
+		c := &kinds.IntegrationEventCursor{ObjectMeta: metav1.ObjectMeta{Name: kinds.EventCursorName(owner)}, Spec: kinds.IntegrationEventCursorSpec{FormatVersion: kinds.FormatVersion, Owner: owner, Positions: map[string]string{"feed": "1"}, UpdatedAt: *now}}
+		if _, err := st.Apply(context.Background(), c, store.ApplyOptions{Manager: "integration-ledger", CreateOnly: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	live := &public.Integration{ObjectMeta: metav1.ObjectMeta{Name: "live", Namespace: "dns", UID: "uid-live"}, Spec: public.IntegrationSpec{Type: "webhook", Webhook: &public.WebhookIntegration{Endpoint: "https://live.example"}}}
+	if _, err := st.Apply(context.Background(), live, store.ApplyOptions{Manager: "test", CreateOnly: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.drainEvents(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.opts.Ledger.ReadEventCursor(context.Background(), gone); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("orphaned cursor kept", err)
+	}
+	for _, owner := range []kinds.Owner{liveOwner, j.guard.Owner} {
+		if _, err := h.opts.Ledger.ReadEventCursor(context.Background(), owner); err != nil {
+			t.Fatal("a live cursor was pruned", owner.Name, err)
+		}
 	}
 }

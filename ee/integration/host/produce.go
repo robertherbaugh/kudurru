@@ -41,10 +41,15 @@ type Producer func(ctx context.Context, g ExecutionGuard, positions map[string]s
 
 // Production bounds (D379): the 2 s event tick is the debounce, a tick
 // queues at most maxProducePerTick events, and production waits while the
-// instance already has maxPendingDeliveries undelivered events.
+// instance already has maxPendingDeliveries undelivered events or
+// maxInstanceDeliveries rows in all. Retention evicts an instance's oldest
+// terminal rows above maxTerminalDeliveries, so a peer that acknowledges
+// promptly is bounded by count too, not only by the 25 h retention.
 const (
-	maxProducePerTick    = 32
-	maxPendingDeliveries = 256
+	maxProducePerTick     = 32
+	maxPendingDeliveries  = 256
+	maxTerminalDeliveries = 128
+	maxInstanceDeliveries = maxPendingDeliveries + maxTerminalDeliveries
 )
 
 // DeliveryID is the stable at-least-once identity of a produced event.
@@ -89,8 +94,9 @@ func (h *Host) produceEvents(ctx context.Context, j *job) error {
 			pending++
 		}
 	}
-	if pending >= maxPendingDeliveries {
-		// The peer is behind: keep the cursor where it is. If the feed is
+	if pending >= maxPendingDeliveries || len(queued) >= maxInstanceDeliveries {
+		// The peer is behind, or retention has not yet evicted the oldest
+		// terminal rows: keep the cursor where it is. If the feed is
 		// compacted meanwhile, root falls back to one event per zone.
 		return nil
 	}
@@ -105,7 +111,7 @@ func (h *Host) produceEvents(ctx context.Context, j *job) error {
 	if cursor != nil {
 		positions = maps.Clone(cursor.Spec.Positions)
 	}
-	limit := min(maxProducePerTick, maxPendingDeliveries-pending)
+	limit := min(maxProducePerTick, maxPendingDeliveries-pending, maxInstanceDeliveries-len(queued))
 	batch, err := h.opts.Produce(ctx, g, positions, slices.Clone(topics), limit)
 	if err != nil {
 		return err
