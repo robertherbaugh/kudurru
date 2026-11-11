@@ -57,14 +57,26 @@ type integrationCut struct {
 
 func newIntegrationRuntime(s *servingRuntime, schema *servingbuild.Schema, pin currentguard.PinFunc) (*integrationRuntime, error) {
 	r := &integrationRuntime{s: s, schema: schema, pin: pin}
-	repository, err := ledger.New(ledger.Options{Reader: s.opts.Store, Now: s.opts.Now, Write: r.write, Delete: r.forget})
+	options, err := r.hostOptions()
 	if err != nil {
 		return nil, err
 	}
-	r.host, err = ih.New(ih.Options{Capture: r.capture, Elector: s.opts.Store.Elector, Fence: r.fence, Ledger: repository, Reader: s.opts.Store, Allowed: func() bool {
+	r.host, err = ih.New(options)
+	return r, err
+}
+
+// hostOptions is the complete wiring of this root adapter into a host: every
+// capture, fence and commit the host makes goes through the callbacks here.
+func (r *integrationRuntime) hostOptions() (ih.Options, error) {
+	s := r.s
+	repository, err := ledger.New(ledger.Options{Reader: s.opts.Store, Now: s.opts.Now, Write: r.write, Delete: r.forget})
+	if err != nil {
+		return ih.Options{}, err
+	}
+	return ih.Options{Capture: r.capture, Elector: s.opts.Store.Elector, Fence: r.fence, Ledger: repository, Reader: s.opts.Store, Allowed: func() bool {
 		c := r.allowed.Load()
 		return s.life.Err() == nil && c != nil && c.Current() && c.Status().Allows(license.FeatureIntegrations)
-	}, Factory: func(typ string) (integration.Integration, error) {
+	}, Alive: func() bool { return s.life.Err() == nil }, Factory: func(typ string) (integration.Integration, error) {
 		if r.factory != nil {
 			return r.factory(typ)
 		}
@@ -78,8 +90,7 @@ func newIntegrationRuntime(s *servingRuntime, schema *servingbuild.Schema, pin c
 		default:
 			return nil, ih.ErrUnsupported
 		}
-	}, ValidateSource: r.validateSource, BeforeObserve: r.beforeObserve, CommitSource: r.commitSource, Status: r.status, Purge: r.purge, Finalize: r.finalize, Now: s.opts.Now})
-	return r, err
+	}, ValidateSource: r.validateSource, BeforeObserve: r.beforeObserve, CommitSource: r.commitSource, Status: r.status, Purge: r.purge, Finalize: r.finalize, Now: s.opts.Now}, nil
 }
 
 func (r *integrationRuntime) capture(ctx context.Context) (ih.Input, error) {
@@ -398,12 +409,8 @@ func (r *integrationRuntime) fence(ctx context.Context, g ih.ExecutionGuard) err
 		if store.KeyOf(obj) != (store.Key{Kind: "Integration", Namespace: g.Ledger.Owner.Namespace, Name: g.Ledger.Owner.Name}) {
 			continue
 		}
-		var current public.Integration
-		if err = r.s.opts.Store.Get(ctx, store.KeyOf(obj), &current); err != nil {
-			return ih.ErrFenced
-		}
-		if current.UID != obj.GetUID() || current.ResourceVersion != obj.GetResourceVersion() || !integrationGuardAdmits(&current, g) {
-			return ih.ErrFenced
+		if err = r.storedCurrent(ctx, obj, g); err != nil {
+			return err
 		}
 	}
 	return r.pin(ctx, pr.PublicationFence{Term: token.Term(), Incarnation: token.Incarnation()}, func(p currentguard.Pinned) error {
@@ -412,6 +419,21 @@ func (r *integrationRuntime) fence(ctx context.Context, g ih.ExecutionGuard) err
 		}
 		return nil
 	})
+}
+
+// storedCurrent is the pre-effect check of fence on the stored Integration:
+// it must still be the exact object the original cut captured, by UID and
+// resource version, and what the guard's mode claims. A read that fails
+// fences like a changed object.
+func (r *integrationRuntime) storedCurrent(ctx context.Context, captured store.Object, g ih.ExecutionGuard) error {
+	var current public.Integration
+	if err := r.s.opts.Store.Get(ctx, store.KeyOf(captured), &current); err != nil {
+		return ih.ErrFenced
+	}
+	if current.UID != captured.GetUID() || current.ResourceVersion != captured.GetResourceVersion() || !integrationGuardAdmits(&current, g) {
+		return ih.ErrFenced
+	}
+	return nil
 }
 
 func writerTarget(t sqlite.WriterToken) serving.TermActivation {

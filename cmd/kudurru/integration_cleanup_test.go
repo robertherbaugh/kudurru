@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -335,17 +336,28 @@ func TestIntegrationDeleteUniFiPurgesLocalStateAndFinalizes(t *testing.T) {
 		snapshot := integrationInventory(t, s)
 		return snapshot != nil && snapshot.Lookup(address, time.Now()) != nil
 	})
-	answers := func(name string) bool {
+	// answers reads the generated and the operator's name from ONE captured
+	// bundle. captured is false while the publisher refuses a capture, which
+	// it does while it catches up with a commit: that is not an answer, and
+	// nothing may be concluded from it.
+	answers := func() (generated, operator, captured bool) {
 		lease, err := s.publisher.CaptureHTTP(t.Context())
 		if err != nil {
-			return false
+			return false, false, false
 		}
 		defer lease.Release()
 		value, _ := lease.Bundle().Component("zones")
-		model := value.(*servingzones.Prepared).Zones(time.Now()).Match(name)
-		return model != nil && model.Lookup(name, dns.TypeA).Kind == zone.Success
+		zones := value.(*servingzones.Prepared).Zones(time.Now())
+		answered := func(name string) bool {
+			model := zones.Match(name)
+			return model != nil && model.Lookup(name, dns.TypeA).Kind == zone.Success
+		}
+		return answered("laptop.example."), answered("printer.example."), true
 	}
-	awaitServingRuntime(t, s, func() bool { return answers("laptop.example.") && answers("printer.example.") })
+	awaitServingRuntime(t, s, func() bool {
+		generated, operator, captured := answers()
+		return captured && generated && operator
+	})
 	owned := func() []store.Object {
 		var out []store.Object
 		for _, kind := range []store.Kind{"DNSRecordSet", "DNSZone"} {
@@ -392,10 +404,19 @@ func TestIntegrationDeleteUniFiPurgesLocalStateAndFinalizes(t *testing.T) {
 		}
 		return true
 	})
-	awaitServingRuntime(t, s, func() bool { return !answers("laptop.example.") })
-	if !answers("printer.example.") {
-		t.Fatal("the purge removed an operator's record")
-	}
+	// One captured bundle no longer answers the generated name and still
+	// answers the operator's.
+	var last [3]bool
+	defer func() {
+		if t.Failed() {
+			t.Logf("last bundle: generated name answers=%v, operator's name answers=%v, captured=%v", last[0], last[1], last[2])
+		}
+	}()
+	awaitServingRuntime(t, s, func() bool {
+		generated, operator, captured := answers()
+		last = [3]bool{generated, operator, captured}
+		return captured && !generated && operator
+	})
 	var kept public.ClientGroup
 	if err := s.opts.Store.Get(t.Context(), store.KeyOf(group), &kept); err != nil || !reflect.DeepEqual(kept.Spec.Clients, []public.ClientMatcher{{MAC: "00:00:00:00:00:09"}}) {
 		t.Fatal("the purge changed the operator's group members", err != nil)
@@ -605,9 +626,20 @@ func TestIntegrationDeleteBlockedCleanupReportsAndNeverFinalizes(t *testing.T) {
 		t.Run(outcome, func(t *testing.T) {
 			// A blocked cleanup is re-evaluated at the resync interval.
 			f := newIntegrationDeleteFixture(t, func(d *public.Integration) { d.Spec.Resync = metav1.Duration{Duration: time.Second} })
+			// What root's capture selects for publication: the declared record
+			// set while the publisher lives, nothing once it is being deleted.
+			selected := func() int {
+				in, err := f.s.integrations.capture(t.Context())
+				if err != nil {
+					return -1
+				}
+				return len(in.Sources)
+			}
+			awaitServingRuntime(t, f.s, func() bool { return selected() == 1 })
 			f.seed(integrationForeignID(5), "web.example", "TXT", `"operator note"`, "")
 			f.requestDelete(t)
 			f.awaitStatus(t, ih.PhaseTerminating, ih.ReasonRecordsConflict)
+			awaitServingRuntime(t, f.s, func() bool { return selected() == 0 })
 			var held *public.Integration
 			awaitServingRuntime(t, f.s, func() bool {
 				held = integrationStored(t, f.s, f.d)
@@ -695,11 +727,18 @@ func TestIntegrationDeleteWithoutCredentialMakesNoProviderCallAndResumes(t *test
 		}
 		for _, condition := range held.Status.Conditions {
 			if condition.Type == "Ready" && condition.Reason == ih.ReasonCredentials {
-				return true
+				// The run stopped before any provider read; the record it has
+				// not removed is still counted.
+				return held.Status.Records.Managed == 1
 			}
 		}
 		return false
 	})
+	for _, status := range f.s.integrations.host.Statuses() {
+		if status.Owner == f.owner && status.Result.Remaining != 1 {
+			t.Fatalf("a cleanup without its credential reported %+v", status.Result)
+		}
+	}
 	time.Sleep(300 * time.Millisecond)
 	if after, _, deleted := f.traffic(); after != requests || len(deleted) != 0 {
 		t.Fatal("cleanup called the provider without its credential", after-requests)
@@ -714,5 +753,206 @@ func TestIntegrationDeleteWithoutCredentialMakesNoProviderCallAndResumes(t *test
 	slices.Sort(deleted)
 	if !slices.Equal(deleted, f.published) {
 		t.Fatal("the resumed cleanup did not delete exactly the owned record set", deleted)
+	}
+}
+
+// TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+// reaches the two refusals of the local half of a cleanup, which no ordinary
+// run meets, by changing the store between the steps of the elected job:
+//
+//   - A record set the instance generated changes after the run captured its
+//     cut. The purge is fenced as one command: nothing of the source goes.
+//     The next run captures the changed object and purges everything in one
+//     commit, a stored delivery of the instance included.
+//   - A row of the incarnation is stored between that purge and the
+//     finalization. The finalization finds it in its own transaction and
+//     refuses, the finalizer stays, and the following run purges the row and
+//     finishes.
+func TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers(t *testing.T) {
+	server, calls, _ := integrationController(t)
+	s, path := integrationFixture(t, nil, nil)
+	defer integrationTerminatingLog(t, s, nil)
+	group := &public.ClientGroup{ObjectMeta: metav1.ObjectMeta{Name: "devices", Namespace: "default"}, Spec: public.ClientGroupSpec{Sources: &public.ClientGroupSources{IntegrationRef: &public.ObjectRef{Name: "inventory"}}}}
+	if _, err := s.opts.Store.Apply(t.Context(), group, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	definition := integrationPinnedDefinition(t, server, path)
+	definition.Spec.DeletionPolicy = public.IntegrationDeletionDelete
+	// A fenced or refused run is repeated at the resync interval.
+	definition.Spec.Resync = metav1.Duration{Duration: time.Second}
+	d := integrationApply(t, s, definition)
+	owner := integrationOwner(s, d)
+	generated := func(ctx context.Context) (*public.DNSRecordSet, error) {
+		rows, err := s.opts.Store.List(ctx, "DNSRecordSet", store.ListOptions{})
+		if err != nil {
+			return nil, err
+		}
+		for _, obj := range rows.Items {
+			if sourceOwned(obj, owner) {
+				return obj.(*public.DNSRecordSet), nil
+			}
+		}
+		return nil, nil
+	}
+	// A stored delivery of this incarnation, as the event queue of a provider
+	// with delivery hooks holds them. It is written directly: no mounted
+	// provider subscribes to events yet.
+	deliver := func(ctx context.Context, id string) error {
+		digest := kinds.Digest([]byte(id))
+		at := time.Now().UTC().Truncate(time.Second)
+		row := &kinds.IntegrationDelivery{ObjectMeta: metav1.ObjectMeta{Name: kinds.DeliveryName(owner, digest)}, Spec: kinds.IntegrationDeliverySpec{FormatVersion: kinds.FormatVersion, Owner: owner, DeliveryID: digest, Topic: "records.changed", Payload: json.RawMessage(`{"n":1}`), CreatedAt: at, Deadline: at.Add(time.Hour), NextAttempt: at}}
+		if err := row.Validate(); err != nil {
+			return err
+		}
+		_, err := s.opts.Store.Apply(ctx, row, store.ApplyOptions{Manager: "integration-ledger", CreateOnly: true})
+		return err
+	}
+
+	// The host's two terminating callbacks are root's own, observed, with the
+	// store changed around them. They run on the job's goroutine and only
+	// record; the test goroutine reports.
+	type purged struct {
+		out ih.PurgeResult
+		err error
+		// What was still stored right after the call.
+		record, head bool
+	}
+	var mu sync.Mutex
+	var purges []purged
+	var finalizations []error
+	var problems []string
+	keptAtRefusal, planted := false, false
+	problem := func(what string, err error) {
+		mu.Lock()
+		defer mu.Unlock()
+		problems = append(problems, fmt.Sprintf("%s: %v", what, err))
+	}
+	options, err := s.integrations.hostOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	purge, finalize := options.Purge, options.Finalize
+	options.Purge = func(ctx context.Context, g ih.ExecutionGuard) (ih.PurgeResult, error) {
+		direct := context.WithoutCancel(ctx)
+		mu.Lock()
+		first := len(purges) == 0
+		mu.Unlock()
+		if first {
+			// The generated record set gets two metadata writes: another
+			// resource version than the cut of this run holds, nothing else.
+			record, err := generated(direct)
+			if err != nil || record == nil {
+				problem("generated record set before the first purge", err)
+				return ih.PurgeResult{}, ih.ErrFenced
+			}
+			const hold = "example.com/hold"
+			held, err := s.opts.Store.UpdateFinalizer(direct, store.KeyOf(record), store.FinalizerOptions{Finalizer: hold, ExpectedUID: string(record.UID), ExpectedResourceVersion: record.ResourceVersion})
+			if err == nil {
+				_, err = s.opts.Store.UpdateFinalizer(direct, store.KeyOf(record), store.FinalizerOptions{Finalizer: hold, Remove: true, ExpectedUID: string(held.GetUID()), ExpectedResourceVersion: held.GetResourceVersion()})
+			}
+			if err != nil {
+				problem("change of the generated record set", err)
+			}
+			s.integrations.host.Wake()
+		}
+		out, err := purge(ctx, g)
+		record, recordErr := generated(direct)
+		headErr := s.opts.Store.Get(direct, store.Key{Kind: kinds.KindIntegrationSourceHead, Name: kinds.SourceHeadName(owner)}, &kinds.IntegrationSourceHead{})
+		if recordErr != nil || headErr != nil && !errors.Is(headErr, store.ErrNotFound) {
+			problem("read after a purge", errors.Join(recordErr, headErr))
+		}
+		mu.Lock()
+		purges = append(purges, purged{out: out, err: err, record: record != nil, head: headErr == nil})
+		plant := err == nil && !planted
+		planted = planted || plant
+		mu.Unlock()
+		if plant {
+			if err := deliver(direct, "stored between purge and finalization"); err != nil {
+				problem("late delivery", err)
+			}
+		}
+		return out, err
+	}
+	options.Finalize = func(ctx context.Context, g ih.ExecutionGuard, summary ih.CleanupSummary) error {
+		err := finalize(ctx, g, summary)
+		var held public.Integration
+		getErr := s.opts.Store.Get(context.WithoutCancel(ctx), store.KeyOf(d), &held)
+		mu.Lock()
+		defer mu.Unlock()
+		finalizations = append(finalizations, err)
+		if errors.Is(err, ih.ErrRemains) {
+			keptAtRefusal = getErr == nil && held.DeletionTimestamp != nil && store.HasFinalizer(&held, store.IntegrationCleanupFinalizer)
+		}
+		return err
+	}
+	if s.integrations.host, err = ih.New(options); err != nil {
+		t.Fatal(err)
+	}
+	integrationRun(t, s)
+	awaitServingRuntime(t, s, func() bool {
+		record, err := generated(t.Context())
+		return err == nil && record != nil
+	})
+	integrationReadyCommand(t, s, owner)
+	if err := deliver(t.Context(), "queued while the instance lived"); err != nil {
+		t.Fatal(err)
+	}
+	polled := calls.Load()
+
+	integrationRequestDelete(t, s, d)
+	s.integrations.host.Wake()
+	awaitServingRuntime(t, s, func() bool { return integrationStored(t, s, d) == nil })
+
+	mu.Lock()
+	defer mu.Unlock()
+	for _, what := range problems {
+		t.Error(what)
+	}
+	if t.Failed() {
+		return
+	}
+	// The first purge met the changed record set and removed nothing.
+	if len(purges) < 3 || !errors.Is(purges[0].err, ih.ErrFenced) || purges[0].out != (ih.PurgeResult{}) || !purges[0].record || !purges[0].head {
+		t.Fatalf("purges: %+v", purges)
+	}
+	// The first purge that went through removed all of it in one command.
+	var whole, late *purged
+	for i := range purges {
+		switch {
+		case purges[i].err != nil:
+		case whole == nil:
+			whole = &purges[i]
+		case late == nil && purges[i].out != (ih.PurgeResult{}):
+			late = &purges[i]
+		}
+	}
+	if whole == nil || whole.out.Objects != 1 || whole.out.SourceRows < 2 || whole.out.Allocations != 1 || whole.out.Deliveries != 1 || whole.out.Clients != 1 || whole.record || whole.head {
+		t.Fatalf("the purge after the fenced one: %+v of %+v", whole, purges)
+	}
+	// The finalization behind it found the late row and kept the finalizer;
+	// a later purge removed that row, and the last finalization went through.
+	if len(finalizations) < 2 || !errors.Is(finalizations[0], ih.ErrRemains) || !keptAtRefusal || finalizations[len(finalizations)-1] != nil {
+		t.Fatalf("finalizations: %v, finalizer kept at the refusal: %v", finalizations, keptAtRefusal)
+	}
+	if late == nil || late.out != (ih.PurgeResult{Deliveries: 1}) {
+		t.Fatalf("the purge of the late row: %+v of %+v", late, purges)
+	}
+	if calls.Load() != polled {
+		t.Fatal("the cleanup of an inbound instance called its provider", calls.Load()-polled)
+	}
+	for _, kind := range []store.Kind{kinds.KindIntegrationDelivery, kinds.KindIntegrationSourceHead, kinds.KindIntegrationSourceChunk, kinds.KindIntegrationNameAllocation} {
+		if rows := integrationRows(t, s, kind); len(rows) != 0 {
+			t.Errorf("%d %s rows remain for a finalized instance", len(rows), kind)
+		}
+	}
+	// Each purge that removed something is one audit row with its counts.
+	var reasons []string
+	for _, entry := range integrationAudit(t, s, d) {
+		if entry.Action == "integration.purge" {
+			reasons = append(reasons, entry.Reason)
+		}
+	}
+	if len(reasons) != 2 || !strings.Contains(reasons[0], "removed 1 source-owned objects") || !strings.Contains(reasons[0], "1 name allocations and 1 deliveries") || !strings.Contains(reasons[1], "removed 0 source-owned objects") || !strings.Contains(reasons[1], "0 name allocations and 1 deliveries") {
+		t.Fatalf("purge audit rows: %q", reasons)
 	}
 }
