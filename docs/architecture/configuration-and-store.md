@@ -492,13 +492,29 @@ a stored DNSZone that the image cannot build would stop DNS, readiness and
 the API together, and the API would then not be there to correct it. `Apply`
 therefore refuses a DNSZone of a type no release serves (`external`,
 `catalog`, `secondaryCatalog`), with a query, transfer or notify policy that
-does not compile, or with the zone name of another DNSZone, as an ordinary
-`invalid` error that names the field (D373). `zone.ServingErrors` is that
-rule; it asks the builders the image itself uses, and the zone-name check
-runs inside the write transaction. On Kubernetes the apiserver admits these
-objects and the controller reports them on the one zone. A record set that
-names a forward zone is stored by both drivers and reported on the record
-set; the zone holds no records and is served as before.
+does not compile, a primary zone whose `spec.policy.update` is neither
+`deny` nor `allow` (the only update modes the primary runtime compiles),
+a zone with the zone name of another DNSZone, and a zone created under a
+new object name for the zone name of a deleted zone whose lifecycle the
+primary runtime still keeps (the image refuses two lifecycles for one apex;
+re-creating the zone under its earlier object name continues that
+lifecycle). Each is an ordinary `invalid` error that names the field (D373).
+`zone.ServingErrors` is the rule for the object itself; it asks the builders
+the image itself uses, and the zone-name and lifecycle checks run inside
+the write transaction. On Kubernetes the apiserver admits these objects and
+the controller reports them on the one zone.
+
+Other objects are not refused; the image builders leave out what they
+cannot use and report it on the object. A record set that names a forward
+zone is stored by both drivers and reported on the record set; the zone
+holds no records and is served as before. An endpoint the primary zone
+builder refuses (a CNAME next to other data, a CNAME or NS endpoint at the
+apex, a duplicate) is left out of the zone's commit and its record set is
+reported `withheld` with the reason. A block list source whose URL or
+ConfigMap has never been fetched successfully, and whose failure the fetcher
+has published on the list, is compiled empty, and the list reports the
+failure; a source the fetcher has not tried yet still holds back the
+candidate until it has been tried.
 
 Each database carries a schema version. A file newer than the binary stops
 the process with an explanation; an older one is migrated in one
@@ -507,14 +523,15 @@ transaction.
 A release may tighten its schemas, so the last step of a `state.db`
 migration, still inside that transaction, checks every stored object the way
 the complete image will: strict decoding, the current CRD schema or the
-kind's own validation, and the DNSZone rule above. If an object fails, the
+kind's own validation, and the DNSZone rules above (a 0.1.0 database holds
+no zone lifecycles, so that rule cannot apply to it). If an object fails, the
 transaction is rolled back and the process exits naming every such object.
 `state.db` is then byte for byte what the earlier release wrote, that
 release still runs on it, and the objects are corrected there
 ([runbook](../deploy/runbooks.md#upgrade-refused-stored-objects-are-not-valid-in-this-release)).
 0.1.0 stored secondary and stub zones without their configuration, zones of
-types it did not serve, several DNSZones for one zone name and free-form
-policy rewrites; without this check the migration committed and the node
+types it did not serve, several DNSZones for one zone name, update modes it
+did not implement and free-form policy rewrites; without this check the migration committed and the node
 then served nothing, on a schema 0.1.0 no longer opens. A database that is
 already on the current schema is opened as it is.
 
@@ -1623,8 +1640,9 @@ entire previous bundle. Readiness and the API then report only that the
 generation is unavailable (`prepare_failed`, `generation_pending`); the
 server log names what the candidate failed on, once per failure, and says
 when a generation is published again (`complete serving generation not
-published`). The store keeps a zone that the image cannot build from being
-written in the first place ([The store](#the-store)).
+published`). The store refuses the zones it knows the image cannot build
+when they are written, and the builders leave out a record set endpoint or
+block list source they cannot use instead of failing ([The store](#the-store)).
 
 SQLite issues an opaque token in the same read transaction as the image. The
 publisher checks that token under the SQLite writer barrier before swapping one

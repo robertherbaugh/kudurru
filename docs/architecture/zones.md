@@ -53,14 +53,20 @@ to recover serving at that apex.
 The SQLite store is stricter than the two paragraphs above, which describe
 Kubernetes. Its serving image is complete or absent: one zone that the image
 cannot build, whether by its type (`external`, `catalog`,
-`secondaryCatalog`), a second object for its apex or a query, transfer or
-notify policy that does not compile, would withdraw every zone, readiness
-and the API. The store therefore refuses such a zone when it is written, as
-an `invalid` object that names the field (and, for a second object, the
-first), and an upgrade from a release that stored one stops before it
-changes the database ([the store](configuration-and-store.md#the-store),
-D373). A record set that names a forward zone is not such an error on either
-driver: it is reported on the record set and the zone is served.
+`secondaryCatalog`), a second object for its apex (also a new object for the
+apex of a deleted zone whose lifecycle is still kept) or a query, transfer
+or notify policy that does not compile, would withdraw every zone, readiness
+and the API; a primary zone with an update mode other than `deny` or
+`allow` would never be committed. The store therefore refuses such a zone
+when it is written, as an `invalid` object that names the field (and, for a
+second object, the first), and an upgrade from a release that stored one
+stops before it changes the database
+([the store](configuration-and-store.md#the-store), D373). A record set
+is not such an error on either driver: one that names a forward zone is
+reported on the record set and the zone is served, and an endpoint the
+primary zone builder refuses (a CNAME next to other data, an apex CNAME or
+NS endpoint) is left out of the commit and reported on its record set while
+the rest of the zone is served.
 
 | Type | kudurru does | Example |
 |---|---|---|

@@ -469,6 +469,7 @@ What 0.1 stored and 0.2 does not accept:
 | DNSZone of type `external`, `catalog` or `secondaryCatalog` | No release serves these types yet. Delete the zone. |
 | Two or more DNSZones with one `spec.zoneName` | Keep one and delete the others. 0.1 kept serving the zone as it was before the second object appeared, and later changes to either object had no effect. |
 | DNSZone with an entry in `spec.policy.queryACL` or `transferACL` that is not an address or a network, or an entry in `notifyTargets` that is not an address | 0.1 reported it on the zone and did not serve the zone. Correct the entry. |
+| Primary DNSZone with `spec.policy.update` other than `deny` or `allow` | Updates were not implemented in 0.1, which stored any access mode. Set `deny`, or `allow` with `updatePolicies`. |
 | Policy with `spec.rewrites` entries that have neither `targets` nor `cname`, have both, or have a `type` that is not one of the listed record types in upper case | 0.1 stored rewrites and did not apply them. Correct or remove the entries. |
 
 A secondary or stub zone that 0.1 stored with its configuration is valid: it
@@ -476,7 +477,22 @@ was not served by 0.1 and is served by 0.2, which starts transferring it
 after the upgrade. Remove it first if that is not wanted.
 
 After the upgrade the same rules apply to every change: the API answers
-`400 invalid` and names the field, and the object is not stored.
+`400 invalid` and names the field, and the object is not stored. A zone
+created under a new object name for the zone name of a zone deleted on this
+node is also refused, naming the deleted object: create it under that name.
+
+Two things 0.1 stored are not refused and are served as 0.1 served them: a
+record set endpoint that the zone cannot hold (a CNAME next to other data, a
+CNAME or NS endpoint at the apex) is left out and reported on its record
+set, and a block list whose URL has never downloaded is served empty and
+reported as failing until the URL answers.
+
+A primary zone that has a child zone (for example `sub.example.test.` under
+`example.test.`) can answer `SERVFAIL` and keep readiness at 503 for up to
+about a minute on the first start after the upgrade, while the parent and
+child commit their first generation under this release. It then serves as
+before. Plan the upgrade of such a node for a quiet moment, or keep a
+second resolver in the clients' list.
 
 ## Central database unavailable
 
