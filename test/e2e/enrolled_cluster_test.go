@@ -354,6 +354,11 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	fresh.csrf = followerLogin.CSRF
 	enrolledProcessRead(t, fresh, "/auth/me", func([]byte) bool { return true })
 	enrolledProcessRead(t, &staticProcessClient{client: fresh.client, base: apiA.base, csrf: fresh.csrf}, "/auth/me", func([]byte) bool { return true })
+	// Cluster settings and sign-out are forwarded too (D368): the settings
+	// change converges on both nodes, and the session that the follower
+	// created ends on both.
+	enrolledForwardedSettings(t, apiA, apiB, b.Name, "34s")
+	enrolledForwardedSignOut(t, fresh, freshJar, apiB.base, apiA.base)
 	// The follower names its role and primary, answers every mutation that it
 	// does not forward with one typed refusal and runs node-local commands
 	// itself (D368).
@@ -519,7 +524,10 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	apiB.request(t, http.MethodPost, "/dns/blocking", map[string]any{"blocking": true}, http.StatusServiceUnavailable, nil)
 	// A mutation that the follower does not forward is refused for its role,
 	// which needs no exchange with the primary: the answer is the same.
-	enrolledPrimaryRequired(t, apiB, a.Name, http.MethodPatch, "/settings", map[string]any{"blocking": map[string]any{"blockTTL": "32s"}})
+	enrolledPrimaryRequired(t, apiB, a.Name, http.MethodPost, "/allowlist", map[string]any{"domain": "partitioned-allow.e2e.test"})
+	// A forwarded settings patch that cannot reach the primary is an explicit
+	// 503 and is never applied or replayed after reconnection.
+	enrolledUnreachedSettings(t, apiB, "35s")
 	// A forwarded object write that cannot reach the primary is refused and
 	// is never applied or replayed after reconnection.
 	refused := map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSRecordSet",
@@ -570,6 +578,11 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	}
 	enrolledProcessRead(t, apiA, "/blocklists", hasList("partitioned-list", false))
 	enrolledProcessRead(t, apiB, "/blocklists", hasList("partitioned-list", false))
+	for _, node := range []*staticProcessClient{apiA, apiB} {
+		enrolledProcessRead(t, node, "/settings", func(raw []byte) bool {
+			return strings.Contains(string(raw), `"34s"`) && !strings.Contains(string(raw), `"35s"`)
+		})
+	}
 	stop(follower)
 	follower = kudurrutest.StartReady(t, bin, b, kudurrutest.Options{Env: env})
 	awaitDNS(follower, "later", "192.0.2.43", dns.RcodeSuccess)
@@ -620,7 +633,7 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 			var info api.ClusterInfo
 			return json.Unmarshal(body, &info) == nil && info.Role == "follower" && info.Primary == b.Name && info.PrimaryRequired
 		})
-		enrolledPrimaryRequired(t, apiA, b.Name, http.MethodPatch, "/settings", map[string]any{"blocking": map[string]any{"blockTTL": "33s"}})
+		enrolledPrimaryRequired(t, apiA, b.Name, http.MethodPost, "/allowlist", map[string]any{"domain": "rejoined-allow.e2e.test"})
 		awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)
 		awaitDNS(primary, "seed", "", dns.RcodeNameError)
 		if identity(a) != aIdentity || identity(b) != bIdentity {

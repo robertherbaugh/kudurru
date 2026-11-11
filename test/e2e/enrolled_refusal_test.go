@@ -39,7 +39,8 @@ func enrolledFollowerContract(t *testing.T, primary, follower *staticProcessClie
 	})
 	if onFollower.Primary != primaryName || onFollower.Leader != primaryName || onFollower.Node != followerName || !onFollower.PrimaryRequired || onFollower.ReadOnly ||
 		!slices.Contains(onFollower.ForwardedOperations, "apply") || !slices.Contains(onFollower.ForwardedOperations, "login") ||
-		!slices.Contains(onFollower.LocalOperations, "flushCache") || slices.Contains(onFollower.ForwardedOperations, "patchSettings") {
+		!slices.Contains(onFollower.LocalOperations, "flushCache") || !slices.Contains(onFollower.ForwardedOperations, "patchSettings") || !slices.Contains(onFollower.ForwardedOperations, "logout") ||
+		slices.Contains(onFollower.ForwardedOperations, "patchNodeConfig") {
 		t.Fatalf("follower process does not report its role, primary and capability: %+v", onFollower)
 	}
 	enrolledProcessRead(t, primary, "/cluster", func(body []byte) bool {
@@ -61,7 +62,7 @@ func enrolledFollowerContract(t *testing.T, primary, follower *staticProcessClie
 		method, path string
 		body         any
 	}{
-		{http.MethodPatch, "/settings", map[string]any{"blocking": map[string]any{"blockTTL": "31s"}}},
+		{http.MethodPost, "/auth/password", map[string]any{"currentPassword": "refused-password-1", "newPassword": "refused-password-2"}},
 		{http.MethodPost, "/allowlist", map[string]any{"domain": "refused-allow.e2e.test"}},
 		{http.MethodPost, "/domains/allow/exact", map[string]any{"domains": []string{"refused-domain.e2e.test"}}},
 		{http.MethodPost, "/blocklists/default/refused-list/refresh", nil},
@@ -97,7 +98,6 @@ func enrolledFollowerContract(t *testing.T, primary, follower *staticProcessClie
 			t.Fatalf("a refused follower mutation reached the primary: GET %s status=%d contains %q", path, answer.status, needle)
 		}
 	}
-	absent("/settings", `"31s"`)
 	absent("/allowlist", "refused-allow.e2e.test")
 	absent("/iam/users", "refused-user")
 	absent("/auth/tokens?all=true", "refused-token")
