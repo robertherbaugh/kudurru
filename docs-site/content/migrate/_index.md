@@ -68,11 +68,21 @@ In particular, the zone types `external`, `catalog` and `secondaryCatalog`
 and zone signing (`spec.dnssec`) are in the schema and are not served.
 
 **Do not apply a zone of the type `external`, `catalog` or
-`secondaryCatalog`.** In this version a node with the SQLite store accepts
-the object and then cannot publish its configuration: it stops answering for
-its own zones and refuses every API request, including the deletion of that
-zone. To recover, stop the node and put back a copy of its data directory
-from before the object was applied.
+`secondaryCatalog`, and do not apply a block-list URL that the kudurru host
+cannot download.** In this version a node with the SQLite store accepts such
+a zone, or a `BlockList` with an enabled URL source that has never been
+downloaded, and then cannot publish its configuration. This happens even
+when no policy refers to the list. The node stops answering for its own zones
+and refuses every API request, including the deletion of that object.
+Forwarded names still answer until the node restarts. **Do not restart it**:
+after a restart it answers SERVFAIL for every name, forwarded names too.
+
+A list recovers by itself when a later download attempt succeeds; the
+attempts are minutes apart. A zone does not. To recover otherwise, stop the
+node and put back a copy of its data directory from before the object was
+applied. Before you apply a list URL, download it once from the kudurru host
+(for example with `curl -fsS -o /dev/null URL`), apply lists with URLs one
+at a time, and keep a copy of the data directory.
 
 Since v0.2.0, secondary and stub zones, RFC 2136 updates
 ([dynamic updates](/deploy/dynamic-updates/)), validation of forwarded answers,

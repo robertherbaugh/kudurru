@@ -94,9 +94,22 @@ already applied then shows `unchanged`. An example file with three documents
 in these guides needs three runs.
 
 A command that arrives while the node still publishes the previous change
-can also be refused once. For example, `kudurru records list` directly after
-`kudurru import bind` can answer `unavailable: ... generation pending`. Run it
-again.
+can also be refused for a moment. For example, `kudurru records list`
+directly after `kudurru import bind` can answer `unavailable: ... generation
+pending`. Run it again after a few seconds.
+
+Repeating does not help when the node cannot publish its configuration at
+all. In this version that happens on the SQLite store after a `BlockList`
+with a URL source that the node cannot download, or after a zone of the type
+`external`, `catalog` or `secondaryCatalog`. Every later command then fails
+with `generation_pending: complete serving generation unavailable`, the node
+stops answering for its own zones, and `kudurru health --ready` reports
+`prepare_failed`. Stop repeating, and do not restart the node: after a
+restart it answers SERVFAIL for every name, forwarded names too. A list
+recovers by itself when a later download attempt succeeds, minutes apart.
+Otherwise stop the node and put back the copy of its data directory that you
+made before the apply (see the
+[migration overview](/migrate/#feature-comparison)).
 
 ## Recreate the configuration
 

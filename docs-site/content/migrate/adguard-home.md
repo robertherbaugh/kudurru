@@ -83,8 +83,9 @@ Do not treat a partially understood filter as a complete migration.
 ## 3. Create the baseline lists and policy
 
 Save as `adguard-migration.yaml`. Replace the sample filter URL with your
-current enabled sources. This example deliberately puts a global exception
-in a separate allow list.
+current enabled sources. Check first that the kudurru host can download each
+URL (for example `curl -fsS -o /dev/null URL`). This example deliberately
+puts a global exception in a separate allow list.
 
 ```yaml
 apiVersion: kudurru.io/v1alpha1
@@ -131,8 +132,13 @@ kudurru query tracker.example A --client 192.0.2.10
 kudurru query needed.tracker.example A --client 192.0.2.10
 ```
 
-If `kudurru apply` refuses a document with `unavailable`, run it again until
-it reports no error ([apply results](/migrate/cutover/#apply-results)).
+If `kudurru apply` refuses a document with `unavailable: current writable
+serving generation unavailable`, run it again until it reports no error
+([apply results](/migrate/cutover/#apply-results)). If every command instead
+fails with `generation_pending`, stop repeating and do not restart the node:
+in this version a list URL that the kudurru host cannot download stops the
+node's own zones and its API. Download each list URL once from the kudurru
+host before you apply the file.
 
 The first name must block: its `kudurru status` line names the list and the
 rule. The second must not: the allow list wins, so the status is `forwarded`
