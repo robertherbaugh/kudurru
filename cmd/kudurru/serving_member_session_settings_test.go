@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -23,6 +24,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // harnessWrite runs one fixture administration command on the primary.
@@ -92,6 +94,43 @@ func harnessCookieSessions(t *testing.T, h *rootMemberHarness, count int) ([]str
 		cookies, ids = append(cookies, cookie), append(ids, prepared.ID)
 	}
 	return cookies, ids
+}
+
+// harnessOtherAccountSession creates a second local account with one live
+// session, enrolled through the forwarded login command, and returns its ID.
+func harnessOtherAccountSession(t *testing.T, h *rootMemberHarness, username string) string {
+	t.Helper()
+	hash, err := users.NewHasher(1).Hash(t.Context(), "other-account-password-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	harnessWrite(t, h, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		created := metav1.NewTime(h.f.now.Add(-time.Minute))
+		_, err := tx.Apply(ctx, &internalv1.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: username, CreationTimestamp: created}, Spec: internalv1.LocalUserSpec{PasswordHash: hash}}, store.ApplyOptions{Manager: store.ManagerSystem})
+		return err
+	})
+	_, prepared := security.NewForwardedEnrollment()
+	// #nosec G117 -- disposable fixture password in a test-only member command
+	payload, err := json.Marshal(memberLogin{Username: username, Password: "other-account-password-1", ClientKey: "192.0.2.202", SessionID: prepared.ID, CSRFHash: prepared.CSRFHash,
+		Nonce: "nonce-that-is-long-enough-for-the-forwarded-login-check"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result memberLoginResult
+	if !kudurrutestEventually(10*time.Second, func() bool {
+		c := clusterreplica.Command{Format: clusterreplica.CommandFormat, Version: 1, ID: uuid.NewString(), ExpectedTerm: h.f.s.opts.Store.Authority().Term,
+			Hops: 1, IssuedAt: h.f.now, NotAfter: h.f.now.Add(time.Minute), Operation: memberLocalLogin,
+			Subject: clusterreplica.SubjectRef{Kind: auth.KindUser, ID: "local:" + username, Provider: "local", CredentialKind: "session", CredentialID: prepared.ID, IssuedAt: h.f.now},
+			Payload: payload}
+		status, out := h.send(c)
+		return status == http.StatusOK && json.Unmarshal(out.Body, &result) == nil && result.Committed
+	}) {
+		t.Fatal("the other account's login was refused", result)
+	}
+	if harnessSessionRevoked(t, h, prepared.ID) {
+		t.Fatal("the other account's session starts revoked")
+	}
+	return prepared.ID
 }
 
 // cookieCommand is h.command with a session cookie as the original credential.
@@ -172,12 +211,23 @@ func TestRootMemberLogoutCommandActualHTTP(t *testing.T) {
 	if harnessSessionRevoked(t, h, ids[0]) || harnessSessionRevoked(t, h, ids[1]) {
 		t.Fatal("API-token sign-out revoked a session")
 	}
-	// A session that is not the caller's, or does not exist, is the route's
-	// retained 404 and changes nothing.
-	status, out = h.send(cookieCommand(t, h, "foreign", memberLogout, first, memberLogoutPayload{Session: "not-a-session-of-this-account"}))
+	// A session that does not exist is the route's retained 404 and changes
+	// nothing.
+	status, out = h.send(cookieCommand(t, h, "unknown", memberLogout, first, memberLogoutPayload{Session: "not-a-session-of-this-account"}))
 	var relayed api.Error
 	if status != http.StatusOK || out.Status != http.StatusNotFound || json.Unmarshal(out.Body, &relayed) != nil || relayed.Body.Key != api.KeyNotFound {
-		t.Fatal("foreign session revocation was not the retained 404", status, out.Status, string(out.Body))
+		t.Fatal("unknown session revocation was not the retained 404", status, out.Status, string(out.Body))
+	}
+	// A live session of another account is the same retained 404: the owner
+	// check, not only an existence check, decides. Neither session ends.
+	foreign := harnessOtherAccountSession(t, h, "other-account")
+	status, out = h.send(cookieCommand(t, h, "foreign", memberLogout, first, memberLogoutPayload{Session: foreign}))
+	relayed = api.Error{}
+	if status != http.StatusOK || out.Status != http.StatusNotFound || json.Unmarshal(out.Body, &relayed) != nil || relayed.Body.Key != api.KeyNotFound {
+		t.Fatal("revoking another account's session was not the retained 404", status, out.Status, string(out.Body))
+	}
+	if harnessSessionRevoked(t, h, foreign) || harnessSessionRevoked(t, h, ids[0]) {
+		t.Fatal("a refused revocation of another account's session ended a session")
 	}
 	// A forged subject or a payload of another shape aborts the exchange.
 	forged := cookieCommand(t, h, "forged", memberLogout, first, memberLogoutPayload{})
@@ -558,5 +608,230 @@ func TestRootMemberForwardSettingsBackToBackActualHTTP(t *testing.T) {
 	var stored public.Kudurru
 	if err := f.primary.s.opts.Store.Get(t.Context(), store.Key{Kind: "Kudurru", Name: "default"}, &stored); err != nil || !strings.Contains(string(stored.Spec.Settings["blocking"].Raw), "43s") || !stored.Status.Blocking.Disabled {
 		t.Fatal("back-to-back changes not committed on the primary", err)
+	}
+}
+
+// followerSession is one browser session created through the follower's
+// forwarded login.
+type followerSession struct {
+	client *http.Client
+	jar    *cookiejar.Jar
+	csrf   string
+	id     string
+	saved  []*http.Cookie
+}
+
+func followerSignIn(t *testing.T, f *memberForwardHTTPFixture, password string) followerSession {
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	browser := *f.live.Client()
+	browser.Jar = jar
+	var info api.SessionInfo
+	var answer followerAnswer
+	if !kudurrutestEventually(20*time.Second, func() bool {
+		answer = f.request(t, &browser, http.MethodPost, "/auth/login", "", api.LoginRequest{Username: "root-command", Password: password})
+		return answer.status == http.StatusOK && json.Unmarshal(answer.raw, &info) == nil && info.CSRF != ""
+	}) {
+		t.Fatalf("login through the follower: %d %s", answer.status, answer.raw)
+	}
+	var sessions api.List[api.SessionRecordInfo]
+	if answer := f.request(t, &browser, http.MethodGet, "/auth/sessions", "", nil); answer.status != http.StatusOK || json.Unmarshal(answer.raw, &sessions) != nil {
+		t.Fatalf("session list on the follower: %d %s", answer.status, answer.raw)
+	}
+	out := followerSession{client: &browser, jar: jar, csrf: info.CSRF, saved: jar.Cookies(followerURL(t, f))}
+	for _, record := range sessions.Items {
+		if record.Current {
+			out.id = record.ID
+		}
+	}
+	if out.id == "" || len(out.saved) == 0 {
+		t.Fatal("the follower session has no current record or cookie")
+	}
+	return out
+}
+
+func followerURL(t *testing.T, f *memberForwardHTTPFixture) *url.URL {
+	t.Helper()
+	target, err := url.Parse(f.live.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return target
+}
+
+// followerCookieStatus presents saved cookies without a jar, as a stolen copy
+// would.
+func followerCookieStatus(t *testing.T, f *memberForwardHTTPFixture, saved []*http.Cookie) int {
+	t.Helper()
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, f.live.URL+api.BasePath+"/auth/me", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, cookie := range saved {
+		request.AddCookie(cookie)
+	}
+	response, err := f.live.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	return response.StatusCode
+}
+
+// The failure paths of a forwarded sign-out through the follower's mounted
+// API (D368): a credential that the primary no longer accepts is its relayed
+// 401 and still clears the cookies; when the primary cannot run the command,
+// a session revocation answers 503 and keeps the caller's cookies, and a
+// sign-out answers 503, clears the cookies and says that the session stays
+// valid. Nothing is retried, and neither session is revoked on the primary.
+func TestRootMemberForwardSignOutFailuresActualHTTP(t *testing.T) {
+	f := newMemberForwardHTTPFixture(t, false, memberForwardScheduledPull)
+	primaryStore := f.primary.s.opts.Store
+	const password = "follower-failure-password-1"
+	hash, err := users.NewHasher(1).Hash(t.Context(), password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	primaryCommand := func(ctx context.Context, fn func(context.Context, *sqlite.CommandTx) error) error {
+		writer, err := primaryStore.WriterToken()
+		if err != nil {
+			return err
+		}
+		return primaryStore.Command(sqlite.WithWriterToken(ctx, writer), writer.Term(), fn)
+	}
+	if err := primaryCommand(t.Context(), func(ctx context.Context, tx *sqlite.CommandTx) error {
+		var user internalv1.LocalUser
+		if err := tx.Get(ctx, store.Key{Kind: "LocalUser", Name: "root-command"}, &user); err != nil {
+			return err
+		}
+		user.Spec.PasswordHash = hash
+		_, err := tx.Apply(ctx, &user, store.ApplyOptions{Manager: store.ManagerSystem})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.primary.s.publisher.Wake()
+	target := followerURL(t, f)
+
+	// The primary revokes a session that the follower still accepts because
+	// it has not pulled since; the follower relays the primary's retained
+	// 401 and clears the cookies. A scheduled pull that installs the
+	// revocation first makes the follower refuse the cookie itself, so that
+	// case starts again with a new session.
+	relayed := false
+	for attempt := 0; attempt < 5 && !relayed; attempt++ {
+		stale := followerSignIn(t, f, password)
+		if err := primaryCommand(t.Context(), func(ctx context.Context, tx *sqlite.CommandTx) error {
+			state, err := security.Load(ctx, tx)
+			if err != nil {
+				return err
+			}
+			if err := state.Revoke(stale.id); err != nil {
+				return err
+			}
+			return state.Commit(ctx)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		answer := f.request(t, stale.client, http.MethodPost, "/auth/logout", "", nil, "X-Kudurru-CSRF", stale.csrf)
+		if answer.status != http.StatusUnauthorized {
+			t.Fatalf("sign-out of a session that the primary revoked: %d %s", answer.status, answer.raw)
+		}
+		if !strings.Contains(answer.Error.Message, "the primary no longer accepts this credential") {
+			t.Logf("attempt %d: the follower installed the revocation first: %s", attempt, answer.raw)
+			continue
+		}
+		relayed = true
+		if len(answer.header.Values("Set-Cookie")) == 0 || len(stale.jar.Cookies(target)) != 0 {
+			t.Fatal("the relayed 401 of a sign-out did not clear the browser's cookies")
+		}
+	}
+	if !relayed {
+		t.Fatal("the follower never relayed the primary's 401 for a revoked session")
+	}
+
+	first, second := followerSignIn(t, f, password), followerSignIn(t, f, password)
+	// The primary's writer stops: its member listener still answers, but no
+	// member command can commit, so each exchange fails.
+	f.primary.stop()
+	revoke := f.request(t, first.client, http.MethodDelete, "/auth/sessions/"+second.id, "", nil, "X-Kudurru-CSRF", first.csrf)
+	if revoke.status != http.StatusServiceUnavailable || revoke.Error.Key != api.KeyUnavailable && revoke.Error.Key != "completion_unknown" ||
+		!strings.Contains(revoke.Error.Message, "may stay valid") && !strings.Contains(revoke.Error.Message, "was not revoked") {
+		t.Fatalf("session revocation while the primary cannot commit: %d %s", revoke.status, revoke.raw)
+	}
+	if len(revoke.header.Values("Set-Cookie")) != 0 || len(first.jar.Cookies(target)) == 0 {
+		t.Fatal("a failed session revocation changed the caller's cookies")
+	}
+	out := f.request(t, first.client, http.MethodPost, "/auth/logout", "", nil, "X-Kudurru-CSRF", first.csrf)
+	if out.status != http.StatusServiceUnavailable || out.Error.Key != api.KeyUnavailable && out.Error.Key != "completion_unknown" ||
+		!strings.Contains(out.Error.Message, "may stay valid") && !strings.Contains(out.Error.Message, "stays valid") || !strings.Contains(out.Error.Message, "cookie was cleared") {
+		t.Fatalf("sign-out while the primary cannot commit: %d %s", out.status, out.raw)
+	}
+	if len(out.header.Values("Set-Cookie")) == 0 || len(first.jar.Cookies(target)) != 0 {
+		t.Fatal("a failed sign-out kept the browser's cookies")
+	}
+	// Both sessions stay valid: the follower accepts the saved cookies and
+	// the primary's durable state revoked neither.
+	if followerCookieStatus(t, f, first.saved) != http.StatusOK || followerCookieStatus(t, f, second.saved) != http.StatusOK {
+		t.Fatal("a failed sign-out or revocation ended a session on the follower")
+	}
+	if err := primaryStore.Command(t.Context(), primaryStore.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		inventory, err := servingHTTPSecurity(ctx, tx)
+		for _, s := range inventory.Sessions {
+			if (s.ID == first.id || s.ID == second.id) && s.Revoked {
+				t.Error("a failed forwarded command revoked a session on the primary", s.ID)
+			}
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The answers that a forwarded sign-out or session revocation gives without a
+// committed result: a sign-out always says that the cookie was cleared, and
+// an unsent command, an unknown outcome and a primary refusal stay distinct.
+func TestMemberLogoutFailureAnswers(t *testing.T) {
+	answer := func(err error) *api.Error {
+		t.Helper()
+		var e *api.Error
+		if !errors.As(err, &e) {
+			t.Fatal("not a public answer", err)
+		}
+		return e
+	}
+	notSent := answer(memberLogoutNotSent(&api.Error{Body: api.ErrorBody{Message: "the follower's source changed"}}, true))
+	if notSent.Status != http.StatusServiceUnavailable || notSent.Body.Key != api.KeyUnavailable || !strings.HasPrefix(notSent.Body.Message, "the follower's source changed;") ||
+		!strings.Contains(notSent.Body.Message, "stays valid until it expires") || !strings.Contains(notSent.Body.Message, "cookie was cleared") {
+		t.Fatal("unsent sign-out answer", notSent)
+	}
+	if revoke := answer(memberLogoutNotSent(errors.New("dial"), false)); revoke.Body.Key != api.KeyUnavailable || strings.Contains(revoke.Body.Message, "cookie") ||
+		!strings.HasPrefix(revoke.Body.Message, "this follower could not send the request to its primary") {
+		t.Fatal("unsent revocation answer", revoke)
+	}
+	if unavailable := answer(memberLogoutError(clusterreplica.ErrUnavailable, false, true)); unavailable.Body.Key != api.KeyUnavailable || !strings.Contains(unavailable.Body.Message, "cookie was cleared") {
+		t.Fatal("unreached sign-out answer", unavailable)
+	}
+	for _, sent := range []bool{false, true} {
+		err := clusterreplica.ErrUnavailable
+		if !sent {
+			err = errors.Join(clusterreplica.ErrOutcomeUnknown, clusterreplica.ErrUnavailable)
+		}
+		unknown := answer(memberLogoutError(err, sent, true))
+		if unknown.Status != http.StatusServiceUnavailable || unknown.Body.Key != "completion_unknown" || !strings.Contains(unknown.Body.Message, "cookie was cleared") || !strings.Contains(unknown.Body.Message, "do not replay") {
+			t.Fatal("unknown sign-out outcome answer", sent, unknown)
+		}
+		if revoke := answer(memberLogoutError(err, sent, false)); revoke.Body.Key != "completion_unknown" || strings.Contains(revoke.Body.Message, "cookie") {
+			t.Fatal("unknown revocation outcome answer", sent, revoke)
+		}
+	}
+	if refused := answer(memberLogoutError(clusterreplica.ErrForbidden, true, true)); refused.Status != http.StatusForbidden || refused.Body.Key != api.KeyForbidden {
+		t.Fatal("refused sign-out answer", refused)
+	}
+	if refused := answer(memberLogoutError(clusterreplica.ErrUnauthorized, true, true)); refused.Status != http.StatusUnauthorized || refused.Body.Key != api.KeyUnauthenticated {
+		t.Fatal("unauthenticated sign-out answer", refused)
 	}
 }
