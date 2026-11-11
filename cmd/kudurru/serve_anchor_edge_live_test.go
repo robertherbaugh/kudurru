@@ -426,7 +426,9 @@ func anchorEdgePrimaryReady(t *testing.T, cfg *config.Config) {
 	transport := &http.Transport{}
 	defer transport.CloseIdleConnections()
 	anchorEdgeLogin(t, &http.Client{Jar: jar, Transport: transport, Timeout: 5 * time.Second}, "http://"+cfg.Listeners.API.Address+api.BasePath)
+	// Both zones, one per pool: each has its own startup status write.
 	awaitMountedPrimarySettled(t, cfg, "edge-zone-0", "answer.anchor.test.", "192.0.2.77")
+	awaitMountedPrimarySettled(t, cfg, "edge-zone-1", "answer.resolver.test.", "192.0.2.77")
 }
 
 // This is a separately enabled actual daemon composition, not a mocked edge
@@ -546,6 +548,7 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 	stopPrimary()
 	stopPrimary = tsigMountedStart(t, cfg)
 	anchorEdgePrimaryReady(t, cfg)
+	lab.states(sup, map[string]bool{primary.Address: true}) // edge health saw the restart
 	lab.ask(true)
 	// A fresh session on the restarted primary (a logged-in client must send
 	// CSRF even to log in again).
