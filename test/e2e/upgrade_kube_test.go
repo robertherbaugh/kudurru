@@ -292,9 +292,9 @@ func upgradeCRDs(t *testing.T, restCfg *rest.Config) {
 //
 //  1. The 0.1.0 binary (kudurrutest.Previous) runs with the kube driver on
 //     an envtest API server that has the 0.1.0 CRDs. Through its API it
-//     stores a zone and a record set, mints break-glass tokens and a
-//     personal token (private Secrets) and ships HMAC-sealed AuditLog
-//     batches.
+//     stores a zone, a record set and two placeholder zones this release's
+//     schema refuses, mints break-glass tokens and a personal token
+//     (private Secrets) and ships HMAC-sealed AuditLog batches.
 //  2. It stops. The CRDs of this release replace the 0.1.0 ones.
 //  3. `kudurru iam migrate status`, `plan` and `begin --offline` move the
 //     private IAM configuration to public objects and report it complete,
@@ -306,8 +306,9 @@ func upgradeCRDs(t *testing.T, restCfg *rest.Config) {
 //  5. This release starts on the same data directory with the cluster ID
 //     pinned: it gives the same answers over UDP and TCP, the bound 0.1.0
 //     tokens authenticate as the same principal and the unbound one is
-//     refused, `kudurru audit verify` accepts the
-//     retained trail including the 0.1.0 batches, and a write still works.
+//     refused, the placeholder zones are still stored, `kudurru audit
+//     verify` accepts the retained trail including the 0.1.0 batches, and a
+//     write still works.
 //
 // The final node is the licensed fixture's binary only because
 // `audit verify` needs an audit license.
@@ -374,6 +375,17 @@ func TestKubeUpgradeFromV01(t *testing.T) {
 			map[string]any{"dnsName": "nas.kube-upgrade.test", "recordType": "A", "targets": []any{"192.0.2.20"}},
 		}},
 	}, http.StatusCreated)
+	// Placeholder zones 0.1.0 accepted and did not serve, which this
+	// release's schema refuses. On SQLite they stop the upgrade (D373); on
+	// Kubernetes they stay stored and the rest is served as before.
+	for name, spec := range map[string]map[string]any{
+		"legacy-secondary": {"zoneName": "secondary.kube-upgrade-legacy.test.", "type": "secondary"},
+		"legacy-stub":      {"zoneName": "stub.kube-upgrade-legacy.test.", "type": "stub"},
+	} {
+		api.must(t, http.MethodPost, "/objects/dnszones", map[string]any{
+			"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSZone", "metadata": map[string]any{"name": name}, "spec": spec,
+		}, http.StatusCreated)
+	}
 	record := func(c upgradeAPI, dnsName, recordType string, targets ...any) {
 		t.Helper()
 		var last string
@@ -505,6 +517,9 @@ func TestKubeUpgradeFromV01(t *testing.T) {
 		}) {
 			t.Fatalf("the %s token of %s after the upgrade: %s, was %s", label, kudurrutest.PreviousRelease, got, principals[label])
 		}
+	}
+	for _, name := range []string{"legacy-secondary", "legacy-stub"} {
+		api.must(t, http.MethodGet, "/objects/dnszones/"+name, nil, http.StatusOK)
 	}
 	if got := (upgradeAPI{addr: spec.Ports.API, token: first}).principal(t); !strings.HasPrefix(got, "401 ") {
 		t.Fatalf("the unbound first break-glass token of %s after the upgrade: %s, want 401", kudurrutest.PreviousRelease, got)
