@@ -59,6 +59,26 @@ func supervisedAnchorRole(a replication.Authority) bool {
 	return a.Mode == replication.Follower || a.Mode == replication.Fenced || a.Mode == replication.Conflict
 }
 
+// errAnchorNoImage refuses managed topology on a node that holds no installed
+// cluster image (D370). The offline join is the only first-image lane: no
+// edge is contacted, no root is fetched and nothing is recaptured later, so
+// there is nothing for this startup to wait for (D319, D355, D356).
+var errAnchorNoImage = errors.New("managed root topology: this node has no installed cluster image; " +
+	"finish `kudurru cluster join --offline` first, or run `kudurru cluster join-reconcile --offline` " +
+	"after an interrupted join, then start it again (see the runbook \"Add a follower behind managed edges\")")
+
+// anchorWithoutImage names the image-less starts refused with errAnchorNoImage:
+// an unenrolled receiver (a join that never installed its first image) for
+// either topology, and any node without an installed image for edges. A
+// direct follower enrolled without an image keeps waiting for installation,
+// which never contacts an edge.
+func anchorWithoutImage(a replication.Authority, topology string) bool {
+	if a.Mode == replication.Unenrolled {
+		return true
+	}
+	return topology == "edges" && a.Installed == (replication.Generation{})
+}
+
 func (s *servingRuntime) admitAnchors(ctx context.Context) error {
 	original, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -70,6 +90,9 @@ func (s *servingRuntime) admitAnchors(ctx context.Context) error {
 		return nil
 	}
 	authority, blocked := s.opts.Store.ServingAuthority()
+	if !blocked && anchorWithoutImage(authority, topology) {
+		return errAnchorNoImage
+	}
 	if blocked || !servingAnchorRole(authority) || authority.MemberID == "" {
 		return errAnchorPolicy
 	}
