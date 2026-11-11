@@ -283,20 +283,23 @@ func (s *Stage) failure(req *pipeline.Request, group string, err error) *pipelin
 	if upstream.IsTimeout(err) {
 		status = pipeline.StatusTimeoutUpstream
 	}
+	// Only an error of the group exchange that asked at least one server is
+	// evidence of a failed upstream; a refused capture or admission is not.
 	var ue *upstream.Error
-	if errors.As(err, &ue) && ue.Msg != nil {
+	contacted := errors.As(err, &ue) && ue.Attempted
+	if ue != nil && ue.Msg != nil {
 		m := ue.Msg
 		m.Rcode = dns.RcodeServerFailure
 		m.Answer, m.Ns = nil, nil
 		upstream.FinishReply(req.Msg, m, -1)
-		r := &pipeline.Response{Msg: m, Status: status, Upstream: ue.Upstream}
+		r := &pipeline.Response{Msg: m, Status: status, Upstream: ue.Upstream, UpstreamContacted: contacted}
 		if dnssecFailure(m) {
 			r.Status, r.DNSSEC = pipeline.StatusDNSSECBogus, pipeline.DNSSECBogus
 		}
 		return r
 	}
 	r := pipeline.Reply(req, dns.RcodeServerFailure, status)
-	r.Upstream = group
+	r.Upstream, r.UpstreamContacted = group, contacted
 	r.Msg.RecursionAvailable = true
 	upstream.FinishReply(req.Msg, r.Msg, -1)
 	code := uint16(dns.ExtendedErrorCodeNetworkError)

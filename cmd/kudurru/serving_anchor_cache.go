@@ -13,8 +13,9 @@ type rootAnchorInsertion struct {
 	seal *recursiveRootSeal
 	read *recursiveRootRead
 	used atomic.Bool
-	// Raw response-cache work may return data while skipping a superseded fill.
-	// Native resolver mutations keep the strict default.
+	// Raw response-cache work and native resolver mutations may return data
+	// while skipping a superseded fill (D332, D377). Only the zero value, used
+	// by no current caller, makes a superseded attempt an error.
 	retainedDNS bool
 }
 

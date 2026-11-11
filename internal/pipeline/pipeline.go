@@ -168,16 +168,24 @@ func (r *Request) Question() dns.Question {
 
 // Response is what a stage produces.
 type Response struct {
-	Msg        *dns.Msg
-	Status     Status
-	Upstream   string // dictionary name, never a raw IP
-	List       string // matched list for the UI "why" row
-	Rule       string // matched rule text
-	Cacheable  bool
-	Origin     ResponseOrigin
-	Security   Security
-	Modified   bool
-	CacheScope CacheScope
+	Msg       *dns.Msg
+	Status    Status
+	Upstream  string // dictionary name, never a raw IP
+	List      string // matched list for the UI "why" row
+	Rule      string // matched rule text
+	Cacheable bool
+	Origin    ResponseOrigin
+	// UpstreamContacted is set only by the upstream stage on its failure
+	// response, and only when at least one server of the group was actually
+	// asked (for a recursive group: the native resolver ran a resolution
+	// instead of refusing admission) and failed or timed out. A refusal the
+	// node produced itself (a failed serving capture, a refused native
+	// recursion admission, a DNSSEC or policy failure) never sets it. It is
+	// internal provenance (D377), never derived from the wire.
+	UpstreamContacted bool
+	Security          Security
+	Modified          bool
+	CacheScope        CacheScope
 	// DNSSEC is the validation state of the answer: set by recursive
 	// upstream groups (and kept by the cache); unknown for everything
 	// kudurru did not validate.

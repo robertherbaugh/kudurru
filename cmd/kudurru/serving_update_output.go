@@ -132,16 +132,19 @@ func retainedDNSResponse(response *pipeline.Response) bool {
 	}
 	// Expired/unavailable local data may report its empty refusal. This gives
 	// no local answer, delegation, denial proof or transfer generation credit.
-	// A query whose upstream failed or timed out reports the same empty
-	// refusal: its forwarded answer would have been retained above, and
-	// withholding the failure only leaves the client to time out. Only an
-	// unattributed or failure origin qualifies; a response that claims
+	// A query whose upstream was asked and failed or timed out reports the
+	// same empty refusal: its forwarded answer would have been retained above,
+	// and withholding the failure only leaves the client to time out. Only the
+	// upstream stage's own unattributed failure with UpstreamContacted
+	// qualifies (D377). A refusal the node produced itself (failed serving
+	// capture, refused native recursion, indeterminate DNSSEC validation,
+	// a failed rewrite target or stub zone) and anything that claims
 	// authoritative, local, mixed or synthesized data stays generation-bound.
 	m := response.Msg
 	switch response.Status {
 	case pipeline.StatusServfailUnsynced:
 	case pipeline.StatusServfailUpstream, pipeline.StatusTimeoutUpstream:
-		if response.Origin != pipeline.OriginUnknown && response.Origin != pipeline.OriginFailure {
+		if response.Origin != pipeline.OriginUnknown || !response.UpstreamContacted {
 			return false
 		}
 	default:

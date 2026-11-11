@@ -107,13 +107,29 @@ immutable policy across unrelated canonical commits, while still requiring the
 original dependency installations, anchor input and finite output attempt.
 Only internal pipeline provenance permits this behavior; wire AA/AD bits do not.
 An unavailable local zone may emit an empty SERVFAIL without claiming a data
-generation, and so may a query whose upstream failed or timed out: the client
-gets the refusal instead of waiting for its own timeout. Ingress-only
-node-health and CHAOS identity replies also retain the original complete route
-during a failed settings preparation; their internal status establishes
-provenance, not a canonical zone-data grant. These retained responses cannot
-start a transfer continuation.
-API dig and native resolver cache mutations keep the complete generation check.
+generation. So may a query whose upstream was actually asked and failed or timed
+out (D377): only the upstream stage's own unattributed `servfail_upstream` or
+`timeout_upstream` refusal with no answer or authority records, nothing but OPT
+in the additional section, AA clear, and the internal `UpstreamContacted`
+evidence that at least one forwarder received the query or the native resolver
+ran a resolution. The client gets that refusal instead of waiting for its own
+timeout. Refusals that the node produces without asking any server keep the
+complete data-generation check and are not sent across a commit: a failed
+serving capture in the upstream stage, a refused native recursion or cache
+admission, a query that ended before any server was tried, indeterminate DNSSEC
+validation, a failed rewrite target and other failure-origin answers.
+Ingress-only node-health and CHAOS identity replies also retain the original
+complete route during a failed settings preparation; their internal status
+establishes provenance, not a canonical zone-data grant. These retained
+responses cannot start a transfer continuation.
+API dig keeps the complete generation check. Native recursion starts and runs
+under the same retained recursive policy as a forwarded query (D377): a lookup
+that arrives after an ordinary canonical commit, before the successor
+publication is served, is resolved on its original lease instead of being
+refused. The native cache keeps the complete generation check for its writes:
+after such a commit each cache attempt is consumed without writing, exactly
+like a superseded raw-cache fill, and the resolution continues. Anchor
+retirement and loss of an installed dependency still refuse recursion.
 
 A native UPDATE's
 own commit retires that generation, so its root command adapter issues a private

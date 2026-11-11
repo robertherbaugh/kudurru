@@ -30,6 +30,30 @@ func WithCacheMutations(ctx context.Context, source CacheMutationSource) context
 // ErrCacheAdmission means the original cache mutation authority is unavailable.
 var ErrCacheAdmission = errors.New("recursor: original cache mutation admission unavailable")
 
+// admissionError marks an error the resolver returns because its original
+// cache mutation admission refused the query (an unavailable or foreign
+// source, a refused capture or mutation attempt). The node produced it; it is
+// not evidence that any authority was asked. It unwraps to the original error
+// and keeps its text.
+type admissionError struct{ err error }
+
+func (e admissionError) Error() string { return e.err.Error() }
+func (e admissionError) Unwrap() error { return e.err }
+
+// IsAdmission reports whether err came from the resolver's own cache
+// mutation admission rather than from a resolution (D377).
+func IsAdmission(err error) bool {
+	var a admissionError
+	return errors.As(err, &a)
+}
+
+func admission(err error) error {
+	if err == nil || IsAdmission(err) {
+		return err
+	}
+	return admissionError{err}
+}
+
 func (r *Resolver) mutationSource(ctx context.Context) (CacheMutationSource, error) {
 	source, _ := ctx.Value(cacheMutationKey{}).(CacheMutationSource)
 	if source == nil {

@@ -744,8 +744,11 @@ An ordinary canonical commit can supersede the data generation while a held
 recursive/policy query still owns valid dependencies and anchor input. In that
 case the raw-cache attempt is consumed without performing its mutation, and the
 held query can finish. Anchor retirement, dependency loss and original expiry
-still refuse the operation. Native resolver mutations below retain their
-stricter complete-generation check; this raw-cache skip does not authorize them.
+still refuse the operation. Native resolver mutations below are treated the
+same way (D377): their writes still need the complete data generation, so after
+such a commit each native cache attempt is consumed without writing, and the
+resolution, which starts under the retained recursive policy, continues and
+answers.
 Native recursion captures a trusted mutation source from the original complete
 request immediately before exchange. It retains the private root component and
 finite query lifetime, never a replacement publication. Each child acquisition

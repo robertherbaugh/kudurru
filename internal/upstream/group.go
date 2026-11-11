@@ -43,6 +43,11 @@ type Error struct {
 	// upstream's extended error.
 	Msg      *dns.Msg
 	Upstream string
+	// Attempted reports that at least one server was actually asked: a
+	// forwarder received the query, or the native resolver ran a resolution
+	// rather than refusing its cache mutation admission (D377). It is false
+	// when the query ended before any server was tried.
+	Attempted bool
 }
 
 func (e *Error) Error() string {
@@ -248,6 +253,9 @@ func (g *Group) collect(a attempt, failure *Error) *attempt {
 		return &a
 	}
 	failure.Errs = append(failure.Errs, a.err)
+	if !recursor.IsAdmission(a.err) {
+		failure.Attempted = true
+	}
 	var rc errRcode
 	if errors.As(a.err, &rc) {
 		failure.Msg, failure.Upstream = a.msg, a.srv.label

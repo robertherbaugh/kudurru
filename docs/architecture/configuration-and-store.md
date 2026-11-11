@@ -1866,7 +1866,9 @@ transferred and catalog zone data, not the provider host, the license cut or
 the provider resource set that only HTTP authentication uses. A published
 successor retires the old answers at once, so no answer from older data is
 sent after a change was published. Transfers, UPDATE acknowledgments, API
-dig, cache insertions and native resolver mutations keep full data currency.
+dig, cache insertions and native resolver mutations keep full data currency
+(a superseded cache or native resolver write is skipped, and the query still
+answers; D332, D377).
 
 Before a later item the request lets the node publish for other callers: it
 waits, inside its lifetime and writer episode, until the publisher is current

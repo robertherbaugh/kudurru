@@ -419,7 +419,7 @@ func (r *Resolver) ExchangeWithValidation(ctx context.Context, req *dns.Msg) (*d
 	}
 	source, err := r.mutationSource(ctx)
 	if err != nil {
-		return nil, Validation{}, err
+		return nil, Validation{}, admission(err)
 	}
 	s := r.set.Load()
 	var a *answer
@@ -441,7 +441,7 @@ func (r *Resolver) ExchangeWithValidation(ctx context.Context, req *dns.Msg) (*d
 		}
 		a = q.resolve(question.Name, question.Qtype)
 		if q.st.cacheErr != nil {
-			return nil, Validation{}, q.st.cacheErr
+			return nil, Validation{}, admission(q.st.cacheErr)
 		}
 		validUntil = q.st.denialUntil
 		if until := q.st.denialUntil; !until.IsZero() {

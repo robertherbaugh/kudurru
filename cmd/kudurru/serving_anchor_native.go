@@ -23,7 +23,11 @@ func captureRootNativeSource(req *pipeline.Request) (recursor.CacheMutationSourc
 	}
 	// Validate the actual Store's original finite source before recursion. Each
 	// acquisition gets a separate attempt under its own earlier child deadline.
-	if _, err := seal.captureRead(req.Ctx); err != nil {
+	// Recursion keeps the retained recursive policy of its lease across an
+	// ordinary canonical commit, as a forwarded query does (D332, D377): a
+	// lookup that arrives before the successor is served is resolved, not
+	// refused. Anchor retirement and dependency loss still refuse it.
+	if _, err := seal.captureReadCurrent(req.Ctx, seal.dnsCurrent); err != nil {
 		return nil, err
 	}
 	deadline, _ := req.Ctx.Deadline()
@@ -53,11 +57,14 @@ func (s *rootNativeSource) Capture(ctx context.Context) (recursor.CacheMutation,
 	if !ok || deadline.After(s.deadline) {
 		return nil, serving.ErrDependency
 	}
-	read, err := s.seal.captureRead(ctx)
+	read, err := s.seal.captureReadCurrent(ctx, s.seal.dnsCurrent)
 	if err != nil {
 		return nil, err
 	}
-	return &rootNativeMutation{source: s, insertion: rootAnchorInsertion{seal: s.seal, read: read}}, nil
+	// The native cache keeps full data currency (D332): after an ordinary
+	// commit the attempt is consumed without running the writes, exactly like
+	// a superseded raw-cache fill, and the resolution itself continues (D377).
+	return &rootNativeMutation{source: s, insertion: rootAnchorInsertion{seal: s.seal, read: read, retainedDNS: true}}, nil
 }
 
 type rootNativeMutation struct {

@@ -112,3 +112,112 @@ func TestNativeMutationStageOriginalSourceAndRefusal(t *testing.T) {
 		})
 	}
 }
+
+type contactFailingExchange struct{ asked *int }
+
+func (e contactFailingExchange) Exchange(context.Context, *dns.Msg, netip.AddrPort, bool) (*dns.Msg, error) {
+	*e.asked++
+	return nil, errors.New("authority unreachable")
+}
+
+type refusedNativeSource struct{}
+
+func (refusedNativeSource) Domain() [32]byte { return [32]byte{} }
+func (refusedNativeSource) Capture(context.Context) (recursor.CacheMutation, error) {
+	return nil, errors.New("retired source")
+}
+
+// TestFailureUpstreamContacted: only a failure of an exchange that asked a
+// server carries UpstreamContacted (D377). Refusals the stage produces before
+// any server is asked carry the same status without it.
+func TestFailureUpstreamContacted(t *testing.T) {
+	closed, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dead := closed.LocalAddr().String()
+	_ = closed.Close()
+	recursive := func(t *testing.T, capture func(*pipeline.Request) (recursor.CacheMutationSource, error)) (*Stage, *int) {
+		t.Helper()
+		asked := new(int)
+		cfg := recursor.DefaultConfig()
+		cfg.DNSSEC = false
+		cfg.IPv6 = recursor.IPv6Off
+		cfg.RootHints = []string{"10.0.0.1:53"}
+		r, err := recursor.New(cfg, recursor.Options{RequireCacheMutations: true, Exchanger: contactFailingExchange{asked}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		set, err := upstreamset.New(upstreamset.Config{Groups: map[string]upstreamset.GroupConfig{"default": {Recursive: true}}, Recursion: cfg}, upstreamset.Options{Recursor: r})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = set.Close() })
+		stage := NewStage(set)
+		stage.CaptureNative = capture
+		return stage, asked
+	}
+	for _, tc := range []struct {
+		name      string
+		stage     func(*testing.T) (*Stage, *int)
+		deadline  time.Duration
+		contacted bool
+	}{
+		{"forwarder failed", func(t *testing.T) (*Stage, *int) {
+			s, err := New("default", []string{dead}, time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = s.Set().Close() })
+			return s, nil
+		}, 3 * time.Second, true},
+		{"query ended before any server", func(t *testing.T) (*Stage, *int) {
+			s, err := New("default", []string{dead}, time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = s.Set().Close() })
+			return s, nil
+		}, -time.Second, false},
+		{"serving capture failed", func(t *testing.T) (*Stage, *int) {
+			s, err := New("default", []string{dead}, time.Second)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = s.Set().Close() })
+			s.Capture = func(*pipeline.Request) (*View, error) { return nil, errors.New("retired generation") }
+			return s, nil
+		}, 3 * time.Second, false},
+		{"native recursion refused", func(t *testing.T) (*Stage, *int) {
+			return recursive(t, func(*pipeline.Request) (recursor.CacheMutationSource, error) {
+				return nil, errors.New("retired source")
+			})
+		}, 3 * time.Second, false},
+		{"native cache admission refused", func(t *testing.T) (*Stage, *int) {
+			return recursive(t, func(*pipeline.Request) (recursor.CacheMutationSource, error) { return refusedNativeSource{}, nil })
+		}, 3 * time.Second, false},
+		{"native authorities failed", func(t *testing.T) (*Stage, *int) {
+			return recursive(t, func(*pipeline.Request) (recursor.CacheMutationSource, error) { return &stageNativeSource{}, nil })
+		}, 3 * time.Second, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stage, asked := tc.stage(t)
+			m := new(dns.Msg)
+			m.SetQuestion("contact.example.", dns.TypeA)
+			response, err := stage.Serve(&pipeline.Request{Ctx: t.Context(), Msg: m, Deadline: time.Now().Add(tc.deadline)}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Close()
+			if response.Msg.Rcode != dns.RcodeServerFailure || response.Status != pipeline.StatusServfailUpstream && response.Status != pipeline.StatusTimeoutUpstream || response.Origin != pipeline.OriginUnknown {
+				t.Fatal("not an upstream-stage failure", response.Status, response.Origin, response.Msg)
+			}
+			if response.UpstreamContacted != tc.contacted {
+				t.Fatal("wrong contact evidence", response.UpstreamContacted)
+			}
+			if asked != nil && (*asked != 0) != tc.contacted {
+				t.Fatal("authorities asked", *asked)
+			}
+		})
+	}
+}
