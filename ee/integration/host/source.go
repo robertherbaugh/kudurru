@@ -36,6 +36,9 @@ func SourceID(owner InstanceID) string {
 }
 func (h *Host) observe(ctx context.Context, j *job, g ExecutionGuard) (*Result, error) {
 	observer, ok := j.provider.(Observer)
+	if roles, err := providerRoles(j.provider); err != nil || !roles.Observer {
+		ok = false
+	}
 	if !ok {
 		return nil, ErrUnsupported
 	}

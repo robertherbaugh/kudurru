@@ -43,6 +43,9 @@ func TestObservationScheduleRetainsNegotiatedCapabilities(t *testing.T) {
 			if _, err := p.ObservationSchedule(); !errors.Is(err, host.ErrUnavailable) {
 				t.Fatal("unnegotiated provider has a schedule")
 			}
+			if _, err := p.Roles(); !errors.Is(err, host.ErrUnavailable) {
+				t.Fatal("unnegotiated provider has roles")
+			}
 			if _, err := p.Check(t.Context()); err != nil {
 				t.Fatal(err)
 			}
@@ -53,12 +56,18 @@ func TestObservationScheduleRetainsNegotiatedCapabilities(t *testing.T) {
 			if interval, err := p.ObservationSchedule(); err != nil || interval != want {
 				t.Fatal("wrong negotiated inventory cadence")
 			}
+			if roles, err := p.Roles(); err != nil || roles != (host.Roles{Observer: clients}) {
+				t.Fatalf("negotiated roles: %+v %v", roles, err)
+			}
 			changed.Store(true)
 			if _, err := p.Check(t.Context()); !errors.Is(err, host.ErrFenced) {
 				t.Fatal("changed declaration was accepted")
 			}
 			if _, err := p.ObservationSchedule(); !errors.Is(err, host.ErrFenced) {
 				t.Fatal("changed provider retained a schedule")
+			}
+			if _, err := p.Roles(); !errors.Is(err, host.ErrFenced) {
+				t.Fatal("changed provider retained its roles")
 			}
 			changed.Store(false)
 			if _, err := p.ObservationSchedule(); !errors.Is(err, host.ErrFenced) {

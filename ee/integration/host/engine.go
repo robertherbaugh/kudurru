@@ -21,6 +21,9 @@ type publicationInput struct {
 
 func (h *Host) publications(ctx context.Context, j *job, f frame, g ExecutionGuard) ([]publicationInput, error) {
 	publisher, ok := j.provider.(Publisher)
+	if roles, err := providerRoles(j.provider); err != nil || !roles.Publisher {
+		ok = false
+	}
 	if !ok {
 		return nil, ErrUnsupported
 	}

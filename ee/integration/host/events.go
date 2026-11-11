@@ -29,6 +29,9 @@ func (h *Host) Deliver(ctx context.Context, id InstanceID, deliveryID string, ev
 }
 func (h *Host) queueEvent(ctx context.Context, j *job, f frame, g ExecutionGuard, c command) error {
 	hook, ok := j.provider.(DeliveryHook)
+	if roles, err := providerRoles(j.provider); err != nil || !roles.Hook {
+		ok = false
+	}
 	if !ok {
 		return ErrUnsupported
 	}
@@ -151,6 +154,9 @@ func (h *Host) deliver(ctx context.Context, j *job, g ExecutionGuard, d *kinds.I
 		return err
 	}
 	hook, ok := j.provider.(DeliveryHook)
+	if roles, err := providerRoles(j.provider); err != nil || !roles.Hook {
+		ok = false
+	}
 	if !ok {
 		return ErrUnsupported
 	}

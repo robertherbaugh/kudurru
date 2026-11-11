@@ -169,7 +169,7 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 		defer timer.Stop()
 	}
 	var eventTick <-chan time.Time
-	if _, ok := provider.(DeliveryHook); ok {
+	if roles, err := providerRoles(provider); err == nil && roles.Hook {
 		events := time.NewTicker(h.opts.PollInterval)
 		defer events.Stop()
 		eventTick = events.C
@@ -230,8 +230,8 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 				}
 				if delay, retry := h.retryDelay(a.err, failures); retry {
 					timer.Reset(delay)
-				} else if _, source := provider.(Observer); source && errors.Is(a.err, ErrFenced) && ctx.Err() == nil && j.ctx.Err() == nil {
-					if _, outbound := provider.(Publisher); !outbound {
+				} else if roles, _ := providerRoles(provider); roles.Observer && errors.Is(a.err, ErrFenced) && ctx.Err() == nil && j.ctx.Err() == nil {
+					if !roles.Publisher {
 						// A refused acquisition stays refused. Keep the next
 						// periodic read: execute captures its own original frame,
 						// lease and request, independently of this failed poll.
@@ -301,8 +301,12 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 			return answer{err: ErrUnsupported}
 		}
 		var result *Result
-		_, observer := j.provider.(Observer)
-		if _, publisher := j.provider.(Publisher); publisher {
+		roles, err := providerRoles(j.provider)
+		if err != nil {
+			return answer{err: err}
+		}
+		observer := roles.Observer
+		if roles.Publisher {
 			if c.original != nil && c.expected == "" {
 				return answer{err: ErrStalePreview}
 			}
