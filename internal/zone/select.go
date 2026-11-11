@@ -115,19 +115,27 @@ func ServedRecordSetsCached(dz *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet,
 // RecordSetValid reports whether every endpoint of rs passes
 // ValidateEndpoint and no two endpoints share an identity.
 func RecordSetValid(rs *v1alpha1.DNSRecordSet) bool {
-	seen := make(map[string]struct{}, len(rs.Spec.Endpoints))
+	return RecordSetError(rs) == nil
+}
+
+// RecordSetError is why RecordSetValid refuses rs: the first endpoint that
+// fails ValidateEndpoint, or the first endpoint whose identity an earlier
+// endpoint of the set already has. It is nil exactly when RecordSetValid
+// holds.
+func RecordSetError(rs *v1alpha1.DNSRecordSet) error {
+	seen := make(map[string]int, len(rs.Spec.Endpoints))
 	for i := range rs.Spec.Endpoints {
 		ep := &rs.Spec.Endpoints[i]
-		if ValidateEndpoint(*ep) != nil {
-			return false
+		if err := ValidateEndpoint(*ep); err != nil {
+			return fmt.Errorf("spec.endpoints[%d]: %w", i, err)
 		}
 		id := EndpointIdentity(*ep)
-		if _, dup := seen[id]; dup {
-			return false
+		if first, dup := seen[id]; dup {
+			return fmt.Errorf("spec.endpoints[%d]: %s %s has the identity of spec.endpoints[%d] (the same name, type and setIdentifier)", i, ep.DNSName, ep.RecordType, first)
 		}
-		seen[id] = struct{}{}
+		seen[id] = i
 	}
-	return true
+	return nil
 }
 
 // EndpointIdentity returns the duplicate-detection key of an endpoint as

@@ -218,9 +218,23 @@ func TestCompilerDynamicCollisionRequiresExplicitTakeoverAndExpiryKeepsReservati
 	if built(t, taken).Lookup("new.example.", dns.TypeA).Answer[0].(*dns.A).A.String() != "192.0.2.3" {
 		t.Fatal("audited takeover")
 	}
+	// A replacement that makes the record set invalid as a whole is
+	// withheld and reported, as zone.ServedRecordSets leaves it out, while
+	// the rest of the zone is committed: refusing the whole projection
+	// would freeze every later change of the zone (D373).
 	rs.Spec.Endpoints[0].Targets = []string{"invalid"}
-	if _, err := c.Project(context.Background(), taken, in, expires.Time); !errors.Is(err, zonestate.ErrInvalid) {
-		t.Fatalf("invalid replacement pruned: %v", err)
+	result, err := c.Project(context.Background(), taken, in, expires.Time)
+	if err != nil {
+		t.Fatalf("an invalid replacement kept the zone from its commit: %v", err)
+	}
+	for _, d := range result.Diagnostics {
+		if d.SourceID == store.KeyOf(rs).String() && (d.Outcome != "withheld" || !strings.HasPrefix(d.Reason, public.ReasonInvalid+": ")) {
+			t.Fatalf("invalid replacement reported %+v", d)
+		}
+	}
+	replaced := prepareView(t, result.Aggregate, taken.Head)
+	if built(t, replaced).Lookup("new.example.", dns.TypeA).Answer[0].(*dns.A).A.String() != "192.0.2.3" {
+		t.Fatal("the rest of the zone was not committed with the invalid replacement")
 	}
 }
 
@@ -361,5 +375,122 @@ func TestWithheldReasonIsBounded(t *testing.T) {
 	}
 	if got := withheldReason("Invalid", "short"); got != "Invalid: short" {
 		t.Fatal(got)
+	}
+}
+
+// Every way the zone builder can refuse a record set or one of its
+// endpoints, after an upgrade (no committed head) and on a running node (a
+// committed head): the refused data is left out and reported on its record
+// set with a reason, the rest of the zone is committed and served, and a
+// later change is committed too (D373). The table follows the refusals in
+// their source order: RecordSetError and ParseEndpoint against the root
+// (the record set is invalid as a whole and not selected), ParseEndpoint
+// against the zone origin (outside the zone), and Builder.addParsed (apex
+// NS and CNAME, Duplicated, CNAME next to other data, Occluded). Each case
+// is also refused by zone.Build or zone.ServedRecordSets, the 0.1.0 path,
+// so the table holds builder refusals only.
+func TestCompilerWithholdsEveryRefusalOfTheBuilder(t *testing.T) {
+	a := func(name string, targets ...string) public.Endpoint {
+		return public.Endpoint{DNSName: name, RecordType: "A", Targets: targets}
+	}
+	typed := func(name, typ string, targets ...string) public.Endpoint {
+		return public.Endpoint{DNSName: name, RecordType: typ, Targets: targets}
+	}
+	ttl := func(ep public.Endpoint, ttl int64) public.Endpoint { ep.RecordTTL = ttl; return ep }
+	cases := []struct {
+		name string
+		eps  []public.Endpoint
+		// outcome is the projection: withheld, or duplicated for a name an
+		// earlier record set holds.
+		outcome string
+		// gone is a name and type that must not be served.
+		gone  string
+		gtype uint16
+	}{
+		// The record set is invalid as a whole (RecordSetError).
+		{"owner-empty", []public.Endpoint{a("", "192.0.2.50")}, "withheld", "", 0},
+		{"owner-whitespace", []public.Endpoint{a("bad name.example.", "192.0.2.50")}, "withheld", "", 0},
+		{"owner-long-label", []public.Endpoint{a(strings.Repeat("x", 64)+".example.", "192.0.2.50")}, "withheld", "", 0},
+		{"owner-dollar", []public.Endpoint{a("$dollar.example.", "192.0.2.50")}, "withheld", "", 0},
+		{"type-unknown", []public.Endpoint{typed("bogus.example.", "BOGUS", "x")}, "withheld", "", 0},
+		{"type-number-zero", []public.Endpoint{typed("t0.example.", "TYPE0", `\# 0`)}, "withheld", "", 0},
+		{"type-forbidden", []public.Endpoint{typed("soa.example.", "TYPE6", `\# 0`)}, "withheld", "", 0},
+		{"ttl-negative", []public.Endpoint{ttl(a("ttl.example.", "192.0.2.50"), -1)}, "withheld", "ttl.example.", dns.TypeA},
+		{"ttl-too-large", []public.Endpoint{ttl(a("ttl2.example.", "192.0.2.50"), 1<<32)}, "withheld", "ttl2.example.", dns.TypeA},
+		{"no-targets", []public.Endpoint{a("empty.example.")}, "withheld", "empty.example.", dns.TypeA},
+		{"cname-two-targets", []public.Endpoint{typed("alias.example.", "CNAME", "a.example.", "b.example.")}, "withheld", "alias.example.", dns.TypeCNAME},
+		{"dname-two-targets", []public.Endpoint{typed("tree.example.", "DNAME", "a.example.", "b.example.")}, "withheld", "tree.example.", dns.TypeDNAME},
+		{"target-empty", []public.Endpoint{a("blank.example.", " ")}, "withheld", "blank.example.", dns.TypeA},
+		{"target-two-lines", []public.Endpoint{typed("lines.example.", "TXT", "one\ntwo")}, "withheld", "lines.example.", dns.TypeTXT},
+		{"a-not-an-address", []public.Endpoint{a("notip.example.", "not-an-ip"), a("notip-ok.example.", "192.0.2.51")}, "withheld", "notip-ok.example.", dns.TypeA},
+		{"aaaa-ipv4", []public.Endpoint{typed("six.example.", "AAAA", "192.0.2.52")}, "withheld", "six.example.", dns.TypeAAAA},
+		{"mx-without-preference", []public.Endpoint{typed("mail.example.", "MX", "mx.example.")}, "withheld", "mail.example.", dns.TypeMX},
+		{"cname-root", []public.Endpoint{typed("root-alias.example.", "CNAME", ".")}, "withheld", "root-alias.example.", dns.TypeCNAME},
+		{"dname-root", []public.Endpoint{typed("root-tree.example.", "DNAME", ".")}, "withheld", "root-tree.example.", dns.TypeDNAME},
+		{"ns-root", []public.Endpoint{typed("deleg.example.", "NS", ".")}, "withheld", "deleg.example.", dns.TypeNS},
+		{"ptr-root", []public.Endpoint{typed("ptr.example.", "PTR", ".")}, "withheld", "ptr.example.", dns.TypePTR},
+		{"no-presentation-form", []public.Endpoint{typed("lp.example.", "TYPE107", `\# 2 0000`)}, "withheld", "lp.example.", 107},
+		{"two-a-one-name", []public.Endpoint{a("twice.example.", "192.0.2.53"), a("twice.example.", "192.0.2.54")}, "withheld", "twice.example.", dns.TypeA},
+		{"same-endpoint-twice", []public.Endpoint{a("same.example.", "192.0.2.55"), a("same.example.", "192.0.2.55")}, "withheld", "same.example.", dns.TypeA},
+		{"two-cnames-one-name", []public.Endpoint{typed("cn.example.", "CNAME", "a.example."), typed("cn.example.", "CNAME", "b.example.")}, "withheld", "cn.example.", dns.TypeCNAME},
+		// Valid in the root, refused in this zone (ParseEndpoint at the origin).
+		{"outside-zone", []public.Endpoint{a("www.elsewhere.", "192.0.2.56")}, "withheld", "", 0},
+		// Builder.addParsed.
+		{"apex-ns", []public.Endpoint{typed("example.", "NS", "ns2.example.")}, "withheld", "", 0},
+		{"apex-cname", []public.Endpoint{typed("example.", "CNAME", "other.example.")}, "withheld", "example.", dns.TypeCNAME},
+		{"identity-of-an-earlier-set", []public.Endpoint{a("www.example.", "192.0.2.57")}, "duplicated", "", 0},
+		{"cname-next-to-an-earlier-a", []public.Endpoint{typed("www.example.", "CNAME", "other.example.")}, "duplicated", "www.example.", dns.TypeCNAME},
+		{"cname-and-a-in-one-set", []public.Endpoint{typed("pair.example.", "CNAME", "other.example."), a("pair.example.", "192.0.2.58")}, "served", "pair.example.", dns.TypeA},
+		{"a-and-cname-in-one-set", []public.Endpoint{a("pair2.example.", "192.0.2.59"), typed("pair2.example.", "CNAME", "other.example.")}, "served", "pair2.example.", dns.TypeCNAME},
+		{"below-a-dname", []public.Endpoint{typed("moved.example.", "DNAME", "target.test."), a("x.moved.example.", "192.0.2.60")}, "served", "x.moved.example.", dns.TypeA},
+	}
+	z := desiredZone()
+	ok := desiredSet("ok", endpoint("www", "192.0.2.10"))
+	ok.CreationTimestamp = metav1.NewTime(fixedNow.Add(-time.Hour))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			bad := desiredSet("bad", tc.eps...)
+			// The 0.1.0 path refuses the same data.
+			sets := []*public.DNSRecordSet{ok, bad}
+			_, errs := zone.Build(z, zone.ServedRecordSets(z, sets), zone.BuildOptions{Now: fixedNow})
+			if zone.RecordSetValid(bad) && len(errs.RecordSets["dns/bad"]) == 0 {
+				t.Fatalf("zone.Build accepts the record set: the case is not a refusal")
+			}
+			c := NewCompiler(CompilerOptions{})
+			// After an upgrade: no committed head.
+			in := &zonestate.DesiredInputs{Zone: z, RecordSets: sets, Complete: true}
+			result, err := c.Project(context.Background(), blank(z), in, fixedNow)
+			if err != nil {
+				t.Fatal("the refusal kept the zone from its first commit:", err)
+			}
+			var got zonestate.SourceDiagnostic
+			for _, d := range result.Diagnostics {
+				if d.SourceID == store.KeyOf(bad).String() {
+					got = d
+				}
+			}
+			if got.Outcome != tc.outcome || (tc.outcome != "served" && got.Reason == "") || len(got.Reason) > maxWithheldReason {
+				t.Fatalf("outcome %q reason %q, want %q with a reason", got.Outcome, got.Reason, tc.outcome)
+			}
+			first := prepareView(t, result.Aggregate, nil)
+			model := built(t, first)
+			if a := model.Lookup("www.example.", dns.TypeA).Answer; len(a) != 1 || a[0].(*dns.A).A.String() != "192.0.2.10" {
+				t.Fatalf("the rest of the zone is not served: www.example. A %v", a)
+			}
+			if tc.gone != "" {
+				if l := model.Lookup(tc.gone, tc.gtype); len(l.Answer) != 0 && l.Answer[0].Header().Rrtype == tc.gtype {
+					t.Fatalf("refused data served: %v", l.Answer)
+				}
+			}
+			// A running node: the refused record set is written next to a
+			// committed head, and a later change is committed with it.
+			c = NewCompiler(CompilerOptions{})
+			head := compile(t, c, blank(z), &zonestate.DesiredInputs{Zone: z, RecordSets: []*public.DNSRecordSet{ok}, Complete: true}, fixedNow)
+			later := desiredSet("later", endpoint("later", "192.0.2.61"))
+			next := compile(t, c, head, &zonestate.DesiredInputs{Zone: z, RecordSets: []*public.DNSRecordSet{ok, bad, later}, Complete: true}, fixedNow.Add(time.Second))
+			if a := built(t, next).Lookup("later.example.", dns.TypeA).Answer; len(a) != 1 {
+				t.Fatalf("a change next to the refused record set was not committed: %v", a)
+			}
+		})
 	}
 }

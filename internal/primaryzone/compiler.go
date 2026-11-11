@@ -17,6 +17,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/zone"
 	"github.com/robertherbaugh/kudurru/internal/zonestate"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
 // CompilerOptions bounds desired metadata and removal receipts. Takeover is a
@@ -137,11 +138,18 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 			return nil, zonestate.ErrInvalid
 		}
 		key := store.KeyOf(rs).String()
-		if selector.Admits(rs) && !c.records.RecordSetValid(dz, rs, now) {
-			return nil, fmt.Errorf("%w: malformed desired source %s", zonestate.ErrInvalid, key)
-		}
 		projections[key] = "withheld"
 		reasons[key] = "excluded by selector"
+		if selector.Admits(rs) && !c.records.RecordSetValid(dz, rs, now) {
+			// A record set that is invalid as a whole (an endpoint that
+			// parses in no zone, or two endpoints with one identity) is
+			// not selected, as zone.ServedRecordSets leaves it out. It is
+			// reported on its record set and the rest of the zone is
+			// committed: 0.1.0 stored such record sets and served the
+			// zone, and a zone without a committed head would otherwise
+			// never be served (D373).
+			reasons[key] = withheldReason(public.ReasonInvalid, invalidRecordSetDetail(rs))
+		}
 	}
 	for _, rs := range selected {
 		if err := ctx.Err(); err != nil {
@@ -156,7 +164,14 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 			if len(parseErrs) > 0 {
 				continue
 			} // valid in root origin, outside this zone
-			failures := parsedSet.Add(source, i)
+			// The committed aggregate holds canonical wire records. An
+			// endpoint the builder parsed but the aggregate cannot hold is
+			// refused here, before the builder takes it, like any other
+			// endpoint the zone cannot hold.
+			failures := committable(parsed, i)
+			if len(failures) == 0 {
+				failures = parsedSet.Add(source, i)
+			}
 			if len(failures) > 0 {
 				// The builder refused this endpoint before it changed
 				// anything (a duplicate, an occluded name, a CNAME next to
@@ -448,6 +463,34 @@ func BuildCommitted(ctx context.Context, v *zonestate.View) (*zone.Zone, error) 
 		}
 	}
 	return zone.BuildCommittedPrimary(&config, records, v.Head.Spec.Serial, v.Aggregate.Expiry, apexOverride)
+}
+
+// committable refuses the records of endpoint i that the committed aggregate
+// cannot hold: an owner that is not a canonical absolute name, or data that
+// has no canonical identity or wire form (zonestate.FromRR). The builder's
+// parser accepted them; the aggregate's codec is stricter in places.
+func committable(parsed []dns.RR, i int) field.ErrorList {
+	path := field.NewPath("spec", "endpoints").Index(i)
+	for _, rr := range parsed {
+		if _, err := dynamicupdate.CanonicalName(rr.Header().Name); err != nil {
+			return field.ErrorList{field.Invalid(path.Child("dnsName"), rr.Header().Name, err.Error())}
+		}
+		if _, err := dynamicupdate.Identity(rr); err != nil {
+			return field.ErrorList{field.Invalid(path.Child("targets"), rr.String(), err.Error())}
+		}
+		if _, err := zonestate.FromRR(rr, zonestate.Provenance{SourceID: "check"}); err != nil {
+			return field.ErrorList{field.Invalid(path.Child("targets"), rr.String(), err.Error())}
+		}
+	}
+	return nil
+}
+
+// invalidRecordSetDetail is why zone.RecordSetValid refuses rs.
+func invalidRecordSetDetail(rs *public.DNSRecordSet) string {
+	if err := zone.RecordSetError(rs); err != nil {
+		return err.Error()
+	}
+	return "the record set is not valid"
 }
 
 // maxWithheldReason is the bound zonestate puts on a source reason.
