@@ -215,7 +215,9 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	dir := t.TempDir()
 	a, acfg := kudurrutest.NewNodeSpec(t, dir, "enrolled-a")
 	b, bcfg := kudurrutest.NewNodeSpec(t, dir, "enrolled-b")
+	updateSecret, updateKeys := enrolledUpdateSecret(t, dir)
 	for i, cfg := range []map[string]any{acfg, bcfg} {
+		cfg["tsigKeys"] = updateKeys
 		cfg["querylog"] = map[string]any{"enabled": false}
 		cfg["log"] = map[string]any{"level": "error", "format": "text"}
 		cfg["auth"].(map[string]any)["session"] = map[string]any{"secure": "never"}
@@ -243,6 +245,9 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	objects := zoneObjects(map[string]string{"seed": "192.0.2.42"})
 	apiA.request(t, http.MethodPost, "/objects/dnszones", objects[0], http.StatusCreated, nil)
 	apiA.request(t, http.MethodPost, "/objects/dnsrecordsets", objects[1], http.StatusCreated, nil)
+	for _, object := range enrolledUpdateZone() {
+		apiA.request(t, http.MethodPost, "/objects/"+map[string]string{"DNSZone": "dnszones", "DNSRecordSet": "dnsrecordsets"}[object.(map[string]any)["kind"].(string)], object, http.StatusCreated, nil)
+	}
 	enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
 	review := func() api.ClusterEnrollmentInfo {
 		var result api.ClusterEnrollmentInfo
@@ -327,6 +332,10 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		}
 	}
 	awaitDNS(follower, "seed", "192.0.2.42", dns.RcodeSuccess)
+	// A signed RFC 2136 UPDATE sent to the follower commits once on the
+	// primary, which also answers its refusals (D381).
+	enrolledAwaitDyn(t, follower, "seed.dyn.test.", "192.0.2.100", dns.RcodeSuccess)
+	enrolledFollowerUpdates(t, primary, follower, updateSecret, "via-follower", "192.0.2.101")
 	var forwarded api.BlockingCommandReceipt
 	apiB.request(t, http.MethodPost, "/dns/blocking", map[string]any{"blocking": false}, http.StatusAccepted, &forwarded)
 	if !forwarded.Committed || forwarded.Publication != "pending" || !forwarded.Disabled {
@@ -636,6 +645,9 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		t.Fatal("partition interrupted valid local DNS")
 	}
 	apiB.request(t, http.MethodPost, "/dns/blocking", map[string]any{"blocking": true}, http.StatusServiceUnavailable, nil)
+	// A signed UPDATE that cannot reach the primary answers SERVFAIL and is
+	// never applied or replayed after reconnection.
+	enrolledUnreachedUpdate(t, follower, updateSecret, "partitioned-update.dyn.test.", "192.0.2.102")
 	// A mutation that the follower does not forward is refused for its role,
 	// which needs no exchange with the primary: the answer is the same.
 	enrolledPrimaryRequired(t, apiB, a.Name, http.MethodPost, "/allowlist", map[string]any{"domain": "partitioned-allow.e2e.test"})
@@ -686,6 +698,7 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	awaitDNS(follower, "seed", "", dns.RcodeNameError)
 	awaitDNS(follower, "later", "192.0.2.43", dns.RcodeSuccess)
 	enrolledProcessRead(t, apiB, "/dns/blocking", blockingOff)
+	enrolledNeverApplied(t, "partitioned-update.dyn.test.", primary, follower)
 	if !checkDNS(follower, "partitioned", "", dns.RcodeNameError) || !checkDNS(primary, "partitioned", "", dns.RcodeNameError) {
 		t.Fatal("refused partitioned write was applied or replayed")
 	}
@@ -749,6 +762,9 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		primary = kudurrutest.Start(t, bin, a, kudurrutest.Options{Env: env})
 		enrolledFencedClosed(t, apiA, b.Name)
 		awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)
+		// The fenced former primary cannot apply a signed UPDATE and cannot
+		// reach the new primary: SERVFAIL, never applied (D381).
+		enrolledUnreachedUpdate(t, primary, updateSecret, "fenced-update.dyn.test.", "192.0.2.103")
 		relayB.partition(false)
 		// Only production scheduled peer observations/pulls may fence and install.
 		// No test calls ObserveAuthority, installs an image, or retries a mutation.
@@ -769,6 +785,19 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		// The rejoined former primary forwards a settings patch to the new
 		// primary, which commits it; both nodes then serve the change.
 		enrolledForwardedSettings(t, apiB, apiA, a.Name, "46s", "47s")
+		// The new primary applies a signed UPDATE itself, and the rejoined
+		// former primary now forwards one to it.
+		// Right after the forwarded settings patch the new primary republishes,
+		// and a native UPDATE whose lease predates that republication fails its
+		// writer check with SERVFAIL (the same window HA-OPEN recorded for
+		// queries). RFC 2136 clients retry SERVFAIL; this insert is idempotent,
+		// so the test does too and logs every SERVFAIL it receives.
+		enrolledEventuallyUpdate(t, follower, updateSecret, func(m *dns.Msg) {
+			m.Insert([]dns.RR{enrolledUpdateA("promoted.dyn.test.", "192.0.2.104")})
+		})
+		enrolledFollowerUpdates(t, follower, primary, updateSecret, "via-rejoined", "192.0.2.105")
+		enrolledAwaitDyn(t, primary, "promoted.dyn.test.", "192.0.2.104", dns.RcodeSuccess)
+		enrolledNeverApplied(t, "fenced-update.dyn.test.", primary, follower)
 		awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)
 		awaitDNS(primary, "seed", "", dns.RcodeNameError)
 		// The write that the fenced former primary refused exists on neither
