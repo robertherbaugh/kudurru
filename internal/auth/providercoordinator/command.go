@@ -66,6 +66,11 @@ func (c *Coordinator) WithCommand(ctx context.Context, target serving.TermActiva
 	var h HostCapture
 	defer func() { releaseHost(h) }()
 	return c.opts.Publisher.WithWriterGate(ctx, target, func() error {
+		ctx, done, err := c.track(ctx)
+		if err != nil {
+			return err
+		}
+		defer done()
 		return c.opts.Resources.WithCurrent(ctx, func(p *providerresources.Pinned) error {
 			return c.opts.PinHost(ctx, func() error {
 				return c.opts.Store.Command(ctx, target.Term, func(ctx context.Context, tx *sqlite.CommandTx) error {

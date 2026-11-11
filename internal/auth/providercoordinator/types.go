@@ -95,6 +95,10 @@ type Coordinator struct {
 	changed             chan struct{}
 	runDone, writerDone chan struct{}
 	writerRunning       bool
+	// last is the mark of the most recent command through this coordinator
+	// that changed canonical state or ended with an unknown outcome. It is
+	// written only under the publication gate (command_chain.go).
+	last atomic.Pointer[commandMark]
 }
 
 // Admission is callback-scoped, opaque and detached; it is not a forged plan or

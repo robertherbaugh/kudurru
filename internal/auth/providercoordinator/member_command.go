@@ -47,6 +47,11 @@ func (c *Coordinator) WithMemberCommandOutput(ctx context.Context, target servin
 	var host HostCapture
 	defer func() { releaseHost(host) }()
 	err = c.opts.Publisher.WithWriterOutputGate(ctx, target, func() error {
+		ctx, done, err := c.track(ctx)
+		if err != nil {
+			return err
+		}
+		defer done()
 		return c.opts.Resources.WithCurrent(ctx, func(pin *providerresources.Pinned) error {
 			return c.opts.PinHost(ctx, func() error {
 				until, err := pin.Deadline()
