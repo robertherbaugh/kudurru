@@ -178,3 +178,80 @@ func TestServingCandidateCutDuringWritesAndInstallInvalidation(t *testing.T) {
 		t.Fatalf("read after close: %v", err)
 	}
 }
+
+// AdvancedTo accepts the token's own writable authority at the same or a later
+// installed revision and nothing else: every other field is compared exactly.
+func TestServingTokenAdvancedToComparesEveryOtherFieldExactly(t *testing.T) {
+	s := openTemp(t)
+	_, token, err := s.ReadServingCandidate(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := token.Authority()
+	if !token.AdvancedTo(original) || !token.Matches(original) {
+		t.Fatal("the token's own authority was refused")
+	}
+	mustApply(t, s, zone("home", "home.example."), store.ManagerAPI)
+	mustApply(t, s, zone("lab", "lab.example."), store.ManagerAPI)
+	later := s.Authority()
+	if later.Installed.Revision != original.Installed.Revision+2 || token.Matches(later) || !token.AdvancedTo(later) {
+		t.Fatal("an authority advanced only in its installed revision was refused")
+	}
+	_, newer, err := s.ReadServingCandidate(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newer.AdvancedTo(original) {
+		t.Fatal("an earlier revision was accepted as an advance")
+	}
+	conflict := later.Term
+	conflict.PromotionID = "another-promotion"
+	for name, change := range map[string]func(*replication.Authority){
+		"incarnation":    func(a *replication.Authority) { a.Incarnation++ },
+		"mode":           func(a *replication.Authority) { a.Mode = replication.Fenced },
+		"member":         func(a *replication.Authority) { a.MemberID = "another-member" },
+		"term":           func(a *replication.Authority) { a.Term.Epoch++ },
+		"installed term": func(a *replication.Authority) { a.Installed.Term.Epoch++ },
+		"digest":         func(a *replication.Authority) { a.Installed.Digest = "sha256:other" },
+		"observed epoch": func(a *replication.Authority) { a.MaxObservedEpoch++ },
+		"lineage":        func(a *replication.Authority) { a.WatchLineage = "another-lineage" },
+		"install":        func(a *replication.Authority) { a.InstallSequence++ },
+		"parent":         func(a *replication.Authority) { a.Parent = &replication.Generation{Term: a.Term, Revision: 1} },
+		"conflict":       func(a *replication.Authority) { a.Conflict = &conflict },
+		"divergence":     func(a *replication.Authority) { a.Divergence = &replication.Generation{Term: a.Term, Revision: 1} },
+		"promotion":      func(a *replication.Authority) { a.LastPromotionRequest = "another-request" },
+		"resolution":     func(a *replication.Authority) { a.LastResolutionRequest = "another-request" },
+	} {
+		changed := s.Authority()
+		change(&changed)
+		if token.AdvancedTo(changed) {
+			t.Fatalf("a changed %s was accepted as an advance of the same authority", name)
+		}
+	}
+	if (GenerationToken{}).AdvancedTo(replication.Authority{}) {
+		t.Fatal("a zero token was accepted")
+	}
+	// Only a writable source can advance by its own commits. A follower's
+	// installed source and a fenced last-good cut never qualify.
+	primary := openTemp(t, internalOptions)
+	mustApply(t, primary, zone("home", "home.example."), store.ManagerAPI)
+	follower := mirror(t, primary)
+	copyReplica(t, follower, primary)
+	_, installed, err := follower.ReadServingCandidate(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if installed.AdvancedTo(installed.Authority()) || !installed.Matches(follower.Authority()) {
+		t.Fatal("a follower's installed source was accepted as a writable advance")
+	}
+	higher := primary.Authority().Term
+	higher.Epoch++
+	higher.PrimaryID, higher.PromotionID = "promoted-member", "promotion"
+	if _, err := follower.ObserveAuthority(t.Context(), higher); err != nil {
+		t.Fatal(err)
+	}
+	_, fenced, err := follower.ReadServingCandidate(t.Context())
+	if err != nil || !fenced.DNSOnly() || fenced.AdvancedTo(fenced.Authority()) {
+		t.Fatal("a fenced last-good cut was accepted as a writable advance", err)
+	}
+}

@@ -89,6 +89,40 @@ func (p *Publisher) CheckWriterLease(ctx context.Context, lease *Lease, target T
 	return nil
 }
 
+// CheckWriterAdvanced is the memory-only source check for a LATER step of one
+// request whose own commit retired its original lease (D378). The caller must
+// separately hold an exact proof that no command of another caller changed
+// canonical state since the request's previous step, such as the provider
+// coordinator's command chain, and must reauthorize in the transaction. This
+// check alone admits nothing.
+//
+// It requires the exact writable incarnation of target, and that the Store's
+// authority is the lease's original authority advanced ONLY in its installed
+// revision: any change of mode, member, term, incarnation, observed epoch,
+// lineage, parent, conflict or divergence refuses. Unlike CheckWriterLease it
+// does not require the lease to be the current publication, which the
+// request's own commits make impossible. It never captures a successor lease.
+func (p *Publisher) CheckWriterAdvanced(ctx context.Context, lease *Lease, target TermActivation) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if target.Term.Validate() != nil || target.Incarnation == 0 {
+		return replication.ErrInvalid
+	}
+	if p.closed.Load() {
+		return ErrClosed
+	}
+	a, blocked := p.opts.Source.ServingAuthority()
+	if !a.Term.Same(target.Term) || a.Incarnation != target.Incarnation || !a.Writable() || blocked {
+		return ErrSuperseded
+	}
+	bundle := lease.Bundle()
+	if bundle == nil || bundle.dnsOnly || !bundle.token.AdvancedTo(a) {
+		return ErrPending
+	}
+	return nil
+}
+
 // TermActivation is the exact local authority incarnation that must be served
 // before root activates ordinary leader-only writers.
 type TermActivation struct {

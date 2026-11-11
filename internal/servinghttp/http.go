@@ -137,6 +137,25 @@ func CheckWriter(ctx context.Context, publisher *serving.Publisher, target servi
 	return publisher.CheckWriterLease(ctx, lease, target)
 }
 
+// CheckWriterAdvanced checks a LATER item of one multi-item request against
+// this request's ORIGINAL lease after the request's own commit retired it
+// (D378). It is serving.Publisher.CheckWriterAdvanced for the held lease: the
+// same writable incarnation, and the Store's authority equal to the original
+// one but for an advanced installed revision. Root uses it only together with
+// the coordinator's exact compare of the request's own command chain, keeps
+// the original writer and dependency pins, and reauthorizes the raw Credential
+// in CommandTx. It never captures a replacement lease.
+func CheckWriterAdvanced(ctx context.Context, publisher *serving.Publisher, target serving.TermActivation) error {
+	if ctx == nil || publisher == nil {
+		return serving.ErrComponents
+	}
+	lease, _ := ctx.Value(leaseKey{}).(*serving.Lease)
+	if lease == nil || lease.Bundle() == nil {
+		return serving.ErrReleased
+	}
+	return publisher.CheckWriterAdvanced(ctx, lease, target)
+}
+
 // Middleware captures BEFORE authentication and retains every owner through
 // the entire handler, including streaming responses. An unavailable complete
 // bundle returns 503 and never attempts independent live authentication.

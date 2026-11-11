@@ -45,6 +45,20 @@ func (t GenerationToken) Matches(a replication.Authority) bool {
 	return t.source != nil && reflect.DeepEqual(t.authority, a)
 }
 
+// AdvancedTo reports that a is this token's own writable authority with only
+// its installed revision moved forward, or unchanged: every other field is
+// compared exactly. It reads no database and grants nothing. A request that
+// has committed uses it to tell that the node still writes in the same
+// authority cut it began on; who committed in between is a separate proof.
+func (t GenerationToken) AdvancedTo(a replication.Authority) bool {
+	original := t.authority
+	if t.source == nil || t.DNSOnly() || !original.Writable() || !a.Installed.Term.Same(original.Installed.Term) || a.Installed.Revision < original.Installed.Revision {
+		return false
+	}
+	original.Installed.Revision = a.Installed.Revision
+	return reflect.DeepEqual(original, a)
+}
+
 // DNSOnly reports whether this cut may only be published as last-good DNS data.
 func (t GenerationToken) DNSOnly() bool {
 	a := t.authority
