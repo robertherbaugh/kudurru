@@ -72,8 +72,15 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 	if s.isClosed() {
 		return store.ErrClosed
 	}
+	receipt, _ := ctx.Value(commandReceiptKey{}).(*CommandReceipt)
+	if receipt != nil && !receipt.claim() {
+		return replication.ErrInvalid
+	}
 	tx, err := s.w.BeginTx(ctx, nil)
 	if err != nil {
+		if receipt != nil {
+			receipt.state.Store(receiptRolledBack) // no transaction was opened
+		}
 		return err
 	}
 	sqlBoundary := anchorSQL{tx: tx}
@@ -81,6 +88,11 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 	succeeded := false
 	defer func() {
 		sqlBoundary.finish(&result)
+		if receipt != nil {
+			// The receipt states the SQL disposition alone. A later output or
+			// acknowledgment failure does not change what was committed.
+			receipt.complete(s, sqlBoundary, t != nil && t.changed)
+		}
 		if t != nil && t.member != nil {
 			if succeeded && result == nil && (sqlBoundary.outcome == AnchorCommitted || sqlBoundary.outcome == AnchorUnchanged) {
 				t.member.complete(s.Authority(), true)
