@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -671,6 +672,17 @@ func TestIntegrationWebhookHooksMountedCompactedFeedResyncs(t *testing.T) {
 	owner := integrationOwner(f.s, f.d)
 	f.feedRetention = 16
 	f.restart(t, nil) // the store now keeps 16 feed rows
+	readCursor := func() (kinds.IntegrationEventCursor, bool) {
+		var c kinds.IntegrationEventCursor
+		err := f.s.opts.Store.Get(t.Context(), store.Key{Kind: kinds.KindIntegrationEventCursor, Name: kinds.EventCursorName(owner)}, &c)
+		return c, err == nil
+	}
+	var before string
+	awaitServingRuntime(t, f.s, func() bool {
+		c, ok := readCursor()
+		before = c.Spec.Positions["DNSZone"]
+		return ok && before != ""
+	})
 	var zone public.DNSZone
 	var churn *public.DNSRecordSet
 	f.restart(t, func(st *sqlite.Store) {
@@ -696,13 +708,20 @@ func TestIntegrationWebhookHooksMountedCompactedFeedResyncs(t *testing.T) {
 		return false
 	})
 	awaitServingRuntime(t, f.s, func() bool {
-		var c kinds.IntegrationEventCursor
-		if f.s.opts.Store.Get(t.Context(), store.Key{Kind: kinds.KindIntegrationEventCursor, Name: kinds.EventCursorName(owner)}, &c) != nil {
-			return false
-		}
+		c, ok := readCursor()
 		_, resync := c.Spec.Positions[positionResync]
-		return !resync
+		return ok && !resync
 	})
+	// A kind with no objects relists as a bare bookmark, which looks like
+	// "nothing changed": the store's compaction mark, not the relist, must
+	// refuse a cursor it compacted past.
+	empty, err := f.s.opts.Store.List(t.Context(), kinds.KindIntegrationOperation, store.ListOptions{})
+	if err != nil || len(empty.Items) != 0 {
+		t.Fatal("the probe kind is not empty", err)
+	}
+	if _, _, err := f.s.integrations.eventFeed(t.Context(), kinds.KindIntegrationOperation, before, 32); !errors.Is(err, errEventFeedReset) {
+		t.Fatal("a compacted cursor of an empty kind was accepted", err)
+	}
 	// The changes lost to compaction are not replayed one by one.
 	if n := len(p.about("record.changed", string(churn.UID))); n != 0 {
 		t.Fatal("the resync replayed compacted record changes", n)
