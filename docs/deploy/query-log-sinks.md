@@ -320,6 +320,12 @@ config:
 A Secret without the label, or in another namespace, is never read for a
 sink, whatever the settings name.
 
+A referenced value holds at most 64 KiB. That is ample for a password, a
+token or a private CA, but not for a combined system bundle such as
+`/etc/ssl/certs/ca-certificates.crt`: point `caRef` at a file with only the
+CA certificates that sign the destination's certificate. A larger value is
+refused with `credential is unavailable: it holds more than 64 KiB`.
+
 A sink reads its credential when it starts, and again when the destination
 answers 401 or 403. To rotate a credential, change the file or the Secret:
 the next batch that is refused makes the sink read the new value and send
@@ -328,7 +334,8 @@ certificates of `caRef` are read only when the sink starts; after replacing
 them, change the sink's entry (any field) or restart the server.
 
 A sink whose reference cannot be read (a path that is not allowed, a Secret
-without the label, a missing Secret or key) does not start. It keeps trying,
+without the label, a missing Secret or key, a value over 64 KiB) does not
+start. It keeps trying,
 `kudurru_sink_errors_total` counts the attempts, the server log says
 `credential reference is not allowed` or `credential is unavailable`, and
 the queries that overflow its queue are counted as dropped. DNS and the

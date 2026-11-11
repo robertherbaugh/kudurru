@@ -43,8 +43,11 @@ import (
 
 const (
 	// maxCredentialBytes bounds a password or token; maxCABytes a bundle.
+	// maxCABytes is the bound of the node's credential resolver
+	// (internal/credentials.MaxBytes), which refuses a larger value before
+	// this client sees it: a caRef names the private CA, not a system bundle.
 	maxCredentialBytes = 16 << 10
-	maxCABytes         = 1 << 20
+	maxCABytes         = 64 << 10
 
 	// expectContinueBytes is the body size from which a request asks for
 	// "100 Continue" before it sends the body, and expectContinueWait how
@@ -166,7 +169,10 @@ func (c *Client) Open(ctx context.Context) error {
 			return fmt.Errorf("%s: CA certificates: %w", c.opts.Destination, err)
 		}
 		pool := x509.NewCertPool()
-		if len(pem) > maxCABytes || !pool.AppendCertsFromPEM(pem) {
+		if len(pem) > maxCABytes {
+			return fmt.Errorf("%s: CA certificates: the reference holds more than %d KiB; name a file with only the private CA", c.opts.Destination, maxCABytes>>10)
+		}
+		if !pool.AppendCertsFromPEM(pem) {
 			return fmt.Errorf("%s: CA certificates: the reference holds no PEM certificate", c.opts.Destination)
 		}
 		tlsConfig.RootCAs = pool

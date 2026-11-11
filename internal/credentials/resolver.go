@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -28,7 +29,18 @@ var (
 	ErrDenied = errors.New("credential reference is not allowed")
 	// ErrUnavailable means an allowed credential cannot currently be loaded.
 	ErrUnavailable = errors.New("credential is unavailable")
+	// ErrTooLarge means an allowed credential holds more than MaxBytes. It
+	// is also ErrUnavailable; its message says why, so an operator who names
+	// a large file (a whole CA bundle) is not left guessing.
+	ErrTooLarge error = tooLargeError{}
 )
+
+type tooLargeError struct{}
+
+func (tooLargeError) Error() string {
+	return fmt.Sprintf("credential is unavailable: it holds more than %d KiB", MaxBytes>>10)
+}
+func (tooLargeError) Unwrap() error { return ErrUnavailable }
 
 // resolutionError preserves retry classification without exposing provider
 // response bodies through ordinary error formatting or diagnostics.
@@ -148,8 +160,11 @@ func (r *Resolver) Resolve(ctx context.Context, ref v1alpha1.CredentialReference
 		}
 		defer func() { _ = f.Close() }()
 		st, err := f.Stat()
-		if err != nil || !st.Mode().IsRegular() || st.Size() > MaxBytes {
+		if err != nil || !st.Mode().IsRegular() {
 			return Value{}, ErrUnavailable
+		}
+		if st.Size() > MaxBytes {
+			return Value{}, ErrTooLarge
 		}
 		data, err = io.ReadAll(io.LimitReader(f, MaxBytes+1))
 		if err != nil {
@@ -169,7 +184,10 @@ func (r *Resolver) Resolve(ctx context.Context, ref v1alpha1.CredentialReference
 	if err := ctx.Err(); err != nil {
 		return Value{}, err
 	}
-	if len(data) == 0 || len(data) > MaxBytes || strings.TrimSpace(string(data)) == "" {
+	if len(data) > MaxBytes {
+		return Value{}, ErrTooLarge
+	}
+	if len(data) == 0 || strings.TrimSpace(string(data)) == "" {
 		return Value{}, ErrUnavailable
 	}
 	h := hmac.New(sha256.New, r.key)

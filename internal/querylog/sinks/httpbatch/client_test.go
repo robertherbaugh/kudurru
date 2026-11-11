@@ -401,6 +401,9 @@ func TestOpenReadsCredentialsAndRefusesUnusableOnes(t *testing.T) {
 	creds := &credentials{values: map[string]string{ //nolint:gosec // G101: made-up credential fixtures
 		"/empty": " \n", "/multiline": "line-one\nline-two", "/spaces": "tok en", "/padding": "=abc", "/token": "abc.DEF-123_~+/==", "/not-pem": "not a certificate",
 	}}
+	// A combined system bundle is larger than any value the node's
+	// resolver returns; the error says so instead of "no PEM certificate".
+	creds.values["/bundle"] = strings.Repeat("-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n", 2000)
 	for name, tc := range map[string]struct {
 		opts httpbatch.Options
 		want string
@@ -413,6 +416,7 @@ func TestOpenReadsCredentialsAndRefusesUnusableOnes(t *testing.T) {
 		"token of padding": {httpbatch.Options{Bearer: file("/padding")}, "the reference does not hold a bearer token"},
 		"missing CA":       {httpbatch.Options{CA: file("/missing")}, "ClickHouse: CA certificates: credential is unavailable"},
 		"CA without PEM":   {httpbatch.Options{CA: file("/not-pem")}, "ClickHouse: CA certificates: the reference holds no PEM certificate"},
+		"CA too large":     {httpbatch.Options{CA: file("/bundle")}, "ClickHouse: CA certificates: the reference holds more than 64 KiB; name a file with only the private CA"},
 	} {
 		tc.opts.Destination, tc.opts.URL, tc.opts.Resolve, tc.opts.Logger = "ClickHouse", target, creds.resolve, slog.New(slog.DiscardHandler)
 		client, err := httpbatch.New(tc.opts)

@@ -79,8 +79,23 @@ func TestBoundedSecretsAndErrorRedaction(t *testing.T) {
 			t.Fatal("invalid credential accepted")
 		}
 	}
+	// Too large: also unavailable, and the message says why, for every
+	// source (a file is refused by its size before it is read).
+	big := bytes.Repeat([]byte{'x'}, MaxBytes+1)
+	path := filepath.Join(t.TempDir(), "bundle.pem")
+	if err := os.WriteFile(path, big, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := New(Options{Files: []string{path}, Environment: []string{"TOKEN"}, Namespace: "resolver", Getenv: func(string) (string, bool) { return string(big), true },
+		Secret: func(context.Context, string, string, string) ([]byte, error) { return big, nil }, FingerprintKey: bytes.Repeat([]byte{42}, 32)})
+	for _, ref := range []v1alpha1.CredentialReference{{File: path}, {Env: "TOKEN"}, {SecretRef: &v1alpha1.CredentialSecretRef{Name: "provider", Key: "token"}}} {
+		_, err := r.Resolve(t.Context(), ref)
+		if !errors.Is(err, ErrUnavailable) || !errors.Is(err, ErrTooLarge) || err.Error() != "credential is unavailable: it holds more than 64 KiB" {
+			t.Fatalf("too large %+v: %v", ref, err)
+		}
+	}
 	cause := errors.New("upstream response contains private-test-value")
-	r, _ := New(Options{Namespace: "resolver", Secret: func(context.Context, string, string, string) ([]byte, error) {
+	r, _ = New(Options{Namespace: "resolver", Secret: func(context.Context, string, string, string) ([]byte, error) {
 		return nil, cause
 	}, FingerprintKey: bytes.Repeat([]byte{42}, 32)})
 	_, err := r.Resolve(t.Context(), v1alpha1.CredentialReference{SecretRef: &v1alpha1.CredentialSecretRef{Name: "provider", Key: "token"}})
