@@ -51,24 +51,7 @@ func enrolledForwardedSignOut(t *testing.T, follower *staticProcessClient, jar *
 	if len(saved) == 0 {
 		t.Fatal("the signed-in client holds no session cookie")
 	}
-	me := func(base string) int {
-		t.Helper()
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-		defer cancel()
-		r, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/auth/me", nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, cookie := range saved {
-			r.AddCookie(cookie)
-		}
-		response, err := (&http.Client{Timeout: 5 * time.Second}).Do(r)
-		if err != nil {
-			return 0
-		}
-		_ = response.Body.Close()
-		return response.StatusCode
-	}
+	me := func(base string) int { return enrolledCookieStatus(t, base, saved) }
 	for _, base := range bases {
 		if status := me(base); status != http.StatusOK {
 			t.Fatal("the session is not valid before sign-out", base, status)
@@ -99,4 +82,56 @@ func enrolledUnreachedSettings(t *testing.T, follower *staticProcessClient, ttl 
 	if answer.status != http.StatusServiceUnavailable || answer.Error.Key != api.KeyUnavailable && answer.Error.Key != "completion_unknown" {
 		t.Fatalf("settings patch through a partitioned follower: status=%d key=%q message=%q", answer.status, answer.Error.Key, answer.Error.Message)
 	}
+}
+
+// enrolledCookieStatus presents saved session cookies to GET /auth/me without
+// a jar, as a stolen copy would, and returns the status (0 when the node does
+// not answer).
+func enrolledCookieStatus(t *testing.T, base string, saved []*http.Cookie) int {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	r, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/auth/me", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, cookie := range saved {
+		r.AddCookie(cookie)
+	}
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Do(r)
+	if err != nil {
+		return 0
+	}
+	_ = response.Body.Close()
+	return response.StatusCode
+}
+
+// enrolledUnreachedSignOut signs a session out through a follower that cannot
+// reach its primary (D368): the answer is an explicit 503 that says either
+// that nothing was sent or that the outcome is unknown, the browser's cookies
+// are cleared anyway, and the session itself stays valid. It returns the
+// saved cookies so that the caller can prove after reconnection that the
+// sign-out was never replayed.
+func enrolledUnreachedSignOut(t *testing.T, follower *staticProcessClient, jar *cookiejar.Jar) []*http.Cookie {
+	t.Helper()
+	target, err := url.Parse(follower.base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := jar.Cookies(target)
+	if len(saved) == 0 {
+		t.Fatal("the signed-in client holds no session cookie")
+	}
+	answer := enrolledSend(t, follower, http.MethodPost, "/auth/logout", nil)
+	if answer.status != http.StatusServiceUnavailable || answer.Error.Key != api.KeyUnavailable && answer.Error.Key != "completion_unknown" ||
+		!strings.Contains(answer.Error.Message, "cookie was cleared") {
+		t.Fatalf("sign-out through a partitioned follower: status=%d key=%q message=%q", answer.status, answer.Error.Key, answer.Error.Message)
+	}
+	if len(jar.Cookies(target)) != 0 {
+		t.Fatal("a sign-out that did not reach the primary kept the browser's cookies")
+	}
+	if status := enrolledCookieStatus(t, follower.base, saved); status != http.StatusOK {
+		t.Fatal("the session of a sign-out that did not reach the primary is not valid on the follower", status)
+	}
+	return saved
 }

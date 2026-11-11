@@ -517,6 +517,16 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		awaitDNS(primary, name, "", dns.RcodeNameError)
 		awaitDNS(follower, name, "", dns.RcodeNameError)
 	}
+	// A second session through the follower, signed out while partitioned.
+	partitionedJar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	partitioned := &staticProcessClient{client: &http.Client{Jar: partitionedJar, Transport: freshTransport, Timeout: 35 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, base: apiB.base}
+	var partitionedLogin api.SessionInfo
+	partitioned.request(t, http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "audit-e2e-password-1"}, http.StatusOK, &partitionedLogin) // #nosec G101 -- disposable loopback fixture credential
+	partitioned.csrf = partitionedLogin.CSRF
 	relay.partition(true)
 	if !checkDNS(follower, "seed", "192.0.2.42", dns.RcodeSuccess) {
 		t.Fatal("partition interrupted valid local DNS")
@@ -528,6 +538,10 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	// A forwarded settings patch that cannot reach the primary is an explicit
 	// 503 and is never applied or replayed after reconnection.
 	enrolledUnreachedSettings(t, apiB, "35s")
+	// A sign-out that cannot reach the primary clears the browser's cookies
+	// and answers 503; the session stays valid and is never revoked by a
+	// replay after reconnection.
+	unrevoked := enrolledUnreachedSignOut(t, partitioned, partitionedJar)
 	// A forwarded object write that cannot reach the primary is refused and
 	// is never applied or replayed after reconnection.
 	refused := map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSRecordSet",
@@ -578,6 +592,11 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	}
 	enrolledProcessRead(t, apiA, "/blocklists", hasList("partitioned-list", false))
 	enrolledProcessRead(t, apiB, "/blocklists", hasList("partitioned-list", false))
+	for _, base := range []string{apiA.base, apiB.base} {
+		if status := enrolledCookieStatus(t, base, unrevoked); status != http.StatusOK {
+			t.Fatal("a sign-out that did not reach the primary was applied or replayed after reconnection", base, status)
+		}
+	}
 	for _, node := range []*staticProcessClient{apiA, apiB} {
 		enrolledProcessRead(t, node, "/settings", func(raw []byte) bool {
 			return strings.Contains(string(raw), `"34s"`) && !strings.Contains(string(raw), `"35s"`)
