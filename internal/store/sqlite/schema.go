@@ -169,8 +169,10 @@ func migrateAdmitted(ctx context.Context, db *sql.DB, steps []migration, target 
 		return fmt.Errorf("store/sqlite: no migration reaches schema %d (stopped at %d)", target, current)
 	}
 	if target >= zoneNameIndexSchema {
-		if _, err := tx.ExecContext(ctx, sqlZoneNameIndex); err != nil {
-			return fmt.Errorf("store/sqlite: index zone names: %w", err)
+		for _, index := range []string{sqlZoneNameIndex, sqlLifecycleApexIndex} {
+			if _, err := tx.ExecContext(ctx, index); err != nil {
+				return fmt.Errorf("store/sqlite: index zone names: %w", err)
+			}
 		}
 	}
 	defaults := map[string]string{

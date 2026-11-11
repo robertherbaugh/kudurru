@@ -62,8 +62,9 @@ func BuildNonprimary(config *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet, no
 
 // ServingErrors reports why a complete serving image cannot carry dz, as
 // field errors of the object: a zone type no release serves, a zone name
-// that is not an absolute DNS name, or a policy (query, transfer or notify)
-// that does not compile. It is empty exactly when the image accepts the
+// that is not an absolute DNS name, a policy (query, transfer or notify)
+// that does not compile, or an update mode of a primary zone that the
+// primary runtime does not compile (only deny and allow). It is empty exactly when the image accepts the
 // configuration: the name rule of its decoder, then its model builders,
 // BuildCommittedUnavailable for a primary zone and BuildNonprimary for the
 // others.
@@ -101,6 +102,9 @@ func ServingErrors(dz *v1alpha1.DNSZone) field.ErrorList {
 		errs = appendNew(errs, own.Zone)
 		errs = appendNew(errs, own.Policy)
 	}
+	if dz.Spec.Type == v1alpha1.ZoneTypePrimary {
+		errs = append(errs, updateModeErrors(dz)...)
+	}
 	if len(errs) > 0 {
 		return errs
 	}
@@ -116,6 +120,21 @@ func ServingErrors(dz *v1alpha1.DNSZone) field.ErrorList {
 		return field.ErrorList{field.Invalid(spec, dz.Spec.Type, err.Error())}
 	}
 	return nil
+}
+
+// servedUpdateModes are the spec.policy.update values the primary runtime
+// compiles. The schema admits every access mode for the field, as it did in
+// 0.1.0, where updates were a placeholder; the committed policy of a primary
+// zone with any other mode cannot be compiled, so the zone would never be
+// committed or served (D373).
+var servedUpdateModes = []v1alpha1.AccessMode{v1alpha1.AccessDeny, v1alpha1.AccessAllow}
+
+func updateModeErrors(dz *v1alpha1.DNSZone) field.ErrorList {
+	mode := dz.Spec.Policy.Update
+	if mode == "" || mode == v1alpha1.AccessDeny || mode == v1alpha1.AccessAllow {
+		return nil
+	}
+	return field.ErrorList{field.NotSupported(field.NewPath("spec", "policy", "update"), mode, servedUpdateModes)}
 }
 
 // appendNew appends the errors of more that errs does not hold yet.

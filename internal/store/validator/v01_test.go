@@ -12,6 +12,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	zonemodel "github.com/robertherbaugh/kudurru/internal/zone"
 )
 
 // v01Dir holds the CRDs and samples of the 0.1.0 release, verbatim
@@ -165,6 +166,23 @@ func TestV01ObjectsThisReleaseRefuses(t *testing.T) {
 			}
 		})
 	}
+	// The update mode of a primary zone was a placeholder in 0.1.0 and its
+	// schema took every access mode, as this one does. The schema does not
+	// refuse it; the serving check of the SQLite driver does (only deny and
+	// allow compile), so an upgrade names the zone and stops.
+	t.Run("primary zone with an update mode that does not compile", func(t *testing.T) {
+		obj := zone(func(z *v1alpha1.DNSZone) {
+			z.Spec.Type, z.Spec.Nameservers = v1alpha1.ZoneTypePrimary, []string{"ns1.legacy.example."}
+			z.Spec.Policy.Update = v1alpha1.AccessUseNetworkACL
+		})
+		if err := old.Validate(t.Context(), obj, nil); err != nil {
+			t.Fatalf("0.1.0 did not accept this object: %v", err)
+		}
+		errs := zonemodel.ServingErrors(obj.(*v1alpha1.DNSZone))
+		if len(errs) != 1 || errs[0].Field != "spec.policy.update" {
+			t.Fatalf("ServingErrors = %v, want a refusal of spec.policy.update", errs)
+		}
+	})
 	// The types 0.1.0 reserved are valid again with their configuration: a
 	// secondary or stub zone that 0.1.0 stored complete becomes a served
 	// zone of this release.

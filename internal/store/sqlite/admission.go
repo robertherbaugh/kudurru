@@ -23,10 +23,14 @@ import (
 // This driver publishes one complete serving image or nothing: a stored
 // object that the image cannot carry stops DNS, readiness and the whole API,
 // and the API is then not there to correct the object. The store therefore
-// never holds such an object (D373):
+// refuses the DNSZones it knows the image cannot carry (D373); the image
+// builders themselves leave out what one record set or block list source
+// cannot contribute instead of failing:
 //
 //   - a write of a DNSZone is refused when the image could not build the
-//     zone (zone.ServingErrors) or another DNSZone already has its zone name;
+//     zone (zone.ServingErrors), when another DNSZone already has its zone
+//     name, or when the kept lifecycle of another, deleted DNSZone still
+//     holds the name;
 //   - a schema upgrade is refused, with the database unchanged, when an
 //     object written by the earlier release is not valid in this one
 //     (admitUpgrade).
@@ -46,6 +50,19 @@ const sqlZoneWithApex = `SELECT name FROM objects WHERE kind = 'DNSZone' AND low
 // or later, in the transaction of the open.
 const sqlZoneNameIndex = `CREATE INDEX IF NOT EXISTS objects_zone_name ON objects(lower(json_extract(data, '$.spec.zoneName'))) WHERE kind = 'DNSZone'`
 
+// sqlLifecycleWithApex finds the ZoneLifecycle of another DNSZone object for
+// a zone name. The primary runtime keeps the lifecycle of a deleted zone (as
+// Retired) and the complete serving image refuses two lifecycles for one
+// apex, so a zone created for that name under another object name would stop
+// the whole node. The apex is written canonical (lower case, trailing dot);
+// lower() keeps the lookup exact for any spelling and matches
+// sqlLifecycleApexIndex.
+const sqlLifecycleWithApex = `SELECT json_extract(data, '$.spec.zone.objectName') FROM objects WHERE kind = 'ZoneLifecycle' AND lower(json_extract(data, '$.spec.zone.apex')) = ? AND json_extract(data, '$.spec.zone.objectName') <> ? LIMIT 1`
+
+// sqlLifecycleApexIndex keeps sqlLifecycleWithApex an index lookup, for the
+// reasons and with the upkeep of sqlZoneNameIndex.
+const sqlLifecycleApexIndex = `CREATE INDEX IF NOT EXISTS objects_lifecycle_apex ON objects(lower(json_extract(data, '$.spec.zone.apex'))) WHERE kind = 'ZoneLifecycle'`
+
 // zoneNameIndexSchema is the first schema migrate keeps sqlZoneNameIndex on.
 const zoneNameIndexSchema = 9
 
@@ -59,24 +76,36 @@ func (s *Store) admitZone(ki *kindInfo, key store.Key, dz *v1alpha1.DNSZone) (st
 	return dynamicupdate.CanonicalName(dz.Spec.ZoneName)
 }
 
-// admitZoneName refuses a new DNSZone whose zone name another DNSZone has.
-// It runs in the write transaction, under the write lock, so two concurrent
-// creations cannot both pass.
+// admitZoneName refuses a new DNSZone whose zone name another DNSZone has,
+// or whose zone name the kept lifecycle of another, deleted DNSZone still
+// holds. It runs in the write transaction, under the write lock, so two
+// concurrent creations cannot both pass.
 func (s *Store) admitZoneName(ctx context.Context, q txQueryer, m *mutation) error {
-	var other string
-	switch err := q.QueryRowContext(ctx, sqlZoneWithApex, m.apex, m.key.Name).Scan(&other); {
-	case errors.Is(err, sql.ErrNoRows):
-		return nil
-	case err != nil:
-		return fmt.Errorf("store/sqlite: check the zone name of %s: %w", m.key, err)
-	}
 	dz, _ := m.obj.(*v1alpha1.DNSZone)
 	name := m.apex
 	if dz != nil {
 		name = dz.Spec.ZoneName
 	}
-	return validator.NewInvalid(schema.GroupKind{Group: m.ki.gvk.Group, Kind: m.ki.gvk.Kind}, m.key.Namespace, m.key.Name,
-		field.ErrorList{duplicateZoneName(name, other)})
+	refuse := func(e *field.Error) error {
+		return validator.NewInvalid(schema.GroupKind{Group: m.ki.gvk.Group, Kind: m.ki.gvk.Kind}, m.key.Namespace, m.key.Name, field.ErrorList{e})
+	}
+	var other string
+	switch err := q.QueryRowContext(ctx, sqlZoneWithApex, m.apex, m.key.Name).Scan(&other); {
+	case errors.Is(err, sql.ErrNoRows):
+	case err != nil:
+		return fmt.Errorf("store/sqlite: check the zone name of %s: %w", m.key, err)
+	default:
+		return refuse(duplicateZoneName(name, other))
+	}
+	var owner sql.NullString
+	switch err := q.QueryRowContext(ctx, sqlLifecycleWithApex, m.apex, m.key.Name).Scan(&owner); {
+	case errors.Is(err, sql.ErrNoRows):
+		return nil
+	case err != nil:
+		return fmt.Errorf("store/sqlite: check the zone lifecycles of %s: %w", m.key, err)
+	}
+	return refuse(&field.Error{Type: field.ErrorTypeDuplicate, Field: "spec.zoneName", BadValue: name,
+		Detail: fmt.Sprintf("the zone was configured by DNSZone %q, and this node keeps its lifecycle; create the zone under the name %q", owner.String, owner.String)})
 }
 
 func duplicateZoneName(zoneName string, others ...string) *field.Error {

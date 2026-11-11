@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	zonekinds "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
 )
@@ -128,7 +129,9 @@ func TestApplyRefusesZonesTheImageCannotCarry(t *testing.T) {
 			t.Fatalf("the refused transaction stored its first zone: %v", err)
 		}
 	})
-	t.Run("the name is free again after the zone is deleted", func(t *testing.T) {
+	t.Run("the name is free again after a zone without a lifecycle is deleted", func(t *testing.T) {
+		// No primary runtime ran here, so the deleted zone left no
+		// ZoneLifecycle behind (the next subtest has one).
 		mustApply(t, s, zone("temp", "temp.example."), store.ManagerAPI)
 		if _, err := s.Apply(ctx, zone("temp-next", "temp.example."), store.ApplyOptions{Manager: store.ManagerAPI}); err == nil {
 			t.Fatal("two zones for temp.example.")
@@ -137,6 +140,31 @@ func TestApplyRefusesZonesTheImageCannotCarry(t *testing.T) {
 			t.Fatal(err)
 		}
 		mustApply(t, s, zone("temp-next", "temp.example."), store.ManagerAPI)
+	})
+	t.Run("the kept lifecycle of a deleted zone holds its name", func(t *testing.T) {
+		// The primary runtime keeps the lifecycle of a deleted zone as
+		// Retired, and the serving image refuses a second lifecycle for the
+		// apex: a zone for the name under another object name would stop
+		// the node. The same object name continues the lifecycle.
+		// The production scheme has the zone runtime kinds.
+		s := openTemp(t, zoneStateOptions)
+		gone := mustApply(t, s, zone("gone", "gone.example."), store.ManagerAPI).(*v1alpha1.DNSZone)
+		mustApply(t, s, retiredLifecycle(t, s, gone), store.ManagerSystem)
+		if err := s.Delete(ctx, store.KeyOf(gone), store.DeleteOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		for _, zoneName := range []string{"gone.example.", "GONE.example."} {
+			_, err := s.Apply(ctx, zone("gone-next", zoneName), store.ApplyOptions{Manager: store.ManagerAPI})
+			if msg := refusedField(t, err, "spec.zoneName"); !strings.Contains(msg, `DNSZone "gone"`) {
+				t.Fatalf("the refusal does not name the zone that keeps the name: %s", msg)
+			}
+		}
+		err := s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *CommandTx) error {
+			_, err := tx.Apply(ctx, zone("gone-next", "gone.example."), store.ApplyOptions{Manager: store.ManagerAPI})
+			return err
+		})
+		refusedField(t, err, "spec.zoneName")
+		mustApply(t, s, zone("gone", "gone.example."), store.ManagerAPI)
 	})
 	t.Run("concurrent creations of one zone name", func(t *testing.T) {
 		const writers = 8
@@ -215,6 +243,14 @@ func TestZoneNameCheckUsesItsIndex(t *testing.T) {
 	if got := plan(s); !strings.Contains(got, "objects_zone_name") {
 		t.Fatalf("the zone-name check does not use its index:\n%s", got)
 	}
+	lifecycles := func(s *Store) string {
+		t.Helper()
+		query := strings.Replace(strings.Replace(sqlLifecycleWithApex, "?", "'home.example.'", 1), "?", "'home'", 1)
+		return strings.Join(rowsOf(t, s.w, "EXPLAIN QUERY PLAN "+query), "\n")
+	}
+	if got := lifecycles(s); !strings.Contains(got, "objects_lifecycle_apex") {
+		t.Fatalf("the lifecycle check does not use its index:\n%s", got)
+	}
 	mustApply(t, s, zone("home", "home.example."), store.ManagerAPI)
 	// A database of this schema from before the index gets it at the next
 	// open, and the check works either way.
@@ -230,6 +266,9 @@ func TestZoneNameCheckUsesItsIndex(t *testing.T) {
 	again := openAt(t, path)
 	if got := plan(again); !strings.Contains(got, "objects_zone_name") {
 		t.Fatalf("the index was not restored by the open:\n%s", got)
+	}
+	if got := lifecycles(again); !strings.Contains(got, "objects_lifecycle_apex") {
+		t.Fatalf("the lifecycle index is missing after the open:\n%s", got)
 	}
 	if _, err := again.Apply(context.Background(), zone("home-again", "HOME.example."), store.ApplyOptions{Manager: store.ManagerAPI}); err == nil {
 		t.Fatal("two zones for one name")
@@ -259,6 +298,9 @@ func legacyUpgradeDB(t *testing.T) (*sql.DB, string, []string) {
 	}}
 	badACL := typed("acl", "acl.example.", v1alpha1.ZoneTypeForward)
 	badACL.Spec.Policy.QueryAccess, badACL.Spec.Policy.QueryACL = v1alpha1.AccessUseNetworkACL, []string{"not-a-network"}
+	// spec.policy.update was a placeholder in 0.1.0 with every access mode.
+	updateACL := zone("update-acl", "update-acl.example.")
+	updateACL.Spec.Policy.Update = v1alpha1.AccessUseNetworkACL
 	for i, obj := range []store.Object{
 		zone("home", "home.example."),
 		clientGroup("default", "lan"),
@@ -270,12 +312,13 @@ func legacyUpgradeDB(t *testing.T) (*sql.DB, string, []string) {
 		typed("catalog", "catalog.example.", v1alpha1.ZoneTypeCatalog),
 		zone("home-again", "HOME.example."),
 		badACL,
+		updateACL,
 		policy,
 	} {
 		insertLegacyCredential(t, db, stamp(obj), i+1)
 	}
 	refused := []string{"DNSZone/acl", "DNSZone/catalog", "DNSZone/external", "DNSZone/home", "DNSZone/home-again", "DNSZone/secondary",
-		"DNSZone/secondary-empty", "DNSZone/stub", "Policy/default/default"}
+		"DNSZone/secondary-empty", "DNSZone/stub", "DNSZone/update-acl", "Policy/default/default"}
 	return db, path, refused
 }
 
@@ -357,6 +400,7 @@ func TestUpgradeLegacyPlaceholderObjectsAreRefused(t *testing.T) {
 		"DNSZone/home":            `spec.zoneName: Duplicate value: "home.example.": the zone is also configured by DNSZone "home-again"`,
 		"DNSZone/home-again":      `spec.zoneName: Duplicate value: "HOME.example.": the zone is also configured by DNSZone "home"`,
 		"DNSZone/acl":             `spec.policy.queryACL[0]: Invalid value: "not-a-network"`,
+		"DNSZone/update-acl":      `spec.policy.update: Unsupported value: "useNetworkACL": supported values: "deny", "allow"`,
 		"Policy/default/default":  "spec.rewrites[0]: Invalid value: provide either a CNAME or targets, not both",
 	} {
 		if !strings.Contains(reasons[key], want) {
@@ -365,7 +409,7 @@ func TestUpgradeLegacyPlaceholderObjectsAreRefused(t *testing.T) {
 	}
 	msg := err.Error()
 	for _, want := range []string{
-		fmt.Sprintf("state.db (schema 1) cannot be upgraded to schema %d: 9 stored objects are not valid in this release:", store.SchemaVersion),
+		fmt.Sprintf("state.db (schema 1) cannot be upgraded to schema %d: 10 stored objects are not valid in this release:", store.SchemaVersion),
 		"\n  DNSZone stub: spec: Invalid value: stub zones require nameserver configuration",
 		"\n  Policy default/default: spec.rewrites[0]:",
 		"\nstate.db was not changed",
@@ -404,6 +448,7 @@ func TestUpgradeLegacyPlaceholderObjectsAreRefused(t *testing.T) {
 		`DELETE FROM objects WHERE kind = 'DNSZone' AND name IN ('secondary', 'secondary-empty', 'stub', 'external', 'catalog', 'home-again')`,
 		`UPDATE objects SET data = json_remove(data, '$.spec.policy.queryACL', '$.spec.policy.queryAccess') WHERE kind = 'DNSZone' AND name = 'acl'`,
 		`UPDATE objects SET data = json_remove(data, '$.spec.rewrites') WHERE kind = 'Policy'`,
+		`UPDATE objects SET data = json_set(data, '$.spec.policy.update', 'deny') WHERE kind = 'DNSZone' AND name = 'update-acl'`,
 	} {
 		if _, err := raw.Exec(stmt); err != nil {
 			t.Fatal(err)
@@ -467,4 +512,22 @@ func TestUpgradeAdmissionOnlyJudgesAnUpgrade(t *testing.T) {
 	if err := again.Delete(context.Background(), store.Key{Kind: "DNSZone", Name: "home"}, store.DeleteOptions{}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// retiredLifecycle is the ZoneLifecycle the primary runtime keeps for dz
+// after its removal.
+func retiredLifecycle(t *testing.T, s *Store, dz *v1alpha1.DNSZone) *zonekinds.ZoneLifecycle {
+	t.Helper()
+	cluster := s.clusterID
+	id := zonekinds.ZoneID{ClusterID: cluster, ObjectName: dz.Name, UID: string(dz.UID), Apex: dz.Spec.ZoneName}
+	l := &zonekinds.ZoneLifecycle{
+		TypeMeta:   metav1.TypeMeta{APIVersion: v1alpha1.GroupVersion.String(), Kind: zonekinds.KindZoneLifecycle},
+		ObjectMeta: metav1.ObjectMeta{Name: zonekinds.LifecycleName(cluster, dz.Name)},
+		Spec: zonekinds.ZoneLifecycleSpec{FormatVersion: zonekinds.FormatVersion, Zone: id, Type: dz.Spec.Type, Incarnation: 1, Sequence: 6, Phase: zonekinds.PhaseRetired,
+			Source: zonekinds.LifecycleSource{UID: string(dz.UID), ResourceVersion: dz.ResourceVersion, IntentDigest: zonekinds.Digest([]byte("intent")), Removed: true}},
+	}
+	if err := l.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	return l
 }
