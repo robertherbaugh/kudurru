@@ -276,3 +276,23 @@ func TestBuildKeepsOneDNAMEAcrossSetIdentifiers(t *testing.T) {
 		t.Fatal("the committed primary refuses what the builder kept:", err)
 	}
 }
+
+// TestBuildKeepsOneCNAMEWithItsOwnTTL: of two CNAME targets for one name
+// through set identifiers, the kept target is served with its own TTL, not
+// the lower TTL of the dropped one. 0.1.0 served the lower TTL in this
+// case, so such a zone gets a new serial on its first commit after the
+// upgrade (D373).
+func TestBuildKeepsOneCNAMEWithItsOwnTTL(t *testing.T) {
+	first := withSetID(ep("x.example.org", "CNAME", "a.example.net"), "a")
+	first.RecordTTL = 600
+	second := withSetID(ep("x.example.org", "CNAME", "b.example.net"), "b")
+	second.RecordTTL = 60
+	z, errs := Build(dnsZone("example.org."), []*v1alpha1.DNSRecordSet{recordSet("ns", "rs", first, second)}, BuildOptions{Now: testNow})
+	if got := errs.RecordSets["ns/rs"]; len(got) != 1 || got[0].Field != "spec.endpoints[1].targets" {
+		t.Fatalf("errors %v, want the second endpoint reported", got)
+	}
+	r := z.Lookup("x.example.org.", dns.TypeCNAME)
+	if len(r.Answer) != 1 || r.Answer[0].(*dns.CNAME).Target != "a.example.net." || r.Answer[0].Header().Ttl != 600 {
+		t.Fatalf("CNAME answer %v, want the first target with its own TTL", r.Answer)
+	}
+}
