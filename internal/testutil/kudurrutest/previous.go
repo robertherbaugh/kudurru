@@ -76,10 +76,13 @@ func Previous(t testing.TB) string {
 	return b.bin
 }
 
-// RemovePrevious removes what Previous built.
+// RemovePrevious removes what Previous and PreviousProgram built.
 func RemovePrevious() {
 	if previousBuild.dir != "" {
 		_ = os.RemoveAll(previousBuild.dir)
+	}
+	if previousPrograms.dir != "" {
+		_ = os.RemoveAll(previousPrograms.dir)
 	}
 }
 
@@ -91,9 +94,73 @@ func RemovePrevious() {
 // dir. It is the released source, not the published file: a release binary
 // also embeds the dashboard bundle, which no upgrade test uses.
 func BuildPrevious(dir string) (string, error) {
+	bin := filepath.Join(dir, "kudurru-"+PreviousRelease)
+	return bin, buildPreviousTree(dir, func(ctx context.Context, src, commit string) error {
+		const version = "github.com/robertherbaugh/kudurru/internal/version."
+		return previousGoBuild(ctx, src, "./cmd/kudurru", bin, "-s -w -X "+version+"Version="+PreviousRelease+" -X "+version+"Commit="+commit)
+	})
+}
+
+// previousPrograms are the programs PreviousProgram built, by name.
+var previousPrograms struct {
+	mu   sync.Mutex
+	dir  string
+	bins map[string]string
+}
+
+// PreviousProgram builds source, the text of a Go main package, against the
+// packages of PreviousRelease and returns the program's path: a client of
+// the previous release's own code (its internal listener client, say) for a
+// mixed-version test. The program is built once per name and test binary,
+// from the release tag of this clone (a published binary cannot stand in),
+// and removed by RemovePrevious. Without the tag the test skips, or fails
+// when KUDURRU_REQUIRE_PREVIOUS_RELEASE is set.
+func PreviousProgram(t testing.TB, name, source string) string {
+	t.Helper()
+	p := &previousPrograms
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if bin, ok := p.bins[name]; ok {
+		return bin
+	}
+	if !filepath.IsLocal(name) || strings.ContainsAny(name, `/\`) {
+		t.Fatalf("previous program name %q", name)
+	}
+	if p.dir == "" {
+		dir, err := os.MkdirTemp("", "kudurru-e2e-previous-programs-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		p.dir, p.bins = dir, map[string]string{}
+	}
+	bin := filepath.Join(p.dir, name)
+	err := buildPreviousTree(p.dir, func(ctx context.Context, src, _ string) error {
+		pkg := filepath.Join(src, "cmd", "e2e-previous-"+name)
+		if err := os.MkdirAll(pkg, 0o750); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(pkg, "main.go"), []byte(source), 0o600); err != nil {
+			return err
+		}
+		return previousGoBuild(ctx, src, "./cmd/e2e-previous-"+name, bin, "-s -w")
+	})
+	if errors.Is(err, errNoPreviousTag) {
+		Unavailable(t, EnvRequirePreviousRelease, "%v: run `git fetch origin tag %s`", err, previousTag)
+	}
+	if err != nil {
+		t.Fatalf("previous release program %s: %v", name, err)
+	}
+	p.bins[name] = bin
+	t.Logf("previous release program %s, built from %s", name, previousTag)
+	return bin
+}
+
+// buildPreviousTree unpacks the tree of the release tag below dir, calls
+// build with it and the short commit of the tag, and removes the tree.
+func buildPreviousTree(dir string, build func(ctx context.Context, src, commit string) error) error {
 	root, err := ModuleRoot()
 	if err != nil {
-		return "", err
+		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -101,28 +168,33 @@ func BuildPrevious(dir string) (string, error) {
 	rev.Dir = root
 	out, err := rev.Output()
 	if err != nil {
-		return "", errNoPreviousTag
+		return errNoPreviousTag
 	}
 	commit := strings.TrimSpace(string(out))
 	if len(commit) > 8 {
 		commit = commit[:8]
 	}
-	src := filepath.Join(dir, "src")
+	src, err := os.MkdirTemp(dir, "src-")
+	if err != nil {
+		return err
+	}
 	defer func() { _ = os.RemoveAll(src) }()
 	if err := gitArchive(ctx, root, previousTag, src); err != nil {
-		return "", err
+		return err
 	}
-	bin := filepath.Join(dir, "kudurru-"+PreviousRelease)
-	const version = "github.com/robertherbaugh/kudurru/internal/version."
-	build := exec.CommandContext(ctx, "go", "build", "-trimpath", //nolint:gosec // fixed arguments
-		"-ldflags", "-s -w -X "+version+"Version="+PreviousRelease+" -X "+version+"Commit="+commit, "-o", bin, "./cmd/kudurru")
+	return build(ctx, src, commit)
+}
+
+// previousGoBuild builds pkg of the unpacked release tree src into bin.
+func previousGoBuild(ctx context.Context, src, pkg, bin, ldflags string) error {
+	build := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags", ldflags, "-o", bin, pkg) //nolint:gosec // fixed arguments
 	build.Dir = src
 	// The build of another checkout: none of this module's build settings.
 	build.Env = append(os.Environ(), "CGO_ENABLED=0", "GOFLAGS=", "GOWORK=off")
 	if b, err := build.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("kudurrutest: go build of %s: %w\n%s", previousTag, err, b)
+		return fmt.Errorf("kudurrutest: go build %s of %s: %w\n%s", pkg, previousTag, err, b)
 	}
-	return bin, nil
+	return nil
 }
 
 // checkPrevious refuses a binary that does not report PreviousRelease, so
