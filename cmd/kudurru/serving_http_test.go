@@ -31,7 +31,7 @@ type servingHTTPFixture struct {
 func newServingHTTPFixture(t *testing.T, mustChange bool) *servingHTTPFixture {
 	t.Helper()
 	f := &servingHTTPFixture{servingCommandFixture: newServingCommandFixture(t)}
-	f.s.opts.Now = time.Now
+	f.clock.Set(time.Now)
 	hasher := users.NewHasher(1)
 	hash, err := hasher.Hash(t.Context(), "initial-password")
 	if err != nil {

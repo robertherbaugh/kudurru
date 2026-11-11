@@ -406,6 +406,8 @@ type brandingHTTPFixture struct {
 	final   atomic.Pointer[brandingCommandClock]
 	token   string
 	cache   *branding.PageCache
+	// runtimeClock is behind the runtime's opts.Now (see fixtureClock).
+	runtimeClock *fixtureClock
 }
 
 func (f *brandingHTTPFixture) now() time.Time {
@@ -445,7 +447,8 @@ func newBrandingHTTPFixture(t *testing.T) *brandingHTTPFixture {
 	}
 	f.key = key
 	opts := base.opts
-	opts.Now = f.now
+	f.runtimeClock = newFixtureClock(f.now)
+	opts.Now = f.runtimeClock.Now
 	opts.License, err = license.New(license.Options{Keyring: license.Keyring{"branding": pub}, Now: f.now})
 	if err != nil {
 		t.Fatal(err)

@@ -42,7 +42,7 @@ func TestServingTSIGActualSQLCommitFailureHasNoReceiptOrReplay(t *testing.T) {
 			invocations.Add(1)
 			return command.TSIGKeyCommand(ctx, change)
 		},
-		Authenticate: f.http.Middleware, Authorizer: f.http, Now: f.s.opts.Now, Logger: slog.New(slog.DiscardHandler),
+		Authenticate: f.http.Middleware, Authorizer: f.http, Now: f.currentClock(), Logger: slog.New(slog.DiscardHandler),
 	})
 	if err != nil {
 		t.Fatal("mount actual completion route")

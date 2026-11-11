@@ -96,8 +96,8 @@ func TestServingCacheCommandWaitCancellationAndPostcommitExclusion(t *testing.T)
 	}
 	verifying := make(chan struct{})
 	var once sync.Once
-	clock := f.s.opts.Now
-	f.s.opts.Now = func() time.Time { once.Do(func() { close(verifying) }); return clock() }
+	clock := f.clock.Current()
+	f.clock.Set(func() time.Time { once.Do(func() { close(verifying) }); return clock() })
 	type outcome struct {
 		removed int
 		err     error
@@ -186,12 +186,12 @@ func TestServingCacheCommandRefusesOriginalAuthorityLoss(t *testing.T) {
 			f.http.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 				called, held = true, r.Context()
 				ctx := r.Context()
-				originalClock := f.s.opts.Now
-				defer func() { f.s.opts.Now = originalClock }()
+				originalClock := f.clock.Current()
+				defer func() { f.clock.Set(originalClock) }()
 				switch mode {
 				case "expiry", "expiry-empty", "regression":
 					var calls atomic.Int64
-					f.s.opts.Now = func() time.Time {
+					f.clock.Set(func() time.Time {
 						if calls.Add(1) > 1 {
 							if mode == "regression" {
 								return f.now.Add(-time.Nanosecond)
@@ -199,7 +199,7 @@ func TestServingCacheCommandRefusesOriginalAuthorityLoss(t *testing.T) {
 							return f.expires
 						}
 						return f.now
-					}
+					})
 				case "writer":
 					f.cancel()
 				case "request":

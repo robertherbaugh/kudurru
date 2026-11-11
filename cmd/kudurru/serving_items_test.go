@@ -278,7 +278,7 @@ func TestServingItemsForeignCommandRefusesLaterItems(t *testing.T) {
 // it ended is not applied and says so, instead of blaming the credential.
 func TestServingItemsOriginalLifetimeBoundsEveryItem(t *testing.T) {
 	f := newItemsFixture(t, func(f *servingCommandFixture) *servinghttp.Adapter {
-		adapter, err := servinghttp.New(servinghttp.Options{Publisher: f.s.publisher, Now: f.s.opts.Now, MaxDuration: 3 * time.Second})
+		adapter, err := servinghttp.New(servinghttp.Options{Publisher: f.s.publisher, Now: f.currentClock(), MaxDuration: 3 * time.Second})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -532,7 +532,7 @@ func TestServingItemsLetTheNodePublishBetweenItems(t *testing.T) {
 // whose wait outlives it is not applied and says so.
 func TestServingItemsPaceEndsWithTheRequestLifetime(t *testing.T) {
 	f := newItemsFixture(t, func(f *servingCommandFixture) *servinghttp.Adapter {
-		adapter, err := servinghttp.New(servinghttp.Options{Publisher: f.s.publisher, Now: f.s.opts.Now, MaxDuration: 2 * time.Second})
+		adapter, err := servinghttp.New(servinghttp.Options{Publisher: f.s.publisher, Now: f.currentClock(), MaxDuration: 2 * time.Second})
 		if err != nil {
 			t.Fatal(err)
 		}

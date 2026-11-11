@@ -67,7 +67,7 @@ func TestServingTSIGFinalCommandLifetimeRollback(t *testing.T) {
 				server, err := api.New(api.Options{
 					Store: f.s.opts.Store, Validator: f.s.opts.Validator, Config: f.s.opts.Config,
 					TSIGKeyCommand: command.TSIGKeyCommand, Authenticate: f.http.Middleware,
-					Authorizer: f.http, Now: f.s.opts.Now, Logger: slog.New(slog.DiscardHandler),
+					Authorizer: f.http, Now: f.currentClock(), Logger: slog.New(slog.DiscardHandler),
 				})
 				if err != nil {
 					t.Fatal("mount original final-admission route")

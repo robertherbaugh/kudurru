@@ -372,13 +372,13 @@ func TestServingAdoptionActualHTTPFinalExpiryRollsBackAllZones(t *testing.T) {
 		return func(ctx context.Context) error {
 			attempts.Add(1)
 			var calls atomic.Int32
-			f.s.opts.Now = func() time.Time {
+			f.clock.Set(func() time.Time {
 				if calls.Add(1) <= 3 {
 					return f.now
 				}
 				return f.expires
-			}
-			defer func() { f.s.opts.Now = func() time.Time { return f.now } }()
+			})
+			defer func() { f.clock.Set(func() time.Time { return f.now }) }()
 			return next(ctx)
 		}, nil
 	}
@@ -616,7 +616,7 @@ func TestServingAdoptionActualHTTPFinalOriginalLicenseDeadline(t *testing.T) {
 	for _, rollback := range []bool{false, true} {
 		t.Run(fmt.Sprintf("clock-rollback=%t", rollback), func(t *testing.T) {
 			licensed := newBrandingHTTPFixture(t)
-			f := &servingCommandFixture{s: licensed.s, http: licensed.adapter, token: licensed.token}
+			f := &servingCommandFixture{s: licensed.s, http: licensed.adapter, token: licensed.token, clock: licensed.runtimeClock}
 			adoptionSeed(t, f, "licensed")
 			var calls atomic.Int32
 			command := func(ctx context.Context, p *api.MigrationProgram) (api.MigrationNext, error) {
@@ -625,8 +625,8 @@ func TestServingAdoptionActualHTTPFinalOriginalLicenseDeadline(t *testing.T) {
 					return nil, err
 				}
 				return func(ctx context.Context) error {
-					original := f.s.opts.Now
-					f.s.opts.Now = func() time.Time {
+					original := f.clock.Current()
+					f.clock.Set(func() time.Time {
 						// The program deadline was fixed at admission; first is
 						// the pre-execution deadline, second the writer check,
 						// third the original proof's authentication clock. Move
@@ -639,9 +639,9 @@ func TestServingAdoptionActualHTTPFinalOriginalLicenseDeadline(t *testing.T) {
 							licensed.clock.Store(at.UnixNano())
 						}
 						return licensed.base
-					}
+					})
 					defer func() {
-						f.s.opts.Now = original
+						f.clock.Set(original)
 						licensed.clock.Store(licensed.base.UnixNano())
 					}()
 					return next(ctx)

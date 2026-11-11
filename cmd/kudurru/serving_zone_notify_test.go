@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -199,22 +200,22 @@ func TestServingZoneNotifyDeferredSemanticFinalClocks(t *testing.T) {
 					t.Fatal(err)
 				}
 				f.http.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-					clock := f.s.opts.Now
-					calls := 0
-					f.s.opts.Now = func() time.Time {
-						calls++
-						if calls <= 2 {
+					clock := f.clock.Current()
+					// Atomic: the runtime's goroutines read the same clock.
+					var calls atomic.Int64
+					f.clock.Set(func() time.Time {
+						if calls.Add(1) <= 2 {
 							return f.now
 						}
 						if backwards {
 							return f.now.Add(-time.Second)
 						}
 						return f.expires
-					}
-					defer func() { f.s.opts.Now = clock }()
+					})
+					defer func() { f.clock.Set(clock) }()
 					_, err := f.s.ZoneNotifyCommand(r.Context(), "semantic")
 					notifyAPIStatus(t, err, http.StatusUnauthorized)
-					if calls < 3 {
+					if calls.Load() < 3 {
 						t.Fatal("semantic result skipped final clock")
 					}
 				})).ServeHTTP(httptest.NewRecorder(), f.request())

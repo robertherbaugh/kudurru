@@ -95,7 +95,7 @@ func newBlockingCommandHTTP(t *testing.T, f *servingCommandFixture) func(string,
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, err := api.New(api.Options{Store: f.s.opts.Store, Validator: f.s.opts.Validator, Config: &legacy, Blocking: stage, BlockingCommand: f.s.BlockingCommand, BlockingReads: servingbuild.NewBlockingReads(), Authenticate: f.http.Middleware, Authorizer: f.http, NodeName: "blocking-node", Logger: slog.New(slog.DiscardHandler), Now: f.s.opts.Now})
+	srv, err := api.New(api.Options{Store: f.s.opts.Store, Validator: f.s.opts.Validator, Config: &legacy, Blocking: stage, BlockingCommand: f.s.BlockingCommand, BlockingReads: servingbuild.NewBlockingReads(), Authenticate: f.http.Middleware, Authorizer: f.http, NodeName: "blocking-node", Logger: slog.New(slog.DiscardHandler), Now: f.currentClock()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,9 +233,9 @@ func TestServingBlockingCurrentProofFinalClockAndRollback(t *testing.T) {
 					called = true
 					// The adapter captured its clock at construction. Replacing the command
 					// clock here isolates raw current authentication/operation/final checks.
-					original := f.s.opts.Now
+					original := f.clock.Current()
 					var calls atomic.Int64
-					f.s.opts.Now = func() time.Time {
+					f.clock.Set(func() time.Time {
 						if calls.Add(1) >= 3 {
 							if backwards {
 								return f.now.Add(-time.Nanosecond)
@@ -243,9 +243,9 @@ func TestServingBlockingCurrentProofFinalClockAndRollback(t *testing.T) {
 							return f.expires
 						}
 						return f.now
-					}
+					})
 					_, err := f.s.BlockingCommand(r.Context(), api.BlockingChange{Blocking: !changed})
-					f.s.opts.Now = original
+					f.clock.Set(original)
 					var e *api.Error
 					if !errors.As(err, &e) || e.Status != http.StatusUnauthorized || e.Body.Hint != nil {
 						t.Error("invalid final proof did not roll back", err)
@@ -407,18 +407,18 @@ func TestServingBlockingCommittedPendingReceiptAndSupersession(t *testing.T) {
 	called := false
 	f.http.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		called = true
-		original := f.s.opts.Now
+		original := f.clock.Current()
 		var calls atomic.Int64
-		f.s.opts.Now = func() time.Time {
+		f.clock.Set(func() time.Time {
 			// Authenticate, resolve deadline and finish the detached commit check at
 			// the valid time. Reject only the postcommit publication observation.
 			if calls.Add(1) >= 4 {
 				return f.now.Add(-time.Nanosecond)
 			}
 			return f.now
-		}
+		})
 		_, commandErr = f.s.BlockingCommand(r.Context(), api.BlockingChange{HasTimer: true, TimerSeconds: 30})
-		f.s.opts.Now = original
+		f.clock.Set(original)
 	})).ServeHTTP(httptest.NewRecorder(), f.request())
 	if !called {
 		t.Fatal("HTTP handler unavailable")
@@ -732,7 +732,7 @@ func TestServingBlockingWriterCanceledAfterCommitBeforeObservation(t *testing.T)
 			coordinator, err = providercoordinator.New(providercoordinator.Options{
 				Store: f.s.opts.Store, Publisher: f.s.publisher, Resources: f.s.resources,
 				Schema: servingauth.Schema{Scheme: scheme, Kinds: schema.PrimaryImageOptions(t.Context(), f.s.opts.Store.Info().ClusterID).Validation.Kinds, SchemaVersion: store.SchemaVersion},
-				Host:   f.s.host.Host, HostChanges: f.s.host.Changes, Admit: f.s.host.CheckAdmission, Now: f.s.opts.Now,
+				Host:   f.s.host.Host, HostChanges: f.s.host.Changes, Admit: f.s.host.CheckAdmission, Now: f.currentClock(),
 				PinHost: func(ctx context.Context, fn func() error) error {
 					err := f.s.pinProviderHost(ctx, fn)
 					if err == nil {

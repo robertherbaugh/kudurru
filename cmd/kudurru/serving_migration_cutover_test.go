@@ -54,12 +54,12 @@ func TestServingCutoverLastFinalExpiryPreservesEarlierOutcome(t *testing.T) {
 						adoptionWait(t, f)
 						// Original proof passes preparation/reauthorization,
 						// then expires at the actual final commit check.
-						f.s.opts.Now = func() time.Time {
+						f.clock.Set(func() time.Time {
 							if clockCalls.Add(1) <= 3 {
 								return f.now
 							}
 							return f.expires
-						}
+						})
 					}
 					return next(ctx)
 				}, nil

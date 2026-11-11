@@ -157,12 +157,12 @@ func TestServingZoneCommandFinalExpiryIncludesEmptyAndDryRun(t *testing.T) {
 				awaitServingZoneCommandForward(t, f, z.Name)
 			}
 			var clockCalls atomic.Int32
-			f.s.opts.Now = func() time.Time {
+			f.clock.Set(func() time.Time {
 				if clockCalls.Add(1) == 1 {
 					return f.now
 				}
 				return f.expires
-			}
+			})
 			srv := servingZoneAPI(t, f, nil)
 			before, err := f.s.opts.Store.ReadGeneration(t.Context())
 			if err != nil {

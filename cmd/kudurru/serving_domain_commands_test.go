@@ -22,7 +22,7 @@ func servingDomainAPI(t *testing.T, f *servingCommandFixture, command api.Domain
 	if command == nil {
 		command = f.s.DomainCommand
 	}
-	srv, err := api.New(api.Options{Store: f.s.opts.Store, Validator: f.s.opts.Validator, Config: f.s.opts.Config, ObjectCommand: f.s.ObjectCommand, DomainCommand: command, Now: f.s.opts.Now, Authorizer: f.http, Authenticate: f.http.Middleware})
+	srv, err := api.New(api.Options{Store: f.s.opts.Store, Validator: f.s.opts.Validator, Config: f.s.opts.Config, ObjectCommand: f.s.ObjectCommand, DomainCommand: command, Now: f.currentClock(), Authorizer: f.http, Authenticate: f.http.Middleware})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,12 +87,12 @@ func TestServingDomainCommandFinalExpiryAndWriterIncludesNoop(t *testing.T) {
 			// Keep the editor's creation clock stable; advance only root's
 			// authentication clock between admission and final commit checks.
 			if mode != "writer" {
-				f.s.opts.Now = func() time.Time {
+				f.clock.Set(func() time.Time {
 					if clockCalls.Add(1) == 1 {
 						return f.now
 					}
 					return f.expires
-				}
+				})
 			}
 			before, _ := f.s.opts.Store.ReadGeneration(t.Context())
 			method, path, body := http.MethodPost, "/api/v1/allowlist", any(map[string]any{"values": []string{"ads.example"}})

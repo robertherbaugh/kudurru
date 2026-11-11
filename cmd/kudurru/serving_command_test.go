@@ -29,6 +29,7 @@ type servingCommandFixture struct {
 	now     time.Time
 	expires time.Time
 	offset  atomic.Int64
+	clock   *fixtureClock
 	cancel  context.CancelFunc
 	stop    func()
 }
@@ -39,7 +40,7 @@ func newServingCommandFixture(t *testing.T, beforeStart ...func(*servingRuntime)
 	f.expires = f.now.Add(time.Hour)
 	var id string
 	f.token, id = tokens.Generate()
-	f.s.opts.Now = func() time.Time { return f.now.Add(time.Duration(f.offset.Load())) }
+	f.installClock(func() time.Time { return f.now.Add(time.Duration(f.offset.Load())) })
 	err := f.s.opts.Store.Command(t.Context(), f.s.opts.Store.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
 		// This command fixture has no primary lifecycle work competing with the
 		// object/revision assertions; the real driver/elector still run normally.
@@ -92,14 +93,92 @@ func newServingCommandFixture(t *testing.T, beforeStart ...func(*servingRuntime)
 	}
 	t.Cleanup(f.stop)
 	awaitServingRuntime(t, f.s, func() bool { return f.s.primary.driver.Status().Ready && f.s.publisher.Status().ProtectedReady })
-	f.http, err = servinghttp.New(servinghttp.Options{Publisher: f.s.publisher, Now: f.s.opts.Now})
+	f.http, err = servinghttp.New(servinghttp.Options{Publisher: f.s.publisher, Now: f.currentClock()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return f
 }
 
+// fixtureClock is the clock behind a fixture runtime's opts.Now. The
+// runtime's goroutines (the integration host refresh, the writer, the
+// publisher) read opts.Now while Run is alive, so reassigning the field from a
+// test after the runtime started is a data race. opts.Now is set once, before
+// the runtime starts, to Now, and a test swaps the function behind it with
+// Set. Current returns the function in place, for a component that captures
+// its clock at construction and must not follow a later Set.
+type fixtureClock struct {
+	fn atomic.Pointer[func() time.Time]
+}
+
+func newFixtureClock(fn func() time.Time) *fixtureClock {
+	c := new(fixtureClock)
+	c.fn.Store(&fn)
+	return c
+}
+
+// Now calls the function in place.
+func (c *fixtureClock) Now() time.Time { return (*c.fn.Load())() }
+
+// Current returns the function in place.
+func (c *fixtureClock) Current() func() time.Time { return *c.fn.Load() }
+
+// Set puts fn in place and returns the function it replaced.
+func (c *fixtureClock) Set(fn func() time.Time) func() time.Time { return *c.fn.Swap(&fn) }
+
+// currentClock is the runtime clock in place, for a component that captures
+// its clock at construction: the function behind fixtureClock, or opts.Now
+// itself for a fixture literal around a runtime without one.
+func (f *servingCommandFixture) currentClock() func() time.Time {
+	if f.clock == nil {
+		return f.s.opts.Now
+	}
+	return f.clock.Current()
+}
+
+// installClock sets the runtime's opts.Now, once, before the runtime starts.
+func (f *servingCommandFixture) installClock(fn func() time.Time) {
+	f.clock = newFixtureClock(fn)
+	f.s.opts.Now = f.clock.Now
+}
+
 var commandSettingsWrite = rbac.Attributes{Resource: "settings", Verb: "write", Scope: rbac.Scope{Kind: rbac.ScopeCluster}}
+
+// TestServingCommandFixtureClockSwapWhileRunning swaps the fixture clock while
+// another goroutine reads the runtime's opts.Now, as the integration host's
+// refresh does while Run is alive. Under -race, reassigning opts.Now here
+// instead (what the tests did before fixtureClock) is a data race.
+func TestServingCommandFixtureClockSwapWhileRunning(t *testing.T) {
+	f := newServingCommandFixture(t)
+	later := f.now.Add(time.Minute)
+	stop := make(chan struct{})
+	saw := make(chan struct{})
+	go func() {
+		defer close(saw)
+		for {
+			// Read the field each time, as integrationRuntime.capture does.
+			if f.s.opts.Now().Equal(later) {
+				return
+			}
+			select {
+			case <-stop:
+				return
+			default:
+			}
+		}
+	}()
+	original := f.clock.Set(func() time.Time { return later })
+	select {
+	case <-saw:
+	case <-time.After(10 * time.Second):
+		t.Error("a running reader of opts.Now did not observe the swapped clock")
+	}
+	close(stop)
+	f.clock.Set(original)
+	if !f.s.opts.Now().Equal(f.now) {
+		t.Fatal("restored clock not in place")
+	}
+}
 
 func TestServingCommandFixtureJoinsRootCancellation(t *testing.T) {
 	f := newServingCommandFixture(t)

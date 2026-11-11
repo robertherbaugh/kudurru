@@ -36,7 +36,7 @@ func TestServingHTTPPasswordIntermediateClockRegression(t *testing.T) {
 	regressedAt := original.IssuedAt.Add(-time.Second)
 	recoveredAt := authenticatedAt.Add(time.Nanosecond)
 	var phase atomic.Uint32
-	f.s.opts.Now = func() time.Time {
+	f.clock.Set(func() time.Time {
 		// Isolate this actual password request's clock from background work and
 		// from unrelated preflight reads. Observe the real raw-proof helper,
 		// without relying on how many clocks preparation or admission consults.
@@ -67,7 +67,7 @@ func TestServingHTTPPasswordIntermediateClockRegression(t *testing.T) {
 			return recoveredAt
 		}
 		return authenticatedAt
-	}
+	})
 
 	changed := f.call(t, http.MethodPost, "/auth/password",
 		`{"currentPassword":"initial-password","newPassword":"replacement-password"}`,

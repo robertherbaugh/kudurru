@@ -19,7 +19,7 @@ func TestServingHTTPEnrollmentFinalClockRollback(t *testing.T) {
 			f := newServingHTTPFixture(t, false)
 			now := time.Now().UTC()
 			observed := now
-			f.s.opts.Now = func() time.Time { return now }
+			f.clock.Set(func() time.Time { return now })
 			before, err := f.s.opts.Store.ReadGeneration(t.Context())
 			if err != nil {
 				t.Fatal(err)

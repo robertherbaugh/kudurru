@@ -339,17 +339,17 @@ func TestServingNodeCommandActualRefusesStaleAuthorityAndFinalExpiry(t *testing.
 			n.f.http.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 				called = true
 				ctx := r.Context()
-				originalClock := n.f.s.opts.Now
-				defer func() { n.f.s.opts.Now = originalClock }()
+				originalClock := n.f.clock.Current()
+				defer func() { n.f.clock.Set(originalClock) }()
 				switch mode {
 				case "expired-final", "expired-final-noop":
 					var calls atomic.Int64
-					n.f.s.opts.Now = func() time.Time {
+					n.f.clock.Set(func() time.Time {
 						if calls.Add(1) >= 2 {
 							return n.f.expires
 						}
 						return n.f.now
-					}
+					})
 				case "canceled-writer":
 					n.f.cancel()
 				case "canceled-request":

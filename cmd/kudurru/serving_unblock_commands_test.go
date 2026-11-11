@@ -55,7 +55,7 @@ func servingUnblockSeed(t *testing.T, f *brandingHTTPFixture) *public.UnblockReq
 }
 func servingUnblockHTTP(t *testing.T, f *brandingHTTPFixture, srv *api.Server, action string, body any, want int) {
 	t.Helper()
-	cf := &servingCommandFixture{s: f.s, http: f.adapter, token: f.token}
+	cf := &servingCommandFixture{s: f.s, http: f.adapter, token: f.token, clock: f.runtimeClock}
 	servingZoneReadyRequest(t, cf, srv, http.MethodPost, "/api/v1/unblockrequests/default/"+unblock.Name(nil, "192.0.2.1", "requested.example")+"/"+action, body, want)
 }
 func TestServingUnblockCurrentSQLiteAndDelegatedPermission(t *testing.T) {
@@ -132,7 +132,7 @@ func TestServingUnblockFinalCredentialAndEntitlement(t *testing.T) {
 				f.wait(t)
 			}
 			var calls atomic.Int32
-			f.s.opts.Now = func() time.Time {
+			f.runtimeClock.Set(func() time.Time {
 				var pcs [32]uintptr
 				frames := runtime.CallersFrames(pcs[:runtime.Callers(1, pcs[:])])
 				for {
@@ -155,10 +155,10 @@ func TestServingUnblockFinalCredentialAndEntitlement(t *testing.T) {
 					}
 				}
 				return f.now()
-			}
+			})
 			before, _ := f.s.opts.Store.ReadGeneration(t.Context())
 			srv := servingUnblockAPI(t, f, nil)
-			cf := &servingCommandFixture{s: f.s, http: f.adapter, token: f.token}
+			cf := &servingCommandFixture{s: f.s, http: f.adapter, token: f.token, clock: f.runtimeClock}
 			requestPath := "/api/v1/unblockrequests/default/" + unblock.Name(nil, "192.0.2.1", "requested.example") + "/approve"
 			if mode == "license-removed" {
 				servingZoneReadyRequest(t, cf, srv, http.MethodPost, requestPath, api.UnblockApproval{Duration: "1h"}, http.StatusPaymentRequired)

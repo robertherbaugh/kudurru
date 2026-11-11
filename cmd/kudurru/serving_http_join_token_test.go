@@ -33,7 +33,7 @@ import (
 func newJoinTokenFixture(t *testing.T) *servingHTTPFixture {
 	t.Helper()
 	f := &servingHTTPFixture{servingCommandFixture: newServingCommandFixture(t, func(s *servingRuntime) { enrollServingMemberFixture(t, s) })}
-	f.s.opts.Now = time.Now
+	f.clock.Set(time.Now)
 	var err error
 	f.h, err = newServingHTTP(servingHTTPOptions{Runtime: f.s, Hasher: users.NewHasher(1), Cookie: session.CookieConfig{Secure: session.SecureNever}})
 	if err != nil {

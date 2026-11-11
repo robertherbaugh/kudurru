@@ -46,7 +46,7 @@ func newTSIGCommandFixture(t *testing.T) *tsigCommandFixture {
 	t.Helper()
 	f := &servingCommandFixture{s: newServingRuntimeFixture(t), now: time.Now().UTC().Truncate(time.Second)}
 	f.expires = f.now.Add(time.Hour)
-	f.s.opts.Now = func() time.Time { return f.now.Add(time.Duration(f.offset.Load())) }
+	f.installClock(func() time.Time { return f.now.Add(time.Duration(f.offset.Load())) })
 	var id string
 	f.token, id = tokens.Generate()
 	err := f.s.opts.Store.Command(t.Context(), f.s.opts.Store.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
@@ -101,7 +101,7 @@ func newTSIGCommandFixture(t *testing.T) *tsigCommandFixture {
 	}
 	t.Cleanup(f.stop)
 	awaitServingRuntime(t, f.s, func() bool { return f.s.primary.driver.Status().Ready && f.s.publisher.Status().ProtectedReady })
-	f.http, err = servinghttp.New(servinghttp.Options{Publisher: f.s.publisher, Now: f.s.opts.Now})
+	f.http, err = servinghttp.New(servinghttp.Options{Publisher: f.s.publisher, Now: f.currentClock()})
 	if err != nil {
 		t.Fatal("prepare original protected HTTP adapter")
 	}
@@ -291,7 +291,7 @@ func tsigCommandHTTP(t *testing.T, f *servingCommandFixture, before func(*http.R
 			}
 			next.ServeHTTP(w, r)
 		}))
-	}, Authorizer: f.http, Now: f.s.opts.Now, Logger: slog.New(slog.DiscardHandler)})
+	}, Authorizer: f.http, Now: f.currentClock(), Logger: slog.New(slog.DiscardHandler)})
 	if err != nil {
 		t.Fatal("mount actual TSIG management routes")
 	}
