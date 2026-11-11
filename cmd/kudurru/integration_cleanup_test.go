@@ -902,6 +902,13 @@ func TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers(t
 	integrationRequestDelete(t, s, d)
 	s.integrations.host.Wake()
 	awaitServingRuntime(t, s, func() bool { return integrationStored(t, s, d) == nil })
+	// The object is gone once the finalization commits, which is before the
+	// wrapper above has recorded that call: wait for the record too.
+	awaitServingRuntime(t, s, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(finalizations) > 0 && finalizations[len(finalizations)-1] == nil
+	})
 
 	mu.Lock()
 	defer mu.Unlock()
