@@ -75,6 +75,9 @@ type Double struct {
 type early struct {
 	status int
 	linger time.Duration
+	// afterContinue sends "100 Continue" and waits for the first body
+	// bytes before it answers.
+	afterContinue bool
 }
 
 // New starts a double that answers status ok to every request (200 for
@@ -125,6 +128,22 @@ func (d *Double) AnswerBeforeBody(status int, linger time.Duration) {
 		return
 	}
 	d.early = &early{status: status, linger: linger}
+}
+
+// AnswerAfterContinue makes the double answer every request the way
+// ClickHouse refuses a credential: it sends "100 Continue" when the client
+// asks for it, waits for the first bytes of the body, answers status
+// without reading the rest and closes the connection with a reset. The
+// client is still writing the body when the reset arrives. Status 0
+// restores normal answers.
+func (d *Double) AnswerAfterContinue(status int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if status == 0 {
+		d.early = nil
+		return
+	}
+	d.early = &early{status: status, afterContinue: true}
 }
 
 // Requests returns the requests received so far.
@@ -233,10 +252,22 @@ func (d *Double) serveEarly(w http.ResponseWriter, r *http.Request, e *early) {
 	if tcp, ok := conn.(*net.TCPConn); ok {
 		_ = tcp.SetLinger(0)
 	}
-	// Whatever of the body has already arrived counts as sent after the
-	// answer: a client that waits sends nothing before it.
-	req.SentAfterAnswer = rw.Reader.Buffered()
-	_, _ = rw.Reader.Discard(req.SentAfterAnswer)
+	if e.afterContinue {
+		if strings.EqualFold(r.Header.Get("Expect"), "100-continue") {
+			if _, err := io.WriteString(conn, "HTTP/1.1 100 Continue\r\n\r\n"); err != nil {
+				return
+			}
+		}
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if _, err := rw.Reader.Peek(1); err != nil {
+			return
+		}
+	} else {
+		// Whatever of the body has already arrived counts as sent after
+		// the answer: a client that waits sends nothing before it.
+		req.SentAfterAnswer = rw.Reader.Buffered()
+		_, _ = rw.Reader.Discard(req.SentAfterAnswer)
+	}
 	if _, err := fmt.Fprintf(conn, "HTTP/1.1 %d %s\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", e.status, http.StatusText(e.status)); err != nil {
 		return
 	}

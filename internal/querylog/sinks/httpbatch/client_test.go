@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -355,6 +356,69 @@ func TestPostLargeBatchSeesARefusalAtTheHeaders(t *testing.T) {
 	reqs = double.Requests()
 	if got := reqs[len(reqs)-1].Header.Get("Expect"); got != "" {
 		t.Fatalf("a small batch sent Expect: %q", got)
+	}
+}
+
+// TestPostLargeBatchSeesARefusalAfterContinue: ClickHouse sends "100
+// Continue" before it checks the credential, then answers 403 and resets
+// the connection under the body. The answer is still heard: the reset of
+// the body write is not taken for a lost answer.
+func TestPostLargeBatchSeesARefusalAfterContinue(t *testing.T) {
+	double := sinktest.New(t, http.StatusOK, false)
+	creds := &credentials{values: map[string]string{"/run/secrets/p": "old-password"}}
+	client := open(t, httpbatch.Options{Destination: "ClickHouse", URL: mustURL(t, double.URL), Username: "kudurru", Password: file("/run/secrets/p"), Resolve: creds.resolve})
+	body := largeBatch()
+
+	double.AnswerAfterContinue(http.StatusForbidden)
+	creds.set("/run/secrets/p", "new-password")
+	err := client.Post(t.Context(), body)
+	var refused *httpbatch.StatusError
+	if !errors.As(err, &refused) || refused.Status != http.StatusForbidden || !refused.Reloaded {
+		t.Fatalf("403 after 100 Continue with a rotated password: %v", err)
+	}
+	if _, again := retryable(t, err); !again {
+		t.Fatal("403 after 100 Continue with a rotated password must be retryable")
+	}
+
+	double.AnswerAfterContinue(http.StatusServiceUnavailable)
+	lost := 0
+	for range 50 {
+		err := client.Post(t.Context(), body)
+		if !errors.As(err, &refused) || refused.Status != http.StatusServiceUnavailable {
+			lost++
+			t.Logf("503 after 100 Continue was lost: %v", err)
+		} else if _, again := retryable(t, err); !again {
+			t.Errorf("503 after 100 Continue must be retryable: %v", err)
+		}
+	}
+	if lost > 0 {
+		t.Errorf("the 503 after 100 Continue was lost in %d of 50 attempts", lost)
+	}
+
+	// A success for a body the destination did not take whole is not
+	// believed: the outcome is unknown, and the batch is not sent again.
+	double.AnswerAfterContinue(http.StatusOK)
+	cut := 0
+	for range 5 {
+		err := client.Post(t.Context(), body)
+		if err == nil {
+			// The reset can come after the whole body fit the socket
+			// buffers; then the answer stands.
+			continue
+		}
+		cut++
+		if !strings.Contains(err.Error(), "whether it was stored is unknown") {
+			t.Fatalf("200 to a cut body: %v", err)
+		}
+		if _, again := retryable(t, err); again {
+			t.Fatalf("200 to a cut body was marked retryable: %v", err)
+		}
+	}
+	if cut == 0 {
+		t.Error("no body of 5 was cut")
+	}
+	if strings.Contains(fmt.Sprint(double.Requests()), "new-password") {
+		t.Fatal("a request record repeats the password")
 	}
 }
 

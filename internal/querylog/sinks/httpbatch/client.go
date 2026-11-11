@@ -39,6 +39,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -57,12 +58,10 @@ const (
 	// "100 Continue" before it sends the body, and expectContinueWait how
 	// long it waits for that answer before it sends the body anyway (a
 	// server that ignores the header). A destination that refuses a request
-	// at its headers (a wrong password, 429, 503) and closes the connection
-	// at once would otherwise reset it under a body still being written, and
-	// the client would see the write error instead of the answer: the batch
-	// would be dropped as an unknown outcome, a 401 or 403 would not read the
-	// credential again, and the log would not name the status. Small bodies
-	// fit the socket buffers and are sent without the extra round trip.
+	// at its headers (a wrong password, 429, 503) without "100 Continue"
+	// then never gets a body it would not read; one that sends "100
+	// Continue" first, as ClickHouse does, is handled by answerConn. Small
+	// bodies fit the socket buffers and are sent without the round trip.
 	expectContinueBytes = 64 << 10
 	expectContinueWait  = 2 * time.Second
 )
@@ -189,11 +188,12 @@ func (c *Client) Open(ctx context.Context) error {
 	// means the outcome is unknown. A server closing an idle connection
 	// under a request cannot blur the two. The session cache keeps the TLS
 	// handshakes short.
+	dialer := &answerDialer{dialer: net.Dialer{Timeout: 30 * time.Second}}
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	c.transport = &http.Transport{
 		Proxy:                  http.ProxyFromEnvironment,
-		DialContext:            (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
+		DialContext:            dialer.DialContext,
 		TLSClientConfig:        tlsConfig,
 		TLSHandshakeTimeout:    30 * time.Second,
 		MaxResponseHeaderBytes: 64 << 10,
@@ -290,7 +290,11 @@ func (c *Client) Post(ctx context.Context, body []byte) error {
 		return err
 	}
 	var connected atomic.Bool
-	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{GotConn: func(httptrace.GotConnInfo) { connected.Store(true) }})
+	var conn atomic.Pointer[answerConn]
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) {
+		connected.Store(true)
+		conn.Store(unwrapConn(info.Conn))
+	}})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.opts.URL.String(), bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("%s: %s: invalid request", c.opts.Destination, c.target)
@@ -323,7 +327,12 @@ func (c *Client) Post(ctx context.Context, body []byte) error {
 	// batch, and the connection is not reused.
 	_ = resp.Body.Close()
 	status := resp.StatusCode
+	cut := conn.Load() != nil && conn.Load().cut.Load()
 	if status >= 200 && status < 300 {
+		if cut {
+			// A success for a body the destination did not take whole.
+			return fmt.Errorf("%s: %s answered HTTP %d but closed the connection before it had the whole batch, whether it was stored is unknown", c.opts.Destination, c.target, status)
+		}
 		return nil
 	}
 	refusal := &StatusError{Destination: c.opts.Destination, Status: status}
@@ -344,6 +353,65 @@ func (c *Client) Post(ctx context.Context, body []byte) error {
 		return querylog.RetryableAfter(refusal, retryAfter(resp.Header.Get("Retry-After"), c.opts.Now()))
 	}
 	return refusal
+}
+
+// answerDialer dials connections that keep an answer readable when the
+// destination resets the connection under the request body.
+//
+// A destination may answer a request it refuses at its headers (a wrong
+// password, 429, 503) and close the connection without reading the rest
+// of the body. ClickHouse does so even after it has sent "100 Continue".
+// The kernel then refuses the next write with EPIPE or ECONNRESET, while
+// the answer already sits in the receive buffer; Go's transport returns
+// the write error and never reads it. The batch would be dropped as an
+// unknown outcome, a 401 or 403 would not read the credential again and
+// the log would name the reset instead of the status. answerConn hides
+// such a write error and discards the rest of the body, so the transport
+// goes on to read the answer, or fails to read one: a reset connection
+// without an answer is still an unknown outcome.
+type answerDialer struct{ dialer net.Dialer }
+
+func (d *answerDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	conn, err := d.dialer.DialContext(ctx, network, address)
+	if err != nil {
+		return nil, err
+	}
+	return &answerConn{Conn: conn}, nil
+}
+
+// answerConn is a connection whose writes, after the peer reset it,
+// succeed without sending anything; cut records that it happened.
+type answerConn struct {
+	net.Conn
+	cut atomic.Bool
+}
+
+func (c *answerConn) Write(p []byte) (int, error) {
+	if c.cut.Load() {
+		return len(p), nil
+	}
+	n, err := c.Conn.Write(p)
+	if err != nil && (errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET)) {
+		c.cut.Store(true)
+		return len(p), nil
+	}
+	return n, err
+}
+
+// unwrapConn returns the answerConn under a transport connection, plain or
+// TLS; nil for one this client did not dial (a proxy's is still one).
+func unwrapConn(conn net.Conn) *answerConn {
+	for conn != nil {
+		switch c := conn.(type) {
+		case *answerConn:
+			return c
+		case interface{ NetConn() net.Conn }:
+			conn = c.NetConn()
+		default:
+			return nil
+		}
+	}
+	return nil
 }
 
 // payload returns the request body: a copy of body, or its gzip form. The

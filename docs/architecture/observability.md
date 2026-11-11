@@ -276,7 +276,12 @@ every later error without an answer means the outcome is unknown. Only the
 first is repeated. A body of 64 KiB or more is sent with
 `Expect: 100-continue` (waiting at most 2 s for the interim answer), so a
 destination that refuses a request at its headers and closes the
-connection is heard instead of resetting it under the body. An answer of
+connection is heard instead of resetting it under the body. ClickHouse
+sends "100 Continue" before it checks the password and then resets the
+connection under the body; the client's connections therefore hide the
+write error of a reset, so that the transport reads the answer that
+arrived before it (a 2xx to a body that was cut is an unknown outcome).
+An answer of
 408, 429 or 5xx is repeated within the attempt budget: the destination
 says that it did not store the batch, or (a 5xx from a gateway, a
 ClickHouse insert that failed half way) does not know, and the documented
