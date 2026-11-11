@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/miekg/dns"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -157,12 +158,20 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 			} // valid in root origin, outside this zone
 			failures := parsedSet.Add(source, i)
 			if len(failures) > 0 {
+				// The builder refused this endpoint before it changed
+				// anything (a duplicate, an occluded name, a CNAME next to
+				// other data, an apex CNAME or NS). It is left out and
+				// reported on its record set, as zone.Build does, so one
+				// endpoint never keeps the whole zone from its commit: a
+				// zone without a committed head (the first start after an
+				// upgrade) would otherwise never be served (D373).
 				reason := zone.ErrorReason(failures[0])
-				if reason != public.ReasonDuplicated && reason != public.ReasonOccluded {
-					return nil, failures.ToAggregate()
-				}
 				if projections[source] != "served" {
 					projections[source] = "duplicated"
+					if reason != public.ReasonDuplicated && reason != public.ReasonOccluded {
+						projections[source] = "withheld"
+						reason = withheldReason(reason, failures[0].Error())
+					}
 					reasons[source] = reason
 				}
 				continue
@@ -439,4 +448,21 @@ func BuildCommitted(ctx context.Context, v *zonestate.View) (*zone.Zone, error) 
 		}
 	}
 	return zone.BuildCommittedPrimary(&config, records, v.Head.Spec.Serial, v.Aggregate.Expiry, apexOverride)
+}
+
+// maxWithheldReason is the bound zonestate puts on a source reason.
+const maxWithheldReason = 512
+
+// withheldReason is the reason of an endpoint the builder refused: the
+// reason code and the builder's message, bounded for the source envelope.
+func withheldReason(reason, detail string) string {
+	s := reason + ": " + detail
+	if len(s) <= maxWithheldReason {
+		return s
+	}
+	cut := maxWithheldReason - 3
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "..."
 }

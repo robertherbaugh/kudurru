@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/miekg/dns"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -303,5 +305,61 @@ func TestCompilerPreservesPrimaryWithoutConfiguredNameservers(t *testing.T) {
 	}
 	if _, err := BuildCommitted(t.Context(), v); err == nil {
 		t.Fatal("missing configured NS accepted by materializer")
+	}
+}
+
+// An endpoint the zone builder refuses (a CNAME next to other data, a CNAME
+// or NS at the apex) is left out of the commit and reported on its record
+// set, as zone.Build does. 0.1.0 stored such record sets and served the rest
+// of the zone; the first commit after an upgrade has no committed head to
+// fall back on, so refusing the whole projection would never serve the zone
+// (D373).
+func TestCompilerWithholdsEndpointsTheBuilderRefuses(t *testing.T) {
+	z := desiredZone()
+	ok := desiredSet("ok", endpoint("www", "192.0.2.10"))
+	ok.CreationTimestamp = metav1.NewTime(fixedNow.Add(-time.Hour))
+	cname := desiredSet("cname-and-a", public.Endpoint{DNSName: "www.example.", RecordType: "CNAME", Targets: []string{"other.example."}}, endpoint("kept", "192.0.2.11"))
+	apexCNAME := desiredSet("apex-cname", public.Endpoint{DNSName: "example.", RecordType: "CNAME", Targets: []string{"other.example."}})
+	apexNS := desiredSet("apex-ns", public.Endpoint{DNSName: "example.", RecordType: "NS", Targets: []string{"ns2.example."}})
+	in := &zonestate.DesiredInputs{Zone: z, RecordSets: []*public.DNSRecordSet{ok, cname, apexCNAME, apexNS}, Complete: true}
+	result, err := NewCompiler(CompilerOptions{}).Project(context.Background(), blank(z), in, fixedNow)
+	if err != nil {
+		t.Fatal("a refused endpoint kept the zone from its commit:", err)
+	}
+	outcomes := map[string]zonestate.SourceDiagnostic{}
+	for _, d := range result.Diagnostics {
+		outcomes[d.SourceID] = d
+	}
+	for name, want := range map[string]string{"ok": "served", "cname-and-a": "served", "apex-cname": "withheld", "apex-ns": "withheld"} {
+		d := outcomes[store.KeyOf(desiredSet(name)).String()]
+		if d.Outcome != want {
+			t.Errorf("%s: outcome %q (%q), want %q", name, d.Outcome, d.Reason, want)
+		}
+		if want == "withheld" && (len(d.Reason) == 0 || len(d.Reason) > maxWithheldReason) {
+			t.Errorf("%s: reason %q", name, d.Reason)
+		}
+	}
+	model := built(t, prepareView(t, result.Aggregate, nil))
+	if a := model.Lookup("www.example.", dns.TypeA).Answer; len(a) != 1 || a[0].(*dns.A).A.String() != "192.0.2.10" {
+		t.Fatalf("www.example. A: %v", a)
+	}
+	if a := model.Lookup("kept.example.", dns.TypeA).Answer; len(a) != 1 {
+		t.Fatalf("the accepted endpoint of the record set was not served: %v", a)
+	}
+	if a := model.Lookup("example.", dns.TypeCNAME).Answer; len(a) != 0 {
+		t.Fatalf("an apex CNAME was served: %v", a)
+	}
+	if a := model.Lookup("example.", dns.TypeNS).Answer; len(a) != 1 || a[0].(*dns.NS).Ns != "ns.example." {
+		t.Fatalf("apex NS: %v", a)
+	}
+}
+
+func TestWithheldReasonIsBounded(t *testing.T) {
+	long := withheldReason("Invalid", strings.Repeat("é", 600))
+	if len(long) > maxWithheldReason || !utf8.ValidString(long) || !strings.HasSuffix(long, "...") {
+		t.Fatalf("%d bytes %q", len(long), long)
+	}
+	if got := withheldReason("Invalid", "short"); got != "Invalid: short" {
+		t.Fatal(got)
 	}
 }
