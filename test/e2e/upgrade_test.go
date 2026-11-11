@@ -4,13 +4,17 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -258,6 +262,9 @@ var upgradeQuestions = []upgradeQuestion{
 	{"missing.api.test.", dns.TypeA}, {"www.api.test.", dns.TypeAAAA},
 	{"ads.blocked.test.", dns.TypeA}, {"allowed.blocked.test.", dns.TypeA}, {"denied.upgrade.test.", dns.TypeA},
 	{"forwarded.example.", dns.TypeA},
+	// The record set with the endpoints the zone builder refuses: what
+	// 0.1.0 served of it, and that the refused ones were left out.
+	{"kept.api.test.", dns.TypeA}, {"api.test.", dns.TypeNS}, {"api.test.", dns.TypeCNAME}, {"www.api.test.", dns.TypeCNAME},
 }
 
 // answers asks every upgrade question over UDP and TCP and renders what a
@@ -437,6 +444,41 @@ func writeV01Directory(t *testing.T, name string, legacy bool) (*v01Directory, *
 	record("ns1.api.test", "A", "127.0.0.1")
 	record("www.api.test", "A", "192.0.2.10")
 	record("txt.api.test", "TXT", "written by 0.1.0")
+	// A record set with endpoints the zone builder refuses next to one it
+	// serves: a CNAME and an NS endpoint at the apex and a CNAME next to the
+	// A record of www. 0.1.0 stored it, reported the refused endpoints on
+	// it and served the rest of the zone (D373).
+	api.must(t, http.MethodPost, "/objects/dnsrecordsets", object("DNSRecordSet", "refused-endpoints", "default", map[string]any{
+		"zoneRef": map[string]any{"name": "api-test"}, "endpoints": []any{
+			map[string]any{"dnsName": "api.test", "recordType": "CNAME", "targets": []any{"elsewhere.test."}},
+			map[string]any{"dnsName": "api.test", "recordType": "NS", "targets": []any{"ns2.elsewhere.test."}},
+			map[string]any{"dnsName": "www.api.test", "recordType": "CNAME", "targets": []any{"elsewhere.test."}},
+			map[string]any{"dnsName": "kept.api.test", "recordType": "A", "targets": []any{"192.0.2.77"}},
+		},
+	}), http.StatusCreated)
+	// A block list whose URL never downloaded: 0.1.0 stored it, reported
+	// the failed fetch on it and served it empty.
+	deadList := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(deadList.Close)
+	api.must(t, http.MethodPost, "/objects/blocklists", object("BlockList", "dead-url", "default", map[string]any{
+		"sources": []any{map[string]any{"name": "remote", "format": "domains", "url": deadList.URL + "/never.txt"}},
+	}), http.StatusCreated)
+	if !kudurrutest.Eventually(30*time.Second, 100*time.Millisecond, func() bool {
+		var list struct {
+			Status struct {
+				Sources []struct {
+					Digest string `json:"digest"`
+					Error  string `json:"error"`
+				} `json:"sources"`
+			} `json:"status"`
+		}
+		if err := json.Unmarshal(api.must(t, http.MethodGet, "/objects/blocklists/default/dead-url", nil, http.StatusOK), &list); err != nil {
+			t.Fatal(err)
+		}
+		return len(list.Status.Sources) == 1 && list.Status.Sources[0].Digest == "" && list.Status.Sources[0].Error != ""
+	}) {
+		t.Fatalf("%s did not report the failed fetch of the block list", kudurrutest.PreviousRelease)
+	}
 	// The community license has one policy: the default one gets the list.
 	var policy map[string]any
 	if err := json.Unmarshal(api.must(t, http.MethodGet, "/objects/policies/default/default", nil, http.StatusOK), &policy); err != nil {
@@ -565,6 +607,7 @@ func writeV01Directory(t *testing.T, name string, legacy bool) (*v01Directory, *
 		"ads.blocked.test. A udp":     "NOERROR aa=false [ads.blocked.test.\t0\tIN\tA\t0.0.0.0]",
 		"forwarded.example. A tcp":    "NOERROR aa=false [forwarded.example.\t0\tIN\tA\t198.51.100.20]",
 		"allowed.blocked.test. A udp": "NOERROR aa=false [allowed.blocked.test.\t0\tIN\tA\t198.51.100.30]",
+		"kept.api.test. A udp":        "NOERROR aa=true [kept.api.test.\t0\tIN\tA\t192.0.2.77]",
 	} {
 		if d.answers[q] != want {
 			t.Fatalf("%s answered %s with %q, want %q", kudurrutest.PreviousRelease, q, d.answers[q], want)
@@ -1052,6 +1095,29 @@ func bumpSchema(t *testing.T, path string, delta int) {
 	}
 }
 
+// databaseSums is the SHA-256 of each database file and of its write-ahead
+// log, when there is one, for before and after comparisons of a start that
+// must not write. The shared-memory index is left out: opening a database
+// in WAL mode may create it without changing any data.
+func databaseSums(t *testing.T, paths ...string) map[string]string {
+	t.Helper()
+	sums := map[string]string{}
+	for _, path := range paths {
+		for _, file := range []string{path, path + "-wal"} {
+			b, err := os.ReadFile(file) //nolint:gosec // the test's data directory
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			sum := sha256.Sum256(b)
+			sums[filepath.Base(file)] = hex.EncodeToString(sum[:])
+		}
+	}
+	return sums
+}
+
 // TestBuiltBinaryRefusesNewerDatabases: the binary under test does not open
 // a data directory in which state.db, local.db or querylog.db was written by
 // a newer release. It exits non-zero, names the file, leaves every file as
@@ -1087,6 +1153,11 @@ func TestBuiltBinaryRefusesNewerDatabases(t *testing.T) {
 			if newer[file] == current[file] {
 				t.Fatalf("%s: schema version not raised: %v", file, newer)
 			}
+			var databases []string
+			for _, name := range []string{"state.db", "local.db", "querylog.db"} {
+				databases = append(databases, filepath.Join(spec.DataDir, name))
+			}
+			before := databaseSums(t, databases...)
 			n := kudurrutest.Start(t, kudurruBin, spec, kudurrutest.Options{Env: env})
 			code, err := n.Wait(30 * time.Second)
 			if err != nil {
@@ -1098,6 +1169,9 @@ func TestBuiltBinaryRefusesNewerDatabases(t *testing.T) {
 			}
 			if got := schemaVersions(t, spec.DataDir); !maps.Equal(got, newer) {
 				t.Errorf("the refused start changed the schema versions: %v, were %v", got, newer)
+			}
+			if got := databaseSums(t, databases...); !maps.Equal(got, before) {
+				t.Errorf("the refused start changed the databases: %v, were %v", got, before)
 			}
 			bumpSchema(t, path, -1)
 			serves(t)

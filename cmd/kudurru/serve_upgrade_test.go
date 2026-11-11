@@ -249,9 +249,10 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			return map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSZone", "metadata": map[string]any{"name": name}, "spec": map[string]any{"zoneName": zoneName, "type": typ}}
 		}
 		for name, body := range map[string]map[string]any{
-			"a zone type that is not served":    zone("ext", "ext.test.", "external"),
-			"a second DNSZone for one zone":     zone("again", "API.test.", "primary"),
-			"a zone policy that cannot compile": {"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSZone", "metadata": map[string]any{"name": "acl"}, "spec": map[string]any{"zoneName": "acl.test.", "type": "primary", "policy": map[string]any{"queryAccess": "useNetworkACL", "queryACL": []string{"10.0.0.0/33"}}}},
+			"a zone type that is not served":       zone("ext", "ext.test.", "external"),
+			"a second DNSZone for one zone":        zone("again", "API.test.", "primary"),
+			"an update mode that does not compile": {"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSZone", "metadata": map[string]any{"name": "upd"}, "spec": map[string]any{"zoneName": "upd.test.", "type": "primary", "nameservers": []string{"ns1.upd.test."}, "policy": map[string]any{"update": "useNetworkACL"}}},
+			"a zone policy that cannot compile":    {"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSZone", "metadata": map[string]any{"name": "acl"}, "spec": map[string]any{"zoneName": "acl.test.", "type": "primary", "policy": map[string]any{"queryAccess": "useNetworkACL", "queryACL": []string{"10.0.0.0/33"}}}},
 		} {
 			var problem struct {
 				Error api.ErrorBody `json:"error"`
@@ -269,5 +270,81 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			t.Fatalf("readiness %d after the refused writes", got)
 		}
 		upgradeMountedRequest(t, client, base, http.MethodGet, "/objects/dnszones/api-test", "", nil, http.StatusOK, nil)
+
+		// What 0.1.0 stored and served around is stored again on the
+		// upgraded node, and every later write is still served (D373): a
+		// block list whose URL never downloads is served empty, and the
+		// endpoints the zone builder refuses are left out of their zone.
+		object := func(kind, name, namespace string, spec map[string]any) map[string]any {
+			meta := map[string]any{"name": name}
+			if namespace != "" {
+				meta["namespace"] = namespace
+			}
+			return map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": kind, "metadata": meta, "spec": spec}
+		}
+		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/blocklists", session.CSRF, object("BlockList", "dead-after-upgrade", "default", map[string]any{
+			"sources": []any{map[string]any{"name": "remote", "format": "domains", "url": "http://127.0.0.1:9/never-after.txt"}},
+		}), http.StatusCreated, nil)
+		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/dnsrecordsets", session.CSRF, object("DNSRecordSet", "refused-after-upgrade", "default", map[string]any{
+			"zoneRef": map[string]any{"name": "api-test"}, "endpoints": []any{
+				map[string]any{"dnsName": "api.test", "recordType": "CNAME", "targets": []any{"elsewhere.test."}},
+				map[string]any{"dnsName": "api.test", "recordType": "NS", "targets": []any{"ns2.elsewhere.test."}},
+				map[string]any{"dnsName": "www.api.test", "recordType": "CNAME", "targets": []any{"elsewhere.test."}},
+				map[string]any{"dnsName": "kept-after.api.test", "recordType": "A", "targets": []any{"192.0.2.78"}},
+			},
+		}), http.StatusCreated, nil)
+		if got := answer("kept-after.api.test."); got != "192.0.2.78" {
+			t.Fatalf("kept-after.api.test. = %s", got)
+		}
+		if got := answer("www.api.test."); got != "192.0.2.10" {
+			t.Fatalf("www.api.test. = %s next to a refused CNAME", got)
+		}
+		if got := ready(); got != http.StatusOK {
+			t.Fatalf("readiness %d with a block list that never downloaded", got)
+		}
+
+		// The lifecycle of a deleted zone keeps its name: a zone for it
+		// under another object name is refused, naming the object to use,
+		// and the node keeps serving. The same object name is accepted.
+		soa := func(name string) bool {
+			q := new(dns.Msg)
+			q.SetQuestion(name, dns.TypeSOA)
+			r, _, err := (&dns.Client{Timeout: time.Second}).ExchangeContext(t.Context(), q, cfg.Listeners.DNS[0].Address)
+			return err == nil && r.Rcode == dns.RcodeSuccess && r.Authoritative && len(r.Answer) == 1
+		}
+		temp := object("DNSZone", "temp", "", map[string]any{"zoneName": "temp.test.", "type": "primary", "nameservers": []any{"ns1.temp.test."}})
+		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/dnszones", session.CSRF, temp, http.StatusCreated, nil)
+		served := func(want bool) {
+			t.Helper()
+			deadline := time.Now().Add(30 * time.Second)
+			for soa("temp.test.") != want {
+				if time.Now().After(deadline) {
+					t.Fatalf("temp.test. served = %v after 30s", !want)
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+		served(true)
+		upgradeMountedRequest(t, client, base, http.MethodDelete, "/objects/dnszones/temp", session.CSRF, nil, http.StatusNoContent, nil)
+		served(false)
+		var problem struct {
+			Error api.ErrorBody `json:"error"`
+		}
+		renamed := object("DNSZone", "temp-renamed", "", map[string]any{"zoneName": "temp.test.", "type": "primary", "nameservers": []any{"ns1.temp.test."}})
+		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/dnszones", session.CSRF, renamed, http.StatusBadRequest, &problem)
+		if problem.Error.Key != api.KeyInvalid || !strings.Contains(strings.Join(problem.Error.Fields, " "), "spec.zoneName") || !strings.Contains(problem.Error.Message, `DNSZone "temp"`) {
+			t.Fatalf("a zone under another name for a deleted zone: %q %v %s", problem.Error.Key, problem.Error.Fields, problem.Error.Message)
+		}
+		if got := answer("www.api.test."); got != "192.0.2.10" {
+			t.Fatalf("www.api.test. = %s after the refused zone", got)
+		}
+		if got := ready(); got != http.StatusOK {
+			t.Fatalf("readiness %d after the refused zone", got)
+		}
+		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/dnszones", session.CSRF, temp, http.StatusCreated, nil)
+		served(true)
+		if got := ready(); got != http.StatusOK {
+			t.Fatalf("readiness %d after the zone was created again", got)
+		}
 	})
 }

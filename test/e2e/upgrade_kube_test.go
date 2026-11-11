@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,6 +121,7 @@ func TestBuiltBinaryRefusesNewerAuditSpool(t *testing.T) {
 	if newer != fmt.Sprint(spool.SchemaVersion+1) {
 		t.Fatalf("spool schema not raised: %s", newer)
 	}
+	before := databaseSums(t, path)
 
 	n := kudurrutest.Start(t, kudurruBin, spec, kudurrutest.Options{Env: env})
 	code, err := n.Wait(90 * time.Second)
@@ -131,6 +133,9 @@ func TestBuiltBinaryRefusesNewerAuditSpool(t *testing.T) {
 	}
 	if got := version(); got != newer {
 		t.Errorf("the refused start changed the spool schema: %s, was %s", got, newer)
+	}
+	if got := databaseSums(t, path); !maps.Equal(got, before) {
+		t.Errorf("the refused start changed the spool: %v, was %v", got, before)
 	}
 	bumpSchema(t, path, -1)
 	ready := kudurrutest.StartReady(t, kudurruBin, spec, kudurrutest.Options{Env: env})
