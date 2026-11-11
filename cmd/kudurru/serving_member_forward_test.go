@@ -342,3 +342,67 @@ func TestRootMemberForwardRejectsInvalidProofAndBodyWithoutMutation(t *testing.T
 	}
 	roleBindingUnchanged(t, f.primary.s.opts.Store, before)
 }
+
+// A forwarded blocking switch answers as the other forwarded domains do
+// (D368): a follower whose settings view is older than the primary's gets the
+// primary's retained 409 instead of an unexplained 503, nothing is changed,
+// and the same switch succeeds once the follower has pulled. An exchange with
+// a primary that cannot commit says that the change was not sent or that its
+// outcome is unknown, never the generic authentication text.
+func TestRootMemberForwardBlockingStaleViewAndFailedExchange(t *testing.T) {
+	f := newMemberForwardHTTPFixture(t, false)
+	primaryStore := f.primary.s.opts.Store
+	settings := func() public.Kudurru {
+		t.Helper()
+		var out public.Kudurru
+		if err := primaryStore.Get(t.Context(), store.Key{Kind: "Kudurru", Name: "default"}, &out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	// The primary's settings change after the follower's last pull.
+	writer, err := primaryStore.WriterToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := primaryStore.Command(sqlite.WithWriterToken(t.Context(), writer), writer.Term(), func(ctx context.Context, tx *sqlite.CommandTx) error {
+		var current public.Kudurru
+		if err := tx.Get(ctx, store.Key{Kind: "Kudurru", Name: "default"}, &current); err != nil {
+			return err
+		}
+		current.Status.Blocking = public.BlockingStatus{Disabled: true}
+		return tx.UpdateStatus(ctx, &current)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	changed := settings()
+	stale := f.request(t, nil, http.MethodPost, "/dns/blocking", f.primary.token, map[string]any{"blocking": true})
+	if stale.status != http.StatusConflict || stale.Error.Key != api.KeyConflict || !strings.Contains(stale.Error.Message, "follower's view") ||
+		stale.header.Get("Retry-After") != "" {
+		t.Fatalf("stale follower view: %d %s", stale.status, stale.raw)
+	}
+	if after := settings(); after.ResourceVersion != changed.ResourceVersion || !after.Status.Blocking.Disabled {
+		t.Fatal("a refused blocking switch changed the primary's settings")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	if err := f.puller.Pull(ctx); err != nil {
+		t.Fatal(err)
+	}
+	awaitServingRuntime(t, f.follower, func() bool {
+		return f.follower.publisher.Status().ProtectedReady && f.follower.publisher.Status().Served.Base.Same(f.follower.opts.Store.Authority().Installed)
+	})
+	if fresh := f.request(t, nil, http.MethodPost, "/dns/blocking", f.primary.token, map[string]any{"blocking": true}); fresh.status != http.StatusAccepted {
+		t.Fatalf("blocking switch after the pull: %d %s", fresh.status, fresh.raw)
+	}
+	if after := settings(); after.Status.Blocking.Disabled {
+		t.Fatal("the switch after the pull was not committed")
+	}
+	// The primary's writer stops: the exchange cannot commit.
+	f.primary.stop()
+	lost := f.request(t, nil, http.MethodPost, "/dns/blocking", f.primary.token, map[string]any{"blocking": false})
+	if lost.status != http.StatusServiceUnavailable || lost.Error.Key != api.KeyUnavailable && lost.Error.Key != "completion_unknown" ||
+		strings.Contains(lost.Error.Message, "authentication operation unavailable") || lost.Error.Message == "" {
+		t.Fatalf("blocking switch while the primary cannot commit: %d %s", lost.status, lost.raw)
+	}
+}
