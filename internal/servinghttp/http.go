@@ -208,8 +208,15 @@ func (a *Adapter) captureRefusal() *auth.Error {
 func AuthorityRefusal(authority replication.Authority) *auth.Error {
 	switch {
 	case conflicted(authority):
+		// A divergence (an image of this node's revision with other data) is
+		// ended by the same offline review as a conflicting promotion; only
+		// the sentence that says what the node recorded differs.
+		recorded := "conflicting promotions"
+		if authority.Divergence != nil && authority.Conflict == nil && authority.Mode != replication.Conflict {
+			recorded = "data that diverges from its primary's at the same revision"
+		}
 		return &auth.Error{Status: http.StatusServiceUnavailable, Key: KeyClusterConflict, NoRetryAfter: true,
-			Message: "this node recorded conflicting promotions and closed its API; it keeps answering DNS from its last valid data",
+			Message: "this node recorded " + recorded + " and closed its API; it keeps answering DNS from its last valid data",
 			Hint:    "decide which member's data to keep, stop that member and run `kudurru cluster resolution --offline` and then `kudurru cluster resolve --offline` on it; the other members follow it at their next peer exchange"}
 	case authority.Mode == replication.Fenced:
 		// A fenced member's term is the newer one that it observed.

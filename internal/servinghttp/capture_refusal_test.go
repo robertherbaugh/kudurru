@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -74,6 +75,25 @@ func TestCaptureRefusalNamesFencedAndConflictedAuthority(t *testing.T) {
 			!strings.Contains(body.Error.Hint, "kudurru cluster resolution --offline") || !strings.Contains(body.Error.Hint, "kudurru cluster resolve --offline") ||
 			recorder.Header().Get("Retry-After") != "" {
 			t.Fatalf("conflict refusal: retry-after=%q %s", recorder.Header().Get("Retry-After"), recorder.Body)
+		}
+	})
+	// A member fenced by a divergent image of its own revision names the
+	// divergence, not a conflicting promotion; the key and the offline hint
+	// are the same, because the same review ends both.
+	t.Run("divergence", func(t *testing.T) {
+		f := newFixture(t)
+		a := f.store.Authority()
+		diverged := a.Installed
+		diverged.Digest = strings.Repeat("d", len(a.Installed.Digest))
+		a.Mode, a.Divergence = replication.Fenced, &diverged
+		refusal := AuthorityRefusal(a)
+		if refusal == nil || refusal.Key != KeyClusterConflict || !refusal.NoRetryAfter || strings.Contains(refusal.Message, "conflicting promotions") ||
+			!strings.Contains(refusal.Message, "diverges") || !strings.Contains(fmt.Sprint(refusal.Hint), "kudurru cluster resolve --offline") {
+			t.Fatalf("divergence refusal: %+v", refusal)
+		}
+		a.Conflict = &a.Term
+		if refusal := AuthorityRefusal(a); refusal == nil || !strings.Contains(refusal.Message, "conflicting promotions") {
+			t.Fatalf("divergence with a recorded conflict: %+v", refusal)
 		}
 	})
 	t.Run("ordinary authority has no durable refusal", func(t *testing.T) {
