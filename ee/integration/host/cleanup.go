@@ -117,6 +117,54 @@ type terminatingLease struct {
 	summary   CleanupSummary
 	// progress: the current run confirmed a delete or forgot a record.
 	progress bool
+	// forgetLimit bounds the operations of one Forget commit of this lease;
+	// zero is ledger.MaxForgetOperations. A run that reached its bound inside
+	// a Forget without any progress sets it to half of what that Forget
+	// tried and it never grows again in the lease, so a history whose commits
+	// cannot finish in one run's bound still goes in smaller ones instead of
+	// being cut at the same place every run.
+	forgetLimit int
+	// forgetCut: the current run's last Forget, of forgetTried rows, ended
+	// with the run's bound.
+	forgetCut   bool
+	forgetTried int
+	// forgetTook is how long the last Forget that committed took.
+	forgetTook time.Duration
+}
+
+// forgetChunk is how many operations the next Forget of this lease carries.
+func (st *terminatingLease) forgetChunk() int {
+	if st.forgetLimit <= 0 || st.forgetLimit > ledger.MaxForgetOperations {
+		return ledger.MaxForgetOperations
+	}
+	return st.forgetLimit
+}
+
+// errYield ends a run that made progress before its bound would cut the next
+// commit; the work left continues in the next run at once.
+var errYield = errors.New("integration cleanup: run yields")
+
+// yields reports whether a run that made progress should end before its
+// next local commit: what is left of its bound is less than one and a half
+// times the last commit took, or less than an eighth of the bound, so the
+// commit would likely be cut and its work thrown away. A run without
+// progress always goes on, so a slow store still moves.
+func (h *Host) yields(ctx context.Context, st *terminatingLease) bool {
+	deadline, ok := ctx.Deadline()
+	return ok && st.progress && time.Until(deadline) < max(st.forgetTook*3/2, h.opts.OperationTimeout/8)
+}
+
+// forget runs one Forget of the lease and notes whether the run's bound
+// ended it.
+func (h *Host) forget(ctx context.Context, g ExecutionGuard, st *terminatingLease, l *kinds.IntegrationLedger, ops []*kinds.IntegrationOperation, proof ledger.Observation) error {
+	started := time.Now()
+	err := h.opts.Ledger.Forget(ctx, g.Ledger, l, ops, proof)
+	st.forgetCut = err != nil && ctx.Err() != nil
+	st.forgetTried = len(ops)
+	if err == nil {
+		st.forgetTook = time.Since(started)
+	}
+	return err
 }
 
 type terminatingOutcome struct {
@@ -190,17 +238,23 @@ func (h *Host) runTerminating(leaseCtx context.Context, j *job) {
 		}
 		runCtx, runCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
 		st.summary.Runs++
-		st.progress = false
+		st.progress, st.forgetCut = false, false
 		out, f, g := h.terminate(runCtx, j, st)
 		bounded := runCtx.Err() != nil && ctx.Err() == nil
 		runCancel()
 		<-h.slots
 		if bounded && !out.done {
 			// The run reached its bound. With progress that is the ordinary
-			// way a long cleanup continues; without, a provider that hangs.
-			if st.progress {
+			// way a long cleanup continues. Without, either a local Forget
+			// commit is too large for the bound, which the next run retries
+			// with half of it, or a provider that hangs.
+			switch {
+			case st.progress:
 				out.again, out.reason = true, ReasonCleanup
-			} else {
+			case st.forgetCut && st.forgetTried > 1:
+				st.forgetLimit = st.forgetTried / 2
+				out.again, out.reason, out.err = true, ReasonCleanup, nil
+			default:
 				out.err = &Failure{Kind: FailureTemporary}
 				if st.publisher {
 					out.reason = ReasonProviderFailed
@@ -305,7 +359,11 @@ func (h *Host) terminate(ctx context.Context, j *job, st *terminatingLease) (ter
 	result := Result{}
 	total, _, err := h.ledgerCounts(ctx, f.instance.owner, nil)
 	if err != nil {
-		return failed(ctx, ReasonCleanupFailed, result, err), f, g
+		// Nothing was counted: the run keeps what the last run reported
+		// instead of claiming that nothing is left.
+		out := failed(ctx, ReasonCleanupFailed, result, err)
+		out.uncounted = true
+		return out, f, g
 	}
 	result.Remaining = total
 	if !st.inspected {
@@ -638,9 +696,13 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 					history[op.Spec.Record] = append(history[op.Spec.Record], op)
 				}
 			}
+			if h.yields(ctx, st) {
+				result.Conflicts = conflicts + unproven
+				return false, terminatingOutcome{reason: ReasonCleanup, result: result, again: true}
+			}
 			ops := history[l.Spec.Record]
-			first := ops[:min(len(ops), ledger.MaxForgetOperations)]
-			if err := h.opts.Ledger.Forget(ctx, g.Ledger, l, first, proof); err != nil {
+			first := ops[:min(len(ops), st.forgetChunk())]
+			if err := h.forget(ctx, g, st, l, first, proof); err != nil {
 				result.Conflicts = conflicts + unproven
 				if errors.Is(err, ledger.ErrBaseline) {
 					// The observation aged past its bound; the next run rereads.
@@ -675,10 +737,12 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 // forgetLeftovers removes operations of the instance whose record has no
 // ledger row: intents whose reservation failed, and history beyond what left
 // with its ledger row. It runs only once no ledger row of the instance is
-// left, and forgets one stored page at a time, so a history of any length
-// goes in bounded steps and a run that reaches its bound has made progress.
+// left, and forgets one stored page at a time, so it never holds more than a
+// page of a history, whose length only the store's own limits bound.
 // It reports done only after a complete read found no operation: a read that
-// forgot something is repeated, because deleting under it can hide rows.
+// forgot something is repeated, because deleting under it can hide rows. Each
+// commit carries at most the lease's forget chunk, and a run that made
+// progress ends before its bound would cut the next commit.
 func (h *Host) forgetLeftovers(ctx context.Context, f frame, g ExecutionGuard, st *terminatingLease, result Result) (terminatingOutcome, bool) {
 	for {
 		forgotten := false
@@ -694,8 +758,11 @@ func (h *Host) forgetLeftovers(ctx context.Context, f frame, g ExecutionGuard, s
 			result.Remaining = len(records)
 			for _, record := range records {
 				for ops := history[record]; len(ops) > 0; {
-					chunk := ops[:min(len(ops), ledger.MaxForgetOperations)]
-					if err := h.opts.Ledger.Forget(ctx, g.Ledger, nil, chunk, ledger.Observation{}); err != nil {
+					if h.yields(ctx, st) {
+						return false, errYield
+					}
+					chunk := ops[:min(len(ops), st.forgetChunk())]
+					if err := h.forget(ctx, g, st, nil, chunk, ledger.Observation{}); err != nil {
 						return false, err
 					}
 					forgotten, st.progress = true, true
@@ -706,6 +773,9 @@ func (h *Host) forgetLeftovers(ctx context.Context, f frame, g ExecutionGuard, s
 			}
 			return true, nil
 		})
+		if errors.Is(err, errYield) {
+			return terminatingOutcome{reason: ReasonCleanup, result: result, again: true}, false
+		}
 		if err != nil {
 			return failed(ctx, ReasonCleanupFailed, result, err), false
 		}

@@ -262,6 +262,22 @@ type cleanupFixture struct {
 	// forgets is the number of deletes of each ledger forget, in commit order.
 	forgetMu sync.Mutex
 	forgets  []int
+	// forgetCost is how long each delete of a ledger forget takes; a forget
+	// that its context ends first commits nothing.
+	forgetCost time.Duration
+	// ledgerRefused makes the host's paged reads of ledger rows fail.
+	ledgerRefused atomic.Bool
+}
+
+// refusingReader is the host's reader with ledger reads that can be made to
+// fail, as a store read that errors does.
+type refusingReader struct{ f *cleanupFixture }
+
+func (r refusingReader) List(ctx context.Context, kind store.Kind, o store.ListOptions) (store.ObjectList, error) {
+	if kind == kinds.KindIntegrationLedger && r.f.ledgerRefused.Load() {
+		return store.ObjectList{}, errCleanupTest
+	}
+	return r.f.st.List(ctx, kind, o)
 }
 
 const cleanupFinalizer = store.IntegrationCleanupFinalizer
@@ -296,6 +312,13 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 		return out, err
 	}, Delete: func(ctx context.Context, g ledger.Guard, requests []store.DeleteRequest) error {
 		return f.h.WithLease(ctx, g, func(ctx context.Context) error {
+			if f.forgetCost > 0 {
+				select {
+				case <-time.After(f.forgetCost * time.Duration(len(requests))):
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
 			for _, request := range requests {
 				if err := f.st.Delete(ctx, request.Key, request.Options); err != nil {
 					return err
@@ -323,7 +346,7 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 	if f.records == 0 {
 		f.records = 1
 	}
-	f.h, err = New(Options{Capture: f.capture, Elector: elector, Ledger: repository, Reader: f.st, Now: f.now,
+	f.h, err = New(Options{Capture: f.capture, Elector: elector, Ledger: repository, Reader: refusingReader{f}, Now: f.now,
 		Factory: func(string) (integration.Integration, error) {
 			f.factories.Add(1)
 			base := &cleanupProvider{w: f.w}

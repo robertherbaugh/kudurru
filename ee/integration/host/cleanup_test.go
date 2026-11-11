@@ -364,6 +364,20 @@ func TestTerminatingBlockingConditionsNeverFinalize(t *testing.T) {
 			t.Fatalf("a fenced run reported %+v after %+v", fenced, result)
 		}
 		f.refuse.Store(false)
+		// Nor does a run whose first count of the ledger fails.
+		f.ledgerRefused.Store(true)
+		f.wake()
+		f.awaitReason(PhaseTerminating, ReasonCleanupFailed)
+		if _, _, unread := f.status(); unread != result {
+			t.Fatalf("a run that could not count reported %+v after %+v", unread, result)
+		}
+		f.await("the published status to keep the counts", func() bool {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			n := len(f.published)
+			return n > 0 && f.published[n-1].Reason == ReasonCleanupFailed && f.published[n-1].Result == result
+		})
+		f.ledgerRefused.Store(false)
 		f.w.drop(f.d, "manual-txt")
 		f.wake()
 		f.awaitFinalized()
@@ -858,6 +872,63 @@ func TestOperationReadsAreBoundedWhateverTheHistory(t *testing.T) {
 	}
 	if out := failed(ctx, ReasonCleanupFailed, Result{}, plan.ErrCapacity); out.reason != ReasonCapacity {
 		t.Fatalf("planner capacity outcome: %+v", out)
+	}
+}
+
+// A Forget commit that cannot finish within one run's bound is not retried
+// at the same size forever: the run that it cut without progress halves the
+// lease's commit size, and a run with progress ends before the bound would
+// cut its next commit. The bound here is one second and every forgotten row
+// costs 4 ms, so the first commit (the ledger row with its 402 operations)
+// and others are cut, and the cleanup still finalizes without ever
+// reporting a provider failure.
+func TestTerminatingForgetCommitsShrinkToTheRunBound(t *testing.T) {
+	f := newCleanupFixture(t, cleanupObject("sink", "Delete", true), func(f *cleanupFixture) {
+		f.timeout = time.Second
+		f.forgetCost = 4 * time.Millisecond
+	})
+	f.awaitPublished()
+	created := f.rows(kinds.KindIntegrationOperation)
+	if len(created) != 1 {
+		t.Fatalf("operations of the published record: %d", len(created))
+	}
+	for n := range 400 {
+		op := created[0].(*kinds.IntegrationOperation).DeepCopy()
+		op.UID, op.ResourceVersion = "", ""
+		op.Spec.OperationID = kinds.Digest([]byte("history " + strconv.Itoa(n)))
+		op.Name = kinds.OperationName(op.Spec.OperationID)
+		if _, err := f.st.Apply(context.Background(), op, store.ApplyOptions{Manager: "integration-ledger", CreateOnly: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.requestDelete()
+	f.patience = 90 * time.Second
+	summary := f.awaitFinalized()
+	if summary.RecordSetsDeleted != 1 || summary.RecordsForgotten != 1 || summary.OperationsForgotten != 402 {
+		t.Fatalf("summary: %+v", summary)
+	}
+	if rows := append(f.rows(kinds.KindIntegrationLedger), f.rows(kinds.KindIntegrationOperation)...); len(rows) != 0 {
+		t.Fatalf("%d ledger and operation rows remain", len(rows))
+	}
+	if _, _, deletes, _ := f.w.counts(); deletes != 1 {
+		t.Fatalf("provider deletes: %d", deletes)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, s := range f.published {
+		if s.Reason == ReasonProviderFailed || s.Reason == ReasonCleanupFailed {
+			t.Fatalf("a cut local commit was reported as %s", s.Reason)
+		}
+	}
+	f.forgetMu.Lock()
+	defer f.forgetMu.Unlock()
+	largest := 0
+	for _, n := range f.forgets {
+		largest = max(largest, n)
+	}
+	// 250 rows take the whole bound; a commit that went through is smaller.
+	if largest >= 250 {
+		t.Fatalf("a commit of %d deletes went through a one-second bound", largest)
 	}
 }
 
