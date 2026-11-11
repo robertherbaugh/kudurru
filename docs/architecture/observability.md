@@ -100,10 +100,10 @@ flowchart LR
     PUB["original DNS publication<br/>enabled, sink, privacy owner,<br/>additional sinks"] -.-> OBS
     BATCH -->|"captured SQLite sink"| DB[("querylog.db<br/>dictionaries + query table<br/>+ rollups + domain/hour index, one transaction")]
     BATCH -->|"captured slog sink"| SLOG["structured logger"]
-    COL -->|"non-blocking offer,<br/>after privacy"| SQ[["one bounded queue per<br/>querylog.sinks entry<br/>10 000 events"]]
+    COL -->|"non-blocking offer,<br/>after privacy<br/>(raw dnstap: a copy<br/>from before it)"| SQ[["one bounded queue per<br/>querylog.sinks entry<br/>10 000 events"]]
     SQ -->|"full: drop and count"| SDROP["kudurru_querylog_dropped_total<br/>{stage=sink, sink=name}"]
     SQ --> SW["one goroutine per sink<br/>batch, timeout, bounded attempts"]
-    SW --> EXT["additional sink<br/>log lines, ClickHouse or Loki<br/>(one HTTP POST per batch)"]
+    SW --> EXT["additional sink<br/>log lines, ClickHouse or Loki<br/>(one HTTP POST per batch),<br/>dnstap (Frame Streams)"]
     TAIL --> API["dashboard: live tail,<br/>block page reasons"]
     DB --> API2["dashboard: query log,<br/>stats, top lists,<br/>bounded JSON export"]
 ```
@@ -181,8 +181,10 @@ The privacy transform runs before the sink queues, so an additional sink
 never holds or sees an untransformed event, and an excluded query never
 enters a sink queue. Under `nothing` no per-query event is offered to an
 additional sink, the rule the live tail follows. `querylog.enabled: false`
-stops every sink. Events carry no DNS wire data; a raw export is a separate
-audited contract and not part of this host.
+stops every sink. The one exception is a dnstap sink with `raw: true`, the
+audited override below: it receives a copy of each admitted event from
+before the transform, under every mode. Excluded queries reach no sink,
+raw or not.
 
 Sinks follow the captured-publication model of the primary sink. Preparing a
 configuration builds the sink objects but opens nothing; a sink is opened
@@ -236,6 +238,7 @@ The settings schema accepts exactly the types the server can build:
 | `slog` | one structured log line per query next to the database (at most one, and not together with `querylog.sink: slog`) | `internal/querylog/slog_sink.go` |
 | `clickhouse` | one `INSERT ... FORMAT JSONEachRow` request to the ClickHouse HTTP interface | `internal/querylog/sinks/clickhouse` |
 | `loki` | one push to `/loki/api/v1/push` in Loki's JSON format | `internal/querylog/sinks/loki` |
+| `dnstap` | dnstap messages in Frame Streams data frames, written whole on one connection | `internal/querylog/sinks/dnstap` |
 
 #### The HTTP sinks
 
@@ -244,8 +247,7 @@ itself, with the standard library HTTP client
 (`internal/querylog/sinks/httpbatch`) and no vendor SDK (D371, with the
 binary budget of D138 and D260 in mind). D371 keeps dnstap with a collector
 such as DNS-collector as the route to other destinations and to consumers of
-the DNS messages themselves; that output is separate work and not part of
-these sinks.
+the DNS messages themselves; that is the dnstap sink below (D372).
 
 ```mermaid
 flowchart LR
@@ -306,8 +308,80 @@ the host retries the open with backoff. A sink reads the reference again
 when the destination answers 401 or 403, and repeats the refused batch when
 the value changed, which is how a rotated credential is picked up.
 
+#### The dnstap sink and the raw override
+
+A `dnstap` sink (D372) turns each event into dnstap messages
+(`dnstap.proto`) and sends them in Frame Streams to a collector on a Unix
+socket, over TCP or over TLS (`caRef`, and `certRef` with `keyRef` for
+mutual TLS). The protocol buffers encoding and the Frame Streams framing
+are written by hand in `internal/querylog/sinks/dnstap` (two messages and
+five control frames), so no dnstap or framestream module is linked.
+
+```mermaid
+flowchart LR
+    LOG["log observer"] -->|"route has a raw sink:<br/>pack query and response"| WIRE["event.Wire<br/>(only then)"]
+    LOG --> COL["collector:<br/>exclusions first"]
+    WIRE --> COL
+    COL -->|"excluded"| GONE["no sink, raw or not"]
+    COL -->|"raw route: copy<br/>before the transform"| RAWQ[["raw dnstap queue"]]
+    COL -->|"privacy transform,<br/>Wire cleared"| Q[["other sink queues,<br/>primary sink, live tail"]]
+    RAWQ --> RAW["messages as received and answered,<br/>real client address and port"]
+    Q --> DT["dnstap without raw:<br/>question and rcode rebuilt from the<br/>logged event, address as logged"]
+    RAW --> FS["Frame Streams:<br/>READY / ACCEPT / START,<br/>data frames, STOP / FINISH"]
+    DT --> FS
+    AUD["audit event<br/>querylog.raw.export"] -.->|"before the raw sink opens"| RAW
+```
+
+Each answered query becomes `CLIENT_QUERY` and `CLIENT_RESPONSE`, or
+`AUTH_QUERY` and `AUTH_RESPONSE` when a local zone or local record answered
+(with `query_zone`). `FORWARDER_QUERY` and `FORWARDER_RESPONSE` (off by
+default) mark a query that went to an upstream: kudurru does not record its
+upstream exchanges, so they carry the question, the response code, the
+client's times and the upstream's name in `extra`, and no addresses. `extra`
+is `status=... list=... upstream=... client=... trace=...`. The identity is
+`node.name` unless the entry sets one; the version is `kudurru/<version>`.
+
+Without `raw` a message follows `querylog.privacy` exactly as the local log
+does: it is rebuilt from the transformed event, so it carries the question
+and the response code but never answer records, the name `hidden` where the
+mode hides names, the client address as logged (a /24 or /48 prefix,
+`0.0.0.0`, or none for a pseudonym) and no client port. Under `nothing` such
+a sink receives nothing.
+
+`raw: true` sends the DNS messages as the server received the query and
+produced the answer (before the transport truncates or pads it), the real
+client address and its port, whatever the privacy mode says, also under
+`nothing`. Its contract:
+
+- the log observer packs the two messages only while the route holds a raw
+  sink (`querylog.WireRetainer`), and the collector copies the event before
+  the transform only for such a route, so the default path packs and copies
+  nothing; the collector clears `Wire` before the primary sink, the live tail
+  and every other sink see the event;
+- the exclusions (`querylog.exclude.*`, the health name, the built-in dig)
+  apply first: an excluded client or domain is never sent, raw or not;
+- a settings change of `querylog.sinks` that leaves a raw sink in place needs
+  `querylog.raw` besides `settings.write` (only the admin role holds it); the
+  API checks it, audits a refusal and audits the change as `querylog.raw`,
+  and the complete SQLite runtime checks it again against the original
+  credential at commit; removing raw needs only `settings.write`;
+- every node records `querylog.raw.export` (actor `System/query-log`) before
+  a raw sink opens, also when the setting came from a file or a ConfigMap;
+  a sink whose audit event is not recorded does not open and is retried.
+
+A batch is written whole on one connection after the handshake. A batch of
+which nothing was written (no connection, a refused handshake, a write that
+failed before its first byte) is retryable; one written in part is dropped
+and counted, and the next batch connects again. Before each batch the sink
+checks that the collector has not closed the connection. A collector that
+stops reading stalls only this sink: each write ends at the sink's timeout,
+its queue fills and overflows into the drop counter, and the sink reconnects
+when the collector reads again. Closing sends STOP and waits up to a second
+for FINISH.
+
 [Additional query-log sinks](../deploy/query-log-sinks.md) is the operator
-guide, with the ClickHouse table definition and the Loki mapping.
+guide, with the ClickHouse table definition, the Loki mapping and the
+dnstap collectors.
 
 **Privacy is applied once, at the collector**, before anything is stored or
 shown: `full`, `anonymize_client` (a /24 or /48 prefix, or a daily

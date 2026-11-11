@@ -43,6 +43,10 @@ keeps:
 - Names and clients in `querylog.exclude.*` are never sent.
 - `querylog.enabled: false` stops every sink.
 
+The one exception is a `dnstap` sink with `raw: true`, which an administrator
+sets on purpose: it receives the queries as they were, before the privacy
+mode (see [dnstap](#dnstap)). The exclusions still apply to it.
+
 A new sink starts with the queries answered after it was added. Earlier
 queries are not sent to it.
 
@@ -53,6 +57,7 @@ queries are not sent to it.
 | `slog` | the server's log output, one structured line per query with a `sink` attribute | at most one, and not together with `querylog.sink: slog`, which would write every query twice |
 | `clickhouse` | a ClickHouse table, one row per query, over the HTTP interface | needs the `clickhouse` object; see [ClickHouse](#clickhouse) |
 | `loki` | Grafana Loki, one JSON log line per query | needs the `loki` object; see [Loki](#loki) |
+| `dnstap` | a dnstap collector (DNS-collector, Vector, the `dnstap` command), dnstap messages in Frame Streams over a Unix socket, TCP or TLS | needs the `dnstap` object; see [dnstap](#dnstap) |
 
 The server refuses a type it cannot serve, and settings that belong to
 another type. Query lines of `slog` are written at the `info` level, like
@@ -266,6 +271,77 @@ filter with `| json` instead: the same fields are in the line.
 The privacy mode applies to the labels and metadata as to everything else:
 under `hide_domains` the `domain` is `hidden`, and a hidden client is
 `0.0.0.0`.
+
+## dnstap
+
+A `dnstap` sink sends [dnstap](https://dnstap.info) messages to a collector
+in Frame Streams, with the bidirectional handshake (READY, ACCEPT, START,
+then the data frames; STOP and FINISH when the sink closes). The collector
+listens; kudurru connects and reconnects after a failure.
+
+```yaml
+querylog:
+  sinks:
+    - name: tap
+      type: dnstap
+      dnstap:
+        target: tls:collector.example:6000   # or unix:/run/dnstap/dnstap.sock, tcp:collector.example:6000
+        caRef: {file: /run/secrets/collector-ca.pem}
+        # certRef and keyRef: a client certificate for mutual TLS
+        types: [client_query, client_response, auth_query, auth_response]
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `target` | required | `unix:/path`, `tcp:host:port` or `tls:host:port`; over `tcp` the queries cross the network unencrypted |
+| `serverName` | host of `target` | name the collector's certificate must carry (`tls:` only) |
+| `caRef`, `certRef`, `keyRef` | system trust store, no client certificate | PEM references, read like the [credentials](#credentials) of the other sinks (`tls:` only) |
+| `identity` | `node.name` | dnstap identity of every message |
+| `types` | `client_query`, `client_response`, `auth_query`, `auth_response` | which messages are sent |
+| `raw` | `false` | send the DNS messages as they were; see below |
+
+Every message carries the version `kudurru/<version>` and, in `extra`,
+`status=<status> list=<list> upstream=<group/server> client=<client name>
+trace=<id>` (fields without a value are left out). A query a local zone or
+local record answered is sent as `AUTH_QUERY` and `AUTH_RESPONSE` with the
+zone; every other answer as `CLIENT_QUERY` and `CLIENT_RESPONSE`.
+`forwarder_query` and `forwarder_response` add one message pair per query
+that went to an upstream. kudurru does not record its upstream exchanges, so
+those carry the question and the response code, the client's receive and
+answer times and the upstream's name in `extra`, but no addresses.
+
+**Without raw** (the default) a message holds what the local query log
+keeps. It is rebuilt from the logged query, after `querylog.privacy`: the
+question and the response code with the header flags, never the answer
+records; the name `hidden` under `hide_domains` and `hide_domains_clients`;
+the client as logged (a /24 or /48 prefix under `anonymize_client`, no
+address with pseudonyms, `0.0.0.0` under `hide_domains_clients`) and no
+client port. Under `nothing` nothing is sent.
+
+**With `raw: true`** the sink sends the query as the server received it and
+the answer as the server produced it (before the transport truncated or
+padded it), with the real client address and port, whatever
+`querylog.privacy` says, also under `nothing`. Use it to give a collector
+that you control everything a DNS server can see. The contract:
+
+- Excluded clients and domains (`querylog.exclude`) are never sent, raw or
+  not, and neither are the health name and the dashboard's built-in dig.
+- Only an administrator can save it: a change of `querylog.sinks` that keeps
+  a raw sink needs the permission `querylog.raw`, which only the `admin`
+  role holds. A refused change is audited, an accepted one is audited as
+  `querylog.raw` with the raw sinks before and after. Turning `raw` off, or
+  removing the sink, needs only `settings.write`.
+- Each node records the audit event `querylog.raw.export` before such a sink
+  sends its first message, also when the setting came from the settings
+  file or `config.settings`. A node that cannot record the event does not
+  open the sink and tries again.
+- Only while a raw sink is configured does the server keep the DNS messages
+  of each query; without one it packs and copies nothing extra.
+
+A collector that stops reading stalls only this sink: each write gives up
+after the sink's `timeout`, a batch that was sent in part is dropped and
+counted, the queue overflows into the drop counter, and the sink connects
+again when the collector reads. Nothing is ever sent twice.
 
 ## Credentials
 
