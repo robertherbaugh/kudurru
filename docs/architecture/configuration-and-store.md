@@ -1190,8 +1190,9 @@ follower-prepared session ID and CSRF hash, and a random nonce. The primary runs
 policy as its own login and enrolls the session with exactly that ID and hash;
 credential refusals and lockouts are retained results whose counters commit.
 The dedup record keeps only a fingerprint whose input includes the unstored
-nonce, so it is no password oracle. Settings, other IAM administration and
-remaining typed root domains are unfinished.
+nonce, so it is no password oracle. A mutation without a typed command is
+refused on a follower, as described under
+[What a follower does with a mutation](#what-a-follower-does-with-a-mutation).
 
 ```mermaid
 sequenceDiagram
@@ -1205,6 +1206,62 @@ sequenceDiagram
     P-->>F: Outcome before the writer lock is released: committed object or exact refusal
     F-->>C: Primary's public result (served locally after the next pull)
 ```
+
+### What a follower does with a mutation
+
+Every route with an unsafe method has one of three follower classes, kept by
+operation ID in one table (`internal/api/follower.go`, decision D368):
+`forwarded` (the typed commands above), `local` (the node's own cache, query
+log, resolver and DHCP server, and the cluster commands that decide from the
+node's own role) and `primary`. An operation that the table does not name is
+`primary`. The class is attached where every route is declared
+(`Server.declare`), so a route added later is refused on a follower until it
+is classified, and an inventory test fails for any registered mutation without
+a line in the table. The OpenAPI document carries the class as
+`x-kudurru-follower`.
+
+A `primary` operation gets a route middleware that runs after authentication
+and the permission check and before the body is read. It asks the runtime for
+the role of the request's own source: `servinghttp.SourceRole` reads the
+authority that the request's lease captured before authentication, so the
+answer cannot change during the request and no store is read. On a follower it
+answers `503 primary_required` with the primary's name from that authority's
+term, a hint and no `Retry-After`. Nothing is sent and no handler runs.
+`GET /cluster` reports the same decision beforehand: `role`, `primary`,
+`primaryRequired` and the operation IDs of the forwarded and local classes.
+`GET /settings/_schema` marks a setting read-only when its PATCH route would
+be refused.
+
+The command seams repeat the answer for anything that reaches them on a
+follower's request without passing that middleware (a route with a safe method
+that still has an effect, or a handler called outside the API router):
+`currentAuthCommandThen`,
+`currentAuthCommandOutput` and `MigrationCommand` return the typed refusal
+instead of a fenced-writer error when the request's source is a follower. OIDC
+browser and CLI login are refused by their request admission, which runs
+before the request holds a lease and therefore reads the Store's current
+authority to choose the text. `POST /cache/flush` is `local`: on a follower
+the command verifies the raw credential against the request's leased
+authentication view (`AuthorizeOriginalTransition`), checks that this lease is
+still the current publication, and flushes the node's own cache without a
+transaction.
+
+```mermaid
+flowchart TD
+    R["POST, PUT, PATCH or DELETE on a follower"] --> A{"Credential and<br/>route permission"}
+    A -->|refused| E["401 or 403"]
+    A -->|allowed| C{"Follower class of<br/>the operation"}
+    C -->|forwarded| F["One typed member command<br/>to the primary"]
+    C -->|local| L["Runs on this node"]
+    C -->|"primary, or not in the table"| P["503 primary_required<br/>names the primary, no Retry-After"]
+```
+
+A member whose authority is fenced or in conflict publishes DNS-only data, so
+no HTTP request gets a lease. The lease adapter answers those requests itself:
+`503 cluster_fenced` or `503 cluster_conflict`, each with a hint and without
+`Retry-After`, chosen from the publisher's authority observation. A publication
+that is only being prepared keeps `503 generation_pending` with
+`Retry-After: 1`.
 
 At startup, a SQLite runtime reads its complete enrollment owner and authority
 from one bounded transaction. Explicit dormant enrollment retains the legacy

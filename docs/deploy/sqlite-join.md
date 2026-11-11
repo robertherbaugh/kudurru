@@ -201,8 +201,70 @@ primary applies the shared lockout counters, password, factor and local-login
 policy and enrolls the session in one command; refused attempts still count
 there. The follower answers after its own pull installs the session, so the
 cookie works on every member. A login that cannot reach the primary returns `503`
-and is not attempted. Settings, other identity administration, integrations and
-remaining mutation domains still require the primary.
+and is not attempted. Every other change is refused on a follower, as the next
+section describes.
+
+## What a follower forwards, runs itself and refuses
+
+A follower treats every changing request (`POST`, `PUT`, `PATCH`, `DELETE`) in
+one of three ways. The server decides by route before it reads the body, after
+it has checked the credential and the route's permission. A route that is in
+neither of the first two groups is refused, so a route that a later version
+adds is refused on a follower until that version says otherwise. The
+[endpoint index](../../docs-site/content/reference/api/endpoints.md) shows the
+group of every route in its "On a follower" column, and the OpenAPI document
+carries it as `x-kudurru-follower`.
+
+| Group | Routes | What the follower does |
+|---|---|---|
+| Forwarded | `POST`, `PUT`, `DELETE` under `/objects/` for DNS zones, record sets, block lists, client groups and policies; `POST /apply`; `POST`, `PUT`, `DELETE` on `/blocklists`, `/clientgroups`, `/policies`; `POST /{kind}:batchDelete` for those five kinds; `POST /zones/{zone}/records`, `DELETE /zones/{zone}/records/{name}/{type}`, `POST /zones/{zone}/import`, `DELETE /zones/{zone}`; `POST /dns/blocking`; `POST /auth/login` | Sends one typed command to the primary and returns the primary's answer, as described above. |
+| Local | `POST /cache/flush`; `DELETE /querylog`; `POST /querylog/rollup-evidence/verify`; `POST /dns/query`; the DHCP routes under `/node/dhcp/v4/`; `POST /cluster/promote`, `POST /cluster/activate`, `POST /cluster/join-token`; the two legacy routes under `/settings/sections/` | Runs the request on this node. The first five act on the node's own cache, query log, resolver and DHCP server. The cluster commands decide from this node's own role: promotion runs on a follower, activation and invitations answer `409 conflict` there. The legacy settings routes answer `503 unavailable` on every SQLite node. |
+| Primary only | Everything else: `PATCH /settings` and `PATCH /node/config`; the allow and deny lists (`/allowlist`, `/denylist`, `/domains/{action}/{kind}`, `/queries/{id}/actions`, a block list's source entries); `POST /blocklists/{namespace}/{name}/refresh`; `POST /zones/{zone}/notify`; sign-out, session revocation, own password, own API tokens and authenticators under `/auth/`; command-line OIDC login; `/iam/` users, external accounts and role bindings; `/tsigkeys`; `/integrations`; `/imports`; unblock request decisions; DHCPScope objects, including `POST /dhcpscopes:batchDelete` | Answers `503 primary_required`. Nothing is sent to the primary and nothing is changed. |
+
+The refusal names the primary and carries a hint, and it has no `Retry-After`
+header, because waiting does not change it:
+
+```json
+{
+  "error": {
+    "key": "primary_required",
+    "message": "this request runs only on the primary; this node is an enrolled follower of node-a and does not forward it",
+    "hint": "send it to the API of the primary node-a; GET /api/v1/cluster on this node names the operations a follower forwards or runs itself"
+  },
+  "took_ms": 0.4
+}
+```
+
+The answer is the same while the primary is unreachable. Send the request to
+the primary, or promote the follower if the primary is lost. The CLI prints the
+server's message and hint and adds its own hint that names `kudurru cluster
+status`. Three cases need a different next step:
+
+- `PATCH /node/config` changes the log level and format of the node that
+  answers. A follower cannot store that preference, and the primary would
+  change only its own. Set `log.level` and `log.format` in the follower's
+  configuration file or environment instead; the hint says so.
+- OIDC sign-in, in the browser (`GET /auth/oidc/{idp}/start`) and from the
+  command line, runs on the primary. A follower's `GET /auth/status` lists no
+  provider and carries `"role": "follower"` and the primary's name, so a login
+  page can say where to sign in with a provider. Local password login works on
+  the follower.
+- A DHCPScope object written through `/objects/dhcpscopes` or as a document of
+  `POST /apply` is refused with `primary_required` for that object or document.
+
+`GET /api/v1/cluster` (`kudurru cluster status`) reports the role of the node
+that answers. On a follower `role` is `follower`, `primary` and `leader` name
+the primary, `primaryRequired` is `true`, and `forwardedOperations` and
+`localOperations` list the operation IDs of the first two groups, so a client
+can disable every other change before it sends it. On the primary and on a
+node that is not enrolled, `role` is `primary` or `standalone` and
+`primaryRequired` is `false`. `GET /api/v1/settings/_schema` marks every
+setting `readOnly` on a follower.
+
+On a follower the block page keeps explaining a block, but it shows "This
+server cannot take a request for access right now" in place of the request
+form, because only the primary stores unblock requests. An approval that the
+follower has received is still shown.
 
 
 ## Reconnecting an old primary
@@ -211,6 +273,11 @@ A retained primary periodically exchanges terms with current enrolled peers over
 mutual TLS. When it observes an authenticated successor, it durably fences writes;
 a later independent follower pull validates, installs and publishes that image.
 This does not automatically promote a node or select a conflicting branch.
+Between the observation and that pull the old primary's API is closed: every
+request answers `503 cluster_fenced`, which names the newer primary when its
+term carries a name, with no `Retry-After` header. The member answers again as
+a follower after the pull. If the answer persists, check that the member
+reaches the new primary's internal listener.
 
 The two-process acceptance test now covers public promotion after primary loss
 and automatic old-primary rejoin after restart, preserving private identities.
@@ -222,9 +289,11 @@ Independent-VM VIP acceptance is owner-deferred follow-up.
 Manual promotion is epoch fencing, not consensus. If two followers are promoted
 while isolated from each other, both accept writes at the same epoch. When they
 reconnect, their scheduled peer exchange records a durable conflict on both:
-writes are refused and the HTTP API closes (it reports `generation_pending`),
-while each member keeps answering DNS from its last valid local data, including
-after a restart. Nothing chooses a branch automatically.
+writes are refused and the HTTP API closes, while each member keeps answering
+DNS from its last valid local data, including after a restart. Every API
+request to such a member answers `503 cluster_conflict` with a hint that names
+the two commands below and no `Retry-After` header. Nothing chooses a branch
+automatically.
 
 Decide which member's data should survive, then on that member only:
 

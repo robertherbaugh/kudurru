@@ -122,6 +122,50 @@ their DNS effect. Each already-held request keeps its original publication.
 `kudurru settings get` unwraps this response into key/value rows; its structured
 output is a CLI representation rather than the HTTP wrapper.
 
+## Answers that depend on the node's cluster role
+
+On the SQLite driver the node that answers may be an enrolled follower, or a
+member whose write authority is fenced or in conflict. Four `503` answers say
+so. None of them means "try again": do not retry them in a loop.
+
+| Key | Sent by | Meaning | `Retry-After` |
+|---|---|---|---|
+| `primary_required` | an enrolled follower, for a change it neither forwards nor runs itself | Nothing was changed. The message names the primary; send the request there. | no |
+| `completion_unknown` | an enrolled follower, for a forwarded change whose exchange with the primary failed | The follower cannot tell whether the primary committed. Read the object before a new decision; do not replay. | 1 on the authentication routes, otherwise none |
+| `cluster_fenced` | a former primary that observed a newer one, for every request | The API is closed until the member follows the newer primary, which it does at its next successful pull. | no |
+| `cluster_conflict` | a member that recorded conflicting promotions, for every request | The API is closed until an operator resolves the conflict offline ([recover from conflicting promotions](sqlite-join.md#recover-from-conflicting-promotions)). | no |
+
+`503 generation_pending` remains the answer of a node whose next publication
+is still being prepared; it carries `Retry-After: 1` and a short wait is the
+right reaction.
+
+`GET /cluster` tells a client beforehand what a follower will answer:
+
+```json
+{
+  "driver": "sqlite",
+  "node": "node-b",
+  "role": "follower",
+  "primary": "node-a",
+  "leader": "node-a",
+  "nodes": 1,
+  "readOnly": false,
+  "primaryRequired": true,
+  "forwardedOperations": ["apply", "createObject", "login", "setBlocking"],
+  "localOperations": ["flushCache", "promoteCluster", "purgeQuerylog"],
+  "took_ms": 0.3
+}
+```
+
+The example shortens both lists. `primaryRequired` is `true` only on an
+enrolled follower. There, a changing operation whose `operationId` is in
+neither list answers `primary_required`; treat an operation that the lists do
+not name as refused. On every other node the two lists are absent and no
+operation is refused for the node's role. `role` and `primary` are absent on
+the Kubernetes driver. A fenced or conflicted member never answers this
+route. [What a follower forwards, runs itself and refuses](sqlite-join.md#what-a-follower-forwards-runs-itself-and-refuses)
+lists the routes of each group.
+
 ## Live query events
 
 `GET /queries/stream` responds with `Content-Type: text/event-stream` and named
