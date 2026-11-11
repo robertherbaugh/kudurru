@@ -23,7 +23,11 @@ A matcher matches only when kudurru has that identity for the query:
 
 Inventory, DHCP and reverse-PTR data are looked up by the source address of
 the query. They cannot tell apart devices behind a router that replaces that
-address. A client ID can, because it travels with the encrypted connection.
+address. A client ID can, because it travels with the encrypted connection,
+but only when no `ip`, `mac`, `cidr`, `hostname` or `nameGlob` matcher of any
+client group matches the address the query arrives from: the first matching
+tier wins (`IdentifyAt` in `internal/policy/index.go`), and the client ID
+tier comes after those.
 The built-in DHCP server supplies names to these matchers, not MAC addresses.
 
 Client IDs are optional, client-selected policy identifiers. They are **not

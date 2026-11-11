@@ -250,11 +250,14 @@ with its real hostname/path and certificate trust.
 AdGuard ClientIDs can move with those clients. Set `clientIDDomain` on a DoT
 or DoQ listener and `clientIDs: true` on a DoH or DoH3 listener, then add a
 `clientID` matcher to a client group: `phone.dot.example.com` and
-`https://dns.example.com/dns-query/phone` both select `phone`. The DoT and DoQ
-certificate must cover the client names, usually with a wildcard. A client ID
-selects a policy and is not authentication. kudurru reads it on listeners that
-it terminates itself; [client identity](/deploy/client-identity/) has the
-settings and the limits behind a TLS-terminating edge.
+`https://dns.example.com/dns-query/phone` both select `phone`, unless an IP,
+MAC, CIDR, hostname or name-glob matcher matches the address the query
+arrives from: the first matching tier wins, and client IDs come after those.
+The DoT and DoQ certificate must cover the client names, usually with a
+wildcard. A client ID selects a policy and is not authentication. kudurru
+reads it on listeners that it terminates itself;
+[client identity](/deploy/client-identity/) has the settings and the limits
+behind a TLS-terminating edge.
 
 ## 6. Validate and switch
 

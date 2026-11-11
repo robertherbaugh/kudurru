@@ -222,8 +222,10 @@ Incoming ECS is not a trusted device identity. MAC addresses and hostnames
 come from inventory and DHCP data that kudurru looks up by this same address,
 so they cannot tell apart devices behind a router that replaces the source
 address. An opt-in DoT, DoQ or DoH [client ID](client-identity.md) travels
-with the connection and can still select a client group, but the query log
-keeps recording the address the query arrived from.
+with the connection and can still select a client group, but only when no
+IP, MAC, CIDR, hostname or name-glob matcher matches the router's address
+(the first matching tier wins). Remove the address matchers that match the router
+first. The query log keeps recording the address the query arrived from.
 
 1. On two devices with different addresses, send different names to each
    published VIP over both transports, for example:
