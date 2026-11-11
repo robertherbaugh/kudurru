@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -64,9 +66,9 @@ func TestClusterStatusRealRouter(t *testing.T) {
 				if err != nil || len(lines) != 2 || !strings.Contains(lines[0], "READ-ONLY") {
 					t.Fatal("cluster table missing header or single observation", out, err)
 				}
-				want := "contract-node memory contract-node 1 false"
+				want := "contract-node memory - contract-node 1 false"
 				if static {
-					want = "contract-node memory contract-node 2 true"
+					want = "contract-node memory - contract-node 2 true"
 				}
 				if format == "wide" {
 					want += " - 0"
@@ -79,6 +81,40 @@ func TestClusterStatusRealRouter(t *testing.T) {
 				t.Fatal("cluster status must issue one status observation per invocation")
 			}
 		})
+	}
+}
+
+// Against an enrolled follower the status names the role and the primary, the
+// structured output carries the capability lists, and a command that the
+// follower does not forward fails once with the server's typed refusal and
+// the client's hint.
+func TestClusterStatusAndRefusalOnAFollower(t *testing.T) {
+	f := newRouterCLI(t, func(o *api.Options) {
+		o.ClusterRole = func(context.Context) api.ClusterRole { return api.ClusterRole{Follower: true, Primary: "node-b"} }
+	})
+	out, _, err := f.run("cluster", "status")
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if err != nil || len(lines) != 2 || strings.Join(strings.Fields(lines[0]), " ") != "NODE DRIVER ROLE LEADER NODES READ-ONLY" ||
+		strings.Join(strings.Fields(lines[1]), " ") != "contract-node memory follower node-b 1 false" {
+		t.Fatal("cluster status does not show the follower's role and primary", out, err)
+	}
+	out, _, err = f.run("cluster", "status", "-o", "json")
+	var got api.ClusterInfo
+	if err != nil || json.Unmarshal([]byte(out), &got) != nil || got.Role != "follower" || got.Primary != "node-b" || !got.PrimaryRequired ||
+		!slices.Contains(got.ForwardedOperations, "apply") || !slices.Contains(got.LocalOperations, "flushCache") {
+		t.Fatal("structured cluster status lost the follower capability", out, err)
+	}
+	_, _, err = f.run("lists", "refresh", "ads")
+	var refusal *apiclient.Error
+	if !errors.As(err, &refusal) || refusal.StatusCode != http.StatusServiceUnavailable || refusal.Key != api.KeyPrimaryRequired ||
+		!strings.Contains(refusal.Error(), "follower of node-b") || !strings.Contains(refusal.Error(), "hint: send it to the API of the primary node-b") || refusal.RetryAfter != 0 {
+		t.Fatal("refused follower command lost the server's typed refusal", err)
+	}
+	if hint := errorHint(err); !strings.Contains(hint, "run it against the primary") {
+		t.Fatal("no client hint for primary_required:", hint)
+	}
+	if f.count(http.MethodPost, "/api/v1/blocklists/default/ads/refresh") != 1 {
+		t.Fatal("the refused command was repeated or never sent")
 	}
 }
 

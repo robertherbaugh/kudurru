@@ -56,6 +56,40 @@ func (s Self) Peers(context.Context) ([]Peer, error) {
 	return []Peer{{Name: s.Name, Self: true}}, nil
 }
 
+// Authority is the membership an enrolled SQLite node shows through its API:
+// the leader is the member that holds durable write authority, which the
+// store's elector reports. This node leads only while it holds that authority,
+// so a follower names its primary instead of itself. The peer list stays this
+// node alone: the API reads other members' state from the store.
+type Authority struct {
+	// SelfName is node.name.
+	SelfName string
+	// Elector is the store's authority-driven elector.
+	Elector store.Elector
+}
+
+// Leader implements Membership. A leader other than this node has no
+// address: nothing dials it through this membership.
+func (a Authority) Leader(context.Context) (Peer, error) {
+	if a.Elector == nil {
+		return Peer{}, ErrNoLeader
+	}
+	if a.Elector.IsLeader() {
+		return Peer{Name: a.SelfName, Self: true}, nil
+	}
+	name := a.Elector.Leader()
+	if name == "" || name == a.SelfName {
+		// A fenced former primary still carries its own name in its term.
+		return Peer{}, ErrNoLeader
+	}
+	return Peer{Name: name}, nil
+}
+
+// Peers implements Membership.
+func (a Authority) Peers(context.Context) ([]Peer, error) {
+	return []Peer{{Name: a.SelfName, Self: true}}, nil
+}
+
 // Static is a fixed member list from configuration. LeaderName picks the
 // leader among Peers; the peer whose Name equals SelfName is this node.
 type Static struct {

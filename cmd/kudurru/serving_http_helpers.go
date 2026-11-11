@@ -37,6 +37,10 @@ func servingHTTPError(w http.ResponseWriter, r *http.Request, err error) {
 		auth.WriteError(w, r, ae)
 		return
 	}
+	if refusal, ok := asPrimaryRequired(err); ok {
+		auth.WriteError(w, r, primaryRequiredAuthError(refusal))
+		return
+	}
 	var e *api.Error
 	if errors.As(currentCommandAPIError(err), &e) {
 		auth.WriteError(w, r, &auth.Error{Status: e.Status, Key: e.Body.Key, Message: e.Body.Message, Hint: e.Body.Hint})

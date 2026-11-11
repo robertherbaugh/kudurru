@@ -21,6 +21,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
+	"github.com/robertherbaugh/kudurru/internal/cache"
+	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
 	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
@@ -36,7 +38,18 @@ type memberForwardHTTPFixture struct {
 	puller   *clusterreplica.Coordinator
 	live     *httptest.Server
 	hold     atomic.Pointer[memberForwardBodyHold]
+	// api is the follower's mounted API server; cache is the response cache
+	// its node-local flush command owns.
+	api   *api.Server
+	cache *cache.Cache
+	// scheduledPull runs the follower's own pull worker, as runServe does.
+	scheduledPull bool
 }
+
+// memberForwardScheduledPull starts the follower's scheduled pull worker and
+// lets a forwarded login install its session. The default fixture pulls only
+// when a test asks, so that a receipt can be checked before any installation.
+func memberForwardScheduledPull(f *memberForwardHTTPFixture) { f.scheduledPull = true }
 
 type memberForwardBodyHold struct {
 	entered, release chan struct{}
@@ -57,9 +70,12 @@ func (b *memberForwardHeldBody) Read(p []byte) (int, error) {
 // forwarding uses both complete runtimes and the production member listener;
 // later follower observation uses the actual Coordinator pull, started explicitly
 // so the 202 receipt can be checked before any local image installation.
-func newMemberForwardHTTPFixture(t *testing.T, http2 bool) *memberForwardHTTPFixture {
+func newMemberForwardHTTPFixture(t *testing.T, http2 bool, options ...func(*memberForwardHTTPFixture)) *memberForwardHTTPFixture {
 	t.Helper()
 	f := new(memberForwardHTTPFixture)
+	for _, option := range options {
+		option(f)
+	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -150,9 +166,19 @@ func newMemberForwardHTTPFixture(t *testing.T, http2 bool) *memberForwardHTTPFix
 	if err != nil {
 		t.Fatal(err)
 	}
+	if f.scheduledPull {
+		f.follower.member = f.puller
+	}
 	runServingFixture(t, f.follower)
 	awaitServingRuntime(t, f.follower, func() bool { return f.follower.publisher.Status().ProtectedReady })
 	h, err := newServingHTTP(servingHTTPOptions{Runtime: f.follower, Hasher: users.NewHasher(1), Cookie: session.CookieConfig{Secure: session.SecureNever}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The follower's role source, authority membership and node-local cache
+	// command are mounted as runServe mounts them.
+	f.cache = servingCacheEntries()
+	flush, err := newServingCacheCommand(f.follower, f.cache)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,10 +186,13 @@ func newMemberForwardHTTPFixture(t *testing.T, http2 bool) *memberForwardHTTPFix
 		BlockingCommand: f.follower.BlockingCommand, BlockingReads: servingbuild.NewBlockingReads(),
 		ObjectCommand: f.follower.ObjectCommand, ObjectForward: f.follower.ObjectForward,
 		ZoneCommand: f.follower.ZoneCommand, ZoneForward: f.follower.ZoneForward,
+		ClusterRole: f.follower.ClusterRole, CacheFlushCommand: flush, NodeName: opts.Config.Node.Name,
+		Membership:   cluster.Authority{SelfName: opts.Config.Node.Name, Elector: mirror.Elector(cluster.ElectionController)},
 		Authenticate: h.Middleware, AuthHandler: h.Handler(), Authorizer: h.Authorizer(), Roles: h.Roles, Logger: slog.New(slog.DiscardHandler)})
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.api = apiServer
 	f.live = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if held := f.hold.Swap(nil); held != nil {
 			r.Body = &memberForwardHeldBody{r.Body, held}

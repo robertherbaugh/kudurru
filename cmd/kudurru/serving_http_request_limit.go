@@ -14,6 +14,10 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
+// providerLoginFollowerHint is the next step for OIDC browser and CLI login
+// on an enrolled follower, which admits local password login only.
+const providerLoginFollowerHint = "OIDC login runs on the primary: open the primary's address to sign in with a provider, or sign in on this node with a local username and password"
+
 type requestAdmissionKey struct{}
 type requestAdmission struct {
 	owner    *servingHTTP
@@ -73,6 +77,12 @@ func (h *servingHTTP) requestAdmissionMiddleware(next http.Handler) http.Handler
 		}
 		status := s.primary.driver.Status()
 		if !status.Running {
+			// The charge below needs the writer. An enrolled follower has none:
+			// provider login runs on its primary, and the answer says so.
+			if refusal, follower := s.storePrimaryRequired(providerLoginFollowerHint); follower {
+				servingHTTPError(w, r, refusal)
+				return
+			}
 			servingHTTPError(w, r, servingBrowserUnavailable())
 			return
 		}

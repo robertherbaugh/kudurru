@@ -15,8 +15,11 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
-// newServingCacheCommand admits local invalidation on the primary. Forwarding
-// would flush the wrong node. The cache must be the SAME instance used by DNS.
+// newServingCacheCommand admits invalidation of this node's own response
+// cache. Forwarding would flush the wrong node, so an enrolled follower runs
+// the command itself: it has no writer transaction and authorizes the raw
+// credential against the request's original leased view instead. The cache
+// must be the SAME instance used by DNS.
 func newServingCacheCommand(runtime *servingRuntime, responses *cache.Cache) (api.CacheFlushCommand, error) {
 	if runtime == nil || runtime.primary == nil || runtime.providers == nil || responses == nil {
 		return nil, serving.ErrComponents
@@ -46,8 +49,20 @@ func newServingCacheCommand(runtime *servingRuntime, responses *cache.Cache) (ap
 		}
 		defer func() { gate <- struct{}{} }()
 		removed := 0
+		flush := func() {
+			if name == "" {
+				removed = responses.FlushCount()
+			} else {
+				removed = responses.FlushName(name)
+			}
+		}
+		attrs := rbac.Attributes{Resource: "cache", Verb: "flush", Scope: rbac.Scope{Kind: rbac.ScopeCluster}}
+		if runtime.ClusterRole(ctx).Follower {
+			err := runtime.followerLocalCommand(ctx, attrs, flush)
+			return removed, followerLocalError(err)
+		}
 		_, err = runtime.currentAuthCommandThen(ctx, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
-			_, _, err := servingauth.ReauthorizeCurrentWithClock(ctx, tx, deps, proof, rbac.Attributes{Resource: "cache", Verb: "flush", Scope: rbac.Scope{Kind: rbac.ScopeCluster}}, runtime.opts.Now)
+			_, _, err := servingauth.ReauthorizeCurrentWithClock(ctx, tx, deps, proof, attrs, runtime.opts.Now)
 			return err
 		}, func(ctx context.Context, _ serving.TermActivation) error {
 			if err := ctx.Err(); err != nil {
@@ -55,11 +70,7 @@ func newServingCacheCommand(runtime *servingRuntime, responses *cache.Cache) (ap
 			}
 			// Local memory changes occur outside transaction/dependency pins.
 			// Cancellation after invalidation cannot undo the completed work.
-			if name == "" {
-				removed = responses.FlushCount()
-			} else {
-				removed = responses.FlushName(name)
-			}
+			flush()
 			return nil
 		})
 		return removed, currentCommandAPIError(err)

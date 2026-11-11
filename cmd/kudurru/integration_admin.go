@@ -23,6 +23,9 @@ import (
 )
 
 func integrationAdminError(err error) error {
+	if refusal, ok := asPrimaryRequired(err); ok {
+		return refusal
+	}
 	status, key, message := http.StatusServiceUnavailable, api.KeyUnavailable, "original integration operation unavailable"
 	switch {
 	case errors.Is(err, store.ErrNotFound):

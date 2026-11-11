@@ -31,3 +31,22 @@ func TestCLILoginProvidersKeepsUnavailableKeyWithoutServerText(t *testing.T) {
 		t.Fatal("server text retained or request repeated")
 	}
 }
+
+// The cluster-role refusals keep their keys through the safe-error filter, so
+// the CLI can say what to do, and still retain no server text.
+func TestSafeAuthErrorKeepsClusterRoleKeysWithoutServerText(t *testing.T) {
+	const reflected = "sensitive-proof-marker"
+	for _, key := range []string{"primary_required", "cluster_fenced", "cluster_conflict"} {
+		err := safeAuthError(&Error{StatusCode: http.StatusServiceUnavailable, Key: key, Message: reflected, Hint: reflected})
+		var refusal *Error
+		if !errors.As(err, &refusal) || refusal.Key != key || refusal.StatusCode != http.StatusServiceUnavailable {
+			t.Fatal("stable refusal key lost:", key, err)
+		}
+		if strings.Contains(err.Error(), reflected) || refusal.Hint != "" {
+			t.Fatal("server text retained for", key)
+		}
+	}
+	if err := safeAuthError(&Error{StatusCode: http.StatusServiceUnavailable, Key: "some_new_key", Message: reflected}); !IsKey(err, "authentication_failed") {
+		t.Fatal("an unknown key passed the filter", err)
+	}
+}

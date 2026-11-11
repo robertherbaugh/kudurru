@@ -69,8 +69,15 @@ func (h *servingHTTP) status(w http.ResponseWriter, r *http.Request) error {
 		u := o.(*internalv1.LocalUser)
 		out.HasDefaultCredentials = out.HasDefaultCredentials || u.Spec.BuiltinAdmin && u.Spec.MustChangePassword && !u.Spec.Disabled
 	}
+	// An enrolled follower admits local login only (it forwards it to the
+	// primary). It offers no provider login route, so it lists none and says
+	// which node does.
+	role := h.opts.Runtime.ClusterRole(r.Context())
+	if role.Follower {
+		out.Role, out.Primary = "follower", role.Primary
+	}
 	// Browser capabilities are explicit. A verifier alone is not a login route.
-	if h.opts.ProviderHandler != nil {
+	if h.opts.ProviderHandler != nil && !role.Follower {
 		for _, p := range h.providerInfos(v) {
 			if _, _, err := h.capturedBrowser(r.Context(), p.ID); err != nil {
 				continue

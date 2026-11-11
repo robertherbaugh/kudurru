@@ -288,17 +288,42 @@ func TestServingCacheCommandFollowerAndMissingCapture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The response cache is the node's own, so a follower flushes it itself
+	// (D368): the raw credential is authorized against the request's leased
+	// view, no transaction is opened and the installed image is untouched.
+	// Before D368 the command needed the local writer and refused with 503.
 	generation := rc.Generation()
+	installed, err := follower.ReadGeneration(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
 	called := false
 	httpAuth.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		called = true
-		_, err := command(r.Context(), "")
-		var failure *api.Error
-		if !errors.As(err, &failure) || failure.Status != http.StatusServiceUnavailable {
-			t.Error("follower cache command did not refuse503", err)
+		if removed, err := command(r.Context(), ""); err != nil || removed != 2 {
+			t.Error("follower did not flush its own cache", removed, err)
 		}
 	})).ServeHTTP(httptest.NewRecorder(), f.request())
-	if !called || rc.Len() != 2 || rc.Generation() != generation {
-		t.Fatal("follower changed local cache or missed authentication")
+	after, err := follower.ReadGeneration(t.Context())
+	if !called || err != nil || rc.Len() != 0 || rc.Generation() == generation || !after.Generation().Same(installed.Generation()) {
+		t.Fatal("follower did not flush locally, missed authentication or wrote its store", called, err, rc.Len())
+	}
+	// A request without the original proof is still refused on a follower.
+	refill := servingCacheEntries()
+	command, err = newServingCacheCommand(runtime, refill)
+	if err != nil {
+		t.Fatal(err)
+	}
+	called = false
+	anonymous := httptest.NewRequest(http.MethodPost, "http://kudurru.test/api/v1/cache/flush", nil)
+	httpAuth.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		called = true
+		var failure *api.Error
+		if removed, err := command(r.Context(), ""); removed != 0 || !errors.As(err, &failure) || failure.Status != http.StatusUnauthorized {
+			t.Error("follower flushed its cache without a credential", removed, err)
+		}
+	})).ServeHTTP(httptest.NewRecorder(), anonymous)
+	if !called || refill.Len() != 2 {
+		t.Fatal("anonymous follower request flushed the cache or was not served", called, refill.Len())
 	}
 }

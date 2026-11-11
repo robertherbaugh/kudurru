@@ -316,6 +316,9 @@ func tsigKeyUnsupported() error {
 // No raw SQL/provider/credential errors or retry advice cross this boundary.
 // In particular, an uncertain SQL completion must not imply durable rollback.
 func tsigKeyAPIError(err error) error {
+	if refusal, ok := asPrimaryRequired(err); ok {
+		return refusal
+	}
 	switch {
 	case errors.Is(err, tsigkeys.ErrIntent), errors.Is(err, tsigkeys.ErrInvalid), errors.Is(err, tsigkeys.ErrBounds), errors.Is(err, servingauth.ErrBounds):
 		return &api.Error{Status: http.StatusBadRequest, Body: api.ErrorBody{Key: api.KeyInvalid, Message: "invalid stored TSIG key command"}}

@@ -78,6 +78,11 @@ func (s *servingRuntime) currentAuthCommandThen(ctx context.Context, fn func(con
 	}
 	status := s.primary.driver.Status()
 	if !status.Running {
+		// A request that began on an enrolled follower has no local writer by
+		// design: name the primary instead of reporting a fenced writer.
+		if err := s.primaryRequired(ctx); err != nil {
+			return false, err
+		}
 		return false, replication.ErrFenced
 	}
 	writer := s.primary.writer.active.Load()

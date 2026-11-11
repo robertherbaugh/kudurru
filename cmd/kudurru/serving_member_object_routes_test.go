@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/api/apitest"
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -185,6 +186,25 @@ func TestMemberForwardRouteCoversEveryForwardedRoute(t *testing.T) {
 	}
 	if !slices.Equal(bounded, reviewed) {
 		t.Fatalf("bounded route table changed\nbounded:  %v\nreviewed: %v", bounded, reviewed)
+	}
+	// The API's follower table (D368) calls an operation forwarded exactly
+	// when it reaches one of these forwards, or has a forward of its own: the
+	// blocking switch and local login. The one observed route that the table
+	// refuses instead is the DHCPScope batch deletion, whose kind no typed
+	// command carries.
+	var classified []string
+	for path, item := range server.OpenAPI().Paths {
+		for method, op := range map[string]*huma.Operation{http.MethodPost: item.Post, http.MethodPut: item.Put, http.MethodPatch: item.Patch, http.MethodDelete: item.Delete} {
+			if op != nil && api.OperationFollowerClass(op.OperationID) == api.FollowerForwarded {
+				classified = append(classified, method+" "+path)
+			}
+		}
+	}
+	want := append(slices.DeleteFunc(slices.Clone(reviewed), func(route string) bool { return route == "POST /dhcpscopes:batchDelete" }), "POST /dns/blocking", "POST /auth/login")
+	slices.Sort(classified)
+	slices.Sort(want)
+	if !slices.Equal(classified, want) {
+		t.Fatalf("the follower table's forwarded operations differ from the routes that forward\nclassified: %v\nforwarding: %v", classified, want)
 	}
 	for _, tc := range []struct {
 		method, path string

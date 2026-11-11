@@ -178,6 +178,13 @@ func loginStageError(stage string, err error) error {
 		return fmt.Errorf("%s: %w", stage, context.DeadlineExceeded)
 	}
 	var response *apiclient.Error
+	if errors.As(err, &response) && response.Key == "primary_required" && response.StatusCode == http.StatusServiceUnavailable {
+		// An enrolled follower refused this step before running it, so the
+		// outcome is known. The key is kept for the hint; the message is the
+		// client's own text.
+		return fmt.Errorf("%s: %w", stage, &apiclient.Error{StatusCode: response.StatusCode, Key: response.Key,
+			Message: "this node is an enrolled follower and does not run this step; nothing was changed; log in against the primary"})
+	}
 	if errors.As(err, &response) && response.StatusCode >= 100 && response.StatusCode <= 599 {
 		message := "request failed; outcome may be unknown; no automatic retry"
 		if response.StatusCode == http.StatusUnauthorized && stage == "login" {

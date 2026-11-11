@@ -192,7 +192,8 @@ func safeAuthError(err error) error {
 	if errors.As(err, &original) {
 		key := "authentication_failed"
 		switch original.Key {
-		case "invalid", "unauthenticated", "forbidden", "not_found", "conflict", "rate_limited", "read_only", "generation_pending", "unavailable", "cli_login_unavailable":
+		case "invalid", "unauthenticated", "forbidden", "not_found", "conflict", "rate_limited", "read_only", "generation_pending", "unavailable", "cli_login_unavailable",
+			"primary_required", "cluster_fenced", "cluster_conflict":
 			key = original.Key
 		}
 		retry := max(time.Duration(0), min(original.RetryAfter, 24*time.Hour))

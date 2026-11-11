@@ -21,8 +21,8 @@ func operation(method, path, id, summary string, tags ...string) huma.Operation 
 
 // register adds one operation with its permission declaration: the
 // Authorize middleware, the rbac.Route for the lint, the
-// x-kudurru-permission extension in the OpenAPI document, and the body
-// cap.
+// x-kudurru-permission extension in the OpenAPI document, the follower
+// class of a mutation (x-kudurru-follower) and the body cap.
 func register[I, O any](s *Server, op huma.Operation, p perm, h func(context.Context, *I) (*O, error)) {
 	s.declare(&op, p)
 	huma.Register(s.api, op, h)
@@ -52,6 +52,16 @@ func (s *Server) declare(op *huma.Operation, p perm) {
 	}
 	if op.Extensions == nil {
 		op.Extensions = map[string]any{}
+	}
+	// Every mutation is refused on an enrolled follower unless the reviewed
+	// table names it as forwarded or local (D368). The check is attached here,
+	// where every route is declared, so a route added later cannot miss it.
+	if unsafeMethod(op.Method) {
+		class := OperationFollowerClass(op.OperationID)
+		op.Extensions[followerExtension] = string(class)
+		if class == FollowerPrimary {
+			op.Middlewares = append(op.Middlewares, s.primaryRequiredMW)
+		}
 	}
 	route := rbac.Route{Method: op.Method, Path: BasePath + op.Path, Public: p.public, Authenticated: p.authenticated}
 	switch {

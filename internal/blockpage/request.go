@@ -98,6 +98,15 @@ func (s *Server) requestsAllowed() bool {
 	return s.opts.RequestsAllowed == nil || s.opts.RequestsAllowed()
 }
 
+// requestsUnavailable is the message of a node that cannot store requests
+// now, "" when it can.
+func (s *Server) requestsUnavailable() string {
+	if s.opts.RequestsUnavailable == nil {
+		return ""
+	}
+	return s.opts.RequestsUnavailable()
+}
+
 // requestView builds the section for client and domain, nil when
 // requests are off or the page names no domain.
 func (s *Server) requestView(st *Settings, client netip.Addr, domain, flash string, now time.Time, preview bool) *RequestView {
@@ -110,6 +119,16 @@ func (s *Server) requestView(st *Settings, client netip.Addr, domain, flash stri
 	}
 	book := s.opts.Requests
 	r := book.Lookup(client, domain)
+	if message := s.requestsUnavailable(); message != "" {
+		// This node cannot store a request. An approval that reached it still
+		// shows; everything else is the reason the form is missing.
+		v.Form, v.Status = false, message
+		if r != nil && r.EffectiveState() == v1alpha1.UnblockApproved && unblock.Active(r, now) {
+			v.Note = r.Status.Note
+			v.Status = "An administrator allowed this name" + approvalUntil(r) + ". Try again in a moment" + retryHint(r, st.BlockTTL, now) + "."
+		}
+		return v
+	}
 	if r != nil {
 		v.Note = r.Status.Note
 		switch r.EffectiveState() {
@@ -221,6 +240,11 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	st := s.settings.Load()
 	if s.opts.Requests == nil || !st.Requests || !s.requestsAllowed() {
 		http.Error(w, "unblock requests are off on this server", http.StatusNotFound)
+		return
+	}
+	if message := s.requestsUnavailable(); message != "" {
+		s.unblockResult("unavailable")
+		http.Error(w, message, http.StatusServiceUnavailable)
 		return
 	}
 	domain := requestDomain(r)

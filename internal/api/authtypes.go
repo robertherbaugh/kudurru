@@ -16,6 +16,8 @@ type (
 		Providers             []AuthProvider     `json:"providers" nullable:"false" doc:"The OIDC login options."`
 		HasDefaultCredentials bool               `json:"hasDefaultCredentials" doc:"The bootstrap admin still has its generated password."`
 		Session               *AuthSessionLimits `json:"session,omitempty"`
+		Role                  string             `json:"role,omitempty" doc:"follower on an enrolled SQLite follower, which offers local login only: OIDC login runs on the primary. Absent otherwise."`
+		Primary               string             `json:"primary,omitempty" doc:"Name of the primary, set together with role."`
 	}
 	// AuthProvider is one OIDC login option.
 	AuthProvider struct {

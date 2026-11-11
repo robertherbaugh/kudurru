@@ -31,6 +31,9 @@ func (s *servingRuntime) MigrationCommand(ctx context.Context, program *api.Migr
 	}
 	writer := s.primary.writer.active.Load()
 	if !s.primary.writer.current(writer) {
+		if err := s.primaryRequired(ctx); err != nil {
+			return nil, err
+		}
 		return nil, currentCommandAPIError(replication.ErrFenced)
 	}
 	deadline := s.opts.Now().Add(10 * time.Minute)

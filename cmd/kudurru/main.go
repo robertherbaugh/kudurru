@@ -43,6 +43,14 @@ func errorHint(err error) string {
 		return "the token lacks the permission named above; ask an admin for a RoleBinding"
 	case apiclient.IsKey(err, "read_only"):
 		return "this deployment is read-only through the API (ha-static); edit objects.d on every node"
+	case apiclient.IsKey(err, "primary_required"):
+		return "this node is an enrolled follower and does not forward this command; run it against the primary (`kudurru cluster status` on this node names it), for example with --server"
+	case apiclient.IsKey(err, "completion_unknown"):
+		return "the follower could not confirm the primary's answer; inspect the current state before a new decision and do not repeat the command blindly"
+	case apiclient.IsKey(err, "cluster_fenced"):
+		return "this node observed a newer primary and closed its API until it follows it; use the current primary meanwhile"
+	case apiclient.IsKey(err, "cluster_conflict"):
+		return "this node recorded conflicting promotions; stop the member whose data should survive and run `kudurru cluster resolution --offline`, then `kudurru cluster resolve --offline`, on it"
 	}
 	return ""
 }

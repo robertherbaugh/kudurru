@@ -182,6 +182,10 @@ type StatusResponse struct {
 	Providers             []oidcProviderInfo  `json:"providers"`
 	HasDefaultCredentials bool                `json:"hasDefaultCredentials"`
 	Session               *statusSessionLimit `json:"session,omitempty"`
+	// Role and Primary are set by an enrolled SQLite follower only (the
+	// complete runtime answers there); this stack never sets them.
+	Role    string `json:"role,omitempty"`
+	Primary string `json:"primary,omitempty"`
 }
 
 type oidcProviderInfo struct {

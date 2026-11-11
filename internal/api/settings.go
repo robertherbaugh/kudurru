@@ -304,6 +304,9 @@ func (s *Server) settingsSchema(ctx context.Context, _ *struct{}) (*schemaOutput
 	}
 	flat := flatSettings(cfg)
 	items := make([]SettingKey, 0, len(config.Schema))
+	// On an enrolled follower a key is read-only exactly when its PATCH route
+	// answers primary_required.
+	followerCluster, followerNode := s.followerRefuses(ctx, "patchSettings"), s.followerRefuses(ctx, "patchNodeConfig")
 	for _, k := range config.Schema {
 		v := flat[k.Path]
 		if k.WriteOnly {
@@ -321,7 +324,8 @@ func (s *Server) settingsSchema(ctx context.Context, _ *struct{}) (*schemaOutput
 		items = append(items, SettingKey{
 			Path: k.Path, Type: string(k.Type), Scope: string(k.Scope), Default: k.Default, Help: help,
 			HostOnly: k.HostOnly, EnvLocked: slices.Contains(cfg.EnvLocked, k.Path), RestartRequired: config.RequiresRestart(k, s.authControlsHotReload()),
-			ReadOnly:  k.Scope == config.ScopeCluster && s.staticMode() || k.Scope == config.ScopeNode && (s.opts.NodeConfigCommand == nil || s.opts.Reload == nil),
+			ReadOnly: k.Scope == config.ScopeCluster && (s.staticMode() || followerCluster) ||
+				k.Scope == config.ScopeNode && (s.opts.NodeConfigCommand == nil || s.opts.Reload == nil || followerNode),
 			WriteOnly: k.WriteOnly, Label: k.Label, Group: k.Group, SettingConstraints: settingConstraints(k.Shape()), Value: v,
 		})
 	}

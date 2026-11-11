@@ -206,7 +206,9 @@ func (s *servingRuntime) ObjectForward(ctx context.Context, in api.ForwardedObje
 	}
 	attrs, ok := memberObjectAttributes(in, existing)
 	if !ok || operation == "" {
-		return api.ForwardedObjectResult{}, true, objectForwardUnavailable("this object kind cannot be written through a follower")
+		// No typed command carries this kind (DHCPScope): the same refusal as
+		// every other mutation that a follower does not forward.
+		return api.ForwardedObjectResult{}, true, api.PrimaryRequired(token.Authority().Term.PrimaryName)
 	}
 	payload, err := json.Marshal(in)
 	if err != nil {

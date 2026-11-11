@@ -898,7 +898,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return complete.captureBlockPageBranding(ctx, &brandCache)
 		})
 	}
-	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlLogs.reader(), qlAsync, qlLogs.reader, unblockBook, lic, reg, logger, brandSource...)
+	var requestsUnavailable func() string
+	if sql != nil && !cfg.Cluster.Static() {
+		requestsUnavailable = unblockRequestsUnavailable(sql)
+	}
+	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlLogs.reader(), qlAsync, qlLogs.reader, unblockBook, lic, reg, logger, requestsUnavailable, brandSource...)
 	if err != nil {
 		return err
 	}
@@ -1074,6 +1078,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var objectItems api.ObjectItems
 	var objectForward api.ObjectForward
 	var zoneForward api.ZoneForward
+	var clusterRole api.ClusterRoleFunc
 	var objectReads api.ObjectReadSource
 	var infoMessageReads api.InfoMessageReadSource
 	var sourceBodyReads api.SourceBodyReadSource
@@ -1149,6 +1154,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		canonicalSettings, objectCommand = complete, complete.ObjectCommand
 		objectItems = complete.ObjectItems
 		objectForward, zoneForward = complete.ObjectForward, complete.ZoneForward
+		clusterRole = complete.ClusterRole
 		brandingReads = complete.Branding
 		blockPagePreview = servingBrandingPreview{runtime: complete, server: blockPage, cache: &brandCache}
 		nodeConfigCommand, err = newServingNodeCommand(complete, reload, logLevel)
@@ -1346,6 +1352,14 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if dhcpKube != nil {
 		dhcpCluster = dhcpKube
 	}
+	// The API names the member that holds durable write authority as the
+	// leader, so an enrolled follower reports its primary and answers a list
+	// refresh with that name. List bodies, NOTIFY fan-out and catalog refresh
+	// keep the node-local membership above.
+	apiMembership := membership
+	if sql != nil && !cfg.Cluster.Static() {
+		apiMembership = cluster.Authority{SelfName: cfg.Node.Name, Elector: st.Elector(cluster.ElectionController)}
+	}
 	apiSrv, err := api.New(api.Options{
 		DHCP:            dhcpServer,
 		DHCPKube:        dhcpCluster,
@@ -1353,17 +1367,17 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		DHCPSetupError:  dhcpSetupError,
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised, VIPObservation: vipObservation, VIPEvents: vipEvents,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
-		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectItems: objectItems, ObjectForward: objectForward, ObjectReads: objectReads, ZoneCommand: zoneCommand, ZoneForward: zoneForward, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
+		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectItems: objectItems, ObjectForward: objectForward, ObjectReads: objectReads, ZoneCommand: zoneCommand, ZoneForward: zoneForward, ClusterRole: clusterRole, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, AuditBlockingCommand: kubeBlocking != nil, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
 		TSIGKeyReads: tsigKeyReads, TSIGKeyCommand: tsigKeyCommand,
 		Querylog: qlLogs.reader(), QuerylogSource: qlLogs.reader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, CacheFlushCommand: cacheFlushCommand, CacheInspect: newCacheInspector(cs, fwd, dnsQueryCapture), Chain: chain, DNSQueryCapture: dnsQueryCapture, DNSQueryOutput: dnsQueryOutput,
-		Config: cfg, Reload: reload, NodeConfigCommand: nodeConfigCommand, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: membership,
+		Config: cfg, Reload: reload, NodeConfigCommand: nodeConfigCommand, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: apiMembership,
 		InternalClient: internalClient, License: lic, Secondaries: secondaries, Stubs: stubs,
 		Lists: listResolver, Notifier: manualNotify,
-		Refresher:  listRefresher(membership, fetcher),
+		Refresher:  listRefresher(apiMembership, fetcher),
 		ListBodies: listBodies{cache: lists},
 		Purger:     qlLogs,
 		Audit:      recorders, AuditReader: auditReader, Central: centralState, AuditLogDiagnosis: auditDiagnosis,

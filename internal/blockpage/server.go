@@ -105,6 +105,12 @@ type Options struct {
 	// (license.FeatureRequests); false hides the form and refuses the post
 	// while the block page itself keeps working. nil allows it.
 	RequestsAllowed func() bool
+	// RequestsUnavailable returns a message while this node cannot store a
+	// request although the workflow is on: an enrolled follower, whose store
+	// only the primary writes. The page then shows the message, or an
+	// approval that is still in force, instead of the form, and a post is
+	// refused without a store attempt. nil or "" takes requests.
+	RequestsUnavailable func() string
 	// Settings are the initial page settings (Reconfigure replaces them).
 	Settings Settings
 	// Branding selects prepared presentation once per rendered request. The
@@ -164,7 +170,7 @@ func New(o Options) (*Server, error) {
 		}, []string{"scheme"}),
 		unblockRequests: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kudurru_blockpage_unblock_requests_total",
-			Help: "Unblock request form posts, by result (sent, limited, paused, invalid, error, cross_origin).",
+			Help: "Unblock request form posts, by result (sent, limited, paused, invalid, error, cross_origin, unavailable).",
 		}, []string{"result"}),
 	}
 	settings := o.Settings

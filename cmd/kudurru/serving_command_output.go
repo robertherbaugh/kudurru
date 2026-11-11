@@ -20,6 +20,9 @@ func (s *servingRuntime) currentAuthCommandOutput(ctx context.Context, request *
 	}
 	status := s.primary.driver.Status()
 	if !status.Running {
+		if err := s.primaryRequired(ctx); err != nil {
+			return false, err
+		}
 		return false, replication.ErrFenced
 	}
 	original := s.primary.writer.active.Load()

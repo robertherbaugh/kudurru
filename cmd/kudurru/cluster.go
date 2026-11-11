@@ -18,10 +18,14 @@ func newClusterCmd(o *cliOpts) *cobra.Command {
 	addClusterResolutionCommands(cmd)
 	cmd.AddCommand(&cobra.Command{
 		Use: "status", Short: "Show the connected node's cluster status", Args: cobra.NoArgs,
-		Long: `Read the connected node's store driver, epoch, reported leader, member count
-and read-only mode. Static twins each report their own local leader and store
-identity. This observation does not establish quorum, peer health or permission
-to promote a node. Use kudurru nodes for individual node readiness.`,
+		Long: `Read the connected node's store driver, replication role, epoch, reported
+leader, member count and read-only mode. On the SQLite driver ROLE is
+standalone, primary or follower, and LEADER names the primary. An enrolled
+follower forwards some commands to its primary and refuses the others with
+primary_required; -o json lists both sets. Static twins each report their own
+local leader and store identity. This observation does not establish quorum,
+peer health or permission to promote a node. Use kudurru nodes for individual
+node readiness.`,
 		Example: "  kudurru cluster status\n  kudurru cluster status -o wide\n  kudurru cluster status -o json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if _, err := o.format(); err != nil {
@@ -40,8 +44,8 @@ to promote a node. Use kudurru nodes for individual node readiness.`,
 				if err := json.Unmarshal(raw, &status); err != nil {
 					return nil, err
 				}
-				t := &cli.Table{Headers: []string{"NODE", "DRIVER", "LEADER", "NODES", "READ-ONLY"}}
-				row := []string{status.Node, status.Driver, firstNonEmpty(status.Leader, "-"), strconv.Itoa(status.Nodes), strconv.FormatBool(status.ReadOnly)}
+				t := &cli.Table{Headers: []string{"NODE", "DRIVER", "ROLE", "LEADER", "NODES", "READ-ONLY"}}
+				row := []string{status.Node, status.Driver, firstNonEmpty(status.Role, "-"), firstNonEmpty(status.Leader, "-"), strconv.Itoa(status.Nodes), strconv.FormatBool(status.ReadOnly)}
 				if wide {
 					t.Headers = append(t.Headers, "CLUSTER-ID", "EPOCH")
 					row = append(row, firstNonEmpty(status.ClusterID, "-"), strconv.FormatUint(status.Epoch, 10))

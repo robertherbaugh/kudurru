@@ -32,20 +32,23 @@ const (
 	KeyDefaultZone = "default_zone"
 	// KeyZoneNotEmpty is the 409 of deleting a DNSZone that DNSRecordSets
 	// still reference through the object routes (D148).
-	KeyZoneNotEmpty   = "zone_not_empty"
-	KeyPrecondition   = "precondition_failed"
-	KeyUnprocessable  = "unprocessable"
-	KeyTooLarge       = "too_large"
-	KeyRateLimited    = "rate_limited"
-	KeyReadOnly       = "read_only"
-	KeyHostOnly       = "host_only"
-	KeyEnvLocked      = "env_locked"
-	KeyHostLocked     = "host_locked"
-	KeyNotImplemented = "not_implemented"
-	KeyUnavailable    = "unavailable"
-	KeyInternal       = "internal"
-	KeyNotAcceptable  = "not_acceptable"
-	KeyMethod         = "method_not_allowed"
+	KeyZoneNotEmpty  = "zone_not_empty"
+	KeyPrecondition  = "precondition_failed"
+	KeyUnprocessable = "unprocessable"
+	KeyTooLarge      = "too_large"
+	KeyRateLimited   = "rate_limited"
+	KeyReadOnly      = "read_only"
+	// KeyPrimaryRequired is the 503 of a mutation that an enrolled SQLite
+	// follower neither forwards to its primary nor runs on its own (D368).
+	KeyPrimaryRequired = "primary_required"
+	KeyHostOnly        = "host_only"
+	KeyEnvLocked       = "env_locked"
+	KeyHostLocked      = "host_locked"
+	KeyNotImplemented  = "not_implemented"
+	KeyUnavailable     = "unavailable"
+	KeyInternal        = "internal"
+	KeyNotAcceptable   = "not_acceptable"
+	KeyMethod          = "method_not_allowed"
 	// KeyPasswordChange is the 403 of a local user who must change the
 	// password first (auth.Authorize answers the same key).
 	KeyPasswordChange = "password_change_required"

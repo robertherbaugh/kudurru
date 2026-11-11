@@ -186,6 +186,16 @@ func TestCLILoginTOTPSafeStageErrors(t *testing.T) {
 			t.Fatal("safe stage projection lost context category")
 		}
 	}
+	// A follower's refusal keeps its key for the hint and gets the client's
+	// own message: the outcome is known, and no server text is retained.
+	refused := loginStageError("mint a CLI token", &apiclient.Error{StatusCode: http.StatusServiceUnavailable, Key: "primary_required", Message: marker, Hint: marker})
+	if !apiclient.IsKey(refused, "primary_required") || strings.Contains(refused.Error(), marker) || strings.Contains(refused.Error(), "outcome may be unknown") ||
+		!strings.Contains(refused.Error(), "log in against the primary") || !strings.Contains(errorHint(refused), "run it against the primary") {
+		t.Fatal("follower refusal lost its key, kept server text or claims an unknown outcome:", refused)
+	}
+	if other := loginStageError("login", &apiclient.Error{StatusCode: http.StatusServiceUnavailable, Key: "unavailable", Message: marker}); apiclient.IsKey(other, "unavailable") || strings.Contains(other.Error(), marker) {
+		t.Fatal("another refusal kept its key or server text:", other)
+	}
 }
 
 func runLoginTOTP(t *testing.T, o *cliOpts, configPath string, args ...string) (string, string, error) {

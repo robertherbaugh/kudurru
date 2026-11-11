@@ -354,6 +354,12 @@ type Options struct {
 	// ZoneForward hands zone convenience commands on an enrolled SQLite
 	// follower to its original primary. Requires ZoneCommand.
 	ZoneForward ZoneForward
+	// ClusterRole reports whether a request began on an enrolled SQLite
+	// follower and names its primary. With it, every mutation that the
+	// follower table (follower.go) does not name as forwarded or local
+	// answers 503 primary_required before its handler. Nil: no node of this
+	// server is a follower.
+	ClusterRole ClusterRoleFunc
 	// MigrationCommand admits bounded journal and destination programs.
 	MigrationCommand MigrationCommand
 	MigrationReads   MigrationReadSource

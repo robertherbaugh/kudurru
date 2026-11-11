@@ -59,8 +59,20 @@ type ClusterInfo struct {
 	Nodes     int    `json:"nodes"`
 	// ReadOnly is true in the ha-static shape: objects are file-managed on
 	// every node and the API refuses object writes (503 read_only).
-	ReadOnly bool   `json:"readOnly"`
-	Node     string `json:"node"`
+	ReadOnly bool `json:"readOnly"`
+	// Role is this node's replication role on the SQLite driver. A fenced or
+	// conflicted node closes its API and is never read here.
+	Role string `json:"role,omitempty" doc:"Replication role of this node on the SQLite driver: standalone, primary or follower. Absent on other drivers."`
+	// Primary names the member that holds write authority.
+	Primary string `json:"primary,omitempty" doc:"Name of the node that holds write authority (SQLite driver)."`
+	// PrimaryRequired is true on an enrolled follower: a mutation that is in
+	// neither list below answers 503 primary_required (D368).
+	PrimaryRequired bool `json:"primaryRequired" doc:"True on an enrolled SQLite follower: every mutating operation that is in neither forwardedOperations nor localOperations answers 503 primary_required."`
+	// ForwardedOperations and LocalOperations are operationIds, set only
+	// while PrimaryRequired is true.
+	ForwardedOperations []string `json:"forwardedOperations,omitempty" doc:"operationIds that this follower sends to its primary. Set only while primaryRequired is true."`
+	LocalOperations     []string `json:"localOperations,omitempty" doc:"operationIds that this follower runs itself, on its own node-local state or by its own role. Set only while primaryRequired is true."`
+	Node                string   `json:"node"`
 	Took
 }
 
@@ -255,6 +267,20 @@ func (s *Server) getCluster(ctx context.Context, _ *struct{}) (*clusterOutput, e
 		out.Nodes = len(peers)
 	}
 	out.ReadOnly = s.staticMode()
+	out.Role, out.Primary = info.Role, info.Leader
+	if info.Role == "" {
+		out.Primary = ""
+	}
+	// The request's own source decides what its mutations would answer, so
+	// the capability names exactly that source.
+	if role := s.clusterRole(ctx); role.Follower {
+		out.Role, out.Primary, out.PrimaryRequired = "follower", role.Primary, true
+		if role.Primary != "" {
+			out.Leader = role.Primary
+		}
+		out.ForwardedOperations = s.followerOperationIDs(FollowerForwarded)
+		out.LocalOperations = s.followerOperationIDs(FollowerLocal)
+	}
 	return &clusterOutput{Body: out}, nil
 }
 
