@@ -227,15 +227,55 @@ request and report a result for each document. Deleting several objects at
 once in the dashboard works the same way, with a result for each name.
 
 - On the primary, one request applies every document. The same holds for a
-  node that is not in a cluster. If something else is changed on the node
-  while the request runs, the request stops at that point: every later
-  document reports `unavailable` ("another change was committed on this node
-  while the request ran") and is not applied, and the documents before stay
-  applied. Such a change is another request that changes something, a
-  sign-in, or a change that a follower passes on. The node's own work on the
-  documents of the request, such as writing their status, does not stop it.
-  Run the command again: it reports the documents that are already applied
-  as `unchanged` and applies the rest.
+  node that is not in a cluster. Each document is its own commit, and after
+  every commit the node must publish again before it answers DNS queries for
+  its own zones and other API requests: until then those queries get no
+  answer, and other requests, reads included, answer `503
+  generation_pending` (retry after one second). A request that runs longer
+  than two seconds therefore pauses: it waits, for up to two seconds, until
+  the node has published the documents applied so far, then commits nothing
+  for 200 milliseconds, and goes on. A node that needs longer than two
+  seconds to publish is not waited for, so the pauses make a request at most
+  about twice as slow; on such a node local answers stay withheld for the
+  whole request. On a node that publishes quickly a long apply keeps local
+  answers and other callers waiting for about two seconds at a time plus the
+  node's time to publish, not for the whole request. Measured on a shared
+  test machine: 150 new record sets took 3.9 seconds without the pauses, and
+  120 took 4.0 and 4.9 seconds with them, with local answers withheld for at
+  most 4.0 and 2.4 seconds at a time; on the same machine under heavy load
+  (race detector), 120 took 93 seconds and local answers were withheld for
+  84 seconds of them. Split very large files (many hundreds of documents),
+  or apply them when DNS clients of the node's own zones can wait.
+- If something else is changed on the node while the request runs, the
+  request stops at that point: every later document reports `unavailable`
+  ("another change was committed on this node while the request ran") and is
+  not applied, and the documents before stay applied. Such a change is
+  another request that the node admitted in one of the pauses (a request
+  that changes something or a sign-in), a change that a follower passes on,
+  or a background command of the node, such as a migration step or an
+  operator-started integration operation. The node's own work on the
+  documents of the request, such as writing their status or a zone's
+  published state, does not stop it. Neither do RFC 2136 updates, a
+  command of the local admin socket, the declarative objects source or the
+  node's provider and integration reconciliation, although they are made by
+  someone else: the request does not detect them. Run the command again: it
+  reports the documents that are already applied as `unchanged` and applies
+  the rest.
+- A request that begins while the node is still publishing other work can
+  be refused as a whole before its first document: it answers `503
+  generation_pending`, or every document reports `unavailable` ("current
+  writable serving generation unavailable"). Nothing was applied. Send the
+  same request again. Two such requests at the same time usually end this
+  way for one of them; the dashboard therefore sends one request per
+  namespace one after another.
+- `kudurru apply` and `kudurru restore` wait up to five minutes for the
+  answer, as long as the node lets one request run; other commands keep the
+  30-second default of `--request-timeout`. An item that is reached after
+  the five minutes reports `unavailable` ("the request's lifetime ended
+  before this item was reached; it was not applied"). If you pass a shorter
+  `--request-timeout` and it ends first, the command reports a failed
+  request while the node goes on applying until it notices; read the
+  objects before you decide anything else.
 - Through a follower, a request applies documents until the follower's data
   changes. That happens at the follower's next pull after the primary has
   received the first document, at most five seconds later by default. The

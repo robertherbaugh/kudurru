@@ -152,11 +152,15 @@ began on, exactly as a single write is. The request's first commit retires
 this publication, so each later item is admitted by a different comparison:
 the last command that changed the node's data must still be the one it was
 when the request's previous item ended, which is the request's own commit
-whenever that item changed something. The node's own
-follow-up writes, such as object status and the published state of a zone,
-are not commands and do not count. A command of anyone else in between does:
-another request that changes data under any credential, a sign-in, a write
-forwarded from a follower, a migration step. Every later item then carries
+whenever that item changed something. Writes that the node makes without an
+API command are not detected and do not count: its follow-up writes, such as
+object status and the published state of a zone, and also RFC 2136 updates,
+commands of the local admin socket, the declarative objects source and
+provider and integration reconciliation, although some of them act for
+someone else. A command through the API in between does count: another
+request that changes data under any credential, a sign-in, a write forwarded
+from a follower, a migration step or an operator-started integration
+operation. Every later item then carries
 `errorKey` `unavailable` ("another change was committed on this node while
 the request ran; this item was not applied; review current state before a new
 decision"). It is not applied and never tried again, and the earlier items
@@ -171,7 +175,19 @@ provider data may be replaced while the request runs: each item uses the ones
 that are current when it runs. The request's one lifetime of five minutes
 bounds all items: an item that is reached after it ended reports
 `unavailable` ("the request's lifetime ended before this item was reached; it
-was not applied").
+was not applied"). `kudurru apply` and `kudurru restore` wait the same five
+minutes for the answer unless `--request-timeout` is set.
+
+Each item commits on its own, and after every commit the node answers no DNS
+query for its own zones, and answers other requests `503 generation_pending`,
+until it has published again. A request whose items have run for two seconds
+therefore waits, inside its lifetime, until the node has published the items
+so far (for up to two seconds), then commits nothing for 200 milliseconds
+before its next item. Other
+requests, and DNS queries, are served in that pause; a change committed by
+another request in the pause stops the rest of the request as described
+above. [sqlite-cluster.md](sqlite-cluster.md#4-changes-through-a-follower)
+gives the sizes and the answers of a request that is refused as a whole.
 
 The zone convenience commands the dashboard's
 record editor uses (`POST /zones/{zone}/records`, `DELETE

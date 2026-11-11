@@ -30,11 +30,20 @@ are not rolled back when another document fails. Do not automatically replay
 the batch after a refusal or an uncertain transport outcome.
 
 On SQLite, a standalone node and the primary of a cluster apply every
-document of one request. A request holds its place between two documents
-only against its own commits and the node's own follow-up writes. When a
-command of anyone else changes the node's data while the request runs
-(another request, a sign-in, a write that a follower passes on), every later
-document carries `errorKey` `unavailable` with the error "another change was
+document of one request, each in its own commit. A request holds its place
+between two documents against its own commits and the writes that the node
+makes without an API command (status, zone state, RFC 2136 updates, the local
+admin socket and reconciliation), which it does not detect. While its
+documents commit, the node answers no DNS query for its own zones and other
+requests answer `503 generation_pending` until it has published again, so a
+request that has run for two seconds waits, for up to two seconds, until the
+node has published the documents so far and then commits nothing for 200
+milliseconds before its next document. When the node takes longer to publish
+(a large data set or a loaded machine), the request goes on without the
+publication, so the pauses make it at most about twice as slow. When a command of anyone else changes the node's data while
+the request runs (another request admitted in such a pause, a sign-in, a
+write that a follower passes on, a migration step), every later document
+carries `errorKey` `unavailable` with the error "another change was
 committed on this node while the request ran; this item was not applied;
 review current state before a new decision". Those documents were not
 applied. Read the results, then send the request again as a new decision:
@@ -43,6 +52,17 @@ cluster passes each document on to the primary and stops when its own data
 changes; [sqlite-join.md](sqlite-join.md#commands-through-a-follower)
 describes both cases. `POST /{kind}:batchDelete` follows the same rule for
 its names and reports them under `processed.success` and `processed.errors`.
+
+A request that begins while the node still publishes other work is refused
+before its first document: with `503 generation_pending`, or with every item
+reporting `unavailable` ("current writable serving generation unavailable").
+Nothing was applied, and the same request may be sent again. Of two such
+requests sent at the same time one usually ends this way, so send them one
+after another. An item reached after the request's five-minute lifetime
+reports `unavailable` ("the request's lifetime ended before this item was
+reached; it was not applied"). Give the client a timeout of five minutes for
+large requests; `kudurru apply` and `kudurru restore` do so unless
+`--request-timeout` is set.
 
 ## Reviewing and replacing zone options
 

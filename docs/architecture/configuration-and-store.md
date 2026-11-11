@@ -1736,9 +1736,25 @@ migration steps and the unblock-request sweep. A command whose SQL outcome is
 unknown installs a mark that no chain equals. Writers that take only the Store
 lock or the primary pin install none: status reconciliation, the zone
 lifecycle and its committed heads, which is also how an RFC 2136 update
-commits, list fetch status, integration reconciliation and the local admin
-socket. They are not commands of an API caller, and an item reads nothing they
-write except in its own transaction.
+commits, list fetch status, integration reconciliation, the local admin
+socket, the RoleBinding objects source, the login-lane request charge and
+provider authority admission. They are not detected. Most are the node's own
+follow-up work, but an RFC 2136 update (a TSIG client) and an admin socket
+command (an operator) act for someone else, and a request does not stop for
+them; an item reads nothing they write except in its own transaction.
+
+Every commit retires the publication that DNS answers for local data and
+every other API request are bound to, until the node has published again. A
+request's items commit back to back, so without a bound the node would have
+no current publication for the whole request. Once the items of a request
+have run for two seconds since the node last had a current publication for
+it, the next item first waits, inside the request's lifetime and its writer
+episode and for at most two seconds, until the publisher is current again
+(`Publisher.WaitTerm`), and then commits nothing for 200 milliseconds. A wait
+that reaches its two seconds goes on without the publication and without the
+rest, so the pace makes a request at most about twice as slow. It captures no new lease: the chain's
+compare still decides, so a command that another caller commits in the pause
+stops every later item.
 
 A chained command whose anchor has moved is refused as `unavailable` ("another
 change was committed on this node while the request ran"). It does not run,
@@ -1762,9 +1778,12 @@ flowchart TD
     Request["One request: original lease, credential and lifetime"] --> First["Item admitted on the original lease"]
     First -->|refused cleanly| First
     First -->|completed| Anchor["Chain anchored: own commit receipt, or the current mark for a no-op"]
-    Anchor --> Next["Next item under the publication gate"]
+    Anchor --> Pace{"Items ran for two seconds?"}
+    Pace -->|no| Next["Next item under the publication gate"]
+    Pace -->|yes| Wait["Wait up to 2 s for a current publication; if it came, rest 200 ms"]
+    Wait --> Next
     Next -->|coordinator mark is the anchor| Run["Reauthorize in transaction, apply, move anchor to own receipt"]
-    Run --> Next
+    Run --> Pace
     Next -->|another command changed state| Stop["unavailable for this and every later item"]
     Follow["Status, zone lifecycle and other ungated writers"] -.->|advance the revision only| Next
 ```
