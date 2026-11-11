@@ -317,7 +317,12 @@ func TestRunDownloadsAListAddedWhileAURLIsSilent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- f.Run(ctx) }()
-	t.Cleanup(func() { cancel(); <-done })
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Run: %v", err)
+		}
+	})
 	select {
 	case <-asked:
 	case <-time.After(10 * time.Second):
