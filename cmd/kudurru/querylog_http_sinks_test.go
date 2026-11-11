@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -358,7 +359,9 @@ func TestQuerylogSinkCredentialsHonorOnlyTheNodeGrants(t *testing.T) {
 			t.Errorf("%s: the error repeats a value or the reference: %v", name, err)
 		}
 	}
-	if !reflect.DeepEqual(asked, []string{"export/password", "absent/password"}) {
+	// The cases above run in map order, so only the set of reads is fixed.
+	slices.Sort(asked)
+	if !reflect.DeepEqual(asked, []string{"absent/password", "export/password"}) {
 		t.Fatalf("Secrets read: %v", asked)
 	}
 	// Each call reads the source again, which is what a rotation relies on.
