@@ -748,7 +748,11 @@ still refuse the operation. Native resolver mutations below are treated the
 same way (D377): their writes still need the complete data generation, so after
 such a commit each native cache attempt is consumed without writing, and the
 resolution, which starts under the retained recursive policy, continues and
-answers.
+answers. Without its own writes, the uncached part of such a lookup asks the
+authorities again for delegations, DS and DNSKEY records it would otherwise
+remember: a cold validating lookup costs several times the authority queries
+(TestNativeMutationSkippedWritesStillResolve), still within the per-query
+budget. Names already in the cache are unaffected.
 Native recursion captures a trusted mutation source from the original complete
 request immediately before exchange. It retains the private root component and
 finite query lifetime, never a replacement publication. Each child acquisition

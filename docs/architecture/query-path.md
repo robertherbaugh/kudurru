@@ -101,10 +101,13 @@ shared UDP writes cannot wait beyond the original bound. A successful local
 flush or FIN remains an actual effect even if a later admission check reports an
 error. It is not reset, replayed or presented as evidence of remote receipt.
 
-Authoritative, local and mixed answers retain the complete data-generation
-check. Forwarded and policy-blocked ordinary queries retain their original
-immutable policy across unrelated canonical commits, while still requiring the
-original dependency installations, anchor input and finite output attempt.
+Authoritative, local and mixed answers of an ordinary query are bound to the
+publication that is served, not to the latest commit (D378): after a canonical
+commit that the node has not published yet they are still sent, and once a
+successor is published they are withheld. Forwarded and policy-blocked ordinary
+queries retain their original immutable policy across unrelated canonical
+commits, including a published successor, while still requiring the original
+dependency installations, anchor input and finite output attempt.
 Only internal pipeline provenance permits this behavior; wire AA/AD bits do not.
 An unavailable local zone may emit an empty SERVFAIL without claiming a data
 generation. So may a query whose upstream was actually asked and failed or timed
@@ -112,12 +115,15 @@ out (D377): only the upstream stage's own unattributed `servfail_upstream` or
 `timeout_upstream` refusal with no answer or authority records, nothing but OPT
 in the additional section, AA clear, and the internal `UpstreamContacted`
 evidence that at least one forwarder received the query or the native resolver
-ran a resolution. The client gets that refusal instead of waiting for its own
-timeout. Refusals that the node produces without asking any server keep the
-complete data-generation check and are not sent across a commit: a failed
-serving capture in the upstream stage, a refused native recursion or cache
-admission, a query that ended before any server was tried, indeterminate DNSSEC
-validation, a failed rewrite target and other failure-origin answers.
+sent a query to at least one authority. The client gets that refusal instead of
+waiting for its own timeout, also after a successor is published. A refusal
+that the node produces without asking any server is not in this retained class:
+a failed serving capture in the upstream stage, a refused native recursion or
+cache admission, a query that ended before any server was tried, indeterminate
+DNSSEC validation, a failed rewrite target and other failure-origin answers. As
+an ordinary query response it follows the served-publication policy above: it
+is sent while its publication is still served, including after an unpublished
+commit, and withheld once a successor is published.
 Ingress-only node-health and CHAOS identity replies also retain the original
 complete route during a failed settings preparation; their internal status
 establishes provenance, not a canonical zone-data grant. These retained
@@ -128,8 +134,13 @@ that arrives after an ordinary canonical commit, before the successor
 publication is served, is resolved on its original lease instead of being
 refused. The native cache keeps the complete generation check for its writes:
 after such a commit each cache attempt is consumed without writing, exactly
-like a superseded raw-cache fill, and the resolution continues. Anchor
-retirement and loss of an installed dependency still refuse recursion.
+like a superseded raw-cache fill, and the resolution continues. The answer is
+the same, but the part of a lookup that is not already cached costs more
+authority queries, since delegations and DNSSEC keys learned during it are not
+remembered (TestNativeMutationSkippedWritesStillResolve: 18 to 60 instead of 6
+to 13 for a cold validating lookup in its test world, within the 120-query
+budget). Anchor retirement and loss of an installed dependency still refuse
+recursion.
 
 A native UPDATE's
 own commit retires that generation, so its root command adapter issues a private

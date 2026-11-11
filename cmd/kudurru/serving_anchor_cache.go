@@ -13,10 +13,6 @@ type rootAnchorInsertion struct {
 	seal *recursiveRootSeal
 	read *recursiveRootRead
 	used atomic.Bool
-	// Raw response-cache work and native resolver mutations may return data
-	// while skipping a superseded fill (D332, D377). Only the zero value, used
-	// by no current caller, makes a superseded attempt an error.
-	retainedDNS bool
 }
 
 // Detached work supplies its own original finite context before acquisition;
@@ -30,18 +26,17 @@ func captureRootAnchorInsertion(req *pipeline.Request) (cachestage.Insertion, er
 	if err != nil {
 		return nil, err
 	}
-	return &rootAnchorInsertion{seal: seal, read: read, retainedDNS: true}, nil
+	return &rootAnchorInsertion{seal: seal, read: read}, nil
 }
 
 func (i *rootAnchorInsertion) Apply(fn func() error) error {
 	if i == nil || fn == nil || !i.used.CompareAndSwap(false, true) {
 		return serving.ErrDependency
 	}
-	current := i.seal.current
-	if i.retainedDNS {
-		current = i.seal.dnsCurrent
-	}
-	return i.seal.withReadCurrent(i.read, current, func(check func() error) error {
+	// Raw response-cache work and native resolver mutations are checked under
+	// the retained DNS policy and may return data while skipping a
+	// superseded fill (D332, D377).
+	return i.seal.withReadCurrent(i.read, i.seal.dnsCurrent, func(check func() error) error {
 		if err := check(); err != nil {
 			return err
 		}

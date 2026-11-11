@@ -97,11 +97,12 @@ func (o *rootAnchorOutput) BindResponse(response *pipeline.Response) error {
 		}
 		o.bound = true
 		// These are internal pipeline provenance fields, never wire AA/AD or
-		// client claims. Local/authoritative/mixed data stays generation-bound.
+		// client claims.
 		o.retainedDNS = o.query && retainedDNSResponse(response)
-		// Local, authoritative and mixed answers are bound to the served
-		// publication rather than to the latest commit (D378). A transfer
-		// or any other opcode stays bound to full data currency.
+		// Local, authoritative and mixed answers and node-produced refusals
+		// are bound to the served publication rather than to the latest
+		// commit (D378). A transfer or any other opcode stays bound to full
+		// data currency.
 		o.servedDNS = !o.retainedDNS && o.query && servedDNSResponse(response)
 		return nil
 	}
@@ -139,7 +140,10 @@ func retainedDNSResponse(response *pipeline.Response) bool {
 	// qualifies (D377). A refusal the node produced itself (failed serving
 	// capture, refused native recursion, indeterminate DNSSEC validation,
 	// a failed rewrite target or stub zone) and anything that claims
-	// authoritative, local, mixed or synthesized data stays generation-bound.
+	// authoritative, local, mixed or synthesized data is not retained: as an
+	// ordinary query response it follows the served-publication policy
+	// (D378), sent while its publication is served and withheld once a
+	// successor is published.
 	m := response.Msg
 	switch response.Status {
 	case pipeline.StatusServfailUnsynced:

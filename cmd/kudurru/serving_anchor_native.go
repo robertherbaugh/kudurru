@@ -64,7 +64,7 @@ func (s *rootNativeSource) Capture(ctx context.Context) (recursor.CacheMutation,
 	// The native cache keeps full data currency (D332): after an ordinary
 	// commit the attempt is consumed without running the writes, exactly like
 	// a superseded raw-cache fill, and the resolution itself continues (D377).
-	return &rootNativeMutation{source: s, insertion: rootAnchorInsertion{seal: s.seal, read: read, retainedDNS: true}}, nil
+	return &rootNativeMutation{source: s, insertion: rootAnchorInsertion{seal: s.seal, read: read}}, nil
 }
 
 type rootNativeMutation struct {

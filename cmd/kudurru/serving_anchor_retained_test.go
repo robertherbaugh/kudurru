@@ -162,8 +162,10 @@ func TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation(t *testing.T) {
 		{"upstream failure", pipeline.OriginUnknown, pipeline.StatusServfailUpstream, dns.RcodeServerFailure, true, true, 0},
 		{"upstream timeout", pipeline.OriginUnknown, pipeline.StatusTimeoutUpstream, dns.RcodeServerFailure, true, true, 0},
 		// Node-produced refusals carry the same status and shape but no
-		// evidence that any upstream was asked: they keep the disposition
-		// they had before upstream failures were released (D377).
+		// evidence that any upstream was asked: they are not retained (D377).
+		// Here the successor is published, so they are refused; while the
+		// publication is still served they are sent like a local answer
+		// (D378, TestRootAnchorServedDNSFollowsThePublication).
 		{"capture refusal", pipeline.OriginUnknown, pipeline.StatusServfailUpstream, dns.RcodeServerFailure, false, false, 0},
 		{"capture refusal timeout", pipeline.OriginUnknown, pipeline.StatusTimeoutUpstream, dns.RcodeServerFailure, false, false, 0},
 		{"indeterminate validation", pipeline.OriginFailure, pipeline.StatusServfailUpstream, dns.RcodeServerFailure, false, false, pipeline.ValidationIndeterminate},
@@ -282,8 +284,9 @@ func TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation(t *testing.T) {
 	}
 	// Refusals that the actual upstream stage produces without asking any
 	// server have the same status and wire shape as a failed upstream, but no
-	// contact evidence: they are not released across the commit (D377). A
-	// recursive group whose authorities fail is a contacted failure and is.
+	// contact evidence: they are not retained (D377) and, with the successor
+	// published, are refused. A recursive group whose authorities fail is a
+	// contacted failure and is retained.
 	query := new(dns.Msg)
 	query.SetQuestion("node-refusal.example.", dns.TypeA)
 	query.SetEdns0(1232, false)

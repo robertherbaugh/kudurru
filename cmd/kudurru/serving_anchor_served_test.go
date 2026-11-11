@@ -21,7 +21,9 @@ import (
 // transfer, and a transfer or a superseded publication stays strict. Once the
 // node has published the commit, an answer of the old lease is refused. The
 // test holds the publisher's barrier across the commit, so the publication
-// cannot be replaced while the first half runs.
+// cannot be replaced while the first half runs. The same holds for a SERVFAIL
+// the node produced without asking an upstream; only a failure of an
+// upstream that was asked is retained past the successor (D377).
 func TestRootAnchorServedDNSFollowsThePublication(t *testing.T) {
 	f := newServingCommandFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -132,6 +134,42 @@ func TestRootAnchorServedDNSFollowsThePublication(t *testing.T) {
 		}
 	})
 
+	// A SERVFAIL the node produced without asking an upstream (a refused
+	// capture or admission: no UpstreamContacted; indeterminate validation or
+	// a failed target: origin failure) is not in the retained class (D377). It
+	// follows the served-publication policy like a local answer: sent while
+	// its publication is served, withheld once a successor is published. Only
+	// a failure of an upstream that was asked is still sent after that.
+	refusals := []struct {
+		name      string
+		origin    pipeline.ResponseOrigin
+		contacted bool
+		retained  bool
+	}{
+		{"uncontacted refusal", pipeline.OriginUnknown, false, false},
+		{"failure origin", pipeline.OriginFailure, false, false},
+		{"contacted failure origin", pipeline.OriginFailure, true, false},
+		{"contacted upstream failure", pipeline.OriginUnknown, true, true},
+	}
+	refusal := func(req *pipeline.Request, origin pipeline.ResponseOrigin, contacted bool) *pipeline.Response {
+		m := new(dns.Msg)
+		m.SetReply(req.Msg)
+		m.Rcode = dns.RcodeServerFailure
+		return &pipeline.Response{Msg: m, Origin: origin, Status: pipeline.StatusServfailUpstream, UpstreamContacted: contacted}
+	}
+	for _, tc := range refusals {
+		t.Run("unpublished commit "+tc.name, func(t *testing.T) {
+			req := query(dns.TypeA)
+			output := capture(t, req)
+			if !emit(t, req, output, refusal(req, tc.origin, tc.contacted)) {
+				t.Fatal("a SERVFAIL of the served publication was withheld after an unpublished commit")
+			}
+			if output.retainedDNS != tc.retained || output.servedDNS == tc.retained {
+				t.Fatal("wrong output class", output.retainedDNS, output.servedDNS)
+			}
+		})
+	}
+
 	pinned = false
 	release()
 	awaitServingRuntime(t, f.s, func() bool {
@@ -143,6 +181,14 @@ func TestRootAnchorServedDNSFollowsThePublication(t *testing.T) {
 	req := query(dns.TypeA)
 	if emit(t, req, beforeLater, local(req, pipeline.OriginLocal, pipeline.StatusLocalRecord)) {
 		t.Fatal("a local answer of a superseded publication was emitted after the node published its successor")
+	}
+	for _, tc := range refusals {
+		t.Run("published successor "+tc.name, func(t *testing.T) {
+			req := query(dns.TypeA)
+			if emit(t, req, capture(t, req), refusal(req, tc.origin, tc.contacted)) != tc.retained {
+				t.Fatal("wrong SERVFAIL disposition after the node published its successor", tc.retained)
+			}
+		})
 	}
 }
 
