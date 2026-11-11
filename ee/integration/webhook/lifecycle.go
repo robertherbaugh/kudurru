@@ -9,13 +9,17 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/miekg/dns"
 
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/ee/integration"
 	"github.com/robertherbaugh/kudurru/ee/integration/host"
+	"github.com/robertherbaugh/kudurru/ee/integration/plan"
 	"github.com/robertherbaugh/kudurru/internal/credentials"
 )
 
@@ -35,6 +39,10 @@ type provider struct {
 	hmacKey       []byte
 	secrets       []string
 	now           func() time.Time
+	// records is the captured publication configuration (D380); applyMu
+	// serializes one instance's record changes.
+	records records
+	applyMu sync.Mutex
 }
 
 var (
@@ -81,8 +89,9 @@ func (p *provider) Provision(ctx context.Context, h integration.Host, raw json.R
 	if decode(raw, &config) != nil {
 		return errInput
 	}
-	if len(config.Domains) != 0 || config.Policy != "" && config.Policy != "sync" {
-		return host.ErrUnsupported
+	publication, err := publicationConfig(config, originalOwner)
+	if err != nil {
+		return err
 	}
 	values := make(map[string][]byte)
 	var captured []string
@@ -123,8 +132,40 @@ func (p *provider) Provision(ctx context.Context, h integration.Host, raw json.R
 		}
 		return host.ErrUnavailable
 	}
-	p.transport, p.hmacKey, p.secrets, p.owner = tr, key, captured, originalOwner
+	p.transport, p.hmacKey, p.secrets, p.owner, p.records = tr, key, captured, originalOwner, publication
 	return nil
+}
+
+// publicationConfig captures the domains and policy of a publishing
+// instance (D380). Domains are canonical names without wildcards; no
+// domains means the instance publishes nothing.
+func publicationConfig(config public.WebhookIntegration, owner host.InstanceID) (records, error) {
+	out := records{policy: plan.PolicySync, account: webhookDestination(config.Endpoint), marker: registryMarker(owner)}
+	switch config.Policy {
+	case "", "sync":
+	case "upsert-only", "create-only":
+		out.policy = plan.Policy(config.Policy)
+	default:
+		return records{}, errInput
+	}
+	if len(config.Domains) > 256 {
+		return records{}, errInput
+	}
+	for _, d := range config.Domains {
+		if d == "" || len(d) > 253 || strings.TrimSpace(d) != d || strings.ContainsAny(d, " *\\\x00\r\n\t") {
+			return records{}, errInput
+		}
+		n := dns.CanonicalName(d)
+		if _, ok := dns.IsDomainName(n); !ok || n == "." || slices.Contains(out.domains, n) {
+			return records{}, errInput
+		}
+		if label, _, _ := strings.Cut(n, "."); strings.HasPrefix(label, registryPrefix) {
+			return records{}, errInput
+		}
+		out.domains = append(out.domains, n)
+	}
+	slices.Sort(out.domains)
+	return out, nil
 }
 
 func (p *provider) Validate(ctx context.Context) error {
@@ -181,9 +222,23 @@ func (p *provider) Check(ctx context.Context) (integration.Status, error) {
 		p.changed = true
 		return integration.Status{}, host.ErrFenced
 	}
-	// Records cannot claim complete execution yet; hooks need the separate
-	// signing key, never the bearer credential.
-	if a.has("records") || a.has("hooks") && len(p.hmacKey) == 0 {
+	// Hooks need the separate signing key, never the bearer credential.
+	if a.has("hooks") && len(p.hmacKey) == 0 {
+		return integration.Status{}, host.ErrUnsupported
+	}
+	// Configured domains need a records peer whose filter covers each of
+	// them. A records peer without domains has nothing to publish, so a peer
+	// that offers nothing else is refused (D380).
+	if len(p.records.domains) != 0 {
+		if !a.has("records") {
+			return integration.Status{}, host.ErrUnsupported
+		}
+		for _, d := range p.records.domains {
+			if !a.admits(d) {
+				return integration.Status{}, host.ErrUnsupported
+			}
+		}
+	} else if slices.Equal(a.declaration.Capabilities, []string{"records"}) {
 		return integration.Status{}, host.ErrUnsupported
 	}
 	raw, err := json.Marshal(a.declaration)

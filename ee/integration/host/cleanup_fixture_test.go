@@ -63,7 +63,10 @@ type cleanupWorld struct {
 	hung int
 	// observer builds providers that only observe.
 	observer bool
-	now      func() time.Time
+	// negotiated builds publisher types whose negotiated roles exclude
+	// publishing, as a webhook peer without records is (D380).
+	negotiated bool
+	now        func() time.Time
 }
 
 func (w *cleanupWorld) event(format string, args ...any) {
@@ -149,6 +152,11 @@ func (p *cleanupProvider) Stop(context.Context) error {
 // cleanupPublisher adds the publication seam. Observer-only providers do not
 // have it, so the host must not treat them as owners of remote records.
 type cleanupPublisher struct{ *cleanupProvider }
+
+// cleanupNegotiated is a publisher type whose peer negotiated observing only.
+type cleanupNegotiated struct{ cleanupPublisher }
+
+func (cleanupNegotiated) Roles() (Roles, error) { return Roles{Observer: true}, nil }
 
 func (p cleanupPublisher) Destinations(context.Context) ([]Publication, error) {
 	p.w.mu.Lock()
@@ -431,10 +439,13 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 			f.factories.Add(1)
 			base := &cleanupProvider{w: f.w}
 			f.w.mu.Lock()
-			observer := f.w.observer
+			observer, negotiated := f.w.observer, f.w.negotiated
 			f.w.mu.Unlock()
 			if observer {
 				return base, nil
+			}
+			if negotiated {
+				return cleanupNegotiated{cleanupPublisher{base}}, nil
 			}
 			return cleanupPublisher{base}, nil
 		},

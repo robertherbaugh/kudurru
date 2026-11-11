@@ -210,6 +210,20 @@ func TestTerminatingPausedReasonsMakeNoProviderCall(t *testing.T) {
 			t.Fatalf("local-only cleanup: requests=%d provisions=%d purges=%d", requests, provisions, f.purges.Load())
 		}
 	})
+	// A publisher type whose roles are negotiated (D379) and that never
+	// began a record operation owns nothing at its peer, so its cleanup is
+	// local only, like an observer's (D380).
+	t.Run("negotiated publisher type without a ledger row", func(t *testing.T) {
+		object := terminating(func(d *public.Integration) {
+			d.Spec.Credentials = map[string]public.CredentialReference{"token": {Env: "MISSING"}}
+		})
+		f := newCleanupFixture(t, object, func(f *cleanupFixture) { f.w.negotiated = true })
+		f.awaitFinalized()
+		requests, _, _, provisions := f.w.counts()
+		if requests != 0 || provisions != 0 || f.purges.Load() != 1 {
+			t.Fatalf("negotiated cleanup: requests=%d provisions=%d purges=%d", requests, provisions, f.purges.Load())
+		}
+	})
 	t.Run("live object without the finalizer", func(t *testing.T) {
 		f := newCleanupFixture(t, cleanupObject("sink", "Delete", false), nil)
 		f.awaitReason("Paused", ReasonFinalizerMissing)

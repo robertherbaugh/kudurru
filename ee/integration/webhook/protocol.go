@@ -34,6 +34,8 @@ type advertisement struct {
 	filter      externaldns.DomainFilter
 	actions     []integration.ActionSpec
 	digest      string
+	// The compiled filter expressions of an external-dns peer, if set.
+	regexInclude, regexExclude *regexp.Regexp
 }
 
 func (a *advertisement) has(capability string) bool {
@@ -58,6 +60,12 @@ func (t *transport) negotiate(ctx context.Context) (*advertisement, error) {
 			return nil, errProtocol
 		}
 		a.declaration.Capabilities = []string{"records"}
+		if a.filter.RegexInclude != "" {
+			a.regexInclude = regexp.MustCompile(a.filter.RegexInclude)
+		}
+		if a.filter.RegexExclude != "" {
+			a.regexExclude = regexp.MustCompile(a.filter.RegexExclude)
+		}
 	case integrationMedia:
 		if !objectJSON(r.body) || decode(r.body, &a.declaration) != nil || !validDeclaration(a.declaration) {
 			return nil, errProtocol
@@ -207,8 +215,12 @@ func textBound(s string, limit int) bool {
 func objectJSON(b []byte) bool { return bytes.HasPrefix(bytes.TrimSpace(b), []byte("{")) }
 func arrayJSON(b []byte) bool  { return bytes.HasPrefix(bytes.TrimSpace(b), []byte("[")) }
 
-func decode(raw []byte, out any) error {
-	if err := validJSON(raw); err != nil {
+func decode(raw []byte, out any) error { return decodeItems(raw, out, maxItems) }
+
+// decodeItems is decode with a larger bound on the elements of one array or
+// object, for the record list (D380).
+func decodeItems(raw []byte, out any, limit int) error {
+	if err := validJSONItems(raw, limit); err != nil {
 		return err
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))
@@ -221,7 +233,10 @@ func decode(raw []byte, out any) error {
 
 // validJSON bounds work before typed decoding and rejects duplicate keys,
 // including case aliases accepted by encoding/json's struct-field matching.
-func validJSON(raw []byte) error {
+func validJSON(raw []byte) error { return validJSONItems(raw, maxItems) }
+
+// validJSONItems is validJSON with limit elements per array or object.
+func validJSONItems(raw []byte, limit int) error {
 	if len(raw) == 0 || len(raw) > maxBody || !utf8.Valid(raw) {
 		return errProtocol
 	}
@@ -248,7 +263,7 @@ func validJSON(raw []byte) error {
 		keys, count := map[string]bool{}, 0
 		for d.More() {
 			count++
-			if count > maxItems {
+			if count > limit {
 				return false
 			}
 			if delim == '{' {

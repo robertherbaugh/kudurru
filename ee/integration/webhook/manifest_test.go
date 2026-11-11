@@ -19,8 +19,15 @@ import (
 
 func TestPublicConstructorAdvertisesOnlyMountedCapabilities(t *testing.T) {
 	manifest, constructor, ok := integration.Lookup("webhook")
-	if !ok || constructor == nil || !slices.Contains(manifest.Capabilities, integration.CapHook) || slices.Contains(manifest.Capabilities, integration.CapRecordSink) || !slices.Contains(manifest.Capabilities, integration.CapActions) || !slices.Contains(manifest.Capabilities, integration.CapClientSource) {
-		t.Fatal("registry advertised unmounted capabilities or hid hooks")
+	// Record publication is mounted with the TXT registry (D380).
+	if !ok || constructor == nil || !slices.Contains(manifest.Capabilities, integration.CapHook) || !slices.Contains(manifest.Capabilities, integration.CapRecordSink) || !slices.Contains(manifest.Capabilities, integration.CapActions) || !slices.Contains(manifest.Capabilities, integration.CapClientSource) {
+		t.Fatal("registry hid a mounted capability")
+	}
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	if json.Unmarshal(manifest.ConfigSchema, &schema) != nil || schema.Properties["domains"] == nil || schema.Properties["policy"] == nil {
+		t.Fatal("config schema does not name the publication fields")
 	}
 	if !slices.ContainsFunc(manifest.SecretKeys, func(k integration.SecretKey) bool { return k.Path == "hmacKey" }) {
 		t.Fatal("registry does not name the event signing key")
@@ -34,7 +41,7 @@ func TestPublicConstructorAdvertisesOnlyMountedCapabilities(t *testing.T) {
 
 // Hooks are mounted (D379): a hooks peer with the separate signing key is
 // accepted and gets exactly the produced topics; without the key it refuses,
-// and a records peer always refuses.
+// and a records-only peer refuses while no domains are configured (D380).
 func TestPublicConstructorPeerCapabilities(t *testing.T) {
 	for _, tc := range []struct {
 		capability string

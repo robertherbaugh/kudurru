@@ -406,6 +406,13 @@ func (h *Host) terminate(ctx context.Context, j *job, st *terminatingLease) (ter
 			return terminatingOutcome{reason: ReasonProviderUnavailable, result: result, err: ErrUnsupported}, f, g
 		}
 		_, st.publisher = provider.(Publisher)
+		// A provider whose roles are negotiated (D379) may be a publisher
+		// type whose peer never received a record. Only a ledger row proves
+		// that the instance began publishing, so without one its cleanup
+		// needs neither a credential nor a reachable peer (D380).
+		if negotiatedRoles(provider) && total == 0 {
+			st.publisher = false
+		}
 		st.inspected = true
 	}
 	if st.publisher {
