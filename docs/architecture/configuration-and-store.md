@@ -1736,9 +1736,9 @@ migration steps and the unblock-request sweep. A command whose SQL outcome is
 unknown installs a mark that no chain equals. Writers that take only the Store
 lock or the primary pin install none: status reconciliation, the zone
 lifecycle and its committed heads, which is also how an RFC 2136 update
-commits, list fetch status and integration reconciliation. They are not
-commands of an API caller, and an item reads nothing they write except in its
-own transaction.
+commits, list fetch status, integration reconciliation and the local admin
+socket. They are not commands of an API caller, and an item reads nothing they
+write except in its own transaction.
 
 A chained command whose anchor has moved is refused as `unavailable` ("another
 change was committed on this node while the request ran"). It does not run,
