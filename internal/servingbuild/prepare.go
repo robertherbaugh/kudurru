@@ -46,6 +46,7 @@ type RuntimeOwner struct {
 	tsig                *TSIGManagement
 	current             func() bool
 	dependenciesCurrent func() bool
+	dnsDependencies     func() bool
 	browser             func(servingauth.ProviderRef, string) (*providerresources.Browser, error)
 	cli                 func(servingauth.ProviderRef, string) (*providerresources.CLI, error)
 }
@@ -74,6 +75,16 @@ func (r *RuntimeOwner) NotifyKeys() (string, *dnsserver.StaticKeyring, func() bo
 // admission. The caller must retain the original serving lease throughout use.
 func (r *RuntimeOwner) DependenciesCurrent() bool {
 	return r != nil && r.dependenciesCurrent != nil && r.dependenciesCurrent()
+}
+
+// DNSDependenciesCurrent is DependenciesCurrent restricted to the
+// installations that DNS answers are computed from (Dependencies.DNSCurrent):
+// a replaced provider host, license cut or provider resource set does not
+// retire it (D378). It is for DNS output of the publication that is served
+// only; acknowledgments, transfers and every HTTP use keep
+// DependenciesCurrent. It grants neither read nor write admission.
+func (r *RuntimeOwner) DNSDependenciesCurrent() bool {
+	return r != nil && r.dnsDependencies != nil && r.dnsDependencies()
 }
 
 // Browser selects only this complete owner's provider capability and binds its
@@ -168,7 +179,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 		component("blocking", owners.blocking, nil),
 		component("inventory", inventory, nil),
 		component("auth", owners.auth, owners.auth.Release),
-		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, tsig: deps.TSIG, current: owners.current, dependenciesCurrent: owners.dependenciesCurrent, browser: deps.Browser, cli: deps.CLI}, deps.Release),
+		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, tsig: deps.TSIG, current: owners.current, dependenciesCurrent: owners.dependenciesCurrent, dnsDependencies: owners.dnsDependenciesCurrent, browser: deps.Browser, cli: deps.CLI}, deps.Release),
 		component("control", owners.control, nil),
 		component("logging", owners.logging, owners.logging.Release),
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"reflect"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -417,6 +418,25 @@ func (p *Publisher) CheckReadLease(ctx context.Context, lease *Lease) error {
 		return ErrPending
 	}
 	return nil
+}
+
+// Serves reports whether value is, by pointer identity, the named component of
+// the publication that is served now. It answers false once a successor has
+// been published or the publisher closed, and for a value that is not a
+// pointer. It reads two atomics and one immutable map, takes no lock and
+// never reads the Store, so the DNS output path may call it. It says nothing
+// about canonical currency: a commit that has not been published yet leaves
+// the served publication served (D378).
+func (p *Publisher) Serves(name string, value any) bool {
+	if p == nil || p.closed.Load() || value == nil || reflect.ValueOf(value).Kind() != reflect.Pointer {
+		return false
+	}
+	bundle := p.current.Load()
+	if bundle == nil {
+		return false
+	}
+	c, ok := bundle.components[name]
+	return ok && c.Value == value
 }
 
 // Pin is a real publication barrier compatible with replica.ServingPin. It

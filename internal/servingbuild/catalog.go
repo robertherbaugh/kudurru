@@ -85,8 +85,7 @@ func (o *CatalogRuntime) CaptureDependencies(base func(context.Context, *replica
 		digest := sha256.Sum256(data)
 		d.Identity = hex.EncodeToString(digest[:])
 		d.Catalog = CatalogResource{Catalogue: catalog, Source: o.source}
-		current := d.Current
-		d.Current = func() bool { return current() && c.Current() }
+		d.requireCurrent(c.Current)
 		return d, nil
 	}, nil
 }

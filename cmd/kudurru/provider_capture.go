@@ -35,7 +35,7 @@ func providerDependencyCapture(
 			return d, err
 		}
 		p, err := providers(ctx, image)
-		baseRelease, baseCurrent := d.Release, d.Current
+		baseRelease, baseCurrent, baseDNS := d.Release, d.Current, d.DNSCurrent
 		var once sync.Once
 		var released atomic.Bool
 		d.Release = func() {
@@ -51,6 +51,7 @@ func providerDependencyCapture(
 		}
 		// Deny even an accidental use of a failed, partly assembled result.
 		d.Current = func() bool { return false }
+		d.DNSCurrent = d.Current
 		if err != nil {
 			return d, err
 		}
@@ -73,6 +74,12 @@ func providerDependencyCapture(
 		d.Browser = p.Browser
 		d.CLI = p.CLI
 		d.Current = func() bool { return !released.Load() && baseCurrent() && p.Current() }
+		// DNS answers use no provider resource: replacing the provider set
+		// does not withhold them (D378).
+		d.DNSCurrent = nil
+		if baseDNS != nil {
+			d.DNSCurrent = func() bool { return !released.Load() && baseDNS() }
+		}
 		if baseTSIG != nil {
 			d.TSIG = baseTSIG.BindLifetime(func() bool { return !released.Load() && p.Current() })
 		}

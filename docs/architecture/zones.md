@@ -719,7 +719,9 @@ Diagnostics cannot change the wire result even if their callback panics.
 After that adapter returns, root binds its exact empty acknowledgment to the
 original writer, verified key, dependency installations and pre-command output
 attempt. The command's own data-generation advance does not invalidate this
-receipt. Ordinary answers retain their full generation check. Response replacement,
+receipt. Ordinary answers are bound to the publication that is served (D378):
+a commit that is not published yet does not withhold them, a published
+successor does. Response replacement,
 added data, key/writer loss or original deadline expiry refuses emission without
 replaying the mutation or undoing an already committed effect.
 

@@ -67,8 +67,7 @@ func (o *TransferredRuntime) CaptureDependencies(base func(context.Context, *rep
 		digest := sha256.Sum256(data)
 		d.Identity = hex.EncodeToString(digest[:])
 		d.Secondary, d.Stub, d.RPZ = c.secondary.Snapshot(), c.stub.Snapshot(), c.rpz.Snapshot()
-		current := d.Current
-		d.Current = func() bool { return current() && c.current() }
+		d.requireCurrent(c.current)
 		return d, nil
 	}, nil
 }

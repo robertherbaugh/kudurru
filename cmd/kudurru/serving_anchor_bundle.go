@@ -28,6 +28,10 @@ type rootAnchorOwner struct {
 	host        *config.Config
 	incarnation [32]byte
 	admission   *rootAnchorAdmission
+	// served reports whether a seal belongs to the publication that is served
+	// now (Publisher.Serves). Root sets it once its publisher exists; without
+	// it local DNS output keeps the strict data guard.
+	served func(*recursiveRootSeal) bool
 }
 
 // The coalesced signal wakes rebuilding; it never grants output admission.
@@ -77,6 +81,7 @@ type recursiveRootSeal struct {
 	managed           *sqlite.AnchorResolverInput
 	static            *sqlite.AnchorStaticInput
 	admission         *rootAnchorAdmission
+	served            func(*recursiveRootSeal) bool
 }
 
 func (s *recursiveRootSeal) current() bool {
@@ -92,6 +97,26 @@ func (s *recursiveRootSeal) current() bool {
 // static/managed anchor owner remain mandatory for every final handoff.
 func (s *recursiveRootSeal) dnsCurrent() bool {
 	return s != nil && s.dnsDependencies != nil && s.dnsDependencies() && s.inputCurrent()
+}
+
+// servedCurrent admits an ordinary query answer from local, authoritative or
+// mixed data of the publication that is still served (D378). A canonical
+// commit that the node has not published yet does not retire it: DNS keeps
+// answering from the last complete publication, as a follower does from its
+// last pull, instead of withholding every local answer until the node has
+// published again. A successor publication retires it at once, so an answer
+// computed on older data is never sent after a write was acknowledged as
+// published. Installed dependencies and the static/managed anchor owner stay
+// mandatory, exactly as for retained recursive output. It is never stricter
+// than full data currency: an answer whose data is still current is admitted
+// even when the node has meanwhile published a successor of the same data.
+// Transfers, UPDATE acknowledgments, API dig, cache insertions and native
+// resolver mutations keep full data currency.
+func (s *recursiveRootSeal) servedCurrent() bool {
+	if s.current() {
+		return true
+	}
+	return s != nil && s.served != nil && s.served(s) && s.dnsCurrent()
 }
 
 func (s *recursiveRootSeal) inputCurrent() bool {
@@ -162,7 +187,7 @@ func (o *rootAnchorOwner) prepare(ctx context.Context, candidate serving.Candida
 	if err != nil {
 		return prepared, err
 	}
-	seal := &recursiveRootSeal{base: base, dependencyCurrent: prepared.Current, dnsDependencies: runtime.DependenciesCurrent}
+	seal := &recursiveRootSeal{base: base, dependencyCurrent: prepared.Current, dnsDependencies: runtime.DNSDependenciesCurrent, served: o.served}
 	var domain [32]byte
 	switch policy.Mode {
 	case config.RootAnchorsStatic:

@@ -100,6 +100,18 @@ func TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation(t *testing.T) {
 			}
 		})
 	}
+	// Local, authoritative and mixed answers of the original lease stay
+	// admissible while its publication is served (D378,
+	// TestRootAnchorServedDNSFollowsThePublication). The cases below that
+	// refuse them are about an original lease whose successor the node has
+	// already published.
+	seal, err := servingdns.Component[*recursiveRootSeal](req, recursiveRootComponent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	awaitServingRuntime(t, f.s, func() bool {
+		return f.s.publisher.Status().ProtectedReady && !f.s.publisher.Serves(recursiveRootComponent, seal)
+	})
 	for _, tc := range []struct {
 		name   string
 		origin pipeline.ResponseOrigin

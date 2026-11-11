@@ -45,7 +45,25 @@ type Dependencies struct {
 	Stub      *stub.Snapshot
 	RPZ       *rpz.Snapshot
 	Current   func() bool
-	Release   func()
+	// DNSCurrent covers only the installations that DNS answers are computed
+	// from: the root lifetime, the DNS keyring and the transferred and catalog
+	// zone data. It leaves out the provider host, the license cut and the
+	// provider resource sets, which only HTTP authentication uses, so that
+	// replacing one of those never withholds DNS answers of a publication
+	// that is still served (D378). Nil makes DNS output use Current. It
+	// grants no read or write admission.
+	DNSCurrent func() bool
+	Release    func()
+}
+
+// requireCurrent adds an installation that DNS answers are computed from to
+// both Current and DNSCurrent.
+func (d *Dependencies) requireCurrent(extra func() bool) {
+	current := d.Current
+	d.Current = func() bool { return current() && extra() }
+	if dns := d.DNSCurrent; dns != nil {
+		d.DNSCurrent = func() bool { return dns() && extra() }
+	}
 }
 
 // Options supplies local infrastructure and a complete dependency capture.

@@ -24,6 +24,9 @@ type rootAnchorOutput struct {
 	// Unbound output, authoritative data and transfer continuations stay strict.
 	query       bool
 	retainedDNS bool
+	// servedDNS marks any other bound ordinary query response: it may use
+	// the data of the publication that is still served (D378).
+	servedDNS bool
 }
 
 const (
@@ -62,6 +65,8 @@ func (o *rootAnchorOutput) Emit(fn func() error) error {
 	current := o.seal.current
 	if o.retainedDNS {
 		current = o.seal.dnsCurrent
+	} else if o.servedDNS {
+		current = o.seal.servedCurrent
 	}
 	if o.ack != nil {
 		if !o.bound {
@@ -85,7 +90,7 @@ func (o *rootAnchorOutput) Emit(fn func() error) error {
 
 // Next precedes the next iterator pull. Failure never rescues an old frame.
 func (o *rootAnchorOutput) Next() error {
-	if o == nil || o.ack != nil || o.retainedDNS || !o.state.CompareAndSwap(anchorOutputWritten, anchorOutputBusy) {
+	if o == nil || o.ack != nil || o.retainedDNS || o.servedDNS || !o.state.CompareAndSwap(anchorOutputWritten, anchorOutputBusy) {
 		return serving.ErrDependency
 	}
 	completed := false

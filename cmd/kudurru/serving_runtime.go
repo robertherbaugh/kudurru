@@ -235,6 +235,8 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	// yet prepares again once the body is stored (listfetcher.AwaitBody,
 	// D373). Wake is buffered and never blocks.
 	o.Lists.OnAwaitedBody(s.publisher.Wake)
+	publisher := s.publisher
+	s.anchors.served = func(seal *recursiveRootSeal) bool { return publisher.Serves(recursiveRootComponent, seal) }
 	s.host, err = providerhost.New(providerhost.Options{Store: o.Store, Publisher: s.publisher, Resources: s.resources, License: o.License, Schema: authSchema, Static: prepared, Now: o.Now, PinAuthKeys: o.AuthKeys.withCurrent, Withdraw: func(ctx context.Context, tx *sqlite.CommandTx, at time.Time) error {
 		return security.AcceptProviderAuthorities(ctx, tx, []providerregistry.DesiredAuthority{}, at)
 	}})
@@ -320,7 +322,11 @@ func (s *servingRuntime) captureHost(ctx context.Context, image *replication.Ima
 		return servingbuild.Dependencies{}, serving.ErrDependency
 	}
 	id := sha256.Sum256([]byte("serving-host/v1/" + host.Identity + "/" + keys.Identity()))
-	return servingbuild.Dependencies{Identity: hex.EncodeToString(id[:]), Host: s.opts.Config, Auth: host.Auth, Keys: keys.Keys(), KeyringIdentity: keys.Identity(), TSIG: management, Current: func() bool { return s.life.Err() == nil && host.Current() && keys.Current() && encryptionCurrent() }, Release: host.Release}, nil
+	// DNS answers are computed from the keyring and this root's lifetime
+	// only; the provider host and its license cut serve HTTP authentication
+	// and TSIG management (D378).
+	dnsCurrent := func() bool { return s.life.Err() == nil && keys.Current() }
+	return servingbuild.Dependencies{Identity: hex.EncodeToString(id[:]), Host: s.opts.Config, Auth: host.Auth, Keys: keys.Keys(), KeyringIdentity: keys.Identity(), TSIG: management, Current: func() bool { return s.life.Err() == nil && host.Current() && keys.Current() && encryptionCurrent() }, DNSCurrent: dnsCurrent, Release: host.Release}, nil
 }
 
 // Close cancels both root lifetimes and joins before retiring owned resources.

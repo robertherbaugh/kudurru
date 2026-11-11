@@ -56,6 +56,9 @@ type semanticOwners struct {
 	anchor              *sqlite.AnchorPublication
 	current             func() bool
 	dependenciesCurrent func() bool
+	// dnsDependenciesCurrent is dependenciesCurrent restricted to what DNS
+	// answers are computed from (Dependencies.DNSCurrent).
+	dnsDependenciesCurrent func() bool
 
 	unblockRequests []*public.UnblockRequest
 }
@@ -210,6 +213,13 @@ func prepareSemantic(ctx context.Context, candidate serving.Candidate, opts Opti
 	// cannot become eligible merely because configuration bytes match again.
 	owners.dependenciesCurrent = func() bool {
 		return deps.Current() && (owners.anchor == nil || owners.anchor.Input().Current())
+	}
+	dnsDeps := deps.DNSCurrent
+	if dnsDeps == nil {
+		dnsDeps = deps.Current
+	}
+	owners.dnsDependenciesCurrent = func() bool {
+		return dnsDeps() && (owners.anchor == nil || owners.anchor.Input().Current())
 	}
 	current := func() bool {
 		authority, blocked := opts.Authority()

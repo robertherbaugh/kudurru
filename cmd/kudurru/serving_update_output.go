@@ -99,6 +99,10 @@ func (o *rootAnchorOutput) BindResponse(response *pipeline.Response) error {
 		// These are internal pipeline provenance fields, never wire AA/AD or
 		// client claims. Local/authoritative/mixed data stays generation-bound.
 		o.retainedDNS = o.query && retainedDNSResponse(response)
+		// Local, authoritative and mixed answers are bound to the served
+		// publication rather than to the latest commit (D378). A transfer
+		// or any other opcode stays bound to full data currency.
+		o.servedDNS = !o.retainedDNS && o.query && servedDNSResponse(response)
 		return nil
 	}
 	if o.bound || !o.ack.matches(response) || !o.ack.current() {
@@ -107,6 +111,10 @@ func (o *rootAnchorOutput) BindResponse(response *pipeline.Response) error {
 	}
 	o.bound = true
 	return nil
+}
+
+func servedDNSResponse(response *pipeline.Response) bool {
+	return response != nil && response.Msg != nil && response.Msg.Opcode == dns.OpcodeQuery && response.Transfer == nil
 }
 
 func retainedDNSResponse(response *pipeline.Response) bool {
