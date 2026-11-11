@@ -96,7 +96,7 @@ func TestFollowerOperationsClassifyEveryMutation(t *testing.T) {
 	}
 	// The reviewed sizes of the contract. Update them with the table and
 	// with docs/deploy/sqlite-join.md.
-	if counts[FollowerForwarded] != 26 || counts[FollowerLocal] != 14 || counts[FollowerPrimary] != 53 {
+	if counts[FollowerForwarded] != 30 || counts[FollowerLocal] != 14 || counts[FollowerPrimary] != 49 {
 		t.Errorf("follower contract changed: forwarded=%d local=%d primary=%d", counts[FollowerForwarded], counts[FollowerLocal], counts[FollowerPrimary])
 	}
 }
@@ -200,11 +200,6 @@ func TestClusterInfoAndSchemaReportFollowerCapability(t *testing.T) {
 	if len(schema.Items) == 0 {
 		t.Fatal("empty settings schema")
 	}
-	for _, key := range schema.Items {
-		if !key.ReadOnly {
-			t.Errorf("%s (%s) is writable in a follower's schema although its PATCH is refused", key.Path, key.Scope)
-		}
-	}
 
 	plain := newHarness(t)
 	var raw map[string]any
@@ -225,5 +220,20 @@ func TestClusterInfoAndSchemaReportFollowerCapability(t *testing.T) {
 	}
 	if writable == 0 {
 		t.Fatal("no cluster setting is writable on a node that is no follower")
+	}
+	// A follower forwards PATCH /settings (settings.patch) and refuses PATCH
+	// /node/config: its cluster keys are as writable as on any other node,
+	// and its node keys are read-only.
+	same := map[string]bool{}
+	for _, key := range ordinary.Items {
+		same[key.Path] = key.ReadOnly
+	}
+	for _, key := range schema.Items {
+		switch {
+		case key.Scope == "node" && !key.ReadOnly:
+			t.Errorf("%s (node) is writable in a follower's schema although its PATCH is refused", key.Path)
+		case key.Scope == "cluster" && key.ReadOnly != same[key.Path]:
+			t.Errorf("%s (cluster) is readOnly=%t in a follower's schema, %t elsewhere, although its PATCH is forwarded", key.Path, key.ReadOnly, same[key.Path])
+		}
 	}
 }

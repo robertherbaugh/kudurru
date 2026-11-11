@@ -114,17 +114,36 @@ func (v *View) Roles(p auth.Principal, now time.Time) ([]string, error) {
 // commit/no-op. Must-change-password self-service remains possible; factors are
 // verified/consumed once by the existing actual transaction path.
 func AuthenticateCurrentWithClock(ctx context.Context, tx *sqlite.CommandTx, deps Dependencies, proof Credential, clock func() time.Time) (auth.Principal, error) {
+	p, _, err := AuthenticateCurrentSessionWithClock(ctx, tx, deps, proof, clock)
+	return p, err
+}
+
+// AuthenticateCurrentSessionWithClock is AuthenticateCurrentWithClock that
+// also returns the ID of the enrolled session that a verified cookie names, ""
+// for every other credential kind. The ID comes from verifying the raw cookie
+// in this transaction, never from a caller's claim, so a sign-out revokes
+// exactly the session whose credential it verified.
+func AuthenticateCurrentSessionWithClock(ctx context.Context, tx *sqlite.CommandTx, deps Dependencies, proof Credential, clock func() time.Time) (auth.Principal, string, error) {
 	if clock == nil {
 		clock = time.Now
 	}
 	v, err := prepareCurrent(ctx, tx, deps)
 	if err != nil {
-		return auth.Principal{}, err
+		return auth.Principal{}, "", err
 	}
 	defer v.Release()
-	p, validity, err := authenticateCurrentWithValidity(ctx, tx, v, proof, clock().UTC())
+	now := clock().UTC()
+	p, validity, err := authenticateCurrentWithValidity(ctx, tx, v, proof, now)
 	if err != nil {
-		return auth.Principal{}, err
+		return auth.Principal{}, "", err
+	}
+	session := ""
+	if proof.Kind == Cookie {
+		verified, err := v.CookieSession(proof.Value, now)
+		if err != nil || verified.ID == "" {
+			return auth.Principal{}, "", ErrCredentials
+		}
+		session = verified.ID
 	}
 	if err = tx.RequireCommitCheck(func(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
@@ -132,7 +151,7 @@ func AuthenticateCurrentWithClock(ctx context.Context, tx *sqlite.CommandTx, dep
 		}
 		return validity.validAt(clock().UTC())
 	}); err != nil {
-		return auth.Principal{}, err
+		return auth.Principal{}, "", err
 	}
-	return detachedPrincipal(p), nil
+	return detachedPrincipal(p), session, nil
 }

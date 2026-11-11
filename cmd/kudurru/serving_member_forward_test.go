@@ -185,7 +185,7 @@ func newMemberForwardHTTPFixture(t *testing.T, http2 bool, options ...func(*memb
 	apiServer, err := api.New(api.Options{Store: mirror, Validator: opts.Validator, Config: opts.Config, CanonicalSettings: f.follower,
 		BlockingCommand: f.follower.BlockingCommand, BlockingReads: servingbuild.NewBlockingReads(),
 		ObjectCommand: f.follower.ObjectCommand, ObjectForward: f.follower.ObjectForward,
-		ZoneCommand: f.follower.ZoneCommand, ZoneForward: f.follower.ZoneForward,
+		ZoneCommand: f.follower.ZoneCommand, ZoneForward: f.follower.ZoneForward, SettingsForward: f.follower.SettingsForward,
 		ClusterRole: f.follower.ClusterRole, CacheFlushCommand: flush, NodeName: opts.Config.Node.Name,
 		Membership:   cluster.Authority{SelfName: opts.Config.Node.Name, Elector: mirror.Elector(cluster.ElectionController)},
 		Authenticate: h.Middleware, AuthHandler: h.Handler(), Authorizer: h.Authorizer(), Roles: h.Roles, Logger: slog.New(slog.DiscardHandler)})

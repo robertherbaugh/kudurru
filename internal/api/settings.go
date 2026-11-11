@@ -398,6 +398,21 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 	cur := s.config()
 	expected := ""
 	canonical := scope == config.ScopeCluster && s.opts.CanonicalSettings != nil
+	// An enrolled follower sends a canonical cluster patch to its primary,
+	// which validates and merges it again in its own transaction (D368).
+	if canonical && s.opts.SettingsForward != nil {
+		body, handled, err := s.opts.SettingsForward(ctx, ForwardedSettings{Patch: patch, IfMatch: ifMatch})
+		if handled {
+			if err != nil {
+				return nil, storeError(err)
+			}
+			if body == nil || body.Scope != string(config.ScopeCluster) {
+				return nil, errUnavailable("primary returned an invalid settings result")
+			}
+			body.Node = s.opts.NodeName
+			return &settingsOutput{Body: body}, nil
+		}
+	}
 	if canonical {
 		var err error
 		cur, err = s.clusterSettings(ctx)

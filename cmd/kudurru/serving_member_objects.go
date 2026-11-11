@@ -48,19 +48,10 @@ func memberForwardRoute(method, prefix, escaped string) bool {
 	if method != http.MethodPost && method != http.MethodPut && method != http.MethodDelete {
 		return false
 	}
-	segments := strings.Split(escaped, "/")
-	for i, segment := range segments {
-		unescaped, err := url.PathUnescape(segment)
-		if err != nil {
-			return false
-		}
-		segments[i] = unescaped
-	}
-	base := strings.Split(prefix, "/")
-	if len(segments) <= len(base) || !slices.Equal(segments[:len(base)], base) || slices.Contains(segments[len(base):], "") {
+	parts, ok := memberRouteParts(prefix, escaped)
+	if !ok {
 		return false
 	}
-	parts := segments[len(base):]
 	switch parts[0] {
 	case "apply":
 		return method == http.MethodPost && len(parts) == 1
@@ -92,6 +83,46 @@ func memberForwardRoute(method, prefix, escaped string) bool {
 	return method == http.MethodPost && len(parts) == 1 && strings.HasSuffix(parts[0], ":batchDelete")
 }
 
+// memberRouteParts splits an escaped request path below prefix into its
+// unescaped segments, as the router compares them. ok=false for a path outside
+// prefix, with an empty segment or with an invalid escape.
+func memberRouteParts(prefix, escaped string) ([]string, bool) {
+	segments := strings.Split(escaped, "/")
+	for i, segment := range segments {
+		unescaped, err := url.PathUnescape(segment)
+		if err != nil {
+			return nil, false
+		}
+		segments[i] = unescaped
+	}
+	base := strings.Split(prefix, "/")
+	if len(segments) <= len(base) || !slices.Equal(segments[:len(base)], base) || slices.Contains(segments[len(base):], "") {
+		return nil, false
+	}
+	return segments[len(base):], true
+}
+
+// memberOwnForwardRoute reports the forwarded routes that carry a typed
+// command of their own rather than an object or zone command (D368): PATCH
+// /settings (settings.patch) and POST /auth/logout, POST /auth/logout/browser
+// and DELETE /auth/sessions/{id} (auth.logout). They get the same 30-second
+// bound before body read.
+func memberOwnForwardRoute(method, prefix, escaped string) bool {
+	parts, ok := memberRouteParts(prefix, escaped)
+	if !ok {
+		return false
+	}
+	switch method {
+	case http.MethodPatch:
+		return len(parts) == 1 && parts[0] == "settings"
+	case http.MethodPost:
+		return len(parts) >= 2 && len(parts) <= 3 && parts[0] == "auth" && parts[1] == "logout" && (len(parts) == 2 || parts[2] == "browser")
+	case http.MethodDelete:
+		return len(parts) == 3 && parts[0] == "auth" && parts[1] == "sessions"
+	}
+	return false
+}
+
 // memberEarlierBound reports the requests that a follower bounded before
 // memberForwardRoute named the forwarded routes: every POST, PUT and DELETE
 // under /objects/ and /zones/. Of the registered routes only POST
@@ -109,11 +140,13 @@ func memberEarlierBound(method, prefix, path string) bool {
 // request with several items (POST /apply, :batchDelete) sends one command for
 // each item inside this single lifetime. The other unsafe requests under
 // /objects/ and /zones/ keep the same bound, which they had before the
-// forwarded routes were named. Primary, standalone and static nodes keep their
+// forwarded routes were named. Settings and sign-out (memberOwnForwardRoute)
+// are bounded the same way. Primary, standalone and static nodes keep their
 // ordinary route lifetime, as does every other route on a follower.
 func (h *servingHTTP) boundMemberObjectWrites(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !memberForwardRoute(r.Method, h.opts.RoutePrefix, r.URL.EscapedPath()) && !memberEarlierBound(r.Method, h.opts.RoutePrefix, r.URL.Path) {
+		escaped := r.URL.EscapedPath()
+		if !memberForwardRoute(r.Method, h.opts.RoutePrefix, escaped) && !memberOwnForwardRoute(r.Method, h.opts.RoutePrefix, escaped) && !memberEarlierBound(r.Method, h.opts.RoutePrefix, r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -215,7 +248,7 @@ func (s *servingRuntime) ObjectForward(ctx context.Context, in api.ForwardedObje
 		return api.ForwardedObjectResult{}, true, err
 	}
 	var result api.ForwardedObjectResult
-	err = s.forwardMemberCommand(ctx, token, operation, attrs, payload, func(body []byte) error {
+	err = s.forwardMemberCommand(ctx, token, operation, attrs, nil, payload, func(body []byte) error {
 		d := json.NewDecoder(bytes.NewReader(body))
 		d.DisallowUnknownFields()
 		if d.Decode(&result) != nil || (in.Operation == api.ForwardedDelete) != (result.Result == "deleted") {
@@ -230,7 +263,7 @@ func (s *servingRuntime) ObjectForward(ctx context.Context, in api.ForwardedObje
 // and accepts either the primary's committed result (accept) or its exact
 // relayed public refusal. Admission, source capture and dependency pins are
 // those of the original blocking forward; nothing is retried.
-func (s *servingRuntime) forwardMemberCommand(ctx context.Context, token sqlite.GenerationToken, operation string, attrs rbac.Attributes, payload []byte, accept func([]byte) error) error {
+func (s *servingRuntime) forwardMemberCommand(ctx context.Context, token sqlite.GenerationToken, operation string, attrs rbac.Attributes, preconditions []clusterreplica.Precondition, payload []byte, accept func([]byte) error) error {
 	if s.memberForward == nil || s.opts.Config.Cluster.Role == "static" {
 		return objectForwardUnavailable("writes on this follower require its enrolled primary")
 	}
@@ -264,7 +297,7 @@ func (s *servingRuntime) forwardMemberCommand(ctx context.Context, token sqlite.
 		command := clusterreplica.Command{Format: clusterreplica.CommandFormat, Version: 2, ID: commandID,
 			ExpectedTerm: request.OriginalTerm(), Hops: 1, IssuedAt: issued, NotAfter: deadline, Operation: operation,
 			Subject:    clusterreplica.SubjectRef{Kind: principal.Kind, ID: principal.ID, Provider: principal.Provider, CredentialKind: kind, CredentialID: reference, IssuedAt: principal.CredentialIssuedAt},
-			Credential: proof, Payload: payload}
+			Credential: proof, Preconditions: preconditions, Payload: payload}
 		received, err := s.memberForward.Forward(ctx, request, command, func(scope context.Context, out clusterreplica.Outcome) error {
 			if err := current(scope); err != nil {
 				return err

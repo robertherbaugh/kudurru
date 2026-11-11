@@ -1190,7 +1190,31 @@ follower-prepared session ID and CSRF hash, and a random nonce. The primary runs
 policy as its own login and enrolls the session with exactly that ID and hash;
 credential refusals and lockouts are retained results whose counters commit.
 The dedup record keeps only a fingerprint whose input includes the unstored
-nonce, so it is no password oracle. A mutation without a typed command is
+nonce, so it is no password oracle. A version-2 `auth.logout` command carries
+the raw cookie or token proof and, for `DELETE /auth/sessions/{id}`, the path's
+session ID. The primary verifies the raw credential in its transaction
+(`AuthenticateCurrentSessionWithClock`), which also yields the session that a
+verified cookie names: a sign-out revokes exactly that session, never a claimed
+one, and a credential that is no cookie revokes nothing. A session revocation
+applies the owner check of the primary's own route, and a session that is not
+the caller's is a retained `404`. A credential that the primary no longer
+accepts (the follower's view lags) is a retained `401`, except that a command
+whose dedup record already exists is aborted, so a revoked credential never
+recovers the outcome of its own sign-out. The result is emitted under the
+command scope only, because the command may revoke its own credential. The
+follower then pulls once and clears the browser's cookies; a sign-out that was
+not sent or whose outcome is unknown also clears them and says that the
+session may stay valid until it expires. A version-2 `settings.patch` command
+carries the route's merge patch, its If-Match and a random nonce, with the
+resourceVersion of the settings singleton in the follower's view as its
+precondition. The primary refuses a stale precondition with a retained `409`,
+then runs `ForwardedSettingsCommand`, which repeats the route's key, scope,
+lock and value checks, merges the patch with the transaction's singleton,
+checks branding against the transaction's pinned license and stages one write;
+its object audit row is attributed to the original caller in the same commit.
+Route refusals before the write (`400`, `402`, `409`, `412`) are retained; a
+failed write rolls back. Both routes, with `POST /auth/logout/browser`, get the
+30-second bound before body read. A mutation without a typed command is
 refused on a follower, as described under
 [What a follower does with a mutation](#what-a-follower-does-with-a-mutation).
 

@@ -82,6 +82,12 @@ var followerOperations = map[string]FollowerClass{
 	// The blocking switch (blocking.toggle) and local login (auth.login).
 	"setBlocking": FollowerForwarded,
 	"login":       FollowerForwarded,
+	// Sign-out and own-session revocation (auth.logout) and cluster
+	// settings (settings.patch).
+	"logout":        FollowerForwarded,
+	"browserLogout": FollowerForwarded,
+	"revokeSession": FollowerForwarded,
+	"patchSettings": FollowerForwarded,
 
 	// This node's own response cache, query log, resolver and DHCP server.
 	"flushCache":            FollowerLocal,
@@ -120,13 +126,10 @@ var followerOperations = map[string]FollowerClass{
 	"notifyZone":       FollowerPrimary,
 	// DHCPScope objects are not written through a follower.
 	"batchDeleteDhcpscopes": FollowerPrimary,
-	// Settings. A follower cannot store its own log preference either.
-	"patchSettings":   FollowerPrimary,
+	// A follower cannot store its own log preference, and the primary's
+	// would not apply to it.
 	"patchNodeConfig": FollowerPrimary,
-	// Sessions, own password, tokens and authenticators.
-	"logout":         FollowerPrimary,
-	"browserLogout":  FollowerPrimary,
-	"revokeSession":  FollowerPrimary,
+	// Own password, tokens and authenticators.
 	"changePassword": FollowerPrimary,
 	"createToken":    FollowerPrimary,
 	"deleteToken":    FollowerPrimary,

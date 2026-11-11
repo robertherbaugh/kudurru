@@ -201,8 +201,29 @@ primary applies the shared lockout counters, password, factor and local-login
 policy and enrolls the session in one command; refused attempts still count
 there. The follower answers after its own pull installs the session, so the
 cookie works on every member. A login that cannot reach the primary returns `503`
-and is not attempted. Every other change is refused on a follower, as the next
-section describes.
+and is not attempted.
+
+Sign-out (`POST /auth/logout` and `POST /auth/logout/browser`) and revoking one
+of your own sessions (`DELETE /auth/sessions/{id}`) are forwarded too. The
+primary checks the credential again and ends exactly the session that the
+cookie belongs to, or the session that you named if it is one of your own
+(otherwise `404`). The follower then clears the browser's cookies and refuses
+the session as soon as its pull installs the primary's state, usually at once.
+A follower offers no provider sign-out continuation: OIDC sign-in and its
+logout run on the primary. If the primary cannot be reached, sign-out still
+clears the browser's cookies but answers `503 unavailable` (nothing was sent)
+or `503 completion_unknown` (the exchange failed), and the message says that
+the session may stay valid until it expires. Sign in again when the primary is
+back and revoke the session under Sessions.
+
+Cluster settings changes (`PATCH /settings`, the dashboard's Settings page)
+are forwarded as well. The primary repeats every check of its own route and
+merges the change into the settings that the follower showed: if they changed
+on the primary since the follower installed them, the answer is `409
+conflict` and nothing is applied; reload and review. The follower serves the
+new values after its next pull. Every other change, including node settings
+(`PATCH /node/config`), is refused on a follower, as the next section
+describes.
 
 ## What a follower forwards, runs itself and refuses
 
@@ -217,9 +238,9 @@ carries it as `x-kudurru-follower`.
 
 | Group | Routes | What the follower does |
 |---|---|---|
-| Forwarded | `POST`, `PUT`, `DELETE` under `/objects/` for DNS zones, record sets, block lists, client groups and policies; `POST /apply`; `POST`, `PUT`, `DELETE` on `/blocklists`, `/clientgroups`, `/policies`; `POST /{kind}:batchDelete` for those five kinds; `POST /zones/{zone}/records`, `DELETE /zones/{zone}/records/{name}/{type}`, `POST /zones/{zone}/import`, `DELETE /zones/{zone}`; `POST /dns/blocking`; `POST /auth/login` | Sends one typed command to the primary and returns the primary's answer, as described above. |
+| Forwarded | `POST`, `PUT`, `DELETE` under `/objects/` for DNS zones, record sets, block lists, client groups and policies; `POST /apply`; `POST`, `PUT`, `DELETE` on `/blocklists`, `/clientgroups`, `/policies`; `POST /{kind}:batchDelete` for those five kinds; `POST /zones/{zone}/records`, `DELETE /zones/{zone}/records/{name}/{type}`, `POST /zones/{zone}/import`, `DELETE /zones/{zone}`; `POST /dns/blocking`; `POST /auth/login`; `POST /auth/logout`, `POST /auth/logout/browser`, `DELETE /auth/sessions/{id}`; `PATCH /settings` | Sends one typed command to the primary and returns the primary's answer, as described above. |
 | Local | `POST /cache/flush`; `DELETE /querylog`; `POST /querylog/rollup-evidence/verify`; `POST /dns/query`; the DHCP routes under `/node/dhcp/v4/`; `POST /cluster/promote`, `POST /cluster/activate`, `POST /cluster/join-token`; the two legacy routes under `/settings/sections/` | Runs the request on this node. The first five act on the node's own cache, query log, resolver and DHCP server. The cluster commands decide from this node's own role: promotion runs on a follower, activation and invitations answer `409 conflict` there. The legacy settings routes answer `503 unavailable` on every SQLite node. |
-| Primary only | Everything else: `PATCH /settings` and `PATCH /node/config`; the allow and deny lists (`/allowlist`, `/denylist`, `/domains/{action}/{kind}`, `/queries/{id}/actions`, a block list's source entries); `POST /blocklists/{namespace}/{name}/refresh`; `POST /zones/{zone}/notify`; sign-out, session revocation, own password, own API tokens and authenticators under `/auth/`; command-line OIDC login; `/iam/` users, external accounts and role bindings; `/tsigkeys`; `/integrations`; `/imports`, including the two previews, which write nothing but plan an apply that only the primary runs; unblock request decisions; DHCPScope objects, including `POST /dhcpscopes:batchDelete` | Answers `503 primary_required`. Nothing is sent to the primary and nothing is changed. |
+| Primary only | Everything else: `PATCH /node/config`; the allow and deny lists (`/allowlist`, `/denylist`, `/domains/{action}/{kind}`, `/queries/{id}/actions`, a block list's source entries); `POST /blocklists/{namespace}/{name}/refresh`; `POST /zones/{zone}/notify`; own password, own API tokens and authenticators under `/auth/`; command-line OIDC login; `/iam/` users, external accounts and role bindings; `/tsigkeys`; `/integrations`; `/imports`, including the two previews, which write nothing but plan an apply that only the primary runs; unblock request decisions; DHCPScope objects, including `POST /dhcpscopes:batchDelete` | Answers `503 primary_required`. Nothing is sent to the primary and nothing is changed. |
 
 The refusal names the primary and carries a hint, and it has no `Retry-After`
 header, because waiting does not change it:

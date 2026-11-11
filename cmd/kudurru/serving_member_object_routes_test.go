@@ -189,7 +189,8 @@ func TestMemberForwardRouteCoversEveryForwardedRoute(t *testing.T) {
 	}
 	// The API's follower table (D368) calls an operation forwarded exactly
 	// when it reaches one of these forwards, or has a forward of its own: the
-	// blocking switch and local login. The one observed route that the table
+	// blocking switch, local login, the settings patch and the three session
+	// routes (memberOwnForwardRoute, tested below). The one observed route that the table
 	// refuses instead is the DHCPScope batch deletion, whose kind no typed
 	// command carries.
 	var classified []string
@@ -200,7 +201,8 @@ func TestMemberForwardRouteCoversEveryForwardedRoute(t *testing.T) {
 			}
 		}
 	}
-	want := append(slices.DeleteFunc(slices.Clone(reviewed), func(route string) bool { return route == "POST /dhcpscopes:batchDelete" }), "POST /dns/blocking", "POST /auth/login")
+	want := append(slices.DeleteFunc(slices.Clone(reviewed), func(route string) bool { return route == "POST /dhcpscopes:batchDelete" }), "POST /dns/blocking", "POST /auth/login",
+		"PATCH /settings", "POST /auth/logout", "POST /auth/logout/browser", "DELETE /auth/sessions/{id}")
 	slices.Sort(classified)
 	slices.Sort(want)
 	if !slices.Equal(classified, want) {
@@ -236,6 +238,29 @@ func TestMemberForwardRouteCoversEveryForwardedRoute(t *testing.T) {
 	} {
 		if got := memberForwardRoute(tc.method, api.BasePath, tc.path); got != tc.want {
 			t.Errorf("memberForwardRoute(%s %s) = %t, want %t", tc.method, tc.path, got, tc.want)
+		}
+	}
+	for _, tc := range []struct {
+		method, path string
+		want         bool
+	}{
+		{http.MethodPatch, "/api/v1/settings", true},
+		{http.MethodPost, "/api/v1/auth/logout", true},
+		{http.MethodPost, "/api/v1/auth/logout/browser", true},
+		{http.MethodDelete, "/api/v1/auth/sessions/abc", true},
+		{http.MethodDelete, "/api/v1/auth/sessions/a%2Fb", true},
+		{http.MethodPatch, "/api/v1/node/config", false},
+		{http.MethodPut, "/api/v1/settings", false},
+		{http.MethodPatch, "/api/v1/settings/extra", false},
+		{http.MethodPost, "/api/v1/auth/logout/other", false},
+		{http.MethodPost, "/api/v1/auth/login", false},
+		{http.MethodGet, "/api/v1/auth/sessions/abc", false},
+		{http.MethodDelete, "/api/v1/auth/sessions", false},
+		{http.MethodDelete, "/api/v1/auth/sessions/abc/extra", false},
+		{http.MethodDelete, "/api/v1/auth/tokens/abc", false},
+	} {
+		if got := memberOwnForwardRoute(tc.method, api.BasePath, tc.path); got != tc.want {
+			t.Errorf("memberOwnForwardRoute(%s %s) = %t, want %t", tc.method, tc.path, got, tc.want)
 		}
 	}
 }

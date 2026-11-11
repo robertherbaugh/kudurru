@@ -1078,6 +1078,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var objectItems api.ObjectItems
 	var objectForward api.ObjectForward
 	var zoneForward api.ZoneForward
+	var settingsForward api.SettingsForward
 	var clusterRole api.ClusterRoleFunc
 	var objectReads api.ObjectReadSource
 	var infoMessageReads api.InfoMessageReadSource
@@ -1153,7 +1154,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		dnsQueryOutput = captureRootAnchorQueryOutput
 		canonicalSettings, objectCommand = complete, complete.ObjectCommand
 		objectItems = complete.ObjectItems
-		objectForward, zoneForward = complete.ObjectForward, complete.ZoneForward
+		objectForward, zoneForward, settingsForward = complete.ObjectForward, complete.ZoneForward, complete.SettingsForward
 		clusterRole = complete.ClusterRole
 		brandingReads = complete.Branding
 		blockPagePreview = servingBrandingPreview{runtime: complete, server: blockPage, cache: &brandCache}
@@ -1367,7 +1368,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		DHCPSetupError:  dhcpSetupError,
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised, VIPObservation: vipObservation, VIPEvents: vipEvents,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
-		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectItems: objectItems, ObjectForward: objectForward, ObjectReads: objectReads, ZoneCommand: zoneCommand, ZoneForward: zoneForward, ClusterRole: clusterRole, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
+		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectItems: objectItems, ObjectForward: objectForward, ObjectReads: objectReads, ZoneCommand: zoneCommand, ZoneForward: zoneForward, SettingsForward: settingsForward, ClusterRole: clusterRole, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, AuditBlockingCommand: kubeBlocking != nil, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
 		TSIGKeyReads: tsigKeyReads, TSIGKeyCommand: tsigKeyCommand,

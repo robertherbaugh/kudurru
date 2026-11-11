@@ -346,6 +346,13 @@ func (h *servingHTTP) commitLogout(r *http.Request) error {
 	return err
 }
 func (h *servingHTTP) logout(w http.ResponseWriter, r *http.Request) error {
+	if handled, err := h.forwardSignOut(w, r, ""); handled {
+		if err != nil {
+			return err
+		}
+		w.WriteHeader(204)
+		return nil
+	}
 	if err := h.commitLogout(r); err != nil {
 		return err
 	}
@@ -395,6 +402,16 @@ func (h *servingHTTP) sessions(w http.ResponseWriter, r *http.Request) error {
 	return servingHTTPList(w, r, out)
 }
 func (h *servingHTTP) revokeSession(w http.ResponseWriter, r *http.Request) error {
+	if r.PathValue("id") == "" {
+		return servingHTTPMissing()
+	}
+	if handled, err := h.forwardSignOut(w, r, r.PathValue("id")); handled {
+		if err != nil {
+			return err
+		}
+		w.WriteHeader(204)
+		return nil
+	}
 	proof, err := servinghttp.Credential(r.Context())
 	if err != nil {
 		return err

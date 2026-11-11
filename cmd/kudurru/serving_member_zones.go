@@ -52,7 +52,7 @@ func (s *servingRuntime) ZoneForward(ctx context.Context, in api.ForwardedZone) 
 		return nil, true, err
 	}
 	var result json.RawMessage
-	err = s.forwardMemberCommand(ctx, token, memberZoneCommand, attrs, payload, func(body []byte) error {
+	err = s.forwardMemberCommand(ctx, token, memberZoneCommand, attrs, nil, payload, func(body []byte) error {
 		var probe any
 		if json.Unmarshal(body, &probe) != nil {
 			return clusterreplica.ErrProtocol

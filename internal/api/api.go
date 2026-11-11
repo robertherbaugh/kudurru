@@ -354,6 +354,10 @@ type Options struct {
 	// ZoneForward hands zone convenience commands on an enrolled SQLite
 	// follower to its original primary. Requires ZoneCommand.
 	ZoneForward ZoneForward
+	// SettingsForward hands a cluster-scope PATCH /settings on an enrolled
+	// SQLite follower to its original primary (settings.patch, D368).
+	// Requires CanonicalSettings.
+	SettingsForward SettingsForward
 	// ClusterRole reports whether a request began on an enrolled SQLite
 	// follower and names its primary. With it, every mutation that the
 	// follower table (follower.go) does not name as forwarded or local

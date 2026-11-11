@@ -58,6 +58,16 @@ func (h *servingHTTP) openLogout(r *http.Request, kind, phase string) (*servinga
 }
 
 func (h *servingHTTP) logoutBrowser(w http.ResponseWriter, r *http.Request) error {
+	// An enrolled follower forwards the local revocation and offers no
+	// provider logout continuation: provider login runs on the primary.
+	if handled, err := h.forwardSignOut(w, r, ""); handled {
+		if err != nil {
+			return err
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		return servingHTTPJSON(w, 200, api.BrowserLogoutBody{})
+	}
 	// Remote planning grants no authority and must NEVER prevent an otherwise
 	// authorized local revocation. No provider I/O, retries or successor capture.
 	v, hint, hintErr := h.openLogout(r, "hint", "hint")
