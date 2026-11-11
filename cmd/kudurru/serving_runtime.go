@@ -223,7 +223,8 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	}
 	s.publisher, err = serving.New(serving.Options{Source: source, Prepare: func(ctx context.Context, candidate serving.Candidate) (serving.Prepared, error) {
 		return s.anchors.prepare(ctx, candidate, builder)
-	}, Required: append(serving.CompleteManifest(), recursiveRootComponent), PreparationTimeout: 30 * time.Second, DependencyChanges: func() <-chan struct{} { return s.providers.Changes() }})
+	}, Required: append(serving.CompleteManifest(), recursiveRootComponent), PreparationTimeout: 30 * time.Second, DependencyChanges: func() <-chan struct{} { return s.providers.Changes() },
+		Report: (&servingFailureLog{}).report})
 	if err != nil {
 		return nil, err
 	}

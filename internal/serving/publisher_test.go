@@ -262,6 +262,59 @@ func TestPublisherWholeCutFailurePendingAndNoQueryReads(t *testing.T) {
 	checkCut(t, old, []string{"old", "old"})
 }
 
+// Status says only that a candidate failed. Report carries the error of each
+// completed attempt for the operator's log, and nil once a generation is
+// published again; without it nothing names what the candidate failed on.
+func TestPublisherReportsWhyAGenerationIsNotPublished(t *testing.T) {
+	s := primary(t)
+	applyPair(t, s, "old")
+	var allow atomic.Bool
+	allow.Store(true)
+	type report struct {
+		reason string
+		err    error
+	}
+	reports := make(chan report, 64)
+	failure := errors.New(`nonprimary build failed: DNSZone "lab": spec.type: Unsupported value`)
+	p := runPublisher(t, Options{Source: s, Prepare: func(_ context.Context, c Candidate) (Prepared, error) {
+		parts, err := allComponents(c)
+		if !allow.Load() {
+			return parts, failure
+		}
+		return parts, err
+	}, Report: func(reason string, err error) { reports <- report{reason, err} }})
+	next := func(want string) report {
+		t.Helper()
+		deadline := time.After(5 * time.Second)
+		for {
+			select {
+			case r := <-reports:
+				if r.reason == want {
+					return r
+				}
+			case <-deadline:
+				t.Fatalf("no %q report", want)
+			}
+		}
+	}
+	if r := next("current"); r.err != nil {
+		t.Fatalf("a publication reported %v", r.err)
+	}
+	allow.Store(false)
+	applyPair(t, s, "new")
+	if r := next("prepare_failed"); !errors.Is(r.err, failure) {
+		t.Fatalf("the failed candidate reported %v, want the preparation error", r.err)
+	}
+	if status := waitStatus(t, p, func(s Status) bool { return s.Reason == "prepare_failed" }); status.ProtectedReady {
+		t.Fatalf("a failed candidate is served: %+v", status)
+	}
+	allow.Store(true)
+	p.Wake()
+	if r := next("current"); r.err != nil {
+		t.Fatalf("the recovered publication reported %v", r.err)
+	}
+}
+
 func TestPublisherCancelsObsoletePreparationAndNeverServesSkippedCut(t *testing.T) {
 	s := primary(t)
 	entered, canceled := make(chan struct{}), make(chan struct{})

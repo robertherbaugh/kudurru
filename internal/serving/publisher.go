@@ -49,6 +49,14 @@ type Options struct {
 	// Zero preserves the existing caller lifetime. Managed-root composition
 	// must choose a positive bound no greater than 30 seconds before Run.
 	PreparationTimeout time.Duration
+	// Report, when set, observes the outcome of every completed attempt of
+	// Run: the Status reason and the preparation or publication error, nil
+	// after a publication. Status carries only the reason; without Report
+	// nothing says which object or owner a candidate failed on. Run calls it
+	// from its own goroutine, holding no lock, and waits for it to return.
+	// The error may name stored objects: it is for the operator's log, never
+	// for a client.
+	Report func(reason string, err error)
 }
 
 // Publisher owns one complete serving pointer and a real promotion barrier.
@@ -309,6 +317,9 @@ func (p *Publisher) Run(ctx context.Context) error {
 			reason = "dns_only"
 		}
 		p.update(r.token, false, reason)
+		if p.opts.Report != nil {
+			p.opts.Report(reason, r.err)
+		}
 		if reason == "candidate_changed" && !errors.Is(r.err, ErrDependency) {
 			continue
 		}
