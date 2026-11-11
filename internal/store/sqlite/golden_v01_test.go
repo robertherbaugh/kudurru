@@ -115,7 +115,7 @@ func TestOpenReleasedV01Golden(t *testing.T) {
 		t.Fatal(err)
 	}
 	// What the fixture must contain to be worth opening.
-	for _, want := range []string{"APIToken 3", "BlockList 5", "ClientGroup 2", "DNSRecordSet 4", "DNSZone 4", "LocalUser 1", "Policy 1", "ServiceAccount 2"} {
+	for _, want := range []string{"APIToken 3", "BlockList 5", "ClientGroup 2", "DNSRecordSet 9", "DNSZone 4", "LocalUser 1", "Policy 1", "ServiceAccount 2"} {
 		if !slices.Contains(kinds, want) {
 			t.Fatalf("the golden file holds %v, want %q among them", kinds, want)
 		}
@@ -181,6 +181,10 @@ func TestOpenReleasedV01Golden(t *testing.T) {
 	var refused v1alpha1.DNSRecordSet
 	if err := s.Get(ctx, store.Key{Kind: "DNSRecordSet", Namespace: "default", Name: "refused-endpoints"}, &refused); err != nil || len(refused.Spec.Endpoints) != 4 {
 		t.Fatalf("DNSRecordSet refused-endpoints: %d endpoints, %v", len(refused.Spec.Endpoints), err)
+	}
+	var invalid v1alpha1.DNSRecordSet
+	if err := s.Get(ctx, store.Key{Kind: "DNSRecordSet", Namespace: "default", Name: "v01-not-an-address"}, &invalid); err != nil || len(invalid.Spec.Endpoints) != 1 || invalid.Spec.Endpoints[0].Targets[0] != "not-an-ip" {
+		t.Fatalf("DNSRecordSet v01-not-an-address: %+v, %v", invalid.Spec, err)
 	}
 	// Accounts and tokens: the kinds of this release, the same names.
 	after := upgraded(`SELECT kind, count(*) FROM objects GROUP BY kind ORDER BY kind`)
@@ -265,7 +269,7 @@ func TestOpenReleasedV01LegacyGoldenIsRefused(t *testing.T) {
 	for _, issue := range upgrade.Issues {
 		keys = append(keys, issue.Key.String())
 	}
-	want := []string{"DNSZone/api-test", "DNSZone/legacy-duplicate", "DNSZone/legacy-external", "DNSZone/legacy-secondary", "DNSZone/legacy-stub", "Policy/default/default"}
+	want := []string{"DNSZone/api-test", "DNSZone/legacy-duplicate", "DNSZone/legacy-external", "DNSZone/legacy-grant-outside", "DNSZone/legacy-grant-type", "DNSZone/legacy-secondary", "DNSZone/legacy-stub", "Policy/default/default"}
 	if !slices.Equal(keys, want) {
 		t.Fatalf("refused objects %v, want %v\n%v", keys, want, err)
 	}

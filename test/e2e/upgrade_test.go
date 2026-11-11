@@ -99,6 +99,53 @@ func stateRows(t *testing.T, dataDir, query string, args ...any) int {
 	return n
 }
 
+// settle waits until a node that just became ready has finished the writes
+// it makes of its own accord after a start. Readiness comes when every zone
+// is admitted; the primary runtime then still commits zone lifecycles and
+// DNSZone status for a moment (about half a second after an upgrade on an
+// idle machine, longer under load). Each such commit publishes a new
+// serving generation, and an API write whose transaction overlaps one is
+// answered 503 `unavailable` without effect, while a query in flight at the
+// switch is dropped (docs/architecture/query-path.md). The test asks its
+// questions and makes its writes once readiness has held, and state.db has
+// not changed, for a second: a write is made once and its first answer is
+// the one asserted (D373).
+func settle(t *testing.T, spec kudurrutest.NodeSpec) {
+	t.Helper()
+	revision := func() string {
+		db, err := sql.Open("sqlite", "file:"+filepath.Join(spec.DataDir, "state.db")+"?mode=ro")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = db.Close() }()
+		var v any
+		if err := db.QueryRow(`SELECT value FROM meta WHERE key = 'resource_version'`).Scan(&v); err != nil {
+			return "unreadable: " + err.Error()
+		}
+		if b, ok := v.([]byte); ok {
+			v = string(b)
+		}
+		return fmt.Sprint(v)
+	}
+	start := time.Now()
+	last, quiet := "", 0
+	if !kudurrutest.Eventually(60*time.Second, 100*time.Millisecond, func() bool {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		code, _, err := kudurrutest.Get(ctx, "http://"+spec.Ports.Ops+"/healthz/ready")
+		now := revision()
+		if err != nil || code != http.StatusOK || now != last {
+			last, quiet = now, 0
+			return false
+		}
+		quiet++
+		return quiet >= 10
+	}) {
+		t.Fatalf("the node did not settle within 60s (store revision %s)", last)
+	}
+	t.Logf("timing: settled %s after readiness, at store revision %s", time.Since(start).Round(time.Millisecond), last)
+}
+
 // upgradeAPI calls the API of one node with a bearer token.
 type upgradeAPI struct{ addr, token string }
 
@@ -265,6 +312,10 @@ var upgradeQuestions = []upgradeQuestion{
 	// The record set with the endpoints the zone builder refuses: what
 	// 0.1.0 served of it, and that the refused ones were left out.
 	{"kept.api.test.", dns.TypeA}, {"api.test.", dns.TypeNS}, {"api.test.", dns.TypeCNAME}, {"www.api.test.", dns.TypeCNAME},
+	// The record sets that are invalid as a whole, and the CNAME and A
+	// record for one name.
+	{"bad-a.api.test.", dns.TypeA}, {"twice.api.test.", dns.TypeA}, {"mail.api.test.", dns.TypeMX},
+	{"pair.api.test.", dns.TypeA}, {"pair.api.test.", dns.TypeCNAME},
 }
 
 // answers asks every upgrade question over UDP and TCP and renders what a
@@ -456,6 +507,21 @@ func writeV01Directory(t *testing.T, name string, legacy bool) (*v01Directory, *
 			map[string]any{"dnsName": "kept.api.test", "recordType": "A", "targets": []any{"192.0.2.77"}},
 		},
 	}), http.StatusCreated)
+	// Record sets that are invalid as a whole, which 0.1.0 stored and
+	// reported Invalid, serving the rest of the zone; and a CNAME and an A
+	// record for one name in one record set, of which 0.1.0 served the
+	// CNAME (D373).
+	for name, endpoints := range map[string][]any{
+		"v01-not-an-address": {map[string]any{"dnsName": "bad-a.api.test", "recordType": "A", "targets": []any{"not-an-ip"}}},
+		"v01-two-for-a-name": {map[string]any{"dnsName": "twice.api.test", "recordType": "A", "targets": []any{"192.0.2.81"}}, map[string]any{"dnsName": "twice.api.test", "recordType": "A", "targets": []any{"192.0.2.82"}}},
+		"v01-unknown-type":   {map[string]any{"dnsName": "bogus.api.test", "recordType": "BOGUS", "targets": []any{"x"}}},
+		"v01-mx-no-pref":     {map[string]any{"dnsName": "mail.api.test", "recordType": "MX", "targets": []any{"mx.api.test."}}},
+		"v01-cname-and-a":    {map[string]any{"dnsName": "pair.api.test", "recordType": "CNAME", "targets": []any{"elsewhere.test."}}, map[string]any{"dnsName": "pair.api.test", "recordType": "A", "targets": []any{"192.0.2.83"}}},
+	} {
+		api.must(t, http.MethodPost, "/objects/dnsrecordsets", object("DNSRecordSet", name, "default", map[string]any{
+			"zoneRef": map[string]any{"name": "api-test"}, "endpoints": endpoints,
+		}), http.StatusCreated)
+	}
 	// A block list whose URL never downloaded: 0.1.0 stored it, reported
 	// the failed fetch on it and served it empty. The server answers 404;
 	// with the default blocking.allowLocalListURLs both releases refuse the
@@ -572,6 +638,13 @@ func writeV01Directory(t *testing.T, name string, legacy bool) (*v01Directory, *
 			"legacy-stub":      {"zoneName": "stub.test.", "type": "stub"},
 			"legacy-external":  {"zoneName": "external.test.", "type": "external"},
 			"legacy-duplicate": {"zoneName": "API.test.", "type": "primary"},
+			// Update grants were a placeholder too: 0.1.0 stored and
+			// served these zones, and the primary runtime of this release
+			// cannot compile their policies.
+			"legacy-grant-outside": {"zoneName": "grant-outside.test.", "type": "primary", "nameservers": []any{"ns1.grant-outside.test."},
+				"policy": map[string]any{"update": "deny", "updatePolicies": []any{map[string]any{"tsigKeyRef": "ddns", "name": "host.elsewhere.test."}}}},
+			"legacy-grant-type": {"zoneName": "grant-type.test.", "type": "primary", "nameservers": []any{"ns1.grant-type.test."},
+				"policy": map[string]any{"update": "allow", "updatePolicies": []any{map[string]any{"tsigKeyRef": "ddns", "name": "grant-type.test.", "types": []any{"BOGUS"}}}}},
 		}
 		for zoneName, spec := range legacyZones {
 			api.must(t, http.MethodPost, "/objects/dnszones", object("DNSZone", zoneName, "", spec), http.StatusCreated)
@@ -692,6 +765,7 @@ func TestUpgradeFromV01DataDirectory(t *testing.T) {
 	start := time.Now()
 	node := kudurrutest.StartReady(t, kudurruBin, spec, d.options())
 	t.Logf("timing: upgraded and ready in %s", time.Since(start).Round(time.Millisecond))
+	settle(t, spec)
 	api := d.api(d.breakGlass)
 
 	t.Run("NoFirstBoot", func(t *testing.T) {
@@ -854,6 +928,7 @@ func TestUpgradeFromV01DataDirectory(t *testing.T) {
 	for run := 2; run <= 3; run++ {
 		t.Run(fmt.Sprintf("Restart%d", run), func(t *testing.T) {
 			n := kudurrutest.StartReady(t, kudurruBin, spec, d.options())
+			settle(t, spec)
 			for _, s := range []string{"first boot: seeded defaults", "bootstrap: created"} {
 				if strings.Contains(n.Log(), s) {
 					t.Errorf("restart logged %q", s)
@@ -993,7 +1068,7 @@ func TestUpgradeFromV01RefusesLegacyObjects(t *testing.T) {
 	d.stop(t, old)
 	d.writeFixture(t, "state-legacy.db.gz")
 	spec := d.spec
-	legacyZones := []string{"legacy-secondary", "legacy-stub", "legacy-external", "legacy-duplicate"}
+	legacyZones := []string{"legacy-secondary", "legacy-stub", "legacy-external", "legacy-duplicate", "legacy-grant-outside", "legacy-grant-type"}
 
 	refused := kudurrutest.Start(t, kudurruBin, spec, d.options())
 	code, err := refused.Wait(60 * time.Second)
@@ -1006,13 +1081,15 @@ func TestUpgradeFromV01RefusesLegacyObjects(t *testing.T) {
 	}
 	for _, want := range []string{
 		"error: state.db was written by an earlier kudurru",
-		fmt.Sprintf("state.db (schema 1) cannot be upgraded to schema %d: 6 stored objects are not valid in this release", store.SchemaVersion),
+		fmt.Sprintf("state.db (schema 1) cannot be upgraded to schema %d: 8 stored objects are not valid in this release", store.SchemaVersion),
 		"DNSZone legacy-secondary: spec: Invalid value: secondary zones require secondary configuration",
 		"DNSZone legacy-stub: spec: Invalid value: stub zones require nameserver configuration",
 		`DNSZone legacy-external: spec.type: Unsupported value: "external"`,
 		`DNSZone legacy-duplicate: spec.zoneName: Duplicate value: "API.test.": the zone is also configured by DNSZone "api-test"`,
 		`DNSZone api-test: spec.zoneName: Duplicate value: "api.test.": the zone is also configured by DNSZone "legacy-duplicate"`,
 		"Policy default/default: spec.rewrites[0]: Invalid value: provide either a CNAME or targets, not both",
+		`DNSZone legacy-grant-outside: spec.policy.updatePolicies[0].name: Invalid value: "host.elsewhere.test."`,
+		`DNSZone legacy-grant-type: spec.policy.updatePolicies[0].types: Invalid value: "BOGUS"`,
 		"state.db was not changed",
 		"Start that earlier release on this data directory, correct or delete the listed objects",
 	} {
@@ -1061,6 +1138,7 @@ func TestUpgradeFromV01RefusesLegacyObjects(t *testing.T) {
 	}
 
 	node := kudurrutest.StartReady(t, kudurruBin, spec, d.options())
+	settle(t, spec)
 	var diff []string
 	if !kudurrutest.Eventually(30*time.Second, 200*time.Millisecond, func() bool {
 		got := answers(t, spec.Ports.DNS)

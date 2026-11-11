@@ -7,12 +7,15 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -138,7 +141,7 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 		if !errors.Is(err, sqlite.ErrUpgradeRefused) || !errors.As(err, &upgrade) {
 			t.Fatalf("runServe = %v, want the upgrade refusal", err)
 		}
-		if upgrade.From != 1 || upgrade.To != store.SchemaVersion || len(upgrade.Issues) != 6 {
+		if upgrade.From != 1 || upgrade.To != store.SchemaVersion || len(upgrade.Issues) != 8 {
 			t.Fatalf("refusal of an upgrade from %d to %d with %d objects", upgrade.From, upgrade.To, len(upgrade.Issues))
 		}
 		for _, want := range []string{
@@ -148,6 +151,8 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			`DNSZone legacy-external: spec.type: Unsupported value: "external"`,
 			`DNSZone legacy-duplicate: spec.zoneName: Duplicate value: "API.test.": the zone is also configured by DNSZone "api-test"`,
 			"Policy default/default: spec.rewrites[0]:",
+			`DNSZone legacy-grant-outside: spec.policy.updatePolicies[0].name: Invalid value: "host.elsewhere.test."`,
+			`DNSZone legacy-grant-type: spec.policy.updatePolicies[0].types: Invalid value: "BOGUS"`,
 			"state.db was not changed",
 			"Start that earlier release on this data directory, correct or delete the listed objects",
 		} {
@@ -168,7 +173,22 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 
 	t.Run("an ordinary directory is upgraded and served", func(t *testing.T) {
 		cfg := upgradeMountedConfig(t)
+		// The block list below whose URL never answers is on loopback.
+		cfg.Blocking.AllowLocalListURLs = true
 		releasedV01State(t, cfg, "state.db.gz")
+		// A list URL that accepts the connection and never answers, until
+		// the test ends.
+		var asked atomic.Int32
+		silent := make(chan struct{})
+		hanging := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			asked.Add(1)
+			select {
+			case <-silent:
+			case <-r.Context().Done():
+			}
+		}))
+		t.Cleanup(hanging.Close)
+		t.Cleanup(func() { close(silent) })
 		transport := &http.Transport{}
 		jar, err := cookiejar.New(nil)
 		if err != nil {
@@ -301,6 +321,118 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 		}
 		if got := ready(); got != http.StatusOK {
 			t.Fatalf("readiness %d with a block list that never downloaded", got)
+		}
+
+		// A record set that is invalid as a whole, of every kind 0.1.0
+		// stored and reported Invalid, and a CNAME and an A record for one
+		// name in one record set: the zone keeps being served and a later
+		// record is served next to them (D373).
+		for name, endpoints := range map[string][]any{
+			"not-an-address": {map[string]any{"dnsName": "bad-a.api.test", "recordType": "A", "targets": []any{"not-an-ip"}}},
+			"two-for-a-name": {map[string]any{"dnsName": "twice.api.test", "recordType": "A", "targets": []any{"192.0.2.81"}}, map[string]any{"dnsName": "twice.api.test", "recordType": "A", "targets": []any{"192.0.2.82"}}},
+			"unknown-type":   {map[string]any{"dnsName": "bogus.api.test", "recordType": "BOGUS", "targets": []any{"x"}}},
+			"mx-no-pref":     {map[string]any{"dnsName": "mail.api.test", "recordType": "MX", "targets": []any{"mx.api.test."}}},
+			"cname-and-a":    {map[string]any{"dnsName": "pair.api.test", "recordType": "CNAME", "targets": []any{"elsewhere.test."}}, map[string]any{"dnsName": "pair.api.test", "recordType": "A", "targets": []any{"192.0.2.83"}}},
+		} {
+			upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/dnsrecordsets", session.CSRF, object("DNSRecordSet", "invalid-"+name, "default", map[string]any{
+				"zoneRef": map[string]any{"name": "api-test"}, "endpoints": endpoints,
+			}), http.StatusCreated, nil)
+		}
+		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/dnsrecordsets", session.CSRF, object("DNSRecordSet", "after-invalid", "default", map[string]any{
+			"zoneRef": map[string]any{"name": "api-test"}, "endpoints": []any{map[string]any{"dnsName": "after-invalid.api.test", "recordType": "A", "targets": []any{"192.0.2.84"}}},
+		}), http.StatusCreated, nil)
+		if got := answer("after-invalid.api.test."); got != "192.0.2.84" {
+			t.Fatalf("after-invalid.api.test. = %s", got)
+		}
+		if got := answer("www.api.test."); got != "192.0.2.10" {
+			t.Fatalf("www.api.test. = %s next to the invalid record sets", got)
+		}
+		for _, name := range []string{"twice.api.test.", "pair.api.test."} {
+			q := new(dns.Msg)
+			q.SetQuestion(name, dns.TypeA)
+			if r, _, err := (&dns.Client{Timeout: time.Second}).ExchangeContext(t.Context(), q, cfg.Listeners.DNS[0].Address); err != nil || len(r.Answer) != 0 && r.Answer[0].Header().Rrtype == dns.TypeA {
+				t.Fatalf("%s A of a refused endpoint: %v %v", name, r, err)
+			}
+		}
+		if got := ready(); got != http.StatusOK {
+			t.Fatalf("readiness %d with invalid record sets", got)
+		}
+		// Each is reported on its record set.
+		for _, name := range []string{"not-an-address", "two-for-a-name", "unknown-type", "mx-no-pref"} {
+			var last string
+			deadline := time.Now().Add(30 * time.Second)
+			for {
+				var rs struct {
+					Status struct {
+						Conditions []struct {
+							Type, Status, Reason string
+						} `json:"conditions"`
+					} `json:"status"`
+				}
+				upgradeMountedRequest(t, client, base, http.MethodGet, "/objects/dnsrecordsets/default/invalid-"+name, "", nil, http.StatusOK, &rs)
+				reported := false
+				for _, c := range rs.Status.Conditions {
+					reported = reported || c.Type == "Ready" && c.Status == "False" && c.Reason == "Invalid"
+				}
+				if reported {
+					break
+				}
+				last = fmt.Sprintf("%+v", rs.Status.Conditions)
+				if time.Now().After(deadline) {
+					t.Fatalf("record set invalid-%s is not reported Invalid: %s", name, last)
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+
+		// Update grants the primary runtime cannot compile are refused at
+		// write, also for a zone that denies updates (D373).
+		for name, policy := range map[string]map[string]any{
+			"a grant outside the zone": {"update": "deny", "updatePolicies": []any{map[string]any{"tsigKeyRef": "ddns", "name": "host.elsewhere.test."}}},
+			"a grant of no type":       {"update": "allow", "updatePolicies": []any{map[string]any{"tsigKeyRef": "ddns", "name": "grant.test.", "types": []any{"BOGUS"}}}},
+		} {
+			var problem struct {
+				Error api.ErrorBody `json:"error"`
+			}
+			upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/dnszones", session.CSRF, object("DNSZone", "grant", "", map[string]any{
+				"zoneName": "grant.test.", "type": "primary", "nameservers": []any{"ns1.grant.test."}, "policy": policy,
+			}), http.StatusBadRequest, &problem)
+			if problem.Error.Key != api.KeyInvalid || !strings.Contains(strings.Join(problem.Error.Fields, " "), "spec.policy.updatePolicies[0]") {
+				t.Fatalf("%s: refused as %q naming %v", name, problem.Error.Key, problem.Error.Fields)
+			}
+		}
+
+		// A block list whose URL accepts the connection and never answers
+		// does not hold back the serving generation while its first
+		// download runs: DNS, readiness and later writes go on (D373).
+		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/blocklists", session.CSRF, object("BlockList", "silent-url", "default", map[string]any{
+			"sources": []any{map[string]any{"name": "remote", "format": "domains", "url": hanging.URL + "/silent.txt"}},
+		}), http.StatusCreated, nil)
+		for deadline := time.Now().Add(30 * time.Second); asked.Load() == 0; time.Sleep(50 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatal("the fetcher never asked the silent URL")
+			}
+		}
+		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/dnsrecordsets", session.CSRF, object("DNSRecordSet", "while-silent", "default", map[string]any{
+			"zoneRef": map[string]any{"name": "api-test"}, "endpoints": []any{map[string]any{"dnsName": "while-silent.api.test", "recordType": "A", "targets": []any{"192.0.2.85"}}},
+		}), http.StatusCreated, nil)
+		if got := answer("while-silent.api.test."); got != "192.0.2.85" {
+			t.Fatalf("while-silent.api.test. = %s", got)
+		}
+		if got := ready(); got != http.StatusOK {
+			t.Fatalf("readiness %d while a list URL does not answer", got)
+		}
+		upgradeMountedRequest(t, client, base, http.MethodGet, "/zones", "", nil, http.StatusOK, nil)
+		var silentList struct {
+			Status struct {
+				Sources []struct {
+					Digest string `json:"digest"`
+				} `json:"sources"`
+			} `json:"status"`
+		}
+		upgradeMountedRequest(t, client, base, http.MethodGet, "/objects/blocklists/default/silent-url", "", nil, http.StatusOK, &silentList)
+		if len(silentList.Status.Sources) > 0 && silentList.Status.Sources[0].Digest != "" {
+			t.Fatalf("the silent URL has a digest: %+v", silentList.Status)
 		}
 
 		// The lifecycle of a deleted zone keeps its name: a zone for it
