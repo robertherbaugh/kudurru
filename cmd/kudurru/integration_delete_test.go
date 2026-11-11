@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -22,6 +24,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // The mounted acceptance of the SQLite Delete lifecycle (D367) that needs a
@@ -400,5 +403,121 @@ func TestIntegrationDeleteLicenseExpiryPausesCleanup(t *testing.T) {
 				t.Fatal("the release did not retain the ledger", len(rows))
 			}
 		})
+	}
+}
+
+// integrationSeedOperations stores n copies of template under new operation
+// IDs in one command each of at most 200 rows, edited by edit.
+func integrationSeedOperations(t *testing.T, s *servingRuntime, template *kinds.IntegrationOperation, label string, n int, edit func(*kinds.IntegrationOperation)) {
+	t.Helper()
+	for start := 0; start < n; start += 200 {
+		err := s.opts.Store.Command(t.Context(), s.opts.Store.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+			for i := start; i < min(start+200, n); i++ {
+				op := template.DeepCopy()
+				op.Spec.OperationID = kinds.Digest([]byte(label + " " + strconv.Itoa(i)))
+				op.ObjectMeta = metav1.ObjectMeta{Name: kinds.OperationName(op.Spec.OperationID)}
+				edit(op)
+				if err := op.Validate(); err != nil {
+					return err
+				}
+				if _, err := tx.Apply(ctx, op, store.ApplyOptions{Manager: "integration-ledger", CreateOnly: true}); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestIntegrationDeleteForgetsAHistoryOfSeveralStoredPages runs the cleanup
+// of an instance whose operation history spans several stored pages of the
+// real SQLite store, whose continuation is a keyset, not an offset: the
+// forgetting deletes rows behind the read and must still see every one. The
+// kind holds, interleaved in store order, settled operations of the published
+// record (which leave with its ledger row), intents of a record that never
+// got a ledger row (forgotten as leftovers, page by page), and the history
+// of a previous incarnation of the same name, which stays byte for byte.
+func TestIntegrationDeleteForgetsAHistoryOfSeveralStoredPages(t *testing.T) {
+	f := newIntegrationDeleteFixture(t, nil)
+	rows := integrationRows(t, f.s, kinds.KindIntegrationOperation)
+	if len(rows) != 1 {
+		t.Fatalf("operations of the published record: %d", len(rows))
+	}
+	template := rows[0].(*kinds.IntegrationOperation)
+	const settled, orphans, foreign = 300, 400, 300
+	integrationSeedOperations(t, f.s, template, "settled", settled, func(*kinds.IntegrationOperation) {})
+	orphan := template.Spec.Record
+	orphan.Key.Name = "never.example."
+	integrationSeedOperations(t, f.s, template, "orphan", orphans, func(op *kinds.IntegrationOperation) {
+		op.Spec.Record, op.Spec.Receipt = orphan, nil
+		op.Spec.After.DNSName = orphan.Key.Name
+		op.Spec.AfterHash = kinds.EndpointDigest(op.Spec.After)
+	})
+	integrationSeedOperations(t, f.s, template, "previous", foreign, func(op *kinds.IntegrationOperation) { op.Spec.Record.Owner.UID = "uid-previous" })
+	kept := map[string]string{}
+	pages := 0
+	for continuation := ""; ; {
+		page, err := f.s.opts.Store.List(t.Context(), kinds.KindIntegrationOperation, store.ListOptions{Limit: 256, Continue: continuation})
+		if err != nil {
+			t.Fatal(err)
+		}
+		pages++
+		for _, obj := range page.Items {
+			if op := obj.(*kinds.IntegrationOperation); op.Spec.Record.Owner != f.owner {
+				encoded, _ := json.Marshal(op)
+				kept[op.Name] = string(encoded)
+			}
+		}
+		if continuation = page.Continue; continuation == "" {
+			break
+		}
+	}
+	if pages < 4 || len(kept) != foreign {
+		t.Fatalf("the history spans %d stored pages and %d foreign rows", pages, len(kept))
+	}
+	_, writes, _ := f.traffic()
+	f.requestDelete(t)
+	// A store of this size makes every root capture and command slower than
+	// the fixture's usual patience allows under the race detector.
+	last := ""
+	for until := time.Now().Add(5 * time.Minute); integrationStored(t, f.s, f.d) != nil; time.Sleep(20 * time.Millisecond) {
+		if phase, reason := f.status(); phase+"/"+reason != last {
+			last = phase + "/" + reason
+			t.Logf("status %s", last)
+		}
+		if time.Now().After(until) {
+			t.Fatalf("the cleanup did not finalize; status %s", last)
+		}
+	}
+	_, after, deleted := f.traffic()
+	slices.Sort(deleted)
+	if !slices.Equal(deleted, f.published) || after-writes != 1 {
+		t.Fatalf("delete effects named %v in %d batches; published were %v", deleted, after-writes, f.published)
+	}
+	if rows := integrationRows(t, f.s, kinds.KindIntegrationLedger); len(rows) != 0 {
+		t.Fatalf("%d ledger rows remain", len(rows))
+	}
+	// Only the previous incarnation's operations are left, unchanged.
+	left := integrationRows(t, f.s, kinds.KindIntegrationOperation)
+	if len(left) != foreign {
+		t.Fatalf("%d operation rows remain, %d belong to the previous incarnation", len(left), foreign)
+	}
+	for _, obj := range left {
+		encoded, _ := json.Marshal(obj)
+		if kept[obj.GetName()] != string(encoded) {
+			t.Fatal("the cleanup changed or removed an operation of another incarnation", obj.GetName())
+		}
+	}
+	summary := ""
+	for _, entry := range integrationAudit(t, f.s, f.d) {
+		if entry.Action == "integration.cleanup" {
+			summary = entry.Reason
+		}
+	}
+	if !strings.Contains(summary, "forgot 1 ledger rows and "+strconv.Itoa(settled+orphans+2)+" operations") {
+		t.Fatalf("cleanup summary: %q", summary)
 	}
 }
