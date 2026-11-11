@@ -197,3 +197,24 @@ func RawQuerylogSinks(q Querylog) []string {
 
 // QuerylogSinksKey is the settings key of the additional sinks.
 const QuerylogSinksKey = "querylog.sinks"
+
+// QuerylogExcludePrefix starts the settings keys of the exclusions
+// (querylog.exclude.domains, .clients and .sudn).
+const QuerylogExcludePrefix = "querylog.exclude."
+
+// RawQuerylogChange reports whether a settings change of the changed keys
+// needs querylog.raw on top of settings.write (D372): next keeps a raw
+// dnstap sink, and the change touches querylog.sinks or an exclusion. The
+// exclusions are the only thing that holds back what a raw sink sends, so
+// clearing one would widen the raw export as much as adding the sink.
+func RawQuerylogChange(changed []string, next Querylog) bool {
+	if len(RawQuerylogSinks(next)) == 0 {
+		return false
+	}
+	for _, key := range changed {
+		if key == QuerylogSinksKey || key == strings.TrimSuffix(QuerylogExcludePrefix, ".") || strings.HasPrefix(key, QuerylogExcludePrefix) {
+			return true
+		}
+	}
+	return false
+}

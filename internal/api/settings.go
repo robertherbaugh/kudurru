@@ -481,10 +481,10 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 		return out, nil
 	}
 	// A raw dnstap sink sends what querylog.privacy hides (D372): a change
-	// of querylog.sinks that leaves one in place needs querylog.raw on top
-	// of settings.write, and is audited as querylog.raw. Removing every raw
-	// sink needs only settings.write.
-	rawSinks := slices.Contains(paths, config.QuerylogSinksKey) && len(config.RawQuerylogSinks(next.Querylog)) > 0
+	// of querylog.sinks or of querylog.exclude.* that leaves one in place
+	// needs querylog.raw on top of settings.write, and is audited as
+	// querylog.raw. Removing every raw sink needs only settings.write.
+	rawSinks := config.RawQuerylogChange(paths, next.Querylog)
 	if rawSinks {
 		if err := s.require(ctx, "querylog", "raw", clusterScope, ""); err != nil {
 			return nil, err

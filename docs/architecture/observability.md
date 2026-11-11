@@ -360,8 +360,8 @@ client address and its port, whatever the privacy mode says, also under
   and every other sink see the event;
 - the exclusions (`querylog.exclude.*`, the health name, the built-in dig)
   apply first: an excluded client or domain is never sent, raw or not;
-- a settings change of `querylog.sinks` that leaves a raw sink in place needs
-  `querylog.raw` besides `settings.write` (only the admin role holds it); the
+- a settings change of `querylog.sinks` or of `querylog.exclude.*` that
+  leaves a raw sink in place needs `querylog.raw` besides `settings.write` (only the admin role holds it); the
   API checks it, audits a refusal and audits the change as `querylog.raw`,
   and the complete SQLite runtime checks it again against the original
   credential at commit; removing raw needs only `settings.write`;

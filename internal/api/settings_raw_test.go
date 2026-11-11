@@ -29,8 +29,9 @@ func (a settingsOnly) Authorize(ctx context.Context, p rbac.Principal, attrs rba
 // raw override (D372): a change of querylog.sinks that leaves a raw dnstap
 // sink in place needs querylog.raw on top of settings.write. Without it
 // the change is refused and the denial audited; with it the change is
-// written and audited as querylog.raw. A sink that is not raw, and removing
-// the raw sink again, need only settings.write.
+// written and audited as querylog.raw. The same holds for a change of
+// querylog.exclude.* while a raw sink is in place. A sink that is not raw,
+// and removing the raw sink again, need only settings.write.
 func TestSettingsRawDnstapSinkNeedsQuerylogRaw(t *testing.T) {
 	var written [][]string
 	h := newHarness(t, func(o *Options) {
@@ -61,8 +62,23 @@ func TestSettingsRawDnstapSinkNeedsQuerylogRaw(t *testing.T) {
 	}
 	// While a raw sink stays, any change of the list needs querylog.raw.
 	h.do(http.MethodPatch, "/api/v1/settings", "editor", sink(true)).want(http.StatusForbidden)
-	// Turning raw off again needs only settings.write.
+	// So does any change of an exclusion: the exclusions are all that keeps
+	// a client or a domain out of the raw export.
+	exclude := func(key string, value any) map[string]any {
+		return map[string]any{"querylog": map[string]any{"exclude": map[string]any{key: value}}}
+	}
+	h.do(http.MethodPatch, "/api/v1/settings", "admin", exclude("clients", []any{"10.0.0.0/8"})).want(http.StatusOK)
+	writes := len(written)
+	for _, patch := range []map[string]any{exclude("clients", []any{}), exclude("domains", []any{"*.lan"}), exclude("sudn", false)} {
+		h.do(http.MethodPatch, "/api/v1/settings", "editor", patch).want(http.StatusForbidden)
+	}
+	if q := h.srv.config().Querylog; len(written) != writes || len(q.Exclude.Clients) != 1 || len(q.Exclude.Domains) != 0 || !q.Exclude.SUDN {
+		t.Fatalf("a refused exclusion change was applied: %+v, writes %d of %d", q.Exclude, len(written), writes)
+	}
+	// Turning raw off again needs only settings.write, and then so do the
+	// exclusions.
 	h.do(http.MethodPatch, "/api/v1/settings", "editor", sink(false)).want(http.StatusOK)
+	h.do(http.MethodPatch, "/api/v1/settings", "editor", exclude("clients", []any{})).want(http.StatusOK)
 
 	var denied, granted int
 	for _, ev := range h.audit.Events() {
@@ -76,7 +92,7 @@ func TestSettingsRawDnstapSinkNeedsQuerylogRaw(t *testing.T) {
 			}
 		}
 	}
-	if denied != 2 || granted != 1 {
-		t.Fatalf("querylog.raw audit events: %d denied, %d granted; want 2 and 1", denied, granted)
+	if denied != 5 || granted != 2 {
+		t.Fatalf("querylog.raw audit events: %d denied, %d granted; want 5 and 2", denied, granted)
 	}
 }

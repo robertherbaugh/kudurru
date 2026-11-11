@@ -328,7 +328,8 @@ that you control everything a DNS server can see. The contract:
   not, and neither are the health name and the dashboard's built-in dig.
 - Only an administrator can save it: a change of `querylog.sinks` that keeps
   a raw sink needs the permission `querylog.raw`, which only the `admin`
-  role holds. A refused change is audited, an accepted one is audited as
+  role holds. So does a change of `querylog.exclude` while a raw sink is in
+  place, because clearing an exclusion widens what the raw sink sends. A refused change is audited, an accepted one is audited as
   `querylog.raw` with the raw sinks before and after. Turning `raw` off, or
   removing the sink, needs only `settings.write`.
 - Each node records the audit event `querylog.raw.export` before such a sink

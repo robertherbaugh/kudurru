@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"slices"
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
@@ -40,10 +39,11 @@ func (s *servingRuntime) Settings(ctx context.Context) (*config.Config, error) {
 // a newer map. It never writes the legacy file or independently reloads DNS.
 func (s *servingRuntime) WriteSettings(ctx context.Context, next *config.Config, changed []string) error {
 	attrs := rbac.Attributes{Resource: "settings", Verb: "write", Scope: rbac.Scope{Kind: rbac.ScopeCluster}}
-	// A change that keeps a raw dnstap sink is checked for querylog.raw
-	// again at commit, like settings.write (D372).
+	// A change of querylog.sinks or querylog.exclude.* that keeps a raw
+	// dnstap sink is checked for querylog.raw again at commit, like
+	// settings.write (D372).
 	var also []rbac.Attributes
-	if slices.Contains(changed, config.QuerylogSinksKey) && len(config.RawQuerylogSinks(next.Querylog)) > 0 {
+	if config.RawQuerylogChange(changed, next.Querylog) {
 		also = append(also, rbac.Attributes{Resource: "querylog", Verb: "raw", Scope: rbac.Scope{Kind: rbac.ScopeCluster}})
 	}
 	err := s.currentCommandAlso(ctx, attrs, also, func(ctx context.Context, tx *sqlite.CommandTx, _ auth.Principal) error {
