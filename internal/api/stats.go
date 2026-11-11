@@ -79,7 +79,31 @@ type (
 		sqlitelog.Status
 		Took
 	}
+	// QuerylogSinksBody is GET /querylog/sinks.
+	QuerylogSinksBody struct {
+		Node  string         `json:"node" doc:"The node that answered (node.name); every node runs its own sinks."`
+		Sinks []QuerylogSink `json:"sinks" doc:"The sinks that are running or still draining, by name."`
+	}
 )
+
+// QuerylogSink is the state of one additional query-log sink of
+// querylog.sinks on the node that answered (D371).
+type QuerylogSink struct {
+	Name string `json:"name" doc:"The name of the querylog.sinks entry; it labels the sink's metrics."`
+	Type string `json:"type" doc:"The sink type of the entry in force: slog, clickhouse, loki or dnstap."`
+	Raw  bool   `json:"raw" doc:"The sink receives queries as they were, before the privacy transform (a dnstap sink with raw: true, D372)."`
+	// Queued and QueueSize are the events waiting and the bound.
+	Queued    int `json:"queued" doc:"Queries waiting in the sink's queue."`
+	QueueSize int `json:"queue_size" doc:"The bound of the queue (queueSize of the entry in force)."`
+	// Sent, Dropped and Errors are counters since the sink name appeared.
+	Sent    uint64 `json:"sent" doc:"Queries the destination accepted (kudurru_sink_sent_total)."`
+	Dropped uint64 `json:"dropped" doc:"Queries lost for this sink (kudurru_querylog_dropped_total{stage=\"sink\"})."`
+	Errors  uint64 `json:"errors" doc:"Failed attempts to open, write, flush or close (kudurru_sink_errors_total)."`
+	// LastSuccess is absent before the first successful write.
+	LastSuccess *time.Time `json:"last_success,omitempty" doc:"Time of the last successful write; absent before the first."`
+}
+
+type querylogSinksOutput struct{ Body *QuerylogSinksBody }
 
 // UpstreamServer is the live state of one configured upstream server.
 type UpstreamServer struct {
@@ -245,6 +269,26 @@ func (s *Server) registerStats() {
 		perm{resource: "blocklists", verb: "write"}, s.queryAction)
 	register(s, operation(http.MethodDelete, "/querylog", "purgeQuerylog", "Delete query-log rows", "querylog"), perm{resource: "querylog", verb: "purge"}, s.purgeQuerylog)
 	register(s, operation(http.MethodGet, "/querylog/status", "querylogStatus", "Query-log size, retention and writer state", "querylog"), ql, s.querylogStatus)
+	sinksOp := operation(http.MethodGet, "/querylog/sinks", "querylogSinks", "State of this node's additional query-log sinks", "querylog")
+	sinksOp.Description = "The sinks of querylog.sinks as the node that answers runs them: queue, sent, dropped, failed attempts and last success. " +
+		"Every node runs its own sinks; this route reports only the answering node and asks no other. No credential, error text or query appears."
+	register(s, sinksOp, ql, s.querylogSinks)
+}
+
+func (s *Server) querylogSinks(context.Context, *struct{}) (*querylogSinksOutput, error) {
+	body := &QuerylogSinksBody{Node: s.opts.NodeName, Sinks: []QuerylogSink{}}
+	if s.opts.QuerylogSinks == nil {
+		return &querylogSinksOutput{Body: body}, nil
+	}
+	for _, st := range s.opts.QuerylogSinks() {
+		sink := QuerylogSink{Name: st.Name, Type: st.Type, Raw: st.Raw, Queued: st.Queued, QueueSize: st.QueueSize, Sent: st.Sent, Dropped: st.Dropped, Errors: st.Errors}
+		if !st.LastSuccess.IsZero() {
+			at := st.LastSuccess.UTC()
+			sink.LastSuccess = &at
+		}
+		body.Sinks = append(body.Sinks, sink)
+	}
+	return &querylogSinksOutput{Body: body}, nil
 }
 
 // reader returns the query-log reader or 503 when the log is off.

@@ -1381,7 +1381,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, AuditBlockingCommand: kubeBlocking != nil, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
 		TSIGKeyReads: tsigKeyReads, TSIGKeyCommand: tsigKeyCommand,
-		Querylog: qlLogs.reader(), QuerylogSource: qlLogs.reader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
+		Querylog: qlLogs.reader(), QuerylogSource: qlLogs.reader, Tail: qlTail, QuerylogSinks: qlLogs.sinks.Status, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, CacheFlushCommand: cacheFlushCommand, CacheInspect: newCacheInspector(cs, fwd, dnsQueryCapture), Chain: chain, DNSQueryCapture: dnsQueryCapture, DNSQueryOutput: dnsQueryOutput,
 		Config: cfg, Reload: reload, NodeConfigCommand: nodeConfigCommand, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: apiMembership,

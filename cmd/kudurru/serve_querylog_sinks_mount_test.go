@@ -271,6 +271,17 @@ func TestRunServeQuerylogSinksStalledFailingAndReload(t *testing.T) {
 	if got, _ := metric("kudurru_sink_sent_total", `sink="stalled"`); got != 0 {
 		t.Errorf("kudurru_sink_sent_total{sink=stalled} = %v", got)
 	}
+	// The API reports the same state of the node's sink host.
+	sinkState := func() api.QuerylogSinksBody {
+		t.Helper()
+		var body api.QuerylogSinksBody
+		mountedFactorRequest(t, client, base, http.MethodGet, "/querylog/sinks", "", nil, http.StatusOK, &body)
+		return body
+	}
+	if got := sinkState(); got.Node != cfg.Node.Name || len(got.Sinks) != 1 || got.Sinks[0].Name != "stalled" || got.Sinks[0].Type != "slog" ||
+		got.Sinks[0].Queued != 100 || got.Sinks[0].QueueSize != 100 || got.Sinks[0].Dropped != overflow || got.Sinks[0].Sent != 0 || got.Sinks[0].LastSuccess != nil {
+		t.Errorf("GET /querylog/sinks with the stalled sink: %+v", got)
+	}
 
 	// Replace the stalled sink while it is still stalled. The new sink
 	// receives the queries answered after it was added, and none before.
@@ -322,6 +333,11 @@ func TestRunServeQuerylogSinksStalledFailingAndReload(t *testing.T) {
 		t.Errorf("the removed sink received %d events", got)
 	}
 	wait("rows behind a failing sink", func() bool { return rows() == total })
+	// The stalled sink is still draining inside its write, so it is listed
+	// beside the failing one.
+	if got := sinkState(); len(got.Sinks) != 2 || got.Sinks[0].Name != "failing" || got.Sinks[0].Dropped != 2 || got.Sinks[0].Errors != 4 || got.Sinks[0].Sent != 0 || got.Sinks[1].Name != "stalled" {
+		t.Errorf("GET /querylog/sinks with the failing sink: %+v", got)
+	}
 
 	// Settings the runtime could not serve are refused and change nothing.
 	refused("unknown type", []map[string]any{{"name": "kafka", "type": "kafka"}})
@@ -342,6 +358,9 @@ func TestRunServeQuerylogSinksStalledFailingAndReload(t *testing.T) {
 		_, dropped := metric("kudurru_querylog_dropped_total", `sink="failing"`)
 		return !sent && !dropped
 	})
+	if got := sinkState(); len(got.Sinks) != 1 || got.Sinks[0].Name != "stalled" {
+		t.Errorf("GET /querylog/sinks after every sink was removed lists more than the stalled sink that is still draining: %+v", got)
+	}
 	query("after-all-removed.example.")
 	total++
 	wait("the last row", func() bool { return rows() == total })

@@ -244,6 +244,10 @@ type Options struct {
 	QuerylogSource func() *sqlitelog.Reader
 	Tail           *querylog.Tail
 	Purger         QuerylogPurger
+	// QuerylogSinks returns the state of this node's additional query-log
+	// sinks (querylog.sinks, the sink host's Status) for GET
+	// /querylog/sinks; nil reports none.
+	QuerylogSinks func() []querylog.SinkStatus
 	// CentralQuerylog answers scope=cluster from the central database
 	// (sqlitelog.NewCentralReader, D161) and CentralPurger purges it with
 	// this node's rows; nil without a central database.

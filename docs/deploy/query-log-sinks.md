@@ -504,6 +504,13 @@ with `querylog.exclude.*`.
 
 The series of a sink disappear when it is removed from the settings.
 
+The same state is in the API: `GET /api/v1/querylog/sinks` (permission
+`querylog.read`) lists the sinks the answering node runs, including one that
+is still draining after a change, with `queued`, `queue_size`, `sent`,
+`dropped`, `errors`, `last_success` and `raw`. Every node runs its own
+sinks, so ask each node; the route does not ask the others. It never shows a
+credential, an error text or a query.
+
 ## Changing and removing sinks
 
 - An entry that is not changed keeps running across unrelated settings
