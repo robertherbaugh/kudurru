@@ -154,6 +154,59 @@ func TestAnchorEdgeActivationRefusesChangedOriginal(t *testing.T) {
 	}
 }
 
+// TestAnchorEdgeActivationRefusesUnsupportedPeer (F28-MV-2 (c)): a declared
+// edge whose internal listener has no observation route, as a peer of an
+// earlier release has none, answers 404. Startup is refused with
+// ErrEdgeBypassUnsupported, the edges after it are not asked, the root is
+// never asked and the anchor owner stays as it was. A released 0.1.0 peer
+// is the same refusal end to end in TestAnchorUpgradeFromReleasedV010.
+func TestAnchorEdgeActivationRefusesUnsupportedPeer(t *testing.T) {
+	base := newServingRuntimeFixture(t)
+	var calls atomic.Int32
+	observe := func(_ context.Context, id string) (internalapi.EdgeBypassState, error) {
+		calls.Add(1)
+		return anchorEdgeState(id), nil
+	}
+	first, client := anchorEdgePeer(t, "edge-a", strings.Repeat("a", 64), observe)
+	old, _ := anchorEdgePeer(t, "edge-old", strings.Repeat("b", 64), nil)
+	last, _ := anchorEdgePeer(t, "edge-c", strings.Repeat("d", 64), observe)
+	opts := edgeAnchorOptions(t, base, []anchorEdgeRequirement{first, old, last}, client)
+	seed, reply := anchorWireSignedReply(t)
+	endpoint, reads := anchorWireServer(t, "tcp", reply)
+	r := &opts.Config.Upstreams.Recursion
+	r.AnchorMode, r.TrustAnchors, r.RootHints, r.IPv6 = config.RootAnchorsManaged, seed.DS, []string{endpoint.String()}, "off"
+	opts.Config.EnvLocked = append(opts.Config.EnvLocked, "upstreams.recursion.anchorMode", "upstreams.recursion.trustAnchors", "upstreams.recursion.rootHints", "upstreams.recursion.ipv6")
+	owner := func() accepted.Version {
+		t.Helper()
+		image, err := base.opts.Store.ReadGeneration(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		o, err := accepted.DecodeRows(image.Payload.Runtime, image.Term.ClusterID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return o.Version()
+	}
+	before := owner()
+	startup, finish := context.WithTimeout(t.Context(), 5*time.Second)
+	s, err := newServingRuntime(startup, opts)
+	finish()
+	if err == nil {
+		_ = s.Close(t.Context())
+		t.Fatal("startup admitted an edge without the observation route")
+	}
+	if !errors.Is(err, internalapi.ErrEdgeBypassUnsupported) {
+		t.Fatalf("startup refusal: %v, want %v", err, internalapi.ErrEdgeBypassUnsupported)
+	}
+	if calls.Load() != 1 || reads.Load() != 0 {
+		t.Fatal("refused fleet contacted later edges or the root", calls.Load(), reads.Load())
+	}
+	if after := owner(); after != before {
+		t.Fatal("refused startup changed the anchor owner", before, after)
+	}
+}
+
 // A fenced or conflicted backend used to be refused at startup before any edge
 // was contacted, so it could not restart behind its edges at all. D369 admits
 // that DNS-only cut, but only with the same complete authenticated fleet
