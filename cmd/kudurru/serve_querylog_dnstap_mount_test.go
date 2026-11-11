@@ -159,9 +159,18 @@ func TestRunServeQuerylogDnstapSinkPrivacyAndRaw(t *testing.T) {
 		t.Fatalf("extra %q", extra)
 	}
 
-	// The administrator turns raw on: the exchange as it was.
+	// The administrator turns raw on: the exchange as it was. The change
+	// replaces the sink, so the first stream ends once its sink has sent
+	// everything that was queued for it. Under hide_domains_clients a frame
+	// of the excluded client or the excluded domain would look like any
+	// other frame without raw, so the stream is counted: exactly the query
+	// and the response of visible.example. and nothing else.
 	patchSink(true)
+	wait("the first stream to finish", func() bool { return collector.Finished() >= 1 })
 	before := len(collector.Frames())
+	if before != 2 {
+		t.Fatalf("the stream without raw carried %d frames, want the 2 of visible.example.: an excluded client or domain was sent", before)
+	}
 	query("b.skip.example.")
 	excludedClient("client-b.example.")
 	query("raw.example.")
