@@ -52,13 +52,22 @@ is steps 3 and 4 only: it makes no provider call and does not need the
 credential or a reachable controller.
 
 While this runs the Integration is shown with phase `Terminating`. Check,
-preview, sync and actions are refused for it. The cleanup is resumable: it
-works in bounded runs, shares the Cloudflare request budget with every other
-instance, and continues after a restart or a failover from what is stored.
-A large zone can take several budget windows.
+preview, sync and actions are refused for it. The cleanup works in bounded
+runs and shares the Cloudflare request budget with every other instance, so a
+large zone can take several budget windows. Everything it needs is in the
+store (the finalizer, the ledger and the recorded operations), so it is
+designed to continue from there after a restart or a failover. In this
+release that is covered by tests of the integration host, not yet by a test
+of a whole server that restarts or fails over in the middle of a cleanup.
 
 The object stays `Terminating` with a reason, and nothing is finalized, while
-any of these holds:
+any of these holds. With the reason the integration status carries three
+counts, which the cleanup also writes to `status.records` of the object:
+`managed` is the number of records not yet removed from the ledger,
+`conflicts` the number it must leave in place, and `drift` the number of
+provider writes with an unresolved outcome. The first is counted when a run
+starts, so a run that stops early (no budget, a provider error) still says
+what is left.
 
 | Reason | Meaning | What to do |
 | --- | --- | --- |
@@ -71,12 +80,36 @@ any of these holds:
 | `OwnershipUnproven` | A row carries the instance's marker without ledger evidence, or a record the ledger lists still exists without the marker. | Decide what the row is; delete it or release. |
 | `PendingRecovery` | An earlier write has an uncertain outcome that a reread did not resolve. | Release, then check the record at the provider. |
 | `DestinationRemoved` | The ledger has records of a zone the spec no longer names. | Name the zone again, or release. |
-| `LocalStateRemains` | A record set or zone the instance generated could not be removed. | Check that object's own finalizers. |
+| `LocalStateRemains` | A record set or zone the instance generated could not be removed, or a row of the instance was stored after the purge. | Check that object's own finalizers; a later run removes late rows. |
+| `CapacityExceeded` | The store holds more rows than a bounded read of the cleanup admits (see the limits below). Nothing was decided from a partial read. | Release. |
+| `CleanupFailed` | A read or a write of the local store failed. | Usually nothing; check the server log if it stays, or release. |
+| `ProviderUnavailable` | This build has no provider of the Integration's type. | Run a build that has it, or release. |
+| `ReleaseFailed` | A release could not remove the finalizer yet. | Usually nothing; check the server log if it stays. |
+
+`LicenseUnavailable` and `Suspended` start no cleanup job, so only the
+integration status shows them: the object's own `Ready` condition and
+`status.records` keep what was last written. Every other reason is also
+written to the object.
 
 `CleanupInProgress` and `AuthorityChanged` are passing states of a cleanup
 that is working. A blocked cleanup is checked again at the instance's resync
 interval, at most every ten minutes, and immediately when you change the
 declared object.
+
+The cleanup has these limits. It reads each configured zone as a sync does
+(at most 10,000 records per zone), and the store may hold at most 100,000
+ledger rows of all Integrations together. The history of an instance has no
+limit: every create, update and delete of a record set leaves one stored
+operation, nothing removes them while the Integration lives, and the cleanup
+forgets them in bounded steps however many there are. The last two steps, the
+local purge and the finalization, each read every row of the kinds they check
+in one transaction and stop at 200,000 rows of one kind in the store. The
+operations of every other Integration count toward that, and so do those a
+removed `Retain` Integration left behind. A store in which they add up to
+more than 200,000 record changes cannot finalize a `Delete` cleanup: the
+Integration stays `Terminating` with `CapacityExceeded` after its provider
+records are already deleted. Release it, which leaves its remaining local
+rows in the store.
 
 To release an Integration that is `Terminating`, declare it once more with
 `deletionPolicy: Retain`. That removes the terminating object without

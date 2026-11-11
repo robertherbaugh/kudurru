@@ -266,10 +266,13 @@ unless the host supplies a fresh complete observation that the provider no
 longer holds the record. The SQLite root commits a forget in one fenced
 command under the same lease, configuration and writer checks as every ledger
 write, and can name only ledger and operation rows: the shared request budget
-is out of its reach and survives every instance. The host reads ledger rows
-and operations for a whole Integration incarnation across destinations, so
-rows of a destination that was removed from the spec are found and reported
-instead of being ignored.
+is out of its reach and survives every instance. The host counts the ledger
+rows of a whole Integration incarnation across destinations, so rows of a
+destination that was removed from the spec are found and reported instead of
+being ignored. It reads the rows themselves one configured destination at a
+time, as a sync does, and the operations in bounded batches and stored pages:
+nothing removes an operation while an instance lives, so a history has no
+bound and is never held or committed as a whole.
 
 ### The terminating job
 
@@ -286,10 +289,13 @@ joined before the next one may be elected on the same per-instance key.
 | deleting, cleanup finalizer, any other policy | release | `release` |
 | deleting, no cleanup finalizer | none: `Paused/Deleting` | none |
 
-The SQLite root repeats that rule at every effect, against the object it
-reads in the transaction (`integrationGuardAdmits`): the same UID and
-resource version, and a state that is what the guard's mode claims. A guard
-never widens what its object allows. Operator commands are refused for a
+The SQLite root repeats that rule on its own (`integrationGuardAdmits`), in
+three places: against its captured cut, against the stored object before an
+effect, and against the object it reads in the transaction of every effect.
+Each time it needs the same UID and resource version and a state that is what
+the guard's mode claims. A guard never widens what its object allows, so a
+host that claimed the wrong mode would get no provider call, no commit and no
+finalization from root. Operator commands are refused for a
 terminating job, and its lease takes a concurrency slot for each bounded run
 only, so a blocked cleanup waits without holding one.
 
@@ -313,7 +319,7 @@ flowchart TD
     Forget --> Clean{"Anything of this UID left or uncertain?"}
     Rows -- yes --> Blocked
     Clean -- yes --> Blocked["Terminating with a reason and counts; never finalizes"]
-    Clean -- no --> Leftovers["Forget operations without a ledger row"]
+    Clean -- no --> Leftovers["Forget operations without a ledger row, a stored page at a time"]
     Rows -- no --> Leftovers
     Leftovers --> Purge["Root purge: one command, then wait for publication"]
     Purge --> Finalize["Root finalize: verify nothing remains, audit, remove finalizer"]
@@ -337,7 +343,12 @@ flowchart TD
   baseline is absent (a confirmed delete) or when the snapshot holds none of
   its provider IDs and no row with the owner's marker at its key (a record
   someone else removed). A row whose provider IDs still exist without the
-  marker is kept and reported.
+  marker is kept and reported. A row leaves with the operations of its record
+  that one bounded batch holds (4,096 operations, 8 MiB). What a longer
+  history leaves behind, and intents that never got a ledger row, are
+  forgotten once no ledger row is left, one stored page at a time, until a
+  complete read finds none. A run that reaches its bound there has made
+  progress, and the next one continues.
 - **Blocked.** `RecordsConflict` (a conflict at the name, or a record set
   shared with another owner's rows), `OwnershipUnproven` (a marker without
   ledger evidence, or ledger provider IDs that still exist without the
@@ -347,15 +358,28 @@ flowchart TD
   The reason and the counts (records not yet forgotten, record sets left in
   place, uncertain writes) are in the host status, and the job that holds the
   lease also writes them to the object's `Ready` condition and
-  `status.records`. A blocked cleanup is re-evaluated at the instance's
-  resync interval, at most every ten minutes, and at once when the object
-  changes.
+  `status.records`. The records not yet forgotten are counted when a run
+  starts, so a run that stops early reports them too, and a run that root
+  fences before it could count keeps the counts of the last one. A blocked
+  cleanup is re-evaluated at the instance's resync interval, at most every
+  ten minutes, and at once when the object changes.
 - **Paused.** `LicenseUnavailable` and `Suspended` start no job, so only the
-  host status shows them; `CredentialsUnavailable` ends the lease before any
-  provider call. All three resume by themselves when the cause is gone. `BudgetExhausted`,
+  host status shows them and the object keeps the condition last written;
+  `CredentialsUnavailable` ends the lease before any provider call. All three
+  resume by themselves when the cause is gone. `BudgetExhausted`,
   `RateLimited`, `ProviderFailed` and `ProvisionFailed` back off and retry;
   the shared request budget row is charged like any other request and is
   never removed.
+- **Local failures.** `CleanupFailed` is a failed read or write of the local
+  store, `ProviderUnavailable` a type this build has no provider for, and
+  `ReleaseFailed` a release whose finalizer removal was refused. All are
+  repeated at the resync interval. `CapacityExceeded` is a bounded read that
+  met more than it admits, from which nothing was decided: more than 100,000
+  ledger rows in the store or more than a sync admits per destination on the
+  host side, and on the root side more than 200,000 stored rows of one kind
+  that the purge or the finalization scans in its transaction. The second
+  bound includes the operations of every other Integration, which ordinary
+  life never prunes; that is an open limit.
 - **Purge.** `integrationRuntime.purge` removes, in one SQLite command, the
   record sets and zones the instance's source owns (each must still be the
   UID and resource version of the captured cut), its source head and chunks,
@@ -380,9 +404,12 @@ flowchart TD
   apply that changes the policy, so on SQLite this job only meets state that
   no apply stored; it is the path a Kubernetes host needs.
 
-Failover needs no extra state: the finalizer, the ledger and the operations
-are durable, a fenced writer can neither record a receipt nor finalize, and
-the next lease starts from a complete reread.
+Failover is designed to need no extra state: the finalizer, the ledger and
+the operations are durable, a fenced writer can neither record a receipt nor
+finalize, and the next lease starts from a complete reread. Host-level tests
+cover a lease lost between a provider delete and its receipt; a restart or a
+promotion of the whole server in the middle of a cleanup has no mounted test
+yet.
 
 Automatic inventory-only polling retains its configured future schedule after an
 original-frame fence while both the job and lease remain active. The refused
