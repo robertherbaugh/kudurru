@@ -377,8 +377,11 @@ flowchart TD
   repeated at the resync interval, except a `CleanupFailed` run that its
   30-second bound cut without any progress in one of the cleanup's own local
   steps (a ledger count, a ledger or history read, a fence, an intent,
-  receipt or confirmation commit, a forget, the purge or the finalization): a store too slow for the bound backs off and
-  retries like a provider failure, and is not reported as `ProviderFailed`.
+  receipt or confirmation commit, a forget, the purge or the finalization):
+  a store too slow for the bound backs off and retries like a provider
+  failure, and is not reported as `ProviderFailed`. A provider request that
+  itself returned only after the bound is `ProviderFailed`, even though the
+  receipt commit that follows it on the expired bound fails too.
   `CapacityExceeded` is a bounded read that met more than it admits, from
   which nothing was decided: more than 100,000
   ledger rows in the store or more than a sync admits per destination on the

@@ -69,10 +69,11 @@ the recorded operations), so it continues from there:
 - After a failover, the old writer can no longer record a receipt or remove
   the finalizer, even when its last delete reaches the provider. The promoted
   writer resolves that delete by a reread and finishes.
-- When the license expires or is suspended in the middle of a cleanup, the
-  cleanup pauses with `LicenseUnavailable` and makes no provider request; the
-  object stays `Terminating`. Installing a valid license resumes it, and a
-  release works without one.
+- When the license expires in the middle of a cleanup, the cleanup pauses
+  with `LicenseUnavailable` and makes no provider request; the object stays
+  `Terminating`. Installing a valid license resumes it, and a release works
+  without one. Setting `spec.suspend` pauses it the same way, with
+  `Suspended`, until it is cleared.
 - When the credential is missing, a publisher's cleanup pauses with
   `CredentialsUnavailable` and makes no provider request; restoring the
   credential resumes it. A rotated value of the same reference is accepted,
@@ -92,7 +93,7 @@ what is left.
 | `LicenseUnavailable` | The license does not allow integrations. | Install a valid license, or release. |
 | `Suspended` | `spec.suspend` is set. | Clear it, or release. |
 | `CredentialsUnavailable` | The credential reference does not resolve. | Restore the file or variable, or release. |
-| `ProvisionFailed`, `ProviderFailed`, `RateLimited`, `BudgetExhausted` | The provider or the request budget refused; retried with backoff. | Usually nothing. |
+| `ProvisionFailed`, `ProviderFailed`, `RateLimited`, `BudgetExhausted` | The provider or the request budget refused, or a provider request did not answer within the run's 30-second bound; retried with backoff. | Usually nothing. |
 | `SnapshotIncomplete` | A zone could not be read completely, so nothing was decided. | Usually nothing. |
 | `RecordsConflict` | A record of the instance shares its name or record set with a record of another owner. | Remove or move the other record, or release. |
 | `OwnershipUnproven` | A row carries the instance's marker without ledger evidence, or a record the ledger lists still exists without the marker. | Decide what the row is; delete it or release. |
