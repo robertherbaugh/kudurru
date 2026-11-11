@@ -8,6 +8,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/auth/providercoordinator"
 	"github.com/robertherbaugh/kudurru/internal/serving"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
@@ -48,7 +49,10 @@ type anchorUpdater struct {
 	offset   uint64
 	retryFor anchorRetrySource
 	retryAt  time.Time
-	stopped  error
+	// raced counts consecutive attempts refused because an ordinary commit
+	// moved the canonical generation first (D370); it paces their retries.
+	raced   int
+	stopped error
 	// wall reads this node's wall clock for the checkpoint comparison only; nil
 	// means time.Now. Samples, receipts and stored state never use it.
 	wall func() time.Time
@@ -79,12 +83,18 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 	original, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	op, err := u.runtime.captureAnchorOperation(original, u.target, u.host, u.clock, u.offset)
-	if err != nil {
-		return step, err
-	}
 	now := time.Now()
 	if u.wall != nil {
 		now = u.wall()
+	}
+	if errors.Is(err, replication.ErrCAS) {
+		// An ordinary commit landed between the image read and the capture.
+		// Nothing was acquired; a later step captures the new generation.
+		step.next = now.Add(time.Second)
+		return step, nil
+	}
+	if err != nil {
+		return step, err
 	}
 	if op == nil {
 		step.next = now.Add(time.Minute)
@@ -124,7 +134,7 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 	if err == nil {
 		switch step.completion.Update.Outcome() {
 		case sqlite.AnchorCommitted, sqlite.AnchorUnchanged:
-			u.retryFor, u.retryAt = anchorRetrySource{}, time.Time{}
+			u.retryFor, u.retryAt, u.raced = anchorRetrySource{}, time.Time{}, 0
 			// Re-read accepted state after this effect. Do not derive a poll
 			// schedule from the old observation or its proposed postimage.
 			step.next = time.Now().Add(time.Second)
@@ -132,6 +142,17 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 		default:
 			return step, errAnchorPolicy
 		}
+	}
+	if anchorUpdateRaced(step.completion, err) {
+		// D370: an ordinary commit (a zone status write, an API change) moved
+		// the canonical generation while the reply was in flight, and the
+		// transaction rolled back. Nothing durable changed and the reply is
+		// discarded, never replayed. A later step makes a NEW acquisition
+		// against the new generation, paced 1s, 2s, 4s ... up to 64 seconds.
+		step.next = time.Now().Add(time.Second << min(u.raced, 6))
+		u.raced++
+		u.retryFor, u.retryAt = identity, step.next
+		return step, nil
 	}
 	var acquisition *anchorAcquisitionFailure
 	if !errors.As(err, &acquisition) {
@@ -153,6 +174,15 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 	u.retryFor, u.retryAt = identity, step.next
 	step.acquisitionError = acquisition
 	return step, nil
+}
+
+// anchorUpdateRaced reports a definite rollback caused only by a canonical
+// generation change: the update transaction rolled back with the store's
+// authority CAS and no denial was committed first. An accepted-owner change
+// (accepted.ErrCAS), an uncertain outcome or a committed denial stays terminal.
+func anchorUpdateRaced(completion anchorCompletion, err error) bool {
+	return errors.Is(err, replication.ErrCAS) && !errors.Is(err, accepted.ErrCAS) &&
+		completion.Update.Outcome() == sqlite.AnchorRolledBack && completion.Denial.Outcome() == sqlite.AnchorUnknown
 }
 
 // runAnchorUpdater is mounted through the root-admitted writer adapter, which
