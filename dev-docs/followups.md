@@ -201,3 +201,30 @@ Bugs found by the M5 e2e package. E2E-1, E2E-3, E2E-4, E2E-5 and E2E-6 were fixe
 | RP-initiated logout, several identity providers, a metrics endpoint, audit export | design spec | later |
 | Dashboard `LicensePage` dates in UTC, and the "no restart" wording in LicensePage, the website, licensing.md and helm.md: the flag and `KUDURRU_LICENSE_KEY` are read once at startup | design critique, product | next licensing round |
 | `license.Manager` logs "license key replaced" when a key with the same jti but other claims or expiry arrives (today it logs only state, id or source changes) | design critique, compatibility | next licensing round |
+
+## v0.2 completion pass: open at 68a709e2
+
+Open findings of the packages the owner had merged on November 11, 2026
+before their verification was complete. Each section of the
+[completion plan](milestones/v0.2/completion-plan.md) ends with the package's
+state; this table lists what is still to do. Close a row by deleting it and
+citing the commit.
+
+| Item | Source | Target |
+|---|---|---|
+| Hosted CI is red on 68a709e2: `TestChartUpgradeFromV01` needs the `v0.1.0` tag the hosted checkout lacks; `TestServingBlockingWriterCanceledAfterCommitBeforeObservation` fails with `providerresources: owner closed` (also seen in FLAKE-OIDC-WRITER's own confirmation run on the fixed tree, never compared on the base) | CI 43045349810 | v0.2 |
+| Harness free-port race (listen, close, bind later) and the recurring `primaryruntime: required adapter/publication unavailable` and auth-cookie failures in hosted `go test 1/2` | CI 42954844334; QUAL-CI review | v0.2 |
+| A long multi-item request on SQLite leaves local zones unanswered and other callers refused for up to more than a minute under load (80 s gap on the merged head); the follower cut test is missing; the long-apply test does not bound the gap (D378) | CORE-APPLY-MULTI verify | v0.2 |
+| D377 releases node-produced SERVFAILs too: a recursive node answers SERVFAIL (EDE 23) for cache misses just after each commit; narrow the class to upstreams actually contacted and correct D377, `query-path.md` and the changelog | QUAL-CI verify | v0.2 |
+| A primary zone can answer `SERVFAIL` (`servfail_unsynced`) for committed data in a window after its status write (`TestRunServeSQLiteCompletePrimaryUpdateRestart`) | OBS-FANOUT review and post-verify | v0.2 |
+| SQLite upgrade: the `503` an API write can get just after readiness is handled only by the test; `TestRunServeSQLiteUpgradeWithLegacyPlaceholders` failed in the composed run; a merged CNAME's TTL now changes on upgrade without a changelog line or test | QUAL-SQLITE-UPGRADE-2 verify | v0.2 |
+| Fix commits never verified: HA-REFUSAL (with four weakened guards and three nits), OBS-HTTP-SINKS, DOCS-ARCH; never reviewed: F28-HISTORY-RECHECK, FLAKE-OIDC-WRITER | completion-pass journals | v0.2 |
+| `TestRunServeManagedEdgePinnedDaemonFollower` (live dnsdist follower behind managed edges, F28-EF-1) does not exist | F28-GUARDS verify | v0.2 |
+| A cleanup provider request that returns a partial receipt with its error is reported as a local `CleanupFailed` (`ee/integration/host/engine.go`); confirm INT-DEL-B's five follow-ups in the merged code; Kubernetes integration host and Delete on Kubernetes (F09b-K0..K8, DEL-8) | INT-DEL-C verify; INT-DEL-B verify | v0.2 |
+| The dnstap mount test proves client exclusion only with raw on; OBS-FANOUT nits (idle sink reported undrained when the collector fails; untested `sink host stopped` path) | OBS-DNSTAP-EMIT verify; OBS-FANOUT post-verify | v0.2 |
+| Docs overtaken by merged code: warnings about one-document applies, unserved zone types and never-downloaded list URLs stopping a SQLite node; `sqlite-cluster.md` against `sqlite-join.md` on repeating an apply through a follower; `primary_required` and `ROLE follower` in `sqlite-cluster.md`; the incomplete "Check four things" policy list; `--select-object` advice; "minutes apart" backoff; `prepare_failed` or `preparing`; catch-all CIDR against client ID; the enterprise page against `website/src/content.ts` (website needs the owner's authorization) | DOCS-OPS and DOCS-VERSION verify | v0.2 |
+| Observed by the docs lane on November 10 and not rechecked at 68a709e2: on SQLite a signed update is answered `SERVFAIL` instead of `REFUSED` when the zone or the key's grants do not allow it; `nsupdate` reports a wrong TSIG key as "clocks are unsynchronized" (zero signing time in the error answer); `cluster status`, `nodes` and the license node count describe only the answering node; an enrolled cluster issues at most 64 invitations in its lifetime; a Kubernetes backup and restore recreates `rfc2136-<zone>` as API-owned (from the code) | DOCS-OPS | v0.2 |
+| No command removes an enrolled member; no audited operator revocation on the primary for a root-key revocation it can never record; a refusing member whose primary is lost for good cannot be recovered (D361 guard) | F28-HISTORY-RECHECK | owner decision |
+| An unpinned Kubernetes node exits during an API-server outage instead of staying up and unready (G22-WP4 item 2); the fencing loop in `kube_cluster_test.go` counts a failed `/healthz` as not leader | QUAL-KUBE-UPGRADE (D373) | v0.2 |
+| Data race between `TestServingAdoptionActualHTTPFinalExpiryRollsBackAllZones`'s `opts.Now` replacement and the integration host's refresh | HA-FIX | v0.2 |
+| Paired benchmark and fixed-class run on the final head; PR body | G23, G25 | v0.2 |

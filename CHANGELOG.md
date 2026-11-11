@@ -462,6 +462,281 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   with bounded startup loading and restart-required rotation.
 - A rate-limit slip counter and Grafana panels for central database
   availability, query shipping lag and audit spool drops.
+- Additional query-log sinks. `querylog.sinks` lists up to eight destinations
+  that receive every recorded query next to the local database or log lines
+  selected by `querylog.sink`, with the privacy mode and exclusions already
+  applied. Each sink has its own bounded queue, batch size, flush interval,
+  timeout and attempt budget, so a slow, stalled or failing destination loses
+  only its own queries and never delays DNS answers, the local database or the
+  live view. Changes apply without a restart: an unchanged sink keeps running,
+  a new one starts with new queries only, and a removed one finishes what it
+  holds. On Kubernetes, a query recorded at the very moment a sink's entry is
+  changed can miss both the old and the new sink; it is counted as dropped for
+  that sink and stays in the local database. Four types ship: `slog` (one
+  structured log line per query), `clickhouse`, `loki` and `dnstap`. See
+  `docs/deploy/query-log-sinks.md` (D371).
+- ClickHouse and Grafana Loki as query-log destinations, sent by the server
+  itself with no agent beside it: one `INSERT ... FORMAT JSONEachRow` per batch
+  over the ClickHouse HTTP interface, or one Loki push per batch with client,
+  domain, query type, status and trace ID as structured metadata and only the
+  node and the status class as labels. The operator page has the ClickHouse
+  table definition, the Loki mapping and example settings. A batch is sent
+  again, at most `attempts` times, only when nothing was sent or the
+  destination answered 408, 429 or 5xx (`Retry-After` honored up to 30
+  seconds). A repeat after a 5xx can store a batch twice when the destination
+  had stored it; the documented ClickHouse table and Loki drop the duplicate,
+  and `attempts: 1` turns repeats off. Every other answer, and a request that
+  was sent and got no answer, drops the batch. The server log names the HTTP
+  status and, for ClickHouse, its error code, never the destination's error
+  text (D371).
+- Credentials of query-log sinks are references, never values in the
+  settings: `passwordRef`, `bearerTokenRef` and `caRef` name a file or an
+  environment variable that the node's own configuration allows
+  (`credentials.allowedFiles`, `credentials.allowedEnvironment`), or, on
+  Kubernetes, a key of a Secret in kudurru's namespace with the label
+  `kudurru.io/query-log-sink: "true"`. A sink reads its credential again after
+  a 401 or 403, so a rotated password or token is picked up without a restart.
+  A grant is not bound to a destination: whoever may change the settings can
+  have a granted credential sent to any URL, so grant only credentials made
+  for these destinations.
+- dnstap output. A `querylog.sinks` entry of `type: dnstap` sends every
+  recorded query as dnstap messages in Frame Streams to a collector such as
+  DNS-collector, Vector or the `dnstap` command, over a Unix socket, TCP or TLS
+  (`caRef`, `certRef`/`keyRef` for mutual TLS). Local zone and local record
+  answers are `AUTH_QUERY`/`AUTH_RESPONSE`, all others
+  `CLIENT_QUERY`/`CLIENT_RESPONSE`; `forwarder_query`/`forwarder_response` add a
+  summary pair for queries that went to an upstream. By default a message
+  follows `querylog.privacy`, carries the question and the response code but
+  never the answer records, and nothing is sent under `nothing` (D372).
+- The dnstap raw override: `raw: true` sends the DNS messages exactly as
+  received and answered, with the real client address and port, whatever the
+  privacy mode says. Only an administrator can save it (new permission
+  `querylog.raw`, held by the `admin` role); the change is audited as
+  `querylog.raw`, and every node records `querylog.raw.export` before it sends
+  the first raw message and does not send if it cannot record it. Excluded
+  clients and domains are never sent, raw or not, and while a raw sink is
+  configured a change of `querylog.exclude` also needs `querylog.raw` (D372).
+- Per-sink query-log metrics: `kudurru_sink_sent_total`,
+  `kudurru_sink_errors_total`, `kudurru_sink_queue_length` and
+  `kudurru_sink_last_success_timestamp_seconds`, labeled by sink name, and
+  per-sink loss in `kudurru_querylog_dropped_total{stage="sink",sink}`, which
+  the existing `KudurruQuerylogDrops` alert covers.
+- Integrations with `deletionPolicy: Delete` run on SQLite, and deleting one
+  cleans up before the object goes. Such an Integration carries the reserved
+  finalizer `kudurru.io/integration-cleanup`, set in the same write as the
+  object. Removing its document leaves it visible with phase `Terminating`;
+  the elected writer then deletes the records the instance provably published
+  (every row carries its marker and the ledger lists every provider ID),
+  forgets their ledger rows, removes the local state of its source in one
+  commit and removes the object. `Delete` overrides a zone's `upsert-only` or
+  `create-only` policy for those records; records of other owners, hand-made
+  records and anything that only carries a copied marker are never touched.
+  The cleanup works in bounded runs, shares the Cloudflare request budget,
+  continues after a server restart and after a failover to another elected
+  writer, and pauses without any provider request while the license is
+  expired. A delete whose answer was lost is never sent again; the next writer
+  confirms it by rereading the zone. The audit log records the purge
+  (`integration.purge`) and the finalization (`integration.cleanup`) (D367).
+- A cleanup that cannot finish keeps the Integration `Terminating` with a
+  reason and counts in the integration status and on the object's `Ready`
+  condition and `status.records`. Blocking reasons: `RecordsConflict`,
+  `OwnershipUnproven`, `PendingRecovery`, `DestinationRemoved`,
+  `SnapshotIncomplete`, `LocalStateRemains` and `CapacityExceeded`. Paused or
+  retrying: `CredentialsUnavailable`, `ProvisionFailed`, `ProviderFailed`,
+  `ProviderUnavailable`, `RateLimited`, `BudgetExhausted`, `CleanupFailed` and
+  `ReleaseFailed`. A blocked cleanup is checked again at the resync interval,
+  at most every ten minutes.
+- `kudurru integrations release NAME --uid UID --revision REV` (and
+  `POST /api/v1/integrations/{namespace}/{name}/release`) releases a
+  `Terminating` Integration without finishing its cleanup: the exact reviewed
+  object is removed, its provider records and ledger rows stay as under
+  `Retain`, and no provider is contacted. It needs neither a license nor the
+  credential, refuses a live object or a changed UID or revision with
+  `409 Conflict`, needs the new `integrations.release` permission (admin
+  only), and is audited as `integration.release` (D367).
+- Integration summaries (`GET /api/v1/integrations`, `kudurru integrations
+  get` and `list`) show `deletionPolicy`, `terminating`,
+  `deletionRequestedAt` and, while a cleanup reports, its `remaining`,
+  `blocked` and `uncertain` counts; `kudurru integrations list` has the new
+  columns POLICY, REASON and DELETION REQUESTED.
+- The follower contract of an enrolled SQLite cluster. Every changing API
+  operation has one follower class, published in the OpenAPI document as
+  `x-kudurru-follower` and in the reference's endpoint index as an "On a
+  follower" column. An enrolled follower's `GET /api/v1/cluster` carries
+  `primaryRequired: true` with `forwardedOperations` and `localOperations`;
+  every other changing operation answers `503 primary_required` there, after
+  the credential and permission checks, with a hint naming the primary and
+  without `Retry-After`. The CLI prints a hint for `primary_required`,
+  `completion_unknown`, `cluster_fenced` and `cluster_conflict` (D368).
+- An enrolled follower forwards sign-out (`POST /auth/logout`,
+  `POST /auth/logout/browser`), the revocation of one of your own sessions
+  (`DELETE /auth/sessions/{id}`) and cluster settings changes
+  (`PATCH /settings`, the dashboard's Settings page) to its primary, which
+  repeats every check of its own route. A settings change to keys that changed
+  on the primary since the follower installed them answers `409 conflict`; a
+  committed change is answered once the follower serves it. If the primary
+  cannot be reached, sign-out still clears the cookies and answers
+  `503 unavailable` or `503 completion_unknown`, saying that the session may
+  stay valid until it expires. Node settings (`PATCH /node/config`) stay
+  primary-only (D368).
+- `kudurru apply`, the dashboard's block list, client group
+  and policy editors and `POST /api/v1/{kind}:batchDelete` work through an
+  enrolled follower: each document or name is forwarded as its own command, in
+  order, inside one 30-second request (D375).
+- `POST /api/v1/cache/flush` (`kudurru cache flush`) works on an enrolled
+  follower and flushes the response cache of the node that answers (D368).
+- `GET /api/v1/cluster` and `kudurru cluster status` report the replication
+  role of the answering SQLite node: `role` (`standalone`, `primary` or
+  `follower`) and `primary`, and the CLI has a `ROLE` column. On a follower
+  `leader` names the primary, and `GET /api/v1/nodes` no longer marks the
+  follower as leader. `GET /api/v1/auth/status` on a follower carries
+  `role: follower` and the primary's name and lists no OIDC provider.
+- `kudurru iam rolebindings get` and `GET /api/v1/iam/rolebindings/{namespace}/{name}`
+  work on Kubernetes and return the RoleBinding with its UID and resource
+  version. RoleBinding writes through the API remain SQLite-only (D374).
+- Runbook "Add a follower behind managed edges": the order for adding a SQLite
+  follower behind dnsdist edges with managed root anchors (edge backends, then
+  the offline join, then start).
+- Operator guides for the enrolled SQLite cluster
+  (`docs/deploy/sqlite-cluster.md`: preparation, activation, invitation and
+  join, checks, what a follower passes on, promotion, the return of the old
+  primary, recovery after two promotions, limits and the answers of the
+  cluster commands) and for RFC 2136 dynamic updates on both store drivers
+  (`docs/deploy/dynamic-updates.md`), a Kubernetes section in
+  `docs/deploy/rolebindings.md` (the `kudurru-grant-floors` Secret), the
+  runbook "The primary of an enrolled SQLite cluster is lost", the
+  administrator guide's authenticator, session and identity-provider sign-in
+  sections, and an index of every task page in `docs/deploy/README.md`.
+- Contributor tooling: `make interop-internal` runs the BIND 9
+  interoperability tests of internal packages; `KUDURRU_REQUIRE_BIND=1` and
+  `KUDURRU_REQUIRE_ENVTEST=1` make a test fail instead of skip when BIND 9 or
+  envtest is missing; `KUDURRU_E2E_LICENSED_BINARY` names a prebuilt
+  `-tags licensetest` binary; `hack/kind-e2e.sh` accepts
+  `BUILD=0 IMAGE=<repository:tag>` and refuses an unusable image before it
+  creates a cluster; `make test-sinks` runs the query-log sink tests against
+  real ClickHouse and Loki; and golden documents pin the byte formats of
+  managed root-anchor history.
+
+### Changed
+
+- A zone that the SQLite image cannot serve is refused when it is written
+  (Docker, systemd, the chart's `standalone` mode): a DNSZone of a type no
+  release serves yet (`external`, `catalog`, `secondaryCatalog`), with a
+  `queryACL` or `transferACL` entry that is not an address or a network, with
+  a notify target that is not an address, a primary zone whose
+  `spec.policy.update` is not `deny` or `allow`, a primary zone with an
+  `updatePolicies` entry that cannot be compiled (a `name` outside the zone, a
+  type that does not exist or that an update cannot carry, an empty
+  `tsigKeyRef`; also when updates are denied), a zone with the `spec.zoneName`
+  of another DNSZone, or a zone created under a new object name for the zone
+  name of a zone deleted on this node. The API answers `400 invalid` and names
+  the field; the file loader logs the object as invalid and loads the rest.
+  Kubernetes is unchanged: the API server admits the object and the
+  controller reports it (D373).
+- An upgrade of a SQLite data directory checks what 0.1 stored before it
+  changes anything. If `state.db` holds an object that 0.2 cannot serve,
+  kudurru does not start: it names every such object, leaves the directory
+  exactly as 0.1 wrote it and says what to do (runbook "Upgrade refused:
+  stored objects are not valid in this release"). A `querylog.db` written by
+  a newer release is refused with `querylog.db was written by a newer
+  kudurru` and left byte for byte as it was (D373).
+- The server log says why a serving generation is not published, with the
+  object and the reason, once per failure (`complete serving generation not
+  published`).
+- `upstreams.recursion.anchorMode: managed` fails validation on the Kubernetes
+  store driver, at startup, on settings reloads and in settings changes through
+  the API; a refused reload keeps the last good configuration. It used to be
+  accepted and run the seeds as plain static anchors. Managed root anchors are
+  SQLite-only in v0.2 (D370).
+- Managed root anchors on an enrolled SQLite cluster: a member that returns
+  after a promotion, or that lost an offline conflict resolution, takes the
+  current primary's trust-anchor state by term on its next pull, but never
+  trusts a root key again that it saw revoked: while the primary has not
+  recorded that revocation, the member refuses the primary's data, stays
+  fenced and answers DNS from its own last-good data. "A member returns with
+  different trust-anchor state" in `docs/deploy/sqlite-join.md` says how to
+  recognize each refused state and what ends it (D369).
+- Managed root anchors: fenced and conflicted members keep their own
+  deny-only check of the root DNSKEY set (about hourly, outbound TCP 53 to the
+  configured root servers), like followers; a signed revocation retires their
+  DNS output until they install newer trust-anchor state. They never update or
+  bootstrap trust anchors (D369).
+- A changing request that an enrolled follower neither forwards nor runs
+  itself answers `503 primary_required` instead of `503 unavailable` or other
+  texts (allow and deny lists, identity administration, own tokens, password
+  and authenticators, unblock decisions, import and migration runs and
+  previews, zone NOTIFY, stored TSIG keys, OIDC sign-in, integration routes,
+  list refresh, DHCPScope writes). Scripts that matched `unavailable` there see
+  `primary_required`; the status stays `503` (D368).
+- A member whose write authority is fenced or in conflict answers every API
+  request with `503 cluster_fenced` or `503 cluster_conflict`, with a hint and
+  without `Retry-After`, instead of `generation_pending` or `unavailable` with
+  `Retry-After: 1`. The conflict hint names `kudurru cluster resolution
+  --offline` and `kudurru cluster resolve --offline`.
+- `GET /api/v1/settings/_schema` on an enrolled follower marks node settings
+  `readOnly` (`PATCH /node/config` is refused there); cluster settings stay
+  writable because their changes are forwarded. On a follower, and on a fenced
+  or conflicted member, the block page shows "This server cannot take a
+  request for access right now" in place of the unblock request form.
+- `kudurru login --username` against an enrolled follower reads
+  `GET /api/v1/auth/status` first and refuses with `primary_required` before
+  it sends the password.
+- On Kubernetes, public CLI login (`kudurru login` without `--token` or
+  `--username`, and `--device`) answers `503 cli_login_unavailable` with a
+  hint, and the CLI prints a message that names `--token` and `--username`;
+  the provider logout continuation routes answer
+  `503 provider_logout_unavailable`. Both need the complete SQLite runtime
+  (D374).
+- On SQLite, an unsafe request to a path under `/api/v1/zones`,
+  `/api/v1/unblockrequests` or a BlockList's source entries that is not a
+  route answers `404 not_found` instead of `503 current_command_unavailable`
+  (D374). The settings ownership and YAML routes keep answering
+  `503 unavailable` and now carry a hint naming `kudurru settings set` and
+  `get`; `PATCH /api/v1/node/config` and `PATCH /api/v1/settings` declare the
+  `501 read_only` answer Kubernetes already gave for node-scope changes.
+- A request with several documents or names on SQLite (`kudurru apply`,
+  `kudurru restore`, `POST /api/v1/apply`, batch deletion) stops when
+  something else is changed on the node through the API while it runs:
+  another changing request, a sign-in or a write that a follower passes on.
+  Every later item reports `unavailable` ("another change was committed on
+  this node while the request ran"), and the items before stay applied. A
+  request that has run for two seconds waits for the node to publish and
+  pauses 200 milliseconds before its next document, so long requests are
+  slower (D378).
+- `kudurru apply` and `kudurru restore` wait up to five minutes for the
+  answer by default, as long as the server lets one request run;
+  `--request-timeout` still overrides it.
+- A credential file, environment variable or Secret key that holds more than
+  64 KiB is refused with `credential is unavailable: it holds more than 64 KiB`
+  instead of the bare `credential is unavailable`, for identity providers and
+  integrations as well as for query-log sinks.
+- Shutdown gives additional query-log sinks up to five seconds to write what
+  they hold; a sink that did not drain is named in the warning `additional
+  query-log sink did not drain`. `query log flush incomplete` keeps meaning
+  that the local query log could not be flushed. The collector warns when a
+  sink loses queries, at the first loss and at each tenfold total.
+- A live Integration with `deletionPolicy: Delete` stored without the reserved
+  finalizer is shown as `Paused` with `CleanupFinalizerMissing` and makes no
+  provider call until the next load of its unchanged document adds it.
+  Declaring a `Terminating` Integration with `deletionPolicy: Retain` (or
+  without the line) releases it without contacting the provider, logged as
+  `objects: finalized` and audited as `integration.finalize`. Check, preview,
+  sync and actions are refused for a `Terminating` Integration. The objects
+  loader requests the deletion of a file-managed object once. On Kubernetes no
+  Integration executes yet, so `deletionPolicy` has no effect there, as the
+  CRD field description now says (D367).
+- `make test` exports the envtest binaries that `make envtest` installed to
+  every Kubernetes test suite when `KUBEBUILDER_ASSETS` is unset; five
+  packages silently skipped their Kubernetes tests without it.
+- Documentation: the architecture tour (`docs/architecture/`) describes v0.2.0
+  as built, with a table of what differs between the SQLite and Kubernetes
+  store drivers, the leader and objects-loader placement corrected and new
+  sections on follower sign-in, external sessions and static twins; the guides
+  and the documentation site compare against v0.2.0; `docs/deploy/tsig-keys.md`
+  describes Kubernetes hot reload; the upgrade runbook gives the order for a
+  Kubernetes installation from v0.1 (stop, CRDs, offline IAM migration, Helm
+  upgrade); the administrator guide explains client ID and MAC matchers,
+  forward-zone DNSSEC choices and temporary validation exceptions.
 
 ### Fixed
 
@@ -506,6 +781,92 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 - Current SQLite commands recheck verified credential expiry at final admission,
   including no-op and dedup results. Captured primary routing now enforces the
   earliest ancestor expiry without changing durable head evidence.
+- On SQLite, one run of `kudurru apply` or `kudurru restore` applies every
+  document of its files, and `POST /api/v1/{kind}:batchDelete` (the
+  dashboard's multi-select delete) deletes every selected object of one
+  namespace. Before, a standalone node or a primary applied only the first new
+  or changed document and answered `unavailable` for every later one. The
+  dashboard sends a selection across several namespaces one request at a time
+  (D378).
+- One object could stop a whole SQLite node: a stored DNSZone the serving image
+  could not build, a zone re-created under another object name, a record set
+  whose `zoneRef` named a forward zone, or a block list whose URL had never
+  downloaded stopped every DNS answer, readiness and the whole API, across
+  restarts. Such zones are now refused at write; a record set that names a
+  forward zone is stored and reported (`forward zones hold no records`), as in
+  0.1; a list source whose first download has not finished, or failed, is
+  served empty and the failed fetch is reported on the list (D373).
+- A record set the zone cannot hold no longer freezes its zone on SQLite: an
+  endpoint that does not parse, two endpoints for one name and type, a CNAME
+  next to other data, a CNAME or NS at the apex, data below a DNAME, or two
+  DNAME targets for one name with different set identifiers is left out and
+  reported on its record set, as in 0.1, and the rest of the zone is served.
+  Of two such DNAME targets the first is kept. A record set that becomes
+  invalid as a whole is left out instead of keeping its earlier records (D373).
+- A zone serial no longer changes on the first start after an upgrade from 0.1
+  on SQLite (D373).
+- Managed root anchors: a SQLite member that is fenced or holds an unresolved
+  promotion conflict keeps answering DNS from its last valid local data and
+  last accepted trust anchors, and restarts in that state, with
+  `managedTopology` `direct` and `edges`; it answered `SERVFAIL` for every query
+  and refused to start. Every follower passes through the fenced state at each
+  promotion, so this also removes that outage window (D369).
+- Managed root anchors: a member whose clock is up to five minutes behind the
+  primary no longer loses its revocation checks, and a newly promoted primary
+  no longer loses trust-anchor updates, for the rest of the term; the member
+  waits for its own clock and logs `check time synchronization`. A larger gap
+  is still refused with `invalid clock continuity` (D369).
+- Managed root anchors: a returning member whose trust-anchor state had been
+  updated as often as the primary's, or more often, takes the primary's state
+  on its next pull instead of staying fenced until the primary's state had
+  been updated more times (D369).
+- A node with no installed cluster image (an unfinished `cluster join`)
+  started with `managedTopology: direct` or `edges` fails with an error that
+  names `kudurru cluster join --offline` and `kudurru cluster join-reconcile
+  --offline`, instead of "root anchor policy unavailable or changed" or a raw
+  store error (D370).
+- On Kubernetes, six API routes that the server forwards to its authentication
+  stack answered a plain-text `404 page not found` instead of the JSON error
+  envelope: the RoleBinding item read, the three `/auth/cli` routes and the two
+  `/auth/oidc/{idp}/logout` routes (D374).
+- A write sent through an enrolled follower could answer
+  `503 completion_unknown` although the primary had committed it, when another
+  write on the primary landed between the commit and the answer; the primary
+  now answers a forwarded command before any other write can proceed (D376).
+  A follower that cannot bind a request for forwarding now says why (data
+  changed, lifetime ended, canceled, route not forwarded) instead of always
+  "the follower's source changed" or `401 unauthenticated` (D375).
+- Signing out on an enrolled follower answered `503` and left both the cookie
+  and the durable session valid (D368).
+- A query whose upstream fails or times out is answered with SERVFAIL also
+  when a configuration change is committed around it; the node used to send
+  no answer, so the client waited for its own timeout. The same release also
+  covers empty SERVFAILs that the node produces itself with those statuses, so
+  on a node whose default upstream group is recursive a cache-miss query in
+  the tens of milliseconds after a commit is now answered SERVFAIL (extended
+  error 23) where it used to get no answer and succeed on retry (D377).
+- `Delete` cleanup: a long record-change history is forgotten in commits sized
+  to the 30-second run; a run that a slow store keeps from finishing is
+  reported as `CleanupFailed`, not `ProviderFailed`; a failed first count keeps
+  the counts last reported; a provider delete cut before its receipt is
+  confirmed by a reread and recorded in UTC (D367).
+- Query-log HTTP sinks read the answer of a destination that refuses a large
+  batch before reading it and resets the connection, and believe a 2xx only
+  for a body that was written whole.
+- The release workflow installs the envtest binaries before its test job; the
+  primary-zone runtime tests fail without them.
+- The dashboard no longer says that MAC address, host name and name pattern
+  matchers "never match" or "arrive in v0.2", and the settings help and the
+  RoleBinding CRD reference no longer promise `kudurru login` or zone groups
+  for v0.2 (the `zonegroup` scope is accepted but reserved and grants
+  nothing). The Authenticator panel says "Authenticator management is
+  unavailable on this server" on Kubernetes.
+- Documentation: eleven sequence diagrams of the architecture tour did not
+  render; `docs/deploy/kustomize.md` named the wrong tree for v0.1.0; the
+  migration guides said that `kudurru query` shows an allow-list decision; the
+  administrator guide called the Identity tab read-only; and several pages
+  still called enrolled replication, Kubernetes TSIG rotation or durable
+  Kubernetes revocation open.
 
 Stub zones and signed secondary serving are implemented on the development
 branch. Inbound NOTIFY verifies the primary source
@@ -517,6 +878,75 @@ hints to peers so every replica transfers independently.
 - Upgrade `golang.org/x/net` to v0.62.0 in the product and isolated AD
   protocol spike to address CVE-2026-78661, together with its required Go
   dependency versions.
+
+### Upgrade notes
+
+- SQLite (verified with the released 0.1.0 binary): back up first. An upgrade
+  cannot be undone: `state.db` goes from schema 1 to 9, `querylog.db` from 2 to
+  3 and the `local.db` marker from 1 to 9, and the 0.1.0 binary then refuses
+  the directory (`state.db was written by a newer kudurru`) without changing
+  it. In the directories the upgrade tests use, answers, zone serials, object
+  UIDs and generations, API tokens, the admin password, the query log and the
+  audit trail carry over. A setting saved from the 0.1 Settings page is
+  effective after the upgrade; from then on cluster settings live in
+  `state.db` and the settings file no longer overrides them. The response
+  cache starts empty. A secondary or stub zone that 0.1 stored with its
+  configuration is now served. A primary zone with a child zone can answer
+  `SERVFAIL`, and readiness can stay 503, for up to about a minute on the
+  first start. For a moment after readiness turns 200 an API write can be
+  answered `503 unavailable` or `generation_pending` without effect;
+  automation should repeat such a request.
+- Kubernetes (verified with the 0.1.0 binary built from the tag on envtest):
+  the CRDs stay `kudurru.io/v1alpha1` with no conversion; apply the CRD chart
+  (or `deploy/kustomize/crd`) first. Objects 0.1.0 stored keep their UID,
+  generation, spec and status; objects the tightened schema refuses stay
+  stored and do not stop the node, and a change to them is refused until they
+  are corrected. When the namespace holds 0.1 IAM Secrets or AuditLog batches
+  the upgrade is offline: stop every process, apply the CRDs, run
+  `kudurru iam migrate status`, `plan` and `begin --offline`
+  (`docs/deploy/iam-upgrade.md`), write the audit key ring with
+  `kudurru audit keys init --legacy-master-file ... --legacy-before ...`,
+  publish it as `kudurru-audit-keys`, and start with
+  `store.kube.expectedClusterID` set. The first break-glass token 0.1 minted
+  almost always does not survive the migration; mint a new one with
+  `kudurru admin create-token`. `helm upgrade` from the 0.1.0 chart keeps
+  every field Kubernetes does not let an upgrade change.
+
+### Known limitations
+
+- On SQLite, while the documents of a long multi-document request commit,
+  the node can leave its own zones unanswered and refuse other API callers
+  with `503 generation_pending`. The pace described under Changed is meant to
+  bound this to about two seconds at a time; under load a 120-document apply
+  has shown more than a minute without a local DNS answer.
+- Through an enrolled follower, a file that does not fit between two of the
+  follower's pulls (five seconds by default) or inside the 30-second request
+  is cut: later documents report `unavailable` and are not applied, earlier
+  ones stay committed, and repeating the command through the follower does
+  not finish it. Send such a file, and every restore, to the primary (D375).
+- A write through a follower whose exchange with the primary fails, including
+  an unreachable primary, answers `503 completion_unknown`: inspect the object
+  before a new decision.
+- CLI password login (`kudurru login --username`) is refused on an enrolled
+  follower; save a context with `--token-stdin` for a follower. OIDC, browser
+  and device sign-in run on the primary.
+- An enrolled cluster has no command that removes a member: a replaced member
+  stays listed, keeps its name and internal address reserved and counts
+  toward 64 active members, so a replacement needs a new name and address.
+- Managed root anchors: when the primary can never record a root-key
+  revocation that one member saw, that member never follows the primary
+  again; it keeps answering DNS from its own last-good data and must be
+  replaced. No command records a revocation on the primary by operator
+  decision.
+- Integrations: `deletionPolicy` has no effect on Kubernetes, where no
+  Integration executes yet. On SQLite, above 100,000 stored objects or
+  256 MiB of stored documents no Integration job runs, a `Delete` cleanup
+  included.
+- An unpinned Kubernetes node started while the API server is unreachable
+  exits before it answers; set `store.kube.expectedClusterID` so that it can
+  serve from `local.db`.
+- Managed root anchors behind managed edges: adding an empty follower behind
+  dnsdist edges is tested in process only, not against a real dnsdist.
 
 ## [0.1.0] - 2026-10-18
 
