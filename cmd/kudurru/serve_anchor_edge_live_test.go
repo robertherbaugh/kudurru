@@ -374,6 +374,7 @@ func anchorEdgeBackendConfig(t *testing.T, cfg *config.Config, seed []string, ro
 // generation is current; only that refusal is retried, within a bound.
 func anchorEdgeLogin(t *testing.T, client *http.Client, base string) api.SessionInfo {
 	t.Helper()
+	//nolint:gosec // G117: disposable loopback fixture login, never logged.
 	body, err := json.Marshal(api.LoginRequest{Username: "admin", Password: "mounted-test-password-1"})
 	if err != nil {
 		t.Fatal(err)
@@ -435,9 +436,10 @@ func TestRunServeManagedEdgePinnedDaemonRestart(t *testing.T) {
 	lab, _ := newAnchorEdgeLab(t, cfg)
 	t.Setenv(license.EnvKey, "")
 	t.Setenv(license.EnvKeyFile, "")
-	seed, reply := anchorWireSignedReply(t)
-	root, reads := anchorWireServer(t, "tcp", reply)
-	anchorEdgeBackendConfig(t, cfg, seed.DS, root.String())
+	// The root answers every acquisition: a bootstrap that an ordinary
+	// startup commit rolls back is acquired again (D370).
+	root, seeds, reads := anchorSupervisorServer(t, func(int32, *dns.Msg) {})
+	anchorEdgeBackendConfig(t, cfg, seeds, root)
 	backend := lab.backend(cfg)
 	sup, stopEdge, installed := lab.start(backend)
 	stopObservation := lab.observe(sup)
@@ -461,13 +463,17 @@ func TestRunServeManagedEdgePinnedDaemonRestart(t *testing.T) {
 	lab.ask(true)
 	stopBackend()
 	version, _ := anchorEdgeOwner(t, cfg)
+	bootstrap := reads.Load() // the committed bootstrap's acquisitions
+	if bootstrap == 0 {
+		t.Fatal("managed owner committed without a root acquisition")
+	}
 	lab.ask(false)
 	stopBackend = tsigMountedStart(t, cfg)
 	anchorEdgePrimaryReady(t, cfg)
 	lab.wait(next)
 	lab.ask(true)
 	stopBackend()
-	if got, _ := anchorEdgeOwner(t, cfg); reads.Load() != 1 || got != version {
+	if got, _ := anchorEdgeOwner(t, cfg); reads.Load() != bootstrap || got != version {
 		t.Fatal("edge or backend restart bootstrapped again or advanced accepted anchors", reads.Load())
 	}
 }
@@ -507,8 +513,8 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 	anchorEdgePrimaryReady(t, cfg)
 	lab.wait(sup)
 	lab.ask(true)
-	if reads.Load() != 1 {
-		t.Fatal("primary did not bootstrap with one root acquisition", reads.Load())
+	if reads.Load() == 0 {
+		t.Fatal("primary did not bootstrap with a root acquisition")
 	}
 
 	// Enrollment goes through the primary's mounted API, as an operator does.
@@ -574,7 +580,7 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 	// with its retained bypass identity before the follower exists.
 	stopObservation()
 	stopEdge()
-	sup, stopEdge, added := lab.start(primary, follower)
+	sup, _, added := lab.start(primary, follower) // its cleanup stops this edge
 	if added.Deployment != installed.Deployment || added.Run == installed.Run || len(added.Backends) != 2 {
 		t.Fatal("backend addition lost the retained deployment, run identity or membership", len(added.Backends))
 	}
@@ -599,6 +605,9 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 		t.Fatal("offline join did not commit and install", err)
 	}
 	version, authority := anchorEdgeOwner(t, fcfg)
+	// The first image carries the primary's committed managed owner, so the
+	// primary's acquisitions are done (its next refresh is far away).
+	bootstrap := reads.Load()
 	if authority.Mode != replication.Follower || !authority.Installed.Same(joined.Installed) {
 		t.Fatal("joined receiver is not an installed follower", authority.Mode)
 	}
@@ -617,7 +626,7 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 	// The deny-only supervisor runs after startup; wait (bounded) for its own
 	// acquisition.
 	until := time.Now().Add(15 * time.Second)
-	for reads.Load() < 2 {
+	for reads.Load() <= bootstrap {
 		if time.Now().After(until) {
 			t.Fatal("follower supervisor made no root acquisition of its own", reads.Load())
 		}
