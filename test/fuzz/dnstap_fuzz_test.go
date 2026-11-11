@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/netip"
+	"slices"
 	"testing"
 	"time"
 
@@ -37,8 +38,8 @@ func dnstapSink(f *testing.F, raw bool) *dnstap.Sink {
 
 // FuzzDnstapEncode encodes query events built from arbitrary fields with
 // the dnstap sink's own encoder (raw and not raw), reads the stream back
-// with the Frame Streams reader and decodes every frame with the strict
-// dnstap parser of the tests. Every frame must decode, and a sink that is
+// with the independent strict Frame Streams reader of the tests and decodes
+// every frame with their strict dnstap parser. Every frame must decode, and a sink that is
 // not raw must never send the wire messages an event carries (D372).
 func FuzzDnstapEncode(f *testing.F) {
 	sinks := map[bool]*dnstap.Sink{false: dnstapSink(f, false), true: dnstapSink(f, true)}
@@ -55,9 +56,9 @@ func FuzzDnstapEncode(f *testing.F) {
 		}
 		for raw, sink := range sinks {
 			stream := sink.AppendEvent(nil, ev)
-			reader := dnstap.NewReader(bytes.NewReader(stream))
+			reader := dnstaptest.NewFrameReader(bytes.NewReader(stream), 0)
 			for {
-				data, control, err := reader.Next(nil)
+				data, control, err := reader.Next()
 				if errors.Is(err, io.EOF) {
 					break
 				}
@@ -82,7 +83,9 @@ func FuzzDnstapEncode(f *testing.F) {
 
 // FuzzFrameStreamRead reads arbitrary bytes as a Frame Streams stream and
 // every data frame as a dnstap message: no panic, no frame beyond the
-// bounds, and control frames that parse re-encode to the same bytes.
+// bounds, and control frames that parse re-encode to the same bytes. The
+// independent strict reader of the tests reads the same stream, and every
+// frame it accepts the sink's reader must return identically.
 func FuzzFrameStreamRead(f *testing.F) {
 	f.Add(dnstap.AppendControl(nil, dnstap.ControlReady, dnstap.ContentType))
 	f.Add(dnstap.AppendData(dnstap.AppendControl(nil, dnstap.ControlStart, dnstap.ContentType), []byte{0x78, 1}))
@@ -91,8 +94,21 @@ func FuzzFrameStreamRead(f *testing.F) {
 	f.Fuzz(func(t *testing.T, stream []byte) {
 		reader := dnstap.NewReader(bytes.NewReader(stream))
 		reader.MaxData = 4096
+		strict := dnstaptest.NewFrameReader(bytes.NewReader(stream), 4096)
+		aligned := true // until the strict reader refuses a frame
 		for {
+			var want []byte
+			var wantControl *dnstaptest.Control
+			if aligned {
+				var strictErr error
+				want, wantControl, strictErr = strict.Next()
+				aligned = strictErr == nil
+			}
 			data, control, err := reader.Next(nil)
+			if aligned && (err != nil || !bytes.Equal(data, want) || (control == nil) != (wantControl == nil) ||
+				(control != nil && (control.Type != wantControl.Type || !slices.Equal(control.ContentTypes, wantControl.ContentTypes)))) {
+				t.Fatalf("the sink's reader disagrees with the strict reader: %x %+v %v, want %x %+v", data, control, err, want, wantControl)
+			}
 			if err != nil {
 				return
 			}

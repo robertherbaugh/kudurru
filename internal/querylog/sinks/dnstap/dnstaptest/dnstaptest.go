@@ -1,7 +1,8 @@
 // Package dnstaptest is a dnstap collector for tests: it listens on a Unix
 // socket, TCP or TLS, completes the bidirectional Frame Streams handshake as
-// the reader side, reads the data frames and decodes each dnstap message
-// with a strict protocol buffers parser that refuses unknown fields, wrong
+// the reader side, reads the data frames with its own strict Frame Streams
+// reader (framestream.go, independent of the sink's) and decodes each
+// dnstap message with a strict protocol buffers parser that refuses unknown fields, wrong
 // wire types and missing required fields. It can stall (stop reading) and
 // drop its connections on demand.
 package dnstaptest
@@ -21,13 +22,12 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
 
 	"google.golang.org/protobuf/encoding/protowire"
-
-	"github.com/robertherbaugh/kudurru/internal/querylog/sinks/dnstap"
 )
 
 // Message is a decoded dnstap.Message.
@@ -300,47 +300,49 @@ func (c *Collector) serve(conn net.Conn) {
 		c.mu.Unlock()
 	}()
 	c.waitReading()
-	r := dnstap.NewReader(conn)
-	ready, err := r.ReadControl(dnstap.ControlReady)
+	r := NewFrameReader(conn, 0)
+	ready, err := r.control(fstrmReady)
 	if err != nil {
 		c.fail(fmt.Errorf("READY: %w", err))
 		return
 	}
-	if !ready.HasContentType(dnstap.ContentType) {
+	if !slices.Contains(ready.ContentTypes, fstrmContentType) {
 		c.fail(fmt.Errorf("READY offers %v", ready.ContentTypes))
 		return
 	}
-	if _, err := conn.Write(dnstap.AppendControl(nil, dnstap.ControlAccept, dnstap.ContentType)); err != nil {
+	if _, err := conn.Write(controlFrame(fstrmAccept, fstrmContentType)); err != nil {
 		return
 	}
-	start, err := r.ReadControl(dnstap.ControlStart)
+	start, err := r.control(fstrmStart)
 	if err != nil {
 		c.fail(fmt.Errorf("START: %w", err))
 		return
 	}
-	if len(start.ContentTypes) != 1 || start.ContentTypes[0] != dnstap.ContentType {
+	if len(start.ContentTypes) != 1 || start.ContentTypes[0] != fstrmContentType {
 		c.fail(fmt.Errorf("START names %v", start.ContentTypes))
 		return
 	}
-	var buf []byte
 	for {
 		c.waitReading()
-		data, control, err := r.Next(buf)
+		data, control, err := r.Next()
+		if errors.Is(err, ErrFrame) {
+			c.fail(err)
+			return
+		}
 		if err != nil {
 			return // a closed connection; the sink reconnects
 		}
 		if control != nil {
-			if control.Type != dnstap.ControlStop {
+			if control.Type != fstrmStop {
 				c.fail(fmt.Errorf("unexpected control frame %d", control.Type))
 				return
 			}
-			_, _ = conn.Write(dnstap.AppendControl(nil, dnstap.ControlFinish))
+			_, _ = conn.Write(controlFrame(fstrmFinish))
 			c.mu.Lock()
 			c.finished++
 			c.mu.Unlock()
 			return
 		}
-		buf = data
 		frame, err := Decode(data)
 		if err != nil {
 			c.fail(err)
