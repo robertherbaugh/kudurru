@@ -3,6 +3,7 @@ package kube
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -524,11 +525,21 @@ func TestEnvtestCRDUpgradeFromV01(t *testing.T) {
 		t.Fatal(err)
 	}
 	runCache(t, cold)
-	eventually(t, 15*time.Second, "serving from local.db", func() bool { return cold.State() == zonecache.FromSnapshot })
-	snap := cold.Snapshot()
-	if got, ok := zonecache.View[map[string][]string](snap, "zones"); !ok || !reflect.DeepEqual(got, wantZones) {
-		t.Fatalf("zones from local.db %v, want %v", got, wantZones)
-	}
+	// The cache turns FromSnapshot before it rebuilds the views (the
+	// rebuild runs after Debounce), so wait on the published snapshot,
+	// not on the cache state.
+	var snap *zonecache.Snapshot
+	eventually(t, 15*time.Second, fmt.Sprintf("zones view %v served from local.db", wantZones), func() bool {
+		s := cold.Snapshot()
+		if s == nil || s.State != zonecache.FromSnapshot {
+			return false
+		}
+		if got, ok := zonecache.View[map[string][]string](s, "zones"); !ok || !reflect.DeepEqual(got, wantZones) {
+			return false
+		}
+		snap = s
+		return true
+	})
 	if snap.Objects.Len() != watched || !snap.Authoritative() {
 		t.Fatalf("cold start: %d objects, authoritative %t", snap.Objects.Len(), snap.Authoritative())
 	}
