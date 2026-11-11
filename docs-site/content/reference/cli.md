@@ -452,7 +452,7 @@ kudurru cluster promotion
 
 ### kudurru cluster resolution
 
-Read the durable conflict or divergence state of a stopped enrolled SQLite member. Stop the local kudurru process first; the normal exclusive database lock refuses a running server. Writers on a conflicted member stay refused and its HTTP API is closed while DNS continues from its last valid local data. Save this JSON output and pass it to cluster resolve on the member whose branch should survive. Nothing is modified.
+Read the durable conflict, divergence or fenced state of a stopped enrolled SQLite member. Stop the local kudurru process first; the normal exclusive database lock refuses a running server. Writers on a conflicted member stay refused and its HTTP API is closed while DNS continues from its last valid local data. Save this JSON output and pass it to cluster resolve on the member whose branch should survive. A fenced member that holds no image of its current term reads "reason":"fenced\_behind\_term"; it can keep its branch only by abandoning that term (cluster resolve --abandon-term). Nothing is modified.
 
 ```text
 kudurru cluster resolution [flags]
@@ -471,6 +471,8 @@ Keep this member's branch after a durable equal-epoch promotion conflict or dive
 
 One 30-second attempt rechecks the exact reviewed term, installed generation and conflict/divergence, allocates a new epoch above every observed term, retains the prior rows as private quarantine and commits a host-attributed audit event in the same transaction. Start the member afterwards: other members adopt the new term only through later scheduled authenticated peer exchanges, quarantine their own branch when they install this one and never replay its writes. Never replay this command after an unknown result; review current state first.
 
+A review with "reason":"fenced\_behind\_term" is a member fenced by a newer term whose image it never installed. Keeping its branch abandons that term: pass --abandon-term with that term's epoch, and only when its primary and every member that followed it are lost for good. Their writes are not replayed, and a member of that term that returns adopts this branch.
+
 ```text
 kudurru cluster resolve [flags]
 ```
@@ -478,6 +480,8 @@ kudurru cluster resolve [flags]
 Flags:
 
 ```text
+      --abandon-term uint     Epoch of the lost term to abandon (only for a fenced_behind_term
+                              review)
       --confirm-node string   Exact reviewed local member name
       --data-dir string       Existing stopped member data directory
       --offline               Acknowledge that all local kudurru processes are stopped
