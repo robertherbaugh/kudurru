@@ -72,6 +72,38 @@ type Event struct {
 	// Answer is a short summary of the first answer records. Stored only
 	// under privacy full (D59).
 	Answer string `json:"answer,omitempty"`
+	// Wire is the query and response as DNS messages. The log stage fills
+	// it only while the route holds a raw sink (WireRetainer), and the
+	// collector clears it before any consumer but a raw sink sees the event:
+	// it is never stored, shown or sent by any other sink (D372).
+	Wire *Wire `json:"-"`
+}
+
+// Wire is the DNS messages of one query, kept only for raw sinks.
+type Wire struct {
+	// Query is the query as received; Response the answer as the pipeline
+	// produced it, before the transport truncated or padded it. Either is
+	// nil when it was not available.
+	Query, Response []byte
+	// ClientPort is the client's source port.
+	ClientPort uint16
+}
+
+// WireRetainer is implemented by the collectors of the query path: it
+// reports whether an event should carry its Wire, which is true only while
+// the route feeds a raw sink. The log stage asks it for every query, so the
+// default path packs and allocates nothing extra.
+type WireRetainer interface {
+	RetainsWire() bool
+}
+
+// RawSink is implemented by a sink that receives events as they were
+// admitted, before the privacy transform, with their Wire: a dnstap sink
+// with raw: true (D372). The collector gives it a copy of every event the
+// exclusions admit, whatever the privacy mode. Every other sink receives
+// the transformed event.
+type RawSink interface {
+	Raw() bool
 }
 
 // Traced reports whether the event carries a trace id.

@@ -90,6 +90,12 @@ func (c *Captured) Pseudonym(addr netip.Addr) string {
 	return c.destination.privacy.Pseudonym(addr)
 }
 
+// RetainsWire implements WireRetainer: true while this route is enabled and
+// feeds a raw sink.
+func (c *Captured) RetainsWire() bool { return c != nil && c.destination.retainsWire() }
+
+func (d *destination) retainsWire() bool { return d != nil && d.enabled && d.sinks.Raw() }
+
 // Enabled reports the captured logging decision.
 func (c *Captured) Enabled() bool { return c != nil && c.destination != nil && c.destination.enabled }
 
@@ -214,6 +220,11 @@ func NewAsyncWith(o AsyncOptions) *Async {
 	return a
 }
 
+// RetainsWire implements WireRetainer for the adopted route. A route that
+// is replaced between this call and Enqueue only costs the event its wire
+// messages or has them cleared at admission.
+func (a *Async) RetainsWire() bool { return a.destination.Load().retainsWire() }
+
 // Enqueue implements Collector.
 func (a *Async) Enqueue(ev *Event) bool {
 	return a.enqueue(ev, a.destination.Load())
@@ -332,8 +343,12 @@ func (a *Async) takeDeferred(final bool) []func() {
 
 // fanout offers an admitted event to the additional sinks of its route. A
 // full or retired sink queue never delays the collector. Under privacy
-// nothing no per-query fact leaves the node, the rule the live tail follows.
-func (a *Async) fanout(dst *destination, ev *Event, privacy *Privacy) {
+// nothing no per-query fact leaves the node, the rule the live tail follows,
+// except to a raw sink: raw is the administrator's audited decision to send
+// queries as they were, independent of the privacy mode (D372). A raw sink
+// receives original, the event as admitted before the transform; the
+// exclusions have already refused what must never leave.
+func (a *Async) fanout(dst *destination, ev, original *Event, privacy *Privacy) {
 	if dst.sinks == nil {
 		return
 	}
@@ -341,11 +356,16 @@ func (a *Async) fanout(dst *destination, ev *Event, privacy *Privacy) {
 	if privacy != nil {
 		mode = privacy.Mode()
 	}
-	if !mode.StoresFacts() {
-		return
-	}
+	facts := mode.StoresFacts()
 	for _, w := range dst.sinks.workers {
-		w.offer(sinkItem{event: ev, mode: mode})
+		switch {
+		case w.raw:
+			if original != nil {
+				w.offer(sinkItem{event: original, mode: mode})
+			}
+		case facts:
+			w.offer(sinkItem{event: ev, mode: mode})
+		}
 	}
 }
 
@@ -382,6 +402,9 @@ func (a *Async) admitWith(ev *Event, privacy *Privacy) bool {
 	if privacy != nil && !privacy.Apply(ev) {
 		return false
 	}
+	// The wire messages are for raw sinks, which received a copy before
+	// the transform; nothing else may store or send them.
+	ev.Wire = nil
 	if a.nextID != 0 {
 		ev.ID = a.nextID
 		a.nextID++
@@ -455,9 +478,20 @@ func (a *Async) run(ticker clock.Ticker) {
 			current, privacy = item.destination, item.destination.privacy
 			a.nextID = max(a.nextID, current.firstID)
 		}
+		// A raw sink needs the event as it was: copy it before the
+		// transform changes it in place. Only routes with a raw sink pay
+		// for the copy.
+		var original *Event
+		if current.sinks.Raw() {
+			copied := *item.event
+			original = &copied
+		}
 		if a.admitWith(item.event, privacy) {
 			batch = append(batch, item.event)
-			a.fanout(current, item.event, privacy)
+			if original != nil {
+				original.ID = item.event.ID
+			}
+			a.fanout(current, item.event, original, privacy)
 		}
 		passed()
 	}

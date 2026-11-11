@@ -38,9 +38,12 @@ type fanSink struct {
 	// also returns when its context ends.
 	block    chan struct{}
 	honorCtx bool
+	// raw makes the double a RawSink.
+	raw bool
 }
 
 func (s *fanSink) Name() string { return "fan" }
+func (s *fanSink) Raw() bool    { return s.raw }
 func (s *fanSink) Open(context.Context, json.RawMessage, prometheus.Registerer) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

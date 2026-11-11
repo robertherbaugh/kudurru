@@ -160,7 +160,39 @@ func (o *Observer) Observe(req *pipeline.Request, resp *pipeline.Response, err e
 	ev.Flags.Cached = status == pipeline.StatusCached || status == pipeline.StatusCachedStale
 	ev.Flags.Stale = status == pipeline.StatusCachedStale
 	ev.Flags.Prefetch = status == pipeline.StatusPrefetchRefresh
+	if retainer, ok := collector.(querylog.WireRetainer); ok && retainer.RetainsWire() {
+		ev.Wire = captureWire(req, resp)
+	}
 	collector.Enqueue(ev)
+}
+
+// captureWire packs the query and the response for a raw sink (D372). It
+// runs only while the route feeds one, so the default path packs nothing.
+// The response is the one the pipeline produced; the transport may still
+// truncate or pad what it sends.
+func captureWire(req *pipeline.Request, resp *pipeline.Response) *querylog.Wire {
+	w := &querylog.Wire{ClientPort: req.Client.Addr.Port()}
+	if req.Msg != nil {
+		w.Query = packWire(req.Msg)
+	}
+	if resp != nil && resp.Msg != nil {
+		w.Response = packWire(resp.Msg)
+	}
+	return w
+}
+
+// packWire packs m without changing it. Packing an extended rcode writes
+// it into the OPT record, so such a message is copied first; a message that
+// does not pack is left out.
+func packWire(m *dns.Msg) []byte {
+	if m.Rcode > 0xF {
+		m = m.Copy()
+	}
+	b, err := m.Pack()
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 // zoneName returns the name of the zone the authoritative stage matched

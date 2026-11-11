@@ -268,7 +268,14 @@ type SinkSet struct {
 	host    *SinkHost
 	workers []*sinkWorker
 	once    sync.Once
+	// raw is set when a worker is a raw sink: the collector then copies
+	// each event before the privacy transform and the log stage retains
+	// the wire messages.
+	raw bool
 }
+
+// Raw reports whether the set holds a raw sink (RawSink). Nil-safe.
+func (s *SinkSet) Raw() bool { return s != nil && s.raw }
 
 // Names lists the sinks of the set in configuration order.
 func (s *SinkSet) Names() []string {
@@ -357,11 +364,13 @@ func (h *SinkHost) Prepare(specs []SinkSpec) (*SinkSet, error) {
 				}
 				return nil, fmt.Errorf("querylog: sink %q: %w", s.Name, err)
 			}
-			w = &sinkWorker{host: h, spec: s, key: key, sink: sink, queue: make(chan sinkItem, s.QueueSize), stop: make(chan struct{}), done: make(chan struct{})}
+			raw, _ := sink.(RawSink)
+			w = &sinkWorker{host: h, spec: s, key: key, sink: sink, raw: raw != nil && raw.Raw(), queue: make(chan sinkItem, s.QueueSize), stop: make(chan struct{}), done: make(chan struct{})}
 			w.writeCtx, w.cancel = context.WithCancel(context.Background())
 			fresh = append(fresh, w)
 		}
 		set.workers = append(set.workers, w)
+		set.raw = set.raw || w.raw
 	}
 	for _, w := range fresh {
 		c := h.names[w.spec.Name]
@@ -403,6 +412,9 @@ func (h *SinkHost) finished(w *sinkWorker) {
 type SinkStatus struct {
 	Name string `json:"name"`
 	Type string `json:"type"`
+	// Raw marks a sink that receives queries before the privacy transform
+	// (a dnstap sink with raw: true, D372).
+	Raw bool `json:"raw,omitempty"`
 	// Queued and QueueSize are the events waiting and the bound.
 	Queued    int `json:"queued"`
 	QueueSize int `json:"queue_size"`
@@ -433,7 +445,7 @@ func (h *SinkHost) Status() []SinkStatus {
 		st.Queued += len(w.queue)
 		// The entry in force is the one routes still reference.
 		if st.Type == "" || h.live[w.key] == w {
-			st.Type, st.QueueSize = w.spec.Type, w.spec.QueueSize
+			st.Type, st.QueueSize, st.Raw = w.spec.Type, w.spec.QueueSize, w.raw
 		}
 	}
 	out := make([]SinkStatus, 0, len(byName))
@@ -516,6 +528,7 @@ type sinkWorker struct {
 	spec     SinkSpec
 	key      string
 	sink     Sink
+	raw      bool // RawSink: receives the events before the privacy transform
 	counters *sinkCounters
 	queue    chan sinkItem
 	refs     int // under SinkHost.mu
