@@ -559,9 +559,10 @@ func anchorAdopts(old, next *anchorCursor) bool {
 // stamp their own clocks, so neither generation nor UpdatedAt orders their
 // branches; the term that the caller already verified does. What identifies the
 // history still binds: cluster, history, initialization, policy, seeds and
-// domain, and the recovery records this member accepted. Revocations are not
-// compared here because none may be lost: anchorLocalForAdoption carries every
-// key this member revoked or denied into the adopted owner's local carrier.
+// domain, and the recovery records this member accepted. No revocation may be
+// lost: the adopted owner must revoke every key this member's abandoned owner
+// revoked or this member denied (anchorAdoptionCovers), and
+// anchorLocalForAdoption carries them all into the adopted owner's carrier.
 func anchorAdoption(old, next *anchorCursor) error {
 	if !anchorAdopts(old, next) {
 		return accepted.ErrCAS
@@ -584,7 +585,7 @@ func anchorAdoption(old, next *anchorCursor) error {
 	if !newState.RetainsRecoveryHistory(oldState) {
 		return accepted.ErrCAS
 	}
-	return nil
+	return anchorAdoptionCovers(old.local, old, next)
 }
 
 // anchorPostimageWrite preserves existing postimage-fence refusal semantics.

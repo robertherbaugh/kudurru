@@ -584,22 +584,24 @@ flowchart TD
   D -- no --> S
   D -- yes --> H{Same history, policy, seeds and domain, with recovery records retained?}
   H -- no --> R[Refuse. The member stays fenced on its own branch]
-  H -- yes --> C[Carry every key this member revoked or denied into the local denial]
-  C --> P{Does the adopted owner revoke all of them?}
-  P -- yes --> O[Local floor one below the adopted generation. Publish]
-  P -- no --> N[Local floor at the adopted generation. Publish nothing]
-  N --> W[Canonical writer observes the signed REVOKE] --> X[Same-term successor carries the tombstone. Publish]
+  H -- yes --> P{Does the adopted owner revoke every key this member revoked or denied?}
+  P -- no --> N[Refuse. The member stays fenced on its own branch, which already revoked the key]
+  N --> W[Canonical writer observes the signed REVOKE] --> I
+  P -- yes --> O[Carry every revoked key into the local denial. Local floor one below the adopted generation. Publish]
 ```
 
-No revocation is lost by adopting a branch that has not seen it. The member's
-node-local denial keeps every key its abandoned owner revoked and every key its
-own supervisor denied. While the adopted owner does not revoke one of them, the
-adopted generation itself stays retired: the member installs the image, follows
-the new term and publishes no resolver input, as after a local denial. A later
-image in that term that still omits the tombstone is refused by the unchanged
-same-term rule. The member publishes again when the canonical writer has
-recorded the same revocation. A denial that no longer fits its bounded list, or
-a carrier that was already terminal, stays terminal.
+No revocation is lost by adopting a branch that has not seen it, and none is
+made pending by one. Adoption requires the adopted owner to revoke every key
+the abandoned owner revoked and every key in the member's node-local denial,
+the same rule an install inside one term applies to a pending denial. Otherwise
+the install is refused before any write: the member stays fenced, keeps serving
+its own branch as DNS-only data (that branch already revoked the key, or its own
+denial already retired it) and takes no later image from the new term. The first
+scheduled pull after the canonical writer has recorded the same revocation
+adopts the branch, and the member publishes it at once. The same rule refuses a
+resolution that would keep a branch still trusting such a key. A carrier that
+was already terminal, or a denial that no longer fits its bounded list, stays
+terminal.
 
 The node-local floor and the in-memory retirement gate are rebased onto the
 adopted owner in the same transaction as the owner rows, the image and the

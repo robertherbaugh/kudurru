@@ -334,10 +334,11 @@ func TestAnchorHistoryRejoiningPrimaryAdoptsPromotedBranchAndPublishes(t *testin
 }
 
 // A revocation only the old primary saw must survive its return. The promoted
-// branch still trusts the key, so the old primary installs that branch and
-// publishes nothing under it; its own supervision cannot lift that. Only when
-// the promoted writer has observed the same signed REVOKE and the next pull
-// installs that owner does the member publish again, without the key.
+// branch still trusts the key, so the old primary refuses that branch (D369)
+// and keeps answering from its own branch, which already revoked the key, as
+// DNS-only last-good data; its own supervision cannot change that. Only when
+// the promoted writer has observed the same signed REVOKE does the next pull
+// adopt the branch, and the member publishes completely without the key.
 func TestAnchorHistoryRejoiningPrimaryKeepsItsRevocationUntilCanonical(t *testing.T) {
 	root := newAnchorHistoryAuthority(t)
 	s, original, target, host := anchorOperationFixtureTopology(t, root.endpoint, root.seeds, "direct")
@@ -363,74 +364,67 @@ func TestAnchorHistoryRejoiningPrimaryKeepsItsRevocationUntilCanonical(t *testin
 	if _, err := s.opts.Store.ObserveAuthority(ctx, promoted.Term); err != nil {
 		t.Fatal(err)
 	}
+	fenced := s.opts.Store.Authority()
+	if fenced.Mode != replication.Fenced || !fenced.Term.Same(promoted.Term) {
+		t.Fatal("old primary was not fenced by the promoted term", fenced.Mode)
+	}
+	lost := anchorFollowerImage(ctx, t, s.opts.Store)
 	// Fenced, it still serves its own branch, which no longer trusts the key.
 	// Its supervision poll sees the REVOKE of a key that branch already revoked.
 	anchorHistoryAwait(t, "fenced old primary did not publish DNS-only with one supervision poll", s, root, func() bool {
 		return s.publisher.Status().Reason == "dns_only" && root.reads.Load() == polls+1
 	})
-	if seal, dnsOnly, err := anchorHistoryPublished(ctx, t, s); err != nil || seal == nil || seal.managed == nil || !seal.current() || !dnsOnly {
-		t.Fatal("fenced old primary did not serve its own managed owner", err)
-	}
+	// While the promoted branch still trusts the key, every scheduled pull is
+	// refused before any write. The member stays fenced on its own branch, and
+	// the production output guard keeps emitting DNS-only answers from it.
 	puller := &follower.Puller{Mirror: s.opts.Store, Source: anchorHistorySource{primary: func() *sqlite.Store { return f.store }}}
-	if err := puller.Pull(ctx); err != nil {
-		t.Fatalf("old primary holding a revocation cannot install the promoted branch: %v", err)
-	}
-	adopted := anchorFollowerImage(ctx, t, s.opts.Store)
-	if a := s.opts.Store.Authority(); a.Mode != replication.Follower || !a.Term.Same(promoted.Term) || anchorOperationOwner(ctx, t, s).Version() != shared {
-		t.Fatal("old primary did not install the promoted branch", a.Mode)
-	}
-	if p := anchorHistoryProjection(ctx, t, s); len(p.RevokedIDs()) != 0 || len(p.DS()) != 2 {
-		t.Fatal("fixture adopted owner does not still trust the revoked key")
-	}
-	// The adopted owner trusts the key; this member must not publish it. The
-	// Store refuses resolver input, and no managed publication of the adopted
-	// generation ever becomes current, across the new role's supervision poll.
-	unpublished := func(stage string) {
+	refused := func(stage string) {
 		t.Helper()
-		// A publication capture needs a finite original lifetime of at most 30 s.
-		capture, done := context.WithTimeout(ctx, 10*time.Second)
-		defer done()
-		_, token, err := s.opts.Store.ReadServingCandidate(capture)
-		if err != nil {
-			t.Fatal(stage, err)
+		if err := puller.Pull(ctx); !errors.Is(err, accepted.ErrCAS) {
+			t.Fatalf("%s: old primary adopted a branch that trusts its revoked key: %v", stage, err)
 		}
-		if _, err := s.opts.Store.CaptureAnchorPublication(capture, token); !errors.Is(err, sqlite.ErrAnchorUnavailable) {
-			t.Fatal(stage, "a member that still denies an adopted key registered resolver input", err)
+		if a := s.opts.Store.Authority(); !reflect.DeepEqual(a, fenced) || anchorOperationOwner(ctx, t, s).Version() != revoked || !anchorFollowerSameImage(lost, anchorFollowerImage(ctx, t, s.opts.Store)) {
+			t.Fatal(stage, "refused pull changed the old primary", a.Mode)
 		}
-		status := s.publisher.Status()
-		seal, _, emit := anchorHistoryPublished(ctx, t, s)
-		if status.ProtectedReady || status.Served.Base.Same(adopted.Generation()) || (seal != nil && seal.base.Same(adopted.Generation())) || emit == nil {
-			t.Fatal(stage, "member published or emitted under an owner that trusts its revoked key", status.Reason)
+		if _, err := s.opts.Store.ReadQuarantined(ctx, lost.Generation()); !errors.Is(err, store.ErrNotFound) {
+			t.Fatal(stage, "refused pull quarantined the old primary's own branch", err)
+		}
+		seal, dnsOnly, emit := anchorHistoryPublished(ctx, t, s)
+		if emit != nil || seal == nil || seal.managed == nil || seal.static != nil || !seal.current() || !dnsOnly || !seal.base.Same(lost.Generation()) {
+			t.Fatal(stage, "refused member does not answer DNS-only from its own managed owner", emit)
+		}
+		if p := anchorHistoryProjection(ctx, t, s); !reflect.DeepEqual(p.RevokedIDs(), []string{key}) || !reflect.DeepEqual(p.DS(), []string{root.kept}) {
+			t.Fatal(stage, "refused member trusts the revoked key")
+		}
+		if status := s.publisher.Status(); status.ProtectedReady || status.Reason != "dns_only" {
+			t.Fatal(stage, "refused member left DNS-only", status.Reason)
 		}
 		if _, err := s.publisher.CaptureHTTP(ctx); err == nil {
-			t.Fatal(stage, "member admitted protected HTTP without a current root")
+			t.Fatal(stage, "fenced member admitted protected HTTP")
 		}
 	}
-	unpublished("adopted")
-	anchorHistoryAwait(t, "rejoined follower did not run its one supervision poll", s, root, func() bool { return root.reads.Load() == polls+2 })
+	refused("first pull")
 	time.Sleep(1500 * time.Millisecond)
-	unpublished("supervised")
-	if root.reads.Load() != polls+2 || !anchorFollowerSameImage(adopted, anchorFollowerImage(ctx, t, s.opts.Store)) {
-		t.Fatal("supervision reacquired or changed canonical data", root.reads.Load())
+	refused("second pull")
+	if root.reads.Load() != polls+1 {
+		t.Fatal("a refused pull started supervision again", root.reads.Load())
 	}
-	// A pull that brings nothing new keeps the denial.
-	if err := puller.Pull(ctx); err != nil {
-		t.Fatal("unchanged pull", err)
-	}
-	unpublished("unchanged pull")
 	// The canonical writer observes the same signed REVOKE.
 	tombstone := anchorHistoryElect(ctx, t, f, promoted).operate(t, root, true)
 	if tombstone == revoked || tombstone.Generation != shared.Generation+1 {
 		t.Fatal("fixture canonical tombstone is not the promoted branch's own successor")
 	}
 	if err := puller.Pull(ctx); err != nil {
-		t.Fatal("canonical tombstone did not install", err)
+		t.Fatal("canonical tombstone was not adopted", err)
 	}
 	image := anchorFollowerImage(ctx, t, s.opts.Store)
+	if a := s.opts.Store.Authority(); a.Mode != replication.Follower || !a.Term.Same(promoted.Term) {
+		t.Fatal("old primary did not follow the promoted term", a.Mode)
+	}
 	if anchorOperationOwner(ctx, t, s).Version() != tombstone || !anchorFollowerSameImage(image, anchorFollowerImage(ctx, t, f.store)) {
 		t.Fatal("members did not converge on the canonical tombstone")
 	}
-	anchorHistoryAwait(t, "member did not publish again after the canonical tombstone", s, root, func() bool {
+	anchorHistoryAwait(t, "member did not publish completely after adopting the canonical tombstone", s, root, func() bool {
 		status := s.publisher.Status()
 		return status.ProtectedReady && !status.DNSOnly && status.Served.Base.Same(image.Generation())
 	})
@@ -439,9 +433,13 @@ func TestAnchorHistoryRejoiningPrimaryKeepsItsRevocationUntilCanonical(t *testin
 		t.Fatal("member did not publish the canonical owner", err)
 	}
 	if p := anchorHistoryProjection(ctx, t, s); !reflect.DeepEqual(p.RevokedIDs(), []string{key}) || !reflect.DeepEqual(p.DS(), []string{root.kept}) {
-		t.Fatal("member reopened with the revoked key")
+		t.Fatal("member adopted an owner with the revoked key")
 	}
-	if _, err := s.opts.Store.ReadQuarantined(ctx, adopted.Generation()); !errors.Is(err, store.ErrNotFound) {
-		t.Fatal("same-term successor quarantined the adopted image", err)
+	quarantined, err := s.opts.Store.ReadQuarantined(ctx, lost.Generation())
+	if err != nil {
+		t.Fatal("abandoned branch was not quarantined", err)
+	}
+	if owner, err := accepted.DecodeRows(quarantined.Payload.Runtime, quarantined.Term.ClusterID); err != nil || owner.Version() != revoked {
+		t.Fatal("quarantine does not hold the abandoned owner", err)
 	}
 }

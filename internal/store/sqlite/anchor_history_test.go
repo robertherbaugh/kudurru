@@ -215,9 +215,10 @@ func anchorHistoryDeniedIDs(local *anchorLocal) []string {
 }
 
 // anchorHistoryAdopted checks the complete committed and published cut of a
-// member that adopted the canonical owner. pending lists the keys this member
-// still denies although the adopted owner does not revoke them.
-func anchorHistoryAdopted(t *testing.T, member, canonical *Store, denied, pending []string) {
+// member that adopted the canonical owner. denied lists the keys the carrier
+// keeps; the adopted owner revokes every one of them (D369), so the member
+// publishes the adopted generation at once.
+func anchorHistoryAdopted(t *testing.T, member, canonical *Store, denied []string) {
 	t.Helper()
 	cursor, want := anchorHistoryCursor(t, member), anchorHistoryCursor(t, canonical).owner.Version()
 	if cursor.owner.Version() != want {
@@ -231,12 +232,8 @@ func anchorHistoryAdopted(t *testing.T, member, canonical *Store, denied, pendin
 	if record.Phase != "managed" || record.Owner != want || record.Member != member.Authority().MemberID || record.Terminal {
 		t.Fatal("local carrier is not bound to the adopted owner")
 	}
-	floor := want.Generation - 1
-	if len(pending) != 0 {
-		floor = want.Generation
-	}
-	if record.RetiredThrough != floor {
-		t.Fatalf("local floor %d, want %d for adopted generation %d", record.RetiredThrough, floor, want.Generation)
+	if record.RetiredThrough != want.Generation-1 {
+		t.Fatalf("local floor %d, want %d for adopted generation %d", record.RetiredThrough, want.Generation-1, want.Generation)
 	}
 	if got := anchorHistoryDeniedIDs(durable); !slices.Equal(got, denied) {
 		t.Fatalf("local denial %v, want %v", got, denied)
@@ -249,7 +246,7 @@ func anchorHistoryAdopted(t *testing.T, member, canonical *Store, denied, pendin
 	if err := checkAnchorLocal(durable, cursor, member.Authority().MemberID); err != nil {
 		t.Fatal("adopted cut does not pass the restart check", err)
 	}
-	if cursor.gate.MatchesInstalled(cursor.mark) != (len(pending) == 0) {
+	if !cursor.gate.MatchesInstalled(cursor.mark) {
 		t.Fatal("retirement gate disagrees with the committed local floor")
 	}
 	ctx := anchorLocalTestFinite(t.Context(), t)
@@ -258,12 +255,6 @@ func anchorHistoryAdopted(t *testing.T, member, canonical *Store, denied, pendin
 		t.Fatal(err)
 	}
 	publication, err := member.CaptureAnchorPublication(ctx, token)
-	if len(pending) != 0 {
-		if !errors.Is(err, ErrAnchorUnavailable) {
-			t.Fatal("a member that still denies an adopted key registered resolver input", err)
-		}
-		return
-	}
 	if err != nil {
 		t.Fatal("adopted owner cannot publish", err)
 	}
@@ -347,7 +338,7 @@ func TestAnchorHistoryRejoiningPrimaryAdoptsPromotedBranch(t *testing.T) {
 			if stale.Input().Current() {
 				t.Fatal("a stale publication attempt left current input")
 			}
-			anchorHistoryAdopted(t, old, successor, []string{}, nil)
+			anchorHistoryAdopted(t, old, successor, []string{})
 			if anchorLocalTestRead(t, old).record.Revision != revision+1 {
 				t.Fatal("adoption did not advance the local carrier exactly once")
 			}
@@ -370,7 +361,7 @@ func TestAnchorHistoryRejoiningPrimaryAdoptsPromotedBranch(t *testing.T) {
 			if !sameAnchorLocal(durable, anchorLocalTestRead(t, reopened)) {
 				t.Fatal("restart changed the local carrier")
 			}
-			anchorHistoryAdopted(t, reopened, successor, []string{}, nil)
+			anchorHistoryAdopted(t, reopened, successor, []string{})
 			// The canonical branch then moves on inside its own term: an ordinary
 			// strict successor install.
 			next := anchorHistoryPoll(t, successor, root, false).Version()
@@ -380,7 +371,7 @@ func TestAnchorHistoryRejoiningPrimaryAdoptsPromotedBranch(t *testing.T) {
 			if anchorHistoryCursor(t, reopened).owner.Version() != next {
 				t.Fatal("rejoined member did not follow the canonical successor")
 			}
-			anchorHistoryAdopted(t, reopened, successor, []string{}, nil)
+			anchorHistoryAdopted(t, reopened, successor, []string{})
 		})
 	}
 }
@@ -433,7 +424,7 @@ func TestAnchorHistoryLosingBranchAdoptsAuditedResolution(t *testing.T) {
 	if a := losing.Authority(); a.Mode != replication.Follower || !a.Term.Same(resolved.Term) {
 		t.Fatal("losing member did not follow the resolved term", a.Mode)
 	}
-	anchorHistoryAdopted(t, losing, kept, []string{}, nil)
+	anchorHistoryAdopted(t, losing, kept, []string{})
 	if _, err := losing.ReadQuarantined(t.Context(), lost.Generation()); err != nil {
 		t.Fatal("the losing branch was not retained in quarantine", err)
 	}
@@ -465,7 +456,7 @@ func TestAnchorHistoryResolutionKeepingRemoteBranchAdopts(t *testing.T) {
 	if !resolved.Writable() || resolved.Term.Epoch != second.Term.Epoch+1 || resolved.Parent == nil || !resolved.Parent.Same(image.Generation()) {
 		t.Fatal("resolution did not allocate a new term over the kept branch")
 	}
-	anchorHistoryAdopted(t, local, remote, []string{}, nil)
+	anchorHistoryAdopted(t, local, remote, []string{})
 	// The resolving member is the writer of the new term and continues the
 	// adopted history from there.
 	next := anchorHistoryPoll(t, local, root, false).Version()
@@ -474,9 +465,29 @@ func TestAnchorHistoryResolutionKeepingRemoteBranchAdopts(t *testing.T) {
 	}
 }
 
+// anchorHistoryRefused installs the source's image into the member and requires
+// the adoption refusal (D369): accepted.ErrCAS before any write, the member's
+// cut, image, carrier and authority unchanged and nothing quarantined. The
+// member keeps serving its own branch DNS-only.
+func anchorHistoryRefused(t *testing.T, member, source *Store) {
+	t.Helper()
+	before, installed, local, authority := anchorHistoryCursor(t, member), imageOf(t, member), anchorLocalTestRead(t, member), member.Authority()
+	if err := anchorHistoryInstall(t, member, source); !errors.Is(err, accepted.ErrCAS) {
+		t.Fatalf("adoption of a branch that still trusts a carried key: got %v, want %v", err, accepted.ErrCAS)
+	}
+	if anchorHistoryCursor(t, member) != before || !installed.Generation().Same(imageOf(t, member).Generation()) || !sameAnchorLocal(local, anchorLocalTestRead(t, member)) || anchorAuthority(authority) != anchorAuthority(member.Authority()) {
+		t.Fatal("refused adoption changed the member")
+	}
+	if _, err := member.ReadQuarantined(t.Context(), installed.Generation()); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("refused adoption quarantined the member's own branch", err)
+	}
+}
+
 // A member never loses a revocation by adopting a branch that has not seen it.
-// The key stays in the node-local denial and the member publishes nothing until
-// the canonical branch records the same tombstone.
+// It refuses that branch, exactly as an install inside one term refuses an image
+// that omits a pending denial, and keeps its own branch, which already revoked
+// the key. Once the canonical writer records the same tombstone, the next
+// install adopts the branch and the member publishes it at once.
 func TestAnchorHistoryAdoptionKeepsLocalRevocationDenied(t *testing.T) {
 	t.Run("revoked-by-old-primary", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), FileName)
@@ -492,39 +503,42 @@ func TestAnchorHistoryAdoptionKeepsLocalRevocationDenied(t *testing.T) {
 			t.Fatal("fixture successor already saw the revocation")
 		}
 		anchorHistoryObserve(t, old, promoted.Term)
-		if err := anchorHistoryInstall(t, old, successor); err != nil {
-			t.Fatal("old primary holding a revocation cannot install the promoted branch", err)
-		}
-		// The adopted owner still trusts the key; this member does not serve it.
-		anchorHistoryAdopted(t, old, successor, []string{key}, []string{key})
-		// The denial survives a restart.
+		lost := imageOf(t, old)
+		// The promoted branch still trusts the key: refused, nothing changes.
+		anchorHistoryRefused(t, old, successor)
+		// The refusal survives a restart; the member's own branch still binds.
 		if err := old.Close(); err != nil {
 			t.Fatal(err)
 		}
 		member := openAt(t, path, internalOptions)
 		if _, err := member.BindAnchorLifecycle(anchorLocalTestFinite(t.Context(), t)); err != nil {
-			t.Fatal("restart refused the adopted cut", err)
+			t.Fatal("restart refused the member's own cut", err)
 		}
-		anchorHistoryAdopted(t, member, successor, []string{key}, []string{key})
-		// A canonical successor that still trusts the key cannot reopen it: the
-		// existing same-term rule refuses the image and nothing changes.
-		before, installed := anchorHistoryCursor(t, member), imageOf(t, member).Generation()
+		if anchorHistoryCursor(t, member).owner.Version() != revoked.Version() {
+			t.Fatal("restart did not keep the member's own branch")
+		}
+		// A canonical successor that still trusts the key is refused as well.
 		anchorHistoryPoll(t, successor, root, false)
-		if err := anchorHistoryInstall(t, member, successor); !errors.Is(err, accepted.ErrCAS) {
-			t.Fatal("a successor without the tombstone erased the carried denial", err)
-		}
-		if anchorHistoryCursor(t, member) != before || !installed.Same(imageOf(t, member).Generation()) {
-			t.Fatal("refused successor changed the member")
-		}
+		anchorHistoryRefused(t, member, successor)
 		// The canonical writer observes the same signed REVOKE. Only then does
-		// the member publish again, without the revoked key.
+		// the member adopt the branch, without the revoked key.
 		tombstone := anchorHistoryPoll(t, successor, root, true)
 		if err := anchorHistoryInstall(t, member, successor); err != nil {
-			t.Fatal("canonical tombstone did not install", err)
+			t.Fatal("canonical tombstone was not adopted", err)
 		}
-		anchorHistoryAdopted(t, member, successor, []string{key}, nil)
+		anchorHistoryAdopted(t, member, successor, []string{key})
 		if p := anchorHistoryProjection(t, member); !slices.Equal(p.RevokedIDs(), []string{key}) || len(p.DS()) != 1 || anchorHistoryCursor(t, member).owner.Version() != tombstone.Version() {
-			t.Fatal("member reopened with the revoked key")
+			t.Fatal("member adopted an owner with the revoked key")
+		}
+		if a := member.Authority(); a.Mode != replication.Follower || !a.Term.Same(promoted.Term) {
+			t.Fatal("member did not follow the promoted term", a.Mode)
+		}
+		quarantined, err := member.ReadQuarantined(t.Context(), lost.Generation())
+		if err != nil {
+			t.Fatal("the abandoned branch was not retained in quarantine", err)
+		}
+		if owner, err := accepted.DecodeRows(quarantined.Payload.Runtime, quarantined.Term.ClusterID); err != nil || owner.Version() != revoked.Version() {
+			t.Fatal("quarantine does not hold the abandoned owner", err)
 		}
 	})
 	t.Run("denied-by-follower", func(t *testing.T) {
@@ -552,18 +566,40 @@ func TestAnchorHistoryAdoptionKeepsLocalRevocationDenied(t *testing.T) {
 		promoted := anchorHistoryPromote(t, successor, "history-follower-denial")
 		anchorHistoryPoll(t, successor, root, false)
 		anchorHistoryObserve(t, member, promoted.Term)
+		anchorHistoryRefused(t, member, successor)
+		anchorHistoryPoll(t, successor, root, true)
 		if err := anchorHistoryInstall(t, member, successor); err != nil {
-			t.Fatal("a follower holding its own denial cannot follow the promoted branch", err)
+			t.Fatal("canonical tombstone was not adopted", err)
 		}
-		anchorHistoryAdopted(t, member, successor, []string{key}, []string{key})
+		anchorHistoryAdopted(t, member, successor, []string{key})
 		if !slices.Equal(anchorLocalTestRead(t, member).record.Denied, receipt) {
 			t.Fatal("adoption replaced a first denial receipt it could keep")
 		}
-		anchorHistoryPoll(t, successor, root, true)
-		if err := anchorHistoryInstall(t, member, successor); err != nil {
-			t.Fatal("canonical tombstone did not install", err)
+	})
+	t.Run("resolution-keeping-a-branch-that-trusts-it", func(t *testing.T) {
+		// The resolution API refuses to keep a remote branch that still trusts
+		// a key the resolving member revoked; the conflict stays as it was.
+		origin, root := anchorHistoryPrimary(t, filepath.Join(t.TempDir(), FileName))
+		remote, local := anchorHistoryMember(t, origin), anchorHistoryMember(t, origin)
+		first := anchorHistoryPromote(t, remote, "history-remote-trusts")
+		anchorHistoryPromote(t, local, "history-local-revokes")
+		anchorHistoryPoll(t, remote, root, false)
+		anchorHistoryPoll(t, local, root, true)
+		if _, err := local.ObserveAuthority(t.Context(), first.Term); !errors.Is(err, replication.ErrPromotionConflict) {
+			t.Fatal("fixture did not record the promotion conflict", err)
 		}
-		anchorHistoryAdopted(t, member, successor, []string{key}, nil)
+		ctx := captureReplica(t, local)
+		chosen, err := local.ValidateImage(ctx, *imageOf(t, remote))
+		if err != nil {
+			t.Fatal(err)
+		}
+		before, installed, carrier, a := anchorHistoryCursor(t, local), imageOf(t, local), anchorLocalTestRead(t, local), local.Authority()
+		if _, err := local.ResolveConflict(ctx, chosen, replication.ResolveRequest{ExpectedTerm: a.Term, ExpectedInstalled: installed.Generation(), ExpectedConflict: a.Conflict, RequestID: "history-keep-trusting"}); !errors.Is(err, accepted.ErrCAS) {
+			t.Fatalf("resolution kept a branch that trusts a revoked key: got %v, want %v", err, accepted.ErrCAS)
+		}
+		if anchorHistoryCursor(t, local) != before || !installed.Generation().Same(imageOf(t, local).Generation()) || !sameAnchorLocal(carrier, anchorLocalTestRead(t, local)) || anchorAuthority(a) != anchorAuthority(local.Authority()) {
+			t.Fatal("refused resolution changed the member")
+		}
 	})
 	t.Run("revoked-by-canonical-branch", func(t *testing.T) {
 		old, root := anchorHistoryPrimary(t, filepath.Join(t.TempDir(), FileName))
@@ -576,7 +612,7 @@ func TestAnchorHistoryAdoptionKeepsLocalRevocationDenied(t *testing.T) {
 		if err := anchorHistoryInstall(t, old, successor); err != nil {
 			t.Fatal("old primary cannot install a promoted branch that revoked a key", err)
 		}
-		anchorHistoryAdopted(t, old, successor, []string{key}, nil)
+		anchorHistoryAdopted(t, old, successor, []string{key})
 		if p := anchorHistoryProjection(t, old); !slices.Equal(p.RevokedIDs(), []string{key}) || len(p.DS()) != 1 {
 			t.Fatal("adopted owner lost the canonical tombstone")
 		}
@@ -689,7 +725,7 @@ func TestAnchorHistorySameTermInstallStaysStrict(t *testing.T) {
 	if err := anchorHistoryInstall(t, member, successor); err != nil {
 		t.Fatal("fixture adoption", err)
 	}
-	anchorHistoryAdopted(t, member, successor, []string{}, nil)
+	anchorHistoryAdopted(t, member, successor, []string{})
 	t.Run("adopted-lower", func(t *testing.T) { refuse(t, member, next) })
 	t.Run("adopted-equal", func(t *testing.T) { refuse(t, member, ahead) })
 }
@@ -826,28 +862,46 @@ func TestAnchorHistoryAdoptionKeepsIdentityAndRecoveryRefusals(t *testing.T) {
 }
 
 // The carrier computed for an adoption, at the bounds the member flows above
-// do not reach: a receipt that names a generation above the adopted owner, a
-// terminal carrier, a saturated denial and a carrier bound to something else.
+// do not reach: an adopted owner that does not revoke a carried key, a receipt
+// that names a generation above the adopted owner, a terminal carrier, a full
+// denial and a carrier bound to something else.
 func TestAnchorHistoryAdoptionCarrierRules(t *testing.T) {
 	old, root := anchorHistoryPrimary(t, filepath.Join(t.TempDir(), FileName))
 	successor := anchorHistoryMember(t, old)
+	// The old primary runs ahead before its revocation, so its receipt names a
+	// generation the promoted writer's tombstone does not reach.
+	anchorHistoryPoll(t, old, root, false)
 	anchorHistoryPoll(t, old, root, false)
 	key := root.firstID(t, anchorHistoryPoll(t, old, root, true))
 	promoted := anchorHistoryPromote(t, successor, "history-carrier")
-	before, next := anchorHistoryCursor(t, old), anchorHistoryCursor(t, successor)
+	before, trusting := anchorHistoryCursor(t, old), anchorHistoryCursor(t, successor)
+	// The promoted writer records the same tombstone one generation later.
+	anchorHistoryPoll(t, successor, root, true)
+	next := anchorHistoryCursor(t, successor)
 	member, adopted := old.Authority().MemberID, next.owner.Version()
 	receipt := before.local.record.Denied
 	if len(receipt) != 1 || receipt[0].ID != key || receipt[0].FirstOwner.Generation <= adopted.Generation {
 		t.Fatal("fixture receipt does not name a generation above the adopted owner")
 	}
+	t.Run("pending-key-refused", func(t *testing.T) {
+		if err := anchorAdoption(before, trusting); !errors.Is(err, accepted.ErrCAS) {
+			t.Fatal("adoption admitted an owner that trusts a carried revoked key", err)
+		}
+		if _, err := anchorLocalForAdoption(before.local, before, trusting, member); !errors.Is(err, accepted.ErrCAS) {
+			t.Fatal("carrier adopted an owner that trusts a carried revoked key", err)
+		}
+		if err := anchorAdoption(before, next); err != nil {
+			t.Fatal("adoption refused an owner that revokes every carried key", err)
+		}
+	})
 	t.Run("restated-receipt", func(t *testing.T) {
 		local, err := anchorLocalForAdoption(before.local, before, next, member)
 		if err != nil {
 			t.Fatal(err)
 		}
 		r := local.record
-		if !slices.Equal(r.Denied, []anchorLocalRevocation{{ID: key, FirstOwner: adopted}}) || r.RetiredThrough != adopted.Generation || r.Owner != adopted || r.Revision != before.local.record.Revision+1 || r.Terminal || r.Carrier != before.local.record.Carrier {
-			t.Fatal("carried denial was not restated at the adopted owner and kept retired")
+		if !slices.Equal(r.Denied, []anchorLocalRevocation{{ID: key, FirstOwner: adopted}}) || r.RetiredThrough != adopted.Generation-1 || r.Owner != adopted || r.Revision != before.local.record.Revision+1 || r.Terminal || r.Carrier != before.local.record.Carrier {
+			t.Fatal("carried denial was not restated at the adopted owner with the rebased floor")
 		}
 		rebased := *next
 		rebased.local = local
@@ -867,22 +921,24 @@ func TestAnchorHistoryAdoptionCarrierRules(t *testing.T) {
 			t.Fatal("adoption reopened a terminal carrier", err)
 		}
 	})
-	t.Run("saturated-denial-is-terminal", func(t *testing.T) {
+	t.Run("full-denial-refused", func(t *testing.T) {
+		// A full carrier whose other denials the adopted owner does not revoke
+		// is refused, not truncated.
 		r := before.local.record
-		r.Denied = nil
-		for i := range anchorLocalMaxRevocations {
-			// Zero-padded hexadecimal counters are valid identities in order.
+		r.Denied = []anchorLocalRevocation{{ID: key, FirstOwner: r.Owner}}
+		for i := 0; len(r.Denied) < anchorLocalMaxRevocations; i++ {
+			// Zero-padded hexadecimal counters are valid identities.
 			if id := fmt.Sprintf("%064x", i+1); id != key {
 				r.Denied = append(r.Denied, anchorLocalRevocation{ID: id, FirstOwner: r.Owner})
 			}
 		}
+		slices.SortFunc(r.Denied, func(a, b anchorLocalRevocation) int { return strings.Compare(a.ID, b.ID) })
 		full, err := encodeAnchorLocal(r)
 		if err != nil || len(full.record.Denied) != anchorLocalMaxRevocations {
 			t.Fatal("fixture carrier is not full", err)
 		}
-		local, err := anchorLocalForAdoption(full, before, next, member)
-		if err != nil || !local.record.Terminal || local.record.RetiredThrough != math.MaxUint64 || len(local.record.Denied) != anchorLocalMaxRevocations {
-			t.Fatal("a revocation that does not fit was dropped instead of closing the carrier", err)
+		if _, err := anchorLocalForAdoption(full, before, next, member); !errors.Is(err, accepted.ErrCAS) {
+			t.Fatal("a full carrier with unrevoked denials adopted", err)
 		}
 	})
 	t.Run("bound-to-something-else", func(t *testing.T) {
@@ -904,7 +960,7 @@ func TestAnchorHistoryAdoptionCarrierRules(t *testing.T) {
 	if err := anchorHistoryInstall(t, old, successor); err != nil {
 		t.Fatal(err)
 	}
-	anchorHistoryAdopted(t, old, successor, []string{key}, []string{key})
+	anchorHistoryAdopted(t, old, successor, []string{key})
 	if got := anchorLocalTestRead(t, old).record.Denied; !slices.Equal(got, []anchorLocalRevocation{{ID: key, FirstOwner: adopted}}) {
 		t.Fatal("installed carrier differs from the computed one")
 	}

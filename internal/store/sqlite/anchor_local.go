@@ -301,6 +301,38 @@ func anchorLocalForOwner(old *anchorLocal, next *anchorCursor, member string) (*
 	return advanceAnchorLocal(old, r)
 }
 
+// anchorAdoptionCovers refuses an adoption that would make this member trust a
+// key it knows to be revoked (D369): every key its abandoned owner revoked and
+// every key it denied locally must be revoked by the adopted owner too. This is
+// the same rule anchorLocalForOwner applies inside one term. A refused member
+// installs nothing and keeps serving its own last-good branch DNS-only, which
+// already revoked the key; it adopts the authoritative branch on the first
+// scheduled pull after that branch's writer has recorded the same tombstone.
+func anchorAdoptionCovers(local *anchorLocal, before, next *anchorCursor) error {
+	if local == nil {
+		return ErrAnchorUnavailable
+	}
+	known, err := anchorRevoked(before)
+	if err != nil {
+		return err
+	}
+	revoked, err := anchorRevoked(next)
+	if err != nil {
+		return err
+	}
+	for _, id := range known {
+		if !slices.Contains(revoked, id) {
+			return accepted.ErrCAS
+		}
+	}
+	for _, d := range local.record.Denied {
+		if !slices.Contains(revoked, d.ID) {
+			return accepted.ErrCAS
+		}
+	}
+	return nil
+}
+
 // anchorLocalForAdoption is the carrier of a member that replaces its managed
 // owner with the authoritative branch's owner (D369). It is a bounded pure
 // postimage computation like anchorLocalForOwner; the caller supplies the
@@ -308,13 +340,10 @@ func anchorLocalForOwner(old *anchorLocal, next *anchorCursor, member string) (*
 //
 // The floor is rebased onto the adopted owner, because the abandoned branch
 // counted its own generations and its floor may lie at or above the adopted
-// one. Nothing this member knows to be revoked is dropped: every key its
-// abandoned owner revoked and every key it denied locally stays in the denial.
-// While one of them is not revoked by the adopted owner, the adopted generation
-// itself stays retired, exactly as after a local denial, so the member
-// publishes nothing under that owner until a canonical successor carries the
-// tombstone (anchorLocalForOwner then reopens it). A terminal carrier stays
-// terminal.
+// one. Nothing this member knows to be revoked is dropped: an adopted owner
+// that does not revoke every key the abandoned owner revoked or this member
+// denied is refused (anchorAdoptionCovers), and the denial keeps every carried
+// key. A terminal carrier, or a denial that no longer fits, stays terminal.
 func anchorLocalForAdoption(old *anchorLocal, before, next *anchorCursor, member string) (*anchorLocal, error) {
 	if old == nil || !anchorAdopts(before, next) || old.record.Phase != "managed" {
 		return nil, ErrAnchorUnavailable
@@ -324,8 +353,7 @@ func anchorLocalForAdoption(old *anchorLocal, before, next *anchorCursor, member
 	if root.Phase != accepted.Managed || r.Member != member || r.Cluster != root.ClusterID || r.History != root.HistoryID || r.Domain != hex.EncodeToString(next.mark.DomainID[:]) || r.Owner != before.owner.Version() {
 		return nil, accepted.ErrCAS
 	}
-	known, err := anchorRevoked(before)
-	if err != nil {
+	if err := anchorAdoptionCovers(old, before, next); err != nil {
 		return nil, err
 	}
 	revoked, err := anchorRevoked(next)
@@ -342,7 +370,7 @@ func anchorLocalForAdoption(old *anchorLocal, before, next *anchorCursor, member
 		}
 	}
 	saturated := false
-	for _, id := range slices.Concat(known, revoked) {
+	for _, id := range revoked {
 		if slices.ContainsFunc(r.Denied, func(d anchorLocalRevocation) bool { return d.ID == id }) {
 			continue
 		}
@@ -358,12 +386,6 @@ func anchorLocalForAdoption(old *anchorLocal, before, next *anchorCursor, member
 		return advanceAnchorLocal(old, r)
 	}
 	r.RetiredThrough = r.Owner.Generation - 1
-	for _, d := range r.Denied {
-		if !slices.Contains(revoked, d.ID) {
-			r.RetiredThrough = r.Owner.Generation
-			break
-		}
-	}
 	return advanceAnchorLocal(old, r)
 }
 
