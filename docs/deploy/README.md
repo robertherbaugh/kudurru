@@ -16,6 +16,7 @@ To assign client addresses, use the [DHCP walkthrough](../guide/dhcp/README.md).
 Runbooks: [cold start without the apiserver, key rotation, upgrades](runbooks.md).
 External filtering data: [require HTTPS for list and catalog downloads](download-policy.md).
 For scripts and CLI clients: [apply results, settings and live-event contracts](api-contracts.md).
+What works on which deployment shape, and what each refusal key means: [capabilities.md](capabilities.md).
 The optional central database for the audit log, query log and statistics of every node: [postgres.md](postgres.md).
 Sending the query log to ClickHouse, Grafana Loki or log lines next to the local database: [query-log-sinks.md](query-log-sinks.md).
 Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).

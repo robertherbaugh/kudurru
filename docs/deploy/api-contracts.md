@@ -135,6 +135,9 @@ so. None of them means "try again": do not retry them in a loop.
 | `cluster_fenced` | a former primary that observed a newer one, for every request | The API is closed until the member follows the newer primary, which it does at its next successful pull. | no |
 | `cluster_conflict` | a member that recorded conflicting promotions, for every request | The API is closed until an operator resolves the conflict offline ([recover from conflicting promotions](sqlite-join.md#recover-from-conflicting-promotions)). | no |
 
+[What works where](capabilities.md) lists these keys with the refusals that
+depend on the deployment shape, such as the Kubernetes store.
+
 `503 generation_pending` remains the answer of a node whose next publication
 is still being prepared; it carries `Retry-After: 1` and a short wait is the
 right reaction.
