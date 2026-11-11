@@ -12,9 +12,8 @@ This mount does not close every integration capability. Kubernetes execution is
 currently disabled: its per-object CAS cannot atomically admit source objects,
 allocations and global inventory. Native Kubernetes Secrets are not resolved by
 the SQLite host. Both deletion policies are supported on SQLite; see
-[Deleting an integration](#deleting-an-integration). Tier-B record
-publication, optional UniFi mutations and remaining management UI work remain
-separate. The external-dns webhook listener is a separate inbound feature.
+[Deleting an integration](#deleting-an-integration). Optional UniFi
+mutations and remaining management UI work remain separate. The external-dns webhook listener is a separate inbound feature.
 
 ## Deleting an integration
 
@@ -47,9 +46,12 @@ deletion timestamp, and the elected writer cleans up before the object goes:
 4. It removes the finalizer, which removes the object, and records an
    `integration.cleanup` row in the audit log.
 
-A UniFi or webhook instance publishes nothing at its provider, so its cleanup
-is steps 3 and 4 only: it makes no provider call and does not need the
-credential or a reachable controller.
+A UniFi instance, and a webhook instance that never began publishing
+records, owns nothing at its provider, so its cleanup is steps 3 and 4 only:
+it makes no provider call and does not need the credential or a reachable
+peer. A webhook instance that publishes records (see
+[Tier-B webhook records](#tier-b-webhook-records)) is cleaned up like a
+Cloudflare one: step 1 deletes the record sets whose registry row names it.
 
 While this runs the Integration is shown with phase `Terminating`, and
 `kudurru integrations get` and `list` (and `GET /api/v1/integrations`) show
@@ -231,7 +233,9 @@ spec:
 Grant those exact files in `credentials.allowedFiles`. Mutual TLS uses named
 `clientCertificate` and `clientKey` references. The peer must speak the versioned
 Tier-B protocol and advertise supported clients, actions or hooks
-capabilities; peers requiring records are refused. Actions use the reviewed integration
+capabilities, or `records` together with configured `domains` (see
+[Tier-B webhook records](#tier-b-webhook-records)). A peer that offers only
+records while no domains are configured is refused. Actions use the reviewed integration
 API/CLI and their advertised parameter schemas. An uncertain action is reported
 without automatically replaying it.
 
@@ -283,6 +287,68 @@ reading new changes while 256 events are undelivered and removes the oldest
 delivered or dropped records above 128. A status-only write of an object can
 send an event again under its earlier `X-Kudurru-Delivery` ID once that record
 is gone, so keep deduplicating on the ID.
+
+### Tier-B webhook records
+
+A webhook Integration that names `domains` publishes the selected records of
+those domains to a peer that serves the external-dns record routes
+(`GET /records`, `POST /records`, `POST /adjustendpoints`), under either the
+external-dns media type or the Tier-B one. Any external-dns webhook provider,
+and the external-dns listener of another Kudurru, can be the peer:
+
+```yaml
+  webhook:
+    endpoint: https://records.example.com/provider
+    domains: [example.com]
+    policy: sync        # or upsert-only, create-only
+```
+
+Each domain must lie inside the domain filter the peer negotiates, or the
+instance is refused. Records of names the peer's filter excludes, and names
+whose first label starts with `_kudurru-`, are not published: such a name
+refuses the whole sync.
+
+The external-dns protocol has no row IDs, versions, owners or conditional
+writes, so Kudurru keeps ownership at the peer in a TXT registry. Every record
+set it manages has one companion TXT record at `_kudurru-<type>.<name>` (for
+a wildcard `*.example.com`, `_kudurru-<type>-wildcard.example.com`) with the
+same set identifier and the value
+`"heritage=kudurru,kudurru/owner=<digest of the cluster ID and Integration UID>"`.
+The peer must store TXT records and underscore labels. A record set is the
+instance's only when its registry record names it; a registry record of
+another Kudurru instance, or an external-dns heritage record
+(`heritage=external-dns,external-dns/owner=...` at the same name or
+`<type>-<name>`), makes it another owner's, and anything else is unowned.
+Records of other owners and unowned records are never changed; a desired
+record at such a name is reported as a conflict. Adoption is not offered for
+webhook peers. Only rows inside the configured domains are considered, so the
+peer may serve other names too.
+
+Each change is one `POST /records` with the record set and its registry
+record. The answer, even a 204, is never taken as the result: Kudurru rereads
+the complete list (no pagination headers, at most 32,768 rows and 10,000
+record sets) and confirms the change only when the reread shows the intended
+record set under its registry record. A peer that drops the registry row,
+accepts the body without effect, fails or answers nothing leaves the change
+pending: the instance reports `ConflictsOrPending`, a reviewed sync answers
+`503 integration_uncertain`, and the next sync settles it from a fresh reread
+without sending it again when the peer did apply it. Nothing closes the window
+between Kudurru's reread and its POST; another writer changing the same record
+set in that window is detected by the verifying reread, not prevented.
+
+Each change costs about three requests (reread, change, reread) against the
+instance's request budget of 1,000 requests per five minutes, so the first
+publication of a large zone takes a while. A reviewed sync of a webhook
+publisher uses `--mode publish` with the preview digest, as for Cloudflare.
+With `deletionPolicy: Retain`, deleting the Integration leaves its records and
+registry records at the peer; a new Integration has a new UID and sees them as
+another owner's. Leftover registry records of deleted record sets, if a peer
+kept them, are hidden and reused.
+
+Use `kudurru integrations webhook conformance --expect-endpoints-file` (see
+[Check an external webhook](#check-an-external-webhook)) to check that a peer
+reads back what it applied, TXT registry rows included, before pointing an
+Integration at it.
 
 ## UniFi inventory
 
@@ -466,7 +532,13 @@ kudurru integrations webhook conformance https://webhook.example.test/provider \
   --allow-mutations --changes-file reviewed-changes.json
 ```
 
-`--changes-file` sends an external-dns Changes document. `--event-file` with
+`--changes-file` sends an external-dns Changes document.
+`--expect-endpoints-file FILE` rereads the record list after any apply and
+checks `{"contain":[endpoints],"absent":[endpoints]}`: `records_contain`
+passes when each listed endpoint is present with the same name, type, set
+identifier and targets (and TTL when given), `records_absent` when none of
+the absent identities is listed. It is a read probe and needs no
+`--allow-mutations`. `--event-file` with
 `--hmac-file` sends the exact event bytes with HMAC-SHA256 and a fresh
 `X-Kudurru-Delivery` ID. `--action NAME --params-file FILE` invokes that exact
 advertised action once. The HMAC file contains 32–4096 raw bytes, not a hex

@@ -308,7 +308,7 @@ version of the object), until the finalizer is gone:
 ```mermaid
 flowchart TD
     Frame["Fresh frame, cleanup guard, root fence"] --> Kind{"Provider publishes?"}
-    Kind -- "no (UniFi, webhook)" --> Rows{"Ledger rows of this UID?"}
+    Kind -- "no (UniFi; webhook with no ledger row)" --> Rows{"Ledger rows of this UID?"}
     Kind -- yes --> Credential{"Credential resolves?"}
     Credential -- no --> PausedC["Terminating/CredentialsUnavailable, no provider call"]
     Credential -- yes --> Provision["Provision, Validate, Check (never Start)"]
@@ -806,12 +806,19 @@ all-driver/restart release gates remain separate work.
 The SQLite production factory supports Cloudflare, UniFi and Tier-B webhook
 clients, actions and hooks. The registered `ee/integration/webhook` constructor
 advertises client inventory, actions and hooks, and names the separate
-`hmacKey` signing credential. Peers requiring record publication refuse
-negotiation, and so does a hooks peer without an `hmacKey`. One Go type serves
-every Tier-B capability, so the provider reports the roles its peer negotiated
-(`host.RoleProvider`): the host polls only an inventory peer, drains and
-produces events only for a hooks peer, and never treats the webhook type as a
-publisher (D379). Cloudflare and UniFi keep the type-assertion default.
+`hmacKey` signing credential. It also publishes records to a peer that
+serves the external-dns record routes when the Integration names `domains`
+(D380, see [Tier-B record ownership](#tier-b-record-ownership)). A hooks peer
+without an `hmacKey` refuses negotiation, and so does a records-only peer
+while no domains are configured. One Go type serves every Tier-B capability,
+so the provider reports the roles its peer negotiated (`host.RoleProvider`):
+the host polls only an inventory peer, drains and produces events only for a
+hooks peer, and publishes only for a records peer with domains (D379, D380).
+Root treats such an instance as a publisher: it selects sources for it, pins
+them in every effect transaction and requires a reviewed preview digest for
+its manual sync. Cloudflare and UniFi keep the type-assertion default. A
+webhook instance with no ledger row owns nothing at its peer, so its cleanup
+is local only.
 
 It captures named bearer or mTLS material and request bytes, then routes each
 bounded attempt through the original host request scope. Verified TLS, fresh
@@ -820,9 +827,7 @@ pairs keep one charge per actual attempt. Original cancellation and deadlines
 cover response-body reads, and stopping the transport cancels in-flight work.
 Status errors contain no peer bodies or credentials.
 
-A successful response is wire evidence. Managed record publication still needs
-remote ownership and durable partial-result handling through `Publisher`.
-Negotiation retains the
+A successful response is wire evidence, never a receipt. Negotiation retains the
 exact versioned media, capabilities, manifest, filters and action schemas as one detached
 identity. It rejects malformed or ambiguous JSON, mismatched capabilities and
 credential echoes; a later peer declaration cannot silently replace the retained
@@ -840,11 +845,62 @@ network references refuse. `FixedIP` stays desired metadata and never becomes
 an observed address. The adapter emits no desired DNS or ClientGroup writes,
 and two remote lists do not establish an atomic remote snapshot. Mounted
 SQLite/TLS/router tests cover original observation expiry, credential rotation,
-action schema/scope refusals and uncertain single-attempt outcomes. Record
-publication remains unsupported. The host accepts a negotiated observation schedule:
+action schema/scope refusals and uncertain single-attempt outcomes. The host accepts a negotiated observation schedule:
 actions-only peers disable inventory sync, while client polling has a one-minute
 maximum interval. A shorter `resync` wins; the generic ten-minute stored default
 cannot exceed the provider's cap. This never extends observation expiry.
+
+## Tier-B record ownership
+
+The external-dns record protocol lists one endpoint per record set and
+applies a Changes body; it has no row IDs, versions, owners or conditional
+writes, and its 204 says only that the peer accepted a body. The webhook
+publisher (`ee/integration/webhook/records.go`, D380) adds the ownership the
+planner needs with a TXT registry kept at the peer, and confirms every
+change from a reread (D298).
+
+```mermaid
+flowchart TD
+    Dest["Destinations: one per instance<br/>provider webhook, account = digest of endpoint, zone *"] --> List["GET /records: complete list<br/>no pagination headers, 32,768 rows, 10,000 RRsets"]
+    List --> Split["Split registry rows _kudurru-type.name<br/>heritage=kudurru,kudurru/owner=marker"]
+    Split --> Own{"Registry marker for the RRset?"}
+    Own -- "this instance" --> Mine["Owner = cluster ID + UID"]
+    Own -- "another marker" --> Foreign["Foreign owner"]
+    Own -- none --> Heritage["external-dns heritage parser<br/>(plan.AttachHeritage)"]
+    Heritage --> Rows["Rows inside spec.webhook.domains<br/>ID = digest of key, version = digest of content + marker"]
+    Mine --> Rows
+    Foreign --> Rows
+    Rows --> Planner["Host planner and ledger (unowned and foreign never modified)"]
+    Planner --> Apply["Apply: reread, require exact baseline<br/>and an owned or absent RRset"]
+    Apply --> Post["One POST /records: data + registry rows"]
+    Post --> Verify["Complete reread"]
+    Verify -- "intended RRset under own registry row" --> Complete["Complete receipt: ledger confirmed"]
+    Verify -- "anything else, or POST/read failure" --> Partial["Partial receipt: ledger pending;<br/>a later sync settles it from a reread"]
+```
+
+- **Registry.** One TXT row per managed record set, at
+  `_kudurru-<type>.<name>` (a wildcard's `*` becomes a `-wildcard` suffix of
+  that label), with the record set's set identifier and the single value
+  `"heritage=kudurru,kudurru/owner=<SHA-256 of [cluster ID, UID]>"`. Registry
+  rows are never shown to the planner. A desired name in the `_kudurru-`
+  namespace, or one the peer's negotiated filter excludes, refuses the sync.
+- **Owners.** This instance's marker means owned; another kudurru marker or
+  an external-dns heritage claim means another owner's; no claim means
+  unowned. Only rows inside the configured domains are the destination, so
+  the peer may serve other names. Webhook peers offer no adoption.
+- **Apply and Recover.** Apply rereads, requires the intent's Before hash,
+  IDs and versions, sends one Changes body (create: data and, unless an own
+  leftover exists, registry; update: old and new data; delete: data and own
+  registry) and returns a complete receipt only when a second complete
+  reread shows the After record set under this instance's registry row, or
+  no record set for a delete. A refused or unanswered POST marks its targets
+  `ambiguous`. Recover rereads independently of the host's snapshot. Adjust
+  calls the peer's `/adjustendpoints`, as external-dns does, so the planned
+  After state is what the peer stores.
+- **Limits.** Nothing closes the window between the baseline reread and the
+  POST; the verifying reread detects a concurrent writer, it does not prevent
+  one. A peer must store TXT rows and underscore labels. Each change costs
+  three requests of the instance's budget.
 
 ## Tier-B hook events
 
@@ -948,7 +1004,8 @@ flowchart LR
     Negotiate --> Reads["Bounded advertised read probes"]
     Reads --> OptIn["Explicit mutation opt-in and selected inputs"]
     OptIn --> Once["One attempt per selected mutation"]
-    Once --> Report["Sanitized acknowledgment or uncertain outcome"]
+    Once --> ReadBack["Optional record read-back: records_contain, records_absent"]
+    ReadBack --> Report["Sanitized acknowledgment or uncertain outcome"]
 ```
 
 The target has no ambient API credential, proxy, cookie jar or Kubernetes
@@ -964,6 +1021,10 @@ captured body and documented signature/delivery headers. Unknown capabilities,
 duplicate JSON fields, invalid shapes and over-limit bodies refuse. Action
 selection is checked before any mutation. An uncertain effect stops all later
 mutation probes without interpreting a replacement response as success.
+An explicit expectation file (`--expect-endpoints-file`, D380) rereads the
+record list once after any apply and checks that named endpoints are present
+and others absent, so a provider author can check read-your-writes and TXT
+registry support; it is a read and needs no mutation opt-in.
 
 The report records only fixed protocol check names and safe outcomes. Untested
 mutations and other advertised actions keep it incomplete. Successful responses
