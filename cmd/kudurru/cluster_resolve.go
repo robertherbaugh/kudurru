@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,16 +49,25 @@ type clusterResolutionReceipt struct {
 type clusterResolveOptions struct {
 	directory, review, node, requestID, reason string
 	offline                                    bool
+	abandonTerm                                uint64
 }
+
+// resolutionFencedBehindTerm is the review reason of a fenced member that
+// holds no image of its current term and no conflict or divergence. Keeping
+// its branch abandons that term, so cluster resolve also needs the exact
+// --abandon-term epoch (D369).
+const resolutionFencedBehindTerm = "fenced_behind_term"
 
 func addClusterResolutionCommands(root *cobra.Command) {
 	var review clusterResolveOptions
 	reviewCmd := &cobra.Command{Use: "resolution", Short: "Review a stopped member's promotion conflict or divergence", Args: cobra.NoArgs,
-		Long: `Read the durable conflict or divergence state of a stopped enrolled SQLite member.
+		Long: `Read the durable conflict, divergence or fenced state of a stopped enrolled SQLite member.
 Stop the local kudurru process first; the normal exclusive database lock refuses a
 running server. Writers on a conflicted member stay refused and its HTTP API is closed
 while DNS continues from its last valid local data. Save this JSON output and pass it
-to cluster resolve on the member whose branch should survive. Nothing is modified.`,
+to cluster resolve on the member whose branch should survive. A fenced member that
+holds no image of its current term reads "reason":"fenced_behind_term"; it can keep its
+branch only by abandoning that term (cluster resolve --abandon-term). Nothing is modified.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			if !review.offline || review.directory == "" {
 				return errors.New("--offline and --data-dir are required")
@@ -93,7 +103,13 @@ prior rows as private quarantine and commits a host-attributed audit event in th
 transaction. Start the member afterwards: other members adopt the new term only through
 later scheduled authenticated peer exchanges, quarantine their own branch when they
 install this one and never replay its writes. Never replay this command after an
-unknown result; review current state first.`,
+unknown result; review current state first.
+
+A review with "reason":"fenced_behind_term" is a member fenced by a newer term whose
+image it never installed. Keeping its branch abandons that term: pass --abandon-term
+with that term's epoch, and only when its primary and every member that followed it
+are lost for good. Their writes are not replayed, and a member of that term that
+returns adopts this branch.`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			out, err := runClusterResolve(c.Context(), o)
 			if out != nil {
@@ -107,6 +123,7 @@ unknown result; review current state first.`,
 	cmd.Flags().StringVar(&o.requestID, "request-id", "", "Unique identifier for this operator decision")
 	cmd.Flags().StringVar(&o.reason, "reason", "", "Audit reason for keeping this branch")
 	cmd.Flags().BoolVar(&o.offline, "offline", false, "Acknowledge that all local kudurru processes are stopped")
+	cmd.Flags().Uint64Var(&o.abandonTerm, "abandon-term", 0, "Epoch of the lost term to abandon (only for a fenced_behind_term review)")
 	root.AddCommand(cmd)
 }
 
@@ -177,6 +194,9 @@ func offlineResolutionReview(ctx context.Context, s *sqlite.Store, node string) 
 	switch {
 	case ctx.Err() != nil:
 		return out, ctx.Err()
+	case a.Conflict == nil && a.Divergence == nil && a.Mode == replication.Fenced && err == nil &&
+		out.Installed.Term.ClusterID == a.Term.ClusterID && out.Installed.Term.Epoch < a.Term.Epoch:
+		out.Resolvable, out.Reason = true, resolutionFencedBehindTerm
 	case a.Conflict == nil && a.Divergence == nil:
 		out.Reason = "no_conflict"
 	case a.Mode != replication.Conflict && a.Mode != replication.Fenced:
@@ -195,7 +215,7 @@ func sameResolutionReview(a, b clusterResolutionReview) bool {
 		return x == nil && y == nil || x != nil && y != nil && x.Same(*y)
 	}
 	return a.MemberID == b.MemberID && a.Node == b.Node && a.Mode == b.Mode && a.Term.Same(b.Term) && a.Installed.Same(b.Installed) &&
-		sameTerm(a.Conflict, b.Conflict) && sameGeneration(a.Divergence, b.Divergence) && a.Resolvable == b.Resolvable
+		sameTerm(a.Conflict, b.Conflict) && sameGeneration(a.Divergence, b.Divergence) && a.Resolvable == b.Resolvable && a.Reason == b.Reason
 }
 
 func runClusterResolve(parent context.Context, o clusterResolveOptions) (*clusterResolutionReceipt, error) {
@@ -220,6 +240,16 @@ func runClusterResolve(parent context.Context, o clusterResolveOptions) (*cluste
 	if id, err := uuid.Parse(reviewed.MemberID); err != nil || id == uuid.Nil || !reviewed.Resolvable || reviewed.Node != o.node ||
 		reviewed.Term.Validate() != nil || reviewed.Installed.Validate() != nil {
 		return nil, errors.New("review is not a resolvable observation of the confirmed node")
+	}
+	var abandon *replication.Term
+	switch {
+	case reviewed.Reason == resolutionFencedBehindTerm && o.abandonTerm != reviewed.Term.Epoch:
+		return nil, errors.New("this member is fenced by a newer term it never installed; keeping its branch abandons that term: pass --abandon-term with the reviewed term epoch, and only if that term's primary and every member that followed it are lost for good")
+	case reviewed.Reason == resolutionFencedBehindTerm:
+		term := reviewed.Term
+		abandon = &term
+	case o.abandonTerm != 0:
+		return nil, errors.New("--abandon-term applies only to a fenced_behind_term review")
 	}
 	s, node, err := openOfflineMember(ctx, o.directory)
 	if err != nil {
@@ -252,10 +282,14 @@ func runClusterResolve(parent context.Context, o clusterResolveOptions) (*cluste
 	if err != nil {
 		return nil, err
 	}
+	authz := "host-local data directory and member identity"
+	if abandon != nil {
+		authz += "; abandons unreachable term " + strconv.FormatUint(abandon.Epoch, 10)
+	}
 	result, err := s.ResolveAudited(captured, chosen, replication.ResolveRequest{ExpectedTerm: reviewed.Term, ExpectedInstalled: reviewed.Installed,
-		ExpectedConflict: reviewed.Conflict, ExpectedDivergence: reviewed.Divergence, RequestID: o.requestID},
+		ExpectedConflict: reviewed.Conflict, ExpectedDivergence: reviewed.Divergence, AbandonTerm: abandon, RequestID: o.requestID},
 		func(ctx context.Context) error { return ctx.Err() },
-		sqlite.AuditEntry{Actor: "host:offline-cli", Authz: "host-local data directory and member identity", Reason: o.reason})
+		sqlite.AuditEntry{Actor: "host:offline-cli", Authz: authz, Reason: o.reason})
 	if errors.Is(err, sqlite.ErrResolutionCompletionUnknown) {
 		return nil, errors.New("resolution completion is unknown; review current state before a new decision; do not replay this command")
 	}

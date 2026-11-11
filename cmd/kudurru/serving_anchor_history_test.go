@@ -494,9 +494,11 @@ func TestAnchorHistoryManagedMemberFollowsOnceThePrimaryStartsManagedAnchors(t *
 		if _, err := s.publisher.CaptureHTTP(ctx); err == nil {
 			t.Fatal(stage, "fenced member admitted protected HTTP")
 		}
-		// What `cluster resolution --offline` reports for this database.
+		// What `cluster resolution --offline` reports for this database: a
+		// fenced member behind its term, which only an explicit abandonment of
+		// that term could resolve (D369).
 		review, err := offlineResolutionReview(ctx, s.opts.Store, "old-primary")
-		if err != nil || review.Mode != string(replication.Fenced) || !review.Term.Same(promoted.Term) || !review.Installed.Same(lost.Generation()) || review.Installed.Term.Epoch >= review.Term.Epoch || review.Resolvable || review.Reason != "no_conflict" {
+		if err != nil || review.Mode != string(replication.Fenced) || !review.Term.Same(promoted.Term) || !review.Installed.Same(lost.Generation()) || review.Installed.Term.Epoch >= review.Term.Epoch || !review.Resolvable || review.Reason != resolutionFencedBehindTerm {
 			t.Fatal(stage, "offline review does not show a fenced member without an image of its term", err, review.Mode, review.Reason)
 		}
 	}
