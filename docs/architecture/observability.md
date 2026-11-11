@@ -401,7 +401,7 @@ messages of a front end into events of the same collector.
 flowchart LR
     FE["front end<br/>(dnsdist, Unbound)"] -->|"Frame Streams<br/>unix / tcp / tls"| CONN["connection goroutine<br/>(at most maxConnections)<br/>reads at sender speed"]
     CONN -->|"> 192 KiB, malformed,<br/>other types, own identity,<br/>ignored client"| CNT["counted, dropped"]
-    CONN -->|"non-blocking<br/>(10 000; full: overflow)"| ING["ingest goroutine:<br/>pair query and response (2 s),<br/>hold each row 1 s"]
+    CONN -->|"non-blocking<br/>(10 000; full: overflow)"| ING["ingest goroutine:<br/>pair query and response (6 s),<br/>hold each row 1 s<br/>(10 000 per stage)"]
     OBS["log observer"] --> COLQ[["collector queue"]]
     COLQ --> COL["collector"]
     COL -->|"native query, before privacy:<br/>client, port, name, type, time"| IDX[("DedupIndex<br/>30 s, 65 536 entries")]
@@ -411,9 +411,11 @@ flowchart LR
     SINKS -.->|"Origin set: never sent"| DTS["dnstap sinks"]
 ```
 
-`CLIENT_*` and `AUTH_*` messages become events; a query waits up to 2 s for
+`CLIENT_*` and `AUTH_*` messages become events; a query waits up to 6 s for
 its response (same identity, client address and port, DNS ID, name and
-type) and the pair is one event. Each event is held 1 s, so that a query
+type) and the pair is one event; 6 s outlasts the pipeline's own 5 s bound
+(`dnsserver.DefaultQueryTimeout`), so a lone query is checked only after a
+query this node answered slowly has reached the index. Each event is held 1 s, so that a query
 this node answered itself has passed the collector, and is then checked
 against the `DedupIndex`: the collector records every query it admits from
 the log observer there, before the privacy transform, keyed by client
@@ -421,18 +423,28 @@ address, source port, name, type and class. A match within the message's
 time window (2 s either side) cancels one message, which is how dnsdist in
 front of kudurru logging every response still gives one row per client
 query (the DNS ID is not part of the key, because dnsdist renumbers forwarded
-queries). The collector clears `ClientPort` before any consumer sees an
-event. An ingested event carries `Origin`, the sender's identity; a dnstap
+queries). Messages of an identity in `unforwardedIdentities` (a managed
+edge, which logs only answers it gave itself) skip the check: the cache
+miss the edge forwarded a moment before, from the same client port, must
+not cancel its cache hit. A message time more than 5 minutes from the
+node's clock is replaced by the receive time. The collector clears
+`ClientPort` before any consumer sees an event. An ingested event carries `Origin`, the sender's identity; a dnstap
 sink never sends such an event, and messages with the node's own identity
 (node name or a dnstap sink's identity) are dropped at the listener, so no
 sink and listener pair can loop. Every stage is bounded and none waits:
-connections are read at the sender's pace, overflow is dropped and counted,
-and the collector's `Enqueue` never blocks DNS.
+connections are read at the sender's pace, at most 10 000 messages wait in
+each stage (the item channel, the queries waiting for a response with a
+pairing FIFO compacted at twice that, the held rows), overflow is dropped
+and counted, and the collector's `Enqueue` never blocks DNS. A failed
+accept is retried after 5 ms to 1 s and never ends the listener; the
+`querylog-dnstap` runnable always returns nil, so the runner never shuts
+the node down because of ingest.
 
 The managed edge renders a dnstap logger and two response rules
 (`kudurru-dnstap-cache-hit`, `kudurru-dnstap-self-answered`) when
 `edge.dnstapTarget` is set (`ee/edge/dnsdist`), so dnsdist reports only the
-answers kudurru never sees.
+answers kudurru never sees; its identity belongs in the listener's
+`unforwardedIdentities`.
 
 **Privacy is applied once, at the collector**, before anything is stored or
 shown: `full`, `anonymize_client` (a /24 or /48 prefix, or a daily

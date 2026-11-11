@@ -168,21 +168,24 @@ func (r *querylogRuntime) listenDnstap(cfg *config.Config, reg prometheus.Regist
 	return nil
 }
 
-// serveDnstap runs the dnstap listeners until ctx ends.
+// serveDnstap runs the dnstap listeners until ctx ends. It always returns
+// nil: the runner shuts the node down when an always-on runnable fails, and
+// an ingest listener must never take DNS down with it. A listener retries
+// its own Accept errors (dnstap.Listener.Serve); one that still stops early
+// is logged here, at once, while the others keep serving.
 func (r *querylogRuntime) serveDnstap(ctx context.Context) error {
-	if len(r.dnstap) == 0 {
-		<-ctx.Done()
-		return nil
-	}
-	errs := make(chan error, len(r.dnstap))
+	var wg sync.WaitGroup
 	for _, l := range r.dnstap {
-		go func() { errs <- l.Serve(ctx) }()
+		wg.Go(func() {
+			err := l.Serve(ctx)
+			if ctx.Err() == nil {
+				r.logger.Error("dnstap listener stopped before shutdown; DNS and the other listeners keep running", "listener", l.Name(), "err", err)
+			}
+		})
 	}
-	var err error
-	for range r.dnstap {
-		err = errors.Join(err, <-errs)
-	}
-	return err
+	<-ctx.Done()
+	wg.Wait()
+	return nil
 }
 
 // own makes route the one whose sink references the runtime holds and

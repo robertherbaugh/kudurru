@@ -358,6 +358,7 @@ listeners:
     - address: tcp:10.0.0.11:6000       # or unix:/run/kudurru/dnstap.sock, tls:0.0.0.0:6000
       allowFrom: [10.0.0.21, 10.0.0.22] # required for tcp:
       # identities: [edge-1, edge-2]    # only these senders; empty accepts any
+      unforwardedIdentities: [edge-1, edge-2] # managed edges: only their own answers
       # ignoreClients: [10.0.0.11]      # e.g. kudurru's own address, see below
       # maxConnections: 16
 ```
@@ -369,6 +370,7 @@ listeners:
 | `clientCAFile` | none | accept only senders with a client certificate from this CA (`tls:` only) |
 | `allowFrom` | none | addresses or CIDRs that may connect; required for `tcp:`, and for `tls:` without `clientCAFile` |
 | `identities` | any | only messages with one of these dnstap identities are recorded |
+| `unforwardedIdentities` | none | senders that report only the answers they give themselves, never a query they forwarded to kudurru (a managed edge: its `edge.dnstapIdentity`, default its server ID); their messages skip the duplicate check below. With `identities` set, each must be listed there too |
 | `ignoreClients` | none | messages about queries from these addresses or CIDRs are not recorded |
 | `maxConnections` | 16 | senders served at a time (at most 256) |
 
@@ -378,7 +380,7 @@ STOP, FINISH) and unidirectional senders (START first). What becomes a row:
 - `CLIENT_QUERY`/`CLIENT_RESPONSE` and `AUTH_QUERY`/`AUTH_RESPONSE`. A query
   and its response (same sender identity, client address and port, DNS ID,
   name and type) become one row. A response alone is one row; a query whose
-  response does not arrive within 2 seconds is one row without an answer
+  response does not arrive within 6 seconds is one row without an answer
   (reply type `unknown`). Such a row has the status `unknown`, because
   kudurru did not make the decision, the client and protocol of the message,
   the answer of the response and its latency.
@@ -395,8 +397,22 @@ STOP, FINISH) and unidirectional senders (START first). What becomes a row:
   needs the real client address and port at kudurru, which the PROXY
   protocol of a managed edge provides; the DNS ID cannot be used, because
   dnsdist gives every forwarded query an ID of its own. One answered query
-  cancels one message, so a repeat that the front end answered from its
-  cache is still recorded.
+  cancels one message. A query waits 6 seconds for its response, longer
+  than kudurru's own 5-second bound on answering, so a query kudurru
+  answers slowly (an upstream timeout) is still recognized.
+- **List a managed edge in `unforwardedIdentities`.** It logs only packet
+  cache hits and its own answers, so the cache miss it forwarded a moment
+  before is never claimed by a message of its own. Without the setting, a
+  cache hit of the same name and type from the same client address and
+  source port within about 2 seconds (a reused TCP, DoT or DoH connection,
+  a forwarder with a fixed query port, a retransmit) is taken for that
+  miss and dropped. A front end that also logs the responses it relays
+  from kudurru (an operator rule, Unbound) must not be listed: give such a
+  rule an identity of its own, so that its messages are still checked.
+- A message time more than 5 minutes from this node's clock (a sender with
+  a wrong clock, or a backlog after a long outage) is replaced by the
+  receive time, keeping the latency, and counted in
+  `kudurru_querylog_dnstap_clock_skew_total{listener}`.
 - Messages with this node's identity (`node.name`) or the identity of one of
   its dnstap sinks are dropped: a sink pointed at its own node's listener
   never records anything twice.
@@ -413,7 +429,9 @@ stored; the row's node is this node.
 
 Bounds: a data frame above 192 KiB is skipped (a frame that announces more
 than 16 MiB ends the connection), a message that does not decode is
-skipped, at most 10,000 messages wait per listener, and further senders
+skipped, at most 10,000 messages wait in each stage of a listener (decoded
+and not yet taken, queries waiting for their response, rows waiting for
+the duplicate check), and further senders
 beyond `maxConnections` are disconnected. The listener reads every
 connection as fast as the sender writes and never waits for the query log;
 what does not fit is dropped. Everything is counted in
@@ -421,7 +439,10 @@ what does not fit is dropped. Everything is counted in
 `paired`, `duplicate`, `self`, `identity`, `ignored_client`, `type`,
 `malformed`, `oversized`, `overflow`, `dropped`) and
 `kudurru_querylog_dnstap_connections_total{listener,result}` (`accepted`,
-`refused_peer`, `refused_limit`, `handshake_failed`, `broken`).
+`refused_peer`, `refused_limit`, `handshake_failed`, `broken`,
+`accept_failed`). A failed accept (too many open files, ...) is logged and
+retried after a wait that grows from 5 ms to 1 s; it never stops the
+listener, and nothing a listener does stops the node or its DNS.
 
 ### A managed dnsdist edge
 
@@ -433,7 +454,9 @@ own answers such as refused transfers (`self_answered_response_rules`). The
 queries it forwards are logged by the kudurru node that answers them, so
 each client query is one row. dnsdist's Frame Streams loggers support
 `tcp:` and `unix:` only; keep the TCP path on a trusted network and restrict
-`allowFrom` to the edges.
+`allowFrom` to the edges. List each edge's identity in the listener's
+`unforwardedIdentities` (see above), so that a cache hit is never taken for
+the query the edge forwarded before it.
 
 ## Credentials
 

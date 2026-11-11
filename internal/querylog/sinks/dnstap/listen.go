@@ -40,7 +40,9 @@ import (
 //     client's query to the sender. A query waits up to PairWait for its
 //     response (same identity, client address and port, DNS ID, name and
 //     type) and the two become one row; a response without a query is a
-//     row of its own; a query without a response is one after PairWait.
+//     row of its own; a query without a response is one after PairWait,
+//     which is longer than this node takes to answer a query, so that a
+//     query kudurru answers slowly is still recognized below.
 //   - Every other type (FORWARDER_*, RESOLVER_*, ...) describes the
 //     sender's own exchange with an upstream for a query its CLIENT_*
 //     message already describes, and is counted, never recorded.
@@ -48,7 +50,14 @@ import (
 //     node answered itself (querylog.DedupIndex): a front end that forwards
 //     to kudurru reports queries kudurru has already logged, and the one
 //     with the same client address, port, name and type within the
-//     message's time window cancels it.
+//     message's time window cancels it. The messages of an identity in
+//     unforwardedIdentities (a front end that reports only the answers it
+//     gives itself, such as the managed edge) are never checked: kudurru
+//     did not answer them, even when it answered the same question from
+//     the same client port a moment earlier.
+//   - A message time more than maxClockSkew from this node's clock is
+//     shifted to the receive time, so a sender with a wrong clock cannot
+//     date rows in the far past or future.
 //   - Messages with this node's own identity, with an identity the listener
 //     does not accept or from an ignored client are dropped and counted.
 //   - Every recorded event carries Origin, so no dnstap sink sends it again.
@@ -75,6 +84,8 @@ const (
 	ConnLimit     = "refused_limit"
 	ConnHandshake = "handshake_failed"
 	ConnBroken    = "broken"
+	// ConnAcceptFailed counts failed Accept calls; the listener retries.
+	ConnAcceptFailed = "accept_failed"
 )
 
 // Defaults of a listener.
@@ -89,8 +100,14 @@ const (
 	// the query this node answered reaches the index first.
 	DefaultHold = time.Second
 	// DefaultPairWait is how long a query message waits for its response.
-	DefaultPairWait = 2 * time.Second
-	// DefaultListenQueue bounds the messages waiting in one listener.
+	// It is longer than the 5 s bound of this node's pipeline
+	// (dnsserver.DefaultQueryTimeout) plus the collector's delay, so that
+	// a lone query is checked against the index only after the query this
+	// node answered, however slowly, has reached it.
+	DefaultPairWait = 6 * time.Second
+	// DefaultListenQueue bounds, in each stage of one listener, the
+	// messages waiting: decoded and not yet taken by the ingest loop,
+	// queries waiting for their response, rows waiting for the dedup check.
 	DefaultListenQueue = 10000
 	// dedupSkew widens the time window of the dedup check for a sender
 	// whose clock differs a little.
@@ -99,6 +116,13 @@ const (
 	handshakeTimeout = 10 * time.Second
 	// maxLatency bounds the latency taken from the two times of a message.
 	maxLatency = time.Minute
+	// maxClockSkew is how far a message time may lie from the receive
+	// time; a message beyond it is shifted to the receive time and counted.
+	maxClockSkew = 5 * time.Minute
+	// acceptRetryFirst and acceptRetryCap bound the wait after a failed
+	// Accept (too many open files, ...), which is retried, never fatal.
+	acceptRetryFirst = 5 * time.Millisecond
+	acceptRetryCap   = time.Second
 	// noIdentity is the Origin of an event whose sender sent no identity.
 	noIdentity = "dnstap"
 )
@@ -107,6 +131,9 @@ const (
 type ListenMetrics struct {
 	Frames      *prometheus.CounterVec
 	Connections *prometheus.CounterVec
+	// ClockSkew counts the messages whose times were shifted to the
+	// receive time (maxClockSkew).
+	ClockSkew *prometheus.CounterVec
 }
 
 // NewListenMetrics creates the instruments and registers them with reg
@@ -119,11 +146,15 @@ func NewListenMetrics(reg prometheus.Registerer) *ListenMetrics {
 		}, []string{"listener", "result"}),
 		Connections: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kudurru_querylog_dnstap_connections_total",
-			Help: "Connections to listeners.dnstap, by listener and result (accepted, refused_peer, refused_limit, handshake_failed, broken).",
+			Help: "Connections to listeners.dnstap, by listener and result (accepted, refused_peer, refused_limit, handshake_failed, broken, accept_failed: an Accept error such as too many open files, retried).",
 		}, []string{"listener", "result"}),
+		ClockSkew: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "kudurru_querylog_dnstap_clock_skew_total",
+			Help: "dnstap messages received by listeners.dnstap whose times lay more than 5 minutes from this node's clock; their row is dated at the receive time.",
+		}, []string{"listener"}),
 	}
 	if reg != nil {
-		reg.MustRegister(m.Frames, m.Connections)
+		reg.MustRegister(m.Frames, m.Connections, m.ClockSkew)
 	}
 	return m
 }
@@ -162,7 +193,14 @@ type Listener struct {
 	items   chan *ingest
 	frames  map[string]prometheus.Counter
 	conns   map[string]prometheus.Counter
+	skew    prometheus.Counter
 	logger  *slog.Logger
+	// closing is closed by Close; it ends a wait between Accept retries.
+	closing chan struct{}
+	// observe, set by tests only before Serve, sees the length of the
+	// pairing FIFO, of the row FIFO and of the waiting queries after every
+	// message the ingest loop takes.
+	observe func(queries, rows, waiting int)
 
 	mu     sync.Mutex
 	open   map[net.Conn]struct{}
@@ -197,7 +235,7 @@ func Listen(o ListenOptions) (*Listener, error) {
 	if o.Metrics == nil {
 		o.Metrics = NewListenMetrics(nil)
 	}
-	l := &Listener{o: o, name: o.Settings.Address, target: target, slots: make(chan struct{}, o.Settings.Connections()), items: make(chan *ingest, o.Queue), open: map[net.Conn]struct{}{}, logger: o.Logger.With("listener", o.Settings.Address)}
+	l := &Listener{o: o, name: o.Settings.Address, target: target, slots: make(chan struct{}, o.Settings.Connections()), items: make(chan *ingest, o.Queue), open: map[net.Conn]struct{}{}, closing: make(chan struct{}), logger: o.Logger.With("listener", o.Settings.Address)}
 	if l.peers, err = o.Settings.AllowedPeers(); err != nil {
 		return nil, fmt.Errorf("listeners.dnstap: allowFrom: %w", err)
 	}
@@ -208,8 +246,13 @@ func Listen(o ListenOptions) (*Listener, error) {
 	for _, r := range []string{ResultRecorded, ResultDuplicate, ResultPaired, ResultSelf, ResultIdentity, ResultIgnoredClient, ResultType, ResultMalformed, ResultOversized, ResultOverflow, ResultDropped} {
 		l.frames[r] = o.Metrics.Frames.WithLabelValues(l.name, r)
 	}
-	for _, r := range []string{ConnAccepted, ConnPeer, ConnLimit, ConnHandshake, ConnBroken} {
+	for _, r := range []string{ConnAccepted, ConnPeer, ConnLimit, ConnHandshake, ConnBroken, ConnAcceptFailed} {
 		l.conns[r] = o.Metrics.Connections.WithLabelValues(l.name, r)
+	}
+	if o.Metrics.ClockSkew != nil {
+		l.skew = o.Metrics.ClockSkew.WithLabelValues(l.name)
+	} else {
+		l.skew = prometheus.NewCounter(prometheus.CounterOpts{Name: "unregistered"})
 	}
 	if target.Scheme == config.DnstapSchemeTLS {
 		if l.tls, err = serverTLS(o.Settings); err != nil {
@@ -284,7 +327,11 @@ func (l *Listener) Name() string { return l.name }
 
 // Serve accepts senders until ctx ends or Close is called, then closes
 // every connection and returns once they and the ingest loop are done.
-// Rows still held when it stops are not recorded.
+// Rows still held when it stops are not recorded. A failed Accept (too
+// many open files, no buffer space, ...) is logged, counted and retried
+// after a wait that doubles from 5 ms to 1 s, as net/http does: this
+// auxiliary listener never ends on its own, so it never takes the node,
+// and its DNS, down with it. Serve returns nil.
 func (l *Listener) Serve(ctx context.Context) error {
 	ingestCtx, stopIngest := context.WithCancel(context.Background())
 	ingestDone := make(chan struct{})
@@ -294,29 +341,35 @@ func (l *Listener) Serve(ctx context.Context) error {
 	}()
 	stop := context.AfterFunc(ctx, func() { _ = l.Close() })
 	defer stop()
-	var err error
+	var retry time.Duration
 	for {
-		conn, acceptErr := l.ln.Accept()
-		if acceptErr != nil {
+		conn, err := l.ln.Accept()
+		if err != nil {
 			l.mu.Lock()
 			closed := l.closed
 			l.mu.Unlock()
-			if !closed {
-				var ne net.Error
-				if errors.As(acceptErr, &ne) && ne.Timeout() {
-					continue
-				}
-				err = fmt.Errorf("listeners.dnstap: %s: %w", l.name, acceptErr)
+			if closed {
+				break
 			}
-			break
+			retry = min(max(2*retry, acceptRetryFirst), acceptRetryCap)
+			l.conns[ConnAcceptFailed].Inc()
+			l.logger.Warn("dnstap listener could not accept a connection; retrying", "err", err, "retry", retry)
+			wait := time.NewTimer(retry)
+			select {
+			case <-wait.C:
+			case <-l.closing:
+				wait.Stop()
+			}
+			continue
 		}
+		retry = 0
 		l.accept(conn)
 	}
 	_ = l.Close()
 	l.wg.Wait()
 	stopIngest()
 	<-ingestDone
-	return err
+	return nil
 }
 
 // Close stops accepting and closes every connection. It is idempotent.
@@ -327,6 +380,7 @@ func (l *Listener) Close() error {
 		return nil
 	}
 	l.closed = true
+	close(l.closing)
 	conns := make([]net.Conn, 0, len(l.open))
 	for c := range l.open {
 		conns = append(conns, c)
@@ -512,11 +566,15 @@ type ingest struct {
 	queryTime, responseTime time.Time
 	deadline                time.Time
 	done                    bool // paired or flushed out of the FIFO
+	// unforwarded is a message of an identity in unforwardedIdentities:
+	// the sender answered it itself, so no dedup check applies.
+	unforwarded bool
 }
 
 // receive decodes one data frame and hands it to the ingest loop. It runs
 // on the connection's goroutine and never waits.
 func (l *Listener) receive(payload []byte) {
+	received := time.Now()
 	var f Frame
 	if err := DecodeFrame(payload, &f); err != nil {
 		l.frames[ResultMalformed].Inc()
@@ -541,6 +599,9 @@ func (l *Listener) receive(payload []byte) {
 		l.frames[ResultIdentity].Inc()
 		return
 	}
+	if l.unskew(m, received) {
+		l.skew.Inc()
+	}
 	ev, id, ok := l.event(&f, identity)
 	if !ok {
 		l.frames[ResultMalformed].Inc()
@@ -552,12 +613,42 @@ func (l *Listener) receive(payload []byte) {
 			return
 		}
 	}
-	it := &ingest{key: pairKey{identity: identity, query: querylog.NewDedupKey(ev.Client, ev.ClientPort, ev.QType, ev.QClass, ev.Name), id: id}, event: ev, query: query, received: time.Now(), queryTime: m.QueryTime, responseTime: m.ResponseTime}
+	it := &ingest{key: pairKey{identity: identity, query: querylog.NewDedupKey(ev.Client, ev.ClientPort, ev.QType, ev.QClass, ev.Name), id: id}, event: ev, query: query, received: received, queryTime: m.QueryTime, responseTime: m.ResponseTime, unforwarded: identity != "" && slices.Contains(l.o.Settings.UnforwardedIdentities, identity)}
 	select {
 	case l.items <- it:
 	default:
 		l.frames[ResultOverflow].Inc()
 	}
+}
+
+// unskew moves the times of m to the receive time when the time of the
+// message (its response time, or the query time of a query) lies more than
+// maxClockSkew from received: the response time becomes received and the
+// query time keeps its distance to it (when that is a latency at all), so
+// the row is dated at the receive time, keeps its latency, and its dedup
+// window lies where this node's own events do. It reports whether it moved
+// them.
+func (l *Listener) unskew(m *Message, received time.Time) bool {
+	at := m.ResponseTime
+	if at.IsZero() {
+		at = m.QueryTime
+	}
+	if at.IsZero() || (at.After(received.Add(-maxClockSkew)) && at.Before(received.Add(maxClockSkew))) {
+		return false
+	}
+	if m.ResponseTime.IsZero() {
+		m.QueryTime = received
+		return true
+	}
+	if !m.QueryTime.IsZero() {
+		latency := time.Duration(0)
+		if d := m.ResponseTime.Sub(m.QueryTime); d >= 0 && d <= maxLatency {
+			latency = d
+		}
+		m.QueryTime = received.Add(-latency)
+	}
+	m.ResponseTime = received
+	return true
 }
 
 // event builds the query event of a message: the question and the header
@@ -683,7 +774,11 @@ func proto(p SocketProtocol) pipeline.Proto {
 
 // ingest pairs queries with their responses, holds every row for Hold and
 // records what the dedup index does not claim. It is the only goroutine
-// that touches the pairing state.
+// that touches the pairing state. Every stage is bounded by Queue: at most
+// Queue queries wait for their response (the oldest then goes to the log
+// unanswered), the pairing FIFO holds at most twice that, the paired ones
+// included (it is compacted when full), and at most Queue rows wait for
+// the dedup check (further ones are overflow).
 func (l *Listener) ingest(ctx context.Context) {
 	waiting := map[pairKey]*ingest{}
 	var queries, rows fifo
@@ -700,7 +795,11 @@ func (l *Listener) ingest(ctx context.Context) {
 	flushQuery := func(it *ingest, now time.Time) {
 		delete(waiting, it.key)
 		it.done = true
-		// The query waited at least PairWait, longer than Hold.
+		// The query waited PairWait, longer than this node takes to answer
+		// (DefaultPairWait), so the query this node answered is in the
+		// index already; it is checked at once. A query flushed early (a
+		// repeat, or the oldest when Queue are waiting) is checked at once
+		// too.
 		if rows.len() >= l.o.Queue {
 			l.frames[ResultOverflow].Inc()
 			return
@@ -749,39 +848,56 @@ func (l *Listener) ingest(ctx context.Context) {
 						}
 					}
 				}
+				if queries.len() >= 2*l.o.Queue {
+					// Paired queries stay in the FIFO until they reach its
+					// head; drop them, so it holds at most what waits.
+					queries.compact(func(q *ingest) bool { return !q.done })
+				}
 				it.deadline = it.received.Add(l.o.PairWait)
 				waiting[it.key] = it
 				queries.push(it)
-				continue
-			}
-			if q := waiting[it.key]; q != nil {
+			} else if q := waiting[it.key]; q != nil {
 				delete(waiting, it.key)
 				q.done = true
 				l.frames[ResultPaired].Inc()
 				merged := *q.event
+				q.event = nil // the FIFO keeps the entry only until its head
 				resp := it.event
 				merged.Rcode, merged.Answers, merged.ReplyType, merged.Answer = resp.Rcode, resp.Answers, resp.ReplyType, resp.Answer
 				merged.Flags.TC, merged.Flags.AD, merged.EDE, merged.HasEDE = resp.Flags.TC, resp.Flags.AD, resp.EDE, resp.HasEDE
-				if !it.responseTime.IsZero() && !q.queryTime.IsZero() {
+				// The response's own two times give the latency when it has
+				// both: unskew may have moved the two messages of a pair by
+				// different offsets.
+				if it.queryTime.IsZero() && !it.responseTime.IsZero() && !q.queryTime.IsZero() {
 					if d := it.responseTime.Sub(q.queryTime); d >= 0 && d <= maxLatency {
 						merged.Latency = d
 					}
 				} else {
 					merged.Latency = resp.Latency
 				}
-				row := &ingest{key: it.key, event: &merged, received: it.received, queryTime: q.queryTime, responseTime: it.responseTime}
+				row := &ingest{key: it.key, event: &merged, received: it.received, queryTime: q.queryTime, responseTime: it.responseTime, unforwarded: it.unforwarded}
 				hold(row, now)
-				continue
+			} else {
+				hold(it, now)
 			}
-			hold(it, now)
+		}
+		if l.observe != nil {
+			l.observe(queries.len(), rows.len(), len(waiting))
 		}
 	}
 }
 
 // record checks a row against the queries this node answered and enqueues
-// it when none claims it.
+// it when none claims it. A row of an unforwarded identity is not checked:
+// that sender reports only the answers it gave itself, and a query this
+// node answered with the same key (a cache miss the front end forwarded a
+// moment before, from the same client port) must not cancel it.
 func (l *Listener) record(it *ingest) {
 	ev := it.event
+	if it.unforwarded {
+		l.enqueue(ev)
+		return
+	}
 	from, to := it.queryTime, it.responseTime
 	if from.IsZero() {
 		from = ev.Time
@@ -793,6 +909,10 @@ func (l *Listener) record(it *ingest) {
 		l.frames[ResultDuplicate].Inc()
 		return
 	}
+	l.enqueue(ev)
+}
+
+func (l *Listener) enqueue(ev *querylog.Event) {
 	if l.o.Collector.Enqueue(ev) {
 		l.frames[ResultRecorded].Inc()
 	} else {
@@ -816,6 +936,18 @@ func (q *fifo) peek() *ingest {
 		return nil
 	}
 	return q.items[q.head]
+}
+
+// compact keeps only the entries keep reports true, in their order.
+func (q *fifo) compact(keep func(*ingest) bool) {
+	kept := q.items[:0]
+	for _, it := range q.items[q.head:] {
+		if keep(it) {
+			kept = append(kept, it)
+		}
+	}
+	clear(q.items[len(kept):])
+	q.items, q.head = kept, 0
 }
 
 func (q *fifo) pop() {

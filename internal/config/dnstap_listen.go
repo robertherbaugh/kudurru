@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 )
 
@@ -20,7 +21,8 @@ const (
 	// the senders one listener serves at a time.
 	DefaultDnstapListenConnections = 16
 	MaxDnstapListenConnections     = 256
-	// MaxDnstapListenEntries bounds allowFrom, identities and ignoreClients.
+	// MaxDnstapListenEntries bounds allowFrom, identities,
+	// unforwardedIdentities and ignoreClients.
 	MaxDnstapListenEntries = 64
 )
 
@@ -41,6 +43,13 @@ type DnstapListener struct {
 	// Identities, when set, are the only dnstap identities accepted;
 	// messages with another identity are counted and dropped.
 	Identities []string `koanf:"identities" json:"identities"`
+	// UnforwardedIdentities are the identities of senders that report only
+	// the answers they give themselves and never a query they forwarded
+	// to kudurru, such as the managed edge (kudurru edge --dnstap-target):
+	// their messages are recorded without the duplicate check, because a
+	// query this node answered from the same client port (the cache miss
+	// before a cache hit) is a different client query.
+	UnforwardedIdentities []string `koanf:"unforwardedIdentities" json:"unforwardedIdentities"`
 	// IgnoreClients drops messages whose client address lies in one of
 	// these prefixes, e.g. this node's own address when the sender is a
 	// resolver kudurru forwards to.
@@ -138,7 +147,7 @@ func (l *Listeners) validateDnstap() []error {
 		for _, list := range []struct {
 			name   string
 			values []string
-		}{{"allowFrom", d.AllowFrom}, {"identities", d.Identities}, {"ignoreClients", d.IgnoreClients}} {
+		}{{"allowFrom", d.AllowFrom}, {"identities", d.Identities}, {"unforwardedIdentities", d.UnforwardedIdentities}, {"ignoreClients", d.IgnoreClients}} {
 			if len(list.values) > MaxDnstapListenEntries {
 				errs = append(errs, fmt.Errorf("%s.%s: at most %d entries", at, list.name, MaxDnstapListenEntries))
 			}
@@ -149,9 +158,20 @@ func (l *Listeners) validateDnstap() []error {
 		if _, err := d.IgnoredClients(); err != nil {
 			errs = append(errs, fmt.Errorf("%s.ignoreClients: %w", at, err))
 		}
-		for _, id := range d.Identities {
-			if id == "" || len(id) > MaxDnstapIdentity || strings.ContainsFunc(id, func(r rune) bool { return r < ' ' || r == 0x7f }) {
-				errs = append(errs, fmt.Errorf("%s.identities: use 1 to %d characters without control characters", at, MaxDnstapIdentity))
+		for _, list := range []struct {
+			name   string
+			values []string
+		}{{"identities", d.Identities}, {"unforwardedIdentities", d.UnforwardedIdentities}} {
+			for _, id := range list.values {
+				if id == "" || len(id) > MaxDnstapIdentity || strings.ContainsFunc(id, func(r rune) bool { return r < ' ' || r == 0x7f }) {
+					errs = append(errs, fmt.Errorf("%s.%s: use 1 to %d characters without control characters", at, list.name, MaxDnstapIdentity))
+					break
+				}
+			}
+		}
+		for _, id := range d.UnforwardedIdentities {
+			if len(d.Identities) > 0 && !slices.Contains(d.Identities, id) {
+				errs = append(errs, fmt.Errorf("%s.unforwardedIdentities: %q is not in identities, so its messages are never recorded", at, id))
 				break
 			}
 		}

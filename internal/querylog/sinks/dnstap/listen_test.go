@@ -15,6 +15,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -22,6 +24,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sinks/dnstap"
@@ -550,4 +553,179 @@ func selfSignedPair(t *testing.T) (certPEM, keyPEM []byte) {
 		t.Fatal(err)
 	}
 	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+}
+
+// flakyListener fails its first Accept calls the way a process out of file
+// descriptors does.
+type flakyListener struct {
+	net.Listener
+	fails atomic.Int32
+}
+
+func (f *flakyListener) Accept() (net.Conn, error) {
+	if f.fails.Add(-1) >= 0 {
+		return nil, &net.OpError{Op: "accept", Net: "tcp", Err: os.NewSyscallError("accept4", syscall.EMFILE)}
+	}
+	return f.Listener.Accept()
+}
+
+// TestListenRetriesAcceptErrors: an Accept error such as EMFILE is not a
+// reason to stop. The listener counts it, waits and accepts again, so the
+// node (whose runner treats a failed runnable as fatal) keeps serving DNS
+// and the sender gets through; Serve returns nil once it is closed.
+func TestListenRetriesAcceptErrors(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flaky := &flakyListener{Listener: ln}
+	flaky.fails.Store(3)
+	rec, metrics := &recorder{}, dnstap.NewListenMetrics(nil)
+	l, err := dnstap.Listen(dnstap.ListenOptions{Settings: config.DnstapListener{Address: "tcp:" + ln.Addr().String(), AllowFrom: []string{"127.0.0.1"}}, Listener: flaky, Collector: rec, Metrics: metrics, Hold: 10 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := make(chan error, 1)
+	go func() { served <- l.Serve(context.Background()) }()
+	s := dialSender(t, ln.Addr().String())
+	_, r := clientMessages(t, "after-emfile.example.", 1, 1, time.Now())
+	s.send("edge-1", r)
+	waitEvents(t, rec, 1)
+	if got := testutil.ToFloat64(metrics.Connections.WithLabelValues(l.Name(), dnstap.ConnAcceptFailed)); got != 3 {
+		t.Fatalf("accept_failed = %v, want 3", got)
+	}
+	select {
+	case err := <-served:
+		t.Fatalf("Serve ended on an accept error: %v", err)
+	default:
+	}
+	_ = l.Close()
+	select {
+	case err := <-served:
+		if err != nil {
+			t.Fatalf("Serve after Close: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the listener did not stop")
+	}
+}
+
+// TestListenRetryWaitEndsAtClose: Close ends the wait between retries at
+// once, even when every Accept fails.
+func TestListenRetryWaitEndsAtClose(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flaky := &flakyListener{Listener: ln}
+	flaky.fails.Store(1 << 30)
+	l, err := dnstap.Listen(dnstap.ListenOptions{Settings: config.DnstapListener{Address: "tcp:" + ln.Addr().String(), AllowFrom: []string{"127.0.0.1"}}, Listener: flaky, Collector: &recorder{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	served := make(chan error, 1)
+	go func() { served <- l.Serve(ctx) }()
+	time.Sleep(1500 * time.Millisecond) // the wait has reached its 1 s cap
+	start := time.Now()
+	cancel()
+	select {
+	case err := <-served:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the listener did not stop")
+	}
+	if waited := time.Since(start); waited > 500*time.Millisecond {
+		t.Fatalf("Serve took %v to stop after its context ended", waited)
+	}
+}
+
+// TestListenUnforwardedIdentitySkipsTheDedupCheck: the managed edge logs
+// only cache hits and its own answers, so the query it forwarded before
+// (a cache miss, which this node logged) is never claimed by a message of
+// its own. A cache hit of the same question from the same client port a
+// moment later is another client query and must be recorded; a sender that
+// is not listed (an operator rule that logs relayed responses) is still
+// checked.
+func TestListenUnforwardedIdentitySkipsTheDedupCheck(t *testing.T) {
+	dedup := querylog.NewDedupIndex(0, 0)
+	f := startListener(t, config.DnstapListener{UnforwardedIdentities: []string{"edge-1"}}, dnstap.ListenOptions{Dedup: dedup})
+	miss := time.Now().Add(-2 * time.Second)
+	for _, name := range []string{"repeat.example.", "relayed.example."} {
+		dedup.Record(&querylog.Event{Time: miss, Client: client, ClientPort: 40000, Name: name, QType: dns.TypeA, QClass: dns.ClassINET})
+	}
+	s := dialSender(t, f.addr)
+	_, hit := clientMessages(t, "repeat.example.", 1, 40000, miss.Add(1500*time.Millisecond))
+	_, relayed := clientMessages(t, "relayed.example.", 2, 40000, miss)
+	s.send("edge-1", hit)
+	s.send("edge-relay", relayed)
+	events := waitEvents(t, f.rec, 1)
+	if events[0].Name != "repeat.example." || events[0].Origin != "edge-1" {
+		t.Fatalf("recorded %+v, want the cache hit", events[0])
+	}
+	if f.count(dnstap.ResultRecorded) != 1 || f.count(dnstap.ResultDuplicate) != 1 {
+		t.Fatalf("recorded %v duplicate %v, want 1 and 1", f.count(dnstap.ResultRecorded), f.count(dnstap.ResultDuplicate))
+	}
+	if dedup.Len() != 1 {
+		t.Fatalf("index holds %d queries; the cache miss must stay unclaimed", dedup.Len())
+	}
+}
+
+// TestListenSlowAnswerIsOneRow: a front end that logs CLIENT_QUERY and
+// CLIENT_RESPONSE forwards a query that kudurru answers only after 2.5 s
+// (an upstream timeout). The default pairing wait outlasts kudurru's own
+// pipeline bound, so the query is still waiting when kudurru's event and
+// then the response arrive: one claimed pair, no row from dnstap.
+func TestListenSlowAnswerIsOneRow(t *testing.T) {
+	if dnstap.DefaultPairWait <= dnsserver.DefaultQueryTimeout {
+		t.Fatalf("DefaultPairWait %v does not outlast the pipeline bound %v", dnstap.DefaultPairWait, dnsserver.DefaultQueryTimeout)
+	}
+	dedup := querylog.NewDedupIndex(0, 0)
+	f := startListener(t, config.DnstapListener{}, dnstap.ListenOptions{Dedup: dedup, PairWait: dnstap.DefaultPairWait})
+	s := dialSender(t, f.addr)
+	at := time.Now()
+	q, r := clientMessages(t, "slow.example.", 9, 41000, at)
+	r.ResponseTime = at.Add(2500 * time.Millisecond)
+	s.send("edge-1", q)
+	time.Sleep(2500 * time.Millisecond)
+	dedup.Record(&querylog.Event{Time: at.Add(time.Millisecond), Client: client, ClientPort: 41000, Name: "slow.example.", QType: dns.TypeA, QClass: dns.ClassINET})
+	s.send("edge-1", r)
+	waitFor(t, "the pair", func() bool { return f.count(dnstap.ResultDuplicate) == 1 })
+	time.Sleep(400 * time.Millisecond)
+	if n := len(f.rec.list()); n != 0 || f.count(dnstap.ResultPaired) != 1 {
+		t.Fatalf("%d rows from dnstap (paired %v) for a query this node logged", n, f.count(dnstap.ResultPaired))
+	}
+}
+
+// TestListenShiftsASkewedClock: a sender whose clock is an hour ahead (or
+// that sends a time from 1971) does not date rows there: the row gets the
+// receive time, keeps its latency, and is counted.
+func TestListenShiftsASkewedClock(t *testing.T) {
+	f := startListener(t, config.DnstapListener{}, dnstap.ListenOptions{})
+	s := dialSender(t, f.addr)
+	before := time.Now()
+	_, ahead := clientMessages(t, "ahead.example.", 1, 1, before.Add(time.Hour))
+	_, past := clientMessages(t, "past.example.", 2, 2, time.Unix(31536000, 0))
+	_, fine := clientMessages(t, "fine.example.", 3, 3, before.Add(-time.Minute))
+	s.send("edge-1", ahead)
+	s.send("edge-1", past)
+	s.send("edge-1", fine)
+	events := waitEvents(t, f.rec, 3)
+	after := time.Now()
+	for _, ev := range events {
+		if ev.Name == "fine.example." {
+			if !ev.Time.Equal(fine.QueryTime) {
+				t.Fatalf("a time within the skew bound was changed: %v, sent %v", ev.Time, fine.QueryTime)
+			}
+			continue
+		}
+		if ev.Time.Before(before.Add(-time.Second)) || ev.Time.After(after) || ev.Latency != 4*time.Millisecond {
+			t.Fatalf("%s dated %v (latency %v), want between %v and %v", ev.Name, ev.Time, ev.Latency, before, after)
+		}
+	}
+	if got := testutil.ToFloat64(f.metrics.ClockSkew.WithLabelValues(f.l.Name())); got != 2 {
+		t.Fatalf("clock_skew = %v, want 2", got)
+	}
 }

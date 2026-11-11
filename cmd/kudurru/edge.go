@@ -106,7 +106,7 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 	fl.StringVar(&f.serverID, "server-id", "", "dnsdist general.server_id; default the host name")
 	fl.IntVar(&f.threads, "threads", 2, "Do53 listener threads")
 	fl.StringVar(&f.dnstapTarget, "dnstap-target", "", "send dnstap of the answers dnsdist gives itself (packet cache, own rules) to a kudurru listeners.dnstap entry: tcp:ip:port or unix:/path")
-	fl.StringVar(&f.dnstapIdentity, "dnstap-identity", "", "dnstap identity of the edge's messages; default the server id")
+	fl.StringVar(&f.dnstapIdentity, "dnstap-identity", "", "dnstap identity of the edge's messages; default the server id. List it in unforwardedIdentities of the kudurru listener")
 	if run {
 		fl.StringVar(&f.dnsdistBin, "dnsdist-bin", "dnsdist", "dnsdist executable")
 		fl.StringVar(&f.dnsdistUser, "dnsdist-user", "", "uid[:gid] dnsdist switches to after binding its sockets and creating the eBPF maps (dnsdist --uid/--gid), for a supervisor started as root; dnsdist keeps only capabilities_to_retain")
