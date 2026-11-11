@@ -50,14 +50,20 @@ class GoTestBatches(unittest.TestCase):
 
     def test_failed_batch_does_not_replay_or_omit_remaining_tests(self):
         names = [f"TestCase{index}" for index in range(201)] + ["FuzzParse", "Example"]
+        names += list(runner.NORACE_TESTS)
         commands = []
+        timing = []
 
         def run(argv, **kwargs):
             self.assertEqual(kwargs["env"]["CGO_ENABLED"], "1")
-            commands.append(argv)
             if argv[1] == "list":
+                commands.append(argv)
                 return subprocess.CompletedProcess(argv, 0,
                     runner.COMMAND_PACKAGE + "\nexample.org/other\n")
+            if "-race" not in argv:
+                timing.append(argv)
+                return subprocess.CompletedProcess(argv, 0)
+            commands.append(argv)
             self.assertIn("-race", argv)
             self.assertIn("-count=1", argv)
             self.assertIn("-timeout=30m", argv)
@@ -73,6 +79,40 @@ class GoTestBatches(unittest.TestCase):
         for name in names:
             self.assertEqual(sum(bool(re.fullmatch(pattern, name)) for pattern in selections), 1)
         self.assertEqual(commands[-1][-1], "example.org/other")
+        self.assertEqual(timing, [["go", "test", "-count=1", "-timeout=30m",
+                                   "-run=^(" + "|".join(runner.NORACE_TESTS) + ")$",
+                                   runner.COMMAND_PACKAGE]])
+
+    def test_timing_tests_run_without_race_and_their_failure_counts(self):
+        names = ["TestOther"] + list(runner.NORACE_TESTS)
+        commands = []
+
+        def run(argv, **kwargs):
+            commands.append(argv)
+            if argv[1] == "list":
+                return subprocess.CompletedProcess(argv, 0, runner.COMMAND_PACKAGE + "\n")
+            if "-json" in argv:
+                return subprocess.CompletedProcess(argv, 0, discovery(names))
+            return subprocess.CompletedProcess(argv, 0 if "-race" in argv else 1)
+
+        with patch.object(runner.subprocess, "run", side_effect=run), redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.execute([runner.COMMAND_PACKAGE], "30m"), 1)
+        self.assertNotIn("-race", commands[-1])
+        self.assertEqual(sum("-race" not in command for command in commands[1:]), 1)
+
+    def test_renamed_timing_test_refuses_before_running(self):
+        commands = []
+
+        def run(argv, **kwargs):
+            commands.append(argv)
+            if argv[1] == "list":
+                return subprocess.CompletedProcess(argv, 0, runner.COMMAND_PACKAGE + "\n")
+            return subprocess.CompletedProcess(argv, 0, discovery(["TestOther"]))
+
+        with patch.object(runner.subprocess, "run", side_effect=run), \
+                redirect_stdout(io.StringIO()), self.assertRaises(ValueError):
+            runner.execute([runner.COMMAND_PACKAGE], "30m")
+        self.assertEqual(len(commands), 2)
 
     def test_shard_without_command_package_uses_original_race_invocation(self):
         responses = [subprocess.CompletedProcess([], 0, "example.org/one\n"),

@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Run the race suite, bounding the large command package by test inventory."""
+"""Run the race suite, bounding the large command package by test inventory.
+
+A few timing tests of the command package assert their strict bound only
+without the race detector, which slows publication about tenfold. They run a
+second time, without it, after the race batches (NORACE_TESTS).
+"""
 
 import argparse
 import json
@@ -13,6 +18,9 @@ import sys
 COMMAND_PACKAGE = "github.com/robertherbaugh/kudurru/cmd/kudurru"
 TEST_NAME = re.compile(r"(?:Test|Example|Fuzz)\w*\Z")
 MAX_BATCH_NAMES = 100
+# Command tests whose strict timing assertion is compiled in only without the
+# race detector (cmd/kudurru/norace_test.go). Each must be in the inventory.
+NORACE_TESTS = ("TestRunServeSQLiteLongApplyKeepsServingDNSAndReads",)
 
 
 def inventory(output, package):
@@ -62,6 +70,10 @@ def execute(patterns, timeout):
             env=env, text=True, stdout=subprocess.PIPE, check=True,
         )
         names = inventory(discovery.stdout, COMMAND_PACKAGE)
+        missing = sorted(set(NORACE_TESTS) - set(names))
+        if missing:
+            raise ValueError("timing tests not in the command inventory: "
+                             + ", ".join(missing))
         groups = batches(names)
         print(f"{COMMAND_PACKAGE}: {len(names)} compiled tests/examples/fuzz "
               f"targets in {len(groups)} disjoint batches", flush=True)
@@ -76,6 +88,14 @@ def execute(patterns, timeout):
                 check=False,
             )
             failed = failed or result.returncode != 0
+        print("Command timing tests without the race detector: "
+              + ", ".join(NORACE_TESTS), flush=True)
+        result = subprocess.run(
+            ["go", "test", "-count=1", "-timeout=" + timeout,
+             "-run=^(" + "|".join(NORACE_TESTS) + ")$", COMMAND_PACKAGE],
+            env=env, check=False,
+        )
+        failed = failed or result.returncode != 0
         packages.remove(COMMAND_PACKAGE)
     if packages:
         result = subprocess.run([*flags, *packages], env=env, check=False)

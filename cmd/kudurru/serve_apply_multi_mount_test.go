@@ -420,6 +420,8 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	// the race detector on a loaded machine one publication takes up to ten
 	// seconds by the end of the request, and a read that waits for it is
 	// refused with generation_pending; the request still lets reads through.
+	// `make test` (hack/go-test.py, NORACE_TESTS) runs this test a second
+	// time without the race detector, so CI asserts the strict bound.
 	if !raceEnabled && failed > 0 {
 		t.Fatalf("%d reads of a second caller were refused during one request (%d answered); last: %s", failed, len(reads), readError)
 	}
