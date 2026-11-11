@@ -92,6 +92,10 @@ func (s *Store) resolve(ctx context.Context, chosen *replication.Validated, req 
 		generation := *req.ExpectedDivergence
 		req.ExpectedDivergence = &generation
 	}
+	if req.AbandonTerm != nil {
+		term := *req.AbandonTerm
+		req.AbandonTerm = &term
+	}
 	if _, err := s.ValidateImage(ctx, image); err != nil {
 		return replication.Authority{}, err
 	}
@@ -170,7 +174,15 @@ func (s *Store) resolveConflict(ctx context.Context, image replication.Image, re
 	if s.writeBlocked.Load() {
 		return a, replication.ErrFenced
 	}
-	if a.Conflict == nil && a.Divergence == nil {
+	// A fenced member that holds no image of its current term can be stranded
+	// there for good: its writer is lost, and no member that followed it
+	// remains to be promoted (for a managed member, one that refuses that
+	// writer's branch, D369). Only an exact named abandonment resolves it.
+	if req.AbandonTerm != nil {
+		if a.Mode != replication.Fenced || a.Conflict != nil || a.Divergence != nil || !a.Term.Same(*req.AbandonTerm) {
+			return a, replication.ErrCAS
+		}
+	} else if a.Conflict == nil && a.Divergence == nil {
 		return a, replication.ErrCAS
 	}
 	if !a.Term.Same(req.ExpectedTerm) || !sameConflict(a.Conflict, req.ExpectedConflict) || !sameDivergence(a.Divergence, req.ExpectedDivergence) {
@@ -181,6 +193,9 @@ func (s *Store) resolveConflict(ctx context.Context, image replication.Image, re
 		return a, err
 	}
 	if !current.Same(req.ExpectedInstalled) {
+		return a, replication.ErrCAS
+	}
+	if req.AbandonTerm != nil && (current.Term.ClusterID != a.Term.ClusterID || current.Term.Epoch >= a.Term.Epoch || !image.Generation().Same(current)) {
 		return a, replication.ErrCAS
 	}
 	selected := image.Generation().Same(current) || (a.Conflict != nil && image.Term.Same(*a.Conflict)) || (a.Divergence != nil && image.Generation().Same(*a.Divergence))

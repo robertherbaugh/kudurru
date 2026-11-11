@@ -260,7 +260,15 @@ type ResolveRequest struct {
 	ExpectedInstalled  Generation
 	ExpectedConflict   *Term
 	ExpectedDivergence *Generation
-	RequestID          string
+	// AbandonTerm, when set, is the exact higher term that fenced this member
+	// before it installed any image of that term, with no conflict or
+	// divergence recorded. Setting it is the operator's assertion that the
+	// writer of that term and every member that followed it are lost for good:
+	// the member keeps its own installed branch under a new epoch and the
+	// abandoned term's writes are not replayed (D369). It never applies to a
+	// member that holds an image of its current term.
+	AbandonTerm *Term
+	RequestID   string
 }
 
 // SectionNames returns the fixed ownership registry. New sections require a
