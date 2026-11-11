@@ -12,7 +12,7 @@ resources:
   policies: [read, write, delete]
   clientgroups: [read, write, delete]
   clients: [read, write]
-  querylog: [read, export, purge]
+  querylog: [read, export, purge, raw]
   stats: [read]
   cache: [read, flush]
   blocking: [read, toggle]

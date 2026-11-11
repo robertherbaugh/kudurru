@@ -480,6 +480,22 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 		out.Body.Persisted = &persisted
 		return out, nil
 	}
+	// A raw dnstap sink sends what querylog.privacy hides (D372): a change
+	// of querylog.sinks that leaves one in place needs querylog.raw on top
+	// of settings.write, and is audited as querylog.raw. Removing every raw
+	// sink needs only settings.write.
+	rawSinks := slices.Contains(paths, config.QuerylogSinksKey) && len(config.RawQuerylogSinks(next.Querylog)) > 0
+	if rawSinks {
+		if err := s.require(ctx, "querylog", "raw", clusterScope, ""); err != nil {
+			return nil, err
+		}
+	}
+	auditRaw := func(err error) {
+		if rawSinks {
+			s.recordAction(ctx, "querylog.raw", audit.Resource{Kind: "querylog", Name: "raw"}, err,
+				map[string]any{"rawSinks": config.RawQuerylogSinks(cur.Querylog)}, map[string]any{"rawSinks": config.RawQuerylogSinks(next.Querylog)})
+		}
+	}
 	before := map[string]any{}
 	after := map[string]any{}
 	old := flatSettings(cur)
@@ -499,6 +515,7 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 	if managed {
 		err := s.opts.SettingsOwnership.Write(ctx, expected, next, paths)
 		s.recordAction(ctx, "settings.write", audit.Resource{Kind: "settings", Name: string(scope)}, err, before, after)
+		auditRaw(err)
 		if err != nil {
 			return nil, ownershipError(err)
 		}
@@ -506,6 +523,7 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 	} else if writer != nil && scope == config.ScopeCluster {
 		if err := writer.WriteSettings(ctx, next, paths); err != nil {
 			s.recordAction(ctx, "settings.write", audit.Resource{Kind: "settings", Name: string(scope)}, err, before, after)
+			auditRaw(err)
 			return nil, storeError(err)
 		}
 		persisted = true
@@ -521,6 +539,7 @@ func (s *Server) patchSettingsExpected(ctx context.Context, scope config.Scope, 
 	}
 	if !managed {
 		s.recordAction(ctx, "settings.write", audit.Resource{Kind: "settings", Name: string(scope)}, nil, before, after)
+		auditRaw(nil)
 	}
 	out := s.settingsBody(next, scope, paths, restart)
 	out.Body.Persisted = &persisted
