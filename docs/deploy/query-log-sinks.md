@@ -444,7 +444,7 @@ default.
 | `queueSize` | 10000 | 100 to 100000 | queries that may wait for this destination |
 | `batchSize` | 1000 | 1 to 10000, at most `queueSize` | queries per write |
 | `flushInterval` | 1s | 100ms to 1m | longest wait before a partial batch is sent |
-| `timeout` | 10s | 1s to 2m | opening the destination and each write attempt |
+| `timeout` | 10s | 1s to 2m | opening the destination and each write attempt; with 4s or less, a batch of 64 KiB or more is sent without first asking for `100 Continue` |
 | `attempts` | 3 | 1 to 10 | writes of one batch when nothing was sent or the destination answered that it may be sent again; 1 never retries |
 | `retryBackoff` | 1s | 100ms to 1m | wait before the second attempt; doubles up to 30s |
 

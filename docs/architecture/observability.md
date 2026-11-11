@@ -281,11 +281,16 @@ every later error without an answer means the outcome is unknown. Only the
 first is repeated. A body of 64 KiB or more is sent with
 `Expect: 100-continue` (waiting at most 2 s for the interim answer), so a
 destination that refuses a request at its headers and closes the
-connection is heard instead of resetting it under the body. ClickHouse
+connection is heard instead of resetting it under the body. An attempt
+with 4 s or less left (a sink `timeout` of a few seconds) sends the body at
+once without asking, because a server that ignores the header would
+otherwise get it too late for an answer within the attempt; a refusal at
+the headers is then heard as described next. ClickHouse
 sends "100 Continue" before it checks the password and then resets the
 connection under the body; the client's connections therefore hide the
 write error of a reset, so that the transport reads the answer that
-arrived before it. A 2xx that arrives before the whole body was written,
+arrived before it. A 2xx that arrives before the whole body was written (also
+one to the headers alone, for which the transport sends no body at all),
 or on a connection that was reset under it, is an unknown outcome.
 An answer of
 408, 429 or 5xx is repeated within the attempt budget: the destination
