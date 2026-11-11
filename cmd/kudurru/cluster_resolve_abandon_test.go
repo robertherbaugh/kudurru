@@ -103,7 +103,7 @@ func editedReview(t *testing.T, path, from, to string) string {
 		t.Fatal("saved review does not carry exactly one reason", from, string(raw))
 	}
 	edited := filepath.Join(t.TempDir(), "edited-resolution.json")
-	if err := os.WriteFile(edited, []byte(strings.Replace(string(raw), old, `"reason":"`+to+`"`, 1)), 0o600); err != nil {
+	if err := os.WriteFile(edited, []byte(strings.Replace(string(raw), old, `"reason":"`+to+`"`, 1)), 0o600); err != nil { //nolint:gosec // G703: the test's temp directory
 		t.Fatal(err)
 	}
 	return edited
