@@ -493,8 +493,11 @@ the API together, and the API would then not be there to correct it. `Apply`
 therefore refuses a DNSZone of a type no release serves (`external`,
 `catalog`, `secondaryCatalog`), with a query, transfer or notify policy that
 does not compile, a primary zone whose `spec.policy.update` is neither
-`deny` nor `allow` (the only update modes the primary runtime compiles),
-a zone with the zone name of another DNSZone, and a zone created under a
+`deny` nor `allow` (the only update modes the primary runtime compiles) or
+whose `spec.policy.updatePolicies` has an entry the primary runtime cannot
+compile (a key name that is not a name, an owner outside the zone, a type an
+update cannot carry, or more than the policy's bounds; checked whatever the
+update mode, as the runtime compiles every entry), a zone with the zone name of another DNSZone, and a zone created under a
 new object name for the zone name of a deleted zone whose lifecycle the
 primary runtime still keeps (the image refuses two lifecycles for one apex;
 re-creating the zone under its earlier object name continues that
@@ -507,14 +510,25 @@ the controller reports them on the one zone.
 Other objects are not refused; the image builders leave out what they
 cannot use and report it on the object. A record set that names a forward
 zone is stored by both drivers and reported on the record set; the zone
-holds no records and is served as before. An endpoint the primary zone
-builder refuses (a CNAME next to other data, a CNAME or NS endpoint at the
-apex, a duplicate) is left out of the zone's commit and its record set is
-reported `withheld` with the reason. A block list source whose URL or
-ConfigMap has never been fetched successfully, and whose failure the fetcher
-has published on the list, is compiled empty, and the list reports the
-failure; a source the fetcher has not tried yet still holds back the
-candidate until it has been tried.
+holds no records and is served as before. Everything the primary zone
+builder refuses of a record set is left out of the zone's commit, and the
+rest of the zone is committed and served: a record set that is invalid as a
+whole (an endpoint that parses in no zone, such as an `A` target that is not
+an address, an unknown record type or an `MX` without a preference, or two
+endpoints with one name, type and set identifier) is projected `withheld`
+with the reason; so is a record set none of whose endpoints the zone can
+hold (outside the zone, a CNAME or NS endpoint at the apex), and one whose
+endpoints conflict with an earlier record set is projected `duplicated`. A
+record set that has some endpoints served is projected `served`. In every
+case the record set's status conditions name each refused endpoint, as the
+controller reports them on both drivers. A block list source (URL or
+ConfigMap) for which no body was ever published is compiled empty: its
+first download has not finished (the URL may accept the connection and
+never answer), or it failed. The list reports the failure meanwhile, and
+the download that publishes the source's digest prepares a new candidate
+with the body. A source whose published digest this node's cache does not
+hold (another node fetched it) still holds back the candidate until the
+body arrives.
 
 Each database carries a schema version. A file newer than the binary stops
 the process with an explanation; an older one is migrated in one
@@ -530,8 +544,8 @@ transaction is rolled back and the process exits naming every such object.
 release still runs on it, and the objects are corrected there
 ([runbook](../deploy/runbooks.md#upgrade-refused-stored-objects-are-not-valid-in-this-release)).
 0.1.0 stored secondary and stub zones without their configuration, zones of
-types it did not serve, several DNSZones for one zone name, update modes it
-did not implement and free-form policy rewrites; without this check the migration committed and the node
+types it did not serve, several DNSZones for one zone name, update modes and update
+grants it did not implement and free-form policy rewrites; without this check the migration committed and the node
 then served nothing, on a schema 0.1.0 no longer opens. A database that is
 already on the current schema is opened as it is.
 

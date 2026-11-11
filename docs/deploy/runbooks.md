@@ -473,6 +473,7 @@ What 0.1 stored and 0.2 does not accept:
 | Two or more DNSZones with one `spec.zoneName` | Keep one and delete the others. 0.1 kept serving the zone as it was before the second object appeared, and later changes to either object had no effect. |
 | DNSZone with an entry in `spec.policy.queryACL` or `transferACL` that is not an address or a network, or an entry in `notifyTargets` that is not an address | 0.1 reported it on the zone and did not serve the zone. Correct the entry. |
 | Primary DNSZone with `spec.policy.update` other than `deny` or `allow` | Updates were not implemented in 0.1, which stored any access mode. Set `deny`, or `allow` with `updatePolicies`. |
+| Primary DNSZone with a `spec.policy.updatePolicies` entry whose `name` is outside the zone (or has a `*` other than a leading `*.`), whose `types` name a type that does not exist or that an update cannot carry, or whose `tsigKeyRef` is empty | Updates were not implemented in 0.1, which stored any grant; this release compiles every entry, also of a zone that denies updates. Correct or remove the entry. |
 | Policy with `spec.rewrites` entries that have neither `targets` nor `cname`, have both, or have a `type` that is not one of the listed record types in upper case | 0.1 stored rewrites and did not apply them. Correct or remove the entries. |
 
 A secondary or stub zone that 0.1 stored with its configuration is valid: it
@@ -484,11 +485,14 @@ After the upgrade the same rules apply to every change: the API answers
 created under a new object name for the zone name of a zone deleted on this
 node is also refused, naming the deleted object: create it under that name.
 
-Two things 0.1 stored are not refused and are served as 0.1 served them: a
-record set endpoint that the zone cannot hold (a CNAME next to other data, a
-CNAME or NS endpoint at the apex) is left out and reported on its record
-set, and a block list whose URL has never downloaded is served empty and
-reported as failing until the URL answers.
+Two things 0.1 stored are not refused and are served as 0.1 served them:
+whatever the zone cannot hold of a record set (an endpoint that does not
+parse, such as an `A` target that is not an address, two endpoints for one
+name and type, a CNAME next to other data, a CNAME or NS endpoint at the
+apex) is left out and reported on its record set, and a block list whose URL
+has never downloaded is served empty and reported as failing until the URL
+answers. A block list whose URL accepts the connection and does not answer
+is also served empty while the download runs.
 
 A primary zone that has a child zone (for example `sub.example.test.` under
 `example.test.`) can answer `SERVFAIL` and keep readiness at 503 for up to
