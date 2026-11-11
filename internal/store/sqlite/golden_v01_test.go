@@ -30,7 +30,7 @@ import (
 // directory and returns its path.
 func releasedV01(t *testing.T, name string) string {
 	t.Helper()
-	f, err := os.Open(filepath.Join("testdata", "v0.1.0", name))
+	f, err := os.Open(filepath.Join("testdata", "v0.1.0", name)) //nolint:gosec // G304: a committed test fixture
 	if err != nil {
 		t.Fatal(err)
 	}

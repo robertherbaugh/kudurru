@@ -29,7 +29,7 @@ import (
 // returns its path and checksum.
 func releasedV01State(t *testing.T, cfg *config.Config, name string) (string, [32]byte) {
 	t.Helper()
-	f, err := os.Open(filepath.Join("..", "..", "internal", "store", "sqlite", "testdata", "v0.1.0", name))
+	f, err := os.Open(filepath.Join("..", "..", "internal", "store", "sqlite", "testdata", "v0.1.0", name)) //nolint:gosec // G304: a committed test fixture
 	if err != nil {
 		t.Fatal(err)
 	}

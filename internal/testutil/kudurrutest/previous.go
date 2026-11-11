@@ -183,7 +183,7 @@ func untar(r io.Reader, dst string) error {
 		if !filepath.IsLocal(h.Name) {
 			return fmt.Errorf("kudurrutest: archive entry %q leaves the directory", h.Name)
 		}
-		path := filepath.Join(dst, h.Name)
+		path := filepath.Join(dst, h.Name) //nolint:gosec // G305: filepath.IsLocal above refuses entries that leave dst
 		switch h.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(path, 0o750); err != nil {
