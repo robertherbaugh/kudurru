@@ -347,38 +347,128 @@ func (h *Host) ledgers(ctx context.Context, owner kinds.Owner, destination kinds
 	})
 }
 
-// ownerLedgers returns every ledger row of one Integration incarnation,
-// across all destinations. Publications come only from the destinations the
-// current spec names, so ordinary planning never sees the rows of a
-// destination that was removed from the spec; cleanup (D367) must see them
-// before it may conclude that the instance owns nothing.
-func (h *Host) ownerLedgers(ctx context.Context, owner kinds.Owner) ([]*kinds.IntegrationLedger, error) {
-	return scanPrivate(ctx, h, kinds.KindIntegrationLedger, func(l *kinds.IntegrationLedger) bool {
-		return l.Spec.Record.Owner == owner
-	})
-}
-
-// ownerOperations returns every durable operation of one Integration
-// incarnation: confirmed, abandoned, pending and never-reserved intents.
-// ledger.Repository.Forget removes them with their record.
-func (h *Host) ownerOperations(ctx context.Context, owner kinds.Owner) ([]*kinds.IntegrationOperation, error) {
-	return scanPrivate(ctx, h, kinds.KindIntegrationOperation, func(o *kinds.IntegrationOperation) bool {
-		return o.Spec.Record.Owner == owner
-	})
-}
-
-// strandedLedgers returns the rows whose destination is not among published,
-// the destinations the instance's current configuration reaches. No plan is
-// built for such a destination, so its rows can be neither confirmed absent
-// nor forgotten: cleanup reports them and never finishes over them silently.
-func strandedLedgers(rows []*kinds.IntegrationLedger, published []kinds.Destination) []*kinds.IntegrationLedger {
-	var out []*kinds.IntegrationLedger
-	for _, l := range rows {
-		if !slices.Contains(published, l.Spec.Record.Destination) {
-			out = append(out, l)
+// pagePrivate pages one private kind and hands visit the valid, isolated rows
+// keep selects, one stored page at a time, so a caller never holds more than
+// a page of a kind that has no bound of its own. limit bounds the rows read;
+// zero leaves the read to its context. visit returns false to stop early.
+//
+// visit may delete rows it was given. Pages are not one snapshot of the kind:
+// with a keyset continuation the read goes on behind the deleted rows, and
+// with an offset one it skips as many rows as were deleted. A caller that
+// must see every row therefore repeats the read until one finds nothing.
+func pagePrivate[T privateRow](ctx context.Context, h *Host, kind store.Kind, limit int, keep func(T) bool, visit func([]T) (bool, error)) error {
+	var absent T
+	continuation := ""
+	pages := map[string]bool{}
+	count := 0
+	for {
+		page, err := h.opts.Reader.List(ctx, kind, store.ListOptions{Limit: 256, Continue: continuation})
+		if err != nil {
+			return err
 		}
+		var rows []T
+		for _, o := range page.Items {
+			count++
+			if limit > 0 && count > limit {
+				return ErrCapacity
+			}
+			row, ok := o.(T)
+			if !ok || row == absent {
+				return ErrInvalid
+			}
+			if !keep(row) {
+				continue
+			}
+			if row.Validate() != nil || row.GetResourceVersion() == "" {
+				return ErrInvalid
+			}
+			rows = append(rows, row.DeepCopyObject().(T))
+		}
+		if len(rows) > 0 {
+			more, err := visit(rows)
+			if err != nil || !more {
+				return err
+			}
+		}
+		if page.Continue == "" {
+			return nil
+		}
+		if pages[page.Continue] || page.Continue == continuation {
+			return ErrInvalid
+		}
+		pages[page.Continue] = true
+		continuation = page.Continue
 	}
-	return out
+}
+
+// ledgerCounts counts the ledger rows of one Integration incarnation across
+// all destinations without holding them: total, and stranded, the ones whose
+// destination is not among published, the destinations the instance's
+// current configuration reaches. Publications come only from the
+// destinations the spec names, so ordinary planning never sees the rows of a
+// destination that was removed from it. No plan is built for such a
+// destination, so its rows can be neither confirmed absent nor forgotten:
+// cleanup (D367) reports them and never finishes over them silently. A row of
+// the owner that does not validate is an error, never an omission. The read
+// keeps the bound every ledger read of this host has: 100,000 rows.
+func (h *Host) ledgerCounts(ctx context.Context, owner kinds.Owner, published []kinds.Destination) (total, stranded int, err error) {
+	err = pagePrivate(ctx, h, kinds.KindIntegrationLedger, 100000, func(l *kinds.IntegrationLedger) bool {
+		return l.Spec.Record.Owner == owner
+	}, func(rows []*kinds.IntegrationLedger) (bool, error) {
+		for _, l := range rows {
+			total++
+			if !slices.Contains(published, l.Spec.Record.Destination) {
+				stranded++
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	return total, stranded, nil
+}
+
+// forgetBatchBytes bounds, with Host.forgetBatch, the operations one cleanup
+// run reads to forget them together with their ledger rows.
+const forgetBatchBytes = 8 << 20
+
+// operationPages visits the durable operations of one Integration
+// incarnation (confirmed, abandoned, pending and never-reserved intents) one
+// stored page at a time. Operations are never removed while an instance
+// lives, so their number has no bound; nothing here holds more than a page,
+// and the read ends with its context.
+func (h *Host) operationPages(ctx context.Context, owner kinds.Owner, visit func([]*kinds.IntegrationOperation) (bool, error)) error {
+	return pagePrivate(ctx, h, kinds.KindIntegrationOperation, 0, func(o *kinds.IntegrationOperation) bool {
+		return o.Spec.Record.Owner == owner
+	}, visit)
+}
+
+// operationBatch returns the first operations of one Integration incarnation
+// in store order: at most Host.forgetBatch of them and forgetBatchBytes, and
+// always one if there is one. ledger.Repository.Forget removes them with
+// their record; what a batch does not hold is forgotten later as leftovers.
+func (h *Host) operationBatch(ctx context.Context, owner kinds.Owner) ([]*kinds.IntegrationOperation, error) {
+	var out []*kinds.IntegrationOperation
+	bytes := 0
+	err := h.operationPages(ctx, owner, func(page []*kinds.IntegrationOperation) (bool, error) {
+		for _, op := range page {
+			encoded, err := json.Marshal(op)
+			if err != nil {
+				return false, ErrInvalid
+			}
+			if len(out) > 0 && (len(out) >= h.forgetBatch || bytes+len(encoded) > forgetBatchBytes) {
+				return false, nil
+			}
+			bytes += len(encoded)
+			out = append(out, op)
+		}
+		return true, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 func buildPreview(inputs []publicationInput) (*Preview, error) {
 	p := &Preview{}

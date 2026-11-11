@@ -68,6 +68,10 @@ const (
 	ReasonLocalStateRemains = "LocalStateRemains"
 	// ReasonCleanupFailed: a local read or write failed.
 	ReasonCleanupFailed = "CleanupFailed"
+	// ReasonCapacity: the instance or the store holds more than one of the
+	// bounded reads of a cleanup admits. Nothing was decided from a partial
+	// read; the run is repeated at the resync interval.
+	ReasonCapacity = "CapacityExceeded"
 )
 
 // PurgeResult counts what one Purge removed. All zero means nothing was left.
@@ -121,10 +125,12 @@ type terminatingOutcome struct {
 	// instance itself does, and a changed instance replaces the job.
 	stop bool
 	// again: the run made progress and more work is known to remain.
-	again  bool
-	reason string
-	result Result
-	err    error
+	again bool
+	// uncounted: the run was fenced before it counted what is left.
+	uncounted bool
+	reason    string
+	result    Result
+	err       error
 }
 
 // runTerminating is the lease of a terminating instance (D367). It repeats
@@ -175,6 +181,7 @@ func (h *Host) runTerminating(leaseCtx context.Context, j *job) {
 	interval = max(interval, time.Second)
 	var failures, fenced uint32
 	last := ""
+	var counted Result
 	for {
 		select {
 		case h.slots <- struct{}{}:
@@ -207,6 +214,14 @@ func (h *Host) runTerminating(leaseCtx context.Context, j *job) {
 		}
 		if ctx.Err() != nil {
 			return
+		}
+		if out.uncounted {
+			// A run that was fenced before it could count did not look: it
+			// keeps what the last run reported instead of claiming that
+			// nothing is left.
+			out.result = counted
+		} else {
+			counted = out.result
 		}
 		h.setLocal(j, PhaseTerminating, out.reason, out.result, true)
 		if out.reason != last {
@@ -269,14 +284,14 @@ func (h *Host) runTerminating(leaseCtx context.Context, j *job) {
 func (h *Host) terminate(ctx context.Context, j *job, st *terminatingLease) (terminatingOutcome, frame, ExecutionGuard) {
 	f, g, err := h.captured(j)
 	if err != nil {
-		return terminatingOutcome{reason: ReasonAuthorityChanged, err: ErrFenced}, frame{}, ExecutionGuard{}
+		return terminatingOutcome{reason: ReasonAuthorityChanged, uncounted: true, err: ErrFenced}, frame{}, ExecutionGuard{}
 	}
 	ctx, err = h.scopedOriginal(ctx, j, f, g)
 	if err != nil {
-		return terminatingOutcome{reason: ReasonAuthorityChanged, err: ErrFenced}, frame{}, ExecutionGuard{}
+		return terminatingOutcome{reason: ReasonAuthorityChanged, uncounted: true, err: ErrFenced}, frame{}, ExecutionGuard{}
 	}
 	if err := h.fence(ctx, j, g); err != nil {
-		return terminatingOutcome{reason: ReasonAuthorityChanged, err: ErrFenced}, f, g
+		return terminatingOutcome{reason: ReasonAuthorityChanged, uncounted: true, err: ErrFenced}, f, g
 	}
 	if g.Mode == GuardRelease {
 		st.summary.Released = true
@@ -285,42 +300,42 @@ func (h *Host) terminate(ctx context.Context, j *job, st *terminatingLease) (ter
 		}
 		return terminatingOutcome{done: true}, f, g
 	}
+	// What is left is counted before anything can stop the run, so every
+	// outcome reports it: the ledger rows of the instance not yet forgotten.
+	result := Result{}
+	total, _, err := h.ledgerCounts(ctx, f.instance.owner, nil)
+	if err != nil {
+		return failed(ctx, ReasonCleanupFailed, result, err), f, g
+	}
+	result.Remaining = total
 	if !st.inspected {
 		provider, err := h.opts.Factory(f.instance.definition.Spec.Type)
 		if err != nil || provider == nil {
-			return terminatingOutcome{reason: ReasonProviderUnavailable, err: ErrUnsupported}, f, g
+			return terminatingOutcome{reason: ReasonProviderUnavailable, result: result, err: ErrUnsupported}, f, g
 		}
 		_, st.publisher = provider.(Publisher)
 		st.inspected = true
 	}
-	result := Result{}
 	if st.publisher {
 		// Only a publisher can own provider-side records, and only its
 		// cleanup needs a credential and a reachable provider.
 		if f.instance.credentialError {
-			return terminatingOutcome{reason: ReasonCredentials, stop: true, err: ErrCredentials}, f, g
+			return terminatingOutcome{reason: ReasonCredentials, stop: true, result: result, err: ErrCredentials}, f, g
 		}
 		if st.provider == nil {
 			if err := h.provisionCleanup(ctx, j, f, st); err != nil {
 				return failed(ctx, ReasonProvisionFailed, result, err), f, g
 			}
 		}
-		clean, out := h.cleanupRecords(ctx, j, f, g, st)
+		clean, out := h.cleanupRecords(ctx, j, f, g, st, total)
 		if !clean {
 			return out, f, g
 		}
 		result = out.result
-	} else {
+	} else if total > 0 {
 		// No publisher ever wrote for this instance, so a ledger row of it has
 		// no destination this job could read.
-		rows, err := h.ownerLedgers(ctx, f.instance.owner)
-		if err != nil {
-			return failed(ctx, ReasonCleanupFailed, result, err), f, g
-		}
-		if len(rows) > 0 {
-			result.Remaining = len(rows)
-			return terminatingOutcome{reason: ReasonDestinationRemoved, result: result}, f, g
-		}
+		return terminatingOutcome{reason: ReasonDestinationRemoved, result: result}, f, g
 	}
 	if out, ok := h.forgetLeftovers(ctx, f, g, st, result); !ok {
 		return out, f, g
@@ -361,6 +376,8 @@ func failed(ctx context.Context, reason string, result Result, err error) termin
 		out.reason = ReasonPendingRecovery
 	case errors.Is(err, plan.ErrIncomplete):
 		out.reason = ReasonSnapshotIncomplete
+	case errors.Is(err, ErrCapacity), errors.Is(err, plan.ErrCapacity):
+		out.reason = ReasonCapacity
 	case ctx.Err() != nil:
 		// The run ended at its bound or with its lease; the caller decides.
 	default:
@@ -482,9 +499,15 @@ func (h *Host) cleanupPublications(ctx context.Context, j *job, f frame, g Execu
 // provider, receipt and confirm sequence, and a ledger row is forgotten once
 // a fresh complete reread shows its record absent. It reports clean only
 // when no record, ledger row or uncertain operation of the instance is left.
-// Anything it cannot remove is counted and named, never skipped.
-func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionGuard, st *terminatingLease) (bool, terminatingOutcome) {
-	result := Result{}
+// Anything it cannot remove is counted and named, never skipped. remaining is
+// the number of ledger rows the run started with; every outcome that stops
+// before the forgetting carries it.
+//
+// The ledger is read one configured destination at a time, as an ordinary
+// sync reads it, so cleanup admits every instance a sync admits. Rows of a
+// destination the configuration no longer names are only counted.
+func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionGuard, st *terminatingLease, remaining int) (bool, terminatingOutcome) {
+	result := Result{Remaining: remaining}
 	owner := f.instance.owner
 	inputs, err := h.cleanupPublications(ctx, j, f, g)
 	if err != nil {
@@ -534,7 +557,7 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 	}
 	observed := h.opts.Now()
 	published := make([]kinds.Destination, 0, len(inputs))
-	remaining, conflicts, unproven := 0, 0, 0
+	planned, conflicts, unproven := 0, 0, 0
 	// Rows that carry the owner's marker, and every provider ID a destination
 	// holds: a ledger row is forgotten only when neither still shows it.
 	marked := map[kinds.RecordIdentity]bool{}
@@ -545,7 +568,7 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 		if err != nil {
 			return false, failed(ctx, ReasonCleanupFailed, result, err)
 		}
-		remaining += len(p.Operations)
+		planned += len(p.Operations)
 		for _, kept := range p.Retained {
 			if kept.Reason == plan.RetainedUnproven {
 				unproven++
@@ -566,76 +589,83 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 		}
 		present[in.publication.Destination] = ids
 	}
-	rows, err := h.ownerLedgers(ctx, owner)
+	// Every ledger row of the instance, on any destination. The rows of the
+	// destinations read above are in their inputs; the others are stranded.
+	left, stranded, err := h.ledgerCounts(ctx, owner, published)
 	if err != nil {
 		return false, failed(ctx, ReasonCleanupFailed, result, err)
-	}
-	operations, err := h.ownerOperations(ctx, owner)
-	if err != nil {
-		return false, failed(ctx, ReasonCleanupFailed, result, err)
-	}
-	history := map[kinds.RecordIdentity][]*kinds.IntegrationOperation{}
-	for _, op := range operations {
-		history[op.Spec.Record] = append(history[op.Spec.Record], op)
-	}
-	stranded := strandedLedgers(rows, published)
-	left := len(rows)
-	for _, l := range rows {
-		ids, reachable := present[l.Spec.Record.Destination]
-		if !reachable {
-			continue
-		}
-		if l.Spec.Pending != nil {
-			result.Pending++
-			continue
-		}
-		// Nothing is forgotten at a key that still shows the owner's marker:
-		// the plan above deletes that record set or names why it stays.
-		if marked[l.Spec.Record] {
-			continue
-		}
-		proof := ledger.Observation{}
-		if l.Spec.ContentHash != "" || len(l.Spec.ProviderIDs) != 0 {
-			// The baseline still lists provider content, so no delete of this
-			// job confirmed its absence. It may go only when this fresh
-			// complete snapshot holds none of its provider IDs any more.
-			survives := false
-			for _, id := range l.Spec.ProviderIDs {
-				survives = survives || ids[id]
-			}
-			if survives {
-				unproven++
-				continue
-			}
-			proof = ledger.Observation{ObservedAt: observed}
-		}
-		ops := history[l.Spec.Record]
-		first := ops[:min(len(ops), ledger.MaxForgetOperations)]
-		if err := h.opts.Ledger.Forget(ctx, g.Ledger, l, first, proof); err != nil {
-			result.Remaining, result.Conflicts = left, conflicts+unproven
-			if errors.Is(err, ledger.ErrBaseline) {
-				// The observation aged past its bound; the next run rereads.
-				return false, terminatingOutcome{reason: ReasonCleanup, result: result, again: st.progress}
-			}
-			return false, failed(ctx, ReasonCleanupFailed, result, err)
-		}
-		left--
-		st.progress = true
-		st.summary.RecordsForgotten++
-		st.summary.OperationsForgotten += len(first)
 	}
 	result.Remaining = left
+	// A row leaves with the operations of its record that one bounded batch
+	// holds, read when the first row is due. The rest of a longer history is
+	// forgotten as leftovers once no ledger row is left.
+	var history map[kinds.RecordIdentity][]*kinds.IntegrationOperation
+	for _, in := range inputs {
+		ids := present[in.publication.Destination]
+		for _, l := range in.planInput.Ledger {
+			if l.Spec.Pending != nil {
+				result.Pending++
+				continue
+			}
+			// Nothing is forgotten at a key that still shows the owner's marker:
+			// the plan above deletes that record set or names why it stays.
+			if marked[l.Spec.Record] {
+				continue
+			}
+			proof := ledger.Observation{}
+			if l.Spec.ContentHash != "" || len(l.Spec.ProviderIDs) != 0 {
+				// The baseline still lists provider content, so no delete of this
+				// job confirmed its absence. It may go only when this fresh
+				// complete snapshot holds none of its provider IDs any more.
+				survives := false
+				for _, id := range l.Spec.ProviderIDs {
+					survives = survives || ids[id]
+				}
+				if survives {
+					unproven++
+					continue
+				}
+				proof = ledger.Observation{ObservedAt: observed}
+			}
+			if history == nil {
+				operations, err := h.operationBatch(ctx, owner)
+				if err != nil {
+					result.Conflicts = conflicts + unproven
+					return false, failed(ctx, ReasonCleanupFailed, result, err)
+				}
+				history = map[kinds.RecordIdentity][]*kinds.IntegrationOperation{}
+				for _, op := range operations {
+					history[op.Spec.Record] = append(history[op.Spec.Record], op)
+				}
+			}
+			ops := history[l.Spec.Record]
+			first := ops[:min(len(ops), ledger.MaxForgetOperations)]
+			if err := h.opts.Ledger.Forget(ctx, g.Ledger, l, first, proof); err != nil {
+				result.Conflicts = conflicts + unproven
+				if errors.Is(err, ledger.ErrBaseline) {
+					// The observation aged past its bound; the next run rereads.
+					return false, terminatingOutcome{reason: ReasonCleanup, result: result, again: st.progress}
+				}
+				return false, failed(ctx, ReasonCleanupFailed, result, err)
+			}
+			left--
+			result.Remaining = left
+			st.progress = true
+			st.summary.RecordsForgotten++
+			st.summary.OperationsForgotten += len(first)
+		}
+	}
 	result.Conflicts = conflicts + unproven
 	switch {
 	case result.Pending > 0:
 		return false, terminatingOutcome{reason: ReasonPendingRecovery, result: result}
-	case len(stranded) > 0:
+	case stranded > 0:
 		return false, terminatingOutcome{reason: ReasonDestinationRemoved, result: result}
 	case conflicts > 0:
 		return false, terminatingOutcome{reason: ReasonRecordsConflict, result: result}
 	case unproven > 0:
 		return false, terminatingOutcome{reason: ReasonOwnershipUnproven, result: result}
-	case left > 0 || remaining > 0:
+	case left > 0 || planned > 0:
 		// Record sets appeared or changed between the plan and the reread.
 		return false, terminatingOutcome{reason: ReasonCleanup, result: result, again: st.progress}
 	}
@@ -643,32 +673,44 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 }
 
 // forgetLeftovers removes operations of the instance whose record has no
-// ledger row: intents whose reservation failed, and history beyond one
-// commit's bound. It runs only once no ledger row of the instance is left.
+// ledger row: intents whose reservation failed, and history beyond what left
+// with its ledger row. It runs only once no ledger row of the instance is
+// left, and forgets one stored page at a time, so a history of any length
+// goes in bounded steps and a run that reaches its bound has made progress.
+// It reports done only after a complete read found no operation: a read that
+// forgot something is repeated, because deleting under it can hide rows.
 func (h *Host) forgetLeftovers(ctx context.Context, f frame, g ExecutionGuard, st *terminatingLease, result Result) (terminatingOutcome, bool) {
-	operations, err := h.ownerOperations(ctx, f.instance.owner)
-	if err != nil {
-		return failed(ctx, ReasonCleanupFailed, result, err), false
-	}
-	history := map[kinds.RecordIdentity][]*kinds.IntegrationOperation{}
-	var records []kinds.RecordIdentity
-	for _, op := range operations {
-		if _, seen := history[op.Spec.Record]; !seen {
-			records = append(records, op.Spec.Record)
-		}
-		history[op.Spec.Record] = append(history[op.Spec.Record], op)
-	}
-	result.Remaining = len(records)
-	for _, record := range records {
-		for ops := history[record]; len(ops) > 0; {
-			chunk := ops[:min(len(ops), ledger.MaxForgetOperations)]
-			if err := h.opts.Ledger.Forget(ctx, g.Ledger, nil, chunk, ledger.Observation{}); err != nil {
-				return failed(ctx, ReasonCleanupFailed, result, err), false
+	for {
+		forgotten := false
+		err := h.operationPages(ctx, f.instance.owner, func(page []*kinds.IntegrationOperation) (bool, error) {
+			history := map[kinds.RecordIdentity][]*kinds.IntegrationOperation{}
+			var records []kinds.RecordIdentity
+			for _, op := range page {
+				if _, seen := history[op.Spec.Record]; !seen {
+					records = append(records, op.Spec.Record)
+				}
+				history[op.Spec.Record] = append(history[op.Spec.Record], op)
 			}
-			st.summary.OperationsForgotten += len(chunk)
-			ops = ops[len(chunk):]
+			result.Remaining = len(records)
+			for _, record := range records {
+				for ops := history[record]; len(ops) > 0; {
+					chunk := ops[:min(len(ops), ledger.MaxForgetOperations)]
+					if err := h.opts.Ledger.Forget(ctx, g.Ledger, nil, chunk, ledger.Observation{}); err != nil {
+						return false, err
+					}
+					forgotten, st.progress = true, true
+					st.summary.OperationsForgotten += len(chunk)
+					ops = ops[len(chunk):]
+				}
+				result.Remaining--
+			}
+			return true, nil
+		})
+		if err != nil {
+			return failed(ctx, ReasonCleanupFailed, result, err), false
 		}
-		result.Remaining--
+		if !forgotten {
+			return terminatingOutcome{}, true
+		}
 	}
-	return terminatingOutcome{}, true
 }

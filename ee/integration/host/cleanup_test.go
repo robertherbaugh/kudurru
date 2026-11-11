@@ -2,11 +2,14 @@ package host
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -95,7 +98,19 @@ func TestTerminatingRetainIsReleasedWithoutProviderOrLicense(t *testing.T) {
 	object.DeletionTimestamp = &at
 	object.Spec.Suspend = true
 	object.Spec.Credentials = map[string]public.CredentialReference{"token": {Env: "MISSING"}}
-	f := newCleanupFixture(t, object, func(f *cleanupFixture) { f.allowed.Store(false) })
+	f := newCleanupFixture(t, object, func(f *cleanupFixture) {
+		f.allowed.Store(false)
+		f.ended.Store(true)
+	})
+	// The license is not asked, but a release still needs root's serving
+	// lifetime: once that is over the job holds no authority for a commit.
+	f.awaitReason(PhaseTerminating, ReasonAuthorityChanged)
+	time.Sleep(30 * time.Millisecond)
+	if done, _ := f.finalizations(); len(done) != 0 || f.refused.Load() != 0 {
+		t.Fatalf("a release reached root after its serving lifetime: finalized=%d refused=%d", len(done), f.refused.Load())
+	}
+	f.ended.Store(false)
+	f.wake()
 	summary := f.awaitFinalized()
 	_, modes := f.finalizations()
 	if modes[0] != GuardRelease || !summary.Released || summary.RecordSetsDeleted != 0 {
@@ -340,6 +355,15 @@ func TestTerminatingBlockingConditionsNeverFinalize(t *testing.T) {
 		if _, _, deletes, _ := f.w.counts(); deletes != 0 {
 			t.Fatal("cleanup deleted at a conflicted name")
 		}
+		// A run that root fences before it could look reports the counts of
+		// the last run that did, not that nothing is left.
+		f.refuse.Store(true)
+		f.wake()
+		f.awaitReason(PhaseTerminating, ReasonAuthorityChanged)
+		if _, _, fenced := f.status(); fenced != result {
+			t.Fatalf("a fenced run reported %+v after %+v", fenced, result)
+		}
+		f.refuse.Store(false)
 		f.w.drop(f.d, "manual-txt")
 		f.wake()
 		f.awaitFinalized()
@@ -354,9 +378,10 @@ func TestTerminatingBlockingConditionsNeverFinalize(t *testing.T) {
 		f.w.incomplete = true
 		f.w.mu.Unlock()
 		f.requestDelete()
-		blocked(t, f, ReasonSnapshotIncomplete)
-		if _, _, deletes, _ := f.w.counts(); deletes != 0 || len(f.owned()) != 2 {
-			t.Fatal("cleanup acted on an incomplete snapshot")
+		// Nothing was decided, and the record is still counted as remaining.
+		result := blocked(t, f, ReasonSnapshotIncomplete)
+		if _, _, deletes, _ := f.w.counts(); deletes != 0 || len(f.owned()) != 2 || result.Remaining != 1 {
+			t.Fatalf("cleanup acted on an incomplete snapshot or lost count: %+v", result)
 		}
 		f.w.mu.Lock()
 		f.w.incomplete = false
@@ -442,8 +467,8 @@ func TestTerminatingBlockingConditionsNeverFinalize(t *testing.T) {
 		// An unclassified provider error is not retried on a timer; the next
 		// run of the same lease confirms the absence by rereading.
 		f.awaitReason(PhaseTerminating, ReasonProviderFailed)
-		if _, _, result := f.status(); result.Pending != 1 {
-			t.Fatalf("uncertain delete not reported pending: %+v", result)
+		if _, _, result := f.status(); result.Pending != 1 || result.Remaining != 1 {
+			t.Fatalf("uncertain delete not reported pending with its record remaining: %+v", result)
 		}
 		f.wake()
 		summary := f.awaitFinalized()
@@ -480,6 +505,17 @@ func TestTerminatingBudgetExhaustionMakesNoRequestAndResumes(t *testing.T) {
 	if after, _, deletes, _ := f.w.counts(); after != requests || deletes != 0 {
 		t.Fatalf("requests reached the provider without budget: %d -> %d", requests, after)
 	}
+	// The run stopped before it read the provider; the record it has not
+	// removed is still counted, locally and in the published status.
+	if _, _, result := f.status(); result.Remaining != 1 || len(f.owned()) != 2 {
+		t.Fatalf("a run without budget reported %+v with %d owned rows left", result, len(f.owned()))
+	}
+	f.await("the published budget status", func() bool {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		n := len(f.published)
+		return n > 0 && f.published[n-1].Reason == ReasonBudgetExhausted && f.published[n-1].Result.Remaining == 1
+	})
 	if done, _ := f.finalizations(); len(done) != 0 {
 		t.Fatal("finalized without budget")
 	}
@@ -595,6 +631,280 @@ func TestTerminatingCleanupContinuesAcrossBoundedRuns(t *testing.T) {
 	if rows := append(f.rows(kinds.KindIntegrationLedger), f.rows(kinds.KindIntegrationOperation)...); len(rows) != 0 {
 		t.Fatalf("%d ledger and operation rows remain", len(rows))
 	}
+}
+
+// An instance's operation history has no bound: nothing removes an operation
+// while the instance lives. Cleanup must not hold or commit it as a whole, or
+// a long-lived instance could delete its records and then never finish. A
+// history of several stored pages is forgotten in bounded commits: the ledger
+// row with what one batch holds of its record, the rest as leftovers one
+// stored page at a time. The operations of another incarnation stay.
+func TestTerminatingLongOperationHistoryIsForgottenInBoundedSteps(t *testing.T) {
+	f := newCleanupFixture(t, cleanupObject("sink", "Delete", true), func(f *cleanupFixture) { f.batch = 8 })
+	row := f.awaitPublished()
+	created := f.rows(kinds.KindIntegrationOperation)
+	if len(created) != 1 {
+		t.Fatalf("operations of the published record: %d", len(created))
+	}
+	seeded := 0
+	seed := func(edit func(*kinds.IntegrationOperation)) {
+		t.Helper()
+		op := created[0].(*kinds.IntegrationOperation).DeepCopy()
+		op.UID, op.ResourceVersion = "", ""
+		op.Spec.OperationID = kinds.Digest([]byte("history " + strconv.Itoa(seeded)))
+		op.Name = kinds.OperationName(op.Spec.OperationID)
+		edit(op)
+		if err := op.Validate(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.st.Apply(context.Background(), op, store.ApplyOptions{Manager: "integration-ledger", CreateOnly: true}); err != nil {
+			t.Fatal(err)
+		}
+		seeded++
+	}
+	// Settled operations of the published record: more than two stored pages.
+	for range 600 {
+		seed(func(*kinds.IntegrationOperation) {})
+	}
+	// Intents of a record that never got its ledger row.
+	orphan := row.Spec.Record
+	orphan.Key.Name = "never.example.com."
+	for range 20 {
+		seed(func(op *kinds.IntegrationOperation) {
+			op.Spec.Record, op.Spec.Receipt = orphan, nil
+			op.Spec.After.DNSName = orphan.Key.Name
+			op.Spec.AfterHash = kinds.EndpointDigest(op.Spec.After)
+		})
+	}
+	own := seeded
+	// The history of a previous incarnation of the same name.
+	previous := row.Spec.Record
+	previous.Owner.UID = "uid-previous"
+	for range 300 {
+		seed(func(op *kinds.IntegrationOperation) { op.Spec.Record = previous })
+	}
+
+	f.requestDelete()
+	f.patience = 60 * time.Second
+	summary := f.awaitFinalized()
+
+	// The create and the delete of the record, and everything seeded for it.
+	if summary.RecordSetsDeleted != 1 || summary.RecordsForgotten != 1 || summary.OperationsForgotten != own+2 {
+		t.Fatalf("summary: %+v, own operations seeded: %d", summary, own)
+	}
+	if rows := f.rows(kinds.KindIntegrationLedger); len(rows) != 0 {
+		t.Fatalf("%d ledger rows remain", len(rows))
+	}
+	kept := f.rows(kinds.KindIntegrationOperation)
+	if len(kept) != 300 {
+		t.Fatalf("%d operations remain, 300 belong to another incarnation", len(kept))
+	}
+	for _, obj := range kept {
+		if obj.(*kinds.IntegrationOperation).Spec.Record.Owner != previous.Owner {
+			t.Fatal("an operation of the finalized incarnation remains")
+		}
+	}
+	if _, _, deletes, _ := f.w.counts(); deletes != 1 {
+		t.Fatalf("provider deletes: %d", deletes)
+	}
+	// No commit carried the history: the ledger row left with at most one
+	// batch, and every other commit with at most one page of one record.
+	f.forgetMu.Lock()
+	defer f.forgetMu.Unlock()
+	total, largest := 0, 0
+	for _, n := range f.forgets {
+		total, largest = total+n, max(largest, n)
+	}
+	if f.forgets[0] > 1+8 || largest > 256 || len(f.forgets) < 4 || total != own+2+1 {
+		t.Fatalf("forget commits: first=%d largest=%d commits=%d deletes=%d", f.forgets[0], largest, len(f.forgets), total)
+	}
+}
+
+// historyReader serves an operation kind that no store in a test could hold
+// cheaply: foreign rows of another incarnation, then own. Pages follow an
+// offset continuation, as the memory store's do.
+type historyReader struct {
+	foreign int
+	other   *kinds.IntegrationOperation
+	own     []*kinds.IntegrationOperation
+	lists   int
+}
+
+func (r *historyReader) List(_ context.Context, kind store.Kind, o store.ListOptions) (store.ObjectList, error) {
+	out := store.ObjectList{}
+	if kind != kinds.KindIntegrationOperation {
+		return out, nil
+	}
+	r.lists++
+	start, _ := strconv.Atoi(o.Continue)
+	end := min(start+o.Limit, r.foreign+len(r.own))
+	for i := start; i < end; i++ {
+		if i < r.foreign {
+			out.Items = append(out.Items, r.other)
+		} else {
+			out.Items = append(out.Items, r.own[i-r.foreign])
+		}
+	}
+	if end < r.foreign+len(r.own) {
+		out.Continue = strconv.Itoa(end)
+	}
+	return out, nil
+}
+
+// The reads cleanup makes of the operation history hold a bounded batch or
+// one stored page, whatever the history's size. This one is past both bounds
+// a whole-history read had: more than 100,000 stored rows of the kind, and
+// more own operations than plan.MaxSnapshotBytes.
+func TestOperationReadsAreBoundedWhateverTheHistory(t *testing.T) {
+	h, j, _, st, _ := engineFixture(t)
+	ctx := context.Background()
+	f, g, _ := h.captured(j)
+	owner := f.instance.owner
+	if res, err := h.sync(ctx, j, f, g, ""); err != nil || res.Applied != 1 {
+		t.Fatal("record was not published", err)
+	}
+	list, err := st.List(ctx, kinds.KindIntegrationOperation, store.ListOptions{})
+	if err != nil || len(list.Items) != 1 {
+		t.Fatal("operation of the published record", err)
+	}
+	stored := list.Items[0].(*kinds.IntegrationOperation)
+	other := stored.DeepCopy()
+	other.Spec.Record.Owner.UID = "uid-previous"
+	// Each own operation is near the size bound of one stored object.
+	ids := func(prefix string) []string {
+		out := make([]string, kinds.MaxTargets)
+		for i := range out {
+			out[i] = prefix + strconv.Itoa(i) + strings.Repeat("x", 480)
+		}
+		return out
+	}
+	large, versions := ids("id-"), ids("version-")
+	reader := &historyReader{foreign: 100001, other: other}
+	bytes := 0
+	for n := 0; bytes <= plan.MaxSnapshotBytes; n++ {
+		op := stored.DeepCopy()
+		op.Spec.OperationID = kinds.Digest([]byte("history " + strconv.Itoa(n)))
+		op.Name = kinds.OperationName(op.Spec.OperationID)
+		op.Spec.ProviderIDs, op.Spec.RemoteVersions, op.Spec.Receipt.ProviderIDs = large, versions, large
+		if err := op.Validate(); err != nil {
+			t.Fatal(err)
+		}
+		encoded, _ := json.Marshal(op)
+		bytes += len(encoded)
+		reader.own = append(reader.own, op)
+	}
+	h.opts.Reader = reader
+
+	batch, err := h.operationBatch(ctx, owner)
+	if err != nil {
+		t.Fatalf("a history of %d rows and %d own bytes was refused: %v", reader.foreign+len(reader.own), bytes, err)
+	}
+	held := 0
+	for i, op := range batch {
+		if op.Name != reader.own[i].Name || op == reader.own[i] {
+			t.Fatal("the batch is not the first own operations in store order, as copies")
+		}
+		encoded, _ := json.Marshal(op)
+		held += len(encoded)
+	}
+	if len(batch) == 0 || len(batch) >= len(reader.own) || held > forgetBatchBytes {
+		t.Fatalf("batch of %d operations and %d bytes out of %d and %d", len(batch), held, len(reader.own), bytes)
+	}
+	// The count bound of a batch, and one operation even when it is alone
+	// larger than a bound.
+	h.forgetBatch = 3
+	if batch, err := h.operationBatch(ctx, owner); err != nil || len(batch) != 3 {
+		t.Fatalf("batch under a count bound of 3: %d %v", len(batch), err)
+	}
+	h.forgetBatch = 0
+	if batch, err := h.operationBatch(ctx, owner); err != nil || len(batch) != 1 {
+		t.Fatalf("batch under a count bound of 0: %d %v", len(batch), err)
+	}
+	// A paged read hands over every own operation once, a page at a time.
+	visited, largest := 0, 0
+	if err := h.operationPages(ctx, owner, func(page []*kinds.IntegrationOperation) (bool, error) {
+		for _, op := range page {
+			if op.Spec.Record.Owner != owner || op.Name != reader.own[visited].Name {
+				t.Fatal("a page holds another incarnation's operation or lost the store order")
+			}
+			visited++
+		}
+		largest = max(largest, len(page))
+		return true, nil
+	}); err != nil || visited != len(reader.own) || largest > 256 {
+		t.Fatalf("paged read: visited=%d of %d, largest page=%d, %v", visited, len(reader.own), largest, err)
+	}
+	// It stops where the visitor says, and with the visitor's error.
+	reader.lists = 0
+	if err := h.operationPages(ctx, owner, func([]*kinds.IntegrationOperation) (bool, error) { return false, nil }); err != nil || reader.lists > reader.foreign/256+2 {
+		t.Fatalf("a stopped read went on: %d lists, %v", reader.lists, err)
+	}
+	if err := h.operationPages(ctx, owner, func([]*kinds.IntegrationOperation) (bool, error) { return true, errCleanupTest }); !errors.Is(err, errCleanupTest) {
+		t.Fatalf("visitor error: %v", err)
+	}
+	// An own operation that does not validate is an error, never an omission.
+	reader.own[len(reader.own)-1].Spec.PlanDigest = "corrupt"
+	if err := h.operationPages(ctx, owner, func([]*kinds.IntegrationOperation) (bool, error) { return true, nil }); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("corrupt own operation: %v", err)
+	}
+	// The ledger keeps the bound every ledger read of this host has. Beyond
+	// it cleanup says so instead of deciding from a partial read.
+	h.opts.Reader = ledgerFlood{}
+	if _, _, err := h.ledgerCounts(ctx, owner, nil); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("ledger rows beyond the bound: %v", err)
+	}
+	if out := failed(ctx, ReasonCleanupFailed, Result{Remaining: 7}, ErrCapacity); out.reason != ReasonCapacity || out.result.Remaining != 7 || !errors.Is(out.err, ErrCapacity) {
+		t.Fatalf("capacity outcome: %+v", out)
+	}
+	if out := failed(ctx, ReasonCleanupFailed, Result{}, plan.ErrCapacity); out.reason != ReasonCapacity {
+		t.Fatalf("planner capacity outcome: %+v", out)
+	}
+}
+
+// ledgerFlood serves ledger rows of another incarnation without end.
+type ledgerFlood struct{}
+
+func (ledgerFlood) List(_ context.Context, _ store.Kind, o store.ListOptions) (store.ObjectList, error) {
+	start, _ := strconv.Atoi(o.Continue)
+	record := kinds.RecordIdentity{Owner: kinds.Owner{ClusterID: "cluster", Namespace: "dns", Name: "sink", UID: "uid-previous"}, Destination: kinds.Destination{Provider: "fake", Account: "account", Zone: "example.com"}, Key: kinds.RecordKey{Name: "a.example.com.", Type: "A"}}
+	row := &kinds.IntegrationLedger{Spec: kinds.IntegrationLedgerSpec{Record: record}}
+	out := store.ObjectList{Continue: strconv.Itoa(start + o.Limit)}
+	for range o.Limit {
+		out.Items = append(out.Items, row)
+	}
+	return out, nil
+}
+
+// A read or a root commit that exceeds a bound keeps the instance terminating
+// with its own reason, and cleanup finishes once the bound holds again.
+func TestTerminatingCapacityIsReportedAndRetried(t *testing.T) {
+	var full atomic.Bool
+	full.Store(true)
+	object := cleanupObject("sink", "Delete", true)
+	at := metav1.NewTime(time.Unix(1700000000, 0))
+	object.DeletionTimestamp = &at
+	f := newCleanupFixture(t, object, func(f *cleanupFixture) {
+		f.w.observer = true
+		f.purge = func(context.Context) error {
+			if full.Load() {
+				return ErrCapacity
+			}
+			return nil
+		}
+	})
+	f.awaitReason(PhaseTerminating, ReasonCapacity)
+	f.await("the published capacity status", func() bool {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		n := len(f.published)
+		return n > 0 && f.published[n-1].Phase == PhaseTerminating && f.published[n-1].Reason == ReasonCapacity
+	})
+	if done, _ := f.finalizations(); len(done) != 0 {
+		t.Fatal("finalized over a commit that exceeded its bound")
+	}
+	full.Store(false)
+	f.wake()
+	f.awaitFinalized()
 }
 
 // A blocked cleanup waits without a concurrency slot: with a single slot,
@@ -782,7 +1092,7 @@ func TestCleanupRecoveryResumesOnlyDeletesAcrossChangedAuthority(t *testing.T) {
 			return kinds.Receipt{ObservedAt: *now, Targets: []kinds.TargetResult{{Target: "192.0.2.1", ErrorClass: "ambiguous"}}}, errCleanupTest
 		}
 		st := &terminatingLease{}
-		if clean, out := h.cleanupRecords(ctx, j, f, g, st); clean || out.result.Pending != 1 || !errors.Is(out.err, ErrProvider) {
+		if clean, out := h.cleanupRecords(ctx, j, f, g, st, 1); clean || out.result.Pending != 1 || out.result.Remaining != 1 || !errors.Is(out.err, ErrProvider) {
 			t.Fatalf("first run: clean=%v %+v", clean, out)
 		}
 		*now = now.Add(time.Second)
@@ -804,19 +1114,19 @@ func TestCleanupRecoveryResumesOnlyDeletesAcrossChangedAuthority(t *testing.T) {
 		}
 		// So does a cleanup plan under a guard that is not the cleanup mode.
 		pretender := &terminatingLease{}
-		if clean, out := h.cleanupRecords(ctx, j, normalFrame, normal, pretender); clean || out.reason != ReasonPendingRecovery || p.recoveries != 0 {
+		if clean, out := h.cleanupRecords(ctx, j, normalFrame, normal, pretender, 1); clean || out.reason != ReasonPendingRecovery || out.result.Remaining != 1 || p.recoveries != 0 {
 			t.Fatalf("cleanup input under an ordinary guard resumed: %+v", out)
 		}
 		h.mu.Lock()
 		j.mode = GuardCleanup
 		h.mu.Unlock()
 		f, g, _ = h.captured(j)
-		clean, out := h.cleanupRecords(ctx, j, f, g, st)
+		clean, out := h.cleanupRecords(ctx, j, f, g, st, 1)
 		if !clean || p.recoveries != 1 || out.result.Remaining != 0 || st.summary.RecordsForgotten != 1 {
 			t.Fatalf("cleanup did not resume the partial delete: clean=%v %+v recoveries=%d", clean, out, p.recoveries)
 		}
-		if rows, _ := h.ownerLedgers(ctx, g.Ledger.Owner); len(rows) != 0 {
-			t.Fatal("ledger row remains")
+		if rows, _, err := h.ledgerCounts(ctx, g.Ledger.Owner, nil); err != nil || rows != 0 {
+			t.Fatal("ledger row remains", err)
 		}
 	})
 	t.Run("partial create stays pending", func(t *testing.T) {
@@ -845,8 +1155,8 @@ func TestCleanupRecoveryResumesOnlyDeletesAcrossChangedAuthority(t *testing.T) {
 			return kinds.Receipt{}, nil
 		}
 		st := &terminatingLease{}
-		clean, out := h.cleanupRecords(ctx, j, f, g, st)
-		if clean || out.reason != ReasonPendingRecovery || out.result.Pending != 1 || p.calls != 1 {
+		clean, out := h.cleanupRecords(ctx, j, f, g, st, 1)
+		if clean || out.reason != ReasonPendingRecovery || out.result.Pending != 1 || out.result.Remaining != 1 || p.calls != 1 {
 			t.Fatalf("partial create in cleanup: clean=%v %+v", clean, out)
 		}
 		l, err := h.opts.Ledger.ReadLedger(ctx, intent.Spec.Record)

@@ -230,10 +230,12 @@ type cleanupFixture struct {
 	object *public.Integration
 	extra  []*public.Integration
 	// poke changes the captured sources, which wakes a waiting job.
-	poke      int
-	revision  uint64
-	clock     time.Time
-	allowed   atomic.Bool
+	poke     int
+	revision uint64
+	clock    time.Time
+	allowed  atomic.Bool
+	// ended is root's serving lifetime being over.
+	ended     atomic.Bool
 	factories atomic.Int32
 	purges    atomic.Int32
 	finalized []CleanupSummary
@@ -253,6 +255,13 @@ type cleanupFixture struct {
 	records int
 	// patience bounds each await; ten seconds unless set.
 	patience time.Duration
+	// batch is the host's forget batch; the default unless set.
+	batch int
+	// refuse makes root refuse every guard, as a replaced cut does.
+	refuse atomic.Bool
+	// forgets is the number of deletes of each ledger forget, in commit order.
+	forgetMu sync.Mutex
+	forgets  []int
 }
 
 const cleanupFinalizer = store.IntegrationCleanupFinalizer
@@ -292,6 +301,9 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 					return err
 				}
 			}
+			f.forgetMu.Lock()
+			f.forgets = append(f.forgets, len(requests))
+			f.forgetMu.Unlock()
 			return nil
 		})
 	}})
@@ -324,6 +336,7 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 			return cleanupPublisher{base}, nil
 		},
 		Allowed: f.allowed.Load,
+		Alive:   func() bool { return !f.ended.Load() },
 		Fence:   func(_ context.Context, g ExecutionGuard) error { return f.admits(g) },
 		Status: func(_ context.Context, g ExecutionGuard, s InstanceStatus) error {
 			if err := f.admits(g); err != nil {
@@ -371,6 +384,9 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 		PollInterval: time.Millisecond, OperationTimeout: f.timeout, StopTimeout: time.Second, MaxConcurrent: f.slots})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if f.batch > 0 {
+		f.h.forgetBatch = f.batch
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -434,6 +450,9 @@ func (f *cleanupFixture) capture(context.Context) (Input, error) {
 // admits is root's commit-boundary check, reduced to what the host must get
 // right: the exact stored object and a mode that object allows.
 func (f *cleanupFixture) admits(g ExecutionGuard) error {
+	if f.refuse.Load() {
+		return ErrFenced
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	d := f.object

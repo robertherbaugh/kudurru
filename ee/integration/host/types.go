@@ -118,7 +118,10 @@ type Preview struct {
 // A cleanup run (D367) reports the record sets it deleted as Applied, the
 // uncertain ones as Pending, the ones it must leave in place as Conflicts,
 // and in Remaining the ledger rows of the instance it has not forgotten yet.
-// Remaining is zero for an ordinary sync.
+// Remaining is counted when the run starts, so a run that stops early still
+// says what is left. Once no ledger row is left it counts the records whose
+// operations the run was forgetting when it stopped. Remaining is zero for an
+// ordinary sync.
 type Result struct {
 	PreviewDigest                          string
 	Applied, Pending, Conflicts, Unchanged int
@@ -191,7 +194,11 @@ type Options struct {
 	// In preferred source mode Allowed must be a concurrency-safe, lock-free
 	// memory/clock predicate: it is also invoked by the actual final check.
 	// Root separately excludes original license/resource replacement.
-	Allowed                                                     func() bool
+	Allowed func() bool
+	// Alive is the part of Allowed that is not the license: root's serving
+	// lifetime has not ended. It gates a release job, the one job that runs
+	// without Allowed (D367), and has the same constraints. Nil means always.
+	Alive                                                       func() bool
 	Logger                                                      *slog.Logger
 	Metrics                                                     prometheus.Registerer
 	Now                                                         func() time.Time
@@ -201,8 +208,11 @@ type Options struct {
 
 // Host is one bounded background coordinator. Run must be called only once.
 type Host struct {
-	opts            Options
-	incarnation     string
+	opts        Options
+	incarnation string
+	// forgetBatch is how many operations a cleanup run reads to forget them
+	// together with their ledger rows (D367).
+	forgetBatch     int
 	mu              sync.RWMutex
 	jobs            map[string]*job
 	statuses        map[string]InstanceStatus
@@ -303,5 +313,5 @@ func New(o Options) (*Host, error) {
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return nil, ErrInvalid
 	}
-	return &Host{incarnation: hex.EncodeToString(nonce[:]), opts: o, jobs: map[string]*job{}, statuses: map[string]InstanceStatus{}, wake: make(chan struct{}, 1), slots: make(chan struct{}, o.MaxConcurrent)}, nil
+	return &Host{incarnation: hex.EncodeToString(nonce[:]), opts: o, forgetBatch: 4096, jobs: map[string]*job{}, statuses: map[string]InstanceStatus{}, wake: make(chan struct{}, 1), slots: make(chan struct{}, o.MaxConcurrent)}, nil
 }

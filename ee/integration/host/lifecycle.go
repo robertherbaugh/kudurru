@@ -261,9 +261,13 @@ func (h *Host) disposition(i *Instance) disposition {
 	return disposition{run: true}
 }
 
-// allowed is the license gate of one job. Only a release runs without it.
+// allowed is the license gate of one job. Only a release runs without it,
+// and still only while root's serving lifetime lasts.
 func (h *Host) allowed(j *job) bool {
-	return j.mode == GuardRelease || h.opts.Allowed()
+	if j.mode == GuardRelease {
+		return h.opts.Alive == nil || h.opts.Alive()
+	}
+	return h.opts.Allowed()
 }
 func (h *Host) elect(j *job) {
 	defer close(j.done)
