@@ -185,10 +185,23 @@ together with the records compiled from record sets. They are not objects:
 
 ### Enrolled SQLite cluster
 
-In an [enrolled cluster](sqlite-cluster.md) only the primary accepts updates.
-A follower does not pass an update on and answers `SERVFAIL`. Point update
-clients at the primary, and at the new primary after a promotion. Followers
-serve the dynamic records after their next pull.
+In an [enrolled cluster](sqlite-cluster.md) only the primary applies
+updates, but a client may send them to any member. A follower checks that it
+serves the zone as a primary zone and verifies the signature with its own copy
+of the key, then passes the update on to the primary over the member
+connection. The primary checks the key again, applies its own update policy
+and prerequisites, and commits. The follower returns the primary's answer
+(`NOERROR`, `NXRRSET`, `REFUSED` and so on), signed with the request's key.
+The key must have the same name, algorithm and secret on both nodes. Stored
+keys replicate; a key in the configuration file must be in the file of each
+node. Followers serve the dynamic records after their next pull.
+
+When the follower cannot reach the primary, or loses the connection after
+sending, it answers `SERVFAIL` and does not retry. RFC 2136 tells a client
+to try its next server on `SERVFAIL`, so list the primary as well. A lost
+exchange may still have committed on the primary; check the record before
+sending a change that is not idempotent again. A fenced or conflicted node
+answers `SERVFAIL` without forwarding.
 
 Static twins do not replicate: an update changes only the node that received
 it.

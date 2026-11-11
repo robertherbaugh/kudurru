@@ -29,8 +29,8 @@ type memberBlockingChange struct {
 
 // executeMemberCommand is the root-owned scoped member executor. The closed
 // domains are blocking.toggle, the canonical public object writes/deletes, the
-// zone convenience commands, local login, sign-out with own-session revocation
-// and the cluster settings patch; status, IAM and other writes refuse. Public
+// zone convenience commands, local login, sign-out with own-session revocation,
+// the cluster settings patch and a forwarded RFC 2136 UPDATE; status, IAM and other writes refuse. Public
 // forwarding is mounted separately.
 func (s *servingRuntime) executeMemberCommand(ctx context.Context, request *sqlite.MemberRequest, command clusterreplica.Command, emit func(context.Context, clusterreplica.Outcome) error) error {
 	if s == nil || ctx == nil || request == nil || emit == nil {
@@ -39,6 +39,10 @@ func (s *servingRuntime) executeMemberCommand(ctx context.Context, request *sqli
 	switch {
 	case command.Version == 1 && command.Operation == memberLocalLogin:
 		// A login carries the password in its payload instead of a prior proof.
+	case command.Version == 1 && command.Operation == memberDNSUpdate:
+		// A forwarded UPDATE commits in the zone runtime's own fenced
+		// transaction, with the command ID as its retry identity (D381).
+		return s.executeMemberUpdate(ctx, request, command, emit)
 	case command.Version == 2 && (command.Operation == memberBlockingToggle || command.Operation == memberObjectWrite || command.Operation == memberObjectDelete || command.Operation == memberZoneCommand ||
 		command.Operation == memberLogout || command.Operation == memberSettingsPatch):
 	default:

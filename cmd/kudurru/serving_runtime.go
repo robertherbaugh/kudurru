@@ -263,6 +263,9 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	if err != nil {
 		return nil, err
 	}
+	// An enrolled follower forwards a signed UPDATE to its primary (D381).
+	// The hook reads memberForward, which root installs before any listener runs.
+	s.primary.follower = s.forwardUpdate
 	s.status, err = servingbuild.NewPrimaryStatus(servingbuild.PrimaryStatusOptions{Store: o.Store, Publisher: s.publisher, Pin: pin, Now: o.Now})
 	if err != nil {
 		return nil, err

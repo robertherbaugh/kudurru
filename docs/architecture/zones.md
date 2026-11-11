@@ -743,10 +743,48 @@ complete publication and acknowledges by exact head CAS; pending intent survives
 restart. Response targets list configured literal addresses, while name-server
 recipient resolution remains background work outside command locks.
 
-A native UPDATE is not forwarded between enrolled SQLite members. The ingress
-issues its writable proof only on the node whose authority is writable
-(`primaryUpdateIngress.capture`), so a client must send the update to the
-primary. Kubernetes does not use this committed history: it serves UPDATE
+An enrolled SQLite follower forwards a signed UPDATE to its primary (D381).
+The ingress issues its writable proof only on the node whose authority is
+writable (`primaryUpdateIngress.capture`). On a follower, `forwardUpdate`
+selects the zone in its own complete cut (NOTAUTH if it is not a primary zone
+there), uses the listener's verified TSIG proof, and admits the key against its
+own current keyring (REFUSED otherwise). It then sends one version-1
+`dns.update` member command with the exact request minus its TSIG record, the
+key name, algorithm and secret-derived credential version, the transport and
+the signature deadline. The exchange is bounded by four seconds, the DNS
+request and the signature deadline.
+
+The primary admits the key again against its own keyring: the name, algorithm
+and credential version must all match. It then runs the same protocol adapter
+as a native UPDATE, with the same zone selection, grants, prerequisites and
+atomic commit, under its elected writer. The command ID is the update's retry
+identity in the zone's receipt ledger, so a repeated delivery cannot apply it
+twice. The primary acknowledges its rcode inside the member request's command
+output scope. The follower relays that rcode, signed with the request's key.
+The answer carries an acknowledgment bound to the verified key and the
+unchanged empty response instead of this node's data generation, so a pull
+that installs the commit first does not withhold it. A command that was not
+sent, or whose exchange was lost, answers SERVFAIL. RFC 2136 section 4.5 tells
+the requestor to try another server on SERVFAIL, and nothing retries or replays
+the command. Fenced, conflicted, standby and static nodes keep their local
+SERVFAIL.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant F as Follower
+    participant P as Primary
+    C->>F: TSIG-signed UPDATE
+    F->>F: Zone in own cut, verify TSIG, admit key
+    F->>P: dns.update member command (no TSIG record)
+    P->>P: Admit key identity, grants, prerequisites
+    P->>P: Atomic commit, publish (retry ID = command ID)
+    P-->>F: rcode inside command output scope
+    F-->>C: Same rcode, signed
+    Note over F,P: Not sent or lost: SERVFAIL, never retried
+```
+
+Kubernetes does not use this committed history: it serves UPDATE
 through the single-object path under
 [RFC 2136 on Kubernetes](#rfc-2136-on-kubernetes) and sends NOTIFY from its
 elected notifier loop. Receipt capacity remains finite with no automatic eviction.
@@ -960,7 +998,7 @@ Catalog zones and DNSSEC signing remain planned, and `external` zones are not
 built. SQLite mounts the atomic
 RFC 2136 handler and durable primary history described above; on Kubernetes, RFC 2136
 uses one UPDATE-owned DNSRecordSet per zone (described below). An enrolled
-SQLite follower does not forward an UPDATE to its primary. IXFR out has no
+SQLite follower forwards a signed UPDATE to its primary (D381). IXFR out has no
 journal and answers in AXFR form. Unknown DNS opcodes remain NOTIMP.
 
 ### RFC 2136 on Kubernetes

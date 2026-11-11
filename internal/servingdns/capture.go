@@ -8,6 +8,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/serving"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
 type lease struct{ inner *serving.Lease }
@@ -53,6 +54,19 @@ func CheckWriter(req *pipeline.Request, p *serving.Publisher, target serving.Ter
 		return pipeline.ErrServingCapture
 	}
 	return p.CheckWriterLease(req.Ctx, l.inner, target)
+}
+
+// SourceToken returns the store source of the request's original lease. It
+// never captures a newer lease; a request without one fails closed.
+func SourceToken(req *pipeline.Request) (sqlite.GenerationToken, error) {
+	if req == nil || req.Serving == nil {
+		return sqlite.GenerationToken{}, pipeline.ErrServingCapture
+	}
+	l, ok := req.Serving.(*lease)
+	if !ok || l == nil {
+		return sqlite.GenerationToken{}, pipeline.ErrServingCapture
+	}
+	return l.inner.SourceToken()
 }
 
 // Component reads an immutable typed owner value while the request holds its
