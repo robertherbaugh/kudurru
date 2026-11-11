@@ -80,6 +80,10 @@ permissions. See [RBAC](/deploy/helm/#rbac).
 
 - [Runbooks](/deploy/runbooks/): cold start without the apiserver,
   rotating the encryption key, upgrades.
+- Upgrading from 0.1.x: follow
+  [the ordered upgrade notes](/deploy/runbooks/#upgrading-from-01x). The
+  CRD chart comes first, and private IAM Secrets need the offline
+  [IAM migration](/deploy/iam-upgrade/) before any 0.2 pod starts.
 - [Monitoring](/deploy/helm/#monitoring): ServiceMonitor or PodMonitor,
   PrometheusRule and the Grafana dashboard from the chart.
 - `kudurru nodes` lists the replicas with their readiness and the leader;

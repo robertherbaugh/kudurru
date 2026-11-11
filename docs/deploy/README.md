@@ -14,6 +14,7 @@ To assign client addresses, use the [DHCP walkthrough](../guide/dhcp/README.md).
 | Monitoring | [helm.md#monitoring](helm.md#monitoring) | `deploy/grafana/kudurru-overview.json`, `deploy/prometheus/rules.yaml` |
 
 Runbooks: [cold start without the apiserver, key rotation, upgrades](runbooks.md).
+Upgrading from 0.1.x: [the ordered upgrade notes](runbooks.md#upgrading-from-01x).
 External filtering data: [require HTTPS for list and catalog downloads](download-policy.md).
 For scripts and CLI clients: [apply results, settings and live-event contracts](api-contracts.md).
 What works on which deployment shape, and what each refusal key means: [capabilities.md](capabilities.md).

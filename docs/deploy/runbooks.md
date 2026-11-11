@@ -480,10 +480,14 @@ then continue with step 2.
 3. Watch `kubectl -n kudurru-system rollout status` and the
    `KudurruServfailRatio` alert.
 
-Rollback: `helm rollback kudurru` works while the release did not migrate
-`local.db` to a newer layout; otherwise delete the pods' `local.db`
-(emptyDir: delete the pods; PVC: clear the file) and let them resync from
-the apiserver.
+Rollback: after `helm rollback kudurru`, delete every persisted `local.db`
+(emptyDir: delete the pods; PVC: clear the file) and let the pods resync from
+the apiserver. Every start of a release stamps `local.db` with its own schema
+version (9 for 0.2.0) whether or not the layout changed, and a release refuses
+a `local.db` stamped by a newer one, so the older pods do not start on the
+file. A rollback from 0.2 to 0.1 also needs the identity and audit state of
+before the upgrade: restore the private IAM Secrets and the AuditLog state
+from the backup taken for the upgrade (see [Upgrading from 0.1.x](#upgrading-from-01x)).
 
 **Compose (single):** stop, back up the volume
 ([docker.md](docker.md#persistence-and-backups)), `docker compose pull`,
@@ -496,6 +500,94 @@ VIP holder last.
 **Packages:** `apt upgrade kudurru` / `dnf upgrade kudurru` / `apk upgrade
 kudurru` replace the binary and keep `/etc/kudurru`; the post-install script
 restarts the service only if it was running.
+
+### Upgrading from 0.1.x
+
+0.1.0 is the only release 0.2.0 upgrades from. Work through this list in
+order before the first 0.2 process starts; the steps that do not apply to an
+installation say so.
+
+1. **Back up, because there is no way back.** The first 0.2 start migrates
+   `state.db` from schema 1 to 9, `querylog.db` from 2 to 3 and stamps
+   `local.db` with 9. 0.1.0 then refuses every one of these files
+   (`state.db was written by a newer kudurru`) and changes nothing, so a
+   return to 0.1.0 is a restore of the backup: stop kudurru and copy the data
+   directory (Docker volume, PVC or `/var/lib/kudurru`). On Kubernetes also
+   back up the release namespace's private Secrets and the `kudurru.io`
+   objects ([iam-upgrade.md](iam-upgrade.md#prepare-an-offline-upgrade)).
+2. **SQLite (Docker, systemd, the chart's `standalone` mode): stored objects
+   0.2 refuses stop the upgrade.** Before it migrates `state.db`, 0.2 checks
+   every stored object and, if one fails, exits naming it and leaves the file
+   as 0.1.0 wrote it. Correct the objects with 0.1.0 and start 0.2 again
+   ([Upgrade refused](#upgrade-refused-stored-objects-are-not-valid-in-this-release)).
+   On Kubernetes such an object stays stored and does not stop serving; a
+   change to it is refused until it is corrected.
+3. **Kubernetes: upgrade `kudurru-crds` first.** It replaces the nine 0.1.0
+   CRDs in place (still `v1alpha1`, no conversion) and adds five: `Kudurru`,
+   `IdentityProvider`, `Integration`, `RoleBinding` and `ServiceAccount`.
+4. **Kubernetes with private IAM Secrets: migrate offline.** If 0.1.0 created
+   ServiceAccounts, RoleBindings or identity providers (the first
+   `break-glass` account counts), stop every kudurru process, run
+   `kudurru iam migrate status|plan|begin --offline` as
+   [iam-upgrade.md](iam-upgrade.md) describes and wait for `complete` before
+   any 0.2 pod starts. A 0.1.0 token issued in the same second as its account
+   stays unbound and is refused after the migration; this almost always
+   includes the first break-glass token, so mint a replacement with
+   `kudurru admin create-token`.
+5. **Kubernetes with `audit.store: auditlog`: provision the audit key ring
+   before shipping resumes.** Import the 0.1.0 encryption keys as legacy HMAC
+   masters with a cutoff after the last 0.1.0 batch and publish the
+   `kudurru-audit-keys` Secret
+   ([AuditLog key provisioning](#auditlog-key-provisioning-and-upgrades)).
+   Without it audit shipping stops; DNS does not.
+6. **Kubernetes: pin `store.kube.expectedClusterID` while the apiserver is
+   reachable.** A pod that starts during an apiserver outage serves its
+   `local.db` only when the pin matches; without the pin it does not start
+   until the apiserver answers ([Cold start without the apiserver](#cold-start-without-the-apiserver)).
+7. **Kubernetes: give ServiceAccount clients a rotating projected token.**
+   0.2 accepts only tokens with the audience `kudurru` and a lifetime of at
+   most 600 seconds; legacy Secret tokens and hour-long tokens are refused
+   ([kubernetes-service-account-auth.md](kubernetes-service-account-auth.md)).
+8. **A central PostgreSQL database moves to schema 6, which 0.1 nodes cannot
+   use.** The first 0.2 node migrates it (compat version 6). A 0.1.0 node that
+   connects afterwards reports `CentralIncompatible`, keeps answering DNS and
+   keeps its query log locally; once its binary is replaced, it ships the
+   backlog ([postgres.md](postgres.md#upgrades-and-mixed-versions)). Upgrade
+   every node that shares the database in the same window.
+9. **Compose: take the new files.** The shipped files now run
+   `command: [serve]`; the HA files add `cluster.role: static` with
+   `cluster.peers`, which refuses API writes of objects and cluster settings,
+   so `objects.d/` and `kudurru.yaml` must be the same on every host
+   ([compose-ha.md](compose-ha.md)). Upgrade one host at a time: a 0.2 twin
+   lists a 0.1.0 twin on **Nodes** with its version and readiness, and
+   reports its health detail as `peer health: unsupported` until that host is
+   upgraded.
+10. **SQLite enrolled clusters are new in 0.2.** A 0.1.0 binary can never be
+    a member, and every member must run the same release
+    ([sqlite-join.md](sqlite-join.md#versions-of-the-members)).
+11. **Block lists stored by 0.1 keep `refreshInterval: 24h`.** 0.1.0 wrote
+    the CRD default into every BlockList; 0.2 has no default, and a list
+    without the field follows `blocking.refreshInterval`. Remove the field
+    from the lists that should follow the setting.
+12. **Optional, offline: separate SQLite storage.** Moving `state.db` and
+    the other databases to their own volumes is a separate offline step
+    ([sqlite-storage.md](sqlite-storage.md)); the upgrade does not need it.
+
+Managed root trust anchors (RFC 5011) are new in 0.2 and stay off after the
+upgrade: the first 0.2 start records a dormant anchor owner, static anchors
+keep working as before, and `kudurru anchors status --offline` reads the
+directory. Enable them only after every member runs 0.2, in two steps:
+declare the ingress in the node file (`upstreams.recursion.managedTopology`,
+`direct` or `edges`, which needs a restart), then write the cluster settings
+`upstreams.recursion.anchorMode: managed`, `dnssec: true` and the DS seeds in
+`trustAnchors` with `kudurru settings set` or the Settings page. On SQLite the
+first 0.2 start copies the cluster settings of `kudurru.yaml` into the
+cluster settings object, and later edits of those keys in the file do not
+change it ([configuration-and-store.md](../architecture/configuration-and-store.md#cluster-settings-object-foundation)).
+The node then fetches the root keys once and keeps them across restarts. A
+declared edge that still runs 0.1 has no observation route, so a start with
+`edges` is refused with `managed edge observation is unsupported` until that
+edge is upgraded.
 
 ## Upgrade refused: stored objects are not valid in this release
 

@@ -122,3 +122,10 @@ and keep their data until it is back.
 One host at a time: `docker compose pull && docker compose up -d`, wait for
 `kudurru health --ready`, then the next host. See
 [runbooks.md](runbooks.md#upgrading).
+
+From 0.1.x, take the new compose files first (`command: [serve]`,
+`cluster.role: static` with `cluster.peers`) and follow
+[Upgrading from 0.1.x](runbooks.md#upgrading-from-01x). While one host still
+runs 0.1.0, the upgraded hosts list it on **Nodes** with its version and
+readiness and report its health detail as `peer health: unsupported`;
+each host keeps answering from its own files.

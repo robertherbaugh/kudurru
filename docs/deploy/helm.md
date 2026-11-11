@@ -48,6 +48,14 @@ local audit spooling continues, but cluster audit shipping and verification are
 unavailable. Existing installations must follow the legacy-cutover procedure
 before upgrading; session encryption keys no longer determine new audit seals.
 
+### Upgrading from 0.1.x
+
+An installation of 0.1.x is upgraded offline when it holds private IAM
+Secrets (it almost always does: 0.1.0 creates the `break-glass` account):
+upgrade `kudurru-crds`, run the [Kubernetes IAM upgrade](iam-upgrade.md),
+provision the AuditLog trust above, then upgrade this chart. The ordered list
+is [Upgrading from 0.1.x](runbooks.md#upgrading-from-01x).
+
 ### First login
 
 The chart generates three Secrets once and keeps them on uninstall

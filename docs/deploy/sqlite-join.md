@@ -85,6 +85,29 @@ new primary commit. Neither field establishes serving publication or convergence
 On refusal, retain all evidence for investigation; do not delete intent, replace
 identity or automatically submit another proposal.
 
+## Versions of the members
+
+Every member of an enrolled cluster must run the same release. Members
+exchange data only as complete images, and a member accepts an image only
+from a member with exactly its own store schema (9 in 0.2.0) and the same
+required features. There is no compatibility mode:
+
+- A member at another schema or feature set refuses the images it receives,
+  keeps answering from its last good image and cannot be promoted. It
+  catches up on its next pull once it runs the primary's release again.
+- 0.1.0 has no enrolled clusters and can never be a member. Started on the
+  data directory of a member, it refuses the directory (`state.db was
+  written by a newer kudurru`) and changes no file.
+- Joining always uses the primary's release: `cluster join --offline` and
+  the receiver's first start must be the same release as the primary.
+
+To upgrade an enrolled cluster to a release with another store schema, plan
+a short window without object changes. Back up every member's data directory.
+Upgrade the followers one at a time (each keeps serving its last good image
+and waits), then the primary. After the primary's restart the followers
+install its next image and follow again; check `kudurru nodes` and `/cluster`
+on each. Do not promote a member while the members run different releases.
+
 
 ## Commands through a follower
 
