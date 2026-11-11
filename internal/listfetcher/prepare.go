@@ -191,8 +191,10 @@ func compileComplete(ctx context.Context, pl plannedList, opts CompleteOptions, 
 			// finished a first download (it may be waiting on a URL that
 			// never answers), or it tried and failed. The source
 			// contributes nothing until a download publishes its digest,
-			// which changes the object and so prepares a new candidate;
-			// the list reports the failure (Degraded) meanwhile. Waiting
+			// which changes the object and so prepares a new candidate. A
+			// failed attempt is reported on the list (Degraded); while the
+			// first download is still running nothing is reported, until
+			// the attempts end ("pending" below). Waiting
 			// for the body instead would publish no serving generation at
 			// all, for as long as the URL stays unreachable or silent
 			// (D373). The cache is not consulted: a body without a

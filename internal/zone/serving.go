@@ -173,6 +173,11 @@ func updatePolicyErrors(dz *v1alpha1.DNSZone) field.ErrorList {
 	for i, g := range entries {
 		specs[i] = dynamicupdate.GrantSpec{KeyRef: g.TSIGKeyRef, Name: g.Name, Types: g.Types}
 	}
+	// The runtime's budget is min(MaxPolicyBytes, Limits.MaxAggregateBytes)
+	// (currentguard.policyBudget). No configuration sets the zone limits:
+	// the mounted runtime uses zonestate's default aggregate bound (128 MiB),
+	// so the budget is MaxPolicyBytes. A smaller aggregate limit would have
+	// to be passed here as well.
 	if e := dynamicupdate.PreflightGrantSpecs(specs, dynamicupdate.MaxPolicyBytes); e != nil {
 		return refuse(e)
 	}

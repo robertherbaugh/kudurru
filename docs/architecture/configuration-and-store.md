@@ -524,9 +524,12 @@ case the record set's status conditions name each refused endpoint, as the
 controller reports them on both drivers. A block list source (URL or
 ConfigMap) for which no body was ever published is compiled empty: its
 first download has not finished (the URL may accept the connection and
-never answer), or it failed. The list reports the failure meanwhile, and
-the download that publishes the source's digest prepares a new candidate
-with the body. A source whose published digest this node's cache does not
+never answer), or it failed. A failed download is reported on the list
+(`Degraded`, `ListFetchFailed`); while a first download is still running
+nothing is reported, for up to the fetcher's attempts (three of at most
+five minutes each), and the status writes of the other lists wait for that
+pass of the fetcher as well. The download that publishes the source's
+digest prepares a new candidate with the body. A source whose published digest this node's cache does not
 hold (another node fetched it) still holds back the candidate until the
 body arrives.
 
