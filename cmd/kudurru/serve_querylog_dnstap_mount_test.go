@@ -14,7 +14,9 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
+	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sinks/dnstap"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sinks/dnstap/dnstaptest"
 )
@@ -27,8 +29,16 @@ import (
 // carries what the local log keeps: the client 0.0.0.0, the name hidden,
 // no port and no answer. After the administrator turns raw on, the messages
 // are the DNS messages of the exchange with the real client address and
-// port. Excluded domains are never sent, raw or not.
+// port. Excluded domains and excluded clients are never sent, raw or not.
+// The node holds an audit license, so the events reach serve's SQLite audit
+// recorder and are read back through /audit: the administrator's change is
+// audited as querylog.raw, and the node records querylog.raw.export before
+// the raw sink sends.
 func TestRunServeQuerylogDnstapSinkPrivacyAndRaw(t *testing.T) {
+	sign := trustTestKey(t)
+	t.Setenv(license.EnvKey, "")
+	t.Setenv(license.EnvKeyFile, "")
+	key := sign(license.Claims{Plan: license.PlanBusiness, Nodes: 1, Features: []license.Feature{license.FeatureAudit}})
 	collector := dnstaptest.Listen(t, "unix")
 	upstream := sinkUpstream(t, net.IPv4(192, 0, 2, 93))
 	cfg, _ := mountedTestConfig(t)
@@ -40,11 +50,13 @@ func TestRunServeQuerylogDnstapSinkPrivacyAndRaw(t *testing.T) {
 	cfg.Querylog.Privacy = "hide_domains_clients"
 	cfg.Querylog.Exclude.SUDN = false
 	cfg.Querylog.Exclude.Domains = []string{"*.skip.example"}
+	// The tests query from 127.0.0.1; 127.0.0.2 is the excluded client.
+	cfg.Querylog.Exclude.Clients = []string{"127.0.0.2"}
 	cfg.Listeners.Metrics.Address = offlineFreeAddress(t, "tcp")
 	cfg.Upstreams.Groups = map[string]config.UpstreamGroup{"default": {Servers: []string{upstream}, Strategy: "strict", Timeout: config.Duration(4 * time.Second)}}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- runServe(ctx, cfg, "") }()
+	go func() { done <- runServe(ctx, cfg, key) }()
 	var stopOnce sync.Once
 	stop := func() {
 		stopOnce.Do(func() {
@@ -93,16 +105,19 @@ func TestRunServeQuerylogDnstapSinkPrivacyAndRaw(t *testing.T) {
 		wait("the successor publication", ready)
 	}
 	var lastID uint16
-	query := func(name string) {
+	queryFrom := func(source, name string) {
 		t.Helper()
 		q := new(dns.Msg)
 		q.SetQuestion(name, dns.TypeA)
 		lastID = q.Id
-		a, _, err := (&dns.Client{Net: "udp", Timeout: 5 * time.Second}).Exchange(q, cfg.Listeners.DNS[0].Address)
+		c := &dns.Client{Net: "udp", Timeout: 5 * time.Second, Dialer: &net.Dialer{LocalAddr: &net.UDPAddr{IP: net.ParseIP(source)}}}
+		a, _, err := c.Exchange(q, cfg.Listeners.DNS[0].Address)
 		if err != nil || a == nil || a.Rcode != dns.RcodeSuccess || len(a.Answer) != 1 {
-			t.Fatalf("UDP query %s was not answered: %v", name, err)
+			t.Fatalf("UDP query %s from %s was not answered: %v", name, source, err)
 		}
 	}
+	query := func(name string) { t.Helper(); queryFrom("127.0.0.1", name) }
+	excludedClient := func(name string) { t.Helper(); queryFrom("127.0.0.2", name) }
 	// unpack reads the question and the message of a frame.
 	unpack := func(f dnstaptest.Frame) (string, *dns.Msg) {
 		t.Helper()
@@ -125,6 +140,7 @@ func TestRunServeQuerylogDnstapSinkPrivacyAndRaw(t *testing.T) {
 	query("before-any-sink.example.")
 	patchSink(false)
 	query("a.skip.example.")
+	excludedClient("client-a.example.")
 	query("visible.example.")
 	frames := framesAfter(0)
 	for _, f := range frames {
@@ -147,6 +163,7 @@ func TestRunServeQuerylogDnstapSinkPrivacyAndRaw(t *testing.T) {
 	patchSink(true)
 	before := len(collector.Frames())
 	query("b.skip.example.")
+	excludedClient("client-b.example.")
 	query("raw.example.")
 	frames = framesAfter(before)
 	queryName, q := unpack(frames[0])
@@ -167,8 +184,11 @@ func TestRunServeQuerylogDnstapSinkPrivacyAndRaw(t *testing.T) {
 		t.Fatalf("raw off still sends %s port %d", name, frames[0].Message.QueryPort)
 	}
 	for _, f := range collector.Frames() {
-		if name, _ := unpack(f); strings.HasSuffix(name, "skip.example.") || name == "before-any-sink.example." {
+		if name, _ := unpack(f); strings.HasSuffix(name, "skip.example.") || strings.HasPrefix(name, "client-") || name == "before-any-sink.example." {
 			t.Fatalf("an excluded or earlier query was sent: %s", name)
+		}
+		if f.Message.QueryAddress == netip.MustParseAddr("127.0.0.2") {
+			t.Fatalf("a query of the excluded client was sent: %+v", f.Message)
 		}
 	}
 	if errs := collector.Errors(); len(errs) > 0 {
@@ -176,6 +196,35 @@ func TestRunServeQuerylogDnstapSinkPrivacyAndRaw(t *testing.T) {
 	}
 	if sent, _ := mountedMetric(t, cfg.Listeners.Metrics.Address, "kudurru_sink_sent_total", `sink="collector"`); sent < 1 {
 		t.Fatalf("kudurru_sink_sent_total %v", sent)
+	}
+	// The audit trail of the node, read through the API: the settings
+	// change (resource kind querylog) and the node's export event
+	// (querylog-sink).
+	var events []api.AuditEvent
+	for _, kind := range []string{"querylog", "querylog-sink"} {
+		var page api.AuditPage
+		mountedFactorRequest(t, client, base, http.MethodGet, "/audit?kind="+kind, "", nil, http.StatusOK, &page)
+		events = append(events, page.Items...)
+	}
+	var changes, exports int
+	for _, ev := range events {
+		switch ev.Action {
+		case "querylog.raw":
+			changes++
+			if ev.Result != audit.ResultSuccess || ev.Actor.Name != "admin" || len(ev.After) == 0 {
+				t.Errorf("querylog.raw event %+v", ev)
+			}
+		case AuditQuerylogRawExport:
+			exports++
+			if ev.Result != audit.ResultSuccess || ev.Actor.Kind != "System" || ev.Actor.Name != "query-log" || ev.Resource.Name != "collector" || !strings.Contains(ev.Reason, collector.Target()) {
+				t.Errorf("querylog.raw.export event %+v", ev)
+			}
+		}
+	}
+	// One change kept a raw sink (turning raw off is not a querylog.raw
+	// change), and the raw sink opened at least once.
+	if changes != 1 || exports < 1 {
+		t.Fatalf("audit: %d querylog.raw and %d querylog.raw.export events of %d", changes, exports, len(events))
 	}
 	stop()
 	// Every replaced sink ended its stream with STOP and FINISH.
