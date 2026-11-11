@@ -522,6 +522,19 @@ func writeV01Directory(t *testing.T, name string, legacy bool) (*v01Directory, *
 			"zoneRef": map[string]any{"name": "api-test"}, "endpoints": endpoints,
 		}), http.StatusCreated)
 	}
+	// Two DNAME targets for one name through set identifiers, in a zone of
+	// their own: 0.1.0 stored both and served the zone with both; this
+	// release keeps the first, so the content of dname.test. changes and
+	// its serial with it (the serials compared are of the other zones).
+	api.must(t, http.MethodPost, "/objects/dnszones", object("DNSZone", "dname-test", "", map[string]any{
+		"zoneName": "dname.test.", "type": "primary", "nameservers": []any{"ns1.dname.test."},
+	}), http.StatusCreated)
+	api.must(t, http.MethodPost, "/objects/dnsrecordsets", object("DNSRecordSet", "v01-dname-set-ids", "default", map[string]any{
+		"zoneRef": map[string]any{"name": "dname-test"}, "endpoints": []any{
+			map[string]any{"dnsName": "tree.dname.test", "recordType": "DNAME", "setIdentifier": "x", "targets": []any{"a.test."}},
+			map[string]any{"dnsName": "tree.dname.test", "recordType": "DNAME", "setIdentifier": "y", "targets": []any{"b.test."}},
+		},
+	}), http.StatusCreated)
 	// A block list whose URL never downloaded: 0.1.0 stored it, reported
 	// the failed fetch on it and served it empty. The server answers 404;
 	// with the default blocking.allowLocalListURLs both releases refuse the
@@ -791,6 +804,17 @@ func TestUpgradeFromV01DataDirectory(t *testing.T) {
 		}) {
 			sort.Strings(diff)
 			t.Fatalf("answers changed across the upgrade:\n%s", strings.Join(diff, "\n"))
+		}
+	})
+	t.Run("OneDNAMETargetKept", func(t *testing.T) {
+		// A DNAME RRset holds one record; the committed primary refuses
+		// two, so the builder keeps the first endpoint and the zone is
+		// committed (SameAnswers shows the rest of it unchanged, D373).
+		for _, tcp := range []bool{false, true} {
+			r := ask(t, spec.Ports.DNS, "tree.dname.test.", dns.TypeDNAME, tcp)
+			if len(r.Answer) != 1 || r.Answer[0].(*dns.DNAME).Target != "a.test." {
+				t.Fatalf("tree.dname.test. DNAME (tcp %t): %v, want the first target only", tcp, r.Answer)
+			}
 		}
 	})
 	serials := map[string]uint32{}

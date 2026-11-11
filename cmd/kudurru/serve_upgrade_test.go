@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -255,6 +256,23 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			return ""
 		}
 		t.Logf("timing: %s after start: ready", time.Since(began).Round(time.Millisecond))
+		// After readiness the node still commits zone lifecycles and
+		// DNSZone status of its own accord (the zone dname.test. of the
+		// fixture gets new content and a new serial), and every commit
+		// makes readiness 503 until its generation is published. The test
+		// goes on once readiness has held for two seconds, as the
+		// built-binary test waits for a quiet store; the later checks are
+		// then about the test's own writes (open under G21, D373).
+		held := time.Now()
+		for settleBy := time.Now().Add(60 * time.Second); time.Since(held) < 2*time.Second; time.Sleep(50 * time.Millisecond) {
+			if ready() != http.StatusOK {
+				held = time.Now()
+			}
+			if time.Now().After(settleBy) {
+				t.Fatal("readiness did not hold for two seconds within a minute of the upgrade")
+			}
+		}
+		t.Logf("timing: %s after start: settled", time.Since(began).Round(time.Millisecond))
 		// The zone created through the API of 0.1.0 and its records.
 		if got := answer("www.api.test."); got != "192.0.2.10" {
 			t.Fatalf("www.api.test. = %s, 0.1.0 stored 192.0.2.10", got)
@@ -336,6 +354,9 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			"unknown-type":   {map[string]any{"dnsName": "bogus.api.test", "recordType": "BOGUS", "targets": []any{"x"}}},
 			"mx-no-pref":     {map[string]any{"dnsName": "mail.api.test", "recordType": "MX", "targets": []any{"mx.api.test."}}},
 			"cname-and-a":    {map[string]any{"dnsName": "pair.api.test", "recordType": "CNAME", "targets": []any{"elsewhere.test."}}, map[string]any{"dnsName": "pair.api.test", "recordType": "A", "targets": []any{"192.0.2.83"}}},
+			// Two DNAME targets for one name through set identifiers: the
+			// builder keeps the first, as the committed primary holds one.
+			"dname-set-ids": {map[string]any{"dnsName": "branch.api.test", "recordType": "DNAME", "setIdentifier": "x", "targets": []any{"a.test."}}, map[string]any{"dnsName": "branch.api.test", "recordType": "DNAME", "setIdentifier": "y", "targets": []any{"b.test."}}},
 		} {
 			upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/dnsrecordsets", session.CSRF, object("DNSRecordSet", "invalid-"+name, "default", map[string]any{
 				"zoneRef": map[string]any{"name": "api-test"}, "endpoints": endpoints,
@@ -355,6 +376,13 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 			q.SetQuestion(name, dns.TypeA)
 			if r, _, err := (&dns.Client{Timeout: time.Second}).ExchangeContext(t.Context(), q, cfg.Listeners.DNS[0].Address); err != nil || len(r.Answer) != 0 && r.Answer[0].Header().Rrtype == dns.TypeA {
 				t.Fatalf("%s A of a refused endpoint: %v %v", name, r, err)
+			}
+		}
+		{
+			q := new(dns.Msg)
+			q.SetQuestion("branch.api.test.", dns.TypeDNAME)
+			if r, _, err := (&dns.Client{Timeout: time.Second}).ExchangeContext(t.Context(), q, cfg.Listeners.DNS[0].Address); err != nil || len(r.Answer) != 1 || r.Answer[0].(*dns.DNAME).Target != "a.test." {
+				t.Fatalf("branch.api.test. DNAME: %v %v, want the first target only", r, err)
 			}
 		}
 		if got := ready(); got != http.StatusOK {
@@ -411,6 +439,62 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 		// A block list whose URL accepts the connection and never answers
 		// does not hold back the serving generation while its first
 		// download runs: DNS, readiness and later writes go on (D373).
+		// From the list's write until a later record is answered,
+		// readiness is sampled. Every commit makes readiness 503 until its
+		// generation is published (a few seconds under the race detector;
+		// the serving publisher's current-authority rule), so readiness
+		// may leave 200, but never for long: before D373 the first
+		// download held back every generation for the fetcher's HTTP
+		// timeout (listfetcher.DefaultHTTPTimeout, 5 minutes, three
+		// attempts), so readiness stayed 503 and a write was never served.
+		// The record must also be answered within a bound far below that.
+		// Bounds well below the fetcher's 5-minute HTTP timeout: the
+		// longest stretch readiness may be away from 200, and the time a
+		// later record may take to be answered.
+		notReadyBound, silentBound := 30*time.Second, 60*time.Second
+		sampling := make(chan struct{})
+		type readinessTrace struct {
+			changes []string
+			longest time.Duration
+		}
+		sampled := make(chan readinessTrace, 1)
+		var stopSampling sync.Once
+		t.Cleanup(func() { stopSampling.Do(func() { close(sampling) }) })
+		go func() {
+			var trace readinessTrace
+			last, since := "200", time.Now()
+			for {
+				stop := false
+				select {
+				case <-sampling:
+					stop = true
+				case <-time.After(50 * time.Millisecond):
+				}
+				answer := "unreachable"
+				if response, err := client.Get("http://" + cfg.Listeners.Ops.Address + "/healthz/ready"); err == nil {
+					body, _ := io.ReadAll(io.LimitReader(response.Body, 1024))
+					_ = response.Body.Close()
+					answer = fmt.Sprintf("%d %s", response.StatusCode, strings.TrimSpace(string(body)))
+					if response.StatusCode == http.StatusOK {
+						answer = "200"
+					}
+				}
+				if last != "200" {
+					trace.longest = max(trace.longest, time.Since(since))
+				}
+				if (answer == "200") != (last == "200") {
+					since = time.Now()
+				}
+				if answer != last && len(trace.changes) < 64 {
+					trace.changes = append(trace.changes, fmt.Sprintf("%s: %s", time.Since(began).Round(time.Millisecond), answer))
+				}
+				last = answer
+				if stop {
+					sampled <- trace
+					return
+				}
+			}
+		}()
 		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/blocklists", session.CSRF, object("BlockList", "silent-url", "default", map[string]any{
 			"sources": []any{map[string]any{"name": "remote", "format": "domains", "url": hanging.URL + "/silent.txt"}},
 		}), http.StatusCreated, nil)
@@ -419,14 +503,31 @@ func TestRunServeSQLiteUpgradeWithLegacyPlaceholders(t *testing.T) {
 				t.Fatal("the fetcher never asked the silent URL")
 			}
 		}
+		wrote := time.Now()
 		upgradeMountedRequest(t, client, base, http.MethodPost, "/objects/dnsrecordsets", session.CSRF, object("DNSRecordSet", "while-silent", "default", map[string]any{
 			"zoneRef": map[string]any{"name": "api-test"}, "endpoints": []any{map[string]any{"dnsName": "while-silent.api.test", "recordType": "A", "targets": []any{"192.0.2.85"}}},
 		}), http.StatusCreated, nil)
-		if got := answer("while-silent.api.test."); got != "192.0.2.85" {
-			t.Fatalf("while-silent.api.test. = %s", got)
+		for q := new(dns.Msg).SetQuestion("while-silent.api.test.", dns.TypeA); ; time.Sleep(100 * time.Millisecond) {
+			r, _, err := (&dns.Client{Timeout: time.Second}).ExchangeContext(t.Context(), q, cfg.Listeners.DNS[0].Address)
+			if err == nil && len(r.Answer) == 1 && r.Answer[0].(*dns.A).A.String() == "192.0.2.85" {
+				break
+			}
+			if time.Since(wrote) > silentBound {
+				t.Fatalf("while-silent.api.test. is not answered %s after its write while a list URL is silent: %v %v", silentBound, r, err)
+			}
 		}
-		if got := ready(); got != http.StatusOK {
-			t.Fatalf("readiness %d while a list URL does not answer", got)
+		t.Logf("timing: while-silent.api.test. answered %s after its write", time.Since(wrote).Round(time.Millisecond))
+		for got := ready(); got != http.StatusOK; got = ready() {
+			if time.Since(wrote) > silentBound {
+				t.Fatalf("readiness %d %s after a write while a list URL does not answer", got, silentBound)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		stopSampling.Do(func() { close(sampling) })
+		trace := <-sampled
+		t.Logf("timing: readiness while a list URL is silent: longest not ready %s; %v", trace.longest.Round(time.Millisecond), trace.changes)
+		if trace.longest > notReadyBound {
+			t.Fatalf("readiness was not 200 for %s while a list URL does not answer: %v", trace.longest, trace.changes)
 		}
 		upgradeMountedRequest(t, client, base, http.MethodGet, "/zones", "", nil, http.StatusOK, nil)
 		var silentList struct {
