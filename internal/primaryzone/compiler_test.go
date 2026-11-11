@@ -397,6 +397,7 @@ func TestCompilerWithholdsEveryRefusalOfTheBuilder(t *testing.T) {
 		return public.Endpoint{DNSName: name, RecordType: typ, Targets: targets}
 	}
 	ttl := func(ep public.Endpoint, ttl int64) public.Endpoint { ep.RecordTTL = ttl; return ep }
+	setID := func(ep public.Endpoint, id string) public.Endpoint { ep.SetIdentifier = id; return ep }
 	cases := []struct {
 		name string
 		eps  []public.Endpoint
@@ -443,6 +444,11 @@ func TestCompilerWithholdsEveryRefusalOfTheBuilder(t *testing.T) {
 		{"cname-and-a-in-one-set", []public.Endpoint{typed("pair.example.", "CNAME", "other.example."), a("pair.example.", "192.0.2.58")}, "served", "pair.example.", dns.TypeA},
 		{"a-and-cname-in-one-set", []public.Endpoint{a("pair2.example.", "192.0.2.59"), typed("pair2.example.", "CNAME", "other.example.")}, "served", "pair2.example.", dns.TypeCNAME},
 		{"below-a-dname", []public.Endpoint{typed("moved.example.", "DNAME", "target.test."), a("x.moved.example.", "192.0.2.60")}, "served", "x.moved.example.", dns.TypeA},
+		// Two DNAME targets at one name through set identifiers: the
+		// builder keeps the first, as the committed primary the runtime
+		// builds before admission holds one record in a DNAME RRset.
+		{"two-dnames-two-set-identifiers", []public.Endpoint{setID(typed("tree.example.", "DNAME", "a.test."), "x"), setID(typed("tree.example.", "DNAME", "b.test."), "y")}, "served", "", 0},
+		{"two-dnames-plain-and-set-identifier", []public.Endpoint{typed("tree2.example.", "DNAME", "a.test."), setID(typed("tree2.example.", "DNAME", "b.test."), "y")}, "served", "", 0},
 	}
 	z := desiredZone()
 	ok := desiredSet("ok", endpoint("www", "192.0.2.10"))

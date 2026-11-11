@@ -560,10 +560,15 @@ func (b *Builder) addParsed(source string, path *field.Path, ep *v1alpha1.Endpoi
 		rr.Header().Name = n.name
 		set.add(rr)
 	}
-	if rrtype == dns.TypeCNAME && len(set.RRs) > 1 {
-		// Two sources merged under MergeUnion with different targets.
+	if (rrtype == dns.TypeCNAME || rrtype == dns.TypeDNAME) && len(set.RRs) > 1 {
+		// Two endpoints with different set identifiers, or two sources
+		// merged under MergeUnion, with different targets. A CNAME or DNAME
+		// RRset holds one record (RFC 2181 §10.1, RFC 6672 §2.4), and the
+		// committed primary refuses any other (BuildCommittedPrimary), so
+		// the later endpoint is dropped here and reported (D373).
 		set.RRs = set.RRs[:1]
-		return field.ErrorList{field.Invalid(path.Child("targets"), ep.Targets, "a name has at most one CNAME target; this one was dropped")}
+		set.TTL = set.RRs[0].Header().Ttl // the dropped record's TTL is not kept
+		return field.ErrorList{field.Invalid(path.Child("targets"), ep.Targets, fmt.Sprintf("a name has at most one %s target; this one was dropped", typeString(rrtype)))}
 	}
 	if k := ep.Kudurru; k != nil && k.ExpiresAt != nil {
 		if t := k.ExpiresAt.Time; b.z.nextExpiry.IsZero() || t.Before(b.z.nextExpiry) {

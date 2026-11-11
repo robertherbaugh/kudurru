@@ -68,8 +68,13 @@ reported on the record set and the zone is served, and whatever the
 primary zone builder refuses of a record set (a record set that is invalid
 as a whole, such as an `A` target that is not an address or two endpoints
 for one name and type; an endpoint outside the zone; a CNAME next to other
-data, an apex CNAME or NS endpoint; data below a DNAME) is left out of the
+data, an apex CNAME or NS endpoint; data below a DNAME; a second CNAME or
+DNAME target at one name through set identifiers) is left out of the
 commit and reported on its record set while the rest of the zone is served.
+The builder refuses everything the committed primary that the runtime
+builds before admission refuses, so no record set it takes can stop the
+commit; a test runs every pair of endpoints over a small set of names,
+types and set identifiers through that prebuild.
 
 | Type | kudurru does | Example |
 |---|---|---|
