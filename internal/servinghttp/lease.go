@@ -56,13 +56,22 @@ func SourceToken(ctx context.Context) (sqlite.GenerationToken, error) {
 // explain a refusal instead of mistaking an ended request for one that began
 // in another role. It returns no token and grants nothing.
 func SourceMode(ctx context.Context) (replication.Mode, error) {
+	mode, _, err := SourceRole(ctx)
+	return mode, err
+}
+
+// SourceRole is SourceMode with the display name of the primary in the
+// captured source's term. Like SourceMode it answers for an ended request
+// while the handler holds its lease, returns no token and grants nothing.
+func SourceRole(ctx context.Context) (replication.Mode, string, error) {
 	if ctx == nil {
-		return "", serving.ErrReleased
+		return "", "", serving.ErrReleased
 	}
 	original, _ := ctx.Value(leaseKey{}).(*serving.Lease)
 	token, err := original.SourceToken()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return token.Authority().Mode, nil
+	authority := token.Authority()
+	return authority.Mode, authority.Term.PrimaryName, nil
 }

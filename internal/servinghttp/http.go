@@ -17,6 +17,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 )
 
 // Options pins the host's cookie template and CSRF policy. Cookie Secure mode
@@ -166,7 +167,7 @@ func (a *Adapter) Middleware(next http.Handler) http.Handler {
 		defer cancel()
 		lease, err := a.capture(ctx)
 		if err != nil {
-			auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "generation_pending", Message: "complete serving generation unavailable", RetryAfter: time.Second})
+			auth.WriteError(w, r, a.captureRefusal())
 			return
 		}
 		defer lease.Release()
@@ -177,6 +178,38 @@ func (a *Adapter) Middleware(next http.Handler) http.Handler {
 		}
 		verify.ServeHTTP(w, r)
 	})
+}
+
+// Error keys of a member whose API is closed by its durable authority.
+const (
+	KeyClusterFenced   = "cluster_fenced"
+	KeyClusterConflict = "cluster_conflict"
+)
+
+// captureRefusal explains why this request got no complete lease. A fenced or
+// conflicted member closes its API until its authority changes, which a
+// retry a second later does not bring about: those answers name the state
+// and what ends it, and carry no Retry-After. Every other cause is a
+// publication that is still being prepared. The authority is a local
+// observation that selects the text only; the request is refused either way.
+func (a *Adapter) captureRefusal() *auth.Error {
+	authority := a.options.Publisher.Status().Authority
+	switch {
+	case authority.Mode == replication.Conflict || authority.Conflict != nil || authority.Divergence != nil:
+		return &auth.Error{Status: http.StatusServiceUnavailable, Key: KeyClusterConflict, NoRetryAfter: true,
+			Message: "this node recorded conflicting promotions and closed its API; it keeps answering DNS from its last valid data",
+			Hint:    "decide which member's data to keep, stop that member and run `kudurru cluster resolution --offline` and then `kudurru cluster resolve --offline` on it; the other members follow it at their next peer exchange"}
+	case authority.Mode == replication.Fenced:
+		// A fenced member's term is the newer one that it observed.
+		newer := "a newer primary"
+		if name := authority.Term.PrimaryName; name != "" {
+			newer = "the newer primary " + name
+		}
+		return &auth.Error{Status: http.StatusServiceUnavailable, Key: KeyClusterFenced, NoRetryAfter: true,
+			Message: "this node observed " + newer + " and closed its API until it follows that primary; it keeps answering DNS from its last valid data",
+			Hint:    "send requests to the current primary; this node becomes a follower after its next successful pull, so check that it reaches the primary's internal listener if this answer persists"}
+	}
+	return &auth.Error{Status: http.StatusServiceUnavailable, Key: "generation_pending", Message: "complete serving generation unavailable", RetryAfter: time.Second}
 }
 
 // capture waits only before the request owns a lease or authenticates. It never
