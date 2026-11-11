@@ -22,8 +22,8 @@ import (
 // revocation, lose managed history or adopt a branch it must refuse. They also
 // pin, for every state that leaves a member fenced or retired, what ends that
 // state. As in anchor_history_test.go, members are real databases and every
-// owner comes from the pure state machine and signed DNSKEY responses; the one
-// re-sealed image says so.
+// owner comes from the pure state machine and signed DNSKEY responses; the two
+// installs of a re-sealed image say so.
 
 // anchorRecheckDS names a fixture key the way the resolver projection does.
 func anchorRecheckDS(proof anchorTestProof) string {
