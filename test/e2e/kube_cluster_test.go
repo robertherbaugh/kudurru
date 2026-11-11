@@ -315,6 +315,22 @@ func TestKubeProcessesColdStartLeaseLossAndRejoin(t *testing.T) {
 		t.Fatalf("the partitioned %s stopped answering its last good data", lead.spec.Name)
 	}
 	await(30*time.Second, other.spec.Name+" reports itself as leader", func() bool { return leaderSeen(other, other.spec.Name) }, other)
+	// Fencing: while cut off, the former holder has stopped leading (its
+	// renew deadline passed), so the two never both report themselves as
+	// leader. Only its API server relay is cut; its ops port answers.
+	await(30*time.Second, "the partitioned "+lead.spec.Name+" stops reporting itself as leader", func() bool {
+		h, err := readKubeHealth(lead.spec.Ports.Ops)
+		return err == nil && h.leader != lead.spec.Name
+	}, lead)
+	for range 3 {
+		if leaderSeen(lead, lead.spec.Name) {
+			t.Fatalf("the partitioned %s reports itself as leader while %s holds the Lease", lead.spec.Name, other.spec.Name)
+		}
+		if !leaderSeen(other, other.spec.Name) {
+			t.Fatalf("%s stopped reporting itself as leader during the partition", other.spec.Name)
+		}
+		time.Sleep(time.Second)
+	}
 
 	healed := time.Now()
 	lead.relay.partition(false)
