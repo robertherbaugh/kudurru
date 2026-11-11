@@ -264,12 +264,13 @@ func (f *Fetcher) Reconcile(ctx context.Context) time.Time {
 	return f.reconcile(ctx, nil)
 }
 
-// reconcile is Reconcile. When yield receives (a BlockList changed) or the
-// Fetcher is kicked while downloads of this pass still run, it returns at
-// once for a new pass: the downloads go on, publish their lists when they
-// end and are skipped by later passes until then, so a URL that never
-// answers does not keep a list added or changed meanwhile from its first
-// download (D373).
+// reconcile is Reconcile. When yield receives (a BlockList changed) while
+// downloads of this pass still run, it returns at once, and Run starts the
+// next pass after its one-second floor: the downloads go on, publish their
+// lists when they end and are skipped by later passes until then, so a URL
+// that never answers does not keep a list added or changed meanwhile from
+// its first download (D373). A kick (RefreshNow, or a download that ended)
+// does not end the pass; Run reads it when the pass returns.
 func (f *Fetcher) reconcile(ctx context.Context, yield <-chan struct{}) time.Time {
 	now := f.opts.Now()
 	if ctx.Err() != nil {
@@ -324,7 +325,8 @@ func (f *Fetcher) reconcile(ctx context.Context, yield <-chan struct{}) time.Tim
 		// download ends, not when the whole pass ends: a URL that accepts
 		// the connection and never answers holds its own attempt for the
 		// HTTP timeout, but not the published bodies of every other list
-		// (D373). The pass still publishes every list at its end.
+		// (D373). A pass that is not ended by a BlockList change still
+		// publishes every list at its end.
 		index := map[string]int{}
 		for i := range plans {
 			index[plans[i].name] = i

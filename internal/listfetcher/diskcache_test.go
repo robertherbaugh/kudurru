@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -186,5 +187,38 @@ func TestDownloaderRetries(t *testing.T) {
 	defer srv404.Close()
 	if _, err := d.Fetch(context.Background(), Source{Key: srv404.URL}, OriginFetch); err == nil || hits != 1 {
 		t.Errorf("404: %v after %d hits", err, hits)
+	}
+}
+
+// TestDiskCacheReportsAnAwaitedBodyOnce: a list source compiled empty for
+// want of its body does not block on this node until the body is stored
+// (AwaitBody, D373). The node says so once per source when the wait
+// starts, and again when the body arrives, without the URL's credentials.
+func TestDiskCacheReportsAnAwaitedBodyOnce(t *testing.T) {
+	var logs strings.Builder
+	cache, err := OpenDiskCache(t.TempDir(), slog.New(slog.NewTextHandler(&logs, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "https://user:secret@lists.example.test/list.txt?token=hidden"
+	for range 3 {
+		if !cache.AwaitBody(key) {
+			t.Fatal("a body was reported for an empty cache")
+		}
+	}
+	if n := strings.Count(logs.String(), "awaiting its body"); n != 1 {
+		t.Fatalf("the wait was reported %d times:\n%s", n, logs.String())
+	}
+	if _, _, err := cache.Put(key, strings.NewReader("late.example.test\n"), PutOptions{MaxSize: 1024}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(logs.String(), "awaited body stored") {
+		t.Fatalf("the arrival was not reported:\n%s", logs.String())
+	}
+	if strings.Contains(logs.String(), "secret") || strings.Contains(logs.String(), "hidden") {
+		t.Fatalf("the source URL was logged with its credentials:\n%s", logs.String())
+	}
+	if cache.AwaitBody(key) {
+		t.Fatal("a stored body is still awaited")
 	}
 }

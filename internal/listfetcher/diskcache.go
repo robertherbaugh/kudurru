@@ -367,11 +367,15 @@ func (c *DiskCache) store(e Entry) {
 	c.byKey[e.Key] = e
 	c.byDigest[e.Digest] = e.Key
 	var hook func()
-	if c.awaited[e.Key] {
+	awaited := c.awaited[e.Key]
+	if awaited {
 		delete(c.awaited, e.Key)
 		hook = c.awaitedHook
 	}
 	c.mu.Unlock()
+	if awaited {
+		c.log.Info("listfetcher: awaited body stored; the list source blocks on this node again", "source", redact(e.Key), "digest", e.Digest)
+	}
 	if hook != nil {
 		hook()
 	}
@@ -381,13 +385,20 @@ func (c *DiskCache) store(e Entry) {
 // none, key is recorded atomically with that answer, and the hook set with
 // OnAwaitedBody is called once a body for key is stored: a preparation
 // that compiled the source empty for want of its body then runs again.
+// The source does not block on this node meanwhile, so the wait is logged
+// once when it starts and once when the body is stored.
 func (c *DiskCache) AwaitBody(key string) bool {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if _, ok := c.byKey[key]; ok {
+		c.mu.Unlock()
 		return false
 	}
+	first := !c.awaited[key]
 	c.awaited[key] = true
+	c.mu.Unlock()
+	if first {
+		c.log.Warn("listfetcher: list source has a published digest but this node holds no body for it; it is served empty, awaiting its body, and does not block on this node until the body is stored", "source", redact(key))
+	}
 	return true
 }
 
