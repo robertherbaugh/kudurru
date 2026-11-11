@@ -27,7 +27,9 @@ address. A client ID can, because it travels with the encrypted connection,
 but only when no `ip`, `mac`, `cidr`, `hostname` or `nameGlob` matcher of any
 client group matches the address the query arrives from: the first matching
 tier wins (`IdentifyAt` in `internal/policy/index.go`), and the client ID
-tier comes after those.
+tier comes after those. A catch-all `0.0.0.0/0` or `::/0` CIDR is the
+exception: it comes after the client ID, so a group for every address does
+not hide a client ID.
 The built-in DHCP server supplies names to these matchers, not MAC addresses.
 
 Client IDs are optional, client-selected policy identifiers. They are **not

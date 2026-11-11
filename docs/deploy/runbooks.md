@@ -224,8 +224,9 @@ so they cannot tell apart devices behind a router that replaces the source
 address. An opt-in DoT, DoQ or DoH [client ID](client-identity.md) travels
 with the connection and can still select a client group, but only when no
 IP, MAC, CIDR, hostname or name-glob matcher matches the router's address
-(the first matching tier wins). Remove the address matchers that match the router
-first. The query log keeps recording the address the query arrived from.
+(the first matching tier wins). A catch-all `0.0.0.0/0` or `::/0` CIDR does
+not count: it comes after the client ID. Remove the other address matchers
+that match the router first. The query log keeps recording the address the query arrived from.
 
 1. On two devices with different addresses, send different names to each
    published VIP over both transports, for example:
