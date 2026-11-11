@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -91,10 +92,34 @@ func TestAnchorEdgeActivationJoinedFollower(t *testing.T) {
 		t.Fatal("first image does not carry the primary's managed owner", err)
 	}
 
-	var calls atomic.Int32
+	// Each edge reports the fleet the runbook describes: the primary's
+	// backend and this follower's, which must appear exactly once. The
+	// refusal shapes below are served before the supported start.
+	primaryBackend := internalapi.EdgeBypassBackend{Name: "primary", Address: "192.0.2.10:5353", InternalAddress: "192.0.2.10:8082"}
+	var calls, shape atomic.Int32
+	const (
+		shapeFleet int32 = iota
+		shapeMissing
+		shapeTwice
+		shapeChanged
+	)
 	observe := func(_ context.Context, id string) (internalapi.EdgeBypassState, error) {
 		calls.Add(1)
-		return anchorEdgeState(id), nil
+		state := anchorEdgeState(id)
+		self := state.Backends[0]
+		switch shape.Load() {
+		case shapeMissing:
+			state.Backends = []internalapi.EdgeBypassBackend{primaryBackend}
+		case shapeTwice:
+			state.Backends = []internalapi.EdgeBypassBackend{primaryBackend, self, self}
+		case shapeChanged:
+			changed := self
+			changed.InternalAddress = "192.0.2.1:8083"
+			state.Backends = []internalapi.EdgeBypassBackend{changed, primaryBackend}
+		default:
+			state.Backends = []internalapi.EdgeBypassBackend{primaryBackend, self}
+		}
+		return state, nil
 	}
 	first, client := anchorEdgePeer(t, "edge-a", strings.Repeat("a", 64), observe)
 	second, _ := anchorEdgePeer(t, "edge-b", strings.Repeat("b", 64), observe)
@@ -172,6 +197,29 @@ func TestAnchorEdgeActivationJoinedFollower(t *testing.T) {
 		}
 		return stop
 	}
+	// A fleet whose edges do not list this backend exactly once (absent,
+	// listed twice, or listed with another internal address) refuses the
+	// start after the first edge, before any root acquisition, and leaves
+	// the follower's authority unchanged.
+	for _, refused := range []int32{shapeMissing, shapeTwice, shapeChanged} {
+		shape.Store(refused)
+		calls.Store(0)
+		authority := st.Authority()
+		o := opts
+		o.Store = st
+		startup, finish := context.WithTimeout(t.Context(), 10*time.Second)
+		s, err := newServingRuntime(startup, o)
+		finish()
+		if err == nil {
+			_ = s.Close(context.Background())
+			t.Fatal("joined follower started behind an edge that does not list it exactly once", refused)
+		}
+		if calls.Load() != 1 || reads.Load() != 1 || !reflect.DeepEqual(authority, st.Authority()) {
+			t.Fatal("refused membership contacted more edges, fetched the root or changed authority", refused, calls.Load(), reads.Load())
+		}
+	}
+	shape.Store(shapeFleet)
+	calls.Store(0)
 	stop := start(st, 2, 2)
 	// Exactly one supervisor acquisition and no further fleet contact inside
 	// the supervisor's cooldown.
