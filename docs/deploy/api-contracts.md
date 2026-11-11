@@ -134,7 +134,7 @@ so. None of them means "try again": do not retry them in a loop.
 | `primary_required` | an enrolled follower, for a change it neither forwards nor runs itself | Nothing was changed. The message names the primary; send the request there. | no |
 | `completion_unknown` | an enrolled follower, for a forwarded change whose exchange with the primary failed | The follower cannot tell whether the primary committed. Read the object before a new decision; do not replay. | 1 on the authentication routes, otherwise none |
 | `cluster_fenced` | a former primary that observed a newer one, for every request | The API is closed until the member follows the newer primary, which it does at its next successful pull. | no |
-| `cluster_conflict` | a member that recorded conflicting promotions, for every request | The API is closed until an operator resolves the conflict offline ([recover from conflicting promotions](sqlite-join.md#recover-from-conflicting-promotions)). | no |
+| `cluster_conflict` | a member that recorded conflicting promotions, or data that diverges from its primary's at the same revision, for every request | The API is closed until an operator resolves the conflict offline ([recover from conflicting promotions](sqlite-join.md#recover-from-conflicting-promotions)). | no |
 
 [What works where](capabilities.md) lists these keys with the refusals that
 depend on the deployment shape, such as the Kubernetes store.

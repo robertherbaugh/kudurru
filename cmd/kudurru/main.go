@@ -50,7 +50,7 @@ func errorHint(err error) string {
 	case apiclient.IsKey(err, "cluster_fenced"):
 		return "this node observed a newer primary and closed its API until it follows it; use the current primary meanwhile"
 	case apiclient.IsKey(err, "cluster_conflict"):
-		return "this node recorded conflicting promotions; stop the member whose data should survive and run `kudurru cluster resolution --offline`, then `kudurru cluster resolve --offline`, on it"
+		return "this node recorded conflicting promotions or data that diverges from its primary's; stop the member whose data should survive and run `kudurru cluster resolution --offline`, then `kudurru cluster resolve --offline`, on it"
 	}
 	return ""
 }
