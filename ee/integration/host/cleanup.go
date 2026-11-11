@@ -128,6 +128,11 @@ type terminatingLease struct {
 	// with the run's bound.
 	forgetCut   bool
 	forgetTried int
+	// localCut: the run's bound ended one of its local reads or commits
+	// (a ledger or operation read, a Forget, a fence, the purge or the
+	// finalization), so a run cut without progress names a local failure,
+	// not a provider one.
+	localCut bool
 	// forgetTook is how long the last Forget that committed took.
 	forgetTook time.Duration
 }
@@ -138,6 +143,15 @@ func (st *terminatingLease) forgetChunk() int {
 		return ledger.MaxForgetOperations
 	}
 	return st.forgetLimit
+}
+
+// local notes whether the run's bound ended a local step that returned err,
+// and returns err.
+func (st *terminatingLease) local(ctx context.Context, err error) error {
+	if err != nil && ctx.Err() != nil {
+		st.localCut = true
+	}
+	return err
 }
 
 // errYield ends a run that made progress before its bound would cut the next
@@ -158,7 +172,7 @@ func (h *Host) yields(ctx context.Context, st *terminatingLease) bool {
 // ended it.
 func (h *Host) forget(ctx context.Context, g ExecutionGuard, st *terminatingLease, l *kinds.IntegrationLedger, ops []*kinds.IntegrationOperation, proof ledger.Observation) error {
 	started := time.Now()
-	err := h.opts.Ledger.Forget(ctx, g.Ledger, l, ops, proof)
+	err := st.local(ctx, h.opts.Ledger.Forget(ctx, g.Ledger, l, ops, proof))
 	st.forgetCut = err != nil && ctx.Err() != nil
 	st.forgetTried = len(ops)
 	if err == nil {
@@ -238,7 +252,7 @@ func (h *Host) runTerminating(leaseCtx context.Context, j *job) {
 		}
 		runCtx, runCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
 		st.summary.Runs++
-		st.progress, st.forgetCut = false, false
+		st.progress, st.forgetCut, st.localCut = false, false, false
 		out, f, g := h.terminate(runCtx, j, st)
 		bounded := runCtx.Err() != nil && ctx.Err() == nil
 		runCancel()
@@ -247,13 +261,18 @@ func (h *Host) runTerminating(leaseCtx context.Context, j *job) {
 			// The run reached its bound. With progress that is the ordinary
 			// way a long cleanup continues. Without, either a local Forget
 			// commit is too large for the bound, which the next run retries
-			// with half of it, or a provider that hangs.
+			// with half of it, or another local step (a read, a fence, a
+			// commit) was too slow for it, a failure of the store that backs
+			// off like any other, or a provider that hangs.
 			switch {
 			case st.progress:
 				out.again, out.reason = true, ReasonCleanup
 			case st.forgetCut && st.forgetTried > 1:
 				st.forgetLimit = st.forgetTried / 2
 				out.again, out.reason, out.err = true, ReasonCleanup, nil
+			case st.localCut:
+				out.err = &Failure{Kind: FailureTemporary}
+				out.reason = ReasonCleanupFailed
 			default:
 				out.err = &Failure{Kind: FailureTemporary}
 				if st.publisher {
@@ -344,12 +363,12 @@ func (h *Host) terminate(ctx context.Context, j *job, st *terminatingLease) (ter
 	if err != nil {
 		return terminatingOutcome{reason: ReasonAuthorityChanged, uncounted: true, err: ErrFenced}, frame{}, ExecutionGuard{}
 	}
-	if err := h.fence(ctx, j, g); err != nil {
+	if err := st.local(ctx, h.fence(ctx, j, g)); err != nil {
 		return terminatingOutcome{reason: ReasonAuthorityChanged, uncounted: true, err: ErrFenced}, f, g
 	}
 	if g.Mode == GuardRelease {
 		st.summary.Released = true
-		if err := h.opts.Finalize(ctx, g, st.summary); err != nil {
+		if err := st.local(ctx, h.opts.Finalize(ctx, g, st.summary)); err != nil {
 			return failed(ctx, ReasonReleaseFailed, Result{}, err), f, g
 		}
 		return terminatingOutcome{done: true}, f, g
@@ -358,7 +377,7 @@ func (h *Host) terminate(ctx context.Context, j *job, st *terminatingLease) (ter
 	// outcome reports it: the ledger rows of the instance not yet forgotten.
 	result := Result{}
 	total, _, err := h.ledgerCounts(ctx, f.instance.owner, nil)
-	if err != nil {
+	if st.local(ctx, err) != nil {
 		// Nothing was counted: the run keeps what the last run reported
 		// instead of claiming that nothing is left.
 		out := failed(ctx, ReasonCleanupFailed, result, err)
@@ -398,10 +417,11 @@ func (h *Host) terminate(ctx context.Context, j *job, st *terminatingLease) (ter
 	if out, ok := h.forgetLeftovers(ctx, f, g, st, result); !ok {
 		return out, f, g
 	}
-	if err := h.fence(ctx, j, g); err != nil {
+	if err := st.local(ctx, h.fence(ctx, j, g)); err != nil {
 		return terminatingOutcome{reason: ReasonAuthorityChanged, result: result, err: ErrFenced}, f, g
 	}
 	purged, err := h.opts.Purge(ctx, g)
+	err = st.local(ctx, err)
 	st.summary.Purged.Objects += purged.Objects
 	st.summary.Purged.SourceRows += purged.SourceRows
 	st.summary.Purged.Allocations += purged.Allocations
@@ -410,10 +430,10 @@ func (h *Host) terminate(ctx context.Context, j *job, st *terminatingLease) (ter
 	if err != nil {
 		return failed(ctx, ReasonCleanupFailed, result, err), f, g
 	}
-	if err := h.fence(ctx, j, g); err != nil {
+	if err := st.local(ctx, h.fence(ctx, j, g)); err != nil {
 		return terminatingOutcome{reason: ReasonAuthorityChanged, result: result, err: ErrFenced}, f, g
 	}
-	if err := h.opts.Finalize(ctx, g, st.summary); err != nil {
+	if err := st.local(ctx, h.opts.Finalize(ctx, g, st.summary)); err != nil {
 		return failed(ctx, ReasonCleanupFailed, result, err), f, g
 	}
 	return terminatingOutcome{done: true}, f, g
@@ -504,7 +524,7 @@ func terminatingError(ctx context.Context, err error) error {
 // cleanupPublications reads every destination the terminating instance's
 // configuration still names: its complete remote snapshot and the instance's
 // ledger rows there, bound into a cleanup plan input with nothing desired.
-func (h *Host) cleanupPublications(ctx context.Context, j *job, f frame, g ExecutionGuard) ([]publicationInput, error) {
+func (h *Host) cleanupPublications(ctx context.Context, j *job, f frame, g ExecutionGuard, st *terminatingLease) ([]publicationInput, error) {
 	publisher, ok := j.provider.(Publisher)
 	if !ok {
 		return nil, ErrUnsupported
@@ -531,7 +551,7 @@ func (h *Host) cleanupPublications(ctx context.Context, j *job, f frame, g Execu
 			return nil, plan.ErrIncomplete
 		}
 		ledgers, err := h.ledgers(ctx, f.instance.owner, pub.Destination)
-		if err != nil {
+		if st.local(ctx, err) != nil {
 			return nil, err
 		}
 		in := publicationInput{pub, remote, plan.Input{Owner: f.instance.owner, Destination: pub.Destination, ConfigDigest: g.Ledger.ConfigDigest, CredentialDigest: g.Ledger.CredentialDigest, SourceDigest: cleanupSource, Policy: pub.Policy, Current: remote.Records, Ledger: ledgers, DesiredComplete: true, CurrentComplete: true, AdoptUnowned: pub.AdoptUnowned, AdoptExternalDNSOwner: pub.AdoptExternalDNSOwner, Cleanup: true}}
@@ -545,7 +565,7 @@ func (h *Host) cleanupPublications(ctx context.Context, j *job, f frame, g Execu
 		y, _ := json.Marshal(b.publication.Destination)
 		return strings.Compare(string(x), string(y))
 	})
-	if err := h.fence(ctx, j, g); err != nil {
+	if err := st.local(ctx, h.fence(ctx, j, g)); err != nil {
 		return nil, err
 	}
 	return out, nil
@@ -567,7 +587,7 @@ func (h *Host) cleanupPublications(ctx context.Context, j *job, f frame, g Execu
 func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionGuard, st *terminatingLease, remaining int) (bool, terminatingOutcome) {
 	result := Result{Remaining: remaining}
 	owner := f.instance.owner
-	inputs, err := h.cleanupPublications(ctx, j, f, g)
+	inputs, err := h.cleanupPublications(ctx, j, f, g, st)
 	if err != nil {
 		return false, failed(ctx, ReasonCleanupFailed, result, err)
 	}
@@ -586,7 +606,7 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 	}
 	if recovered {
 		// Recovery changed ledger versions; rebuild complete observations.
-		if inputs, err = h.cleanupPublications(ctx, j, f, g); err != nil {
+		if inputs, err = h.cleanupPublications(ctx, j, f, g, st); err != nil {
 			return false, failed(ctx, ReasonCleanupFailed, result, err)
 		}
 	}
@@ -609,7 +629,7 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 	}
 	if result.Applied > 0 {
 		// Judge the destinations from what they hold now, not from receipts.
-		if inputs, err = h.cleanupPublications(ctx, j, f, g); err != nil {
+		if inputs, err = h.cleanupPublications(ctx, j, f, g, st); err != nil {
 			return false, failed(ctx, ReasonCleanupFailed, result, err)
 		}
 	}
@@ -650,7 +670,7 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 	// Every ledger row of the instance, on any destination. The rows of the
 	// destinations read above are in their inputs; the others are stranded.
 	left, stranded, err := h.ledgerCounts(ctx, owner, published)
-	if err != nil {
+	if st.local(ctx, err) != nil {
 		return false, failed(ctx, ReasonCleanupFailed, result, err)
 	}
 	result.Remaining = left
@@ -687,7 +707,7 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 			}
 			if history == nil {
 				operations, err := h.operationBatch(ctx, owner)
-				if err != nil {
+				if st.local(ctx, err) != nil {
 					result.Conflicts = conflicts + unproven
 					return false, failed(ctx, ReasonCleanupFailed, result, err)
 				}
@@ -746,7 +766,7 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 func (h *Host) forgetLeftovers(ctx context.Context, f frame, g ExecutionGuard, st *terminatingLease, result Result) (terminatingOutcome, bool) {
 	for {
 		forgotten := false
-		err := h.operationPages(ctx, f.instance.owner, func(page []*kinds.IntegrationOperation) (bool, error) {
+		err := st.local(ctx, h.operationPages(ctx, f.instance.owner, func(page []*kinds.IntegrationOperation) (bool, error) {
 			history := map[kinds.RecordIdentity][]*kinds.IntegrationOperation{}
 			var records []kinds.RecordIdentity
 			for _, op := range page {
@@ -772,7 +792,7 @@ func (h *Host) forgetLeftovers(ctx context.Context, f frame, g ExecutionGuard, s
 				result.Remaining--
 			}
 			return true, nil
-		})
+		}))
 		if errors.Is(err, errYield) {
 			return terminatingOutcome{reason: ReasonCleanup, result: result, again: true}, false
 		}

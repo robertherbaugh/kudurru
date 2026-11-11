@@ -267,6 +267,9 @@ type cleanupFixture struct {
 	forgetCost time.Duration
 	// ledgerRefused makes the host's paged reads of ledger rows fail.
 	ledgerRefused atomic.Bool
+	// operationsStalled makes the host's paged reads of operations wait for
+	// their context, as a store too slow for the run's bound does.
+	operationsStalled atomic.Bool
 }
 
 // refusingReader is the host's reader with ledger reads that can be made to
@@ -276,6 +279,10 @@ type refusingReader struct{ f *cleanupFixture }
 func (r refusingReader) List(ctx context.Context, kind store.Kind, o store.ListOptions) (store.ObjectList, error) {
 	if kind == kinds.KindIntegrationLedger && r.f.ledgerRefused.Load() {
 		return store.ObjectList{}, errCleanupTest
+	}
+	if kind == kinds.KindIntegrationOperation && r.f.operationsStalled.Load() {
+		<-ctx.Done()
+		return store.ObjectList{}, ctx.Err()
 	}
 	return r.f.st.List(ctx, kind, o)
 }

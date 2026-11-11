@@ -932,6 +932,43 @@ func TestTerminatingForgetCommitsShrinkToTheRunBound(t *testing.T) {
 	}
 }
 
+// A run that its bound cuts in a local read, with no provider request
+// outstanding, is a local failure: it reports CleanupFailed, never
+// ProviderFailed, and the cleanup finishes once the store answers in time.
+// The first run deletes the record set and is cut reading its history; the
+// next one, without progress, is cut at the same read.
+func TestTerminatingRunCutInALocalReadIsNoProviderFailure(t *testing.T) {
+	f := newCleanupFixture(t, cleanupObject("sink", "Delete", true), func(f *cleanupFixture) {
+		f.timeout = time.Second
+	})
+	f.awaitPublished()
+	f.operationsStalled.Store(true)
+	f.requestDelete()
+	f.awaitReason(PhaseTerminating, ReasonCleanupFailed)
+	f.await("the published status of the cut run", func() bool {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		n := len(f.published)
+		return n > 0 && f.published[n-1].Phase == PhaseTerminating && f.published[n-1].Reason == ReasonCleanupFailed
+	})
+	if _, _, deletes, _ := f.w.counts(); deletes != 1 {
+		t.Fatalf("provider deletes: %d", deletes)
+	}
+	f.operationsStalled.Store(false)
+	f.wake()
+	summary := f.awaitFinalized()
+	if summary.RecordSetsDeleted != 1 || summary.RecordsForgotten != 1 {
+		t.Fatalf("summary: %+v", summary)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, s := range f.published {
+		if s.Reason == ReasonProviderFailed {
+			t.Fatal("a run cut in a local read was reported as ProviderFailed")
+		}
+	}
+}
+
 // ledgerFlood serves ledger rows of another incarnation without end.
 type ledgerFlood struct{}
 
