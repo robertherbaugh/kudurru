@@ -64,6 +64,10 @@ const (
 	// bodies fit the socket buffers and are sent without the round trip.
 	expectContinueBytes = 64 << 10
 	expectContinueWait  = 2 * time.Second
+
+	// wroteWait bounds how long a success waits for the transport to report
+	// that the body was written. It has normally reported before the answer.
+	wroteWait = 5 * time.Second
 )
 
 // Resolver reads the current value of a credential reference: a Secret key,
@@ -291,10 +295,19 @@ func (c *Client) Post(ctx context.Context, body []byte) error {
 	}
 	var connected atomic.Bool
 	var conn atomic.Pointer[answerConn]
-	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) {
-		connected.Store(true)
-		conn.Store(unwrapConn(info.Conn))
-	}})
+	wrote := make(chan error, 1)
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			connected.Store(true)
+			conn.Store(unwrapConn(info.Conn))
+		},
+		WroteRequest: func(info httptrace.WroteRequestInfo) {
+			select {
+			case wrote <- info.Err:
+			default:
+			}
+		},
+	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.opts.URL.String(), bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("%s: %s: invalid request", c.opts.Destination, c.target)
@@ -327,11 +340,24 @@ func (c *Client) Post(ctx context.Context, body []byte) error {
 	// batch, and the connection is not reused.
 	_ = resp.Body.Close()
 	status := resp.StatusCode
-	cut := conn.Load() != nil && conn.Load().cut.Load()
 	if status >= 200 && status < 300 {
-		if cut {
-			// A success for a body the destination did not take whole.
-			return fmt.Errorf("%s: %s answered HTTP %d but closed the connection before it had the whole batch, whether it was stored is unknown", c.opts.Destination, c.target, status)
+		// The transport returns an answer that arrives while the body is
+		// still being written. A success is believed only for a body that
+		// was written whole on a connection the destination did not reset:
+		// closing the response above ends a write still in progress, which
+		// then reports its error here.
+		var writeErr error
+		timer := time.NewTimer(wroteWait)
+		select {
+		case writeErr = <-wrote:
+		case <-timer.C:
+			writeErr = errors.New("still writing")
+		case <-ctx.Done():
+			writeErr = ctx.Err()
+		}
+		timer.Stop()
+		if writeErr != nil || (conn.Load() != nil && conn.Load().cut.Load()) {
+			return fmt.Errorf("%s: %s answered HTTP %d before it had the whole batch, whether it was stored is unknown", c.opts.Destination, c.target, status)
 		}
 		return nil
 	}

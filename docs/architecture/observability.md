@@ -280,7 +280,8 @@ connection is heard instead of resetting it under the body. ClickHouse
 sends "100 Continue" before it checks the password and then resets the
 connection under the body; the client's connections therefore hide the
 write error of a reset, so that the transport reads the answer that
-arrived before it (a 2xx to a body that was cut is an unknown outcome).
+arrived before it. A 2xx that arrives before the whole body was written,
+or on a connection that was reset under it, is an unknown outcome.
 An answer of
 408, 429 or 5xx is repeated within the attempt budget: the destination
 says that it did not store the batch, or (a 5xx from a gateway, a

@@ -397,25 +397,18 @@ func TestPostLargeBatchSeesARefusalAfterContinue(t *testing.T) {
 
 	// A success for a body the destination did not take whole is not
 	// believed: the outcome is unknown, and the batch is not sent again.
+	// The body is far larger than the socket buffers of a loopback
+	// connection hold, so the answer always comes while it is being written.
 	double.AnswerAfterContinue(http.StatusOK)
-	cut := 0
-	for range 5 {
-		err := client.Post(t.Context(), body)
-		if err == nil {
-			// The reset can come after the whole body fit the socket
-			// buffers; then the answer stands.
-			continue
-		}
-		cut++
-		if !strings.Contains(err.Error(), "whether it was stored is unknown") {
-			t.Fatalf("200 to a cut body: %v", err)
+	huge := bytes.Repeat(body, 8)
+	for i := range 5 {
+		err := client.Post(t.Context(), huge)
+		if err == nil || !strings.Contains(err.Error(), "ClickHouse: "+double.URL+" answered HTTP 200 before it had the whole batch, whether it was stored is unknown") {
+			t.Fatalf("attempt %d: 200 to a cut body: %v", i+1, err)
 		}
 		if _, again := retryable(t, err); again {
 			t.Fatalf("200 to a cut body was marked retryable: %v", err)
 		}
-	}
-	if cut == 0 {
-		t.Error("no body of 5 was cut")
 	}
 	if strings.Contains(fmt.Sprint(double.Requests()), "new-password") {
 		t.Fatal("a request record repeats the password")

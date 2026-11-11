@@ -259,14 +259,14 @@ func (d *Double) serveEarly(w http.ResponseWriter, r *http.Request, e *early) {
 			}
 		}
 		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-		if _, err := rw.Reader.Peek(1); err != nil {
+		if _, err := rw.Peek(1); err != nil {
 			return
 		}
 	} else {
 		// Whatever of the body has already arrived counts as sent after
 		// the answer: a client that waits sends nothing before it.
 		req.SentAfterAnswer = rw.Reader.Buffered()
-		_, _ = rw.Reader.Discard(req.SentAfterAnswer)
+		_, _ = rw.Discard(req.SentAfterAnswer)
 	}
 	if _, err := fmt.Fprintf(conn, "HTTP/1.1 %d %s\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", e.status, http.StatusText(e.status)); err != nil {
 		return
