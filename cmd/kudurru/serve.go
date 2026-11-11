@@ -1071,6 +1071,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var nodeConfigCommand api.NodeConfigCommand
 	var cacheFlushCommand api.CacheFlushCommand
 	var objectCommand api.ObjectCommand
+	var objectItems api.ObjectItems
 	var objectForward api.ObjectForward
 	var zoneForward api.ZoneForward
 	var objectReads api.ObjectReadSource
@@ -1146,6 +1147,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 		dnsQueryOutput = captureRootAnchorQueryOutput
 		canonicalSettings, objectCommand = complete, complete.ObjectCommand
+		objectItems = complete.ObjectItems
 		objectForward, zoneForward = complete.ObjectForward, complete.ZoneForward
 		brandingReads = complete.Branding
 		blockPagePreview = servingBrandingPreview{runtime: complete, server: blockPage, cache: &brandCache}
@@ -1351,7 +1353,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		DHCPSetupError:  dhcpSetupError,
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised, VIPObservation: vipObservation, VIPEvents: vipEvents,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
-		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectForward: objectForward, ObjectReads: objectReads, ZoneCommand: zoneCommand, ZoneForward: zoneForward, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
+		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectItems: objectItems, ObjectForward: objectForward, ObjectReads: objectReads, ZoneCommand: zoneCommand, ZoneForward: zoneForward, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, AuditBlockingCommand: kubeBlocking != nil, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
 		TSIGKeyReads: tsigKeyReads, TSIGKeyCommand: tsigKeyCommand,

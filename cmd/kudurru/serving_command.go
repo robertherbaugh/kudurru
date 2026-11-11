@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/providercoordinator"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
@@ -86,6 +87,15 @@ func (s *servingRuntime) currentAuthCommandThen(ctx context.Context, fn func(con
 	}
 	defer release()
 	target := serving.TermActivation{Term: status.Writer.Term, Incarnation: status.Writer.Incarnation}
+	// A request with several items carries one command chain (D378). Its first
+	// item is admitted below exactly as a single command is.
+	items := requestItemsFrom(ctx)
+	if items != nil {
+		if err := items.bind(writer, target); err != nil {
+			return false, err
+		}
+		ctx = providercoordinator.WithChain(ctx, items.chain)
+	}
 	checkWriter := func(ctx context.Context) error {
 		// Read the original episode directly: its cancellation can precede
 		// propagation through bind's AfterFunc to this request context.
@@ -97,6 +107,9 @@ func (s *servingRuntime) currentAuthCommandThen(ctx context.Context, fn func(con
 	check := func(ctx context.Context) error {
 		if err := checkWriter(ctx); err != nil {
 			return err
+		}
+		if items != nil && items.chain.Anchored() {
+			return s.checkLaterItem(ctx, target)
 		}
 		return servinghttp.CheckWriter(ctx, s.publisher, target)
 	}

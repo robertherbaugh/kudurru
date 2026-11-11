@@ -580,6 +580,7 @@ func (s *Server) apply(ctx context.Context, in *applyInput) (*applyOutput, error
 		return nil, err
 	}
 	results := make([]ApplyResult, 0, len(docs))
+	ctx = s.objectItems(ctx)
 	for _, d := range docs {
 		results = append(results, s.applyOne(ctx, d))
 	}
@@ -644,6 +645,7 @@ func (s *Server) batchDelete(ctx context.Context, k kindInfo, in *batchDeleteInp
 	if k.namespaced && ns == "" {
 		ns = s.opts.DefaultNamespace
 	}
+	ctx = s.objectItems(ctx)
 	for _, name := range in.Body.Names {
 		label := name
 		if k.namespaced {

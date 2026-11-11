@@ -22,6 +22,9 @@ func (s *servingRuntime) ObjectCommand(ctx context.Context, key store.Key, fn fu
 	if s == nil || ctx == nil || fn == nil || resource == "" {
 		return &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: api.KeyUnavailable, Message: "current public object command unavailable"}}
 	}
+	if err := itemEnded(ctx); err != nil {
+		return err
+	}
 	proof, err := servinghttp.Credential(ctx)
 	if err != nil {
 		return currentCommandAPIError(err)

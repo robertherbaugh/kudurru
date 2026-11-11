@@ -106,6 +106,9 @@ func currentCommandAPIError(err error) error {
 		return &api.Error{Status: http.StatusUnauthorized, Body: api.ErrorBody{Key: api.KeyUnauthenticated, Message: "current credential is invalid or expired"}}
 	case errors.Is(err, servingauth.ErrDenied):
 		return &api.Error{Status: http.StatusForbidden, Body: api.ErrorBody{Key: api.KeyForbidden, Message: "current authority does not permit this command"}}
+	case errors.Is(err, providercoordinator.ErrForeign):
+		// A later item of a multi-item request (D378). Nothing of it ran.
+		return &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: api.KeyUnavailable, Message: "another change was committed on this node while the request ran; this item was not applied; review current state before a new decision"}}
 	case errors.Is(err, replication.ErrFenced), errors.Is(err, replication.ErrReadOnly), errors.Is(err, serving.ErrPending), errors.Is(err, serving.ErrSuperseded), errors.Is(err, serving.ErrDependency), errors.Is(err, serving.ErrReleased), errors.Is(err, serving.ErrClosed), errors.Is(err, primaryruntime.ErrUnavailable),
 		errors.Is(err, providercoordinator.ErrStale), errors.Is(err, providercoordinator.ErrClosed), errors.Is(err, providerresources.ErrStale), errors.Is(err, providerresources.ErrUnavailable), errors.Is(err, providerresources.ErrClosed),
 		errors.Is(err, providerhost.ErrStale), errors.Is(err, providerhost.ErrContinuity), errors.Is(err, providerhost.ErrClosed), errors.Is(err, servingauth.ErrDependency):

@@ -345,6 +345,9 @@ type Options struct {
 	// ObjectCommand admits canonical object writes in the supplied current
 	// transaction. Nil retains the legacy object-management implementation.
 	ObjectCommand ObjectCommand
+	// ObjectItems lets the commands of one multi-item request (POST /apply,
+	// :batchDelete) follow the request's own commits. Requires ObjectCommand.
+	ObjectItems ObjectItems
 	// ObjectForward hands canonical object writes on an enrolled SQLite
 	// follower to its original primary. Requires ObjectCommand.
 	ObjectForward ObjectForward
