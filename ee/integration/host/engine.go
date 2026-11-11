@@ -674,7 +674,10 @@ func (h *Host) recover(ctx context.Context, j *job, g ExecutionGuard, in publica
 		return err
 	}
 	if state.homogeneous && state.resumable && hash == op.Spec.AfterHash && state.owned {
-		receipt := kinds.Receipt{Complete: true, ContentHash: hash, ProviderIDs: state.ids, ObservedAt: h.opts.Now()}
+		// UTC without a monotonic reading, as the adapters record it: the
+		// repository compares the saved operation with what the store reads
+		// back, and a monotonic clock reading does not survive the store.
+		receipt := kinds.Receipt{Complete: true, ContentHash: hash, ProviderIDs: state.ids, ObservedAt: h.opts.Now().UTC()}
 		// Preserve durable target facts as required by the monotone receipt API.
 		if op.Spec.Receipt != nil {
 			receipt.Targets = slices.Clone(op.Spec.Receipt.Targets)
