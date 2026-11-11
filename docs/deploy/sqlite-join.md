@@ -325,13 +325,17 @@ the primary, `primaryRequired` is `true`, and `forwardedOperations` and
 `localOperations` list the operation IDs of the first two groups, so a client
 can disable every other change before it sends it. On the primary and on a
 node that is not enrolled, `role` is `primary` or `standalone` and
-`primaryRequired` is `false`. `GET /api/v1/settings/_schema` marks every
-setting `readOnly` on a follower.
+`primaryRequired` is `false`. On a follower, `GET /api/v1/settings/_schema`
+marks the node-scope settings `readOnly`, because `PATCH /node/config` is not
+forwarded; cluster settings stay writable there, because `PATCH /settings` is
+forwarded to the primary.
 
 On a follower the block page keeps explaining a block, but it shows "This
 server cannot take a request for access right now" in place of the request
-form, because only the primary stores unblock requests. An approval that the
-follower has received is still shown.
+form, because only the primary stores unblock requests. A request that the
+follower has received still shows its state: an approval as on the primary, a
+pending or declined request with its status and that message, without an
+invitation to add details or ask again.
 
 
 ## Reconnecting an old primary
