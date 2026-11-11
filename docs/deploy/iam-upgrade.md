@@ -60,10 +60,12 @@ private authority are never copied into public metadata.
 means the private journal and archives verified. Restart the new deployment
 only after checking this result. Ambiguous UID-less tokens, including an account
 and token created in the same second without other identity proof, remain
-unbound; their owners must issue replacements. This always includes the first
-break-glass token that v0.1.0 minted: v0.1.0 created the `break-glass` service
-account in the same request, so the token and its account carry the same
-creation second. `plan` counts such tokens as `UnboundTokens`; after the
+unbound; their owners must issue replacements. This almost always includes the
+first break-glass token that v0.1.0 minted: v0.1.0 created the `break-glass`
+service account and minted the token in the same request, so the two nearly
+always carry the same creation second (only a request that straddles a second
+boundary binds it). Before or after the upgrade, mint a replacement with
+`kudurru admin create-token`. `plan` counts such tokens as `UnboundTokens`; after the
 upgrade they are refused with 401, and a new token from
 `kudurru admin create-token` replaces them. Break-glass tokens minted later,
 and tokens of a local user created in an earlier second, keep working.

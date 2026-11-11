@@ -110,7 +110,11 @@ reverified by this guard.
 offline saved-state admission and cached shared-settings fallback: an
 unpinned node that starts while the API server is unreachable cannot read the
 shared settings and exits with an error, so it neither answers nor reports
-ready until it can reach the API server. Before
+ready until it can reach the API server. Under Kubernetes its pod restarts
+(crash loop) for the length of the outage. This differs from the pinned
+refusals (a foreign pin, a snapshot without identity, a first boot), where
+the process stays up, answers SERVFAIL and reports
+unready. Before
 relying on outage recovery, provision the pin while the API is reachable and
 allow a complete live sync to refresh both saved objects and shared settings.
 Old object snapshots without a cluster ID are refused during an outage even
