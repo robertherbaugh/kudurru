@@ -86,30 +86,29 @@ Do not apply the same object through several owners. See the
 with an error when a document failed. Read every line: documents before a
 failed one stay applied.
 
-In this version a node with the SQLite store applies one new or changed
-document for each run of the command. It refuses the later documents of the
-file with `unavailable: current writable serving generation unavailable`.
-Run the same command again until it reports no error; a document that is
-already applied then shows `unchanged`. An example file with three documents
-in these guides needs three runs.
+One run applies every document of the file, also on the SQLite store, and a
+document that is already applied shows `unchanged` when you run the same
+file again. On the SQLite store a request can be refused as a whole when it
+begins while the node still publishes the previous change: it answers
+`generation_pending`, or every document reports `unavailable: current
+writable serving generation unavailable`. Nothing was applied; run the same
+command again after a few seconds. The same holds for a read directly after a
+change: `kudurru records list` directly after `kudurru import bind` can
+answer `unavailable: ... generation pending` for a moment.
 
-A command that arrives while the node still publishes the previous change
-can also be refused for a moment. For example, `kudurru records list`
-directly after `kudurru import bind` can answer `unavailable: ... generation
-pending`. Run it again after a few seconds.
+A document that reports `unavailable` with "another change was committed on
+this node while the request ran" was not applied, and neither was any later
+document of the file: someone else changed the node in the meantime. Review
+the current state, then run the file again; the documents applied before
+report `unchanged`. [Changes through a follower](/deploy/sqlite-cluster/#4-changes-through-a-follower)
+has the details of large files and of a cluster: send a file of many
+documents, and every restore, to the primary.
 
-Repeating does not help when the node cannot publish its configuration at
-all. In this version that happens on the SQLite store after a `BlockList`
-with a URL source that the node cannot download, or after a zone of the type
-`external`, `catalog` or `secondaryCatalog`. Every later command then fails
-with `generation_pending: complete serving generation unavailable`, the node
-stops answering for its own zones, and `kudurru health --ready` reports
-`prepare_failed`. Stop repeating, and do not restart the node: after a
-restart it answers SERVFAIL for every name, forwarded names too. A list
-recovers by itself when a later download attempt succeeds, minutes apart.
-Otherwise stop the node and put back the copy of its data directory that you
-made before the apply (see the
-[migration overview](/migrate/#feature-comparison)).
+On the SQLite store the API refuses a zone that the node cannot serve, such as
+a zone of an unserved type or with an update policy that kudurru cannot use:
+it answers `invalid`, names the field, and stores nothing. A list URL that
+kudurru cannot download is accepted and serves no rules until a download
+succeeds (see the [migration overview](/migrate/#feature-comparison)).
 
 ## Recreate the configuration
 

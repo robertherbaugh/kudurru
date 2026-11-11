@@ -83,8 +83,7 @@ Do not treat a partially understood filter as a complete migration.
 ## 3. Create the baseline lists and policy
 
 Save as `adguard-migration.yaml`. Replace the sample filter URL with your
-current enabled sources. Check first that the kudurru host can download each
-URL (for example `curl -fsS -o /dev/null URL`). This example deliberately
+current enabled sources. This example deliberately
 puts a global exception in a separate allow list.
 
 ```yaml
@@ -132,13 +131,14 @@ kudurru query tracker.example A --client 192.0.2.10
 kudurru query needed.tracker.example A --client 192.0.2.10
 ```
 
-If `kudurru apply` refuses a document with `unavailable: current writable
-serving generation unavailable`, run it again until it reports no error
-([apply results](/migrate/cutover/#apply-results)). If every command instead
-fails with `generation_pending`, stop repeating and do not restart the node:
-in this version a list URL that the kudurru host cannot download stops the
-node's own zones and its API. Download each list URL once from the kudurru
-host before you apply the file.
+If `kudurru apply` refuses every document with `unavailable: current
+writable serving generation unavailable` or `generation_pending`, nothing was
+applied: run it again after a few seconds
+([apply results](/migrate/cutover/#apply-results)). A list whose URL kudurru
+cannot download, or does not accept as a list, is stored and blocks nothing
+until a download succeeds: `kudurru lists list` shows `0` entries for it and
+`kudurru get blocklists -o yaml` shows the download error under `Degraded`
+([what counts as a failed download](/migrate/#feature-comparison)).
 
 The first name must block: its `kudurru status` line names the list and the
 rule. The second must not: the allow list wins, so the status is `forwarded`
@@ -253,6 +253,7 @@ or DoQ listener and `clientIDs: true` on a DoH or DoH3 listener, then add a
 `https://dns.example.com/dns-query/phone` both select `phone`, unless an IP,
 MAC, CIDR, hostname or name-glob matcher matches the address the query
 arrives from: the first matching tier wins, and client IDs come after those.
+A catch-all `0.0.0.0/0` or `::/0` CIDR comes after the client ID.
 The DoT and DoQ certificate must cover the client names, usually with a
 wildcard. A client ID selects a policy and is not authentication. kudurru
 reads it on listeners that it terminates itself;

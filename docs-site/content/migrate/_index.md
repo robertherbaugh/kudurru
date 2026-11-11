@@ -67,22 +67,27 @@ A schema field for a future feature does not mean that feature is active.
 In particular, the zone types `external`, `catalog` and `secondaryCatalog`
 and zone signing (`spec.dnssec`) are in the schema and are not served.
 
-**Do not apply a zone of the type `external`, `catalog` or
-`secondaryCatalog`, and do not apply a block-list URL that the kudurru host
-cannot download.** In this version a node with the SQLite store accepts such
-a zone, or a `BlockList` with an enabled URL source that has never been
-downloaded, and then cannot publish its configuration. This happens even
-when no policy refers to the list. The node stops answering for its own zones
-and refuses every API request, including the deletion of that object.
-Forwarded names still answer until the node restarts. **Do not restart it**:
-after a restart it answers SERVFAIL for every name, forwarded names too.
+On the SQLite store the API refuses a zone of those three types with
+`invalid` (`spec.type: Unsupported value`), and nothing is stored. An upgrade
+from v0.1.0 that finds such a zone in the data directory stops before it
+changes anything and names the zone
+([upgrade refused](/deploy/runbooks/#upgrade-refused-stored-objects-are-not-valid-in-this-release)).
 
-A list recovers by itself when a later download attempt succeeds; the
-attempts are minutes apart. A zone does not. To recover otherwise, stop the
-node and put back a copy of its data directory from before the object was
-applied. Before you apply a list URL, download it once from the kudurru host
-(for example with `curl -fsS -o /dev/null URL`), apply lists with URLs one
-at a time, and keep a copy of the data directory.
+A block-list URL that kudurru cannot download does not stop a node. That
+covers a host that does not answer, an HTTP error (also after a redirect),
+and a download that kudurru refuses to use as a list: an HTML page, a file
+without rules, a body over the size limit (64 MiB), an `http://` URL while
+`blocking.httpsOnly` is on, or a loopback, link-local or other special
+address while `blocking.allowLocalListURLs` is off (private LAN addresses
+are always allowed). Such a source contributes no rules, and the node keeps
+answering and serving its API. Once an attempt has failed, the list reports
+`Degraded` with reason `ListFetchFailed` and the download error; while the
+first download is still running it reports nothing. The list stays `Ready`
+either way, and `kudurru lists list` shows `0` entries and no `LAST-FETCH`
+for it, so check those columns, or the list's conditions, before you rely on
+it. After a failed attempt kudurru waits one minute, and twice as long after
+each further failure, up to one hour. `kudurru lists refresh NAME` downloads
+the list at once.
 
 Since v0.2.0, secondary and stub zones, RFC 2136 updates
 ([dynamic updates](/deploy/dynamic-updates/)), validation of forwarded answers,
