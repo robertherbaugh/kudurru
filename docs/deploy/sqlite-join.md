@@ -382,15 +382,26 @@ You do not need to do anything.
 Three cases need attention:
 
 - **The returning member saw a key revocation that the current primary has not
-  recorded yet.** The member installs the primary's data and then answers
-  `SERVFAIL` instead of trusting that key again. It recovers on its own after the
-  primary's next root-anchor check records the same revocation, which follows the
-  primary's refresh schedule (at the real root, within about a day). Check that
-  the primary can reach the configured root servers on TCP 53. If the primary
-  can no longer observe that revocation, for example because the root has
-  stopped publishing the revoked key, the member stays in this state: the
-  cluster's trust-anchor state and this member's knowledge disagree, and that
-  needs your decision, not an automatic one.
+  recorded yet.** The member does not trust that key again. It refuses the
+  primary's data, stays fenced and keeps answering DNS from its own last-good
+  data, which already treats the key as revoked. (A member whose own root check
+  saw the revocation while it was a follower already answers `SERVFAIL`, as
+  described above, and keeps doing so.) While it refuses, it takes no later data
+  from the primary: changes made on the primary after the split do not appear
+  in its answers. It follows the primary on its own, on the first scheduled pull
+  after the primary's next root-anchor check records the same revocation. That
+  follows the primary's refresh schedule (at the real root, within about a
+  day). Check that the primary can reach the configured root servers on TCP 53.
+  If the primary can no longer observe that revocation, for example because the
+  root has stopped publishing the revoked key, the member stays fenced and
+  never follows the primary again. No command clears a revocation a member has
+  seen. Your options are to replace the member with a newly joined receiver (a
+  new invitation and a new data directory, as described at the top of this
+  page), which accepts the cluster's trust-anchor state that still trusts the
+  key, or to keep the member out of service. kudurru does not yet report this
+  state directly: recognize it by a member that stays fenced long after the
+  other members follow the current primary, while the primary's own
+  trust-anchor state still lists that key as trusted.
 - **The two disagree about `anchors recover` history.** The returning member
   holds a recovery record that the current primary does not have, or the primary
   recovered after the split while the returning member's own trust-anchor state
@@ -404,6 +415,7 @@ Three cases need attention:
   the primary has bootstrapped managed trust anchors with the same seeds, or
   until you replace the member with a newly joined receiver.
 
-In the last two cases the member stays fenced after the other members have
+In all three cases the member stays fenced after the other members have
 followed the current primary, and it keeps answering DNS from its own last-good
-data in the meantime.
+data in the meantime (or `SERVFAIL`, if its own root check had already retired
+its trust-anchor state).
