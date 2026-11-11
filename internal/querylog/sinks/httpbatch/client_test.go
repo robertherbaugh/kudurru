@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync"
@@ -448,6 +449,76 @@ func TestPostLargeBatchToAServerThatIgnoresExpect(t *testing.T) {
 	}
 	if n := <-got; n != len(body) {
 		t.Fatalf("the server read %d bytes, want %d", n, len(body))
+	}
+}
+
+// TestPostSuccessForABodyNeverSentIsNotBelieved: a server that answers 200
+// to the headers of a large batch, without "100 Continue" and without
+// reading the body, as a Go handler that ignores the body does. The
+// transport then sends no body and still reports the request as written,
+// so the success concerns a batch the destination never had: the outcome
+// is unknown and the batch is not sent again.
+func TestPostSuccessForABodyNeverSentIsNotBelieved(t *testing.T) {
+	expect := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		expect <- r.Header.Get("Expect")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+	client := open(t, httpbatch.Options{Destination: "ClickHouse", URL: mustURL(t, server.URL)})
+	err := client.Post(t.Context(), largeBatch())
+	if got := <-expect; got != "100-continue" {
+		t.Fatalf("a large batch sent Expect %q", got)
+	}
+	if err == nil || !strings.Contains(err.Error(), "ClickHouse: "+server.URL+" answered HTTP 200 before it had the whole batch, whether it was stored is unknown") {
+		t.Fatalf("200 to a body that was never sent: %v", err)
+	}
+	if _, again := retryable(t, err); again {
+		t.Fatalf("200 to a body that was never sent was marked retryable: %v", err)
+	}
+}
+
+// TestPostShortAttemptDoesNotWaitForContinue: an attempt bounded by the
+// smallest sink timeout (1 s) has no time to wait for "100 Continue" from a
+// server that ignores the header and then send the body. It sends the body
+// at once, so a large batch is stored instead of ending as an unknown
+// outcome at every attempt.
+func TestPostShortAttemptDoesNotWaitForContinue(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	type seen struct {
+		expect string
+		n      int
+	}
+	got := make(chan seen, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		req, err := http.ReadRequest(bufio.NewReader(conn))
+		if err != nil {
+			got <- seen{n: -1}
+			return
+		}
+		// Read the body without sending 100 Continue.
+		n, _ := io.Copy(io.Discard, req.Body)
+		got <- seen{expect: req.Header.Get("Expect"), n: int(n)}
+		_, _ = io.WriteString(conn, "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+	}()
+	client := open(t, httpbatch.Options{Destination: "ClickHouse", URL: mustURL(t, "http://"+listener.Addr().String()+"/")})
+	body := largeBatch()
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	if err := client.Post(ctx, body); err != nil {
+		t.Fatalf("large batch within a 1 s attempt to a server without 100 Continue: %v", err)
+	}
+	if s := <-got; s.expect != "" || s.n != len(body) {
+		t.Fatalf("the server saw Expect %q and read %d bytes, want none and %d", s.expect, s.n, len(body))
 	}
 }
 

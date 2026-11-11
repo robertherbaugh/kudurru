@@ -62,8 +62,13 @@ const (
 	// then never gets a body it would not read; one that sends "100
 	// Continue" first, as ClickHouse does, is handled by answerConn. Small
 	// bodies fit the socket buffers and are sent without the round trip.
+	// An attempt with less than expectContinueRoom left (a sink timeout of
+	// a few seconds) does not ask: a server that ignores the header would
+	// otherwise get the body too late for an answer within the attempt,
+	// and every large batch to it would end as an unknown outcome.
 	expectContinueBytes = 64 << 10
 	expectContinueWait  = 2 * time.Second
+	expectContinueRoom  = 2 * expectContinueWait
 
 	// wroteWait bounds how long a success waits for the transport to report
 	// that the body was written. It has normally reported before the answer.
@@ -308,17 +313,23 @@ func (c *Client) Post(ctx context.Context, body []byte) error {
 			}
 		},
 	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.opts.URL.String(), bytes.NewReader(payload))
+	// The transport may take a final status that arrived before the body
+	// was asked for ("100 Continue" never came) as the answer, send no body
+	// at all and still report the request as written. Counting what it read
+	// tells a body sent whole from one that was never sent.
+	sent := &countingReader{r: bytes.NewReader(payload)}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.opts.URL.String(), sent)
 	if err != nil {
 		return fmt.Errorf("%s: %s: invalid request", c.opts.Destination, c.target)
 	}
+	req.ContentLength = int64(len(payload))
 	for name, values := range c.opts.Header {
 		req.Header[name] = values
 	}
 	if c.opts.Gzip {
 		req.Header.Set("Content-Encoding", "gzip")
 	}
-	if len(payload) >= expectContinueBytes {
+	if len(payload) >= expectContinueBytes && roomForContinue(ctx) {
 		req.Header.Set("Expect", "100-continue")
 	}
 	if c.authorization != "" {
@@ -342,10 +353,11 @@ func (c *Client) Post(ctx context.Context, body []byte) error {
 	status := resp.StatusCode
 	if status >= 200 && status < 300 {
 		// The transport returns an answer that arrives while the body is
-		// still being written. A success is believed only for a body that
-		// was written whole on a connection the destination did not reset:
-		// closing the response above ends a write still in progress, which
-		// then reports its error here.
+		// still being written, or before it was sent at all. A success is
+		// believed only for a body that the transport read whole and wrote
+		// on a connection the destination did not reset: closing the
+		// response above ends a write still in progress, which then reports
+		// its error here.
 		var writeErr error
 		timer := time.NewTimer(wroteWait)
 		select {
@@ -356,7 +368,7 @@ func (c *Client) Post(ctx context.Context, body []byte) error {
 			writeErr = ctx.Err()
 		}
 		timer.Stop()
-		if writeErr != nil || (conn.Load() != nil && conn.Load().cut.Load()) {
+		if writeErr != nil || sent.n.Load() != int64(len(payload)) || (conn.Load() != nil && conn.Load().cut.Load()) {
 			return fmt.Errorf("%s: %s answered HTTP %d before it had the whole batch, whether it was stored is unknown", c.opts.Destination, c.target, status)
 		}
 		return nil
@@ -379,6 +391,27 @@ func (c *Client) Post(ctx context.Context, body []byte) error {
 		return querylog.RetryableAfter(refusal, retryAfter(resp.Header.Get("Retry-After"), c.opts.Now()))
 	}
 	return refusal
+}
+
+// roomForContinue reports whether the attempt has time to wait for "100
+// Continue" and still send the body to a server that ignores the header.
+func roomForContinue(ctx context.Context) bool {
+	deadline, ok := ctx.Deadline()
+	return !ok || time.Until(deadline) > expectContinueRoom
+}
+
+// countingReader counts the body bytes the transport has read. The count is
+// read after the transport's WroteRequest report, which follows its last
+// read.
+type countingReader struct {
+	r *bytes.Reader
+	n atomic.Int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n.Add(int64(n))
+	return n, err
 }
 
 // answerDialer dials connections that keep an answer readable when the
