@@ -266,9 +266,23 @@ The topics are `record.changed`, `zone.changed`, `blocking.toggled`,
 `integration.error` and `cluster.leader_changed`. A new instance reports
 changes from its start on, not existing objects. Events survive restarts and
 failover through a durable per-instance cursor; when that cursor can no longer
-resume, the peer receives one `zone.changed` per zone with `change: "resync"`.
+resume, the peer receives one `zone.changed` per zone with `change: "resync"`
+and the individual changes in between are not sent.
 `query.blocked`, `vip.master_changed`, `client.seen` and `client.left` are not
-produced in this release.
+produced in this release. `blocking.toggled` is sent when a blocking change is
+committed; a timed disable that runs out is not an event, so use the
+`disabledUntil` of the disabling event.
+
+Every hook instance receives events for all namespaces: record set, zone and
+Integration names and namespaces, error reasons and the primary node ID. Treat
+creating a hooks Integration as a cluster-level privilege, and point it only at
+a peer that may see that. A per-namespace filter is not available yet.
+
+Kudurru keeps at most 384 delivery records per hook instance: it stops
+reading new changes while 256 events are undelivered and removes the oldest
+delivered or dropped records above 128. A status-only write of an object can
+send an event again under its earlier `X-Kudurru-Delivery` ID once that record
+is gone, so keep deduplicating on the ID.
 
 ## UniFi inventory
 

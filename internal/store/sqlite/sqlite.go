@@ -436,6 +436,11 @@ func (s *Store) Info() store.Info {
 	}
 }
 
+// FeedCompacted returns the resourceVersion the change feed is compacted
+// through: it holds every change after it. A Watch resumed from an older
+// version relists instead of replaying.
+func (s *Store) FeedCompacted() uint64 { return s.compacted.Load() }
+
 // ResourceVersion returns the last committed resourceVersion.
 func (s *Store) ResourceVersion() string { return strconv.FormatUint(s.head.Load(), 10) }
 

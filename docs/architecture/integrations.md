@@ -141,8 +141,9 @@ ordinary preview and executable planning still require consistent original rows.
 Actions validate advertised bounded schemas and redact named credentials from
 responses. Event delivery persists sanitized input and a stable delivery ID
 before callbacks, retries to the original 24-hour deadline, and retains terminal
-records for deduplication and audit. Delivery is at least once. Guarded retention
-cleanup remains necessary before sustained production feeds.
+records for deduplication and audit. Delivery is at least once. Retention
+bounds the rows of each hook instance by count and by time (see the hook
+events section below).
 
 The host's `WithLease` holds instance admission through the SQLite root command.
 The root retains the original credential/key/license cut and elected writer token,
@@ -858,7 +859,7 @@ flowchart TD
     Tick["Event tick (2 s) on the instance lease"] --> Pending{"256 undelivered rows?"}
     Pending -- yes --> Drain
     Pending -- no --> Cursor["Read IntegrationEventCursor"]
-    Cursor --> Feed["Root reads the store change feed after the cursor<br/>DNSZone, DNSRecordSet, Integration, Kudurru, current term"]
+    Cursor --> Feed["Root reads the store change feed after the cursor<br/>DNSZone, ZoneState, DNSRecordSet, Integration, Kudurru, current term"]
     Feed -- "feed compacted or lineage changed" --> Resync["One zone.changed per zone, then a fresh baseline"]
     Feed --> Map["At most 32 events: subject UID + monotone version"]
     Resync --> Map
@@ -867,7 +868,7 @@ flowchart TD
     Known -- no --> Queue["QueueDelivery (fenced ledger write)"]
     Skip --> Save["Save the cursor by exact CAS"]
     Queue --> Save
-    Save --> Drain["Prune dead rows, then deliver due rows"]
+    Save --> Drain["Evict the oldest terminal rows above 128 and expired ones, then deliver due rows"]
     Drain --> Post["POST /events: signed body, X-Kudurru-Delivery"]
     Post -- 2xx --> Ack["Acknowledged"]
     Post -- "5xx, attempt timeout, exhausted budget" --> Retry["Backoff, same ID and body"]
@@ -876,13 +877,20 @@ flowchart TD
 ```
 
 - **Source.** The store's resumable change feed (SQLite `changes`). A new
-  instance takes a baseline and reports only later changes. A cursor the feed
-  can no longer resume (compaction, a replica replacement or promotion that
-  changed the watch lineage) degrades to one `zone.changed` per zone with
-  `change: "resync"`, then a fresh baseline: never one event per object.
+  instance takes a baseline and reports only later changes. A kind with no
+  change keeps its position until the store head is 1,024 revisions ahead,
+  so an idle tick writes nothing (each cursor write itself advances the
+  head). A cursor the feed can no longer resume (the store reports it
+  compacted past the cursor, or a replica replacement or promotion changed
+  the watch lineage) degrades to one `zone.changed` per zone with
+  `change: "resync"`, then a fresh baseline: never one event per object. The
+  changes lost to the compaction are not reported one by one.
 - **Topics shipped in v0.2.** `record.changed` (a DNSRecordSet generation or
-  its deletion), `zone.changed` (a DNSZone's committed serial or deletion),
-  `blocking.toggled` (Kudurru `status.blocking`), `integration.error` (an
+  its deletion), `zone.changed` (a zone's committed serial, read from its private
+  ZoneState head, or a change or deletion of the DNSZone object),
+  `blocking.toggled` (a committed change of Kudurru `status.blocking`; a
+  timed disable that runs out writes nothing and is no event, so the
+  disabling event carries `disabledUntil`), `integration.error` (an
   Integration's Ready condition turned False; versioned by reason and
   transition time) and `cluster.leader_changed` (a new writer term). The
   provider advertises exactly these. `query.blocked`, `vip.master_changed`,
@@ -892,11 +900,25 @@ flowchart TD
 - **Guarantees.** At-least-once with a stable delivery ID, the SHA-256 of the
   instance UID, topic, subject UID and version. Producing the same change
   again (a crash between the queue and the cursor commit, a status write that
-  does not change what the topic reports) finds the row and queues nothing.
-  Delivery is unordered across retries; each payload carries its version.
-  The tick is the debounce. Rows expire 24 hours after creation and are
-  pruned an hour after that, by exact UID and resource version; rows of an
-  instance that no longer exists are pruned too.
+  does not change what the topic reports) finds the row and queues nothing
+  while the row exists; once it is pruned, such a status write sends the
+  same ID again, which the peer deduplicates. Delivery is unordered across
+  retries; each payload carries its version. The tick is the debounce.
+- **Visibility.** Every hook instance receives the events of every
+  namespace: record-set and Integration names and namespaces, zone names,
+  error reasons and the primary ID. Creating a hooks Integration is
+  therefore a cluster-level privilege; there is no namespace or zone
+  subscription filter yet.
+- **Retention.** All by exact UID and resource version. An instance holds at
+  most 384 rows: production waits at 256 undelivered rows or 384 in all, and
+  each drain evicts the instance's oldest terminal rows above 128. Rows
+  expire 24 hours after creation and are pruned an hour after that. Any hook
+  lease also prunes the expired terminal rows of other instances (also of a
+  live Integration that no longer runs a hook lease), and the undelivered
+  rows of an instance that no longer exists. With at most 128 instances per
+  host, delivery rows stay under 50,000 objects. The retention scan pages
+  through all rows and keeps only this instance's and 64 prunable ones in
+  memory, so it never stops at a listing size.
 - **Wire format.** The signed body is the JSON of `integration.Event`,
   `{"topic":...,"time":...,"payload":{...}}`, with lowercase payload keys
   that name identities and versions, never record data or credentials. The

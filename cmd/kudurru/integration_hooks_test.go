@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -110,6 +111,9 @@ type hookFixture struct {
 	key        []byte
 	keyPath    string
 	stopWriter func()
+	// feedRetention is the change-feed retention restart opens the store
+	// with (0: the default).
+	feedRetention int
 }
 
 func newHookFixture(t *testing.T, p *hookPeer) *hookFixture {
@@ -170,6 +174,19 @@ func hookApply(t *testing.T, st *sqlite.Store, obj store.Object) store.Object {
 	return out
 }
 
+// topic returns the posts of one topic.
+func (p *hookPeer) topic(topic string) []hookPost {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	var out []hookPost
+	for _, post := range p.posts {
+		if post.topic == topic {
+			out = append(out, post)
+		}
+	}
+	return out
+}
+
 func awaitPosts(t *testing.T, s *servingRuntime, p *hookPeer, topic, uid string, n int) []hookPost {
 	t.Helper()
 	var posts []hookPost
@@ -198,8 +215,26 @@ func TestIntegrationWebhookHooksMountedRecordChange(t *testing.T) {
 	if posts[0].id != want || posts[0].payload["generation"] != float64(1) || posts[0].payload["change"] != "added" {
 		t.Fatalf("record event: id=%s payload=%v", posts[0].id, posts[0].payload)
 	}
-	// The zone's committed serial changed with it: one zone.changed per
-	// serial, never a duplicate ID.
+	// The zone's committed serial changed with it: a zone.changed versioned
+	// by that serial, and one per serial, never a duplicate ID.
+	var zone public.DNSZone
+	if err := f.s.opts.Store.Get(t.Context(), store.Key{Kind: "DNSZone", Name: "home"}, &zone); err != nil {
+		t.Fatal(err)
+	}
+	var serial hookPost
+	awaitServingRuntime(t, f.s, func() bool {
+		for _, post := range p.about("zone.changed", string(zone.UID)) {
+			if s, _ := post.payload["serial"].(float64); post.payload["change"] == "modified" && s > 0 {
+				serial = post
+			}
+		}
+		return serial.id != ""
+	})
+	version := "s" + strconv.FormatFloat(serial.payload["serial"].(float64), 'f', 0, 64)
+	if want := ih.DeliveryID(integrationOwner(f.s, f.d), ih.ProducedEvent{Topic: "zone.changed", Subject: string(zone.UID), Version: version}); serial.id != want {
+		t.Fatalf("zone event: id=%s payload=%v", serial.id, serial.payload)
+	}
+	f.signed(t, serial)
 	p.mu.Lock()
 	seen := map[string]bool{}
 	for _, post := range p.posts {
@@ -301,7 +336,7 @@ func (f *hookFixture) restart(t *testing.T, between func(*sqlite.Store)) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err := sqlite.Open(path, sqlite.Options{Scheme: scheme, Validator: old.opts.Validator, InternalKinds: privateStoreKinds(), ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage})
+	st, err := sqlite.Open(path, sqlite.Options{Scheme: scheme, Validator: old.opts.Validator, InternalKinds: privateStoreKinds(), FeedRetention: f.feedRetention, ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -548,4 +583,130 @@ func TestIntegrationWebhookHooksMountedPromotionDrainsInstalledRows(t *testing.T
 	if n := len(p.about("record.changed", string(acked.UID))); n != 1 {
 		t.Fatal("an acknowledged event was delivered again after promotion", n)
 	}
+}
+
+// An idle hook instance writes nothing: across several event ticks with no
+// change of a watched kind its cursor keeps its resourceVersion, although
+// every cursor write advances the store head (D379).
+func TestIntegrationWebhookHooksMountedIdleTickWritesNothing(t *testing.T) {
+	p := newHookPeer(t)
+	f := newHookFixture(t, p)
+	key := store.Key{Kind: kinds.KindIntegrationEventCursor, Name: kinds.EventCursorName(integrationOwner(f.s, f.d))}
+	cursor := func() kinds.IntegrationEventCursor {
+		var c kinds.IntegrationEventCursor
+		if err := f.s.opts.Store.Get(t.Context(), key, &c); err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	// The instance's own startup status writes are changes of a watched
+	// kind (Integration); let the cursor take them in first.
+	time.Sleep(5 * time.Second)
+	before := cursor()
+	time.Sleep(9 * time.Second) // four event ticks
+	after := cursor()
+	if after.ResourceVersion != before.ResourceVersion {
+		t.Fatalf("idle ticks rewrote the cursor: %s -> %s, positions %v -> %v", before.ResourceVersion, after.ResourceVersion, before.Spec.Positions, after.Spec.Positions)
+	}
+	// A real change still moves it, and is delivered.
+	record := hookApply(t, f.s.opts.Store, hookRecord("after-idle")).(*public.DNSRecordSet)
+	awaitPosts(t, f.s, p, "record.changed", string(record.UID), 1)
+	awaitServingRuntime(t, f.s, func() bool { return cursor().ResourceVersion != before.ResourceVersion })
+}
+
+// Toggling blocking is one blocking.toggled per committed change, carrying
+// the enabled value and the deadline; a Kudurru status write that leaves
+// blocking alone is no event (D379). The write is the status update the
+// blocking command commits.
+func TestIntegrationWebhookHooksMountedBlockingToggled(t *testing.T) {
+	p := newHookPeer(t)
+	f := newHookFixture(t, p)
+	st := f.s.opts.Store
+	update := func(change func(*public.Kudurru)) public.Kudurru {
+		t.Helper()
+		settings := blockingSettings(t, st)
+		change(&settings)
+		if err := st.UpdateStatus(t.Context(), &settings); err != nil {
+			t.Fatal(err)
+		}
+		return blockingSettings(t, st)
+	}
+	update(func(k *public.Kudurru) {
+		meta.SetStatusCondition(&k.Status.Conditions, metav1.Condition{Type: "HookProbe", Status: metav1.ConditionTrue, Reason: "Unrelated", LastTransitionTime: metav1.Now()})
+	})
+	until := metav1.NewTime(time.Now().Add(time.Hour).UTC().Truncate(time.Second))
+	disabled := update(func(k *public.Kudurru) {
+		k.Status.Blocking = public.BlockingStatus{Disabled: true, DisabledUntil: &until}
+	})
+	awaitServingRuntime(t, f.s, func() bool { return len(p.topic("blocking.toggled")) >= 1 })
+	posts := p.topic("blocking.toggled")
+	if len(posts) != 1 {
+		t.Fatal("the unrelated status write was an event", len(posts))
+	}
+	want := ih.DeliveryID(integrationOwner(f.s, f.d), ih.ProducedEvent{Topic: "blocking.toggled", Subject: string(disabled.UID), Version: disabled.ResourceVersion})
+	if posts[0].id != want || posts[0].payload["enabled"] != false || posts[0].payload["disabledUntil"] != until.UTC().Format(time.RFC3339) {
+		t.Fatalf("disable event: id=%s payload=%v", posts[0].id, posts[0].payload)
+	}
+	f.signed(t, posts[0])
+	update(func(k *public.Kudurru) { k.Status.Blocking = public.BlockingStatus{} })
+	awaitServingRuntime(t, f.s, func() bool { return len(p.topic("blocking.toggled")) >= 2 })
+	posts = p.topic("blocking.toggled")
+	if posts[1].payload["enabled"] != true || posts[1].payload["disabledUntil"] != nil || posts[1].id == posts[0].id {
+		t.Fatalf("enable event: id=%s payload=%v", posts[1].id, posts[1].payload)
+	}
+	// A status write that leaves blocking as it is repeats nothing.
+	update(func(k *public.Kudurru) { meta.RemoveStatusCondition(&k.Status.Conditions, "HookProbe") })
+	time.Sleep(5 * time.Second)
+	if n := len(p.topic("blocking.toggled")); n != 2 {
+		t.Fatal("blocking events", n)
+	}
+}
+
+// A cursor the change feed really compacted past (the store's retention
+// ran out while the runtime was stopped) degrades to one zone.changed per
+// zone and a fresh baseline, never one event per object (D379).
+func TestIntegrationWebhookHooksMountedCompactedFeedResyncs(t *testing.T) {
+	p := newHookPeer(t)
+	f := newHookFixture(t, p)
+	owner := integrationOwner(f.s, f.d)
+	f.feedRetention = 16
+	f.restart(t, nil) // the store now keeps 16 feed rows
+	var zone public.DNSZone
+	var churn *public.DNSRecordSet
+	f.restart(t, func(st *sqlite.Store) {
+		if err := st.Get(t.Context(), store.Key{Kind: "DNSZone", Name: "home"}, &zone); err != nil {
+			t.Fatal(err)
+		}
+		churn = hookApply(t, st, hookRecord("churn")).(*public.DNSRecordSet)
+		// Compaction runs every 1,024 changes.
+		for i := range 1100 {
+			churn.Labels = map[string]string{"churn": strconv.Itoa(i)}
+			churn = hookApply(t, st, churn).(*public.DNSRecordSet)
+		}
+		if st.FeedCompacted() == 0 {
+			t.Fatal("the feed was not compacted")
+		}
+	})
+	awaitServingRuntime(t, f.s, func() bool {
+		for _, post := range p.about("zone.changed", string(zone.UID)) {
+			if post.payload["change"] == "resync" {
+				return true
+			}
+		}
+		return false
+	})
+	awaitServingRuntime(t, f.s, func() bool {
+		var c kinds.IntegrationEventCursor
+		if f.s.opts.Store.Get(t.Context(), store.Key{Kind: kinds.KindIntegrationEventCursor, Name: kinds.EventCursorName(owner)}, &c) != nil {
+			return false
+		}
+		_, resync := c.Spec.Positions[positionResync]
+		return !resync
+	})
+	// The changes lost to compaction are not replayed one by one.
+	if n := len(p.about("record.changed", string(churn.UID))); n != 0 {
+		t.Fatal("the resync replayed compacted record changes", n)
+	}
+	next := hookApply(t, f.s.opts.Store, hookRecord("after-compaction")).(*public.DNSRecordSet)
+	awaitPosts(t, f.s, p, "record.changed", string(next.UID), 1)
 }

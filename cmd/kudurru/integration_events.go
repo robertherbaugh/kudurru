@@ -12,6 +12,7 @@ import (
 
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	zk "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	ih "github.com/robertherbaugh/kudurru/ee/integration/host"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
@@ -39,7 +40,9 @@ const (
 )
 
 // integrationEventKinds are the watched kinds, in production order.
-var integrationEventKinds = []store.Kind{"DNSZone", "DNSRecordSet", "Integration", "Kudurru"}
+// ZoneState is the private committed head of a zone: on the SQLite runtime
+// a record change commits a new serial there, not in the DNSZone object.
+var integrationEventKinds = []store.Kind{"DNSZone", zk.KindZoneState, "DNSRecordSet", "Integration", "Kudurru"}
 
 // errEventFeedReset is a cursor the change feed can no longer resume: it
 // was compacted past it, or the store's watch lineage changed (a replica
@@ -134,10 +137,21 @@ func (r *integrationRuntime) eventBaseline(ctx context.Context, next map[string]
 	return nil
 }
 
+// eventCursorRefresh is how far the store head may run ahead of a kind's
+// position before a tick with no change of that kind moves the position
+// anyway. Below it the position stays, so an idle tick writes no cursor:
+// the cursor's own write advances the head, and following the head would
+// rewrite the cursor on every tick (D379). It is far below the change
+// feed's retention (100,000 rows), so a quiet kind is never compacted
+// past, and it bounds the feed rows a tick re-reads.
+const eventCursorRefresh = 1024
+
 // eventFeed reads the change feed of one kind after cursor until the
 // watch's bookmark, keeping at most limit data events. It returns the
-// cursor to resume from: the last kept event's, or the bookmark's when
-// nothing was cut. An empty cursor reads only the current position.
+// cursor to resume from: the last kept event's, the bookmark's when
+// nothing was cut, or cursor itself when the kind did not change and the
+// head is less than eventCursorRefresh ahead. An empty cursor reads only
+// the current position.
 func (r *integrationRuntime) eventFeed(ctx context.Context, kind store.Kind, cursor string, limit int) ([]store.Event, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -161,8 +175,18 @@ func (r *integrationRuntime) eventFeed(ctx context.Context, kind store.Kind, cur
 				return nil, "", ih.ErrUnavailable
 			}
 			if e.Type == store.Bookmark {
+				if cursor != "" && r.s.opts.Store.FeedCompacted() > from {
+					// The feed no longer holds every change after the
+					// cursor, so what was read may be a relist. The watch
+					// relists silently, and a kind with no objects relists
+					// as a bare bookmark: ask the store, never infer.
+					return nil, "", errEventFeedReset
+				}
 				if cut != "" {
 					return out, cut, nil
+				}
+				if head, ok := cursorCounter(e.Cursor); cursor != "" && len(out) == 0 && ok && head >= from && head-from < eventCursorRefresh {
+					return nil, cursor, nil
 				}
 				return out, e.Cursor, nil
 			}
@@ -214,6 +238,15 @@ func (r *integrationRuntime) eventFor(e store.Event, next map[string]string, wan
 			return ih.ProducedEvent{}, false, nil
 		}
 		return zoneEvent(o, eventChange(e.Type))
+	case *zk.ZoneState:
+		// A committed serial of a zone. Deleting or tombstoning the head
+		// is the DNSZone's deletion, reported from the DNSZone itself; a
+		// notification acknowledgment keeps the serial, so its version.
+		if !wanted(topicZoneChanged) || deleted || o.Spec.Lifecycle != zk.LifecycleActive || o.Spec.Zone.UID == "" || o.Spec.Serial == 0 {
+			return ih.ProducedEvent{}, false, nil
+		}
+		payload, err := json.Marshal(map[string]any{"change": "modified", "name": o.Spec.Zone.ObjectName, "uid": o.Spec.Zone.UID, "zone": o.Spec.Zone.Apex, "serial": o.Spec.Serial, "contentHash": o.Spec.ContentHash})
+		return ih.ProducedEvent{Topic: topicZoneChanged, Subject: o.Spec.Zone.UID, Version: "s" + strconv.FormatUint(uint64(o.Spec.Serial), 10), Payload: payload}, true, err
 	case *public.Integration:
 		if !wanted(topicIntegrationErr) || deleted || o.UID == "" {
 			return ih.ProducedEvent{}, false, nil
