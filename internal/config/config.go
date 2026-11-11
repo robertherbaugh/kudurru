@@ -889,6 +889,9 @@ func (c *Config) Validate() error {
 	if err := c.ValidateManagedRootTopology(); err != nil {
 		errs = append(errs, err)
 	}
+	if err := c.validateRootAnchorDriver(); err != nil {
+		errs = append(errs, err)
+	}
 	errs = append(errs, c.Cache.validate()...)
 	if _, err := c.DNSSEC.Validator(nil); err != nil {
 		errs = append(errs, err)

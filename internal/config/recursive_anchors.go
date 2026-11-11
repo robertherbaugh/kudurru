@@ -51,6 +51,21 @@ func (c *Config) ValidateManagedRootTopology() error {
 	}
 }
 
+// errManagedAnchorsKube is the refusal for anchorMode managed on the
+// Kubernetes driver (D370). Only the SQLite complete runtime retains managed
+// history; the Kubernetes path would build the resolver from the seeds as
+// plain static anchors, so the setting would promise RFC 5011 and do nothing.
+var errManagedAnchorsKube = errors.New("upstreams.recursion.anchorMode: managed root anchors (RFC 5011) require store.driver sqlite; the Kubernetes driver supports static anchors only, so set anchorMode static")
+
+// validateRootAnchorDriver refuses managed root anchors on any store driver
+// other than SQLite instead of letting them run as static seeds.
+func (c *Config) validateRootAnchorDriver() error {
+	if c.Upstreams.Recursion.AnchorMode == RootAnchorsManaged && c.Store.Driver != "sqlite" {
+		return errManagedAnchorsKube
+	}
+	return nil
+}
+
 // RootAnchorPolicy requires explicit, bounded supported DS seeds for managed
 // mode. Shipped roots are never substituted here, including on empty input.
 func (r Recursion) RootAnchorPolicy() (RootAnchorPolicy, error) {

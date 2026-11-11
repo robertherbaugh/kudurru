@@ -303,7 +303,10 @@ that every client reaches the node's listeners without dnsdist or another cachin
 proxy; configured PROXYv2 peers are rejected. This declaration cannot discover
 undeclared proxies. It is host-only, requires restart, and is separate from the
 cluster's root policy. The default `disabled` topology never activates managed
-serving. Enrolled primary writers use the elected updater; every member without
+serving. The Kubernetes store driver refuses `anchorMode: managed` as a
+validation error at startup, on a settings reload and on a settings change,
+and keeps the previous value (D370); it supports static anchors only.
+Enrolled primary writers use the elected updater; every member without
 one (a follower, and a fenced or conflicted member serving its last-good DNS)
 mounts an independent deny-only supervisor. Edge deployments use the explicit
 `edges` topology described below. Full enrolled HA orchestration/acceptance
