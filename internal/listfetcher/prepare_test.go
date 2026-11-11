@@ -148,3 +148,35 @@ func TestPrepareCompleteBoundsAndCancellation(t *testing.T) {
 		t.Fatal("canceled preparation continued", err)
 	}
 }
+
+// A URL source whose fetch failed before any body arrived is published with
+// an error and no digest. It compiles empty, as 0.1.0 served it, instead of
+// holding back every candidate while the URL stays unreachable (D373). A
+// source that was never attempted still waits, and a cached body without a
+// published digest is never used.
+func TestPrepareCompleteServesAFailedFirstFetchEmpty(t *testing.T) {
+	_, list, opts := completeFixture(t)
+	name := ListName(list.Namespace, list.Name)
+	inline := public.ListSource{Name: "inline", Format: "domains", Inline: []string{"inline.example.test"}}
+	list.Spec.Sources = append(list.Spec.Sources, inline)
+
+	list.Status.Sources = nil
+	if got, err := PrepareComplete(t.Context(), []*public.BlockList{list}, opts); !errors.Is(err, ErrIncomplete) || got != nil {
+		t.Fatal("a source that was never attempted did not wait", err)
+	}
+	list.Status.Sources = []public.SourceStatus{{Name: "source", Error: "listfetcher: GET https://lists.example.test/domains: 404 Not Found"}}
+	failed, err := PrepareComplete(t.Context(), []*public.BlockList{list}, opts)
+	if err != nil {
+		t.Fatal("a failed first fetch held back the candidate:", err)
+	}
+	if failed.Snapshot.Contains("old.example.test", name)[name] != "" {
+		t.Fatal("a cached body without a published digest was served")
+	}
+	if failed.Snapshot.Contains("inline.example.test", name)[name] == "" {
+		t.Fatal("the other sources of the list were not served")
+	}
+	list.Status.Sources[0].Error = ""
+	if got, err := PrepareComplete(t.Context(), []*public.BlockList{list}, opts); !errors.Is(err, ErrIncomplete) || got != nil {
+		t.Fatal("an empty status entry without an error was served", err)
+	}
+}

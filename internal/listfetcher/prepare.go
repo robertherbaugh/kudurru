@@ -186,6 +186,14 @@ func compileComplete(ctx context.Context, pl plannedList, opts CompleteOptions, 
 		case ps.key == "":
 			spec.Sources = append(spec.Sources, ps.compileSource())
 			fp.add(ps.fp(inlineDigest(ps.inline))...)
+		case unavailableSource(ps):
+			// The fetcher tried, failed and published that no body was
+			// ever fetched: the source contributes nothing, and the list
+			// reports the failure (Degraded). Waiting for the body instead
+			// would publish nothing at all, on every start, for as long as
+			// the URL stays unreachable (D373). The cache is not consulted:
+			// a body without a published digest never authorizes itself.
+			fp.add(ps.name, "unavailable")
 		default:
 			if ps.status == nil || !isHexName(ps.status.Digest) || strings.ToLower(ps.status.Digest) != ps.status.Digest {
 				return nil, "", ErrIncomplete
@@ -231,6 +239,13 @@ func compileComplete(ctx context.Context, pl plannedList, opts CompleteOptions, 
 		return nil, "", err
 	}
 	return list, fp.String(), nil
+}
+
+// unavailableSource reports a downloaded source (URL or ConfigMap) whose
+// published status has an error and no digest: no body was ever fetched.
+// A source that was never attempted has no status entry and still waits.
+func unavailableSource(ps *plannedSource) bool {
+	return ps.key != "" && ps.status != nil && ps.status.Digest == "" && ps.status.Error != ""
 }
 
 type contextReader struct {
