@@ -111,7 +111,7 @@ func TestLifecycleHeldResponsePastTimeoutIsRetriedWithSameDelivery(t *testing.T)
 }
 
 func TestTransportBudgetAndAttemptTimeoutClassification(t *testing.T) {
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 		case <-time.After(2 * time.Second):

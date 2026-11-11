@@ -47,12 +47,12 @@ type IntegrationEventCursorList struct {
 func EventCursorName(o Owner) string { return objectName("iec-", o) }
 
 // Validate rejects malformed or unbounded IntegrationEventCursor state.
-func (c *IntegrationEventCursor) Validate() error {
-	if c == nil {
+func (in *IntegrationEventCursor) Validate() error {
+	if in == nil {
 		return fmt.Errorf("nil integration event cursor")
 	}
-	p := c.Spec
-	if err := objectValid(c, p.FormatVersion, c.Name, c.Namespace, EventCursorName(p.Owner)); err != nil {
+	p := in.Spec
+	if err := objectValid(in, p.FormatVersion, in.Name, in.Namespace, EventCursorName(p.Owner)); err != nil {
 		return err
 	}
 	if err := p.Owner.Validate(); err != nil {

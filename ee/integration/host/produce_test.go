@@ -33,7 +33,7 @@ func TestProductionCrashBetweenQueueAndCursorIsOneRow(t *testing.T) {
 	h.opts.Ledger = r
 	j.provider = &fakeHook{handle: func(context.Context, string, integration.Event) error { return nil }}
 	var calls []map[string]string
-	h.opts.Produce = func(_ context.Context, _ ExecutionGuard, positions map[string]string, topics []string, limit int) (EventBatch, error) {
+	h.opts.Produce = func(_ context.Context, _ ExecutionGuard, positions map[string]string, _ []string, _ int) (EventBatch, error) {
 		calls = append(calls, positions)
 		if positions == nil {
 			return EventBatch{Positions: map[string]string{"feed": "10"}}, nil

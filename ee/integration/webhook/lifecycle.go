@@ -23,18 +23,18 @@ import (
 // schema/RBAC admission and durable delivery retries; this lifecycle never
 // starts a scheduler.
 type provider struct {
-	mu              sync.RWMutex
-	checkSlot       chan struct{}
-	life            context.Context
-	cancel          context.CancelFunc
-	provisioning    bool
-	transport       *transport
-	owner           host.InstanceID
-	advertisement   *advertisement
-	changed         bool
-	hmacKey         []byte
-	secrets         []string
-	now             func() time.Time
+	mu            sync.RWMutex
+	checkSlot     chan struct{}
+	life          context.Context
+	cancel        context.CancelFunc
+	provisioning  bool
+	transport     *transport
+	owner         host.InstanceID
+	advertisement *advertisement
+	changed       bool
+	hmacKey       []byte
+	secrets       []string
+	now           func() time.Time
 }
 
 var (
