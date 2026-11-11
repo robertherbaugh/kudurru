@@ -376,8 +376,8 @@ flowchart TD
   `ReleaseFailed` a release whose finalizer removal was refused. All are
   repeated at the resync interval, except a `CleanupFailed` run that its
   30-second bound cut without any progress in one of the cleanup's own local
-  steps (a ledger count, a ledger or history read, a fence, a forget, the
-  purge or the finalization): a store too slow for the bound backs off and
+  steps (a ledger count, a ledger or history read, a fence, an intent,
+  receipt or confirmation commit, a forget, the purge or the finalization): a store too slow for the bound backs off and
   retries like a provider failure, and is not reported as `ProviderFailed`.
   `CapacityExceeded` is a bounded read that met more than it admits, from
   which nothing was decided: more than 100,000
