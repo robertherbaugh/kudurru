@@ -36570,6 +36570,8 @@ type PatchNodeConfigResponse struct {
 	JSON422 *Error
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
 	// JSON503 the response for an HTTP 503 `application/json` response
 	JSON503 *Error
 }
@@ -36612,6 +36614,11 @@ func (r PatchNodeConfigResponse) GetJSON422() *Error {
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
 func (r PatchNodeConfigResponse) GetJSON500() *Error {
 	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r PatchNodeConfigResponse) GetJSON501() *Error {
+	return r.JSON501
 }
 
 // GetJSON503 returns the response for an HTTP 503 `application/json` response
@@ -40491,6 +40498,8 @@ type PatchSettingsResponse struct {
 	JSON422 *Error
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
 	// JSON503 the response for an HTTP 503 `application/json` response
 	JSON503 *Error
 }
@@ -40533,6 +40542,11 @@ func (r PatchSettingsResponse) GetJSON422() *Error {
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
 func (r PatchSettingsResponse) GetJSON500() *Error {
 	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r PatchSettingsResponse) GetJSON501() *Error {
+	return r.JSON501
 }
 
 // GetJSON503 returns the response for an HTTP 503 `application/json` response
@@ -56587,6 +56601,13 @@ func ParsePatchNodeConfigResponse(rsp *http.Response) (*PatchNodeConfigResponse,
 		}
 		response.JSON500 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -60111,6 +60132,13 @@ func ParsePatchSettingsResponse(rsp *http.Response) (*PatchSettingsResponse, err
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
 		var dest Error

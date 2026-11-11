@@ -50,8 +50,9 @@ spec:
                 description: BindingScope narrows a role binding (§8.5).
                 properties:
                   kind:
-                    description: Kind is cluster, zone, zonegroup (v0.2) or clientgroup
-                      (reserved).
+                    description: |-
+                      Kind is cluster or zone. zonegroup and clientgroup are reserved: they are
+                      accepted, but no request carries such a scope, so the binding grants nothing.
                     enum:
                     - cluster
                     - zone

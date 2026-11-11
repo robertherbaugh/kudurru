@@ -590,6 +590,84 @@ spec:
                         - slog
                         maxLength: 8192
                         type: string
+                      sinks:
+                        description: 'Additional destinations that receive every recorded
+                          query next to querylog.sink, e.g. log lines for a log pipeline
+                          while the dashboard keeps its database; at most 8. Each
+                          has its own bounded queue: a slow or failing destination
+                          loses only its own queries, which are counted, and never
+                          delays DNS answers, the local database or the live view.
+                          Queries arrive with the privacy mode and exclusions already
+                          applied, nothing under the nothing mode, and nothing while
+                          querylog.enabled is off. Changes apply without a restart:
+                          an unchanged entry keeps running, a removed one finishes
+                          what it holds, and a new one starts with new queries only.'
+                        items:
+                          properties:
+                            attempts:
+                              description: How many times one batch is sent when the
+                                destination reports that it was not stored and may
+                                be sent again, 1 to 10 (default 3); 1 never retries.
+                                A batch whose outcome is unknown is never sent twice;
+                                after the last attempt the batch is dropped and counted.
+                              format: int64
+                              maximum: 10
+                              minimum: 1
+                              type: integer
+                            batchSize:
+                              description: Largest number of queries sent in one write,
+                                1 to 10000 and no more than queueSize (default 1000,
+                                or queueSize when that is smaller).
+                              format: int64
+                              maximum: 10000
+                              minimum: 1
+                              type: integer
+                            flushInterval:
+                              description: Longest time a query waits for its batch
+                                to fill before it is sent, 100ms to 1m (default 1s).
+                              maxLength: 8192
+                              type: string
+                            name:
+                              description: 'Short name of this sink, e.g. log-lines:
+                                lowercase letters, digits and hyphens, at most 32
+                                characters, unique in the list. It labels the sink''s
+                                metrics and log messages; sqlite and slog are taken
+                                by querylog.sink.'
+                              maxLength: 8192
+                              type: string
+                            queueSize:
+                              description: How many queries may wait for this destination,
+                                100 to 100000 (default 10000). When it is full, new
+                                queries are dropped for this sink only and counted
+                                in kudurru_querylog_dropped_total{stage="sink"}.
+                              format: int64
+                              maximum: 100000
+                              minimum: 100
+                              type: integer
+                            retryBackoff:
+                              description: Wait before the second attempt, 100ms to
+                                1m (default 1s); it doubles with every further attempt
+                                up to 30s.
+                              maxLength: 8192
+                              type: string
+                            timeout:
+                              description: How long opening the destination and each
+                                write may take before the attempt is abandoned, 1s
+                                to 2m (default 10s).
+                              maxLength: 8192
+                              type: string
+                            type:
+                              description: What kind of destination this is.
+                              enum:
+                              - slog
+                              maxLength: 8192
+                              type: string
+                          required:
+                          - name
+                          - type
+                          type: object
+                        maxItems: 10000
+                        type: array
                     type: object
                   ratelimit:
                     properties:
