@@ -48,10 +48,10 @@ func TestRunServeSQLiteReversePTRPolicy(t *testing.T) {
 		case dns.TypeA:
 			a.Answer = []dns.RR{&dns.A{Hdr: dns.RR_Header{Name: q.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}, A: net.IPv4(192, 0, 2, 90)}}
 		}
-		if q.Question[0].Qtype == dns.TypePTR {
-			requests.Add(1)
-		}
 		_ = w.WriteMsg(a)
+		if q.Question[0].Qtype == dns.TypePTR {
+			requests.Add(1) // counts answered lookups: the answer is written
+		}
 	})}
 	serverDone := make(chan error, 1)
 	go func() { serverDone <- server.ActivateAndServe() }()
@@ -156,15 +156,26 @@ func TestRunServeSQLiteReversePTRPolicy(t *testing.T) {
 	// An expired name is never served stale: the first query after expiry
 	// is answered unblocked at once and only queues the background lookup.
 	// So the unblocked answer alone does not show a reacquisition; observe
-	// the lookup reaching the PTR server, then require the negative answer
-	// to keep the client unidentified.
+	// the lookup being answered by the PTR server, then require every answer
+	// for a second after it to be unblocked: the negative answer keeps the
+	// client unidentified, and nothing restores the expired name.
 	waitMountedDomainDNS(t, cfg, false)
 	for deadline := time.Now().Add(10 * time.Second); requests.Load() < 2; time.Sleep(20 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatal("expired identity did not reacquire")
 		}
 	}
-	waitMountedDomainDNS(t, cfg, false)
+	for until := time.Now().Add(time.Second); time.Now().Before(until); time.Sleep(50 * time.Millisecond) {
+		q := new(dns.Msg)
+		q.SetQuestion("blocked.example.", dns.TypeA)
+		answer, _, err := (&dns.Client{Timeout: time.Second}).Exchange(q, cfg.Listeners.DNS[0].Address)
+		if err != nil || answer == nil {
+			t.Fatal("query after the negative reacquisition failed", err)
+		}
+		if answer.Rcode != dns.RcodeSuccess || len(answer.Answer) != 1 || !answer.Answer[0].(*dns.A).A.Equal(net.IPv4(192, 0, 2, 90)) {
+			t.Fatal("negative reacquisition left the client identified", dns.RcodeToString[answer.Rcode], answer.Answer)
+		}
+	}
 	wantCacheBypass()
 }
 
