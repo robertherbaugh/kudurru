@@ -66,6 +66,10 @@ type servingRuntimeOptions struct {
 	// poller's checkpoint comparison only (D369). Nil means time.Now; only tests
 	// set it. Samples, receipts and stored state never use it.
 	AnchorWall func() time.Time
+	// AnchorReadyHook runs before each supervisor readiness classification;
+	// a non-nil error is that classification's result. Nil in production;
+	// only tests set it.
+	AnchorReadyHook func(context.Context) error
 	// Registerer receives the kudurru_root_anchor_* metrics once; nil leaves
 	// them unregistered (tests).
 	Registerer prometheus.Registerer
@@ -88,18 +92,20 @@ type servingRuntime struct {
 	anchors       *rootAnchorOwner
 	anchorWriter  anchorWriterControl
 	anchorStatus  anchorStatusBoard
-	status        *servingbuild.PrimaryStatus
-	integrations  *integrationRuntime
-	catalog       *servingbuild.CatalogRuntime
-	local         []providerregistry.DesiredConfig
-	life          context.Context
-	cancel        context.CancelFunc
-	lifecycle     chan struct{}
-	mu            sync.Mutex
-	workers       sync.WaitGroup
-	running       bool
-	writing       bool
-	closing       bool
+	// anchorReady replaces anchorFollowerReady in the supervisor; tests only.
+	anchorReady  func(context.Context, anchorFollowerEpoch) (bool, error)
+	status       *servingbuild.PrimaryStatus
+	integrations *integrationRuntime
+	catalog      *servingbuild.CatalogRuntime
+	local        []providerregistry.DesiredConfig
+	life         context.Context
+	cancel       context.CancelFunc
+	lifecycle    chan struct{}
+	mu           sync.Mutex
+	workers      sync.WaitGroup
+	running      bool
+	writing      bool
+	closing      bool
 
 	// objectAPI is the public API server whose object command bodies execute
 	// follower-forwarded object mutations on this primary. Nil refuses them.

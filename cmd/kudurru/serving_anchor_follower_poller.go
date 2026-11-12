@@ -9,6 +9,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors"
+	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 )
 
 // Every captured operation retains its original member/term/role/incarnation.
@@ -60,6 +61,15 @@ type anchorFollowerPoller struct {
 	// installed image; without it an ordinary install during the wait would end
 	// supervision for the whole member, term and role.
 	clockDeferred bool
+	// captureDeferred records that this poller has started no acquisition and
+	// that its last capture was refused before any acquisition because an
+	// ordinary install (or another canonical change) replaced the installed
+	// cut between the capture's read and its final check. Like clockDeferred,
+	// nothing was held, received or refused by the root (D369).
+	captureDeferred bool
+	// capture replaces captureAnchorFollowerDenial; nil in production, tests
+	// only.
+	capture func(context.Context, *trustanchors.SessionClock, uint64) (*anchorFollowerDenial, error)
 	// wall reads this node's wall clock for the checkpoint comparison only; nil
 	// means time.Now. Samples, receipts and stored state never use it.
 	wall func() time.Time
@@ -74,6 +84,17 @@ type anchorFollowerStep struct {
 	// clockWait is how far this node's wall clock trails the installed
 	// checkpoint when the step deferred its acquisition for that reason.
 	clockWait time.Duration
+	// captureRaced reports that the capture was refused before any
+	// acquisition because the installed cut changed under it.
+	captureRaced bool
+}
+
+// anchorCaptureRaced reports a capture or readiness refusal that only means
+// the installed cut or this member's incarnation changed between a read and
+// its final check: nothing was acquired, received or written. An
+// accepted-owner refusal is not one of them.
+func anchorCaptureRaced(err error) bool {
+	return (errors.Is(err, replication.ErrCAS) || errors.Is(err, replication.ErrFenced)) && !errors.Is(err, accepted.ErrCAS)
 }
 
 // anchorCheckpointWait compares this node's wall clock with the wall time of
@@ -104,15 +125,26 @@ func (u *anchorFollowerPoller) step(ctx context.Context) (step anchorFollowerSte
 	}()
 	original, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	op, err := u.runtime.captureAnchorFollowerDenial(original, u.clock, u.offset)
+	capture := u.runtime.captureAnchorFollowerDenial
+	if u.capture != nil {
+		capture = u.capture
+	}
+	op, err := capture(original, u.clock, u.offset)
 	if err != nil {
+		if anchorCaptureRaced(err) && ctx.Err() == nil {
+			// Nothing was acquired. A later step captures the new cut; it may
+			// adopt the newer incarnation only if no acquisition has started.
+			u.captureDeferred = !u.acquired
+			step.next, step.captureRaced = time.Now().Add(time.Second), true
+			return step, nil
+		}
 		return step, err
 	}
 	epoch := followerEpoch(op.token.Authority())
 	if u.epoch == (anchorFollowerEpoch{}) {
 		u.epoch = epoch
 	} else if !u.epoch.same(epoch) {
-		if (!u.normalCompleted && !u.clockDeferred) || !u.epoch.sameRole(epoch) {
+		if (!u.normalCompleted && !u.clockDeferred && !u.captureDeferred) || !u.epoch.sameRole(epoch) {
 			return step, replication.ErrFenced
 		}
 		// The previous operation completed successfully, or was discarded before
@@ -137,7 +169,7 @@ func (u *anchorFollowerPoller) step(ctx context.Context) (step anchorFollowerSte
 	if step.clockWait > 0 {
 		// Nothing was acquired. A later step captures a fresh operation once
 		// this node's own clock has reached the installed checkpoint.
-		u.clockDeferred = !u.acquired
+		u.clockDeferred, u.captureDeferred = !u.acquired, false
 		step.next = checkpoint
 		return step, nil
 	}
@@ -149,7 +181,7 @@ func (u *anchorFollowerPoller) step(ctx context.Context) (step anchorFollowerSte
 	step.attempted = true
 	u.offset++
 	u.normalCompleted = false
-	u.acquired, u.clockDeferred = true, false
+	u.acquired, u.clockDeferred, u.captureDeferred = true, false, false
 	step.result, err = op.observe()
 	if err == nil {
 		switch step.result.branch {

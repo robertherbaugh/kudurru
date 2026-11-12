@@ -137,9 +137,20 @@ func (s *servingRuntime) superviseAnchorFollower(ctx context.Context) error {
 				s.anchorStatus.setSupervisor(anchorWorkerNotRunning, time.Time{}, nil)
 			}
 		} else if !terminal && child == nil && !time.Now().Before(nextRead) {
-			ready, err := s.anchorFollowerReady(ctx, epoch)
+			var ready bool
+			var err error
+			if s.opts.AnchorReadyHook != nil {
+				err = s.opts.AnchorReadyHook(ctx)
+			}
+			if err == nil {
+				ready, err = s.anchorFollowerReady(ctx, epoch)
+			}
 			nextRead = time.Now().Add(time.Second)
-			if err != nil {
+			if err != nil && anchorCaptureRaced(err) && ctx.Err() == nil {
+				// The read-only classification raced an install: nothing was
+				// acquired, so the next second reads the new cut (D369).
+				s.anchorStatus.setSupervisor(anchorWorkerWaitingImage, time.Time{}, nil)
+			} else if err != nil {
 				terminal = true
 				s.anchorStatus.setSupervisor(anchorWorkerStopped, time.Time{}, err)
 				slog.Error("root anchor follower stopped for this authority epoch", "err", err)
