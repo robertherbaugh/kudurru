@@ -53,6 +53,12 @@ On 2026-10-31 all ten checks passed with the repository's locally built
 It runs dnsdist 2.1.3 from the pinned image above. The final result is recorded
 in `dev-docs/milestones/v0.2/gaps.md`; private runtime files are not committed.
 
+The Go live suites that drive the production supervisor against the actual
+program (F43, F28, F39b, the anchor edge and F18c) no longer use that local
+image ID: they name the upstream digest above through `kudurrutest.DnsdistImage`,
+whose `/usr/local/bin/dnsdist` is byte-identical, and `hack/test-dnsdist-live.sh`
+runs them on a private daemon (D383).
+
 The test also exposed a concrete limit: a DoT connection established before a
 backend change returned SERVFAIL on its next query after its selected backend
 was marked down, while new DoT connections reached the replacement. Live
