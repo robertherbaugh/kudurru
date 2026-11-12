@@ -41,7 +41,11 @@ if ! "${docker[@]}" image inspect --format '{{.Id}}' "$image" >/dev/null 2>&1; t
   "${docker[@]}" pull "$image"
 fi
 echo "dnsdist image: $image ($("${docker[@]}" image inspect --format '{{.Id}}' "$image"))"
-"${docker[@]}" run --rm --network none --entrypoint dnsdist "$image" --version | head -n 1
+# Read the whole version output before printing its first line: with
+# pipefail, `| head -n 1` can close the pipe while docker still writes and
+# fail the script with "write /dev/stdout: broken pipe".
+version=$("${docker[@]}" run --rm --network none --entrypoint dnsdist "$image" --version)
+echo "${version%%$'\n'*}"
 
 work=${KUDURRU_DNSDIST_LIVE_WORKDIR:-}
 if [ -z "$work" ]; then
