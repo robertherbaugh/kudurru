@@ -3,6 +3,7 @@ package replication
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -36,7 +37,18 @@ func canonical(raw []byte, depth int) ([]byte, error) {
 // owner that validates one image validates the same encoding. The returned
 // bytes are shared and must never be modified; Validated only reads them.
 func canonicalImage(raw []byte, depth int) ([]byte, error) {
-	key := sha256.Sum256(append(strconv.AppendInt(nil, int64(depth), 10), raw...))
+	if len(raw) > maxRememberedImage {
+		return canonical(raw, depth)
+	}
+	// The depth is written as a fixed eight bytes before the input, so no
+	// input bytes can make one (depth, input) pair hash like another.
+	h := sha256.New()
+	var d [8]byte
+	binary.BigEndian.PutUint64(d[:], uint64(int64(depth))) // #nosec G115 -- a bit-exact encoding of the signed depth
+	_, _ = h.Write(d[:])
+	_, _ = h.Write(raw)
+	var key [sha256.Size]byte
+	h.Sum(key[:0])
 	if c, ok := canonicals.get(key); ok {
 		return c, nil
 	}
@@ -120,7 +132,9 @@ func objectKey(raw json.RawMessage) (string, objectHeader, error) {
 		return "", h, fmt.Errorf("%w: object identity", ErrInvalid)
 	}
 	key := h.Kind + "\x00" + h.Metadata.Namespace + "\x00" + h.Metadata.Name
-	identities.put(sum, objectIdentity{key: key, header: h})
+	if id := (objectIdentity{key: key, header: h}); id.size() <= maxRememberedIdentity {
+		identities.put(sum, id)
+	}
 	return key, h, nil
 }
 

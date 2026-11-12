@@ -103,7 +103,7 @@ func TestMemoizedCanonicalImage(t *testing.T) {
 
 // The memo never holds more than its bound.
 func TestMemoBound(t *testing.T) {
-	c := newMemo[int](4)
+	c := newMemo[int](4, 1<<30, func(int) int { return 1 })
 	for n := range 10 {
 		c.put(sha256.Sum256(fmt.Appendf(nil, "%d", n)), n)
 		if c.len() > 4 {
@@ -135,4 +135,83 @@ func TestMemoizedDigestConcurrent(t *testing.T) {
 		})
 	}
 	wg.Wait()
+}
+
+// The depth bound is part of the canonical image key in a form that no input
+// bytes can imitate: a remembered image under one bound is never returned for
+// other bytes under another bound.
+func TestMemoizedCanonicalImageDepthIsSeparate(t *testing.T) {
+	if _, err := canonicalImage([]byte(`{"a":1}`), 64); err != nil {
+		t.Fatal(err)
+	}
+	want, wantErr := canonical([]byte(`4{"a":1}`), 6)
+	got, err := canonicalImage([]byte(`4{"a":1}`), 6)
+	if wantErr == nil || err == nil {
+		t.Fatalf("depth 6 with a leading digit: memoized %q, %v; uncached %q, %v", got, err, want, wantErr)
+	}
+}
+
+// An object whose identity strings are large is not remembered, so the
+// identity memo stays within its byte budget whatever its input, including
+// objects of images that are rejected later.
+func TestIdentityMemoSkipsLargeObjects(t *testing.T) {
+	name := bytes.Repeat([]byte("n"), 1<<20)
+	for n := range 4 {
+		raw := json.RawMessage(fmt.Sprintf(`{"apiVersion":"x/v1","kind":"Unknown%d","metadata":{"name":%q}}`, n, name))
+		if _, _, err := objectKey(raw); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := identities.get(sha256.Sum256(raw)); ok {
+			t.Fatalf("an object identity of %d bytes was remembered", len(raw))
+		}
+	}
+	if b := identities.size(); b > identities.maxBytes {
+		t.Fatalf("identity memo holds %d bytes, budget %d", b, identities.maxBytes)
+	}
+}
+
+// A store with more objects than the memo holds still gets hits on repeated
+// passes in the same order, and the identity memo holds a store of the
+// default maximum object count.
+func TestMemoHitsBeyondBound(t *testing.T) {
+	c := newMemo[int](1000, 1<<30, func(int) int { return 1 })
+	keys := make([][sha256.Size]byte, 1300)
+	for n := range keys {
+		keys[n] = sha256.Sum256(fmt.Appendf(nil, "%d", n))
+	}
+	for pass := range 3 {
+		hits := 0
+		for n, k := range keys {
+			if _, ok := c.get(k); ok {
+				hits++
+				continue
+			}
+			c.put(k, n)
+		}
+		t.Logf("pass %d: %d hits of %d", pass, hits, len(keys))
+		if pass > 0 && hits < len(keys)/4 {
+			t.Fatalf("pass %d: %d hits of %d with a bound of 1000", pass, hits, len(keys))
+		}
+		if c.len() > 1000 {
+			t.Fatalf("memo holds %d entries, bound 1000", c.len())
+		}
+	}
+	if identities.bound < 100_000 {
+		t.Fatalf("identity memo holds %d entries, fewer than the default 100,000 objects of an image", identities.bound)
+	}
+}
+
+// The byte budget bounds the memo even when every entry is under the count.
+func TestMemoByteBudget(t *testing.T) {
+	c := newMemo[int](1000, 100, func(v int) int { return v })
+	for n := range 50 {
+		c.put(sha256.Sum256(fmt.Appendf(nil, "%d", n)), 30)
+		if c.size() > 100 {
+			t.Fatalf("memo holds %d bytes, budget 100", c.size())
+		}
+	}
+	c.put(sha256.Sum256([]byte("large")), 101)
+	if _, ok := c.get(sha256.Sum256([]byte("large"))); ok {
+		t.Fatal("an entry larger than the budget was remembered")
+	}
 }
