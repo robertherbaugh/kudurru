@@ -599,10 +599,11 @@ edge is upgraded.
 **Static twins (Compose HA) cannot use that settings write.** A twin with
 `cluster.role: static` refuses settings writes (`503 read_only`), and after
 its first 0.2 start it keeps the cluster settings that start copied from
-`kudurru.yaml`: a later edit of a cluster key in the file is not applied,
-even though the start logs `settings applied` for that key (what it applied
-is the stored value replacing the file's, not the edit). This is a known gap of 0.2.0,
-and it applies to every cluster setting, not only the anchor keys. On static
+`kudurru.yaml`: a later edit of a cluster key in the file is not applied.
+The start then logs the warning `cluster settings in kudurru.yaml are not in
+effect`, with the keys whose file value differs and the stored values that
+are in effect. This is a known gap of 0.2.0, and it applies to every cluster
+setting, not only the anchor keys. On static
 twins, put the managed anchor settings (`anchorMode: managed`,
 `dnssec: true`, `trustAnchors` and, if you use them, `rootHints`) and every
 other cluster setting you want into `kudurru.yaml` **before** that host's
@@ -675,12 +676,13 @@ digest but this node holds no body for it` once for the source, and
 `awaited body stored` when the list blocks again.
 
 An endpoint of a record set written at a name that holds a record a dynamic
-update added is not served; the other endpoints of the record set are. A
-record set with nothing served is reported `Duplicated` in the zone's
-source diagnostics (the record set's own conditions are computed without
-the dynamic records and may still show it as ready); the dynamic record
-keeps answering and the rest of the zone keeps taking changes. Delete the
-dynamic record (or the endpoint) to resolve it.
+update added is not served; the other endpoints of the record set are. The
+record set's own conditions name each such endpoint as `Duplicated`
+(`Degraded` while other endpoints are served, not `Ready` when none is), and
+the zone's source diagnostics report a record set with nothing served as
+`duplicated`. The dynamic record keeps answering and the rest of the zone
+keeps taking changes. Delete the dynamic record (or the endpoint) to resolve
+it.
 
 A primary zone that has a child zone (for example `sub.example.test.` under
 `example.test.`) can answer `SERVFAIL` and keep readiness at 503 for up to

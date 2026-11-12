@@ -531,9 +531,15 @@ without an authorized takeover the compiler checks each endpoint against
 the committed dynamic records before the builder takes it and leaves out
 only the colliding ones, a record set with nothing served is projected
 `duplicated` with the reason, and the rest of the zone is committed, while
-the dynamic record keeps answering. Only zone-wide capacity bounds (a million records, 64 MiB of
-records, a 128 MiB aggregate) still refuse the zone as a whole; it then
-keeps its last commit. `TestCompilerWithholdsEveryRefusalOfThePrimaryRuntime`
+the dynamic record keeps answering. The check looks names up in an index of
+the dynamic records (`zonestate.DynamicOwnership`), so its cost does not grow
+with the number of dynamic DNAMEs. On SQLite the leader controller checks the
+kept endpoints of each record set against the same index, read from the
+committed head through the committed primary status, and reports each
+colliding endpoint as a `Duplicated` conflict in the record set's own
+conditions, also when other endpoints of the set are served. Only zone-wide
+capacity bounds (a million records, 64 MiB of records, a 128 MiB aggregate)
+still refuse the zone as a whole; it then keeps its last commit. `TestCompilerWithholdsEveryRefusalOfThePrimaryRuntime`
 is the table of these checks.
 
 A block list source (URL or ConfigMap) for which no body was ever published
@@ -2211,9 +2217,11 @@ Cluster settings follow the SQLite rule of
 start seeds `Kudurru/default` from `kudurru.yaml`, and a later start keeps
 the stored object. With the API guard refusing settings writes, a static
 twin therefore has no path to change a cluster setting after its first start
-in 0.2.0 (a known gap; the startup reload still logs `settings applied` for
-the keys whose stored value replaced the file's). Host keys and file objects
-keep following the files.
+in 0.2.0 (a known gap). The first operational reload after a start applies
+the stored object over the file's cluster keys and logs that as a warning,
+`cluster settings in kudurru.yaml are not in effect`, with the differing keys
+and the stored values in effect; later reloads of a real cluster change log
+`settings applied`. Host keys and file objects keep following the files.
 
 ```mermaid
 flowchart LR
