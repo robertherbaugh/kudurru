@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"maps"
 	"net/http"
 	"net/http/cookiejar"
@@ -252,7 +253,7 @@ func sharedKey(t *testing.T) ([]byte, []string) {
 // no health route instead of guessing, a 0.1.0 client reads the new twin's
 // status, zones, catalog and list bodies by digest, the new twin's client
 // reads the old one's list bodies, and the old twin is never asked for a
-// route it does not have except the one health read the test makes. When
+// route it does not have except the two health reads the test makes. When
 // the old twin stops, the new one keeps answering and reports the peer as
 // unreachable.
 func TestMixedVersionStaticPeerV01(t *testing.T) {
@@ -402,6 +403,13 @@ func TestMixedVersionStaticPeerV01(t *testing.T) {
 			t.Errorf("health of the old twin: %v, want unsupported", err)
 		}
 	})
+	// Over the whole run (startup, /nodes polling, every subtest) the old
+	// twin was asked for a route it does not serve exactly twice: the two
+	// health reads above. In this configuration (no secondary zones, no
+	// query log) the new twin sends it nothing else it does not have.
+	if got := internalRequests(t, oldSpec.Ports.Metrics)["other"]; got != 2 {
+		t.Errorf("the old twin got %d requests for routes it does not serve since it started, want the two health reads", got)
+	}
 	t.Run("OldTwinStops", func(t *testing.T) {
 		oldNode.Stop(20 * time.Second)
 		if code, err := oldNode.Wait(time.Second); err != nil || code != 0 {
@@ -730,29 +738,44 @@ func TestV01BinaryRefusesEnrolledDirectory(t *testing.T) {
 	stop(follower)
 	stop(primary)
 
-	// files lists every file of a stopped node's data directory with its
-	// SHA-256; an empty write-ahead log is left out (databaseSums).
+	// files lists every file of a stopped node's data directory, including
+	// its subdirectories (the list cache), with its SHA-256, and every
+	// subdirectory itself, so a created directory is a change too. SQLite
+	// shared-memory files, sockets and an empty write-ahead log are left
+	// out (databaseSums).
 	files := func(spec kudurrutest.NodeSpec) map[string]string {
 		t.Helper()
-		entries, err := os.ReadDir(spec.DataDir)
-		if err != nil {
-			t.Fatal(err)
-		}
 		out := map[string]string{}
-		for _, e := range entries {
-			if e.IsDir() || strings.HasSuffix(e.Name(), "-shm") || strings.HasSuffix(e.Name(), ".sock") {
-				continue
+		err := filepath.WalkDir(spec.DataDir, func(path string, e fs.DirEntry, err error) error {
+			if err != nil {
+				return err
 			}
-			path := filepath.Join(spec.DataDir, e.Name())
+			rel, err := filepath.Rel(spec.DataDir, path)
+			if err != nil {
+				return err
+			}
+			if e.IsDir() {
+				if rel != "." {
+					out[rel+"/"] = "directory"
+				}
+				return nil
+			}
+			if strings.HasSuffix(e.Name(), "-shm") || strings.HasSuffix(e.Name(), ".sock") {
+				return nil
+			}
 			raw, err := os.ReadFile(path) //nolint:gosec // the test's data directory
 			if err != nil {
-				t.Fatal(err)
+				return err
 			}
 			if strings.HasSuffix(e.Name(), "-wal") && len(raw) == 0 {
-				continue
+				return nil
 			}
 			s := sha256.Sum256(raw)
-			out[e.Name()] = hex.EncodeToString(s[:])
+			out[rel] = hex.EncodeToString(s[:])
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
 		return out
 	}

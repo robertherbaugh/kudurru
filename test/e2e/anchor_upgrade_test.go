@@ -16,6 +16,7 @@ import (
 
 	"github.com/miekg/dns"
 
+	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 )
@@ -119,8 +120,9 @@ func offlineAnchorStatus(t *testing.T, dataDir string) anchorStatus {
 // leaves a dormant anchor owner and a dormant local carrier; DNS is served
 // as before; `kudurru anchors status --offline` reads the directory. A
 // start with managedTopology edges whose one declared edge is a 0.1.0
-// internal listener, which has no observation route, is refused before any
-// root question and changes nothing. With managedTopology direct and the
+// internal listener, which has no observation route, is refused and changes
+// nothing (that the refusal comes before any root question is proven
+// in-process by TestAnchorEdgeActivationRefusesUnsupportedPeer). With managedTopology direct and the
 // managed anchor settings written through the settings API, the node
 // bootstraps managed history from the root once, a restart keeps it without
 // asking again, and the 0.1.0 binary refuses the directory without
@@ -222,6 +224,11 @@ func TestAnchorUpgradeFromReleasedV010(t *testing.T) {
 		if got := internalRequests(t, peerSpec.Ports.Metrics); got["other"]-before["other"] != 1 {
 			t.Errorf("the %s edge got %d requests for routes it does not serve, want the one observation: %v then %v", kudurrutest.PreviousRelease, got["other"]-before["other"], before, got)
 		}
+		// The stored settings still have anchorMode static and no hint to
+		// this root here, so this check cannot tell a refusal before the
+		// root question from an admitted start. That proof is in-process:
+		// cmd/kudurru TestAnchorEdgeActivationRefusesUnsupportedPeer runs in
+		// managed mode with seeds and hints and asserts no root read.
 		if root.reads.Load() != 0 {
 			t.Errorf("the refused start asked the root %d times", root.reads.Load())
 		}
@@ -291,5 +298,120 @@ func TestAnchorUpgradeFromReleasedV010(t *testing.T) {
 		if got := offlineAnchorStatus(t, spec.DataDir); got != bootstrapped {
 			t.Errorf("after the refused downgrade: %+v, was %+v", got, bootstrapped)
 		}
+	})
+}
+
+// TestAnchorUpgradeStaticTwinV010 (F28-MV-2, static twins): a static twin
+// (`cluster.role: static`, docs/deploy/compose-ha.md) refuses settings
+// writes, so the settings-write route of TestAnchorUpgradeFromReleasedV010
+// does not exist for it. Its first start of this release copies the cluster
+// keys of kudurru.yaml into the Kudurru/default settings object, so the
+// managed anchor keys work when they are in the node file before that first
+// start: the twin bootstraps from the root once and keeps the owner across
+// a restart. A later edit of a cluster key in the file is not applied: the
+// stored settings keep the value of the first start. This pins the release
+// gap that docs/deploy/runbooks.md "Upgrading from 0.1.x" describes; when
+// static twins learn to take cluster keys from the file again, the last
+// subtest and the runbook change together.
+func TestAnchorUpgradeStaticTwinV010(t *testing.T) {
+	kudurrutest.RequireE2E(t)
+	previous := kudurrutest.Previous(t)
+	_, env := sharedKey(t)
+	root := startAnchorRoot(t)
+	dir := t.TempDir()
+	spec, cfg := kudurrutest.NewNodeSpec(t, dir, "static-anchors")
+	cfg["objects"] = zoneObjects(map[string]string{"ns1": "127.0.0.1", "host": "192.0.2.1"})
+	cfg["querylog"] = map[string]any{"enabled": false}
+	cfg["auth"].(map[string]any)["session"] = map[string]any{"secure": "never"}
+	kudurrutest.WriteConfig(t, spec.Config, cfg)
+	stop := func(t *testing.T, n *kudurrutest.Node) {
+		t.Helper()
+		n.Stop(20 * time.Second)
+		if code, err := n.Wait(time.Second); err != nil || code != 0 {
+			t.Fatalf("%s did not stop cleanly: %d %v\n%s", n.Name, code, err, n.Log())
+		}
+	}
+	serves := func(t *testing.T, n *kudurrutest.Node) {
+		t.Helper()
+		if !kudurrutest.Eventually(30*time.Second, 100*time.Millisecond, func() bool {
+			r, err := exchange(n.Ports.DNS, "host.e2e.test.", dns.TypeA, false)
+			return err == nil && firstA(r) == "192.0.2.1" && r.Authoritative
+		}) {
+			t.Fatalf("%s does not serve host.e2e.test.:\n%s", n.Name, n.Log())
+		}
+	}
+	// 0.1.0 has no cluster.role and no managed anchor keys: the host runs it
+	// with the file it had before the upgrade.
+	old := kudurrutest.StartReady(t, previous, spec, kudurrutest.Options{Env: env, Args: []string{"serve", "--config", spec.Config}})
+	serves(t, old)
+	stop(t, old)
+
+	// The file of the upgrade: static role, the managed topology and the
+	// managed anchor settings, all present before the first start of this
+	// release.
+	cfg["cluster"] = map[string]any{"role": "static", "peers": []any{map[string]any{"name": spec.Name, "address": spec.Ports.Internal}}}
+	cfg["upstreams"].(map[string]any)["recursion"] = map[string]any{
+		"managedTopology": "direct", "managedEdges": []any{},
+		"anchorMode": "managed", "dnssec": true, "trustAnchors": []any{root.seed}, "rootHints": []any{root.addr}, "ipv6": "off",
+	}
+	cfg["blocking"] = map[string]any{"refreshInterval": "12h"}
+	kudurrutest.WriteConfig(t, spec.Config, cfg)
+	refreshInterval := func(t *testing.T, c *staticProcessClient) any {
+		t.Helper()
+		var body api.SettingsBody
+		c.request(t, http.MethodGet, "/settings", nil, http.StatusOK, &body)
+		blocking, _ := body.Settings["blocking"].(map[string]any)
+		return blocking["refreshInterval"]
+	}
+
+	var bootstrapped anchorStatus
+	var seeded any
+	t.Run("FileBeforeFirstStartBootstrapsOnce", func(t *testing.T) {
+		for run := range 2 {
+			n := kudurrutest.StartReady(t, kudurruBin, spec, kudurrutest.Options{Env: env})
+			serves(t, n)
+			if run == 0 {
+				if !kudurrutest.Eventually(30*time.Second, 100*time.Millisecond, func() bool { return root.reads.Load() >= 1 }) {
+					t.Fatalf("the static twin never asked the root:\n%s", n.Log())
+				}
+				c := sessionClient(t, spec.Ports.API)
+				var problem struct {
+					Error api.ErrorBody `json:"error"`
+				}
+				c.request(t, http.MethodPatch, "/settings", map[string]any{"blocking.refreshInterval": "6h"}, http.StatusServiceUnavailable, &problem)
+				if problem.Error.Key != api.KeyReadOnly {
+					t.Errorf("settings write on a static twin: %+v, want %s", problem.Error, api.KeyReadOnly)
+				}
+				seeded = refreshInterval(t, c)
+				t.Logf("blocking.refreshInterval after the first start: %v", seeded)
+			}
+			settle(t, spec)
+			stop(t, n)
+			if got := root.reads.Load(); got != 1 {
+				t.Fatalf("run %d: the root was asked %d times, want once", run, got)
+			}
+			owner, _ := anchorRows(t, spec.DataDir)
+			status := offlineAnchorStatus(t, spec.DataDir)
+			t.Logf("run %d: owner %q, status %+v", run, owner, status)
+			if owner != string(accepted.Managed) || status.Outcome != "read-only" || status.Quarantined {
+				t.Fatalf("run %d: owner %q, status %+v", run, owner, status)
+			}
+			if run == 0 {
+				bootstrapped = status
+			} else if status != bootstrapped {
+				t.Fatalf("the restart changed the managed owner: %+v, was %+v", status, bootstrapped)
+			}
+		}
+	})
+	t.Run("LaterFileEditNotApplied", func(t *testing.T) {
+		cfg["blocking"] = map[string]any{"refreshInterval": "3h"}
+		kudurrutest.WriteConfig(t, spec.Config, cfg)
+		n := kudurrutest.StartReady(t, kudurruBin, spec, kudurrutest.Options{Env: env})
+		serves(t, n)
+		settle(t, spec)
+		if got := refreshInterval(t, sessionClient(t, spec.Ports.API)); got != seeded {
+			t.Errorf("a file edit after the first start changed blocking.refreshInterval to %v (was %v): update the runbook's static twin paragraph", got, seeded)
+		}
+		stop(t, n)
 	})
 }
