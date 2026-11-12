@@ -44,6 +44,12 @@ in none. Only an administrator with the scope of the whole cluster can add,
 change or remove this label. When the label is removed, the people bound to
 the group lose access to the zone at once.
 
+On Kubernetes, the label may also be set with kubectl or a GitOps tool.
+When an administrator removes or changes it through kudurru, kudurru takes
+over the whole zone object, so the label goes away even if kubectl set it.
+If a GitOps tool owns the zone, change the label in Git: the tool puts its
+own label back on its next sync.
+
 Each page of the dashboard shows only what the role can use. A button that
 the role cannot use is gray. A page that the role cannot read shows the
 message **Not permitted** with the name of the missing permission.

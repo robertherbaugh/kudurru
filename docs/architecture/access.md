@@ -1145,8 +1145,8 @@ flowchart LR
     AZ --> CMD["SQLite command: the transaction<br/>reads DNSZone a again and<br/>replaces the group before reauthorizing"]
 ```
 
-- A zone that is absent, unreadable or unlabeled is in no group, so a group
-  binding grants nothing for it; cluster and zone bindings never depend on
+- A zone that is absent or unlabeled is in no group, so a group binding
+  grants nothing for it; cluster and zone bindings never depend on
   the label.
 - A command transaction (and the primary, for a follower's forwarded
   command) discards the caller's group and resolves it from its own read,
@@ -1154,7 +1154,22 @@ flowchart LR
   A follower's early admission uses its own captured publication.
 - Putting a zone into a group, moving it, or taking it out is access
   control: a DNSZone write that changes the label needs `zones.write` at
-  cluster scope, on both drivers. Creating a zone already needs it.
+  cluster scope, on both drivers. Creating a zone already needs it. On
+  Kubernetes the rule is decided again on the read the write is
+  compare-and-swapped against (its resourceVersion), so a label removed
+  while a group member's PUT is in flight cannot be put back by that PUT.
+- On Kubernetes an API write that changes the label takes the zone over as a
+  whole-object PUT (the forced takeover used for bootstrap defaults): other
+  field managers' ownership (kubectl, a GitOps tool) moves to `api`, and
+  fields the document omits are removed. Without it, server-side apply would
+  keep a label kubectl also owns and the removal would answer 200 with the
+  zone still in its group. The answer is checked: a written zone whose label
+  is still not the requested one answers 409 instead of 200. A GitOps tool
+  that applies the label again puts the zone back; change it at its source.
+- The group is resolved only when the decision without it is a denial
+  (`Scope.Admits` only adds coverage), at most once per zone per request,
+  and lists decide each zone on the listed object. A zone that cannot be
+  read answers 503 (authorizer unavailable), not a denial.
 - Lists (`GET /zones`, `GET /objects/dnszones`, `GET /objects/dnsrecordsets`)
   filter per item through the same rule. `GET /zones` reports each zone's
   `zoneGroup`; `GET /auth/me` reports `scopedPermissions["zonegroup:<group>"]`.
