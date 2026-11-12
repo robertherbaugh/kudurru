@@ -40,6 +40,25 @@ func TestDoctorAnchorsCheck(t *testing.T) {
 	if out, rep := run(); out != "" || rep.failures+rep.warnings != 0 {
 		t.Fatal("static anchors were checked", out)
 	}
+	// A joined member whose own file does not set anchorMode takes managed
+	// anchors from the primary's image: the node's effective mode decides.
+	status = api.RootAnchorStatus{AnchorMode: "managed", Owner: api.RootAnchorOwner{Phase: "managed", Keys: []api.RootAnchorKey{{Status: "Valid"}}}, Warnings: []string{"this member refuses the primary's root-anchor state (carried_revocation)"}}
+	if out, rep := run(); !strings.Contains(out, "anchors: WARN managed, 1 keys") || !strings.Contains(out, "carried_revocation") || rep.warnings != 1 {
+		t.Fatal("managed anchors taken from the cluster were not checked", out)
+	}
+	status = api.RootAnchorStatus{AnchorMode: "static", Warnings: []string{"x"}}
+	if out, rep := run(); out != "" || rep.failures+rep.warnings != 0 {
+		t.Fatal("effective static anchors were checked", out)
+	}
+	code = http.StatusNotFound
+	if out, rep := run(); out != "" || rep.failures+rep.warnings != 0 {
+		t.Fatal("a static node without the route was warned", out)
+	}
+	code = http.StatusOK
+	cfg.Upstreams.Recursion.AnchorMode = config.RootAnchorsManaged
+	if out, rep := run(); out != "" || rep.failures+rep.warnings != 0 {
+		t.Fatal("the node's effective static mode did not win over the host file", out)
+	}
 	cfg.Upstreams.Recursion.AnchorMode = config.RootAnchorsManaged
 	status = api.RootAnchorStatus{Owner: api.RootAnchorOwner{Phase: "managed", Keys: []api.RootAnchorKey{{Status: "Valid"}}}, Updater: api.RootAnchorWorker{State: "running"}, Supervisor: api.RootAnchorWorker{State: "not_running"}}
 	if out, rep := run(); !strings.Contains(out, "anchors: OK managed, 1 keys, updater running, supervisor not_running") || rep.failures+rep.warnings != 0 {
