@@ -6,12 +6,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/prometheus/client_golang/prometheus"
 	"net/netip"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
