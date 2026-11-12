@@ -920,6 +920,21 @@ would advance the RV again and keep the controller and driver chasing each
 other. The driver aligns the source before normal status projection resumes.
 This wait preserves historical status; it does not make an unavailable DNS cut
 ready or replace any captured source, head or expiry evidence.
+
+DNS keeps answering the zone from its committed head through that interval.
+Every head commit is followed by the status write of its new serial, which
+advances the DNSZone RV, and then by the driver's realignment of the lifecycle
+receipt to that RV. A publication between the two still serves the zone (and
+keeps it bound as a child of its parent) when the lifecycle receipt differs
+from the DNSZone only in the RV: same UID, apex, type and intent digest, and a
+head whose frozen configuration, NS address dependency and source receipt match
+the DNSZone. Realignment serves the same head with the same configuration, so
+the answers are the same before and after it. Only serving readiness
+(`Admitted`) accepts this; `SourceMatchesDesired` stays exact, so publication
+acknowledgment and status projection still wait for the realignment, and every
+command's transactional source check still compares the exact token. Before
+v0.2.0 such a publication answered the zone with `servfail_unsynced` for up to
+about half a second after each change.
 The controller retains desired-record conflict diagnostics, but delegates primary
 status when the capability is installed. Kubernetes and unconfigured controllers
 retain their existing behavior. The adapter and controller have actual SQLite,
@@ -928,8 +943,9 @@ installs the status capability on its controller.
 
 Primary serving also requires the committed head's source receipt and frozen
 configuration to match the current DNSZone. Advancing a lifecycle source before
-head compilation therefore keeps the zone and its coordinated descendants
-unavailable, using the current desired query ACL. Durable versions and status
+head compilation (a change of intent or of the NS address dependency) therefore
+keeps the zone and its coordinated descendants unavailable, using the current
+desired query ACL. Durable versions and status
 remain inspectable, and background reconciliation can repair the head. Equivalent
 status-only changes do not require a new head or relabel an old receipt.
 

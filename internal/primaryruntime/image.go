@@ -59,9 +59,12 @@ func (p *PreparedImage) Cut(now time.Time) Cut {
 	return c
 }
 
-// Admitted reports exact current-source lifecycle readiness from this image,
+// Admitted reports current-source lifecycle readiness from this image,
 // including parent witnesses and absolute primary/ancestor expiry. It is
 // independent of Published and does not acknowledge whole-bundle publication.
+// A primary whose lifecycle receipt differs from the desired DNSZone only in
+// its resourceVersion stays admitted (imageServingSource); SourceMatchesDesired
+// reports that pending realignment.
 // Missing members and desired-only placeholders are never admitted. Other
 // owners still check their own node-local secondary/stub/RPZ deadlines.
 func (p *PreparedImage) Admitted(apex string, now time.Time) bool {
@@ -193,8 +196,17 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 		}
 		// Lifecycle source CAS precedes head compilation. Only a head with the
 		// current frozen zone config/receipt can grant serving readiness.
-		current[l.Spec.Zone.Apex] = current[l.Spec.Zone.Apex] && status[l.Spec.Zone.ObjectName].ConfigMatchesDesired
-		sourceCurrent[l.Spec.Zone] = current[l.Spec.Zone.Apex]
+		matches := status[l.Spec.Zone.ObjectName].ConfigMatchesDesired
+		sourceCurrent[l.Spec.Zone] = current[l.Spec.Zone.Apex] && matches
+		// Serving readiness additionally survives a change of the DNSZone's
+		// resourceVersion alone (a status write, such as the committed-status
+		// writer's serial projection after every head commit): the driver
+		// realigns the lifecycle receipt next, and that realignment serves the
+		// same head with the same frozen config. SourceMatchesDesired stays
+		// exact, so publication acknowledgment and status writes still wait
+		// for that realignment, and every command's transactional source
+		// check still compares the exact token (see imageServingSource).
+		current[l.Spec.Zone.Apex] = imageServingSource(l, z, matches) && matches
 		if !current[l.Spec.Zone.Apex] {
 			e.model = e.coverage
 			if z != nil && z.Spec.Type == public.ZoneTypePrimary && canonical(z.Spec.ZoneName) == l.Spec.Zone.Apex {
@@ -266,7 +278,7 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 			}
 			childEntry := entries[apex]
 			bound := false
-			if childEntry != nil && childEntry.lifecycle != nil && imageCurrentSource(childEntry.lifecycle, child) && phaseOrder(childEntry.member.Phase) <= phaseOrder(zk.PhaseActive) {
+			if childEntry != nil && childEntry.lifecycle != nil && imageServingSource(childEntry.lifecycle, child, status[childEntry.lifecycle.Spec.Zone.ObjectName].ConfigMatchesDesired) && phaseOrder(childEntry.member.Phase) <= phaseOrder(zk.PhaseActive) {
 				for _, p := range childEntry.member.Parents {
 					if p.Zone == parent.member.Version.Zone && p.Incarnation == parent.member.Incarnation && p.CommitSequence != 0 && !p.Released && parent.member.Version.CommitSequence >= p.CommitSequence && (parent.member.Version.CommitSequence != p.CommitSequence || parent.member.Version.RootDigest == p.RootDigest) && hasFence(parent.view, apex) {
 						bound = true
@@ -323,6 +335,28 @@ func imageCurrentSource(l *zk.ZoneLifecycle, z *public.DNSZone) bool {
 	}
 	token, err := primaryzone.SourceToken(z)
 	return err == nil && token.UID == l.Spec.Source.UID && token.ResourceVersion == l.Spec.Source.ResourceVersion && token.IntentDigest == l.Spec.Source.IntentDigest
+}
+
+// imageServingSource reports whether lifecycle l's source identity may serve
+// for desired z. The exact source token (imageCurrentSource) always
+// qualifies; callers apply their own config checks to it as before. A primary
+// lifecycle also qualifies when its receipt differs from z ONLY in the opaque
+// resourceVersion: same UID, apex, type and intent digest, not removed, and
+// configMatches (the head's frozen spec, NS address dependency and source
+// receipt equal z, PrimaryStatusObservation.ConfigMatchesDesired). The
+// intent digest excludes status and RV churn by definition, and the driver's
+// realignment of such a receipt keeps the same head (restoreActualZoneReceipt),
+// so the answers are identical before and after it. No RV is substituted into
+// any durable object here, and nonprimary lifecycles stay exact.
+func imageServingSource(l *zk.ZoneLifecycle, z *public.DNSZone, configMatches bool) bool {
+	if imageCurrentSource(l, z) {
+		return true
+	}
+	if !configMatches || l.Spec.Type != public.ZoneTypePrimary || z == nil || l.Spec.Source.Removed || string(z.UID) != l.Spec.Zone.UID || canonical(z.Spec.ZoneName) != l.Spec.Zone.Apex || z.Spec.Type != l.Spec.Type {
+		return false
+	}
+	token, err := primaryzone.SourceToken(z)
+	return err == nil && token.UID == l.Spec.Source.UID && token.IntentDigest == l.Spec.Source.IntentDigest
 }
 
 func imageCoverageConfig(l *zk.ZoneLifecycle, z *public.DNSZone) *public.DNSZone {

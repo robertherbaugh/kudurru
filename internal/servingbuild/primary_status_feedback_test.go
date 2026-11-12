@@ -237,10 +237,12 @@ func (h *primaryFeedbackFixture) align(name string, accept ...func(pr.PrimarySta
 		if err == nil {
 			value, _ := lease.Bundle().Component("runtime")
 			owner := value.(*RuntimeOwner)
-			available := owner.Primary().Admitted(h.read(name).Spec.ZoneName, h.f.now)
+			// A status-only RV change keeps the zone admitted (it serves the
+			// same committed head), so alignment is the exact receipt match.
+			o, found := owner.Primary().CommittedPrimaryStatus(name)
+			available := found && owner.Primary().Admitted(h.read(name).Spec.ZoneName, h.f.now) && owner.Primary().SourceMatchesDesired(o.Member.Zone)
 			if available && len(accept) != 0 {
-				o, found := owner.Primary().CommittedPrimaryStatus(name)
-				available = found && accept[0](o)
+				available = accept[0](o)
 			}
 			lease.Release()
 			if available {
@@ -260,8 +262,10 @@ func TestPrimaryStatusSourceRVActualControllerDriverWaitAndQuiescence(t *testing
 	h.align("uncommitted")
 	before, _ := h.observe("uncommitted", true)
 	written := h.writeCondition("uncommitted", "True", public.ReasonServing)
-	gap, _ := h.observe("uncommitted", false)
-	if !gap.ConfigMatchesDesired || gap.Source.ResourceVersion == written.ResourceVersion {
+	// The status-only gap keeps serving the same committed head
+	// (CORE-STATUS-WRITE-SERVFAIL); its receipt is still pending realignment.
+	gap, _ := h.observe("uncommitted", true)
+	if !gap.ConfigMatchesDesired || gap.Source.ResourceVersion == written.ResourceVersion || gap.Member.Version != before.Member.Version {
 		t.Fatal("fixture did not expose the status-only source gap")
 	}
 	for range 3 {

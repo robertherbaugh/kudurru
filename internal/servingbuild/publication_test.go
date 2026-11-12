@@ -314,8 +314,14 @@ func TestPrimaryPublicationStopsWaitingForChangedDesiredSource(t *testing.T) {
 			if err := p.Wait(bounded, writer, member); !errors.Is(err, serving.ErrSuperseded) {
 				t.Fatalf("obsolete source blocked reconciliation: %v", err)
 			}
-			if query(t, f.chain, nil, z.Spec.ZoneName).Msg.Rcode != dns.RcodeServerFailure {
-				t.Fatal("obsolete source became available")
+			// A status-only RV change keeps answering from the same committed
+			// head (CORE-STATUS-WRITE-SERVFAIL); every other change does not.
+			want := dns.RcodeServerFailure
+			if change == "status" {
+				want = dns.RcodeSuccess
+			}
+			if query(t, f.chain, nil, z.Spec.ZoneName).Msg.Rcode != want {
+				t.Fatal("unexpected availability of the stale source receipt", change)
 			}
 			if change == "nameservers" || change == "status" {
 				if _, err := r.Reconcile(ctx, lifecycle.Spec.Zone); err != nil {

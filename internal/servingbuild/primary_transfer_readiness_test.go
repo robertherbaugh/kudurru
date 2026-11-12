@@ -19,7 +19,7 @@ import (
 
 // A successful startup SOA can precede the controller's first Ready projection.
 // Drive that actual status write and source alignment separately: the signed
-// request in the gap must fail, even though the durable head never changes.
+// request in the gap gets the same durable head, which never changes.
 func TestPrimaryStatusSourceRVNativeSignedTransferBarrier(t *testing.T) {
 	h := newPrimaryFeedbackFixture(t)
 	secret := bytes.Repeat([]byte{19}, 32)
@@ -77,21 +77,26 @@ func TestPrimaryStatusSourceRVNativeSignedTransferBarrier(t *testing.T) {
 	}
 
 	written := h.writeCondition(z.Name, "True", public.ReasonServing)
-	gap, pending := h.observe(z.Name, false)
+	gap, pending := h.observe(z.Name, true)
 	if !gap.ConfigMatchesDesired || gap.Member.Version != before.Member.Version || gap.Source.ResourceVersion == written.ResourceVersion || !meta.IsStatusConditionTrue(pending.Status.Conditions, public.ConditionReady) {
 		t.Fatal("missing Ready=true status-only source gap")
 	}
+	// The status-only gap serves the same committed head with the same frozen
+	// transfer policy (CORE-STATUS-WRITE-SERVFAIL): the signed transfer gets
+	// exactly the original head, never data the receipt does not describe.
 	challenged := new(dns.Msg)
 	challenged.SetAxfr(z.Spec.ZoneName)
 	challenged.SetTsig("transfer-test.", dns.HmacSHA256, 300, time.Now().Unix())
 	answer, _, err = client.ExchangeContext(ctx, challenged, addr)
-	if err != nil || answer == nil || answer.Rcode != dns.RcodeServerFailure || answer.IsTsig() == nil || len(answer.Answer) != 0 {
-		t.Fatalf("native signed AXFR must refuse the source gap without data: error=%v", err)
+	if err != nil || answer == nil || answer.Rcode != dns.RcodeSuccess || answer.IsTsig() == nil || len(answer.Answer) < 2 {
+		t.Fatalf("native signed AXFR in the status-only gap did not serve the committed head: error=%v answer=%v", err, answer)
+	}
+	if rr, ok := answer.Answer[0].(*dns.SOA); !ok || rr.Serial != before.Serial {
+		t.Fatal("status-only gap transfer did not identify the committed head")
 	}
 
-	// Only the real driver's source reconciliation can open the route. This
-	// independent post-alignment request must serve the original head, while
-	// the challenged request above remains a failed operation.
+	// The real driver's source reconciliation aligns the receipt. This
+	// independent post-alignment request must serve the same original head.
 	h.align(z.Name)
 	after, settled := h.observe(z.Name, true)
 	if after.Source.ResourceVersion != written.ResourceVersion || after.Member.Version != before.Member.Version || !reflect.DeepEqual(written, settled) {

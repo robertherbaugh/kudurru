@@ -667,9 +667,12 @@ func TestImageReadinessStatusOnlySourceAlignmentAdmitsEquivalentHead(t *testing.
 	if err := h.st.UpdateStatus(ctx, z); err != nil {
 		t.Fatal(err)
 	}
+	// A status-only RV change keeps serving the same committed head (it is
+	// the committed-status writer's own write after every head commit), but
+	// the exact receipt mismatch is still reported for realignment.
 	unaligned := statusImage(t, h)
-	if unaligned.Admitted("example.", time.Now()) {
-		t.Fatal("source RV mismatch was bypassed")
+	if !unaligned.Admitted("example.", time.Now()) || unaligned.SourceMatchesDesired(l.Spec.Zone) {
+		t.Fatal("status-only RV change lost serving readiness or hid the pending realignment")
 	}
 	gap, finish := imageHoldReconcile(t, h, l.Spec.Zone)
 	o, _ := gap.CommittedPrimaryStatus(z.Name)
@@ -857,5 +860,120 @@ func TestImageReadinessRecordSetPendingCreateEditDeleteKeepsCommittedAuthority(t
 			assertRecord(t, pending.Cut(now).Match("desired.example."), "desired.example.", previousIP)
 			previousIP = nextIP
 		})
+	}
+}
+
+// TestImageReadinessStatusWriteKeepsCommittedAuthority reproduces the window
+// of CORE-STATUS-WRITE-SERVFAIL deterministically: the committed-status
+// writer's status write advances the DNSZone resourceVersion before the
+// driver realigns the lifecycle receipt. The image between the two commits
+// must keep answering from the committed head, for the zone itself and for
+// its parent, while still reporting the receipt as pending realignment. A
+// change of intent or of the frozen NS dependency in the same window still
+// fails closed.
+func TestImageReadinessStatusWriteKeepsCommittedAuthority(t *testing.T) {
+	h := newHarness(t, "sqlite")
+	ctx := context.Background()
+	parentZone := h.zone("parent", "example.")
+	parent := h.begin(parentZone)
+	if _, err := h.r.Reconcile(ctx, parent.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	parent, err := h.r.ReadLifecycle(ctx, parent.Spec.Zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	childZone := h.zone("child", "child.example.")
+	child := h.begin(childZone, parent)
+	if _, err := h.r.Reconcile(ctx, child.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	baseline := statusImage(t, h)
+	now := time.Now()
+	for _, apex := range []string{"example.", "child.example."} {
+		if !baseline.Admitted(apex, now) || !baseline.Cut(now).Match("x."+apex).AvailableAt(now) {
+			t.Fatal("baseline did not serve", apex)
+		}
+	}
+	// The status writer's projection: same spec, new status, new RV.
+	statusWrite := func(z *public.DNSZone, name string) {
+		t.Helper()
+		o, _ := statusImage(t, h).CommittedPrimaryStatus(name)
+		if err := h.st.Get(ctx, store.KeyOf(z), z); err != nil {
+			t.Fatal(err)
+		}
+		z.Status.Serial, z.Status.ContentHash, z.Status.RecordCount = o.Serial, o.ContentHash, o.RecordCount
+		z.Status.ObservedGeneration++
+		if err := h.st.UpdateStatus(ctx, z); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.st.Get(ctx, store.KeyOf(z), z); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, step := range []struct {
+		zone     *public.DNSZone
+		name     string
+		id       zk.ZoneID
+		affected []string
+	}{
+		{childZone, "child", child.Spec.Zone, []string{"child.example.", "example."}},
+		{parentZone, "parent", parent.Spec.Zone, []string{"example.", "child.example."}},
+	} {
+		statusWrite(step.zone, step.name)
+		gap := statusImage(t, h)
+		now := time.Now()
+		o, _ := gap.CommittedPrimaryStatus(step.name)
+		if !o.ConfigMatchesDesired || o.Source.ResourceVersion == step.zone.ResourceVersion {
+			t.Fatalf("fixture is not a status-only RV gap: %+v", o)
+		}
+		if gap.SourceMatchesDesired(step.id) {
+			t.Fatal("status-only RV gap reported an aligned receipt", step.name)
+		}
+		for _, apex := range step.affected {
+			model := gap.Cut(now).Match("x." + apex)
+			if !gap.Admitted(apex, now) || model == nil || model.Name() != apex || !model.AvailableAt(now) || !model.RoutingAvailableAt(now) {
+				t.Fatalf("status write of %s made %s unavailable: %v", step.name, apex, model)
+			}
+			before := baseline.Cut(now).Match("x." + apex)
+			if model.Serial() != before.Serial() || model.ContentHash() != before.ContentHash() {
+				t.Fatal("status-only gap served other data", apex)
+			}
+		}
+		if _, err := h.r.Reconcile(ctx, step.id); err != nil {
+			t.Fatal(err)
+		}
+		aligned := statusImage(t, h)
+		if !aligned.SourceMatchesDesired(step.id) || !aligned.Admitted(step.affected[0], time.Now()) {
+			t.Fatal("realignment did not complete", step.name)
+		}
+	}
+	// An intent change in the same window still serves unavailable coverage.
+	if err := h.st.Get(ctx, store.KeyOf(childZone), childZone); err != nil {
+		t.Fatal(err)
+	}
+	childZone.Spec.Policy.QueryAccess = public.AccessDeny
+	if _, err := h.st.Apply(ctx, childZone, store.ApplyOptions{Manager: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	changed := statusImage(t, h)
+	if changed.Admitted("child.example.", time.Now()) {
+		t.Fatal("an intent change was served as a status-only RV change")
+	}
+	assertImageCoverage(t, changed, "child.example.", time.Now())
+	// A frozen NS address dependency change is status, not intent, and still
+	// fails closed until the head is recompiled.
+	if _, err := h.r.Reconcile(ctx, child.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.st.Get(ctx, store.KeyOf(parentZone), parentZone); err != nil {
+		t.Fatal(err)
+	}
+	parentZone.Status.NameserverAddresses = []string{"192.0.2.53"}
+	if err := h.st.UpdateStatus(ctx, parentZone); err != nil {
+		t.Fatal(err)
+	}
+	if statusImage(t, h).Admitted("example.", time.Now()) {
+		t.Fatal("NS address status change was served as a status-only RV change")
 	}
 }
