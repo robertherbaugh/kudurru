@@ -160,15 +160,19 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly bool) {
 			t.Error("root shutdown did not join")
 		}
 	})
-	wait := func(label string, predicate func() bool) {
+	waitEvery := func(label string, every time.Duration, predicate func() bool) {
 		t.Helper()
 		deadline := time.Now().Add(25 * time.Second)
 		for !predicate() {
 			if time.Now().After(deadline) {
 				t.Fatal("timed out: " + label)
 			}
-			time.Sleep(30 * time.Millisecond)
+			time.Sleep(every)
 		}
+	}
+	wait := func(label string, predicate func() bool) {
+		t.Helper()
+		waitEvery(label, 30*time.Millisecond, predicate)
 	}
 	wait("root ready", func() bool { return offlineHTTPStatus(cfg.Listeners.Ops.Address, "/healthz/ready") == http.StatusOK })
 	// Login can publish an independent session owner. Complete its expensive
@@ -266,7 +270,17 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly bool) {
 		}
 		var before uint64
 		var unchangedSince time.Time
-		wait("quiet original publication before one-shot mutation", func() bool {
+		// The internal listener admits internalapi.DefaultRateLimit requests
+		// per second per client address, and this observer shares 127.0.0.1
+		// with the supervisor's own 100 ms zone poll. Polling every 30 ms
+		// alone exceeded that budget, so roughly half of the reads were
+		// refused with 429, every refusal restarted the quiet window, and
+		// the wait could never observe 500 ms of quiescence (the refused
+		// supervisor polls also flipped its caches to bypass-unavailable).
+		// Observe at a pace that leaves the supervisor its budget instead;
+		// the deadline and the 500 ms quiet window are unchanged.
+		const observe = 150 * time.Millisecond
+		waitEvery("quiet original publication before one-shot mutation", observe, func() bool {
 			publication, ok := read()
 			if !ok {
 				unchangedSince = time.Time{}
@@ -284,7 +298,7 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly bool) {
 		// One API write, no mutation replay. A successful original complete
 		// observation proves the durable source has caught up before another
 		// original-authorized command is submitted.
-		wait("complete publication after mutation", func() bool { after, ok := read(); return ok && after > before })
+		waitEvery("complete publication after mutation", observe, func() bool { after, ok := read(); return ok && after > before })
 	}
 	// Distinct source addresses are carried by the actual authenticated
 	// PROXYv2 listener. Identical questions must never share client verdicts.
