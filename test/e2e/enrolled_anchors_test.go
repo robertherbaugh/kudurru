@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -46,7 +47,12 @@ func TestEnrolledManagedAnchorsPromoteAndRejoin(t *testing.T) {
 // bootstrap (production timers, D297), and both nodes lose every trusted key.
 // The test therefore runs for more than an hour and only with
 // KUDURRU_ANCHOR_SOAK=1.
-func TestEnrolledManagedAnchorsOfflineRecoverySoak(t *testing.T) {
+//
+// It is named outside TestEnrolledManagedAnchors* on purpose: those run in
+// the default e2e suite with no skips. The step that needs no wait (recover
+// on a follower database is refused before any acquisition, with no
+// mutation) also runs by default as TestOfflineAnchorRecoverRefusedOnFollowerDatabase.
+func TestSoakEnrolledAnchorsOfflineRecovery(t *testing.T) {
 	kudurrutest.RequireE2E(t)
 	if os.Getenv("KUDURRU_ANCHOR_SOAK") != "1" {
 		t.Skip("set KUDURRU_ANCHOR_SOAK=1: waits for the primary's one-hour RFC 5011 refresh")
@@ -116,11 +122,54 @@ func (e *enrolledAnchors) absorbSettings(before int32, why string) {
 	e.base += extra
 }
 
-// awaitValidated waits until a node answers validated recursion.
+// awaitValidated waits until a node answers validated recursion, then
+// requires every answer over UDP and TCP for the next two seconds to be
+// validated as well: a member that holds valid trust never answers SERVFAIL
+// once it serves.
 func (e *enrolledAnchors) awaitValidated(node *kudurrutest.Node, why string) {
 	e.t.Helper()
 	if !kudurrutest.Eventually(20*time.Second, 50*time.Millisecond, func() bool { return anchorValidated(node.Ports.DNS) }) {
 		e.t.Fatal("node does not answer validated recursion", node.Name, why)
+	}
+	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(50 * time.Millisecond) {
+		if !anchorValidated(node.Ports.DNS) {
+			e.t.Fatal("node stopped answering validated recursion", node.Name, why)
+		}
+	}
+}
+
+// sampleValidated queries node for validated recursion over UDP and TCP until
+// the returned stop is called, and reports how many samples it took and the
+// first one that was not validated. It covers a role transition (a restarted
+// old primary that is fenced until it installs the successor) from the
+// node's first answer.
+func (e *enrolledAnchors) sampleValidated(node *kudurrutest.Node) (stop func() (samples int, failed bool)) {
+	done, result := make(chan struct{}), make(chan [2]int, 1)
+	halt := sync.OnceFunc(func() { close(done) })
+	e.t.Cleanup(halt)
+	go func() {
+		samples, failed := 0, 0
+		for {
+			select {
+			case <-done:
+				result <- [2]int{samples, failed}
+				return
+			default:
+			}
+			samples++
+			if !anchorValidated(node.Ports.DNS) && failed == 0 {
+				failed = samples
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}()
+	return func() (int, bool) {
+		halt()
+		r := <-result
+		if r[1] != 0 {
+			e.t.Logf("%s: sample %d of %d was not validated", node.Name, r[1], r[0])
+		}
+		return r[0], r[1] != 0
 	}
 }
 
