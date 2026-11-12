@@ -67,7 +67,7 @@ flowchart LR
         dns["dns listeners<br/>udp tcp dot doh doq doh3"]
         zc["zonecache<br/>(store watch → snapshot)"]
         lr["list resolver<br/>(compile lists)"]
-        xfr["secondary and stub managers,<br/>RPZ feed manager (sqlite)"]
+        xfr["secondary and stub managers,<br/>RPZ feed manager"]
         api["api + dashboard :8080"]
         ops["health :8081, metrics :9153"]
         internal["node-to-node :8082"]
@@ -145,7 +145,7 @@ the error key is shown where it is specific to the feature.
 
 | Feature | Complete SQLite | Kubernetes |
 |---|---|---|
-| Transferred RPZ feeds ([block lists](block-lists.md#transferred-rpz-foundation)) | per-node feed manager; evaluated by the blocking stage | not mounted: RPZ sources are neither transferred nor evaluated |
+| Transferred RPZ feeds ([block lists](block-lists.md#transferred-rpz-foundation)) | per-node feed manager; bound into each complete serving bundle | per-node feed manager with the stored TSIG source; each query binds its own policy decision's lists to the node's feed snapshot (D390) |
 | Integration host ([integrations](integrations.md)) | mounted | not started; `/integrations` routes answer 503. The read-only DNSEndpoint source is separate and Kubernetes-only |
 | RFC 2136 UPDATE ([zones](zones.md#rfc-2136-on-kubernetes)) | one transaction with durable primary history | one UPDATE-owned `DNSRecordSet` per zone, exact resourceVersion CAS |
 | Stored TSIG key management ([zones](zones.md)) | current commands in one transaction | exact-version writes; every node rereads the source every ten seconds |

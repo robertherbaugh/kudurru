@@ -347,7 +347,7 @@ comparisons, TSIG/TLS rejection, IXFR, outage/restart, expiry, identity changes
 and persistence faults. Adapter tests cover policy order, all actions, raw-cache
 isolation, bounded CNAME resolution, expiry and response cleanup.
 
-The complete SQLite runtime mounts this path. `serve` creates the feed manager
+On SQLite the complete runtime mounts this path. `serve` creates the feed manager
 and runs it on every node; `servingbuild.TransferredRuntime` composes its
 installation cut into each complete serving candidate; and `BindDNS` gives the
 blocking stage a selector that reads the feeds of the request's own
@@ -369,8 +369,46 @@ flowchart LR
     Bundle --> Edge["Shared edge-cache eligibility"]
 ```
 
-On the Kubernetes store the manager is not created and the blocking stage has
-no selector, so RPZ sources are neither transferred nor evaluated there.
+The Kubernetes store mounts the same manager on every replica (D390). It
+acquires feeds with the stored TSIG startup source and its hot replacement
+(D314/D365): an unsigned feed is admitted at once, a signed one once the stored
+keys are prepared, and a ring replacement wakes the manager like a SQLite key
+change. Accepted copies persist in `local.db`, so a restart reuses an unexpired
+copy without contacting the primary or the apiserver. The policy index there
+comes from the zone cache rather than a complete bundle, so the blocking stage
+selector (`kubeRPZ` in `cmd/kudurru`) binds per request: it takes the
+BlockList objects of the request's own policy decision (`policy.ListInfo`),
+and binds them to the node's feed snapshot and the published TSIG ring. The
+binding is rebuilt only when the configuration snapshot, the feed snapshot or
+the ring changes, and every input is an in-memory atomic read: no store read,
+no leader and no network work on the DNS path. A feed that is missing, rotated
+to a new credential, unbound or expired stays selected as an unavailable
+sentinel and fails closed (SERVFAIL with EDE "not ready"); a stale or unsynced
+configuration snapshot does the same. Like every other list, an RPZ-only list
+reaches the policy only once the list resolver has compiled it: with the default
+`blocking.allowDegraded: true` a just-started node answers while lists load and
+filters only with the lists already loaded, so for that window (measured at
+about 250 ms after a restart) its RPZ feeds are not applied. Set
+`blocking.allowDegraded: false` to keep the node not ready until every
+referenced list, RPZ-only ones included, is in the policy. Leader changes do not affect feeds: the
+manager is not a leader-only runnable. The shared dnsdist cache eligibility
+above is SQLite-only; on Kubernetes the edge cache is not flushed when a feed
+changes, so an edge-cached answer can outlive a feed update by its TTL.
+
+```mermaid
+flowchart LR
+    KManager["rpz.Manager<br/>(every Kubernetes replica)"] --> KSnap["Feed snapshot"]
+    Ring["Stored TSIG ring<br/>(startup + hot replacement)"] --> KManager
+    Zc["zone cache snapshot"] --> Index["Policy index<br/>(ListInfo keeps the BlockList)"]
+    Index --> Decision["Request policy decision"]
+    KSnap --> Bind["kubeRPZ binding<br/>(rebuilt on change only)"]
+    Ring --> Bind
+    Zc --> Bind
+    Decision --> KSelect["Blocking stage selector<br/>(per request)"]
+    Bind --> KSelect
+    KSelect --> KHit["blocked_rpz + list + rule"]
+```
+
 Per-feed transfer status (`rpz.Manager.Statuses`: serial, primary, expiry,
 errors) is not exposed through the API, the CLI, metrics or the dashboard.
 
