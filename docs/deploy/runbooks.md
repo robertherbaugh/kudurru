@@ -584,7 +584,25 @@ declare the ingress in the node file (`upstreams.recursion.managedTopology`,
 first 0.2 start copies the cluster settings of `kudurru.yaml` into the
 cluster settings object, and later edits of those keys in the file do not
 change it ([configuration-and-store.md](../architecture/configuration-and-store.md#cluster-settings-object-foundation)).
-The node then fetches the root keys once and keeps them across restarts. A
+The node then fetches the root keys once and keeps them across restarts.
+
+**Static twins (Compose HA) cannot use that settings write.** A twin with
+`cluster.role: static` refuses settings writes (`503 read_only`), and after
+its first 0.2 start it keeps the cluster settings that start copied from
+`kudurru.yaml`: a later edit of a cluster key in the file is not applied,
+even though the start logs `settings applied` for that key (the line names
+the stored value that replaced the file's). This is a known gap of 0.2.0,
+and it applies to every cluster setting, not only the anchor keys. On static
+twins, put the managed anchor settings (`anchorMode: managed`,
+`dnssec: true`, `trustAnchors` and, if you use them, `rootHints`) and every
+other cluster setting you want into `kudurru.yaml` **before** that host's
+first 0.2 start; `managedTopology` is a host key and can also be declared
+then. There is no supported way in 0.2.0 to change a cluster setting of a
+static twin after that start. Host keys (listeners, `cluster.*`,
+`managedTopology`) and the objects in `kudurru.yaml` and `objects.d/` still
+follow the file.
+
+A
 declared edge that still runs 0.1 has no observation route, so a start with
 `edges` is refused with `managed edge observation is unsupported` until that
 edge is upgraded.

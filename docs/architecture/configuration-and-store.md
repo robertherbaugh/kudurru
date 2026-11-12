@@ -2127,6 +2127,15 @@ Blocking keeps its original current command and publication acknowledgment,
 but its response explicitly identifies the static node scope. No cross-node
 mutation or authority is inferred from the configured peer list.
 
+Cluster settings follow the SQLite rule of
+[the cluster settings object](#cluster-settings-object-foundation): the first
+start seeds `Kudurru/default` from `kudurru.yaml`, and a later start keeps
+the stored object. With the API guard refusing settings writes, a static
+twin therefore has no path to change a cluster setting after its first start
+in 0.2.0 (a known gap; the startup reload still logs `settings applied` for
+the keys whose stored value replaced the file's). Host keys and file objects
+keep following the files.
+
 ```mermaid
 flowchart LR
     Files["Identical distributed files"] --> A["Node A: local SQLite leader"]

@@ -104,7 +104,12 @@ blocking responses explicitly report `scope: node`.
 Edit `kudurru.yaml` or `objects.d/` in your source of truth and distribute it
 to all three hosts. Objects re-apply on file change; keys flagged `R` in
 `kudurru config schema` need `docker compose restart kudurru` (one host at a
-time). Zone serials are `max(prev+1, unix_now)` on each twin, close but not
+time). Cluster settings are the exception: each twin copies them from
+`kudurru.yaml` into its database on its first 0.2 start and keeps them, so a
+later edit of a cluster key in the file is not applied, and the API refuses
+settings writes. Set the cluster settings you need before a host's first 0.2
+start ([Upgrading from 0.1.x](runbooks.md#upgrading-from-01x)); changing them
+afterwards is not supported in 0.2.0. Zone serials are `max(prev+1, unix_now)` on each twin, close but not
 identical: external secondaries should transfer from one named node.
 
 ## Audit log, query log and statistics of all nodes
