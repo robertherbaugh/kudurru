@@ -2082,7 +2082,7 @@
       "type": "list",
       "scope": "cluster",
       "default": [],
-      "help": "Who may do what: each binding grants a role (viewer, auditor, operator, zone-admin or admin) to users, groups or service accounts, for the whole cluster or one zone. RoleBinding objects add to these.",
+      "help": "Who may do what: each binding grants a role (viewer, auditor, operator, zone-admin or admin) to users, groups or service accounts, for the whole cluster, one zone or one zone group. RoleBinding objects add to these.",
       "hostOnly": true,
       "envLocked": false,
       "restartRequired": true,
@@ -2152,7 +2152,7 @@
                   {
                     "value": "zonegroup",
                     "label": "Zone group",
-                    "help": "The role applies to the zone group named in scope.name (reserved: zone groups are not implemented, so a binding with this scope grants nothing)."
+                    "help": "The role applies to every zone labeled kudurru.io/zonegroup=<scope.name> and to the record sets of those zones. Removing the label from a zone takes the access away."
                   },
                   {
                     "value": "clientgroup",
@@ -2164,7 +2164,7 @@
               {
                 "name": "name",
                 "label": "Name",
-                "help": "Zone, zone group or client group name, e.g. home.example; empty for cluster scope.",
+                "help": "Zone name (e.g. home.example), zone group (the kudurru.io/zonegroup label value, e.g. prod) or client group name; empty for cluster scope.",
                 "type": "string"
               }
             ]

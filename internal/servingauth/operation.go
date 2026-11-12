@@ -116,7 +116,11 @@ func ReauthorizeOperationCurrent(ctx context.Context, tx *sqlite.CommandTx, deps
 	if operationPrincipalIdentity(principal) != proof.identity {
 		return auth.Principal{}, ErrCredentials
 	}
-	decision, err := view.Authorize(principal, proof.attrs, now)
+	attrs, err := currentZoneGroup(ctx, tx, proof.attrs)
+	if err != nil {
+		return auth.Principal{}, err
+	}
+	decision, err := view.Authorize(principal, attrs, now)
 	if err != nil {
 		return auth.Principal{}, err
 	}

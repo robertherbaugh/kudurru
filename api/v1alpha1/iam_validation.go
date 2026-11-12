@@ -108,6 +108,12 @@ func (b *RoleBinding) Validate() error {
 	case "zone", "zonegroup", "clientgroup":
 		if b.Spec.Scope.Name == "" {
 			errs.add("spec.scope.name", "required for scope kind %s", b.Spec.Scope.Kind)
+		} else if b.Spec.Scope.Kind == "zonegroup" {
+			// The name is matched against the kudurru.io/zonegroup label value
+			// of each zone (D385); a name no label can carry would grant nothing.
+			if msgs := validation.IsValidLabelValue(b.Spec.Scope.Name); len(msgs) > 0 {
+				errs.add("spec.scope.name", "%q is not a zone group label value: %s", b.Spec.Scope.Name, strings.Join(msgs, "; "))
+			}
 		}
 	default:
 		errs.add("spec.scope.kind", "%q is not cluster, zone, zonegroup or clientgroup", b.Spec.Scope.Kind)

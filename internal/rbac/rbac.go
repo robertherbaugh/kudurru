@@ -21,13 +21,16 @@ var permissionsYAML []byte
 // ScopeKind is what a binding or attribute set is scoped to.
 type ScopeKind string
 
-// Scope kinds. Routes present cluster and zone scopes only. zonegroup and
-// clientgroup are reserved: a binding may name one, but no request carries
-// such a scope, so the binding grants nothing.
+// Scope kinds. Routes present cluster and zone scopes. A zonegroup binding
+// covers every zone whose kudurru.io/zonegroup label names the group
+// (D385): the code that resolves the zone of a request states the zone's
+// group in Attributes.ZoneGroup, read from the same captured publication or
+// transaction as the zone itself. clientgroup is reserved: a binding may name
+// one, but no request carries such a scope, so the binding grants nothing.
 const (
 	ScopeCluster     ScopeKind = "cluster"
 	ScopeZone        ScopeKind = "zone"
-	ScopeZoneGroup   ScopeKind = "zonegroup"   // reserved
+	ScopeZoneGroup   ScopeKind = "zonegroup"
 	ScopeClientGroup ScopeKind = "clientgroup" // reserved, planned for v1.0
 )
 
@@ -38,12 +41,24 @@ type Scope struct {
 }
 
 // Covers reports whether a binding scope grants access to an attribute
-// scope: cluster covers everything, otherwise kind and name must match.
+// scope: cluster covers everything, otherwise kind and name must match. It
+// knows nothing of zone membership; authorizers use Admits.
 func (s Scope) Covers(a Scope) bool {
 	if s.Kind == "" || s.Kind == ScopeCluster {
 		return true
 	}
 	return s.Kind == a.Kind && s.Name == a.Name
+}
+
+// Admits reports whether a binding or grant scope covers the target of a:
+// Covers, and in addition a zonegroup scope covers a zone attribute whose
+// ZoneGroup names the group (D385). A zone in no group (empty ZoneGroup) is
+// covered by no zonegroup scope.
+func (s Scope) Admits(a Attributes) bool {
+	if s.Covers(a.Scope) {
+		return true
+	}
+	return s.Kind == ScopeZoneGroup && s.Name != "" && a.Scope.Kind == ScopeZone && a.Scope.Name != "" && a.ZoneGroup == s.Name
 }
 
 // Attributes describe one access decision.
@@ -53,6 +68,12 @@ type Attributes struct {
 	Scope     Scope
 	Namespace string
 	Name      string
+	// ZoneGroup is the zone group of the zone in a zone Scope: the value of
+	// its kudurru.io/zonegroup label, empty for none. Only the code that read
+	// the zone sets it, from the same captured publication or transaction;
+	// a command transaction resolves it again and never trusts a caller's
+	// value (D385). It is ignored for other scopes.
+	ZoneGroup string
 }
 
 // Decision is the outcome; Path records which authorizer granted.
@@ -249,7 +270,7 @@ func NewBindingAuthorizer(p *Permissions, bindings []Binding) (*BindingAuthorize
 // Authorize implements Authorizer.
 func (b *BindingAuthorizer) Authorize(_ context.Context, p Principal, a Attributes) (Decision, error) {
 	for _, bd := range b.bindings {
-		if !bd.Scope.Covers(a.Scope) || !matchesSubject(bd.Subjects, p) {
+		if !bd.Scope.Admits(a) || !matchesSubject(bd.Subjects, p) {
 			continue
 		}
 		if b.perms.Grants(bd.Role, a.Resource, a.Verb) {

@@ -386,8 +386,10 @@ func objectURL(k kindInfo, namespace, name string) string {
 // authorizeWrite checks resource.write for a whole-object write at the
 // scope of the new document and of the stored object it replaces: a zone
 // update needs zones.write on the zone, a zone create needs it at cluster
-// scope (§8.5), a record set needs records.write on its zone (and on the
-// zone it moves away from).
+// scope (§8.5), and so does a zone update that adds, changes or removes the
+// zone's kudurru.io/zonegroup label (D385: group membership is access
+// control); a record set needs records.write on its zone (and on the zone it
+// moves away from).
 func (s *Server) authorizeWrite(ctx context.Context, k kindInfo, req writeRequest) error {
 	if s.opts.ObjectCommand != nil {
 		// The command authorizes both exact current scopes from its own read.
@@ -414,7 +416,7 @@ func (s *Server) authorizeWrite(ctx context.Context, k kindInfo, req writeReques
 	switch k.plural {
 	case "dnszones":
 		sc := clusterScope
-		if existing != nil {
+		if existing != nil && !zoneGroupChanged(req.body, existing) {
 			sc = rbac.Scope{Kind: rbac.ScopeZone, Name: name}
 		}
 		return s.require(ctx, k.resource, "write", sc, name)

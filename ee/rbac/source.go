@@ -252,12 +252,12 @@ func (s *BindingSource) ValidGrants(grants []rbac.Grant, issuedAt time.Time) []r
 func (s *BindingSource) Authorize(_ context.Context, p rbac.Principal, a rbac.Attributes) (rbac.Decision, error) {
 	st := s.state.Load()
 	for _, b := range st.bindings {
-		if b.Scope.Covers(a.Scope) && rbac.SubjectsMatch(b.Subjects, p) && s.perms.Grants(b.Role, a.Resource, a.Verb) {
+		if b.Scope.Admits(a) && rbac.SubjectsMatch(b.Subjects, p) && s.perms.Grants(b.Role, a.Resource, a.Verb) {
 			return rbac.Decision{Allowed: true, Path: "binding", Reason: "role " + b.Role}, nil
 		}
 	}
 	for _, g := range p.Grants {
-		if g.Scope.Covers(a.Scope) && s.perms.Grants(g.Role, a.Resource, a.Verb) && s.GrantValid(g, p.GrantsIssuedAt) {
+		if g.Scope.Admits(a) && s.perms.Grants(g.Role, a.Resource, a.Verb) && s.GrantValid(g, p.GrantsIssuedAt) {
 			return rbac.Decision{Allowed: true, Path: "binding", Reason: "role " + g.Role + " (session)"}, nil
 		}
 	}

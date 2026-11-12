@@ -211,6 +211,7 @@ func (h *servingHTTP) forwardBlocking(w http.ResponseWriter, r *http.Request, to
 // member POST and public response flush. No writer gate or SQL transaction is
 // held while acquiring the remote response, and no replacement lease is captured.
 func (s *servingRuntime) withMemberForward(ctx context.Context, view *servingauth.View, proof servingauth.Credential, attrs rbac.Attributes, fn func(context.Context, auth.Principal, *servingauth.CredentialLifetime, func(context.Context) error) error) error {
+	attrs = capturedZoneGroup(ctx, attrs)
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	stop := context.AfterFunc(s.life, func() { cancel(); close(done) })

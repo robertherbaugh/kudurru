@@ -406,7 +406,7 @@ func (v *View) Authorize(p auth.Principal, a rbac.Attributes, now time.Time) (rb
 	r := auth.RBACPrincipal(live)
 	allow := func(grants []rbac.Grant) bool {
 		for _, g := range grants {
-			if g.Scope.Covers(a.Scope) && v.permissions.Grants(g.Role, a.Resource, a.Verb) {
+			if g.Scope.Admits(a) && v.permissions.Grants(g.Role, a.Resource, a.Verb) {
 				return true
 			}
 		}
@@ -435,7 +435,7 @@ func (v *View) Authorize(p auth.Principal, a rbac.Attributes, now time.Time) (rb
 		return denied("external grant unavailable")
 	}
 	for _, b := range v.bindings {
-		if b.Scope.Covers(a.Scope) && rbac.SubjectsMatch(b.Subjects, r) && v.permissions.Grants(b.Role, a.Resource, a.Verb) {
+		if b.Scope.Admits(a) && rbac.SubjectsMatch(b.Subjects, r) && v.permissions.Grants(b.Role, a.Resource, a.Verb) {
 			return rbac.Decision{Allowed: true, Path: rbac.PathBinding, Reason: "captured binding"}, nil
 		}
 	}

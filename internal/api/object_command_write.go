@@ -152,7 +152,7 @@ func commandWriteAttributes(k kindInfo, key store.Key, body map[string]any, exis
 	}
 	switch k.kind {
 	case "DNSZone":
-		if existing == nil {
+		if existing == nil || zoneGroupChanged(body, existing) {
 			return []rbac.Attributes{attribute(clusterScope)}
 		}
 		return []rbac.Attributes{attribute(objectScope(k, existing))}

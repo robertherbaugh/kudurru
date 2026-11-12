@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
@@ -113,11 +114,43 @@ func (s *Server) authorize(ctx context.Context, p auth.Principal, resource, verb
 	if p.Kind == auth.KindLocalRoot {
 		return rbac.Decision{Allowed: true, Path: "local"}, nil
 	}
+	a := rbac.Attributes{Resource: resource, Verb: verb, Scope: sc, Name: name}
 	if s.opts.Authorizer == nil {
-		a := rbac.Attributes{Resource: resource, Verb: verb, Scope: sc, Name: name}
 		return rbac.Decision{Path: "none", Missing: &a, Reason: "no authorizer configured"}, nil
 	}
-	return s.opts.Authorizer.Authorize(ctx, rbacPrincipal(p), rbac.Attributes{Resource: resource, Verb: verb, Scope: sc, Name: name})
+	if sc.Kind == rbac.ScopeZone {
+		a.ZoneGroup = s.zoneGroup(ctx, sc.Name)
+	}
+	return s.opts.Authorizer.Authorize(ctx, rbacPrincipal(p), a)
+}
+
+// zoneGroup resolves the zone group of the DNSZone named name for one
+// authorization decision (D385): from this request's captured publication
+// when the runtime serves captured zone reads (the same cut the handler then
+// reads), otherwise from the store. A zone that is absent or cannot be read
+// is in no group, so a zonegroup binding grants nothing for it; zone and
+// cluster bindings do not depend on it. A command transaction resolves the
+// group again from its own read and ignores this value.
+func (s *Server) zoneGroup(ctx context.Context, name string) string {
+	if name == "" {
+		return ""
+	}
+	if s.opts.ZoneReads != nil {
+		objects, err := s.opts.ZoneReads.ZoneObjects(ctx)
+		if err != nil {
+			return ""
+		}
+		z, _ := objects.Zone(name)
+		return v1alpha1.ZoneGroupOf(z)
+	}
+	if s.opts.Store == nil {
+		return ""
+	}
+	var z v1alpha1.DNSZone
+	if err := s.opts.Store.Get(ctx, store.Key{Kind: "DNSZone", Name: name}, &z); err != nil {
+		return ""
+	}
+	return v1alpha1.ZoneGroupOf(&z)
 }
 
 // require authorizes resource.verb at sc for the request principal and

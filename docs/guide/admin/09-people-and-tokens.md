@@ -35,7 +35,14 @@ bindings give none. The audit log and single sign-on also need a key. See
 | Admin | Run everything | All functions, including settings, upstreams, nodes and purge of the query log |
 
 A role has a scope. The scope is the whole cluster. The role Zone admin
-can also have the scope of one zone. Then it works for that zone only.
+can also have the scope of one zone or of one zone group. Then it works for
+that zone, or for the zones of that group, only.
+
+A zone group is a label on the zone: a zone is in the group `prod` when its
+object has the label `kudurru.io/zonegroup: prod`. A zone is in one group or
+in none. Only an administrator with the scope of the whole cluster can add,
+change or remove this label. When the label is removed, the people bound to
+the group lose access to the zone at once.
 
 Each page of the dashboard shows only what the role can use. A button that
 the role cannot use is gray. A page that the role cannot read shows the
@@ -76,7 +83,8 @@ rbac:
 
 The first binding gives the role Operator to the group `network-team` of the
 identity provider `dex`. The second gives the role Zone admin for the zone
-`home-arpa` to one user. The name of a user or group starts with the
+`home-arpa` to one user. For all zones of a zone group, use
+`scope: {kind: zonegroup, name: prod}`. The name of a user or group starts with the
 identifier of the identity provider and a colon.
 
 In Kubernetes, use `RoleBinding` objects. They add to the bindings in the

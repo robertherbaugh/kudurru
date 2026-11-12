@@ -33,6 +33,9 @@ func reauthorizeCurrentWithValidity(ctx context.Context, tx *sqlite.CommandTx, d
 	if err != nil {
 		return auth.Principal{}, rbac.Decision{}, credentialValidity{}, err
 	}
+	if attrs, err = currentZoneGroup(ctx, tx, attrs); err != nil {
+		return auth.Principal{}, rbac.Decision{}, credentialValidity{}, err
+	}
 	decision, err := view.Authorize(p, attrs, now)
 	if err != nil {
 		return auth.Principal{}, decision, credentialValidity{}, err

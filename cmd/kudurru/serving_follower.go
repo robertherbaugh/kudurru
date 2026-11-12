@@ -84,6 +84,7 @@ func (s *servingRuntime) followerLocalCommand(ctx context.Context, attrs rbac.At
 	if s == nil || ctx == nil || run == nil {
 		return serving.ErrComponents
 	}
+	attrs = capturedZoneGroup(ctx, attrs)
 	view, err := servinghttp.Component[*servingauth.View](ctx, "auth")
 	if err != nil {
 		return err

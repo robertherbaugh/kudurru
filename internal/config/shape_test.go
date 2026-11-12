@@ -348,28 +348,35 @@ func TestRBACRolesMatchPermissions(t *testing.T) {
 	}
 }
 
-// TestReservedBindingScopeHelp: no request carries a zonegroup or clientgroup
-// scope (internal/rbac only matches a binding scope against the cluster and
-// zone scopes that routes present), so a binding with one of them grants
-// nothing. The help must say that the scope is reserved, and it must not name
-// the v0.2 line: "zone groups arrive in v0.2" shipped in the v0.2.0 schema
-// although zone groups do not exist.
-func TestReservedBindingScopeHelp(t *testing.T) {
+// TestBindingScopeHelp: a zonegroup binding covers the zones that carry the
+// kudurru.io/zonegroup label (D385), so its help names the label and no longer
+// calls the scope reserved. No request carries a clientgroup scope, so that
+// binding grants nothing and its help must say that the scope is reserved.
+// Neither help may name the v0.2 line ("zone groups arrive in v0.2" shipped
+// in an earlier schema).
+func TestBindingScopeHelp(t *testing.T) {
 	seen := 0
 	for _, o := range bindingScopes {
-		if o.Value != "zonegroup" && o.Value != "clientgroup" {
+		switch o.Value {
+		case "zonegroup":
+			seen++
+			if !strings.Contains(o.Help, "kudurru.io/zonegroup") || strings.Contains(o.Help, "reserved") || strings.Contains(o.Help, "grants nothing") {
+				t.Errorf("scope zonegroup: help does not describe the zone group label: %q", o.Help)
+			}
+		case "clientgroup":
+			seen++
+			if !strings.Contains(o.Help, "reserved") {
+				t.Errorf("scope clientgroup: help does not say that the scope is reserved: %q", o.Help)
+			}
+		default:
 			continue
 		}
-		seen++
-		if !strings.Contains(o.Help, "reserved") {
-			t.Errorf("scope %s: help does not say that the scope is reserved: %q", o.Value, o.Help)
-		}
 		if strings.Contains(o.Help, "v0.2") {
-			t.Errorf("scope %s: help promises the scope for v0.2: %q", o.Value, o.Help)
+			t.Errorf("scope %s: help names the v0.2 line: %q", o.Value, o.Help)
 		}
 	}
 	if seen != 2 {
-		t.Fatalf("found %d reserved scopes among %d binding scopes, want 2", seen, len(bindingScopes))
+		t.Fatalf("found %d group scopes among %d binding scopes, want 2", seen, len(bindingScopes))
 	}
 }
 

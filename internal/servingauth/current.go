@@ -2,11 +2,13 @@ package servingauth
 
 import (
 	"context"
+	"errors"
 	"encoding/json"
 	"math"
 	"slices"
 	"time"
 
+	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/totp"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
@@ -26,6 +28,9 @@ func ReauthorizeCurrent(ctx context.Context, tx *sqlite.CommandTx, deps Dependen
 	defer view.Release()
 	p, err := authenticateInCommand(ctx, tx, view, proof, now)
 	if err != nil {
+		return auth.Principal{}, rbac.Decision{}, err
+	}
+	if attrs, err = currentZoneGroup(ctx, tx, attrs); err != nil {
 		return auth.Principal{}, rbac.Decision{}, err
 	}
 	decision, err := view.Authorize(p, attrs, now)
@@ -212,4 +217,31 @@ func captureCurrent(ctx context.Context, reader CurrentReader) (*Cut, error) {
 		return nil, err
 	}
 	return cut, nil
+}
+
+// currentZoneGroup states the zone group of a zone attribute from the
+// DNSZone that this command transaction reads (D385). The value a caller
+// computed from an earlier cut or a follower's publication is discarded, so
+// a zone removed from a group, or a group binding removed, denies at commit.
+// Attributes of other scopes carry no group.
+func currentZoneGroup(ctx context.Context, tx *sqlite.CommandTx, attrs rbac.Attributes) (rbac.Attributes, error) {
+	attrs.ZoneGroup = ""
+	if attrs.Scope.Kind != rbac.ScopeZone || attrs.Scope.Name == "" {
+		return attrs, nil
+	}
+	if tx == nil {
+		return attrs, ErrInvalid
+	}
+	var z publicv1.DNSZone
+	switch err := tx.Get(ctx, store.Key{Kind: "DNSZone", Name: attrs.Scope.Name}, &z); {
+	case errors.Is(err, store.ErrNotFound):
+		return attrs, nil
+	case err != nil:
+		if ctx.Err() != nil {
+			return attrs, ctx.Err()
+		}
+		return attrs, ErrInvalid
+	}
+	attrs.ZoneGroup = publicv1.ZoneGroupOf(&z)
+	return attrs, nil
 }

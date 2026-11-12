@@ -47,6 +47,10 @@ type ZoneSummary struct {
 	Upstream string `json:"upstreamGroup,omitempty"`
 	// Fallback resolves missing names through normal routing or a chosen group.
 	Fallback *v1alpha1.ZoneFallbackSpec `json:"fallback,omitempty"`
+	// ZoneGroup is the zone group the zone belongs to: its
+	// kudurru.io/zonegroup label, empty for none. A RoleBinding with scope
+	// zonegroup:<name> covers the zone and its record sets (D385).
+	ZoneGroup string `json:"zoneGroup,omitempty"`
 	// DeleteRefusal is the error key DELETE /zones/{zone} answers for this
 	// zone whatever the caller's permissions: default_zone for the root
 	// zone ".", managed_by when the zone or one of its record sets is
@@ -394,7 +398,7 @@ func zoneSummary(z *v1alpha1.DNSZone, recordSets, managedSets int) ZoneSummary {
 	out := ZoneSummary{
 		Name: z.Name, ZoneName: z.Spec.ZoneName, Type: string(z.Spec.Type), Serial: z.Status.Serial,
 		RecordCount: z.Status.RecordCount, RecordSets: recordSets, ManagedBy: store.ManagedBy(z), ResourceVersion: z.ResourceVersion,
-		Fallback: z.Spec.Fallback.DeepCopy(),
+		Fallback: z.Spec.Fallback.DeepCopy(), ZoneGroup: v1alpha1.ZoneGroupOf(z),
 	}
 	switch {
 	case isRootZone(z):

@@ -36,6 +36,23 @@ const (
 	AccessZoneNameServersAndACL    AccessMode = "zoneNameServersAndACL"
 )
 
+// ZoneGroupLabel puts a DNSZone in a zone group: a RoleBinding with scope
+// {kind: zonegroup, name: <value>} covers every zone whose label has that
+// value, and the record sets of those zones (D385). A zone is in at most one
+// group; a zone without the label is in none. Adding, changing or removing
+// the label is an access-control change, so the API requires zones.write at
+// cluster scope for it.
+const ZoneGroupLabel = "kudurru.io/zonegroup"
+
+// ZoneGroupOf returns the zone group of z: its ZoneGroupLabel value, empty
+// for none (also for a nil zone).
+func ZoneGroupOf(z *DNSZone) string {
+	if z == nil {
+		return ""
+	}
+	return z.Labels[ZoneGroupLabel]
+}
+
 // NotifyMode selects where NOTIFY messages are sent on serial change.
 // +kubebuilder:validation:Enum=none;zoneNameServers;specified;both
 type NotifyMode string

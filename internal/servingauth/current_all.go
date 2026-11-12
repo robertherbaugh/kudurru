@@ -42,6 +42,10 @@ func ReauthorizeCurrentAllWithClock(ctx context.Context, tx *sqlite.CommandTx, d
 		if err := ctx.Err(); err != nil {
 			return auth.Principal{}, err
 		}
+		attr, err := currentZoneGroup(ctx, tx, attr)
+		if err != nil {
+			return auth.Principal{}, err
+		}
 		decision, err := view.Authorize(p, attr, now)
 		if err != nil {
 			return auth.Principal{}, err

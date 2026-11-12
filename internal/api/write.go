@@ -438,3 +438,16 @@ func toJSONValue(v any) any {
 	}
 	return v
 }
+
+// zoneGroupChanged reports whether the DNSZone document body puts the zone
+// in another zone group than the stored zone existing (D385). Who holds a
+// zone only through a group binding may edit the zone but not move it into
+// or out of a group: that needs zones.write at cluster scope.
+func zoneGroupChanged(body map[string]any, existing store.Object) bool {
+	z, ok := existing.(*v1alpha1.DNSZone)
+	if !ok {
+		return false
+	}
+	next, _ := nestedString(body, "metadata", "labels", v1alpha1.ZoneGroupLabel)
+	return next != v1alpha1.ZoneGroupOf(z)
+}

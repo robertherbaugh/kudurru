@@ -1118,11 +1118,51 @@ fails the build when a route declares no permission.
 | `viewer` | read zones, records, lists, groups, policies, stats, cache, settings (redacted) |
 | `auditor` | viewer + the query log (with client addresses), its export, the audit log |
 | `operator` | write records, lists, groups, policies, clients; flush the cache; toggle blocking; decide unblock requests |
-| `zone-admin` | everything on one zone (the only scoped role: `zone-admin@zone:<name>`) |
+| `zone-admin` | everything on one zone or one zone group (the only scoped role: `zone-admin@zone:<name>` or `zone-admin@zonegroup:<group>`) |
 | `admin` | `*.*` |
 
-A binding gives a role at a scope (`cluster` or `zone:<name>`) to users,
-groups (the prefixed IdP group names) or service accounts.
+A binding gives a role at a scope (`cluster`, `zone:<name>` or
+`zonegroup:<group>`) to users, groups (the prefixed IdP group names) or
+service accounts.
+
+### Zone groups (D385)
+
+A zone group is a label: a DNSZone belongs to group `prod` when it carries
+`kudurru.io/zonegroup: prod` (at most one group per zone; no label, no
+group). A `zonegroup:prod` binding covers each member zone and the record
+sets whose `zoneRef` names one. Routes still present only cluster and zone
+scopes; the code that resolves the zone of a request also states the zone's
+group in the authorization attributes, read from the same source as the zone:
+
+```mermaid
+flowchart LR
+    REQ["request on zone:a<br/>(route, item, list filter)"] --> SRC{"runtime"}
+    SRC -- "complete SQLite" --> CUT["the request's captured<br/>publication: DNSZone a"]
+    SRC -- "Kubernetes" --> ST["store read: DNSZone a"]
+    CUT --> ATTR["attributes: zone:a,<br/>group = label value"]
+    ST --> ATTR
+    ATTR --> AZ{"binding or grant scope<br/>cluster, zone:a or<br/>zonegroup of that label?"}
+    AZ --> CMD["SQLite command: the transaction<br/>reads DNSZone a again and<br/>replaces the group before reauthorizing"]
+```
+
+- A zone that is absent, unreadable or unlabeled is in no group, so a group
+  binding grants nothing for it; cluster and zone bindings never depend on
+  the label.
+- A command transaction (and the primary, for a follower's forwarded
+  command) discards the caller's group and resolves it from its own read,
+  so a label removed or a binding deleted before commit denies the write.
+  A follower's early admission uses its own captured publication.
+- Putting a zone into a group, moving it, or taking it out is access
+  control: a DNSZone write that changes the label needs `zones.write` at
+  cluster scope, on both drivers. Creating a zone already needs it.
+- Lists (`GET /zones`, `GET /objects/dnszones`, `GET /objects/dnsrecordsets`)
+  filter per item through the same rule. `GET /zones` reports each zone's
+  `zoneGroup`; `GET /auth/me` reports `scopedPermissions["zonegroup:<group>"]`.
+- API token scopes and frozen session grants may name `zonegroup:<group>`;
+  they intersect with live bindings exactly like zone scopes.
+- On Kubernetes the label is an ordinary label, so whoever may edit DNSZone
+  objects with kubectl may change a zone's group; SubjectAccessReview has no
+  zone group concept and still names the zone (`resourceNames`).
 
 On the Kubernetes driver a session carries the grants resolved at sign-in
 (D48), not the groups that matched. A frozen grant is honored only while a

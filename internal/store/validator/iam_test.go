@@ -73,3 +73,29 @@ func TestProviderExpressionAdmission(t *testing.T) {
 		})
 	}
 }
+
+// TestRoleBindingZoneGroupName: a zonegroup binding names a kudurru.io/zonegroup
+// label value (D385), so a name no label can carry is refused.
+func TestRoleBindingZoneGroupName(t *testing.T) {
+	binding := func(name string) *v1alpha1.RoleBinding {
+		b := &v1alpha1.RoleBinding{Spec: v1alpha1.RoleBindingSpec{Role: "zone-admin", Scope: v1alpha1.BindingScope{Kind: "zonegroup", Name: name}, Subjects: []v1alpha1.BindingSubject{{Kind: "User", Name: "test"}}}}
+		b.Name, b.Namespace = "group", "dns"
+		return b
+	}
+	for _, name := range []string{"prod", "team-a.prod_1"} {
+		if err := binding(name).Validate(); err != nil {
+			t.Errorf("zone group %q refused: %v", name, err)
+		}
+	}
+	for _, name := range []string{"Prod Team", "-prod", strings.Repeat("a", 64)} {
+		if err := binding(name).Validate(); err == nil || !strings.Contains(err.Error(), "zone group label value") {
+			t.Errorf("zone group %q accepted: %v", name, err)
+		}
+	}
+	// Zone names keep their existing rule.
+	zone := binding("Not A Label")
+	zone.Spec.Scope.Kind = "zone"
+	if err := zone.Validate(); err != nil {
+		t.Errorf("zone scope name rule changed: %v", err)
+	}
+}
