@@ -120,7 +120,7 @@ func appendIntAttr(b []byte, field protowire.Number, key string, value int64) []
 		b = appendString(b, 1, key)
 		return appendMessage(b, 2, func(b []byte) []byte {
 			b = protowire.AppendTag(b, 3, protowire.VarintType)
-			return protowire.AppendVarint(b, uint64(value))
+			return protowire.AppendVarint(b, uint64(value)) //nolint:gosec // protobuf int64 is the two's complement varint
 		})
 	})
 }
@@ -144,9 +144,9 @@ func appendMessage(b []byte, field protowire.Number, body func([]byte) []byte) [
 	start := len(b)
 	b = body(b)
 	n := len(b) - start
-	size := protowire.SizeVarint(uint64(n))
+	size := protowire.SizeVarint(uint64(n)) //nolint:gosec // a length, never negative
 	b = append(b, make([]byte, size)...)
 	copy(b[start+size:], b[start:start+n])
-	protowire.AppendVarint(b[start:start], uint64(n))
+	protowire.AppendVarint(b[start:start], uint64(n)) //nolint:gosec // a length, never negative
 	return b
 }

@@ -69,7 +69,7 @@ func TestRunServeTracingLiveDnsdist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = os.RemoveAll(dir) }()
+	defer func() { _ = os.RemoveAll(dir) }()     //nolint:gosec // the directory MkdirTemp just made
 	if err := os.Chmod(dir, 0o755); err != nil { //nolint:gosec // the daemon reads the config as another user
 		t.Fatal(err)
 	}

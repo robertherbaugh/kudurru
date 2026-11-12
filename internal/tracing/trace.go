@@ -12,6 +12,7 @@
 package tracing
 
 import (
+	"encoding/binary"
 	"math/rand/v2"
 	"sync"
 	"time"
@@ -143,26 +144,18 @@ func (t *Trace) DroppedSpans() int {
 }
 
 func newSpanID() SpanID {
-	for {
-		v := rand.Uint64() //nolint:gosec // span ids need uniqueness, not secrecy (as the OpenTelemetry SDK)
-		if v != 0 {
-			var s SpanID
-			for i := range 8 {
-				s[i] = byte(v >> (56 - 8*i))
-			}
-			return s
-		}
+	var s SpanID
+	for !s.IsValid() {
+		binary.BigEndian.PutUint64(s[:], rand.Uint64()) //nolint:gosec // span ids need uniqueness, not secrecy (as the OpenTelemetry SDK)
 	}
+	return s
 }
 
 func newTraceID() TraceID {
 	var t TraceID
 	for !t.IsValid() {
-		hi, lo := rand.Uint64(), rand.Uint64() //nolint:gosec // as newSpanID
-		for i := range 8 {
-			t[i] = byte(hi >> (56 - 8*i))
-			t[8+i] = byte(lo >> (56 - 8*i))
-		}
+		binary.BigEndian.PutUint64(t[:8], rand.Uint64()) //nolint:gosec // as newSpanID
+		binary.BigEndian.PutUint64(t[8:], rand.Uint64()) //nolint:gosec // as newSpanID
 	}
 	return t
 }
@@ -193,7 +186,7 @@ func (t *Trace) Start(parent SpanRef, name string, kind Kind, at time.Time) Span
 		pid = t.spans[parent-1].ID
 	}
 	t.spans = append(t.spans, Span{ID: newSpanID(), Parent: pid, Name: name, Kind: kind, Start: at})
-	return SpanRef(len(t.spans))
+	return SpanRef(len(t.spans)) //nolint:gosec // at most MaxSpans
 }
 
 // SpanID returns the id of a recorded span, zero for an unknown reference.
