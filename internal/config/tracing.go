@@ -68,10 +68,12 @@ func (t *Tracing) validate() []error {
 			errs = append(errs, fmt.Errorf("tracing.endpoint %w", err))
 		}
 	}
-	if t.EDNSOptionCode < 65001 || t.EDNSOptionCode > 65534 {
+	// Zero values (a Config built without the schema defaults) mean the
+	// defaults, as the tracer reads them.
+	if t.EDNSOptionCode != 0 && (t.EDNSOptionCode < 65001 || t.EDNSOptionCode > 65534) {
 		errs = append(errs, fmt.Errorf("tracing.ednsOptionCode: use a code of the local range 65001-65534 (dnsdist and PowerDNS Recursor use 65500)"))
 	}
-	if t.SlowThreshold < 0 || t.Timeout < Duration(time.Second) {
+	if t.SlowThreshold < 0 || (t.Timeout != 0 && t.Timeout < Duration(time.Second)) {
 		errs = append(errs, fmt.Errorf("tracing.slowThreshold must not be negative and tracing.timeout must be at least 1s"))
 	}
 	if len(t.Headers) > maxTracingHeaders {
