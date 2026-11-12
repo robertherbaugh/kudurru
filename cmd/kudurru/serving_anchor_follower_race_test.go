@@ -52,12 +52,18 @@ func TestAnchorFollowerPollerCaptureRaceBeforeAcquisitionContinues(t *testing.T)
 	if err != nil || !step.captureRaced || step.attempted || reads.Load() != 1 || u.stopped != nil {
 		t.Fatalf("an install-raced capture stopped the poller: %v %+v reads %d", err, step, reads.Load())
 	}
+	if state := anchorFollowerState(step); state != anchorWorkerRaced || u.raced != 1 {
+		t.Fatalf("an install-raced capture shows %q with %d consecutive races, want %q and 1", state, u.raced, anchorWorkerRaced)
+	}
 	if reflect.DeepEqual(authority, f.store.Authority()) {
 		t.Fatal("fixture did not install")
 	}
 	step, err = u.step(ctx)
 	if err != nil || !step.attempted || step.result.branch != sqlite.AnchorPollNormal || reads.Load() != 2 {
 		t.Fatalf("the next capture did not acquire once: %v %+v reads %d", err, step, reads.Load())
+	}
+	if state := anchorFollowerState(step); state != anchorWorkerRunning || u.raced != 0 {
+		t.Fatalf("a completed capture shows %q with %d consecutive races, want %q and 0", state, u.raced, anchorWorkerRunning)
 	}
 }
 
