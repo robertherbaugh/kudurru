@@ -2203,6 +2203,15 @@ type AuditVerification struct {
 	Verified  bool      `json:"verified"`
 }
 
+// AuthCapabilities defines model for AuthCapabilities.
+type AuthCapabilities struct {
+	// FactorManagement Authenticator (TOTP) enrollment, disabling and recovery, and authenticator codes at login. False on the Kubernetes driver, where the routes answer 503 factor_management_unavailable: use the identity provider's second factor (D387).
+	FactorManagement bool `json:"factorManagement"`
+
+	// LocalUserCommands Creating local users and resetting their passwords (POST /iam/users, POST /iam/users/{name}/password). False on the Kubernetes driver, where the routes answer 503 user_management_unavailable (D387).
+	LocalUserCommands bool `json:"localUserCommands"`
+}
+
 // AuthListCLILoginProviderBody defines model for AuthListCLILoginProviderBody.
 type AuthListCLILoginProviderBody struct {
 	Continue string `json:"continue"`
@@ -2300,6 +2309,8 @@ type AuthSessionLimits struct {
 
 // AuthStatus defines model for AuthStatus.
 type AuthStatus struct {
+	Capabilities AuthCapabilities `json:"capabilities"`
+
 	// HasDefaultCredentials The bootstrap admin still has its generated password.
 	HasDefaultCredentials bool `json:"hasDefaultCredentials"`
 

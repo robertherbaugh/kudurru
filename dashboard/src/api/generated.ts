@@ -2921,6 +2921,12 @@ export interface components {
             reason?: string;
             verified: boolean;
         };
+        AuthCapabilities: {
+            /** @description Authenticator (TOTP) enrollment, disabling and recovery, and authenticator codes at login. False on the Kubernetes driver, where the routes answer 503 factor_management_unavailable: use the identity provider's second factor (D387). */
+            factorManagement: boolean;
+            /** @description Creating local users and resetting their passwords (POST /iam/users, POST /iam/users/{name}/password). False on the Kubernetes driver, where the routes answer 503 user_management_unavailable (D387). */
+            localUserCommands: boolean;
+        };
         AuthListCLILoginProviderBody: {
             continue: string;
             /** @description Why entries were ignored (role bindings, identity providers). */
@@ -2996,6 +3002,7 @@ export interface components {
             lifetime: string;
         };
         AuthStatus: {
+            capabilities: components["schemas"]["AuthCapabilities"];
             /** @description The bootstrap admin still has its generated password. */
             hasDefaultCredentials: boolean;
             /** @description False only when auth.localLogin is disabled. */

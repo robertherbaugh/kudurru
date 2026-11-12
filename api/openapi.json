@@ -170,6 +170,24 @@
         ],
         "type": "object"
       },
+      "AuthCapabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "factorManagement": {
+            "description": "Authenticator (TOTP) enrollment, disabling and recovery, and authenticator codes at login. False on the Kubernetes driver, where the routes answer 503 factor_management_unavailable: use the identity provider's second factor (D387).",
+            "type": "boolean"
+          },
+          "localUserCommands": {
+            "description": "Creating local users and resetting their passwords (POST /iam/users, POST /iam/users/{name}/password). False on the Kubernetes driver, where the routes answer 503 user_management_unavailable (D387).",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "factorManagement",
+          "localUserCommands"
+        ],
+        "type": "object"
+      },
       "AuthListCLILoginProviderBody": {
         "additionalProperties": false,
         "properties": {
@@ -479,6 +497,9 @@
       "AuthStatus": {
         "additionalProperties": false,
         "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/AuthCapabilities"
+          },
           "hasDefaultCredentials": {
             "description": "The bootstrap admin still has its generated password.",
             "type": "boolean"
@@ -519,7 +540,8 @@
           "localLogin",
           "localLoginMode",
           "providers",
-          "hasDefaultCredentials"
+          "hasDefaultCredentials",
+          "capabilities"
         ],
         "type": "object"
       },
