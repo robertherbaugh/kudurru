@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,6 +32,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -432,6 +435,40 @@ func anchorEdgePrimaryReady(t *testing.T, cfg *config.Config) {
 	awaitMountedPrimarySettled(t, cfg, "edge-zone-1", "answer.resolver.test.", "192.0.2.77")
 }
 
+// awaitAnchorEdgeBackendSettled waits, read-only, until the started backend's
+// zone status and lifecycle commits for both primaries have landed, then for
+// a direct authoritative answer from the publication that installs them.
+// A first answer can precede that work by more than a second under race
+// instrumentation; an authoritative answer captured from a publication that a
+// later commit supersedes is withheld (D313, D332), so the one-shot edge
+// queries would see no response (D383). No DNS assertion is retried.
+func awaitAnchorEdgeBackendSettled(t *testing.T, cfg *config.Config) {
+	t.Helper()
+	dsn := (&url.URL{Scheme: "file", Path: filepath.Join(cfg.Node.DataDir, sqlite.FileName), RawQuery: "mode=ro"}).String()
+	deadline := time.Now().Add(25 * time.Second)
+	for {
+		db, err := sql.Open("sqlite", dsn)
+		if err != nil {
+			t.Fatal("edge backend source observation failed")
+		}
+		var pending, notify, heads, unavailable, unaligned int
+		err = db.QueryRowContext(t.Context(), controlMountedSourceQuery).Scan(&pending, &notify, &heads, &unavailable, &unaligned)
+		closeErr := db.Close()
+		if err != nil || closeErr != nil {
+			t.Fatal("edge backend source read/close failed")
+		}
+		if pending == 0 && notify == 0 && heads == 2 && unavailable == 0 && unaligned == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("edge backend source pending: statuses=%d notifications=%d heads=%d unavailable=%d unaligned=%d", pending, notify, heads, unavailable, unaligned)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	awaitMountedDNS(t, cfg, "answer.anchor.test.", "192.0.2.77")
+	awaitMountedDNS(t, cfg, "answer.resolver.test.", "192.0.2.77")
+}
+
 // anchorEdgeBootstrapReads is the most root acquisitions a fresh managed
 // primary may make for its one bootstrap: the startup cascade (one status
 // write per zone, the readiness login) can race a bootstrap, which is then
@@ -487,6 +524,7 @@ func TestRunServeManagedEdgePinnedDaemonRestart(t *testing.T) {
 	anchorEdgeZones(t, cfg)
 	stopBackend := tsigMountedStart(t, cfg)
 	anchorEdgePrimaryReady(t, cfg)
+	awaitAnchorEdgeBackendSettled(t, cfg)
 	lab.wait(sup)
 	lab.ask(true)
 	lab.ask(true)
@@ -512,6 +550,7 @@ func TestRunServeManagedEdgePinnedDaemonRestart(t *testing.T) {
 	lab.ask(false)
 	stopBackend = tsigMountedStart(t, cfg)
 	anchorEdgePrimaryReady(t, cfg)
+	awaitAnchorEdgeBackendSettled(t, cfg)
 	lab.wait(next)
 	lab.ask(true)
 	stopBackend()
@@ -553,6 +592,7 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 	anchorEdgeZones(t, cfg)
 	stopPrimary := tsigMountedStart(t, cfg)
 	anchorEdgePrimaryReady(t, cfg)
+	awaitAnchorEdgeBackendSettled(t, cfg)
 	lab.wait(sup)
 	lab.ask(true)
 	// Settle the bootstrap (bounded) before the activation restart and the
@@ -588,6 +628,7 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 	stopPrimary()
 	stopPrimary = tsigMountedStart(t, cfg)
 	anchorEdgePrimaryReady(t, cfg)
+	awaitAnchorEdgeBackendSettled(t, cfg)
 	lab.states(sup, map[string]bool{primary.Address: true}) // edge health saw the restart
 	lab.ask(true)
 	// A fresh session on the restarted primary (a logged-in client must send
@@ -664,6 +705,7 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 	observed := lab.observations.Load()
 	stopFollower := tsigMountedStart(t, fcfg)
 	awaitMountedDNS(t, fcfg, "answer.anchor.test.", "192.0.2.77")
+	awaitAnchorEdgeBackendSettled(t, fcfg)
 	if got := lab.observations.Load() - observed; got != 1 {
 		t.Fatal("follower start did not observe the one-edge fleet exactly once", got)
 	}
@@ -712,6 +754,7 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 	observed = lab.observations.Load()
 	stopFollower = tsigMountedStart(t, fcfg)
 	awaitMountedDNS(t, fcfg, "answer.anchor.test.", "192.0.2.77")
+	awaitAnchorEdgeBackendSettled(t, fcfg)
 	if got := lab.observations.Load() - observed; got != 1 {
 		t.Fatal("follower restart did not observe the fleet again exactly once", got)
 	}

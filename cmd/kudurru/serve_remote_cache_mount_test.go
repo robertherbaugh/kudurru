@@ -257,6 +257,28 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly bool) {
 		t.Fatal("missing actual daemon PID")
 	}
 	address := net.JoinHostPort("127.0.0.1", port)
+	// sourceSettled observes, read-only, that every status, NOTIFY and zone
+	// lifecycle commit of the current objects has landed (heads < 0 accepts
+	// any number of committed primary heads).
+	sourceSettled := func(label string, wantHeads int) {
+		t.Helper()
+		dsn := (&url.URL{Scheme: "file", Path: filepath.Join(cfg.Node.DataDir, sqlite.FileName), RawQuery: "mode=ro"}).String()
+		wait(label, func() bool {
+			db, err := sql.Open("sqlite", dsn)
+			if err != nil {
+				t.Fatal("source observation open failed")
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+			defer cancel()
+			var pending, notify, heads, unavailable, unaligned int
+			err = db.QueryRowContext(ctx, controlMountedSourceQuery).Scan(&pending, &notify, &heads, &unavailable, &unaligned)
+			closeErr := db.Close()
+			if err != nil || closeErr != nil {
+				t.Fatal("source observation read/close failed")
+			}
+			return pending == 0 && notify == 0 && (wantHeads < 0 || heads == wantHeads) && unavailable == 0 && unaligned == 0
+		})
+	}
 	writePublished := func(method, path string, body any, want int) {
 		t.Helper()
 		read := func() (uint64, bool) {
@@ -268,8 +290,6 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly bool) {
 			}
 			return z.Resolver.Publication, true
 		}
-		var before uint64
-		var unchangedSince time.Time
 		// The internal listener admits internalapi.DefaultRateLimit requests
 		// per second per client address, and this observer shares 127.0.0.1
 		// with the supervisor's own 100 ms zone poll. Polling every 30 ms
@@ -280,25 +300,42 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly bool) {
 		// Observe at a pace that leaves the supervisor its budget instead;
 		// the deadline and the 500 ms quiet window are unchanged.
 		const observe = 150 * time.Millisecond
-		waitEvery("quiet original publication before one-shot mutation", observe, func() bool {
-			publication, ok := read()
-			if !ok {
-				unchangedSince = time.Time{}
-				return false
-			}
-			if publication != before || unchangedSince.IsZero() {
-				before, unchangedSince = publication, time.Now()
-				return false
-			}
-			// Initial controller/primary status work is independent of DNS
-			// readiness. Observe quiescence rather than replay a refused write.
-			return time.Since(unchangedSince) >= 500*time.Millisecond
-		})
+		quiet := func(label string) uint64 {
+			t.Helper()
+			var last uint64
+			var unchangedSince time.Time
+			waitEvery(label, observe, func() bool {
+				publication, ok := read()
+				if !ok {
+					unchangedSince = time.Time{}
+					return false
+				}
+				if publication != last || unchangedSince.IsZero() {
+					last, unchangedSince = publication, time.Now()
+					return false
+				}
+				// Initial controller/primary status work is independent of DNS
+				// readiness. Observe quiescence rather than replay a refused write.
+				return time.Since(unchangedSince) >= 500*time.Millisecond
+			})
+			return last
+		}
+		before := quiet("quiet original publication before one-shot mutation")
 		controlMountedRequest(t, client, base, method, path, login.CSRF, body, want, nil)
 		// One API write, no mutation replay. A successful original complete
 		// observation proves the durable source has caught up before another
 		// original-authorized command is submitted.
 		waitEvery("complete publication after mutation", observe, func() bool { after, ok := read(); return ok && after > before })
+		// One object write is several commits: status, zone lifecycle source,
+		// primary head. Until the last of them is installed, the node serves
+		// fail-closed coverage (SERVFAIL) for a changed zone, and it withholds
+		// an authoritative answer captured from a superseded publication
+		// (D313, D332): the client gets no response. The one-shot DNS
+		// assertions below must not race that work (D383), so observe the
+		// settled source and a quiet installed publication first. Nothing is
+		// retried and no assertion changes.
+		sourceSettled("source settled after mutation", -1)
+		quiet("quiet original publication after mutation")
 	}
 	// Distinct source addresses are carried by the actual authenticated
 	// PROXYv2 listener. Identical questions must never share client verdicts.
@@ -550,22 +587,7 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly bool) {
 		// Unlike the settings fixture's already-started primary, this fixture
 		// creates a new zone and its data. Use the existing bounded observation
 		// budget for admission, with the parent's exact original source proof.
-		dsn := (&url.URL{Scheme: "file", Path: filepath.Join(cfg.Node.DataDir, sqlite.FileName), RawQuery: "mode=ro"}).String()
-		wait("new primary original source and readiness aligned", func() bool {
-			db, err := sql.Open("sqlite", dsn)
-			if err != nil {
-				t.Fatal("primary source observation open failed")
-			}
-			ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-			defer cancel()
-			var pending, notify, heads, unavailable, unaligned int
-			err = db.QueryRowContext(ctx, controlMountedSourceQuery).Scan(&pending, &notify, &heads, &unavailable, &unaligned)
-			closeErr := db.Close()
-			if err != nil || closeErr != nil {
-				t.Fatal("primary source observation read/close failed")
-			}
-			return pending == 0 && notify == 0 && heads == 1 && unavailable == 0 && unaligned == 0
-		})
+		sourceSettled("new primary original source and readiness aligned", 1)
 	}
 	primary := &public.DNSZone{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "DNSZone"}, ObjectMeta: metav1.ObjectMeta{Name: "cache-primary"}, Spec: public.DNSZoneSpec{ZoneName: "private.example.", Type: public.ZoneTypePrimary, Policy: public.ZonePolicy{QueryAccess: public.AccessAllow}}}
 	writePublished(http.MethodPost, "/objects/dnszones", primary, http.StatusCreated)
