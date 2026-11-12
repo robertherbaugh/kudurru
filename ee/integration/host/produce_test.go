@@ -186,3 +186,38 @@ func TestProductionRowsStayBoundedByCount(t *testing.T) {
 		}
 	}
 }
+
+// Count eviction takes superseded rows first (D379): a subject's older
+// versions go before the newest row of any subject, because a status write
+// reproduces only a subject's current version. So the newest row of a
+// subject that changed long ago still dedups its reproduction after many
+// newer versions of another subject.
+func TestEvictionPrefersSupersededRows(t *testing.T) {
+	start := time.Unix(1000, 0).UTC()
+	row := func(i int, uid string) *kinds.IntegrationDelivery {
+		created := start.Add(time.Duration(i) * time.Second)
+		return &kinds.IntegrationDelivery{Spec: kinds.IntegrationDeliverySpec{DeliveryID: fmt.Sprint(i), Topic: "record.changed", Payload: json.RawMessage(fmt.Sprintf(`{"uid":%q}`, uid)), CreatedAt: created, Deadline: created.Add(24 * time.Hour), Acknowledged: true}}
+	}
+	// The oldest row is the only version of "quiet"; then many versions of
+	// "busy", which exceed the terminal budget.
+	own := []*kinds.IntegrationDelivery{row(0, "quiet")}
+	for i := 1; i <= maxTerminalDeliveries+10; i++ {
+		own = append(own, row(i, "busy"))
+	}
+	evicted := evictable(start.Add(time.Hour), own)
+	if len(evicted) != 11 {
+		t.Fatal("evicted", len(evicted))
+	}
+	for i, d := range evicted {
+		if d.Spec.DeliveryID != fmt.Sprint(i+1) {
+			t.Fatal("evicted other than the oldest superseded rows", i, d.Spec.DeliveryID)
+		}
+	}
+	// Past their retention every terminal row goes, superseded or not, and
+	// undelivered rows never do.
+	pending := row(500, "pending")
+	pending.Spec.Acknowledged = false
+	if evicted := evictable(start.Add(26*time.Hour), []*kinds.IntegrationDelivery{row(0, "quiet"), pending}); len(evicted) != 1 || evicted[0].Spec.DeliveryID != "0" {
+		t.Fatal("expiry eviction", evicted)
+	}
+}

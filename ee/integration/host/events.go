@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"time"
@@ -340,19 +341,7 @@ const ReasonEventDeadLettered = "EventDeadLettered"
 //   - the rows of other owners allDeliveries selected: every row past its
 //     retention, terminal or not, whether or not its owner still exists.
 func (h *Host) pruneDeliveries(ctx context.Context, j *job, g ExecutionGuard, own, foreign []*kinds.IntegrationDelivery) error {
-	now := h.opts.Now()
-	var terminal []*kinds.IntegrationDelivery
-	for _, d := range own {
-		if d.Spec.Acknowledged || d.Spec.DeadLetter {
-			terminal = append(terminal, d)
-		}
-	}
-	slices.SortFunc(terminal, func(a, b *kinds.IntegrationDelivery) int { return a.Spec.CreatedAt.Compare(b.Spec.CreatedAt) })
-	evict := max(len(terminal)-maxTerminalDeliveries, 0)
-	for evict < len(terminal) && !now.Before(terminal[evict].Spec.Deadline.Add(deliveryRetention)) {
-		evict++
-	}
-	terminal = terminal[:min(evict, maxPrunePerTick)]
+	terminal := evictable(h.opts.Now(), own)
 	var failed error
 	if len(terminal) > 0 {
 		if err := h.fence(ctx, j, g); err != nil {
@@ -373,6 +362,65 @@ func (h *Host) pruneDeliveries(ctx context.Context, j *job, g ExecutionGuard, ow
 		}
 	}
 	return failed
+}
+
+// evictable selects, oldest first and at most maxPrunePerTick, the own
+// terminal rows retention deletes: every row past its deadline plus
+// deliveryRetention, and as many more as the instance holds above
+// maxTerminalDeliveries. Those extra rows are taken from superseded rows
+// first: a row whose subject (its topic and the uid its payload names) has
+// a newer row. A status write reproduces only a subject's current version,
+// so a superseded row no longer dedups anything, and count eviction
+// shortens deduplication only for subjects whose newest row is older than
+// maxTerminalDeliveries newer terminal rows of other subjects (D379).
+func evictable(now time.Time, own []*kinds.IntegrationDelivery) []*kinds.IntegrationDelivery {
+	latest := map[string]time.Time{}
+	keys := make(map[*kinds.IntegrationDelivery]string, len(own))
+	for _, d := range own {
+		key := deliverySubject(d)
+		keys[d] = key
+		if at, ok := latest[key]; !ok || d.Spec.CreatedAt.After(at) {
+			latest[key] = d.Spec.CreatedAt
+		}
+	}
+	var terminal, expired, superseded, current []*kinds.IntegrationDelivery
+	for _, d := range own {
+		if d.Spec.Acknowledged || d.Spec.DeadLetter {
+			terminal = append(terminal, d)
+		}
+	}
+	slices.SortFunc(terminal, func(a, b *kinds.IntegrationDelivery) int { return a.Spec.CreatedAt.Compare(b.Spec.CreatedAt) })
+	for _, d := range terminal {
+		switch {
+		case !now.Before(d.Spec.Deadline.Add(deliveryRetention)):
+			expired = append(expired, d)
+		case latest[keys[d]].After(d.Spec.CreatedAt):
+			superseded = append(superseded, d)
+		default:
+			current = append(current, d)
+		}
+	}
+	extra := max(len(terminal)-len(expired)-maxTerminalDeliveries, 0)
+	out := expired
+	for _, d := range append(superseded, current...) {
+		if extra == 0 {
+			break
+		}
+		out = append(out, d)
+		extra--
+	}
+	return out[:min(len(out), maxPrunePerTick)]
+}
+
+// deliverySubject names what a row reports: its topic and the uid its
+// payload names. Topics without one (blocking.toggled,
+// cluster.leader_changed) have one subject each.
+func deliverySubject(d *kinds.IntegrationDelivery) string {
+	var payload struct {
+		UID string `json:"uid"`
+	}
+	_ = json.Unmarshal(d.Spec.Payload, &payload)
+	return d.Spec.Topic + "/" + payload.UID
 }
 
 // pruneEventCursors deletes, by exact UID and resource version, at most
