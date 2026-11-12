@@ -19,6 +19,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/license"
+	"github.com/robertherbaugh/kudurru/internal/rbac"
 )
 
 // Me is GET /auth/me.
@@ -33,6 +34,9 @@ type Me struct {
 	// Permissions maps every resource to the verbs granted at cluster
 	// scope.
 	Permissions map[string][]string `json:"permissions"`
+	// ScopedPermissions add the verbs granted at each scope of a scoped
+	// grant in Roles, keyed by scope (zone:<name>, zonegroup:<group>).
+	ScopedPermissions map[string]map[string][]string `json:"scopedPermissions,omitempty" doc:"Verbs per resource for each scoped grant in roles, keyed by scope (zone:home-example-com, zonegroup:prod)."`
 	// MustChangePassword is set for a local user whose password was
 	// generated or reset: every route but /auth/* answers 403
 	// password_change_required until POST /auth/password.
@@ -287,13 +291,34 @@ func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 		// Every permission route answers 403 password_change_required.
 		return &meOutput{Body: out}, nil
 	}
-	for _, res := range s.perms.ResourceNames() {
-		for _, verb := range s.perms.Resources[res] {
-			dec, err := s.authorize(ctx, p, res, verb, clusterScope, "")
-			if err == nil && dec.Allowed {
-				out.Permissions[res] = append(out.Permissions[res], verb)
+	matrix := func(sc rbac.Scope) map[string][]string {
+		granted := map[string][]string{}
+		for _, res := range s.perms.ResourceNames() {
+			for _, verb := range s.perms.Resources[res] {
+				dec, err := s.authorize(ctx, p, res, verb, sc, "")
+				if err == nil && dec.Allowed {
+					granted[res] = append(granted[res], verb)
+				}
 			}
 		}
+		return granted
+	}
+	out.Permissions = matrix(clusterScope)
+	// Each scoped grant reports what it allows at its own scope; a zonegroup
+	// grant at zonegroup:<group> is what it allows on each member zone (D385).
+	for _, wire := range out.Roles {
+		g, err := rbac.ParseGrant(wire)
+		if err != nil || g.Normalized().Scope.Kind == rbac.ScopeCluster {
+			continue
+		}
+		key := scopeString(g.Scope)
+		if _, done := out.ScopedPermissions[key]; done {
+			continue
+		}
+		if out.ScopedPermissions == nil {
+			out.ScopedPermissions = map[string]map[string][]string{}
+		}
+		out.ScopedPermissions[key] = matrix(g.Scope)
 	}
 	return &meOutput{Body: out}, nil
 }

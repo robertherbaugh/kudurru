@@ -1,12 +1,14 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"slices"
 	"testing"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api/apitest"
+	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -113,5 +115,30 @@ func TestZoneGroupBindingThroughTheRouter(t *testing.T) {
 	var gone v1alpha1.DNSRecordSet
 	if err := h.st.Get(t.Context(), store.Key{Kind: "DNSRecordSet", Namespace: "dns", Name: "in-b"}, &gone); err == nil {
 		t.Fatal("denied record set write reached the store")
+	}
+}
+
+// TestMeZoneGroupScopedPermissions: GET /auth/me reports what a scoped grant
+// allows at its scope, for a zonegroup grant as for a zone grant (D385).
+func TestMeZoneGroupScopedPermissions(t *testing.T) {
+	bindings := append(apitest.StandardBindings(), rbac.Binding{Role: "zone-admin", Scope: rbac.Scope{Kind: rbac.ScopeZoneGroup, Name: "prod"}, Subjects: []rbac.Subject{{Kind: rbac.SubjectUser, Name: "grouper"}}})
+	h := newHarness(t, func(o *Options) {
+		o.Authorizer = apitest.Authorizer(bindings...)
+		o.Roles = func(_ context.Context, p auth.Principal) []string {
+			if p.Name == "grouper" {
+				return []string{"zone-admin@zonegroup:prod"}
+			}
+			return []string{"zone-admin@zone:example"}
+		}
+	})
+	var me Me
+	h.do(http.MethodGet, "/api/v1/auth/me", "grouper", nil).want(http.StatusOK).json(&me)
+	if len(me.Permissions) != 0 || !slices.Contains(me.ScopedPermissions["zonegroup:prod"]["records"], "write") || !slices.Contains(me.ScopedPermissions["zonegroup:prod"]["zones"], "transfer") || len(me.ScopedPermissions) != 1 {
+		t.Fatalf("zone group grant: permissions=%v scoped=%v", me.Permissions, me.ScopedPermissions)
+	}
+	me = Me{}
+	h.do(http.MethodGet, "/api/v1/auth/me", "zoneadmin", nil).want(http.StatusOK).json(&me)
+	if !slices.Contains(me.ScopedPermissions["zone:example"]["records"], "write") || len(me.ScopedPermissions) != 1 {
+		t.Fatalf("zone grant: scoped=%v", me.ScopedPermissions)
 	}
 }
