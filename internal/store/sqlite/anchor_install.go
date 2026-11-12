@@ -298,11 +298,11 @@ func (o *anchorOperation) prepareInstall(image replication.Image, byTerm bool) e
 	if o.before.local != nil {
 		if byTerm && anchorAdopts(o.before, next) {
 			if err := anchorAdoption(o.before, next); err != nil {
-				return err
+				return anchorInstallRefusal(o.before, next, err)
 			}
 			o.adoption = true
 		} else if err := anchorSuccessor(o.before, next, true); err != nil {
-			return err
+			return anchorInstallRefusal(o.before, next, err)
 		}
 	}
 	if next.awaiting && !o.before.awaiting {

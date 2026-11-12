@@ -477,11 +477,18 @@ func TestAnchorHistoryResolutionKeepingRemoteBranchAdopts(t *testing.T) {
 // the adoption refusal (D369): accepted.ErrCAS before any write, the member's
 // cut, image, carrier and authority unchanged and nothing quarantined. The
 // member keeps serving its own branch DNS-only.
-func anchorHistoryRefused(t *testing.T, member, source *Store) {
+// It returns the classified refusal (every refusal of an image's owner is an
+// *AnchorRefusal that still matches accepted.ErrCAS).
+func anchorHistoryRefused(t *testing.T, member, source *Store) *AnchorRefusal {
 	t.Helper()
 	before, installed, local, authority := anchorHistoryCursor(t, member), imageOf(t, member), anchorLocalTestRead(t, member), member.Authority()
-	if err := anchorHistoryInstall(t, member, source); !errors.Is(err, accepted.ErrCAS) {
+	err := anchorHistoryInstall(t, member, source)
+	if !errors.Is(err, accepted.ErrCAS) {
 		t.Fatalf("adoption of a branch this member must refuse: got %v, want %v", err, accepted.ErrCAS)
+	}
+	var refusal *AnchorRefusal
+	if !errors.As(err, &refusal) || refusal.Reason == "" {
+		t.Fatalf("refusal of an image's owner is not classified: %v", err)
 	}
 	if anchorHistoryCursor(t, member) != before || !installed.Generation().Same(imageOf(t, member).Generation()) || !sameAnchorLocal(local, anchorLocalTestRead(t, member)) || anchorAuthority(authority) != anchorAuthority(member.Authority()) {
 		t.Fatal("refused adoption changed the member")
@@ -489,6 +496,7 @@ func anchorHistoryRefused(t *testing.T, member, source *Store) {
 	if _, err := member.ReadQuarantined(t.Context(), installed.Generation()); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("refused adoption quarantined the member's own branch", err)
 	}
+	return refusal
 }
 
 // A member never loses a revocation by adopting a branch that has not seen it.

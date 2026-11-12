@@ -167,7 +167,9 @@ func TestAnchorRecheckRevocationHeldAcrossTermsRestartsAndStalePromotion(t *test
 		t.Fatal("fixture successor does not trust the first key")
 	}
 	anchorHistoryObserve(t, old, t2.Term)
-	anchorHistoryRefused(t, old, second)
+	if refusal := anchorHistoryRefused(t, old, second); refusal.Reason != AnchorRefusedCarriedRevocation || !slices.Equal(refusal.Keys, []string{key}) {
+		t.Fatalf("refusal does not name the carried revocation: %+v", refusal)
+	}
 	// A publication of the member's own branch that was captured before a
 	// refused pull still completes after it.
 	serving := anchorLocalTestFinite(t.Context(), t)
@@ -554,6 +556,9 @@ func TestAnchorRecheckRecoveryHistoryDisagreement(t *testing.T) {
 				return
 			}
 			member := anchorRecheckStuck(t, old, path, successor)
+			if refusal := anchorHistoryRefused(t, member, successor); refusal.Reason != AnchorRefusedRecoveryHistory || len(refusal.Keys) != 0 {
+				t.Fatalf("refusal does not name the recovery history: %+v", refusal)
+			}
 			// A later canonical observation does not help: the record keeps
 			// its generation.
 			anchorHistoryPollSigned(t, successor, anchorTestSigned(t, replacement.key, replacement.signer, false), false)
@@ -765,6 +770,9 @@ func TestAnchorRecheckManagedMemberAndDormantPrimary(t *testing.T) {
 		promoted := anchorHistoryPromote(t, successor, "recheck-dormant-primary")
 		anchorHistoryObserve(t, old, promoted.Term)
 		old = anchorRecheckStuck(t, old, path, successor)
+		if refusal := anchorHistoryRefused(t, old, successor); refusal.Reason != AnchorRefusedDormantOwner {
+			t.Fatalf("refusal does not name the dormant owner: %+v", refusal)
+		}
 		anchorRecheckServes(t, old)
 		return old, successor, path, root, own
 	}
@@ -792,6 +800,9 @@ func TestAnchorRecheckManagedMemberAndDormantPrimary(t *testing.T) {
 			t.Fatal("fixture primary did not start from other seeds")
 		}
 		old = anchorRecheckStuck(t, old, path, successor)
+		if refusal := anchorHistoryRefused(t, old, successor); refusal.Reason != AnchorRefusedPolicy {
+			t.Fatalf("refusal does not name the seed policy: %+v", refusal)
+		}
 		anchorRecheckServes(t, old)
 		anchorRecheckReplacement(t, successor)
 	})

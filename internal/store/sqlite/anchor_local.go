@@ -320,15 +320,20 @@ func anchorAdoptionCovers(local *anchorLocal, before, next *anchorCursor) error 
 	if err != nil {
 		return err
 	}
+	var missing []string
 	for _, id := range known {
-		if !slices.Contains(revoked, id) {
-			return accepted.ErrCAS
+		if !slices.Contains(revoked, id) && !slices.Contains(missing, id) {
+			missing = append(missing, id)
 		}
 	}
 	for _, d := range local.record.Denied {
-		if !slices.Contains(revoked, d.ID) {
-			return accepted.ErrCAS
+		if !slices.Contains(revoked, d.ID) && !slices.Contains(missing, d.ID) {
+			missing = append(missing, d.ID)
 		}
+	}
+	if len(missing) > 0 {
+		slices.Sort(missing)
+		return &AnchorRefusal{Reason: AnchorRefusedCarriedRevocation, Keys: missing}
 	}
 	return nil
 }
