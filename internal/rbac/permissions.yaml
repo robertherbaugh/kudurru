@@ -120,3 +120,28 @@ kubernetes:
   auditor: {clusterRole: auditor}
   operator: {clusterRole: editor, aggregateTo: edit}
   admin: {clusterRole: admin, aggregateTo: admin}
+
+# Declared verbs that no route or handler checks yet, each with the release
+# that is to use it (D393). TestPermissionVerbsAreUsedOrReserved fails for a
+# declared verb that is neither checked nor listed here, and for an entry
+# here that a route or handler already checks: remove the entry in the
+# change that starts using the verb. Built-in roles may already grant a
+# reserved verb; holding it allows nothing until it is used.
+reserved:
+  zones.sign: "v1.0: DNSSEC signing on the leader (design record 13.3, D14)"
+  zones.share: "v1.0: delegating a zone to other principals from the API"
+  clients.write: "v1.0: naming and editing client inventory entries"
+  groups.read: "v1.0: local group administration (IAM write API)"
+  groups.write: "v1.0: local group administration (IAM write API)"
+  groups.delete: "v1.0: local group administration (IAM write API)"
+  users.delete: "v1.0: deleting local accounts from the API"
+  serviceaccounts.write: "v1.0: service account administration from the API"
+  serviceaccounts.delete: "v1.0: service account administration from the API"
+  tokens.write: "v1.0: issuing API tokens for another principal"
+  identityproviders.write: "v1.0: identity provider administration from the API"
+  identityproviders.delete: "v1.0: identity provider administration from the API"
+  integrations.write: "v1.0: integration configuration from the API"
+  integrations.delete: "v1.0: integration configuration from the API"
+  integrations.secrets: "v1.0: reading and rotating integration credentials"
+  cluster.drain: "v1.0: draining a member from the API (today only kudurru vip drain)"
+  edge.write: "v1.0: edge configuration from the API"

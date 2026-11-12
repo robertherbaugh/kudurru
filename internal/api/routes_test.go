@@ -2,10 +2,15 @@ package api
 
 import (
 	"bytes"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -73,6 +78,149 @@ func TestLintRoutesCatchesMissingDeclaration(t *testing.T) {
 			t.Errorf("error %d %q does not mention %q", i, msgs[i], w)
 		}
 	}
+}
+
+// TestPermissionVerbsAreUsedOrReserved is the reverse permission lint
+// (D393): every resource.verb in permissions.yaml is declared by a mounted
+// route, checked by a handler, or reserved there with its target release.
+// Both sides are read from data, not from a list in this test: the route
+// table of the server, and the handler checks found in the production
+// sources, so rows that other packages add are covered when they land.
+func TestPermissionVerbsAreUsedOrReserved(t *testing.T) {
+	perms, err := rbac.LoadPermissions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	used := map[string][]string{}
+	for _, r := range newHarness(t).srv.Routes() {
+		resources := r.Resources
+		if r.Resource != "" {
+			resources = append([]string{r.Resource}, resources...)
+		}
+		for _, res := range resources {
+			used[res+"."+r.Verb] = append(used[res+"."+r.Verb], "route "+r.Method+" "+r.Path)
+		}
+	}
+	for perm, where := range handlerPermissionChecks(t, perms, filepath.Join("..", ".."), "internal", "cmd", "ee") {
+		used[perm] = append(used[perm], where...)
+	}
+	for _, err := range rbac.LintVerbUse(perms, used) {
+		t.Error(err)
+	}
+	if testing.Verbose() {
+		keys := make([]string, 0, len(used))
+		for k := range used {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			t.Logf("%s: %d uses, first %s", k, len(used[k]), used[k][0])
+		}
+	}
+}
+
+func TestLintVerbUseCatchesUnusedAndStale(t *testing.T) {
+	perms := &rbac.Permissions{
+		Resources: map[string][]string{"zones": {"read", "sign", "share"}},
+		Reserved:  map[string]string{"zones.sign": "v1.0: online signing", "zones.read": "v1.0: stale"},
+	}
+	var msgs []string
+	for _, e := range rbac.LintVerbUse(perms, map[string][]string{
+		"zones.read": {"route GET /zones"}, "zones.fly": {"handler x.go:1"},
+	}) {
+		msgs = append(msgs, e.Error())
+	}
+	want := []string{"zones.fly is checked by handler x.go:1 but", "zones.read is reserved but is checked by route GET /zones", "zones.share is declared but no route or handler checks it"}
+	if len(msgs) != len(want) {
+		t.Fatalf("lint errors:\n%s", strings.Join(msgs, "\n"))
+	}
+	for i, w := range want {
+		if !strings.Contains(msgs[i], w) {
+			t.Errorf("error %d %q does not mention %q", i, msgs[i], w)
+		}
+	}
+}
+
+// handlerPermissionChecks finds the permissions that production code
+// checks outside the route table: a composite literal with string-literal
+// Resource and Verb fields (rbac.Attributes, perm, auth stack routes), or
+// a call with two adjacent string-literal arguments naming a declared
+// resource and one of its verbs (s.require, s.allowed, s.authorize,
+// zoneRequirement, h.permission, servingHTTPCluster and the like). Test
+// files are skipped, so a check only a test performs does not count.
+func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string, dirs ...string) map[string][]string {
+	t.Helper()
+	found := map[string][]string{}
+	fset := token.NewFileSet()
+	str := func(e ast.Expr) (string, bool) {
+		lit, ok := e.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return "", false
+		}
+		v, err := strconv.Unquote(lit.Value)
+		return v, err == nil
+	}
+	for _, dir := range dirs {
+		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() && (d.Name() == "testdata" || strings.HasPrefix(d.Name(), ".")) {
+				return filepath.SkipDir
+			}
+			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+			if err != nil {
+				return err
+			}
+			add := func(res, verb string, at token.Pos) {
+				if perms.Has(res, verb) {
+					p := fset.Position(at)
+					rel, _ := filepath.Rel(root, p.Filename)
+					found[res+"."+verb] = append(found[res+"."+verb], "handler "+filepath.ToSlash(rel)+":"+strconv.Itoa(p.Line))
+				}
+			}
+			ast.Inspect(f, func(n ast.Node) bool {
+				switch n := n.(type) {
+				case *ast.CompositeLit:
+					var res, verb string
+					for _, el := range n.Elts {
+						kv, ok := el.(*ast.KeyValueExpr)
+						if !ok {
+							continue
+						}
+						key, ok := kv.Key.(*ast.Ident)
+						if !ok {
+							continue
+						}
+						switch v, _ := str(kv.Value); strings.ToLower(key.Name) {
+						case "resource":
+							res = v
+						case "verb":
+							verb = v
+						}
+					}
+					add(res, verb, n.Pos())
+				case *ast.CallExpr:
+					for i := 0; i+1 < len(n.Args); i++ {
+						res, ok1 := str(n.Args[i])
+						verb, ok2 := str(n.Args[i+1])
+						if ok1 && ok2 {
+							add(res, verb, n.Args[i].Pos())
+						}
+					}
+				}
+				return true
+			})
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return found
 }
 
 // TestOpenAPIDrift fails when api/openapi.json or api/openapi-3.0.json

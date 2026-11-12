@@ -1117,9 +1117,28 @@ fails the build when a route declares no permission.
 |---|---|
 | `viewer` | read zones, records, lists, groups, policies, stats, cache, settings (redacted) |
 | `auditor` | viewer + the query log (with client addresses), its export, the audit log |
-| `operator` | write records, lists, groups, policies, clients; flush the cache; toggle blocking; decide unblock requests |
+| `operator` | viewer + the query log (no export); write records, lists, groups, policies, clients; flush the cache; toggle blocking; decide unblock requests |
 | `zone-admin` | everything on one zone or one zone group (the only scoped role: `zone-admin@zone:<name>` or `zone-admin@zonegroup:<group>`) |
 | `admin` | `*.*` |
+
+Some routes check more than their declared permission, or a permission
+that the role names do not suggest:
+
+- `POST /queries/{id}/actions` declares `blocklists.write` for the list edit
+  and also checks `querylog.read` before it reads the logged query by ID.
+- `GET /queries/export` needs `querylog.export`; `GET /queries` needs
+  `querylog.read`.
+- The migration reads `GET /imports/existing`, `GET /imports/runs` and
+  `GET /imports/runs/{id}` need `settings.write`, the permission that
+  starts and changes imports, so only admin reads import runs.
+
+A lint runs both ways (D393). Every route declares a permission that
+`permissions.yaml` defines (`TestRoutePermissionLint`), and every declared
+verb is checked by a mounted route or a handler, or is listed under
+`reserved:` in `permissions.yaml` with the release that is to use it
+(`TestPermissionVerbsAreUsedOrReserved`). Reserved verbs (for example
+`zones.sign`, `groups.*`, `integrations.write`) can appear in roles but
+allow nothing yet.
 
 A binding gives a role at a scope (`cluster`, `zone:<name>` or
 `zonegroup:<group>`) to users, groups (the prefixed IdP group names) or

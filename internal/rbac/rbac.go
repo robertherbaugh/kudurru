@@ -8,6 +8,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -175,6 +176,11 @@ type Permissions struct {
 	Roles      map[string][]string       `json:"roles"`
 	Scoped     []string                  `json:"scoped"`
 	Kubernetes map[string]KubernetesRole `json:"kubernetes"`
+	// Reserved names the declared "<resource>.<verb>" permissions that no
+	// route or handler checks yet, each with the release that is to use it
+	// (D393). The reverse lint (LintVerbUse) fails for a declared verb that
+	// is neither used nor reserved, and for a reservation that is in use.
+	Reserved map[string]string `json:"reserved"`
 }
 
 // KubernetesRole is how a kudurru role appears as a Kubernetes ClusterRole.
@@ -188,8 +194,12 @@ type KubernetesRole struct {
 
 // LoadPermissions parses and validates the embedded permissions.yaml.
 func LoadPermissions() (*Permissions, error) {
+	return parsePermissions(permissionsYAML)
+}
+
+func parsePermissions(data []byte) (*Permissions, error) {
 	var p Permissions
-	if err := yaml.Unmarshal(permissionsYAML, &p); err != nil {
+	if err := yaml.Unmarshal(data, &p); err != nil {
 		return nil, fmt.Errorf("rbac: parse permissions.yaml: %w", err)
 	}
 	for role, k := range p.Kubernetes {
@@ -223,8 +233,20 @@ func LoadPermissions() (*Permissions, error) {
 			}
 		}
 	}
+	for perm, note := range p.Reserved {
+		res, verb, ok := strings.Cut(perm, ".")
+		if !ok || !contains(p.Resources[res], verb) {
+			return nil, fmt.Errorf("rbac: reserved: %q is not a declared <resource>.<verb>", perm)
+		}
+		if !reservedNote.MatchString(note) {
+			return nil, fmt.Errorf("rbac: reserved: %s must start with its target release (\"v1.0: ...\"), got %q", perm, note)
+		}
+	}
 	return &p, nil
 }
+
+// reservedNote is a reservation's text: the target release, then why.
+var reservedNote = regexp.MustCompile(`^v[0-9]+\.[0-9]+: \S`)
 
 // RoleNames lists roles sorted.
 func (p *Permissions) RoleNames() []string {
