@@ -6,13 +6,10 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/license"
-	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // One actual runServe database is bootstrapped as a managed/direct writer, then
@@ -40,18 +37,8 @@ func TestRunServeDirectAnchorsFencedAndConflictRestart(t *testing.T) {
 	cfg.Upstreams.Recursion.IPv6 = "off"
 	files, roots := tsigMountedCertificate(t)
 	tsigMountedTLSListeners(t, cfg, files)
-	st, closeStore := tsigMountedStore(t, cfg)
-	for _, object := range []store.Object{
-		&public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "anchor"}, Spec: public.DNSZoneSpec{ZoneName: "anchor.test.", Type: public.ZoneTypePrimary, Nameservers: []string{"ns.anchor.test."}, Policy: public.ZonePolicy{Notify: public.NotifyNone}}},
-		&public.DNSRecordSet{ObjectMeta: metav1.ObjectMeta{Name: "answer", Namespace: "default"}, Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: "anchor"}, Endpoints: []public.Endpoint{{DNSName: "answer.anchor.test.", RecordType: "A", Targets: []string{"192.0.2.77"}}}}},
-	} {
-		if _, err := st.Apply(t.Context(), object, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	closeStore()
 	stop := tsigMountedStart(t, cfg)
-	awaitMountedPrimarySettled(t, cfg, "anchor", "answer.anchor.test.", "192.0.2.77")
+	awaitMountedPrimaryCreated(t, cfg, anchorMountedObjects(), "anchor", "answer.anchor.test.", "192.0.2.77")
 	stop()
 	if reads.Load() != 1 {
 		t.Fatal("writer did not bootstrap managed trust exactly once", reads.Load())
