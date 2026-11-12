@@ -27,6 +27,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/zone"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Kubernetes refusal reasons (D384). Tranche 1 runs Cloudflare publication
@@ -35,7 +36,18 @@ import (
 const (
 	reasonUnsupportedOnKubernetes   = "UnsupportedOnKubernetes"
 	reasonDeletionPolicyUnsupported = "DeletionPolicyUnsupported"
+	reasonNamespaceNotAllowed       = "NamespaceNotAllowed"
 )
+
+// kubeIntegrationCache is the part of the replica's zonecache the root
+// adapter reads: the live snapshot it captures from and fences sources
+// against, and the publish hook that wakes the host.
+type kubeIntegrationCache interface {
+	Snapshot() *zonecache.Snapshot
+	Synced() bool
+	Initialized() <-chan struct{}
+	OnPublish(func(*zonecache.Snapshot))
+}
 
 // kubeIntegrationTerm is the constant authority term of the Kubernetes
 // root. The ledger guard and the captured instances need a valid term; on
@@ -47,8 +59,14 @@ func kubeIntegrationTerm(clusterID string) replication.Term {
 
 // kubeIntegrationOptions is the wiring of the Kubernetes root adapter.
 type kubeIntegrationOptions struct {
-	Store          *kube.Store
-	Cache          *zonecache.Cache
+	Store *kube.Store
+	Cache kubeIntegrationCache
+	// Namespace is the only namespace whose Integrations run (the release
+	// namespace). The credential allowlist is node-wide, and whoever can
+	// create an Integration may name any allowlisted credential; only the
+	// release namespace's principals, who can already read kudurru's own
+	// Secrets there, are trusted with it. Others are refused (D384).
+	Namespace      string
 	License        *license.Manager
 	Credentials    config.CredentialGrants
 	FingerprintKey []byte
@@ -85,8 +103,8 @@ type kubeIntegrationCut struct {
 type kubeIntegrationRequestKey struct{}
 
 func newKubeIntegrationRuntime(o kubeIntegrationOptions) (*kubeIntegrationRuntime, error) {
-	if o.Store == nil || o.Cache == nil || o.License == nil || len(o.FingerprintKey) < 32 {
-		return nil, errors.New("kubernetes integrations: store, cache, license and a 32-byte fingerprint key are required")
+	if o.Store == nil || o.Cache == nil || o.License == nil || len(o.FingerprintKey) < 32 || o.Namespace == "" {
+		return nil, errors.New("kubernetes integrations: store, cache, license, namespace and a 32-byte fingerprint key are required")
 	}
 	if o.Logger == nil {
 		o.Logger = slog.Default()
@@ -106,7 +124,7 @@ func newKubeIntegrationRuntime(o kubeIntegrationOptions) (*kubeIntegrationRuntim
 			c := r.allowed.Load()
 			return c != nil && c.Current() && c.Status().Allows(license.FeatureIntegrations)
 		},
-		Factory: r.factory, Status: r.status, Refuse: kubeIntegrationRefusal, Now: o.Now, Logger: o.Logger, PollInterval: o.PollInterval,
+		Factory: r.factory, Status: r.status, Refuse: r.refusal, Now: o.Now, Logger: o.Logger, PollInterval: o.PollInterval,
 	})
 	if err != nil {
 		return nil, err
@@ -126,13 +144,21 @@ func (r *kubeIntegrationRuntime) Run(ctx context.Context) error {
 	return r.host.Run(ctx)
 }
 
-// kubeIntegrationRefusal names what tranche 1 does not run on Kubernetes.
-// UniFi and webhook instances need the source commit and replica-side source
-// runtime (and webhook hooks their delivery producer); deletionPolicy Delete
-// needs the cleanup finalizer protocol, which the Kubernetes driver does not
-// arm. Running Delete as Retain would silently break its promise (D239).
-func kubeIntegrationRefusal(d *public.Integration) string {
+// refusal names what tranche 1 does not run on Kubernetes. An Integration
+// outside the release namespace never runs with the node's credential
+// allowlist (see kubeIntegrationOptions.Namespace). UniFi and webhook
+// instances need the source commit and replica-side source runtime (and
+// webhook hooks their delivery producer); deletionPolicy Delete needs the
+// cleanup finalizer protocol, which the Kubernetes driver does not arm.
+// Running Delete as Retain would silently break its promise (D239).
+func (r *kubeIntegrationRuntime) refusal(d *public.Integration) string {
+	return kubeIntegrationRefusal(r.opts.Namespace, d)
+}
+
+func kubeIntegrationRefusal(namespace string, d *public.Integration) string {
 	switch {
+	case d.Namespace != namespace:
+		return reasonNamespaceNotAllowed
 	case d.Spec.Type != "cloudflare":
 		return reasonUnsupportedOnKubernetes
 	case d.Spec.DeletionPolicy == public.IntegrationDeletionDelete:
@@ -199,7 +225,7 @@ func (r *kubeIntegrationRuntime) capture(ctx context.Context) (ih.Input, error) 
 	needsSources := false
 	for _, i := range instances {
 		d := i.Definition()
-		needsSources = needsSources || kubeIntegrationRefusal(d) == "" && integrationPublishes(d) && !d.Spec.Suspend && d.DeletionTimestamp.IsZero()
+		needsSources = needsSources || r.refusal(d) == "" && integrationPublishes(d) && !d.Spec.Suspend && d.DeletionTimestamp.IsZero()
 	}
 	if needsSources {
 		in.Sources, err = kubeIntegrationSources(snap.Objects)
@@ -215,12 +241,22 @@ func (r *kubeIntegrationRuntime) capture(ctx context.Context) (ih.Input, error) 
 		switch {
 		case !d.DeletionTimestamp.IsZero():
 			in.ReconcileDigests[i.Owner()] = kinds.Digest([]byte("terminating"))
-		case kubeIntegrationRefusal(d) != "":
+		case r.refusal(d) != "":
 			// A refused instance has no inputs: source changes neither wake
 			// nor replace it, only a change of its own object does.
 			in.ReconcileDigests[i.Owner()] = kinds.Digest([]byte("refused"))
 		case integrationPublishes(d):
-			dependencies = append(dependencies, in.Sources)
+			// Sources by identity, not by resourceVersion: the controller's
+			// status writes on a zone or record set change no published input
+			// and must neither replace nor fence the instance.
+			for _, source := range in.Sources {
+				dependencies = append(dependencies, [2]string{kubeSourceIdentity(source.Zone), kubeSourceIdentity(source.Records)})
+			}
+			raw, err := json.Marshal(dependencies)
+			if err != nil {
+				return ih.Input{}, ih.ErrInvalid
+			}
+			in.ReconcileDigests[i.Owner()] = kinds.Digest(raw)
 		}
 		// Authority excludes the status and resourceVersion the lease holder
 		// itself writes, so a status write never replaces the instance.
@@ -261,6 +297,11 @@ func (r *kubeIntegrationRuntime) capture(ctx context.Context) (ih.Input, error) 
 // kubeIntegrationSources selects the record sets a publisher may read: the
 // ones each enabled primary zone admits. On Kubernetes the zonecache serves
 // these objects directly; there is no committed primary head to wait for.
+// Like the SQLite capture, which refuses a source whose projection is
+// duplicated, the selection is unavailable while the controller reports, for
+// an admitted record set's current generation, an endpoint the zone does not
+// serve as written (duplicated, occluded or invalid). A conflict the
+// controller has not reported yet is not seen (D384).
 func kubeIntegrationSources(objects zonecache.ObjectSet) ([]plan.Source, error) {
 	var out []plan.Source
 	for _, record := range objects.RecordSets() {
@@ -273,10 +314,56 @@ func kubeIntegrationSources(objects zonecache.ObjectSet) ([]plan.Source, error) 
 			return nil, ih.ErrInvalid
 		}
 		if selector.Admits(record) {
+			if kubeRecordSetConflicted(record) {
+				return nil, ih.ErrUnavailable
+			}
 			out = append(out, plan.Source{Zone: z.DeepCopy(), Records: record.DeepCopy()})
 		}
 	}
 	return out, nil
+}
+
+// kubeRecordSetConflicted reports whether the controller's conditions for the
+// record set's current generation say the zone drops or rejects some of it.
+func kubeRecordSetConflicted(r *public.DNSRecordSet) bool {
+	for _, c := range r.Status.Conditions {
+		if c.ObservedGeneration != r.Generation || c.Reason != public.ReasonDuplicated && c.Reason != public.ReasonOccluded && c.Reason != public.ReasonInvalid {
+			continue
+		}
+		if c.Type == public.ConditionReady && c.Status == metav1.ConditionFalse || c.Type == public.ConditionDegraded && c.Status == metav1.ConditionTrue {
+			return true
+		}
+	}
+	return false
+}
+
+// kubeSourceIdentity digests what a publisher reads from a source object:
+// everything but its status, resourceVersion and managed fields. On
+// Kubernetes the controller writes zone and record set status (serials,
+// conditions) after every change; comparing resourceVersions would fence
+// every effect reserved just before such a write and leave its intent
+// pending unsent. A spec, label, annotation, finalizer or deletion change,
+// or a re-created object (new UID), still changes the identity.
+func kubeSourceIdentity(obj store.Object) string {
+	c, ok := obj.DeepCopyObject().(store.Object)
+	if !ok {
+		return ""
+	}
+	c.SetResourceVersion("")
+	c.SetManagedFields(nil)
+	switch o := c.(type) {
+	case *public.DNSZone:
+		o.Status = public.DNSZoneStatus{}
+	case *public.DNSRecordSet:
+		o.Status = public.DNSRecordSetStatus{}
+	default:
+		return ""
+	}
+	raw, err := json.Marshal(c)
+	if err != nil {
+		return ""
+	}
+	return kinds.Digest(raw)
 }
 
 // current checks the guard against the latest capture: same term, license
@@ -288,7 +375,7 @@ func (r *kubeIntegrationRuntime) current(g ih.ExecutionGuard) (*kubeIntegrationC
 		return nil, ih.ErrFenced
 	}
 	i := c.instances[g.Ledger.Owner]
-	if i == nil || i.BundleID() != g.BundleID || !integrationGuardAdmits(i.Definition(), g) || kubeIntegrationRefusal(i.Definition()) != "" {
+	if i == nil || i.BundleID() != g.BundleID || !integrationGuardAdmits(i.Definition(), g) || r.refusal(i.Definition()) != "" {
 		return nil, ih.ErrFenced
 	}
 	expected, err := i.Guard(g.Ledger.LeaseID)
@@ -349,7 +436,7 @@ func (r *kubeIntegrationRuntime) check(ctx, lease context.Context, g ih.Executio
 		return ih.ErrFenced
 	}
 	if refusal {
-		if !kubeRefusalAdmits(&stored, g) || kubeIntegrationRefusal(&stored) == "" {
+		if !kubeRefusalAdmits(&stored, g) || r.refusal(&stored) == "" {
 			return ih.ErrFenced
 		}
 		return nil
@@ -357,7 +444,7 @@ func (r *kubeIntegrationRuntime) check(ctx, lease context.Context, g ih.Executio
 	if !integrationGuardAdmits(&stored, g) {
 		return ih.ErrFenced
 	}
-	if kubeIntegrationRefusal(&stored) != "" {
+	if r.refusal(&stored) != "" {
 		return ih.ErrFenced
 	}
 	if integrationPublishes(&stored) {
@@ -368,7 +455,10 @@ func (r *kubeIntegrationRuntime) check(ctx, lease context.Context, g ih.Executio
 		for _, source := range original.sources {
 			z, ok := snap.Objects.Get(store.KeyOf(source.Zone))
 			rs, present := snap.Objects.Get(store.KeyOf(source.Records))
-			if !ok || !present || z.GetUID() != source.Zone.UID || z.GetResourceVersion() != source.Zone.ResourceVersion || rs.GetUID() != source.Records.UID || rs.GetResourceVersion() != source.Records.ResourceVersion {
+			if !ok || !present || z.GetUID() != source.Zone.UID || rs.GetUID() != source.Records.UID {
+				return ih.ErrFenced
+			}
+			if zone, records := kubeSourceIdentity(z), kubeSourceIdentity(rs); zone == "" || records == "" || zone != kubeSourceIdentity(source.Zone) || records != kubeSourceIdentity(source.Records) {
 				return ih.ErrFenced
 			}
 		}
@@ -384,7 +474,7 @@ func (r *kubeIntegrationRuntime) currentRefused(g ih.ExecutionGuard) error {
 		return ih.ErrFenced
 	}
 	i := c.instances[g.Ledger.Owner]
-	if i == nil || i.BundleID() != g.BundleID || !kubeRefusalAdmits(i.Definition(), g) || kubeIntegrationRefusal(i.Definition()) == "" {
+	if i == nil || i.BundleID() != g.BundleID || !kubeRefusalAdmits(i.Definition(), g) || r.refusal(i.Definition()) == "" {
 		return ih.ErrFenced
 	}
 	expected, err := i.Guard(g.Ledger.LeaseID)
@@ -410,7 +500,7 @@ func (r *kubeIntegrationRuntime) fence(ctx context.Context, g ih.ExecutionGuard)
 	}
 	// A refused instance never has a provider (Options.Refuse), so the only
 	// effect it is fenced for is its refusal status.
-	refusal := kubeIntegrationRefusal(cut.instances[g.Ledger.Owner].Definition()) != ""
+	refusal := r.refusal(cut.instances[g.Ledger.Owner].Definition()) != ""
 	return r.check(ctx, lease, g, cut, refusal)
 }
 
@@ -483,7 +573,7 @@ func (r *kubeIntegrationRuntime) status(ctx context.Context, g ih.ExecutionGuard
 	if err != nil || original != g {
 		return ih.ErrFenced
 	}
-	refused := kubeIntegrationRefusal(cut.instances[g.Ledger.Owner].Definition())
+	refused := r.refusal(cut.instances[g.Ledger.Owner].Definition())
 	if refused != "" && status.Reason != refused {
 		return ih.ErrFenced
 	}
@@ -494,8 +584,11 @@ func (r *kubeIntegrationRuntime) status(ctx context.Context, g ih.ExecutionGuard
 		d := integrationStatusObject(cut.instances[g.Ledger.Owner].Definition(), status)
 		if refused != "" {
 			message := "This integration type does not run on the Kubernetes store yet; only Cloudflare publication does."
-			if refused == reasonDeletionPolicyUnsupported {
+			switch refused {
+			case reasonDeletionPolicyUnsupported:
 				message = "deletionPolicy Delete is not supported on the Kubernetes store yet; use Retain."
+			case reasonNamespaceNotAllowed:
+				message = "On the Kubernetes store only Integrations in kudurru's release namespace run; create it in " + r.opts.Namespace + "."
 			}
 			if c := meta.FindStatusCondition(d.Status.Conditions, "Ready"); c != nil {
 				c.Message = message

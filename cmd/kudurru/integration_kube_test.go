@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -61,9 +62,10 @@ func kubeIntegrationMount(t *testing.T, cfg *config.Config) func() {
 // operation and budget Secrets with exactly one mutation; a suspended
 // instance makes no provider request even when its source changes, and
 // resuming publishes the change once; UniFi and deletionPolicy Delete
-// instances are refused on their objects with no provider request; a restart
-// resumes an ambiguous effect through fresh-reread recovery without
-// replaying it.
+// instances, and an instance outside the release namespace, are refused on
+// their objects with no provider request; an ambiguous effect is sent exactly
+// once, is not replayed while its peer cannot be read, and a restart resumes
+// it through fresh-reread recovery without sending it again.
 func TestRunServeKubeCloudflarePublicationAndRefusals(t *testing.T) {
 	control := &envtest.Environment{BinaryAssetsDirectory: mountedKubeTestAssets(t), CRDDirectoryPaths: []string{"../../deploy/kustomize/crd/bases"}, ErrorIfCRDPathMissing: true}
 	control.ControlPlane.GetAPIServer().Configure().Set("advertise-address", "127.0.0.1").Set("endpoint-reconciler-type", "none")
@@ -157,13 +159,15 @@ func TestRunServeKubeCloudflarePublicationAndRefusals(t *testing.T) {
 		}
 		return ""
 	}
-	ready := func(name string) (*metav1.Condition, *public.Integration) {
+	readyIn := func(key string) (*metav1.Condition, *public.Integration) {
+		namespace, name, _ := strings.Cut(key, "/")
 		var d public.Integration
-		if err := admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: name}, &d); err != nil {
+		if err := admin.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, &d); err != nil {
 			return nil, nil
 		}
 		return meta.FindStatusCondition(d.Status.Conditions, "Ready"), &d
 	}
+	ready := func(name string) (*metav1.Condition, *public.Integration) { return readyIn("default/" + name) }
 	carriers := func(kind string) []corev1.Secret {
 		var list corev1.SecretList
 		if err := admin.List(ctx, &list, client.InNamespace("default"), client.MatchingLabels{kube.InternalKindLabel: kind}); err != nil {
@@ -212,19 +216,27 @@ func TestRunServeKubeCloudflarePublicationAndRefusals(t *testing.T) {
 	}
 
 	// Refused instances: no provider request, a clear reason on the object.
+	// An Integration outside the release namespace naming the allowlisted
+	// credential is refused too: the allowlist is not lent to other
+	// namespaces (D384).
+	if err := admin.Create(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "tenant"}}); err != nil {
+		t.Fatal(err)
+	}
 	requestsBefore, _ := counts()
 	unifi := &public.Integration{ObjectMeta: metav1.ObjectMeta{Name: "inventory", Namespace: "default"}, Spec: public.IntegrationSpec{Type: "unifi", Credentials: map[string]public.CredentialReference{"apiKey": {File: credential}}, UniFi: &public.UniFiIntegration{Endpoint: "https://unifi.invalid", Site: "default", Poll: metav1.Duration{Duration: time.Minute}}}}
 	deleting := publisher.DeepCopy()
 	deleting.ObjectMeta = metav1.ObjectMeta{Name: "deleting", Namespace: "default"}
 	deleting.Spec.DeletionPolicy = public.IntegrationDeletionDelete
-	for _, d := range []*public.Integration{unifi, deleting} {
+	foreign := publisher.DeepCopy()
+	foreign.ObjectMeta = metav1.ObjectMeta{Name: "foreign", Namespace: "tenant"}
+	for _, d := range []*public.Integration{unifi, deleting, foreign} {
 		if err := admin.Create(ctx, d); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for name, reason := range map[string]string{"inventory": reasonUnsupportedOnKubernetes, "deleting": reasonDeletionPolicyUnsupported} {
+	for name, reason := range map[string]string{"default/inventory": reasonUnsupportedOnKubernetes, "default/deleting": reasonDeletionPolicyUnsupported, "tenant/foreign": reasonNamespaceNotAllowed} {
 		await(60*time.Second, name+" refused on its object", func() bool {
-			c, _ := ready(name)
+			c, _ := readyIn(name)
 			return c != nil && c.Status == metav1.ConditionFalse && c.Reason == reason
 		})
 	}
@@ -282,18 +294,17 @@ func TestRunServeKubeCloudflarePublicationAndRefusals(t *testing.T) {
 	if err := admin.Update(ctx, &record); err != nil {
 		t.Fatal(err)
 	}
-	await(60*time.Second, "the ambiguous effect leaves a pending intent", func() bool { return pending() == 1 })
-	time.Sleep(3 * time.Second)
-	// Usually the batch was sent and answered ambiguously. A pass fenced
-	// between its intent and its request (an own status write changed the
-	// Integration's resourceVersion) leaves the same pending intent unsent.
-	// Either way it is never sent twice, and recovery below ends with
-	// exactly one mutation.
-	_, w := counts()
-	if w-writesBefore > 1 {
-		t.Fatal("the ambiguous effect was replayed", w-writesBefore)
+	await(60*time.Second, "the ambiguous effect is sent and leaves a pending intent", func() bool {
+		_, w := counts()
+		return pending() == 1 && w-writesBefore >= 1
+	})
+	// The controller's status writes on the changed record set and zone
+	// change no published input: they neither fence the reserved intent
+	// before its request nor make the host send it again (D384).
+	time.Sleep(5 * time.Second)
+	if _, w := counts(); w-writesBefore != 1 || pending() != 1 {
+		t.Fatal("the ambiguous effect was not sent exactly once before recovery", w-writesBefore, pending())
 	}
-	t.Log("pending intent sent before recovery:", w-writesBefore == 1)
 	// Restart with the peer healthy: the new process resumes the pending
 	// intent by a fresh complete reread and does not send it again.
 	stop()
@@ -356,14 +367,17 @@ func TestKubeIntegrationWriteSeamRefusals(t *testing.T) {
 			t.Errorf("forget %s: %v", name, err)
 		}
 	}
+	release := metav1.ObjectMeta{Namespace: "kudurru"}
 	for d, want := range map[*public.Integration]string{
-		{Spec: public.IntegrationSpec{Type: "cloudflare"}}:                                                   "",
-		{Spec: public.IntegrationSpec{Type: "cloudflare", DeletionPolicy: public.IntegrationDeletionDelete}}: reasonDeletionPolicyUnsupported,
-		{Spec: public.IntegrationSpec{Type: "unifi"}}:                                                        reasonUnsupportedOnKubernetes,
-		{Spec: public.IntegrationSpec{Type: "webhook"}}:                                                      reasonUnsupportedOnKubernetes,
+		{ObjectMeta: release, Spec: public.IntegrationSpec{Type: "cloudflare"}}:                                                   "",
+		{ObjectMeta: release, Spec: public.IntegrationSpec{Type: "cloudflare", DeletionPolicy: public.IntegrationDeletionDelete}}: reasonDeletionPolicyUnsupported,
+		{ObjectMeta: release, Spec: public.IntegrationSpec{Type: "unifi"}}:                                                        reasonUnsupportedOnKubernetes,
+		{ObjectMeta: release, Spec: public.IntegrationSpec{Type: "webhook"}}:                                                      reasonUnsupportedOnKubernetes,
+		// The credential allowlist is never lent to another namespace.
+		{ObjectMeta: metav1.ObjectMeta{Namespace: "tenant"}, Spec: public.IntegrationSpec{Type: "cloudflare"}}: reasonNamespaceNotAllowed,
 	} {
-		if got := kubeIntegrationRefusal(d); got != want {
-			t.Errorf("refusal of %s/%s = %q, want %q", d.Spec.Type, d.Spec.DeletionPolicy, got, want)
+		if got := kubeIntegrationRefusal("kudurru", d); got != want {
+			t.Errorf("refusal of %s %s/%s = %q, want %q", d.Namespace, d.Spec.Type, d.Spec.DeletionPolicy, got, want)
 		}
 	}
 }

@@ -1122,11 +1122,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	// their objects. Administration routes stay unavailable on Kubernetes.
 	var kubeIntegrations *kubeIntegrationRuntime
 	if kubeStore != nil {
-		kubeIntegrations, err = newKubeIntegrationRuntime(kubeIntegrationOptions{Store: kubeStore, Cache: zc, License: lic, Credentials: cfg.Credentials, FingerprintKey: encKey, Logger: logger})
+		kubeIntegrations, err = newKubeIntegrationRuntime(kubeIntegrationOptions{Store: kubeStore, Cache: zc, Namespace: releaseNamespace, License: lic, Credentials: cfg.Credentials, FingerprintKey: encKey, Logger: logger})
 		if err != nil {
 			return err
 		}
-		logger.Info("Kubernetes integration host mounted: Cloudflare publication runs; UniFi, webhook and deletionPolicy Delete instances are refused on their objects, and the integration administration API is unavailable on this store")
+		logger.Info("Kubernetes integration host mounted: Cloudflare publication runs; Integrations outside the release namespace and UniFi, webhook and deletionPolicy Delete instances are refused on their objects, and the integration administration API is unavailable on this store")
 	}
 	if sql != nil {
 		complete, err = newServingRuntime(ctx, servingRuntimeOptions{
