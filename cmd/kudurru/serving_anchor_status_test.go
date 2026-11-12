@@ -92,7 +92,10 @@ func TestAnchorStatusShowsTerminalUpdater(t *testing.T) {
 	}
 	cancel()
 	select {
-	case <-done:
+	case err := <-done:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Error("anchor writer completion", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("terminal child did not join")
 	}
@@ -142,7 +145,10 @@ func TestAnchorStatusShowsCommittedOwnerAndSchedule(t *testing.T) {
 	}
 	cancel()
 	select {
-	case <-done:
+	case err := <-done:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Error("anchor writer completion", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("updater did not join")
 	}
