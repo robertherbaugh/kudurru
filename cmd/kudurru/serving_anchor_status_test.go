@@ -12,7 +12,9 @@ import (
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/robertherbaugh/kudurru/internal/api"
 	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 )
@@ -246,5 +248,68 @@ func TestAnchorStatusBoardTracksAdoptionRefusal(t *testing.T) {
 	}
 	if anchorStatusGauge(t, reg, "kudurru_root_anchor_admission_current", nil) != 0 {
 		t.Fatal("a runtime without anchors reports admission")
+	}
+}
+
+// A primary does not pull: a refusal the board recorded while this member was
+// a follower is not exported once it holds the primary role (after a
+// promotion, or when its branch is the one a resolution keeps), the same rule
+// GET /cluster/anchors applies to Pull. A follower's recorded refusal is.
+func TestAnchorStatusRefusalGaugeFollowsRole(t *testing.T) {
+	endpoint, seeds, _ := anchorSupervisorServer(t, func(int32, *dns.Msg) {})
+	primary, original, _, _ := anchorOperationFixtureTopology(t, endpoint, seeds, "direct")
+	f := newAnchorFollowerFixture(original, t, primary)
+	if f.store.Authority().Mode != replication.Follower {
+		t.Fatal("fixture is not a follower", f.store.Authority().Mode)
+	}
+	refusal := &sqlite.AnchorRefusal{Reason: sqlite.AnchorRefusedCarriedRevocation, Keys: []string{"k1"}}
+	reg := anchorStatusMetrics(t, f.s)
+	f.s.anchorStatus.observePull(refusal)
+	gauge := func() float64 {
+		return anchorStatusGauge(t, reg, "kudurru_root_anchor_adoption_refused", map[string]string{"reason": string(sqlite.AnchorRefusedCarriedRevocation)})
+	}
+	if got := gauge(); got != 1 {
+		t.Fatal("a follower's recorded refusal is not exported", got)
+	}
+	pull := f.s.anchorStatus.snapshot().pull
+	for _, mode := range []replication.Mode{replication.Follower, replication.Fenced} {
+		if anchorCurrentRefusal(pull, mode) == nil {
+			t.Fatal("refusal hidden in mode", mode)
+		}
+	}
+	if anchorCurrentRefusal(pull, replication.Primary) != nil {
+		t.Fatal("a primary still reports the refusal it recorded as a follower")
+	}
+}
+
+// "Why a member is fenced": a fenced member behind a newer term of its own
+// cluster is projected as fencedBehindTerm with its warning; a conflicted or
+// caught-up fenced member is not.
+func TestAnchorStatusProjectsFencedBehindTerm(t *testing.T) {
+	term := func(epoch uint64) replication.Term {
+		return replication.Term{ClusterID: "cluster-a", Epoch: epoch, PrimaryID: "m1", PromotionID: "p"}
+	}
+	for _, tc := range []struct {
+		name string
+		a    replication.Authority
+		want bool
+	}{
+		{"behind", replication.Authority{Mode: replication.Fenced, MemberID: "m2", Term: term(3), Installed: replication.Generation{Term: term(2), Revision: 7}}, true},
+		{"caught up", replication.Authority{Mode: replication.Fenced, MemberID: "m2", Term: term(3), Installed: replication.Generation{Term: term(3), Revision: 7}}, false},
+		{"conflicted", replication.Authority{Mode: replication.Fenced, MemberID: "m2", Term: term(3), Installed: replication.Generation{Term: term(2), Revision: 7}, Conflict: &replication.Term{ClusterID: "cluster-a", Epoch: 3}}, false},
+		{"follower", replication.Authority{Mode: replication.Follower, MemberID: "m2", Term: term(3), Installed: replication.Generation{Term: term(2), Revision: 7}}, false},
+	} {
+		_, _, authority, err := rootAnchorProjection(nil, nil, tc.a)
+		if err != nil {
+			t.Fatal(tc.name, err)
+		}
+		if authority.FencedBehindTerm != tc.want || authority.TermEpoch != 3 {
+			t.Fatalf("%s: fencedBehindTerm %v, want %v (%+v)", tc.name, authority.FencedBehindTerm, tc.want, authority)
+		}
+		warned := slices.ContainsFunc(rootAnchorWarnings(api.RootAnchorStatus{Authority: authority, Owner: api.RootAnchorOwner{Phase: "awaiting"}}),
+			func(w string) bool { return strings.Contains(w, "fenced by a newer term") })
+		if warned != tc.want {
+			t.Fatalf("%s: fenced warning %v, want %v", tc.name, warned, tc.want)
+		}
 	}
 }
