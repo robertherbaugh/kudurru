@@ -50,8 +50,12 @@ func (s *servingRuntime) MigrationCommand(ctx context.Context, program *api.Migr
 			return currentCommandAPIError(replication.ErrFenced)
 		}
 		var plan *api.MigrationCommandPlan
+		// began records that the step's transaction body started: from then on
+		// it has dispatched, and a refusal is final.
+		began := false
 		execute := func(commandCtx context.Context) error {
 			return s.currentAuthCommand(commandCtx, func(commandCtx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
+				began = true
 				checkWriter := func(context.Context) error {
 					if !s.opts.Now().Before(deadline) {
 						return servingauth.ErrCredentials
@@ -99,15 +103,25 @@ func (s *servingRuntime) MigrationCommand(ctx context.Context, program *api.Migr
 			// Initialization uses the original HTTP lease through its actual commit.
 			err = execute(stepCtx)
 		} else {
-			// Wait only for the NEXT command's initial cut, before authentication or
-			// preparation. Once acquired, currentAuthCommand dispatches exactly once.
+			// Wait up to 5 s only for the NEXT command's initial cut, before
+			// authentication or preparation; the command itself runs on stepCtx.
+			// A cut that a later commit (such as the zone lifecycle driver's)
+			// superseded before the step's transaction body began is refused with
+			// serving.ErrPending before anything was authenticated, prepared or
+			// staged. That is the same as a cut not yet published, so the step
+			// captures again within the same wait. Once the body begins,
+			// currentAuthCommand has dispatched exactly once and a refusal is final.
 			wait, cancel := context.WithTimeout(stepCtx, 5*time.Second)
 			defer cancel()
 			for {
 				changed, authority := s.publisher.Subscribe(), s.publisher.AuthorityChanges()
-				called := false
-				err = servinghttp.WithCommandStep(wait, s.publisher, func(c context.Context) error { called = true; return execute(c) })
-				if called || !errors.Is(err, serving.ErrPending) {
+				err = servinghttp.WithCommandStep(stepCtx, wait, s.publisher, func(c context.Context) error {
+					if s.afterMigrationCut != nil {
+						s.afterMigrationCut(c, index)
+					}
+					return execute(c)
+				})
+				if began || !errors.Is(err, serving.ErrPending) {
 					break
 				}
 				select {

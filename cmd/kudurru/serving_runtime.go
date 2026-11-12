@@ -118,6 +118,10 @@ type servingRuntime struct {
 	// forwarded self-service command commits; tests only. Nil pulls through
 	// member.
 	memberSelfPull func(context.Context) error
+
+	// afterMigrationCut runs after a later migration step captures its cut
+	// and before the step's command; tests only.
+	afterMigrationCut func(ctx context.Context, index int)
 }
 
 func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *servingRuntime, err error) {
