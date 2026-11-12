@@ -148,6 +148,16 @@ func enrolledProcessRead(t *testing.T, c *staticProcessClient, path string, read
 // must therefore start after this cascade instead of being replayed after it.
 func enrolledZoneSettled(t *testing.T, c *staticProcessClient, dnsAddr, name, ip string) {
 	t.Helper()
+	enrolledZoneObjectSettled(t, c, dnsAddr, "e2e-test", name+".e2e.test.", ip)
+}
+
+// enrolledZoneObjectSettled is enrolledZoneSettled for the zone object
+// zoneObject, whose data answers fqdn with ip. Every zone created before a
+// review needs its own wait: each zone's first Ready status write is its own
+// publication, and a review taken before it names a source that the decision
+// then finds changed (409 conflict).
+func enrolledZoneObjectSettled(t *testing.T, c *staticProcessClient, dnsAddr, zoneObject, fqdn, ip string) {
+	t.Helper()
 	read := func() (string, bool) {
 		var zone struct {
 			Metadata struct {
@@ -163,7 +173,7 @@ func enrolledZoneSettled(t *testing.T, c *staticProcessClient, dnsAddr, name, ip
 			} `json:"status"`
 		}
 		ready := false
-		enrolledProcessRead(t, c, "/objects/dnszones/e2e-test", func(body []byte) bool {
+		enrolledProcessRead(t, c, "/objects/dnszones/"+zoneObject, func(body []byte) bool {
 			if json.Unmarshal(body, &zone) != nil {
 				return false
 			}
@@ -175,7 +185,7 @@ func enrolledZoneSettled(t *testing.T, c *staticProcessClient, dnsAddr, name, ip
 		return zone.Metadata.ResourceVersion, ready
 	}
 	answers := func() bool {
-		answer, err := exchange(dnsAddr, name+".e2e.test.", dns.TypeA, false)
+		answer, err := exchange(dnsAddr, fqdn, dns.TypeA, false)
 		return err == nil && answer.Rcode == dns.RcodeSuccess && answer.Authoritative && firstA(answer) == ip
 	}
 	deadline := time.Now().Add(30 * time.Second)
@@ -257,6 +267,10 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 	for _, object := range enrolledUpdateZone() {
 		apiA.request(t, http.MethodPost, "/objects/"+map[string]string{"DNSZone": "dnszones", "DNSRecordSet": "dnsrecordsets"}[object.(map[string]any)["kind"].(string)], object, http.StatusCreated, nil)
 	}
+	// The review below names the exact served source, so both zones'
+	// startup status writes must have landed first: activation refuses a
+	// review that an intervening publication made stale.
+	enrolledZoneObjectSettled(t, apiA, a.Ports.DNS, "dyn-test", "seed.dyn.test.", "192.0.2.100")
 	enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
 	if anchors != nil {
 		// The standalone primary bootstraps managed trust once. An ordinary
