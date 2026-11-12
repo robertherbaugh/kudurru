@@ -141,7 +141,14 @@ func TestRunServeTracingThroughCacheAndRace(t *testing.T) {
 	for err := range errs {
 		t.Fatal(err)
 	}
-	// One coalesced fetch asked each server once.
+	// One coalesced fetch asked each server once. The wave is answered as
+	// soon as the fast server replies, and the slow server's handler may not
+	// have counted its query yet, so give that count a short bounded time to
+	// arrive before requiring the exact numbers. The late query below is
+	// timed from waveAnswered, not from here.
+	for deadline := time.Now().Add(500 * time.Millisecond); slowQueries.Load() == 0 && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
 	if f, s := fastQueries.Load(), slowQueries.Load(); f != 1 || s != 1 {
 		t.Fatalf("the wave asked the fast server %d and the slow one %d times, want one coalesced fetch", f, s)
 	}
