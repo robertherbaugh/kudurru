@@ -258,7 +258,7 @@ once in the dashboard works the same way, with a result for each name.
   seconds with a second caller reading all the time; DNS answered the whole
   time (the longest gap between two answers was typically under 0.1
   seconds, with an occasional single dropped query of about 0.3 seconds and,
-  once in about 50 runs, an unexplained gap of 1.4 seconds; the zone never
+  once in about 100 runs, an unexplained gap of 1.4 seconds; the zone never
   answered SERVFAIL) and every read succeeded. Under heavy
   load (race detector) the same request took about 2 minutes, DNS still
   answered throughout (no gap above 0.14 seconds), but one publication took

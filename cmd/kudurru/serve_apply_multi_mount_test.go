@@ -391,7 +391,7 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 				read = append(read, time.Now())
 			} else {
 				failedRead = append(failedRead, time.Now())
-				readError = strings.TrimSpace(stderr)
+				readError = fmt.Sprintf("%v: %s", err, strings.TrimSpace(stderr))
 			}
 			mu.Unlock()
 		}
