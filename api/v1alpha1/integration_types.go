@@ -255,7 +255,9 @@ type IntegrationSpec struct {
 	// with a reason; changing the policy to Retain, or the reviewed release
 	// command, removes the object without cleanup. On Kubernetes an
 	// Integration the host refuses (another namespace, a webhook, UniFi record
-	// publication) is never armed and owns nothing to clean up.
+	// publication) is never armed. A UniFi Integration armed before it gained
+	// spec.unifi.inventory still cleans up when deleted: its source state is
+	// purged locally, with no provider request.
 	// +kubebuilder:validation:Enum=Retain;Delete
 	// +kubebuilder:default=Retain
 	// +optional

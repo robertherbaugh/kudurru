@@ -182,6 +182,24 @@ func (r *kubeIntegrationRuntime) refusal(d *public.Integration) string {
 	return kubeIntegrationRefusal(r.opts.Namespace, d)
 }
 
+// refusedFor reports whether root's refusal of d fences an effect under
+// mode. A release needs no provider and is never refused. A cleanup is
+// admitted for one refusal only: a UniFi instance that was armed for Delete
+// and later gained spec.unifi.inventory. It is not a publisher, so its
+// cleanup is the local purge of its source carriers and the finalizer
+// removal, with no provider request; refusing it would leave the object
+// Terminating with its carriers in place.
+func (r *kubeIntegrationRuntime) refusedFor(mode ih.GuardMode, d *public.Integration) bool {
+	reason := r.refusal(d)
+	switch {
+	case reason == "", mode == ih.GuardRelease:
+		return false
+	case mode == ih.GuardCleanup && reason == reasonRecordsUnsupported && !integrationPublishes(d) && !d.DeletionTimestamp.IsZero():
+		return false
+	}
+	return true
+}
+
 func kubeIntegrationRefusal(namespace string, d *public.Integration) string {
 	switch {
 	case d.Namespace != namespace:
@@ -415,7 +433,7 @@ func (r *kubeIntegrationRuntime) current(g ih.ExecutionGuard) (*kubeIntegrationC
 		return nil, ih.ErrFenced
 	}
 	i := c.instances[g.Ledger.Owner]
-	if i == nil || i.BundleID() != g.BundleID || !integrationGuardAdmits(i.Definition(), g) || g.Mode != ih.GuardRelease && r.refusal(i.Definition()) != "" {
+	if i == nil || i.BundleID() != g.BundleID || !integrationGuardAdmits(i.Definition(), g) || r.refusedFor(g.Mode, i.Definition()) {
 		return nil, ih.ErrFenced
 	}
 	expected, err := i.Guard(g.Ledger.LeaseID)
@@ -484,7 +502,7 @@ func (r *kubeIntegrationRuntime) check(ctx, lease context.Context, g ih.Executio
 	if !integrationGuardAdmits(&stored, g) {
 		return ih.ErrFenced
 	}
-	if g.Mode != ih.GuardRelease && r.refusal(&stored) != "" {
+	if r.refusedFor(g.Mode, &stored) {
 		return ih.ErrFenced
 	}
 	// A terminating publisher deletes only what its ledger proves owned; its
@@ -541,8 +559,9 @@ func (r *kubeIntegrationRuntime) fence(ctx context.Context, g ih.ExecutionGuard)
 		return ih.ErrFenced
 	}
 	// A refused instance never has a provider (Options.Refuse), so the only
-	// effect it is fenced for is its refusal status.
-	refusal := r.refusal(cut.instances[g.Ledger.Owner].Definition()) != ""
+	// effect it is fenced for is its refusal status; a release, or the
+	// cleanup refusedFor admits, is fenced as any other run of its mode.
+	refusal := r.refusedFor(g.Mode, cut.instances[g.Ledger.Owner].Definition())
 	return r.check(ctx, lease, g, cut, refusal)
 }
 
@@ -615,7 +634,10 @@ func (r *kubeIntegrationRuntime) status(ctx context.Context, g ih.ExecutionGuard
 	if err != nil || original != g {
 		return ih.ErrFenced
 	}
-	refused := r.refusal(cut.instances[g.Ledger.Owner].Definition())
+	refused := ""
+	if d := cut.instances[g.Ledger.Owner].Definition(); r.refusedFor(g.Mode, d) {
+		refused = r.refusal(d)
+	}
 	if refused != "" && status.Reason != refused {
 		return ih.ErrFenced
 	}

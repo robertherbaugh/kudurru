@@ -237,6 +237,9 @@ func (r *kubeIntegrationRuntime) finalize(ctx context.Context, g ih.ExecutionGua
 // (CleanupFinalizerMissing) and every fence refuses it, so nothing is owned
 // unarmed. Several replicas may race; the losers' patches conflict and
 // change nothing. Arming needs the integrations license; disarming does not.
+// A refused instance is neither armed nor disarmed: one armed before it
+// became refused may own source carriers, so it keeps the finalizer and its
+// delete runs the local cleanup refusedFor admits.
 func (r *kubeIntegrationRuntime) armCleanup(ctx context.Context) {
 	snap := r.opts.Cache.Snapshot()
 	if snap == nil || !r.opts.Cache.Synced() {
