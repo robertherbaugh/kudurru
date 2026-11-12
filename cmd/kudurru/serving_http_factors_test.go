@@ -109,7 +109,7 @@ func factorPreviousStepCall(t *testing.T, f *servingHTTPFixture, secret string, 
 	t.Helper()
 	at := time.Now()
 	restore := f.clock.Set(func() time.Time { return at })
-	defer f.clock.Set(restore)
+	defer func() { f.clock.Set(restore) }()
 	return call(factorCode(t, secret, at.Add(-totp.Period*time.Second)))
 }
 
