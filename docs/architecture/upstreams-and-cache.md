@@ -570,7 +570,11 @@ A poller child that has only waited captures the newly installed cut on its next
 step, in the same member, term and role, and keeps waiting or polls; a role
 change still ends it, and a child whose acquisition already failed still cannot
 move. The updater captures a fresh operation under its original writer term on
-every step. A larger gap remains a terminal clock refusal for that authority
+every step. A capture that another commit on the node made stale before it
+acquired anything (on a fresh node, typically a first-boot status write) is
+not a refusal: nothing was acquired, authenticated or staged, and the next
+step, a second later, captures again. Every failure after the capture keeps
+its D297 meaning. A larger gap remains a terminal clock refusal for that authority
 epoch or writer term. Hold-down credit is unaffected: it still comes only from
 checkpointed monotonic progress inside one process session.
 

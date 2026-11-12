@@ -8,6 +8,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/auth/providercoordinator"
 	"github.com/robertherbaugh/kudurru/internal/serving"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
@@ -62,6 +63,9 @@ type anchorPollStep struct {
 	// clockWait is how far this node's wall clock trails the committed
 	// checkpoint when the step could not be due for that reason.
 	clockWait time.Duration
+	// captureLost reports that a concurrent commit made the capture stale
+	// before any acquisition; the step is retried with a fresh capture.
+	captureLost bool
 }
 
 // step creates and cancels one finite original attempt before returning any
@@ -79,6 +83,16 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 	original, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	op, err := u.runtime.captureAnchorOperation(original, u.target, u.host, u.clock, u.offset)
+	if errors.Is(err, replication.ErrCAS) && ctx.Err() == nil {
+		// Another commit on this node (on a fresh node, a first-boot status
+		// write) landed between the capture's image read and its currency
+		// check. Nothing was acquired, authenticated or staged, so this is
+		// not a refusal of any input and nothing is replayed: the next step
+		// captures again from the then-current image. Making it terminal
+		// parked the updater for the whole writer term.
+		step.next, step.captureLost = time.Now().Add(time.Second), true
+		return step, nil
+	}
 	if err != nil {
 		return step, err
 	}
@@ -184,6 +198,9 @@ func (s *servingRuntime) runAnchorUpdaterReady(ctx context.Context, target servi
 		}
 		if step.acquisitionError != nil {
 			slog.Warn("root anchor transport acquisition failed; new attempt scheduled", "next", step.next)
+		}
+		if step.captureLost {
+			slog.Debug("root anchor capture met a concurrent commit; capturing again", "next", step.next)
 		}
 		if step.clockWait > 0 {
 			slog.Warn("root anchor updater waits for this node's clock to reach the committed checkpoint; check time synchronization", "behind", step.clockWait.Round(time.Millisecond))

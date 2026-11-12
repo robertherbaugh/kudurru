@@ -73,6 +73,9 @@ func (s *servingRuntime) captureAnchorOperation(ctx context.Context, target serv
 	if err != nil {
 		return nil, err
 	}
+	if s.anchorCaptureRead != nil {
+		s.anchorCaptureRead()
+	}
 	if image == nil || !image.Generation().Same(token.Generation()) {
 		return nil, errAnchorPolicy
 	}

@@ -271,3 +271,53 @@ func TestAnchorUpdaterCheckpointWaitSurvivesOrdinaryWrites(t *testing.T) {
 		t.Fatal("waiting updater changed accepted history")
 	}
 }
+
+// A fresh node commits its first-boot status writes while the updater
+// starts. A commit that lands between a step's image read and its currency
+// check makes only that capture stale: nothing was acquired, authenticated
+// or staged, so the updater captures again on its next step instead of
+// parking for the writer term (seen on every empty-node start of the
+// managed anchor mounts as "root anchor updater stopped for this writer
+// term: replication: authority changed").
+func TestAnchorUpdaterCaptureLostToConcurrentCommitCapturesAgain(t *testing.T) {
+	endpoint, seeds, reads := anchorOperationServer(t, 2, nil)
+	s, ctx, target, host := anchorOperationFixture(t, endpoint, seeds)
+	clock, err := trustanchors.NewSessionClock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := &anchorUpdater{runtime: s, target: target, host: host, clock: clock}
+	if first, err := u.step(ctx); err != nil || !first.attempted || reads.Load() != 1 {
+		t.Fatal("fixture did not commit one original bootstrap", err, reads.Load())
+	}
+	owner := anchorOperationOwner(ctx, t, s)
+	state, err := owner.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raced atomic.Bool
+	s.anchorCaptureRead = func() {
+		if raced.CompareAndSwap(false, true) {
+			anchorOrdinaryWrite(ctx, t, s.opts.Store, target.Term, "capture-race")
+		}
+	}
+	started := time.Now()
+	lost, err := u.step(ctx)
+	if !raced.Load() {
+		t.Fatal("fixture write did not run inside the capture")
+	}
+	if err != nil || u.stopped != nil {
+		t.Fatal("a capture made stale by a concurrent commit stopped the updater", err)
+	}
+	if lost.attempted || !lost.captureLost || lost.next.Before(started) || reads.Load() != 1 || u.offset != 1 || !u.retryAt.IsZero() {
+		t.Fatal("a stale capture acquired, rotated or scheduled a transport retry", lost, reads.Load(), u.offset)
+	}
+	s.anchorCaptureRead = nil
+	again, err := u.step(ctx)
+	if err != nil || again.attempted || again.captureLost || !again.next.Equal(state.Inspect().Schedule.NextRefresh) || reads.Load() != 1 {
+		t.Fatal("the next step did not capture again and wait for the accepted refresh", again, err, reads.Load())
+	}
+	if anchorOperationOwner(ctx, t, s).Version() != owner.Version() {
+		t.Fatal("a stale capture changed accepted history")
+	}
+}

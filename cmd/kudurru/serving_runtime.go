@@ -108,6 +108,10 @@ type servingRuntime struct {
 	// forwarded self-service command commits; tests only. Nil pulls through
 	// member.
 	memberSelfPull func(context.Context) error
+	// anchorCaptureRead runs right after a root anchor operation read its
+	// image, before it checks that image is still current; tests only. Nil
+	// does nothing.
+	anchorCaptureRead func()
 }
 
 func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *servingRuntime, err error) {
