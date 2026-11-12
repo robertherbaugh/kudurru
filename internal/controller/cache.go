@@ -46,6 +46,10 @@ type cache struct {
 	// that collide with a record a dynamic update added to its committed
 	// data (dynamicConflicts).
 	dynamic map[string]map[store.Key][]conflict
+	// dynamicAt records, per primary zone, the zone view and committed head
+	// version dynamic was derived from, so a publication that changed
+	// neither does not parse the zone's endpoints again.
+	dynamicAt map[string]dynamicStamp
 }
 
 type pendingStatus struct {
@@ -66,6 +70,7 @@ func newCache() *cache {
 		builds:       map[string]*zoneBuild{},
 		buildAt:      map[string]uint64{},
 		dynamic:      map[string]map[store.Key][]conflict{},
+		dynamicAt:    map[string]dynamicStamp{},
 	}
 }
 

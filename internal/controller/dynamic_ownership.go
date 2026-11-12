@@ -81,17 +81,44 @@ func (c *Controller) reconcileDynamicOwnership(ctx context.Context, owners Commi
 		return
 	}
 	view := c.cache.view(zone.Name, c.opts.Validate)
+	// requeueCommittedPrimaries reconciles every primary zone on every
+	// publication. A zone whose view (cached per zone version) and committed
+	// head are both unchanged keeps the conflicts already derived from them.
+	stamp := dynamicStamp{view: view, version: ownership.Version()}
+	if c.cache.dynamicCurrent(zone.Name, stamp) {
+		return
+	}
 	_, rrsets, _ := c.cache.snapshotZone(zone.Name)
-	for _, k := range c.cache.setDynamic(zone.Name, dynamicConflicts(zone, view, rrsets, ownership)) {
+	for _, k := range c.cache.setDynamic(zone.Name, stamp, dynamicConflicts(zone, view, rrsets, ownership)) {
 		c.queues[KindDNSRecordSet].Add(k)
 	}
 }
 
-// setDynamic stores the dynamic-ownership conflicts of zone and returns
-// the record sets whose conflicts changed.
-func (c *cache) setDynamic(zone string, conflicts map[store.Key][]conflict) []store.Key {
+// dynamicStamp identifies the inputs dynamic conflicts were derived from.
+// A zero head version (no committed head) is never reused.
+type dynamicStamp struct {
+	view    *zoneView
+	version zonestate.Version
+}
+
+// dynamicCurrent reports whether the conflicts stored for zone were derived
+// from exactly these inputs.
+func (c *cache) dynamicCurrent(zone string, stamp dynamicStamp) bool {
+	if stamp.version == (zonestate.Version{}) {
+		return false
+	}
 	c.viewMu.Lock()
 	defer c.viewMu.Unlock()
+	at, ok := c.dynamicAt[zone]
+	return ok && at == stamp
+}
+
+// setDynamic stores the dynamic-ownership conflicts of zone and the inputs
+// they came from, and returns the record sets whose conflicts changed.
+func (c *cache) setDynamic(zone string, stamp dynamicStamp, conflicts map[store.Key][]conflict) []store.Key {
+	c.viewMu.Lock()
+	defer c.viewMu.Unlock()
+	c.dynamicAt[zone] = stamp
 	changed := changedConflicts(c.dynamic[zone], conflicts)
 	if len(conflicts) == 0 {
 		delete(c.dynamic, zone)

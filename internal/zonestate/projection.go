@@ -135,6 +135,19 @@ type DynamicOwnership struct {
 	// dnames holds the owner names of the dynamic DNAMEs: a static record
 	// at or below one of them conflicts with it.
 	dnames map[string]bool
+	// version identifies the committed head the index was built from; it
+	// is zero without one.
+	version Version
+}
+
+// Version identifies the committed head the index was built from (zero
+// without one). Two indexes with the same nonzero version hold the same
+// dynamic records, so a caller may keep what it derived from the first.
+func (o *DynamicOwnership) Version() Version {
+	if o == nil {
+		return Version{}
+	}
+	return o.version
 }
 
 // NewDynamicOwnership indexes the dynamic records of base. A view without
@@ -144,6 +157,7 @@ func NewDynamicOwnership(base *View) (*DynamicOwnership, error) {
 	if base == nil || base.Head == nil || base.Aggregate == nil {
 		return o, nil
 	}
+	o.version = Version{Zone: base.Head.Spec.Zone, CommitSequence: base.Head.Spec.CommitSequence, RootDigest: base.Head.Spec.RootDigest}
 	for _, r := range base.Aggregate.Records {
 		if r.Provenance.SourceID != "" {
 			continue
