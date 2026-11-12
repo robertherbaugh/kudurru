@@ -30,6 +30,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
+	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -89,7 +90,7 @@ func newAnchorEdgeLab(t *testing.T, cfg *config.Config) (*anchorEdgeLab, string)
 		prefix = p
 	}
 	name := prefix + "-" + strconv.FormatInt(time.Now().UnixNano(), 36)
-	const image = "sha256:89c7f196a871779f5df5da3d7057488f3a4f4ce192f21b37a1fa230b7fd5930e"
+	const image = kudurrutest.DnsdistImage
 	fixture, err := json.Marshal(map[string]string{"name": name, "image": image})
 	if err != nil {
 		t.Fatal(err)

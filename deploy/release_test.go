@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	yamlv3 "go.yaml.in/yaml/v3"
+
+	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
 )
 
 // TestGoreleaserConfig pins the release contract of .goreleaser.yaml
@@ -282,7 +284,8 @@ func TestDockerfile(t *testing.T) {
 // (<program version>-k<appVersion>) on the versions the release builds:
 // publish.yml tags kudurru-dnsdist with the version of the FROM line in
 // images/dnsdist/Dockerfile, which Dependabot bumps, and kudurru-keepalived
-// with KEEPALIVED_VERSION.
+// with KEEPALIVED_VERSION. kudurrutest.DnsdistImage, the program of the live
+// dnsdist suites, must be that same FROM reference.
 func TestSupervisorVersions(t *testing.T) {
 	var values struct {
 		Edge struct {
@@ -303,6 +306,10 @@ func TestSupervisorVersions(t *testing.T) {
 	}
 	if got := values.Edge.DnsdistVersion; got != m[2] {
 		t.Errorf("values.yaml edge.dnsdistVersion is %q, images/dnsdist/Dockerfile builds dnsdist %s", got, m[2])
+	}
+	// The live dnsdist suites run the same upstream image by digest (D383).
+	if kudurrutest.DnsdistImage != m[1] {
+		t.Errorf("kudurrutest.DnsdistImage is %q, images/dnsdist/Dockerfile builds FROM %s", kudurrutest.DnsdistImage, m[1])
 	}
 	k := regexp.MustCompile(`(?m)^ARG KEEPALIVED_VERSION=(\S+)$`).FindStringSubmatch(string(readRepoFile(t, "images/keepalived/Dockerfile")))
 	if k == nil {

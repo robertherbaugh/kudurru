@@ -33,9 +33,11 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/nodehealth"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
+	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
 )
 
-const consoleLabImage = "sha256:89c7f196a871779f5df5da3d7057488f3a4f4ce192f21b37a1fa230b7fd5930e"
+// consoleLabImage is the upstream dnsdist image by registry digest (D383).
+const consoleLabImage = kudurrutest.DnsdistImage
 
 func certificateForTest(t *testing.T, serial int64) (cert, key []byte) {
 	t.Helper()

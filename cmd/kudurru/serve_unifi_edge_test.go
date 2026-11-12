@@ -16,6 +16,7 @@ import (
 	"github.com/robertherbaugh/kudurru/ee/edge"
 	edgednsdist "github.com/robertherbaugh/kudurru/ee/edge/dnsdist"
 	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
 )
 
 // startUniFiHostnameEdge is opt-in because ordinary tests do not require a
@@ -27,7 +28,7 @@ func startUniFiHostnameEdge(t *testing.T, cfg *config.Config, secret []byte) str
 		return ""
 	}
 	const daemon = "unix:///tmp/kudurru-lab-docker.sock"
-	const image = "sha256:89c7f196a871779f5df5da3d7057488f3a4f4ce192f21b37a1fa230b7fd5930e"
+	const image = kudurrutest.DnsdistImage
 	address := offlineFreeAddress(t, "tcp")
 	_, rawPort, err := net.SplitHostPort(address)
 	if err != nil {

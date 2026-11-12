@@ -32,6 +32,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -83,7 +84,7 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly bool) {
 		defer cancel()
 		_ = exec.CommandContext(ctx, "docker", append(docker, "rm", "--force", name)...).Run() //nolint:gosec // fixed daemon, unique owned name; no shell or arbitrary command
 	})
-	image := "sha256:89c7f196a871779f5df5da3d7057488f3a4f4ce192f21b37a1fa230b7fd5930e"
+	image := kudurrutest.DnsdistImage
 	fixture, _ := json.Marshal(map[string]string{"name": name, "image": image})
 	if err := os.WriteFile(filepath.Join(dir, "fixture.json"), fixture, 0o600); err != nil { //nolint:gosec // fresh private temporary child below explicit fixture parent
 		t.Fatal(err)
