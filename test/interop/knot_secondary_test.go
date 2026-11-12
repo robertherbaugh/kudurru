@@ -315,9 +315,15 @@ func TestKnotInboundSecondaryTransfer(t *testing.T) {
 		current = got
 		// Knot 3.6.2 answers an IXFR at the current serial with one signed SOA
 		// but without the AA bit (BIND sets it). The receiver requires AA on
-		// every transfer message and refuses that reply without data. The
-		// Manager never asks for it: at an unchanged SOA serial it keeps its
-		// stored copy and sends no transfer (manager.go, refresh).
+		// every transfer message and refuses that reply without data. A
+		// refresh against a single consistent primary does not ask for it: at
+		// an unchanged SOA serial the Manager keeps its stored copy and sends
+		// no transfer (manager.go, refresh). It can still be reached when the
+		// SOA poll and the IXFR land on different instances behind one
+		// address, or the primary moves back to the stored serial between the
+		// two requests; that refresh then fails and is not confirmed, and no
+		// data is lost (followup: accept a signed single-SOA reply at the
+		// client's serial without AA?).
 		confirmed, err := good.IXFR(t.Context(), zone, p.addr, got)
 		if err == nil || confirmed != nil || !strings.Contains(err.Error(), "non-authoritative response") {
 			t.Fatalf("Knot same-serial IXFR reply was not the known AA-less refusal: %v", err)
