@@ -103,6 +103,7 @@ func (s *servingRuntime) prepareMemberServices(ctx context.Context, credentials 
 		Store: s.opts.Store, Source: source, NodeName: name,
 		Served:       s.publisher.Pin,
 		WithOperator: s.withPromotionAuthorization,
+		Interval:     s.memberPullInterval,
 	})
 	if err != nil {
 		return nil, nil, nil, err

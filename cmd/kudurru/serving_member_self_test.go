@@ -99,6 +99,27 @@ func harnessLocalUser(t *testing.T, h *rootMemberHarness) internalv1.LocalUser {
 	return user
 }
 
+// harnessAuditRows counts the primary's object audit rows for key that
+// command id wrote, and those of them that name the original caller with the
+// forwarded command's request attribution, as for every other forwarded domain.
+func harnessAuditRows(t *testing.T, h *rootMemberHarness, key store.Key, id, method string) (attributed, all int) {
+	t.Helper()
+	entries, err := h.f.s.opts.Store.ReadAudit(t.Context(), sqlite.AuditQuery{Kind: key.Kind, Name: key.Name, Limit: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.RequestID != id {
+			continue
+		}
+		all++
+		if entry.Actor == "User:root-command" && entry.Authz != "" && entry.RequestPath == clusterreplica.PathWrite && entry.RequestMethod == method && entry.Result == sqlite.AuditSuccess {
+			attributed++
+		}
+	}
+	return attributed, all
+}
+
 func harnessImageContains(t *testing.T, h *rootMemberHarness, secrets ...string) bool {
 	t.Helper()
 	image, err := h.f.s.opts.Store.ReadGeneration(t.Context())
@@ -225,6 +246,19 @@ func TestRootMemberPasswordCommandActualHTTP(t *testing.T) {
 	if status, again := h.send(tokenChange); status != http.StatusOK || !bytes.Equal(canonicalOutcome(t, again.Body), canonicalOutcome(t, out.Body)) || harnessLocalUser(t, h).ResourceVersion != changed.ResourceVersion {
 		t.Fatal("dedup replay changed the retained password outcome or wrote again", status)
 	}
+	// Each committed change leaves the two object audit rows of the shared
+	// password body (the account's update and its passwordChangedAt status)
+	// in the same commit, both attributed to the original caller; the
+	// duplicate adds none.
+	userKey := store.Key{Kind: "LocalUser", Name: "root-command"}
+	for _, id := range []string{"cookie-change", "token-change"} {
+		if attributed, all := harnessAuditRows(t, h, userKey, id, http.MethodPost); attributed != 2 || all != 2 {
+			t.Fatal("password change audit is not the two rows attributed to the caller", id, attributed, all)
+		}
+	}
+	if _, all := harnessAuditRows(t, h, userKey, "wrong-current", http.MethodPost); all != 0 {
+		t.Fatal("a refused password change wrote the account")
+	}
 
 	// Repeated wrong passwords reach the shared lockout: the primary's 429
 	// with its Retry-After, retained like any other refusal.
@@ -319,6 +353,15 @@ func TestRootMemberTokenCommandActualHTTP(t *testing.T) {
 	if err := h.f.s.opts.Store.Get(t.Context(), store.Key{Kind: "APIToken", Name: id}, &internalv1.APIToken{}); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("the revoked token is still stored", err)
 	}
+	// The creation and the revocation each leave one object audit row in
+	// their commit, attributed to the original caller.
+	tokenKey := store.Key{Kind: "APIToken", Name: id}
+	if attributed, all := harnessAuditRows(t, h, tokenKey, "create", http.MethodPost); attributed != 1 || all != 1 {
+		t.Fatal("token creation audit is not one row attributed to the caller", attributed, all)
+	}
+	if attributed, all := harnessAuditRows(t, h, tokenKey, "self-revoke", http.MethodDelete); attributed != 1 || all != 1 {
+		t.Fatal("token revocation audit is not one row attributed to the caller", attributed, all)
+	}
 	if status, out := h.send(revoke); *h.sendErr == nil && status == http.StatusOK && out.Status == http.StatusOK {
 		t.Fatal("a revoked token recovered its retained revocation")
 	}
@@ -404,8 +447,23 @@ func TestRootMemberForwardPasswordAndTokensActualHTTP(t *testing.T) {
 	if err := primaryStore.Get(t.Context(), store.Key{Kind: "APIToken", Name: minted.ID}, &stored); err != nil || stored.Spec.SecretHash != tokens.Hash(minted.Token) {
 		t.Fatal("the primary did not store the token", err)
 	}
+	// The follower refuses a request that it can check itself; the primary
+	// refuses a scope wider than the caller's token (admin only), and the
+	// follower relays that retained 403. Neither stores a token.
 	if answer := f.request(t, nil, http.MethodPost, "/auth/tokens", token, api.CreateTokenRequest{Scopes: []string{"no-such-role"}}); answer.status != http.StatusBadRequest {
 		t.Fatalf("invalid token request through the follower: %d %s", answer.status, answer.raw)
+	}
+	if answer := f.request(t, nil, http.MethodPost, "/auth/tokens", token, api.CreateTokenRequest{Description: "wider than the caller", Scopes: []string{"viewer"}}); answer.status != http.StatusForbidden || answer.Error.Key == "" {
+		t.Fatalf("a wider token scope through the follower: %d %s", answer.status, answer.raw)
+	}
+	objects, err := primaryStore.List(t.Context(), "APIToken", store.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range objects.Items {
+		if o.(*internalv1.APIToken).Spec.Description == "wider than the caller" {
+			t.Fatal("the primary stored a refused token")
+		}
 	}
 	if answer := f.request(t, nil, http.MethodDelete, "/auth/tokens/nosuchtoken0", token, nil); answer.status != http.StatusNotFound {
 		t.Fatalf("revoking an unknown token through the follower: %d %s", answer.status, answer.raw)
@@ -418,5 +476,161 @@ func TestRootMemberForwardPasswordAndTokensActualHTTP(t *testing.T) {
 	}
 	if answer := f.request(t, nil, http.MethodGet, "/auth/me", minted.Token, nil); answer.status != http.StatusUnauthorized {
 		t.Fatalf("the revoked token on the follower: %d %s", answer.status, answer.raw)
+	}
+}
+
+// setFollowerFixturePassword stores password as root-command's password on the
+// fixture's primary and waits until the follower's published view carries it.
+func setFollowerFixturePassword(t *testing.T, f *memberForwardHTTPFixture, password string) internalv1.LocalUser {
+	t.Helper()
+	primaryStore := f.primary.s.opts.Store
+	hash, err := users.NewHasher(1).Hash(t.Context(), password)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer, err := primaryStore.WriterToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var user internalv1.LocalUser
+	if err := primaryStore.Command(sqlite.WithWriterToken(t.Context(), writer), writer.Term(), func(ctx context.Context, tx *sqlite.CommandTx) error {
+		if err := tx.Get(ctx, store.Key{Kind: "LocalUser", Name: "root-command"}, &user); err != nil {
+			return err
+		}
+		user.Spec.PasswordHash = hash
+		_, err := tx.Apply(ctx, &user, store.ApplyOptions{Manager: store.ManagerSystem})
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.primary.s.publisher.Wake()
+	if !followerViewCarriesPassword(t, f, string(user.UID), hash, true) {
+		t.Fatal("the follower never served the fixture password")
+	}
+	return user
+}
+
+// followerViewCarriesPassword reports whether the follower's published view
+// carries hash for the account; pull pulls the primary's state first.
+func followerViewCarriesPassword(t *testing.T, f *memberForwardHTTPFixture, accountUID, hash string, pull bool) bool {
+	t.Helper()
+	return kudurrutestEventually(10*time.Second, func() bool {
+		if pull {
+			_ = f.puller.Pull(t.Context())
+		}
+		lease, err := f.follower.publisher.CaptureHTTP(t.Context())
+		if err != nil {
+			return false
+		}
+		defer lease.Release()
+		value, _ := lease.Bundle().Component("auth")
+		view, ok := value.(*servingauth.View)
+		return ok && viewCarriesPassword(view, accountUID, hash)
+	})
+}
+
+func primaryPasswordIs(t *testing.T, f *memberForwardHTTPFixture, password string) bool {
+	t.Helper()
+	var user internalv1.LocalUser
+	if err := f.primary.s.opts.Store.Get(t.Context(), store.Key{Kind: "LocalUser", Name: "root-command"}, &user); err != nil {
+		t.Fatal(err)
+	}
+	verified, err := users.NewHasher(1).Verify(t.Context(), user.Spec.PasswordHash, password)
+	return err == nil && verified && !user.Spec.MustChangePassword
+}
+
+// A token caller changes its own password through the follower's mounted API.
+// The scheduled pull runs once an hour here, so only the follower's explicit
+// pull after the commit can install the change: the answer is 200 from the
+// follower's view. When the follower cannot serve the change in time (its
+// explicit pull is skipped), the committed change is still answered 200 for
+// the original account, never `503 unavailable`, which says that nothing was
+// sent; revokeTokens revokes the calling token, which the follower refuses
+// once it installs the primary's state.
+func TestRootMemberForwardTokenCallerPasswordActualHTTP(t *testing.T) {
+	f := newMemberForwardHTTPFixture(t, false, memberForwardRarePull)
+	tickFixtureClock(t, f.primary)
+	const first, second, third = "token-caller-password-first-1", "token-caller-password-second-2", "token-caller-password-third-3"
+	setFollowerFixturePassword(t, f, first)
+	token := f.primary.token
+
+	answer := f.request(t, nil, http.MethodPost, "/auth/password", token, api.PasswordChangeRequest{CurrentPassword: first, NewPassword: second})
+	var info api.SessionInfo
+	if answer.status != http.StatusOK || json.Unmarshal(answer.raw, &info) != nil || info.MustChangePassword || info.Principal.ID != "local:root-command" || info.Principal.TokenID == "" {
+		t.Fatalf("a token caller's password change through the follower: %d %s", answer.status, answer.raw)
+	}
+	if !primaryPasswordIs(t, f, second) {
+		t.Fatal("the primary did not commit the change")
+	}
+	var mirrored internalv1.LocalUser
+	if err := f.follower.opts.Store.Get(t.Context(), store.Key{Kind: "LocalUser", Name: "root-command"}, &mirrored); err != nil {
+		t.Fatal(err)
+	}
+	if verified, err := users.NewHasher(1).Verify(t.Context(), mirrored.Spec.PasswordHash, second); err != nil || !verified {
+		t.Fatal("the follower answered before it installed the change", err)
+	}
+
+	// The follower cannot serve the next change: the committed change is
+	// still answered for the account, and it revokes the calling token.
+	f.skipSelfPull.Store(true)
+	answer = f.request(t, nil, http.MethodPost, "/auth/password", token, api.PasswordChangeRequest{CurrentPassword: second, NewPassword: third, RevokeTokens: true})
+	info = api.SessionInfo{}
+	if answer.status != http.StatusOK || json.Unmarshal(answer.raw, &info) != nil || info.MustChangePassword || info.Principal.ID != "local:root-command" {
+		t.Fatalf("a committed password change the follower could not serve yet: %d %s", answer.status, answer.raw)
+	}
+	if !primaryPasswordIs(t, f, third) {
+		t.Fatal("the primary did not commit the second change")
+	}
+	if remaining, err := f.primary.s.opts.Store.List(t.Context(), "APIToken", store.ListOptions{}); err != nil || len(remaining.Items) != 0 {
+		t.Fatal("revokeTokens left a token on the primary", len(remaining.Items), err)
+	}
+	f.skipSelfPull.Store(false)
+	if err := f.puller.Pull(t.Context()); err != nil {
+		t.Fatal("the follower could not pull the primary's state", err)
+	}
+	if !kudurrutestEventually(10*time.Second, func() bool {
+		return f.request(t, nil, http.MethodGet, "/auth/me", token, nil).status == http.StatusUnauthorized
+	}) {
+		t.Fatal("the revoked token still works on the follower")
+	}
+}
+
+// A cookie caller's change that commits while the follower cannot install the
+// new session within the route's bound is answered `503
+// committed_output_unavailable`, never `unavailable`: the password changed,
+// and the caller signs in with the new one.
+func TestRootMemberForwardCookiePasswordUnservedActualHTTP(t *testing.T) {
+	f := newMemberForwardHTTPFixture(t, false, memberForwardRarePull)
+	tickFixtureClock(t, f.primary)
+	const first, second = "cookie-unserved-password-first-1", "cookie-unserved-password-second-2"
+	setFollowerFixturePassword(t, f, first)
+	browser := followerSignIn(t, f, first)
+	f.skipSelfPull.Store(true)
+	encoded, err := json.Marshal(api.PasswordChangeRequest{CurrentPassword: first, NewPassword: second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, f.live.URL+api.BasePath+"/auth/password", bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("X-Kudurru-CSRF", browser.csrf)
+	response, err := browser.client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	var refused api.Error
+	if err := json.NewDecoder(response.Body).Decode(&refused); err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusServiceUnavailable || refused.Body.Key != "committed_output_unavailable" {
+		t.Fatalf("an unserved committed cookie change: %d %+v", response.StatusCode, refused.Body)
+	}
+	if !primaryPasswordIs(t, f, second) {
+		t.Fatal("the primary did not commit the change")
 	}
 }
