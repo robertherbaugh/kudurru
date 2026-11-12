@@ -202,6 +202,9 @@ func (failingBlocks) EdgeBlocks(context.Context, string) (internalapi.EdgeBlockL
 // queries at the real edge and not another client's, a revoke lets the
 // client through again, a restarted edge with no reachable backend keeps
 // dropping until the expiry, and dnsdist lets the client through after it.
+// An IPv4 /30 drops a client inside it and answers one just outside, and an
+// IPv6 prefix drops ::1, proving the rendered prefix length on the real
+// dynamic-block table.
 func TestRunServeEdgeBlockLiveDnsdist(t *testing.T) {
 	if os.Getenv("KUDURRU_F43_LIVE") != "1" {
 		t.Skip("set KUDURRU_F43_LIVE=1 for owned pinned dnsdist acceptance")
@@ -267,7 +270,8 @@ func TestRunServeEdgeBlockLiveDnsdist(t *testing.T) {
 	_, port, _ := net.SplitHostPort(offlineFreeAddress(t, "tcp"))
 	listenPort, _ := strconv.Atoi(port)
 	edgeAddr := net.JoinHostPort("127.0.0.1", port)
-	options := edge.Options{ServerID: "edge-block-live", Listen: []string{"127.0.0.1"}, Protocols: []edge.Protocol{edge.Do53}, Ports: map[edge.Protocol]int{edge.Do53: listenPort}, API: offlineFreeAddress(t, "tcp"), Console: offlineFreeAddress(t, "tcp"), ProxyProtocolSecret: string(secret)}
+	edgeAddr6 := net.JoinHostPort("::1", port)
+	options := edge.Options{ServerID: "edge-block-live", Listen: []string{"127.0.0.1", "::1"}, Protocols: []edge.Protocol{edge.Do53}, Ports: map[edge.Protocol]int{edge.Do53: listenPort}, API: offlineFreeAddress(t, "tcp"), Console: offlineFreeAddress(t, "tcp"), ProxyProtocolSecret: string(secret)}
 	source := &cluster.StaticSource{Endpoints: []cluster.Endpoint{{Name: r.cfg.Node.Name, Address: r.cfg.Listeners.DNS[0].Address, InternalAddress: r.cfg.Listeners.Internal.Address, Ready: true, Serving: true}}}
 	configDir := filepath.Join(dir, "config")
 	start := func(blocks dnsdist.EdgeBlockLister) (*dnsdist.Supervisor, func()) {
@@ -299,7 +303,11 @@ func TestRunServeEdgeBlockLiveDnsdist(t *testing.T) {
 		q := new(dns.Msg)
 		q.SetQuestion(strconv.FormatInt(time.Now().UnixNano(), 36)+".block.example.", dns.TypeA)
 		c := &dns.Client{Timeout: 700 * time.Millisecond, Dialer: &net.Dialer{LocalAddr: &net.UDPAddr{IP: net.ParseIP(source)}}}
-		m, _, err := c.ExchangeContext(t.Context(), q, edgeAddr)
+		target := edgeAddr
+		if strings.Contains(source, ":") {
+			target = edgeAddr6
+		}
+		m, _, err := c.ExchangeContext(t.Context(), q, target)
 		if err != nil {
 			return false
 		}
@@ -322,7 +330,9 @@ func TestRunServeEdgeBlockLiveDnsdist(t *testing.T) {
 	}
 
 	sup, stop := start(r.internal)
-	edgeBlockWait(t, "clients answered before any block", func() bool { return answered("127.0.0.2") && answered("127.0.0.3") && answered("127.0.0.4") })
+	edgeBlockWait(t, "clients answered before any block", func() bool {
+		return answered("127.0.0.2") && answered("127.0.0.3") && answered("127.0.0.4") && answered("127.0.0.9") && answered("127.0.0.12") && answered("::1")
+	})
 	var short, long api.EdgeBlock
 	r.command(t, http.MethodPost, "/edge/blocks", map[string]any{"prefix": "127.0.0.2", "seconds": edgeblock.MinDuration / time.Second}, http.StatusCreated, &short)
 	r.command(t, http.MethodPost, "/edge/blocks", map[string]any{"prefix": "127.0.0.4/32", "seconds": 600}, http.StatusCreated, &long)
@@ -331,6 +341,16 @@ func TestRunServeEdgeBlockLiveDnsdist(t *testing.T) {
 		t.Fatal("an unblocked client was dropped")
 	}
 	t.Log("PASS pushed blocks drop the blocked clients' queries at the real edge; another client is answered")
+	// Prefix lengths: a /30 covers 127.0.0.8-11 only, and an IPv6 /127
+	// covers ::1. The IPv4 clients outside both stay answered.
+	var narrow, v6 api.EdgeBlock
+	r.command(t, http.MethodPost, "/edge/blocks", map[string]any{"prefix": "127.0.0.8/30", "seconds": 600}, http.StatusCreated, &narrow)
+	r.command(t, http.MethodPost, "/edge/blocks", map[string]any{"prefix": "::/127", "seconds": 600}, http.StatusCreated, &v6)
+	edgeBlockWait(t, "prefix blocks drop the covered clients", func() bool { return installed(sup) && !answered("127.0.0.9") && !answered("::1") })
+	if !answered("127.0.0.12") || !answered("127.0.0.3") {
+		t.Fatal("a prefix block dropped a client outside its prefix")
+	}
+	t.Log("PASS an IPv4 /30 and an IPv6 /127 drop the clients they cover and nothing else")
 
 	r.command(t, http.MethodDelete, "/edge/blocks/"+long.ID, nil, http.StatusOK, nil)
 	edgeBlockWait(t, "revoked client answered", func() bool { return answered("127.0.0.4") })
@@ -370,7 +390,9 @@ func TestRunServeEdgeBlockLiveDnsdist(t *testing.T) {
 // TestRunServeKubeEdgeBlocksTwoReplicas: on the Kubernetes driver a block
 // committed through one replica's API is served to edges by the other
 // replica's internal listener, a revoke through the second replica reaches
-// the first, and a bearer without a grant is refused.
+// the first, each command is in the audit trail of the replica that ran it,
+// an invalid bearer is refused with 401 and a valid token without
+// edgeblocks.write with 403, on both replicas.
 func TestRunServeKubeEdgeBlocksTwoReplicas(t *testing.T) {
 	control := &envtest.Environment{BinaryAssetsDirectory: mountedKubeTestAssets(t), CRDDirectoryPaths: []string{filepath.Join("..", "..", "deploy", "kustomize", "crd", "bases")}, ErrorIfCRDPathMissing: true}
 	control.ControlPlane.GetAPIServer().Configure().Set("advertise-address", "127.0.0.1").Set("endpoint-reconciler-type", "none")
@@ -417,8 +439,10 @@ func TestRunServeKubeEdgeBlocksTwoReplicas(t *testing.T) {
 	wire, _ := tokens.Generate()
 	t.Setenv(tokens.EnvBootstrapToken, wire)
 	t.Setenv(tokens.EnvBootstrapTokenFile, "")
+	// The audit trail (GET /audit) is a licensed feature; edge blocks are not.
+	licenseKey := trustTestKey(t)(license.Claims{Plan: license.PlanPersonal, Nodes: 3, Features: []license.Feature{license.FeatureAudit}})
 	for _, cfg := range configs {
-		_ = startStaticMount(t, cfg)
+		_ = startLicensedMount(t, cfg, licenseKey)
 	}
 	creds, err := internalapi.NewCredentials(internalapi.CredentialOptions{Key: make([]byte, 32), NodeName: "edge"})
 	if err != nil {
@@ -465,6 +489,41 @@ func TestRunServeKubeEdgeBlocksTwoReplicas(t *testing.T) {
 	if code := request(0, http.MethodPost, "/edge/blocks", "kdr_not_a_token", map[string]any{"prefix": "192.0.2.0/24", "seconds": 600}, nil); code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated create = %d", code)
 	}
+	// A real token narrowed to the viewer role holds no edgeblocks.write.
+	var viewer struct {
+		Token string `json:"token"`
+	}
+	if code := request(0, http.MethodPost, "/auth/tokens", wire, map[string]any{"description": "edge block viewer", "scopes": []string{"viewer"}, "expiresIn": "1h"}, &viewer); code != http.StatusCreated || viewer.Token == "" {
+		t.Fatalf("viewer token = %d", code)
+	}
+	auditActions := func(i int, id string) map[string]bool {
+		t.Helper()
+		var page api.AuditPage
+		if code := request(i, http.MethodGet, "/audit?order=desc", wire, nil, &page); code != http.StatusOK {
+			t.Fatalf("audit read on replica %d = %d", i, code)
+		}
+		seen := map[string]bool{}
+		for _, e := range page.Items {
+			if strings.HasPrefix(e.Action, "edgeblock.") && (id == "" || e.Resource.Name == id) {
+				seen[e.Action+"/"+string(e.Result)] = true
+			}
+		}
+		return seen
+	}
+	for i := range configs {
+		edgeBlockWait(t, "viewer token valid on the replica", func() bool {
+			return request(i, http.MethodGet, "/edge/blocks", viewer.Token, nil, nil) != http.StatusUnauthorized
+		})
+		if code := request(i, http.MethodPost, "/edge/blocks", viewer.Token, map[string]any{"prefix": "192.0.2.0/24", "seconds": 600}, nil); code != http.StatusForbidden {
+			t.Fatalf("create without edgeblocks.write on replica %d = %d", i, code)
+		}
+		if code := request(i, http.MethodDelete, "/edge/blocks/00000000000000a1", viewer.Token, nil, nil); code != http.StatusForbidden {
+			t.Fatalf("revoke without edgeblocks.write on replica %d = %d", i, code)
+		}
+		if seen := auditActions(i, ""); len(seen) != 0 {
+			t.Fatalf("refused commands reached the edge block audit on replica %d: %+v", i, seen)
+		}
+	}
 	var created api.EdgeBlock
 	if code := request(0, http.MethodPost, "/edge/blocks", wire, map[string]any{"prefix": "192.0.2.0/24", "seconds": 600, "reason": "flood"}, &created); code != http.StatusCreated {
 		t.Fatalf("create = %d", code)
@@ -478,6 +537,9 @@ func TestRunServeKubeEdgeBlocksTwoReplicas(t *testing.T) {
 	if !strings.HasPrefix(owner, "kubernetes:") {
 		t.Fatalf("owner %q", owner)
 	}
+	if seen := auditActions(0, created.ID); !seen["edgeblock.create/success"] {
+		t.Fatalf("create missing from the first replica's audit: %+v", seen)
+	}
 	if code := request(1, http.MethodPost, "/edge/blocks", wire, map[string]any{"prefix": "192.0.2.9/24", "seconds": 600}, nil); code != http.StatusConflict {
 		t.Fatalf("duplicate through the other replica = %d", code)
 	}
@@ -488,4 +550,7 @@ func TestRunServeKubeEdgeBlocksTwoReplicas(t *testing.T) {
 		l, err := served(0)
 		return err == nil && l.Revision == 2 && len(l.Blocks) == 0 && l.Owner == owner
 	})
+	if seen := auditActions(1, created.ID); !seen["edgeblock.revoke/success"] {
+		t.Fatalf("revoke missing from the second replica's audit: %+v", seen)
+	}
 }

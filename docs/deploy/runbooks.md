@@ -308,6 +308,13 @@ dnsdist expires every entry on its own. A revoke clears dnsdist's dynamic
 block table and reinstalls the remaining blocks, so clients that the rate
 rules had blocked are let through until they exceed the rate again.
 
+Each edge remembers the newest revision of the block set it applied, so a
+follower that lags behind cannot undo a block or revoke while the primary
+misses a poll. After restoring an older backup (or promoting a follower that
+had lagged), the edges keep the newer set for five minutes and then take the
+restored one; to apply it at once, restart the edges after deleting
+`edge-blocks.json` in their configuration directory.
+
 ## The primary of an enrolled SQLite cluster is lost
 
 Symptoms: the API and the dashboard of the primary do not answer. The
