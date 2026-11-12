@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"math/big"
@@ -563,5 +564,45 @@ func TestConformanceReadBackAfterExplicitApply(t *testing.T) {
 	report, _ = Run(t.Context(), hooks)
 	if report.Passed || len(report.Checks) < 2 || report.Checks[len(report.Checks)-1].Name != "probe_selection" {
 		t.Fatal("read-back ran against a peer without records", report.Checks)
+	}
+}
+
+// The records and read-back probes accept a list as long as the webhook
+// publisher reads (MaxRecordItems), above the generic element bound, and
+// refuse a longer one.
+func TestConformanceRecordListBound(t *testing.T) {
+	list := func(n int) []byte {
+		var b strings.Builder
+		b.WriteByte('[')
+		for i := range n {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			fmt.Fprintf(&b, `{"dnsName":"h%d.example.test","targets":["192.0.2.1"],"recordType":"A","recordTTL":60}`, i)
+		}
+		b.WriteByte(']')
+		return []byte(b.String())
+	}
+	for _, tc := range []struct {
+		n    int
+		pass bool
+	}{{MaxItems + 1000, true}, {MaxRecordItems + 1, false}} {
+		body := list(tc.n)
+		_, c := tlsTarget(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodGet && r.URL.Path == "/records" {
+				w.Header().Set("Content-Type", ExternalDNSMedia)
+				_, _ = w.Write(body)
+				return
+			}
+			externalRead(w, r)
+		}))
+		c.ExpectFile = inputFile(t, []byte(`{"contain":[{"dnsName":"h1.example.test","targets":["192.0.2.1"],"recordType":"A","recordTTL":60}]}`))
+		report, err := Run(t.Context(), c)
+		if (err == nil && report.Passed) != tc.pass {
+			t.Fatal("record list bound", tc.n, report.Checks, err)
+		}
+		if !tc.pass && report.Checks[len(report.Checks)-1].Name != "records" {
+			t.Fatal("an over-bound list failed elsewhere", report.Checks)
+		}
 	}
 }

@@ -21,8 +21,12 @@ import (
 
 // Wire bounds apply independently to every captured input and response.
 const (
-	MaxBody          = 32 << 20
-	MaxItems         = 4096
+	MaxBody  = 32 << 20
+	MaxItems = 4096
+	// MaxRecordItems bounds one GET /records list, as the webhook publisher
+	// bounds it: the planner's 10,000 record sets, a registry row for each,
+	// and room for foreign registries.
+	MaxRecordItems   = 32768
 	ExternalDNSMedia = "application/external.dns.webhook+json;version=1"
 	IntegrationMedia = "application/kudurru.integration+json;version=1"
 )

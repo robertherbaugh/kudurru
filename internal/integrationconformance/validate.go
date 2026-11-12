@@ -14,7 +14,10 @@ import (
 // Check duplicate (including case-folded) keys and bounded nesting before typed
 // decoding. Unknown fields are errors in this versioned protocol, not evidence
 // that an unimplemented extension passed.
-func validJSON(b []byte) bool {
+func validJSON(b []byte) bool { return validJSONItems(b, MaxItems) }
+
+// validJSONItems is validJSON with limit elements per array or object.
+func validJSONItems(b []byte, limit int) bool {
 	if len(b) == 0 || len(b) > MaxBody {
 		return false
 	}
@@ -42,7 +45,7 @@ func validJSON(b []byte) bool {
 		count := 0
 		for d.More() {
 			count++
-			if count > MaxItems {
+			if count > limit {
 				return false
 			}
 			if delim == '{' {
@@ -74,8 +77,10 @@ func validJSON(b []byte) bool {
 	return err == io.EOF
 }
 
-func decode(b []byte, target any) bool {
-	if !validJSON(b) {
+func decode(b []byte, target any) bool { return decodeItems(b, target, MaxItems) }
+
+func decodeItems(b []byte, target any, limit int) bool {
+	if !validJSONItems(b, limit) {
 		return false
 	}
 	d := json.NewDecoder(bytes.NewReader(b))
@@ -89,7 +94,11 @@ func jsonObject(b []byte) bool {
 }
 
 func endpoints(eps []*externaldns.Endpoint, requireTargets bool) bool {
-	if len(eps) > MaxItems {
+	return endpointsWithin(eps, requireTargets, MaxItems)
+}
+
+func endpointsWithin(eps []*externaldns.Endpoint, requireTargets bool, limit int) bool {
+	if len(eps) > limit {
 		return false
 	}
 	for _, ep := range eps {
@@ -108,6 +117,14 @@ func endpoints(eps []*externaldns.Endpoint, requireTargets bool) bool {
 func validEndpoints(b []byte) bool {
 	var eps []*externaldns.Endpoint
 	return decode(b, &eps) && endpoints(eps, true) && bytes.HasPrefix(bytes.TrimSpace(b), []byte("["))
+}
+
+// validRecordList checks a GET /records answer under the bound the webhook
+// publisher reads (MaxRecordItems), so the probe accepts every list that
+// kudurru can publish to.
+func validRecordList(b []byte) bool {
+	var eps []*externaldns.Endpoint
+	return decodeItems(b, &eps, MaxRecordItems) && endpointsWithin(eps, true, MaxRecordItems) && bytes.HasPrefix(bytes.TrimSpace(b), []byte("["))
 }
 
 func validChanges(b []byte) bool {

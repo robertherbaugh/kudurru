@@ -132,7 +132,7 @@ func (r *runner) run(ctx context.Context) {
 		return
 	}
 	if caps["records"] {
-		if !r.probe(ctx, "records", http.MethodGet, "/records", nil, nil, false, r.jsonCheck(validEndpoints)) {
+		if !r.probe(ctx, "records", http.MethodGet, "/records", nil, nil, false, r.jsonCheck(validRecordList)) {
 			return
 		}
 		if !r.probe(ctx, "adjust_endpoints", http.MethodPost, "/adjustendpoints", r.adjust, nil, false, r.jsonCheck(validEndpoints)) {
@@ -186,7 +186,7 @@ func (r *runner) run(ctx context.Context) {
 			r.failed("records_contain", err.Error())
 			return
 		}
-		if status != http.StatusOK || media != r.media || !validEndpoints(b) || !decode(b, &listed) {
+		if status != http.StatusOK || media != r.media || !validRecordList(b) || !decodeItems(b, &listed, MaxRecordItems) {
 			r.failed("records_contain", "protocol")
 			return
 		}
