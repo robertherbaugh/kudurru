@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/netip"
 	"strconv"
@@ -13,6 +14,37 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 )
+
+// ErrInvalidFilter marks a query-log filter that cannot be evaluated as
+// written. Callers answer it as a bad request.
+var ErrInvalidFilter = errors.New("sqlitelog: invalid filter")
+
+// checkFilterText refuses a filter value with a NUL byte. SQLite's LIKE
+// reads its pattern as a C string, so "*\x00x" would be evaluated as "*"
+// and match every row; PostgreSQL text cannot hold NUL at all. A stored
+// query-log name never contains a raw NUL (DNS names are kept in
+// presentation form), so the refusal loses no matchable value.
+func checkFilterText(field, v string) error {
+	if strings.IndexByte(v, 0) >= 0 {
+		return fmt.Errorf("%w: %s contains a NUL byte", ErrInvalidFilter, field)
+	}
+	return nil
+}
+
+// Validate refuses a filter that Queries cannot evaluate as written (a
+// text field with a NUL byte). The API calls it before fanning a filter out
+// to other nodes, so every scope answers the same bad request.
+func (f QueryFilter) Validate() error {
+	for _, x := range []struct{ field, v string }{
+		{"client", f.Client}, {"domain", f.Domain}, {"upstream", f.Upstream},
+		{"list", f.List}, {"zone", f.Zone}, {"policy", f.Policy},
+	} {
+		if err := checkFilterText(x.field, x.v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // likePattern turns a * wildcard pattern into a LIKE pattern with \ escapes.
 func likePattern(s string) string {
@@ -143,6 +175,9 @@ func (r *Reader) Queries(ctx context.Context, f QueryFilter) (*QueryPage, error)
 		limit = DefaultLimit
 	}
 	limit = min(limit, MaxLimit)
+	if err := f.Validate(); err != nil {
+		return nil, err
+	}
 	var cursor, cursorTS int64
 	order := "q.id DESC"
 	if f.TimeOrder {
@@ -336,6 +371,9 @@ func (r *Reader) Suggestions(ctx context.Context, field, prefix string, n int) (
 		table, col = "dict_policy", "name"
 	default:
 		return nil, fmt.Errorf("sqlitelog: unknown suggestion field %q", field)
+	}
+	if err := checkFilterText("prefix", prefix); err != nil {
+		return nil, err
 	}
 	var out *Suggestions
 	scope, err := r.readScoped(ctx, false, start, func(tx *rtx, _ *snapshot) error {

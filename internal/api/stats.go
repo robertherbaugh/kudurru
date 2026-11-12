@@ -375,6 +375,9 @@ func readerError(err error) error {
 	if errors.Is(err, sqlitelog.ErrCentralRead) {
 		return errUnavailable("central query history unavailable")
 	}
+	if errors.Is(err, sqlitelog.ErrInvalidFilter) {
+		return errInvalid("%s", strings.TrimPrefix(err.Error(), "sqlitelog: "))
+	}
 	if strings.Contains(err.Error(), "invalid cursor") {
 		return errInvalid("cursor: not a cursor returned by this API")
 	}
@@ -646,7 +649,9 @@ func queryFilter(in QueryParams) (sqlitelog.QueryFilter, error) {
 		}
 		*tc.into = t
 	}
-
+	if err := f.Validate(); err != nil {
+		return f, readerError(err)
+	}
 	return f, nil
 }
 

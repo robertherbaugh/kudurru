@@ -3,6 +3,7 @@ package sqlitelog
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strconv"
 	"strings"
@@ -357,6 +358,16 @@ func TestReaderQueries(t *testing.T) {
 	if _, err := r.Queries(ctx, QueryFilter{StatusClass: "purple", Status: []pipeline.Status{pipeline.StatusCached}}); err == nil {
 		t.Error("unknown status class accepted")
 	}
+	// SQLite reads a LIKE pattern as a C string: "*\x00" would match every
+	// row as "*". A NUL in any text field is refused instead.
+	for _, f := range []QueryFilter{
+		{Domain: "*\x00"}, {Domain: "*\x00nope"}, {Domain: "ads.example\x00"}, {Client: "ph*\x00"}, {Client: "\x00"},
+		{Upstream: "internal-ad\x00"}, {List: "oisd\x00"}, {Zone: "home.lan\x00"}, {Policy: "a/b\x00"},
+	} {
+		if p, err := r.Queries(ctx, f); !errors.Is(err, ErrInvalidFilter) {
+			t.Errorf("filter %+v: page %v, err %v, want ErrInvalidFilter", f, p, err)
+		}
+	}
 
 	// Row shape.
 	row := p1.Queries[0]
@@ -396,6 +407,9 @@ func TestReaderSuggestions(t *testing.T) {
 	}
 	if _, err := r.Suggestions(context.Background(), "rule", "", 0); err == nil {
 		t.Error("unknown field accepted")
+	}
+	if s, err := r.Suggestions(context.Background(), FieldDomain, "a\x00", 0); !errors.Is(err, ErrInvalidFilter) {
+		t.Errorf("NUL prefix: %v, %v, want ErrInvalidFilter", s, err)
 	}
 }
 
