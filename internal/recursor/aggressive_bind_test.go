@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+
+	"github.com/robertherbaugh/kudurru/internal/testutil/testport"
 )
 
 type countedAuthority struct {
@@ -170,15 +173,8 @@ func bindSign(ctx context.Context, t *testing.T, dir, file, origin, data string,
 
 func bindDenialPeer(ctx context.Context, t *testing.T, dir string) string {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := ln.Addr().String()
-	port := ln.Addr().(*net.TCPAddr).Port
-	if err := ln.Close(); err != nil {
-		t.Fatal(err)
-	}
+	port := testport.Reserve(t)
+	addr := net.JoinHostPort(testport.Host, strconv.Itoa(port))
 	conf := fmt.Sprintf(`options {
  directory %q;
  pid-file "named.pid";

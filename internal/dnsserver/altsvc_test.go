@@ -13,19 +13,14 @@ import (
 	"github.com/quic-go/quic-go/http3"
 
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/internal/testcert"
+	"github.com/robertherbaugh/kudurru/internal/testutil/testport"
 )
 
+// alternativeAddress returns a loopback address that stays reserved for the
+// test, so DoH (TCP) and DoH3 (UDP) can both bind it later.
 func alternativeAddress(t *testing.T) string {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := ln.Addr().String()
-	if err := ln.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return addr
+	return testport.Address(t)
 }
 
 func TestDoHAdvertisesMatchingLiveHTTP3(t *testing.T) {

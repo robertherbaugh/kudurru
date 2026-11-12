@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+
+	"github.com/robertherbaugh/kudurru/internal/testutil/testport"
 )
 
 // TestAdGuardBlackBox compares manually authored public-grammar cases with
@@ -78,8 +80,8 @@ func TestAdGuardBlackBox(t *testing.T) {
 		"0.0.0.0 hosts-cancel.test", "hosts-cancel.test$badfilter",
 	}
 	sel := selectionFor(t, rules...)
-	port := unusedPort(t, "udp")
-	httpPort := unusedPort(t, "tcp")
+	port := testport.Reserve(t)
+	httpPort := testport.Reserve(t)
 	dir := t.TempDir()
 	config := map[string]any{"schema_version": 32, "http": map[string]any{"address": "127.0.0.1:" + strconv.Itoa(httpPort)}, "dns": map[string]any{"bind_hosts": []string{"127.0.0.1"}, "port": port, "upstream_dns": []string{pc.LocalAddr().String()}, "bootstrap_dns": []string{}, "cache_size": 65536, "cache_enabled": false, "ratelimit": 0, "use_private_ptr_resolvers": false}, "filtering": map[string]any{"protection_enabled": true, "filtering_enabled": true, "blocking_mode": "null_ip", "blocked_response_ttl": 60}, "filters": []any{}, "whitelist_filters": []any{}, "user_rules": rules, "users": []any{}, "clients": map[string]any{"persistent": []any{map[string]any{"name": "Fixture PC", "ids": []string{"127.0.0.1"}, "tags": []string{"device_pc"}, "use_global_settings": true, "filtering_enabled": true, "use_global_blocked_services": true}}}}
 	data, _ := json.MarshalIndent(config, "", "  ")
@@ -224,23 +226,6 @@ func rrAddress(rr dns.RR) string {
 	rrCopy := dns.Copy(rr)
 	rrCopy.Header().Name, rrCopy.Header().Ttl, rrCopy.Header().Class = ".", 0, dns.ClassINET
 	return fmt.Sprint(rrCopy)
-}
-func unusedPort(t *testing.T, network string) int {
-	t.Helper()
-	if network == "udp" {
-		pc, e := net.ListenPacket("udp", "127.0.0.1:0")
-		if e != nil {
-			t.Fatal(e)
-		}
-		defer func() { _ = pc.Close() }()
-		return pc.LocalAddr().(*net.UDPAddr).Port
-	}
-	ln, e := net.Listen("tcp", "127.0.0.1:0")
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer func() { _ = ln.Close() }()
-	return ln.Addr().(*net.TCPAddr).Port
 }
 
 // comparatorReply is our first-party deterministic raw upstream, shared by

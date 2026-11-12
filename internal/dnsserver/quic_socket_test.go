@@ -19,6 +19,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/internal/testcert"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/testutil/testport"
 )
 
 type socketIndexKey struct{}
@@ -245,12 +246,7 @@ func TestQUICSocketPartialBindAndBounds(t *testing.T) {
 			t.Fatal("invalid count accepted", n)
 		}
 	}
-	probe, err := net.ListenPacket("udp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	address := probe.LocalAddr().String()
-	_ = probe.Close()
+	address := testport.Address(t)
 	refusal := errors.New("test: transport initialization refused")
 	if _, err := listenQUICSockets(address, SocketCount(3), func(*quic.Transport) (quicAcceptor, error) { return nil, refusal }); !errors.Is(err, refusal) {
 		t.Fatal(err)
@@ -286,12 +282,7 @@ func TestQUICSocketBindConflict(t *testing.T) {
 }
 
 func TestQUICSocketConcurrentBind(t *testing.T) {
-	probe, err := net.ListenPacket("udp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	address := probe.LocalAddr().String()
-	_ = probe.Close()
+	address := testport.Address(t)
 	start := make(chan struct{})
 	groups := make(chan []net.PacketConn, 12)
 	var wg sync.WaitGroup
