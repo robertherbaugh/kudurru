@@ -540,8 +540,15 @@ A successful local denial retires the exact published input and survives reopen;
 no follower observation changes the canonical accepted owner. A same-term install
 can invalidate an in-flight operation's exact incarnation, but cannot rescue that
 refused operation. A completed normal operation may be followed by a new captured
-source; an unchanged owner/settings identity retains its existing cooldown. Full automatic HA enrollment, forwarding and partition/rejoin
-qualification remain separate.
+source; an unchanged owner/settings identity retains its existing cooldown, and a
+changed one (a cluster settings change, for example) makes the follower check the
+root again at once. A capture or readiness classification refused only because an
+ordinary install replaced the installed cut between its read and its final check
+acquired nothing: it waits one second and captures the new cut, and like a clock
+wait it may then adopt the newer incarnation if no acquisition has started (D369).
+The separate-process enrolled tests (`TestEnrolledManagedAnchors*` in `test/e2e`)
+run join, follower supervision, partition, promotion, rejoin, conflict
+resolution and restarts with managed anchors.
 
 #### Fenced and conflicted members, and member clock skew (D369)
 
