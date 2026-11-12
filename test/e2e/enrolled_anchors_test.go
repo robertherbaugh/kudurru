@@ -3,9 +3,9 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"os"
 	"os/exec"
-	"net/http"
 	"path/filepath"
 	"slices"
 	"strings"
