@@ -37,7 +37,7 @@ import (
 const (
 	zoneGroupAdmin    = "zg-admin"
 	zoneGroupUser     = "grouper"
-	zoneGroupPassword = "zone-group-user-password"
+	zoneGroupPassword = "zone-group-user-password" // #nosec G101 -- the password of a test fixture account
 	zoneGroupBinding  = "grouper-prod"
 )
 
@@ -208,7 +208,7 @@ func (z *zoneGroupClient) awaitZones(names ...string) {
 // administrator removes its label, gains it back when the label returns, and
 // loses everything when the binding is removed (its frozen session grant is
 // revoked).
-func zoneGroupScenario(t *testing.T, admin, grouper *zoneGroupClient, relabel func(zone, group string), unbind func()) {
+func zoneGroupScenario(t *testing.T, grouper *zoneGroupClient, relabel func(zone, group string), unbind func()) {
 	t.Helper()
 	var me struct {
 		Roles             []string                       `json:"roles"`
@@ -313,7 +313,7 @@ func TestRunServeSQLiteZoneGroupBinding(t *testing.T) {
 	base := "http://" + cfg.Listeners.API.Address + api.BasePath
 	admin := newZoneGroupClient(t, base, zoneGroupAdmin, zoneGroupPassword)
 	grouper := newZoneGroupClient(t, base, zoneGroupUser, zoneGroupPassword)
-	zoneGroupScenario(t, admin, grouper, func(zone, group string) {
+	zoneGroupScenario(t, grouper, func(zone, group string) {
 		admin.want(http.MethodPut, "/objects/dnszones/"+zone, zoneGroupZoneDoc(zone, group), http.StatusOK)
 	}, func() {
 		var binding public.RoleBinding
@@ -390,11 +390,10 @@ func TestRunServeKubeZoneGroupBinding(t *testing.T) {
 	}
 	startLicensedMount(t, cfg, licenseKey)
 	base := "http://" + cfg.Listeners.API.Address + api.BasePath
-	admin := newZoneGroupClient(t, base, zoneGroupAdmin, zoneGroupPassword)
 	grouper := newZoneGroupClient(t, base, zoneGroupUser, zoneGroupPassword)
 	// The seeded objects belong to the kubectl client's field manager, so the
 	// administrator relabels them with kubectl as an operator would.
-	zoneGroupScenario(t, admin, grouper, func(zone, group string) {
+	zoneGroupScenario(t, grouper, func(zone, group string) {
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
 		var z public.DNSZone
