@@ -146,18 +146,25 @@ type Request struct {
 	// CollectExclusions enables bounded question-rule diagnostics for HTTP dig.
 	// Evidence belongs to this request, never a cached response. A copied
 	// subquery replaces its own fields without mutating its parent's evidence.
+	//
+	// The small fields share one word (the bools, then TraceSpan), so that
+	// tracing adds only the Trace pointer and Request stays in the 448-byte
+	// allocation size class it had before tracing (D382,
+	// TestRequestKeepsItsSizeClass): a query with tracing off allocates no
+	// more bytes than it did.
 	CollectExclusions   bool
-	Exclusions          []RuleExclusion
 	ExclusionsTruncated bool
-	// Trace is the query's trace when tracing is on (D382), nil otherwise;
-	// every tracing.Trace method is a no-op on nil. TraceSpan is the span
-	// that work done now is a child of: the chain sets it around each
-	// stage, and copies of the request (subqueries) inherit it.
-	Trace     *tracing.Trace
-	TraceSpan tracing.SpanRef
 	// Traceparent is set when the query carried an EDNS TRACEPARENT option,
 	// whoever sent it. The option itself was removed before any stage ran.
 	Traceparent bool
+	// TraceSpan is the span that work done now is a child of: the chain
+	// sets it around each stage, and copies of the request (subqueries)
+	// inherit it.
+	TraceSpan  tracing.SpanRef
+	Exclusions []RuleExclusion
+	// Trace is the query's trace when tracing is on (D382), nil otherwise;
+	// every tracing.Trace method is a no-op on nil.
+	Trace *tracing.Trace
 }
 
 // RuleExclusion identifies a disabled matching rule in the captured policy.

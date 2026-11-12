@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/miekg/dns"
 
@@ -94,5 +95,16 @@ func BenchmarkTracedChain(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+// TestRequestKeepsItsSizeClass: every query allocates a Request, traced
+// or not. Before tracing it was 440 bytes, in Go's 448-byte size class;
+// the tracing fields must not push it into the next class (480 bytes),
+// which would make every query cost 32 bytes more with tracing off. A
+// field added later that needs the room should say so here.
+func TestRequestKeepsItsSizeClass(t *testing.T) {
+	if size := unsafe.Sizeof(Request{}); size > 448 {
+		t.Fatalf("Request is %d bytes, above the 448-byte size class it had before tracing", size)
 	}
 }
