@@ -51,6 +51,9 @@ func TestRunServeAuthSessionHostLocksMatchIssuance(t *testing.T) {
 	if status.Session == nil || status.Session.IdleTimeout != "2m0s" || status.Session.Lifetime != "7m0s" {
 		t.Fatal("status lost installed host session locks")
 	}
+	if !status.Capabilities.FactorManagement || !status.Capabilities.LocalUserCommands {
+		t.Fatal("the complete SQLite runtime must offer authenticator and local-user commands (D387)")
+	}
 	var enrolled api.SessionInfo
 	before := time.Now()
 	mountedFactorRequest(t, client, base, http.MethodPost, "/auth/login", "", api.LoginRequest{Username: "admin", Password: "mounted-test-password-1"}, http.StatusOK, &enrolled)

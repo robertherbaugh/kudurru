@@ -186,6 +186,15 @@ type StatusResponse struct {
 	// complete runtime answers there); this stack never sets them.
 	Role    string `json:"role,omitempty"`
 	Primary string `json:"primary,omitempty"`
+	// Capabilities are the account commands this runtime offers. The stack
+	// serves the Kubernetes driver, which offers neither (D387).
+	Capabilities StatusCapabilities `json:"capabilities"`
+}
+
+// StatusCapabilities are the account commands of StatusResponse.
+type StatusCapabilities struct {
+	FactorManagement  bool `json:"factorManagement"`
+	LocalUserCommands bool `json:"localUserCommands"`
 }
 
 type oidcProviderInfo struct {

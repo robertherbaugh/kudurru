@@ -64,7 +64,8 @@ func (h *servingHTTP) status(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	out := api.AuthStatus{LocalLogin: cfg.Auth.LocalLogin != config.LocalLoginDisabled, LocalLoginMode: cfg.Auth.LocalLogin, Providers: []api.AuthProvider{}, Session: &api.AuthSessionLimits{IdleTimeout: cfg.Auth.Session.IdleTimeout.Std().String(), Lifetime: cfg.Auth.Session.Lifetime.Std().String()}}
+	out := api.AuthStatus{LocalLogin: cfg.Auth.LocalLogin != config.LocalLoginDisabled, LocalLoginMode: cfg.Auth.LocalLogin, Providers: []api.AuthProvider{}, Session: &api.AuthSessionLimits{IdleTimeout: cfg.Auth.Session.IdleTimeout.Std().String(), Lifetime: cfg.Auth.Session.Lifetime.Std().String()},
+		Capabilities: api.AuthCapabilities{FactorManagement: true, LocalUserCommands: true}}
 	for _, o := range objects {
 		u := o.(*internalv1.LocalUser)
 		out.HasDefaultCredentials = out.HasDefaultCredentials || u.Spec.BuiltinAdmin && u.Spec.MustChangePassword && !u.Spec.Disabled

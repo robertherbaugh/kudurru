@@ -74,6 +74,11 @@ func TestForwardedShapes(t *testing.T) {
 	if !status.LocalLogin || status.LocalLoginMode != "enabled" {
 		t.Fatalf("status %+v", status)
 	}
+	// D387: the Kubernetes stack offers neither authenticator management nor
+	// local-user commands, and says so before a client tries them.
+	if status.Capabilities.FactorManagement || status.Capabilities.LocalUserCommands {
+		t.Fatalf("stack capabilities %+v, want none", status.Capabilities)
+	}
 	var login api.SessionInfo
 	c.call(http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "admin-password-1", TOTPCode: "123456"}, http.StatusServiceUnavailable, nil)
 	c.call(http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "admin-password-1"}, http.StatusOK, &login)
