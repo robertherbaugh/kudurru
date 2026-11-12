@@ -211,9 +211,17 @@ func (m *anchorMetrics) Collect(ch chan<- prometheus.Metric) {
 			ch <- prometheus.MustNewConstMetric(m.worker, prometheus.GaugeValue, value, worker, state)
 		}
 	}
+	// A primary does not pull, so a refusal recorded before a promotion (or
+	// before this member's branch was kept) is no longer current: export it
+	// only while this member is not the primary, as GET /cluster/anchors does.
+	var mode replication.Mode
+	if m.runtime != nil && m.runtime.opts.Store != nil {
+		mode = m.runtime.opts.Store.Authority().Mode
+	}
+	refusal := anchorCurrentRefusal(snap.pull, mode)
 	for _, reason := range anchorRefusalReasons {
 		value := 0.0
-		if snap.pull.refusal != nil && snap.pull.refusal.Reason == reason {
+		if refusal != nil && refusal.Reason == reason {
 			value = 1
 		}
 		ch <- prometheus.MustNewConstMetric(m.refused, prometheus.GaugeValue, value, string(reason))
@@ -223,6 +231,16 @@ func (m *anchorMetrics) Collect(ch chan<- prometheus.Metric) {
 		admitted = 1
 	}
 	ch <- prometheus.MustNewConstMetric(m.admission, prometheus.GaugeValue, admitted)
+}
+
+// anchorCurrentRefusal is the recorded refusal of the primary's owner while
+// this member is in mode. A primary does not pull, so nothing it recorded as a
+// follower is current.
+func anchorCurrentRefusal(pull anchorPullView, mode replication.Mode) *sqlite.AnchorRefusal {
+	if mode == replication.Primary {
+		return nil
+	}
+	return pull.refusal
 }
 
 func (s *servingRuntime) anchorAdmissionCurrent() bool {
