@@ -39,7 +39,24 @@ type partitionGate struct {
 	blocked atomic.Bool
 	mu      sync.Mutex
 	conns   map[net.Conn]bool
+	fault   atomic.Pointer[gateFault]
 }
+
+// gateFault is a one-shot lost answer: the first request match selects is
+// either forwarded to the API server (forward) or not, and in both cases
+// its connection is closed without an answer.
+type gateFault struct {
+	match   func(*http.Request) bool
+	forward bool
+}
+
+// loseAnswer arms one gateFault.
+func (g *partitionGate) loseAnswer(match func(*http.Request) bool, forward bool) {
+	g.fault.Store(&gateFault{match: match, forward: forward})
+}
+
+// faultPending reports whether an armed gateFault has not fired yet.
+func (g *partitionGate) faultPending() bool { return g.fault.Load() != nil }
 
 func newPartitionGate(t *testing.T, restConfig *rest.Config) *partitionGate {
 	t.Helper()
@@ -62,6 +79,18 @@ func newPartitionGate(t *testing.T, restConfig *rest.Config) *partitionGate {
 			}
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
+		}
+		if f := g.fault.Load(); f != nil && f.match(r) && g.fault.CompareAndSwap(f, nil) {
+			if f.forward {
+				proxy.ServeHTTP(httptest.NewRecorder(), r)
+			}
+			if hijacker, ok := w.(http.Hijacker); ok {
+				if conn, _, err := hijacker.Hijack(); err == nil {
+					_ = conn.Close()
+					return
+				}
+			}
+			panic(http.ErrAbortHandler)
 		}
 		proxy.ServeHTTP(w, r)
 	}))

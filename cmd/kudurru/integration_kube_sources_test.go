@@ -181,6 +181,18 @@ func kubeTestCredential(t *testing.T) string {
 	return credential
 }
 
+// kubeTestKubeconfig points the process-global KUBECONFIG at url, as
+// offlineServeConfig does, so a replica can be started again.
+func kubeTestKubeconfig(t *testing.T, url string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "kubeconfig")
+	body := "apiVersion: v1\nkind: Config\nclusters:\n- name: test\n  cluster:\n    server: " + url + "\ncontexts:\n- name: test\n  context:\n    cluster: test\n    user: test\ncurrent-context: test\nusers:\n- name: test\n  user: {}\n"
+	if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KUBECONFIG", path)
+}
+
 func kubeAwait(t *testing.T, d time.Duration, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(d)
@@ -221,10 +233,14 @@ func kubeRewritten(ctx context.Context, cfg *config.Config, source, name, target
 // resuming reopens them; the administration API answers list and get the
 // same on both replicas from the durable status, refuses a stale revision,
 // sends a command to the non-holder back with the holder's name, and runs a
-// reviewed observe sync on the holder; partitioning the holder from the API
+// reviewed observe sync on the holder; at a two-second poll the non-holder's
+// grant never lapses across successive holder commits (the heads are
+// watched); a restarted replica grants again from the committed head with no
+// new commit and no holder change; partitioning the holder from the API
 // server hands the Lease to the other replica, which alone commits, while
 // the partitioned replica keeps answering from its last committed source
-// only until that observation's original expiry and never renews it; after
+// without a gap until shortly before that observation's original expiry,
+// then stops at it, and never renews it; after
 // healing it converges on the successor's head; and deletionPolicy Delete
 // arms the cleanup finalizer, so deleting the Integration purges its source
 // carriers and closes its grants on both replicas before the object goes.
@@ -246,7 +262,7 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 	}
 	gateA, gateB := newPartitionGate(t, env.rest), newPartitionGate(t, env.rest)
 	cfgA := env.replica(t, "sources-a", gateA, credential)
-	_ = kubeIntegrationMount(t, cfgA)
+	stops := map[string]func(){"sources-a": kubeIntegrationMount(t, cfgA)}
 	// The bootstrap token's service account is created by the first
 	// replica; start the second once the first answers.
 	kubeAwait(t, 60*time.Second, "replica A answers the API", func() bool {
@@ -254,8 +270,9 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 		return status == http.StatusOK
 	})
 	cfgB := env.replica(t, "sources-b", gateB, credential)
-	_ = kubeIntegrationMount(t, cfgB)
+	stops["sources-b"] = kubeIntegrationMount(t, cfgB)
 	byName := map[string]*config.Config{"sources-a": cfgA, "sources-b": cfgB}
+	gates := map[string]*partitionGate{"sources-a": gateA, "sources-b": gateB}
 
 	sum := sha256.Sum256(server.Certificate().Raw)
 	inventory := &public.Integration{ObjectMeta: meta0("inventory"), Spec: public.IntegrationSpec{Type: "unifi", Resync: metav1.Duration{Duration: time.Hour}, Credentials: map[string]public.CredentialReference{"apiKey": {File: credential}}, UniFi: &public.UniFiIntegration{Endpoint: server.URL, TLSFingerprint: "sha256:" + hex.EncodeToString(sum[:]), Site: "default", Poll: metav1.Duration{Duration: 5 * time.Second}, Groups: public.UniFiGroups{ByNetwork: map[string]string{"LAN": "devices"}}}}}
@@ -382,6 +399,82 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 		t.Fatal("the reviewed sync did not commit a successor head", before, sequence())
 	}
 
+	// setPoll changes the poll interval, and so the spec digest every head
+	// carries, and waits until both replicas grant from a head committed
+	// under the new spec.
+	setPoll := func(poll time.Duration) {
+		t.Helper()
+		for attempt := 0; ; attempt++ {
+			if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "inventory"}, &current); err != nil {
+				t.Fatal(err)
+			}
+			current.Spec.UniFi.Poll = metav1.Duration{Duration: poll}
+			err := env.admin.Update(ctx, &current)
+			if err == nil {
+				break
+			}
+			if attempt == 20 {
+				t.Fatal(err)
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+		raw, err := json.Marshal(current.Spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest := kinds.Digest(raw)
+		kubeAwait(t, 60*time.Second, "a head committed under the new spec", func() bool {
+			h := heads()
+			return len(h) == 1 && h[0].Spec.ConfigDigest == digest
+		})
+		for name, cfg := range byName {
+			kubeAwait(t, 60*time.Second, name+" grants under the new spec", func() bool { return granted(cfg) && manual(cfg) })
+		}
+	}
+
+	// Continuity (K5): at a two-second poll an observation expires after
+	// six (five to six, truncated to the second). The replica that does not
+	// hold the Lease must install every successor head before its
+	// predecessor expires, so its grant never lapses across successive
+	// holder commits. A relist on a ten-second timer alone cannot do that.
+	setPoll(2 * time.Second)
+	holderNow := holder()
+	nonHolder := "sources-a"
+	if holderNow == "sources-a" {
+		nonHolder = "sources-b"
+	}
+	from := sequence()
+	for until := time.Now().Add(12 * time.Second); time.Now().Before(until); time.Sleep(100 * time.Millisecond) {
+		if !granted(byName[nonHolder]) {
+			t.Fatal("the non-holder's grant lapsed between holder commits", sequence()-from, "commits in; the holder grants:", granted(byName[holderNow]))
+		}
+	}
+	if commits := sequence() - from; commits < 3 {
+		t.Fatal("the holder committed too few heads to show continuity", commits)
+	}
+
+	// Restart (K5, K7): with an hour's poll no head is committed while a
+	// replica restarts. The restarted process rebuilds the same grants from
+	// the committed head alone, before any new commit.
+	setPoll(time.Hour)
+	holderNow = holder()
+	restarted := "sources-a"
+	if holderNow == "sources-a" {
+		restarted = "sources-b"
+	}
+	atRestart := sequence()
+	stops[restarted]()
+	if granted(byName[restarted]) {
+		t.Fatal("a stopped replica answered")
+	}
+	kubeTestKubeconfig(t, gates[restarted].server.URL)
+	stops[restarted] = kubeIntegrationMount(t, byName[restarted])
+	kubeAwait(t, 60*time.Second, "the restarted replica grants from the committed head", func() bool { return granted(byName[restarted]) && manual(byName[restarted]) })
+	if sequence() != atRestart || holder() != holderNow {
+		t.Fatal("the restart was served by a new commit or a holder change, not from the committed head", atRestart, sequence(), holderNow, holder())
+	}
+	setPoll(5 * time.Second)
+
 	// Suspension closes the source on both replicas without a new commit.
 	if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "inventory"}, &current); err != nil {
 		t.Fatal(err)
@@ -420,11 +513,23 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 		other = "sources-b"
 	}
 	pollsBefore := calls.Load()
-	gates := map[string]*partitionGate{"sources-a": gateA, "sources-b": gateB}
 	gates[first].partition(true)
 	partitionedAt := time.Now()
-	if !granted(byName[first]) {
-		t.Fatal("the partitioned replica stopped answering from its last committed source at once")
+	// The last head's observation expires three polls (fifteen seconds,
+	// truncated to the second) after it was made, and the head's AcceptedAt
+	// is stamped right after the observation. Until twelve seconds after
+	// AcceptedAt the partitioned replica must answer without a gap.
+	last := heads()
+	if len(last) != 1 {
+		t.Fatal("heads at the partition", len(last))
+	}
+	until := last[0].Spec.AcceptedAt.Add(12 * time.Second)
+	t.Log("the partitioned replica must answer without a gap for", time.Until(until).Round(100*time.Millisecond))
+	for time.Now().Before(until) {
+		if !granted(byName[first]) {
+			t.Fatal("the partitioned replica stopped answering from its last committed source before its expiry", time.Since(partitionedAt), time.Until(until))
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 	kubeAwait(t, 90*time.Second, "the other replica acquires the instance's Lease", func() bool { return holder() == other })
 	takeover := sequence()
@@ -435,9 +540,6 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 	kubeAwait(t, 30*time.Second, "the successor grants its own committed source", func() bool { return granted(byName[other]) })
 	// Five-second polls expire an observation after fifteen seconds.
 	kubeAwait(t, 40*time.Second, "the partitioned replica's last observation expires", func() bool { return !granted(byName[first]) && !manual(byName[first]) })
-	if held := time.Since(partitionedAt); held < 8*time.Second {
-		t.Fatal("the partitioned replica dropped its last committed source before its expiry", held)
-	}
 	gates[first].partition(false)
 	kubeAwait(t, 60*time.Second, "the healed replica converges on the successor's head", func() bool { return granted(byName[first]) && manual(byName[first]) })
 	if holder() != other {
