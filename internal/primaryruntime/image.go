@@ -63,8 +63,9 @@ func (p *PreparedImage) Cut(now time.Time) Cut {
 // including parent witnesses and absolute primary/ancestor expiry. It is
 // independent of Published and does not acknowledge whole-bundle publication.
 // A primary whose lifecycle receipt differs from the desired DNSZone only in
-// its resourceVersion stays admitted (imageServingSource); SourceMatchesDesired
-// reports that pending realignment.
+// fields outside the intent digest and the NS address dependency (status,
+// resourceVersion and other metadata) stays admitted (imageServingSource);
+// SourceMatchesDesired reports that pending realignment.
 // Missing members and desired-only placeholders are never admitted. Other
 // owners still check their own node-local secondary/stub/RPZ deadlines.
 func (p *PreparedImage) Admitted(apex string, now time.Time) bool {
@@ -198,9 +199,10 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 		// current frozen zone config/receipt can grant serving readiness.
 		matches := status[l.Spec.Zone.ObjectName].ConfigMatchesDesired
 		sourceCurrent[l.Spec.Zone] = current[l.Spec.Zone.Apex] && matches
-		// Serving readiness additionally survives a change of the DNSZone's
-		// resourceVersion alone (a status write, such as the committed-status
-		// writer's serial projection after every head commit): the driver
+		// Serving readiness additionally survives a change of the DNSZone
+		// outside its intent digest and NS address dependency (a status
+		// write, such as the committed-status writer's serial projection
+		// after every head commit, or a metadata-only change): the driver
 		// realigns the lifecycle receipt next, and that realignment serves the
 		// same head with the same frozen config. SourceMatchesDesired stays
 		// exact, so publication acknowledgment and status writes still wait

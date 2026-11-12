@@ -188,11 +188,15 @@ type Response struct {
 	Origin    ResponseOrigin
 	// UpstreamContacted is set only by the upstream stage on its failure
 	// response, and only when at least one server of the group was actually
-	// asked (for a recursive group: the native resolver ran a resolution
-	// instead of refusing admission) and failed or timed out. A refusal the
-	// node produced itself (a failed serving capture, a refused native
-	// recursion admission, a DNSSEC or policy failure) never sets it. It is
-	// internal provenance (D377), never derived from the wire.
+	// asked (for a recursive group: the native resolver sent a query to at
+	// least one authority) and failed or timed out. A refusal the node
+	// produced itself before asking any server (a failed serving capture, a
+	// native recursion or cache admission refused before any authority was
+	// asked, a DNSSEC or policy failure) never sets it. A resolution that
+	// asked an authority and then ended on an admission refusal does set it;
+	// its answer is still emitted only while the retained output path admits
+	// the query's dependencies and anchor. It is internal provenance (D377),
+	// never derived from the wire.
 	UpstreamContacted bool
 	Security          Security
 	Modified          bool
