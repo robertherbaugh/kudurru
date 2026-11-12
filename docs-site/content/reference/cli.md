@@ -356,6 +356,14 @@ Flags:
       --source-digest string   Exact reviewed sourceDigest
 ```
 
+### kudurru cluster anchors
+
+Show the node's root trust-anchor state (GET /cluster/anchors): the accepted owner and its RFC 5011 key states, hold-down and schedule, quarantine and recovery records, the keys this member denied locally, the updater or deny-only supervisor, and on a member that pulls whether it refuses the primary's state and why. Read-only; nothing here is a recommendation to act. A fenced or conflicted member's API is closed: read its kudurru\_root\_anchor\_\* metrics, or stop it and run kudurru anchors status --offline.
+
+```text
+kudurru cluster anchors
+```
+
 ### kudurru cluster enrollment
 
 Review the local SQLite enrollment source.
@@ -631,6 +639,9 @@ ports      every configured listener address can be bound (or is in use by
 api        the API server answers (the CLI context, --server, or the local
            listeners.api.address)
 token      the CLI token is accepted (GET /auth/me)
+anchors    with upstreams.recursion.anchorMode managed: the node's root
+           trust-anchor status (GET /cluster/anchors); fails on lost trust
+           or terminal local output, warns on each status warning
 diagnoses  configuration diagnoses reported by the server (GET /info/messages)
 database   with database.dsn set: the central database answers, runs
            PostgreSQL 16 or newer and has a schema this binary can use;
