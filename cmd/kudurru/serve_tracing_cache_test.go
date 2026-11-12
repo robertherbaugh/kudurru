@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/hex"
 	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -52,9 +55,12 @@ func startDelayedUpstream(t *testing.T, delay time.Duration) (string, *atomic.In
 // the fast one answered; and a later hit starts a prefetch that writes
 // into a trace already finished. Under -race no write may race the
 // exporter, every query exports exactly one well-formed tree, and the
-// fetch's upstream attempts appear as client spans.
+// fetch's upstream attempts appear as client spans. The late query must be
+// the prefetching hit and not a plain miss: its trace's root says
+// prefetch_refresh, kudurru_cache_prefetches_total rises by one, and that
+// one refresh asks each server of the group exactly once.
 func TestRunServeTracingThroughCacheAndRace(t *testing.T) {
-	fast, _ := startDelayedUpstream(t, 0)
+	fast, fastQueries := startDelayedUpstream(t, 0)
 	slow, slowQueries := startDelayedUpstream(t, 300*time.Millisecond)
 	coll := &traceCollector{spans: map[string][]*tracepb.Span{}}
 	otlpServer := httptest.NewServer(coll)
@@ -62,6 +68,7 @@ func TestRunServeTracingThroughCacheAndRace(t *testing.T) {
 
 	cfg, _ := mountedTestConfig(t)
 	cfg.Auth.IdentityProviders = nil
+	cfg.Listeners.Metrics.Address = offlineFreeAddress(t, "tcp") // the prefetch counter is read from it
 	cfg.Blocking.Enabled, cfg.DNSSEC.Enabled = false, false
 	cfg.RateLimit.Enabled = false
 	cfg.Cache.MaxEntries = 1000
@@ -131,14 +138,6 @@ func TestRunServeTracingThroughCacheAndRace(t *testing.T) {
 	for err := range errs {
 		t.Fatal(err)
 	}
-	// After a second the 2-second entry is within the prefetch trigger: the
-	// next hit answers from the cache, finishes its trace and starts a
-	// background refresh carrying that finished trace.
-	before := slowQueries.Load()
-	time.Sleep(1200 * time.Millisecond)
-	if err := ask(); err != nil {
-		t.Fatal("prefetch hit", err)
-	}
 	waitFor := func(what string, fn func() bool) {
 		t.Helper()
 		until := time.Now().Add(15 * time.Second)
@@ -149,17 +148,56 @@ func TestRunServeTracingThroughCacheAndRace(t *testing.T) {
 			time.Sleep(20 * time.Millisecond)
 		}
 	}
-	waitFor("the prefetch to reach the slow server", func() bool { return slowQueries.Load() > before })
+	// The wave's traces are exported first, so the one trace that comes
+	// later is the hit's.
+	waitFor("the wave's traces exported", func() bool { return coll.count() >= wave })
+	waveTraces := map[string]bool{}
+	coll.mu.Lock()
+	for id := range coll.spans {
+		waveTraces[id] = true
+	}
+	coll.mu.Unlock()
+	if len(waveTraces) != wave {
+		t.Fatalf("%d traces exported for the wave of %d", len(waveTraces), wave)
+	}
+	// One coalesced fetch asked each server once.
+	if f, s := fastQueries.Load(), slowQueries.Load(); f != 1 || s != 1 {
+		t.Fatalf("the wave asked the fast server %d and the slow one %d times, want one coalesced fetch", f, s)
+	}
+	prefetches := func() float64 {
+		v, ok := mountedUnlabeledMetric(t, cfg.Listeners.Metrics.Address, "kudurru_cache_prefetches_total")
+		if !ok {
+			t.Fatal("kudurru_cache_prefetches_total is not exported")
+		}
+		return v
+	}
+	if p := prefetches(); p != 0 {
+		t.Fatalf("%v prefetches before the hit", p)
+	}
+	// After a second the 2-second entry is within the prefetch trigger: the
+	// next hit answers from the cache, finishes its trace and starts a
+	// background refresh carrying that finished trace.
+	time.Sleep(1200 * time.Millisecond)
+	if err := ask(); err != nil {
+		t.Fatal("prefetch hit", err)
+	}
+	waitFor("the prefetch to reach the slow server", func() bool { return slowQueries.Load() > 1 })
 	// Let the slow attempt of the prefetch end into its finished trace.
 	time.Sleep(500 * time.Millisecond)
 	waitFor("every trace exported", func() bool { return coll.count() >= wave+1 })
+	if p := prefetches(); p != 1 {
+		t.Fatalf("kudurru_cache_prefetches_total = %v after the hit, want 1", p)
+	}
+	if f, s := fastQueries.Load(), slowQueries.Load(); f != 2 || s != 2 {
+		t.Fatalf("after the hit the fast server was asked %d and the slow one %d times, want one refresh of each", f, s)
+	}
 
 	coll.mu.Lock()
 	defer coll.mu.Unlock()
 	if len(coll.spans) != wave+1 {
 		t.Fatalf("%d traces exported for %d queries", len(coll.spans), wave+1)
 	}
-	exchanges := 0
+	exchanges, hits := 0, 0
 	for id, spans := range coll.spans {
 		byID := map[string]*tracepb.Span{}
 		roots := 0
@@ -180,6 +218,23 @@ func TestRunServeTracingThroughCacheAndRace(t *testing.T) {
 				if len(s.ParentSpanId) != 0 {
 					t.Fatalf("trace %s: a plain client's root has a parent", id)
 				}
+				status := ""
+				for _, kv := range s.Attributes {
+					if kv.Key == "kudurru.status" {
+						status = kv.Value.GetStringValue()
+					}
+				}
+				switch {
+				case !waveTraces[id]:
+					// The late query: a cache hit that started the refresh.
+					// A plain miss would say forwarded.
+					if status != "prefetch_refresh" {
+						t.Fatalf("trace %s of the late query has status %q, want prefetch_refresh", id, status)
+					}
+					hits++
+				case status == "prefetch_refresh":
+					t.Fatalf("trace %s of the wave has status prefetch_refresh", id)
+				}
 				continue
 			}
 			if byID[hex.EncodeToString(s.ParentSpanId)] == nil {
@@ -190,9 +245,37 @@ func TestRunServeTracingThroughCacheAndRace(t *testing.T) {
 			}
 		}
 	}
+	if hits != 1 {
+		t.Fatalf("%d traces of the late query, want 1", hits)
+	}
 	// The one coalesced fetch asked both servers inside the first query's
 	// trace; the prefetch's attempts came after its trace finished.
 	if exchanges < 1 || exchanges > 2 {
 		t.Fatalf("%d upstream attempt spans across the traces, want the coalesced fetch's one or two", exchanges)
 	}
+}
+
+// mountedUnlabeledMetric reads a sample without labels from a mounted
+// metrics listener (mountedMetric reads labeled ones).
+func mountedUnlabeledMetric(t *testing.T, address, family string) (float64, bool) {
+	t.Helper()
+	response, err := (&http.Client{Timeout: 5 * time.Second}).Get("http://" + address + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	scanner := bufio.NewScanner(response.Body)
+	scanner.Buffer(make([]byte, 0, 64<<10), 1<<20)
+	for scanner.Scan() {
+		value, ok := strings.CutPrefix(scanner.Text(), family+" ")
+		if !ok {
+			continue
+		}
+		v, err := strconv.ParseFloat(strings.Fields(value)[0], 64)
+		if err != nil {
+			t.Fatal("metrics line", scanner.Text(), err)
+		}
+		return v, true
+	}
+	return 0, false
 }
