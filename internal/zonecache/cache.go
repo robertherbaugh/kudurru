@@ -199,6 +199,8 @@ type Cache struct {
 	noSnapshot   string    // why the fallback found nothing, for Ready
 	lists        *blocking.Snapshot
 	listsDirty   bool
+	inputs       map[string]any
+	inputsDirty  map[string]bool
 	builders     []Builder
 	builderNames map[string]bool
 	conditions   map[string]Condition
@@ -286,6 +288,22 @@ func (c *Cache) SetLists(lists *blocking.Snapshot) {
 	defer c.mu.Unlock()
 	c.lists = lists
 	c.listsDirty = true
+	c.trigger()
+}
+
+// SetInput hands the Cache one named external input, a value computed
+// outside the watched objects (for example the MAC grants the Kubernetes
+// integration source runtime derives from committed source heads, D384).
+// It reaches builders through ObjectSet.Input in the next snapshot and
+// triggers a rebuild, like SetLists. The value must be immutable once set.
+func (c *Cache) SetInput(name string, value any) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.inputs == nil {
+		c.inputs, c.inputsDirty = map[string]any{}, map[string]bool{}
+	}
+	c.inputs[name] = value
+	c.inputsDirty[name] = true
 	c.trigger()
 }
 
@@ -628,6 +646,11 @@ func (c *Cache) rebuild() time.Time {
 	state := c.state
 	lists, listsChanged := c.lists, c.listsDirty
 	c.listsDirty = false
+	inputs, inputsChanged := maps.Clone(c.inputs), c.inputsDirty
+	c.inputsDirty = nil
+	if len(c.inputs) > 0 {
+		c.inputsDirty = map[string]bool{}
+	}
 	builders := slices.Clone(c.builders)
 	hooks := slices.Clone(c.hooks)
 	writtenAt := c.snapWritten
@@ -661,12 +684,14 @@ func (c *Cache) rebuild() time.Time {
 	}
 
 	set := ObjectSet{
-		idx:          idx,
-		lists:        lists,
-		now:          start,
-		changed:      changed,
-		allChanged:   !c.firstBuilt || state != c.lastState,
-		listsChanged: listsChanged,
+		idx:           idx,
+		lists:         lists,
+		inputs:        inputs,
+		inputsChanged: inputsChanged,
+		now:           start,
+		changed:       changed,
+		allChanged:    !c.firstBuilt || state != c.lastState,
+		listsChanged:  listsChanged,
 	}
 	if c.expiryTick {
 		c.expiryTick = false

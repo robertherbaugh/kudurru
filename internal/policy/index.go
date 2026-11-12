@@ -48,6 +48,10 @@ type Options struct {
 	// Inventory enables MAC and captured hostname matching supplied by the
 	// identify stage. It does not perform any inventory reads during Build.
 	Inventory bool
+	// MACGrantsInput names the zonecache external input (Cache.SetInput)
+	// that carries []MACGrant for Builder (the Kubernetes integration source
+	// runtime, D384). Empty means Builder passes no grants. Build ignores it.
+	MACGrantsInput string
 	// ExceptionScope says which deny rules a @@ exception cancels; the
 	// default blocking.ScopeList matches list semantics D73.
 	ExceptionScope blocking.ExceptionScope
