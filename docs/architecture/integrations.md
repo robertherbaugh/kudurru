@@ -12,9 +12,11 @@ The schema, credential resolver, publication planner, durable ownership ledger,
 background host, Cloudflare SDK adapter and UniFi polling adapter are implemented.
 The SQLite serving runtime mounts the host, concrete fenced ledger/source commands,
 complete-image inventory publication and the `Delete` cleanup job (see
-[Deletion policy](#deletion-policy-and-the-cleanup-finalizer)). Kubernetes
-execution, remaining providers and dashboard controls remain parts of the full
-[v0.2 implementation](../../dev-docs/milestones/v0.2/README.md).
+[Deletion policy](#deletion-policy-and-the-cleanup-finalizer)). The Kubernetes
+store mounts the same host for Cloudflare publication and refuses every other
+instance on its object (see [Kubernetes execution](#kubernetes-execution)).
+Kubernetes inbound sources, remaining providers and dashboard controls remain
+parts of the full [v0.2 implementation](../../dev-docs/milestones/v0.2/README.md).
 
 ```mermaid
 flowchart LR
@@ -33,9 +35,9 @@ reference. File and environment references require explicit host allowlists.
 Secret references cannot choose a namespace: the operator supplies it to the
 resolver. These capabilities are captured immutably; SQLite background capture detects
 file/environment rotation and joins the old provider before replacement. SQLite
-does not enable native Secret lookup. Kubernetes production execution remains
-disabled pending atomic complete-source admission; it cannot use sequential
-per-object writes as a substitute.
+does not enable native Secret lookup, and neither does Kubernetes yet: there the
+credential namespace would be the release namespace, which also holds kudurru's
+own keys, so only allowlisted files and environment names resolve (D384).
 The resolver bounds credential sizes, returns private copies, and removes
 provider error bodies before reporting lookup failures. A keyed HMAC fingerprint
 detects changes without publishing a plain hash of the credential. Secret values
@@ -158,12 +160,70 @@ cannot commit after its original writer is fenced.
 like any other while its object is live, and an elected cleanup job ends it
 after a delete request; both are described under
 [Deletion policy](#deletion-policy-and-the-cleanup-finalizer). On Kubernetes
-no Integration executes yet, so the policy has no effect there.
-Kubernetes needs a single fenced atomic admission
-root binding configuration, desired objects, allocations, source and global
-inventory; ordinary per-object CAS plus a Lease is insufficient. These remain
-explicit dependencies, not completed capabilities. See the
+an instance with `Delete` is refused with reason `DeletionPolicyUnsupported`
+before any provider call, so the policy can never silently act as `Retain`
+there. See [Kubernetes execution](#kubernetes-execution) and the
 [operator guide](../deploy/integrations.md).
+
+## Kubernetes execution
+
+On the Kubernetes store every replica runs the host (D384). Each Integration
+has its own Lease (`kudurru-integration-<digest>` in the release namespace);
+the replica holding it captures the Integration, its credentials and, for a
+publisher, the admitted record sets from that replica's live watch snapshot.
+A replica serving a `local.db` snapshot captures nothing.
+
+```mermaid
+sequenceDiagram
+    participant Host as Host (Lease holder)
+    participant API as Kubernetes API
+    participant CF as Cloudflare
+    Host->>API: GET Lease (holder, acquire time, transitions, renew time)
+    Host->>API: GET Integration (UID, resourceVersion, spec digest, mode)
+    Host->>API: one create or exact-resourceVersion write of a ledger Secret
+    Host->>API: GET Lease, GET Integration
+    Host->>CF: one provider request
+    Host->>API: GET Lease, GET Integration
+    Host->>API: exact-resourceVersion write of the operation receipt
+```
+
+Before every provider request and every store write the root adapter reads the
+Lease and refuses unless it still names this replica with the acquisition it
+recorded when its term started and an unexpired renew time
+(`store.VerifyTerm`). It then reads the Integration and refuses unless its UID,
+resourceVersion, spec digest and guard mode are the captured ones, and checks
+every captured source record set against the replica's current snapshot. Only
+the private ledger, operation, budget, delivery and event-cursor kinds can be
+written, each by one create-only or exact-resourceVersion Secret write that is
+never forced or repeated; only ledger, operation, delivery and cursor rows can
+be forgotten, by exact UID and resourceVersion, in order, ledger row first.
+Integration status is written by the Lease holder with the captured
+resourceVersion as precondition; the capture leaves status and
+resourceVersion out of each instance's authority, so a status write never
+replaces the instance.
+
+What this does **not** make atomic: the Lease is a rejection check, not a
+lock, so a request or write already sent after a passing check can land after
+the Lease is lost (it is then a serializable predecessor of the successor's
+CAS or a conflict, and a pending intent it leaves forces a fresh reread); the
+Integration and source checks are reads just before the write, not part of
+it; a multi-row forget can stop part way; and remote provider effects are not
+atomic with any store write, as on SQLite. A lost shared request-budget CAS
+fails that request, and the instance tries again on its schedule.
+
+The source root for inbound instances is built but not mounted yet:
+`kube.IntegrationSourceBackend` stages immutable `IntegrationSourceChunk`
+Secrets, rechecks them, and installs the `IntegrationSourceHead` of one
+Integration UID by exactly one create or exact-resourceVersion update from
+sequence n to n+1; a lost CAS leaves the previous source and unreferenced
+chunks only. `inbound.DecodeCarriers` checks a carrier listing with the image
+rules. Every private integration carrier decodes strictly, so a damaged one is
+an error rather than an absent row.
+
+Until the inbound commit, the replica-side source runtime and the
+administration adapter exist, UniFi and webhook instances are refused with
+reason `UnsupportedOnKubernetes`, `Delete` with `DeletionPolicyUnsupported`, and
+the `/api/v1/integrations` routes answer unavailable on Kubernetes.
 
 ## Deletion policy and the cleanup finalizer
 
@@ -228,7 +288,8 @@ stateDiagram-v2
   `deletionPolicy` line, releases it; the reconciler logs that pass as
   `objects: finalized` instead of an ordinary update.
 - **Kubernetes** has no kudurru admission, so the driver never arms the
-  finalizer on its own (nothing would clear it while no host runs there). It
+  finalizer on its own (the Kubernetes host has no cleanup job yet and refuses
+  `Delete` instances). It
   carries a finalizer the elected host armed through server-side apply and
   through the `Force` takeover, which otherwise removes every field the new
   manager omits. The reconciler's extra apply of an unchanged `Delete`
@@ -798,8 +859,9 @@ Qualification includes the real Cloudflare SDK and UniFi adapter against local
 TLS peers, production router and generated CLI, stale-plan refusal, committed
 writes, an applied-but-unreadable pending outcome, original cookie CSRF and
 scoped-token/writer/revocation refusals. It does not claim contact with production
-provider infrastructure. Kubernetes execution and remaining
-all-driver/restart release gates remain separate work.
+provider infrastructure. Kubernetes Cloudflare publication is qualified against
+envtest and the same local TLS peer; Kubernetes failover qualification and the
+remaining all-driver/restart release gates remain separate work.
 
 ## Tier-B runtime client status
 

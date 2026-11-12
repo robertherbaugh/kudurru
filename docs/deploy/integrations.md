@@ -8,10 +8,12 @@ shutdown and joins the old provider before starting a replacement configuration
 or credential. Followers consume replicated finite evidence without polling;
 a promoted writer must acquire its own authority before observing or publishing.
 
-This mount does not close every integration capability. Kubernetes execution is
-currently disabled: its per-object CAS cannot atomically admit source objects,
-allocations and global inventory. Native Kubernetes Secrets are not resolved by
-the SQLite host. Both deletion policies are supported on SQLite; see
+This mount does not close every integration capability. On Kubernetes the host
+runs Cloudflare publication under one Lease per Integration; UniFi and webhook
+instances are refused on their objects with reason `UnsupportedOnKubernetes`
+until the Kubernetes source commit lands. Native Kubernetes Secret references
+are not resolved by either host: mount the Secret as a file and allowlist its
+path under `credentials.allowedFiles`. Both deletion policies are supported on SQLite; see
 [Deleting an integration](#deleting-an-integration). Optional UniFi
 mutations and remaining management UI work remain separate. The external-dns webhook listener is a separate inbound feature.
 
@@ -186,8 +188,10 @@ database written by an earlier build can hold, is shown as `Paused` with
 reason `CleanupFinalizerMissing` and makes no provider call. The next load of
 its unchanged document adds the finalizer and it runs.
 
-On Kubernetes no Integration executes yet, so `deletionPolicy` has no effect
-there: deleting the object removes it and cleans nothing.
+On Kubernetes an instance with `deletionPolicy: Delete` is refused with reason
+`DeletionPolicyUnsupported` and makes no provider call; use `Retain` there.
+Deleting a `Retain` object removes it and leaves what it published, and its
+private ledger Secrets stay in the release namespace.
 
 ## Credentials and permissions
 
@@ -533,8 +537,9 @@ server-side cookie calls also require CSRF. `integrations actions NAME --uid UID
 advertise none. `integrations act NAME ACTION --uid UID --revision REVISION
 --params '{}'` cannot enable an unsupported provider action.
 
-These routes require complete SQLite runtime authority. Kubernetes execution
-remains unsupported by this command tranche. List/get
+These routes require complete SQLite runtime authority. On Kubernetes they
+answer unavailable; Cloudflare instances there sync on their schedule and on
+source changes, and report their state in the Integration status. List/get
 status is a local observation and can be unknown when the exact revision has no
 matching observation. Public previews omit credential references, fingerprints,
 private provider IDs and ledger receipts.
