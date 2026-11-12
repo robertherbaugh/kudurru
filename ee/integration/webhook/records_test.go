@@ -349,7 +349,103 @@ func TestRecordsUnverifiedApplyStaysPartial(t *testing.T) {
 					t.Fatal("unowned or absent data recorded as applied", receipt.Targets)
 				}
 			}
+			// The body reached the peer, so the attempt is ambiguous: the
+			// host keeps the operation pending instead of abandoning it as
+			// untouched work and planning it again.
+			if len(receipt.Targets) != 1 || receipt.Targets[0].Target != "192.0.2.1" || receipt.Targets[0].ErrorClass != "ambiguous" {
+				t.Fatal("an unconfirmed 2xx left no ambiguous target", receipt.Targets)
+			}
 		})
+	}
+}
+
+// Narrowing the domains of a publishing instance keeps the record sets its
+// registry rows claim visible outside the new domains, so sync deletes them
+// with their registry rows instead of the narrowed list making them look
+// absent. Unowned rows outside the domains stay hidden and untouched.
+func TestRecordsNarrowedDomainsKeepOwnedRowsVisible(t *testing.T) {
+	server, ed, posts := firstPartyPeer(t)
+	p := recordsProvider(t, server, []string{"a.example.test", "b.example.test"}, "")
+	checked(t, p)
+	desired := []public.Endpoint{endpointA("www.a.example.test.", "192.0.2.1"), endpointA("www.b.example.test.", "192.0.2.2")}
+	built, _ := recordsPlan(t, p, desired)
+	for i := range built.Operations {
+		if receipt, err := p.Apply(t.Context(), built.Intent(i, time.Now())); err != nil || !receipt.Complete {
+			t.Fatal("publish", receipt, err)
+		}
+	}
+	if err := ed.ApplyChanges(t.Context(), &externaldns.Changes{Create: []*externaldns.Endpoint{wireA("manual.b.example.test", "198.51.100.1")}}); err != nil {
+		t.Fatal(err)
+	}
+	narrowed := recordsProvider(t, server, []string{"a.example.test"}, "")
+	checked(t, narrowed)
+	built, snapshot := recordsPlan(t, narrowed, desired[:1])
+	seen := map[string]plan.RemoteOwner{}
+	for _, row := range snapshot.Records {
+		seen[row.Endpoint.DNSName] = row.Owner
+	}
+	owner := plan.RemoteOwner{ClusterID: "fixture", IntegrationUID: "original"}
+	if len(seen) != 2 || seen["www.a.example.test."] != owner || seen["www.b.example.test."] != owner {
+		t.Fatal("narrowed snapshot", seen)
+	}
+	if len(built.Operations) != 1 || built.Operations[0].Action != "delete" || built.Operations[0].Key.Name != "www.b.example.test." {
+		t.Fatal("owned row outside the narrowed domains not planned for deletion", built.Operations)
+	}
+	before := posts.Load()
+	if receipt, err := narrowed.Apply(t.Context(), built.Intent(0, time.Now())); err != nil || !receipt.Complete || posts.Load() != before+1 {
+		t.Fatal("delete outside the narrowed domains", receipt, err)
+	}
+	rows := peerRows(t, ed)
+	if rows["www.b.example.test/A"] != nil || rows["_kudurru-a.www.b.example.test/TXT"] != nil || rows["manual.b.example.test/A"] == nil || rows["www.a.example.test/A"] == nil {
+		t.Fatal("peer rows after the narrowed sync", rows)
+	}
+	// A create outside the domains stays refused.
+	forged, err := plan.Build(plan.Input{Owner: narrowed.owner, Destination: webhookDestination(server.URL), ConfigDigest: strings.Repeat("c", 64), CredentialDigest: strings.Repeat("d", 64), SourceDigest: strings.Repeat("e", 64), Policy: plan.PolicySync, Desired: []public.Endpoint{endpointA("new.b.example.test.", "192.0.2.3")}, DesiredComplete: true, CurrentComplete: true})
+	if err != nil || len(forged.Operations) != 1 {
+		t.Fatal(err)
+	}
+	if _, err := narrowed.Apply(t.Context(), forged.Intent(0, time.Now())); !errors.Is(err, errInput) {
+		t.Fatal("create outside the domains accepted", err)
+	}
+}
+
+// An instance whose domains were all removed still names its destination,
+// with no domains, so a cleanup can read and delete the record sets its
+// registry rows claim.
+func TestRecordsInstanceWithoutDomainsStillCleansUp(t *testing.T) {
+	server, ed, _ := firstPartyPeer(t)
+	p := recordsProvider(t, server, []string{"example.test"}, "")
+	checked(t, p)
+	built, _ := recordsPlan(t, p, []public.Endpoint{endpointA("www.example.test.", "192.0.2.1")})
+	if receipt, err := p.Apply(t.Context(), built.Intent(0, time.Now())); err != nil || !receipt.Complete {
+		t.Fatal("publish", receipt, err)
+	}
+	if err := ed.ApplyChanges(t.Context(), &externaldns.Changes{Create: []*externaldns.Endpoint{wireA("manual.example.test", "198.51.100.1")}}); err != nil {
+		t.Fatal(err)
+	}
+	// The peer offers only records, so Check refuses a provider built with
+	// no domains; this is the provider of an instance that negotiated with
+	// domains and lost them, as one whose peer offers more would be.
+	p.mu.Lock()
+	p.records.domains = nil
+	p.mu.Unlock()
+	pubs, err := p.Destinations(t.Context())
+	if err != nil || len(pubs) != 1 || len(pubs[0].Domains) != 0 || pubs[0].Destination != webhookDestination(server.URL) {
+		t.Fatal("destination without domains", pubs, err)
+	}
+	snapshot, err := p.Records(t.Context(), pubs[0].Destination)
+	if err != nil || len(snapshot.Records) != 1 || snapshot.Records[0].Endpoint.DNSName != "www.example.test." {
+		t.Fatal("owned rows of an instance without domains", snapshot.Records, err)
+	}
+	cleanup, err := plan.Build(plan.Input{Owner: p.owner, Destination: pubs[0].Destination, ConfigDigest: strings.Repeat("c", 64), CredentialDigest: strings.Repeat("d", 64), SourceDigest: strings.Repeat("e", 64), Policy: pubs[0].Policy, Current: snapshot.Records, DesiredComplete: true, CurrentComplete: true})
+	if err != nil || len(cleanup.Operations) != 1 || cleanup.Operations[0].Action != "delete" {
+		t.Fatal("cleanup plan", cleanup, err)
+	}
+	if receipt, err := p.Apply(t.Context(), cleanup.Intent(0, time.Now())); err != nil || !receipt.Complete {
+		t.Fatal("cleanup delete", receipt, err)
+	}
+	if rows := peerRows(t, ed); len(rows) != 1 || rows["manual.example.test/A"] == nil {
+		t.Fatal("peer rows after cleanup", rows)
 	}
 }
 

@@ -35,8 +35,9 @@ import (
 // rereads the complete list, requires the intent's exact baseline, sends one
 // Changes body with the data and registry rows, and returns a complete
 // receipt only when a second complete reread shows the intended RRset and
-// this instance's registry row. Anything else is a partial receipt, so the
-// ledger stays pending and the host settles it from a later reread. Nothing
+// this instance's registry row. Anything else is a partial receipt that
+// names the attempted targets as ambiguous, so the ledger stays pending and
+// the host settles it from a later reread. Nothing
 // closes the window between the baseline reread and the POST: another
 // writer may change the peer in between, and the verifying reread is what
 // detects it.
@@ -200,13 +201,14 @@ func (p *provider) publication(ctx context.Context) (*transport, *advertisement,
 	p.mu.RLock()
 	r := p.records
 	p.mu.RUnlock()
-	if len(r.domains) == 0 {
-		return nil, nil, records{}, host.ErrUnsupported
-	}
 	return tr, a, r, nil
 }
 
-// Destinations names the one destination of a publishing instance.
+// Destinations names the one destination of a publishing instance. An
+// instance whose domains were all removed still names it, with no domains:
+// the host syncs only an instance whose roles include Publisher, which
+// needs domains, but a cleanup must still read and judge the records its
+// ledger rows name.
 func (p *provider) Destinations(ctx context.Context) ([]host.Publication, error) {
 	_, _, r, err := p.publication(ctx)
 	if err != nil {
@@ -274,12 +276,17 @@ func (p *provider) read(ctx context.Context, tr *transport, a *advertisement, r 
 				}
 			}
 		}
-		// The peer may serve more than this instance publishes to; rows
-		// outside the configured domains are not its destination.
-		if inDomains(n.DNSName, r.domains) {
-			data = append(data, candidate{n, w})
-		}
+		data = append(data, candidate{n, w})
 	}
+	// The peer may serve more than this instance publishes to: a row outside
+	// the configured domains is not its destination, unless this instance's
+	// registry row claims it. Such a row was published under domains that
+	// have since been narrowed, so it stays visible: a sync under the sync
+	// policy deletes it, another policy retains it, and a Delete cleanup
+	// removes it, instead of a narrowed list making it look absent.
+	data = slices.DeleteFunc(data, func(c candidate) bool {
+		return !inDomains(c.endpoint.DNSName, r.domains) && state.registry[endpointKey(c.endpoint)] != r.marker
+	})
 	if len(data) > maxRecordSets {
 		return remoteState{}, plan.ErrCapacity
 	}
@@ -378,6 +385,19 @@ func (r records) publishable(a *advertisement, key kinds.RecordKey) error {
 	return nil
 }
 
+// removable refuses a delete of a name no publication could have made: one
+// in the reserved registry namespace or whose registry name is invalid.
+func removable(key kinds.RecordKey) error {
+	label, _, _ := strings.Cut(key.Name, ".")
+	if strings.HasPrefix(label, registryPrefix) {
+		return errInput
+	}
+	if _, err := registryName(key); err != nil {
+		return errInput
+	}
+	return nil
+}
+
 func inDomains(name string, domains []string) bool {
 	for _, d := range domains {
 		if dns.IsSubDomain(d, name) {
@@ -448,7 +468,13 @@ func (p *provider) execute(ctx context.Context, op *kinds.IntegrationOperation, 
 		return kinds.Receipt{}, errInput
 	}
 	key := op.Spec.Record.Key
-	if err := r.publishable(a, key); err != nil {
+	if op.Spec.After != nil {
+		if err := r.publishable(a, key); err != nil {
+			return kinds.Receipt{}, err
+		}
+	} else if err := removable(key); err != nil {
+		// A delete needs no configured domain: its authority is this
+		// instance's registry row, which the reread below requires.
 		return kinds.Receipt{}, err
 	}
 	state, err := p.read(ctx, tr, a, r)
@@ -509,6 +535,18 @@ func (p *provider) execute(ctx context.Context, op *kinds.IntegrationOperation, 
 	}
 	// The answer is wire evidence only (D298): confirm from a reread.
 	observed, readErr := p.read(ctx, tr, a, r)
+	if readErr == nil {
+		if receipt = p.receipt(op, observed, r, facts); receipt.Complete {
+			return receipt, nil
+		}
+	}
+	// Not confirmed. A 2xx says only that the peer took the body, which it
+	// may still apply, so the attempt is ambiguous whatever the answer was:
+	// the operation stays pending and is settled from a later reread
+	// instead of being abandoned as untouched work and planned again.
+	for _, target := range attempted(op) {
+		facts = addFact(facts, kinds.TargetResult{Target: target, ErrorClass: "ambiguous"})
+	}
 	if readErr != nil {
 		if postErr != nil {
 			return partial(op, facts, p.now()), postErr
@@ -516,9 +554,6 @@ func (p *provider) execute(ctx context.Context, op *kinds.IntegrationOperation, 
 		return partial(op, facts, p.now()), readErr
 	}
 	receipt = p.receipt(op, observed, r, facts)
-	if receipt.Complete {
-		return receipt, nil
-	}
 	if postErr != nil {
 		return receipt, postErr
 	}
