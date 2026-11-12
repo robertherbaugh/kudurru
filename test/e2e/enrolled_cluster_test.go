@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -632,18 +633,31 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 				name   string
 				client *staticProcessClient
 			}{{"primary", apiA}, {"follower", apiB}} {
-				var listed api.List[struct {
-					Metadata struct {
-						Name string `json:"name"`
-					} `json:"metadata"`
-				}]
-				c.client.request(t, http.MethodGet, "/objects/dnsrecordsets?limit=1000", nil, http.StatusOK, &listed)
-				if listed.Continue != "" {
-					t.Fatalf("%s: the record sets do not fit in one list page", c.name)
-				}
+				// The request helper reads at most 128 KiB of a body, and the
+				// 640-document round alone lists far more than that, so the
+				// record sets are read in small pages.
 				present := map[string]bool{}
-				for _, item := range listed.Items {
-					present[item.Metadata.Name] = true
+				for page, cont := 0, ""; ; page++ {
+					if page > 100 {
+						t.Fatalf("%s: listing the record sets did not end after %d pages", c.name, page)
+					}
+					var listed api.List[struct {
+						Metadata struct {
+							Name string `json:"name"`
+						} `json:"metadata"`
+					}]
+					path := "/objects/dnsrecordsets?limit=50"
+					if cont != "" {
+						path += "&continue=" + url.QueryEscape(cont)
+					}
+					c.client.request(t, http.MethodGet, path, nil, http.StatusOK, &listed)
+					for _, item := range listed.Items {
+						present[item.Metadata.Name] = true
+					}
+					if listed.Continue == "" {
+						break
+					}
+					cont = listed.Continue
 				}
 				for i, name := range names {
 					switch {
