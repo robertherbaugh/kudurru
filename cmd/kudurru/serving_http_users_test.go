@@ -92,13 +92,23 @@ func localUsersResetBody(t *testing.T, u internalv1.LocalUser) string {
 
 func localUsersLogin(t *testing.T, f *servingHTTPFixture, name, password, code string) (*http.Cookie, api.SessionInfo) {
 	t.Helper()
+	return localUsersLoginWith(t, f, name, password, func(send func(code string) *httptest.ResponseRecorder) *httptest.ResponseRecorder { return send(code) })
+}
+
+// localUsersLoginWith is localUsersLogin with the login request sent by post,
+// for a caller that must choose the TOTP code while the request runs (see
+// factorPreviousStepCall).
+func localUsersLoginWith(t *testing.T, f *servingHTTPFixture, name, password string, post func(send func(code string) *httptest.ResponseRecorder) *httptest.ResponseRecorder) (*http.Cookie, api.SessionInfo) {
+	t.Helper()
 	// Independent proofs share the production one-second factor limiter.
 	// Reset only test admission, never proof validity or replay state.
 	f.h.factorMu.Lock()
 	f.h.factorLimit.Reset(name)
 	f.h.factorMu.Unlock()
 	localUsersFresh(t, f)
-	w := f.call(t, "POST", "/auth/login", factorBody(t, api.LoginRequest{Username: name, Password: password, TOTPCode: code}), "", nil, "")
+	w := post(func(code string) *httptest.ResponseRecorder {
+		return f.call(t, "POST", "/auth/login", factorBody(t, api.LoginRequest{Username: name, Password: password, TOTPCode: code}), "", nil, "")
+	})
 	expectServingHTTPStatus(t, w, 200)
 	var info api.SessionInfo
 	if json.Unmarshal(w.Body.Bytes(), &info) != nil || info.CSRF == "" || len(w.Result().Cookies()) != 1 {
@@ -378,7 +388,9 @@ func TestServingHTTPLocalUsersResetFactorTokensAndRollback(t *testing.T) {
 	defer f.stop()
 	out := localUsersCreate(t, f, "factor-person")
 	seed := localUsersInstallFactor(t, f, out.Name)
-	cookie, _ := localUsersLogin(t, f, out.Name, "temporary-password", servingHTTPFactorCode(t, seed, time.Now().Add(-30*time.Second)))
+	cookie, _ := localUsersLoginWith(t, f, out.Name, "temporary-password", func(send func(code string) *httptest.ResponseRecorder) *httptest.ResponseRecorder {
+		return factorPreviousStepCall(t, f, seed.ProvisioningSecret(), send)
+	})
 	u := localUsersRead(t, f.s.opts.Store, out.Name)
 	beforeFactor := localUsersState(t, f.s.opts.Store).TOTP
 	owner := internalv1.TokenOwner{Kind: internalv1.OwnerUser, Name: u.Name, UID: string(u.UID), ID: "local:" + u.Name, Provider: "local"}
