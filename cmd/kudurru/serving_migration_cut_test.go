@@ -51,7 +51,7 @@ func migrationSettingsApplied(t *testing.T, f *servingCommandFixture, s *api.Ser
 func TestServingMigrationStepRecapturesCutSupersededBeforeDispatch(t *testing.T) {
 	f := newServingCommandFixture(t)
 	var captures atomic.Int32
-	receiver := migrationCutReceiver(f, func(ctx context.Context, index int) {
+	receiver := migrationCutReceiver(f, func(ctx context.Context, _ int) {
 		if captures.Add(1) != 1 {
 			return
 		}
@@ -90,7 +90,7 @@ func TestServingMigrationStepRecapturesCutSupersededBeforeDispatch(t *testing.T)
 func TestServingMigrationCutWaitDoesNotBoundTheStepCommand(t *testing.T) {
 	f := newServingCommandFixture(t)
 	var captures atomic.Int32
-	receiver := migrationCutReceiver(f, func(ctx context.Context, index int) {
+	receiver := migrationCutReceiver(f, func(ctx context.Context, _ int) {
 		if captures.Add(1) != 1 {
 			return
 		}
