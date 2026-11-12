@@ -146,23 +146,51 @@ func TestReadinessBudgetChargesOnlyRunnableTime(t *testing.T) {
 	}
 }
 
+// threadSchedStat reads the first two schedstat fields of the calling OS
+// thread, which must be locked to its goroutine. ok is false where the kernel
+// does not expose them.
+func threadSchedStat() (run, wait time.Duration, ok bool) {
+	data, err := os.ReadFile("/proc/thread-self/schedstat")
+	if err != nil {
+		return 0, 0, false
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) < 2 {
+		return 0, 0, false
+	}
+	r, errRun := strconv.ParseInt(fields[0], 10, 64)
+	w, errWait := strconv.ParseInt(fields[1], 10, 64)
+	if errRun != nil || errWait != nil {
+		return 0, 0, false
+	}
+	return time.Duration(r), time.Duration(w), true
+}
+
 func TestProcessSchedStatReadsThisProcess(t *testing.T) {
-	run, wait, ok := processSchedStat()
-	if _, err := os.Stat("/proc/self/task"); err != nil {
-		if ok {
-			t.Fatal("statistics reported without /proc")
+	// Pin this goroutine to one thread so its own statistics are monotonic; the
+	// process-wide sums can shrink when another thread exits between reads.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	run, wait, ok := threadSchedStat()
+	if !ok {
+		// No per-thread scheduler statistics (a kernel without
+		// CONFIG_SCHED_INFO, gVisor, WSL1): readinessBudget then falls back
+		// to plain wall time, which TestReadinessBudgetChargesOnlyRunnableTime
+		// covers. Only the reader must agree that nothing is available.
+		if _, _, processOK := processSchedStat(); processOK {
+			t.Fatal("process statistics reported without this thread's")
 		}
 		return
 	}
-	if !ok || run <= 0 || wait < 0 {
-		t.Fatal("this process's scheduler statistics unavailable", run, wait, ok)
+	if processRun, processWait, processOK := processSchedStat(); !processOK || processRun < run || processWait < 0 {
+		t.Fatal("this process's scheduler statistics unavailable", processRun, processWait, processOK, run)
 	}
 	deadline := time.Now().Add(50 * time.Millisecond)
 	spins := 0
 	for time.Now().Before(deadline) {
-		spins++ // run on a CPU, so run time must advance
+		spins++ // run on a CPU, so this thread's run time must advance
 	}
-	later, laterWait, ok := processSchedStat()
+	later, laterWait, ok := threadSchedStat()
 	if !ok || later <= run || laterWait < wait {
 		t.Fatal("scheduler statistics did not advance", spins, run, later, wait, laterWait)
 	}
