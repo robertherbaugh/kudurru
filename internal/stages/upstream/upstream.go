@@ -18,6 +18,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dnssec"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/recursor"
+	"github.com/robertherbaugh/kudurru/internal/tracing"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 )
 
@@ -196,6 +197,8 @@ func (s *Stage) Serve(req *pipeline.Request, _ pipeline.Next) (*pipeline.Respons
 		}
 		ctx = recursor.WithCacheMutations(ctx, source)
 	}
+	// Upstream attempts become client spans of this stage's span (D382).
+	ctx = tracing.NewContext(ctx, req.Trace, req.TraceSpan)
 	res, err := plan.Exchange(ctx, req.Msg)
 	if err != nil {
 		return s.failure(req, plan.Group(), err), nil

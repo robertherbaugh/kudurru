@@ -16,6 +16,7 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/robertherbaugh/kudurru/internal/recursor"
+	"github.com/robertherbaugh/kudurru/internal/tracing"
 )
 
 // Options are the process-level dependencies of a Set.
@@ -42,6 +43,10 @@ type Options struct {
 	RecursiveDomain [32]byte
 	// RequireRecursiveMutations requires a caller-owned native cache source.
 	RequireRecursiveMutations bool
+	// TraceOptionCode is the EDNS option code a group with
+	// TracePropagation sends TRACEPARENT as (tracing.ednsOptionCode);
+	// zero means tracing.DefaultOptionCode.
+	TraceOptionCode uint16
 }
 
 // Set is the immutable collection of groups built from one configuration.
@@ -98,6 +103,10 @@ func New(cfg Config, opts Options) (*Set, error) {
 		boot = resolvers
 	}
 
+	traceCode := opts.TraceOptionCode
+	if traceCode == 0 {
+		traceCode = tracing.DefaultOptionCode
+	}
 	names := make([]string, 0, len(cfg.Groups))
 	for n := range cfg.Groups {
 		names = append(names, n)
@@ -155,7 +164,7 @@ func New(cfg Config, opts Options) (*Set, error) {
 				_ = s.Close()
 				return nil, fmt.Errorf("upstream: group %q: server %q: %w", name, entry, err)
 			}
-			srv := &server{name: displayName(display, addr, u), proto: protoLabel(addr, u), u: u, hc: cfg.Health, now: now}
+			srv := &server{name: displayName(display, addr, u), proto: protoLabel(addr, u), u: u, hc: cfg.Health, now: now, propagate: gc.TracePropagation, traceCode: traceCode}
 			srv.label = name + "/" + srv.name
 			g.servers = append(g.servers, srv)
 			if seen[srv.name] {

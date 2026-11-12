@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/robertherbaugh/kudurru/internal/metrics"
 	"github.com/robertherbaugh/kudurru/internal/nodehealth"
@@ -65,7 +66,14 @@ func (o *Observer) Observe(req *pipeline.Request, resp *pipeline.Response, err e
 	if o.Metrics != nil {
 		o.Metrics.Requests.WithLabelValues(proto, metrics.QTypeLabel(q.Qtype)).Inc()
 		o.Metrics.Responses.WithLabelValues(proto, rcodeLabel, status.String()).Inc()
-		o.Metrics.Duration.WithLabelValues(proto, string(status.Class())).Observe(latency.Seconds())
+		duration := o.Metrics.Duration.WithLabelValues(proto, string(status.Class()))
+		// A kept trace links the latency bucket to the trace (an
+		// OpenMetrics exemplar on /metrics, D382).
+		if exemplar, ok := duration.(prometheus.ExemplarObserver); ok && req.Trace.Kept() {
+			exemplar.ObserveWithExemplar(latency.Seconds(), prometheus.Labels{"trace_id": req.Trace.ID().String()})
+		} else {
+			duration.Observe(latency.Seconds())
+		}
 	}
 
 	// The health name is probed every second by dnsdist and keepalived and
@@ -110,6 +118,11 @@ func (o *Observer) Observe(req *pipeline.Request, resp *pipeline.Response, err e
 		ev.Policy = d.Policy
 	}
 	ev.Zone = zoneName(req.Zone)
+	// Only a kept trace is exported, so only its id links anywhere.
+	if req.Trace.Kept() {
+		ev.TraceID = req.Trace.ID()
+	}
+	ev.Flags.Traceparent = req.Traceparent
 	if req.Msg != nil {
 		ev.Flags.RD = req.Msg.RecursionDesired
 		ev.Flags.CD = req.Msg.CheckingDisabled

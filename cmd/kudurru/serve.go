@@ -832,7 +832,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
-	upOpts := upstream.Options{Logger: logger, Metrics: upstream.NewMetrics(reg), Recursor: rec, RecursorMetrics: recMetrics}
+	upOpts := upstream.Options{Logger: logger, Metrics: upstream.NewMetrics(reg), Recursor: rec, RecursorMetrics: recMetrics, TraceOptionCode: uint16(cfg.Tracing.EDNSOptionCode)} //nolint:gosec // validated to 65001-65534
 	upSet, err := upstream.New(upstream.ConfigFrom(cfg.Upstreams), upOpts)
 	if err != nil {
 		return err
@@ -978,6 +978,18 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	rewriteTarget = dependencies.Serve
+	// Query tracing (D382): the transport's chain starts each trace; the
+	// rewrite dependency chain adds its stage spans to the same trace.
+	tracer, err := newTracer(cfg, reg, logger)
+	if err != nil {
+		return err
+	}
+	if tracer != nil {
+		chain.SetTracer(tracer, tracePrivacy(reload))
+		stopTracer := startTracer(ctx, tracer, logger)
+		defer stopTracer()
+		logger.Info("query tracing enabled", "sampleRate", cfg.Tracing.SampleRate, "slowThreshold", cfg.Tracing.SlowThreshold.Std().String(), "acceptTraceparent", cfg.Tracing.AcceptTraceparent)
+	}
 	loggingObserver := &logstage.Observer{Node: cfg.Node.Name, Collector: qlAsync, Metrics: dnsMetrics}
 	chain.Observe(loggingObserver)
 	logger.Info("pipeline ready", "stages", chain.Stages(), "upstreamGroups", upSet.Groups())

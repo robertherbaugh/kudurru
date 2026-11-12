@@ -7,11 +7,13 @@ Three signals, three homes, and none of them goes through the store:
 | **Query log** | which client asked what, and why it got that answer | `querylog.db` on each node, plus an in-memory tail |
 | **Metrics** | how much, how fast, how healthy | Prometheus, from `:9153/metrics` |
 | **Health** | can this node take traffic now? | `:8081/healthz/*` |
+| **Traces** | where one query spent its time, across dnsdist, kudurru and upstreams | an OpenTelemetry collector, over OTLP/HTTP (off by default) |
 
 Plus the **audit** trail of who changed what. Code: `internal/stages/log`,
 `internal/querylog` (collector, privacy, tail, additional-sink host) and
 `internal/querylog/sqlitelog` (writer, rollups, retention, reader),
-`internal/metrics`, `internal/health`, `internal/audit`.
+`internal/metrics`, `internal/health`, `internal/audit`, `internal/tracing`
+(tracer, TRACEPARENT) and `internal/tracing/otlp` (exporter).
 
 SQLite exports `kudurru_cluster_fenced` from its current local authority, with
 no database read during a scrape. It is 1 for a higher-term fence, conflicting
@@ -547,6 +549,89 @@ or peer fallback. Live tails retain their separate membership transport. Query
 row actions keep the central ID namespace and pass only the selected immutable
 domain into the existing current command and its original authorization proof.
 
+## Query tracing
+
+With `tracing.enabled` (D382) the chain the DNS transport calls starts one
+trace per standard query (opcode QUERY; UPDATE and NOTIFY are never touched,
+so their TSIG digests stay intact). Code: `internal/tracing`,
+`internal/pipeline` (`Chain.SetTracer`, `serveTraced`, `finishTrace`),
+`internal/upstream/server.go` (attempt spans and propagation),
+`internal/stages/log` (trace id and exemplar), mounted in
+`cmd/kudurru/tracing_runtime.go`.
+
+```mermaid
+sequenceDiagram
+    participant E as dnsdist (edge)
+    participant C as Chain.Serve
+    participant S as stages
+    participant U as upstream attempt
+    participant L as log observer
+    participant X as export queue
+    E->>C: PROXYv2 (secret TLV) + query with TRACEPARENT
+    C->>C: remove every TRACEPARENT; trusted peer? continue its trace
+    C->>S: kudurru.dns.query (server span) > kudurru.<stage> spans
+    S->>U: kudurru.upstream.exchange (client span) per attempt
+    U-->>S: option re-added only for tracePropagation groups
+    S-->>C: response
+    C->>C: keep? sampled, failed or slow (tail rule)
+    C->>L: trace id on the event, exemplar on the histogram (kept only)
+    C->>X: non-blocking offer; full queue drops and counts
+```
+
+1. **Option and trust.** `tracing.Begin` removes every EDNS option with the
+   configured code (`tracing.ednsOptionCode`, 65500) from the query before
+   any stage runs, whoever sent it: no stage, cache key, answer or log sees
+   it. It continues the sender's trace only when the request's PROXYv2 header
+   passed the proxy policy (`Client.ProxiedFrom` is set: exact peer or CIDR
+   plus the shared-secret TLV, D45/D56/D72) and `tracing.acceptTraceparent`
+   is on. From any other client, and for the API's synthetic dig, the option
+   is ignored and `kudurru_tracing_traceparent_total{result="untrusted"}`
+   counts it. The wire form is the version 0 option of
+   draft-edns-otel-trace-ids (version, reserved, 16-byte trace id, 8-byte
+   parent id, flags: 27 octets, as dnsdist 2.1.3 sends it); the 26- and
+   18-octet forms of earlier draft revisions are read too.
+2. **Spans.** The root span `kudurru.dns.query` (kind server) is the child of
+   the edge's span. Each stage runs inside `kudurru.<stage>` (internal); the
+   stages are middleware, so a stage's span contains the stages it called.
+   Each upstream server attempt is a `kudurru.upstream.exchange` client span
+   with the server's metrics label (`<group>/<name>`), the transport and the
+   response code; a lost race is marked canceled, not failed. A trace holds
+   at most 64 spans; more are counted, not recorded.
+3. **Propagation.** Upstream queries never carry client EDNS options
+   (`PrepareQuery`). Only for a forward group with `tracePropagation: true`
+   does each attempt add a fresh TRACEPARENT whose parent id is that
+   attempt's span. Recursive groups refuse the flag.
+4. **Keep rule.** When the query is answered the trace is kept if it
+   continues a trusted peer's trace (the peer sends the option only for
+   queries it traces, so its presence is the parent's decision; dnsdist
+   2.1.3 leaves the flags octet 00), if the head sampler picked it
+   (`tracing.sampleRate` per million, OpenTelemetry's trace-id ratio rule),
+   if it failed (SERVFAIL from upstream failure or timeout, DNSSEC bogus,
+   unsynced zone, a pipeline error; refusals and drops do not count) or if
+   it took at least `tracing.slowThreshold` (250 ms). Every query is recorded
+   while tracing is on, so the tail rule needs no second pass; a query that
+   is not kept costs one allocation and is forgotten.
+5. **Links.** A kept trace's id goes on the query event (`trace_id` in
+   `querylog.db`, `GET /queries`, the live tail and every sink) and on the
+   `kudurru_dns_request_duration_seconds` observation as an OpenMetrics
+   exemplar. Traces that were not kept leave no id, so every stored id
+   exists at the collector unless its export failed. The root span carries
+   the question name only under `querylog.privacy` full or anonymize_client
+   and the client address only under full.
+6. **Export.** Kept traces are offered to a bounded queue
+   (`tracing.queueSize`) without blocking; a full queue drops and counts
+   (`kudurru_tracing_traces_total{result="queue_full"}`). One goroutine sends
+   batches of up to 256 traces every two seconds as an OTLP/HTTP protobuf
+   `ExportTraceServiceRequest`, written by hand with `protowire` (the
+   generated OTLP package would link gRPC and its gateway). It reuses the
+   query-log HTTP batch client (one connection per request, no redirects,
+   the bearer token from a file or environment reference). A refused or
+   unanswered batch is dropped and counted, never sent again; shutdown
+   exports what is queued within five seconds.
+
+Off (the default), nothing reads or removes the option and the chain does
+one nil check per stage.
+
 ## Metrics
 
 All metric labels are bounded: list names, upstream names and status values,
@@ -562,6 +647,7 @@ never client addresses or query names.
 | Blocking | `kudurru_blocking_enabled`, `kudurru_blockpage_requests_total` |
 | Query log | `kudurru_querylog_events_total`, `kudurru_querylog_dropped_total{stage,sink}`, `kudurru_querylog_db_bytes`, `kudurru_querylog_write_duration_seconds` |
 | Additional query-log sinks | `kudurru_sink_sent_total{sink}`, `kudurru_sink_errors_total{sink}` (failed attempts to open, write, flush or close), `kudurru_sink_queue_length{sink}`, `kudurru_sink_last_success_timestamp_seconds{sink}`; one series per configured `querylog.sinks` name, removed with the sink. `GET /querylog/sinks` returns the same state of the answering node (`SinkHost.Status`) |
+| Tracing | `kudurru_tracing_traceparent_total{result}` (accepted, untrusted, ignored, malformed), `kudurru_tracing_traces_total{result}` (not_kept, exported, queue_full, export_failed, shutdown), `kudurru_tracing_queue_length`; kept traces add a `trace_id` exemplar to `kudurru_dns_request_duration_seconds` |
 | API | `kudurru_api_requests_total`, `kudurru_api_request_duration_seconds` |
 | Edge and VIP | `kudurru_edge_renders_total`, `kudurru_edge_dnsdist_restarts_total`, `kudurru_edge_backend_up`, `kudurru_vip_master` (on the supervisors' own ports) |
 

@@ -61,6 +61,7 @@ type Config struct {
 	Database        Database         `koanf:"database" json:"database"`
 	RateLimit       RateLimit        `koanf:"ratelimit" json:"ratelimit"`
 	Log             Log              `koanf:"log" json:"log"`
+	Tracing         Tracing          `koanf:"tracing" json:"tracing"`
 	Auth            Auth             `koanf:"auth" json:"auth"`
 	Credentials     CredentialGrants `koanf:"credentials" json:"credentials"`
 	RBAC            RBAC             `koanf:"rbac" json:"rbac"`
@@ -311,6 +312,9 @@ type UpstreamGroup struct {
 	Servers  []string `koanf:"servers" json:"servers"`
 	Strategy string   `koanf:"strategy" json:"strategy"`
 	Timeout  Duration `koanf:"timeout" json:"timeout"`
+	// TracePropagation sends a traced query's TRACEPARENT EDNS option to
+	// this group's servers (D382). Forward mode only.
+	TracePropagation bool `koanf:"tracePropagation" json:"tracePropagation,omitempty"`
 }
 
 // Querylog configures the per-node query log (dev-docs/design-record.md §11.2,
@@ -889,6 +893,7 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.New("upstreams.groups.default is required"))
 	}
 	errs = append(errs, c.Upstreams.validate()...)
+	errs = append(errs, c.Tracing.validate()...)
 	if err := c.ValidateManagedRootTopology(); err != nil {
 		errs = append(errs, err)
 	}
@@ -1151,6 +1156,9 @@ func (u Upstreams) validate() []error {
 		case UpstreamModeRecursive:
 			if len(g.Servers) > 0 {
 				errs = append(errs, fmt.Errorf("upstreams.groups[%s].servers: a recursive group asks the root servers itself; remove the servers or use mode forward", n))
+			}
+			if g.TracePropagation {
+				errs = append(errs, fmt.Errorf("upstreams.groups[%s].tracePropagation: a recursive group asks the internet's authoritative servers, which must never receive trace ids", n))
 			}
 		case "", UpstreamModeForward:
 			if len(g.Servers) == 0 {

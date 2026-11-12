@@ -20,6 +20,7 @@ For scripts and CLI clients: [apply results, settings and live-event contracts](
 What works on which deployment shape, and what each refusal key means: [capabilities.md](capabilities.md).
 The optional central database for the audit log, query log and statistics of every node: [postgres.md](postgres.md).
 Sending the query log to ClickHouse, Grafana Loki or log lines next to the local database: [query-log-sinks.md](query-log-sinks.md).
+OpenTelemetry traces of DNS queries, with dnsdist TRACEPARENT: [tracing.md](tracing.md).
 Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).
 Allowlist, Denylist and switching single entries of any list off: [allowlist.md](allowlist.md).
 The block page (blocked names open a page explaining the block, with a Request access form administrators answer on the Requests page): [blocking-page.md](blocking-page.md).

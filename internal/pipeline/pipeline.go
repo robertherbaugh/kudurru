@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+
+	"github.com/robertherbaugh/kudurru/internal/tracing"
 )
 
 // Order is the fixed stage order. "log" is implemented as an Observer
@@ -147,6 +149,15 @@ type Request struct {
 	CollectExclusions   bool
 	Exclusions          []RuleExclusion
 	ExclusionsTruncated bool
+	// Trace is the query's trace when tracing is on (D382), nil otherwise;
+	// every tracing.Trace method is a no-op on nil. TraceSpan is the span
+	// that work done now is a child of: the chain sets it around each
+	// stage, and copies of the request (subqueries) inherit it.
+	Trace     *tracing.Trace
+	TraceSpan tracing.SpanRef
+	// Traceparent is set when the query carried an EDNS TRACEPARENT option,
+	// whoever sent it. The option itself was removed before any stage ran.
+	Traceparent bool
 }
 
 // RuleExclusion identifies a disabled matching rule in the captured policy.
@@ -232,6 +243,19 @@ type Chain struct {
 	stages    []Stage
 	observers []Observer
 	capture   Capture
+	tracer    *tracing.Tracer
+	privacy   TracePrivacy
+}
+
+// TracePrivacy reports which query facts a kept trace may export: the
+// question name and the client address. It follows querylog.privacy, so a
+// trace never shows more than the query log may store.
+type TracePrivacy func() (names, clients bool)
+
+// SetTracer turns on query tracing (D382). Configure it once, before
+// listeners start. A nil privacy exports neither names nor clients.
+func (c *Chain) SetTracer(t *tracing.Tracer, privacy TracePrivacy) {
+	c.tracer, c.privacy = t, privacy
 }
 
 // New validates that stages follow Order (subset, same relative order) and
@@ -286,6 +310,23 @@ func (c *Chain) Serve(req *Request) (resp *Response, err error) {
 	if req.Ctx == nil {
 		req.Ctx = context.Background()
 	}
+	// Only the chain the transport calls starts a trace; a dependency
+	// chain entered with a traced request adds its stage spans to it.
+	var trace *tracing.Trace
+	if c.tracer != nil && req.Trace == nil && req.Msg != nil && req.Msg.Opcode == dns.OpcodeQuery {
+		// The TRACEPARENT option is removed from every query. It joins the
+		// caller's trace only from a peer whose PROXYv2 header passed the
+		// proxy policy (exact peer and shared-secret TLV, D45/D56/D72),
+		// the same trust the client address itself rides on.
+		trusted := req.Client.ProxiedFrom.IsValid() && !req.Client.Synthetic
+		trace, req.Traceparent = c.tracer.Begin(req.Msg, trusted, req.Received)
+		req.Trace, req.TraceSpan = trace, tracing.Root
+		defer func() {
+			if req.Trace == trace {
+				req.Trace, req.TraceSpan = nil, 0
+			}
+		}()
+	}
 	var owned ServingLease
 	completed := false
 	defer func() {
@@ -310,6 +351,9 @@ func (c *Chain) Serve(req *Request) (resp *Response, err error) {
 		resp, err = c.serveFrom(0, req)
 	}
 	latency := time.Since(req.Received)
+	if trace != nil {
+		c.finishTrace(trace, req, resp, err, latency)
+	}
 	for _, o := range c.observers {
 		o.Observe(req, resp, err, latency)
 	}
@@ -327,9 +371,102 @@ func (c *Chain) serveFrom(i int, req *Request) (*Response, error) {
 	if i >= len(c.stages) {
 		return nil, ErrNoAnswer
 	}
+	if req.Trace != nil {
+		return c.serveTraced(i, req)
+	}
 	return c.stages[i].Serve(req, func(r *Request) (*Response, error) {
 		return c.serveFrom(i+1, r)
 	})
+}
+
+// serveTraced runs stage i inside its own span, a child of the span the
+// request carries. Stages are middleware, so a stage's span contains the
+// spans of the stages it called next for.
+func (c *Chain) serveTraced(i int, req *Request) (*Response, error) {
+	stage := c.stages[i]
+	parent := req.TraceSpan
+	span := req.Trace.Start(parent, stageSpanNames[stage.Name()], tracing.KindInternal, time.Now())
+	req.TraceSpan = span
+	resp, err := stage.Serve(req, func(r *Request) (*Response, error) {
+		return c.serveFrom(i+1, r)
+	})
+	req.TraceSpan = parent
+	failure := ""
+	switch {
+	case err != nil && !errors.Is(err, ErrNoAnswer) && !errors.Is(err, ErrDrop):
+		failure = "stage error"
+	case err == nil && resp != nil && resp.Status.failed():
+		failure = resp.Status.String()
+	}
+	if resp != nil && failure == "" && span != 0 {
+		req.Trace.SetStr(span, "kudurru.status", resp.Status.String())
+	}
+	req.Trace.End(span, time.Now(), failure)
+	return resp, err
+}
+
+// stageSpanNames are the span names of the stages; constant strings, so a
+// traced stage allocates no name.
+var stageSpanNames = func() map[string]string {
+	m := make(map[string]string, len(Order))
+	for _, n := range Order {
+		m[n] = "kudurru." + n
+	}
+	return m
+}()
+
+// failed reports the statuses that make a trace kept by the tail rule
+// (D382): the answer is SERVFAIL because resolution failed. Refusals and
+// drops are policy, not failures, and a flood of them must not turn into a
+// flood of exported traces.
+func (s Status) failed() bool {
+	switch s {
+	case StatusServfailUpstream, StatusTimeoutUpstream, StatusDNSSECBogus, StatusServfailUnsynced:
+		return true
+	}
+	return false
+}
+
+// finishTrace decides whether the query's trace is kept, adds the root
+// attributes a kept trace exports and hands it to the tracer.
+func (c *Chain) finishTrace(t *tracing.Trace, req *Request, resp *Response, err error, latency time.Duration) {
+	dropped := errors.Is(err, ErrDrop)
+	failed := (err != nil && !dropped) || (resp != nil && resp.Status.failed()) ||
+		(err == nil && resp != nil && resp.Msg != nil && resp.Msg.Rcode == dns.RcodeServerFailure)
+	if t.Decide(latency, failed) {
+		q := req.Question()
+		names, clients := false, false
+		if c.privacy != nil {
+			names, clients = c.privacy()
+		}
+		if names {
+			t.SetStr(tracing.Root, "dns.question.name", q.Name)
+		}
+		if clients && req.Client.Addr.IsValid() {
+			t.SetStr(tracing.Root, "client.address", req.Client.Addr.Addr().String())
+		}
+		t.SetStr(tracing.Root, "dns.question.type", dns.TypeToString[q.Qtype])
+		t.SetStr(tracing.Root, "network.transport", req.Client.Proto.String())
+		status := StatusUnknown
+		if resp != nil {
+			status = resp.Status
+			if resp.Msg != nil {
+				t.SetStr(tracing.Root, "dns.response.code", dns.RcodeToString[resp.Msg.Rcode])
+			}
+		} else if err != nil {
+			status = StatusDropped
+		}
+		t.SetStr(tracing.Root, "kudurru.status", status.String())
+		if resp != nil && resp.Upstream != "" {
+			t.SetStr(tracing.Root, "kudurru.upstream", resp.Upstream)
+		}
+		if failed {
+			t.End(tracing.Root, req.Received.Add(latency), status.String())
+		} else {
+			t.End(tracing.Root, req.Received.Add(latency), "")
+		}
+	}
+	t.Finish(req.Received.Add(latency))
 }
 
 // Reply builds a response message with the given rcode for req.
