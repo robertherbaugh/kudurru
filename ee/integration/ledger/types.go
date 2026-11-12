@@ -44,9 +44,18 @@ func (g Guard) Validate() error {
 	return nil
 }
 
-// Write must implement create-only/exact CAS AND Guard checks in the same
-// commit boundary. A preliminary IsLeader/Fence followed by ordinary Apply
-// is insufficient. It must not use Force or silently retry with fresh RVs.
+// Write must implement create-only/exact CAS AND Guard checks at its commit
+// boundary. A preliminary IsLeader/Fence followed by ordinary Apply is
+// insufficient. It must not use Force or silently retry with fresh RVs.
+//
+// A carrier with transactions (SQLite) checks Guard in the same commit as
+// the write. A carrier without them (Kubernetes, D384) checks Guard by a
+// linearizable read of the Lease and a live read of the Integration
+// immediately before the one exact create or exact-resourceVersion write,
+// and writes only the private integration kinds. A write already sent after
+// a passing check may still land once the Lease is lost; it is then either a
+// serializable predecessor of the successor's CAS or a conflict, and a
+// pending intent left by it forces a fresh complete reread by any writer.
 type Write func(context.Context, Guard, store.Object, store.ApplyOptions) (store.Object, error)
 
 // Delete must remove exactly the requested objects AND check Guard in the same
