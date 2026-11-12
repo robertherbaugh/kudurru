@@ -29,7 +29,7 @@ func (p *dynamicOwnershipProbe) set(t *testing.T, records ...string) {
 	p.wake()
 }
 
-func (p *dynamicOwnershipProbe) DynamicOwnership(_ context.Context, z *v1alpha1.DNSZone) (*zonestate.DynamicOwnership, bool, error) {
+func (p *dynamicOwnershipProbe) DynamicOwnership(_ context.Context, _ *v1alpha1.DNSZone) (*zonestate.DynamicOwnership, bool, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	a := &zonestate.Aggregate{}
