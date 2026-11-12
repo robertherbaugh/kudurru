@@ -4517,6 +4517,12 @@ export interface components {
             principal: components["schemas"]["MePrincipal"];
             /** @description Effective grants: role, or role@kind:name for scoped grants. */
             roles: string[];
+            /** @description Verbs per resource for each scoped grant in roles, keyed by scope (zone:home-example-com, zonegroup:prod). */
+            scopedPermissions?: {
+                [key: string]: {
+                    [key: string]: string[] | null;
+                };
+            };
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -6171,6 +6177,7 @@ export interface components {
             took_ms: number;
             type: string;
             upstreamGroup?: string;
+            zoneGroup?: string;
             zoneName: string;
         };
         ZoneFallbackSpec: {
@@ -6210,6 +6217,7 @@ export interface components {
             stubRuntime?: components["schemas"]["StubRuntime"];
             type: string;
             upstreamGroup?: string;
+            zoneGroup?: string;
             zoneName: string;
         };
     };

@@ -21,7 +21,7 @@ RoleBindingSpec grants Role at Scope to Subjects.
 |---|---|---|
 | `spec.role` | `string` | **Required.**<br>Length: 1 to 63 |
 | `spec.scope` | `object` | BindingScope narrows a role binding (§8.5).<br>Validation: cluster scope has no name; other scopes require a name (`!has(self.kind) \|\| self.kind == 'cluster' ? !has(self.name) \|\| self.name.size() == 0 : has(self.name) && self.name.size() > 0`) |
-| `spec.scope.kind` | `string` | Kind is cluster or zone. zonegroup and clientgroup are reserved: they are accepted, but no request carries such a scope, so the binding grants nothing.<br>One of: `cluster`, `zone`, `zonegroup`, `clientgroup` |
+| `spec.scope.kind` | `string` | Kind is cluster, zone, zonegroup or clientgroup. A zonegroup binding covers every DNSZone labeled kudurru.io/zonegroup=&lt;name&gt; and the record sets of those zones. clientgroup is reserved: it is accepted, but no request carries such a scope, so the binding grants nothing.<br>One of: `cluster`, `zone`, `zonegroup`, `clientgroup` |
 | `spec.scope.name` | `string` | Length: at most 253 |
 | `spec.subjects` | `[]object` | **Required.**<br>Items: 1 to 256 |
 | `spec.subjects[].kind` | `string` | **Required.** Kind is User, Group or ServiceAccount.<br>One of: `User`, `Group`, `ServiceAccount` |

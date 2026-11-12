@@ -5577,6 +5577,22 @@
             },
             "type": "array"
           },
+          "scopedPermissions": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "type": "object"
+            },
+            "description": "Verbs per resource for each scoped grant in roles, keyed by scope (zone:home-example-com, zonegroup:prod).",
+            "type": "object"
+          },
           "took_ms": {
             "description": "Server-side duration of the request in milliseconds.",
             "format": "double",
@@ -10853,6 +10869,9 @@
           "upstreamGroup": {
             "type": "string"
           },
+          "zoneGroup": {
+            "type": "string"
+          },
           "zoneName": {
             "type": "string"
           }
@@ -10982,6 +11001,9 @@
             "type": "string"
           },
           "upstreamGroup": {
+            "type": "string"
+          },
+          "zoneGroup": {
             "type": "string"
           },
           "zoneName": {

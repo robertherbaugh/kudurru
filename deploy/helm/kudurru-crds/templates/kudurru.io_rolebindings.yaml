@@ -52,8 +52,10 @@ spec:
                 properties:
                   kind:
                     description: |-
-                      Kind is cluster or zone. zonegroup and clientgroup are reserved: they are
-                      accepted, but no request carries such a scope, so the binding grants nothing.
+                      Kind is cluster, zone, zonegroup or clientgroup. A zonegroup binding
+                      covers every DNSZone labeled kudurru.io/zonegroup=<name> and the record
+                      sets of those zones. clientgroup is reserved: it is accepted, but no
+                      request carries such a scope, so the binding grants nothing.
                     enum:
                     - cluster
                     - zone

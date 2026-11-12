@@ -4043,6 +4043,9 @@ type Me struct {
 	// Roles Effective grants: role, or role@kind:name for scoped grants.
 	Roles []string `json:"roles"`
 
+	// ScopedPermissions Verbs per resource for each scoped grant in roles, keyed by scope (zone:home-example-com, zonegroup:prod).
+	ScopedPermissions *map[string]map[string]*[]string `json:"scopedPermissions,omitempty"`
+
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
 }
@@ -5817,6 +5820,7 @@ type ZoneDetail struct {
 	TookMs        float64 `json:"took_ms"`
 	Type          string  `json:"type"`
 	UpstreamGroup *string `json:"upstreamGroup,omitempty"`
+	ZoneGroup     *string `json:"zoneGroup,omitempty"`
 	ZoneName      string  `json:"zoneName"`
 }
 
@@ -5858,6 +5862,7 @@ type ZoneSummary struct {
 	StubRuntime      *StubRuntime              `json:"stubRuntime,omitempty"`
 	Type             string                    `json:"type"`
 	UpstreamGroup    *string                   `json:"upstreamGroup,omitempty"`
+	ZoneGroup        *string                   `json:"zoneGroup,omitempty"`
 	ZoneName         string                    `json:"zoneName"`
 }
 

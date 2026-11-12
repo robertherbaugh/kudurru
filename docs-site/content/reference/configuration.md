@@ -373,7 +373,7 @@ server runs. *write-only* keys are never returned by the API.
 
 | Key | Type | Default | Scope | Description |
 |---|---|---|---|---|
-| <a id="rbac.bindings"></a>`rbac.bindings` | `list` | `[]` | cluster | **Role bindings.** Who may do what: each binding grants a role (viewer, auditor, operator, zone-admin or admin) to users, groups or service accounts, for the whole cluster or one zone. RoleBinding objects add to these.<br>Allowed: items: {role (required): string (one of viewer \| auditor \| operator \| zone-admin \| admin); scope: {kind: string (one of cluster \| zone \| zonegroup \| clientgroup, default cluster); name: string}; subjects (required): list of {kind (required): string (one of User \| Group \| ServiceAccount); name (required): string; namespace: string}}.<br>*host-only, restart*<br>Environment: file only. |
+| <a id="rbac.bindings"></a>`rbac.bindings` | `list` | `[]` | cluster | **Role bindings.** Who may do what: each binding grants a role (viewer, auditor, operator, zone-admin or admin) to users, groups or service accounts, for the whole cluster, one zone or one zone group. RoleBinding objects add to these.<br>Allowed: items: {role (required): string (one of viewer \| auditor \| operator \| zone-admin \| admin); scope: {kind: string (one of cluster \| zone \| zonegroup \| clientgroup, default cluster); name: string}; subjects (required): list of {kind (required): string (one of User \| Group \| ServiceAccount); name (required): string; namespace: string}}.<br>*host-only, restart*<br>Environment: file only. |
 
 ## log
 
