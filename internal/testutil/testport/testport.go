@@ -103,7 +103,7 @@ func reserve() (int, func(), error) {
 	if dir == "" {
 		dir = filepath.Join(os.TempDir(), "kudurru-testport")
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil { //nolint:gosec // G703: the test-only lock directory (temp dir or KUDURRU_TESTPORT_DIR)
 		return 0, nil, err
 	}
 	n := hi - lo + 1

@@ -21,7 +21,7 @@ import (
 func TestReserveIsUniqueAndOutsideEphemeralRange(t *testing.T) {
 	lo, hi, outside := Window()
 	ephLo, ephHi := ephemeralRange()
-	if outside && !(hi < ephLo || lo > ephHi) {
+	if outside && hi >= ephLo && lo <= ephHi {
 		t.Fatalf("window %d-%d overlaps the ephemeral range %d-%d", lo, hi, ephLo, ephHi)
 	}
 	var mu sync.Mutex
