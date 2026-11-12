@@ -93,11 +93,101 @@ func DecodeImage(image *replication.Image, opts ImageOptions) (*DecodedImage, er
 			out.Allocations = append(out.Allocations, v)
 		}
 	}
+	used, err := linkSources(out.Sources, chunks, allocations)
+	if err != nil {
+		return nil, err
+	}
+	if len(used) != len(chunks) {
+		return nil, invalidSourceImage("orphan source chunk")
+	}
+	// Original source framing was checked before generic canonicalization could
+	// repair Unicode or case aliases. Generic validation covers the entire image,
+	// all zero-count manifests, ordering, RV ceilings, digest and other owners.
+	if _, err := replication.Validate(*image, opts.Validation); err != nil {
+		return nil, err
+	}
+	slices.SortFunc(out.Sources, func(a, b SourceImage) int { return strings.Compare(a.Head.Name, b.Head.Name) })
+	slices.SortFunc(out.Allocations, func(a, b *kinds.IntegrationNameAllocation) int { return strings.Compare(a.Name, b.Name) })
+	return out, nil
+}
+
+// CarrierListing is one complete read of the source carriers of a cluster
+// from a carrier that has no replication image (the Kubernetes driver, D384).
+// The caller must pass every head and allocation it listed and every chunk
+// those heads reference; a partial listing must not be decoded.
+type CarrierListing struct {
+	ClusterID   string
+	Heads       []*kinds.IntegrationSourceHead
+	Chunks      []*kinds.IntegrationSourceChunk
+	Allocations []*kinds.IntegrationNameAllocation
+}
+
+// DecodeCarriers applies DecodeImage's carrier and cross-source checks to a
+// listing instead of an image. Each carrier must validate, carry a server
+// identity and belong to ClusterID; UIDs, heads per owner and names are
+// unique. Unlike an image, a listing may hold chunks no head references: a
+// lost head CAS or a replaced head leaves them until they are retired, and
+// they never become part of a source. Base is zero.
+func DecodeCarriers(l CarrierListing) (*DecodedImage, error) {
+	if l.ClusterID == "" || len(l.Heads) > kinds.MaxSourceCount || len(l.Chunks) > kinds.MaxSourceCount*kinds.MaxSourceChunks*2 || len(l.Allocations) > kinds.MaxClusterAllocations {
+		return nil, invalidSourceImage("listing bounds")
+	}
+	out := &DecodedImage{Sources: []SourceImage{}, Allocations: []*kinds.IntegrationNameAllocation{}}
+	uids := map[string]bool{}
+	identity := func(o store.Object) error {
+		uid := string(o.GetUID())
+		if !boundedText(uid, 256) || !boundedText(o.GetResourceVersion(), 256) || o.GetNamespace() != "" || uids[uid] {
+			return invalidSourceImage("listed carrier identity")
+		}
+		uids[uid] = true
+		return nil
+	}
+	owners := map[kinds.Owner]bool{}
+	for _, h := range l.Heads {
+		if h == nil || h.Validate() != nil || identity(h) != nil || h.Spec.Owner.ClusterID != l.ClusterID || owners[h.Spec.Owner] {
+			return nil, invalidSourceImage("listed head")
+		}
+		owners[h.Spec.Owner] = true
+		out.Sources = append(out.Sources, SourceImage{Head: h.DeepCopy()})
+	}
+	chunks := map[string]*kinds.IntegrationSourceChunk{}
+	for _, c := range l.Chunks {
+		if c == nil || c.Validate() != nil || identity(c) != nil || c.Spec.Owner.ClusterID != l.ClusterID || chunks[c.Name] != nil {
+			return nil, invalidSourceImage("listed chunk")
+		}
+		chunks[c.Name] = c.DeepCopy()
+	}
+	allocations := map[string]*kinds.IntegrationNameAllocation{}
+	counts := map[kinds.Owner]int{}
+	for _, a := range l.Allocations {
+		if a == nil || a.Validate() != nil || identity(a) != nil || a.Spec.Scope.ClusterID != l.ClusterID || allocations[a.Name] != nil {
+			return nil, invalidSourceImage("listed allocation")
+		}
+		counts[a.Spec.Owner]++
+		if counts[a.Spec.Owner] > kinds.MaxSourceAllocations {
+			return nil, invalidSourceImage("allocation count")
+		}
+		allocations[a.Name] = a.DeepCopy()
+		out.Allocations = append(out.Allocations, allocations[a.Name])
+	}
+	if _, err := linkSources(out.Sources, chunks, allocations); err != nil {
+		return nil, err
+	}
+	slices.SortFunc(out.Sources, func(a, b SourceImage) int { return strings.Compare(a.Head.Name, b.Head.Name) })
+	slices.SortFunc(out.Allocations, func(a, b *kinds.IntegrationNameAllocation) int { return strings.Compare(a.Name, b.Name) })
+	return out, nil
+}
+
+// linkSources binds every head to the chunks it references, decodes each
+// complete source and checks the cross-source rules: no chunk is shared, no
+// desired object UID is claimed by two owners or two keys, and allocation
+// evidence equals the original carrier. It returns the referenced chunk names.
+func linkSources(sources []SourceImage, chunks map[string]*kinds.IntegrationSourceChunk, allocations map[string]*kinds.IntegrationNameAllocation) (map[string]bool, error) {
 	used := map[string]bool{}
 	claimedUIDs := map[string]kinds.Owner{}
 	claimedUIDKeys := map[string]string{}
-	for i := range out.Sources {
-		s := &out.Sources[i]
+	for i := range sources {
+		s := &sources[i]
 		for _, ref := range s.Head.Spec.Chunks {
 			chunk := chunks[ref.Name]
 			if chunk == nil || used[ref.Name] {
@@ -129,18 +219,7 @@ func DecodeImage(image *replication.Image, opts ImageOptions) (*DecodedImage, er
 			}
 		}
 	}
-	if len(used) != len(chunks) {
-		return nil, invalidSourceImage("orphan source chunk")
-	}
-	// Original source framing was checked before generic canonicalization could
-	// repair Unicode or case aliases. Generic validation covers the entire image,
-	// all zero-count manifests, ordering, RV ceilings, digest and other owners.
-	if _, err := replication.Validate(*image, opts.Validation); err != nil {
-		return nil, err
-	}
-	slices.SortFunc(out.Sources, func(a, b SourceImage) int { return strings.Compare(a.Head.Name, b.Head.Name) })
-	slices.SortFunc(out.Allocations, func(a, b *kinds.IntegrationNameAllocation) int { return strings.Compare(a.Name, b.Name) })
-	return out, nil
+	return used, nil
 }
 
 func invalidSourceImage(reason string) error {

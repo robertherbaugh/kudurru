@@ -10,6 +10,7 @@ import (
 
 	integration "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	zonekinds "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	corev1 "k8s.io/api/core/v1"
@@ -50,7 +51,16 @@ func TestEnvtestRuntimeKindsPrivateCarriersAndSafeExport(t *testing.T) {
 	head := &integration.IntegrationSourceHead{ObjectMeta: metav1.ObjectMeta{Name: integration.SourceHeadName(owner)}, Spec: integration.IntegrationSourceHeadSpec{FormatVersion: 1, Owner: owner, Sequence: 1, ConfigDigest: digest, CredentialDigest: digest, RootDigest: digest, AcceptedAt: now, State: "active", Chunks: []integration.SourceChunkRef{{Name: sourceChunk.Name, Digest: digest, Bytes: len(data)}}}}
 	scope := integration.AllocationScope{ClusterID: owner.ClusterID, ZoneUID: "zone-uid", Apex: "example."}
 	allocation := &integration.IntegrationNameAllocation{ObjectMeta: metav1.ObjectMeta{Name: integration.NameAllocationName(scope, "client")}, Spec: integration.IntegrationNameAllocationSpec{FormatVersion: 1, Scope: scope, Label: "client", Owner: owner, ClientID: "client-id", Base: "client", CreatedAt: now}}
-	for _, object := range []store.Object{chunk, budget, sourceChunk, head, allocation} {
+	// The ledger, operation and delivery carriers the outbound host writes on
+	// Kubernetes (D384) use the same create-only private Secrets.
+	record := integration.RecordIdentity{Owner: owner, Destination: integration.Destination{Provider: "cloudflare", Account: "account", Zone: "zone"}, Key: integration.RecordKey{Name: "web.example.", Type: "A"}}
+	endpoint := &v1alpha1.Endpoint{DNSName: "web.example.", RecordType: "A", RecordTTL: 300, Targets: []string{"192.0.2.80"}}
+	ledgerRow := &integration.IntegrationLedger{ObjectMeta: metav1.ObjectMeta{Name: integration.LedgerName(record)}, Spec: integration.IntegrationLedgerSpec{FormatVersion: 1, Record: record, Sequence: 1}}
+	operationID := integration.Digest([]byte("operation"))
+	operation := &integration.IntegrationOperation{ObjectMeta: metav1.ObjectMeta{Name: integration.OperationName(operationID)}, Spec: integration.IntegrationOperationSpec{FormatVersion: 1, Record: record, OperationID: operationID, PlanDigest: digest, ConfigDigest: digest, CredentialDigest: digest, Action: "create", After: endpoint, AfterHash: integration.EndpointDigest(endpoint), CreatedAt: now}}
+	deliveryID := integration.Digest([]byte("delivery"))
+	delivery := &integration.IntegrationDelivery{ObjectMeta: metav1.ObjectMeta{Name: integration.DeliveryName(owner, deliveryID)}, Spec: integration.IntegrationDeliverySpec{FormatVersion: 1, Owner: owner, DeliveryID: deliveryID, Topic: "zone.changed", Payload: []byte(`{"zone":"example."}`), CreatedAt: now, Deadline: now.Add(time.Hour), NextAttempt: now}}
+	for _, object := range []store.Object{chunk, budget, sourceChunk, head, allocation, ledgerRow, operation, delivery} {
 		created, err := s.Apply(ctx, object, store.ApplyOptions{Manager: store.ManagerSystem, CreateOnly: true})
 		if err != nil {
 			t.Fatal(err)
