@@ -3,12 +3,14 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/cli"
+	"github.com/robertherbaugh/kudurru/internal/edgeblock"
 )
 
 // newEdgeBlockCmds are `kudurru edge block|blocks|unblock` (D388): the
@@ -101,13 +103,25 @@ func newEdgeBlockCmds(o *cliOpts) []*cobra.Command {
 		Short: "Revoke an operator edge block before it expires",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// The ID goes into the request path: refuse anything that is not
+			// one, so the operator's credential never reaches another route.
+			if !edgeblock.ValidID(args[0]) {
+				return fmt.Errorf("edge block ID %q is not %d lowercase hex characters (see kudurru edge blocks)", args[0], 2*edgeblock.IDBytes)
+			}
+			f, err := o.format()
+			if err != nil {
+				return err
+			}
 			c, _, err := o.client()
 			if err != nil {
 				return err
 			}
 			var b api.EdgeBlock
-			if err := c.Do(cmd.Context(), http.MethodDelete, "/edge/blocks/"+args[0], nil, nil, &b); err != nil {
+			if err := c.Do(cmd.Context(), http.MethodDelete, "/edge/blocks/"+url.PathEscape(args[0]), nil, nil, &b); err != nil {
 				return err
+			}
+			if f.Structured() {
+				return cli.WriteStructured(cmd.OutOrStdout(), f, b)
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "edge block %s revoked: %s; edges stop dropping it within a few seconds\n", b.ID, b.Prefix)
 			return err
