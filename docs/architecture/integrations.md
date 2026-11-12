@@ -867,7 +867,7 @@ flowchart TD
     Own -- "this instance" --> Mine["Owner = cluster ID + UID"]
     Own -- "another marker" --> Foreign["Foreign owner"]
     Own -- none --> Heritage["external-dns heritage parser<br/>(plan.AttachHeritage)"]
-    Heritage --> Rows["Rows inside spec.webhook.domains<br/>ID = digest of key, version = digest of content + marker"]
+    Heritage --> Rows["Rows inside spec.webhook.domains, and owned rows outside them<br/>ID = digest of key, version = digest of content + marker"]
     Mine --> Rows
     Foreign --> Rows
     Rows --> Planner["Host planner and ledger (unowned and foreign never modified)"]
@@ -875,7 +875,7 @@ flowchart TD
     Apply --> Post["One POST /records: data + registry rows"]
     Post --> Verify["Complete reread"]
     Verify -- "intended RRset under own registry row" --> Complete["Complete receipt: ledger confirmed"]
-    Verify -- "anything else, or POST/read failure" --> Partial["Partial receipt: ledger pending;<br/>a later sync settles it from a reread"]
+    Verify -- "anything else, or POST/read failure" --> Partial["Partial receipt, targets ambiguous: ledger pending;<br/>a later sync settles it through Recover"]
 ```
 
 - **Registry.** One TXT row per managed record set, at
@@ -887,20 +887,30 @@ flowchart TD
 - **Owners.** This instance's marker means owned; another kudurru marker or
   an external-dns heritage claim means another owner's; no claim means
   unowned. Only rows inside the configured domains are the destination, so
-  the peer may serve other names. Webhook peers offer no adoption.
+  the peer may serve other names, but a row this instance's registry claims
+  stays in the snapshot outside them: narrowing `domains` makes it an owned
+  row that is no longer desired (deleted under sync, retained otherwise,
+  removed by a Delete cleanup), never an absent one. An instance without
+  domains still names its destination, for cleanup only; the host syncs it
+  only while its roles include Publisher, which needs domains. Webhook peers
+  offer no adoption.
 - **Apply and Recover.** Apply rereads, requires the intent's Before hash,
   IDs and versions, sends one Changes body (create: data and, unless an own
   leftover exists, registry; update: old and new data; delete: data and own
   registry) and returns a complete receipt only when a second complete
   reread shows the After record set under this instance's registry row, or
-  no record set for a delete. A refused or unanswered POST marks its targets
-  `ambiguous`. Recover rereads independently of the host's snapshot. Adjust
+  no record set for a delete. A POST that the verifying reread does not
+  confirm, whatever its answer, marks its targets `ambiguous`, so host
+  recovery never abandons it as untouched work. A delete needs no configured
+  domain: its authority is the registry row the reread requires. Recover rereads independently of the host's snapshot. Adjust
   calls the peer's `/adjustendpoints`, as external-dns does, so the planned
   After state is what the peer stores.
 - **Limits.** Nothing closes the window between the baseline reread and the
   POST; the verifying reread detects a concurrent writer, it does not prevent
   one. A peer must store TXT rows and underscore labels. Each change costs
-  three requests of the instance's budget.
+  three requests of the instance's budget. A registry row of another kudurru
+  with no data row is not shown to the planner, so a desired record there is
+  refused by Apply on each sync instead of being planned as a conflict.
 
 ## Tier-B hook events
 

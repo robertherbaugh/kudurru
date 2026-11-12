@@ -51,7 +51,14 @@ records, owns nothing at its provider, so its cleanup is steps 3 and 4 only:
 it makes no provider call and does not need the credential or a reachable
 peer. A webhook instance that publishes records (see
 [Tier-B webhook records](#tier-b-webhook-records)) is cleaned up like a
-Cloudflare one: step 1 deletes the record sets whose registry row names it.
+Cloudflare one: step 1 deletes the record sets whose registry row names it,
+including those outside domains that were narrowed since, and leaves every
+other row at the peer. While the peer is unreachable the object stays
+terminating with its finalizer. An instance whose `domains` were all removed
+still cleans up the record sets it published if its peer offers another
+capability; a records-only peer refuses an instance without domains, so its
+cleanup stops at provisioning: restore one domain, or set `deletionPolicy:
+Retain` to release the object and keep the records.
 
 While this runs the Integration is shown with phase `Terminating`, and
 `kudurru integrations get` and `list` (and `GET /api/v1/integrations`) show
@@ -322,7 +329,15 @@ another Kudurru instance, or an external-dns heritage record
 Records of other owners and unowned records are never changed; a desired
 record at such a name is reported as a conflict. Adoption is not offered for
 webhook peers. Only rows inside the configured domains are considered, so the
-peer may serve other names too.
+peer may serve other names too, with one exception: a record set whose
+registry record names this instance stays the instance's after `domains` is
+narrowed. Under `policy: sync` the next sync deletes it with its registry
+record, as it deletes a record removed from the sources; under `upsert-only`
+and `create-only` it stays, and a `deletionPolicy: Delete` cleanup removes
+it. A record set that only another Kudurru's registry record claims, with no
+data record, is hidden from the plan: a desired record there is refused at
+apply time on every sync instead of being reported as a conflict (a known
+limit; remove the stale registry record at the peer).
 
 Each change is one `POST /records` with the record set and its registry
 record. The answer, even a 204, is never taken as the result: Kudurru rereads
@@ -330,9 +345,16 @@ the complete list (no pagination headers, at most 32,768 rows and 10,000
 record sets) and confirms the change only when the reread shows the intended
 record set under its registry record. A peer that drops the registry row,
 accepts the body without effect, fails or answers nothing leaves the change
-pending: the instance reports `ConflictsOrPending`, a reviewed sync answers
-`503 integration_uncertain`, and the next sync settles it from a fresh reread
-without sending it again when the peer did apply it. Nothing closes the window
+pending with its targets marked ambiguous: the instance reports
+`ConflictsOrPending`, a reviewed sync answers `503 integration_uncertain`,
+and the next sync settles that same operation from a fresh reread. It is
+confirmed without sending anything when the peer did apply it; when the
+reread still shows the old state, recovery sends the change once more under
+the same operation. A record set whose data the peer applied but whose
+registry record it dropped is no longer provably the instance's, so it stays
+pending and nothing is sent again until an operator removes the data record
+or the peer stores the registry record; while it is pending the instance
+publishes nothing else. Nothing closes the window
 between Kudurru's reread and its POST; another writer changing the same record
 set in that window is detected by the verifying reread, not prevented.
 
@@ -538,7 +560,8 @@ checks `{"contain":[endpoints],"absent":[endpoints]}`: `records_contain`
 passes when each listed endpoint is present with the same name, type, set
 identifier and targets (and TTL when given), `records_absent` when none of
 the absent identities is listed. It is a read probe and needs no
-`--allow-mutations`. `--event-file` with
+`--allow-mutations`. Both record list reads accept up to 32,768 endpoints,
+the bound the webhook publisher reads. `--event-file` with
 `--hmac-file` sends the exact event bytes with HMAC-SHA256 and a fresh
 `X-Kudurru-Delivery` ID. `--action NAME --params-file FILE` invokes that exact
 advertised action once. The HMAC file contains 32–4096 raw bytes, not a hex
