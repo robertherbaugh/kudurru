@@ -267,10 +267,16 @@ func TestRunServeStaticTwinsReadOnlyPeerLossRestart(t *testing.T) {
 
 func startStaticMount(t *testing.T, cfg *config.Config) func() {
 	t.Helper()
+	return startLicensedMount(t, cfg, "")
+}
+
+// startLicensedMount is startStaticMount with a license key.
+func startLicensedMount(t *testing.T, cfg *config.Config, licenseKey string) func() {
+	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	var runErr error
-	go func() { defer close(done); runErr = runServe(ctx, cfg, "") }()
+	go func() { defer close(done); runErr = runServe(ctx, cfg, licenseKey) }()
 	var once sync.Once
 	stop := func() {
 		once.Do(func() {
