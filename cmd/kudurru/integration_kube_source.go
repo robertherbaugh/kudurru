@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
+	"time"
 
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -12,6 +14,7 @@ import (
 	"github.com/robertherbaugh/kudurru/ee/integration/inbound"
 	"github.com/robertherbaugh/kudurru/internal/inventory"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/kube"
 )
 
 // kubeObservationKey carries one source observation's original cut and lease
@@ -65,6 +68,10 @@ func (r *kubeIntegrationRuntime) beforeObserve(ctx, _ context.Context, g ih.Exec
 //     head moves it from sequence n to n+1; a lost CAS writes nothing and
 //     leaves the previous source in force;
 //  4. the previous head's chunks are deleted by exact UID and resourceVersion.
+//
+// A head write that was sent and not acknowledged is resolved by one read of
+// the head: the head written is a commit, anything else an uncertain outcome
+// (Pending, not Committed) that is reported as such and never replayed.
 //
 // An observation that would publish DNS objects (UniFi spec.unifi.inventory)
 // is refused before any write: source-owned DNS children are not mounted on
@@ -143,6 +150,17 @@ func (r *kubeIntegrationRuntime) commitSource(ctx context.Context, g ih.Executio
 		committed, e = backend.Commit(ctx, expected, encoded.Head, staged, manager)
 		return e
 	})
+	if errors.Is(err, kube.ErrSourceOutcomeUnknown) {
+		// The head write was sent and not acknowledged. Resolve it by one
+		// read of the head, never by repeating the write: a head that is
+		// exactly the one written committed; anything else stays unknown
+		// (a lost answer may still land), so it is reported as an
+		// uncertain outcome with the intent pending, never as a refusal.
+		committed, err = r.resolveSourceCommit(ctx, backend, owner, encoded.Head)
+		if err != nil {
+			return &ih.Result{Pending: 1, Source: &ih.SourceOutcome{}}, err
+		}
+	}
 	if err != nil {
 		if errors.Is(err, store.ErrConflict) {
 			err = ih.ErrFenced
@@ -178,6 +196,23 @@ func (r *kubeIntegrationRuntime) commitSource(ctx context.Context, g ih.Executio
 	}
 	result.Source.Published = true
 	return result, nil
+}
+
+// resolveSourceCommit reads the head once after a head write with an unknown
+// outcome, on a context of its own: the request's may be what ended. It
+// returns the head when it is exactly the one written (same owner, sequence
+// and root digest) and an error, still marked unknown, otherwise.
+func (r *kubeIntegrationRuntime) resolveSourceCommit(ctx context.Context, backend *kube.IntegrationSourceBackend, owner kinds.Owner, written *kinds.IntegrationSourceHead) (*kinds.IntegrationSourceHead, error) {
+	readCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	head, err := backend.Head(readCtx, owner)
+	if err != nil {
+		return nil, fmt.Errorf("%w: rereading the head: %w", kube.ErrSourceOutcomeUnknown, err)
+	}
+	if head.Spec.Owner != written.Spec.Owner || head.Spec.Sequence != written.Spec.Sequence || head.Spec.RootDigest != written.Spec.RootDigest {
+		return nil, fmt.Errorf("%w: the head does not show the write (sequence %d)", kube.ErrSourceOutcomeUnknown, head.Spec.Sequence)
+	}
+	return head, nil
 }
 
 // admitGroup reads one contributed ClientGroup live. It must be the captured

@@ -17,12 +17,15 @@ import (
 // Integration source errors (D384). ErrSourceConflict wraps store.ErrConflict:
 // the head moved, or a create found one, and nothing was written. A stored
 // carrier that does not match what a head references is ErrSourceCorrupt,
-// never an absent source.
+// never an absent source. ErrSourceOutcomeUnknown marks a head write that was
+// sent and not acknowledged: the head may or may not have moved, and only a
+// later read of the head can tell.
 var (
-	ErrSourceConflict = fmt.Errorf("%w: integration source head changed", store.ErrConflict)
-	ErrSourceCorrupt  = errors.New("store/kube: integration source carrier does not match its head")
-	ErrSourceInvalid  = errors.New("store/kube: invalid integration source")
-	ErrSourceCapacity = errors.New("store/kube: integration source carriers exceed their bound")
+	ErrSourceConflict       = fmt.Errorf("%w: integration source head changed", store.ErrConflict)
+	ErrSourceOutcomeUnknown = errors.New("store/kube: integration source head write outcome unknown")
+	ErrSourceCorrupt        = errors.New("store/kube: integration source carrier does not match its head")
+	ErrSourceInvalid        = errors.New("store/kube: invalid integration source")
+	ErrSourceCapacity       = errors.New("store/kube: integration source carriers exceed their bound")
 )
 
 // IntegrationSourceBackend is the Kubernetes form of the integration source
@@ -114,8 +117,10 @@ func (b *IntegrationSourceBackend) Head(ctx context.Context, owner integration.O
 // identical bytes. The previous head, if any, must belong to the same owner
 // and carry the preceding sequence; a first head carries sequence 1. Exactly
 // one create or one update is sent. ErrSourceConflict means that write lost
-// and nothing changed; any other write error is an unknown outcome that the
-// caller resolves by reading the head again, never by repeating the write.
+// and nothing changed. An error wrapping ErrSourceOutcomeUnknown means the
+// write was sent and not acknowledged: the caller resolves it by reading the
+// head again, never by repeating the write. Every other error precedes the
+// write and changed nothing.
 func (b *IntegrationSourceBackend) Commit(ctx context.Context, expected string, head *integration.IntegrationSourceHead, chunks []*integration.IntegrationSourceChunk, manager string) (*integration.IntegrationSourceHead, error) {
 	if head == nil || head.Validate() != nil || len(chunks) != len(head.Spec.Chunks) || manager == "" {
 		return nil, ErrSourceInvalid
@@ -184,11 +189,12 @@ func (b *IntegrationSourceBackend) Commit(ctx context.Context, expected string, 
 		return nil, ErrSourceConflict
 	}
 	if err != nil {
-		return nil, writeError("commit integration source head", store.KeyOf(head), err)
+		return nil, fmt.Errorf("%w: %w", ErrSourceOutcomeUnknown, writeError("commit integration source head", store.KeyOf(head), err))
 	}
 	obj, err := decodeSecret(ki, out)
 	if err != nil {
-		return nil, err
+		// The write was acknowledged, but its answer does not decode.
+		return nil, fmt.Errorf("%w: %w", ErrSourceOutcomeUnknown, err)
 	}
 	return obj.(*integration.IntegrationSourceHead), nil
 }
