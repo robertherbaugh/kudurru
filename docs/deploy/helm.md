@@ -592,7 +592,9 @@ and add this rule to the kudurru ClusterRole yourself (same D55 caveat):
 - apiGroups: [""]
   resources: [users, groups, serviceaccounts]
   verbs: [impersonate]
-``` Reads, status updates, internal Secrets, the audit log and
+```
+
+Reads, status updates, internal Secrets, the audit log and
 writes without a signed-in principal (controllers, RFC 2136 UPDATE, the
 external-dns webhook, integrations) stay on the kudurru ServiceAccount, and
 so does the `kudurru admin` socket.
