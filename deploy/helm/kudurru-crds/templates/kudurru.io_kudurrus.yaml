@@ -1464,6 +1464,18 @@ spec:
                                 4s).
                               maxLength: 8192
                               type: string
+                            tracePropagation:
+                              description: 'false (default): these servers never learn
+                                trace ids. true adds the EDNS TRACEPARENT option to
+                                the queries sent to them for a sampled trace (tracing.sampleRate,
+                                or a continued edge trace), so a downstream kudurru,
+                                PowerDNS Recursor or dnsdist continues the same trace.
+                                The receiver takes the option''s presence as the decision
+                                to trace, so a query traced only because it later
+                                failed or was slow carries none. Only for servers
+                                you run; never for a public resolver. Forward mode
+                                only.'
+                              type: boolean
                           type: object
                         description: The DNS servers kudurru asks for names it does
                           not answer itself, in named groups; the group named default
