@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors"
+	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 )
 
 func TestAnchorUpdaterBootstrapRereadsAcceptedSchedule(t *testing.T) {
@@ -272,7 +274,7 @@ func TestAnchorUpdaterCheckpointWaitSurvivesOrdinaryWrites(t *testing.T) {
 	}
 }
 
-// D370. An ordinary commit (here a zone write, in production typically the
+// F28-EF-1. An ordinary commit (here a zone write, in production typically the
 // startup zone status write) that lands while the root reply is in flight
 // rolls the bootstrap back with the store's authority CAS. That refusal is
 // definite and changes nothing, so it must not park the updater for the whole
@@ -295,8 +297,8 @@ func TestAnchorUpdaterRacedCommitAcquiresAgain(t *testing.T) {
 	before := anchorOperationOwner(ctx, t, s).Version()
 	started := time.Now()
 	raced, err := u.step(ctx)
-	if err != nil || u.stopped != nil || !raced.attempted || raced.completion.Update.Outcome() != sqlite.AnchorRolledBack || reads.Load() != 1 {
-		t.Fatal("a raced bootstrap stopped the updater or was not a definite rollback", err, raced.completion.Update.Outcome(), reads.Load())
+	if err != nil || u.stopped != nil || !raced.attempted || !raced.raced || raced.completion.Update.Outcome() != sqlite.AnchorRolledBack || reads.Load() != 1 {
+		t.Fatal("a raced bootstrap stopped the updater, was not a definite rollback or was not reported", err, raced.completion.Update.Outcome(), reads.Load())
 	}
 	if raced.next.Before(started.Add(time.Second)) || raced.next.After(time.Now().Add(time.Second)) || raced.acquisitionError != nil {
 		t.Fatal("raced bootstrap was not paced by one second", raced.next.Sub(started))
@@ -305,12 +307,12 @@ func TestAnchorUpdaterRacedCommitAcquiresAgain(t *testing.T) {
 		t.Fatal("raced bootstrap changed accepted history")
 	}
 	held, err := u.step(ctx)
-	if err != nil || held.attempted || reads.Load() != 1 {
+	if err != nil || held.attempted || held.raced || reads.Load() != 1 {
 		t.Fatal("raced bootstrap retried before its pace", err, reads.Load())
 	}
 	time.Sleep(time.Until(raced.next) + 50*time.Millisecond)
 	again, err := u.step(ctx)
-	if err != nil || !again.attempted || again.completion.Update.Outcome() != sqlite.AnchorCommitted || reads.Load() != 2 || u.raced != 0 {
+	if err != nil || !again.attempted || again.raced || again.completion.Update.Outcome() != sqlite.AnchorCommitted || reads.Load() != 2 || u.raced != 0 {
 		t.Fatal("updater did not bootstrap with one new acquisition after the race", err, again.completion.Update.Outcome(), reads.Load())
 	}
 	owner := anchorOperationOwner(ctx, t, s)
@@ -324,5 +326,126 @@ func TestAnchorUpdaterRacedCommitAcquiresAgain(t *testing.T) {
 	next, err := u.step(ctx)
 	if err != nil || next.attempted || !next.next.Equal(state.Inspect().Schedule.NextRefresh) || reads.Load() != 2 || !u.retryAt.IsZero() {
 		t.Fatal("updater did not return to the accepted schedule", err, reads.Load())
+	}
+}
+
+// anchorAheadWall is this node's wall clock moved forward by a settable
+// offset, so a managed refresh can be made due without waiting for it.
+type anchorAheadWall struct{ ahead atomic.Int64 }
+
+func (w *anchorAheadWall) now() time.Time { return time.Now().Add(time.Duration(w.ahead.Load())) }
+
+// anchorDueRefresh bootstraps u once and moves its wall clock just past the
+// committed owner's NextRefresh, so the next step is a managed poll.
+func anchorDueRefresh(ctx context.Context, t *testing.T, s *servingRuntime, u *anchorUpdater, wall *anchorAheadWall, reads *atomic.Int32) accepted.Version {
+	t.Helper()
+	if first, err := u.step(ctx); err != nil || !first.attempted || first.completion.Update.Outcome() != sqlite.AnchorCommitted || reads.Load() != 1 {
+		t.Fatal("fixture did not commit one original bootstrap", err, reads.Load())
+	}
+	owner := anchorOperationOwner(ctx, t, s)
+	state, err := owner.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wall.ahead.Store(int64(time.Until(state.Inspect().Schedule.NextRefresh) + time.Second))
+	return owner.Version()
+}
+
+// The managed advance poll is the path every refresh after the bootstrap
+// takes. An ordinary commit that lands while its reply is in flight rolls the
+// advance back with the store's authority CAS: nothing durable changes, the
+// reply is discarded, and after a paced hold one NEW acquisition commits.
+func TestAnchorUpdaterRacedAdvancePollAcquiresAgain(t *testing.T) {
+	var write func()
+	endpoint, seeds, reads := anchorOperationServer(t, 4, func(n int) {
+		if n == 2 {
+			write()
+		}
+	})
+	s, ctx, target, host := anchorOperationFixture(t, endpoint, seeds)
+	write = func() { anchorOrdinaryWrite(ctx, t, s.opts.Store, target.Term, "raced-advance") }
+	clock, err := trustanchors.NewSessionClock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wall := &anchorAheadWall{}
+	u := &anchorUpdater{runtime: s, target: target, host: host, clock: clock, wall: wall.now}
+	before := anchorDueRefresh(ctx, t, s, u, wall, reads)
+	started := u.now()
+	raced, err := u.step(ctx)
+	if err != nil || u.stopped != nil || !raced.attempted || !raced.raced || raced.acquisitionError != nil || reads.Load() != 2 {
+		t.Fatal("a raced advance poll stopped the updater or was not reported", err, reads.Load())
+	}
+	if raced.completion.Update.Outcome() != sqlite.AnchorRolledBack || raced.completion.Denial.Outcome() != sqlite.AnchorUnknown {
+		t.Fatal("raced advance poll was not a definite rollback without denial", raced.completion.Update.Outcome(), raced.completion.Denial.Outcome())
+	}
+	if raced.next.Before(started.Add(time.Second)) || raced.next.After(u.now().Add(time.Second)) {
+		t.Fatal("raced advance poll was not paced by one second", raced.next.Sub(started))
+	}
+	if anchorOperationOwner(ctx, t, s).Version() != before {
+		t.Fatal("raced advance poll changed accepted history")
+	}
+	held, err := u.step(ctx)
+	if err != nil || held.attempted || held.raced || !held.next.Equal(raced.next) || reads.Load() != 2 {
+		t.Fatal("raced advance poll retried before its pace", err, reads.Load())
+	}
+	time.Sleep(raced.next.Sub(u.now()) + 50*time.Millisecond)
+	again, err := u.step(ctx)
+	if err != nil || !again.attempted || again.raced || reads.Load() != 3 || u.raced != 0 {
+		t.Fatal("updater did not poll with one new acquisition after the race", err, reads.Load())
+	}
+	switch again.completion.Update.Outcome() {
+	case sqlite.AnchorCommitted, sqlite.AnchorUnchanged:
+	default:
+		t.Fatal("new acquisition after the race did not complete", again.completion.Update.Outcome())
+	}
+	owner := anchorOperationOwner(ctx, t, s)
+	if again.completion.Update.Outcome() == sqlite.AnchorCommitted && owner.Version() == before {
+		t.Fatal("committed advance did not move accepted history")
+	}
+	state, err := owner.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wall.ahead.Store(0)
+	next, err := u.step(ctx)
+	if err != nil || next.attempted || !next.next.Equal(state.Inspect().Schedule.NextRefresh) || reads.Load() != 3 || !u.retryAt.IsZero() {
+		t.Fatal("updater did not return to the accepted schedule", err, reads.Load())
+	}
+}
+
+// A revocation reply whose denial an ordinary commit rolls back is NOT
+// retried. The failed denial closes the anchor source and leaves its
+// withdrawal failed-or-unknown, so the updater fails closed for the writer
+// term as before (a recorded follow-up). This pins that behavior so that a
+// later change to it is deliberate.
+func TestAnchorUpdaterRacedRevokeDenialStaysTerminal(t *testing.T) {
+	var write func()
+	endpoint, seeds, reads := anchorOperationServer(t, 2, func(n int) {
+		if n == 2 {
+			write()
+		}
+	})
+	s, ctx, target, host := anchorOperationFixture(t, endpoint, seeds)
+	write = func() { anchorOrdinaryWrite(ctx, t, s.opts.Store, target.Term, "raced-revoke") }
+	clock, err := trustanchors.NewSessionClock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wall := &anchorAheadWall{}
+	u := &anchorUpdater{runtime: s, target: target, host: host, clock: clock, wall: wall.now}
+	before := anchorDueRefresh(ctx, t, s, u, wall, reads)
+	raced, err := u.step(ctx)
+	if err == nil || u.stopped == nil || !raced.attempted || raced.raced || reads.Load() != 2 {
+		t.Fatal("a raced revocation denial was retried", err, reads.Load())
+	}
+	if !errors.Is(err, replication.ErrCAS) || raced.completion.Denial.Outcome() != sqlite.AnchorRolledBack || raced.completion.Update.Outcome() != sqlite.AnchorUnknown {
+		t.Fatal("fixture did not race the revocation denial", err, raced.completion.Denial.Outcome(), raced.completion.Update.Outcome())
+	}
+	if again, next := u.step(ctx); next != err || again.attempted || reads.Load() != 2 {
+		t.Fatal("terminal revocation refusal was recaptured", next)
+	}
+	if anchorOperationOwner(ctx, t, s).Version() != before {
+		t.Fatal("rolled-back revocation denial changed accepted history")
 	}
 }
