@@ -965,7 +965,13 @@ The ingress issues its writable proof only on the node whose authority is
 writable (`primaryUpdateIngress.capture`). On a follower, `forwardUpdate`
 selects the zone in its own complete cut (NOTAUTH if it is not a primary zone
 there), uses the listener's verified TSIG proof, and admits the key against its
-own current keyring (REFUSED otherwise). It then sends one version-1
+own keyring (REFUSED for a missing proof or an unknown key). When the
+follower installed a newer commit or replaced a dependency after the request
+captured its publication, that keyring is no longer current: the source
+changed under the request, so it answers SERVFAIL and sends nothing, not
+REFUSED. In a burst the newer commit is often the previous update's own;
+`captureUpdate` on the primary maps a keyring that stopped being current the
+same way. Otherwise the follower sends one version-1
 `dns.update` member command with the exact request minus its TSIG record, the
 key name, algorithm and secret-derived credential version, the transport and
 the signature deadline. The exchange is bounded by four seconds, the DNS

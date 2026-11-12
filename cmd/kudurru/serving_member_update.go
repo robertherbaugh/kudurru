@@ -103,8 +103,15 @@ func (s *servingRuntime) forwardUpdate(req *pipeline.Request, apex string) (*pip
 	}
 	native, ok := dnsserver.VerifiedTSIGFor(req, now)
 	_, keys, current := owner.NotifyKeys()
-	if !ok || keys == nil || current == nil || !current() {
+	if !ok || keys == nil || current == nil {
 		return reply(dns.RcodeRefused)
+	}
+	if !current() {
+		// This node installed a newer commit (in a burst, often the previous
+		// UPDATE's own) or replaced a dependency after the request captured
+		// its publication. The source changed under the request; the key is
+		// not refused. Not sent, never retried (D381).
+		return reply(dns.RcodeServerFailure)
 	}
 	identity, ok := keys.Identity(native.Identity().Key)
 	if !ok || identity != native.Identity() {

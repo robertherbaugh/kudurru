@@ -197,8 +197,11 @@ func (p *primaryRuntime) captureUpdate(req *pipeline.Request, apex string) (pr.V
 		// A follower verified the signature (D381). This node admits only the
 		// exact key identity of its own current keyring: same name, algorithm
 		// and secret-derived credential version.
-		if keys == nil || current == nil || !current() {
+		if keys == nil || current == nil {
 			return reject(dns.RcodeRefused)
+		}
+		if !current() {
+			return reject(dns.RcodeServerFailure) // the source changed under the request
 		}
 		identity, ok := keys.Identity(forwarded.key.Key)
 		if !ok || identity.Key != forwarded.key.Key || identity.Algorithm != forwarded.key.Algorithm || identity.CredentialVersion != forwarded.key.CredentialVersion {
@@ -211,8 +214,11 @@ func (p *primaryRuntime) captureUpdate(req *pipeline.Request, apex string) (pr.V
 		}
 	} else {
 		native, ok := dnsserver.VerifiedTSIGFor(req, now)
-		if !ok || keys == nil || current == nil || !current() {
+		if !ok || keys == nil || current == nil {
 			return reject(dns.RcodeRefused)
+		}
+		if !current() {
+			return reject(dns.RcodeServerFailure) // the source changed under the request
 		}
 		identity, ok := keys.Identity(native.Identity().Key)
 		if !ok || identity != native.Identity() {

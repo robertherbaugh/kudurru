@@ -211,8 +211,10 @@ second of each other (see the clock requirement in
 During a burst of updates, for example from a DHCP server, some updates can
 be answered `SERVFAIL` for a few milliseconds while the primary republishes
 its previous commit. The window is on the primary, so an update sent to it
-directly can see it too. Such an update was not applied, and the client's
-retry is safe.
+directly can see it too. A follower that installs the primary's previous
+commit while an update is on its way answers that update `SERVFAIL` as
+well, without passing it on. Such an update was not applied, and the
+client's retry is safe. A burst is never answered `REFUSED` for this.
 
 Static twins do not replicate: an update changes only the node that received
 it.
