@@ -109,8 +109,8 @@ func TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled(t *testing.T
 // awaitMountedPrimarySettled waits until the zone's own status reconciliation
 // has published Ready for the current generation AND the driver has realigned
 // its source, so later exchanges do not race the startup status write. A
-// status-only source gap deliberately makes the zone unavailable until that
-// alignment, and retired in-flight answers are dropped (D313/D332). The wait
+// status-only source gap keeps serving the committed head, but each of these
+// commits retires in-flight answers, which are dropped (D313/D332). The wait
 // only orders the test after that cascade; every exchange assertion is unchanged.
 func awaitMountedPrimarySettled(t *testing.T, cfg *config.Config, zoneObject, name, address string) {
 	t.Helper()
