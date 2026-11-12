@@ -146,7 +146,7 @@ func TestServingReloadLogsClusterSettingsOverTheFileAsInEffect(t *testing.T) {
 	if strings.Contains(first, `"msg":"settings applied"`) || !strings.Contains(first, `"keys":["ratelimit.enabled"],"effective":{"ratelimit.enabled":false}`) {
 		t.Fatalf("the first pass did not log the cluster value in effect:\n%s", first)
 	}
-	if strings.Contains(first, "take effect after a restart") || !strings.Contains(first, `keeps the values it started with","keys":["blocking.initStrategy"]`) || strings.Contains(first, `"blocking.initStrategy":`) {
+	if strings.Contains(first, "take effect after a restart") || !strings.Contains(first, `keeps the values it started with","component":"settings","keys":["blocking.initStrategy"]`) || strings.Contains(first, `"blocking.initStrategy":`) {
 		t.Fatalf("the first pass did not log the restart-required key as kept from startup, without a value:\n%s", first)
 	}
 	write(true, "")

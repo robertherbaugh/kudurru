@@ -241,10 +241,10 @@ func TestApplyReloadOverFileSeparatesRestartKeysAndLogsScalarValuesOnly(t *testi
 	applyReload(t.Context(), reloadTargets{logger: slog.New(slog.NewJSONHandler(&logs, nil)), overFile: true, completeAuth: true},
 		cfg, []string{"ratelimit.enabled", "upstreams.groups", "blockPage.enabled", "blocking.initStrategy"})
 	got := logs.String()
-	if !strings.Contains(got, `are in effect","keys":["ratelimit.enabled","upstreams.groups"],"effective":{"ratelimit.enabled":false}}`) {
+	if !strings.Contains(got, `are in effect","component":"settings","keys":["ratelimit.enabled","upstreams.groups"],"effective":{"ratelimit.enabled":false}}`) {
 		t.Errorf("the applied keys were not logged with their scalar values only:\n%s", got)
 	}
-	if !strings.Contains(got, `keeps the values it started with","keys":["blockPage.enabled","blocking.initStrategy"]}`) {
+	if !strings.Contains(got, `keeps the values it started with","component":"settings","keys":["blockPage.enabled","blocking.initStrategy"]}`) {
 		t.Errorf("the restart-required keys were not logged as kept from startup:\n%s", got)
 	}
 	for _, bad := range []string{`"blockPage.enabled":`, `"blocking.initStrategy":`, `"upstreams.groups":`, "settings applied", "take effect after a restart"} {
