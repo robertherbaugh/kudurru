@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/auth/providercoordinator"
 	"github.com/robertherbaugh/kudurru/internal/serving"
@@ -40,6 +41,13 @@ func (c *anchorWriterControl) begin(ctx context.Context, target serving.TermActi
 	run := &anchorWriterRun{owner: c, acquire: c.terminal == nil}
 	c.running = run
 	return run, nil
+}
+
+// terminalError is the retained terminal result of the current target.
+func (c *anchorWriterControl) terminalError() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.terminal
 }
 
 func (r *anchorWriterRun) stopped(err error) {
@@ -81,7 +89,11 @@ func (s *servingRuntime) runAnchorWriterReady(ctx context.Context, target servin
 		return err
 	}
 	defer run.release()
+	// The terminal record outlives this child; the board shows the worker as
+	// ended once its writer context ends, and keeps the last error.
+	defer s.anchorStatus.setUpdater(anchorWorkerNotRunning, time.Time{}, nil)
 	if run.acquire {
+		s.anchorStatus.setUpdater(anchorWorkerRunning, time.Time{}, nil)
 		if s.anchors != nil && s.anchors.admission != nil {
 			err = s.prepareAnchorWriter(ctx, target, host)
 		}
@@ -96,7 +108,10 @@ func (s *servingRuntime) runAnchorWriterReady(ctx context.Context, target servin
 			err = errAnchorPolicy // an unexpected early completion cannot enable retry
 		}
 		run.stopped(err)
+		s.anchorStatus.setUpdater(anchorWorkerStopped, time.Time{}, err)
 		slog.Error("root anchor updater stopped for this writer term", "err", err)
+	} else {
+		s.anchorStatus.setUpdater(anchorWorkerStopped, time.Time{}, s.anchorWriter.terminalError())
 	}
 	signal()
 	// Returning the terminal error would make cluster Runner restart the whole

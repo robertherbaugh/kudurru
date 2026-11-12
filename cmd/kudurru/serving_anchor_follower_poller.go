@@ -217,15 +217,22 @@ func (s *servingRuntime) runAnchorFollowerEpoch(ctx context.Context, epoch ancho
 	for {
 		changed, authority := s.opts.Store.GenerationChanges(), s.opts.Store.AuthorityChanges()
 		step, err := u.step(ctx)
+		if step.retired {
+			s.anchorStatus.setSupervisor(anchorWorkerRetired, time.Time{}, nil)
+		}
 		if err != nil || step.retired {
 			return err
 		}
+		state := anchorWorkerRunning
 		if step.acquisitionError != nil {
+			state = anchorWorkerRetry
 			slog.Warn("follower root anchor acquisition failed; new attempt scheduled", "next", step.next)
 		}
 		if step.clockWait > 0 {
+			state = anchorWorkerClockWait
 			slog.Warn("root anchor supervision waits for this node's clock to reach the installed checkpoint; check time synchronization", "behind", step.clockWait.Round(time.Millisecond))
 		}
+		s.anchorStatus.setSupervisor(state, step.next, nil)
 		timer := time.NewTimer(min(time.Minute, max(time.Second, time.Until(step.next))))
 		woke := false
 		select {

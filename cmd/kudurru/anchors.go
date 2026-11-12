@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
+	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
@@ -35,6 +36,12 @@ type anchorOfflineResult struct {
 	Quarantined bool             `json:"quarantined"`
 	Recoveries  int              `json:"recoveries"`
 	Outcome     string           `json:"outcome"`
+	// The same read-only projection as GET /cluster/anchors, from the
+	// retained database, for status only (D369). Workers and pulls are not
+	// part of a stopped node's state.
+	Authority *api.RootAnchorAuthority `json:"authority,omitempty"`
+	Owner     *api.RootAnchorOwner     `json:"owner,omitempty"`
+	Local     *api.RootAnchorLocal     `json:"local,omitempty"`
 }
 
 func newAnchorsCmd() *cobra.Command {
@@ -125,6 +132,11 @@ func runAnchorOffline(parent context.Context, opts anchorOfflineOptions, recover
 		return nil, err
 	}
 	result = &anchorOfflineResult{Version: owner.Version(), Outcome: "read-only"}
+	if statusImage, local, err := s.ReadAnchorStatus(ctx); !recoverTrust && err == nil && statusImage.Generation().Same(image.Generation()) {
+		if projected, carrier, authority, err := rootAnchorProjection(statusImage, local, s.Authority()); err == nil {
+			result.Owner, result.Local, result.Authority = &projected, carrier, &authority
+		}
+	}
 	if owner.Inspect().Phase == accepted.Managed {
 		state, err := owner.State()
 		if err != nil {

@@ -103,6 +103,7 @@ func (s *servingRuntime) prepareMemberServices(ctx context.Context, credentials 
 		Store: s.opts.Store, Source: source, NodeName: name,
 		Served:       s.publisher.Pin,
 		WithOperator: s.withPromotionAuthorization,
+		ObservePull:  s.anchorStatus.observePull,
 	})
 	if err != nil {
 		return nil, nil, nil, err

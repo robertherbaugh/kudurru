@@ -141,6 +141,20 @@ func offlineAnchorFixture(t *testing.T) (string, accepted.Snapshot) {
 
 func TestOfflineAnchorCommandRecoveryAuditAndRestart(t *testing.T) {
 	path, before := offlineAnchorFixture(t)
+	// Before recovery the status projection shows the quarantine and the
+	// revoked sole key with its DS key tag.
+	lost, err := runAnchorOffline(t.Context(), anchorOfflineOptions{database: path, offline: true, timeout: 10 * time.Second}, false)
+	if err != nil || !lost.Quarantined || lost.Owner == nil || !lost.Owner.Quarantined || len(lost.Owner.Keys) != 1 || lost.Owner.Keys[0].Status != "Revoked" ||
+		lost.Owner.Keys[0].RevokedAt == nil || lost.Owner.Digest != before.Version().Digest || len(lost.Owner.RecoveryGenerations) != 0 {
+		t.Fatalf("status projection of a quarantined owner: %+v %v", lost.Owner, err)
+	}
+	beforeState, err := before.State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tag, _, err := beforeState.Inspect().Keys[0].KeyTag(); err != nil || lost.Owner.Keys[0].KeyTag != tag {
+		t.Fatal("status projection does not report the key's DS tag", lost.Owner.Keys[0].KeyTag, tag, err)
+	}
 	seed, reply := anchorWireSignedReply(t)
 	endpoint, reads := anchorWireServer(t, "tcp", reply)
 	root := newRoot()
@@ -159,10 +173,29 @@ func TestOfflineAnchorCommandRecoveryAuditAndRestart(t *testing.T) {
 	if result.Outcome != "committed" || result.Quarantined || result.Recoveries != 1 || result.Version.Generation != before.Version().Generation+1 || reads.Load() != 1 {
 		t.Fatal("command omitted actual recovery disposition", result, reads.Load())
 	}
+	if result.Owner != nil || result.Local != nil || result.Authority != nil {
+		t.Fatal("recover reported a status projection")
+	}
 	opts := anchorOfflineOptions{database: path, offline: true, timeout: 10 * time.Second}
 	status, err := runAnchorOffline(t.Context(), opts, false)
 	if err != nil || status.Version != result.Version || status.Quarantined || status.Recoveries != 1 {
 		t.Fatal("physical reopen lost recovery", status, err)
+	}
+	// The status projection names both keys: the revoked one is kept, the
+	// recovered one is trusted, and the recovery record is listed (D369).
+	if status.Owner == nil || status.Owner.Phase != "managed" || status.Owner.Quarantined || status.Owner.Generation != result.Version.Generation ||
+		len(status.Owner.RecoveryGenerations) != 1 || len(status.Owner.Keys) != 2 || status.Authority == nil || status.Authority.Mode != "standalone" || status.Local == nil || status.Local.Retired {
+		t.Fatalf("status projection after recovery: %+v %+v %+v", status.Owner, status.Local, status.Authority)
+	}
+	statuses := map[string]int{}
+	for _, key := range status.Owner.Keys {
+		statuses[key.Status]++
+		if key.KeyTag == 0 || key.ID == "" || key.FirstSeen.IsZero() {
+			t.Fatalf("status key lacks its identity: %+v", key)
+		}
+	}
+	if statuses["Revoked"] != 1 || statuses["Valid"] != 1 {
+		t.Fatal("status projection lost a key state", statuses)
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()

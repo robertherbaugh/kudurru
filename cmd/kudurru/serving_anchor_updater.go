@@ -225,15 +225,20 @@ func (s *servingRuntime) runAnchorUpdaterReady(ctx context.Context, target servi
 		if err != nil {
 			return err // no replay after authentication/admission/completion refusal
 		}
+		state := anchorWorkerRunning
 		if step.acquisitionError != nil {
+			state = anchorWorkerRetry
 			slog.Warn("root anchor transport acquisition failed; new attempt scheduled", "next", step.next)
 		}
 		if step.raced {
+			state = anchorWorkerRaced
 			slog.Warn("root anchor update raced an ordinary commit; new acquisition scheduled", "next", step.next, "consecutive", u.raced)
 		}
 		if step.clockWait > 0 {
+			state = anchorWorkerClockWait
 			slog.Warn("root anchor updater waits for this node's clock to reach the committed checkpoint; check time synchronization", "behind", step.clockWait.Round(time.Millisecond))
 		}
+		s.anchorStatus.setUpdater(state, step.next, nil)
 		// Periodic rechecks bound reaction to clock or canonical policy changes.
 		// A source wake cannot turn into an unbounded acquisition/read loop.
 		delay := min(time.Minute, max(time.Second, time.Until(step.next)))

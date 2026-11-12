@@ -116,3 +116,27 @@ func TestCoordinatorReachableRejectedDataNeverGrantsPromotion(t *testing.T) {
 func allowedPromotion() PromotionAuthorization {
 	return PromotionAuthorization{Check: func(ctx context.Context) error { return ctx.Err() }, Release: func() {}}
 }
+
+// ObservePull receives every pull result, after the loss window is updated,
+// and a primary's peer observation is not reported as a pull.
+func TestCoordinatorObservePullReportsEveryPull(t *testing.T) {
+	ctx := context.Background()
+	p := openStore(t, replication.Primary)
+	mirror := mirrorOf(t, p)
+	base := imageOf(t, mirror).Generation()
+	var seen []error
+	next := error(ErrUnavailable)
+	c, e := NewCoordinator(CoordinatorOptions{Store: mirror, NodeName: "b", Interval: time.Second, Served: func(context.Context) (replication.Generation, func(), error) { return base, func() {}, nil },
+		AuthorizeOperator: func(context.Context) (PromotionAuthorization, error) { return allowedPromotion(), nil },
+		Source:            sourceFunc(func(context.Context, string) (follower.Response, error) { return follower.Response{}, next }),
+		ObservePull:       func(err error) { seen = append(seen, err) }})
+	if e != nil {
+		t.Fatal(e)
+	}
+	_ = c.Pull(ctx)
+	next = ErrUnauthorized
+	_ = c.Pull(ctx)
+	if len(seen) != 2 || !errors.Is(seen[0], ErrUnavailable) || !errors.Is(seen[1], ErrUnauthorized) {
+		t.Fatalf("observer saw %v", seen)
+	}
+}
