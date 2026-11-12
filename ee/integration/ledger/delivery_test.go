@@ -112,22 +112,10 @@ func TestPruneDeliveriesExactVersionAndRetention(t *testing.T) {
 	if err := r.PruneDeliveries(ctx, g, []*kinds.IntegrationDelivery{stale}); !errors.Is(err, store.ErrConflict) {
 		t.Fatal("pruned with a stale version", err)
 	}
-	// A foreign row is skipped while its Integration exists, pruned after.
+	// An undelivered foreign row past its retention is pruned whether or
+	// not its Integration exists (TestPruneDeliveriesRowsOfLiveOwner).
 	other := kinds.Owner{ClusterID: g.Owner.ClusterID, Namespace: "dns", Name: "other", UID: "uid-other"}
 	foreign := queue(other, "foreign")
-	live := &public.Integration{ObjectMeta: metav1.ObjectMeta{Name: "other", Namespace: "dns", UID: "uid-other"}, Spec: public.IntegrationSpec{Type: "webhook"}}
-	if _, err := st.Apply(ctx, live, store.ApplyOptions{Manager: "test", CreateOnly: true}); err != nil {
-		t.Fatal(err)
-	}
-	if err := r.PruneDeliveries(ctx, g, []*kinds.IntegrationDelivery{foreign}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := r.ReadDelivery(ctx, other, foreign.Spec.DeliveryID); err != nil {
-		t.Fatal("a live owner's row was pruned", err)
-	}
-	if err := st.Delete(ctx, store.KeyOf(live), store.DeleteOptions{Manager: "test"}); err != nil {
-		t.Fatal(err)
-	}
 	if err := r.PruneDeliveries(ctx, g, []*kinds.IntegrationDelivery{acked, foreign}); err != nil {
 		t.Fatal(err)
 	}
@@ -141,10 +129,11 @@ func TestPruneDeliveriesExactVersionAndRetention(t *testing.T) {
 	}
 }
 
-// A terminal row of a live Integration that no longer runs a hook lease is
-// pruned by any other lease once its retention ran out; an undelivered one
-// stays for its owner (D379).
-func TestPruneDeliveriesTerminalRowOfLiveOwner(t *testing.T) {
+// A row of a live Integration that no longer runs a hook lease, terminal or
+// undelivered, is pruned by any other lease once its retention ran out: an
+// owner that runs any lease dead-letters its own rows at the deadline, so
+// one still undelivered an hour later has no lease to do it (D379, D380).
+func TestPruneDeliveriesRowsOfLiveOwner(t *testing.T) {
 	ctx := context.Background()
 	g, _ := fixture(t)
 	st := memory.New()
@@ -189,8 +178,20 @@ func TestPruneDeliveriesTerminalRowOfLiveOwner(t *testing.T) {
 	if _, err := r.ReadDelivery(ctx, other, acked.Spec.DeliveryID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("a terminal row of a live owner was kept", err)
 	}
-	if _, err := r.ReadDelivery(ctx, other, pending.Spec.DeliveryID); err != nil {
-		t.Fatal("an undelivered row of a live owner was pruned", err)
+	if _, err := r.ReadDelivery(ctx, other, pending.Spec.DeliveryID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("an expired undelivered row of a live owner was kept", err)
+	}
+	// The guard's own undelivered row is never pruned: its lease
+	// dead-letters it.
+	own := pending.DeepCopy()
+	own.Spec.Owner, own.Name = g.Owner, kinds.DeliveryName(g.Owner, own.Spec.DeliveryID)
+	own.ResourceVersion, own.UID = "", ""
+	saved, err := r.QueueDelivery(ctx, g, own)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.PruneDeliveries(ctx, g, []*kinds.IntegrationDelivery{saved}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("pruned the guard's own undelivered row", err)
 	}
 }
 

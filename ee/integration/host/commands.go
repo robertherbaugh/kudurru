@@ -168,11 +168,15 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 		syncTick = timer.C
 		defer timer.Stop()
 	}
-	var eventTick <-chan time.Time
+	var eventTick, retentionTick <-chan time.Time
 	if roles, err := providerRoles(provider); err == nil && roles.Hook {
 		events := time.NewTicker(h.opts.PollInterval)
 		defer events.Stop()
 		eventTick = events.C
+	} else {
+		retention := time.NewTicker(h.opts.PollInterval * retentionTicks)
+		defer retention.Stop()
+		retentionTick = retention.C
 	}
 	var failures uint32
 	reset := func(delay time.Duration) {
@@ -221,6 +225,12 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 			}
 			if err := h.drainEvents(operationCtx, j); err != nil {
 				h.opts.Logger.Warn("integration event drain failed", "integration", j.key)
+			}
+			operationCancel()
+		case <-retentionTick:
+			operationCtx, operationCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
+			if err := h.expireEvents(operationCtx, j); err != nil {
+				h.opts.Logger.Warn("integration event retention failed", "integration", j.key)
 			}
 			operationCancel()
 		case <-syncTick:

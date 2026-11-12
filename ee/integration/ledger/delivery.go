@@ -9,7 +9,6 @@ import (
 	"time"
 
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
-	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
@@ -105,13 +104,14 @@ const MaxPruneDeliveries = 256
 // PruneDeliveries deletes delivery rows by the exact UID and resource version
 // the caller observed, in one Delete (D379). Every row must be past its
 // deadline plus DeliveryRetention. A row of the guard's own instance must be
-// terminal (acknowledged or dead-lettered). A terminal row of any other
-// instance is pruned too: it can never be attempted again, whether or not
-// its owner still runs a hook lease. An undelivered row of another instance
-// is pruned only when no Integration with that owner UID exists any more,
-// and is skipped while one does (its owner dead-letters it and raises
-// Degraded). A row that changed or vanished, or an own row that does not
-// qualify, refuses the whole call.
+// terminal (acknowledged or dead-lettered): its own lease dead-letters it
+// first. A row of any other instance is pruned whether or not it was
+// delivered and whether or not its owner still exists: past the deadline no
+// queue accepts its event again, so the delete cannot turn into a second
+// delivery, and an owner that runs any lease dead-letters its own rows at
+// the deadline, an hour before this, so a row still undelivered here
+// belongs to an owner that runs none (D380). A row that changed or
+// vanished, or an own row that does not qualify, refuses the whole call.
 func (r *Repository) PruneDeliveries(ctx context.Context, g Guard, rows []*kinds.IntegrationDelivery) error {
 	if r.delete == nil || g.Validate() != nil || len(rows) == 0 || len(rows) > MaxPruneDeliveries {
 		return ErrInvalid
@@ -137,25 +137,10 @@ func (r *Repository) PruneDeliveries(ctx context.Context, g Guard, rows []*kinds
 		if now.Before(current.Spec.Deadline.Add(DeliveryRetention)) {
 			return ErrInvalid
 		}
-		terminal := current.Spec.Acknowledged || current.Spec.DeadLetter
-		if current.Spec.Owner == g.Owner {
-			if !terminal {
-				return ErrInvalid
-			}
-		} else if !terminal {
-			var owner public.Integration
-			err := r.read.Get(ctx, store.Key{Kind: "Integration", Namespace: current.Spec.Owner.Namespace, Name: current.Spec.Owner.Name}, &owner)
-			switch {
-			case err == nil && string(owner.UID) == current.Spec.Owner.UID:
-				continue
-			case err != nil && !errors.Is(err, store.ErrNotFound):
-				return err
-			}
+		if current.Spec.Owner == g.Owner && !current.Spec.Acknowledged && !current.Spec.DeadLetter {
+			return ErrInvalid
 		}
 		requests = append(requests, forgetRequest(kinds.KindIntegrationDelivery, current))
-	}
-	if len(requests) == 0 {
-		return nil
 	}
 	slices.SortFunc(requests, func(a, b store.DeleteRequest) int { return strings.Compare(a.Key.Name, b.Key.Name) })
 	return r.delete(ctx, g, requests)

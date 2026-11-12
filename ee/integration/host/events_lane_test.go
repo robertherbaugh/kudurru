@@ -149,9 +149,7 @@ func TestEventRetentionPrunesOnlyDeadRows(t *testing.T) {
 	if err := st.Get(context.Background(), store.KeyOf(live), &stored); err != nil {
 		t.Fatal(err)
 	}
-	// The capture of this fixture does not contain "live", so the host
-	// takes its undelivered row for an orphan; the ledger's own read of the
-	// Integration keeps it.
+	// "live" exists in the store; that no longer keeps its expired rows.
 	if string(stored.UID) != liveOwner.UID {
 		t.Fatal("fixture UID changed", stored.UID)
 	}
@@ -189,8 +187,11 @@ func TestEventRetentionPrunesOnlyDeadRows(t *testing.T) {
 	if _, err := h.opts.Ledger.ReadDelivery(context.Background(), liveOwner, kinds.Digest([]byte("live"))); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("a live owner's expired terminal row was kept", err)
 	}
-	if _, err := h.opts.Ledger.ReadDelivery(context.Background(), liveOwner, kinds.Digest([]byte("live-pending"))); err != nil {
-		t.Fatal("a live owner's undelivered row was pruned by another instance", err)
+	// An owner that runs any lease dead-letters its own rows at the
+	// deadline, so an undelivered row an hour past it belongs to an owner
+	// that runs none; another lease prunes it (D380).
+	if _, err := h.opts.Ledger.ReadDelivery(context.Background(), liveOwner, kinds.Digest([]byte("live-pending"))); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("a live owner's expired undelivered row was kept", err)
 	}
 }
 
@@ -222,5 +223,50 @@ func TestEventRetentionPrunesOrphanedCursors(t *testing.T) {
 		if _, err := h.opts.Ledger.ReadEventCursor(context.Background(), owner); err != nil {
 			t.Fatal("a live cursor was pruned", owner.Name, err)
 		}
+	}
+}
+
+// A lease without the hook role, here an instance whose peer stopped
+// advertising hooks, still runs retention (D380): it prunes another
+// instance's expired rows and dead-letters its own undelivered rows once
+// their day ran out, without any delivery attempt, and raises Degraded.
+func TestRetentionWithoutHookRole(t *testing.T) {
+	h, j, st, now := deliveryFixture(t)
+	start := *now
+	attempts := 0
+	hook := &fakeHook{handle: func(context.Context, string, integration.Event) error {
+		attempts++
+		return &Failure{Kind: FailureTemporary}
+	}}
+	own := queueOne(t, h, j, start, "own", hook)
+	other := kinds.Owner{ClusterID: j.guard.Owner.ClusterID, Namespace: "dns", Name: "other", UID: "uid-other"}
+	id := kinds.Digest([]byte("other"))
+	d := &kinds.IntegrationDelivery{ObjectMeta: metav1.ObjectMeta{Name: kinds.DeliveryName(other, id)}, Spec: kinds.IntegrationDeliverySpec{FormatVersion: kinds.FormatVersion, Owner: other, DeliveryID: id, Topic: "zone.changed", Payload: json.RawMessage(`{}`), CreatedAt: start, Deadline: start.Add(24 * time.Hour), NextAttempt: start}}
+	if _, err := st.Apply(context.Background(), d, store.ApplyOptions{Manager: "integration-ledger", CreateOnly: true}); err != nil {
+		t.Fatal(err)
+	}
+	attempts = 0
+	// The provider no longer has the hook role.
+	j.provider = &fakePublisher{}
+	*now = start.Add(23 * time.Hour)
+	if err := h.expireEvents(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if row, err := h.opts.Ledger.ReadDelivery(context.Background(), j.guard.Owner, own); err != nil || row.Spec.DeadLetter {
+		t.Fatal("dead-lettered before the deadline", row, err)
+	}
+	*now = start.Add(25 * time.Hour)
+	if err := h.expireEvents(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	row, err := h.opts.Ledger.ReadDelivery(context.Background(), j.guard.Owner, own)
+	if err != nil || !row.Spec.DeadLetter || row.Spec.ErrorClass != "expired" || attempts != 0 {
+		t.Fatal("own expired row not dead-lettered without an attempt", row, err, attempts)
+	}
+	if _, err := h.opts.Ledger.ReadDelivery(context.Background(), other, id); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("another instance's expired row was kept", err)
+	}
+	if status := h.Statuses(); len(status) == 0 || status[0].Reason != ReasonEventDeadLettered {
+		t.Fatal("no Degraded for the dropped event", status)
 	}
 }

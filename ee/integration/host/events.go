@@ -73,7 +73,7 @@ func (h *Host) queueEvent(ctx context.Context, j *job, f frame, g ExecutionGuard
 	return h.deliver(ctx, j, g, saved)
 }
 func (h *Host) deliveries(ctx context.Context, owner InstanceID) ([]*kinds.IntegrationDelivery, error) {
-	out, _, err := h.allDeliveries(ctx, owner, nil)
+	out, _, err := h.allDeliveries(ctx, owner)
 	return out, err
 }
 
@@ -83,13 +83,14 @@ func (h *Host) deliveries(ctx context.Context, owner InstanceID) ([]*kinds.Integ
 const maxOwnDeliveries = 100000
 
 // allDeliveries returns this owner's rows ordered by next attempt, and at
-// most maxPrunePerTick rows of other owners that retention may delete: a
-// terminal row past its deadline plus deliveryRetention, or an undelivered
-// one of an owner absent from live (nil: none). The scan pages through every
-// row and keeps only these, so its memory is bounded by this owner's rows
-// however many rows other owners hold, and retention keeps working above
-// any listing size (D379).
-func (h *Host) allDeliveries(ctx context.Context, owner InstanceID, live map[string]bool) ([]*kinds.IntegrationDelivery, []*kinds.IntegrationDelivery, error) {
+// most maxPrunePerTick rows of other owners that retention may delete: any
+// row past its deadline plus deliveryRetention, terminal or not, whatever
+// its owner. Past the deadline no queue accepts its event again, and an
+// owner that runs any lease has dead-lettered its own undelivered rows by
+// then (D379, D380). The scan pages through every row and keeps only these,
+// so its memory is bounded by this owner's rows however many rows other
+// owners hold, and retention keeps working above any listing size.
+func (h *Host) allDeliveries(ctx context.Context, owner InstanceID) ([]*kinds.IntegrationDelivery, []*kinds.IntegrationDelivery, error) {
 	var out, others []*kinds.IntegrationDelivery
 	now := h.opts.Now()
 	continuation := ""
@@ -115,10 +116,7 @@ func (h *Host) allDeliveries(ctx context.Context, owner InstanceID, live map[str
 				out = append(out, d.DeepCopy())
 				continue
 			}
-			if len(others) == maxPrunePerTick || now.Before(d.Spec.Deadline.Add(deliveryRetention)) {
-				continue
-			}
-			if d.Spec.Acknowledged || d.Spec.DeadLetter || live != nil && !live[d.Spec.Owner.UID] {
+			if len(others) < maxPrunePerTick && !now.Before(d.Spec.Deadline.Add(deliveryRetention)) {
 				others = append(others, d.DeepCopy())
 			}
 		}
@@ -134,6 +132,38 @@ func (h *Host) allDeliveries(ctx context.Context, owner InstanceID, live map[str
 	slices.SortFunc(out, func(a, b *kinds.IntegrationDelivery) int { return a.Spec.NextAttempt.Compare(b.Spec.NextAttempt) })
 	return out, others, nil
 }
+
+// retainEvents runs delivery and cursor retention on one elected lease and
+// returns the lease's own rows. Retention runs first, so rows that can no
+// longer be delivered never hold back production (D379). A refused prune (a
+// row changed under it, a store without deletes) never holds back delivery;
+// it is retried on the next tick.
+func (h *Host) retainEvents(ctx context.Context, j *job, f frame, g ExecutionGuard) ([]*kinds.IntegrationDelivery, error) {
+	queued, others, err := h.allDeliveries(ctx, g.Ledger.Owner)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.pruneDeliveries(ctx, j, g, queued, others); err != nil {
+		if errors.Is(err, ErrFenced) || ctx.Err() != nil {
+			return nil, err
+		}
+		h.opts.Logger.Warn("integration delivery retention failed", "integration", j.key)
+	}
+	if f.input.Complete {
+		live := map[string]bool{}
+		for _, obj := range f.input.Objects.List("Integration") {
+			live[string(obj.GetUID())] = true
+		}
+		if err := h.pruneEventCursors(ctx, j, g, live); err != nil {
+			if errors.Is(err, ErrFenced) || ctx.Err() != nil {
+				return nil, err
+			}
+			h.opts.Logger.Warn("integration event cursor retention failed", "integration", j.key)
+		}
+	}
+	return queued, nil
+}
+
 func (h *Host) drainEvents(ctx context.Context, j *job) error {
 	f, g, err := h.captured(j)
 	if err != nil {
@@ -143,34 +173,9 @@ func (h *Host) drainEvents(ctx context.Context, j *job) error {
 	if err != nil {
 		return err
 	}
-	var live map[string]bool
-	if f.input.Complete {
-		live = map[string]bool{}
-		for _, obj := range f.input.Objects.List("Integration") {
-			live[string(obj.GetUID())] = true
-		}
-	}
-	queued, others, err := h.allDeliveries(ctx, g.Ledger.Owner, live)
+	queued, err := h.retainEvents(ctx, j, f, g)
 	if err != nil {
 		return err
-	}
-	// Retention first, so rows that can no longer be delivered never hold
-	// back production (D379). A refused prune (a row changed under it, a
-	// store without deletes) never holds back delivery; it is retried on
-	// the next tick.
-	if err := h.pruneDeliveries(ctx, j, g, queued, others); err != nil {
-		if errors.Is(err, ErrFenced) || ctx.Err() != nil {
-			return err
-		}
-		h.opts.Logger.Warn("integration delivery retention failed", "integration", j.key)
-	}
-	if live != nil {
-		if err := h.pruneEventCursors(ctx, j, g, live); err != nil {
-			if errors.Is(err, ErrFenced) || ctx.Err() != nil {
-				return err
-			}
-			h.opts.Logger.Warn("integration event cursor retention failed", "integration", j.key)
-		}
 	}
 	attempted := 0
 	for _, d := range queued {
@@ -181,6 +186,48 @@ func (h *Host) drainEvents(ctx context.Context, j *job) error {
 			break
 		}
 		attempted++
+		if err := h.deliver(ctx, j, g, d); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// retentionTicks is how many poll intervals pass between the retention runs
+// of a lease that receives no events (10 minutes at the default 2 s). Such a
+// lease delivers nothing, but it still prunes what other instances left and
+// dead-letters its own undelivered rows once their day ran out, as when its
+// peer stopped advertising hooks. So rows are pruned while any Integration
+// runs a lease, not only while one receives events (D379, D380).
+const retentionTicks = 300
+
+// expireEvents is the retention run of a lease without the hook role: it
+// prunes like a hook lease and dead-letters, never attempts, its own rows
+// whose deadline passed.
+func (h *Host) expireEvents(ctx context.Context, j *job) error {
+	f, g, err := h.captured(j)
+	if err != nil {
+		return err
+	}
+	ctx, err = h.scopedOriginal(ctx, j, f, g)
+	if err != nil {
+		return err
+	}
+	queued, err := h.retainEvents(ctx, j, f, g)
+	if err != nil {
+		return err
+	}
+	expired := 0
+	for _, d := range queued {
+		if d.Spec.Acknowledged || d.Spec.DeadLetter || h.opts.Now().Before(d.Spec.Deadline) {
+			continue
+		}
+		if expired == maxPrunePerTick {
+			break
+		}
+		expired++
+		// deliver dead-letters a row past its deadline before it asks for
+		// the hook role, so this never reaches a peer.
 		if err := h.deliver(ctx, j, g, d); err != nil {
 			return err
 		}
@@ -290,10 +337,8 @@ const ReasonEventDeadLettered = "EventDeadLettered"
 //     deadline plus deliveryRetention, and as many more as the instance
 //     holds above maxTerminalDeliveries, so its rows stay bounded by count
 //     even when a prompt peer acknowledges everything;
-//   - the rows of other owners allDeliveries selected: terminal rows past
-//     their retention (whether or not their owner still runs a hook lease),
-//     and undelivered ones of an owner absent from the captured cut. The
-//     ledger itself skips an undelivered row whose owner still exists.
+//   - the rows of other owners allDeliveries selected: every row past its
+//     retention, terminal or not, whether or not its owner still exists.
 func (h *Host) pruneDeliveries(ctx context.Context, j *job, g ExecutionGuard, own, foreign []*kinds.IntegrationDelivery) error {
 	now := h.opts.Now()
 	var terminal []*kinds.IntegrationDelivery
