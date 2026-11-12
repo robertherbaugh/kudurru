@@ -351,7 +351,15 @@ syncs records (against a peer that offers only records it is refused as
 with `deletionPolicy: Delete`, whose cleanup still reads the peer and removes
 them. A registry record of another Kudurru with no data record still claims
 its name: a desired record there is reported as a conflict and never
-created.
+created. The claim holds the whole name, as a record of another owner does:
+no record set of this instance at that name, of any type, is updated or
+deleted while it exists, and a `deletionPolicy: Delete` cleanup stops with
+`RecordsConflict` instead of removing them. Such a stale row is typically
+left by an Integration that was deleted under `deletionPolicy: Retain`. To
+clear it, delete the `_kudurru-<type>.<name>` TXT row at the peer (or let
+that Kudurru's own Integration remove it), and the next sync or cleanup
+proceeds. Claims count against the same 10,000 record sets per destination
+as listed records; above that every sync fails as over capacity.
 
 Each change is one `POST /records` with the record set and its registry
 record. The answer, even a 204, is never taken as the result: Kudurru rereads

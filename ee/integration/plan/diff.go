@@ -203,10 +203,12 @@ func Build(in Input) (*Plan, error) {
 		}
 	}
 	claimed := make([]kinds.RecordKey, 0, len(in.Claimed))
+	seenClaims := make(map[kinds.RecordKey]bool, len(in.Claimed))
 	for _, k := range in.Claimed {
-		if k.Validate() != nil || slices.Contains(claimed, k) {
+		if k.Validate() != nil || seenClaims[k] {
 			return nil, ErrInvalid
 		}
+		seenClaims[k] = true
 		claimed = append(claimed, k)
 		conflict(k, "claimed by another owner")
 	}

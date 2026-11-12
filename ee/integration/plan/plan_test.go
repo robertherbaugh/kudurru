@@ -707,6 +707,13 @@ func TestClaimedKeysAreConflicts(t *testing.T) {
 			t.Fatal("invalid claims accepted", bad, err)
 		}
 	}
+	// Claims count against the same per-destination bound as listed rows.
+	in.MaxRecords = 2
+	in.Claimed = []kinds.RecordKey{{Name: "a.example.com.", Type: "A"}, {Name: "b.example.com.", Type: "A"}, {Name: "c.example.com.", Type: "A"}}
+	if _, err := Build(in); !errors.Is(err, ErrCapacity) {
+		t.Fatal("claims above the bound accepted", err)
+	}
+	in.MaxRecords = 0
 
 	cleanup := fixture()
 	cleanup.Cleanup = true
