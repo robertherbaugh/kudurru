@@ -113,7 +113,7 @@ func TestTakeOptionRemovesEveryCopy(t *testing.T) {
 
 // TestBeginTrustRule pins D382: the option is removed from every query;
 // only a trusted peer with acceptTraceparent continues the caller's trace,
-// and its sampled flag decides (parent-based).
+// and such a trace is always kept: the option's flags are not used.
 func TestBeginTrustRule(t *testing.T) {
 	tr, _, reg := newTestTracer(t, Config{Ratio: 0, AcceptIncoming: true})
 	now := time.Now()

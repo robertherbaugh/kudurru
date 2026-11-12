@@ -179,7 +179,7 @@ func TestRunServeTracingTrustedEdgeTraceparent(t *testing.T) {
 	}
 	cfg.Tracing.Enabled = true
 	cfg.Tracing.Endpoint = otlpServer.URL + "/v1/traces"
-	cfg.Tracing.SampleRate = 0 // only the edge's sampled flag (and failures) keep a trace
+	cfg.Tracing.SampleRate = 0 // only a continued edge trace (and failures) keep a trace
 	cfg.Tracing.SlowThreshold = 0
 	cfg.Tracing.QueueSize = 8
 	cfg.Tracing.Timeout = config.Duration(5 * time.Second)
