@@ -102,6 +102,9 @@ them from its own copy.
 | GET | `/api/v1/cluster/promotion` | Review local follower promotion eligibility | `cluster.read` (cluster) | - |
 | GET | `/api/v1/doctor` | The checks of `kudurru doctor` as this node sees them | `settings.read` (cluster) | - |
 | GET | `/api/v1/edge` | dnsdist backends and VIP owners | `edge.read` (cluster) | - |
+| GET | `/api/v1/edge/blocks` | Active operator edge blocks | `edgeblocks.read` (cluster) | - |
+| POST | `/api/v1/edge/blocks` | Block a client prefix at every dnsdist edge until an expiry | `edgeblocks.write` (cluster) | refused |
+| DELETE | `/api/v1/edge/blocks/{id}` | Revoke an active edge block | `edgeblocks.write` (cluster) | refused |
 | GET | `/api/v1/edge/vip/stream` | Local observed VIP transitions (Server-Sent Events) | `edge.read` (cluster) | - |
 | GET | `/api/v1/info/messages` | Diagnosis messages (objects, policies, lists, readiness) | `settings.read` (cluster) | - |
 | GET | `/api/v1/license` | License state, node limit and licensed features of this node | `settings.read` (cluster) | - |

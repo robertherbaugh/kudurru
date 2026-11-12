@@ -3533,6 +3533,48 @@ type EdgeBackend struct {
 	Up      bool    `json:"up"`
 }
 
+// EdgeBlock defines model for EdgeBlock.
+type EdgeBlock struct {
+	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy *string   `json:"createdBy,omitempty"`
+
+	// Id Block ID (16 lowercase hex characters).
+	Id string `json:"id"`
+
+	// Prefix Blocked client prefix, canonical CIDR.
+	Prefix string  `json:"prefix"`
+	Reason *string `json:"reason,omitempty"`
+
+	// Until Absolute expiry; edges stop dropping at this time.
+	Until time.Time `json:"until"`
+}
+
+// EdgeBlockList defines model for EdgeBlockList.
+type EdgeBlockList struct {
+	Items       []EdgeBlock `json:"items"`
+	MaxBlocks   int64       `json:"maxBlocks"`
+	MaxSeconds  int64       `json:"maxSeconds"`
+	MinIPv4Bits int64       `json:"minIPv4Bits"`
+	MinIPv6Bits int64       `json:"minIPv6Bits"`
+	MinSeconds  int64       `json:"minSeconds"`
+	Revision    string      `json:"revision"`
+}
+
+// EdgeBlockRequest defines model for EdgeBlockRequest.
+type EdgeBlockRequest struct {
+	// Prefix Client address or CIDR prefix (IPv4 /16 or longer, IPv6 /32 or longer).
+	Prefix string `json:"prefix"`
+
+	// Reason Operator note kept in the list and the audit trail; never sent to edges.
+	Reason *string `json:"reason,omitempty"`
+
+	// Seconds Block for this many seconds (60 to 604800).
+	Seconds *int64 `json:"seconds,omitempty"`
+
+	// Until Block until this time (one minute to seven days from now).
+	Until *time.Time `json:"until,omitempty"`
+}
+
 // EdgeComponent defines model for EdgeComponent.
 type EdgeComponent struct {
 	Enabled bool    `json:"enabled"`
@@ -6754,6 +6796,9 @@ type BatchDeleteDnszonesJSONRequestBody = BatchDeleteInputBody
 // AddDomainsJSONRequestBody defines body for AddDomains for application/json ContentType.
 type AddDomainsJSONRequestBody = DomainsRequest
 
+// CreateEdgeBlockJSONRequestBody defines body for CreateEdgeBlock for application/json ContentType.
+type CreateEdgeBlockJSONRequestBody = EdgeBlockRequest
+
 // DisableExternalUserJSONRequestBody defines body for DisableExternalUser for application/json ContentType.
 type DisableExternalUserJSONRequestBody = ExternalUserCommand
 
@@ -7752,6 +7797,34 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /edge (the `GetEdge` operationId).
 	GetEdge(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListEdgeBlocks Active operator edge blocks
+	//
+	// Corresponds with GET /edge/blocks (the `ListEdgeBlocks` operationId).
+	ListEdgeBlocks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateEdgeBlockWithBody Block a client prefix at every dnsdist edge until an expiry
+	//
+	// Stores the block in the canonical set and audits it. Edge supervisors pull the set from every backend about every five seconds and apply it with dnsdist's dynamic-block table, which also enforces the expiry; the response does not wait for edges.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /edge/blocks (the `CreateEdgeBlock` operationId).
+	CreateEdgeBlockWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateEdgeBlock Block a client prefix at every dnsdist edge until an expiry
+	//
+	// Stores the block in the canonical set and audits it. Edge supervisors pull the set from every backend about every five seconds and apply it with dnsdist's dynamic-block table, which also enforces the expiry; the response does not wait for edges.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /edge/blocks (the `CreateEdgeBlock` operationId).
+	CreateEdgeBlock(ctx context.Context, body CreateEdgeBlockJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeEdgeBlock Revoke an active edge block
+	//
+	// Corresponds with DELETE /edge/blocks/{id} (the `RevokeEdgeBlock` operationId).
+	RevokeEdgeBlock(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// VipEventStream Local observed VIP transitions (Server-Sent Events)
 	//
@@ -10711,6 +10784,74 @@ func (c *Client) AddDomains(ctx context.Context, action AddDomainsParamsAction, 
 // Corresponds with GET /edge (the `GetEdge` operationId).
 func (c *Client) GetEdge(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetEdgeRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListEdgeBlocks Active operator edge blocks
+//
+// Corresponds with GET /edge/blocks (the `ListEdgeBlocks` operationId).
+func (c *Client) ListEdgeBlocks(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListEdgeBlocksRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateEdgeBlockWithBody Block a client prefix at every dnsdist edge until an expiry
+//
+// Stores the block in the canonical set and audits it. Edge supervisors pull the set from every backend about every five seconds and apply it with dnsdist's dynamic-block table, which also enforces the expiry; the response does not wait for edges.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /edge/blocks (the `CreateEdgeBlock` operationId).
+func (c *Client) CreateEdgeBlockWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateEdgeBlockRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateEdgeBlock Block a client prefix at every dnsdist edge until an expiry
+//
+// Stores the block in the canonical set and audits it. Edge supervisors pull the set from every backend about every five seconds and apply it with dnsdist's dynamic-block table, which also enforces the expiry; the response does not wait for edges.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /edge/blocks (the `CreateEdgeBlock` operationId).
+func (c *Client) CreateEdgeBlock(ctx context.Context, body CreateEdgeBlockJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateEdgeBlockRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeEdgeBlock Revoke an active edge block
+//
+// Corresponds with DELETE /edge/blocks/{id} (the `RevokeEdgeBlock` operationId).
+func (c *Client) RevokeEdgeBlock(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeEdgeBlockRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -17410,6 +17551,107 @@ func NewGetEdgeRequest(server string) (*http.Request, error) {
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListEdgeBlocksRequest constructs an http.Request for the ListEdgeBlocks method
+func NewListEdgeBlocksRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/edge/blocks")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateEdgeBlockRequest calls the generic CreateEdgeBlock builder with application/json body
+func NewCreateEdgeBlockRequest(server string, body CreateEdgeBlockJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateEdgeBlockRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateEdgeBlockRequestWithBody constructs an http.Request for the CreateEdgeBlock method, with any body, and a specified content type
+func NewCreateEdgeBlockRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/edge/blocks")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeEdgeBlockRequest constructs an http.Request for the RevokeEdgeBlock method
+func NewRevokeEdgeBlockRequest(server string, id string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/edge/blocks/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -24607,6 +24849,38 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /edge (the `GetEdge` operationId).
 	GetEdgeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetEdgeResponse, error)
+
+	// ListEdgeBlocksWithResponse Active operator edge blocks
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /edge/blocks (the `ListEdgeBlocks` operationId).
+	ListEdgeBlocksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListEdgeBlocksResponse, error)
+
+	// CreateEdgeBlockWithBodyWithResponse Block a client prefix at every dnsdist edge until an expiry
+	//
+	// Stores the block in the canonical set and audits it. Edge supervisors pull the set from every backend about every five seconds and apply it with dnsdist's dynamic-block table, which also enforces the expiry; the response does not wait for edges.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /edge/blocks (the `CreateEdgeBlock` operationId).
+	CreateEdgeBlockWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateEdgeBlockResponse, error)
+
+	// CreateEdgeBlockWithResponse Block a client prefix at every dnsdist edge until an expiry
+	//
+	// Stores the block in the canonical set and audits it. Edge supervisors pull the set from every backend about every five seconds and apply it with dnsdist's dynamic-block table, which also enforces the expiry; the response does not wait for edges.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /edge/blocks (the `CreateEdgeBlock` operationId).
+	CreateEdgeBlockWithResponse(ctx context.Context, body CreateEdgeBlockJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateEdgeBlockResponse, error)
+
+	// RevokeEdgeBlockWithResponse Revoke an active edge block
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /edge/blocks/{id} (the `RevokeEdgeBlock` operationId).
+	RevokeEdgeBlockWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*RevokeEdgeBlockResponse, error)
 
 	// VipEventStreamWithResponse Local observed VIP transitions (Server-Sent Events)
 	//
@@ -33387,6 +33661,290 @@ func (r GetEdgeResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetEdgeResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListEdgeBlocksResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *EdgeBlockList
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListEdgeBlocksResponse) GetJSON200() *EdgeBlockList {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListEdgeBlocksResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListEdgeBlocksResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListEdgeBlocksResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListEdgeBlocksResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListEdgeBlocksResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListEdgeBlocksResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListEdgeBlocksResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListEdgeBlocksResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListEdgeBlocksResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListEdgeBlocksResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateEdgeBlockResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *EdgeBlock
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateEdgeBlockResponse) GetJSON201() *EdgeBlock {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateEdgeBlockResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateEdgeBlockResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateEdgeBlockResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateEdgeBlockResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateEdgeBlockResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateEdgeBlockResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateEdgeBlockResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r CreateEdgeBlockResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateEdgeBlockResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateEdgeBlockResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateEdgeBlockResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateEdgeBlockResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RevokeEdgeBlockResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *EdgeBlock
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RevokeEdgeBlockResponse) GetJSON200() *EdgeBlock {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r RevokeEdgeBlockResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r RevokeEdgeBlockResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r RevokeEdgeBlockResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r RevokeEdgeBlockResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r RevokeEdgeBlockResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r RevokeEdgeBlockResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r RevokeEdgeBlockResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r RevokeEdgeBlockResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r RevokeEdgeBlockResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeEdgeBlockResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeEdgeBlockResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeEdgeBlockResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeEdgeBlockResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -45437,6 +45995,62 @@ func (c *ClientWithResponses) GetEdgeWithResponse(ctx context.Context, reqEditor
 	return ParseGetEdgeResponse(rsp)
 }
 
+// ListEdgeBlocksWithResponse Active operator edge blocks
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /edge/blocks (the `ListEdgeBlocks` operationId).
+func (c *ClientWithResponses) ListEdgeBlocksWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListEdgeBlocksResponse, error) {
+	rsp, err := c.ListEdgeBlocks(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListEdgeBlocksResponse(rsp)
+}
+
+// CreateEdgeBlockWithBodyWithResponse Block a client prefix at every dnsdist edge until an expiry
+//
+// Stores the block in the canonical set and audits it. Edge supervisors pull the set from every backend about every five seconds and apply it with dnsdist's dynamic-block table, which also enforces the expiry; the response does not wait for edges.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /edge/blocks (the `CreateEdgeBlock` operationId).
+func (c *ClientWithResponses) CreateEdgeBlockWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateEdgeBlockResponse, error) {
+	rsp, err := c.CreateEdgeBlockWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateEdgeBlockResponse(rsp)
+}
+
+// CreateEdgeBlockWithResponse Block a client prefix at every dnsdist edge until an expiry
+//
+// Stores the block in the canonical set and audits it. Edge supervisors pull the set from every backend about every five seconds and apply it with dnsdist's dynamic-block table, which also enforces the expiry; the response does not wait for edges.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /edge/blocks (the `CreateEdgeBlock` operationId).
+func (c *ClientWithResponses) CreateEdgeBlockWithResponse(ctx context.Context, body CreateEdgeBlockJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateEdgeBlockResponse, error) {
+	rsp, err := c.CreateEdgeBlock(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateEdgeBlockResponse(rsp)
+}
+
+// RevokeEdgeBlockWithResponse Revoke an active edge block
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /edge/blocks/{id} (the `RevokeEdgeBlock` operationId).
+func (c *ClientWithResponses) RevokeEdgeBlockWithResponse(ctx context.Context, id string, reqEditors ...RequestEditorFn) (*RevokeEdgeBlockResponse, error) {
+	rsp, err := c.RevokeEdgeBlock(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeEdgeBlockResponse(rsp)
+}
+
 // VipEventStreamWithResponse Local observed VIP transitions (Server-Sent Events)
 //
 // Bounded local notifications: event vip.master_changed contains VIP, node, VRID, previous/state, original transition time and source session/sequence. Source diagnostics use vip.observation_status without a fabricated transition. No historical replay; cursors are refused. Observer startup baselines existing history; source restart/gaps close streams. Each emission rechecks original request credentials and edge.read permission; no writer authority is granted.
@@ -54069,6 +54683,245 @@ func ParseGetEdgeResponse(rsp *http.Response) (*GetEdgeResponse, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListEdgeBlocksResponse parses an HTTP response from a ListEdgeBlocksWithResponse call
+func ParseListEdgeBlocksResponse(rsp *http.Response) (*ListEdgeBlocksResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListEdgeBlocksResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EdgeBlockList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateEdgeBlockResponse parses an HTTP response from a CreateEdgeBlockWithResponse call
+func ParseCreateEdgeBlockResponse(rsp *http.Response) (*CreateEdgeBlockResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateEdgeBlockResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest EdgeBlock
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeEdgeBlockResponse parses an HTTP response from a RevokeEdgeBlockWithResponse call
+func ParseRevokeEdgeBlockResponse(rsp *http.Response) (*RevokeEdgeBlockResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeEdgeBlockResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest EdgeBlock
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

@@ -4036,6 +4036,114 @@
         ],
         "type": "object"
       },
+      "EdgeBlock": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "id": {
+            "description": "Block ID (16 lowercase hex characters).",
+            "type": "string"
+          },
+          "prefix": {
+            "description": "Blocked client prefix, canonical CIDR.",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "until": {
+            "description": "Absolute expiry; edges stop dropping at this time.",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "prefix",
+          "createdAt",
+          "until"
+        ],
+        "type": "object"
+      },
+      "EdgeBlockList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EdgeBlock"
+            },
+            "type": "array"
+          },
+          "maxBlocks": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "maxSeconds": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "minIPv4Bits": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "minIPv6Bits": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "minSeconds": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "revision",
+          "maxBlocks",
+          "minSeconds",
+          "maxSeconds",
+          "minIPv4Bits",
+          "minIPv6Bits"
+        ],
+        "type": "object"
+      },
+      "EdgeBlockRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "prefix": {
+            "description": "Client address or CIDR prefix (IPv4 /16 or longer, IPv6 /32 or longer).",
+            "maxLength": 64,
+            "type": "string"
+          },
+          "reason": {
+            "description": "Operator note kept in the list and the audit trail; never sent to edges.",
+            "maxLength": 256,
+            "type": "string"
+          },
+          "seconds": {
+            "description": "Block for this many seconds (60 to 604800).",
+            "format": "int64",
+            "type": "integer"
+          },
+          "until": {
+            "description": "Block until this time (one minute to seven days from now).",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prefix"
+        ],
+        "type": "object"
+      },
       "EdgeComponent": {
         "additionalProperties": false,
         "properties": {
@@ -20816,6 +20924,337 @@
           "resource": "edge",
           "scope": "cluster",
           "verb": "read"
+        }
+      }
+    },
+    "/edge/blocks": {
+      "get": {
+        "operationId": "listEdgeBlocks",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EdgeBlockList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Active operator edge blocks",
+        "tags": [
+          "cluster"
+        ],
+        "x-kudurru-permission": {
+          "resource": "edgeblocks",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      },
+      "post": {
+        "description": "Stores the block in the canonical set and audits it. Edge supervisors pull the set from every backend about every five seconds and apply it with dnsdist's dynamic-block table, which also enforces the expiry; the response does not wait for edges.",
+        "operationId": "createEdgeBlock",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EdgeBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EdgeBlock"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Block a client prefix at every dnsdist edge until an expiry",
+        "tags": [
+          "cluster"
+        ],
+        "x-kudurru-follower": "primary",
+        "x-kudurru-permission": {
+          "resource": "edgeblocks",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/edge/blocks/{id}": {
+      "delete": {
+        "operationId": "revokeEdgeBlock",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "maxLength": 16,
+              "pattern": "^[0-9a-f]{16}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EdgeBlock"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Revoke an active edge block",
+        "tags": [
+          "cluster"
+        ],
+        "x-kudurru-follower": "primary",
+        "x-kudurru-permission": {
+          "resource": "edgeblocks",
+          "scope": "cluster",
+          "verb": "write"
         }
       }
     },

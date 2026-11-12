@@ -361,6 +361,18 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.GetEdge(ctx, editors...)
 		return response, true, err
 	}
+	if method == "GET" && len(parts) == 2 && parts[0] == "edge" && parts[1] == "blocks" {
+		response, err := c.ListEdgeBlocks(ctx, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 2 && parts[0] == "edge" && parts[1] == "blocks" {
+		response, err := c.CreateEdgeBlockWithBody(ctx, contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "DELETE" && len(parts) == 3 && parts[0] == "edge" && parts[1] == "blocks" {
+		response, err := c.RevokeEdgeBlock(ctx, parts[2], editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 3 && parts[0] == "edge" && parts[1] == "vip" && parts[2] == "stream" {
 		response, err := c.VipEventStream(ctx, nil, editors...)
 		return response, true, err

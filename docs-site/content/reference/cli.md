@@ -669,6 +669,36 @@ Flags:
 
 dnsdist supervisor: render the configuration or run dnsdist (PID 1 of the kudurru-dnsdist image).
 
+### kudurru edge block
+
+Drop a client address or prefix at every dnsdist edge for a while (1m to 7d, default 10m).
+
+```text
+kudurru edge block <address|prefix> [duration] [flags]
+```
+
+Examples:
+
+```sh
+kudurru edge block 192.0.2.7 10m --reason 'query flood'
+kudurru edge block 2001:db8:1::/48 --until 2026-11-10T18:00:00Z
+```
+
+Flags:
+
+```text
+      --reason string   note kept in the block list and the audit trail (never sent to edges)
+      --until string    block until this RFC 3339 time instead of for a duration
+```
+
+### kudurru edge blocks
+
+List the active operator edge blocks.
+
+```text
+kudurru edge blocks
+```
+
 ### kudurru edge render
 
 Print the dnsdist configuration the supervisor would run (credentials are random per call).
@@ -734,7 +764,8 @@ Flags:
       --ebpf                                push dynamic-block drops into an eBPF socket
                                             filter (needs CAP_SYS_ADMIN)
       --internal-port int                   kudurru internal listener port (zone serial
-                                            polling); 0 disables (default 8082)
+                                            polling and operator edge blocks); 0 disables
+                                            (default 8082)
       --listen strings                      addresses every frontend binds (default [0.0.0.0])
       --managed-cache-bypass                retain both packet-cache bypasses in config-dir
                                             across restarts; required before managed
@@ -841,7 +872,8 @@ Flags:
       --internal-ca-file string              CA of the kudurru internal listener (default
                                              derived from KUDURRU_ENCRYPTION_KEY)
       --internal-port int                    kudurru internal listener port (zone serial
-                                             polling); 0 disables (default 8082)
+                                             polling and operator edge blocks); 0 disables
+                                             (default 8082)
       --internal-server-name string          TLS server name of the internal listener (default
                                              internal.kudurru.invalid)
       --internal-token-file string           bearer token of the kudurru internal listener
@@ -883,6 +915,14 @@ Flags:
                                              AXFR/IXFR/NOTIFY/UPDATE through the edge
       --zone-poll duration                   interval of the /internal/zones serial poll
                                              (default 5s)
+```
+
+### kudurru edge unblock
+
+Revoke an operator edge block before it expires.
+
+```text
+kudurru edge unblock <id>
 ```
 
 ## kudurru export
