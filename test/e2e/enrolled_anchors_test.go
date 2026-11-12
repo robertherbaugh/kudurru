@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"net/http"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -291,6 +292,11 @@ func enrolledAnchorsRevoke(t *testing.T, e *enrolledAnchors, bin string, env []s
 	}
 	primary = kudurrutest.StartReady(t, bin, a, kudurrutest.Options{Env: env})
 	e.awaitValidated(primary, "recovered primary")
+	// The hour-long wait outlived the session; sign in again (both clients
+	// share one cookie jar).
+	var login api.SessionInfo
+	apiA.request(t, http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "audit-e2e-password-1"}, http.StatusOK, &login) // #nosec G101 -- disposable loopback fixture credential
+	apiA.csrf, apiB.csrf = login.CSRF, login.CSRF
 	recovered := e.status(apiA, func(s api.RootAnchorStatus) bool { return s.Authority.Mode == "primary" && !s.Owner.Quarantined })
 	statuses := map[string]int{}
 	for _, key := range recovered.Owner.Keys {

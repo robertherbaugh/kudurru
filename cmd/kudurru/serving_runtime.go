@@ -92,20 +92,18 @@ type servingRuntime struct {
 	anchors       *rootAnchorOwner
 	anchorWriter  anchorWriterControl
 	anchorStatus  anchorStatusBoard
-	// anchorReady replaces anchorFollowerReady in the supervisor; tests only.
-	anchorReady  func(context.Context, anchorFollowerEpoch) (bool, error)
-	status       *servingbuild.PrimaryStatus
-	integrations *integrationRuntime
-	catalog      *servingbuild.CatalogRuntime
-	local        []providerregistry.DesiredConfig
-	life         context.Context
-	cancel       context.CancelFunc
-	lifecycle    chan struct{}
-	mu           sync.Mutex
-	workers      sync.WaitGroup
-	running      bool
-	writing      bool
-	closing      bool
+	status        *servingbuild.PrimaryStatus
+	integrations  *integrationRuntime
+	catalog       *servingbuild.CatalogRuntime
+	local         []providerregistry.DesiredConfig
+	life          context.Context
+	cancel        context.CancelFunc
+	lifecycle     chan struct{}
+	mu            sync.Mutex
+	workers       sync.WaitGroup
+	running       bool
+	writing       bool
+	closing       bool
 
 	// objectAPI is the public API server whose object command bodies execute
 	// follower-forwarded object mutations on this primary. Nil refuses them.
