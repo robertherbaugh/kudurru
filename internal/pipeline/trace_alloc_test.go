@@ -2,6 +2,8 @@ package pipeline
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"net/netip"
 	"testing"
 	"time"
@@ -72,19 +74,29 @@ func TestTracedChainAllocations(t *testing.T) {
 }
 
 // BenchmarkTracedChain compares a query through the full stage order with
-// tracing off and with tracing on but the query not kept.
+// tracing off, with tracing on but the query not kept, and with every
+// query kept (sampleRate at its maximum). The kept case measures the query
+// path only: the root attributes and the non-blocking offer to the export
+// queue; the export goroutine drops each batch without encoding it.
 func BenchmarkTracedChain(b *testing.B) {
 	tracer, err := tracing.New(tracing.Config{Ratio: 0, Exporter: &tracing.Memory{}})
 	if err != nil {
 		b.Fatal(err)
 	}
+	keepAll, err := tracing.New(tracing.Config{Ratio: 1, Exporter: &tracing.Memory{Fail: errors.New("dropped by the benchmark")}, Logger: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		b.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go keepAll.Run(ctx)
 	q := new(dns.Msg)
 	q.SetQuestion("www.example.org.", dns.TypeA)
 	q.SetEdns0(1232, false)
 	for _, c := range []struct {
 		name   string
 		tracer *tracing.Tracer
-	}{{"off", nil}, {"unkept", tracer}} {
+	}{{"off", nil}, {"unkept", tracer}, {"kept", keepAll}} {
 		chain := fullTracedChain(c.tracer)
 		b.Run(c.name, func(b *testing.B) {
 			b.ReportAllocs()
