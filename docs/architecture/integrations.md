@@ -243,15 +243,20 @@ sequenceDiagram
     Holder->>API: fenced create of each immutable IntegrationSourceChunk
     Holder->>API: fence, then ONE create or exact-resourceVersion update of the head (n to n+1)
     Holder->>API: exact UID and resourceVersion delete of the replaced head's chunks
-    Holder->>Replica: wake
-    Replica->>API: list heads, referenced chunks and allocations (every 10 s and on wake)
+    Holder->>Replica: wake (its own runtime)
+    API-->>Replica: head watch event (every replica)
+    Replica->>API: list heads, referenced chunks and allocations (on wake or watch event, and every 10 s)
     Replica->>Replica: decode strictly, check eligibility against its own snapshot
     Replica->>Replica: rebuild inventory and MAC grants in canonical order
 ```
 
 `kube.IntegrationSourceBackend` stages the chunks and rechecks that each is
 durable before the head write; a lost head CAS writes nothing and leaves the
-previous source plus unreferenced chunks. Every private integration carrier
+previous source plus unreferenced chunks. A head write that was sent and not
+acknowledged (`kube.ErrSourceOutcomeUnknown`) is resolved by one read of the
+head: the head written is a commit; anything else is reported as an
+uncertain outcome (`integration_uncertain`, the intent pending) and never
+written again. Every private integration carrier
 decodes strictly, so a damaged one is an error rather than an absent row.
 Committed means the head CAS succeeded; Published means the committing
 replica's own source runtime installed that root.
@@ -272,7 +277,15 @@ policy grants (`policy.Options.MACGrantsInput` through
 `zonecache.Cache.SetInput`) with the original exclusive expiry, never
 renewed. A failed relist keeps the last listing, so during an API outage a
 replica keeps answering until each observation's original expiry and then
-stops. Convergence is per replica, within one relist interval.
+stops. Every replica watches the heads, so it relists and installs a
+successor head within one watch delivery; the ten-second relist is only the
+backstop for a watch that is down, and a relist that finds a chunk already
+retired by the holder is repeated at once. An observation expires three
+polls after it was made, truncated to the second, so a non-holder's grant
+stays continuous only while one poll-and-commit cycle of the holder plus one
+watch delivery is shorter than about two polls: at the one-second minimum
+poll a slow cycle can let grants lapse until the next commit; two seconds or
+more is qualified.
 
 What is not atomic: the contributed groups are read live just before the head
 write, not in it (each replica re-checks the group's UID when it grants); the
@@ -296,7 +309,10 @@ such as a suspended one, shows the status every replica derives locally).
 `leader` says whether this replica holds the instance's Lease. Check,
 preview, sync, actions and act run only on the Lease holder, with the exact
 reviewed UID and revision; any other replica answers `503` with the holder's
-name in `hint.holder` and never forwards or replays the request. The route
+name in `hint.holder` and never forwards or replays the request. When no
+other replica holds the Lease (a suspended, unlicensed or paused instance,
+or one between two jobs), the `503` names no holder and carries the
+instance's `phase` and `reason` instead. The route
 permission is the only authorization: there is no original-credential proof
 re-checked inside each effect as on SQLite, so a permission withdrawn while a
 command runs does not stop it. A reviewed sync or act is recorded as a
@@ -312,7 +328,10 @@ metadata patch bound to its UID and resourceVersion; one whose policy is no
 longer `Delete` is disarmed the same way. Until a capture shows the finalizer
 the host pauses the instance (`CleanupFinalizerMissing`) and every fence
 refuses it, so nothing is owned unarmed. Replicas may race; losers conflict
-and change nothing. `kubectl delete` then leaves a terminating object, and the
+and change nothing. A refused instance is neither armed nor disarmed; one
+armed before it became refused (UniFi that gained `spec.unifi.inventory`)
+keeps the finalizer, and its cleanup, which makes no provider request, is the
+one effect the fences admit for it. `kubectl delete` then leaves a terminating object, and the
 same cleanup job as on SQLite runs under the instance's Lease. Its local purge
 is a sequence of fenced exact-UID and resourceVersion deletes (source-owned
 objects, then the head, then its chunks, allocations and deliveries), so a cut

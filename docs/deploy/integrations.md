@@ -11,7 +11,10 @@ a promoted writer must acquire its own authority before observing or publishing.
 This mount does not close every integration capability. On Kubernetes the host
 runs Cloudflare publication and UniFi inventory and groups under one Lease per
 Integration, and every replica serves the committed UniFi inventory and group
-grants. UniFi record publication (`spec.unifi.inventory`) is refused on its
+grants. Replicas watch the committed heads, so they follow each poll; an
+observation expires three polls after it was made, so keep `spec.unifi.poll`
+at two seconds or more on Kubernetes (at the one-second minimum a slow poll
+can let grants lapse until the next one). UniFi record publication (`spec.unifi.inventory`) is refused on its
 object with reason `RecordPublicationUnsupportedOnKubernetes`, and webhook
 instances with `UnsupportedOnKubernetes`. UniFi inventory (client names, IPs,
 MACs) is stored in private Secrets in the release namespace, readable by
@@ -209,7 +212,10 @@ later run resumes, and the summary is a log line (`integration cleanup`)
 instead of an audit row. To give up on a cleanup, patch the policy to
 `Retain`, use the release command below, or remove the
 `kudurru.io/integration-cleanup` finalizer by hand; each leaves what was
-published, like `Retain`. Deleting a `Retain` object removes it and leaves
+published, like `Retain`. A refused Integration is never armed, but a UniFi
+Integration armed for `Delete` that later gains `spec.unifi.inventory` keeps
+its finalizer: deleting it purges its source Secrets locally, with no
+provider request, and then removes the object. Deleting a `Retain` object removes it and leaves
 what it published, and its private ledger Secrets stay in the release
 namespace.
 
@@ -562,7 +568,14 @@ re-authorizes the original credential. On Kubernetes list and get answer on
 every replica from the status the Lease holder wrote on the Integration, and
 `leader` tells which replica holds it. Check, preview, sync, actions and act
 run only on the Lease holder; another replica answers `503` with the holder's
-name in `hint.holder`, so send the command to that pod. On Kubernetes the
+name in `hint.holder` and does not forward the request, so a client behind a
+Service must send the command to that pod. When no other replica holds the
+Lease (the instance is suspended, unlicensed, paused or between two jobs)
+the `503` names no holder and carries the instance's `phase` and `reason`
+in its hint instead. A reviewed sync whose source head write was not
+acknowledged is resolved by one read of the head; if that read does not
+show the write, the answer is `503 integration_uncertain` and the sync is
+not repeated. On Kubernetes the
 route permission is checked once per request, not again inside each effect,
 and a reviewed sync or act is logged on the holder rather than written to an
 audit table. List/get status is unknown when no observation matches the
