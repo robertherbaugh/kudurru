@@ -11,6 +11,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -133,7 +134,11 @@ func TestRunServeKubeCloudflareDeleteCleanupAndRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	other := &public.Integration{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "Integration"}, ObjectMeta: metav1.ObjectMeta{Name: "publisher", Namespace: "default", Labels: map[string]string{"team": "dns"}}, Spec: d.Spec}
-	if err := env.admin.Patch(ctx, other, client.Apply, client.ForceOwnership, client.FieldOwner("someone-else")); err != nil {
+	raw, err := json.Marshal(other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := env.admin.Patch(ctx, other, client.RawPatch(types.ApplyPatchType, raw), client.ForceOwnership, client.FieldOwner("someone-else")); err != nil {
 		t.Fatal(err)
 	}
 	kubeAwait(t, 10*time.Second, "the forced apply landed", func() bool {
