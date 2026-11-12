@@ -39,14 +39,14 @@ them from its own copy.
 | GET | `/api/v1/auth/oidc/{idp}/logout` | Continue a committed browser logout (302 to the IdP) | public | - |
 | GET | `/api/v1/auth/oidc/{idp}/logout/callback` | Validate the logout return state (302 to the app) | public | - |
 | GET | `/api/v1/auth/oidc/{idp}/start` | Start an OIDC login (302 to the IdP) | public | - |
-| POST | `/api/v1/auth/password` | Change the local user's own password (a cookie session gets a new cookie) | authenticated | refused |
+| POST | `/api/v1/auth/password` | Change the local user's own password (a cookie session gets a new cookie) | authenticated | forwarded |
 | GET | `/api/v1/auth/sessions` | List own enrolled sessions | authenticated | - |
 | DELETE | `/api/v1/auth/sessions/{id}` | Revoke an enrolled session of the current account | authenticated | forwarded |
 | GET | `/api/v1/auth/status` | Login options | public | - |
 | GET | `/api/v1/auth/tokens` | List own API tokens | authenticated | - |
-| POST | `/api/v1/auth/tokens` | Create a personal API token (the secret is returned once) | authenticated | refused |
+| POST | `/api/v1/auth/tokens` | Create a personal API token (the secret is returned once) | authenticated | forwarded |
 | GET | `/api/v1/auth/tokens/{id}` | Get one API token (someone else's needs tokens.read) | authenticated | - |
-| DELETE | `/api/v1/auth/tokens/{id}` | Revoke one API token (someone else's needs tokens.delete) | authenticated | refused |
+| DELETE | `/api/v1/auth/tokens/{id}` | Revoke one API token (someone else's needs tokens.delete) | authenticated | forwarded |
 | GET | `/api/v1/auth/totp` | Own local authenticator status | authenticated | - |
 | POST | `/api/v1/auth/totp/confirm` | Activate the authenticator and revoke existing sessions | authenticated | refused |
 | POST | `/api/v1/auth/totp/disable` | Disable own authenticator and revoke existing sessions | authenticated | refused |
