@@ -50,7 +50,7 @@ type anchorUpdater struct {
 	retryFor anchorRetrySource
 	retryAt  time.Time
 	// raced counts consecutive attempts refused because an ordinary commit
-	// moved the canonical generation first (D370); it paces their retries.
+	// moved the canonical generation first; it paces their retries.
 	raced   int
 	stopped error
 	// wall reads this node's wall clock for the checkpoint comparison only; nil
@@ -66,6 +66,17 @@ type anchorPollStep struct {
 	// clockWait is how far this node's wall clock trails the committed
 	// checkpoint when the step could not be due for that reason.
 	clockWait time.Duration
+	// raced reports that an ordinary commit moved the canonical generation
+	// under this step (at capture or while the reply was in flight) and that
+	// a new acquisition is scheduled at next.
+	raced bool
+}
+
+func (u *anchorUpdater) now() time.Time {
+	if u.wall != nil {
+		return u.wall()
+	}
+	return time.Now()
 }
 
 // step creates and cancels one finite original attempt before returning any
@@ -83,14 +94,11 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 	original, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	op, err := u.runtime.captureAnchorOperation(original, u.target, u.host, u.clock, u.offset)
-	now := time.Now()
-	if u.wall != nil {
-		now = u.wall()
-	}
+	now := u.now()
 	if errors.Is(err, replication.ErrCAS) {
 		// An ordinary commit landed between the image read and the capture.
 		// Nothing was acquired; a later step captures the new generation.
-		step.next = now.Add(time.Second)
+		step.next, step.raced = now.Add(time.Second), true
 		return step, nil
 	}
 	if err != nil {
@@ -144,12 +152,13 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 		}
 	}
 	if anchorUpdateRaced(step.completion, err) {
-		// D370: an ordinary commit (a zone status write, an API change) moved
-		// the canonical generation while the reply was in flight, and the
+		// An ordinary commit (a zone status write, an API change) moved the
+		// canonical generation while the reply was in flight, and the
 		// transaction rolled back. Nothing durable changed and the reply is
 		// discarded, never replayed. A later step makes a NEW acquisition
 		// against the new generation, paced 1s, 2s, 4s ... up to 64 seconds.
-		step.next = time.Now().Add(time.Second << min(u.raced, 6))
+		// The pace is read from the same wall clock the due check uses.
+		step.next, step.raced = u.now().Add(time.Second<<min(u.raced, 6)), true
 		u.raced++
 		u.retryFor, u.retryAt = identity, step.next
 		return step, nil
@@ -180,6 +189,10 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 // generation change: the update transaction rolled back with the store's
 // authority CAS and no denial was committed first. An accepted-owner change
 // (accepted.ErrCAS), an uncertain outcome or a committed denial stays terminal.
+// So does a revocation denial that an ordinary commit rolled back (Denial
+// rolled back, Update unknown): the failed denial closes the anchor source
+// and leaves its withdrawal failed-or-unknown, which fails closed for the
+// writer term. That case is a recorded follow-up, not a retry.
 func anchorUpdateRaced(completion anchorCompletion, err error) bool {
 	return errors.Is(err, replication.ErrCAS) && !errors.Is(err, accepted.ErrCAS) &&
 		completion.Update.Outcome() == sqlite.AnchorRolledBack && completion.Denial.Outcome() == sqlite.AnchorUnknown
@@ -214,6 +227,9 @@ func (s *servingRuntime) runAnchorUpdaterReady(ctx context.Context, target servi
 		}
 		if step.acquisitionError != nil {
 			slog.Warn("root anchor transport acquisition failed; new attempt scheduled", "next", step.next)
+		}
+		if step.raced {
+			slog.Warn("root anchor update raced an ordinary commit; new acquisition scheduled", "next", step.next, "consecutive", u.raced)
 		}
 		if step.clockWait > 0 {
 			slog.Warn("root anchor updater waits for this node's clock to reach the committed checkpoint; check time synchronization", "behind", step.clockWait.Round(time.Millisecond))
