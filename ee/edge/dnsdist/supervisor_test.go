@@ -95,14 +95,21 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 	src := &chanSource{initial: []cluster.Endpoint{ep("node-a", "10.0.0.11")}, ch: make(chan []cluster.Endpoint, 4)}
 	reg := prometheus.NewRegistry()
 	cfg := Config{
-		Options:       edge.Options{ServerID: "edge-test", API: freePort(t), Console: "127.0.0.1:5199", Listen: []string{"127.0.0.1"}, Ports: map[edge.Protocol]int{edge.Do53: 5300}},
-		Source:        src,
-		ConfigDir:     filepath.Join(dir, "etc"),
-		Binary:        fakeBinary(t),
-		APIKeyOut:     filepath.Join(dir, "run", "dnsdist-api.key"),
-		APIKeyGID:     -1,
-		Debounce:      50 * time.Millisecond,
-		HealthTimeout: 250 * time.Millisecond,
+		Options:   edge.Options{ServerID: "edge-test", API: freePort(t), Console: "127.0.0.1:5199", Listen: []string{"127.0.0.1"}, Ports: map[edge.Protocol]int{edge.Do53: 5300}},
+		Source:    src,
+		ConfigDir: filepath.Join(dir, "etc"),
+		Binary:    fakeBinary(t),
+		APIKeyOut: filepath.Join(dir, "run", "dnsdist-api.key"),
+		APIKeyGID: -1,
+		Debounce:  50 * time.Millisecond,
+		// Every health probe is a console round trip, which re-executes this
+		// race-instrumented test binary (fakeBinary). On a loaded runner one
+		// round trip can take longer than a few hundred milliseconds, and a
+		// shorter window turns a healthy staged member into a failed health
+		// qualification and two extra restarts. The window bounds the backend
+		// coming up, not the client process; tests that exercise a rejected
+		// health check set their own short window.
+		HealthTimeout: 5 * time.Second,
 		PurgeDelay:    20 * time.Millisecond,
 		StatusPoll:    50 * time.Millisecond,
 		ZonePoll:      50 * time.Millisecond,
@@ -262,6 +269,24 @@ func TestSupervisorLifecycle(t *testing.T) {
 	h.stop()
 	if h.count("stop") != 2 {
 		t.Errorf("want two clean stops:\n%s", h.log())
+	}
+}
+
+// A health probe slower than the old 250 ms harness window must not fail the
+// qualification of a healthy staged member: one staging restart, no restore.
+func TestSupervisorNamedStagingSlowConsoleHealthProbe(t *testing.T) {
+	h := newHarness(t, nil)
+	h.waitFor("ready", h.ready)
+	if err := os.WriteFile(filepath.Join(h.dir, "delay-health"), []byte("400ms"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.src.ch <- []cluster.Endpoint{ep("node-a", "10.0.0.11"), ep("node-b", "10.0.0.12")}
+	h.waitFor("promoted backend", func() bool { return h.count("console promote") == 1 })
+	if n := h.count("start"); n != 2 {
+		t.Fatalf("%d starts, want 2 (one staging restart):\n%s", n, h.log())
+	}
+	if n := strings.Count(h.log(), " backends=node-a\n"); n != 1 {
+		t.Fatalf("the accepted membership started %d times, want only the initial start:\n%s", n, h.log())
 	}
 }
 

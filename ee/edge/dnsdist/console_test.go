@@ -75,7 +75,8 @@ func TestSupervisorRemovalAndUncertainMutation(t *testing.T) {
 }
 
 func TestNamedStagingHealthFailureRetainsAcceptedFiles(t *testing.T) {
-	h := newHarness(t, nil)
+	// The rejection is the subject: keep its qualification window short.
+	h := newHarness(t, func(c *Config) { c.HealthTimeout = 250 * time.Millisecond })
 	h.waitFor("ready", h.ready)
 	if err := os.WriteFile(filepath.Join(h.dir, "reject-health"), nil, 0o600); err != nil {
 		t.Fatal(err)

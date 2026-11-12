@@ -223,6 +223,13 @@ func fakeDNSDist(args []string) int {
 			verb = "reload"
 		}
 		fakeLog(dir, "console %s", verb)
+		// delay-<verb> holds a duration: a console round trip as slow as a
+		// re-executed race test binary on a loaded runner.
+		if raw, err := os.ReadFile(filepath.Join(dir, "delay-"+verb)); err == nil { //nolint:gosec // bounded verb and owned fake fixture directory
+			if d, err := time.ParseDuration(strings.TrimSpace(string(raw))); err == nil {
+				time.Sleep(d)
+			}
+		}
 		// Lost acknowledgment deliberately follows mutation, exercising recovery.
 		if _, err := os.Stat(filepath.Join(dir, "fail-"+verb)); err == nil { //nolint:gosec // bounded verb and owned fake fixture directory
 			return
