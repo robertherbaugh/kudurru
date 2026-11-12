@@ -432,6 +432,46 @@ type Elector interface {
 	Leader() string
 }
 
+// ErrTermLost means a leader term can no longer be shown to be current: the
+// authority names another holder or a later acquisition, the record is
+// expired, or it could not be read. It is a refusal, never a retry hint.
+var ErrTermLost = errors.New("store: leader term is not current")
+
+// TermVerifier is the optional elector capability behind VerifyTerm: an
+// elector that can prove one of its own terms against the authority.
+type TermVerifier interface {
+	VerifyTerm(ctx, term context.Context) error
+}
+
+type termVerifierKey struct{}
+
+// WithTermVerifier returns a term context that carries verify (D384). An
+// elector installs it on the context it passes to onStarted, so work derived
+// from a term can prove the term against the authority before an effect.
+func WithTermVerifier(term context.Context, verify func(context.Context) error) context.Context {
+	return context.WithValue(term, termVerifierKey{}, verify)
+}
+
+// VerifyTerm checks, by one linearizable read of the election record, that
+// the term carried by term is still this candidate's current term; ctx bounds
+// the read. It is a rejection check only: it never renews or extends a term,
+// and an effect dispatched after it passes may still land after the term is
+// lost. A term context without a verifier (an elector that cannot prove its
+// term) is ErrTermLost.
+func VerifyTerm(ctx, term context.Context) error {
+	if term == nil {
+		return ErrTermLost
+	}
+	verify, ok := term.Value(termVerifierKey{}).(func(context.Context) error)
+	if !ok || verify == nil {
+		return ErrTermLost
+	}
+	if err := term.Err(); err != nil {
+		return ErrTermLost
+	}
+	return verify(ctx)
+}
+
 // Info describes the open store.
 type Info struct {
 	Driver        string
