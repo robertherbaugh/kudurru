@@ -39,6 +39,11 @@ type webhookRecordsPeer struct {
 	// hold, when set, holds the next POST before it reaches the listener:
 	// the peer closes entered and waits until hold is closed. Used once.
 	hold, entered chan struct{}
+	// down answers every request 503, as an unreachable peer does.
+	down bool
+	// ignoreNext answers the next POST 204 without applying it; dropRegistry
+	// applies every POST without its kudurru registry rows.
+	ignoreNext, dropRegistry bool
 }
 
 func newWebhookRecordsPeer(t *testing.T, token string) *webhookRecordsPeer {
@@ -66,7 +71,13 @@ func newWebhookRecordsPeerOver(t *testing.T, token string, st store.Store, v *va
 	p := &webhookRecordsPeer{ed: ed}
 	p.server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p.mu.Lock()
+		if p.down {
+			p.mu.Unlock()
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		var hold chan struct{}
+		ignore, drop := false, false
 		if r.Method == http.MethodPost && r.URL.Path == "/records" {
 			p.posts++
 			p.failing = p.unreadable
@@ -75,9 +86,33 @@ func newWebhookRecordsPeerOver(t *testing.T, token string, st store.Store, v *va
 				close(p.entered)
 				p.hold = nil
 			}
+			ignore, drop = p.ignoreNext, p.dropRegistry
+			p.ignoreNext = false
 		}
 		failing := p.failing && r.Method == http.MethodGet && r.URL.Path == "/records"
 		p.mu.Unlock()
+		if ignore || drop {
+			// The peer accepts the body; what it applies is the test's choice.
+			var ch externaldns.Changes
+			if err := json.NewDecoder(r.Body).Decode(&ch); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if drop {
+				keep := func(eps []*externaldns.Endpoint) []*externaldns.Endpoint {
+					return slices.DeleteFunc(eps, func(e *externaldns.Endpoint) bool { return strings.HasPrefix(e.DNSName, "_kudurru-") })
+				}
+				ch.Create, ch.UpdateNew = keep(ch.Create), keep(ch.UpdateNew)
+			}
+			if !ignore {
+				if err := ed.ApplyChanges(context.Background(), &ch); err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		if hold != nil {
 			// The held body is applied even if the client went away: the
 			// peer took the change although no answer arrived.
@@ -112,6 +147,12 @@ func (p *webhookRecordsPeer) postCount() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.posts
+}
+
+func (p *webhookRecordsPeer) setDown(v bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.down = v
 }
 
 func (p *webhookRecordsPeer) setUnreadable(v bool) {
