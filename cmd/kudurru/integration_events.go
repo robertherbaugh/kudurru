@@ -37,6 +37,11 @@ const (
 	positionTerm     = "term"
 	positionBlocking = "blocking"
 	positionResync   = "resync"
+	// positionResyncID names one resync: a digest of the positions the feed
+	// could not resume. It versions that resync's zone.changed events, so a
+	// reproduction after a crash finds them queued, while a later resync of
+	// an unchanged zone is still delivered.
+	positionResyncID = "resyncID"
 )
 
 // integrationEventKinds are the watched kinds, in production order.
@@ -79,6 +84,9 @@ func (r *integrationRuntime) produceEvents(ctx context.Context, g ih.ExecutionGu
 		next[positionTerm] = term
 	}
 	if _, resync := next[positionResync]; resync {
+		if next[positionResyncID] == "" {
+			next[positionResyncID] = resyncID(positions)
+		}
 		return r.eventResync(ctx, next, events, wanted, limit)
 	}
 	for _, kind := range integrationEventKinds {
@@ -90,6 +98,7 @@ func (r *integrationRuntime) produceEvents(ctx context.Context, g ih.ExecutionGu
 			// Never one event per object: one zone.changed per zone, then a
 			// fresh baseline.
 			next[positionResync] = ""
+			next[positionResyncID] = resyncID(positions)
 			return r.eventResync(ctx, next, events, wanted, limit)
 		}
 		if err != nil {
@@ -107,6 +116,11 @@ func (r *integrationRuntime) produceEvents(ctx context.Context, g ih.ExecutionGu
 		}
 	}
 	return ih.EventBatch{Events: events, Positions: next}, nil
+}
+
+func resyncID(positions map[string]string) string {
+	raw, _ := json.Marshal(positions)
+	return kinds.Digest(raw)[:32]
 }
 
 func integrationTermID(g ih.ExecutionGuard) string {
@@ -141,16 +155,21 @@ func (r *integrationRuntime) eventBaseline(ctx context.Context, next map[string]
 // position before a tick with no change of that kind moves the position
 // anyway. Below it the position stays, so an idle tick writes no cursor:
 // the cursor's own write advances the head, and following the head would
-// rewrite the cursor on every tick (D379). It is far below the change
-// feed's retention (100,000 rows), so a quiet kind is never compacted
-// past, and it bounds the feed rows a tick re-reads.
+// rewrite the cursor on every tick (D379). It bounds the feed rows a tick
+// re-reads. eventRefresh keeps it at most a quarter of the store's feed
+// retention, so a quiet kind is not compacted past while the ticks keep up,
+// whatever retention the store was opened with.
 const eventCursorRefresh = 1024
+
+func eventRefresh(retention int) uint64 {
+	return uint64(max(min(eventCursorRefresh, retention/4), 1)) // #nosec G115 -- positive
+}
 
 // eventFeed reads the change feed of one kind after cursor until the
 // watch's bookmark, keeping at most limit data events. It returns the
 // cursor to resume from: the last kept event's, the bookmark's when
 // nothing was cut, or cursor itself when the kind did not change and the
-// head is less than eventCursorRefresh ahead. An empty cursor reads only
+// head is less than eventRefresh ahead. An empty cursor reads only
 // the current position.
 func (r *integrationRuntime) eventFeed(ctx context.Context, kind store.Kind, cursor string, limit int) ([]store.Event, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -185,7 +204,7 @@ func (r *integrationRuntime) eventFeed(ctx context.Context, kind store.Kind, cur
 				if cut != "" {
 					return out, cut, nil
 				}
-				if head, ok := cursorCounter(e.Cursor); cursor != "" && len(out) == 0 && ok && head >= from && head-from < eventCursorRefresh {
+				if head, ok := cursorCounter(e.Cursor); cursor != "" && len(out) == 0 && ok && head >= from && head-from < eventRefresh(r.s.opts.Store.FeedRetention()) {
 					return nil, cursor, nil
 				}
 				return out, e.Cursor, nil
@@ -234,10 +253,14 @@ func (r *integrationRuntime) eventFor(e store.Event, next map[string]string, wan
 		payload, err := json.Marshal(map[string]any{"change": eventChange(e.Type), "namespace": o.Namespace, "name": o.Name, "uid": string(o.UID), "zone": o.Spec.ZoneRef.Name, "generation": o.Generation})
 		return ih.ProducedEvent{Topic: topicRecordChanged, Subject: string(o.UID), Version: version, Payload: payload}, true, err
 	case *public.DNSZone:
-		if !wanted(topicZoneChanged) || o.UID == "" {
+		// zone.changed has one version per subject: the committed serial
+		// (or the deletion). On SQLite the serial lives in the ZoneState
+		// head, which reports it; a DNSZone write reports only a deletion or
+		// a serial its own status carries, which is the same version.
+		if !wanted(topicZoneChanged) || o.UID == "" || !deleted && o.Status.Serial == 0 {
 			return ih.ProducedEvent{}, false, nil
 		}
-		return zoneEvent(o, eventChange(e.Type))
+		return zoneEvent(o, eventChange(e.Type), o.Status.Serial, o.Status.ContentHash, "")
 	case *zk.ZoneState:
 		// A committed serial of a zone. Deleting or tombstoning the head
 		// is the DNSZone's deletion, reported from the DNSZone itself; a
@@ -246,7 +269,7 @@ func (r *integrationRuntime) eventFor(e store.Event, next map[string]string, wan
 			return ih.ProducedEvent{}, false, nil
 		}
 		payload, err := json.Marshal(map[string]any{"change": "modified", "name": o.Spec.Zone.ObjectName, "uid": o.Spec.Zone.UID, "zone": o.Spec.Zone.Apex, "serial": o.Spec.Serial, "contentHash": o.Spec.ContentHash})
-		return ih.ProducedEvent{Topic: topicZoneChanged, Subject: o.Spec.Zone.UID, Version: "s" + strconv.FormatUint(uint64(o.Spec.Serial), 10), Payload: payload}, true, err
+		return ih.ProducedEvent{Topic: topicZoneChanged, Subject: o.Spec.Zone.UID, Version: serialVersion(o.Spec.Serial), Payload: payload}, true, err
 	case *public.Integration:
 		if !wanted(topicIntegrationErr) || deleted || o.UID == "" {
 			return ih.ProducedEvent{}, false, nil
@@ -290,17 +313,22 @@ func eventChange(t store.EventType) string {
 	return "modified"
 }
 
+func serialVersion(serial uint32) string { return "s" + strconv.FormatUint(uint64(serial), 10) }
+
 // zoneEvent versions a zone by its committed serial, so the status writes
-// of one serial are one event and a resync of an unchanged zone dedups.
-func zoneEvent(z *public.DNSZone, change string) (ih.ProducedEvent, bool, error) {
-	version := "g" + strconv.FormatInt(z.Generation, 10)
-	if z.Status.Serial != 0 {
-		version = "s" + strconv.FormatUint(uint64(z.Status.Serial), 10)
-	}
-	if change == "deleted" {
+// of one serial are one event, or by its deletion. A resync event is
+// versioned by the resync that produced it (resync non-empty), so every
+// resync reaches the peer once, also for a zone whose serial it already
+// reported.
+func zoneEvent(z *public.DNSZone, change string, serial uint32, contentHash, resync string) (ih.ProducedEvent, bool, error) {
+	version := serialVersion(serial)
+	switch {
+	case change == "deleted":
 		version = "deleted"
+	case resync != "":
+		version = "r" + resync
 	}
-	payload, err := json.Marshal(map[string]any{"change": change, "name": z.Name, "uid": string(z.UID), "zone": z.Spec.ZoneName, "serial": z.Status.Serial, "contentHash": z.Status.ContentHash})
+	payload, err := json.Marshal(map[string]any{"change": change, "name": z.Name, "uid": string(z.UID), "zone": z.Spec.ZoneName, "serial": serial, "contentHash": contentHash})
 	return ih.ProducedEvent{Topic: topicZoneChanged, Subject: string(z.UID), Version: version, Payload: payload}, true, err
 }
 
@@ -326,12 +354,28 @@ func (r *integrationRuntime) eventResync(ctx context.Context, next map[string]st
 			}
 		}
 		slices.SortFunc(zones, func(a, b *public.DNSZone) int { return strings.Compare(a.Name, b.Name) })
+		// The committed serial of a zone lives in its ZoneState head on
+		// SQLite; a zone with none reports serial 0.
+		heads, err := r.s.opts.Store.List(ctx, zk.KindZoneState, store.ListOptions{})
+		if err != nil {
+			return ih.EventBatch{}, err
+		}
+		committed := map[string]*zk.ZoneState{}
+		for _, item := range heads.Items {
+			if h, ok := item.(*zk.ZoneState); ok && h.Spec.Lifecycle == zk.LifecycleActive && h.Spec.Zone.UID != "" {
+				committed[h.Spec.Zone.UID] = h
+			}
+		}
 		for _, z := range zones {
 			if len(events) >= limit {
 				next[positionResync] = after
 				return ih.EventBatch{Events: events, Positions: next}, nil
 			}
-			e, _, err := zoneEvent(z, "resync")
+			serial, contentHash := z.Status.Serial, z.Status.ContentHash
+			if h := committed[string(z.UID)]; serial == 0 && h != nil {
+				serial, contentHash = h.Spec.Serial, h.Spec.ContentHash
+			}
+			e, _, err := zoneEvent(z, "resync", serial, contentHash, next[positionResyncID])
 			if err != nil {
 				return ih.EventBatch{}, err
 			}
@@ -340,6 +384,7 @@ func (r *integrationRuntime) eventResync(ctx context.Context, next map[string]st
 		}
 	}
 	delete(next, positionResync)
+	delete(next, positionResyncID)
 	term := next[positionTerm]
 	if err := r.eventBaseline(ctx, next); err != nil {
 		return ih.EventBatch{}, err

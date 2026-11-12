@@ -119,6 +119,13 @@ type hookFixture struct {
 
 func newHookFixture(t *testing.T, p *hookPeer) *hookFixture {
 	t.Helper()
+	return newHookFixtureWith(t, p, nil)
+}
+
+// newHookFixtureWith is newHookFixture with a change of the serving runtime
+// options, such as its clock.
+func newHookFixtureWith(t *testing.T, p *hookPeer, prepare func(*servingRuntimeOptions)) *hookFixture {
+	t.Helper()
 	dir := t.TempDir()
 	ca := filepath.Join(dir, "peer-ca.pem")
 	if err := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: p.server.Certificate().Raw}), 0600); err != nil {
@@ -131,6 +138,9 @@ func newHookFixture(t *testing.T, p *hookPeer) *hookFixture {
 	var path string
 	f.s, path = integrationFixture(t, func(o *servingRuntimeOptions) {
 		o.Config.Credentials.AllowedFiles = append(o.Config.Credentials.AllowedFiles, ca, f.keyPath)
+		if prepare != nil {
+			prepare(o)
+		}
 	}, nil)
 	d := &public.Integration{ObjectMeta: metav1.ObjectMeta{Name: "hooks", Namespace: "default"}, Spec: public.IntegrationSpec{Type: "webhook", Credentials: map[string]public.CredentialReference{"bearerToken": {File: path}, "ca": {File: ca}, "hmacKey": {File: f.keyPath}}, Webhook: &public.WebhookIntegration{Endpoint: p.server.URL + "/provider"}, Resync: metav1.Duration{Duration: 10 * time.Minute}}}
 	f.d = integrationApply(t, f.s, d)

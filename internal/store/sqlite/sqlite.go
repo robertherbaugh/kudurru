@@ -441,6 +441,9 @@ func (s *Store) Info() store.Info {
 // version relists instead of replaying.
 func (s *Store) FeedCompacted() uint64 { return s.compacted.Load() }
 
+// FeedRetention is how many change-feed rows the store keeps (Options).
+func (s *Store) FeedRetention() int { return s.opts.FeedRetention }
+
 // ResourceVersion returns the last committed resourceVersion.
 func (s *Store) ResourceVersion() string { return strconv.FormatUint(s.head.Load(), 10) }
 
