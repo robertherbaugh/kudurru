@@ -101,7 +101,7 @@ func newRootWith(o *cliOpts) *cobra.Command {
 			root.AddCommand(c)
 		}
 	}
-	add("server", newServeCmd(&configPath), newHealthCmd(), newLameduckCmd(), newDoctorCmd(&configPath, o), newVersionCmd(), newEdgeCmd(&configPath), newVIPCmd(&configPath), newExternalDNSWebhookCmd(o))
+	add("server", newServeCmd(&configPath), newHealthCmd(), newLameduckCmd(), newDoctorCmd(&configPath, o), newVersionCmd(), newEdgeCmd(&configPath, o), newVIPCmd(&configPath), newExternalDNSWebhookCmd(o))
 	add("objects", newGetCmd(o), newApplyCmd(o), newDeleteCmd(o), newDescribeCmd(o), newExportCmd(o), newBackupCmd(o), newRestoreCmd(o), newImportCmd(o))
 	add("dns", newZonesCmd(o), newRecordsCmd(o), newListsCmd(o), newBlockingCmd(o), newCacheCmd(o), newQueryCmd(o), newAnchorsCmd())
 	add("observe", newStatsCmd(o), newLogsCmd(o), newNodesCmd(o), newClusterCmd(o), newAuditCmd(o))

@@ -1221,6 +1221,17 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		kubeBlocking = newKubeBlockingRuntime(kubeStore, bs.Toggle(), reload, authorizer)
 		blockingReads, blockingCommand = kubeBlocking, kubeBlocking.Command
 	}
+	// Operator edge blocks (D388): the complete SQLite runtime keeps them in
+	// a replicated runtime row, Kubernetes in the runtime ConfigMap.
+	var edgeBlocks api.EdgeBlocks
+	var kubeEdge *kubeEdgeBlocks
+	switch {
+	case complete != nil:
+		edgeBlocks = complete
+	case kubeStore != nil:
+		kubeEdge = newKubeEdgeBlocks(kubeStore, authorizer, cfg.Node.Name)
+		edgeBlocks = kubeEdge
+	}
 
 	// DNS listeners: udp/tcp/dot/doh/doq/doh3 with the shared certificate
 	// store and the authenticated PROXYv2 policy (D45, D56, D67).
@@ -1400,7 +1411,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised, VIPObservation: vipObservation, VIPEvents: vipEvents,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
 		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectItems: objectItems, ObjectForward: objectForward, ObjectReads: objectReads, ZoneCommand: zoneCommand, ZoneForward: zoneForward, SettingsForward: settingsForward, ClusterRole: clusterRole, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
-		BlockingReads: blockingReads, BlockingCommand: blockingCommand, AuditBlockingCommand: kubeBlocking != nil, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
+		BlockingReads: blockingReads, BlockingCommand: blockingCommand, AuditBlockingCommand: kubeBlocking != nil, EdgeBlocks: edgeBlocks, AuditEdgeBlocks: kubeEdge != nil, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
 		TSIGKeyReads: tsigKeyReads, TSIGKeyCommand: tsigKeyCommand,
 		Querylog: qlLogs.reader(), QuerylogSource: qlLogs.reader, Tail: qlTail, QuerylogSinks: qlLogs.sinks.Status, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
@@ -1502,6 +1513,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	if kubeIntegrations != nil {
 		if err := add("integration-host", false, kubeIntegrations.Run); err != nil {
+			return err
+		}
+	}
+	if kubeEdge != nil {
+		if err := add("edge-blocks", false, kubeEdge.Run); err != nil {
 			return err
 		}
 	}
@@ -1704,6 +1720,14 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	}
 	if internalCreds != nil {
+		switch {
+		case complete != nil:
+			internalOpts.EdgeBlocks = func(ctx context.Context) (*internalapi.EdgeBlockList, error) {
+				return complete.InternalEdgeBlocks(ctx, cfg.Node.Name)
+			}
+		case kubeEdge != nil:
+			internalOpts.EdgeBlocks = kubeEdge.Internal
+		}
 		internalSrv, err = internalapi.NewServer(internalOpts)
 		if err != nil {
 			return err

@@ -10,6 +10,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/providerregistry"
 	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
+	"github.com/robertherbaugh/kudurru/internal/edgeblock"
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
@@ -49,6 +50,18 @@ type RuntimeOwner struct {
 	dnsDependencies     func() bool
 	browser             func(servingauth.ProviderRef, string) (*providerresources.Browser, error)
 	cli                 func(servingauth.ProviderRef, string) (*providerresources.CLI, error)
+	edgeBlocks          edgeblock.State
+	clusterID           string
+}
+
+// EdgeBlocks returns the operator edge block set of this complete image and
+// the cluster that owns it (D388). It is immutable and needs the containing
+// lease only for currency, not for its lifetime.
+func (r *RuntimeOwner) EdgeBlocks() (edgeblock.State, string) {
+	if r == nil {
+		return edgeblock.State{}, ""
+	}
+	return r.edgeBlocks, r.clusterID
 }
 
 // Primary returns an immutable owner for exact publication acknowledgment.
@@ -122,6 +135,10 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 	if err != nil {
 		return serving.Prepared{}, err
 	}
+	edgeBlocks, err := edgeblock.FromRows(candidate.Image.Payload.Runtime)
+	if err != nil {
+		return serving.Prepared{}, fmt.Errorf("servingbuild: edge blocks image: %w", err)
+	}
 	inventory, err := prepareInventory(candidate.Image, now)
 	var groups []*public.ClientGroup
 	if err == nil && opts.PrepareIntegrations != nil {
@@ -179,7 +196,7 @@ func (b *Builder) Prepare(ctx context.Context, candidate serving.Candidate) (_ s
 		component("blocking", owners.blocking, nil),
 		component("inventory", inventory, nil),
 		component("auth", owners.auth, owners.auth.Release),
-		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, tsig: deps.TSIG, current: owners.current, dependenciesCurrent: owners.dependenciesCurrent, dnsDependencies: owners.dnsDependenciesCurrent, browser: deps.Browser, cli: deps.CLI}, deps.Release),
+		component("runtime", &RuntimeOwner{migrations: owners.migrations, unblockRequests: owners.unblockRequests, primary: primary, zones: zones, keys: deps.Keys, keyringIdentity: deps.KeyringIdentity, tsig: deps.TSIG, current: owners.current, dependenciesCurrent: owners.dependenciesCurrent, dnsDependencies: owners.dnsDependenciesCurrent, browser: deps.Browser, cli: deps.CLI, edgeBlocks: edgeBlocks, clusterID: base.Term.ClusterID}, deps.Release),
 		component("control", owners.control, nil),
 		component("logging", owners.logging, owners.logging.Release),
 	}

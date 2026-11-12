@@ -301,6 +301,51 @@ reads credentials from private configuration; keys never appear in command
 arguments or returned diagnostics. The actual pinned dnsdist acceptance also
 qualifies held DoT through successful rotation and uncertain-mutation recovery.
 
+### Operator edge blocks
+
+An operator can drop one client address or prefix at every edge for a
+bounded time (D388): `POST /api/v1/edge/blocks` (permission
+`edgeblocks.write`, granted to the operator and admin roles), the CLI
+`kudurru edge block <prefix> [duration]`, `kudurru edge blocks` and
+`kudurru edge unblock <id>`. A block covers an IPv4 /16 or longer or an IPv6
+/32 or longer, lasts one minute to seven days and has an absolute expiry; at
+most 256 are active. A second block on an active prefix is refused (revoke the
+first). The operator's reason and identity stay in the list and the audit
+trail; edges receive only the ID, prefix and expiry.
+
+```mermaid
+flowchart LR
+    OP(["API or CLI<br/>edgeblocks.write"]) --> CMD{"driver"}
+    CMD -- "SQLite" --> ROW["one runtime row + audit row<br/>in the original current command<br/>(primary only; replicated)"]
+    CMD -- "Kubernetes" --> CM["kudurru-runtime ConfigMap key<br/>one CAS write, API audit"]
+    ROW --> PUB["every member serves its current<br/>publication's set"]
+    CM --> OBS["every replica refreshes<br/>its observation every 2 s"]
+    PUB --> INT["GET /internal/edge/blocks<br/>(internal TLS + cluster token)"]
+    OBS --> INT
+    INT --> SUP["edge supervisor pulls every backend<br/>every 5 s; newest revision per owner"]
+    SUP --> FILE["edge-blocks.json in the<br/>configuration directory"]
+    SUP --> CON["console: addDynamicBlock with the<br/>remaining seconds (Drop)"]
+    FILE -- "supervisor restart,<br/>no backend reachable" --> CON
+    CON --> DD["dnsdist drops the prefix<br/>and expires the entry itself"]
+```
+
+The supervisor keeps, per owner (the cluster ID, or the ConfigMap UID), the
+copy with the highest revision, so a lagging follower cannot bring back a
+revoked block; independent static twins are separate owners and their sets
+are combined. When no backend answers, the last set stays in force and is
+still expired locally. A new dnsdist child gets the whole set; an addition
+adds only the new entry; a revoke or a changed expiry clears the dynamic
+block table and reinstalls the rest, because dnsdist has no per-entry
+removal and only ever extends an entry. Clearing also drops blocks the
+`--dynblocks` rate rules added; they return if the client keeps exceeding
+the rate. An unacknowledged console statement is reported in `/status`
+(`edgeBlocks.error`) and the whole set is resent; it never makes the edge
+unready, because a missing abuse block must not take DNS out of service.
+`/status` reports counts only, never prefixes, and `kudurru_edge_blocks`
+counts the installed entries. Edges converge asynchronously, within a few
+seconds of a backend's publication; the API response does not wait for them.
+An enrolled follower refuses the commands with `primary_required`.
+
 ### The VIP (`kudurru vip run`)
 
 Multiple `--vip` flags define independent instances with alternating

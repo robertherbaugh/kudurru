@@ -127,8 +127,9 @@ func (s *Server) nodeCount(ctx context.Context) int {
 
 // licenseExempt are the write routes that stay open when the cluster is
 // over its node limit: signing in, asking a question, and the operational
-// controls (pause blocking, flush the cache, act on a logged query).
-var licenseExempt = []string{"/auth/", "/dns/query", "/dns/blocking", "/cache/flush", "/queries/"}
+// controls (pause blocking, flush the cache, act on a logged query, block an
+// abusive client at the edge).
+var licenseExempt = []string{"/auth/", "/dns/query", "/dns/blocking", "/cache/flush", "/queries/", "/edge/blocks"}
 
 // licenseMW answers 402 to configuration writes while the cluster is larger
 // than the license allows. It only narrows the management plane: reads, the

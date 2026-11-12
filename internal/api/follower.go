@@ -177,6 +177,10 @@ var followerOperations = map[string]FollowerClass{
 	"approveUnblockRequest": FollowerPrimary,
 	"denyUnblockRequest":    FollowerPrimary,
 	"deleteUnblockRequest":  FollowerPrimary,
+	// Operator edge blocks are stored by the primary (D388); every node then
+	// serves the replicated set to its edges.
+	"createEdgeBlock": FollowerPrimary,
+	"revokeEdgeBlock": FollowerPrimary,
 }
 
 // followerHints replaces the general hint for an operation whose effect a

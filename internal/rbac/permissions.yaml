@@ -30,6 +30,7 @@ resources:
   integrations: [read, write, delete, sync, check, secrets, act, release]
   cluster: [read, join, promote, drain]
   edge: [read, write]
+  edgeblocks: [read, write]
   audit: [read, export]
   unblockrequests: [read, decide, delete]
 
@@ -65,6 +66,7 @@ roles:
     - querylog.export
     - audit.read
     - unblockrequests.read
+    - edgeblocks.read
     - tokens.own
   operator:
     - zones.read
@@ -85,6 +87,7 @@ roles:
     - dhcpleases.export
     - querylog.read
     - unblockrequests.*
+    - edgeblocks.*
     - tokens.own
   zone-admin:
     - zones.read

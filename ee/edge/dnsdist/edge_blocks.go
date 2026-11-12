@@ -181,10 +181,10 @@ func edgeBlockSeconds(until, now time.Time) int64 {
 // also drops blocks the rate rules added; those return if the client keeps
 // exceeding the rate. Every value comes from a validated prefix, ID or
 // integer, so no input reaches Lua unquoted.
-func edgeBlockStatements(blocks []internalapi.EdgeBlock, clear bool, now time.Time) ([]string, error) {
+func edgeBlockStatements(blocks []internalapi.EdgeBlock, wipe bool, now time.Time) ([]string, error) {
 	var out []string
 	var current []string
-	if clear {
+	if wipe {
 		current = append(current, "clearDynBlocks()")
 	}
 	for _, b := range blocks {
@@ -212,7 +212,7 @@ func edgeBlockStatements(blocks []internalapi.EdgeBlock, clear bool, now time.Ti
 // whole set; after an unacknowledged statement the table is unknown and is
 // cleared and reinstalled; a removed block or a changed expiry clears and reinstalls (dnsdist
 // only ever extends an entry); otherwise only new blocks are added.
-func planEdgeBlocks(desired []internalapi.EdgeBlock, installed map[string]time.Time, fresh, unknown bool, now time.Time) (adds []internalapi.EdgeBlock, clear, noop bool) {
+func planEdgeBlocks(desired []internalapi.EdgeBlock, installed map[string]time.Time, fresh, unknown bool, now time.Time) (adds []internalapi.EdgeBlock, wipe, noop bool) {
 	if fresh {
 		return desired, false, len(desired) == 0
 	}
@@ -261,7 +261,7 @@ func (s *Supervisor) applyEdgeBlocks(ctx context.Context) {
 	if !running {
 		return
 	}
-	adds, clear, noop := planEdgeBlocks(desired, installed, fresh, unknown, now)
+	adds, wipe, noop := planEdgeBlocks(desired, installed, fresh, unknown, now)
 	if noop {
 		s.mu.Lock()
 		if s.child == child {
@@ -272,7 +272,7 @@ func (s *Supervisor) applyEdgeBlocks(ctx context.Context) {
 		s.mu.Unlock()
 		return
 	}
-	statements, err := edgeBlockStatements(adds, clear, now)
+	statements, err := edgeBlockStatements(adds, wipe, now)
 	for _, statement := range statements {
 		if err != nil {
 			break
@@ -291,7 +291,7 @@ func (s *Supervisor) applyEdgeBlocks(ctx context.Context) {
 		return
 	}
 	next := map[string]time.Time{}
-	if !clear {
+	if !wipe {
 		maps.Copy(next, installed)
 	}
 	for _, b := range adds {
@@ -300,7 +300,7 @@ func (s *Supervisor) applyEdgeBlocks(ctx context.Context) {
 	st.installedChild, st.installed, st.unknown, st.err = child, next, false, ""
 	s.blocksGauge.Set(float64(len(desired)))
 	s.blockApplies.WithLabelValues("ok").Inc()
-	s.log.Info("applied edge blocks", "active", len(desired), "added", len(adds), "cleared", clear)
+	s.log.Info("applied edge blocks", "active", len(desired), "added", len(adds), "cleared", wipe)
 }
 
 func edgeBlockSet(blocks []internalapi.EdgeBlock) map[string]time.Time {

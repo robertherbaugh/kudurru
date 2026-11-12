@@ -75,7 +75,7 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 	fl.StringVar(&f.backendsFrom, "backends-from", "static", "membership source: static (from --backends) or endpointslice:<namespace>/<service>")
 	fl.IntVar(&f.backendPort, "backend-port", cluster.DefaultBackendPort, "kudurru DNS port for entries without a port and EndpointSlices without the named port")
 	fl.StringVar(&f.backendPortName, "backend-port-name", "dns", "EndpointSlice port name carrying DNS")
-	fl.IntVar(&f.internalPort, "internal-port", cluster.DefaultInternalPort, "kudurru internal listener port (zone serial polling); 0 disables")
+	fl.IntVar(&f.internalPort, "internal-port", cluster.DefaultInternalPort, "kudurru internal listener port (zone serial polling and operator edge blocks); 0 disables")
 	fl.StringVar(&f.poolResolver, "pool-resolver", "chashed", "load-balancing policy of the resolver pool")
 	fl.StringVar(&f.poolAuthoritative, "pool-authoritative", "leastOutstanding", "load-balancing policy of the authoritative pool")
 	fl.StringVar(&f.tlsDir, "tls-dir", "", "directory with tls.crt+tls.key (or fullchain.pem+privkey.pem): enables DoT/DoH/DoQ/DoH3, watched for rotation")
@@ -129,7 +129,7 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 	}
 }
 
-func newEdgeCmd(configPath *string) *cobra.Command {
+func newEdgeCmd(configPath *string, o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "edge",
 		Short: "dnsdist supervisor: render the configuration or run dnsdist (PID 1 of the kudurru-dnsdist image)",
@@ -154,6 +154,7 @@ func newEdgeCmd(configPath *string) *cobra.Command {
 	}
 	uf.register(run, true)
 	cmd.AddCommand(render, run)
+	cmd.AddCommand(newEdgeBlockCmds(o)...)
 	return cmd
 }
 
@@ -402,7 +403,7 @@ func runEdgeRun(c *cobra.Command, f *edgeFlags) error {
 		Logger: logger, Registerer: reg, Gatherer: reg,
 	}
 	var internalCredentials *internalapi.Credentials
-	if f.pollZones && f.internalPort > 0 || f.managedObservationAddr != "" {
+	if f.internalPort > 0 || f.managedObservationAddr != "" {
 		internalCredentials, err = f.internalCredentials()
 		if err != nil {
 			return err
@@ -413,6 +414,15 @@ func runEdgeRun(c *cobra.Command, f *edgeFlags) error {
 			logger.Warn("zone polling disabled: no KUDURRU_ENCRYPTION_KEY[_FILE] and no --internal-token-file; authoritative routing uses --authoritative-zones only")
 		} else {
 			cfg.Zones = internalapi.NewClient(internalCredentials, internalapi.ClientOptions{Timeout: 3 * time.Second})
+		}
+	}
+	// Operator edge blocks (D388) ride the same authenticated internal
+	// channel; without its credentials the edge applies none.
+	if f.internalPort > 0 {
+		if internalCredentials == nil {
+			logger.Warn("operator edge blocks disabled: no KUDURRU_ENCRYPTION_KEY[_FILE] and no --internal-token-file")
+		} else {
+			cfg.Blocks = internalapi.NewClient(internalCredentials, internalapi.ClientOptions{Timeout: 3 * time.Second})
 		}
 	}
 	sup, err := dnsdist.New(cfg)

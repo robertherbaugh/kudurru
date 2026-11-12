@@ -57,6 +57,7 @@ var SARResources = map[string]string{
 	"integrations":      "integrations",
 	"cluster":           "clusters",
 	"edge":              "edges",
+	"edgeblocks":        "edgeblocks",
 	"audit":             "audits",
 	"unblockrequests":   "unblockrequests",
 }

@@ -343,6 +343,11 @@ type Options struct {
 	// AuditBlockingCommand records a runtime action when the command's driver
 	// cannot audit it in its transaction (Kubernetes runtime ConfigMap).
 	AuditBlockingCommand bool
+	// EdgeBlocks stores operator edge blocks (D388); nil answers 501.
+	EdgeBlocks EdgeBlocks
+	// AuditEdgeBlocks records edge block commands when the driver cannot
+	// audit them in its transaction (Kubernetes runtime ConfigMap).
+	AuditEdgeBlocks bool
 	// UpstreamReads replaces local upstream health reads with original routes.
 	// Nil preserves legacy live-stage status sampling.
 	UpstreamReads UpstreamReadSource

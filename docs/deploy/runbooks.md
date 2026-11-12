@@ -270,6 +270,44 @@ that match the router first. The query log keeps recording the address the query
    policy. Old rollups still include the gateway's historical queries;
    use a time window beginning after the change.
 
+## Block an abusive client at the edge
+
+Symptoms: one client address or network floods the edges with queries and
+the `--dynblocks` rate rules are not enough, or you want it gone for a fixed
+time. An operator edge block drops that prefix's queries at every dnsdist
+edge until an expiry you choose (one minute to seven days). It needs the
+`edgeblocks.write` permission (operator or admin role) and edges that poll
+the backends' internal listener (the shipped chart, Kustomize and Compose
+files mount the encryption key the poll needs).
+
+1. Block it, with a note for the audit trail:
+
+   ```sh
+   kudurru edge block 192.0.2.7 30m --reason "query flood"
+   kudurru edge block 2001:db8:1::/48 --until 2026-11-10T18:00:00Z
+   ```
+
+   IPv4 prefixes must be /16 or longer and IPv6 prefixes /32 or longer. On
+   an enrolled SQLite cluster, run it against the primary; a follower
+   answers `primary_required`.
+2. Within a few seconds every edge drops the client's queries (no answer at
+   all). Each edge's `:8084/status` shows `edgeBlocks.active` and
+   `edgeBlocks.installed`; `kudurru_edge_blocks` counts the installed
+   entries. An `edgeBlocks.error` means a console update was not
+   acknowledged; the edge resends the set and keeps serving meanwhile.
+3. List and lift blocks early:
+
+   ```sh
+   kudurru edge blocks -o wide
+   kudurru edge unblock <id>
+   ```
+
+The block also holds while an edge restarts and when no backend is
+reachable: each edge keeps the last set in its configuration directory and
+dnsdist expires every entry on its own. A revoke clears dnsdist's dynamic
+block table and reinstalls the remaining blocks, so clients that the rate
+rules had blocked are let through until they exceed the rate again.
+
 ## The primary of an enrolled SQLite cluster is lost
 
 Symptoms: the API and the dashboard of the primary do not answer. The
