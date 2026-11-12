@@ -20,6 +20,11 @@
 //     the user, plus an in-process table, until the test's cleanup runs. No
 //     other reservation, in this process or another, can hand the same port
 //     out while the test (and the server it starts) may still bind it.
+//     The directory is fixed when the process starts (KUDURRU_TESTPORT_DIR,
+//     else the temp directory at that moment) and exported to children
+//     through KUDURRU_TESTPORT_DIR, so a test that later points TMPDIR at a
+//     private directory, or starts a child with its own TMPDIR, still
+//     shares the locks.
 //
 // Before a port is handed out it is probed by binding it for TCP and UDP on
 // 127.0.0.1, so a port that something else already holds (a fixed-port
@@ -46,7 +51,9 @@ import (
 const Host = "127.0.0.1"
 
 // EnvDir overrides the shared lock directory. Every process that should
-// see the others' reservations must use the same directory.
+// see the others' reservations must use the same directory. It is read
+// once when the package initializes; when it is unset, the package sets it
+// to the directory it chose so that child processes inherit it.
 const EnvDir = "KUDURRU_TESTPORT_DIR"
 
 // windowFloor is the lowest port handed out. The repository's tests use a
@@ -55,6 +62,21 @@ const windowFloor = 20000
 
 // minWindow is the smallest non-ephemeral window used before falling back.
 const minWindow = 1000
+
+// lockDir is the shared lock directory, resolved before any test runs so
+// that a later t.Setenv("TMPDIR", ...) cannot move it.
+var lockDir = resolveLockDir()
+
+// resolveLockDir returns KUDURRU_TESTPORT_DIR or <temp dir>/kudurru-testport
+// and exports the result as KUDURRU_TESTPORT_DIR for child processes.
+func resolveLockDir() string {
+	dir := os.Getenv(EnvDir)
+	if dir == "" {
+		dir = filepath.Join(os.TempDir(), "kudurru-testport")
+		_ = os.Setenv(EnvDir, dir)
+	}
+	return dir
+}
 
 var (
 	mu     sync.Mutex
@@ -99,10 +121,7 @@ func Window() (lo, hi int, outsideEphemeral bool) {
 
 func reserve() (int, func(), error) {
 	lo, hi, _ := Window()
-	dir := os.Getenv(EnvDir)
-	if dir == "" {
-		dir = filepath.Join(os.TempDir(), "kudurru-testport")
-	}
+	dir := lockDir
 	if err := os.MkdirAll(dir, 0o700); err != nil { //nolint:gosec // G703: the test-only lock directory (temp dir or KUDURRU_TESTPORT_DIR)
 		return 0, nil, err
 	}

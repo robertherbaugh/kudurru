@@ -99,10 +99,13 @@ func TestHolderProcess(t *testing.T) {
 	_, _ = io.Copy(io.Discard, os.Stdin)
 }
 
-func TestReserveExcludesOtherProcesses(t *testing.T) {
-	const count = 300
+// startHolder starts a child process of this test binary that reserves
+// count ports and holds them until the returned function closes its stdin.
+// extraEnv is appended to the parent's environment.
+func startHolder(t *testing.T, count int, extraEnv ...string) (map[int]bool, func()) {
+	t.Helper()
 	child := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestHolderProcess$", "-test.count=1") //nolint:gosec // G204: this test binary
-	child.Env = append(os.Environ(), envHolder+"="+strconv.Itoa(count))
+	child.Env = append(append(os.Environ(), envHolder+"="+strconv.Itoa(count)), extraEnv...)
 	stdin, err := child.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -126,6 +129,18 @@ func TestReserveExcludesOtherProcesses(t *testing.T) {
 	if len(theirs) != count {
 		t.Fatalf("child reserved %d ports, want %d", len(theirs), count)
 	}
+	return theirs, func() {
+		_ = stdin.Close()
+		if err := child.Wait(); err != nil {
+			t.Errorf("holder process: %v", err)
+		}
+	}
+}
+
+// reserveAcross points the cursor at the lowest port the child holds and
+// reserves count ports, failing if any of them is one of the child's.
+func reserveAcross(t *testing.T, theirs map[int]bool, count int) {
+	t.Helper()
 	// Walk the whole neighborhood the child just took: every one of those
 	// numbers is free in the kernel (nothing binds them) yet locked.
 	lo, hi, _ := Window()
@@ -142,10 +157,27 @@ func TestReserveExcludesOtherProcesses(t *testing.T) {
 			t.Fatalf("port %d reserved by both processes (window %d-%d)", port, lo, hi)
 		}
 	}
-	_ = stdin.Close()
-	if err := child.Wait(); err != nil {
-		t.Fatalf("holder process: %v", err)
-	}
+}
+
+func TestReserveExcludesOtherProcesses(t *testing.T) {
+	const count = 300
+	theirs, stop := startHolder(t, count)
+	defer stop()
+	reserveAcross(t, theirs, count)
+}
+
+// TestReserveExcludesOtherProcessesAcrossTMPDIR covers tests that point
+// TMPDIR at a private directory (t.Setenv before reserving, or a child
+// started with its own TMPDIR): the lock directory is fixed when the
+// process starts and inherited by children, so the exclusion still holds.
+func TestReserveExcludesOtherProcessesAcrossTMPDIR(t *testing.T) {
+	const count = 100
+	theirs, stop := startHolder(t, count, "TMPDIR="+t.TempDir())
+	defer stop()
+	t.Run("parent TMPDIR changed", func(t *testing.T) {
+		t.Setenv("TMPDIR", t.TempDir())
+		reserveAcross(t, theirs, count)
+	})
 }
 
 // TestStress allocates ports in many goroutines, binds each one after a
