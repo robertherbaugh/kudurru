@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"reflect"
 	"slices"
@@ -41,7 +42,8 @@ type kubeSourceCache interface {
 // Integration observes its provider, but every replica answers DNS, so every
 // replica runs this runtime. It lists every committed IntegrationSourceHead
 // with the chunks it references and every name allocation (a bounded relist
-// on a timer and after this replica's own commits), decodes them strictly, and
+// woken by a watch of the heads and by this replica's own commits, with a
+// timer as the backstop), decodes them strictly, and
 // on every relist or published object snapshot decides which sources are
 // eligible against this replica's own snapshot: the Integration has the
 // head's owner UID, is not suspended or deleting, runs on this store, and
@@ -123,6 +125,7 @@ func (k *kubeSourceRuntime) Run(ctx context.Context) error {
 			}
 		}
 	})
+	go k.watchHeads(ctx)
 	ticker := time.NewTicker(k.interval)
 	defer ticker.Stop()
 	k.relist(ctx)
@@ -140,14 +143,49 @@ func (k *kubeSourceRuntime) Run(ctx context.Context) error {
 	}
 }
 
+// watchHeads wakes a relist on every change of a committed head, so a
+// replica that is not the holder installs a successor head within one watch
+// delivery instead of one relist interval: an observation's expiry is three
+// polls, and the shortest poll is one second. The timer relist stays as the
+// backstop for a watch that is down; a failed watch is opened again after a
+// second.
+func (k *kubeSourceRuntime) watchHeads(ctx context.Context) {
+	for ctx.Err() == nil {
+		w, err := k.store.Watch(ctx, kinds.KindIntegrationSourceHead, store.WatchOptions{})
+		if err == nil {
+			for open := true; open; {
+				select {
+				case <-ctx.Done():
+					open = false
+				case ev, ok := <-w.ResultChan():
+					open = ok
+					if ok && ev.Type != store.Bookmark {
+						k.Wake()
+					}
+				}
+			}
+			w.Stop()
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(time.Second):
+		}
+	}
+}
+
 // relist reads every head, the chunks they reference and every allocation,
 // and decodes them as one listing. Chunks are immutable and content
-// addressed, so a chunk read once is kept while a head references it. Any
-// failure keeps the previous listing.
+// addressed, so a chunk read once is kept while a head references it. A
+// chunk that is gone is the ordinary race with a holder retiring the
+// previous head's chunks right after its commit, so that relist is repeated
+// at once, up to twice. Any other failure keeps the previous listing.
 func (k *kubeSourceRuntime) relist(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	listing, err := k.read(ctx)
+	for retry := 0; retry < 2 && errors.Is(err, store.ErrNotFound) && ctx.Err() == nil; retry++ {
+		listing, err = k.read(ctx)
+	}
 	if err != nil {
 		if ctx.Err() == nil {
 			k.logger.Warn("integration sources: relist failed; keeping the last listing until its observations expire", "error", err)
