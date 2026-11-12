@@ -2,8 +2,8 @@ package servingauth
 
 import (
 	"context"
-	"errors"
 	"encoding/json"
+	"errors"
 	"math"
 	"slices"
 	"time"
