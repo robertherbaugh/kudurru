@@ -67,6 +67,9 @@ type anchorFollowerPoller struct {
 	// cut between the capture's read and its final check. Like clockDeferred,
 	// nothing was held, received or refused by the root (D369).
 	captureDeferred bool
+	// raced counts consecutive captures refused by anchorCaptureRaced, for the
+	// status board and the log only; a capture that succeeds resets it.
+	raced uint64
 	// capture replaces captureAnchorFollowerDenial; nil in production, tests
 	// only.
 	capture func(context.Context, *trustanchors.SessionClock, uint64) (*anchorFollowerDenial, error)
@@ -135,11 +138,13 @@ func (u *anchorFollowerPoller) step(ctx context.Context) (step anchorFollowerSte
 			// Nothing was acquired. A later step captures the new cut; it may
 			// adopt the newer incarnation only if no acquisition has started.
 			u.captureDeferred = !u.acquired
+			u.raced++
 			step.next, step.captureRaced = time.Now().Add(time.Second), true
 			return step, nil
 		}
 		return step, err
 	}
+	u.raced = 0
 	epoch := followerEpoch(op.token.Authority())
 	if u.epoch == (anchorFollowerEpoch{}) {
 		u.epoch = epoch
@@ -219,6 +224,19 @@ func (u *anchorFollowerPoller) step(ctx context.Context) (step anchorFollowerSte
 	return step, nil
 }
 
+// anchorFollowerState is the supervisor state a completed step shows.
+func anchorFollowerState(step anchorFollowerStep) string {
+	switch {
+	case step.clockWait > 0:
+		return anchorWorkerClockWait
+	case step.captureRaced:
+		return anchorWorkerRaced
+	case step.acquisitionError != nil:
+		return anchorWorkerRetry
+	}
+	return anchorWorkerRunning
+}
+
 // The supervisor joins the original epoch before allowing a successor. This
 // worker never creates canonical state and stops after denial or refusal.
 func (s *servingRuntime) runAnchorFollowerPoller(ctx context.Context) error {
@@ -255,14 +273,14 @@ func (s *servingRuntime) runAnchorFollowerEpoch(ctx context.Context, epoch ancho
 		if err != nil || step.retired {
 			return err
 		}
-		state := anchorWorkerRunning
-		if step.acquisitionError != nil {
-			state = anchorWorkerRetry
+		state := anchorFollowerState(step)
+		switch state {
+		case anchorWorkerRetry:
 			slog.Warn("follower root anchor acquisition failed; new attempt scheduled", "next", step.next)
-		}
-		if step.clockWait > 0 {
-			state = anchorWorkerClockWait
+		case anchorWorkerClockWait:
 			slog.Warn("root anchor supervision waits for this node's clock to reach the installed checkpoint; check time synchronization", "behind", step.clockWait.Round(time.Millisecond))
+		case anchorWorkerRaced:
+			slog.Warn("follower root anchor check raced an install of this member; new capture scheduled", "next", step.next, "consecutive", u.raced)
 		}
 		s.anchorStatus.setSupervisor(state, step.next, nil)
 		timer := time.NewTimer(min(time.Minute, max(time.Second, time.Until(step.next))))
