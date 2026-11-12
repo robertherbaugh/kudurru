@@ -531,7 +531,18 @@ var (
 	// driver sent as the requesting principal (auth.kubernetes.mode
 	// impersonate, D386). The refusal is definite: nothing was written. HTTP
 	// maps it to 403.
-	ErrForbidden = errors.New("store: Kubernetes RBAC refused the write for the requesting principal")
+	ErrForbidden = errors.New("store: Kubernetes refused the write sent as the requesting principal")
+	// ErrNoIdentity: a write the kube driver must send as the requesting
+	// principal (auth.kubernetes.mode impersonate, D386) has no name to send,
+	// because the principal's credential ended during the request or names
+	// nobody. Nothing was sent. HTTP maps it to 401.
+	ErrNoIdentity = errors.New("store: the write has no requesting identity to send to Kubernetes")
+	// ErrImpersonationDenied: the apiserver refused the kube driver's own
+	// identity the impersonate verb, so a write that must be sent as the
+	// requesting principal (D386) could not be sent at all. It is a
+	// deployment fault, not the caller's: HTTP maps it to 503 without the
+	// driver's identity.
+	ErrImpersonationDenied = errors.New("store: kudurru is not allowed to impersonate in this cluster")
 )
 
 // ErrManagedBy is returned when a writer other than the recorded manager

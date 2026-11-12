@@ -51,6 +51,11 @@ func (s *Store) writeContext(ctx context.Context) (context.Context, *Impersonati
 	if !ok {
 		return ctx, nil, nil
 	}
+	if im.User == "" {
+		// The principal's credential ended during the request, or it names
+		// nobody: an authentication failure, never a write as the driver.
+		return nil, nil, fmt.Errorf("%w: the request's credential is no longer valid or names no user", store.ErrNoIdentity)
+	}
 	if err := im.validate(); err != nil {
 		return nil, nil, fmt.Errorf("%w: %w", store.ErrForbidden, err)
 	}
@@ -101,14 +106,51 @@ func (t *impersonatingTransport) RoundTrip(r *http.Request) (*http.Response, err
 }
 
 // impersonationRefusal turns the apiserver's 403 for an impersonated write
-// into store.ErrForbidden: Kubernetes RBAC refused the principal (or refused
-// kudurru the impersonate verb), and nothing was written. It returns nil for
-// other errors and for writes that were not impersonated.
-func impersonationRefusal(im *Impersonation, op string, key store.Key, err error) error {
+// into a definite refusal (nothing was written). A refusal of the driver's
+// own impersonate verb is store.ErrImpersonationDenied: a deployment fault,
+// logged here with the apiserver's message, which names the driver's own
+// identity and is therefore kept out of the returned error. Every other 403
+// (Kubernetes RBAC for the principal, an admission webhook, a terminating
+// namespace) is store.ErrForbidden with the apiserver's reason. It returns
+// nil for other errors and for writes that were not impersonated.
+func (s *Store) impersonationRefusal(im *Impersonation, op string, key store.Key, err error) error {
 	if im == nil || !apierrors.IsForbidden(err) {
 		return nil
 	}
+	if impersonateVerbDenied(err) {
+		s.log.Error("store/kube: the apiserver refused kudurru the impersonate verb; grant it (auth.kubernetes.mode impersonate) or switch to sar",
+			"op", op, "key", key.String(), "error", statusMessage(err))
+		return fmt.Errorf("%w: %s %s could not be sent as %q", store.ErrImpersonationDenied, op, key, im.User)
+	}
 	return fmt.Errorf("%w: %s %s as %q: %s", store.ErrForbidden, op, key, im.User, statusMessage(err))
+}
+
+// impersonateVerbDenied reports whether a 403 came from the apiserver's
+// impersonation check of the driver's own identity rather than from the
+// principal's RBAC on the object. The legacy check names the impersonated
+// user, group, service account, UID or extra (core or
+// authentication.k8s.io); constrained impersonation (Kubernetes 1.35 and
+// later) names the object but refuses an impersonate-on: verb. Both read
+// "<driver> cannot impersonate...", which an RBAC refusal of the principal
+// (" cannot patch ...") never does.
+func impersonateVerbDenied(err error) bool {
+	var status apierrors.APIStatus
+	if !errors.As(err, &status) {
+		return false
+	}
+	st := status.Status()
+	if strings.Contains(st.Message, " cannot impersonate") {
+		return true
+	}
+	d := st.Details
+	if d == nil || (d.Group != "" && d.Group != "authentication.k8s.io") {
+		return false
+	}
+	switch d.Kind {
+	case "users", "groups", "serviceaccounts", "uids", "userextras":
+		return true
+	}
+	return strings.HasPrefix(d.Kind, "userextras/")
 }
 
 func statusMessage(err error) string {

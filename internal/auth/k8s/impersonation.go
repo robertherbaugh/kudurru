@@ -22,11 +22,14 @@ const (
 //   - a Kubernetes service account is itself: its username
 //     (system:serviceaccount:<namespace>:<name>) and the groups from its
 //     token;
-//   - a local or OIDC user is kudurru:user:<name>, with every group as
-//     kudurru:group:<group>;
+//   - a local or OIDC user is kudurru:user:<name>, with every group the
+//     principal carries as kudurru:group:<group>. Only local users (their
+//     stored groups) and OIDC bearer JWTs (the token's groups claim) carry
+//     groups: D48 keeps an OIDC user's groups out of cookie sessions and
+//     personal API tokens, so those writes send no Impersonate-Group;
 //   - a kudurru service account (and its API tokens) is
-//     kudurru:serviceaccount:<namespace>:<name>, with its groups prefixed
-//     the same way.
+//     kudurru:serviceaccount:<namespace>:<name>, with any groups prefixed
+//     the same way (kudurru service accounts carry none today).
 //
 // The unix-socket peer (LocalRoot, the recovery path) and peer nodes are not
 // impersonated: ok is false and they write as kudurru itself. A principal of

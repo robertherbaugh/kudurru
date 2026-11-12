@@ -510,6 +510,24 @@ func TestStoreErrorImpersonationForbidden(t *testing.T) {
 	if !errors.As(err, &e) || e.GetStatus() != http.StatusForbidden || e.Body.Key != KeyForbidden || !strings.Contains(e.Body.Message, "kudurru:user:alice") {
 		t.Fatalf("storeError(ErrForbidden) = %#v", err)
 	}
+	if hint, _ := e.Body.Hint.(string); strings.Contains(hint, "kudurru:group:") || !strings.Contains(hint, "for the reason it gives") {
+		t.Fatalf("ErrForbidden hint assumes a cause: %q", hint)
+	}
+}
+
+// D386: an impersonated write whose credential ended during the request is
+// an authentication failure, and kudurru lacking the impersonate verb is a
+// deployment fault that does not blame the caller.
+func TestStoreErrorImpersonationIdentity(t *testing.T) {
+	var e *Error
+	if err := storeError(fmt.Errorf("%w: credential ended", store.ErrNoIdentity)); !errors.As(err, &e) ||
+		e.GetStatus() != http.StatusUnauthorized || e.Body.Key != KeyUnauthenticated || e.GetHeaders().Get("WWW-Authenticate") == "" {
+		t.Fatalf("storeError(ErrNoIdentity) = %#v", err)
+	}
+	if err := storeError(fmt.Errorf("%w: apply DNSZone/home could not be sent as \"kudurru:user:alice\"", store.ErrImpersonationDenied)); !errors.As(err, &e) ||
+		e.GetStatus() != http.StatusServiceUnavailable || e.Body.Key != KeyUnavailable {
+		t.Fatalf("storeError(ErrImpersonationDenied) = %#v", err)
+	}
 }
 
 // cursorReader is a cluster-wide audit store: opaque cursors, ids that

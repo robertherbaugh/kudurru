@@ -1210,8 +1210,10 @@ apiserver audit log records the principal as `impersonatedUser`.
 | Principal | Kubernetes user | Kubernetes groups |
 | --- | --- | --- |
 | Kubernetes service account | `system:serviceaccount:<namespace>:<name>` | the groups of its token |
-| Local or OIDC user | `kudurru:user:<name>` | `kudurru:group:<group>` for each group |
-| Kudurru service account and its API tokens | `kudurru:serviceaccount:<namespace>:<name>` | `kudurru:group:<group>` |
+| Local user (password session or API token) | `kudurru:user:<name>` | `kudurru:group:<group>` for each of its stored groups |
+| OIDC user, bearer JWT | `kudurru:user:<name>` (the provider-prefixed username, for example `corp:alice`) | `kudurru:group:<group>` for each group in the token (provider-prefixed) |
+| OIDC user, dashboard session or personal API token | `kudurru:user:<name>` | none (D48) |
+| Kudurru service account and its API tokens | `kudurru:serviceaccount:<namespace>:<name>` | none |
 | Unix-socket peer (`kudurru admin`), peer nodes | not impersonated: kudurru's own ServiceAccount | |
 
 ```mermaid
@@ -1224,24 +1226,52 @@ flowchart LR
     IMP --> K8S{"Kubernetes RBAC<br/>allows the principal?"}
     K8S -- "yes" --> OK["written; audit names<br/>the principal"]
     K8S -- "no" --> F2["403 forbidden<br/>(nothing written)"]
+    IMP -- "credential ended" --> F3["401 unauthenticated<br/>(nothing sent)"]
+    IMP -- "kudurru lacks impersonate" --> F4["503 unavailable<br/>(nothing written)"]
 ```
+
+Groups reach Kubernetes only when the request itself carries them. D48 keeps
+an OIDC user's identity-provider groups out of the sealed session cookie and
+out of personal API tokens (they hold resolved kudurru grants instead), so a
+dashboard or personal-token write by an OIDC user is sent with no
+`Impersonate-Group`: a Kubernetes binding to `kudurru:group:<idp>:<group>`
+does not match it. Bind those users by name (`kudurru:user:<idp>:<name>`).
+Group bindings work for local users, whose stored groups are reloaded on every
+request, and for OIDC bearer JWTs, which carry their groups claim.
 
 Only those writes are impersonated. The managedBy and resourceVersion reads
 before them, reads and lists, informers, status and finalizer updates, Leases,
-internal kinds in Secrets (users, tokens, RoleBindings, sessions), the audit
-log, and writes without a requesting principal (controllers, RFC 2136 UPDATE,
-the external-dns webhook, integrations) run as kudurru. A write whose
-principal's credential bounds ended during the request, or whose name is not a
-valid Kubernetes user or group name, is refused, never sent as kudurru. A
-Kubernetes 403 for an impersonated write is `403 forbidden` with the
-apiserver's reason. Server-side apply needs `create` and `patch` (plus
-`delete` for deletes) on the resource. A multi-object API operation (a zone
+the internal kinds kudurru keeps in Secrets (local users, API tokens,
+principal state, migration runs, and the zone, integration and TSIG runtime
+kinds), the audit log, and writes without a requesting principal (controllers,
+RFC 2136 UPDATE, the external-dns webhook, integrations) run as kudurru.
+Sessions are sealed cookies and write nothing. `RoleBinding`,
+`ServiceAccount` and `IdentityProvider` are `kudurru.io` custom resources, so
+their API writes are impersonated like any other `kudurru.io` object and need
+Kubernetes RBAC on `rolebindings`, `serviceaccounts` and `identityproviders`
+in the `kudurru.io` group.
+
+A write whose principal's credential bounds ended during the request (or that
+names no user) is `401 unauthenticated`, and one whose name is not a valid
+Kubernetes user or group name is `403 forbidden`; neither is ever sent as
+kudurru. Any other Kubernetes 403 for an impersonated write is
+`403 forbidden` with the apiserver's reason: usually Kubernetes RBAC for the
+principal, but an admission webhook or a terminating namespace refuses the
+same way. When kudurru's own identity lacks the `impersonate` verb (on
+Kubernetes 1.35 and later the apiserver's constrained impersonation reports
+it as `impersonate-on:` on the object), the write is `503 unavailable` and
+the server logs the apiserver's message; the API answer does not name
+kudurru's ServiceAccount. Server-side apply needs `create` and `patch` (plus
+`delete` for deletes) on the resource, and a forced write's managed-fields
+takeover needs `patch`. A multi-object API operation (a zone
 with its record sets) can be refused part way, like any other Kubernetes
 error between its writes.
 
 The chart's ClusterRole gains `impersonate` on `users`, `groups` and
 `serviceaccounts` only when its value `auth.kubernetes.mode` is
-`impersonate`. Kubernetes cannot narrow that verb to the `kudurru:` names, so a
+`impersonate`. The kustomize bases never carry that rule: a kustomize
+deployment that sets the mode in its node configuration must add it to the
+kudurru ClusterRole itself (see [Helm, impersonation](../deploy/helm.md#impersonation-authkubernetesmode)). Kubernetes cannot narrow that verb to the `kudurru:` names, so a
 compromised kudurru pod can act as any identity in the cluster: it is
 cluster-admin-equivalent (D55). SubjectAccessReview stays the default for that
 reason. After enabling it, give the bootstrap admin (`kudurru:user:admin`) and

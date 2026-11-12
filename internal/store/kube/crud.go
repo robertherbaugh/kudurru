@@ -232,7 +232,7 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 			if opts.Force {
 				rv, err := s.takeOver(wctx, ki, key, cur, desired, opts.Manager)
 				if err != nil {
-					if refused := impersonationRefusal(im, "take over", key, err); refused != nil {
+					if refused := s.impersonationRefusal(im, "take over", key, err); refused != nil {
 						return nil, refused
 					}
 					if !apierrors.IsConflict(err) && !apierrors.IsNotFound(err) {
@@ -256,7 +256,7 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 			// SSA can update an object created after the GET. POST is the
 			// apiserver's atomic absence precondition, including equal specs.
 			if err := s.c.Create(wctx, u, client.FieldOwner(fieldManagerFor(opts.Manager))); err != nil {
-				if refused := impersonationRefusal(im, "create", key, err); refused != nil {
+				if refused := s.impersonationRefusal(im, "create", key, err); refused != nil {
 					return nil, refused
 				}
 				if apierrors.IsAlreadyExists(err) {
@@ -278,7 +278,7 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 		if err == nil {
 			return fromUnstructured(ki, u)
 		}
-		if refused := impersonationRefusal(im, "apply", key, err); refused != nil {
+		if refused := s.impersonationRefusal(im, "apply", key, err); refused != nil {
 			return nil, refused
 		}
 		if managers := conflictingManagers(err); len(managers) > 0 {
@@ -346,7 +346,7 @@ func (s *Store) delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 		target.SetName(key.Name)
 		uid, rv := cur.UID, cur.ResourceVersion
 		err = s.c.Delete(wctx, target, client.Preconditions{UID: &uid, ResourceVersion: &rv})
-		if refused := impersonationRefusal(im, "delete", key, err); refused != nil {
+		if refused := s.impersonationRefusal(im, "delete", key, err); refused != nil {
 			return refused
 		}
 		switch {

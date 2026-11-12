@@ -95,8 +95,12 @@ func TestImpersonatingTransportHeaders(t *testing.T) {
 // downgraded to the driver's own identity.
 func TestImpersonationRefusesInvalidIdentity(t *testing.T) {
 	s := &Store{opts: Options{Impersonate: testImpersonate}}
+	// No user (the credential ended during the request): an authentication
+	// failure, not a Kubernetes refusal.
+	if _, _, err := s.writeContext(asActor(context.Background(), Impersonation{})); !errors.Is(err, store.ErrNoIdentity) || errors.Is(err, store.ErrForbidden) {
+		t.Errorf("empty user: err = %v, want ErrNoIdentity only", err)
+	}
 	for _, im := range []Impersonation{
-		{},
 		{User: "kudurru:user:a\nb"},
 		{User: " kudurru:user:a"},
 		{User: "kudurru:user:a", Groups: []string{""}},
@@ -201,5 +205,87 @@ func TestImpersonatedWritesFollowKubernetesRBAC(t *testing.T) {
 	})
 	if err := shared.admin.Get(ctx, client.ObjectKey{Namespace: "apps", Name: "allowed"}, &v1alpha1.DNSRecordSet{}); !apierrors.IsNotFound(err) {
 		t.Fatalf("group-authorized Delete: %v", err)
+	}
+}
+
+// D386: the managed-fields takeover of a forced write (and its dry run) is
+// sent as the impersonated identity too. Without patch it is refused and
+// the object keeps its manager and content; with create and patch the
+// takeover succeeds.
+func TestImpersonatedForceTakeoverFollowsKubernetesRBAC(t *testing.T) {
+	requireEnv(t)
+	purge(t, shared.admin)
+	s := newTestStore(t, Options{Impersonate: testImpersonate})
+	ctx := context.Background()
+	carol := Impersonation{User: fmt.Sprintf("kudurru:user:carol-%d", time.Now().UnixNano())}
+	key := store.Key{Kind: "DNSRecordSet", Namespace: "apps", Name: "owned"}
+	if _, err := s.Apply(ctx, rrset("apps", "owned", nil), store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
+		t.Fatal(err)
+	}
+	unchanged := func() {
+		t.Helper()
+		var got v1alpha1.DNSRecordSet
+		if err := shared.admin.Get(ctx, client.ObjectKey{Namespace: key.Namespace, Name: key.Name}, &got); err != nil {
+			t.Fatal(err)
+		}
+		if store.ManagedBy(&got) != store.ManagerSystem || got.Labels["taken"] != "" {
+			t.Fatalf("refused takeover changed the object: managedBy %q labels %v", store.ManagedBy(&got), got.Labels)
+		}
+	}
+	force := func() error {
+		_, err := s.Apply(asActor(ctx, carol), rrset("apps", "owned", map[string]string{"taken": "yes"}), store.ApplyOptions{Manager: store.ManagerAPI, Force: true})
+		return err
+	}
+
+	// No Kubernetes RBAC: the takeover itself is refused.
+	if err := force(); !errors.Is(err, store.ErrForbidden) || !strings.Contains(err.Error(), "take over") || !strings.Contains(err.Error(), carol.User) {
+		t.Fatalf("forced Apply without RBAC: %v, want ErrForbidden for the takeover as %s", err, carol.User)
+	}
+	unchanged()
+	// create alone is not enough: the takeover is a patch.
+	grantImpersonated(t, rbacv1.UserKind, carol.User, "create")
+	time.Sleep(time.Second)
+	if err := force(); !errors.Is(err, store.ErrForbidden) {
+		t.Fatalf("forced Apply with create only: %v, want ErrForbidden", err)
+	}
+	unchanged()
+
+	grantImpersonated(t, rbacv1.UserKind, carol.User, "patch")
+	eventually(t, 10*time.Second, "carol's patch grant to take effect", func() bool { return force() == nil })
+	var got v1alpha1.DNSRecordSet
+	if err := shared.admin.Get(ctx, client.ObjectKey{Namespace: key.Namespace, Name: key.Name}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if store.ManagedBy(&got) != store.ManagerAPI || got.Labels["taken"] != "yes" {
+		t.Fatalf("forced Apply with patch: managedBy %q labels %v", store.ManagedBy(&got), got.Labels)
+	}
+}
+
+// D386: when the driver's own identity lacks the impersonate verb, an
+// impersonated write is store.ErrImpersonationDenied (a deployment fault),
+// not the principal's ErrForbidden, and the error does not carry the
+// apiserver's message naming the driver's identity. Nothing is written.
+func TestImpersonationWithoutImpersonateVerb(t *testing.T) {
+	requireEnv(t)
+	purge(t, shared.admin)
+	driver := fmt.Sprintf("system:serviceaccount:kudurru-system:noimp-%d", time.Now().UnixNano())
+	s := grantWith(t, driver, driverClusterRules("get", "list", "watch", "create", "patch", "delete"), Options{Impersonate: testImpersonate})
+	ctx := context.Background()
+	dave := Impersonation{User: fmt.Sprintf("kudurru:user:dave-%d", time.Now().UnixNano())}
+	grantImpersonated(t, rbacv1.UserKind, dave.User, "create", "patch", "delete")
+
+	_, err := s.Apply(asActor(ctx, dave), rrset("apps", "noimp", nil), store.ApplyOptions{Manager: store.ManagerAPI})
+	if !errors.Is(err, store.ErrImpersonationDenied) || errors.Is(err, store.ErrForbidden) || strings.Contains(err.Error(), driver) {
+		t.Fatalf("Apply without the impersonate verb: %v, want ErrImpersonationDenied without %s", err, driver)
+	}
+	if err := shared.admin.Get(ctx, client.ObjectKey{Namespace: "apps", Name: "noimp"}, &v1alpha1.DNSRecordSet{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("refused Apply left an object: %v", err)
+	}
+	// The same driver still writes as itself without a principal.
+	if _, err := s.Apply(ctx, rrset("apps", "noimp", nil), store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatalf("driver-identity Apply: %v", err)
+	}
+	if err := s.Delete(asActor(ctx, dave), store.Key{Kind: "DNSRecordSet", Namespace: "apps", Name: "noimp"}, store.DeleteOptions{Manager: store.ManagerAPI}); !errors.Is(err, store.ErrImpersonationDenied) {
+		t.Fatalf("Delete without the impersonate verb: %v", err)
 	}
 }

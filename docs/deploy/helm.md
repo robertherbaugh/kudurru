@@ -550,8 +550,17 @@ audit log records the principal as `impersonatedUser`:
 | Principal | Kubernetes name |
 | --- | --- |
 | Kubernetes ServiceAccount | `system:serviceaccount:<namespace>:<name>` with its token's groups |
-| Local or OIDC user | `kudurru:user:<name>`, groups `kudurru:group:<group>` |
+| Local user | `kudurru:user:<name>`, groups `kudurru:group:<group>` |
+| OIDC user with a bearer JWT | `kudurru:user:<idp>:<name>`, groups `kudurru:group:<idp>:<group>` from the token |
+| OIDC user on a dashboard session or personal API token | `kudurru:user:<idp>:<name>`, no groups |
 | Kudurru service account (and its tokens) | `kudurru:serviceaccount:<namespace>:<name>` |
+
+Dashboard sessions and personal API tokens do not keep an OIDC user's
+identity-provider groups (D48), so bind OIDC users who sign in to the
+dashboard by user name; a binding to their `kudurru:group:` name only matches
+their bearer-JWT requests. Kudurru RoleBindings, ServiceAccounts and
+IdentityProviders are `kudurru.io` objects, so writing them through the API
+needs Kubernetes RBAC on those resources too.
 
 Only with this value does the ClusterRole gain `impersonate` on `users`,
 `groups` and `serviceaccounts`. Kubernetes cannot restrict that verb to the
@@ -572,7 +581,18 @@ subjects:
 
 Server-side apply needs `create` and `patch`, and deletes need `delete`.
 A Kubernetes refusal answers `403 forbidden` with the apiserver's reason and
-writes nothing. Reads, status updates, internal Secrets, the audit log and
+writes nothing. If kudurru itself lacks the `impersonate` verb, writes answer
+`503 unavailable` and the server log carries the apiserver's reason.
+
+The kustomize bases (`deploy/kustomize`) never grant `impersonate`. To use the
+mode there, set `auth.kubernetes.mode: impersonate` in the node configuration
+and add this rule to the kudurru ClusterRole yourself (same D55 caveat):
+
+```yaml
+- apiGroups: [""]
+  resources: [users, groups, serviceaccounts]
+  verbs: [impersonate]
+``` Reads, status updates, internal Secrets, the audit log and
 writes without a signed-in principal (controllers, RFC 2136 UPDATE, the
 external-dns webhook, integrations) stay on the kudurru ServiceAccount, and
 so does the `kudurru admin` socket.

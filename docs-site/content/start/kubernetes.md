@@ -81,7 +81,8 @@ Writes run as the kudurru ServiceAccount by default. With
 kudurru.io object is also sent as the signed-in person or service account
 (`kudurru:user:<name>`, `kudurru:group:<group>`, or the ServiceAccount
 itself), so Kubernetes RBAC must allow it as well and the apiserver audit log
-names who made it. The chart then grants kudurru the `impersonate` verb, which
+names who made it. OIDC users signed in to the dashboard carry no groups
+there, so bind them by user name. The chart then grants kudurru the `impersonate` verb, which
 lets a compromised kudurru pod act as anyone in the cluster; keep the default
 unless you need the apiserver to decide and record each write. Bind the
 `<release>-admin` ClusterRole to `kudurru:user:admin` (and the other names you

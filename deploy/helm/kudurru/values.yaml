@@ -466,7 +466,9 @@ auth:
     # (default): Kubernetes service accounts are authorized with a
     # SubjectAccessReview and every write runs as the kudurru ServiceAccount.
     # impersonate: API writes of kudurru.io objects are also sent as the
-    # signed-in principal (kudurru:user:<name>, kudurru:group:<group>,
+    # signed-in principal (kudurru:user:<name>, kudurru:group:<group> for
+    # local users and OIDC bearer JWTs only, since dashboard sessions and
+    # personal tokens of OIDC users carry no groups (D48),
     # kudurru:serviceaccount:<namespace>:<name>, or the Kubernetes service
     # account itself), so Kubernetes RBAC must allow them and the apiserver
     # audit log names that principal. The ClusterRole then gains the

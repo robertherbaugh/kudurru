@@ -64,6 +64,13 @@ type impersonationAuditEvent struct {
 // waiting for the audit backend to flush it.
 func impersonationAudit(t *testing.T, path, zone string) impersonationAuditEvent {
 	t.Helper()
+	return impersonationAuditVerb(t, path, zone, "")
+}
+
+// impersonationAuditVerb is impersonationAudit for one verb ("" is any
+// write).
+func impersonationAuditVerb(t *testing.T, path, zone, verb string) impersonationAuditEvent {
+	t.Helper()
 	deadline := time.Now().Add(15 * time.Second)
 	for {
 		f, err := os.Open(path) //nolint:gosec // test-owned temporary file
@@ -73,7 +80,7 @@ func impersonationAudit(t *testing.T, path, zone string) impersonationAuditEvent
 			for sc.Scan() {
 				var ev impersonationAuditEvent
 				if json.Unmarshal(sc.Bytes(), &ev) == nil && ev.ObjectRef.Resource == "dnszones" && ev.ObjectRef.Name == zone &&
-					ev.ResponseStatus.Code >= 200 && ev.ResponseStatus.Code < 300 && ev.Verb != "get" {
+					ev.ResponseStatus.Code >= 200 && ev.ResponseStatus.Code < 300 && ev.Verb != "get" && (verb == "" || ev.Verb == verb) {
 					_ = f.Close()
 					return ev
 				}
@@ -81,7 +88,7 @@ func impersonationAudit(t *testing.T, path, zone string) impersonationAuditEvent
 			_ = f.Close()
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("no successful apiserver write of dnszones/%s in the audit log", zone)
+			t.Fatalf("no successful apiserver %q write of dnszones/%s in the audit log", verb, zone)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -292,6 +299,9 @@ func TestRunServeKubeImpersonation(t *testing.T) {
 	// Deletes are impersonated too: zone-editor grants the admin delete.
 	if status, body := admin.call(http.MethodDelete, "/objects/dnszones/imp-editor", nil); status != http.StatusNoContent && status != http.StatusOK {
 		t.Fatalf("impersonated delete: HTTP %d %s", status, body)
+	}
+	if ev := impersonationAuditVerb(t, auditPath, "imp-editor", "delete"); ev.ImpersonatedUser == nil || ev.ImpersonatedUser.Username != "kudurru:user:admin" || ev.User.Username != serverUser {
+		t.Fatalf("audit of the impersonated delete: %+v", ev)
 	}
 
 	// D387: the Kubernetes runtime announces and refuses the account commands.

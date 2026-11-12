@@ -215,10 +215,20 @@ func storeError(err error) error {
 			"read the object again and retry with its current resourceVersion")
 	case errors.Is(err, store.ErrForbidden):
 		// auth.kubernetes.mode impersonate (D386): kudurru allowed the
-		// write, Kubernetes RBAC refused it for the principal. Nothing was
-		// written.
+		// write and sent it as the principal; the apiserver refused it.
+		// Nothing was written. The reason is the apiserver's: usually
+		// Kubernetes RBAC, but an admission webhook or a terminating
+		// namespace answers the same way.
 		return newError(http.StatusForbidden, KeyForbidden, err.Error(),
-			"auth.kubernetes.mode is impersonate: the write is sent as you, so Kubernetes RBAC must also allow it; ask a cluster administrator for a ClusterRole/RoleBinding for your Kubernetes name (kudurru:user:<name>, kudurru:group:<group> or the service account)")
+			"auth.kubernetes.mode is impersonate: Kubernetes refused the write sent as the name above, for the reason it gives. If Kubernetes RBAC does not allow that name, ask a cluster administrator to bind it to a ClusterRole or Role that does")
+	case errors.Is(err, store.ErrNoIdentity):
+		e := newError(http.StatusUnauthorized, KeyUnauthenticated, err.Error(),
+			"auth.kubernetes.mode is impersonate and the write is sent as you, but your credential ended during the request; sign in again or use a fresh token")
+		e.GetHeaders().Set("WWW-Authenticate", `Bearer realm="kudurru"`)
+		return e
+	case errors.Is(err, store.ErrImpersonationDenied):
+		return newError(http.StatusServiceUnavailable, KeyUnavailable, err.Error(),
+			"kudurru's Kubernetes identity lacks the impersonate verb that auth.kubernetes.mode impersonate needs; a cluster administrator must grant it (the server log has the apiserver's reason) or set the mode back to sar")
 	case errors.Is(err, store.ErrTooLarge):
 		return newError(http.StatusRequestEntityTooLarge, KeyTooLarge, err.Error(), "split it into several objects")
 	case errors.Is(err, objects.ErrStaticReadOnly):
