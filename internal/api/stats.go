@@ -731,6 +731,12 @@ func (s *Server) purgeQuerylog(ctx context.Context, in *purgeInput) (*purgeOutpu
 }
 
 func (s *Server) queryAction(ctx context.Context, in *queryActionInput) (*processedOutput, error) {
+	// The route declares blocklists.write for the list edit. Reading the
+	// logged query by ID is a query-log read, so it needs querylog.read as
+	// well, checked before the row is read (D393).
+	if err := s.require(ctx, "querylog", "read", clusterScope, ""); err != nil {
+		return nil, err
+	}
 	if s.useDomainCommand() {
 		return s.commandQueryAction(ctx, in)
 	}

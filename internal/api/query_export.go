@@ -23,7 +23,10 @@ type queryExportOutput struct {
 func (s *Server) registerQueryExport() {
 	op := operation(http.MethodGet, "/queries/export", "exportQueries", "Download one filtered query-log page as JSON (up to 1000 rows)", "querylog")
 	op.Description = "Uses the same filters, scope, privacy and cursor as GET /queries. Defaults to 1000 rows. The JSON retains source, node errors, partial results and cursor_next; it is not an unbounded or cross-page snapshot export. Output is capped at 16 MiB and the read at 15 seconds. No attachment is sent on error or cancellation."
-	register(s, op, perm{resource: "querylog", verb: "read"}, s.exportQueries)
+	// The download needs querylog.export, which auditor and admin hold and
+	// operator does not (the D31 role table; D393). GET /queries stays on
+	// querylog.read.
+	register(s, op, perm{resource: "querylog", verb: "export"}, s.exportQueries)
 }
 
 func (s *Server) exportQueries(ctx context.Context, in *QueryParams) (*queryExportOutput, error) {

@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { collectEntries } from '../mocks/domains';
+import { qk } from '../api/context';
 import { mockDB } from '../mocks/handlers';
 import { getSelector, pick, valueOf } from '../test/controls';
 import { server } from '../test/setup';
@@ -136,6 +137,18 @@ describe('QueryLogPage', () => {
     await screen.findByTestId('log-totals');
     const [allow] = await screen.findAllByRole('button', { name: 'Allow' });
     expect(allow).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('offers the export only to roles with querylog.export', async () => {
+    // The mock viewer reads the log (querylog.read) but cannot export it.
+    const { unmount, client } = renderWithApp(<QueryLogPage />, { route: '/queries', user: 'viewer' });
+    await screen.findByTestId('log-totals');
+    await waitFor(() => expect(client.getQueryData(qk.me)).toBeTruthy());
+    expect(screen.queryByRole('link', { name: 'Export up to 1,000 queries' })).toBeNull();
+    unmount();
+    renderWithApp(<QueryLogPage />, { route: '/queries', user: 'auditor' });
+    await screen.findByTestId('log-totals');
+    expect(await screen.findByRole('link', { name: 'Export up to 1,000 queries' })).toBeInTheDocument();
   });
 });
 

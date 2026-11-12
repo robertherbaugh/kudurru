@@ -111,7 +111,8 @@ flowchart LR
 ```
 
 `GET /queries/export` delegates to the same scoped history reader as
-`GET /queries`, with `querylog.read` permission and the existing privacy,
+`GET /queries`, with `querylog.export` permission (auditor and admin; the
+operator role reads the log but does not export it, D393) and the existing privacy,
 filter and cursor semantics. It buffers one page (default/max 1,000 rows,
 16 MiB output, 15-second operation context) before sending a JSON attachment
 with `Cache-Control: no-store`. Cancellation or encoding/size failure sends

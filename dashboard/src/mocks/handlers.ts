@@ -173,6 +173,7 @@ export function permissions(roles: string[]): Record<string, string[]> {
   }
   // The auditor role reads unblock requests but cannot decide them.
   if (roles.includes('auditor')) {
+    out.querylog = ['read', 'export'];
     out.unblockrequests = ['read'];
     out.dhcpleases = ['read', 'export'];
   }

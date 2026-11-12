@@ -30,7 +30,7 @@ bindings give none. The audit log and single sign-on also need a key. See
 |---|---|---|
 | Viewer | Look at the setup and the statistics | Read zones, records, lists, policies, groups, clients, settings and statistics |
 | Auditor | Check what happens | Everything that a viewer can do. Also read the query log, the access requests and the audit log, and export them. |
-| Operator | Run the daily work | Everything that an auditor can do, except reading the audit log. Also change records, lists, policies, groups and clients. Switch blocking on and off. Flush the cache. Answer access requests. |
+| Operator | Run the daily work | Everything that an auditor can do, except reading the audit log and exporting the query log. Also change records, lists, policies, groups and clients. Switch blocking on and off. Flush the cache. Answer access requests. |
 | Zone admin | Run one or more zones | Read statistics. Manage the zones and the records in its scope, including transfers. |
 | Admin | Run everything | All functions, including settings, upstreams, nodes and purge of the query log |
 

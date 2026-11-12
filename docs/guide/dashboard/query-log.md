@@ -24,6 +24,9 @@ Click **Clear filters** to start again. The page URL preserves the filters.
 
 ## Download matching history
 
+You need the `auditor` or `admin` role (the `querylog.export` permission);
+the `operator` role reads the query log but does not see the export link.
+
 Select **Export up to 1,000 queries** to download the newest matching retained
 queries as JSON, using the current filters and node scope. The file includes
 pagination and scope information; `partial: true` identifies unavailable nodes,

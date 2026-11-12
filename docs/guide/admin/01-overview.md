@@ -66,7 +66,7 @@ person. Table 1 shows what each role can do in the dashboard.
 |---|---|---|
 | Viewer | Statistics, zones, records, lists, policies, groups, clients, settings | Nothing. A viewer can make API tokens for itself. |
 | Auditor | Everything that a viewer reads, and the query log, the access requests and the audit log | Nothing |
-| Operator | Everything that an auditor reads, except the audit log | Records, lists, policies, groups, clients, the blocking switch, the cache, the access requests |
+| Operator | Everything that an auditor reads, except the audit log; no query-log export | Records, lists, policies, groups, clients, the blocking switch, the cache, the access requests |
 | Zone admin | Statistics, and the zones and records in its scope | The zones and records in its scope |
 | Admin | Everything | Everything, including settings |
 

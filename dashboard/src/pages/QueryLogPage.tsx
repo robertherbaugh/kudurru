@@ -165,7 +165,7 @@ export default function QueryLogPage() {
         actions={
           <>
             <ScopeSelector allLabel="All" response={live ? tailScope : first} />
-            {can('querylog', 'read') ? <Link href={api.queries.exportURL(scope, filters)} download="kudurru-queries.json" hasUnderline>Export up to 1,000 queries</Link> : null}
+            {can('querylog', 'export') ? <Link href={api.queries.exportURL(scope, filters)} download="kudurru-queries.json" hasUnderline>Export up to 1,000 queries</Link> : null}
             <Switch
               label="Live tail"
               description={
