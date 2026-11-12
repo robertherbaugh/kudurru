@@ -2,6 +2,7 @@ package rbac
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -115,5 +116,22 @@ func TestZoneGroupBindingsAndRestrictions(t *testing.T) {
 	m := p.PermissionMatrix([]Grant{{Role: "zone-admin", Scope: Scope{Kind: ScopeZoneGroup, Name: "prod"}}}, false)
 	if len(m["zonegroup:prod"]) == 0 || len(m["cluster"]) != 0 {
 		t.Fatalf("permission matrix of a group grant: %v", m)
+	}
+}
+
+// TestParseBindingsZoneGroupName: an rbac.bindings entry is held to the
+// same rule as a RoleBinding object (D385): a zonegroup name no label can
+// carry is refused, so the auth stack refuses to start with it rather than
+// load a binding that grants nothing.
+func TestParseBindingsZoneGroupName(t *testing.T) {
+	entry := func(name string) map[string]any {
+		return map[string]any{"role": "zone-admin", "scope": map[string]any{"kind": "zonegroup", "name": name}, "subjects": []any{map[string]any{"kind": "User", "name": "alice"}}}
+	}
+	if _, err := ParseBindings([]map[string]any{entry("Prod Team")}); err == nil || !strings.Contains(err.Error(), "rbac.bindings[0]") || !strings.Contains(err.Error(), "spec.scope.name") {
+		t.Fatalf("a zonegroup name that is not a label value: err = %v", err)
+	}
+	got, err := ParseBindings([]map[string]any{entry("prod")})
+	if err != nil || len(got) != 1 || got[0].Scope != (Scope{Kind: ScopeZoneGroup, Name: "prod"}) {
+		t.Fatalf("a valid zonegroup name: %v, %v", got, err)
 	}
 }

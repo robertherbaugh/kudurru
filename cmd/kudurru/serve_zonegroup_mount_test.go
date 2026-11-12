@@ -39,12 +39,13 @@ const (
 	zoneGroupUser     = "grouper"
 	zoneGroupPassword = "zone-group-user-password" // #nosec G101 -- the password of a test fixture account
 	zoneGroupBinding  = "grouper-prod"
+	zoneGroupZoner    = "zoner"
 )
 
 // zoneGroupSeed is what both drivers start with: zones a and b in group prod,
-// zone c in no group, one record set in a and one in c, and a zone-admin
-// binding at zonegroup:prod for the local user grouper; zg-admin is the
-// built-in administrator.
+// zone c in no group, one record set in a and one in c, a zone-admin
+// binding at zonegroup:prod for the local user grouper and one at zone:c for
+// the local user zoner; zg-admin is the built-in administrator.
 func zoneGroupSeed(t *testing.T) []store.Object {
 	t.Helper()
 	hash, err := users.NewHasher(0).Hash(t.Context(), zoneGroupPassword)
@@ -58,9 +59,11 @@ func zoneGroupSeed(t *testing.T) []store.Object {
 		// Seeding a local user ends first boot, so the administrator is seeded too.
 		&internalv1.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: zoneGroupAdmin}, Spec: internalv1.LocalUserSpec{PasswordHash: hash, BuiltinAdmin: true, Groups: []string{}}},
 		&internalv1.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: zoneGroupUser}, Spec: internalv1.LocalUserSpec{PasswordHash: hash, Groups: []string{}}},
+		&internalv1.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: zoneGroupZoner}, Spec: internalv1.LocalUserSpec{PasswordHash: hash, Groups: []string{}}},
 		zoneGroupZone("a", "prod"), zoneGroupZone("b", "prod"), zoneGroupZone("c", ""),
 		set("in-a", "a"), set("in-c", "c"),
 		&public.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: zoneGroupBinding, Namespace: "default"}, Spec: public.RoleBindingSpec{Role: "zone-admin", Scope: public.BindingScope{Kind: "zonegroup", Name: "prod"}, Subjects: []public.BindingSubject{{Kind: "User", Name: zoneGroupUser}}}},
+		&public.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: "zoner-c", Namespace: "default"}, Spec: public.RoleBindingSpec{Role: "zone-admin", Scope: public.BindingScope{Kind: "zone", Name: "c"}, Subjects: []public.BindingSubject{{Kind: "User", Name: zoneGroupZoner}}}},
 	}
 }
 
@@ -138,6 +141,14 @@ func (z *zoneGroupClient) call(method, path string, body any) (int, []byte) {
 		raw, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 		_ = response.Body.Close()
 		pending := response.StatusCode == http.StatusServiceUnavailable && bytes.Contains(raw, []byte("generation_pending"))
+		// The SQLite command path reports the same pending generation as
+		// "current writable serving generation unavailable". Only requests
+		// that are safe to repeat whatever happened (reads, whole-object
+		// PUTs, sign-in) are asked again for it.
+		if response.StatusCode == http.StatusServiceUnavailable && bytes.Contains(raw, []byte("current writable serving generation unavailable")) &&
+			(method != http.MethodPost || path == "/auth/login") {
+			pending = true
+		}
 		if !pending || time.Now().After(deadline) {
 			return response.StatusCode, raw
 		}
@@ -204,11 +215,13 @@ func (z *zoneGroupClient) awaitZones(names ...string) {
 
 // zoneGroupScenario is the D385 acceptance through the mounted router of one
 // driver: the group-bound user reads and writes only member zones and their
-// record sets, cannot move zones between groups, loses a zone when the
-// administrator removes its label, gains it back when the label returns, and
-// loses everything when the binding is removed (its frozen session grant is
-// revoked).
-func zoneGroupScenario(t *testing.T, grouper *zoneGroupClient, relabel func(zone, group string), unbind func()) {
+// record sets, may edit a member zone that stays in the group but cannot
+// move zones out of, between or into groups (nor can zoner, a zone-admin of
+// zone c alone), loses a zone when the administrator removes its label,
+// gains it back when the label returns, and loses everything when the
+// binding is removed (its frozen session grant is revoked: revoked is the
+// status the driver answers then).
+func zoneGroupScenario(t *testing.T, grouper, zoner *zoneGroupClient, relabel func(zone, group string), unbind func(), revoked int) {
 	t.Helper()
 	var me struct {
 		Roles             []string                       `json:"roles"`
@@ -240,9 +253,17 @@ func zoneGroupScenario(t *testing.T, grouper *zoneGroupClient, relabel func(zone
 	record := public.Endpoint{DNSName: "api", RecordType: "A", RecordTTL: 60, Targets: []string{"192.0.2.10"}}
 	grouper.want(http.MethodPost, "/zones/a/records", record, http.StatusCreated)
 	grouper.want(http.MethodPost, "/zones/c/records", record, http.StatusForbidden)
-	// Group membership is access control: only cluster scope changes it.
+	// Group membership is access control: only cluster scope changes it. A
+	// member may write a zone that stays in the group, but not take it out
+	// or move it to another group; the zone admin of c may write c, but not
+	// put it into a group.
+	grouper.want(http.MethodPut, "/objects/dnszones/a", zoneGroupZoneDoc("a", "prod"), http.StatusOK)
 	grouper.want(http.MethodPut, "/objects/dnszones/a", zoneGroupZoneDoc("a", ""), http.StatusForbidden)
+	grouper.want(http.MethodPut, "/objects/dnszones/a", zoneGroupZoneDoc("a", "dev"), http.StatusForbidden)
 	grouper.want(http.MethodPut, "/objects/dnszones/c", zoneGroupZoneDoc("c", "prod"), http.StatusForbidden)
+	zoner.want(http.MethodPut, "/objects/dnszones/c", zoneGroupZoneDoc("c", ""), http.StatusOK)
+	zoner.want(http.MethodPut, "/objects/dnszones/c", zoneGroupZoneDoc("c", "prod"), http.StatusForbidden)
+	grouper.awaitZones("a", "b")
 
 	// The administrator takes b out of the group: the binding stops covering it.
 	relabel("b", "")
@@ -259,7 +280,7 @@ func zoneGroupScenario(t *testing.T, grouper *zoneGroupClient, relabel func(zone
 	// also ends the session whose grant it revoked (401); the Kubernetes
 	// driver refuses the session's frozen grant (403).
 	unbind()
-	denied := func(status int) bool { return status == http.StatusForbidden || status == http.StatusUnauthorized }
+	denied := func(status int) bool { return status == revoked }
 	deadline := time.Now().Add(20 * time.Second)
 	for {
 		status, body := grouper.call(http.MethodGet, "/zones/a", nil)
@@ -313,7 +334,8 @@ func TestRunServeSQLiteZoneGroupBinding(t *testing.T) {
 	base := "http://" + cfg.Listeners.API.Address + api.BasePath
 	admin := newZoneGroupClient(t, base, zoneGroupAdmin, zoneGroupPassword)
 	grouper := newZoneGroupClient(t, base, zoneGroupUser, zoneGroupPassword)
-	zoneGroupScenario(t, grouper, func(zone, group string) {
+	zoner := newZoneGroupClient(t, base, zoneGroupZoner, zoneGroupPassword)
+	zoneGroupScenario(t, grouper, zoner, func(zone, group string) {
 		admin.want(http.MethodPut, "/objects/dnszones/"+zone, zoneGroupZoneDoc(zone, group), http.StatusOK)
 	}, func() {
 		var binding public.RoleBinding
@@ -321,7 +343,7 @@ func TestRunServeSQLiteZoneGroupBinding(t *testing.T) {
 			t.Fatal("binding read failed", err)
 		}
 		admin.want(http.MethodDelete, "/iam/rolebindings/default/"+zoneGroupBinding, api.RoleBindingReview{UID: string(binding.UID), ResourceVersion: binding.ResourceVersion}, http.StatusNoContent)
-	})
+	}, http.StatusUnauthorized)
 }
 
 func TestRunServeKubeZoneGroupBinding(t *testing.T) {
@@ -390,10 +412,32 @@ func TestRunServeKubeZoneGroupBinding(t *testing.T) {
 	}
 	startLicensedMount(t, cfg, licenseKey)
 	base := "http://" + cfg.Listeners.API.Address + api.BasePath
+	admin := newZoneGroupClient(t, base, zoneGroupAdmin, zoneGroupPassword)
 	grouper := newZoneGroupClient(t, base, zoneGroupUser, zoneGroupPassword)
-	// The seeded objects belong to the kubectl client's field manager, so the
-	// administrator relabels them with kubectl as an operator would.
-	zoneGroupScenario(t, grouper, func(zone, group string) {
+	zoner := newZoneGroupClient(t, base, zoneGroupZoner, zoneGroupPassword)
+	// The seeded objects belong to the kubectl client's field manager. The
+	// administrator removes b's label through the API: the PUT must take the
+	// label away although kubectl owns it too (server-side apply alone would
+	// keep it and answer 200). An operator puts it back with kubectl, which
+	// kudurru must honor as well.
+	zoneGroupScenario(t, grouper, zoner, func(zone, group string) {
+		if group == "" {
+			var written public.DNSZone
+			if err := json.Unmarshal(admin.want(http.MethodPut, "/objects/dnszones/"+zone, zoneGroupZoneDoc(zone, ""), http.StatusOK), &written); err != nil {
+				t.Fatal(err)
+			}
+			if g := public.ZoneGroupOf(&written); g != "" {
+				t.Fatalf("the API PUT answered zone %s in group %q", zone, g)
+			}
+			var stored public.DNSZone
+			if err := kubeAdmin.Get(t.Context(), client.ObjectKey{Name: zone}, &stored); err != nil {
+				t.Fatal(err)
+			}
+			if g := public.ZoneGroupOf(&stored); g != "" {
+				t.Fatalf("the apiserver keeps zone %s in group %q after the API removed the label", zone, g)
+			}
+			return
+		}
 		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 		defer cancel()
 		var z public.DNSZone
@@ -417,5 +461,5 @@ func TestRunServeKubeZoneGroupBinding(t *testing.T) {
 		if err := kubeAdmin.Delete(ctx, &public.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: zoneGroupBinding, Namespace: "default"}}); err != nil {
 			t.Fatal(err)
 		}
-	})
+	}, http.StatusForbidden)
 }
