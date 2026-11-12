@@ -444,16 +444,22 @@ func atoi(s string) int {
 	return n
 }
 
-// checkAnchors reports managed root trust-anchor status (D369). It runs only
-// when the host declares managed anchors; a node without the route is a
-// warning, not a failure.
+// checkAnchors reports managed root trust-anchor status (D369). anchorMode is
+// a cluster setting: a joined member takes it from the primary's image, so its
+// own file may not set it. The check therefore asks the node and decides from
+// the effective mode the node reports; the host file decides only when the
+// node does not say. A node without the route is a warning when the host
+// declares managed anchors, and silent otherwise.
 func checkAnchors(ctx context.Context, rep *doctorReport, c *apiclient.Client, cfg *config.Config) {
-	if cfg.Upstreams.Recursion.AnchorMode != config.RootAnchorsManaged {
-		return
-	}
+	hostManaged := cfg.Upstreams.Recursion.AnchorMode == config.RootAnchorsManaged
 	var status api.RootAnchorStatus
 	if err := c.Get(ctx, "/cluster/anchors", nil, &status); err != nil {
-		rep.warn("anchors", "status unavailable: %v", err)
+		if hostManaged {
+			rep.warn("anchors", "status unavailable: %v", err)
+		}
+		return
+	}
+	if status.AnchorMode != string(config.RootAnchorsManaged) && (status.AnchorMode != "" || !hostManaged) {
 		return
 	}
 	switch {

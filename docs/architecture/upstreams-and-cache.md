@@ -713,14 +713,25 @@ Each state above is visible without reading the database by hand (D369):
   `kudurru_root_anchor_worker_state{worker,state}`,
   `kudurru_root_anchor_adoption_refused{reason}` and
   `kudurru_root_anchor_admission_current`. A refusal also logs one warning when
-  it begins or changes class and one line when an install ends it.
+  it begins or changes class and one line when an install ends it. A primary
+  does not pull, so the refusal gauge reads 0 once the member holds the
+  primary role (after a promotion, or when a resolution keeps its branch). A
+  deny-only check whose capture keeps racing installs of this member shows
+  `raced` and logs each race with a consecutive count.
 - On a stopped node, `kudurru anchors status --offline` prints the same owner,
   carrier and authority projection from the retained database.
-- `kudurru doctor` on a host with `anchorMode: managed` reads the route and
-  fails on lost trust or a terminal carrier, and warns on every warning.
+- `kudurru doctor` reads the route and decides from the effective
+  `anchorMode` the node reports (a joined member takes it from the primary's
+  image, so its own file need not set it); the host file decides only when the
+  node does not answer. It fails on lost trust or a terminal carrier, and warns
+  on every warning.
 
-The store classifies a refused owner with `sqlite.AnchorRefusal`, which still
-matches `accepted.ErrCAS`; the classification changes no admission rule.
+The store classifies every refused owner of an install or resolution with
+`sqlite.AnchorRefusal`, which still matches `accepted.ErrCAS`: the term
+adoption rule, the successor rule, and the carrier rule that refuses an owner
+inside one term that does not revoke a key this member denied locally
+(`carried_revocation` with that key). The classification changes no admission
+rule.
 
 Replacing a member is the first-image join of a new receiver (D355). It takes
 the primary's owner and a carrier that denies exactly the keys that owner
