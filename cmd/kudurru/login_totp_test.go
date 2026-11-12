@@ -199,34 +199,6 @@ func TestCLILoginTOTPSafeStageErrors(t *testing.T) {
 	}
 }
 
-// A password login against an enrolled follower is refused before the proof
-// is sent: the follower forwards the login but cannot mint the CLI token, so
-// the login would only leave a session on the primary.
-func TestCLILoginRefusesFollowerBeforeSendingProof(t *testing.T) {
-	const marker = "reflected-sensitive-marker"
-	var posts atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/auth/status":
-			_, _ = io.WriteString(w, `{"localLogin":true,"providers":[],"role":"follower","primary":"`+marker+`"}`)
-		default:
-			posts.Add(1)
-			w.WriteHeader(http.StatusInternalServerError)
-		}
-	}))
-	defer srv.Close()
-	h := newHarness(t)
-	h.stdin = "test-password\n"
-	out, errOut, err := runLoginTOTP(t, h.opts(), h.cfgPath, "--server", srv.URL, "--username", "local", "--password-stdin")
-	if err == nil || posts.Load() != 0 || !apiclient.IsKey(err, "primary_required") || strings.Contains(err.Error()+out+errOut, marker) ||
-		!strings.Contains(err.Error(), "nothing was sent") || len(h.keyring.m) != 0 {
-		t.Fatalf("follower login: posts=%d err=%v", posts.Load(), err)
-	}
-	if _, err := os.Stat(h.cfgPath); !os.IsNotExist(err) {
-		t.Fatal("refused follower login saved config")
-	}
-}
-
 func runLoginTOTP(t *testing.T, o *cliOpts, configPath string, args ...string) (string, string, error) {
 	t.Helper()
 	root := newRootWith(o)
@@ -351,21 +323,14 @@ func TestCLILoginTOTPActualSQLiteDenialDoesNotConsume(t *testing.T) {
 func TestCLILoginTOTPActualSQLiteLostResponseNeverRetries(t *testing.T) {
 	f := newServingHTTPFixture(t, false)
 	seed := factorInstall(t, f)
-	// others counts every request after the login post; preflights counts the
-	// requests before it, which may only be the CLI's GET /auth/status role
-	// check: it carries no proof.
-	var posts, others, preflights atomic.Int32
+	// others counts every request other than the login post, before and
+	// after it: the CLI sends no role preflight (an enrolled follower
+	// forwards every step, D368) and never retries.
+	var posts, others atomic.Int32
 	var committed atomic.Bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/auth/login" {
-			if posts.Load() == 0 {
-				preflights.Add(1)
-				if r.Method != http.MethodGet || r.URL.Path != "/api/v1/auth/status" || r.Header.Get("Authorization") != "" {
-					t.Error("a request other than the status preflight preceded the login:", r.Method, r.URL.Path)
-				}
-			} else {
-				others.Add(1)
-			}
+			others.Add(1)
 			f.server.ServeHTTP(w, r)
 			return
 		}
@@ -400,9 +365,8 @@ func TestCLILoginTOTPActualSQLiteLostResponseNeverRetries(t *testing.T) {
 		t.Fatal("fixture status not ready")
 	}
 	others.Store(0)
-	preflights.Store(0)
 	out, errOut, err := runLoginTOTP(t, o, h.cfgPath, "--server", srv.URL, "--username", "root-command", "--password-stdin", "--totp-stdin")
-	if err == nil || !committed.Load() || posts.Load() != 1 || others.Load() != 0 || preflights.Load() != 1 || len(h.keyring.m) != 0 || strings.Contains(out+errOut+err.Error(), code) {
+	if err == nil || !committed.Load() || posts.Load() != 1 || others.Load() != 0 || len(h.keyring.m) != 0 || strings.Contains(out+errOut+err.Error(), code) {
 		t.Fatal("lost response retried, persisted or exposed proof")
 	}
 	if _, err := os.Stat(h.cfgPath); !os.IsNotExist(err) {

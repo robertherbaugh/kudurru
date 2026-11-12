@@ -127,6 +127,44 @@ func AuthenticateCurrentSessionWithClock(ctx context.Context, tx *sqlite.Command
 	return authenticateCurrent(ctx, tx, deps, proof, clock, true)
 }
 
+// AuthenticateIssuedTokenCurrent checks that the API token row id, which this
+// transaction has just staged for a forwarded token creation (D368), would
+// authenticate a caller holding the secret whose hash is secretHash, with
+// every current floor, and registers its validity through final commit. The
+// secret itself never reaches the primary: the follower that generated it
+// sends only the hash. It is no credential check of a caller: knowing a
+// stored hash grants nothing through any route.
+func AuthenticateIssuedTokenCurrent(ctx context.Context, tx *sqlite.CommandTx, deps Dependencies, id, secretHash string, clock func() time.Time) (auth.Principal, error) {
+	if clock == nil {
+		clock = time.Now
+	}
+	if err := ctx.Err(); err != nil {
+		return auth.Principal{}, err
+	}
+	v, err := prepareCurrent(ctx, tx, deps)
+	if err != nil {
+		return auth.Principal{}, err
+	}
+	defer v.Release()
+	now := clock().UTC()
+	if now.IsZero() || id == "" || len(secretHash) != 64 {
+		return auth.Principal{}, ErrCredentials
+	}
+	p, validity, err := v.verifyTokenHashWithValidity(id, true, secretHash, now)
+	if err != nil {
+		return auth.Principal{}, err
+	}
+	if err = tx.RequireCommitCheck(func(ctx context.Context) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return validity.validAt(clock().UTC())
+	}); err != nil {
+		return auth.Principal{}, err
+	}
+	return detachedPrincipal(p), nil
+}
+
 // authenticateCurrent verifies a cookie a second time, for its session ID,
 // only when the caller asks for that ID.
 func authenticateCurrent(ctx context.Context, tx *sqlite.CommandTx, deps Dependencies, proof Credential, clock func() time.Time, withSession bool) (auth.Principal, string, error) {

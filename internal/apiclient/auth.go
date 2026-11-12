@@ -45,8 +45,8 @@ type AuthStatus struct {
 	LocalLogin            any            `json:"localLogin"`
 	Providers             []AuthProvider `json:"providers"`
 	HasDefaultCredentials bool           `json:"hasDefaultCredentials"`
-	// Role is "follower" on an enrolled SQLite follower, which does not mint
-	// tokens; Primary names its primary. Both are empty otherwise.
+	// Role is "follower" on an enrolled SQLite follower; Primary names its
+	// primary. Both are empty otherwise.
 	Role    string `json:"role,omitempty"`
 	Primary string `json:"primary,omitempty"`
 }

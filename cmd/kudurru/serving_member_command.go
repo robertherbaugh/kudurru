@@ -30,7 +30,9 @@ type memberBlockingChange struct {
 // executeMemberCommand is the root-owned scoped member executor. The closed
 // domains are blocking.toggle, the canonical public object writes/deletes, the
 // zone convenience commands, local login, sign-out with own-session revocation,
-// the cluster settings patch and a forwarded RFC 2136 UPDATE; status, IAM and other writes refuse. Public
+// the cluster settings patch, the caller's own password change and personal
+// API tokens, and a forwarded RFC 2136 UPDATE; status, IAM administration and
+// other writes refuse. Public
 // forwarding is mounted separately.
 func (s *servingRuntime) executeMemberCommand(ctx context.Context, request *sqlite.MemberRequest, command clusterreplica.Command, emit func(context.Context, clusterreplica.Outcome) error) error {
 	if s == nil || ctx == nil || request == nil || emit == nil {
@@ -44,7 +46,7 @@ func (s *servingRuntime) executeMemberCommand(ctx context.Context, request *sqli
 		// transaction, with the command ID as its retry identity (D381).
 		return s.executeMemberUpdate(ctx, request, command, emit)
 	case command.Version == 2 && (command.Operation == memberBlockingToggle || command.Operation == memberObjectWrite || command.Operation == memberObjectDelete || command.Operation == memberZoneCommand ||
-		command.Operation == memberLogout || command.Operation == memberSettingsPatch):
+		command.Operation == memberLogout || command.Operation == memberSettingsPatch || command.Operation == memberPassword || command.Operation == memberTokens):
 	default:
 		return clusterreplica.ErrProtocol
 	}
@@ -128,6 +130,10 @@ func (s *servingRuntime) memberCommandDomain(operation string) rootMemberDomain 
 		return &rootMemberLogoutDomain{runtime: s}
 	case memberSettingsPatch:
 		return &rootMemberSettingsDomain{runtime: s}
+	case memberPassword:
+		return &rootMemberPasswordDomain{runtime: s}
+	case memberTokens:
+		return &rootMemberTokenDomain{runtime: s}
 	}
 	return &rootMemberBlockingDomain{runtime: s}
 }

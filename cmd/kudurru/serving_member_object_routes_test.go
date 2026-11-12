@@ -189,8 +189,9 @@ func TestMemberForwardRouteCoversEveryForwardedRoute(t *testing.T) {
 	}
 	// The API's follower table (D368) calls an operation forwarded exactly
 	// when it reaches one of these forwards, or has a forward of its own: the
-	// blocking switch, local login, the settings patch and the three session
-	// routes (memberOwnForwardRoute, tested below). The one observed route that the table
+	// blocking switch, local login, the settings patch, the three session
+	// routes, the password change and the two token routes
+	// (memberOwnForwardRoute, tested below). The one observed route that the table
 	// refuses instead is the DHCPScope batch deletion, whose kind no typed
 	// command carries.
 	var classified []string
@@ -202,7 +203,8 @@ func TestMemberForwardRouteCoversEveryForwardedRoute(t *testing.T) {
 		}
 	}
 	want := append(slices.DeleteFunc(slices.Clone(reviewed), func(route string) bool { return route == "POST /dhcpscopes:batchDelete" }), "POST /dns/blocking", "POST /auth/login",
-		"PATCH /settings", "POST /auth/logout", "POST /auth/logout/browser", "DELETE /auth/sessions/{id}")
+		"PATCH /settings", "POST /auth/logout", "POST /auth/logout/browser", "DELETE /auth/sessions/{id}",
+		"POST /auth/password", "POST /auth/tokens", "DELETE /auth/tokens/{id}")
 	slices.Sort(classified)
 	slices.Sort(want)
 	if !slices.Equal(classified, want) {
@@ -257,7 +259,14 @@ func TestMemberForwardRouteCoversEveryForwardedRoute(t *testing.T) {
 		{http.MethodGet, "/api/v1/auth/sessions/abc", false},
 		{http.MethodDelete, "/api/v1/auth/sessions", false},
 		{http.MethodDelete, "/api/v1/auth/sessions/abc/extra", false},
-		{http.MethodDelete, "/api/v1/auth/tokens/abc", false},
+		{http.MethodPost, "/api/v1/auth/password", true},
+		{http.MethodPost, "/api/v1/auth/tokens", true},
+		{http.MethodDelete, "/api/v1/auth/tokens/abc", true},
+		{http.MethodPut, "/api/v1/auth/password", false},
+		{http.MethodPost, "/api/v1/auth/password/extra", false},
+		{http.MethodDelete, "/api/v1/auth/tokens", false},
+		{http.MethodPost, "/api/v1/auth/tokens/abc", false},
+		{http.MethodPost, "/api/v1/auth/totp/setup", false},
 	} {
 		if got := memberOwnForwardRoute(tc.method, api.BasePath, tc.path); got != tc.want {
 			t.Errorf("memberOwnForwardRoute(%s %s) = %t, want %t", tc.method, tc.path, got, tc.want)

@@ -88,6 +88,11 @@ var followerOperations = map[string]FollowerClass{
 	"browserLogout": FollowerForwarded,
 	"revokeSession": FollowerForwarded,
 	"patchSettings": FollowerForwarded,
+	// The caller's own password (auth.password) and personal API tokens
+	// (auth.tokens).
+	"changePassword": FollowerForwarded,
+	"createToken":    FollowerForwarded,
+	"deleteToken":    FollowerForwarded,
 
 	// This node's own response cache, query log, resolver and DHCP server.
 	"flushCache":            FollowerLocal,
@@ -129,13 +134,10 @@ var followerOperations = map[string]FollowerClass{
 	// A follower cannot store its own log preference, and the primary's
 	// would not apply to it.
 	"patchNodeConfig": FollowerPrimary,
-	// Own password, tokens and authenticators.
-	"changePassword": FollowerPrimary,
-	"createToken":    FollowerPrimary,
-	"deleteToken":    FollowerPrimary,
-	"beginTOTP":      FollowerPrimary,
-	"confirmTOTP":    FollowerPrimary,
-	"disableTOTP":    FollowerPrimary,
+	// Own authenticators (TOTP enrollment and removal).
+	"beginTOTP":   FollowerPrimary,
+	"confirmTOTP": FollowerPrimary,
+	"disableTOTP": FollowerPrimary,
 	// Command-line OIDC login (browser OIDC login is a GET flow and is
 	// refused the same way by its request admission).
 	"prepareCLILogin": FollowerPrimary,
