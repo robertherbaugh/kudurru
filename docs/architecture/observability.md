@@ -632,9 +632,15 @@ sequenceDiagram
    per-span attribute slices are built only when a kept trace is read for
    export. A query that is not kept therefore costs two allocations, the
    `Trace` (about 5 KB) and the trace context of the upstream stage, plus
-   about 3 µs of span ids and clock reads (`TestTracedChainAllocations` and
+   about 3 µs of span ids and clock reads; a kept one costs about the same
+   on the query path, 3 to 4 µs (`TestTracedChainAllocations` and
    `BenchmarkTracedChain` in `internal/pipeline`, over every stage of the
-   order).
+   order). With tracing off a query allocates exactly what it did before
+   tracing existed: the chain, the cache stage, the upstream strategies
+   and the UDP listener benchmarks match the pre-tracing commit in
+   allocations and bytes, and `Request` keeps its 448-byte size class
+   (`TestRequestKeepsItsSizeClass`; the measurement is in
+   `docs/deploy/tracing.md`).
 5. **Links.** A kept trace's id goes on the query event (`trace_id` in
    `querylog.db`, `GET /queries`, the live tail and every sink) and on the
    `kudurru_dns_request_duration_seconds` observation as an OpenMetrics

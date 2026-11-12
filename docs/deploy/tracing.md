@@ -124,3 +124,27 @@ counted, never sent again. Watch:
 
 A failed batch also logs `trace export failed; the batch is dropped` with
 the reason, never the token.
+
+## What tracing costs a query
+
+Measured on the shared 8-core development machine (Go 1.26, five fresh
+processes per benchmark, medians; November 12, 2026). Absolute numbers
+depend on the CPU. The differences between them are what matter.
+
+| Tracing | Per query, through every pipeline stage | Allocations |
+|---|---|---|
+| off (`tracing.enabled: false`) | about 1.0 µs, 712 bytes: identical to a build without tracing | 12, identical to a build without tracing |
+| on, trace not kept (99.9 % of queries at the default `sampleRate`) | about 3 µs more, and about 4.9 KB more | 2 more: the trace and the upstream stage's trace context |
+| on, trace kept (sampled, failed, slow or continued from the edge) | about 3 to 4 µs more, and about 4.9 KB more | 2 more. The export itself runs on its own goroutine |
+
+With tracing off, nothing on the query path changes. Compared with the
+commit before tracing was added, the same benchmarks give the same
+allocations and bytes per query for the stage chain, the cache stage,
+every upstream strategy and the UDP listener. Their times differ only by
+run-to-run noise (within a few percent either way).
+`TestTracedChainAllocations` and `TestRequestKeepsItsSizeClass` guard
+this. With tracing on, most of the extra time is span ids and clock
+reads for the root, every stage and each upstream attempt. A node that
+answers 50,000 queries a second spends about 0.15 CPU cores more with
+tracing on. Benchmark: `go test -run '^$' -bench BenchmarkTracedChain
+-benchmem ./internal/pipeline/`.
