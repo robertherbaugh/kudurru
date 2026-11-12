@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -389,6 +390,25 @@ func TestSDKCleanupPlanDeletesOnlyLedgerProvenRowsOnUpsertOnlyZone(t *testing.T)
 	r, err := f.p.Apply(f.ctx, op)
 	if err != nil || !r.Complete || r.ContentHash != "" || len(r.ProviderIDs) != 0 {
 		t.Fatal("cleanup delete not confirmed", r, err)
+	}
+	// The ledger confirms a receipt only when the stored operation equals the
+	// one it saved, so every receipt must survive the store's JSON round
+	// trip unchanged. The same delete reserved again finds the record set
+	// already absent and is complete with no target facts, which must be a
+	// nil list, not an empty one the store would return as nil.
+	again, err := f.p.Apply(f.ctx, p.Intent(0, time.Now().Add(-time.Second)))
+	if err != nil || !again.Complete {
+		t.Fatal("delete of an absent record set not complete", again, err)
+	}
+	for _, receipt := range []kinds.Receipt{r, again} {
+		raw, err := json.Marshal(receipt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stored kinds.Receipt
+		if err := json.Unmarshal(raw, &stored); err != nil || !reflect.DeepEqual(stored, receipt) {
+			t.Fatalf("delete receipt changes in the store: %#v != %#v", stored, receipt)
+		}
 	}
 	op.Spec.Receipt = &r
 	if err = op.Validate(); err != nil {
