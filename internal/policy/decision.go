@@ -84,6 +84,8 @@ type ListInfo struct {
 	// groups is copied namespace-qualified scope from the accepted object.
 	// Empty permits every membership. Only private policy-set identities use it.
 	groups []string
+	// object is the accepted BlockList this entry was built from (D390).
+	object *v1alpha1.BlockList
 
 	// Name is the list's name in the compiled blocking.Snapshot.
 	Name string
@@ -99,6 +101,17 @@ type ListInfo struct {
 	// Inline is true when every source is inline: the user's own list,
 	// whose exact and suffix hits are reported as blocked_exact.
 	Inline bool
+}
+
+// BlockList returns the accepted BlockList the Index compiled this entry
+// from, so a request can bind transferred RPZ feeds to exactly the
+// configuration its own policy decision came from (D390). The object is
+// shared with the configuration snapshot: callers must not modify it.
+func (l *ListInfo) BlockList() *v1alpha1.BlockList {
+	if l == nil {
+		return nil
+	}
+	return l.object
 }
 
 // FromRequest returns the decision the identify stage stored in

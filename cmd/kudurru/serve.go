@@ -673,16 +673,33 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	reg.MustRegister(stub.NewCollector(stubs))
+	// RPZ feeds run on every replica of both drivers (D390). SQLite binds them
+	// into each complete serving bundle; Kubernetes binds them per query to the
+	// legacy policy decision (kubeRPZ) with the stored TSIG source (D314/D365).
 	var feeds *rpz.Manager
-	if sql != nil {
-		rpzCluster := sha256.Sum256(append([]byte("kudurru/rpz/cluster/v1:"), encKey...))
-		feeds, err = rpz.New(rpz.Options{
-			Cache: zc, Blobs: snapDB, ClusterID: fmt.Sprintf("%x", rpzCluster), Logger: logger,
-			CaptureKeys: tsigSource.captureAcquisition, KeysChanged: rings.Changes,
-			ReceiverForKeys: func(keys *dnsserver.StaticKeyring) rpz.Receiver {
-				return &secondary.TransferClient{Keyring: keys}
-			},
-		})
+	var kubeFeeds *kubeRPZ
+	rpzCluster := sha256.Sum256(append([]byte("kudurru/rpz/cluster/v1:"), encKey...))
+	rpzOptions := rpz.Options{
+		Cache: zc, Blobs: snapDB, ClusterID: fmt.Sprintf("%x", rpzCluster), Logger: logger,
+		ReceiverForKeys: func(keys *dnsserver.StaticKeyring) rpz.Receiver {
+			return &secondary.TransferClient{Keyring: keys}
+		},
+	}
+	switch {
+	case sql != nil:
+		rpzOptions.CaptureKeys, rpzOptions.KeysChanged = tsigSource.captureAcquisition, rings.Changes
+	case kubeTSIG != nil:
+		rpzOptions.CaptureZoneKeys, rpzOptions.KeysChanged = kubeTSIG.captureAcquisition, kubeTSIGManaged.changes
+	default:
+		// No stored source: the file keyring is the only provider.
+		rpzOptions.Keyring, rpzOptions.Receiver, rpzOptions.ReceiverForKeys = keyring, &secondary.TransferClient{Keyring: keyring}, nil
+	}
+	feeds, err = rpz.New(rpzOptions)
+	if err != nil {
+		return err
+	}
+	if sql == nil {
+		kubeFeeds, err = newKubeRPZ(zc, feeds, kubeTSIG.keys)
 		if err != nil {
 			return err
 		}
@@ -889,6 +906,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		checker.Register("blocking", bs.Ready)
 	}
 	bs.Toggle().SetOnChange(edgeFlush.BlockingChanged)
+	if kubeFeeds != nil {
+		bs.SetRPZCapture(kubeFeeds.capture)
+	}
 
 	// Block page (docs/deploy/blocking-page.md): the renderer always exists
 	// for the API preview; its listener runs when blockPage.enabled.
@@ -1523,14 +1543,16 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 	}
+	if feeds != nil {
+		if err := add("rpz", false, feeds.Run); err != nil {
+			return err
+		}
+	}
 	if complete != nil {
 		if err := add("serving", false, complete.Run); err != nil {
 			return err
 		}
 		if err := add("serving-writer", true, complete.RunWriter); err != nil {
-			return err
-		}
-		if err := add("rpz", false, feeds.Run); err != nil {
 			return err
 		}
 	} else {

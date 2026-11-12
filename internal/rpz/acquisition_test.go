@@ -240,3 +240,52 @@ func TestAcquisitionRPZManagerGateDeadlineRetainsOriginalSnapshot(t *testing.T) 
 		t.Fatal("held manager pin did not join")
 	}
 }
+
+// D390: the Kubernetes startup source captures per feed. It receives a
+// detached copy of the entry's own transfer configuration, so an unsigned feed
+// can be admitted while stored keys are pending, and the result is the entry's
+// acquisition exactly as with CaptureKeys.
+func TestAcquisitionZoneScopedCapture(t *testing.T) {
+	db := runtimeDB(t)
+	cache := newRuntime(t, &testReceiver{serial: 1}, db, runtimeList()).cache
+	if _, err := New(Options{Cache: cache, Blobs: db, ClusterID: "c", CaptureKeys: func() dnsserver.AcquisitionKeys { return nil },
+		CaptureZoneKeys: func(*public.DNSZone) dnsserver.AcquisitionKeys { return nil }, ReceiverForKeys: func(*dnsserver.StaticKeyring) Receiver { return nil }}); err == nil {
+		t.Fatal("both capture hooks were accepted")
+	}
+	if _, err := New(Options{Cache: cache, Blobs: db, ClusterID: "c", Receiver: &testReceiver{}, CaptureZoneKeys: func(*public.DNSZone) dnsserver.AcquisitionKeys { return nil }}); err == nil {
+		t.Fatal("zone capture without a receiver factory was accepted")
+	}
+	fx := newRuntime(t, &testReceiver{serial: 1}, runtimeDB(t), runtimeList())
+	keys, err := dnsserver.NewStaticKeyring()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var owner snapshotowner.Owner[dnsserver.StaticKeyring]
+	if err := owner.Publish(t.Context(), keys, func(*dnsserver.StaticKeyring, *dnsserver.StaticKeyring) bool { return false }); err != nil {
+		t.Fatal(err)
+	}
+	var seen []*public.DNSZone
+	fx.m.opts.Receiver = nil
+	fx.m.opts.CaptureZoneKeys = func(dz *public.DNSZone) dnsserver.AcquisitionKeys {
+		seen = append(seen, dz)
+		if dz.Spec.Secondary.TSIGKeyRef != "" {
+			return nil // stored keys pending
+		}
+		return acquisitionTestKeys{owner: &owner, cut: owner.Capture()}
+	}
+	fx.m.opts.ReceiverForKeys = func(k *dnsserver.StaticKeyring) Receiver {
+		if k != keys {
+			t.Error("factory received another provider")
+		}
+		return &testReceiver{serial: 1}
+	}
+	entries := map[string]*entry{}
+	fx.m.reconcile(t.Context(), entries, fx.cache.Snapshot())
+	e := entries[SourceIdentity(fx.list, 0)]
+	if e == nil || e.status.ConfigurationError != "" || e.acquisition.receiver == nil || e.credential != "unsigned" {
+		t.Fatal("unsigned feed was not admitted through the zone capture")
+	}
+	if len(seen) == 0 || seen[0].Spec.ZoneName != "policy.test." || seen[0] == e.dz {
+		t.Fatal("zone capture did not receive a detached copy of the entry's configuration")
+	}
+}

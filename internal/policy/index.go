@@ -474,7 +474,7 @@ func (b *builder) compileLists(bls []*v1alpha1.BlockList, lists *blocking.Snapsh
 		}
 		// Inline: every enabled source is inline or structured entries
 		// (disabled ones contribute nothing to the compiled list).
-		info := &ListInfo{Name: name, Object: id, Mode: mode, Response: bl.Spec.Response}
+		info := &ListInfo{Name: name, Object: id, Mode: mode, Response: bl.Spec.Response, object: bl}
 		for _, group := range bl.EffectiveClientGroupRefs() {
 			info.groups = append(info.groups, objectID(bl.Namespace, group))
 		}

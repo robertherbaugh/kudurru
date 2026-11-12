@@ -50,11 +50,18 @@ func (a acquisition) accept(ctx context.Context, cache func() error, publish fun
 	return a.keys.WithCurrent(ctx, cache, publish)
 }
 
-func (m *Manager) captureAcquisition() (acquisition, error) {
-	if m.opts.CaptureKeys == nil {
+func (m *Manager) captured() bool { return m.opts.CaptureKeys != nil || m.opts.CaptureZoneKeys != nil }
+
+func (m *Manager) captureAcquisition(dz *v1alpha1.DNSZone) (acquisition, error) {
+	if !m.captured() {
 		return acquisition{receiver: m.opts.Receiver}, nil
 	}
-	keys := m.opts.CaptureKeys()
+	var keys dnsserver.AcquisitionKeys
+	if m.opts.CaptureZoneKeys != nil {
+		keys = m.opts.CaptureZoneKeys(dz.DeepCopy())
+	} else {
+		keys = m.opts.CaptureKeys()
+	}
 	if keys == nil || keys.Keys() == nil || keys.Identity() == "" || !keys.Current() {
 		return acquisition{}, errors.New("rpz: immutable credential source is unavailable")
 	}
@@ -77,7 +84,7 @@ func (m *Manager) prepareReceiver(a *acquisition) error {
 // jobCredentialsMatch never captures a successor provider for a captured job.
 // The legacy path retains its existing mutable-provider comparison separately.
 func (m *Manager) jobCredentialsMatch(job transferJob) bool {
-	if m.opts.CaptureKeys == nil {
+	if !m.captured() {
 		return m.credentialsMatch(job.dz, job.credential)
 	}
 	if job.acquisition.keys == nil || !job.acquisition.current() {
@@ -102,7 +109,7 @@ func acquisitionCredential(dz *v1alpha1.DNSZone, keys dnsserver.TSIGKeyring) (st
 }
 
 func (m *Manager) captureEntry(dz *v1alpha1.DNSZone) (acquisition, string, error) {
-	a, err := m.captureAcquisition()
+	a, err := m.captureAcquisition(dz)
 	if err != nil {
 		return a, "", err
 	}
@@ -120,7 +127,7 @@ func (m *Manager) receiverFor(job transferJob) Receiver {
 	if job.acquisition.receiver != nil {
 		return job.acquisition.receiver
 	}
-	if m.opts.CaptureKeys != nil {
+	if m.captured() {
 		return nil
 	}
 	return m.opts.Receiver
