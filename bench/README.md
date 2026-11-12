@@ -51,8 +51,9 @@ The manual workflow remains available after registration. Both paths retain
 the original workloads and leave the baseline and limits unchanged.
 
 The workflow records measurements; a successful job is not release qualification.
-Cache/strategy and socket/persistence bounds below are calibrated. Measured
-candidate failures and final-source comparison remain open. Local sandbox
+Cache/strategy and socket/persistence bounds below are calibrated. The
+final-source comparison remains open; the closure rule below (D383) says how
+its one run is counted. Local sandbox
 measurements, matching CPU text or merely passing this label to the script
 cannot close the hosted gate.
 
@@ -201,6 +202,71 @@ blocking/zone and upstream, and failed two cache latency metrics: hit 191.1 vs
 All 811 five-value vectors and numeric outcomes remain retained. This confirms
 the pool's CPU variation and the need for comparisons within one VM; it does not
 erase earlier failures or qualify later source changes.
+
+Paired [run 42530394856](https://github.com/robertherbaugh/kudurru/actions/runs/42530394856)
+measured candidate `b2d197d8` on one EPYC 9454P VM. The historical reference
+itself failed two upstream slow-first/rtt_weighted limits there, so no relative
+comparison ran (`comparison_eligible: false`); the candidate also failed cache
+parallel hit (177.1 against 156.5 ns/op) and six upstream limits.
+
+Paired [run 42545184734](https://github.com/robertherbaugh/kudurru/actions/runs/42545184734)
+measured candidate `73d4b057` on one EPYC 9454P VM. The reference passed its
+gates, so the comparison was eligible, and it failed: seven blocking/zone, one
+cache and ten upstream relative regressions, plus the cache parallel-hit
+(173.6 against 156.48 ns/op) and six upstream absolute limits.
+
+Paired [run 42554034011](https://github.com/robertherbaugh/kudurru/actions/runs/42554034011)
+measured candidate `9963dec2` on one Ryzen 9 7950X3D VM and passed all three
+strict relative comparisons, all seven candidate absolute gates and the three
+reference gates. Cache hit was 105.7 against 110.8 ns, Set 191.3 against
+206.6 ns and parallel hit 30.09 against 28.87 ns (candidate against reference).
+The regex-1000 miss p99 was 871 ns against 8,376 ns, and 1,389 against
+11,390 ns in the failed EPYC run above, so the earlier adverse regex result is
+superseded on both CPUs. This is measured performance acceptance for
+`9963dec2` on that CPU only: the earlier failures stay retained, and the
+cache fix of D348 has not yet been measured on an EPYC VM.
+
+## Recorded runs
+
+| Run | Mode | Source | CPU | Outcome |
+| --- | --- | --- | --- | --- |
+| [42514599389](https://github.com/robertherbaugh/kudurru/actions/runs/42514599389) | candidate | `9cc2ae04` | EPYC 9454P | recorded; 40 commands and 7 shape/absolute checks passed; calibrates the socket/persistence bounds |
+| [42517712186](https://github.com/robertherbaugh/kudurru/actions/runs/42517712186) | reference | `0cc9565e` | EPYC 9224 | recorded; CNAME p99 ceiling failed (2,090 > 2,000 ns); calibrates the cache/strategy ceilings |
+| [42518988512](https://github.com/robertherbaugh/kudurru/actions/runs/42518988512) | paired | `92d5c9ee` | EPYC 9454P | failed: 1 blocking/zone and 8 cache regressions; upstream passed |
+| [42522360297](https://github.com/robertherbaugh/kudurru/actions/runs/42522360297) | paired | `91cb21bb` | Ryzen 9 7950X3D | failed: cache hit and Set latency; blocking/zone and upstream passed |
+| [42530394856](https://github.com/robertherbaugh/kudurru/actions/runs/42530394856) | paired | `b2d197d8` | EPYC 9454P | failed: reference failed its upstream limits (not comparable); candidate cache and upstream limits failed |
+| [42545184734](https://github.com/robertherbaugh/kudurru/actions/runs/42545184734) | paired | `73d4b057` | EPYC 9454P | failed: 18 relative regressions, cache and upstream absolute limits |
+| [42554034011](https://github.com/robertherbaugh/kudurru/actions/runs/42554034011) | paired | `9963dec2` | Ryzen 9 7950X3D | passed: 3 relative comparisons, 7 candidate and 3 reference absolute gates |
+
+Every paired run that passed blocking/zone and upstream ran on a Ryzen VM, and
+every EPYC paired run failed, twice with blocking, zone and upstream code that
+was byte-identical to a passing source. That points at host noise on the EPYC
+VMs, which a sequential recording (all reference samples, then all candidate
+samples) cannot cancel. It is an inference from identical-code runs, not a
+measured cause.
+
+## Closure rule for the mixed runner pool (D383)
+
+This rule is recorded before the final measurement, so its outcome is not
+interpreted after the fact:
+
+- The final head gets exactly one paired run, with the unchanged collector,
+  workloads, threshold, noise floors and limits. That run is the measurement of
+  record whatever CPU it draws. Its CPU model is recorded next to its outcome.
+- A pass closes the benchmark element of G23 for that head and that CPU model,
+  and says so: a pass on Ryzen does not show the EPYC results superseded.
+- A failure is retained as a failure on any CPU. The job is not run again to
+  draw another VM, no sample is replaced or selected, and no limit is raised or
+  recalibrated from the failing candidate. The failing metrics are diagnosed
+  from the reviewed vectors first. On EPYC, the diagnosis quotes
+  `BenchmarkGet/hit-parallel`, `BenchmarkStrategies/fast/strict`,
+  `BenchmarkLatency/stevenblack/miss` and `BenchmarkLookup100k/cname` p99
+  against the run 42545184734 values on `73d4b057`.
+- A code fix for a measured regression, or a change of method (for example
+  interleaving reference and candidate processes), is a new source or a new
+  decision followed by a new run; the failed run stays in this table.
+- A source change in a benchmarked package after the run voids it for the
+  final head. Documentation-only commits do not.
 
 
 ## Socket and persistence bounds
