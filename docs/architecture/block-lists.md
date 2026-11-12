@@ -399,7 +399,11 @@ reaches the policy only once the list resolver has compiled it: with the default
 filters only with the lists already loaded, so for that window (measured at
 about 250 ms after a restart) its RPZ feeds are not applied. Set
 `blocking.allowDegraded: false` to keep the node not ready until every
-referenced list, RPZ-only ones included, is in the policy. Leader changes do not affect feeds: the
+referenced list, RPZ-only ones included, is in the policy. Readiness only
+steers traffic: the listeners answer during the window either way, and on a
+restart from `local.db` without the apiserver the node was observed ready and
+serving the snapshot about 100 ms before the RPZ list was in the policy, so a
+query sent straight to the pod in that window is not filtered by the feed. Leader changes do not affect feeds: the
 manager is not a leader-only runnable. The shared dnsdist cache eligibility
 above is SQLite-only; on Kubernetes the edge cache is not flushed when a feed
 changes, so an edge-cached answer can outlive a feed update by its TTL.
