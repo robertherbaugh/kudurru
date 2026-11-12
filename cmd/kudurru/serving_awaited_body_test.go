@@ -23,12 +23,19 @@ import (
 // names a published digest that this node's list cache does not hold is
 // compiled empty without holding back the generation, and storing that body
 // with no store change at all (as a follower that pulls the body by digest
-// does) prepares the generation again so the list blocks. This fixture runs
-// no list fetcher, so no status write follows the body: only
-// DiskCache.OnAwaitedBody wired to Publisher.Wake in newServingRuntime can
-// trigger the new preparation.
+// does) prepares the generation again so the list blocks.
+//
+// The proof is by attribution, not by a deadline. The fixture runs no list
+// fetcher and has no identity provider (whose discovery retries about every
+// ten seconds prepare the generation again), so nothing else is due to
+// prepare. The test also subscribes to every other cause it can observe (a
+// store generation, an authority change, a provider dependency change) before
+// it stores the body and fails if any of them fired before the list blocked.
+// A publication that blocks with none of them fired can only come from
+// DiskCache.OnAwaitedBody wired to Publisher.Wake in newServingRuntime.
+// Without that wiring the test fails at its bound every time.
 func TestServingRuntimeWakesWhenAnAwaitedListBodyIsStored(t *testing.T) {
-	f := newServingCommandFixture(t)
+	f := newServingCommandFixtureOn(t, newServingRuntimeFixtureProviders(t, false))
 	const url = "https://lists.example.test/awaited.txt"
 	body := "awaited.example\n"
 	sum := sha256.Sum256([]byte(body))
@@ -83,6 +90,12 @@ func TestServingRuntimeWakesWhenAnAwaitedListBodyIsStored(t *testing.T) {
 	if _, blocked := selected(); blocked {
 		t.Fatal("a body this node does not hold was served")
 	}
+	// Subscribe before storing the body; a cause that fires from here on
+	// would make the next preparation unattributable.
+	generation := f.s.opts.Store.GenerationChanges()
+	authority := f.s.opts.Store.AuthorityChanges()
+	dependencies := f.s.providers.Changes()
+	before := f.s.publisher.Status().Served.Publication
 	if _, _, err := f.s.opts.Lists.Put(url, strings.NewReader(body), listfetcher.PutOptions{MaxSize: 1024}); err != nil {
 		t.Fatal(err)
 	}
@@ -96,4 +109,14 @@ func TestServingRuntimeWakesWhenAnAwaitedListBodyIsStored(t *testing.T) {
 		}
 	}
 	t.Logf("timing: blocked %s after the body was stored", time.Since(stored).Round(time.Millisecond))
+	for name, ch := range map[string]<-chan struct{}{"store generation": generation, "authority": authority, "provider dependencies": dependencies} {
+		select {
+		case <-ch:
+			t.Fatalf("a %s change fired before the list blocked, so the preparation that served the body cannot be attributed to the awaited-body wake", name)
+		default:
+		}
+	}
+	if after := f.s.publisher.Status().Served.Publication; after <= before {
+		t.Fatalf("publication %d did not advance past %d", after, before)
+	}
 }

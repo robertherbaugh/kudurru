@@ -36,7 +36,14 @@ type servingCommandFixture struct {
 
 func newServingCommandFixture(t *testing.T, beforeStart ...func(*servingRuntime)) *servingCommandFixture {
 	t.Helper()
-	f := &servingCommandFixture{s: newServingRuntimeFixture(t), now: time.Now().UTC().Truncate(time.Second)}
+	return newServingCommandFixtureOn(t, newServingRuntimeFixture(t), beforeStart...)
+}
+
+// newServingCommandFixtureOn runs the command fixture on a runtime fixture
+// the caller built (for example without its identity provider).
+func newServingCommandFixtureOn(t *testing.T, s *servingRuntime, beforeStart ...func(*servingRuntime)) *servingCommandFixture {
+	t.Helper()
+	f := &servingCommandFixture{s: s, now: time.Now().UTC().Truncate(time.Second)}
 	f.expires = f.now.Add(time.Hour)
 	var id string
 	f.token, id = tokens.Generate()

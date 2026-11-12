@@ -42,6 +42,16 @@ import (
 
 func newServingRuntimeFixture(t *testing.T) *servingRuntime {
 	t.Helper()
+	return newServingRuntimeFixtureProviders(t, true)
+}
+
+// newServingRuntimeFixtureProviders builds the runtime fixture, with or
+// without its identity provider. The provider's issuer never answers, so its
+// resource owner retries discovery about every ten seconds and each retry
+// prepares the serving generation again. A test that must attribute a
+// preparation to one cause builds the fixture without it.
+func newServingRuntimeFixtureProviders(t *testing.T, identityProvider bool) *servingRuntime {
+	t.Helper()
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +82,9 @@ func newServingRuntimeFixture(t *testing.T) *servingRuntime {
 		t.Fatal(err)
 	}
 	static := providerStaticFixture(t)
-	static.Config.Auth.IdentityProviders = []map[string]any{{"id": "corp", "issuer": "https://issuer.example", "clientID": "browser", "clientSecretFile": filepath.Join(t.TempDir(), "absent-secret")}}
+	if identityProvider {
+		static.Config.Auth.IdentityProviders = []map[string]any{{"id": "corp", "issuer": "https://issuer.example", "clientID": "browser", "clientSecretFile": filepath.Join(t.TempDir(), "absent-secret")}}
+	}
 	lic, err := license.New(license.Options{})
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +114,9 @@ func newServingRuntimeFixture(t *testing.T) *servingRuntime {
 		}
 	})
 	// The constructor detaches both host configuration and local provider specs.
-	static.Config.Auth.IdentityProviders[0]["issuer"] = "https://mutated.example"
+	if identityProvider {
+		static.Config.Auth.IdentityProviders[0]["issuer"] = "https://mutated.example"
+	}
 	return s
 }
 
