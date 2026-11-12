@@ -20,6 +20,9 @@ const (
 	DefaultBatchSize     = 256
 	DefaultFlushInterval = 2 * time.Second
 	DefaultTimeout       = 10 * time.Second
+	// DefaultTailLimit caps the traces kept only by the tail rule (failed
+	// or slow, not head-sampled) per second.
+	DefaultTailLimit = 100
 )
 
 // RootName is the name of the server span of every query.
@@ -34,12 +37,18 @@ type Exporter interface {
 
 // Config configures a Tracer.
 type Config struct {
-	// Ratio is the head sampling ratio for queries that do not continue a
-	// sampled or unsampled caller trace, from 0 to 1.
+	// Ratio is the head sampling ratio, from 0 to 1, for queries that do
+	// not continue an authenticated edge peer's trace. A continued edge
+	// trace is always kept; the option's flags are not used.
 	Ratio float64
 	// Slow keeps every query that took at least this long; zero disables
 	// the slow rule.
 	Slow time.Duration
+	// TailLimit caps, per second, the traces kept only because the query
+	// failed or was slow, so a client that asks for failing or slow names
+	// cannot force an export per query (DefaultTailLimit when zero, no cap
+	// when negative). The excess counts as tail_limited.
+	TailLimit int
 	// OptionCode is the EDNS option code of TRACEPARENT (DefaultOptionCode
 	// when zero).
 	OptionCode uint16
@@ -70,6 +79,13 @@ type Tracer struct {
 	timeout    time.Duration
 	logger     *slog.Logger
 	metrics    *metrics
+	tailLimit  int
+	now        func() time.Time
+
+	// tailMu guards the tail rule's one-second window.
+	tailMu  sync.Mutex
+	tailSec int64
+	tailN   int
 
 	queue chan *Trace
 	mu    sync.Mutex
@@ -97,6 +113,10 @@ func New(c Config) (*Tracer, error) {
 		slow: c.Slow, code: c.OptionCode, accept: c.AcceptIncoming, exporter: c.Exporter,
 		batch: c.BatchSize, flush: c.FlushInterval, timeout: c.Timeout, logger: c.Logger,
 		stop: make(chan struct{}), done: make(chan struct{}),
+		tailLimit: c.TailLimit, now: time.Now,
+	}
+	if t.tailLimit == 0 {
+		t.tailLimit = DefaultTailLimit
 	}
 	if t.code == 0 {
 		t.code = DefaultOptionCode
@@ -156,8 +176,9 @@ func (t *Tracer) ratioSampled(id TraceID) bool {
 // with AcceptIncoming, does a well-formed option make this query part of
 // the caller's trace, and such a trace is always kept: the peer sent the
 // option because it traces the query (parent-based sampling where the
-// option's presence is the parent's decision). Every other query starts a
-// new trace that the ratio sampler decides. carried reports whether the query held the option.
+// option's presence is the parent's decision; its TRACEFLAGS are not
+// used). Every other query starts a new trace that the ratio sampler
+// decides. carried reports whether the query held the option.
 func (t *Tracer) Begin(m *dns.Msg, trusted bool, at time.Time) (tr *Trace, carried bool) {
 	if t == nil {
 		return nil, false
@@ -192,6 +213,25 @@ func (t *Tracer) Begin(m *dns.Msg, trusted bool, at time.Time) (tr *Trace, carri
 	}
 	tr.Start(0, RootName, KindServer, at)
 	return tr, ex.Present
+}
+
+// allowTail reports whether one more trace may be kept by the tail rule
+// in the current second.
+func (t *Tracer) allowTail() bool {
+	if t.tailLimit < 0 {
+		return true
+	}
+	sec := t.now().Unix()
+	t.tailMu.Lock()
+	defer t.tailMu.Unlock()
+	if sec != t.tailSec {
+		t.tailSec, t.tailN = sec, 0
+	}
+	if t.tailN >= t.tailLimit {
+		return false
+	}
+	t.tailN++
+	return true
 }
 
 func (t *Tracer) offer(tr *Trace) {

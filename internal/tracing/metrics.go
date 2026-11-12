@@ -23,6 +23,9 @@ const (
 	resultQueueFull = "queue_full"
 	resultFailed    = "export_failed"
 	resultShutdown  = "shutdown"
+	// resultTailLimited: failed or slow, but the per-second tail cap was
+	// reached.
+	resultTailLimited = "tail_limited"
 )
 
 type metrics struct {
@@ -37,7 +40,7 @@ func newMetrics(reg prometheus.Registerer, queue func() float64) (*metrics, erro
 	}, []string{"result"})
 	traces := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "kudurru_tracing_traces_total",
-		Help: "Traced queries, by result: not_kept (neither sampled, failed nor slow), exported, queue_full (dropped because the export queue was full), export_failed (the collector refused or did not answer the batch) or shutdown.",
+		Help: "Traced queries, by result: not_kept (neither sampled, failed nor slow), tail_limited (failed or slow, but over the per-second cap on such traces), exported, queue_full (dropped because the export queue was full), export_failed (the collector refused or did not answer the batch) or shutdown.",
 	}, []string{"result"})
 	length := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "kudurru_tracing_queue_length",
@@ -47,7 +50,7 @@ func newMetrics(reg prometheus.Registerer, queue func() float64) (*metrics, erro
 	for _, r := range []string{resultAccepted, resultUntrusted, resultIgnored, resultMalformed} {
 		m.parent[r] = parent.WithLabelValues(r)
 	}
-	for _, r := range []string{resultNotKept, resultExported, resultQueueFull, resultFailed, resultShutdown} {
+	for _, r := range []string{resultNotKept, resultTailLimited, resultExported, resultQueueFull, resultFailed, resultShutdown} {
 		m.traces[r] = traces.WithLabelValues(r)
 	}
 	if reg != nil {

@@ -416,9 +416,12 @@ var stageSpanNames = func() map[string]string {
 }()
 
 // failed reports the statuses that make a trace kept by the tail rule
-// (D382): the answer is SERVFAIL because resolution failed. Refusals and
-// drops are policy, not failures, and a flood of them must not turn into a
-// flood of exported traces.
+// (D382): the answer is SERVFAIL because resolution failed (upstream
+// failure or timeout, DNSSEC bogus, an unsynced zone). Every other status
+// is not a failure even with a SERVFAIL rcode (the drain answer for the
+// health names, a cached SERVFAIL); refusals, rate-limit and control
+// drops are policy, and a flood of them must not turn into a flood of
+// exported traces.
 func (s Status) failed() bool {
 	switch s {
 	case StatusServfailUpstream, StatusTimeoutUpstream, StatusDNSSECBogus, StatusServfailUnsynced:
@@ -430,9 +433,11 @@ func (s Status) failed() bool {
 // finishTrace decides whether the query's trace is kept, adds the root
 // attributes a kept trace exports and hands it to the tracer.
 func (c *Chain) finishTrace(t *tracing.Trace, req *Request, resp *Response, err error, latency time.Duration) {
+	// The status decides, not the rcode: the ingress stage answers the
+	// health names SERVFAIL (StatusSpecialDomain) while the node drains,
+	// and a cached SERVFAIL is a cache hit; neither is a failure to keep.
 	dropped := errors.Is(err, ErrDrop)
-	failed := (err != nil && !dropped) || (resp != nil && resp.Status.failed()) ||
-		(err == nil && resp != nil && resp.Msg != nil && resp.Msg.Rcode == dns.RcodeServerFailure)
+	failed := (err != nil && !dropped) || (resp != nil && resp.Status.failed())
 	if t.Decide(latency, failed) {
 		q := req.Question()
 		names, clients := false, false

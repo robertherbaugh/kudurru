@@ -611,9 +611,14 @@ sequenceDiagram
    queries it traces, so its presence is the parent's decision; dnsdist
    2.1.3 leaves the flags octet 00), if the head sampler picked it
    (`tracing.sampleRate` per million, OpenTelemetry's trace-id ratio rule),
-   if it failed (SERVFAIL from upstream failure or timeout, DNSSEC bogus,
-   unsynced zone, a pipeline error; refusals and drops do not count) or if
-   it took at least `tracing.slowThreshold` (250 ms). Every query is recorded
+   if it failed (the status says SERVFAIL from upstream failure or timeout,
+   DNSSEC bogus or an unsynced zone, or a pipeline error; the status
+   decides, not the rcode, so the drain answer for the health names and a
+   cached SERVFAIL do not count, nor do refusals and drops) or if it took
+   at least `tracing.slowThreshold` (250 ms). Traces kept only by those two
+   tail rules are capped at 100 per second per node, so a client asking
+   for failing or slow names cannot force an export per query; the excess
+   counts as `kudurru_tracing_traces_total{result="tail_limited"}`. Every query is recorded
    while tracing is on, so the tail rule needs no second pass. Spans and
    attributes are recorded into arrays inline in the `Trace` (16 spans, 32
    attributes: the root, every stage and a few upstream attempts), and the
@@ -659,7 +664,7 @@ never client addresses or query names.
 | Blocking | `kudurru_blocking_enabled`, `kudurru_blockpage_requests_total` |
 | Query log | `kudurru_querylog_events_total`, `kudurru_querylog_dropped_total{stage,sink}`, `kudurru_querylog_db_bytes`, `kudurru_querylog_write_duration_seconds` |
 | Additional query-log sinks | `kudurru_sink_sent_total{sink}`, `kudurru_sink_errors_total{sink}` (failed attempts to open, write, flush or close), `kudurru_sink_queue_length{sink}`, `kudurru_sink_last_success_timestamp_seconds{sink}`; one series per configured `querylog.sinks` name, removed with the sink. `GET /querylog/sinks` returns the same state of the answering node (`SinkHost.Status`) |
-| Tracing | `kudurru_tracing_traceparent_total{result}` (accepted, untrusted, ignored, malformed), `kudurru_tracing_traces_total{result}` (not_kept, exported, queue_full, export_failed, shutdown), `kudurru_tracing_queue_length`; kept traces add a `trace_id` exemplar to `kudurru_dns_request_duration_seconds` |
+| Tracing | `kudurru_tracing_traceparent_total{result}` (accepted, untrusted, ignored, malformed), `kudurru_tracing_traces_total{result}` (not_kept, tail_limited, exported, queue_full, export_failed, shutdown), `kudurru_tracing_queue_length`; kept traces add a `trace_id` exemplar to `kudurru_dns_request_duration_seconds` |
 | API | `kudurru_api_requests_total`, `kudurru_api_request_duration_seconds` |
 | Edge and VIP | `kudurru_edge_renders_total`, `kudurru_edge_dnsdist_restarts_total`, `kudurru_edge_backend_up`, `kudurru_vip_master` (on the supervisors' own ports) |
 

@@ -102,9 +102,12 @@ type Trace struct {
 	mu       sync.Mutex
 	finished bool
 	kept     bool
-	dropped  int
-	spans    []Span
-	attrs    []spanAttr
+	// limited is set when the tail rule would have kept the trace but
+	// the per-second cap was reached.
+	limited bool
+	dropped int
+	spans   []Span
+	attrs   []spanAttr
 	// built is set once Spans has moved attrs into the spans.
 	built       bool
 	inline      [inlineSpans]Span
@@ -290,16 +293,22 @@ func (t *Trace) End(ref SpanRef, at time.Time, failure string) {
 }
 
 // Decide makes the keep decision for the answered query (D382): a trace
-// is kept when the head sampler picked it, when the query failed, or when
-// it took at least the slow threshold. It does not finish the trace, so the
-// caller can still add the attributes a kept trace exports.
+// is kept when it is sampled (the head sampler picked it, or it continues
+// an authenticated edge peer's trace), and otherwise when the query failed
+// or took at least the slow threshold, within the tracer's per-second tail
+// cap. It does not finish the trace, so the caller can still add the
+// attributes a kept trace exports.
 func (t *Trace) Decide(latency time.Duration, failed bool) bool {
 	if t == nil {
 		return false
 	}
-	keep := t.sampled || failed || (t.tracer.slow > 0 && latency >= t.tracer.slow)
+	keep, limited := t.sampled, false
+	if !keep && (failed || (t.tracer.slow > 0 && latency >= t.tracer.slow)) {
+		keep = t.tracer.allowTail()
+		limited = !keep
+	}
 	t.mu.Lock()
-	t.kept = keep
+	t.kept, t.limited = keep, limited
 	t.mu.Unlock()
 	return keep
 }
@@ -322,11 +331,14 @@ func (t *Trace) Finish(end time.Time) {
 		}
 	}
 	t.finished = true
-	kept := t.kept
+	kept, limited := t.kept, t.limited
 	t.mu.Unlock()
-	if kept {
+	switch {
+	case kept:
 		t.tracer.offer(t)
-	} else {
+	case limited:
+		t.tracer.metrics.trace(resultTailLimited, 1)
+	default:
 		t.tracer.metrics.unkept()
 	}
 }

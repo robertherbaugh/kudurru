@@ -35,8 +35,15 @@ A query's trace is kept and exported when any of these holds:
   only on the trace id, like OpenTelemetry's TraceIdRatioBased sampler);
 - it failed: SERVFAIL because the upstreams failed or timed out, DNSSEC
   bogus, an unsynced zone. Refused and dropped queries are policy, not
-  failures, and are not kept for that reason;
+  failures, and are not kept for that reason; neither are a cached SERVFAIL
+  or the SERVFAIL the health names get while a node drains;
 - it took at least `slowThreshold`.
+
+Traces kept only because they failed or were slow are capped at 100 per
+second per node, so a client that asks for failing or slow names cannot
+make kudurru export a trace per query; the rest count as
+`kudurru_tracing_traces_total{result="tail_limited"}`. Sampled and
+edge-continued traces are not capped.
 
 A kept trace's id appears in the query log (`trace_id` in the Queries API,
 the live tail and every query-log sink) and as an exemplar on
@@ -112,6 +119,7 @@ counted, never sent again. Watch:
 | `kudurru_tracing_traces_total{result="queue_full"}` | dropped because the collector could not keep up |
 | `kudurru_tracing_traces_total{result="export_failed"}` | in batches the collector refused or did not answer |
 | `kudurru_tracing_traces_total{result="not_kept"}` | traced queries neither sampled, failed nor slow |
+| `kudurru_tracing_traces_total{result="tail_limited"}` | failed or slow, but over the cap of 100 such traces per second |
 | `kudurru_tracing_queue_length` | kept traces waiting |
 
 A failed batch also logs `trace export failed; the batch is dropped` with
