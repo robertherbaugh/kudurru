@@ -707,7 +707,11 @@ after its first sync and then at most every 30 s when something changed. A
 pod that restarts while the apiserver is down can answer forwarded names,
 cached names, and primary zones from an identified copy matching the
 independently provisioned host pin. Missing pins or unidentified/foreign
-copies do not admit saved serving state.
+copies do not admit saved serving state. RPZ feeds are the exception to
+"forwarding continues": an offline restart cannot read stored TSIG keys, so a
+signed feed fails closed, and a copy older than `maxAge` fails every selected
+feed closed; in both cases clients whose policy selects the feed get SERVFAIL
+for every recursive query ([block lists](block-lists.md#transferred-rpz-foundation)).
 
 Startup reads for the policy namespace, default-object seeding and identity
 caches have bounded deadlines. An apiserver availability failure defers

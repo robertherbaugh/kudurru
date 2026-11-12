@@ -374,7 +374,13 @@ acquires feeds with the stored TSIG startup source and its hot replacement
 (D314/D365): an unsigned feed is admitted at once, a signed one once the stored
 keys are prepared, and a ring replacement wakes the manager like a SQLite key
 change. Accepted copies persist in `local.db`, so a restart reuses an unexpired
-copy without contacting the primary or the apiserver. The policy index there
+copy without contacting the primary. Only an unsigned feed is reused without the
+apiserver: a signed feed needs the stored TSIG keys, which a restarting pod reads
+from the apiserver with no local fallback. A pod that restarts while the
+apiserver is unreachable therefore leaves every signed feed unbound, and every
+recursive query from a client whose policy selects it answers SERVFAIL, until
+the pod is restarted with the apiserver reachable (a running pod keeps its ring
+through an outage). The policy index there
 comes from the zone cache rather than a complete bundle, so the blocking stage
 selector (`kubeRPZ` in `cmd/kudurru`) binds per request: it takes the
 BlockList objects of the request's own policy decision (`policy.ListInfo`),
@@ -384,7 +390,10 @@ the ring changes, and every input is an in-memory atomic read: no store read,
 no leader and no network work on the DNS path. A feed that is missing, rotated
 to a new credential, unbound or expired stays selected as an unavailable
 sentinel and fails closed (SERVFAIL with EDE "not ready"); a stale or unsynced
-configuration snapshot does the same. Like every other list, an RPZ-only list
+configuration snapshot does the same. Unlike primary zones, where a `local.db`
+snapshot older than `store.kube.snapshot.maxAge` stops only authoritative
+answers, this stops forwarding too for every client whose policy selects an RPZ
+list, unsigned feeds with an unexpired copy included. Like every other list, an RPZ-only list
 reaches the policy only once the list resolver has compiled it: with the default
 `blocking.allowDegraded: true` a just-started node answers while lists load and
 filters only with the lists already loaded, so for that window (measured at

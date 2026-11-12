@@ -140,6 +140,15 @@ the snapshot is older than `store.kube.snapshot.maxAge` (24 h), names under
 primary zones answer SERVFAIL (never NXDOMAIN) while forwarding continues.
 A pod that never synced and has no snapshot answers SERVFAIL.
 
+**RPZ feeds during an outage.** A running pod keeps enforcing its RPZ feeds
+from memory. A pod that restarts while the apiserver is unreachable reuses an
+unexpired copy of an unsigned feed from `local.db`, but cannot read the stored
+TSIG keys, so a signed feed stays unbound and every recursive query from a
+client whose policy selects it answers SERVFAIL (EDE "not ready") until the pod
+is restarted with the apiserver reachable. Once the snapshot is older than
+`maxAge`, every recursive query from a client whose policy selects any RPZ list
+answers SERVFAIL as well, not only names under primary zones.
+
 **Provision the independent cluster identity before an outage.** In a trusted
 Kubernetes context, read the nonsecret UID of the `kube-system` namespace:
 
@@ -217,7 +226,9 @@ but not rescheduling.
    snapshot and answers SERVFAIL until the apiserver is back.
 3. If the outage will exceed `maxAge`, raise it in `config.node` before it
    expires (`store: {kube: {snapshot: {maxAge: 72h}}}`); this rolls the pods,
-   so only do it with `persistence.local.enabled`.
+   so only do it with `persistence.local.enabled`. A rolled pod cannot read
+   stored TSIG keys, so clients under a policy with a signed RPZ feed get
+   SERVFAIL from it until the apiserver is back and the pod restarts.
 4. When the apiserver returns, the watches resync, the snapshot is swapped
    out and `kudurru_store_snapshot_serving` drops to 0. Leader-only work
    (status, serials, list downloads, NOTIFY) resumes on the Lease holder.
