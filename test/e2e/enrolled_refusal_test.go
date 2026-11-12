@@ -40,6 +40,7 @@ func enrolledFollowerContract(t *testing.T, primary, follower *staticProcessClie
 	if onFollower.Primary != primaryName || onFollower.Leader != primaryName || onFollower.Node != followerName || !onFollower.PrimaryRequired || onFollower.ReadOnly ||
 		!slices.Contains(onFollower.ForwardedOperations, "apply") || !slices.Contains(onFollower.ForwardedOperations, "login") ||
 		!slices.Contains(onFollower.LocalOperations, "flushCache") || !slices.Contains(onFollower.ForwardedOperations, "patchSettings") || !slices.Contains(onFollower.ForwardedOperations, "logout") ||
+		!slices.Contains(onFollower.ForwardedOperations, "changePassword") || !slices.Contains(onFollower.ForwardedOperations, "createToken") || !slices.Contains(onFollower.ForwardedOperations, "deleteToken") ||
 		slices.Contains(onFollower.ForwardedOperations, "patchNodeConfig") {
 		t.Fatalf("follower process does not report its role, primary and capability: %+v", onFollower)
 	}
@@ -62,14 +63,12 @@ func enrolledFollowerContract(t *testing.T, primary, follower *staticProcessClie
 		method, path string
 		body         any
 	}{
-		{http.MethodPost, "/auth/password", map[string]any{"currentPassword": "refused-password-1", "newPassword": "refused-password-2"}},
 		{http.MethodPost, "/allowlist", map[string]any{"domain": "refused-allow.e2e.test"}},
 		{http.MethodPost, "/domains/allow/exact", map[string]any{"domains": []string{"refused-domain.e2e.test"}}},
 		{http.MethodPost, "/blocklists/default/refused-list/refresh", nil},
 		{http.MethodPost, "/zones/e2e-test/notify", nil},
 		{http.MethodPost, "/iam/users", map[string]any{"name": "refused-user", "password": "refused-user-password-1"}},
 		{http.MethodPost, "/iam/rolebindings", map[string]any{}},
-		{http.MethodPost, "/auth/tokens", map[string]any{"description": "refused-token"}},
 		{http.MethodPost, "/auth/totp/setup", map[string]any{}},
 		{http.MethodPost, "/tsigkeys", map[string]any{"name": "refused-key."}},
 		{http.MethodPost, "/integrations/default/refused/sync", nil},
@@ -100,7 +99,6 @@ func enrolledFollowerContract(t *testing.T, primary, follower *staticProcessClie
 	}
 	absent("/allowlist", "refused-allow.e2e.test")
 	absent("/iam/users", "refused-user")
-	absent("/auth/tokens?all=true", "refused-token")
 
 	// Node-local: the follower flushes its own response cache.
 	var flushed api.FlushResult

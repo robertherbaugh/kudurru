@@ -373,6 +373,10 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	// created ends on both.
 	enrolledForwardedSettings(t, apiA, apiB, b.Name, "33s", "34s")
 	enrolledForwardedSignOut(t, fresh, freshJar, apiB.base, apiA.base)
+	// The own password and personal tokens are forwarded too: a must-change
+	// user changes the password through the follower, and `kudurru login
+	// --username` against the follower stores a working token.
+	enrolledForwardedSelfService(t, bin, apiA, apiB)
 	// The follower names its role and primary, answers every mutation that it
 	// does not forward with one typed refusal and runs node-local commands
 	// itself (D368).
