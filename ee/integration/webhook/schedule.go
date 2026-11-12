@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"slices"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/ee/integration/host"
@@ -32,6 +33,13 @@ var _ host.RoleProvider = (*provider)(nil)
 // roles from it: a peer may be an inventory source, an event sink, both or
 // neither. The publisher role needs a records peer and configured domains
 // (D380).
+//
+// A records-only peer without domains has no role at all, and is refused
+// here rather than in Check: an ordinary lease asks for roles before it
+// schedules anything and ends as ProvisionFailed, while a Delete cleanup,
+// which provisions and checks but never schedules or starts, can still
+// read the peer and remove the record sets this instance's registry rows
+// claim after every domain was removed.
 func (p *provider) Roles() (host.Roles, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -40,6 +48,9 @@ func (p *provider) Roles() (host.Roles, error) {
 	}
 	if p.changed {
 		return host.Roles{}, host.ErrFenced
+	}
+	if len(p.records.domains) == 0 && slices.Equal(p.advertisement.declaration.Capabilities, []string{"records"}) {
+		return host.Roles{}, host.ErrUnsupported
 	}
 	return host.Roles{Publisher: p.advertisement.has("records") && len(p.records.domains) != 0, Observer: p.advertisement.has("clients"), Hook: p.advertisement.has("hooks") && len(p.hmacKey) != 0}, nil
 }

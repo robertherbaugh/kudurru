@@ -80,6 +80,18 @@ func TestPublicConstructorPeerCapabilities(t *testing.T) {
 				t.Fatal(err)
 			}
 			_, err := p.Check(t.Context())
+			if !tc.accepted && tc.capability == "records" {
+				// A records-only peer without domains passes Check, so a Delete
+				// cleanup can still remove what it owns, and is refused by
+				// Roles, which every ordinary lease asks before it schedules.
+				if err != nil {
+					t.Fatal("records-only peer failed the identity check", err)
+				}
+				if _, err := p.(*provider).Roles(); !errors.Is(err, host.ErrUnsupported) {
+					t.Fatal("records-only peer without domains got roles", err)
+				}
+				return
+			}
 			if !tc.accepted {
 				if !errors.Is(err, host.ErrUnsupported) {
 					t.Fatal("unmounted peer capability did not refuse", err)

@@ -227,8 +227,10 @@ func (p *provider) Check(ctx context.Context) (integration.Status, error) {
 		return integration.Status{}, host.ErrUnsupported
 	}
 	// Configured domains need a records peer whose filter covers each of
-	// them. A records peer without domains has nothing to publish, so a peer
-	// that offers nothing else is refused (D380).
+	// them. A records-only peer without domains has nothing to publish, but
+	// Roles refuses it, not Check: a Delete cleanup provisions and checks the
+	// instance without asking for roles, and must still remove the record
+	// sets it owns after every domain was removed (D380).
 	if len(p.records.domains) != 0 {
 		if !a.has("records") {
 			return integration.Status{}, host.ErrUnsupported
@@ -238,8 +240,6 @@ func (p *provider) Check(ctx context.Context) (integration.Status, error) {
 				return integration.Status{}, host.ErrUnsupported
 			}
 		}
-	} else if slices.Equal(a.declaration.Capabilities, []string{"records"}) {
-		return integration.Status{}, host.ErrUnsupported
 	}
 	raw, err := json.Marshal(a.declaration)
 	if err != nil || p.echo(raw) {

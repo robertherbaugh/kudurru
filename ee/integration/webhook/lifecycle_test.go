@@ -239,7 +239,14 @@ func TestLifecycleUnsupportedCapabilitiesAndSecretEchoRefuse(t *testing.T) {
 				extra["hmacKey"] = key
 			}
 			p, _ := lifecycleProvider(t, server, &lifecycleHost{}, extra)
-			if _, err := p.Check(t.Context()); err == nil {
+			_, err := p.Check(t.Context())
+			if tc.capability == "records" {
+				// A records-only peer without domains is refused by Roles,
+				// which every ordinary lease asks before scheduling; Check
+				// passes so a Delete cleanup can still run (D380).
+				_, err = p.Roles()
+			}
+			if err == nil {
 				t.Fatal("unsupported or credential-bearing peer activated")
 			}
 			if len(p.Actions()) != 0 || len(p.Topics()) != 0 {

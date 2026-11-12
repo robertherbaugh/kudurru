@@ -287,3 +287,60 @@ func TestIntegrationWebhookMountedRecordNarrowedDomains(t *testing.T) {
 		})
 	}
 }
+
+// Removing every domain ends publication (D380): against a records-only
+// peer the instance has no role, so its lease ends as ProvisionFailed and
+// no sync reads or writes the peer; the record sets its registry rows claim
+// stay there, as under Retain. A Delete cleanup still removes them, because
+// it provisions and checks the instance without asking for roles, and it
+// leaves rows the instance does not own untouched.
+func TestIntegrationWebhookMountedRecordDomainsRemovedCleanup(t *testing.T) {
+	f, peer := webhookRecordsFixtureFor(t, func(d *public.Integration) {
+		d.Spec.DeletionPolicy = public.IntegrationDeletionDelete
+		d.Spec.Resync = metav1.Duration{Duration: time.Second}
+	}, public.Endpoint{DNSName: "web.example.", RecordType: "A", RecordTTL: 300, Targets: []string{"192.0.2.80"}})
+	peer.put(t, &externaldns.Endpoint{DNSName: "manual.example", RecordType: "A", RecordTTL: 300, Targets: []string{"198.51.100.7"}})
+	published := peer.rows(t)
+
+	stored := integrationStored(t, f.s, f.d)
+	stored.Spec.Webhook.Domains = nil
+	f.d = integrationApply(t, f.s, stored)
+	owner := integrationOwner(f.s, f.d)
+	awaitServingRuntime(t, f.s, func() bool {
+		current := integrationStored(t, f.s, f.d)
+		for _, status := range f.s.integrations.host.Statuses() {
+			if status.Owner == owner && current != nil && status.Revision == current.ResourceVersion {
+				return status.Reason == "ProvisionFailed"
+			}
+		}
+		return false
+	})
+	posts := peer.postCount()
+	// Several resync intervals pass without a change at the peer.
+	time.Sleep(3 * time.Second)
+	if peer.postCount() != posts || !mapsEqual(published, peer.rows(t)) {
+		t.Fatal("an instance without domains changed the peer", peer.postCount()-posts, peer.rows(t))
+	}
+	if rows := integrationRows(t, f.s, kinds.KindIntegrationLedger); len(rows) != 1 {
+		t.Fatal("removing the domains forgot the ledger", len(rows))
+	}
+
+	integrationRequestDelete(t, f.s, f.d)
+	f.s.integrations.host.Wake()
+	awaitServingRuntime(t, f.s, func() bool { return integrationStored(t, f.s, f.d) == nil })
+	rows := peer.rows(t)
+	if rows["web.example/A"] != nil || rows["_kudurru-a.web.example/TXT"] != nil {
+		t.Fatal("cleanup left the owned rows", rows)
+	}
+	if rows["manual.example/A"] == nil || len(rows) != 1 {
+		t.Fatal("cleanup changed rows the instance does not own", rows)
+	}
+	if peer.postCount() != posts+1 {
+		t.Fatal("cleanup took other than one change", peer.postCount()-posts)
+	}
+	for _, kind := range []store.Kind{kinds.KindIntegrationLedger, kinds.KindIntegrationOperation} {
+		if n := len(integrationRows(t, f.s, kind)); n != 0 {
+			t.Fatal("rows remain for a finalized instance", kind, n)
+		}
+	}
+}
