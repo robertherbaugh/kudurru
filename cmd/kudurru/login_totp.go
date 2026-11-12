@@ -196,11 +196,3 @@ func loginStageError(stage string, err error) error {
 	}
 	return fmt.Errorf("%s: response unavailable or invalid; outcome may be unknown; no automatic retry", stage)
 }
-
-// followerLoginRefusal is the answer of `kudurru login --username` when the
-// server reports that it is an enrolled follower: no request with the proof
-// was sent. The primary's name is server text and is not repeated here.
-func followerLoginRefusal() error {
-	return fmt.Errorf("login: %w", &apiclient.Error{StatusCode: http.StatusServiceUnavailable, Key: "primary_required",
-		Message: "this node is an enrolled follower and does not mint CLI tokens; nothing was sent; log in against the primary"})
-}

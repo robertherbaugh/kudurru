@@ -127,6 +127,7 @@ func TestRootMemberFollowerRefusesUnforwardedMutations(t *testing.T) {
 	}
 	if !slices.Contains(info.ForwardedOperations, "apply") || !slices.Contains(info.ForwardedOperations, "setBlocking") ||
 		!slices.Contains(info.LocalOperations, "flushCache") || !slices.Contains(info.ForwardedOperations, "patchSettings") || !slices.Contains(info.ForwardedOperations, "logout") ||
+		!slices.Contains(info.ForwardedOperations, "changePassword") || !slices.Contains(info.ForwardedOperations, "createToken") || !slices.Contains(info.ForwardedOperations, "deleteToken") ||
 		slices.Contains(info.ForwardedOperations, "patchNodeConfig") || slices.Contains(info.LocalOperations, "patchNodeConfig") {
 		t.Fatalf("follower capability lists: forwarded=%v local=%v", info.ForwardedOperations, info.LocalOperations)
 	}
@@ -154,7 +155,7 @@ func TestRootMemberFollowerRefusesUnforwardedMutations(t *testing.T) {
 			}
 		}
 	}
-	if len(refused) != 50 || len(admitted) != 44 {
+	if len(refused) != 47 || len(admitted) != 47 {
 		t.Fatalf("mounted follower API has %d refused and %d admitted mutations", len(refused), len(admitted))
 	}
 	for _, op := range refused {
@@ -172,8 +173,7 @@ func TestRootMemberFollowerRefusesUnforwardedMutations(t *testing.T) {
 		t.Fatalf("node configuration refusal does not say what to change on this node: %s", node.raw)
 	}
 	primaryRequiredAnswer(t, "allow entry", f.request(t, nil, http.MethodPost, "/allowlist", token, map[string]any{"domain": "allowed.example"}), primary)
-	primaryRequiredAnswer(t, "personal token", f.request(t, nil, http.MethodPost, "/auth/tokens", token, map[string]any{"description": "refused"}), primary)
-	primaryRequiredAnswer(t, "password change", f.request(t, nil, http.MethodPost, "/auth/password", token, map[string]any{"currentPassword": "refused-1", "newPassword": "refused-password-2"}), primary)
+	primaryRequiredAnswer(t, "authenticator setup", f.request(t, nil, http.MethodPost, "/auth/totp/setup", token, map[string]any{}), primary)
 	// Provider login is refused by its own admission, which runs before the
 	// request holds a lease: the public CLI route and the browser GET flow.
 	cli := f.request(t, nil, http.MethodPost, "/auth/cli/probe/prepare", "", map[string]any{"mode": "browser"})

@@ -55,12 +55,17 @@ func (v *View) verifyTokenWithValidity(wire string, now time.Time) (auth.Princip
 		return auth.Principal{}, credentialValidity{}, ErrCredentials
 	}
 	id, ok := tokens.Parse(wire)
+	return v.verifyTokenHashWithValidity(id, ok, tokens.Hash(wire), now)
+}
+
+// verifyTokenHashWithValidity verifies the token row id against the secret
+// hash got. ok=false (an unparsable wire token) still costs one comparison.
+func (v *View) verifyTokenHashWithValidity(id string, ok bool, got string, now time.Time) (auth.Principal, credentialValidity, error) {
 	want := tokens.Hash("servingauth unknown credential")
 	token, known := v.cut.objects[store.Key{Kind: "APIToken", Name: id}].(*internalv1.APIToken)
 	if ok && known {
 		want = token.Spec.SecretHash
 	}
-	got := tokens.Hash(wire)
 	match := subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 	if !ok || !known || !match || token.DeletionTimestamp != nil || token.UID == "" || token.CreationTimestamp.IsZero() || token.CreationTimestamp.After(now) || token.Spec.ExpiresAt != nil && !now.Before(token.Spec.ExpiresAt.Time) {
 		return auth.Principal{}, credentialValidity{}, ErrCredentials

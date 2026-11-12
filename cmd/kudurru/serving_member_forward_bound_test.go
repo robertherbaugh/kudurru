@@ -67,6 +67,9 @@ func TestRootMemberFollowerRequestLifetimeBound(t *testing.T) {
 		{http.MethodPost, "/auth/logout", true},
 		{http.MethodPost, "/auth/logout/browser", true},
 		{http.MethodDelete, "/auth/sessions/some-session", true},
+		{http.MethodPost, "/auth/password", true},
+		{http.MethodPost, "/auth/tokens", true},
+		{http.MethodDelete, "/auth/tokens/some-token", true},
 		// Not forwarded, but bounded before the forwarded routes were named.
 		{http.MethodPost, "/zones/example.test/notify", true},
 		{http.MethodPost, "/zones/example.test/records/www", true},
@@ -84,7 +87,7 @@ func TestRootMemberFollowerRequestLifetimeBound(t *testing.T) {
 		{http.MethodPost, "/domains/allow/exact", false},
 		{http.MethodPost, "/settings/sections/upstreams/yaml", false},
 		{http.MethodPatch, "/node/config", false},
-		{http.MethodPost, "/auth/password", false},
+		{http.MethodPost, "/auth/totp/setup", false},
 	} {
 		got := follower(tc.method, tc.path)
 		if bounded := got > 0 && got <= memberForwardLifetime; bounded != tc.bounded {

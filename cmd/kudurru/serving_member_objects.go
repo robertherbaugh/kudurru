@@ -104,9 +104,10 @@ func memberRouteParts(prefix, escaped string) ([]string, bool) {
 
 // memberOwnForwardRoute reports the forwarded routes that carry a typed
 // command of their own rather than an object or zone command (D368): PATCH
-// /settings (settings.patch) and POST /auth/logout, POST /auth/logout/browser
-// and DELETE /auth/sessions/{id} (auth.logout). They get the same 30-second
-// bound before body read.
+// /settings (settings.patch), POST /auth/logout, POST /auth/logout/browser
+// and DELETE /auth/sessions/{id} (auth.logout), POST /auth/password
+// (auth.password) and POST /auth/tokens and DELETE /auth/tokens/{id}
+// (auth.tokens). They get the same 30-second bound before body read.
 func memberOwnForwardRoute(method, prefix, escaped string) bool {
 	parts, ok := memberRouteParts(prefix, escaped)
 	if !ok {
@@ -116,9 +117,12 @@ func memberOwnForwardRoute(method, prefix, escaped string) bool {
 	case http.MethodPatch:
 		return len(parts) == 1 && parts[0] == "settings"
 	case http.MethodPost:
+		if len(parts) == 2 && parts[0] == "auth" && (parts[1] == "password" || parts[1] == "tokens") {
+			return true
+		}
 		return len(parts) >= 2 && len(parts) <= 3 && parts[0] == "auth" && parts[1] == "logout" && (len(parts) == 2 || parts[2] == "browser")
 	case http.MethodDelete:
-		return len(parts) == 3 && parts[0] == "auth" && parts[1] == "sessions"
+		return len(parts) == 3 && parts[0] == "auth" && (parts[1] == "sessions" || parts[1] == "tokens")
 	}
 	return false
 }

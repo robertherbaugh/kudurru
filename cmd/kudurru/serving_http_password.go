@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"time"
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
@@ -42,6 +41,9 @@ func (h *servingHTTP) password(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	if err := h.factorAdmission(original.Name, req.TOTPCode); err != nil {
+		return err
+	}
+	if handled, err := h.forwardPassword(w, r, original, req); handled {
 		return err
 	}
 	// Hash outside the locks, retaining this original bound through completion.
@@ -93,38 +95,7 @@ func (h *servingHTTP) password(w http.ResponseWriter, r *http.Request) error {
 	}
 	// The response is prepared from the postcommit account, never the old lease's
 	// must-change flag. Password change does not broaden the original token scopes.
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-	for {
-		changed := h.opts.Runtime.publisher.Subscribe()
-		lease, err := h.opts.Runtime.publisher.CaptureHTTP(ctx)
-		if err == nil {
-			value, ok := lease.Bundle().Component("auth")
-			v, typed := value.(*servingauth.View)
-			if ok && typed {
-				objects, e := v.Objects("LocalUser")
-				if e == nil {
-					for _, o := range objects {
-						u := o.(*internalv1.LocalUser)
-						if string(u.UID) == updated.AccountUID && change.MatchesPasswordHash(u.Spec.PasswordHash) {
-							out, e := h.sessionInfo(v, updated, nil)
-							lease.Release()
-							if e != nil {
-								return e
-							}
-							return servingHTTPJSON(w, 200, out)
-						}
-					}
-				}
-			}
-			lease.Release()
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-changed:
-		}
-	}
+	return h.answerChangedPassword(w, r, updated.AccountUID, change.MatchesPasswordHash, func(*servingauth.View) (auth.Principal, error) { return updated, nil })
 }
 
 // servingHTTPOwnsLocalUserToken matches both provider spellings accepted by the

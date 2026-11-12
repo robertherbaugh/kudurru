@@ -76,6 +76,45 @@ type PasswordChangeResult struct {
 // every error after proof admission is a command error, including credential
 // errors from later enrollment. The original caller's UID is correlation only.
 func ChangeLocalPasswordWithAdmission(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, caller servingauth.Credential, original auth.Principal, prepared LocalPasswordChange, ip string, clock func() time.Time) (PasswordChangeResult, error, error) {
+	return changeLocalPassword(ctx, tx, deps, caller, original, prepared, ip, clock, nil)
+}
+
+// PrepareForwardedPasswordChange is the primary's half of a password change
+// that an enrolled follower forwarded (D368). The follower verified the new
+// password's length rules and hashed it under the request's bound; the primary
+// receives only that hash, which must be a well-formed Argon2id PHC string,
+// together with the current password and factor code that it verifies itself.
+// ctx is the member command's context: its finite deadline is the original
+// request bound, checked again at commit.
+func PrepareForwardedPasswordChange(ctx context.Context, current, hash, code string, revokeTokens bool) (LocalPasswordChange, error) {
+	if ctx == nil || current == "" || len(current) > users.MaxPasswordLen || !users.ValidPasswordHash(hash) {
+		return LocalPasswordChange{}, servingauth.ErrInvalid
+	}
+	if _, finite := ctx.Deadline(); !finite {
+		return LocalPasswordChange{}, servingauth.ErrInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return LocalPasswordChange{}, err
+	}
+	return LocalPasswordChange{state: &localPasswordChange{original: ctx, current: current, hash: hash, code: code, revokeTokens: revokeTokens}}, nil
+}
+
+// ChangeForwardedLocalPasswordWithAdmission is ChangeLocalPasswordWithAdmission
+// for a change that an enrolled follower forwarded: the same caller, shared
+// counter, password, factor and account checks in the primary's transaction.
+// A cookie caller's new session uses the follower-prepared ID and CSRF hash
+// (session), as a forwarded login does; a token caller sends no session. The
+// managed_by refusal, which precedes every mutation, is returned as refused so
+// that it can be retained and relayed; every error after the first mutation is
+// a command error, as on the primary's own route.
+func ChangeForwardedLocalPasswordWithAdmission(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, caller servingauth.Credential, original auth.Principal, prepared LocalPasswordChange, ip string, session ForwardedSession, clock func() time.Time) (PasswordChangeResult, error, error) {
+	if (caller.Kind == servingauth.Cookie) != session.valid() || caller.Kind != servingauth.Cookie && session != (ForwardedSession{}) {
+		return PasswordChangeResult{}, nil, servingauth.ErrInvalid
+	}
+	return changeLocalPassword(ctx, tx, deps, caller, original, prepared, ip, clock, &session)
+}
+
+func changeLocalPassword(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, caller servingauth.Credential, original auth.Principal, prepared LocalPasswordChange, ip string, clock func() time.Time, forwarded *ForwardedSession) (PasswordChangeResult, error, error) {
 	fail := func(err error) (PasswordChangeResult, error, error) { return PasswordChangeResult{}, nil, err }
 	c := prepared.state
 	if ctx == nil || tx == nil || c == nil || !c.used.CompareAndSwap(false, true) || caller.Kind != servingauth.Cookie && caller.Kind != servingauth.APIToken {
@@ -113,7 +152,12 @@ func ChangeLocalPasswordWithAdmission(ctx context.Context, tx *sqlite.CommandTx,
 	bootstrap, bootstrapOwner := strings.CutPrefix(manager, store.ManagerBootstrap+":")
 	bootstrapAdmin := user.Spec.BuiltinAdmin && bootstrapOwner && bootstrap != ""
 	if manager != store.ManagerSystem && manager != store.ManagerAPI && !bootstrapAdmin {
-		return fail(&auth.Error{Status: http.StatusConflict, Key: "managed_by", Message: "this account's password is managed outside self-service"})
+		managed := &auth.Error{Status: http.StatusConflict, Key: "managed_by", Message: "this account's password is managed outside self-service"}
+		if forwarded != nil {
+			// Nothing is staged yet: a forwarded change retains this refusal.
+			return PasswordChangeResult{}, managed, nil
+		}
+		return fail(managed)
 	}
 	proof := servingauth.Credential{Kind: servingauth.Password, Username: p.Name, Value: c.current, TOTPCode: c.code}
 	var decision servingauth.SessionDecision
@@ -176,7 +220,12 @@ func ChangeLocalPasswordWithAdmission(ctx context.Context, tx *sqlite.CommandTx,
 		// decision was obtained by actual password/TOTP verification earlier in
 		// this same transaction. Enroll after our own password change without
 		// consuming the already verified factor again or converting token scopes.
-		result.Enrollment, err = issueLocalDecision(ctx, tx, decision, result.IssuedAt)
+		if forwarded != nil {
+			// The follower keeps the CSRF secret and seals the cookie itself.
+			result.Enrollment, err = issueLocalDecisionWith(ctx, tx, decision, result.IssuedAt, forwarded.ID, forwarded.CSRFHash)
+		} else {
+			result.Enrollment, err = issueLocalDecision(ctx, tx, decision, result.IssuedAt)
+		}
 		if err != nil {
 			return fail(err)
 		}

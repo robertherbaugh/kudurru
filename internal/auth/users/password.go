@@ -154,6 +154,13 @@ func parsePHC(s string) (phc, error) {
 	return out, nil
 }
 
+// ValidPasswordHash reports whether s is an Argon2id PHC string within the
+// parameter bounds that Verify accepts. It says nothing about the password.
+func ValidPasswordHash(s string) bool {
+	_, err := parsePHC(s)
+	return err == nil
+}
+
 // CheckNewPassword applies the rules for setting a password.
 func CheckNewPassword(password string) error {
 	switch {

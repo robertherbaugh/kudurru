@@ -32,25 +32,28 @@ func (h *servingHTTP) route(method, path string, fn servingHTTPHandler) {
 	})
 }
 func servingHTTPError(w http.ResponseWriter, r *http.Request, err error) {
+	auth.WriteError(w, r, servingHTTPAuthError(err))
+}
+
+// servingHTTPAuthError is the public answer of an authentication route for
+// err. A primary that runs such a route's body for a follower (D368) uses it
+// to retain exactly the answer of its own route.
+func servingHTTPAuthError(err error) *auth.Error {
 	var ae *auth.Error
 	if errors.As(err, &ae) {
-		auth.WriteError(w, r, ae)
-		return
+		return ae
 	}
 	if refusal, ok := asPrimaryRequired(err); ok {
-		auth.WriteError(w, r, primaryRequiredAuthError(refusal))
-		return
+		return primaryRequiredAuthError(refusal)
 	}
 	var e *api.Error
 	if errors.As(currentCommandAPIError(err), &e) {
-		auth.WriteError(w, r, &auth.Error{Status: e.Status, Key: e.Body.Key, Message: e.Body.Message, Hint: e.Body.Hint})
-		return
+		return &auth.Error{Status: e.Status, Key: e.Body.Key, Message: e.Body.Message, Hint: e.Body.Hint}
 	}
 	if errors.Is(err, store.ErrNotFound) {
-		auth.WriteError(w, r, servingHTTPMissing())
-		return
+		return servingHTTPMissing()
 	}
-	auth.WriteError(w, r, &auth.Error{Status: 503, Key: "unavailable", Message: "authentication operation unavailable"})
+	return &auth.Error{Status: 503, Key: "unavailable", Message: "authentication operation unavailable"}
 }
 func servingHTTPInvalid(message string) error {
 	return &auth.Error{Status: 400, Key: "invalid", Message: message}
