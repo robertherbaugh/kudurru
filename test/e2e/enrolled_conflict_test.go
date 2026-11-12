@@ -277,6 +277,17 @@ func testEnrolledConflictResolution(t *testing.T, anchors *enrolledAnchors) {
 	if promotedB.Term.Same(promotedC.Term) || promotedB.Term.Epoch != promotedC.Term.Epoch {
 		t.Fatal("fixture did not produce two equal-epoch promotions")
 	}
+	if anchors != nil {
+		// As after the managed primary's restart above: a promoted managed
+		// writer refuses writer commands with 503 (nothing committed) until
+		// its updater's first step. Wait for that step before the one-shot
+		// writes (seen under load in the separate-process run).
+		for _, c := range []*staticProcessClient{apiB, apiC} {
+			anchors.status(c, func(s api.RootAnchorStatus) bool {
+				return s.Authority.Mode == "primary" && s.Updater.State == "running" && s.Updater.Next != nil
+			})
+		}
+	}
 	apiB.request(t, http.MethodPost, "/objects/dnsrecordsets", recordSetBody("bonly", "192.0.2.50"), http.StatusCreated, nil)
 	apiC.request(t, http.MethodPost, "/objects/dnsrecordsets", recordSetBody("conly", "192.0.2.51"), http.StatusCreated, nil)
 	awaitDNS(nodeB, "bonly", "192.0.2.50", dns.RcodeSuccess)
@@ -428,6 +439,13 @@ func testEnrolledConflictResolution(t *testing.T, anchors *enrolledAnchors) {
 	}
 	nodeB = kudurrutest.StartReady(t, bin, b, kudurrutest.Options{Env: env})
 	enrollment(apiB, func(info api.ClusterEnrollmentInfo) bool { return info.Mode == "primary" })
+	if anchors != nil {
+		// The resolved managed primary also refuses writer commands until its
+		// updater's first step (see the promotions above).
+		anchors.status(apiB, func(s api.RootAnchorStatus) bool {
+			return s.Authority.Mode == "primary" && s.Updater.State == "running" && s.Updater.Next != nil
+		})
+	}
 	apiB.request(t, http.MethodPost, "/objects/dnsrecordsets", recordSetBody("afterresolve", "192.0.2.52"), http.StatusCreated, nil)
 
 	// C adopts B's branch only through scheduled exchanges and its own pull.
