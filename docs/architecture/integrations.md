@@ -13,10 +13,11 @@ background host, Cloudflare SDK adapter and UniFi polling adapter are implemente
 The SQLite serving runtime mounts the host, concrete fenced ledger/source commands,
 complete-image inventory publication and the `Delete` cleanup job (see
 [Deletion policy](#deletion-policy-and-the-cleanup-finalizer)). The Kubernetes
-store mounts the same host for Cloudflare publication and refuses every other
-instance on its object (see [Kubernetes execution](#kubernetes-execution)).
-Kubernetes inbound sources, remaining providers and dashboard controls remain
-parts of the full [v0.2 implementation](../../dev-docs/milestones/v0.2/README.md).
+store mounts the same host for Cloudflare publication, UniFi inventory and
+group observation, the `Delete` cleanup and the administration API, and refuses
+UniFi record publication and webhook instances on their objects (see
+[Kubernetes execution](#kubernetes-execution)). Those, and dashboard controls,
+remain parts of the full [v0.2 implementation](../../dev-docs/milestones/v0.2/README.md).
 
 ```mermaid
 flowchart LR
@@ -160,9 +161,9 @@ cannot commit after its original writer is fenced.
 like any other while its object is live, and an elected cleanup job ends it
 after a delete request; both are described under
 [Deletion policy](#deletion-policy-and-the-cleanup-finalizer). On Kubernetes
-an instance with `Delete` is refused with reason `DeletionPolicyUnsupported`
-before any provider call, so the policy can never silently act as `Retain`
-there. See [Kubernetes execution](#kubernetes-execution) and the
+the root arms the cleanup finalizer itself before the instance may make any
+provider call, and the same cleanup job runs; see
+[Kubernetes execution](#kubernetes-execution) and the
 [operator guide](../deploy/integrations.md).
 
 ## Kubernetes execution
@@ -226,19 +227,100 @@ is the node name: two live processes that share a name (a force-deleted
 StatefulSet pod still running on a partitioned node and its replacement) both
 pass it. The proof assumes one live process per identity.
 
-The source root for inbound instances is built but not mounted yet:
-`kube.IntegrationSourceBackend` stages immutable `IntegrationSourceChunk`
-Secrets, rechecks them, and installs the `IntegrationSourceHead` of one
-Integration UID by exactly one create or exact-resourceVersion update from
-sequence n to n+1; a lost CAS leaves the previous source and unreferenced
-chunks only. `inbound.DecodeCarriers` checks a carrier listing with the image
-rules. Every private integration carrier decodes strictly, so a damaged one is
-an error rather than an absent row.
+### Inbound sources on Kubernetes
 
-Until the inbound commit, the replica-side source runtime and the
-administration adapter exist, UniFi and webhook instances are refused with
-reason `UnsupportedOnKubernetes`, `Delete` with `DeletionPolicyUnsupported`, and
-the `/api/v1/integrations` routes answer unavailable on Kubernetes.
+A UniFi instance without `spec.unifi.inventory` observes clients and their
+VLAN or note groups. Only the Lease holder polls the provider; its commit
+(`cmd/kudurru/integration_kube_source.go`) has one commit point, the
+`IntegrationSourceHead` of that Integration UID:
+
+```mermaid
+sequenceDiagram
+    participant Holder as Lease holder
+    participant API as Kubernetes API
+    participant Replica as Every replica's source runtime
+    Holder->>API: GET each contributed ClientGroup (captured UID and identity)
+    Holder->>API: fenced create of each immutable IntegrationSourceChunk
+    Holder->>API: fence, then ONE create or exact-resourceVersion update of the head (n to n+1)
+    Holder->>API: exact UID and resourceVersion delete of the replaced head's chunks
+    Holder->>Replica: wake
+    Replica->>API: list heads, referenced chunks and allocations (every 10 s and on wake)
+    Replica->>Replica: decode strictly, check eligibility against its own snapshot
+    Replica->>Replica: rebuild inventory and MAC grants in canonical order
+```
+
+`kube.IntegrationSourceBackend` stages the chunks and rechecks that each is
+durable before the head write; a lost head CAS writes nothing and leaves the
+previous source plus unreferenced chunks. Every private integration carrier
+decodes strictly, so a damaged one is an error rather than an absent row.
+Committed means the head CAS succeeded; Published means the committing
+replica's own source runtime installed that root.
+
+Every replica runs the source runtime (`integration-sources`,
+`cmd/kudurru/integration_kube_sources.go`). It decodes the listing with
+`inbound.DecodeCarriers` and decides eligibility against its own object
+snapshot, with no store read on the query path: the Integration must have the
+head's owner UID, not be suspended or deleting, run on this store and have the
+head's spec digest; every target zone and evidenced object must exist with the
+same UID and intent digest. Suspending or editing the Integration therefore
+closes its inventory and grants on every replica without a new commit. The
+eligible sources are rebuilt into one inventory in a canonical order (accepted
+time, then source ID), so replicas that read the same heads arbitrate addresses
+alike; the cross-source removal watermarks SQLite persists are not durable
+here. The identify stage reads that inventory, and MAC contributions become
+policy grants (`policy.Options.MACGrantsInput` through
+`zonecache.Cache.SetInput`) with the original exclusive expiry, never
+renewed. A failed relist keeps the last listing, so during an API outage a
+replica keeps answering until each observation's original expiry and then
+stops. Convergence is per replica, within one relist interval.
+
+What is not atomic: the contributed groups are read live just before the head
+write, not in it (each replica re-checks the group's UID when it grants); the
+deletion of replaced chunks can fail, which leaves unreferenced chunks that no
+source uses; and a head CAS lost after its chunks were staged leaves those
+chunks until the instance is purged. UniFi record publication
+(`spec.unifi.inventory`: source-owned DNS records and reverse zones) is not
+certified on this store yet and is refused with reason
+`RecordPublicationUnsupportedOnKubernetes`; webhook (Tier-B) instances need
+SQLite's change feed for hook events and are refused with
+`UnsupportedOnKubernetes`.
+
+### Administration on Kubernetes
+
+`/api/v1/integrations` and `kudurru integrations` work on Kubernetes
+(`cmd/kudurru/integration_kube_admin.go`). List and get read the Integration
+from the replica's snapshot; the phase comes from the Ready condition the
+Lease holder writes, so every replica answers alike, and is known only when
+that condition observed the current generation (an instance no job runs for,
+such as a suspended one, shows the status every replica derives locally).
+`leader` says whether this replica holds the instance's Lease. Check,
+preview, sync, actions and act run only on the Lease holder, with the exact
+reviewed UID and revision; any other replica answers `503` with the holder's
+name in `hint.holder` and never forwards or replays the request. The route
+permission is the only authorization: there is no original-credential proof
+re-checked inside each effect as on SQLite, so a permission withdrawn while a
+command runs does not stop it. A reviewed sync or act is recorded as a
+structured log line on the holder (`integration.sync`, `integration.act`),
+because this store has no kudurru audit table. An unacknowledged sync or act
+answers `integration_uncertain` and is not replayed.
+
+### Delete on Kubernetes
+
+The store has no kudurru admission, so the root arms the reserved finalizer:
+a live Integration that runs here with `deletionPolicy: Delete` gets it by one
+metadata patch bound to its UID and resourceVersion; one whose policy is no
+longer `Delete` is disarmed the same way. Until a capture shows the finalizer
+the host pauses the instance (`CleanupFinalizerMissing`) and every fence
+refuses it, so nothing is owned unarmed. Replicas may race; losers conflict
+and change nothing. `kubectl delete` then leaves a terminating object, and the
+same cleanup job as on SQLite runs under the instance's Lease. Its local purge
+is a sequence of fenced exact-UID and resourceVersion deletes (source-owned
+objects, then the head, then its chunks, allocations and deliveries), so a cut
+purge leaves a suffix the next run removes; it is not one transaction. The
+finalizer is removed last by one metadata patch bound to the guard's UID and
+resourceVersion. The cleanup summary is a structured log line. Changing the
+policy to `Retain`, the reviewed release command, or removing the finalizer
+by hand ends the obligation without cleanup, which is `Retain`.
 
 ## Deletion policy and the cleanup finalizer
 
@@ -303,9 +385,9 @@ stateDiagram-v2
   `deletionPolicy` line, releases it; the reconciler logs that pass as
   `objects: finalized` instead of an ordinary update.
 - **Kubernetes** has no kudurru admission, so the driver never arms the
-  finalizer on its own (the Kubernetes host has no cleanup job yet and refuses
-  `Delete` instances). It
-  carries a finalizer the elected host armed through server-side apply and
+  finalizer on its own; the Kubernetes root does (see
+  [Delete on Kubernetes](#delete-on-kubernetes)). The driver
+  carries that finalizer through server-side apply and
   through the `Force` takeover, which otherwise removes every field the new
   manager omits. The reconciler's extra apply of an unchanged `Delete`
   document is a no-op at the apiserver there and is reported as unchanged.
@@ -874,9 +956,10 @@ Qualification includes the real Cloudflare SDK and UniFi adapter against local
 TLS peers, production router and generated CLI, stale-plan refusal, committed
 writes, an applied-but-unreadable pending outcome, original cookie CSRF and
 scoped-token/writer/revocation refusals. It does not claim contact with production
-provider infrastructure. Kubernetes Cloudflare publication is qualified against
-envtest and the same local TLS peer; Kubernetes failover qualification and the
-remaining all-driver/restart release gates remain separate work.
+provider infrastructure. Kubernetes Cloudflare publication, its `Delete` cleanup and release, and
+UniFi inventory and groups on two replicas with a holder partition are
+qualified against envtest and the same local TLS peers; the remaining
+all-driver/restart release gates remain separate work.
 
 ## Tier-B runtime client status
 

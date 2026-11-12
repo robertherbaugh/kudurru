@@ -9,9 +9,13 @@ or credential. Followers consume replicated finite evidence without polling;
 a promoted writer must acquire its own authority before observing or publishing.
 
 This mount does not close every integration capability. On Kubernetes the host
-runs Cloudflare publication under one Lease per Integration; UniFi and webhook
-instances are refused on their objects with reason `UnsupportedOnKubernetes`
-until the Kubernetes source commit lands. On Kubernetes only Integrations in
+runs Cloudflare publication and UniFi inventory and groups under one Lease per
+Integration, and every replica serves the committed UniFi inventory and group
+grants. UniFi record publication (`spec.unifi.inventory`) is refused on its
+object with reason `RecordPublicationUnsupportedOnKubernetes`, and webhook
+instances with `UnsupportedOnKubernetes`. UniFi inventory (client names, IPs,
+MACs) is stored in private Secrets in the release namespace, readable by
+anyone who can read Secrets there. On Kubernetes only Integrations in
 kudurru's release namespace run; one in any other namespace is refused with
 reason `NamespaceNotAllowed`. The reason is the credential trust model: the
 `credentials.allowedFiles` and `credentials.allowedEnvironment` allowlists are
@@ -20,7 +24,7 @@ create an Integration in the release namespace can therefore use every
 allowlisted credential, so grant that only to principals you already trust
 with kudurru's own Secrets there. Native Kubernetes Secret references
 are not resolved by either host: mount the Secret as a file and allowlist its
-path under `credentials.allowedFiles`. Both deletion policies are supported on SQLite; see
+path under `credentials.allowedFiles`. Both deletion policies are supported on both stores; see
 [Deleting an integration](#deleting-an-integration). Optional UniFi
 mutations and remaining management UI work remain separate. The external-dns webhook listener is a separate inbound feature.
 
@@ -195,10 +199,19 @@ database written by an earlier build can hold, is shown as `Paused` with
 reason `CleanupFinalizerMissing` and makes no provider call. The next load of
 its unchanged document adds the finalizer and it runs.
 
-On Kubernetes an instance with `deletionPolicy: Delete` is refused with reason
-`DeletionPolicyUnsupported` and makes no provider call; use `Retain` there.
-Deleting a `Retain` object removes it and leaves what it published, and its
-private ledger Secrets stay in the release namespace.
+On Kubernetes kudurru adds the finalizer itself, by a metadata patch, to a
+live `Delete` Integration that runs there, and removes it again when the policy
+changes back to `Retain`. Until it is added the instance is `Paused` with
+reason `CleanupFinalizerMissing` and makes no provider call. `kubectl delete`
+then leaves a terminating object while the elected replica runs the same
+cleanup as on SQLite; the local purge is a sequence of exact deletes that a
+later run resumes, and the summary is a log line (`integration cleanup`)
+instead of an audit row. To give up on a cleanup, patch the policy to
+`Retain`, use the release command below, or remove the
+`kudurru.io/integration-cleanup` finalizer by hand; each leaves what was
+published, like `Retain`. Deleting a `Retain` object removes it and leaves
+what it published, and its private ledger Secrets stay in the release
+namespace.
 
 ## Credentials and permissions
 
@@ -544,11 +557,16 @@ server-side cookie calls also require CSRF. `integrations actions NAME --uid UID
 advertise none. `integrations act NAME ACTION --uid UID --revision REVISION
 --params '{}'` cannot enable an unsupported provider action.
 
-These routes require complete SQLite runtime authority. On Kubernetes they
-answer unavailable; Cloudflare instances there sync on their schedule and on
-source changes, and report their state in the Integration status. List/get
-status is a local observation and can be unknown when the exact revision has no
-matching observation. Public previews omit credential references, fingerprints,
+On SQLite these routes require complete runtime authority, and each effect
+re-authorizes the original credential. On Kubernetes list and get answer on
+every replica from the status the Lease holder wrote on the Integration, and
+`leader` tells which replica holds it. Check, preview, sync, actions and act
+run only on the Lease holder; another replica answers `503` with the holder's
+name in `hint.holder`, so send the command to that pod. On Kubernetes the
+route permission is checked once per request, not again inside each effect,
+and a reviewed sync or act is logged on the holder rather than written to an
+audit table. List/get status is unknown when no observation matches the
+exact revision. Public previews omit credential references, fingerprints,
 private provider IDs and ledger receipts.
 
 ## Check an external webhook
