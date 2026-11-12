@@ -431,6 +431,43 @@ func anchorEdgePrimaryReady(t *testing.T, cfg *config.Config) {
 	awaitMountedPrimarySettled(t, cfg, "edge-zone-1", "answer.resolver.test.", "192.0.2.77")
 }
 
+// anchorEdgeBootstrapReads is the most root acquisitions a fresh managed
+// primary may make for its one bootstrap: the startup cascade (one status
+// write per zone, the readiness login) can race a bootstrap, which is then
+// acquired again. More than this is an acquisition storm, not a race.
+const anchorEdgeBootstrapReads = 3
+
+// anchorEdgeBootstrapSettled waits, bounded, until a started managed primary
+// has made its bootstrap acquisitions and no raced retry is still pending,
+// and returns the count. No running-node surface reports the accepted owner
+// (the anchors CLI is offline), so the wait uses the updater's own pace: after
+// n consecutive races the next acquisition is due within 2^(n-1) seconds,
+// plus at most one second of wake delay. A quiet window longer than that
+// after the last acquisition means no retry is pending; anchorEdgeOwner
+// then proves the commit once the node stops.
+func anchorEdgeBootstrapSettled(t *testing.T, reads *atomic.Int32) int32 {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Minute)
+	last, quietSince := reads.Load(), time.Now()
+	for {
+		n := reads.Load()
+		if n > anchorEdgeBootstrapReads {
+			t.Fatal("managed primary made more bootstrap acquisitions than the startup cascade explains", n)
+		}
+		if n != last {
+			last, quietSince = n, time.Now()
+		}
+		if n > 0 && time.Since(quietSince) > time.Second<<(n-1)+3*time.Second {
+			t.Log("managed primary bootstrap acquisitions", n)
+			return n
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("managed primary bootstrap acquisitions did not settle", n)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 // This is a separately enabled actual daemon composition, not a mocked edge
 // observation. Only its own pinned-image child and scratch directory are owned.
 func TestRunServeManagedEdgePinnedDaemonRestart(t *testing.T) {
@@ -439,7 +476,7 @@ func TestRunServeManagedEdgePinnedDaemonRestart(t *testing.T) {
 	t.Setenv(license.EnvKey, "")
 	t.Setenv(license.EnvKeyFile, "")
 	// The root answers every acquisition: a bootstrap that an ordinary
-	// startup commit rolls back is acquired again (D370).
+	// startup commit rolls back is acquired again (F28-EF-1).
 	root, seeds, reads := anchorSupervisorServer(t, func(int32, *dns.Msg) {})
 	anchorEdgeBackendConfig(t, cfg, seeds, root)
 	backend := lab.backend(cfg)
@@ -452,6 +489,9 @@ func TestRunServeManagedEdgePinnedDaemonRestart(t *testing.T) {
 	lab.wait(sup)
 	lab.ask(true)
 	lab.ask(true)
+	// The bootstrap's acquisitions, bounded: a raced bootstrap is acquired
+	// again, but only a few times.
+	bootstrap := anchorEdgeBootstrapSettled(t, reads)
 	stopObservation()
 	stopEdge()
 	next, _, after := lab.start(backend)
@@ -465,9 +505,8 @@ func TestRunServeManagedEdgePinnedDaemonRestart(t *testing.T) {
 	lab.ask(true)
 	stopBackend()
 	version, _ := anchorEdgeOwner(t, cfg)
-	bootstrap := reads.Load() // the committed bootstrap's acquisitions
-	if bootstrap == 0 {
-		t.Fatal("managed owner committed without a root acquisition")
+	if reads.Load() != bootstrap {
+		t.Fatal("edge restart made the committed backend acquire the root again", bootstrap, reads.Load())
 	}
 	lab.ask(false)
 	stopBackend = tsigMountedStart(t, cfg)
@@ -480,7 +519,7 @@ func TestRunServeManagedEdgePinnedDaemonRestart(t *testing.T) {
 	}
 }
 
-// F28-EF-1 (D370) against the pinned dnsdist image: a primary and a newly
+// F28-EF-1 against the pinned dnsdist image: a primary and a newly
 // joined follower are two backends of one real managed edge, following the
 // runbook order "Add a follower behind managed edges".
 //
@@ -515,9 +554,9 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 	anchorEdgePrimaryReady(t, cfg)
 	lab.wait(sup)
 	lab.ask(true)
-	if reads.Load() == 0 {
-		t.Fatal("primary did not bootstrap with a root acquisition")
-	}
+	// Settle the bootstrap (bounded) before the activation restart and the
+	// join read the primary's managed owner.
+	bootstrap := anchorEdgeBootstrapSettled(t, reads)
 
 	// Enrollment goes through the primary's mounted API, as an operator does.
 	jar, err := cookiejar.New(nil)
@@ -583,11 +622,11 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 	// with its retained bypass identity before the follower exists.
 	stopObservation()
 	stopEdge()
-	sup, _, added := lab.start(primary, follower) // its cleanup stops this edge
+	sup, stopEdge, added := lab.start(primary, follower)
 	if added.Deployment != installed.Deployment || added.Run == installed.Run || len(added.Backends) != 2 {
 		t.Fatal("backend addition lost the retained deployment, run identity or membership", len(added.Backends))
 	}
-	lab.observe(sup)
+	stopObservation = lab.observe(sup)
 	lab.states(sup, map[string]bool{primary.Address: true, follower.Address: false})
 	lab.ask(true)
 
@@ -609,8 +648,11 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 	}
 	version, authority := anchorEdgeOwner(t, fcfg)
 	// The first image carries the primary's committed managed owner, so the
-	// primary's acquisitions are done (its next refresh is far away).
-	bootstrap := reads.Load()
+	// primary's acquisitions are done (its next refresh is far away): the
+	// activation restart acquired nothing.
+	if reads.Load() != bootstrap {
+		t.Fatal("enrolled primary restart acquired the root again", bootstrap, reads.Load())
+	}
 	if authority.Mode != replication.Follower || !authority.Installed.Same(joined.Installed) {
 		t.Fatal("joined receiver is not an installed follower", authority.Mode)
 	}
@@ -643,6 +685,22 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 	lab.ask(true)
 	lab.ask(true)
 
+	// The edge child restarts again while the joined follower serves alone:
+	// the fresh run identity does not disturb the admitted follower, which
+	// keeps serving and does not observe the fleet again.
+	stopObservation()
+	stopEdge()
+	sup, _, rerun := lab.start(primary, follower) // its cleanup stops this edge
+	if rerun.Deployment != installed.Deployment || rerun.Run == added.Run || len(rerun.Backends) != 2 {
+		t.Fatal("edge restart under the serving follower lost the retained deployment, run identity or membership", len(rerun.Backends))
+	}
+	lab.observe(sup)
+	lab.states(sup, map[string]bool{primary.Address: false, follower.Address: true})
+	lab.ask(true)
+	if got := lab.observations.Load() - observed; got != 1 {
+		t.Fatal("serving follower observed the fleet again after its start", got)
+	}
+
 	// Runbook step 5: with no backend up the edge returns no answer.
 	stopFollower()
 	lab.states(sup, map[string]bool{primary.Address: false, follower.Address: false})
@@ -658,6 +716,9 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 	}
 	lab.states(sup, map[string]bool{primary.Address: false, follower.Address: true})
 	lab.ask(true)
+	if got := lab.observations.Load() - observed; got != 1 {
+		t.Fatal("restarted follower observed the fleet again while serving", got)
+	}
 	stopFollower()
 	got, restarted := anchorEdgeOwner(t, fcfg)
 	if got != version || restarted.Mode != replication.Follower || !restarted.Installed.Same(joined.Installed) {
