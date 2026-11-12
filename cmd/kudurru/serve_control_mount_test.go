@@ -58,7 +58,15 @@ func controlMountedRequest(t *testing.T, client *http.Client, base, method, path
 	data, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
 	_, _ = io.Copy(io.Discard, response.Body)
 	if err != nil || response.StatusCode != want {
-		t.Fatalf("control %s %s: status=%d want=%d body_read=%t", method, path, response.StatusCode, want, err == nil)
+		// Name the refusal: only the error key and message of an error body
+		// are reported, never a successful body (it can carry a CSRF token).
+		var refusal struct {
+			Error struct{ Key, Message string } `json:"error"`
+		}
+		if response.StatusCode < 400 || json.Unmarshal(data, &refusal) != nil {
+			refusal.Error.Key, refusal.Error.Message = "", ""
+		}
+		t.Fatalf("control %s %s: status=%d want=%d body_read=%t key=%q message=%q", method, path, response.StatusCode, want, err == nil, refusal.Error.Key, refusal.Error.Message)
 	}
 	if out != nil && json.Unmarshal(data, out) != nil {
 		t.Fatal("control HTTP response decode failed")
