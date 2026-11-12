@@ -62,13 +62,11 @@ stateDiagram-v2
   `kudurru login --server https://node-b.example:8080 --name node-b --token-stdin`.
   A follower accepts a new token after its next pull, and it checks a token
   itself, also while the primary is away. Do not plan to sign in to a
-  follower with a password. `kudurru login --username` does not work
-  against a follower, whether or not the primary is up: a follower does not
-  create the API token that the CLI saves, and the command answers
-  `primary_required` before it sends the password. A password sign-in in the
-  browser is checked by the primary, so on a follower it works only while
-  the primary is reachable, and it fails in the very situation in which you
-  want to promote.
+  follower with a password: `kudurru login --username` and a password
+  sign-in in the browser work against a follower, but the follower forwards
+  them, and the CLI's token creation, to the primary, so they work only while
+  the primary is reachable and fail in the very situation in which you want
+  to promote.
 - **Synchronized clocks.** An invitation is valid for at most ten minutes, and
   the members authenticate each other with certificates.
 

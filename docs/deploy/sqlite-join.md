@@ -269,9 +269,32 @@ most five seconds), so your next change through the same follower, such as the
 next key on the Settings page, is made against your own change and is not
 refused. A `409` therefore means that someone else changed the settings, or that
 the follower could not install the primary's state in time; a reload shows the
-current values once the follower has pulled. Every other change, including node settings
-(`PATCH /node/config`), is refused on a follower, as the next section
-describes.
+current values once the follower has pulled.
+
+Changing your own password (`POST /auth/password`) and creating or revoking
+personal API tokens (`POST /auth/tokens`, `DELETE /auth/tokens/{id}`) are
+forwarded as well, so an account that must change its password can do so on
+the follower it signed in to. The follower checks the new password's length
+rules and hashes it; only the hash, the current password, the factor code and
+the client address travel to the primary, once. The primary checks your
+credential, the current password and the factor against the shared lockout
+counters and commits the change; refused attempts count there as for a login.
+A browser session gets a new cookie from the follower, and the old one stops
+working on every member. For a token, the follower generates the secret and
+sends only its identifier and hash: the primary applies the route's own
+checks (scopes no wider than yours, `auth.tokens.maxLifetime`, the expiry of
+the token you call with) and stores the token, and the secret is never sent
+to the primary. Revoking a token keeps the route's rule: your own token, or
+someone else's with `tokens.delete`; otherwise `404`. In each case the
+follower answers once it serves the result itself (at most five seconds), so a
+new token or cookie works on that follower at once. If the primary cannot be
+reached the answer is `503 unavailable` (nothing was sent) or `503
+completion_unknown` (the exchange failed): sign in or list your tokens to see
+what happened before you repeat it. `kudurru login --username` therefore works
+against a follower too.
+
+Every other change, including node settings (`PATCH /node/config`), is
+refused on a follower, as the next section describes.
 
 ## What a follower forwards, runs itself and refuses
 
@@ -286,9 +309,9 @@ carries it as `x-kudurru-follower`.
 
 | Group | Routes | What the follower does |
 |---|---|---|
-| Forwarded | `POST`, `PUT`, `DELETE` under `/objects/` for DNS zones, record sets, block lists, client groups and policies; `POST /apply`; `POST`, `PUT`, `DELETE` on `/blocklists`, `/clientgroups`, `/policies`; `POST /{kind}:batchDelete` for those five kinds; `POST /zones/{zone}/records`, `DELETE /zones/{zone}/records/{name}/{type}`, `POST /zones/{zone}/import`, `DELETE /zones/{zone}`; `POST /dns/blocking`; `POST /auth/login`; `POST /auth/logout`, `POST /auth/logout/browser`, `DELETE /auth/sessions/{id}`; `PATCH /settings` | Sends one typed command to the primary and returns the primary's answer, as described above. |
+| Forwarded | `POST`, `PUT`, `DELETE` under `/objects/` for DNS zones, record sets, block lists, client groups and policies; `POST /apply`; `POST`, `PUT`, `DELETE` on `/blocklists`, `/clientgroups`, `/policies`; `POST /{kind}:batchDelete` for those five kinds; `POST /zones/{zone}/records`, `DELETE /zones/{zone}/records/{name}/{type}`, `POST /zones/{zone}/import`, `DELETE /zones/{zone}`; `POST /dns/blocking`; `POST /auth/login`; `POST /auth/logout`, `POST /auth/logout/browser`, `DELETE /auth/sessions/{id}`; `PATCH /settings`; `POST /auth/password`; `POST /auth/tokens`, `DELETE /auth/tokens/{id}` | Sends one typed command to the primary and returns the primary's answer, as described above. |
 | Local | `POST /cache/flush`; `DELETE /querylog`; `POST /querylog/rollup-evidence/verify`; `POST /dns/query`; the DHCP routes under `/node/dhcp/v4/`; `POST /cluster/promote`, `POST /cluster/activate`, `POST /cluster/join-token`; the two legacy routes under `/settings/sections/` | Runs the request on this node. The first five act on the node's own cache, query log, resolver and DHCP server. The cluster commands decide from this node's own role: promotion runs on a follower, activation and invitations answer `409 conflict` there. The legacy settings routes answer `503 unavailable` on every SQLite node. |
-| Primary only | Everything else: `PATCH /node/config`; the allow and deny lists (`/allowlist`, `/denylist`, `/domains/{action}/{kind}`, `/queries/{id}/actions`, a block list's source entries); `POST /blocklists/{namespace}/{name}/refresh`; `POST /zones/{zone}/notify`; own password, own API tokens and authenticators under `/auth/`; command-line OIDC login; `/iam/` users, external accounts and role bindings; `/tsigkeys`; `/integrations`; `/imports`, including the two previews, which write nothing but plan an apply that only the primary runs; unblock request decisions; DHCPScope objects, including `POST /dhcpscopes:batchDelete` | Answers `503 primary_required`. Nothing is sent to the primary and nothing is changed. |
+| Primary only | Everything else: `PATCH /node/config`; the allow and deny lists (`/allowlist`, `/denylist`, `/domains/{action}/{kind}`, `/queries/{id}/actions`, a block list's source entries); `POST /blocklists/{namespace}/{name}/refresh`; `POST /zones/{zone}/notify`; authenticators (`/auth/totp/`); command-line OIDC login; `/iam/` users, external accounts and role bindings; `/tsigkeys`; `/integrations`; `/imports`, including the two previews, which write nothing but plan an apply that only the primary runs; unblock request decisions; DHCPScope objects, including `POST /dhcpscopes:batchDelete` | Answers `503 primary_required`. Nothing is sent to the primary and nothing is changed. |
 
 The refusal names the primary and carries a hint, and it has no `Retry-After`
 header, because waiting does not change it:
@@ -307,7 +330,7 @@ header, because waiting does not change it:
 The answer is the same while the primary is unreachable. Send the request to
 the primary, or promote the follower if the primary is lost. The CLI prints the
 server's message and hint and adds its own hint that names `kudurru cluster
-status`. Three cases need a different next step:
+status`. Four cases need a different next step:
 
 - `PATCH /node/config` changes the log level and format of the node that
   answers. A follower cannot store that preference, and the primary would
@@ -317,9 +340,11 @@ status`. Three cases need a different next step:
   command line, runs on the primary. A follower's `GET /auth/status` lists no
   provider and carries `"role": "follower"` and the primary's name, so a login
   page can say where to sign in with a provider. Local password login works on
-  the follower. `kudurru login --username` does not: a follower does not mint
-  the CLI token, so the command reads `GET /auth/status` first and refuses
-  with `primary_required` before it sends the password.
+  the follower, and so does `kudurru login --username`.
+- The allow and deny list commands and unblock request decisions run on the
+  primary. Through a follower, change an allow or deny list by writing its
+  BlockList object (`PUT /blocklists/{namespace}/{name}`, the list editor, or
+  `kudurru apply`), which is forwarded.
 - A DHCPScope object written through `/objects/dhcpscopes` or as a document of
   `POST /apply` is refused with `primary_required` for that object or document.
 

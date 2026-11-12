@@ -1247,8 +1247,29 @@ was made against (at most five seconds, within the route's bound; a failed
 pull or a later publication still answers the committed result). Without that
 wait the caller's next settings change or blocking switch through the same
 follower would carry the follower's own pre-commit version and be refused as
-stale until the scheduled pull. Both routes, with `POST /auth/logout/browser`, get the
-30-second bound before body read. A mutation without a typed command is
+stale until the scheduled pull. A version-2 `auth.password` command carries
+the current password, the factor code, the hash of the new password (the
+follower checks the new password's rules and hashes it; the plaintext never
+travels), `revokeTokens`, the client key, for a cookie caller a
+follower-prepared session ID and CSRF hash, and an unstored nonce. The primary
+verifies the raw credential, then runs `ChangeForwardedLocalPasswordWithAdmission`,
+the admission of its own route (shared counters, current password, factor,
+account manager) that enrolls exactly the prepared session; credential
+refusals, lockouts and `managed_by` are retained results whose counters
+commit. A version-2 `auth.tokens` command creates or revokes one personal API
+token with the route's own body (`stageToken`, `deleteTokenCurrent`). For a
+creation the follower generates the token and sends only its ID and secret
+hash, because a retained outcome may not be sensitive; the primary checks the
+staged row against that hash (`AuthenticateIssuedTokenCurrent`) instead of the
+secret. A revocation keeps the owner or `tokens.delete` rule and its retained
+`404`, and is emitted under the command scope only, because it may revoke the
+token that sent it. For both commands a credential that the primary no longer
+accepts or authorizes is a retained `401` or `403`, with the same dedup guard
+as `auth.logout`. The follower answers after its own view serves the result:
+it seals the new cookie, or waits (at most five seconds) until its view
+carries the new password hash, authenticates the new token, or no longer lists
+the revoked one. Every one of these routes gets the 30-second bound before
+body read. A mutation without a typed command is
 refused on a follower, as described under
 [What a follower does with a mutation](#what-a-follower-does-with-a-mutation).
 
