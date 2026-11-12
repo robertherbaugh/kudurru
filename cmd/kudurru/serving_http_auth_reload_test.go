@@ -388,7 +388,9 @@ func TestServingHTTPAuthCookieFactorAndPasswordClears(t *testing.T) {
 			switch operation {
 			case "confirm":
 				setup := factorSetupHTTP(t, f, cookie, info.CSRF, "")
-				result = f.call(t, "POST", "/auth/totp/confirm", factorBody(t, api.TOTPConfirmRequest{CurrentPassword: "initial-password", Challenge: setup.Challenge, Code: factorCode(t, setup.Secret, time.Now().Add(-30*time.Second))}), "", cookie, info.CSRF)
+				result = factorPreviousStepCall(t, f, setup.Secret, func(code string) *httptest.ResponseRecorder {
+					return f.call(t, "POST", "/auth/totp/confirm", factorBody(t, api.TOTPConfirmRequest{CurrentPassword: "initial-password", Challenge: setup.Challenge, Code: code}), "", cookie, info.CSRF)
+				})
 			case "disable":
 				// Already disabled is a real authorized no-op, with identical
 				// original cookie-clearing policy and current writer checks.

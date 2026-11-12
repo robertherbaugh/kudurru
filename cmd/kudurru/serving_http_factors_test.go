@@ -99,6 +99,20 @@ func factorResetAdmission(f *servingHTTPFixture) {
 	f.h.factorMu.Unlock()
 }
 
+// factorPreviousStepCall sends the code of the step before the one the server
+// reads, while the server clock holds still at one instant. The window accepts
+// one step on either side (totp.Window). A code taken from the wall clock 30 s
+// back and checked after the next step boundary is two steps old and correctly
+// refused, so a wall-clock "previous step" code fails whenever the request
+// straddles a boundary (TestServingHTTPFactorPreviousStepAcrossBoundary).
+func factorPreviousStepCall(t *testing.T, f *servingHTTPFixture, secret string, call func(code string) *httptest.ResponseRecorder) *httptest.ResponseRecorder {
+	t.Helper()
+	at := time.Now()
+	restore := f.clock.Set(func() time.Time { return at })
+	defer f.clock.Set(restore)
+	return call(factorCode(t, secret, at.Add(-totp.Period*time.Second)))
+}
+
 func factorSetupHTTP(t *testing.T, f *servingHTTPFixture, cookie *http.Cookie, csrf, oldCode string) api.TOTPSetupResponse {
 	t.Helper()
 	w := f.call(t, "POST", "/auth/totp/setup", factorBody(t, api.TOTPProofRequest{CurrentPassword: "initial-password", TOTPCode: oldCode}), "", cookie, csrf)
@@ -161,9 +175,9 @@ func TestServingHTTPFactorsSetupConfirmLoginDisable(t *testing.T) {
 	if err != nil || !factorAdmissionOnly(before, after) {
 		t.Fatal("setup activated a candidate before confirmation", err)
 	}
-	confirmed := f.call(t, "POST", "/auth/totp/confirm", factorBody(t, api.TOTPConfirmRequest{
-		CurrentPassword: "initial-password", Challenge: setup.Challenge, Code: factorCode(t, setup.Secret, time.Now().Add(-30*time.Second)),
-	}), "", cookie, info.CSRF)
+	confirmed := factorPreviousStepCall(t, f, setup.Secret, func(code string) *httptest.ResponseRecorder {
+		return f.call(t, "POST", "/auth/totp/confirm", factorBody(t, api.TOTPConfirmRequest{CurrentPassword: "initial-password", Challenge: setup.Challenge, Code: code}), "", cookie, info.CSRF)
+	})
 	expectServingHTTPStatus(t, confirmed, 204)
 	factorCleared(t, confirmed)
 	u, state := factorState(t, f)
@@ -453,4 +467,29 @@ func TestServingHTTPFactorsDisabledNoopOriginalLease(t *testing.T) {
 	factorReady(t, f)
 	f.stop()
 	expectServingHTTPStatus(t, f.call(t, "POST", "/auth/totp/disable", body, "", cookie, info.CSRF), 503)
+}
+
+// The original cookie-clear test took its confirm code from the wall clock 30 s
+// back. Take that code just before a step boundary and send it just after the
+// boundary: it is two steps old and the confirm answers 401, as hosted CI saw.
+// factorPreviousStepCall confirms. The server keeps its real clock here (a
+// server clock moved ahead of the publication answers 503 instead), so the test
+// waits for the next boundary, at most one step.
+func TestServingHTTPFactorPreviousStepAcrossBoundary(t *testing.T) {
+	f := newServingHTTPFixture(t, false)
+	cookie, info := f.login(t)
+	confirm := func(challenge, code string) *httptest.ResponseRecorder {
+		return f.call(t, "POST", "/auth/totp/confirm", factorBody(t, api.TOTPConfirmRequest{CurrentPassword: "initial-password", Challenge: challenge, Code: code}), "", cookie, info.CSRF)
+	}
+	setup := factorSetupHTTP(t, f, cookie, info.CSRF, "")
+	boundary := time.Unix((time.Now().Add(time.Second).Unix()/totp.Period+1)*totp.Period, 0)
+	time.Sleep(time.Until(boundary.Add(-100 * time.Millisecond)))
+	stale := factorCode(t, setup.Secret, time.Now().Add(-totp.Period*time.Second))
+	time.Sleep(time.Until(boundary.Add(50 * time.Millisecond)))
+	expectServingHTTPStatus(t, confirm(setup.Challenge, stale), 401)
+	factorResetAdmission(f)
+	setup = factorSetupHTTP(t, f, cookie, info.CSRF, "")
+	expectServingHTTPStatus(t, factorPreviousStepCall(t, f, setup.Secret, func(code string) *httptest.ResponseRecorder {
+		return confirm(setup.Challenge, code)
+	}), 204)
 }
