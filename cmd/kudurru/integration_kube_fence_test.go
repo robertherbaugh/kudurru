@@ -261,7 +261,7 @@ func TestKubeIntegrationFenceRefusesChangedAuthority(t *testing.T) {
 	}
 	// attempt sends one provider request through the host (fence, budget
 	// write, fence) and reports whether it ran and what the budget became.
-	attempt := func(t *testing.T, h *harness) (error, bool, bool) {
+	attempt := func(t *testing.T, h *harness) (bool, bool, error) {
 		t.Helper()
 		before := budgets(t)
 		ran := false
@@ -271,11 +271,11 @@ func TestKubeIntegrationFenceRefusesChangedAuthority(t *testing.T) {
 		for name, rv := range after {
 			changed = changed || before[name] != rv
 		}
-		return err, ran, changed
+		return ran, changed, err
 	}
 	refused := func(t *testing.T, h *harness) {
 		t.Helper()
-		err, ran, budget := attempt(t, h)
+		ran, budget, err := attempt(t, h)
 		if !errors.Is(err, ih.ErrFenced) || ran || budget {
 			t.Fatalf("a changed authority was not fenced: err=%v request ran=%v budget written=%v", err, ran, budget)
 		}
@@ -290,7 +290,7 @@ func TestKubeIntegrationFenceRefusesChangedAuthority(t *testing.T) {
 
 	t.Run("unchanged", func(t *testing.T) {
 		h := setup(t, "unchanged")
-		err, ran, budget := attempt(t, h)
+		ran, budget, err := attempt(t, h)
 		if err != nil || !ran || !budget {
 			t.Fatalf("the unchanged control was refused: err=%v request ran=%v budget written=%v", err, ran, budget)
 		}
@@ -389,7 +389,7 @@ func TestKubeIntegrationFenceRefusesChangedAuthority(t *testing.T) {
 			t.Fatal(err)
 		}
 		h.cache.publish(t, h.objects())
-		err, ran, budget := attempt(t, h)
+		ran, budget, err := attempt(t, h)
 		if err != nil || !ran || !budget {
 			t.Fatalf("a record set status write fenced the instance: err=%v request ran=%v budget written=%v", err, ran, budget)
 		}
