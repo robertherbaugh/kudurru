@@ -30,16 +30,21 @@ import (
 // the Lease holder, so every replica answers the same; it is known only when
 // its Ready condition observed the object's current generation. An instance
 // that no job runs for (paused, suspended) writes none; its local status,
-// which every replica derives from the same object revision, is shown. Commands run
-// only on the replica that holds the instance's Lease; any other replica
-// answers 503 and names the holder, and never forwards or replays the
-// request. A reviewed sync or act is recorded as a structured log line on
-// the holder, because this store has no kudurru audit table.
+// which every replica derives from the same object revision, is shown.
+// Commands run only on the replica that holds the instance's Lease; any other
+// replica answers 503 and names the holder (or, when no other replica holds
+// it, the instance's phase and reason), and never forwards or replays the
+// request. A reviewed sync or act is recorded as a structured log line on the
+// holder, because this store has no kudurru audit table.
 
-// kubeIntegrationHolderHint is the hint of a command sent to a replica that
-// does not hold the instance's Lease.
+// kubeIntegrationHolderHint is the hint of a command this replica cannot run:
+// Holder names another replica that holds the instance's Lease; otherwise
+// Phase and Reason say why no job runs it here (for example Paused and
+// Suspended, or LicenseUnavailable).
 type kubeIntegrationHolderHint struct {
 	Holder string `json:"holder,omitempty"`
+	Phase  string `json:"phase,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }
 
 func (r *kubeIntegrationRuntime) adminSnapshot(namespace string) (zonecache.ObjectSet, error) {
@@ -139,11 +144,18 @@ func (r *kubeIntegrationRuntime) kubeIntegrationSummary(d *public.Integration, s
 	return out
 }
 
-// holderError answers a command sent to a replica that does not hold the
-// instance's Lease.
-func (r *kubeIntegrationRuntime) holderError(owner ih.InstanceID) error {
-	hint := kubeIntegrationHolderHint{Holder: r.opts.Store.Elector(ih.ElectionKey(owner)).Leader()}
-	return &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: api.KeyUnavailable, Message: "this replica does not hold the integration's lease; send the command to the holder", Hint: hint}}
+// holderError answers a command this replica's host has no running job for.
+// Only when the instance's Lease is known to be held by another replica is
+// the caller sent there; a suspended, unlicensed or otherwise paused
+// instance, an instance between two jobs, or one whose Lease nobody holds is
+// answered with its phase and reason instead.
+func (r *kubeIntegrationRuntime) holderError(owner ih.InstanceID, d *public.Integration) error {
+	elector := r.opts.Store.Elector(ih.ElectionKey(owner))
+	if leader := elector.Leader(); leader != "" && leader != r.opts.Store.Identity() && !elector.IsLeader() {
+		return &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: api.KeyUnavailable, Message: "this replica does not hold the integration's lease; send the command to the holder", Hint: kubeIntegrationHolderHint{Holder: leader}}}
+	}
+	summary := r.kubeIntegrationSummary(d, r.host.Statuses())
+	return &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: api.KeyUnavailable, Message: "the integration is not running on this replica; retry once it is running", Hint: kubeIntegrationHolderHint{Phase: summary.Phase, Reason: summary.Reason}}}
 }
 
 // IntegrationExecute implements api.IntegrationAdministration on the replica
@@ -176,7 +188,11 @@ func (r *kubeIntegrationRuntime) IntegrationExecute(ctx context.Context, in api.
 	defer cancel()
 	capture, err := r.host.CaptureCommand(ctx, owner, in.Review.Revision)
 	if errors.Is(err, ih.ErrUnavailable) {
-		return nil, r.holderError(owner)
+		d, _ := reviewed.(*public.Integration)
+		if d == nil {
+			return nil, integrationAdminError(err)
+		}
+		return nil, r.holderError(owner, d)
 	}
 	if err != nil {
 		return nil, integrationAdminError(err)
@@ -215,7 +231,10 @@ func (r *kubeIntegrationRuntime) IntegrationExecute(ctx context.Context, in api.
 			out.Applied, out.Unchanged, out.Pending, out.Conflicts, out.Clients = result.Applied, result.Unchanged, result.Pending, result.Conflicts, result.Clients
 			if result.Source != nil {
 				out.SourceCommitted, out.SourcePublished = result.Source.Committed, result.Source.Published
-				// A source that never committed changed nothing durable.
+				// A head that was never written, or whose write is known to
+				// have lost its compare-and-swap, installed no source: chunks
+				// staged for it are referenced by no head. A head write with
+				// an unknown outcome comes back Pending and stays uncertain.
 				refusedBeforeEffect = refusedBeforeEffect || !result.Source.Committed && result.Applied == 0 && result.Pending == 0
 			}
 		}

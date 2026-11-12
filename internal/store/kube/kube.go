@@ -416,6 +416,9 @@ func (s *Store) WaitForSync(ctx context.Context) bool {
 	return s.cache.WaitForCacheSync(ctx)
 }
 
+// Identity is this replica's Lease holder identity (Options.Identity).
+func (s *Store) Identity() string { return s.opts.Identity }
+
 // Info implements store.Store. LastContact is the time of the last
 // successful apiserver round trip (any request of the driver, including
 // informer watch traffic and Lease renewals; see contact.go), zero before
