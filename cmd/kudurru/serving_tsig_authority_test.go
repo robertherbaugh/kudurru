@@ -153,12 +153,6 @@ func tsigABQNewFollower(ctx context.Context, t *testing.T, primary *tsigCommandF
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if f.writerCancel != nil {
-			f.writerCancel()
-		}
-		if f.cancelRun != nil {
-			f.cancelRun()
-		}
 		join := func(done <-chan error) bool {
 			if done == nil {
 				return true
@@ -174,7 +168,19 @@ func tsigABQNewFollower(ctx context.Context, t *testing.T, primary *tsigCommandF
 				return false
 			}
 		}
-		writerJoined, rootJoined := join(f.writerDone), join(f.done)
+		// Production order (cluster.Runner): cancel and join the elected writer,
+		// then cancel the always-on runtime it writes through.
+		if f.writerCancel != nil {
+			f.writerCancel()
+		}
+		writerJoined := join(f.writerDone)
+		if writerJoined && f.writerDone != nil && f.runtime.life.Err() != nil {
+			t.Error("held follower always-on runtime stopped before its writer joined")
+		}
+		if f.cancelRun != nil {
+			f.cancelRun()
+		}
+		rootJoined := join(f.done)
 		if !writerJoined || !rootJoined {
 			return
 		}
@@ -226,8 +232,9 @@ func tsigABQNewFollower(ctx context.Context, t *testing.T, primary *tsigCommandF
 	if err != nil {
 		t.Fatal("prepare real follower complete runtime")
 	}
-	// The cleanup above cancels the writer before this always-on context; the
-	// end of t.Context() must not reverse that order (servingFixtureAlwaysOn).
+	// The cleanup above cancels and joins the writer before it cancels this
+	// always-on context; the end of t.Context() must not reverse that order
+	// (servingFixtureAlwaysOn).
 	f.life, f.cancelRun = servingFixtureAlwaysOn(t)
 	f.done = make(chan error, 1)
 	go func() { f.done <- f.runtime.Run(f.life) }()
@@ -239,7 +246,9 @@ func (f *tsigABQFollower) startWriter(t *testing.T) {
 	if f.writerDone != nil {
 		t.Fatal("held follower fixture attempted a second writer")
 	}
-	ctx, cancel := context.WithCancel(f.life)
+	// The writer's election context is not a child of the always-on context,
+	// as in cluster.Runner, so the writer ends through its own term only.
+	ctx, cancel := context.WithCancel(context.WithoutCancel(t.Context()))
 	f.writerCancel, f.writerDone = cancel, make(chan error, 1)
 	go func() {
 		f.writerDone <- f.store.Elector("tsig-held-promoted-writer").Run(ctx, func(term context.Context) {
