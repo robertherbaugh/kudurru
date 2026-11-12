@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"path/filepath"
@@ -119,7 +120,14 @@ func TestIntegrationWebhookMountedClientsFollowerAndPromotion(t *testing.T) {
 	if g.adapter, err = servinghttp.New(servinghttp.Options{Publisher: follower.publisher, Now: follower.opts.Now}); err != nil {
 		t.Fatal(err)
 	}
-	router := integrationAdminRouter(t, g)
+	// The router as serve mounts it on a follower: the cluster role comes
+	// from the source the request's lease captured.
+	srv, err := api.New(api.Options{Store: follower.opts.Store, Validator: follower.opts.Validator, Config: follower.opts.Config, CanonicalSettings: follower, Integrations: follower.integrations, Authenticate: g.adapter.Middleware, Authorizer: g.adapter, ClusterRole: follower.ClusterRole, Logger: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(srv.Close)
+	var router http.Handler = srv
 	review := api.IntegrationReview{UID: string(f.d.UID), Revision: f.d.ResourceVersion}
 	w := integrationAdminCall(t, router, g, http.MethodPost, "/integrations/default/webhook/check", review, g.token)
 	var refusal struct {
@@ -127,9 +135,9 @@ func TestIntegrationWebhookMountedClientsFollowerAndPromotion(t *testing.T) {
 			Key string `json:"key"`
 		} `json:"error"`
 	}
-	// The follower holds no writer authority for the captured review: it
-	// answers 409 conflict and makes no provider call.
-	if w.Code != http.StatusConflict || json.Unmarshal(w.Body.Bytes(), &refusal) != nil || refusal.Error.Key != api.KeyConflict {
+	// Integration operations run under the primary's authority (D368): the
+	// follower answers 503 primary_required and makes no provider call.
+	if w.Code != http.StatusServiceUnavailable || json.Unmarshal(w.Body.Bytes(), &refusal) != nil || refusal.Error.Key != api.KeyPrimaryRequired {
 		t.Fatal("a follower ran an integration operation", w.Code, w.Body.String())
 	}
 	t.Logf("follower refusal: %d %s", w.Code, refusal.Error.Key)
