@@ -131,10 +131,12 @@ func (h *Host) refresh(ctx context.Context) {
 				nextDigest = digest
 			}
 			changed := j.sourceDigest != nextDigest
-			if !j.active && (changed || j.frame.input.BundleID != i.BundleID()) {
+			if !j.active && (changed || j.frame.input.BundleID != i.BundleID() || j.refusalUnpublished) {
 				// A setup refusal releases its callback, not the elector's Run.
 				// Changed authority must join that old election before a new
 				// lifecycle can start; unchanged refused work is never replayed.
+				// A root refusal whose status write failed is the exception: it
+				// makes no provider call, and a new term only reports it again.
 				j.cancel()
 				continue
 			}

@@ -267,16 +267,24 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 }
 
 // refuse reports a root refusal of an elected instance (Options.Refuse) and
-// publishes it once through the fenced Status callback. No provider exists.
+// publishes it through the fenced Status callback. No provider exists. A
+// refusal that could not be published marks the job, so the next capture
+// replaces it and a new term publishes again (at most once per poll interval)
+// instead of leaving the instance silently inert.
 func (h *Host) refuse(ctx context.Context, j *job, f frame, g ExecutionGuard, reason string) {
 	h.setLocal(j, "Degraded", reason, Result{}, true)
 	statusCtx, cancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
 	defer cancel()
 	scoped, err := h.scopedOriginal(statusCtx, j, f, g)
-	if err != nil {
-		return
+	if err == nil {
+		err = h.publishStatus(scoped, j, g)
 	}
-	h.publishStatus(scoped, j, g)
+	if err != nil {
+		h.mu.Lock()
+		j.refusalUnpublished = true
+		h.mu.Unlock()
+		h.Wake()
+	}
 }
 
 func (h *Host) execute(ctx context.Context, j *job, c command) answer {
@@ -379,7 +387,7 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 			}
 			h.setLocal(j, phase, reason, *result, true)
 		}
-		h.publishStatus(ctx, j, g)
+		_ = h.publishStatus(ctx, j, g)
 		return answer{result: result, err: err}
 	case "actions":
 		provider, ok := j.provider.(integration.ActionProvider)
@@ -475,21 +483,27 @@ func safeError(ctx context.Context, err error) error {
 	}
 	return ErrProvider
 }
-func (h *Host) publishStatus(ctx context.Context, j *job, g ExecutionGuard) {
+
+// publishStatus sends the job's local status through the fenced Status
+// callback once. Most callers ignore the result: a later status write follows
+// the next operation. A refusal has no later operation, so it uses the result.
+func (h *Host) publishStatus(ctx context.Context, j *job, g ExecutionGuard) error {
 	if h.opts.Status == nil {
-		return
+		return nil
 	}
-	if h.fence(ctx, j, g) != nil {
-		return
+	if err := h.fence(ctx, j, g); err != nil {
+		return err
 	}
 	h.mu.RLock()
 	s := h.statuses[j.key]
 	s.Result = valueResult(&s.Result)
 	s.CredentialFingerprints = j.frame.instance.CredentialFingerprints()
 	h.mu.RUnlock()
-	if h.opts.Status(ctx, g, s) != nil {
+	if err := h.opts.Status(ctx, g, s); err != nil {
 		h.opts.Logger.Warn("integration status publication failed", "integration", j.key)
+		return err
 	}
+	return nil
 }
 
 type providerHost struct {
@@ -527,6 +541,6 @@ func (p providerHost) SetCondition(ctx context.Context, _, _, _ string, ok bool)
 		phase, reason = "Running", "ProviderCondition"
 	}
 	p.h.setLocal(p.j, phase, reason, Result{}, true)
-	p.h.publishStatus(ctx, p.j, g)
+	_ = p.h.publishStatus(ctx, p.j, g)
 	return nil
 }

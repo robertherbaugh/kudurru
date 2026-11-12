@@ -336,7 +336,7 @@ func (h *Host) deadLettered(ctx context.Context, j *job, g ExecutionGuard) {
 	result := valueResult(&old.Result)
 	h.mu.RUnlock()
 	h.setLocal(j, "Degraded", ReasonEventDeadLettered, result, true)
-	h.publishStatus(ctx, j, g)
+	_ = h.publishStatus(ctx, j, g)
 }
 
 // ReasonEventDeadLettered is the status reason of an instance that dropped

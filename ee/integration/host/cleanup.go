@@ -319,7 +319,7 @@ func (h *Host) runTerminating(leaseCtx context.Context, j *job) {
 		if f.instance != nil && !errors.Is(out.err, ErrFenced) {
 			statusCtx, statusCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
 			if scoped, err := h.scopedOriginal(statusCtx, j, f, g); err == nil {
-				h.publishStatus(scoped, j, g)
+				_ = h.publishStatus(scoped, j, g)
 			}
 			statusCancel()
 			// A changed status is a new resource version of the object; the

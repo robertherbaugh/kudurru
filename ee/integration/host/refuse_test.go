@@ -2,6 +2,7 @@ package host
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -74,5 +75,56 @@ func TestRefusedInstanceReportsWithoutProvider(t *testing.T) {
 	local := h.Statuses()
 	if len(local) != 1 || local[0].Reason != "UnsupportedOnKubernetes" {
 		t.Fatal("local status lost the refusal", local)
+	}
+}
+
+// A refusal whose one status write fails is not left silently inert: the
+// next capture replaces the job and a new term publishes the reason again,
+// still without constructing a provider.
+func TestRefusedInstanceRepublishesAfterFailedStatus(t *testing.T) {
+	st := memory.New()
+	in := captureInput(t, webhook("sink"))
+	r, err := ledger.New(ledger.Options{Reader: st, Write: func(ctx context.Context, _ ledger.Guard, o store.Object, a store.ApplyOptions) (store.Object, error) {
+		return st.Apply(ctx, o, a)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var factories, attempts, published atomic.Int32
+	h, err := New(Options{Capture: func(context.Context) (Input, error) { return in, nil }, Factory: func(string) (integration.Integration, error) {
+		factories.Add(1)
+		return &fakePublisher{start: func(ctx context.Context) error { <-ctx.Done(); return nil }}, nil
+	}, Elector: st.Elector, Fence: func(context.Context, ExecutionGuard) error { return nil }, Ledger: r, Reader: st, Allowed: func() bool { return true },
+		Refuse: func(*public.Integration) string { return "UnsupportedOnKubernetes" },
+		Status: func(_ context.Context, _ ExecutionGuard, s InstanceStatus) error {
+			if s.Reason != "UnsupportedOnKubernetes" {
+				t.Error("unexpected status", s.Reason)
+			}
+			if attempts.Add(1) == 1 {
+				return errors.New("conflict")
+			}
+			published.Add(1)
+			return nil
+		}, PollInterval: 5 * time.Millisecond, OperationTimeout: time.Second, StopTimeout: time.Second, MaxConcurrent: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- h.Run(ctx) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	waitFor(t, func() bool { return published.Load() == 1 })
+	// Once published, the refusal is not written again.
+	time.Sleep(100 * time.Millisecond)
+	if attempts.Load() != 2 || published.Load() != 1 {
+		t.Fatal("refusal status attempts", attempts.Load(), "published", published.Load())
+	}
+	if factories.Load() != 0 {
+		t.Fatal("a refused instance constructed a provider")
 	}
 }

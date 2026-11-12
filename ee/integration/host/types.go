@@ -254,6 +254,9 @@ type job struct {
 	leaseCtx     context.Context
 	active       bool
 	provider     integration.Integration
+	// refusalUnpublished is set when a root refusal (Options.Refuse) could
+	// not be published; the next capture replaces the job so it is retried.
+	refusalUnpublished bool
 }
 type command struct {
 	ctx                    context.Context
