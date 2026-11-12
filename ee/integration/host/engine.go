@@ -90,7 +90,7 @@ func (h *Host) publications(ctx context.Context, j *job, f frame, g ExecutionGua
 		if err != nil {
 			return nil, err
 		}
-		in := publicationInput{pub, remote, plan.Input{Owner: f.instance.owner, Destination: pub.Destination, ConfigDigest: g.Ledger.ConfigDigest, CredentialDigest: g.Ledger.CredentialDigest, SourceDigest: selection.Digest, Policy: pub.Policy, RecordPolicies: recordPolicies, Desired: adjusted, Current: remote.Records, Ledger: ledgers, DesiredComplete: true, CurrentComplete: true, AdoptUnowned: pub.AdoptUnowned, AdoptExternalDNSOwner: pub.AdoptExternalDNSOwner}}
+		in := publicationInput{pub, remote, plan.Input{Owner: f.instance.owner, Destination: pub.Destination, ConfigDigest: g.Ledger.ConfigDigest, CredentialDigest: g.Ledger.CredentialDigest, SourceDigest: selection.Digest, Policy: pub.Policy, RecordPolicies: recordPolicies, Desired: adjusted, Current: remote.Records, Claimed: remote.Claimed, Ledger: ledgers, DesiredComplete: true, CurrentComplete: true, AdoptUnowned: pub.AdoptUnowned, AdoptExternalDNSOwner: pub.AdoptExternalDNSOwner}}
 		// Validate the complete observation even when a pending operation stops
 		// ordinary planning early. This temporary plan grants no execution rights.
 		if _, err := validatePendingObservation(in.planInput); err != nil {

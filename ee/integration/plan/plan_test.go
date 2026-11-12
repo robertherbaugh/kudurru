@@ -681,3 +681,43 @@ func TestCleanupRefusesDesiredStatePendingRowsAndCapacity(t *testing.T) {
 		t.Fatalf("ordinary plan over the operation bound: %v", err)
 	}
 }
+
+// A claimed key without a listed row is a conflict at its name (D380): no
+// create is planned over it, the claim binds the digest, and a cleanup
+// retains this owner's rows at that name like any other conflict.
+func TestClaimedKeysAreConflicts(t *testing.T) {
+	in := fixture()
+	claimed := kinds.RecordKey{Name: "www.example.com.", Type: "A"}
+	in.Desired = []public.Endpoint{endpoint("www.example.com.", "A", "192.0.2.1"), endpoint("mail.example.com.", "A", "192.0.2.2")}
+	unclaimed := build(t, in)
+	in.Claimed = []kinds.RecordKey{claimed}
+	p := build(t, in)
+	if len(p.Operations) != 1 || p.Operations[0].Key.Name != "mail.example.com." {
+		t.Fatal("planned over a claim", p.Operations)
+	}
+	if !slices.Equal(p.Conflicts, []Conflict{{Name: "www.example.com.", Type: "A", Reason: "claimed by another owner"}}) {
+		t.Fatal("conflicts", p.Conflicts)
+	}
+	if p.Digest == unclaimed.Digest || p.Operations[0].ID == unclaimed.Operations[0].ID {
+		t.Fatal("the claim does not bind the plan digest")
+	}
+	for _, bad := range [][]kinds.RecordKey{{claimed, claimed}, {{Name: "www.example.com.", Type: ""}}} {
+		in.Claimed = bad
+		if _, err := Build(in); !errors.Is(err, ErrInvalid) {
+			t.Fatal("invalid claims accepted", bad, err)
+		}
+	}
+
+	cleanup := fixture()
+	cleanup.Cleanup = true
+	mine := endpoint("www.example.com.", "AAAA", "2001:db8::1")
+	cleanup.Current = []RemoteRecord{owned(cleanup, mine, "id-www")}
+	row := ledgerRow(cleanup, mine, "", "id-www")
+	row.ResourceVersion = "rv-1"
+	cleanup.Ledger = []*kinds.IntegrationLedger{row}
+	cleanup.Claimed = []kinds.RecordKey{claimed}
+	c := build(t, cleanup)
+	if len(c.Operations) != 0 || len(c.Retained) != 1 || c.Retained[0].Reason != RetainedConflict {
+		t.Fatal("cleanup over a claimed name", c.Operations, c.Retained)
+	}
+}

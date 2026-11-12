@@ -55,7 +55,7 @@ func Build(in Input) (*Plan, error) {
 	if limit <= 0 {
 		limit = 10000
 	}
-	if limit > 100000 || len(in.Desired) > limit || len(in.Current) > limit || len(in.Ledger) > limit || len(in.RecordPolicies) > limit {
+	if limit > 100000 || len(in.Desired) > limit || len(in.Current) > limit || len(in.Ledger) > limit || len(in.RecordPolicies) > limit || len(in.Claimed) > limit {
 		return nil, ErrCapacity
 	}
 	encoded := 0
@@ -202,6 +202,15 @@ func Build(in Input) (*Plan, error) {
 			conflict(k, "desired CNAME coexistence")
 		}
 	}
+	claimed := make([]kinds.RecordKey, 0, len(in.Claimed))
+	for _, k := range in.Claimed {
+		if k.Validate() != nil || slices.Contains(claimed, k) {
+			return nil, ErrInvalid
+		}
+		claimed = append(claimed, k)
+		conflict(k, "claimed by another owner")
+	}
+	slices.SortFunc(claimed, func(a, b kinds.RecordKey) int { return strings.Compare(keyString(a), keyString(b)) })
 	for k, c := range current {
 		if !c.owned && !c.adoptable {
 			conflict(k, "foreign or unowned owner")
@@ -331,8 +340,9 @@ func Build(in Input) (*Plan, error) {
 		Desired        []public.Endpoint
 		Current        []RemoteRecord
 		Ledger         map[string]string
-		Cleanup        bool `json:",omitempty"`
-	}{sortedPolicies, p, in.Policy, in.AdoptUnowned, in.AdoptExternalDNSOwner, desiredOrdered, observed, ledgerTokens, in.Cleanup})
+		Cleanup        bool              `json:",omitempty"`
+		Claimed        []kinds.RecordKey `json:",omitempty"`
+	}{sortedPolicies, p, in.Policy, in.AdoptUnowned, in.AdoptExternalDNSOwner, desiredOrdered, observed, ledgerTokens, in.Cleanup, claimed})
 	p.Digest = kinds.Digest(b)
 	for i := range p.Operations {
 		op := &p.Operations[i]

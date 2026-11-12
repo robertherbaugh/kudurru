@@ -150,7 +150,10 @@ type remoteRow struct {
 
 // remoteState is one complete, decoded record list.
 type remoteState struct {
-	rows     []plan.RemoteRecord
+	rows []plan.RemoteRecord
+	// claimed are keys inside the domains whose registry row names another
+	// owner while no data row is listed (plan.Input.Claimed).
+	claimed  []kinds.RecordKey
 	data     map[kinds.RecordKey]remoteRow
 	registry map[kinds.RecordKey]string
 	wires    map[kinds.RecordKey]*externaldns.Endpoint
@@ -230,7 +233,7 @@ func (p *provider) Records(ctx context.Context, d kinds.Destination) (host.Remot
 	if err != nil {
 		return host.RemoteSnapshot{}, err
 	}
-	return host.RemoteSnapshot{Records: state.rows, Complete: true}, nil
+	return host.RemoteSnapshot{Records: state.rows, Claimed: state.claimed, Complete: true}, nil
 }
 
 func (p *provider) read(ctx context.Context, tr *transport, a *advertisement, r records) (remoteState, error) {
@@ -316,6 +319,16 @@ func (p *provider) read(ctx context.Context, tr *transport, a *advertisement, r 
 		state.data[key] = remoteRow{record: *row, wire: data[i].wire}
 	}
 	slices.SortFunc(state.rows, func(a, b plan.RemoteRecord) int { return strings.Compare(a.IDs[0], b.IDs[0]) })
+	// A registry row of another owner without its data row still claims the
+	// key: that owner may publish it again at any time. The planner reports
+	// it as a conflict instead of planning a create Apply would refuse on
+	// every sync. A claim outside the domains is not this destination's.
+	for key, owner := range state.registry {
+		if _, listed := state.data[key]; !listed && owner != r.marker && inDomains(key.Name, r.domains) {
+			state.claimed = append(state.claimed, key)
+		}
+	}
+	slices.SortFunc(state.claimed, func(a, b kinds.RecordKey) int { return strings.Compare(recordID(a), recordID(b)) })
 	return state, nil
 }
 

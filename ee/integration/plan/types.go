@@ -75,9 +75,14 @@ type Input struct {
 	Desired                                      []public.Endpoint
 	Current                                      []RemoteRecord
 	Ledger                                       []*kinds.IntegrationLedger
-	DesiredComplete, CurrentComplete             bool
-	MaxRecords                                   int
-	Cleanup                                      bool
+	// Claimed names RRset keys another owner claims at the destination
+	// without a row the snapshot lists, such as a foreign ownership registry
+	// row whose data row is gone (D380). Each is a conflict at its name, as a
+	// foreign row would be, so nothing there is created over the claim.
+	Claimed                          []kinds.RecordKey
+	DesiredComplete, CurrentComplete bool
+	MaxRecords                       int
+	Cleanup                          bool
 }
 
 // Operation is one deterministic whole-RRset provider action.

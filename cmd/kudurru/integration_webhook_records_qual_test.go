@@ -213,7 +213,10 @@ func TestIntegrationWebhookMountedRecordPromotionDuringApply(t *testing.T) {
 }
 
 // Under sync, unowned, other-kudurru and external-dns rows stay untouched,
-// a desired name held by an unowned row is a conflict, and removing a
+// a desired name held by an unowned row is a conflict, so is a desired
+// name whose only row is another kudurru owner's registry row (D380: no
+// create is planned over the claim, so no operation row is written and
+// nothing is posted on any sync), and removing a
 // source record set deletes the data and registry rows only where the
 // registry names this instance.
 func TestIntegrationWebhookMountedRecordForeignProtectionAndRemoval(t *testing.T) {
@@ -224,6 +227,7 @@ func TestIntegrationWebhookMountedRecordForeignProtectionAndRemoval(t *testing.T
 		{DNSName: "_kudurru-a.other.example", RecordType: "TXT", RecordTTL: 300, Targets: []string{`"heritage=kudurru,kudurru/owner=` + strings.Repeat("f", 64) + `"`}},
 		{DNSName: "legacy.example", RecordType: "A", RecordTTL: 300, Targets: []string{"198.51.100.9"}},
 		{DNSName: "a-legacy.example", RecordType: "TXT", RecordTTL: 300, Targets: []string{`"heritage=external-dns,external-dns/owner=legacy"`}},
+		{DNSName: "_kudurru-a.claimed.example", RecordType: "TXT", RecordTTL: 300, Targets: []string{`"heritage=kudurru,kudurru/owner=` + strings.Repeat("e", 64) + `"`}},
 	}
 	peer.put(t, foreign...)
 	untouched := func() map[string][]string {
@@ -241,6 +245,7 @@ func TestIntegrationWebhookMountedRecordForeignProtectionAndRemoval(t *testing.T
 		{DNSName: "manual.example.", RecordType: "A", RecordTTL: 300, Targets: []string{"192.0.2.7"}},
 		{DNSName: "other.example.", RecordType: "A", RecordTTL: 300, Targets: []string{"192.0.2.8"}},
 		{DNSName: "legacy.example.", RecordType: "A", RecordTTL: 300, Targets: []string{"192.0.2.9"}},
+		{DNSName: "claimed.example.", RecordType: "A", RecordTTL: 300, Targets: []string{"192.0.2.10"}},
 	}}}
 	if _, err := f.s.opts.Store.Apply(t.Context(), desired, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
 		t.Fatal(err)
@@ -248,13 +253,27 @@ func TestIntegrationWebhookMountedRecordForeignProtectionAndRemoval(t *testing.T
 	f.s.integrations.host.Wake()
 	awaitServingRuntime(t, f.s, func() bool {
 		for _, s := range f.s.integrations.host.Statuses() {
-			if s.Owner == integrationOwner(f.s, f.d) && s.Reason == "ConflictsOrPending" && s.Result.Conflicts >= 3 {
+			if s.Owner == integrationOwner(f.s, f.d) && s.Reason == "ConflictsOrPending" && s.Result.Conflicts >= 4 {
 				return true
 			}
 		}
 		return false
 	})
 	posts := peer.postCount()
+	// Two more completed syncs; a status write may fence one, which is
+	// asked again.
+	for range 2 {
+		awaitServingRuntime(t, f.s, func() bool {
+			res, err := f.s.integrations.host.Sync(t.Context(), integrationOwner(f.s, f.d), "")
+			if err == nil && (res.Conflicts != 4 || res.Pending != 0) {
+				t.Fatal("contested sync", res)
+			}
+			return err == nil
+		})
+	}
+	if total, _ := webhookRecordsOperations(t, f.s, "claimed.example."); total != 0 || peer.postCount() != posts {
+		t.Fatal("a create was planned over another owner's claim", total, peer.postCount()-posts)
+	}
 	// Removing the published source record set removes only owned rows.
 	var published public.DNSRecordSet
 	if err := f.s.opts.Store.Get(t.Context(), store.Key{Kind: "DNSRecordSet", Namespace: "default", Name: "published"}, &published); err != nil {

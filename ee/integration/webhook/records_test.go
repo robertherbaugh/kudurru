@@ -79,7 +79,7 @@ func recordsPlan(t *testing.T, p *provider, desired []public.Endpoint) (*plan.Pl
 	if err != nil || !snapshot.Complete {
 		t.Fatal("records", err)
 	}
-	built, err := plan.Build(plan.Input{Owner: p.owner, Destination: pubs[0].Destination, ConfigDigest: strings.Repeat("c", 64), CredentialDigest: strings.Repeat("d", 64), SourceDigest: strings.Repeat("e", 64), Policy: pubs[0].Policy, Desired: adjusted, Current: snapshot.Records, DesiredComplete: true, CurrentComplete: true})
+	built, err := plan.Build(plan.Input{Owner: p.owner, Destination: pubs[0].Destination, ConfigDigest: strings.Repeat("c", 64), CredentialDigest: strings.Repeat("d", 64), SourceDigest: strings.Repeat("e", 64), Policy: pubs[0].Policy, Desired: adjusted, Current: snapshot.Records, Claimed: snapshot.Claimed, DesiredComplete: true, CurrentComplete: true})
 	if err != nil {
 		t.Fatal("plan", err)
 	}
@@ -434,12 +434,17 @@ func TestRecordsInstanceWithoutDomainsStillCleansUp(t *testing.T) {
 	if err := ed.ApplyChanges(t.Context(), &externaldns.Changes{Create: []*externaldns.Endpoint{wireA("manual.example.test", "198.51.100.1")}}); err != nil {
 		t.Fatal(err)
 	}
-	// The peer offers only records, so Check refuses a provider built with
-	// no domains; this is the provider of an instance that negotiated with
-	// domains and lost them, as one whose peer offers more would be.
-	p.mu.Lock()
-	p.records.domains = nil
-	p.mu.Unlock()
+	// The instance's domains are removed: a new incarnation is provisioned
+	// with none, passes Check, as a Delete cleanup needs, and has no roles,
+	// so no ordinary lease schedules it.
+	owner := p.owner
+	p = recordsProvider(t, server, nil, "")
+	if _, err := p.Check(t.Context()); err != nil || p.owner != owner {
+		t.Fatal("check without domains", err)
+	}
+	if _, err := p.Roles(); !errors.Is(err, host.ErrUnsupported) {
+		t.Fatal("records-only peer without domains got roles", err)
+	}
 	pubs, err := p.Destinations(t.Context())
 	if err != nil || len(pubs) != 1 || len(pubs[0].Domains) != 0 || pubs[0].Destination != webhookDestination(server.URL) {
 		t.Fatal("destination without domains", pubs, err)
@@ -505,6 +510,45 @@ func TestRecordsForeignAndUnownedRowsAreProtected(t *testing.T) {
 				t.Fatal("protected row changed", err)
 			}
 		})
+	}
+}
+
+// A registry row of another owner whose data row is gone still claims its
+// key (D380): the snapshot names the claim, the planner reports a conflict at
+// the name instead of planning a create Apply would refuse on every sync, and
+// a claim outside the configured domains is not this destination's.
+func TestRecordsForeignRegistryWithoutDataIsAConflict(t *testing.T) {
+	foreign := registryValue(strings.Repeat("f", 64))
+	peer := &scriptedPeer{}
+	server := peer.serve(t)
+	p := recordsProvider(t, server, []string{"example.test"}, "")
+	checked(t, p)
+	peer.set("", wireTXT("_kudurru-a.www.example.test", foreign), wireTXT("_kudurru-a.www.elsewhere.test", foreign), wireA("api.example.test", "192.0.2.9"), wireTXT("_kudurru-a.api.example.test", registryValue(registryMarker(p.owner))))
+	built, snapshot := recordsPlan(t, p, []public.Endpoint{endpointA("www.example.test.", "192.0.2.1"), endpointA("mail.example.test.", "192.0.2.2")})
+	if want := []kinds.RecordKey{{Name: "www.example.test.", Type: "A"}}; !slices.Equal(snapshot.Claimed, want) {
+		t.Fatal("claims", snapshot.Claimed)
+	}
+	if len(built.Conflicts) != 1 || built.Conflicts[0] != (plan.Conflict{Name: "www.example.test.", Type: "A", Reason: "claimed by another owner"}) {
+		t.Fatal("conflicts", built.Conflicts)
+	}
+	// Only the unclaimed create and the delete of the owned row that is no
+	// longer desired are planned.
+	var actions []string
+	for _, op := range built.Operations {
+		actions = append(actions, op.Action+" "+op.Key.Name)
+	}
+	slices.Sort(actions)
+	if !slices.Equal(actions, []string{"create mail.example.test.", "delete api.example.test."}) {
+		t.Fatal("operations", actions)
+	}
+	// A plan that ignored the claim would create over it; Apply still
+	// refuses that before any POST.
+	forged, err := plan.Build(plan.Input{Owner: p.owner, Destination: webhookDestination(server.URL), ConfigDigest: strings.Repeat("c", 64), CredentialDigest: strings.Repeat("d", 64), SourceDigest: strings.Repeat("e", 64), Policy: plan.PolicySync, Desired: []public.Endpoint{endpointA("www.example.test.", "192.0.2.1")}, DesiredComplete: true, CurrentComplete: true})
+	if err != nil || len(forged.Operations) != 1 {
+		t.Fatal(err)
+	}
+	if _, err := p.Apply(t.Context(), forged.Intent(0, time.Now())); !errors.Is(err, errDrift) || peer.postCount() != 0 {
+		t.Fatal("a create over a foreign claim reached the peer", err)
 	}
 }
 
@@ -594,7 +638,10 @@ func TestRecordsNegotiationAndPublishableNames(t *testing.T) {
 		t.Fatal("domain outside the peer filter accepted", err)
 	}
 	p = recordsProvider(t, server, nil, "")
-	if _, err := p.Check(t.Context()); !errors.Is(err, host.ErrUnsupported) {
+	if _, err := p.Check(t.Context()); err != nil {
+		t.Fatal("records-only peer without domains failed the identity check", err)
+	}
+	if _, err := p.Roles(); !errors.Is(err, host.ErrUnsupported) {
 		t.Fatal("records-only peer without domains accepted", err)
 	}
 	p = recordsProvider(t, server, []string{"example.test"}, "upsert-only")

@@ -576,7 +576,7 @@ func (h *Host) cleanupPublications(ctx context.Context, j *job, f frame, g Execu
 		if st.local(ctx, err) != nil {
 			return nil, err
 		}
-		in := publicationInput{pub, remote, plan.Input{Owner: f.instance.owner, Destination: pub.Destination, ConfigDigest: g.Ledger.ConfigDigest, CredentialDigest: g.Ledger.CredentialDigest, SourceDigest: cleanupSource, Policy: pub.Policy, Current: remote.Records, Ledger: ledgers, DesiredComplete: true, CurrentComplete: true, AdoptUnowned: pub.AdoptUnowned, AdoptExternalDNSOwner: pub.AdoptExternalDNSOwner, Cleanup: true}}
+		in := publicationInput{pub, remote, plan.Input{Owner: f.instance.owner, Destination: pub.Destination, ConfigDigest: g.Ledger.ConfigDigest, CredentialDigest: g.Ledger.CredentialDigest, SourceDigest: cleanupSource, Policy: pub.Policy, Current: remote.Records, Claimed: remote.Claimed, Ledger: ledgers, DesiredComplete: true, CurrentComplete: true, AdoptUnowned: pub.AdoptUnowned, AdoptExternalDNSOwner: pub.AdoptExternalDNSOwner, Cleanup: true}}
 		if _, err := validatePendingObservation(in.planInput); err != nil {
 			return nil, err
 		}

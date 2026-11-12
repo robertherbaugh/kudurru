@@ -78,7 +78,10 @@ type Publication struct {
 
 // RemoteSnapshot must contain all destination records, including foreign rows.
 type RemoteSnapshot struct {
-	Records  []plan.RemoteRecord
+	Records []plan.RemoteRecord
+	// Claimed names keys another owner claims without a listed row
+	// (plan.Input.Claimed); the planner reports each as a conflict.
+	Claimed  []kinds.RecordKey
 	Complete bool
 }
 
