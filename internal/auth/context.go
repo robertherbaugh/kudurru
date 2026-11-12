@@ -37,3 +37,12 @@ func SessionFrom(ctx context.Context) (Session, bool) {
 	s, ok := ctx.Value(sessionKey).(Session)
 	return s, ok
 }
+
+// PrincipalPresent reports whether WithPrincipal set a principal on ctx,
+// whether or not its credential bounds still hold. It lets a writer that acts
+// as the principal (the kube driver's impersonation, D386) refuse a request
+// whose credential has expired instead of writing as itself.
+func PrincipalPresent(ctx context.Context) bool {
+	_, ok := ctx.Value(principalKey).(Principal)
+	return ok
+}

@@ -272,8 +272,15 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- if .Values.externalDNS.webhook.enabled -}}
 {{- $_ := set $base "externalDNS" (dict "webhook" (dict "listen" (printf ":%d" (int .Values.externalDNS.webhook.port)))) -}}
 {{- end -}}
+{{- $auth := dict -}}
 {{- with .Values.auth.oidc.providers -}}
-{{- $_ := set $base "auth" (dict "identityProviders" .) -}}
+{{- $_ := set $auth "identityProviders" . -}}
+{{- end -}}
+{{- if eq (include "kudurru.impersonate" .) "true" -}}
+{{- $_ := set $auth "kubernetes" (dict "mode" "impersonate") -}}
+{{- end -}}
+{{- if $auth -}}
+{{- $_ := set $base "auth" $auth -}}
 {{- end -}}
 {{- if .Values.dhcp.enabled -}}
 {{- $_ := set $base "dhcp" (dict "enabled" true "serverIP" .Values.dhcp.serverAddress "interface" .Values.dhcp.interface) -}}
@@ -300,6 +307,20 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- end -}}
 {{- if $v.hostNetwork.enabled -}}
 {{- fail "dhcp.enabled reaches clients through a relay and its LoadBalancer Service; it does not support hostNetwork.enabled" -}}
+{{- end -}}
+{{- end -}}
+{{- $kubeAuth := ($v.auth.kubernetes | default dict) -}}
+{{- $kubeMode := $kubeAuth.mode | default "sar" -}}
+{{- if not (has $kubeMode (list "sar" "impersonate")) -}}
+{{- fail (printf "auth.kubernetes.mode must be sar or impersonate, not %q" $kubeMode) -}}
+{{- end -}}
+{{- if and (eq $kubeMode "impersonate") (eq $v.mode "standalone") -}}
+{{- fail "auth.kubernetes.mode=impersonate needs mode kubernetes: it impersonates principals at the Kubernetes apiserver" -}}
+{{- end -}}
+{{- range $src, $tree := dict "config.node" ($v.config.node | default dict) "config.settings" ($v.config.settings | default dict) -}}
+{{- $set := (($tree.auth | default dict).kubernetes | default dict).mode -}}
+{{- if and $set (ne (toString $set) $kubeMode) -}}
+{{- fail (printf "set auth.kubernetes.mode, not %s.auth.kubernetes.mode: the chart grants the impersonate permission only from auth.kubernetes.mode" $src) -}}
 {{- end -}}
 {{- end -}}
 {{- if not (has $v.service.api.sessionAffinity (list "None" "ClientIP")) -}}
@@ -526,4 +547,10 @@ true
 {{- $_ := set $ann "metallb.io/allow-shared-ip" (include "kudurru.fullname" .) -}}
 {{- end -}}
 {{- toYaml $ann -}}
+{{- end -}}
+
+{{/* "true" when auth.kubernetes.mode=impersonate (D386): API writes run as
+the signed-in principal and the ClusterRole gains the impersonate verb. */}}
+{{- define "kudurru.impersonate" -}}
+{{- if eq ((.Values.auth.kubernetes | default dict).mode | default "sar") "impersonate" }}true{{ end -}}
 {{- end -}}

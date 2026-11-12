@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"time"
 )
@@ -45,9 +44,16 @@ type AuthTokens struct {
 
 // AuthKubernetes configures how Kubernetes identities are authorized.
 type AuthKubernetes struct {
-	// Mode is sar (SubjectAccessReview, D55). impersonate is v0.2.
+	// Mode is sar (SubjectAccessReview, the default, D55) or impersonate
+	// (API writes of kudurru.io objects run as the principal, D386).
 	Mode string `koanf:"mode" json:"mode"`
 }
+
+// Kubernetes authorization modes (auth.kubernetes.mode).
+const (
+	KubernetesModeSAR         = "sar"
+	KubernetesModeImpersonate = "impersonate"
+)
 
 // AuthAdminSocket is the local admin socket (`kudurru admin`, §8.7).
 type AuthAdminSocket struct {
@@ -85,9 +91,6 @@ func (a *Auth) validate() []error {
 	}
 	if a.Tokens.MaxLifetime < 0 {
 		errs = append(errs, fmt.Errorf("auth.tokens.maxLifetime: %s is negative", a.Tokens.MaxLifetime))
-	}
-	if a.Kubernetes.Mode == "impersonate" {
-		errs = append(errs, errors.New("auth.kubernetes.mode: impersonate is planned for v0.2 (D55: the impersonate grant makes kudurru cluster-admin-equivalent); v0.1 supports only sar"))
 	}
 	seen := map[string]bool{}
 	for i, p := range a.IdentityProviders {

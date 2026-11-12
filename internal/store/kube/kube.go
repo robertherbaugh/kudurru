@@ -115,6 +115,11 @@ type Options struct {
 	// (internalkinds.AddToScheme); core/v1 is added to Scheme when it is
 	// missing. Snapshot omits them when Safe.
 	InternalKinds []store.Kind
+	// Impersonate, when set, names the identity each Apply, Delete and Force
+	// takeover of a kudurru.io object is sent as (auth.kubernetes.mode
+	// impersonate, D386). An apiserver 403 for such a write is
+	// store.ErrForbidden. Nil writes everything as the driver's identity.
+	Impersonate ImpersonateFunc
 }
 
 func (o *Options) setDefaults() error {
@@ -238,6 +243,14 @@ func newStore(cfg *rest.Config, opts Options, background bool, mapper meta.RESTM
 	auxiliaryConfig := rest.CopyConfig(cfg)
 	ct := &contact{now: time.Now}
 	cfg.Wrap(ct.wrap)
+	if opts.Impersonate != nil {
+		// client-go's own impersonation would overwrite the per-write
+		// identity with the kubeconfig's: refuse the combination.
+		if cfg.Impersonate.UserName != "" || cfg.Impersonate.UID != "" || len(cfg.Impersonate.Groups) > 0 || len(cfg.Impersonate.Extra) > 0 {
+			return nil, errors.New("store/kube: auth.kubernetes.mode impersonate cannot be combined with a kubeconfig that already impersonates")
+		}
+		cfg.Wrap(impersonating)
+	}
 	kinds, err := newRegistry(opts.Scheme)
 	if err != nil {
 		return nil, err

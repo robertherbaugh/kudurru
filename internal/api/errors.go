@@ -213,6 +213,12 @@ func storeError(err error) error {
 	case errors.Is(err, store.ErrConflict):
 		return newError(http.StatusConflict, KeyConflict, "the object changed since it was read (resourceVersion mismatch)",
 			"read the object again and retry with its current resourceVersion")
+	case errors.Is(err, store.ErrForbidden):
+		// auth.kubernetes.mode impersonate (D386): kudurru allowed the
+		// write, Kubernetes RBAC refused it for the principal. Nothing was
+		// written.
+		return newError(http.StatusForbidden, KeyForbidden, err.Error(),
+			"auth.kubernetes.mode is impersonate: the write is sent as you, so Kubernetes RBAC must also allow it; ask a cluster administrator for a ClusterRole/RoleBinding for your Kubernetes name (kudurru:user:<name>, kudurru:group:<group> or the service account)")
 	case errors.Is(err, store.ErrTooLarge):
 		return newError(http.StatusRequestEntityTooLarge, KeyTooLarge, err.Error(), "split it into several objects")
 	case errors.Is(err, objects.ErrStaticReadOnly):

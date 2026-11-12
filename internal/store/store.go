@@ -527,6 +527,11 @@ var (
 	// ErrTooLarge: the encoded object exceeds MaxObjectBytes (sqlite) or
 	// the apiserver refused it as too large (kube). HTTP maps it to 413.
 	ErrTooLarge = errors.New("store: object too large")
+	// ErrForbidden: the Kubernetes apiserver refused a write that the kube
+	// driver sent as the requesting principal (auth.kubernetes.mode
+	// impersonate, D386). The refusal is definite: nothing was written. HTTP
+	// maps it to 403.
+	ErrForbidden = errors.New("store: Kubernetes RBAC refused the write for the requesting principal")
 )
 
 // ErrManagedBy is returned when a writer other than the recorded manager

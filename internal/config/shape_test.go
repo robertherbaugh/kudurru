@@ -210,6 +210,12 @@ func TestSchemaEnumsRejectBogus(t *testing.T) {
 					flat["node.name"] = "backend-a"
 					flat["upstreams.recursion.managedEdges"] = []map[string]any{{"node": "edge-a", "address": "192.0.2.2:8085", "deployment": strings.Repeat("a", 64), "backendAddress": "192.0.2.1:5353", "backendInternalAddress": "192.0.2.1:8082"}}
 					_, validErr = FromFlat(flat)
+				} else if k.Path == "auth.kubernetes.mode" && v == "impersonate" {
+					// Impersonation is an opt-in of the kube driver (D386).
+					flat := Defaults()
+					flat[k.Path] = v
+					flat["store.driver"] = "kube"
+					_, validErr = FromFlat(flat)
 				} else if k.Path == "cluster.role" && v == "static" {
 					// Static membership requires a real named self endpoint.
 					// Missing and invalid peers remain negative topology cases.
@@ -278,7 +284,7 @@ func TestSchemaSpecialEnums(t *testing.T) {
 	}{
 		{"log.level", "info,dns=debug", true},
 		{"log.level", "loud,dns=debug", false},
-		{"auth.kubernetes.mode", "impersonate", false}, // Auth.validate explains D55
+		{"auth.kubernetes.mode", "impersonation", false},
 		{"upstreams.groups", map[string]any{"default": map[string]any{"servers": []string{"1.1.1.1"}}}, true},
 		{"upstreams.groups", map[string]any{"default": map[string]any{"servers": []string{"cloudflare=tls://1.1.1.1", "https://dns.google/dns-query", "[2606:4700::1111]:53", "dns.quad9.net:53", "sdns://AgcAAAAAAAAABzEuMC4wLjE"}, "strategy": "rtt_weighted", "timeout": "1s"}}, true},
 		{"upstreams.groups", map[string]any{"default": map[string]any{"servers": []string{"ftp://x"}}}, false},

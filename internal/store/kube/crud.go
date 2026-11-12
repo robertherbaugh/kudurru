@@ -196,6 +196,10 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 	if err := s.checkScope(ki, key); err != nil {
 		return nil, err
 	}
+	wctx, im, err := s.writeContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	applyOpts := []client.ApplyOption{client.FieldOwner(fieldManagerFor(opts.Manager))}
 	if opts.Force {
 		applyOpts = append(applyOpts, client.ForceOwnership)
@@ -226,8 +230,11 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 			}
 			precondition = cur.ResourceVersion
 			if opts.Force {
-				rv, err := s.takeOver(ctx, ki, key, cur, desired, opts.Manager)
+				rv, err := s.takeOver(wctx, ki, key, cur, desired, opts.Manager)
 				if err != nil {
+					if refused := impersonationRefusal(im, "take over", key, err); refused != nil {
+						return nil, refused
+					}
 					if !apierrors.IsConflict(err) && !apierrors.IsNotFound(err) {
 						return nil, fmt.Errorf("store/kube: take over %s: %w", key, err)
 					}
@@ -248,7 +255,10 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 		if opts.CreateOnly {
 			// SSA can update an object created after the GET. POST is the
 			// apiserver's atomic absence precondition, including equal specs.
-			if err := s.c.Create(ctx, u, client.FieldOwner(fieldManagerFor(opts.Manager))); err != nil {
+			if err := s.c.Create(wctx, u, client.FieldOwner(fieldManagerFor(opts.Manager))); err != nil {
+				if refused := impersonationRefusal(im, "create", key, err); refused != nil {
+					return nil, refused
+				}
 				if apierrors.IsAlreadyExists(err) {
 					return nil, fmt.Errorf("%w: %s already exists", store.ErrConflict, key)
 				}
@@ -264,9 +274,12 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 			// A foreign field owner or an intervening edit prevents migration.
 			capturedOpts = append(capturedOpts, client.ForceOwnership)
 		}
-		err = s.c.Apply(ctx, client.ApplyConfigurationFromUnstructured(u), capturedOpts...)
+		err = s.c.Apply(wctx, client.ApplyConfigurationFromUnstructured(u), capturedOpts...)
 		if err == nil {
 			return fromUnstructured(ki, u)
+		}
+		if refused := impersonationRefusal(im, "apply", key, err); refused != nil {
+			return nil, refused
 		}
 		if managers := conflictingManagers(err); len(managers) > 0 {
 			return nil, s.managedByError(ctx, ki, key, opts.Manager, managers)
@@ -310,6 +323,10 @@ func (s *Store) delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 	} else if !ok {
 		return fmt.Errorf("%w: %s", store.ErrNotFound, key)
 	}
+	wctx, im, err := s.writeContext(ctx)
+	if err != nil {
+		return err
+	}
 	for attempt := 1; ; attempt++ {
 		cur, err := s.getMeta(ctx, ki, key)
 		if err != nil {
@@ -328,7 +345,10 @@ func (s *Store) delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 		target.SetNamespace(key.Namespace)
 		target.SetName(key.Name)
 		uid, rv := cur.UID, cur.ResourceVersion
-		err = s.c.Delete(ctx, target, client.Preconditions{UID: &uid, ResourceVersion: &rv})
+		err = s.c.Delete(wctx, target, client.Preconditions{UID: &uid, ResourceVersion: &rv})
+		if refused := impersonationRefusal(im, "delete", key, err); refused != nil {
+			return refused
+		}
 		switch {
 		case err == nil:
 			return nil

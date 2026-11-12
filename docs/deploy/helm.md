@@ -538,6 +538,45 @@ RoleBinding deletion delete Secrets) and `configmaps`
 generated from `internal/rbac/permissions.yaml` by `make rbac-manifests`
 into `templates/rbac-aggregated.yaml`.
 
+### Impersonation (`auth.kubernetes.mode`)
+
+`auth.kubernetes.mode: sar` (the default) authorizes Kubernetes
+ServiceAccount tokens with SubjectAccessReview and writes every object as the
+kudurru ServiceAccount. `auth.kubernetes.mode: impersonate` (D386) keeps that
+authorization and additionally sends each API write of a `kudurru.io` object
+as the signed-in principal, so Kubernetes RBAC decides it too and the apiserver
+audit log records the principal as `impersonatedUser`:
+
+| Principal | Kubernetes name |
+| --- | --- |
+| Kubernetes ServiceAccount | `system:serviceaccount:<namespace>:<name>` with its token's groups |
+| Local or OIDC user | `kudurru:user:<name>`, groups `kudurru:group:<group>` |
+| Kudurru service account (and its tokens) | `kudurru:serviceaccount:<namespace>:<name>` |
+
+Only with this value does the ClusterRole gain `impersonate` on `users`,
+`groups` and `serviceaccounts`. Kubernetes cannot restrict that verb to the
+`kudurru:` names, so a compromised kudurru pod becomes cluster-admin-equivalent
+(D55). Set the value in `auth.kubernetes.mode`, not in `config.node` or
+`config.settings` (the chart refuses those, because they would enable the mode
+without the grant). Before switching, bind Kubernetes RBAC to every name that
+writes, for example:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: kudurru-admin-user}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: kudurru-admin}
+subjects:
+  - {apiGroup: rbac.authorization.k8s.io, kind: User, name: "kudurru:user:admin"}
+```
+
+Server-side apply needs `create` and `patch`, and deletes need `delete`.
+A Kubernetes refusal answers `403 forbidden` with the apiserver's reason and
+writes nothing. Reads, status updates, internal Secrets, the audit log and
+writes without a signed-in principal (controllers, RFC 2136 UPDATE, the
+external-dns webhook, integrations) stay on the kudurru ServiceAccount, and
+so does the `kudurru admin` socket.
+
 The server keeps one Secret of its own in the release namespace that the chart
 does not create or remove: `kudurru-grant-floors`, the record of removed role
 binding grants ([role bindings on Kubernetes](rolebindings.md#kubernetes)).

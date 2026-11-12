@@ -230,8 +230,16 @@ func New(ctx context.Context, opts Options) (*Stack, error) {
 	}
 	cfg := opts.Config
 	log := opts.Logger.With("component", "auth")
-	if m := cfg.Auth.Kubernetes.Mode; m != "" && m != "sar" {
-		return nil, fmt.Errorf("auth.kubernetes.mode %q: v0.1 supports only sar (impersonate is v0.2, D55)", m)
+	switch m := cfg.Auth.Kubernetes.Mode; m {
+	case "", config.KubernetesModeSAR:
+	case config.KubernetesModeImpersonate:
+		// The store driver sends the writes as the principal (D386); the
+		// stack authorizes exactly as in sar mode.
+		if opts.Kube == nil {
+			return nil, errors.New("auth.kubernetes.mode impersonate requires the kube store driver")
+		}
+	default:
+		return nil, fmt.Errorf("auth.kubernetes.mode %q: want sar or impersonate", m)
 	}
 	s := &Stack{opts: opts, cfg: cfg, log: log, cop: opts.CrossOrigin}
 

@@ -43,6 +43,15 @@ rules:
   - apiGroups: ["authorization.k8s.io"]
     resources: ["subjectaccessreviews"]
     verbs: ["create"]
+  {{- if eq (include "kudurru.impersonate" .) "true" }}
+  # auth.kubernetes.mode=impersonate (D386): API writes are sent as the
+  # signed-in principal. Kubernetes cannot narrow impersonation to a name
+  # prefix, so this grant lets a compromised kudurru act as any user, group
+  # or ServiceAccount: cluster-admin-equivalent (D55).
+  - apiGroups: [""]
+    resources: ["users", "groups", "serviceaccounts"]
+    verbs: ["impersonate"]
+  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

@@ -37,6 +37,13 @@ var chartCases = []chartCase{
 		r.wantObject(t, "ClusterRole", "kudurru")
 		r.wantObject(t, "Role", "kudurru")
 		r.wantObject(t, "PodDisruptionBudget", "kudurru")
+		// D386: SubjectAccessReview by default, no impersonate grant.
+		if rules := fmt.Sprint(dig(r.object(t, "ClusterRole", "kudurru"), "rules")); strings.Contains(rules, "impersonate") {
+			t.Errorf("the default ClusterRole grants impersonate: %s", rules)
+		}
+		if m := r.config(t).Auth.Kubernetes.Mode; m != "sar" {
+			t.Errorf("default auth.kubernetes.mode = %q, want sar", m)
+		}
 		r.wantObject(t, "Secret", "kudurru-encryption-key")
 		r.wantObject(t, "Secret", "kudurru-admin")
 		svc := r.object(t, "Service", "kudurru-dns")
@@ -514,6 +521,30 @@ var chartCases = []chartCase{
 			t.Errorf("NetworkPolicy does not admit UDP 67")
 		}
 	}},
+	{name: "kubernetes-impersonate", values: "auth: {kubernetes: {mode: impersonate}, oidc: {providers: [{id: corp, issuer: 'https://login.example.com', clientID: kudurru, clientSecretRef: {name: kudurru-oidc, key: client-secret}, redirectURL: 'https://dns.example.com/api/v1/auth/oidc/corp/callback'}]}}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		// D386: the impersonate verb only when the mode is set, and the node
+		// file carries the mode next to the identity providers.
+		var found bool
+		for _, rule := range list(dig(r.object(t, "ClusterRole", "kudurru"), "rules")) {
+			m := mapOf(rule)
+			if slices.Contains(list(m["verbs"]), any("impersonate")) {
+				found = true
+				if fmt.Sprint(m["apiGroups"]) != "[]" || fmt.Sprint(m["resources"]) != "[users groups serviceaccounts]" || len(list(m["verbs"])) != 1 {
+					t.Errorf("impersonate rule %v", m)
+				}
+			}
+		}
+		if !found {
+			t.Error("auth.kubernetes.mode=impersonate rendered no impersonate rule")
+		}
+		if rules := fmt.Sprint(dig(r.object(t, "Role", "kudurru"), "rules")); strings.Contains(rules, "impersonate") {
+			t.Errorf("the namespaced Role grants impersonate: %s", rules)
+		}
+		cfg := r.config(t)
+		if cfg.Auth.Kubernetes.Mode != "impersonate" || len(cfg.Auth.IdentityProviders) != 1 {
+			t.Errorf("node config auth = %+v", cfg.Auth)
+		}
+	}},
 	{name: "everything", values: "edge: {enabled: true, tlsSecretName: dns-tls}\nservice: {dot: {enabled: true}, doh: {enabled: true}}\nvip: {provider: metallb, address: 192.0.2.53}\ningress: {enabled: true, host: dns.example.com}\nserviceMonitor: {enabled: true}\nprometheusRule: {enabled: true}\ngrafanaDashboard: {enabled: true}\nnetworkPolicy: {enabled: true, apiFrom: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}}]}\npriorityClassName: system-cluster-critical\nexternalDNS: {webhook: {enabled: true}}\nauth: {bootstrapToken: {enabled: true}}", wantKind: "Deployment"},
 }
 
@@ -558,6 +589,10 @@ var failCases = []struct{ name, values, want string }{
 	{"dhcp-without-address", "dhcp: {enabled: true}", "dhcp.serverAddress"},
 	{"dhcp-standalone", "mode: standalone\ndhcp: {enabled: true, serverAddress: 192.0.2.67}", "config.node.dhcp"},
 	{"dhcp-cluster-traffic-policy", "dhcp: {enabled: true, serverAddress: 192.0.2.67, service: {externalTrafficPolicy: Cluster}}", "externalTrafficPolicy must be Local"},
+	{"bad-kubernetes-mode", "auth: {kubernetes: {mode: impersonation}}", "auth.kubernetes.mode must be sar or impersonate"},
+	{"impersonate-standalone", "mode: standalone\nauth: {kubernetes: {mode: impersonate}}", "needs mode kubernetes"},
+	{"impersonate-through-config-node", "config: {node: {auth: {kubernetes: {mode: impersonate}}}}", "set auth.kubernetes.mode, not config.node"},
+	{"impersonate-through-config-settings", "config: {settings: {auth: {kubernetes: {mode: impersonate}}}}", "set auth.kubernetes.mode, not config.settings"},
 	{"dhcp-hostnetwork", "hostNetwork: {enabled: true}\ndhcp: {enabled: true, serverAddress: 192.0.2.67}", "hostNetwork"},
 }
 

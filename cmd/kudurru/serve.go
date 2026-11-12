@@ -211,6 +211,7 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 		s, err := kube.New(restCfg, kube.Options{
 			Scheme: scheme, InternalKinds: privateStoreKinds(),
 			Identity: cfg.Node.Name, ExpectedClusterID: cfg.Store.Kube.ExpectedClusterID, StartupTimeout: cfg.Store.Kube.StartupTimeout.Std(), Logger: logger.With("component", "store"),
+			Impersonate: kubeImpersonation(cfg),
 		})
 		if err != nil {
 			return nil, nil, nil, err

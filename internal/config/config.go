@@ -926,6 +926,9 @@ func (c *Config) Validate() error {
 	if c.ExternalDNS.CRD.Enabled && c.Store.Driver != "kube" {
 		errs = append(errs, errors.New("externalDNS.crd.enabled requires store.driver: kube"))
 	}
+	if c.Auth.Kubernetes.Mode == KubernetesModeImpersonate && c.Store.Driver != "kube" {
+		errs = append(errs, errors.New("auth.kubernetes.mode: impersonate requires store.driver: kube (it impersonates principals at the Kubernetes apiserver)"))
+	}
 	errs = append(errs, c.Auth.validate()...)
 	errs = append(errs, c.Credentials.validate()...)
 	for suffix, group := range c.Upstreams.Conditional {

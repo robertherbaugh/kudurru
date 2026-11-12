@@ -1195,6 +1195,76 @@ SubjectAccessReview on the `kudurru.io` resources, including virtual ones
 such as `querylogs` and `caches`; a request is allowed when either path
 allows it, and the audit record names the path.
 
+### Kubernetes impersonation (opt-in, D386)
+
+`auth.kubernetes.mode` is `sar` by default: kudurru authorizes every request
+itself (bindings, SubjectAccessReview for Kubernetes service accounts) and then
+writes to the apiserver as its own ServiceAccount. With `impersonate` (kube
+driver only) kudurru still authorizes the request exactly as above, and the
+kube driver then sends each API write of a `kudurru.io` object (server-side
+apply, create, delete, and the managed-fields takeover of a forced write) with
+`Impersonate-User` and `Impersonate-Group` headers for the request's
+principal. Kubernetes RBAC must therefore allow the write too, and the
+apiserver audit log records the principal as `impersonatedUser`.
+
+| Principal | Kubernetes user | Kubernetes groups |
+| --- | --- | --- |
+| Kubernetes service account | `system:serviceaccount:<namespace>:<name>` | the groups of its token |
+| Local or OIDC user | `kudurru:user:<name>` | `kudurru:group:<group>` for each group |
+| Kudurru service account and its API tokens | `kudurru:serviceaccount:<namespace>:<name>` | `kudurru:group:<group>` |
+| Unix-socket peer (`kudurru admin`), peer nodes | not impersonated: kudurru's own ServiceAccount | |
+
+```mermaid
+flowchart LR
+    REQ(["API write"]) --> AZ{"kudurru authorization<br/>(bindings, SAR)"}
+    AZ -- "deny" --> F1["403 forbidden"]
+    AZ -- "allow" --> MODE{"auth.kubernetes.mode"}
+    MODE -- "sar" --> SA["apiserver write as<br/>the kudurru ServiceAccount"]
+    MODE -- "impersonate" --> IMP["apiserver write with<br/>Impersonate-User/Group"]
+    IMP --> K8S{"Kubernetes RBAC<br/>allows the principal?"}
+    K8S -- "yes" --> OK["written; audit names<br/>the principal"]
+    K8S -- "no" --> F2["403 forbidden<br/>(nothing written)"]
+```
+
+Only those writes are impersonated. The managedBy and resourceVersion reads
+before them, reads and lists, informers, status and finalizer updates, Leases,
+internal kinds in Secrets (users, tokens, RoleBindings, sessions), the audit
+log, and writes without a requesting principal (controllers, RFC 2136 UPDATE,
+the external-dns webhook, integrations) run as kudurru. A write whose
+principal's credential bounds ended during the request, or whose name is not a
+valid Kubernetes user or group name, is refused, never sent as kudurru. A
+Kubernetes 403 for an impersonated write is `403 forbidden` with the
+apiserver's reason. Server-side apply needs `create` and `patch` (plus
+`delete` for deletes) on the resource. A multi-object API operation (a zone
+with its record sets) can be refused part way, like any other Kubernetes
+error between its writes.
+
+The chart's ClusterRole gains `impersonate` on `users`, `groups` and
+`serviceaccounts` only when its value `auth.kubernetes.mode` is
+`impersonate`. Kubernetes cannot narrow that verb to the `kudurru:` names, so a
+compromised kudurru pod can act as any identity in the cluster: it is
+cluster-admin-equivalent (D55). SubjectAccessReview stays the default for that
+reason. After enabling it, give the bootstrap admin (`kudurru:user:admin`) and
+every other principal the Kubernetes RBAC they need, for example by binding
+the chart's aggregated `<release>-admin` ClusterRole.
+
+### Kubernetes account commands (D387)
+
+The Kubernetes driver does not offer authenticator (TOTP) management or the
+local-user commands. Kubernetes accounts use their identity provider's second
+factor. `GET /auth/status` reports this in `capabilities` before a client
+tries (`factorManagement` and `localUserCommands`, both `false` on Kubernetes
+and `true` on the complete SQLite runtime), and the routes answer:
+
+| Route | Answer on Kubernetes |
+| --- | --- |
+| `GET /auth/totp`, `POST /auth/totp/{setup,confirm,disable}`, `POST /iam/users/{name}/totp/recover` | `503 factor_management_unavailable` |
+| `POST /iam/users`, `POST /iam/users/{name}/password` | `503 user_management_unavailable` |
+| `POST /auth/login` with `totpCode` | `503 factor_unavailable` |
+
+Password change for the signed-in local user (`POST /auth/password`) and the
+`kudurru admin` socket commands (`reset-password`, `create-token`) still work.
+
 ## Node to node (`:8082`)
 
 | Route | Used by |

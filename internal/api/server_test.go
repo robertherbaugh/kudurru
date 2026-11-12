@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -27,6 +28,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/health"
+	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
@@ -497,6 +499,16 @@ func TestStoreErrorNotStored(t *testing.T) {
 	var e *Error
 	if !errors.As(storeError(audit.ErrNotStored), &e) || e.GetStatus() != http.StatusServiceUnavailable {
 		t.Fatalf("storeError(ErrNotStored) = %v", storeError(audit.ErrNotStored))
+	}
+}
+
+// D386: a Kubernetes RBAC refusal of an impersonated write is 403 forbidden,
+// not an internal error.
+func TestStoreErrorImpersonationForbidden(t *testing.T) {
+	var e *Error
+	err := storeError(fmt.Errorf("%w: apply DNSZone/home as \"kudurru:user:alice\": denied", store.ErrForbidden))
+	if !errors.As(err, &e) || e.GetStatus() != http.StatusForbidden || e.Body.Key != KeyForbidden || !strings.Contains(e.Body.Message, "kudurru:user:alice") {
+		t.Fatalf("storeError(ErrForbidden) = %#v", err)
 	}
 }
 
