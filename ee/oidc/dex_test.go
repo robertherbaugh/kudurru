@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,6 +19,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
+
+	"github.com/robertherbaugh/kudurru/internal/testutil/testport"
 )
 
 // The dex end-to-end test runs a real dex (Apache-2.0, run as a separate
@@ -116,12 +117,7 @@ func dexConfig(t *testing.T, issuer, listen, redirectURL string) []byte {
 // startDex runs dex on a free loopback port and waits for discovery.
 func startDex(t *testing.T, bin, redirectURL string) testIDP {
 	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	listen := l.Addr().String()
-	_ = l.Close()
+	listen := testport.Address(t)
 	issuer := "http://" + listen + "/dex"
 
 	dir := t.TempDir()

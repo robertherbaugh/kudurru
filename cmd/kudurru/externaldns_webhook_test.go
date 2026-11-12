@@ -7,7 +7,6 @@ import (
 	"encoding/pem"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -100,14 +99,7 @@ func TestExternalDNSWebhookCLIActualKubernetes(t *testing.T) {
 	if os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: upstream.Certificate().Raw}), 0o600) != nil {
 		t.Fatal("webhook fixture CA failed")
 	}
-	reservation, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	address := reservation.Addr().String()
-	if reservation.Close() != nil {
-		t.Fatal("webhook fixture port release failed")
-	}
+	address := offlineFreeAddress(t, "tcp")
 	commandCtx, stop := context.WithCancel(ctx)
 	defer stop()
 	root := newRootWith(newCLIOpts())

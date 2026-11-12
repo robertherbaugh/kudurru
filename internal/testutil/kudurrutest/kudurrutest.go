@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -27,6 +26,8 @@ import (
 	"time"
 
 	"sigs.k8s.io/yaml"
+
+	"github.com/robertherbaugh/kudurru/internal/testutil/testport"
 )
 
 // EnvE2E enables the end-to-end tests.
@@ -125,26 +126,13 @@ func MainBuild(m *testing.M, bin *string) int {
 	return m.Run()
 }
 
-// FreePort returns a loopback port that is free for both TCP and UDP at the
-// time of the call.
+// FreePort returns a loopback port that is free for both TCP and UDP and
+// stays reserved for the test until its cleanup runs, so no other test or
+// process can take it before the node (or child process) binds it
+// (internal/testutil/testport).
 func FreePort(t testing.TB) int {
 	t.Helper()
-	for range 50 {
-		l, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatalf("free port: %v", err)
-		}
-		port := l.Addr().(*net.TCPAddr).Port
-		u, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", port))
-		_ = l.Close()
-		if err != nil {
-			continue
-		}
-		_ = u.Close()
-		return port
-	}
-	t.Fatal("free port: no port free for tcp and udp")
-	return 0
+	return testport.Reserve(t)
 }
 
 // Ports are the listener addresses of one node.

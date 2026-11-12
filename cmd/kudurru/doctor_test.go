@@ -15,14 +15,7 @@ import (
 // ports and whose dataDir is a temp directory.
 func doctorConfig(t *testing.T, dataDir string, busy net.Listener) string {
 	t.Helper()
-	free := func() string {
-		l, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = l.Close() }()
-		return l.Addr().String()
-	}
+	free := func() string { return offlineFreeAddress(t, "tcp") }
 	cfg := "node:\n  name: doc\n  dataDir: " + dataDir + "\nlisteners:\n  dns:\n  - address: " + free() + "\n    protocols: [udp, tcp]\n" +
 		"  api: {address: " + busy.Addr().String() + "}\n  ops: {address: " + free() + "}\n  metrics: {address: " + free() + "}\n  internal: {address: " + free() + "}\n"
 	path := filepath.Join(t.TempDir(), "kudurru.yaml")

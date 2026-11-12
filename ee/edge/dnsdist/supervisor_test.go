@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
-	"net"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -20,6 +19,7 @@ import (
 	"github.com/robertherbaugh/kudurru/ee/edge"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
+	"github.com/robertherbaugh/kudurru/internal/testutil/testport"
 )
 
 // chanSource is a MembershipSource driven by the test.
@@ -48,14 +48,11 @@ func ep(name, ip string) cluster.Endpoint {
 	return cluster.Endpoint{Name: name, Address: ip + ":5353", InternalAddress: ip + ":8082", Ready: true, Serving: true}
 }
 
+// freePort returns a loopback address reserved for the test until its
+// cleanup runs (internal/testutil/testport).
 func freePort(t *testing.T) string {
 	t.Helper()
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = ln.Close() }()
-	return ln.Addr().String()
+	return testport.Address(t)
 }
 
 // fakeBinary links the test binary as <tmp>/bin/dnsdist (TestMain turns

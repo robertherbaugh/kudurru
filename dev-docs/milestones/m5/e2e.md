@@ -32,8 +32,11 @@ Files: `internal/testutil/kudurrutest` (new), `test/e2e`, `test/interop`,
     it once per package and every licensed test logs it, so a recorded run
     names the artifact it exercised.
   - `NewNodeSpec` allocates free loopback ports (DNS udp+tcp on one port,
-    API, ops, metrics, internal) and a data dir, and writes the base
-    config: sqlite, plain-HTTP API, one socket per listener, the admin
+    API, ops, metrics, internal) and a data dir. The ports come from
+    `internal/testutil/testport`: a window outside the kernel's ephemeral
+    port range, each port held by a cross-process file lock until the
+    test's cleanup, so nothing else can take a port between allocation and
+    the child's bind. It writes the base config: sqlite, plain-HTTP API, one socket per listener, the admin
     socket inside the data dir, and the default upstream group on the
     discard port so nothing leaves the host.
   - `Start` / `StartReady` run the binary and poll `/healthz/ready` every

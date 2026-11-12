@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -24,6 +23,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/localdb"
+	"github.com/robertherbaugh/kudurru/internal/testutil/testport"
 )
 
 // Exercise the real runServe path, store, listeners and query pipeline. A
@@ -231,22 +231,15 @@ func offlineServeConfig(t *testing.T, apiURL string) *config.Config {
 	return cfg
 }
 
+// offlineFreeAddress returns a loopback address whose port is free for both
+// TCP and UDP and stays reserved for this test until its cleanup runs, so no
+// other test or process can take it before the server binds it
+// (internal/testutil/testport). The network argument is kept for the
+// existing callers; the reservation covers both protocols.
 func offlineFreeAddress(t *testing.T, network string) string {
 	t.Helper()
-	if network == "udp" {
-		c, err := net.ListenPacket("udp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = c.Close() }()
-		return c.LocalAddr().String()
-	}
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = l.Close() }()
-	return l.Addr().String()
+	_ = network
+	return testport.Address(t)
 }
 
 func offlineHTTPStatus(address, path string) int {
