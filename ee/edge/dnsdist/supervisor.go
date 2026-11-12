@@ -76,6 +76,11 @@ type Config struct {
 	// nil disables polling.
 	Zones    ZoneLister
 	ZonePoll time.Duration
+	// Blocks pulls operator edge blocks (D388) from every backend's
+	// /internal/edge/blocks every BlockPoll (default 5 s) and applies them
+	// through the console; nil disables edge blocks.
+	Blocks    EdgeBlockLister
+	BlockPoll time.Duration
 	// StatusPoll is the dnsdist API poll interval feeding readiness and
 	// kudurru_edge_backend_up; default 1 s.
 	StatusPoll time.Duration
@@ -109,6 +114,9 @@ type Supervisor struct {
 	rendered  prometheus.Gauge
 	gatherer  prometheus.Gatherer
 
+	blocksGauge  prometheus.Gauge
+	blockApplies *prometheus.CounterVec
+
 	mu                                                 sync.Mutex
 	status                                             *ServerStatus
 	statusAt                                           time.Time
@@ -134,6 +142,7 @@ type Supervisor struct {
 	cacheBypassChild                                   *edge.Child
 	cacheBypassFence                                   resolverFence
 	configState                                        *configState
+	blocks                                             edgeBlockState
 }
 
 // New validates cfg and returns a Supervisor.
@@ -161,6 +170,9 @@ func New(cfg Config) (*Supervisor, error) {
 	}
 	if cfg.ZonePoll <= 0 {
 		cfg.ZonePoll = 5 * time.Second
+	}
+	if cfg.BlockPoll <= 0 {
+		cfg.BlockPoll = 5 * time.Second
 	}
 	if cfg.StatusPoll <= 0 {
 		cfg.StatusPoll = time.Second
@@ -213,8 +225,14 @@ func New(cfg Config) (*Supervisor, error) {
 			Name: "kudurru_edge_backends", Help: "Backends in the running dnsdist configuration.",
 		}),
 		gatherer: cfg.Gatherer,
+		blocksGauge: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "kudurru_edge_blocks", Help: "Operator edge blocks installed in the running dnsdist.",
+		}),
+		blockApplies: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "kudurru_edge_block_applies_total", Help: "Console updates of the operator edge blocks by result (ok, failed).",
+		}, []string{"result"}),
 	}
-	for _, c := range []prometheus.Collector{s.backendUp, s.restarts, s.renders, s.flushes, s.rendered} {
+	for _, c := range []prometheus.Collector{s.backendUp, s.restarts, s.renders, s.flushes, s.rendered, s.blocksGauge, s.blockApplies} {
 		if err := cfg.Registerer.Register(c); err != nil {
 			return nil, fmt.Errorf("dnsdist: register metrics: %w", err)
 		}
@@ -567,6 +585,18 @@ func (s *Supervisor) Run(ctx context.Context) error {
 		s.mu.Unlock()
 	}
 	wg.Go(func() { s.pollStatus(ctx) })
+	if s.cfg.Blocks != nil {
+		// The persisted set is in force until the first backend answers, so
+		// a supervisor restart reapplies unexpired blocks without a backend.
+		persisted := s.loadEdgeBlocks(time.Now())
+		s.mu.Lock()
+		s.blocks.desired = persisted
+		if len(persisted) > 0 {
+			s.blocks.source = "persisted"
+		}
+		s.mu.Unlock()
+		wg.Go(func() { s.runEdgeBlocks(ctx) })
+	}
 
 	certPoll := time.NewTicker(5 * time.Second)
 	defer certPoll.Stop()
@@ -959,6 +989,7 @@ func (s *Supervisor) Handler() http.Handler {
 		body["authoritativeCacheMode"], body["authoritativeCacheIdentity"] = s.authoritativeCacheMode, s.authoritativeCacheIdentity
 		body["managedCacheBypassConfigured"] = s.cfg.Options.ManagedCacheBypass
 		body["managedCacheBypassInstalled"] = s.managedBypassInstalledLocked()
+		body["edgeBlocks"] = s.edgeBlockStatusLocked()
 		if s.configState != nil && s.configState.bypassID != "" {
 			body["managedCacheBypassIdentity"] = s.configState.bypassID
 		}

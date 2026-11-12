@@ -14,6 +14,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/security"
 	enrollmentowner "github.com/robertherbaugh/kudurru/internal/cluster/enrollment/accepted"
 	enrollmentpersistence "github.com/robertherbaugh/kudurru/internal/cluster/enrollment/persistence"
+	"github.com/robertherbaugh/kudurru/internal/edgeblock"
 	"github.com/robertherbaugh/kudurru/internal/inventory/persistence"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -39,6 +40,9 @@ func ValidateEntry(section string, row replication.Entry) error {
 	if err := persistence.ValidateEntry(section, row); err != nil {
 		return err
 	}
+	if err := edgeblock.ValidateEntry(section, row); err != nil {
+		return err
+	}
 	return accepted.ValidateEntry(section, row)
 }
 
@@ -58,6 +62,9 @@ func ValidateImage(image *replication.Image) error {
 		return err
 	}
 	if err := accepted.ValidateImage(image); err != nil {
+		return err
+	}
+	if err := edgeblock.ValidateImage(image); err != nil {
 		return err
 	}
 	return enrollmentowner.ValidateImage(image)

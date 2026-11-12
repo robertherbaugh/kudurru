@@ -111,6 +111,9 @@ type ServerOptions struct {
 	// EdgeBypass observes an actually installed retained edge policy. Nil
 	// disables the route. The requested deployment must match the local owner.
 	EdgeBypass func(context.Context, string) (EdgeBypassState, error)
+	// EdgeBlocks fills GET /internal/edge/blocks with the operator edge blocks
+	// this node serves (D388); nil answers 404.
+	EdgeBlocks func(context.Context) (*EdgeBlockList, error)
 	// Lists serves GET /internal/lists/{digest}; nil answers 404.
 	Lists ListOpener
 	// Zones fills GET /internal/zones (the primary and secondary zones
@@ -217,6 +220,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	}
 	if opts.EdgeBypass != nil {
 		mux.HandleFunc("GET "+PathEdgeBypass, s.handleEdgeBypass)
+	}
+	if opts.EdgeBlocks != nil {
+		mux.HandleFunc("GET "+PathEdgeBlocks, s.handleEdgeBlocks)
 	}
 	mux.HandleFunc("GET "+PathLists+"{digest}", s.handleList)
 	if opts.Zones != nil || opts.ServingZones != nil {
@@ -329,6 +335,8 @@ func routeOf(p string) string {
 		return "health"
 	case p == PathEdgeBypass:
 		return "edge-managed-bypass"
+	case p == PathEdgeBlocks:
+		return "edge-blocks"
 	case p == PathZones:
 		return "zones"
 	case p == PathCatalogue, p == PathCatalogueAdGuard:

@@ -198,6 +198,14 @@ func fakeDNSDist(args []string) int {
 		defer stateMu.Unlock()
 		verb := "ping"
 		switch {
+		case strings.Contains(script, "addDynamicBlock(") || strings.Contains(script, "clearDynBlocks()"):
+			verb = "dynblock"
+			if strings.Contains(script, "clearDynBlocks()") {
+				fakeLog(dir, "dynblock clear")
+			}
+			for _, m := range regexp.MustCompile(`addDynamicBlock\("([^"]+)", "kudurru edge block ([0-9a-f]+)", DNSAction.Drop, ([0-9]+), ([0-9]+)\)`).FindAllStringSubmatch(script, -1) {
+				fakeLog(dir, "dynblock add %s/%s id=%s seconds=%s", m[1], m[4], m[2], m[3])
+			}
 		case strings.Contains(script, ":isUp()"):
 			verb = "health"
 		case strings.Contains(script, ":setAuto("):
