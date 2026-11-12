@@ -1,6 +1,7 @@
 package inbound
 
 import (
+	"strconv"
 	"testing"
 
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
@@ -69,4 +70,4 @@ func TestDecodeCarriersListingRules(t *testing.T) {
 	}
 }
 
-func carrierUID(prefix string, i int) types.UID { return types.UID(prefix + "-" + string(rune('a'+i))) }
+func carrierUID(prefix string, i int) types.UID { return types.UID(prefix + "-" + strconv.Itoa(i)) }

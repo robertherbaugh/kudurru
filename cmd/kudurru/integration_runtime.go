@@ -649,7 +649,12 @@ func (r *integrationRuntime) status(ctx context.Context, g ih.ExecutionGuard, st
 }
 
 func stageIntegrationStatus(ctx context.Context, tx *sqlite.CommandTx, c *integrationCut, g ih.ExecutionGuard, status ih.InstanceStatus) error {
-	d := c.instances[g.Ledger.Owner].Definition()
+	return tx.UpdateStatus(ctx, integrationStatusObject(c.instances[g.Ledger.Owner].Definition(), status))
+}
+
+// integrationStatusObject writes the sanitized host status into d, the
+// captured definition, and returns it for one status write on either driver.
+func integrationStatusObject(d *public.Integration, status ih.InstanceStatus) *public.Integration {
 	d.Status.ObservedGeneration = d.Generation
 	d.Status.Clients = int64(status.Result.Clients)
 	d.Status.CredentialFingerprints = status.CredentialFingerprints
@@ -671,7 +676,7 @@ func stageIntegrationStatus(ctx context.Context, tx *sqlite.CommandTx, c *integr
 		at := metav1.NewTime(status.LastSync)
 		d.Status.LastSyncTime = &at
 	}
-	return tx.UpdateStatus(ctx, d)
+	return d
 }
 
 // beforeObserve retains the original cut for acquisition through acknowledgment.

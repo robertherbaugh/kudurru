@@ -182,6 +182,13 @@ type Options struct {
 	CommitSource   func(context.Context, ExecutionGuard, SourceSnapshot) (*Result, error)
 	BeforeObserve  func(requestCtx, originalLeaseCtx context.Context, guard ExecutionGuard) (boundCtx context.Context, release func(), err error)
 	Status         func(context.Context, ExecutionGuard, InstanceStatus) error
+	// Refuse, when set, names why root cannot run an instance at all on this
+	// carrier (D384), for example a provider type it does not mount yet. A
+	// non-empty reason stops the elected job before any provider is
+	// constructed; the job reports the reason as Degraded and publishes it
+	// once through Status under its lease, so an operator sees the refusal on
+	// the object instead of an inert instance. "" means the instance may run.
+	Refuse func(*public.Integration) string
 	// Purge and Finalize end a terminating instance (D367); set both or
 	// neither. Without them a terminating instance is only paused, as before.
 	// Purge removes, in one commit where the carrier has transactions, every

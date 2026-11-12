@@ -1115,8 +1115,18 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var tsigKeyCommand api.TSIGKeyCommand
 	catalogSource := catalogueAPI(catalogs, catRefreshers)
 	if sql == nil {
-		logger.Warn("background integration execution is unavailable for the Kubernetes store; atomic source publication is required")
 		authHandler = legacyAuthHandler(ids)
+	}
+	// Kubernetes integration host (D384): Cloudflare publication runs under
+	// one verified Lease per Integration; other instances are refused on
+	// their objects. Administration routes stay unavailable on Kubernetes.
+	var kubeIntegrations *kubeIntegrationRuntime
+	if kubeStore != nil {
+		kubeIntegrations, err = newKubeIntegrationRuntime(kubeIntegrationOptions{Store: kubeStore, Cache: zc, License: lic, Credentials: cfg.Credentials, FingerprintKey: encKey, Logger: logger})
+		if err != nil {
+			return err
+		}
+		logger.Info("Kubernetes integration host mounted: Cloudflare publication runs; UniFi, webhook and deletionPolicy Delete instances are refused on their objects, and the integration administration API is unavailable on this store")
 	}
 	if sql != nil {
 		complete, err = newServingRuntime(ctx, servingRuntimeOptions{
@@ -1487,6 +1497,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	if kubeBlocking != nil {
 		if err := add("blocking-runtime", false, kubeBlocking.Run); err != nil {
+			return err
+		}
+	}
+	if kubeIntegrations != nil {
+		if err := add("integration-host", false, kubeIntegrations.Run); err != nil {
 			return err
 		}
 	}

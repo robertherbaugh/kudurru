@@ -101,6 +101,12 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 	j.leaseCtx = ctx
 	h.mu.Unlock()
 	defer func() { h.mu.Lock(); j.active = false; j.provider = nil; h.mu.Unlock() }()
+	if h.opts.Refuse != nil {
+		if reason := h.opts.Refuse(instance.Definition()); reason != "" {
+			h.refuse(ctx, j, originalFrame, ExecutionGuard{Ledger: g, BundleID: instance.BundleID()}, reason)
+			return
+		}
+	}
 	provider, err := h.opts.Factory(instance.definition.Spec.Type)
 	if err != nil || provider == nil {
 		h.setLocal(j, "Degraded", "ProviderUnavailable", Result{}, true)
@@ -259,6 +265,20 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 		}
 	}
 }
+
+// refuse reports a root refusal of an elected instance (Options.Refuse) and
+// publishes it once through the fenced Status callback. No provider exists.
+func (h *Host) refuse(ctx context.Context, j *job, f frame, g ExecutionGuard, reason string) {
+	h.setLocal(j, "Degraded", reason, Result{}, true)
+	statusCtx, cancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
+	defer cancel()
+	scoped, err := h.scopedOriginal(statusCtx, j, f, g)
+	if err != nil {
+		return
+	}
+	h.publishStatus(scoped, j, g)
+}
+
 func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 	ctx, cancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
 	defer cancel()
