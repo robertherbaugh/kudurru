@@ -22,6 +22,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,6 +31,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
+	"github.com/quic-go/quic-go/qlog"
+	"github.com/quic-go/quic-go/qlogwriter"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -50,7 +54,9 @@ const edgeClientIDImage = "sha256:89c7f196a871779f5df5da3d7057488f3a4f4ce192f21b
 // policy: the phone group's block list answers NXDOMAIN, any other or no ID
 // gets the upstream's answer. Paths a kudurru listener refuses get HTTP 404
 // from both. A client-ID TLV without the shared secret, or with a wrong one,
-// is still dropped by the backend.
+// is still dropped by the backend. An ID-carrying query is never answered
+// from the edge packet cache: once the edge has cached blocked.example
+// without an ID, the phone ID still gets NXDOMAIN.
 func TestRunServeEdgeClientIDLiveDnsdist(t *testing.T) {
 	if os.Getenv("KUDURRU_EDGE_LIVE") != "1" {
 		t.Skip("set KUDURRU_EDGE_LIVE=1 and KUDURRU_EDGE_LIVE_WORKDIR for the pinned dnsdist client-ID acceptance")
@@ -70,7 +76,7 @@ func TestRunServeEdgeClientIDLiveDnsdist(t *testing.T) {
 	roots := writeEdgeClientIDCert(t, dir)
 	files := config.TLSFiles{CertFile: filepath.Join(dir, "tls.crt"), KeyFile: filepath.Join(dir, "tls.key")}
 
-	upstream := startOptionRecorder(t)
+	upstream := startEdgeClientIDUpstream(t)
 	cfg, _ := mountedTestConfig(t)
 	cfg.Auth.IdentityProviders = nil
 	cfg.Blocking.DefaultResponse = "nxdomain"
@@ -109,6 +115,38 @@ func TestRunServeEdgeClientIDLiveDnsdist(t *testing.T) {
 				if rcode != c.want {
 					t.Errorf("%s %s with ID %q: rcode %s, want %s", label, proto, c.id, dns.RcodeToString[rcode], dns.RcodeToString[c.want])
 				}
+			}
+		}
+		if label == "edge" {
+			// The no-ID answers above (TTL 300) are now in the edge packet
+			// cache: asking again reaches neither kudurru nor its upstream.
+			// The phone ID must still get the phone group's NXDOMAIN, so
+			// it may not be answered from that cache (dq.skipCache, D389).
+			before := upstream.queries("blocked.example.")
+			for proto, rcode := range targets.exchange(t, roots, "", "blocked.example.") {
+				if rcode != dns.RcodeSuccess {
+					t.Errorf("edge %s cached no-ID answer: rcode %s", proto, dns.RcodeToString[rcode])
+				}
+			}
+			if after := upstream.queries("blocked.example."); after != before {
+				t.Fatalf("the edge did not answer the repeated no-ID queries from its cache: %d upstream queries, want %d", after, before)
+			}
+			for proto, rcode := range targets.exchange(t, roots, "phone", "blocked.example.") {
+				if rcode != dns.RcodeNameError {
+					t.Errorf("edge %s with ID phone after a cached no-ID answer: rcode %s, want NXDOMAIN", proto, dns.RcodeToString[rcode])
+				}
+			}
+		}
+		// A FIN in its own empty STREAM frame ends a QUIC request stream
+		// (RFC 9000 section 19.8). kudurru answers such a request; the
+		// pinned dnsdist 2.1.3 never does (known issue, see quicAttempt).
+		for _, proto := range []string{"DoQ", "DoH3"} {
+			answered := targets.finAloneAnswered(t, roots, proto)
+			if label == "native" && !answered {
+				t.Errorf("native %s did not answer a request whose FIN came alone", proto)
+			}
+			if label == "edge" && answered {
+				t.Errorf("the edge now answers a %s request whose FIN came alone: the dnsdist defect is fixed, drop the retry in quicAttempt and the known issue", proto)
 			}
 		}
 		// Two labels before the suffix are no ID, as in clientid.FromSNI.
@@ -213,6 +251,18 @@ func runEdgeClientIDDnsdist(t *testing.T, dir string, renderer dnsdist.Renderer,
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Static rendering leaves the resolver pool uncached; the supervisor
+	// attaches this cache at run time once it is qualified. Attach it here
+	// so that the cache skip of ID-carrying queries is exercised.
+	cached := false
+	for i := range top.Pools {
+		if top.Pools[i].Name == "resolver" {
+			top.Pools[i].Cache, cached = edge.DefaultResolverCache(), true
+		}
+	}
+	if !cached {
+		t.Fatal("the edge topology has no resolver pool")
+	}
 	rendered, err := renderer.Render(top)
 	if err != nil {
 		t.Fatal(err)
@@ -283,24 +333,15 @@ func (x edgeClientIDTargets) exchange(t *testing.T, roots *x509.CertPool, id, na
 		t.Fatal(err)
 	}
 	out := map[string]int{"DoT": x.dotSNI(t, roots, server, name)}
-	conn, err := quic.DialAddr(t.Context(), x.doq, edgeClientIDTLS(roots, server, "doq"), &quic.Config{})
-	if err != nil {
-		t.Fatalf("DoQ %s: %v", x.doq, err)
-	}
-	stream, err := conn.OpenStreamSync(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = stream.SetDeadline(time.Now().Add(3 * time.Second))
-	if _, err := stream.Write(append(binary.BigEndian.AppendUint16(nil, uint16(len(wire))), wire...)); err != nil { //nolint:gosec // a small fixture message
-		t.Fatal(err)
-	}
-	_ = stream.Close()
-	body, err := io.ReadAll(stream)
-	_ = conn.CloseWithError(0, "")
+	var body []byte
+	x.quicAttempt(t, "DoQ "+x.doq+" as "+server, func(ctx context.Context, watch *quicFINWatch) error {
+		var err error
+		body, err = x.doqQuery(ctx, roots, server, wire, watch, false)
+		return err
+	})
 	answer := new(dns.Msg)
-	if err != nil || len(body) < 2 || answer.Unpack(body[2:]) != nil {
-		t.Fatalf("DoQ %s with ID %q: %v %x", x.doq, id, err, body)
+	if len(body) < 2 || answer.Unpack(body[2:]) != nil {
+		t.Fatalf("DoQ %s with ID %q: %x", x.doq, id, body)
 	}
 	out["DoQ"] = answer.Rcode
 	for _, proto := range []string{"DoH", "DoH3"} {
@@ -316,6 +357,154 @@ func (x edgeClientIDTargets) exchange(t *testing.T, roots *x509.CertPool, id, na
 	return out
 }
 
+// doqQuery sends wire on a fresh DoQ connection and returns the
+// length-prefixed answer. finAlone holds the stream FIN back for 200 ms so
+// that it leaves in its own empty STREAM frame.
+func (x edgeClientIDTargets) doqQuery(ctx context.Context, roots *x509.CertPool, server string, wire []byte, watch *quicFINWatch, finAlone bool) ([]byte, error) {
+	conn, err := quic.DialAddr(ctx, x.doq, edgeClientIDTLS(roots, server, "doq"), &quic.Config{Tracer: watch.tracer})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = conn.CloseWithError(0, "") }()
+	stop := context.AfterFunc(ctx, func() { _ = conn.CloseWithError(0, "canceled") })
+	defer stop()
+	stream, err := conn.OpenStreamSync(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := stream.Write(append(binary.BigEndian.AppendUint16(nil, uint16(len(wire))), wire...)); err != nil { //nolint:gosec // a small fixture message
+		return nil, err
+	}
+	if finAlone {
+		time.Sleep(200 * time.Millisecond)
+	}
+	_ = stream.Close()
+	return io.ReadAll(stream)
+}
+
+// quicFINWatch is a quic-go tracer that records whether the client sent a
+// stream FIN in an empty STREAM frame, apart from the stream's data.
+type quicFINWatch struct{ alone atomic.Bool }
+
+func (w *quicFINWatch) tracer(context.Context, bool, quic.ConnectionID) qlogwriter.Trace { return w }
+func (w *quicFINWatch) AddProducer() qlogwriter.Recorder                                 { return w }
+func (w *quicFINWatch) SupportsSchemas(string) bool                                      { return false }
+func (w *quicFINWatch) Close() error                                                     { return nil }
+func (w *quicFINWatch) RecordEvent(e qlogwriter.Event) {
+	var frames []qlog.Frame
+	switch p := e.(type) {
+	case qlog.PacketSent:
+		frames = p.Frames
+	case *qlog.PacketSent:
+		frames = p.Frames
+	}
+	for _, f := range frames {
+		if s, ok := f.Frame.(*qlog.StreamFrame); ok && s.Fin && s.Length == 0 {
+			w.alone.Store(true)
+		}
+	}
+}
+
+// quicAttempt runs one DoQ or DoH3 request on a fresh connection per
+// attempt. The pinned dnsdist 2.1.3 (and the upstream 2.1.3 image) never
+// answers a QUIC request whose FIN arrives in its own empty STREAM frame
+// rather than with the data; quic-go sends it that way when the data leaves
+// before the stream is closed (evidence fix-probe03 and fix-probe04: every
+// lost edge request, and only those, had the FIN alone; none reached the
+// backend). Only on the edge, and only when the tracer saw the FIN go
+// alone, is such a request cut off after 3 s and tried again on a fresh
+// connection. Any other failure, and every native failure, is final.
+func (x edgeClientIDTargets) quicAttempt(t *testing.T, what string, do func(context.Context, *quicFINWatch) error) {
+	t.Helper()
+	const attempts = 6
+	edgeSide := strings.HasPrefix(x.side, "edge")
+	for attempt := 1; ; attempt++ {
+		watch := new(quicFINWatch)
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		cut := time.AfterFunc(3*time.Second, func() {
+			if edgeSide && watch.alone.Load() {
+				cancel()
+			}
+		})
+		err := do(ctx, watch)
+		cut.Stop()
+		cancel()
+		if err == nil {
+			return
+		}
+		if !edgeSide || !watch.alone.Load() || attempt == attempts {
+			t.Fatalf("%s %s (attempt %d, FIN alone %v): %v", x.side, what, attempt, watch.alone.Load(), err)
+		}
+		t.Logf("%s %s: the FIN left alone and the pinned dnsdist did not answer (known issue); one more fresh connection", x.side, what)
+	}
+}
+
+// finAloneAnswered sends one DoQ or DoH3 query whose FIN leaves 200 ms after
+// its data and reports whether it was answered within 3 s.
+func (x edgeClientIDTargets) finAloneAnswered(t *testing.T, roots *x509.CertPool, proto string) bool {
+	t.Helper()
+	q := new(dns.Msg)
+	q.SetQuestion("fin-alone.example.", dns.TypeA)
+	q.Id = 0
+	wire, err := q.Pack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	watch := new(quicFINWatch)
+	if proto == "DoQ" {
+		_, err = x.doqQuery(ctx, roots, "dns.example.com", wire, watch, true)
+	} else {
+		var resp *http.Response
+		resp, err = x.h3Post(ctx, roots, "/dns-query", wire, watch, true)
+		if err == nil && resp.StatusCode != http.StatusOK {
+			t.Errorf("%s %s with the FIN alone: %s", x.side, proto, resp.Status)
+		}
+	}
+	if !watch.alone.Load() {
+		t.Fatalf("%s %s: the fixture did not send the FIN alone", x.side, proto)
+	}
+	if err != nil {
+		t.Logf("%s %s with the FIN alone: %v", x.side, proto, err)
+	}
+	return err == nil
+}
+
+// h3Post posts wire to path on a fresh HTTP/3 connection and returns the
+// response with its body already read; finAlone ends the body (the stream
+// FIN) 200 ms after its data.
+func (x edgeClientIDTargets) h3Post(ctx context.Context, roots *x509.CertPool, path string, wire []byte, watch *quicFINWatch, finAlone bool) (*http.Response, error) {
+	h3 := &http3.Transport{TLSClientConfig: edgeClientIDTLS(roots, "dns.example.com"), QUICConfig: &quic.Config{Tracer: watch.tracer}}
+	defer func() { _ = h3.Close() }()
+	var body io.Reader = bytes.NewReader(wire)
+	if finAlone {
+		r, w := io.Pipe()
+		go func() {
+			_, _ = w.Write(wire)
+			time.Sleep(200 * time.Millisecond)
+			_ = w.Close()
+		}()
+		body = r
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+x.doh3+path, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/dns-message")
+	resp, err := h3.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+	data, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+	resp.Body = io.NopCloser(bytes.NewReader(data))
+	return resp, nil
+}
+
 func (x edgeClientIDTargets) dotSNI(t *testing.T, roots *x509.CertPool, server, name string) int {
 	t.Helper()
 	q := new(dns.Msg)
@@ -328,38 +517,26 @@ func (x edgeClientIDTargets) dotSNI(t *testing.T, roots *x509.CertPool, server, 
 	return answer.Rcode
 }
 
-// post sends wire to path over a fresh DoH or DoH3 connection. The pinned
-// dnsdist now and then never answers the first request of a fresh HTTP/3
-// connection (seen with valid paths too, under both renderers; evidence
-// live04-live05), so a DoH3 transport error, never a response, gets one
-// more fresh connection. A response is always final.
+// post sends wire to path over a fresh DoH or DoH3 connection. A response
+// is always final; DoH3 transport errors follow quicAttempt.
 func (x edgeClientIDTargets) post(t *testing.T, roots *x509.CertPool, proto, path string, wire []byte) (*http.Response, string) {
 	t.Helper()
-	address := map[string]string{"DoH": x.doh, "DoH3": x.doh3}[proto]
-	for attempt := 1; ; attempt++ {
-		var transport http.RoundTripper
-		if proto == "DoH" {
-			h2 := &http.Transport{TLSClientConfig: edgeClientIDTLS(roots, "dns.example.com"), ForceAttemptHTTP2: true}
-			t.Cleanup(h2.CloseIdleConnections)
-			transport = h2
-		} else {
-			h3 := &http3.Transport{TLSClientConfig: edgeClientIDTLS(roots, "dns.example.com")}
-			t.Cleanup(func() { _ = h3.Close() })
-			transport = h3
-		}
-		began := time.Now()
-		resp, err := (&http.Client{Transport: transport, Timeout: 10 * time.Second}).Post("https://"+address+path, "application/dns-message", bytes.NewReader(wire))
-		if took := time.Since(began); took > time.Second {
-			t.Logf("SLOW %s %s %s%s took %v err=%v", x.side, proto, address, path, took, err)
-		}
-		if err == nil {
-			return resp, address
-		}
-		if proto != "DoH3" || attempt > 1 {
-			t.Fatalf("%s %s%s: %v", proto, address, path, err)
-		}
-		t.Logf("%s %s %s%s: %v; one more fresh connection", x.side, proto, address, path, err)
+	if proto == "DoH3" {
+		var resp *http.Response
+		x.quicAttempt(t, "DoH3 "+x.doh3+path, func(ctx context.Context, watch *quicFINWatch) error {
+			var err error
+			resp, err = x.h3Post(ctx, roots, path, wire, watch, false)
+			return err
+		})
+		return resp, x.doh3
 	}
+	h2 := &http.Transport{TLSClientConfig: edgeClientIDTLS(roots, "dns.example.com"), ForceAttemptHTTP2: true}
+	t.Cleanup(h2.CloseIdleConnections)
+	resp, err := (&http.Client{Transport: h2, Timeout: 10 * time.Second}).Post("https://"+x.doh+path, "application/dns-message", bytes.NewReader(wire))
+	if err != nil {
+		t.Fatalf("DoH %s%s: %v", x.doh, path, err)
+	}
+	return resp, x.doh
 }
 
 // httpStatus posts a query to path over DoH and DoH3.
@@ -375,6 +552,45 @@ func (x edgeClientIDTargets) httpStatus(t *testing.T, roots *x509.CertPool, path
 		out[proto] = resp.StatusCode
 	}
 	return out
+}
+
+// edgeClientIDUpstream answers every A query with TTL 300, so that the edge
+// packet cache keeps no-ID answers, and counts the queries per name.
+type edgeClientIDUpstream struct {
+	addr string
+	mu   sync.Mutex
+	hits map[string]int
+}
+
+func startEdgeClientIDUpstream(t *testing.T) *edgeClientIDUpstream {
+	t.Helper()
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := &edgeClientIDUpstream{addr: pc.LocalAddr().String(), hits: map[string]int{}}
+	started := make(chan struct{})
+	srv := &dns.Server{PacketConn: pc, NotifyStartedFunc: func() { close(started) }, Handler: dns.HandlerFunc(func(w dns.ResponseWriter, q *dns.Msg) {
+		name := q.Question[0].Name
+		u.mu.Lock()
+		u.hits[name]++
+		u.mu.Unlock()
+		answer := new(dns.Msg)
+		answer.SetReply(q)
+		answer.RecursionAvailable = true
+		answer.Answer = []dns.RR{&dns.A{Hdr: dns.RR_Header{Name: name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 300}, A: net.IPv4(192, 0, 2, 53)}}
+		_ = w.WriteMsg(answer)
+	})}
+	go func() { _ = srv.ActivateAndServe() }()
+	<-started
+	t.Cleanup(func() { _ = srv.Shutdown() })
+	return u
+}
+
+func (u *edgeClientIDUpstream) queries(name string) int {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.hits[name]
 }
 
 // proxiedUDPExchange sends blocked.example over UDP behind a PROXYv2 header
