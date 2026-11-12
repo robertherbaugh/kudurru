@@ -20,13 +20,19 @@ import (
 // network work. A required feed that is missing, rotated, unbound or expired
 // stays in the selection as an unavailable sentinel, so it fails closed.
 type kubeRPZ struct {
-	config *zonecache.Cache
+	config kubeRPZConfig
 	feeds  *rpz.Manager
 	// keys is the published stored-key ring; nil while it is pending or
 	// withdrawn, when only unsigned feeds can bind.
 	keys     func() *dnsserver.StaticKeyring
 	unsigned *dnsserver.StaticKeyring
 	bound    atomic.Pointer[kubeRPZBinding]
+}
+
+// kubeRPZConfig is the published configuration source; *zonecache.Cache in
+// production.
+type kubeRPZConfig interface {
+	Snapshot() *zonecache.Snapshot
 }
 
 // kubeRPZBinding is one immutable binding of the configured feeds to an exact
@@ -40,7 +46,7 @@ type kubeRPZBinding struct {
 	available bool
 }
 
-func newKubeRPZ(config *zonecache.Cache, feeds *rpz.Manager, keys func() *dnsserver.StaticKeyring) (*kubeRPZ, error) {
+func newKubeRPZ(config kubeRPZConfig, feeds *rpz.Manager, keys func() *dnsserver.StaticKeyring) (*kubeRPZ, error) {
 	unsigned, err := dnsserver.NewStaticKeyring()
 	if err != nil {
 		return nil, err
@@ -87,7 +93,9 @@ func (k *kubeRPZ) binding() *kubeRPZBinding {
 	b := &kubeRPZBinding{config: config, feeds: feeds, keys: keys}
 	if config != nil {
 		// A stale or unsynced configuration keeps every selected feed required
-		// and unavailable, as the feed status reports.
+		// and unavailable, as the feed status reports. Unlike primary zones,
+		// this stops forwarding too for every client whose policy selects an
+		// RPZ list: its coverage cannot be confirmed (D390).
 		b.available = config.Authoritative()
 		// A binding error leaves bound nil: every selected feed is a sentinel.
 		b.bound, _ = feeds.Bind(config.Objects.BlockLists(), keys)

@@ -66,7 +66,26 @@ func TestKubeRPZBindingReuseAndFailClosed(t *testing.T) {
 	if _, available := selected.Summary(time.Now()); available {
 		t.Fatal("a selected feed without data was available")
 	}
+	// A stale local.db snapshot keeps the feed required but unavailable, so a
+	// selected feed fails closed even with data (rpz Select(..., false)).
+	live := cache.Snapshot()
+	staleCopy := *live
+	staleCopy.State, staleCopy.Stale = zonecache.FromSnapshot, true
+	stale, err := newKubeRPZ(kubeRPZFixedConfig{&staleCopy}, nil, func() *dnsserver.StaticKeyring { return ring })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := stale.binding(); b.available || b.config != &staleCopy {
+		t.Fatal("a stale configuration snapshot left the feed available")
+	}
+	if b := k.binding(); !b.available || b.config != live {
+		t.Fatal("a live configuration snapshot made the feed unavailable")
+	}
 	if hasRPZSource(nil) || hasRPZSource(&public.BlockList{Spec: public.BlockListSpec{Sources: []public.ListSource{{URL: "https://lists.invalid/a.txt"}}}}) || !hasRPZSource(list) {
 		t.Fatal("RPZ source prefilter is wrong")
 	}
 }
+
+type kubeRPZFixedConfig struct{ snapshot *zonecache.Snapshot }
+
+func (c kubeRPZFixedConfig) Snapshot() *zonecache.Snapshot { return c.snapshot }
