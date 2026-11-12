@@ -359,6 +359,12 @@ func (e *LeaseElector) recordTerm(term context.Context) *leaseTerm {
 // verify is one live GET of the Lease (store.VerifyTerm). It refuses unless
 // the term context is live and the Lease still names this identity with the
 // recorded acquisition and an unexpired renew time. It never writes.
+//
+// The proof assumes one live process per identity. client-go keeps the
+// recorded acquire time and transition count when it observes a valid Lease
+// under its own identity, so two live processes that share an identity (a
+// force-deleted StatefulSet pod still running on a partitioned node and its
+// replacement, both named after the node) both pass it (D384).
 func (t *leaseTerm) verify(ctx context.Context) error {
 	if ctx == nil || ctx.Err() != nil || t.term.Err() != nil || !t.recorded {
 		return store.ErrTermLost

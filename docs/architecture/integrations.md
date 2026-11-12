@@ -171,7 +171,13 @@ On the Kubernetes store every replica runs the host (D384). Each Integration
 has its own Lease (`kudurru-integration-<digest>` in the release namespace);
 the replica holding it captures the Integration, its credentials and, for a
 publisher, the admitted record sets from that replica's live watch snapshot.
-A replica serving a `local.db` snapshot captures nothing.
+A replica serving a `local.db` snapshot captures nothing. Only Integrations in
+the release namespace run: the credential allowlist is node-wide, so an
+Integration in any other namespace is refused with reason
+`NamespaceNotAllowed` before any provider exists. While the controller reports,
+for an admitted record set's current generation, that the zone drops or
+rejects part of it (`Duplicated`, `Occluded` or `Invalid`), the capture is
+unavailable, as SQLite's is for a duplicated source projection.
 
 ```mermaid
 sequenceDiagram
@@ -192,7 +198,11 @@ Lease and refuses unless it still names this replica with the acquisition it
 recorded when its term started and an unexpired renew time
 (`store.VerifyTerm`). It then reads the Integration and refuses unless its UID,
 resourceVersion, spec digest and guard mode are the captured ones, and checks
-every captured source record set against the replica's current snapshot. Only
+every captured source zone and record set against the replica's current
+snapshot by UID and identity: everything but status, resourceVersion and
+managed fields. The controller writes zone and record set status after every
+change; those writes change no published input, so they neither fence an
+effect reserved just before them nor wake or replace the instance. Only
 the private ledger, operation, budget, delivery and event-cursor kinds can be
 written, each by one create-only or exact-resourceVersion Secret write that is
 never forced or repeated; only ledger, operation, delivery and cursor rows can
@@ -200,7 +210,8 @@ be forgotten, by exact UID and resourceVersion, in order, ledger row first.
 Integration status is written by the Lease holder with the captured
 resourceVersion as precondition; the capture leaves status and
 resourceVersion out of each instance's authority, so a status write never
-replaces the instance.
+replaces the instance. A refusal status that could not be written marks its
+job, and the next capture replaces the job so a new term writes it again.
 
 What this does **not** make atomic: the Lease is a rejection check, not a
 lock, so a request or write already sent after a passing check can land after
@@ -209,7 +220,11 @@ CAS or a conflict, and a pending intent it leaves forces a fresh reread); the
 Integration and source checks are reads just before the write, not part of
 it; a multi-row forget can stop part way; and remote provider effects are not
 atomic with any store write, as on SQLite. A lost shared request-budget CAS
-fails that request, and the instance tries again on its schedule.
+fails that request, and the instance tries again on its schedule. The Lease
+proof is holder identity, acquire time and transition count, and the identity
+is the node name: two live processes that share a name (a force-deleted
+StatefulSet pod still running on a partitioned node and its replacement) both
+pass it. The proof assumes one live process per identity.
 
 The source root for inbound instances is built but not mounted yet:
 `kube.IntegrationSourceBackend` stages immutable `IntegrationSourceChunk`

@@ -11,7 +11,14 @@ a promoted writer must acquire its own authority before observing or publishing.
 This mount does not close every integration capability. On Kubernetes the host
 runs Cloudflare publication under one Lease per Integration; UniFi and webhook
 instances are refused on their objects with reason `UnsupportedOnKubernetes`
-until the Kubernetes source commit lands. Native Kubernetes Secret references
+until the Kubernetes source commit lands. On Kubernetes only Integrations in
+kudurru's release namespace run; one in any other namespace is refused with
+reason `NamespaceNotAllowed`. The reason is the credential trust model: the
+`credentials.allowedFiles` and `credentials.allowedEnvironment` allowlists are
+node-wide, and an Integration may name any allowlisted credential. Whoever can
+create an Integration in the release namespace can therefore use every
+allowlisted credential, so grant that only to principals you already trust
+with kudurru's own Secrets there. Native Kubernetes Secret references
 are not resolved by either host: mount the Secret as a file and allowlist its
 path under `credentials.allowedFiles`. Both deletion policies are supported on SQLite; see
 [Deleting an integration](#deleting-an-integration). Optional UniFi
