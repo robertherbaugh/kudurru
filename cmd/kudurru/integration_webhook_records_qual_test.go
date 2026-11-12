@@ -253,7 +253,7 @@ func TestIntegrationWebhookMountedRecordForeignProtectionAndRemoval(t *testing.T
 	f.s.integrations.host.Wake()
 	awaitServingRuntime(t, f.s, func() bool {
 		for _, s := range f.s.integrations.host.Statuses() {
-			if s.Owner == integrationOwner(f.s, f.d) && s.Reason == "ConflictsOrPending" && s.Result.Conflicts >= 4 {
+			if s.Owner == integrationOwner(f.s, f.d) && s.Reason == "ConflictsOrPending" && s.Result.Conflicts >= 5 {
 				return true
 			}
 		}
@@ -265,7 +265,9 @@ func TestIntegrationWebhookMountedRecordForeignProtectionAndRemoval(t *testing.T
 	for range 2 {
 		awaitServingRuntime(t, f.s, func() bool {
 			res, err := f.s.integrations.host.Sync(t.Context(), integrationOwner(f.s, f.d), "")
-			if err == nil && (res.Conflicts != 4 || res.Pending != 0) {
+			// Every foreign or unowned row is a conflict (manual, other,
+			// legacy and its a-legacy heritage row), and so is the claim.
+			if err == nil && (res.Conflicts != 5 || res.Pending != 0) {
 				t.Fatal("contested sync", res)
 			}
 			return err == nil
