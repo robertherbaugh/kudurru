@@ -286,11 +286,17 @@ checks (scopes no wider than yours, `auth.tokens.maxLifetime`, the expiry of
 the token you call with) and stores the token, and the secret is never sent
 to the primary. Revoking a token keeps the route's rule: your own token, or
 someone else's with `tokens.delete`; otherwise `404`. In each case the
-follower answers once it serves the result itself (at most five seconds), so a
-new token or cookie works on that follower at once. If the primary cannot be
-reached the answer is `503 unavailable` (nothing was sent) or `503
-completion_unknown` (the exchange failed): sign in or list your tokens to see
-what happened before you repeat it. `kudurru login --username` therefore works
+follower pulls the primary's state once and answers when it serves the result
+itself (it waits at most five seconds), so a new token or cookie works on that
+follower at once. A password change that committed is never reported as
+unavailable: with an API token the follower answers it after those five
+seconds even if it does not serve the change yet, and for a browser session
+that it cannot give a new cookie in time it answers `503
+committed_output_unavailable`, which means that the password was changed and
+you sign in with the new one. If the primary cannot be reached the answer is
+`503 unavailable` (nothing was sent) or `503 completion_unknown` (the exchange
+failed): sign in or list your tokens to see what happened before you repeat
+it. `kudurru login --username` therefore works
 against a follower too.
 
 Every other change, including node settings (`PATCH /node/config`), is

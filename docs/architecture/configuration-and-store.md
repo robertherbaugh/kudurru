@@ -1265,10 +1265,17 @@ secret. A revocation keeps the owner or `tokens.delete` rule and its retained
 `404`, and is emitted under the command scope only, because it may revoke the
 token that sent it. For both commands a credential that the primary no longer
 accepts or authorizes is a retained `401` or `403`, with the same dedup guard
-as `auth.logout`. The follower answers after its own view serves the result:
-it seals the new cookie, or waits (at most five seconds) until its view
-carries the new password hash, authenticates the new token, or no longer lists
-the revoked one. Every one of these routes gets the 30-second bound before
+as `auth.logout`. After a commit the follower pulls once and answers after its
+own view serves the result: it seals the new cookie, or waits (at most five
+seconds) until its view carries the new password hash, authenticates the new
+token, or no longer lists the revoked one. A token caller's password change
+that the view does not carry within those five seconds is answered from the
+latest view for the original account, as the primary's own route answers from
+the postcommit account; a cookie caller's change whose session the follower
+cannot seal within the route's bound is answered `503
+committed_output_unavailable` (the password changed; sign in with the new
+one). A committed change is never answered `unavailable`, which means that
+nothing was sent. Every one of these routes gets the 30-second bound before
 body read. A mutation without a typed command is
 refused on a follower, as described under
 [What a follower does with a mutation](#what-a-follower-does-with-a-mutation).
