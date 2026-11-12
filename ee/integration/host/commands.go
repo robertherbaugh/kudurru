@@ -174,7 +174,7 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 		defer events.Stop()
 		eventTick = events.C
 	} else {
-		retention := time.NewTicker(h.opts.PollInterval * retentionTicks)
+		retention := time.NewTicker(retentionInterval(h.opts.PollInterval))
 		defer retention.Stop()
 		retentionTick = retention.C
 	}

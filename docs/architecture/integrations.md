@@ -993,12 +993,16 @@ flowchart TD
   first, then the oldest. Rows expire 24 hours after creation and are pruned
   an hour after that. Every lease prunes the rows of other instances an hour
   past their deadline, delivered or not and whether or not their owner
-  exists: an owner that runs any lease has dead-lettered its own rows at the
-  deadline. Hook leases do this on each drain; leases without the hook role
-  every 300 poll intervals (10 minutes), when they also dead-letter their own
-  undelivered rows past the deadline without an attempt (a peer that stopped
-  advertising hooks). With no lease running at all nothing is pruned until
-  one runs. With at most 128 instances per
+  exists: an owner that runs any lease normally has dead-lettered its own
+  rows at the deadline, within that hour. Hook leases do this on each drain;
+  leases without the hook role every 300 poll intervals (10 minutes at the
+  default 2 s) but at least every 15 minutes, when they also dead-letter their
+  own undelivered rows past the deadline without an attempt (a peer that
+  stopped advertising hooks). This is not guaranteed: a hook lease whose drain
+  keeps failing before it delivers, or an owner that runs no lease during that
+  hour, leaves a row that another lease deletes without `EventDeadLettered`.
+  With no lease running at all nothing is pruned until one runs. With at most
+  128 instances per
   host, delivery rows stay under 50,000 objects. The retention scan pages
   through all rows and keeps only this instance's and 64 prunable ones in
   memory, so it never stops at a listing size.

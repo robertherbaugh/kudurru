@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -269,4 +271,93 @@ func TestRetentionWithoutHookRole(t *testing.T) {
 	if status := h.Statuses(); len(status) == 0 || status[0].Reason != ReasonEventDeadLettered {
 		t.Fatal("no Degraded for the dropped event", status)
 	}
+}
+
+func TestRetentionIntervalBoundedByDeliveryRetention(t *testing.T) {
+	for _, tc := range []struct{ poll, want time.Duration }{
+		{time.Millisecond, 300 * time.Millisecond},
+		{2 * time.Second, 10 * time.Minute},
+		{3 * time.Second, 15 * time.Minute},
+		{12 * time.Second, deliveryRetention / 4},
+		{time.Minute, deliveryRetention / 4},
+	} {
+		if got := retentionInterval(tc.poll); got != tc.want || got > deliveryRetention/4 {
+			t.Fatal(tc.poll, got, tc.want)
+		}
+	}
+}
+
+// TestRetentionTickOfRunningLeaseWithoutHookRole runs a real lease through
+// Run with a provider that has no hook role: the lease's retention ticker,
+// not a direct call, prunes another owner's expired row and dead-letters the
+// lease's own expired row without an attempt.
+func TestRetentionTickOfRunningLeaseWithoutHookRole(t *testing.T) {
+	st := memory.New()
+	definition := webhook("sink")
+	in := captureInput(t, definition)
+	start := time.Unix(1000, 0).UTC()
+	var clock sync.Mutex
+	now := start
+	current := func() time.Time { clock.Lock(); defer clock.Unlock(); return now }
+	r, err := ledger.New(ledger.Options{Reader: st, Now: current, Write: func(ctx context.Context, _ ledger.Guard, o store.Object, a store.ApplyOptions) (store.Object, error) {
+		return st.Apply(ctx, o, a)
+	}, Delete: func(ctx context.Context, _ ledger.Guard, requests []store.DeleteRequest) error {
+		return st.DeleteMany(ctx, requests)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := kinds.Owner{ClusterID: in.Term.ClusterID, Namespace: definition.Namespace, Name: definition.Name, UID: string(definition.UID)}
+	other := kinds.Owner{ClusterID: in.Term.ClusterID, Namespace: "dns", Name: "other", UID: "uid-other"}
+	row := func(o kinds.Owner, name string, deadline time.Time) string {
+		id := kinds.Digest([]byte(name))
+		d := &kinds.IntegrationDelivery{ObjectMeta: metav1.ObjectMeta{Name: kinds.DeliveryName(o, id)}, Spec: kinds.IntegrationDeliverySpec{FormatVersion: kinds.FormatVersion, Owner: o, DeliveryID: id, Topic: "zone.changed", Payload: json.RawMessage(`{}`), CreatedAt: deadline.Add(-24 * time.Hour), Deadline: deadline, NextAttempt: deadline.Add(-24 * time.Hour)}}
+		if _, err := st.Apply(context.Background(), d, store.ApplyOptions{Manager: "integration-ledger", CreateOnly: true}); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	// Past its deadline plus deliveryRetention: any lease may delete it.
+	foreign := row(other, "other", start.Add(-2*deliveryRetention))
+	// Past its deadline only: its owner dead-letters it, nobody deletes it.
+	own := row(owner, "own", start.Add(-deliveryRetention/2))
+	var providers atomic.Int32
+	h, err := New(Options{Capture: func(context.Context) (Input, error) { return in, nil }, Factory: func(string) (integration.Integration, error) {
+		providers.Add(1)
+		return &fakePublisher{}, nil
+	}, Elector: st.Elector, Fence: func(context.Context, ExecutionGuard) error { return nil }, Ledger: r, Reader: st, Allowed: func() bool { return true }, Now: current, PollInterval: time.Millisecond, OperationTimeout: time.Second, StopTimeout: time.Second, MaxConcurrent: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- h.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Error(err)
+			}
+		case <-time.After(3 * time.Second):
+			t.Error("host did not quiesce")
+		}
+	})
+	waitFor(t, func() bool { return providers.Load() > 0 })
+	waitFor(t, func() bool {
+		_, err := r.ReadDelivery(context.Background(), other, foreign)
+		return errors.Is(err, store.ErrNotFound)
+	})
+	waitFor(t, func() bool {
+		d, err := r.ReadDelivery(context.Background(), owner, own)
+		return err == nil && d.Spec.DeadLetter && d.Spec.ErrorClass == "expired" && d.Spec.Attempts == 0
+	})
+	waitFor(t, func() bool {
+		for _, s := range h.Statuses() {
+			if s.Reason == ReasonEventDeadLettered {
+				return true
+			}
+		}
+		return false
+	})
 }

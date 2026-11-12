@@ -87,8 +87,11 @@ const maxOwnDeliveries = 100000
 // most maxPrunePerTick rows of other owners that retention may delete: any
 // row past its deadline plus deliveryRetention, terminal or not, whatever
 // its owner. Past the deadline no queue accepts its event again, and an
-// owner that runs any lease has dead-lettered its own undelivered rows by
-// then (D379, D380). The scan pages through every row and keeps only these,
+// owner that runs any lease normally has dead-lettered its own undelivered
+// rows by then (retentionInterval). This is not a guarantee: a lease whose
+// drain keeps failing before it delivers, or an owner that runs no lease
+// in that hour, leaves a row that another lease deletes without an
+// EventDeadLettered status (D379, D380). The scan pages through every row and keeps only these,
 // so its memory is bounded by this owner's rows however many rows other
 // owners hold, and retention keeps working above any listing size.
 func (h *Host) allDeliveries(ctx context.Context, owner InstanceID) ([]*kinds.IntegrationDelivery, []*kinds.IntegrationDelivery, error) {
@@ -201,6 +204,15 @@ func (h *Host) drainEvents(ctx context.Context, j *job) error {
 // peer stopped advertising hooks. So rows are pruned while any Integration
 // runs a lease, not only while one receives events (D379, D380).
 const retentionTicks = 300
+
+// retentionInterval is the period of that retention run: retentionTicks poll
+// intervals, but never more than a quarter of deliveryRetention. Another
+// lease prunes a row deliveryRetention after its deadline, so a lease of the
+// owner normally runs several times in between and dead-letters the row
+// first, whatever PollInterval is (at most a minute).
+func retentionInterval(poll time.Duration) time.Duration {
+	return min(poll*retentionTicks, deliveryRetention/4)
+}
 
 // expireEvents is the retention run of a lease without the hook role: it
 // prunes like a hook lease and dead-letters, never attempts, its own rows
