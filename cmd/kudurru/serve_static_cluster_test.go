@@ -292,7 +292,10 @@ func startLicensedMount(t *testing.T, cfg *config.Config, licenseKey string) fun
 		})
 	}
 	t.Cleanup(stop)
-	probeCtx, probeCancel := context.WithTimeout(ctx, 20*time.Second)
+	// Readiness must come within 20 s of time the process could run; see
+	// readinessBudget. The ceiling bounds the wait on a starved machine.
+	budget := newReadinessBudget(20*time.Second, 2*time.Minute)
+	probeCtx, probeCancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer probeCancel()
 	client := &http.Client{Timeout: time.Second}
 	var last string
@@ -307,14 +310,18 @@ func startLicensedMount(t *testing.T, cfg *config.Config, licenseKey string) fun
 			_ = response.Body.Close()
 			last = string(data)
 			if response.StatusCode == http.StatusOK {
+				t.Logf("static server %s ready: %s", cfg.Node.Name, budget)
 				return stop
 			}
+		}
+		if budget.expired(time.Now()) {
+			t.Fatal("static server never ready", cfg.Node.Name, last, budget)
 		}
 		select {
 		case <-done:
 			t.Fatal("static server exited before readiness", cfg.Node.Name, runErr)
 		case <-probeCtx.Done():
-			t.Fatal("static server never ready", cfg.Node.Name, last)
+			t.Fatal("static server never ready", cfg.Node.Name, last, budget)
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
