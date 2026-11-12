@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/cookiejar"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -292,8 +293,18 @@ func enrolledAnchorsRevoke(t *testing.T, e *enrolledAnchors, bin string, env []s
 	}
 	primary = kudurrutest.StartReady(t, bin, a, kudurrutest.Options{Env: env})
 	e.awaitValidated(primary, "recovered primary")
-	// The hour-long wait outlived the session; sign in again (both clients
-	// share one cookie jar).
+	// The hour-long wait outlived the session. Sign in again from a fresh
+	// cookie jar, without the expired session's cookie or CSRF token, and
+	// let both clients use it.
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &http.Transport{}
+	t.Cleanup(transport.CloseIdleConnections)
+	fresh := &http.Client{Jar: jar, Transport: transport, Timeout: 5 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	apiA.client, apiB.client, apiA.csrf, apiB.csrf = fresh, fresh, "", ""
 	var login api.SessionInfo
 	apiA.request(t, http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "audit-e2e-password-1"}, http.StatusOK, &login) // #nosec G101 -- disposable loopback fixture credential
 	apiA.csrf, apiB.csrf = login.CSRF, login.CSRF
