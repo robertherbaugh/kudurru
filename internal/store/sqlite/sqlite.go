@@ -218,7 +218,10 @@ type Store struct {
 	clusterID         string
 	epoch             uint64
 	authority         atomic.Pointer[replication.Authority]
-	authorityChanged  chan struct{}                // replaced/closed under wmu
+	authorityChanged  chan struct{}                 // replaced/closed under wmu
+	termsMu           sync.Mutex                    // after wmu; guards terms and termSeq
+	terms             map[uint64]context.CancelFunc // live elected terms (retireTermsLocked)
+	termSeq           uint64
 	generationChanged chan struct{}                // coalesced complete-image notifications
 	writeBlocked      atomic.Bool                  // fail closed if persisting a fence fails
 	anchors           atomic.Pointer[AnchorSource] // explicit committed-owner lifecycle, never serving authority
@@ -454,6 +457,7 @@ func (s *Store) Close() error {
 	var err error
 	s.closeOnce.Do(func() {
 		s.wmu.Lock()
+		s.retireTermsLocked()
 		s.closed.Store(true)
 		close(s.authorityChanged)
 		close(s.generationChanged)

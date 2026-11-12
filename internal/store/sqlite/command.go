@@ -109,7 +109,7 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 		if t != nil && t.primary != nil && sqlBoundary.outcome == AnchorUnknown {
 			// Ambiguous completion cannot leave the old standalone writer usable.
 			// A restart must read the actual atomic membership/authority outcome.
-			s.writeBlocked.Store(true)
+			s.blockWritesLocked()
 			result = errors.Join(result, ErrEnrollmentCompletionUnknown)
 			close(s.authorityChanged)
 			s.authorityChanged = make(chan struct{})

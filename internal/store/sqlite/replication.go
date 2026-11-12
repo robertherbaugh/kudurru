@@ -311,7 +311,7 @@ func (s *Store) installReplica(ctx context.Context, image replication.Image, opt
 		}
 		if image.Revision == current.Revision {
 			if current.Digest != image.PayloadSHA256 {
-				s.writeBlocked.Store(true)
+				s.blockWritesLocked()
 				a.Mode, a.Divergence = replication.Fenced, new(replication.Generation)
 				*a.Divergence = image.Generation()
 				if a.Incarnation < math.MaxUint64 {

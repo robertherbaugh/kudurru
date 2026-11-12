@@ -173,10 +173,40 @@ func (s *Store) Authority() replication.Authority {
 
 func (s *Store) publishAuthorityLocked(a replication.Authority) {
 	old := s.authority.Load()
+	changed := old == nil || old.Incarnation != a.Incarnation || old.Mode != a.Mode || !old.Term.Same(a.Term)
+	if changed {
+		// The elector ends every term on an authority change. End them before
+		// the change is visible: a writer that finds its token retired must
+		// find its term canceled, or it reports the end of its term as a
+		// failure that the cluster runner logs and restarts.
+		s.retireTermsLocked()
+	}
 	s.authority.Store(&a)
-	if old == nil || old.Incarnation != a.Incarnation || old.Mode != a.Mode || !old.Term.Same(a.Term) {
+	if changed {
 		close(s.authorityChanged)
 		s.authorityChanged = make(chan struct{})
+	}
+}
+
+// blockWritesLocked sets the fail-closed write block. Like an authority change
+// it retires every elected term first, because a blocked store answers every
+// writer token as no longer current.
+func (s *Store) blockWritesLocked() {
+	s.retireTermsLocked()
+	s.writeBlocked.Store(true)
+}
+
+// retireTermsLocked cancels every live elected term. The caller holds wmu (a
+// term is registered under wmu too, so none can start in between) and
+// calls it before it publishes anything that makes a writer token stale, so
+// no reader can observe the stale token while its term context is alive. The
+// elector still observes the change on authorityChanged and joins the term.
+func (s *Store) retireTermsLocked() {
+	s.termsMu.Lock()
+	defer s.termsMu.Unlock()
+	for id, cancel := range s.terms {
+		cancel()
+		delete(s.terms, id)
 	}
 }
 
@@ -347,7 +377,7 @@ func (s *Store) observeAuthorityLocked(ctx context.Context, term replication.Ter
 		return a, result
 	}
 	// Block immediately, including when disk failure prevents a durable fence.
-	s.writeBlocked.Store(true)
+	s.blockWritesLocked()
 	if a.Incarnation < math.MaxUint64 {
 		a.Incarnation++
 	}
@@ -512,21 +542,11 @@ func checkPromotion(ctx context.Context, check func(context.Context) error) erro
 
 func (e *Elector) runDynamic(ctx context.Context, start func(context.Context), stop func()) error {
 	for {
-		e.s.wmu.Lock()
-		closed := e.s.isClosed()
-		a := e.s.Authority()
-		changed := e.s.authorityChanged
-		e.s.wmu.Unlock()
-		if closed {
-			if ctx.Err() != nil {
-				return nil
+		term, cancel, changed, err := e.nextTerm(ctx)
+		if term == nil {
+			if err != nil || ctx.Err() != nil {
+				return err
 			}
-			return store.ErrClosed
-		}
-		if ctx.Err() != nil {
-			return nil
-		}
-		if !a.Writable() || e.s.writeBlocked.Load() {
 			select {
 			case <-ctx.Done():
 				return nil
@@ -534,8 +554,6 @@ func (e *Elector) runDynamic(ctx context.Context, start func(context.Context), s
 				continue
 			}
 		}
-		token := WriterToken{a.MemberID, a.Term, a.Incarnation}
-		term, cancel := context.WithCancel(WithWriterToken(ctx, token))
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
@@ -553,4 +571,41 @@ func (e *Elector) runDynamic(ctx context.Context, start func(context.Context), s
 			stop()
 		}
 	}
+}
+
+// nextTerm samples authority and, when it is writable, registers the next term
+// in the same wmu section, so the change that retires the term cannot fall
+// between the sample and the registration. The returned cancel also
+// deregisters the term. A nil term with a nil error means wait on changed.
+func (e *Elector) nextTerm(ctx context.Context) (context.Context, context.CancelFunc, <-chan struct{}, error) {
+	e.s.wmu.Lock()
+	defer e.s.wmu.Unlock()
+	changed := e.s.authorityChanged
+	if e.s.isClosed() {
+		if ctx.Err() != nil {
+			return nil, nil, changed, nil
+		}
+		return nil, nil, changed, store.ErrClosed
+	}
+	a := e.s.Authority()
+	if ctx.Err() != nil || !a.Writable() || e.s.writeBlocked.Load() {
+		return nil, nil, changed, nil
+	}
+	token := WriterToken{a.MemberID, a.Term, a.Incarnation}
+	term, cancelTerm := context.WithCancel(WithWriterToken(ctx, token))
+	e.s.termsMu.Lock()
+	e.s.termSeq++
+	id := e.s.termSeq
+	if e.s.terms == nil {
+		e.s.terms = map[uint64]context.CancelFunc{}
+	}
+	e.s.terms[id] = cancelTerm
+	e.s.termsMu.Unlock()
+	cancel := func() {
+		cancelTerm()
+		e.s.termsMu.Lock()
+		delete(e.s.terms, id)
+		e.s.termsMu.Unlock()
+	}
+	return term, cancel, changed, nil
 }

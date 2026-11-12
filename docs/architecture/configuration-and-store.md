@@ -750,7 +750,11 @@ enrolled cluster only the primary's authority is writable, so only it runs the
 leader-only loops; a follower starts them when a reviewed promotion makes it
 primary, and a primary stops them when it is fenced or records a conflict.
 Each leadership term carries its writer token, which every mutation checks
-again inside its transaction.
+again inside its transaction. Every authority change, and the fail-closed
+write block that precedes a durable fence, ends the current term: the store
+cancels the term context before the new authority becomes visible, so a
+leader-only loop that sees its token retired always finds its term already
+over and stops quietly instead of failing and restarting.
 
 ### The controller
 
