@@ -14,6 +14,7 @@ func newClusterCmd(o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{Use: "cluster", Short: "Inspect cluster membership and store status"}
 	addClusterEnrollmentCommands(cmd, o)
 	addClusterPromotionCommands(cmd, o)
+	addClusterAnchorsCommand(cmd, o)
 	addClusterJoinCommand(cmd)
 	addClusterResolutionCommands(cmd)
 	cmd.AddCommand(&cobra.Command{

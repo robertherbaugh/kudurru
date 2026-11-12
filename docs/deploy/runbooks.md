@@ -23,6 +23,14 @@ trusted owner or a key that was already revoked is not a recovery candidate.
    kudurru anchors status --offline --database /var/lib/kudurru/state.db
    ```
 
+   Besides `version`, `quarantined` and `recoveries`, the output lists the
+   owner's keys (`owner.keys`: DS key tag, RFC 5011 status, first seen,
+   revocation time), the recovery record generations, this member's local
+   denials (`local.denied`) and its authority mode (`authority.mode`). Recover
+   only when `quarantined` is true and `authority.mode` is `primary` or
+   `standalone`: `recover` needs the database's own writer term and refuses a
+   follower's database before any acquisition, changing nothing.
+
 4. Supply that `version.digest`, an audit reason, independently verified DS records
    and numeric authoritative root endpoints. Each `--ds` is one complete DNS
    presentation record; repeat the flag if needed. For example, replacing the
@@ -51,6 +59,15 @@ real commit, `rolled-back` a confirmed rollback, and `unknown` requires inspecti
 before any new attempt. `not-attempted` means mutation was never entered. An output
 failure can hide a real commit; use `anchors status` rather than replaying an old
 expected digest. The command grants no permission to serve by itself.
+
+In an enrolled cluster, restart the primary first. Followers install the
+recovered history through their scheduled pulls, without a restart, and answer
+again as soon as they hold it. A follower whose own root check denied the lost
+key keeps that denial (the recovered history revokes the key too), but its
+deny-only root check stopped with the denial for that process: restart the
+follower once it serves again to resume checking the replacement key.
+`kudurru cluster anchors` on each member shows the owner digest, the recovery
+record and `supervisor.state`.
 
 Restart with the **original managed policy and initial configured seeds**. Recovery
 records the separate replacement trust without changing that identity. Revoked keys

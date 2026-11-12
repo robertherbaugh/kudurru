@@ -40,6 +40,11 @@ type CoordinatorOptions struct {
 	// Default time.Since(start), including Go's monotonic clock. Tests inject it.
 	Elapsed func() time.Duration
 	WallNow func() time.Time
+	// ObservePull, when set, receives the result of every scheduled or
+	// explicit pull, after the loss window is updated and before Pull
+	// returns. It is diagnostic only: it must not block, retry, or call back
+	// into the coordinator. Primary peer observations are not pulls.
+	ObservePull func(error)
 }
 
 // Coordinator tracks monotonic pull loss and gates explicit store promotion CAS.
@@ -181,6 +186,9 @@ func (c *Coordinator) Pull(ctx context.Context) error {
 		c.window = false
 		c.misses = 0
 		c.reason = "replication_rejected"
+	}
+	if c.opts.ObservePull != nil {
+		c.opts.ObservePull(err)
 	}
 	return err
 }

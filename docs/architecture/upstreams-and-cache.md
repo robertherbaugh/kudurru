@@ -681,6 +681,40 @@ member of the abandoned term adopts that branch under the same rules.
 | Fenced or refusing, and the primary and every member that followed it are lost for good | DNS-only from its own branch (or `SERVFAIL` with a pending local denial) | `cluster resolve --offline --abandon-term` with the reviewed term's epoch: a new term on the member's own owner and carrier, unchanged. A pending local denial still ends only with the writer's own observation of the REVOKE |
 | Anchor admission closed for the process: unknown SQL completion, or a verified REVOKE that could not be written because an install replaced the owner it was captured for | `SERVFAIL` | Restart. The committed cut binds again, and the next root check records the REVOKE against it |
 
+##### Reading these states
+
+Each state above is visible without reading the database by hand (D369):
+
+- `GET /cluster/anchors` (`kudurru cluster anchors`, permission `cluster.read`)
+  on any serving member: the accepted owner (phase, envelope and pure
+  generation, digest, every key with its DS key tag, RFC 5011 status, first
+  seen, remaining add hold-down and revocation time, quarantine, recovery
+  record generations, checkpoint and next refresh); the node-local carrier
+  (denied keys, `revokedByOwner` false for a pending local denial, the
+  retired floor, `retired` and `terminal`); the authority (mode, term and
+  installed term epochs, `fencedBehindTerm`, conflict); whether managed
+  serving admission is still held by the process; the elected updater and the
+  deny-only supervisor (`running`, `clock_wait`, `retry`, `raced`,
+  `waiting_image`, `retired`, `stopped` with its fixed error category); and on
+  a member that pulls, the last pull (`installed`, `unreachable`, `rejected`
+  or `refused`) with the refusal class (`carried_revocation` with the key tags,
+  `recovery_history`, `dormant_owner`, `policy`, `history`, `not_successor`)
+  and when the refusal began. Fixed `warnings` name each held-back state. The
+  response grants nothing.
+- A fenced or conflicted member's HTTP API is closed (its cut is DNS-only), so
+  the same signals are also metrics on its metrics listener:
+  `kudurru_root_anchor_worker_state{worker,state}`,
+  `kudurru_root_anchor_adoption_refused{reason}` and
+  `kudurru_root_anchor_admission_current`. A refusal also logs one warning when
+  it begins or changes class and one line when an install ends it.
+- On a stopped node, `kudurru anchors status --offline` prints the same owner,
+  carrier and authority projection from the retained database.
+- `kudurru doctor` on a host with `anchorMode: managed` reads the route and
+  fails on lost trust or a terminal carrier, and warns on every warning.
+
+The store classifies a refused owner with `sqlite.AnchorRefusal`, which still
+matches `accepted.ErrCAS`; the classification changes no admission rule.
+
 Replacing a member is the first-image join of a new receiver (D355). It takes
 the primary's owner and a carrier that denies exactly the keys that owner
 revokes; nothing of the replaced database is transferred. Enrollment refuses an

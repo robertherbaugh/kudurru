@@ -112,6 +112,7 @@ func (s *servingRuntime) superviseAnchorFollower(ctx context.Context) error {
 		}
 	}
 	defer join()
+	defer s.anchorStatus.setSupervisor(anchorWorkerNotRunning, time.Time{}, nil)
 	timer := time.NewTicker(time.Second)
 	defer timer.Stop()
 	for {
@@ -131,15 +132,22 @@ func (s *servingRuntime) superviseAnchorFollower(ctx context.Context) error {
 			if child != nil {
 				join()
 				terminal = true
+				s.anchorStatus.setSupervisor(anchorWorkerStopped, time.Time{}, errAnchorPolicy)
+			} else if !terminal {
+				s.anchorStatus.setSupervisor(anchorWorkerNotRunning, time.Time{}, nil)
 			}
 		} else if !terminal && child == nil && !time.Now().Before(nextRead) {
 			ready, err := s.anchorFollowerReady(ctx, epoch)
 			nextRead = time.Now().Add(time.Second)
 			if err != nil {
 				terminal = true
+				s.anchorStatus.setSupervisor(anchorWorkerStopped, time.Time{}, err)
 				slog.Error("root anchor follower stopped for this authority epoch", "err", err)
 			} else if ready {
+				s.anchorStatus.setSupervisor(anchorWorkerRunning, time.Time{}, nil)
 				child = s.startAnchorFollower(ctx, epoch)
+			} else {
+				s.anchorStatus.setSupervisor(anchorWorkerWaitingImage, time.Time{}, nil)
 			}
 		}
 		var done <-chan error
@@ -153,6 +161,7 @@ func (s *servingRuntime) superviseAnchorFollower(ctx context.Context) error {
 			child.cancel()
 			child, terminal = nil, true
 			if err != nil {
+				s.anchorStatus.setSupervisor(anchorWorkerStopped, time.Time{}, err)
 				slog.Error("root anchor follower stopped for this authority epoch", "err", err)
 			}
 		case <-changed:

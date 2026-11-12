@@ -32,7 +32,7 @@ func (s *servingRuntime) ClusterEnrollmentAvailable() bool {
 // acquisition. The handler never starts a replacement deadline after decoding.
 func (h *servingHTTP) clusterEnrollmentLifetime(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && r.URL.Path == h.opts.RoutePrefix+"/dns/blocking" || r.URL.Path == h.opts.RoutePrefix+"/cluster/promotion" || r.URL.Path == h.opts.RoutePrefix+"/cluster/promote" || r.URL.Path == h.opts.RoutePrefix+"/cluster/activate" || r.URL.Path == h.opts.RoutePrefix+"/cluster/enrollment" || r.URL.Path == h.opts.RoutePrefix+"/cluster/join-token" {
+		if r.Method == http.MethodPost && r.URL.Path == h.opts.RoutePrefix+"/dns/blocking" || r.URL.Path == h.opts.RoutePrefix+"/cluster/promotion" || r.URL.Path == h.opts.RoutePrefix+"/cluster/promote" || r.URL.Path == h.opts.RoutePrefix+"/cluster/activate" || r.URL.Path == h.opts.RoutePrefix+"/cluster/enrollment" || r.URL.Path == h.opts.RoutePrefix+"/cluster/anchors" || r.URL.Path == h.opts.RoutePrefix+"/cluster/join-token" {
 			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 			defer cancel()
 			r = r.WithContext(ctx)
@@ -45,6 +45,7 @@ func (h *servingHTTP) registerClusterEnrollment() {
 	h.route(http.MethodGet, "/cluster/promotion", h.getClusterPromotion)
 	h.route(http.MethodPost, "/cluster/promote", h.promoteCluster)
 	h.route(http.MethodGet, "/cluster/enrollment", h.getClusterEnrollment)
+	h.route(http.MethodGet, "/cluster/anchors", h.getClusterAnchors)
 	h.route(http.MethodPost, "/cluster/activate", h.activateCluster)
 	h.route(http.MethodPost, "/cluster/join-token", h.issueClusterJoinToken)
 }

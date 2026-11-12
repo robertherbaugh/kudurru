@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/robertherbaugh/kudurru/ee/edge/keepalived"
+	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/apiclient"
 	"github.com/robertherbaugh/kudurru/internal/central"
 	"github.com/robertherbaugh/kudurru/internal/cli"
@@ -64,6 +65,9 @@ func newDoctorCmd(configPath *string, o *cliOpts) *cobra.Command {
   api        the API server answers (the CLI context, --server, or the local
              listeners.api.address)
   token      the CLI token is accepted (GET /auth/me)
+  anchors    with upstreams.recursion.anchorMode managed: the node's root
+             trust-anchor status (GET /cluster/anchors); fails on lost trust
+             or terminal local output, warns on each status warning
   diagnoses  configuration diagnoses reported by the server (GET /info/messages)
   database   with database.dsn set: the central database answers, runs
              PostgreSQL 16 or newer and has a schema this binary can use;
@@ -269,6 +273,8 @@ func (o *cliOpts) checkAPI(ctx context.Context, rep *doctorReport, cfg *config.C
 	}
 	rep.ok("token", "%s %s, roles %s", me.Principal.Kind, firstNonEmpty(me.Principal.Name, me.Principal.ID), firstNonEmpty(strings.Join(me.Roles, ","), "none"))
 
+	checkAnchors(ctx, rep, c, cfg)
+
 	ds, err := diagnoses(ctx, c)
 	if err != nil {
 		if apiclient.IsStatus(err, 403) {
@@ -436,4 +442,31 @@ func checkDatabase(ctx context.Context, rep *doctorReport, cfg *config.Config) {
 func atoi(s string) int {
 	n, _ := strconv.Atoi(s)
 	return n
+}
+
+// checkAnchors reports managed root trust-anchor status (D369). It runs only
+// when the host declares managed anchors; a node without the route is a
+// warning, not a failure.
+func checkAnchors(ctx context.Context, rep *doctorReport, c *apiclient.Client, cfg *config.Config) {
+	if cfg.Upstreams.Recursion.AnchorMode != config.RootAnchorsManaged {
+		return
+	}
+	var status api.RootAnchorStatus
+	if err := c.Get(ctx, "/cluster/anchors", nil, &status); err != nil {
+		rep.warn("anchors", "status unavailable: %v", err)
+		return
+	}
+	switch {
+	case status.Owner.Quarantined:
+		rep.fail("anchors", "every trusted root key is lost (generation %d)", status.Owner.Generation)
+	case status.Local != nil && status.Local.Terminal:
+		rep.fail("anchors", "root-anchor output is terminal on this member")
+	case len(status.Warnings) > 0:
+		rep.warn("anchors", "%s, %d keys, updater %s, supervisor %s", status.Owner.Phase, len(status.Owner.Keys), status.Updater.State, status.Supervisor.State)
+	default:
+		rep.ok("anchors", "%s, %d keys, updater %s, supervisor %s", status.Owner.Phase, len(status.Owner.Keys), status.Updater.State, status.Supervisor.State)
+	}
+	for _, w := range status.Warnings {
+		rep.say("  WARNING anchors: %s\n", w)
+	}
 }

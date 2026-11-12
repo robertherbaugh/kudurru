@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"net/netip"
 	"slices"
 	"sync"
@@ -64,6 +65,9 @@ type servingRuntimeOptions struct {
 	// poller's checkpoint comparison only (D369). Nil means time.Now; only tests
 	// set it. Samples, receipts and stored state never use it.
 	AnchorWall func() time.Time
+	// Registerer receives the kudurru_root_anchor_* metrics once; nil leaves
+	// them unregistered (tests).
+	Registerer prometheus.Registerer
 }
 
 // servingRuntime owns the complete publisher and provider/primary workers.
@@ -82,6 +86,7 @@ type servingRuntime struct {
 	anchorPin     currentguard.PinFunc
 	anchors       *rootAnchorOwner
 	anchorWriter  anchorWriterControl
+	anchorStatus  anchorStatusBoard
 	status        *servingbuild.PrimaryStatus
 	integrations  *integrationRuntime
 	catalog       *servingbuild.CatalogRuntime
@@ -156,6 +161,11 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	}
 	if err := s.admitAnchors(ctx); err != nil {
 		return nil, err
+	}
+	if o.Registerer != nil {
+		if err := o.Registerer.Register(newAnchorMetrics(s)); err != nil {
+			return nil, err
+		}
 	}
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
