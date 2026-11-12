@@ -106,3 +106,14 @@ edges too. The edge refuses to render client IDs without
 `proxyProtocolSecretFile`. A forged TLV without the secret, or with a wrong
 one, drops the query. Ordinary HTTP forwarding headers and DNS EDNS options
 cannot set the ID. The settings are host-only and need a restart.
+
+Known issue: the pinned dnsdist 2.1.3 edge never answers a DoQ or DoH3
+request whose end of stream (the QUIC STREAM FIN) arrives in a separate,
+empty frame after the query data. The client waits until its own timeout and
+the query never reaches kudurru. This happens with and without client IDs.
+A client that sends the FIN together with the query is answered, and kudurru's
+own DoQ and DoH3 listeners answer both forms. Some QUIC client libraries send
+the FIN separately now and then: in our tests a Go (quic-go) client did so for
+roughly one DoH3 request in seven to one in fifteen on a fresh connection. If DoQ or DoH3 clients
+behind the edge see occasional timeouts, check whether they send the FIN on
+its own, or point them at a kudurru listener directly.
