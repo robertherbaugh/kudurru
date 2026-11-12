@@ -203,6 +203,19 @@ exchange may still have committed on the primary; check the record before
 sending a change that is not idempotent again. A fenced or conflicted node
 answers `SERVFAIL` without forwarding.
 
+A forwarded update expires at most four seconds after the follower sends it,
+and the primary checks that against its own clock. If the primary's clock
+runs four seconds or more ahead of a follower's, that follower answers
+`SERVFAIL` for every update it passes on, so keep member clocks within a
+second of each other (see the clock requirement in
+[the cluster guide](sqlite-cluster.md)).
+
+During a burst of updates, for example from a DHCP server, some updates can
+be answered `SERVFAIL` for a few milliseconds while the primary republishes
+its previous commit. The window is on the primary, so an update sent to it
+directly can see it too. Such an update was not applied, and the client's
+retry is safe.
+
 Static twins do not replicate: an update changes only the node that received
 it.
 

@@ -758,12 +758,21 @@ The primary admits the key again against its own keyring: the name, algorithm
 and credential version must all match. It then runs the same protocol adapter
 as a native UPDATE, with the same zone selection, grants, prerequisites and
 atomic commit, under its elected writer. The command ID is the update's retry
-identity in the zone's receipt ledger, so a repeated delivery cannot apply it
-twice. The primary acknowledges its rcode inside the member request's command
-output scope. The follower relays that rcode, signed with the request's key.
-The answer carries an acknowledgment bound to the verified key and the
-unchanged empty response instead of this node's data generation, so a pull
-that installs the commit first does not withhold it. A command that was not
+identity in the zone's receipt ledger, so a repeated delivery of the same
+command returns the retained rcode without a second commit. The zone runtime
+commits in its own fenced transaction, bound to the writer, the term and the
+key identity. The sender's enrollment is rechecked in a transaction only when
+the acknowledgment is admitted, so a member revoked during those milliseconds
+gets its update committed and its answer withheld. The primary captures a
+fresh serving lease for each command. While its previous commit is still being
+republished, that lease fails the writer check in `captureUpdate`, and the
+update answers SERVFAIL before anything is applied, as a native UPDATE does.
+Back-to-back updates can therefore see a few SERVFAILs. The primary
+acknowledges its rcode inside the member request's command output scope. The
+follower relays that rcode, signed with the request's key. The answer
+carries an acknowledgment bound to the verified key and the unchanged empty
+response instead of this node's data generation, so a pull that installs the
+commit first does not withhold it. A command that was not
 sent, or whose exchange was lost, answers SERVFAIL. RFC 2136 section 4.5 tells
 the requestor to try another server on SERVFAIL, and nothing retries or replays
 the command. Fenced, conflicted, standby and static nodes keep their local

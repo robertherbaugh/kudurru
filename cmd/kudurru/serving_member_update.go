@@ -252,6 +252,10 @@ func (s *servingRuntime) executeMemberUpdate(ctx context.Context, request *sqlit
 	// transaction. This empty member command only opens the request's
 	// command output scope, so the acknowledgment is admitted under the
 	// same original peer, membership and authority checks as any other.
+	// Unlike a generic member command, the effect itself is not rechecked
+	// against current membership: a member revoked after CaptureMemberRequest
+	// can still commit, and only its answer is withheld (D381). The effect
+	// remains bound to this writer, term and the admitted key identity.
 	_, err = s.opts.Store.MemberCommandWithOutput(bound, request, func(ctx context.Context, tx *sqlite.CommandTx) error {
 		if err := check(ctx); err != nil {
 			return err
