@@ -219,16 +219,16 @@ func TestEdgeBlockStatementsAndPlan(t *testing.T) {
 	}
 	longer := a
 	longer.Until = a.Until.Add(time.Hour)
-	if _, clear, _ := planEdgeBlocks([]internalapi.EdgeBlock{longer}, installed, false, false, now); !clear {
+	if _, wipe, _ := planEdgeBlocks([]internalapi.EdgeBlock{longer}, installed, false, false, now); !wipe {
 		t.Fatal("a changed expiry must reinstall")
 	}
-	if _, clear, noop := planEdgeBlocks(nil, map[string]time.Time{a.ID: now.Add(-time.Second)}, false, false, now); clear || !noop {
+	if _, wipe, noop := planEdgeBlocks(nil, map[string]time.Time{a.ID: now.Add(-time.Second)}, false, false, now); wipe || !noop {
 		t.Fatal("an entry dnsdist expired itself needs no clear")
 	}
-	if adds, clear, _ := planEdgeBlocks([]internalapi.EdgeBlock{a}, nil, true, false, now); clear || len(adds) != 1 {
+	if adds, wipe, _ := planEdgeBlocks([]internalapi.EdgeBlock{a}, nil, true, false, now); wipe || len(adds) != 1 {
 		t.Fatal("a fresh child gets the whole set without a clear")
 	}
-	if adds, clear, _ := planEdgeBlocks([]internalapi.EdgeBlock{a}, installed, false, true, now); !clear || len(adds) != 1 {
+	if adds, wipe, _ := planEdgeBlocks([]internalapi.EdgeBlock{a}, installed, false, true, now); !wipe || len(adds) != 1 {
 		t.Fatal("an unknown table is cleared and reinstalled")
 	}
 	other := internalapi.EdgeBlock{ID: "00000000000000b2", Prefix: "192.0.2.0/24", Until: now.Add(2 * time.Hour)}
