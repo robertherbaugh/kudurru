@@ -100,6 +100,58 @@ func TestEdgeRenderDnstap(t *testing.T) {
 	}
 }
 
+// TestEdgeRenderClientIDs: --client-id-domain and --client-ids render the
+// client-ID rule and its function (D389) in both formats, from flags and from
+// the edge settings, and are refused without the PROXYv2 secret or with a
+// suffix that leaves no room for an ID.
+func TestEdgeRenderClientIDs(t *testing.T) {
+	secret := writeTemp(t, strings.Repeat("ab", 32))
+	tlsDir := t.TempDir()
+	for _, name := range []string{"tls.crt", "tls.key"} {
+		if err := os.WriteFile(filepath.Join(tlsDir, name), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	base := []string{"edge", "render", "--backends", "10.0.0.11:5353", "--proxy-protocol-secret-file", secret, "--tls-dir", tlsDir}
+	out := run(t, append(base, "--client-id-domain", "Dot.Example.com", "--client-ids")...)
+	for _, want := range []string{"name: kudurru-client-id", "type: Lua", "function_name: kudurru_client_id", "exact_path_matching: false",
+		`local kudurru_client_id_suffix = ".dot.example.com"`, `local kudurru_client_id_paths = {"/dns-query"}`, "dq:addProxyProtocolValue(225, id)", "dq.skipCache = true"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("render output lacks %q:\n%s", want, out)
+		}
+	}
+	dir := t.TempDir()
+	run(t, append(base, "--renderer", "lua", "--client-id-domain", "dot.example.com", "--out", dir)...)
+	b, err := os.ReadFile(filepath.Join(dir, "dnsdist.conf")) //nolint:gosec // test-owned path
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`addAction(AllRule(), LuaAction(kudurru_client_id), {name="kudurru-client-id"`, "local kudurru_client_id_paths = nil"} {
+		if !bytes.Contains(b, []byte(want)) {
+			t.Errorf("lua render lacks %q:\n%s", want, b)
+		}
+	}
+	if bytes.Contains(b, []byte("exactPathMatching")) {
+		t.Errorf("path matching relaxed without --client-ids:\n%s", b)
+	}
+	cfg := writeTemp(t, "edge:\n  clientIDs: true\n  proxyProtocolSecretFile: "+secret+"\n  tlsDir: "+tlsDir+"\n  backends: [10.0.0.11:5353]\n")
+	if out := run(t, "--config", cfg, "edge", "render"); !strings.Contains(out, "function_name: kudurru_client_id") || !strings.Contains(out, "local kudurru_client_id_suffix = nil") {
+		t.Errorf("edge.clientIDs setting not rendered:\n%s", out)
+	}
+	if out := run(t, base...); strings.Contains(out, "kudurru_client_id") || strings.Contains(out, "exact_path_matching") {
+		t.Errorf("client IDs rendered without the options:\n%s", out)
+	}
+	for name, args := range map[string][]string{
+		"domain without secret": {"edge", "render", "--backends", "127.0.0.1:5353", "--client-id-domain", "dot.example.com"},
+		"paths without secret":  {"edge", "render", "--backends", "127.0.0.1:5353", "--client-ids"},
+		"invalid domain":        append(append([]string(nil), base...), "--client-id-domain", "dot_example.com"),
+	} {
+		if _, err := runErr(args...); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
 func writeTemp(t *testing.T, content string) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "f")

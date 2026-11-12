@@ -9,6 +9,7 @@ package dnsdist
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -57,7 +58,12 @@ const (
 	// The dnstap response rules (D372).
 	ruleDnstapCacheHit     = "kudurru-dnstap-cache-hit"
 	ruleDnstapSelfAnswered = "kudurru-dnstap-self-answered"
+	// ruleClientID sends the transport client ID in TLV 0xE1 (D389).
+	ruleClientID = "kudurru-client-id"
 )
+
+// luaClientIDFunction is the global Lua function of ruleClientID.
+const luaClientIDFunction = "kudurru_client_id"
 
 // ruleUUID is the deterministic uuid of a rendered rule.
 func ruleUUID(name string) string {
@@ -134,6 +140,93 @@ func luaValidators(t *edge.Topology) string {
 	}
 	return b.String()
 }
+
+// luaClientID renders the function of ruleClientID (D389): the client ID a
+// kudurru listener derives (internal/clientid), here from the DoT/DoQ server
+// name under the configured suffix and from one path component after a
+// DoH/DoH3 path, sent to the backend in TLV 0xE1 next to the secret. A query
+// with an ID skips the packet cache, which has no client key. With path IDs
+// on, any other path below a DoH path is answered with HTTP 404, as kudurru
+// does, and the escaped form of an ID never matches. Empty when off.
+func luaClientID(t *edge.Topology) string {
+	c := t.ClientIDs
+	if !c.Enabled() {
+		return ""
+	}
+	suffix, paths := "nil", "nil"
+	if c.Domain != "" {
+		suffix = luaString("." + c.Domain)
+	}
+	if c.Paths {
+		var list []string
+		for _, bd := range t.Binds {
+			for _, p := range bd.DoHPaths {
+				if !slices.Contains(list, p) {
+					list = append(list, p)
+				}
+			}
+		}
+		paths = luaStrings(list)
+	}
+	return fmt.Sprintf(luaClientIDTemplate, suffix, paths, luaClientIDFunction, edge.ProxyTLVClientID)
+}
+
+// luaClientIDTemplate takes the server name suffix (".<domain>" or nil), the
+// DoH paths with IDs (a table or nil), the function name and the TLV type.
+const luaClientIDTemplate = `-- client IDs (D389): one DNS label, as kudurru's own listeners accept it
+local kudurru_client_id_suffix = %s
+local kudurru_client_id_paths = %s
+
+local function kudurru_client_id_label(s)
+  if #s == 0 or #s > 63 or string.find(s, "^[A-Za-z0-9%%-]+$") == nil or string.sub(s, 1, 1) == "-" or string.sub(s, -1) == "-" then
+    return nil
+  end
+  return string.lower(s)
+end
+
+-- The ID of /<path>/<id>; ok is false for any other path below <path>.
+local function kudurru_client_id_path(path)
+  for _, base in ipairs(kudurru_client_id_paths) do
+    if path == base then
+      return nil, true
+    end
+    if string.sub(path, 1, #base + 1) == base .. "/" then
+      local id = kudurru_client_id_label(string.sub(path, #base + 2))
+      return id, id ~= nil
+    end
+  end
+  return nil, false
+end
+
+function %s(dq)
+  local id = nil
+  local path = dq:getHTTPPath()
+  if path ~= "" then
+    if kudurru_client_id_paths ~= nil then
+      local ok
+      id, ok = kudurru_client_id_path(path)
+      if not ok then
+        dq:setHTTPResponse(404, "", "")
+        dq.dh:setQR(true)
+        return DNSAction.HeaderModify, ""
+      end
+    end
+  elseif kudurru_client_id_suffix ~= nil then
+    local name = string.lower(dq:getServerNameIndication())
+    if string.sub(name, -1) == "." then
+      name = string.sub(name, 1, -2)
+    end
+    if #name > #kudurru_client_id_suffix and string.sub(name, -#kudurru_client_id_suffix) == kudurru_client_id_suffix then
+      id = kudurru_client_id_label(string.sub(name, 1, #name - #kudurru_client_id_suffix))
+    end
+  end
+  if id ~= nil then
+    dq:addProxyProtocolValue(%d, id)
+    dq.skipCache = true
+  end
+  return DNSAction.None, ""
+end
+`
 
 // luaString quotes s for Lua. Topology.Validate restricts every rendered
 // string to printable ASCII, for which Go and Lua quoting agree.

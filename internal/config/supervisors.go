@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/validation"
+
+	"github.com/robertherbaugh/kudurru/internal/clientid"
 )
 
 // Edge configures the existing host-local dnsdist render/run commands. Secrets
@@ -49,6 +52,8 @@ type Edge struct {
 	ServerID                  string   `koanf:"serverID" json:"serverID"`
 	DnstapTarget              string   `koanf:"dnstapTarget" json:"dnstapTarget"`
 	DnstapIdentity            string   `koanf:"dnstapIdentity" json:"dnstapIdentity"`
+	ClientIDDomain            string   `koanf:"clientIDDomain" json:"clientIDDomain"`
+	ClientIDs                 bool     `koanf:"clientIDs" json:"clientIDs"`
 	Threads                   int      `koanf:"threads" json:"threads"`
 	DNSDistBin                string   `koanf:"dnsdistBin" json:"dnsdistBin"`
 	DNSDistUser               string   `koanf:"dnsdistUser" json:"dnsdistUser"`
@@ -191,6 +196,9 @@ func (c *Config) validateSupervisors() []error {
 		if duration < 0 {
 			errs = append(errs, fmt.Errorf("%s: must not be negative", path))
 		}
+	}
+	if d := c.Edge.ClientIDDomain; d != "" && !clientid.Domain(d) {
+		errs = append(errs, errors.New("edge.clientIDDomain: must be a DNS suffix with room for an ID label"))
 	}
 	names, vrids, addresses := map[string]bool{}, map[int]bool{}, map[netip.Addr]bool{}
 	for i, vip := range c.VIP.VIPs {

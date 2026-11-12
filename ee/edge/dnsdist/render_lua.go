@@ -73,7 +73,11 @@ func (r LuaRenderer) render(in *edge.Topology, initialDown map[string]bool) ([]F
 		case edge.DoT:
 			w("addTLSLocal(%s, %s, %s, {minTLSVersion=\"tls1.2\"})", luaString(bd.Address), luaString(bd.CertFile), luaString(bd.KeyFile))
 		case edge.DoH:
-			w("addDOHLocal(%s, %s, %s, %s, {minTLSVersion=\"tls1.2\"})", luaString(bd.Address), luaString(bd.CertFile), luaString(bd.KeyFile), luaStrings(bd.DoHPaths))
+			opts := "minTLSVersion=\"tls1.2\""
+			if t.ClientIDs.Paths {
+				opts += ", exactPathMatching=false" // /<path>/<id> reaches the client-ID rule
+			}
+			w("addDOHLocal(%s, %s, %s, %s, {%s})", luaString(bd.Address), luaString(bd.CertFile), luaString(bd.KeyFile), luaStrings(bd.DoHPaths), opts)
 		case edge.DoQ:
 			w("addDOQLocal(%s, %s, %s)", luaString(bd.Address), luaString(bd.CertFile), luaString(bd.KeyFile))
 		case edge.DoH3:
@@ -98,6 +102,10 @@ func (r LuaRenderer) render(in *edge.Topology, initialDown map[string]bool) ([]F
 	}
 	if t.ManagedCacheBypass {
 		w("%s", luaManagedCacheBypass)
+	}
+	if v := luaClientID(t); v != "" {
+		w("")
+		b.WriteString(v)
 	}
 	w("")
 	w("-- backends")
@@ -130,6 +138,9 @@ func (r LuaRenderer) render(in *edge.Topology, initialDown map[string]bool) ([]F
 	if t.ProxyProtocolSecret != "" {
 		w("addAction(AllRule(), SetAdditionalProxyProtocolValueAction(%d, %s), {name=%s, uuid=%s})",
 			edge.ProxyTLVSecret, luaString(t.ProxyProtocolSecret), luaString(ruleProxySecret), luaString(ruleUUID(ruleProxySecret)))
+	}
+	if t.ClientIDs.Enabled() {
+		w("addAction(AllRule(), LuaAction(%s), {name=%s, uuid=%s})", luaClientIDFunction, luaString(ruleClientID), luaString(ruleUUID(ruleClientID)))
 	}
 	w("addAction(QNameRule(%s), SetSkipCacheAction(), {name=%s, uuid=%s})",
 		luaString(t.HealthCheck.QName), luaString(ruleHealthNoCache), luaString(ruleUUID(ruleHealthNoCache)))

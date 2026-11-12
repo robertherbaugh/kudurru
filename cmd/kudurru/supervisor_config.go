@@ -54,6 +54,8 @@ var edgeSettings = map[string]string{
 	"server-id":                   "edge.serverID",
 	"dnstap-target":               "edge.dnstapTarget",
 	"dnstap-identity":             "edge.dnstapIdentity",
+	"client-id-domain":            "edge.clientIDDomain",
+	"client-ids":                  "edge.clientIDs",
 	"threads":                     "edge.threads",
 	"dnsdist-bin":                 "edge.dnsdistBin",
 	"dnsdist-user":                "edge.dnsdistUser",
@@ -242,6 +244,7 @@ func (f *edgeFlags) load(cmd *cobra.Command, path string) error {
 	f.renderer = e.Renderer
 	f.serverID = e.ServerID
 	f.dnstapTarget, f.dnstapIdentity = e.DnstapTarget, e.DnstapIdentity
+	f.clientIDDomain, f.clientIDs = e.ClientIDDomain, e.ClientIDs
 	f.threads = e.Threads
 	f.dnsdistBin = e.DNSDistBin
 	f.dnsdistUser = e.DNSDistUser

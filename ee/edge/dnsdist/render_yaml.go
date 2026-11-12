@@ -58,6 +58,9 @@ func (r YAMLRenderer) render(in *edge.Topology, initialDown map[string]bool) ([]
 	if t.ManagedCacheBypass {
 		lua += "\n" + luaManagedCacheBypass + "\n"
 	}
+	if v := luaClientID(t); v != "" {
+		lua += "\n" + v
+	}
 	return []File{{Name: r.Main(), Data: buf.Bytes()}, {Name: "dnsdist.lua", Data: []byte(lua)}}, nil
 }
 
@@ -128,6 +131,8 @@ type yCert struct {
 
 type yDoH struct {
 	Paths []string `yaml:"paths"`
+	// ExactPathMatching false lets /<path>/<id> reach the client-ID rule.
+	ExactPathMatching *bool `yaml:"exact_path_matching,omitempty"`
 }
 
 type yPacketCache struct {
@@ -197,6 +202,8 @@ type yAction struct {
 	Value      string `yaml:"value,omitempty"`
 	Identity   string `yaml:"identity,omitempty"`
 	LoggerName string `yaml:"logger_name,omitempty"`
+	// FunctionName names a global function of the sibling dnsdist.lua.
+	FunctionName string `yaml:"function_name,omitempty"`
 }
 
 type yRemoteLogging struct {
@@ -282,6 +289,9 @@ func buildYAML(t *edge.Topology) yConfig {
 		}
 		if b.Protocol == edge.DoH || b.Protocol == edge.DoH3 {
 			yb.DoH = &yDoH{Paths: b.DoHPaths}
+			if b.Protocol == edge.DoH && t.ClientIDs.Paths {
+				yb.DoH.ExactPathMatching = new(false)
+			}
 		}
 		cfg.Binds = append(cfg.Binds, yb)
 	}
@@ -350,6 +360,12 @@ func yamlRules(t *edge.Topology) []yRule {
 		rules = append(rules, yRule{
 			Name: ruleProxySecret, UUID: ruleUUID(ruleProxySecret), Selector: ySelector{Type: "All"},
 			Action: yAction{Type: "SetAdditionalProxyProtocolValue", ProxyType: &pt, Value: t.ProxyProtocolSecret},
+		})
+	}
+	if t.ClientIDs.Enabled() {
+		rules = append(rules, yRule{
+			Name: ruleClientID, UUID: ruleUUID(ruleClientID), Selector: ySelector{Type: "All"},
+			Action: yAction{Type: "Lua", FunctionName: luaClientIDFunction},
 		})
 	}
 	// Health can briefly SERVFAIL before active checks remove a draining

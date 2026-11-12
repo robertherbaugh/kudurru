@@ -195,3 +195,36 @@ func TestChildAndCheck(t *testing.T) {
 		t.Error("missing binary started")
 	}
 }
+
+// TestBuildClientIDs: client IDs normalize the suffix and need the PROXYv2
+// secret, a suffix with room for an ID label and DoH paths an ID can follow
+// (D389).
+func TestBuildClientIDs(t *testing.T) {
+	secret := strings.Repeat("ab", 32)
+	be := []Backend{{Name: "n1", Address: "10.0.0.1:5353"}}
+	top, err := Build(Options{ServerID: "e", CertFile: "/c", KeyFile: "/k", ProxyProtocolSecret: secret, ClientIDs: ClientIDs{Domain: "Dot.Example.COM.", Paths: true}}, be, testCreds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if top.ClientIDs.Domain != "dot.example.com" || !top.ClientIDs.Paths || !top.ClientIDs.Enabled() {
+		t.Fatalf("client IDs %+v", top.ClientIDs)
+	}
+	if (ClientIDs{}).Enabled() {
+		t.Fatal("zero client IDs enabled")
+	}
+	for name, o := range map[string]Options{
+		"domain without secret":     {ClientIDs: ClientIDs{Domain: "dot.example.com"}},
+		"paths without secret":      {ClientIDs: ClientIDs{Paths: true}},
+		"domain with an underscore": {ProxyProtocolSecret: secret, ClientIDs: ClientIDs{Domain: "dot_x.example.com"}},
+		"domain too long":           {ProxyProtocolSecret: secret, ClientIDs: ClientIDs{Domain: strings.Repeat("a.", 95) + "com"}},
+	} {
+		o.ServerID = "e"
+		if _, err := Build(o, be, testCreds); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	top.Binds[2].DoHPaths = []string{"/dns-query/"}
+	if err := top.Validate(); err == nil || !strings.Contains(err.Error(), "client ID paths") {
+		t.Fatalf("DoH path ending in '/': %v", err)
+	}
+}

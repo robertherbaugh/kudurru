@@ -119,6 +119,11 @@ func goldenCases(t *testing.T) map[string]*edge.Topology {
 		"dnstap": build(edge.Options{ServerID: "edge-1", ProxyProtocolSecret: goldenSecret,
 			Dnstap: &edge.Dnstap{Target: "tcp:10.0.0.11:6000"}},
 			[]edge.Backend{{Name: "node-a", Address: "10.0.0.11:5353"}}),
+		// Client IDs from the DoT/DoQ server name and the DoH/DoH3 path (D389).
+		"client-ids": build(edge.Options{ServerID: "node-a", ProxyProtocolSecret: goldenSecret,
+			CertFile: "/certs/tls.crt", KeyFile: "/certs/tls.key",
+			ClientIDs: edge.ClientIDs{Domain: "Dot.Example.com.", Paths: true}},
+			[]edge.Backend{{Name: "node-a", Address: "10.0.0.11:5353"}}),
 		// Opt-ins: DynBlocks and the eBPF filter.
 		"dynblocks-ebpf": build(edge.Options{ServerID: "node-a", ProxyProtocolSecret: goldenSecret, Threads: 4,
 			DynBlocks: edge.DynBlocks{Enabled: true, QueryRate: 50, NXDomainRate: 20, Exclude: []string{"10.0.0.0/8"}},

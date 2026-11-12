@@ -58,6 +58,8 @@ type edgeFlags struct {
 	dnsdistUser                     string
 	serverID                        string
 	dnstapTarget, dnstapIdentity    string
+	clientIDDomain                  string
+	clientIDs                       bool
 	threads                         int
 	// run only
 	healthAddr                                string
@@ -107,6 +109,8 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 	fl.IntVar(&f.threads, "threads", 2, "Do53 listener threads")
 	fl.StringVar(&f.dnstapTarget, "dnstap-target", "", "send dnstap of the answers dnsdist gives itself (packet cache, own rules) to a kudurru listeners.dnstap entry: tcp:ip:port or unix:/path")
 	fl.StringVar(&f.dnstapIdentity, "dnstap-identity", "", "dnstap identity of the edge's messages; default the server id. List it in unforwardedIdentities of the kudurru listener")
+	fl.StringVar(&f.clientIDDomain, "client-id-domain", "", "DNS suffix of DoT/DoQ client IDs (phone.<suffix> selects phone), sent to kudurru in PROXYv2 TLV 0xE1; needs --proxy-protocol-secret-file")
+	fl.BoolVar(&f.clientIDs, "client-ids", false, "accept DoH/DoH3 client IDs as one path component (/dns-query/phone), sent to kudurru in PROXYv2 TLV 0xE1; needs --proxy-protocol-secret-file")
 	if run {
 		fl.StringVar(&f.dnsdistBin, "dnsdist-bin", "dnsdist", "dnsdist executable")
 		fl.StringVar(&f.dnsdistUser, "dnsdist-user", "", "uid[:gid] dnsdist switches to after binding its sockets and creating the eBPF maps (dnsdist --uid/--gid), for a supervisor started as root; dnsdist keeps only capabilities_to_retain")
@@ -168,8 +172,9 @@ func (f *edgeFlags) options() (edge.Options, error) {
 		AuthoritativeCache: f.authCache, AuthoritativeCacheTTL: f.authCacheTTL,
 		API: f.api, Console: f.console,
 		ACL: f.acl, TransferSources: f.transferSources, AuthoritativeZones: f.authZones,
-		Threads: f.threads,
-		EBPF:    edge.EBPF{Enabled: f.ebpf},
+		Threads:   f.threads,
+		EBPF:      edge.EBPF{Enabled: f.ebpf},
+		ClientIDs: edge.ClientIDs{Domain: f.clientIDDomain, Paths: f.clientIDs},
 	}
 	if f.dnstapTarget != "" {
 		o.Dnstap = &edge.Dnstap{Target: f.dnstapTarget, Identity: f.dnstapIdentity}

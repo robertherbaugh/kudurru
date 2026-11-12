@@ -55,6 +55,8 @@ type Options struct {
 	// Dnstap sends the answers dnsdist gives itself to a kudurru dnstap
 	// listener; nil sends none. An empty identity uses ServerID.
 	Dnstap *Dnstap
+	// ClientIDs propagates transport client IDs to the backends (D389).
+	ClientIDs ClientIDs
 }
 
 // Build returns the Topology for o, the given backends and credentials.
@@ -103,6 +105,7 @@ func Build(o Options, backends []Backend, creds Credentials) (*Topology, error) 
 		DynBlocks:           o.DynBlocks,
 		EBPF:                o.EBPF,
 		ProxyProtocolSecret: o.ProxyProtocolSecret,
+		ClientIDs:           o.ClientIDs,
 	}
 	if o.Dnstap != nil {
 		d := *o.Dnstap

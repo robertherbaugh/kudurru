@@ -25,6 +25,8 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+
+	"github.com/robertherbaugh/kudurru/internal/clientid"
 )
 
 // HealthQName is the name kudurru answers locally with TXT
@@ -34,6 +36,11 @@ const HealthQName = "health.kudurru.internal."
 // ProxyTLVSecret is the PROXYv2 TLV type carrying the shared secret
 // (D45, D56; internal/dnsserver/proxyproto.TLVTypeSecret).
 const ProxyTLVSecret = 0xE0
+
+// ProxyTLVClientID is the PROXYv2 TLV type carrying the normalized client ID
+// of a query (D389; internal/dnsserver/proxyproto.TLVTypeClientID). kudurru
+// honors it only next to a valid ProxyTLVSecret from a trusted peer.
+const ProxyTLVClientID = 0xE1
 
 // Pool names rendered into every dnsdist configuration.
 const (
@@ -229,6 +236,25 @@ type DynBlocks struct {
 	Exclude []string
 }
 
+// ClientIDs derives the client ID of a TLS query the way a kudurru listener
+// does (D389, docs/deploy/client-identity.md): from the TLS server name of a
+// DoT or DoQ connection (phone.<Domain> selects phone) and from one path
+// component after a DoH or DoH3 path (/dns-query/phone). The edge sends the
+// ID to the backend in TLV 0xE1 next to the shared secret; a query with an ID
+// never uses the edge's packet cache.
+type ClientIDs struct {
+	// Domain is the server name suffix of DoT and DoQ client IDs; empty
+	// derives none from the server name.
+	Domain string
+	// Paths accepts /<path>/<id> on DoH and DoH3 frontends and answers HTTP
+	// 404 for any other path below <path>, as a kudurru listener with
+	// clientIDs does.
+	Paths bool
+}
+
+// Enabled reports whether the edge derives any client ID.
+func (c ClientIDs) Enabled() bool { return c.Domain != "" || c.Paths }
+
 // EBPF is the opt-in kernel socket filter DynBlocks drops are pushed into.
 type EBPF struct {
 	Enabled                                   bool
@@ -260,6 +286,9 @@ type Topology struct {
 	// Dnstap, when set, sends dnstap of the answers dnsdist gives itself
 	// (D372).
 	Dnstap *Dnstap
+	// ClientIDs propagates DoT/DoQ server-name and DoH/DoH3 path client IDs
+	// to the backends (D389). It needs ProxyProtocolSecret.
+	ClientIDs ClientIDs
 }
 
 // Dnstap is the dnstap output of an edge (D372): dnsdist logs every answer
@@ -405,6 +434,7 @@ func (t *Topology) Normalize() {
 		}
 	}
 	t.Rules.AuthoritativeZones = NormalizeZones(t.Rules.AuthoritativeZones)
+	t.ClientIDs.Domain = strings.ToLower(strings.TrimSuffix(t.ClientIDs.Domain, "."))
 	if t.DynBlocks.Enabled {
 		if t.DynBlocks.Window == 0 {
 			t.DynBlocks.Window = 10
@@ -572,6 +602,25 @@ func (t *Topology) Validate() error {
 	if s := t.ProxyProtocolSecret; s != "" {
 		if err := ValidSecret([]byte(s)); err != nil {
 			add("proxy protocol secret: %v", err)
+		}
+	}
+	if c := t.ClientIDs; c.Enabled() {
+		if c.Domain != "" && !clientid.Domain(c.Domain) {
+			add("client ID domain %q must be a DNS suffix with room for an ID label", c.Domain)
+		}
+		// kudurru drops a client-ID TLV that arrives without the shared
+		// secret, so an edge without one would only lose queries (D389).
+		if t.ProxyProtocolSecret == "" {
+			add("client IDs need the proxy protocol secret: kudurru accepts an ID only from an edge that proves it")
+		}
+		if c.Paths {
+			for _, b := range t.Binds {
+				for _, p := range b.DoHPaths {
+					if !strings.HasPrefix(p, "/") || strings.HasSuffix(p, "/") {
+						add("bind %s (%s): client ID paths need a DoH path that starts and does not end with '/', not %q", b.Address, b.Protocol, p)
+					}
+				}
+			}
 		}
 	}
 	if d := t.Dnstap; d != nil {
