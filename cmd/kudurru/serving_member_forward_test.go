@@ -45,6 +45,12 @@ type memberForwardHTTPFixture struct {
 	cache *cache.Cache
 	// scheduledPull runs the follower's own pull worker, as runServe does.
 	scheduledPull bool
+	// pullInterval replaces the worker's default interval when it is set.
+	pullInterval time.Duration
+	// skipSelfPull, with selfPullHook, makes the explicit pull after a
+	// forwarded self-service command do nothing while it is true.
+	selfPullHook bool
+	skipSelfPull atomic.Bool
 	// stopMember stops the primary's member server and waits for it, which
 	// closes its listener: the follower can no longer dial the primary.
 	stopMember func(t *testing.T)
@@ -54,6 +60,14 @@ type memberForwardHTTPFixture struct {
 // lets a forwarded login install its session. The default fixture pulls only
 // when a test asks, so that a receipt can be checked before any installation.
 func memberForwardScheduledPull(f *memberForwardHTTPFixture) { f.scheduledPull = true }
+
+// memberForwardRarePull starts the scheduled pull worker with an interval of
+// an hour, so that after its first pull only an explicit pull installs the
+// primary's state, and lets a test skip the explicit pull that follows a
+// forwarded self-service command (skipSelfPull).
+func memberForwardRarePull(f *memberForwardHTTPFixture) {
+	f.scheduledPull, f.pullInterval, f.selfPullHook = true, time.Hour, true
+}
 
 type memberForwardBodyHold struct {
 	entered, release chan struct{}
@@ -171,6 +185,15 @@ func newMemberForwardHTTPFixture(t *testing.T, http2 bool, options ...func(*memb
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = f.follower.Close(context.Background()) })
+	f.follower.memberPullInterval = f.pullInterval
+	if f.selfPullHook {
+		f.follower.memberSelfPull = func(ctx context.Context) error {
+			if f.skipSelfPull.Load() {
+				return nil
+			}
+			return f.puller.Pull(ctx)
+		}
+	}
 	_, f.puller, f.follower.memberForward, err = f.follower.prepareMemberServices(t.Context(), credentials)
 	if err != nil {
 		t.Fatal(err)

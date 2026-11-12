@@ -101,6 +101,13 @@ type servingRuntime struct {
 
 	// itemPace replaces defaultItemPace for multi-item requests; tests only.
 	itemPace *itemPace
+	// memberPullInterval replaces the scheduled pull's default interval of an
+	// enrolled member; tests only. Zero keeps the default.
+	memberPullInterval time.Duration
+	// memberSelfPull replaces the explicit pull that a follower makes after a
+	// forwarded self-service command commits; tests only. Nil pulls through
+	// member.
+	memberSelfPull func(context.Context) error
 }
 
 func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *servingRuntime, err error) {

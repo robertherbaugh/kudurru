@@ -177,7 +177,7 @@ func (h *servingHTTP) memberSelfForward(ctx context.Context, what string) (sqlit
 // has committed on the primary, and the scheduled pull installs it.
 func (h *servingHTTP) waitMemberView(ctx context.Context, ready func(*servingauth.View) bool) {
 	s := h.opts.Runtime
-	_ = s.member.Pull(ctx)
+	h.pullMemberSelf(ctx)
 	ctx, cancel := context.WithTimeout(ctx, memberSelfAnswerWait)
 	defer cancel()
 	for {
@@ -199,14 +199,35 @@ func (h *servingHTTP) waitMemberView(ctx context.Context, ready func(*servingaut
 	}
 }
 
+// pullMemberSelf pulls the primary's state once after a forwarded
+// self-service command committed. A failed pull only means that the scheduled
+// pull installs the result later.
+func (h *servingHTTP) pullMemberSelf(ctx context.Context) {
+	s := h.opts.Runtime
+	if s.memberSelfPull != nil {
+		_ = s.memberSelfPull(ctx)
+		return
+	}
+	_ = s.member.Pull(ctx)
+}
+
+// memberPasswordUnserved answers a password change that committed on the
+// primary when this follower cannot yet answer for it from its own view. It
+// is never `unavailable`, which says that nothing was sent.
+func memberPasswordUnserved(what string) error {
+	return &auth.Error{Status: http.StatusServiceUnavailable, Key: "committed_output_unavailable",
+		Message: "the password was changed on the primary, but " + what + "; sign in with the new password; do not replay this request"}
+}
+
 // forwardPassword changes the caller's own local password on an enrolled
 // follower. The route has already checked the request body and this node's
 // own login and factor limits. The follower hashes the new password, captures
 // its source and sends one auth.password command; the primary verifies the
 // credential, the current password and the factor against its shared counters
 // and commits the change, and for a cookie caller a new session that the
-// follower prepared. The follower answers once its own view serves the result.
-// handled=false means this node runs its own command.
+// follower prepared. The follower pulls once and answers once its own view
+// serves the result; a change that committed is never answered as
+// unavailable. handled=false means this node runs its own command.
 func (h *servingHTTP) forwardPassword(w http.ResponseWriter, r *http.Request, original auth.Principal, req api.PasswordChangeRequest) (bool, error) {
 	const notDone = "the password was not changed"
 	ctx := r.Context()
@@ -261,25 +282,77 @@ func (h *servingHTTP) forwardPassword(w http.ResponseWriter, r *http.Request, or
 		return true, &auth.Error{Status: result.Status, Key: result.Key, Message: result.Message, Hint: result.Hint, RetryAfter: time.Duration(result.RetryAfterMS) * time.Millisecond}
 	}
 	h.loginResult(r, original.Name, nil)
-	deadline, _ := ctx.Deadline()
 	if raw.Kind == servingauth.Cookie {
 		// The scheduled worker would install the session too; the explicit
 		// pull shortens the wait and replays nothing.
-		_ = h.opts.Runtime.member.Pull(ctx)
-		return true, h.sealEnrollmentWithin(w, r, enrollment, time.Until(deadline))
-	}
-	// A token caller keeps its token (unless it revoked them all): answer
-	// from this node's own view once it carries the new password.
-	return true, h.answerChangedPassword(w, r, original.AccountUID, func(stored string) bool { return stored == hash }, func(v *servingauth.View) (auth.Principal, error) {
-		p, err := v.Authenticate(r.Context(), raw, h.opts.Runtime.opts.Now())
-		if err != nil && req.RevokeTokens {
-			// The change revoked the calling token too. Answer for the account
-			// as the primary's own route does.
-			p, err = original, nil
-			p.MustChangePassword = false
+		h.pullMemberSelf(ctx)
+		deadline, _ := ctx.Deadline()
+		if err := h.sealEnrollmentWithin(w, r, enrollment, time.Until(deadline)); err != nil {
+			return true, memberPasswordUnserved("this follower could not install the new session in time")
 		}
-		return p, err
+		return true, nil
+	}
+	return true, h.answerForwardedPassword(w, r, original, raw, hash)
+}
+
+// answerForwardedPassword answers a token caller's password change that
+// committed on the primary. It pulls once and waits, within
+// memberSelfAnswerWait, until this node's view carries the new hash, and
+// answers from that view. At the bound it answers from the latest view for the
+// original account, as the primary's own route answers from the postcommit
+// account: the change committed, so the answer is never `unavailable`.
+func (h *servingHTTP) answerForwardedPassword(w http.ResponseWriter, r *http.Request, original auth.Principal, raw servingauth.Credential, hash string) error {
+	ctx := r.Context()
+	now := h.opts.Runtime.opts.Now
+	// The account no longer has to change its password. Password change does
+	// not broaden the calling token's scopes.
+	changed := original
+	changed.MustChangePassword = false
+	var out api.SessionInfo
+	answered := false
+	h.waitMemberView(ctx, func(v *servingauth.View) bool {
+		if !viewCarriesPassword(v, original.AccountUID, hash) {
+			return false
+		}
+		p, err := v.Authenticate(ctx, raw, now())
+		if err != nil {
+			// The change revoked the calling token too (revokeTokens).
+			// Answer for the account as the primary's own route does.
+			p = changed
+		}
+		out, err = h.sessionInfo(v, p, nil)
+		answered = err == nil
+		return answered
 	})
+	if !answered {
+		if lease, err := h.opts.Runtime.publisher.CaptureHTTP(ctx); err == nil {
+			value, ok := lease.Bundle().Component("auth")
+			if v, typed := value.(*servingauth.View); ok && typed {
+				var infoErr error
+				out, infoErr = h.sessionInfo(v, changed, nil)
+				answered = infoErr == nil
+			}
+			lease.Release()
+		}
+	}
+	if !answered {
+		return memberPasswordUnserved("this follower could not answer for the change in time")
+	}
+	return servingHTTPJSON(w, http.StatusOK, out)
+}
+
+// viewCarriesPassword reports whether v holds the account with this hash.
+func viewCarriesPassword(v *servingauth.View, accountUID, hash string) bool {
+	objects, err := v.Objects("LocalUser")
+	if err != nil {
+		return false
+	}
+	for _, o := range objects {
+		if u := o.(*internalv1.LocalUser); string(u.UID) == accountUID && u.Spec.PasswordHash == hash {
+			return true
+		}
+	}
+	return false
 }
 
 // answerChangedPassword answers a token caller's committed password change
