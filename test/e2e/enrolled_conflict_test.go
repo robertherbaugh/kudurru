@@ -77,6 +77,20 @@ func recordSetBody(name, ip string) map[string]any {
 // divergent write is never replayed. No fixture SQL, injected transport,
 // direct image installation, manual pull or ObserveAuthority call is used.
 func TestEnrolledProcessConflictResolution(t *testing.T) {
+	testEnrolledConflictResolution(t, nil)
+}
+
+// TestEnrolledManagedAnchorsConflictResolution is the same flow with managed
+// root anchors (F28-HA-3 step 8): conflicted members keep validated
+// recursion as well as their zone data, also after a restart, and every
+// member ends on the one bootstrapped owner.
+func TestEnrolledManagedAnchorsConflictResolution(t *testing.T) {
+	kudurrutest.RequireE2E(t)
+	testEnrolledConflictResolution(t, newEnrolledAnchors(t, false))
+}
+
+func testEnrolledConflictResolution(t *testing.T, anchors *enrolledAnchors) {
+	t.Helper()
 	kudurrutest.RequireE2E(t)
 	bin, env := licensedNodeFixture(t)
 	key := make([]byte, 32)
@@ -94,6 +108,7 @@ func TestEnrolledProcessConflictResolution(t *testing.T) {
 		cfg["querylog"] = map[string]any{"enabled": false}
 		cfg["log"] = map[string]any{"level": "error", "format": "text"}
 		cfg["auth"].(map[string]any)["session"] = map[string]any{"secure": "never"}
+		anchors.configure(cfg)
 		kudurrutest.WriteConfig(t, specs[i].Config, cfg)
 	}
 	a, b, c := specs[0], specs[1], specs[2]
@@ -120,6 +135,13 @@ func TestEnrolledProcessConflictResolution(t *testing.T) {
 	apiA.request(t, http.MethodPost, "/objects/dnszones", objects[0], http.StatusCreated, nil)
 	apiA.request(t, http.MethodPost, "/objects/dnsrecordsets", objects[1], http.StatusCreated, nil)
 	enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
+	if anchors != nil {
+		boot := anchors.status(apiA, func(s api.RootAnchorStatus) bool {
+			return s.Owner.Phase == "managed" && s.Updater.State == "running" && s.Updater.Next != nil && s.Updater.Next.After(time.Now().Add(50*time.Minute))
+		})
+		anchors.base, anchors.digest = anchors.root.TCP(anchorRootNormal), boot.Owner.Digest
+		anchors.awaitValidated(primary, "standalone")
+	}
 	enrollment := func(c *staticProcessClient, ready func(api.ClusterEnrollmentInfo) bool) api.ClusterEnrollmentInfo {
 		t.Helper()
 		var result api.ClusterEnrollmentInfo
@@ -146,6 +168,16 @@ func TestEnrolledProcessConflictResolution(t *testing.T) {
 	}
 	stop(primary)
 	primary = kudurrutest.StartReady(t, bin, a, kudurrutest.Options{Env: env})
+	if anchors != nil {
+		// Wait until the restarted managed primary's updater has made its
+		// first step, which releases the other writer services, before the
+		// one-shot invitations. A join-token sent about 200 ms after the
+		// restart was refused with "current writable serving generation
+		// unavailable" (nothing committed) and is never replayed.
+		anchors.owner(apiA, "primary", func(s api.RootAnchorStatus) bool { return s.Updater.State == "running" && s.Updater.Next != nil })
+		anchors.awaitValidated(primary, "restarted primary")
+		enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
+	}
 	join := func(spec kudurrutest.NodeSpec, address string) replica.JoinResult {
 		t.Helper()
 		review := enrollment(apiA, func(info api.ClusterEnrollmentInfo) bool { return info.Mode == "primary" })
@@ -207,6 +239,16 @@ func TestEnrolledProcessConflictResolution(t *testing.T) {
 	}
 	awaitDNS(nodeB, "seed", "192.0.2.42", dns.RcodeSuccess)
 	awaitDNS(nodeC, "seed", "192.0.2.42", dns.RcodeSuccess)
+	if anchors != nil {
+		// Each joined follower makes its own deny-only check; the primary's
+		// restart and both joins acquire nothing.
+		anchors.awaitTCP(anchorRootNormal, 2, time.Second, "two joined followers")
+		for _, member := range []*staticProcessClient{apiB, apiC} {
+			anchors.owner(member, "follower", func(s api.RootAnchorStatus) bool { return s.Supervisor.State == "running" })
+		}
+		anchors.awaitValidated(nodeB, "follower B")
+		anchors.awaitValidated(nodeC, "follower C")
+	}
 	if joinedB.Installed.Term.Epoch != joinedC.Installed.Term.Epoch {
 		t.Fatal("receivers joined different terms")
 	}
@@ -279,6 +321,12 @@ func TestEnrolledProcessConflictResolution(t *testing.T) {
 		}
 		t.Fatal("conflict interrupted valid local DNS", describeDNS(nodeB, "bonly"), describeDNS(nodeC, "conly"), ready(nodeB), ready(nodeC))
 	}
+	if anchors != nil {
+		// A conflicted member serves DNS-only from its last accepted owner,
+		// validated recursion included (D369).
+		anchors.awaitValidated(nodeB, "conflicted B")
+		anchors.awaitValidated(nodeC, "conflicted C")
+	}
 	cli := func(args ...string) ([]byte, error) {
 		ctx, cancel := context.WithTimeout(t.Context(), 35*time.Second)
 		defer cancel()
@@ -338,6 +386,9 @@ func TestEnrolledProcessConflictResolution(t *testing.T) {
 	// its last-good DNS until resolution.
 	nodeC = kudurrutest.Start(t, bin, c, kudurrutest.Options{Env: env})
 	awaitDNS(nodeC, "conly", "192.0.2.51", dns.RcodeSuccess)
+	if anchors != nil {
+		anchors.awaitValidated(nodeC, "restarted conflicted C")
+	}
 	stop(nodeB)
 	reviewPathB, observedB := review(b)
 	decode(observedB)
@@ -419,6 +470,25 @@ func TestEnrolledProcessConflictResolution(t *testing.T) {
 	}
 	if identity(a) != identities[0] || identity(b) != identities[1] || identity(c) != identities[2] {
 		t.Fatal("conflict/resolution replaced private member identities")
+	}
+	if anchors != nil {
+		// Promotions, the resolution and every restart kept the one
+		// bootstrapped owner: no member re-bootstrapped or refused it.
+		anchors.owner(apiB, "primary", func(s api.RootAnchorStatus) bool { return s.Updater.State == "running" })
+		for _, member := range []*staticProcessClient{apiA, apiC} {
+			status := anchors.owner(member, "follower", func(s api.RootAnchorStatus) bool {
+				return s.Pull != nil && s.Pull.Result == "installed" && s.Supervisor.State == "running"
+			})
+			if status.Pull.Refusal != "" || status.Authority.FencedBehindTerm || status.Authority.Conflict {
+				t.Fatalf("resolved member status: %+v", status)
+			}
+		}
+		for _, node := range []*kudurrutest.Node{primary, nodeB, nodeC} {
+			anchors.awaitValidated(node, "resolved cluster")
+		}
+		if anchors.root.TotalTCP() != anchors.root.TCP(anchorRootNormal) {
+			t.Fatal("unexpected root mode")
+		}
 	}
 }
 

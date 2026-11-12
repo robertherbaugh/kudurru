@@ -21,16 +21,16 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 )
 
-// anchorRoot is a root name server for one signing key on loopback TCP: it
+// upgradeAnchorRoot is a root name server for one signing key on loopback TCP: it
 // answers ". DNSKEY" with the key and its signature and counts the
 // questions. seed is the DS record of the key, the managed-mode seed.
-type anchorRoot struct {
+type upgradeAnchorRoot struct {
 	addr  string
 	seed  string
 	reads atomic.Int32
 }
 
-func startAnchorRoot(t *testing.T) *anchorRoot {
+func startUpgradeAnchorRoot(t *testing.T) *upgradeAnchorRoot {
 	t.Helper()
 	key := &dns.DNSKEY{Hdr: dns.RR_Header{Name: ".", Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 172800}, Flags: dns.ZONE | dns.SEP, Protocol: 3, Algorithm: dns.ED25519}
 	private, err := key.Generate(256)
@@ -46,7 +46,7 @@ func startAnchorRoot(t *testing.T) *anchorRoot {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &anchorRoot{addr: ln.Addr().String(), seed: key.ToDS(dns.SHA256).String()}
+	r := &upgradeAnchorRoot{addr: ln.Addr().String(), seed: key.ToDS(dns.SHA256).String()}
 	srv := &dns.Server{Listener: ln, Net: "tcp", Handler: dns.HandlerFunc(func(w dns.ResponseWriter, q *dns.Msg) {
 		m := new(dns.Msg)
 		m.SetReply(q)
@@ -132,7 +132,7 @@ func TestAnchorUpgradeFromReleasedV010(t *testing.T) {
 	kudurrutest.RequireE2E(t)
 	previous := kudurrutest.Previous(t)
 	_, env := sharedKey(t)
-	root := startAnchorRoot(t)
+	root := startUpgradeAnchorRoot(t)
 	dir := t.TempDir()
 	spec, cfg := kudurrutest.NewNodeSpec(t, dir, "anchors")
 	cfg["objects"] = zoneObjects(map[string]string{"ns1": "127.0.0.1", "host": "192.0.2.1"})
@@ -318,7 +318,7 @@ func TestAnchorUpgradeStaticTwinV010(t *testing.T) {
 	kudurrutest.RequireE2E(t)
 	previous := kudurrutest.Previous(t)
 	_, env := sharedKey(t)
-	root := startAnchorRoot(t)
+	root := startUpgradeAnchorRoot(t)
 	dir := t.TempDir()
 	spec, cfg := kudurrutest.NewNodeSpec(t, dir, "static-anchors")
 	cfg["objects"] = zoneObjects(map[string]string{"ns1": "127.0.0.1", "host": "192.0.2.1"})

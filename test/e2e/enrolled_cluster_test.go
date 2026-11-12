@@ -206,6 +206,13 @@ func TestEnrolledClusterProcessesPromoteAndRejoin(t *testing.T) {
 
 func testEnrolledProcesses(t *testing.T, promote bool) {
 	t.Helper()
+	testEnrolledProcessesWith(t, promote, nil)
+}
+
+// testEnrolledProcessesWith runs the flow with managed root anchors when
+// anchors is set (F28-HA-3, HA-4; see enrolled_anchors_test.go).
+func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnchors) {
+	t.Helper()
 	kudurrutest.RequireE2E(t)
 	bin, env := licensedNodeFixture(t)
 	key := make([]byte, 32)
@@ -222,6 +229,7 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		cfg["querylog"] = map[string]any{"enabled": false}
 		cfg["log"] = map[string]any{"level": "error", "format": "text"}
 		cfg["auth"].(map[string]any)["session"] = map[string]any{"secure": "never"}
+		anchors.configure(cfg)
 		kudurrutest.WriteConfig(t, []kudurrutest.NodeSpec{a, b}[i].Config, cfg)
 	}
 	relay := newEnrolledRelay(t, a.Ports.Internal)
@@ -250,6 +258,27 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		apiA.request(t, http.MethodPost, "/objects/"+map[string]string{"DNSZone": "dnszones", "DNSRecordSet": "dnsrecordsets"}[object.(map[string]any)["kind"].(string)], object, http.StatusCreated, nil)
 	}
 	enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
+	if anchors != nil {
+		// The standalone primary bootstraps managed trust once. An ordinary
+		// commit (the login, the zone status) that lands while the reply is
+		// in flight makes it discard that reply and acquire again (F28-EF-1),
+		// so the bootstrap may take more than one acquisition; every later
+		// count is relative to it.
+		boot := anchors.status(apiA, func(s api.RootAnchorStatus) bool {
+			return s.Owner.Phase == "managed" && s.Updater.State == "running" && s.Updater.Next != nil && s.Updater.Next.After(time.Now().Add(50*time.Minute))
+		})
+		anchors.base = anchors.root.TCP(anchorRootNormal)
+		anchors.digest = boot.Owner.Digest
+		if anchors.base < 1 || anchors.base > 4 {
+			t.Fatal("standalone bootstrap acquisitions", anchors.base)
+		}
+		anchors.awaitTCP(anchorRootNormal, 0, time.Second, "standalone bootstrap")
+		anchors.owner(apiA, "standalone")
+		if boot.Pull != nil || boot.Supervisor.State != "not_running" || boot.Owner.NextRefresh == nil || boot.Owner.NextRefresh.Before(time.Now().Add(50*time.Minute)) {
+			t.Fatalf("bootstrapped standalone status: %+v", boot)
+		}
+		anchors.awaitValidated(primary, "standalone")
+	}
 	review := func() api.ClusterEnrollmentInfo {
 		var result api.ClusterEnrollmentInfo
 		enrolledProcessRead(t, apiA, "/cluster/enrollment", func(body []byte) bool { return json.Unmarshal(body, &result) == nil })
@@ -276,6 +305,13 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	original = review()
 	if original.Dormant || original.Mode != "primary" {
 		t.Fatal("restart did not mount enrolled primary")
+	}
+	if anchors != nil {
+		// Activation over existing managed history and a restart acquire
+		// nothing and keep the bootstrapped owner.
+		anchors.owner(apiA, "primary")
+		anchors.awaitValidated(primary, "activated primary")
+		anchors.awaitTCP(anchorRootNormal, 0, time.Second, "activated primary restart")
 	}
 	var invitation api.ClusterJoinTokenReceipt
 	apiA.request(t, http.MethodPost, "/cluster/join-token", api.ClusterJoinTokenCommand{ClusterEnrollmentReview: original.ClusterEnrollmentReview,
@@ -315,8 +351,21 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		return sha256.Sum256(data)
 	}
 	aIdentity, bIdentity := identity(a), identity(b)
+	if anchors != nil {
+		anchors.awaitTCP(anchorRootNormal, 0, 0, "offline join")
+	}
 	follower := kudurrutest.StartReady(t, bin, b, kudurrutest.Options{Env: env})
 	apiB := &staticProcessClient{client: client, base: "http://" + b.Ports.API + api.BasePath, csrf: login.CSRF}
+	if anchors != nil {
+		// The joined follower's first image carries the managed owner; its
+		// deny-only supervisor makes its own acquisition (D318).
+		anchors.awaitTCP(anchorRootNormal, 1, time.Second, "follower deny-only check")
+		joinedStatus := anchors.owner(apiB, "follower", func(s api.RootAnchorStatus) bool { return s.Pull != nil && s.Supervisor.State == "running" })
+		if joinedStatus.Supervisor.State != "running" || joinedStatus.Updater.State != "not_running" || joinedStatus.Pull == nil || joinedStatus.Pull.Result != "installed" || joinedStatus.Pull.Refusal != "" {
+			t.Fatalf("joined follower status: %+v", joinedStatus)
+		}
+		anchors.awaitValidated(follower, "joined follower")
+	}
 	checkDNS := func(node *kudurrutest.Node, name, ip string, rcode int) bool {
 		for _, tcp := range []bool{false, true} {
 			answer, err := exchange(node.Ports.DNS, name+".e2e.test.", dns.TypeA, tcp)
@@ -372,7 +421,17 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	// Cluster settings and sign-out are forwarded too (D368): the settings
 	// change converges on both nodes, and the session that the follower
 	// created ends on both.
+	var beforeSettings int32
+	if anchors != nil {
+		beforeSettings = anchors.root.TCP(anchorRootNormal)
+	}
 	enrolledForwardedSettings(t, apiA, apiB, b.Name, "33s", "34s")
+	if anchors != nil {
+		// The deny-only cadence is bound to the cluster settings identity
+		// (anchorRetrySource): a settings change makes the follower check the
+		// root again at once, one acquisition per coalesced change.
+		anchors.absorbSettings(beforeSettings, "forwarded settings change")
+	}
 	enrolledForwardedSignOut(t, fresh, freshJar, apiB.base, apiA.base)
 	// The own password and personal tokens are forwarded too: a must-change
 	// user changes the password through the follower, and `kudurru login
@@ -705,6 +764,9 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	if !checkDNS(follower, "seed", "192.0.2.42", dns.RcodeSuccess) {
 		t.Fatal("partition interrupted valid local DNS")
 	}
+	if anchors != nil && !anchorValidated(follower.Ports.DNS) {
+		t.Fatal("partition interrupted validated recursion on the follower")
+	}
 	apiB.request(t, http.MethodPost, "/dns/blocking", map[string]any{"blocking": true}, http.StatusServiceUnavailable, nil)
 	// A signed UPDATE that cannot reach the primary answers SERVFAIL and is
 	// never applied or replayed after reconnection.
@@ -780,14 +842,27 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 			return strings.Contains(string(raw), `"34s"`) && !strings.Contains(string(raw), `"35s"`)
 		})
 	}
+	if anchors != nil {
+		anchors.awaitTCP(anchorRootNormal, 1, 0, "partition")
+		anchors.owner(apiB, "follower")
+	}
 	stop(follower)
 	follower = kudurrutest.StartReady(t, bin, b, kudurrutest.Options{Env: env})
 	awaitDNS(follower, "later", "192.0.2.43", dns.RcodeSuccess)
 	awaitDNS(follower, "seed", "", dns.RcodeNameError)
 	enrolledProcessRead(t, apiB, "/dns/blocking", blockingOff)
+	if anchors != nil {
+		// A new process is a new deny-only session: one acquisition.
+		anchors.awaitTCP(anchorRootNormal, 2, time.Second, "follower restart")
+		anchors.owner(apiB, "follower")
+		anchors.awaitValidated(follower, "restarted follower")
+	}
 	stop(primary)
 	if !checkDNS(follower, "later", "192.0.2.43", dns.RcodeSuccess) {
 		t.Fatal("stopped primary interrupted retained follower DNS")
+	}
+	if anchors != nil && !anchorValidated(follower.Ports.DNS) {
+		t.Fatal("stopped primary interrupted validated recursion on the follower")
 	}
 	if promote {
 		var review api.ClusterPromotionInfo
@@ -813,6 +888,17 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		})
 		if answer := enrolledSend(t, apiB, http.MethodPatch, "/settings", map[string]any{}); answer.status != http.StatusBadRequest || answer.Error.Key != api.KeyInvalid {
 			t.Fatalf("promoted node still refuses a settings write for its former role: status=%d key=%q", answer.status, answer.Error.Key)
+		}
+		if anchors != nil {
+			// The promoted writer mounts the updater over the follower's
+			// owner: it waits for the committed refresh, acquires nothing and
+			// never re-bootstraps; the deny-only child was joined.
+			promoted := anchors.owner(apiB, "primary")
+			if promoted.Updater.State != "running" || promoted.Updater.Next == nil || promoted.Supervisor.State != "not_running" || promoted.Pull != nil {
+				t.Fatalf("promoted primary status: updater %+v supervisor %+v pull %+v", promoted.Updater, promoted.Supervisor, promoted.Pull)
+			}
+			anchors.awaitTCP(anchorRootNormal, 2, 2*time.Second, "promotion")
+			anchors.awaitValidated(follower, "promoted primary")
 		}
 		// The former primary restarts while it cannot reach the new primary's
 		// internal listener. The new primary's scheduled announcement still
@@ -893,6 +979,24 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 		if identity(a) != aIdentity || identity(b) != bIdentity {
 			t.Fatal("promotion/reconnection replaced private member identities")
 		}
+		if anchors != nil {
+			// The old primary was fenced and installed the successor: the
+			// same owner, no refusal, and a deny-only check for each
+			// supervised role it passed through (fenced, then follower), so
+			// one or two acquisitions depending on when it was fenced.
+			rejoined := anchors.owner(apiA, "follower", func(s api.RootAnchorStatus) bool {
+				return s.Pull != nil && s.Pull.Result == "installed" && s.Supervisor.State == "running"
+			})
+			if rejoined.Supervisor.State != "running" || rejoined.Updater.State != "not_running" || rejoined.Pull == nil || rejoined.Pull.Result != "installed" || rejoined.Pull.Refusal != "" {
+				t.Fatalf("rejoined member status: %+v", rejoined)
+			}
+			time.Sleep(2 * time.Second)
+			if n := anchors.root.TCP(anchorRootNormal) - anchors.base; n < 3 || n > 4 || anchors.root.TotalTCP() != n+anchors.base {
+				t.Fatal("rejoin acquisitions", n)
+			}
+			anchors.awaitValidated(primary, "rejoined member")
+			anchors.owner(apiB, "primary")
+		}
 		return
 	}
 	primary = kudurrutest.StartReady(t, bin, a, kudurrutest.Options{Env: env})
@@ -900,5 +1004,12 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 	enrolledProcessRead(t, apiA, "/dns/blocking", blockingOff)
 	if identity(a) != aIdentity || identity(b) != bIdentity || review().MemberID != activated.MemberID {
 		t.Fatal("restart replaced member identity or primary ownership")
+	}
+	if anchors != nil {
+		anchors.awaitTCP(anchorRootNormal, 2, time.Second, "primary restart")
+		anchors.owner(apiA, "primary")
+		anchors.owner(apiB, "follower")
+		anchors.awaitValidated(primary, "restarted primary")
+		enrolledAnchorsRevoke(t, anchors, bin, env, apiA, apiB, primary, follower, a, b, stop, checkDNS)
 	}
 }
