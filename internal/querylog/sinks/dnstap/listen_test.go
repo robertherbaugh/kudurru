@@ -9,11 +9,13 @@ import (
 	"crypto/x509/pkix"
 	"encoding/binary"
 	"encoding/pem"
+	"log/slog"
 	"math/big"
 	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -642,6 +644,54 @@ func TestListenRetryWaitEndsAtClose(t *testing.T) {
 	}
 }
 
+// TestListenBoundsTheLogOfAFailingAccept: an Accept that fails for good
+// is retried with a growing wait, so it is not called in a tight loop, and
+// every failure is counted; the log gets one line, not one per failure.
+func TestListenBoundsTheLogOfAFailingAccept(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	flaky := &flakyListener{Listener: ln}
+	flaky.fails.Store(1 << 30)
+	var (
+		mu    sync.Mutex
+		lines []string
+	)
+	logger := slog.New(slog.NewTextHandler(writerFunc(func(b []byte) {
+		mu.Lock()
+		lines = append(lines, string(b))
+		mu.Unlock()
+	}), nil))
+	metrics := dnstap.NewListenMetrics(nil)
+	l, err := dnstap.Listen(dnstap.ListenOptions{Settings: config.DnstapListener{Address: "tcp:" + ln.Addr().String(), AllowFrom: []string{"127.0.0.1"}}, Listener: flaky, Collector: &recorder{}, Metrics: metrics, Logger: logger})
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := make(chan error, 1)
+	go func() { served <- l.Serve(context.Background()) }()
+	time.Sleep(3 * time.Second)
+	_ = l.Close()
+	if err := <-served; err != nil {
+		t.Fatal(err)
+	}
+	failed := testutil.ToFloat64(metrics.Connections.WithLabelValues(l.Name(), dnstap.ConnAcceptFailed))
+	mu.Lock()
+	defer mu.Unlock()
+	t.Logf("%v failed Accept calls in 3 s, %d log lines", failed, len(lines))
+	// 5 ms doubling to 1 s: about 11 calls in 3 s; a tight loop makes many more.
+	if failed < 5 || failed > 20 {
+		t.Fatalf("accept_failed = %v in 3 s; the retry wait does not back off as it should", failed)
+	}
+	if len(lines) != 1 || !strings.Contains(lines[0], "failures=1") {
+		t.Fatalf("%d log lines for %v failures, want 1: %q", len(lines), failed, lines)
+	}
+}
+
+type writerFunc func([]byte)
+
+func (w writerFunc) Write(b []byte) (int, error) { w(b); return len(b), nil }
+
 // TestListenUnforwardedIdentitySkipsTheDedupCheck: the managed edge logs
 // only cache hits and its own answers, so the query it forwarded before
 // (a cache miss, which this node logged) is never claimed by a message of
@@ -727,5 +777,63 @@ func TestListenShiftsASkewedClock(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(f.metrics.ClockSkew.WithLabelValues(f.l.Name())); got != 2 {
 		t.Fatalf("clock_skew = %v, want 2", got)
+	}
+}
+
+// TestListenClampsEachTimeOfAMessage: a CLIENT_RESPONSE carries two
+// times, and either can be wild while the other is sane. Each is checked on
+// its own: the wild one takes the value of the sane one (the latency is then
+// unknown), the row is dated from the sane time, and the message is counted.
+func TestListenClampsEachTimeOfAMessage(t *testing.T) {
+	f := startListener(t, config.DnstapListener{}, dnstap.ListenOptions{})
+	s := dialSender(t, f.addr)
+	sane := time.Now().Add(-time.Second).Truncate(time.Microsecond)
+	wild := map[string]time.Time{
+		"future-query.example.": sane.AddDate(50, 0, 0),
+		"past-query.example.":   time.Unix(31536000, 0),
+	}
+	for name, at := range wild {
+		_, r := clientMessages(t, name, 1, 1, at)
+		r.ResponseTime = sane
+		s.send("edge-1", r)
+	}
+	_, wildResponse := clientMessages(t, "future-response.example.", 2, 2, sane)
+	wildResponse.ResponseTime = sane.AddDate(50, 0, 0)
+	s.send("edge-1", wildResponse)
+	events := waitEvents(t, f.rec, 3)
+	for _, ev := range events {
+		if !ev.Time.Equal(sane) || ev.Latency != 0 {
+			t.Errorf("%s dated %v (latency %v), want %v and no latency", ev.Name, ev.Time, ev.Latency, sane)
+		}
+	}
+	if got := testutil.ToFloat64(f.metrics.ClockSkew.WithLabelValues(f.l.Name())); got != 3 {
+		t.Fatalf("clock_skew = %v, want 3", got)
+	}
+}
+
+// TestListenDedupWindowUsesTheClampedTime: a front end relays the
+// response to a query this node answered, with a sane response time and a
+// wild query time. The dedup window is built from the clamped time, so the
+// node's own event claims the message and the client query stays one row.
+func TestListenDedupWindowUsesTheClampedTime(t *testing.T) {
+	dedup := querylog.NewDedupIndex(0, 0)
+	f := startListener(t, config.DnstapListener{}, dnstap.ListenOptions{Dedup: dedup})
+	at := time.Now().Add(-time.Second)
+	for i, query := range []time.Time{at.AddDate(50, 0, 0), time.Unix(31536000, 0)} {
+		port := uint16(42000 + i)
+		dedup.Record(&querylog.Event{Time: at, Client: client, ClientPort: port, Name: "relayed.example.", QType: dns.TypeA, QClass: dns.ClassINET})
+		_, r := clientMessages(t, "relayed.example.", uint16(i+1), port, query)
+		r.ResponseTime = at.Add(4 * time.Millisecond)
+		s := dialSender(t, f.addr)
+		s.send("edge-1", r)
+		s.stop()
+	}
+	waitFor(t, "both claims", func() bool { return f.count(dnstap.ResultDuplicate)+f.count(dnstap.ResultRecorded) == 2 })
+	time.Sleep(400 * time.Millisecond)
+	if n := len(f.rec.list()); n != 0 || f.count(dnstap.ResultDuplicate) != 2 {
+		t.Fatalf("%d rows from dnstap (duplicate %v) for queries this node logged", n, f.count(dnstap.ResultDuplicate))
+	}
+	if dedup.Len() != 0 {
+		t.Fatalf("index still holds %d queries", dedup.Len())
 	}
 }

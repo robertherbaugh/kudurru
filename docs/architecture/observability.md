@@ -428,8 +428,10 @@ query (the DNS ID is not part of the key, because dnsdist renumbers forwarded
 queries). Messages of an identity in `unforwardedIdentities` (a managed
 edge, which logs only answers it gave itself) skip the check: the cache
 miss the edge forwarded a moment before, from the same client port, must
-not cancel its cache hit. A message time more than 5 minutes from the
-node's clock is replaced by the receive time. The collector clears
+not cancel its cache hit. Each time of a message is checked on its own
+(D382): one more than 5 minutes from the node's clock takes the value of
+the message's other time when that is sane, or the receive time when it is
+not, before the row is dated and its dedup window is built. The collector clears
 `ClientPort` before any consumer sees an event. An ingested event carries `Origin`, the sender's identity; a dnstap
 sink never sends such an event, and messages with the node's own identity
 (node name or a dnstap sink's identity) are dropped at the listener, so no
@@ -438,7 +440,8 @@ connections are read at the sender's pace, at most 10 000 messages wait in
 each stage (the item channel, the queries waiting for a response with a
 pairing FIFO compacted at twice that, the held rows), overflow is dropped
 and counted, and the collector's `Enqueue` never blocks DNS. A failed
-accept is retried after 5 ms to 1 s and never ends the listener; the
+accept is retried after 5 ms to 1 s, logged at most once a minute with the
+count since the last line, and never ends the listener; the
 `querylog-dnstap` runnable always returns nil, so the runner never shuts
 the node down because of ingest.
 

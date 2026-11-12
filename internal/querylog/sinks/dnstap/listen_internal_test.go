@@ -2,8 +2,13 @@ package dnstap
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"net/netip"
+	"os"
+	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -83,3 +88,71 @@ func TestListenPairingFIFOIsBoundedByCount(t *testing.T) {
 		t.Fatalf("the stages hold more than their bound: FIFO %d (bound %d), rows %d, waiting %d (bound %d)", worst[0], 2*queue, worst[1], worst[2], queue)
 	}
 }
+
+// TestListenAcceptLogCarriesTheSuppressedCount: after the first line, a
+// line about failed Accept calls comes at most once per acceptLogEvery and
+// reports how many failures it stands for, so none is lost from the log.
+func TestListenAcceptLogCarriesTheSuppressedCount(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	failing := &failingListener{Listener: ln}
+	var (
+		mu     sync.Mutex
+		counts []int64
+	)
+	logger := slog.New(handlerFunc(func(r slog.Record) {
+		r.Attrs(func(a slog.Attr) bool {
+			if a.Key == "failures" {
+				mu.Lock()
+				counts = append(counts, a.Value.Int64())
+				mu.Unlock()
+			}
+			return true
+		})
+	}))
+	l, err := Listen(ListenOptions{Settings: config.DnstapListener{Address: "tcp:" + ln.Addr().String(), AllowFrom: []string{"127.0.0.1"}}, Listener: failing, Collector: discard{}, Logger: logger})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l.acceptLogEvery = 700 * time.Millisecond
+	done := make(chan error, 1)
+	go func() { done <- l.Serve(context.Background()) }()
+	time.Sleep(2500 * time.Millisecond)
+	_ = l.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	calls := failing.calls.Load() - 1 // the last call is the one Close ended
+	var logged int64
+	for _, n := range counts {
+		logged += n
+	}
+	t.Logf("%d failed calls, log lines %v", calls, counts)
+	if len(counts) < 2 || len(counts) > 4 || counts[0] != 1 {
+		t.Fatalf("log lines %v: want the first failure at once, then one line per 700 ms at most", counts)
+	}
+	if logged > int64(calls) || int64(calls)-logged > int64(calls)/2+1 {
+		t.Fatalf("the lines report %d of %d failures", logged, calls)
+	}
+}
+
+type failingListener struct {
+	net.Listener
+	calls atomic.Int64
+}
+
+func (f *failingListener) Accept() (net.Conn, error) {
+	f.calls.Add(1)
+	return nil, &net.OpError{Op: "accept", Net: "tcp", Err: os.NewSyscallError("accept4", syscall.EMFILE)}
+}
+
+type handlerFunc func(slog.Record)
+
+func (h handlerFunc) Enabled(context.Context, slog.Level) bool      { return true }
+func (h handlerFunc) Handle(_ context.Context, r slog.Record) error { h(r); return nil }
+func (h handlerFunc) WithAttrs([]slog.Attr) slog.Handler            { return h }
+func (h handlerFunc) WithGroup(string) slog.Handler                 { return h }

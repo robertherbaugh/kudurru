@@ -123,6 +123,10 @@ const (
 	// Accept (too many open files, ...), which is retried, never fatal.
 	acceptRetryFirst = 5 * time.Millisecond
 	acceptRetryCap   = time.Second
+	// acceptLogEvery bounds the log lines of failed Accept calls: one per
+	// minute at most, with the count of the failures since the last one, so
+	// a listener whose Accept fails for good does not log every second.
+	acceptLogEvery = time.Minute
 	// noIdentity is the Origin of an event whose sender sent no identity.
 	noIdentity = "dnstap"
 )
@@ -197,6 +201,9 @@ type Listener struct {
 	logger  *slog.Logger
 	// closing is closed by Close; it ends a wait between Accept retries.
 	closing chan struct{}
+	// acceptLogEvery is the shortest time between two log lines about a
+	// failed Accept (acceptLogEvery; tests shorten it).
+	acceptLogEvery time.Duration
 	// observe, set by tests only before Serve, sees the length of the
 	// pairing FIFO, of the row FIFO and of the waiting queries after every
 	// message the ingest loop takes.
@@ -235,7 +242,7 @@ func Listen(o ListenOptions) (*Listener, error) {
 	if o.Metrics == nil {
 		o.Metrics = NewListenMetrics(nil)
 	}
-	l := &Listener{o: o, name: o.Settings.Address, target: target, slots: make(chan struct{}, o.Settings.Connections()), items: make(chan *ingest, o.Queue), open: map[net.Conn]struct{}{}, closing: make(chan struct{}), logger: o.Logger.With("listener", o.Settings.Address)}
+	l := &Listener{o: o, name: o.Settings.Address, target: target, slots: make(chan struct{}, o.Settings.Connections()), items: make(chan *ingest, o.Queue), open: map[net.Conn]struct{}{}, closing: make(chan struct{}), acceptLogEvery: acceptLogEvery, logger: o.Logger.With("listener", o.Settings.Address)}
 	if l.peers, err = o.Settings.AllowedPeers(); err != nil {
 		return nil, fmt.Errorf("listeners.dnstap: allowFrom: %w", err)
 	}
@@ -331,7 +338,9 @@ func (l *Listener) Name() string { return l.name }
 // many open files, no buffer space, ...) is logged, counted and retried
 // after a wait that doubles from 5 ms to 1 s, as net/http does: this
 // auxiliary listener never ends on its own, so it never takes the node,
-// and its DNS, down with it. Serve returns nil.
+// and its DNS, down with it. Every failure is counted, but at most one log
+// line a minute reports them (with the number since the previous line), so
+// an Accept that fails for good does not flood the log. Serve returns nil.
 func (l *Listener) Serve(ctx context.Context) error {
 	ingestCtx, stopIngest := context.WithCancel(context.Background())
 	ingestDone := make(chan struct{})
@@ -341,7 +350,11 @@ func (l *Listener) Serve(ctx context.Context) error {
 	}()
 	stop := context.AfterFunc(ctx, func() { _ = l.Close() })
 	defer stop()
-	var retry time.Duration
+	var (
+		retry    time.Duration
+		failures int       // failed Accept calls not yet logged
+		loggedAt time.Time // when the last of them was logged
+	)
 	for {
 		conn, err := l.ln.Accept()
 		if err != nil {
@@ -353,7 +366,11 @@ func (l *Listener) Serve(ctx context.Context) error {
 			}
 			retry = min(max(2*retry, acceptRetryFirst), acceptRetryCap)
 			l.conns[ConnAcceptFailed].Inc()
-			l.logger.Warn("dnstap listener could not accept a connection; retrying", "err", err, "retry", retry)
+			failures++
+			if now := time.Now(); loggedAt.IsZero() || now.Sub(loggedAt) >= l.acceptLogEvery {
+				l.logger.Warn("dnstap listener could not accept a connection; retrying", "err", err, "retry", retry, "failures", failures)
+				failures, loggedAt = 0, now
+			}
 			wait := time.NewTimer(retry)
 			select {
 			case <-wait.C:
@@ -621,33 +638,39 @@ func (l *Listener) receive(payload []byte) {
 	}
 }
 
-// unskew moves the times of m to the receive time when the time of the
-// message (its response time, or the query time of a query) lies more than
-// maxClockSkew from received: the response time becomes received and the
-// query time keeps its distance to it (when that is a latency at all), so
-// the row is dated at the receive time, keeps its latency, and its dedup
-// window lies where this node's own events do. It reports whether it moved
-// them.
+// unskew bounds the two times of m by the receive time (D382). Each time
+// is checked on its own: one more than maxClockSkew from received is wild.
+// When one time is sane and the other wild, the wild one takes the value of
+// the sane one (the latency is then unknown, so none is recorded): the row
+// is dated from a sane time and its dedup window, built from the same
+// times, lies where this node's own events do. When every time present is
+// wild, the response time (or the lone time) becomes received and the query
+// time keeps its distance to it when that is a latency at all. It reports
+// whether it changed a time.
 func (l *Listener) unskew(m *Message, received time.Time) bool {
-	at := m.ResponseTime
-	if at.IsZero() {
-		at = m.QueryTime
+	wild := func(t time.Time) bool {
+		return !t.IsZero() && (!t.After(received.Add(-maxClockSkew)) || !t.Before(received.Add(maxClockSkew)))
 	}
-	if at.IsZero() || (at.After(received.Add(-maxClockSkew)) && at.Before(received.Add(maxClockSkew))) {
+	qWild, rWild := wild(m.QueryTime), wild(m.ResponseTime)
+	switch {
+	case !qWild && !rWild:
 		return false
-	}
-	if m.ResponseTime.IsZero() {
+	case qWild && !m.ResponseTime.IsZero() && !rWild:
+		m.QueryTime = m.ResponseTime
+	case rWild && !m.QueryTime.IsZero() && !qWild:
+		m.ResponseTime = m.QueryTime
+	case m.ResponseTime.IsZero():
 		m.QueryTime = received
-		return true
-	}
-	if !m.QueryTime.IsZero() {
-		latency := time.Duration(0)
-		if d := m.ResponseTime.Sub(m.QueryTime); d >= 0 && d <= maxLatency {
-			latency = d
+	default:
+		if !m.QueryTime.IsZero() {
+			latency := time.Duration(0)
+			if d := m.ResponseTime.Sub(m.QueryTime); d >= 0 && d <= maxLatency {
+				latency = d
+			}
+			m.QueryTime = received.Add(-latency)
 		}
-		m.QueryTime = received.Add(-latency)
+		m.ResponseTime = received
 	}
-	m.ResponseTime = received
 	return true
 }
 

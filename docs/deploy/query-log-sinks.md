@@ -409,9 +409,13 @@ STOP, FINISH) and unidirectional senders (START first). What becomes a row:
   miss and dropped. A front end that also logs the responses it relays
   from kudurru (an operator rule, Unbound) must not be listed: give such a
   rule an identity of its own, so that its messages are still checked.
-- A message time more than 5 minutes from this node's clock (a sender with
-  a wrong clock, or a backlog after a long outage) is replaced by the
-  receive time, keeping the latency, and counted in
+- Each time of a message (query time, response time) is checked on its
+  own. A time more than 5 minutes from this node's clock (a sender with a
+  wrong clock, a corrupt field, or a backlog after a long outage) is wild.
+  When the other time of the message is sane, the wild one takes its value
+  and the row has no latency; when every time is wild, the row is dated at
+  the receive time and keeps its latency. Either way the row and its
+  duplicate check use the corrected time, and the message is counted in
   `kudurru_querylog_dnstap_clock_skew_total{listener}`.
 - Messages with this node's identity (`node.name`) or the identity of one of
   its dnstap sinks are dropped: a sink pointed at its own node's listener
@@ -440,9 +444,12 @@ what does not fit is dropped. Everything is counted in
 `malformed`, `oversized`, `overflow`, `dropped`) and
 `kudurru_querylog_dnstap_connections_total{listener,result}` (`accepted`,
 `refused_peer`, `refused_limit`, `handshake_failed`, `broken`,
-`accept_failed`). A failed accept (too many open files, ...) is logged and
-retried after a wait that grows from 5 ms to 1 s; it never stops the
-listener, and nothing a listener does stops the node or its DNS.
+`accept_failed`). A failed accept (too many open files, ...) is counted
+and retried after a wait that grows from 5 ms to 1 s; it never stops the
+listener, and nothing a listener does stops the node or its DNS. The log
+gets at most one warning a minute about it, carrying the number of failures
+since the previous one (`failures=`), so a listener whose accept fails for
+good does not fill the log; watch `accept_failed` for the full count.
 
 ### A managed dnsdist edge
 
