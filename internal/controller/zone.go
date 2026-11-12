@@ -81,6 +81,9 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 		c.queues[KindDNSZone].AddAfter(key, time.Until(build.NextExpiry))
 	}
 	if capability := c.opts.CommittedPrimaryStatus; capability != nil && cur.Spec.Type == v1alpha1.ZoneTypePrimary {
+		if owners, ok := capability.(CommittedDynamicOwnership); ok {
+			c.reconcileDynamicOwnership(ctx, owners, cur)
+		}
 		wrote, retryAfter, err := capability.Reconcile(ctx, cur.DeepCopy())
 		if retryAfter > 0 {
 			c.queues[KindDNSZone].AddAfter(key, retryAfter)

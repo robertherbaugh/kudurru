@@ -1461,6 +1461,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	// Controller: leader-only reconcilers (status, serials, Events).
 	ctrlOpts := controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe()}
 	if complete != nil {
+		// complete.status also reports the endpoints left out for dynamic
+		// ownership on their record sets (committedDynamicOwnership).
 		ctrlOpts.CommittedPrimaryStatus = complete.status
 	}
 	ctrl, err := controller.New(st, ctrlOpts)
@@ -1919,3 +1921,7 @@ func domainsOnLists(sn *blocking.Snapshot) int64 {
 	}
 	return n
 }
+
+// committedDynamicOwnership keeps the committed primary status the source
+// of the record set conditions for dynamically owned names (D373).
+var _ controller.CommittedDynamicOwnership = (*servingbuild.PrimaryStatus)(nil)

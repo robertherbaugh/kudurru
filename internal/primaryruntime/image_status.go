@@ -146,3 +146,28 @@ func imageStatusDeadlines(status map[string]PrimaryStatusObservation) {
 		status[name] = o
 	}
 }
+
+// CommittedDynamicOwnership indexes the records a dynamic update (RFC 2136)
+// added to the committed head of the primary zone with this metadata.name
+// and UID (D373). The primary compiler leaves out every static endpoint
+// that collides with one of them; a status reconciler uses the same index
+// to report those endpoints on their record sets. ok is false when this
+// image holds no committed head for that exact zone.
+func (p *PreparedImage) CommittedDynamicOwnership(objectName, uid string) (*zonestate.DynamicOwnership, bool, error) {
+	if p == nil {
+		return nil, false, nil
+	}
+	o, found := p.status[objectName]
+	if !found || o.Member.Type != public.ZoneTypePrimary || o.Member.Zone.UID != uid {
+		return nil, false, nil
+	}
+	e := p.durable[o.Member.Zone]
+	if e == nil || e.view == nil || e.view.Head == nil {
+		return nil, false, nil
+	}
+	ownership, err := zonestate.NewDynamicOwnership(e.view)
+	if err != nil {
+		return nil, false, err
+	}
+	return ownership, true, nil
+}

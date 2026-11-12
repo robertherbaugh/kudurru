@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -28,7 +29,16 @@ func (c *Controller) reconcileRecordSet(ctx context.Context, key store.Key) (boo
 	}
 	// The zone model's conflicts come from the latest zone build; the zone
 	// reconcile re-queues this record set when they change.
-	rv = rv.withConflicts(c.cache.latestBuild(cur.Spec.ZoneRef.Name).Conflicts[key])
+	conflicts := c.cache.latestBuild(cur.Spec.ZoneRef.Name).Conflicts[key]
+	if view.Zone != nil && view.Zone.Spec.Type == v1alpha1.ZoneTypePrimary {
+		// Endpoints the committed primary leaves out for a record a
+		// dynamic update added (D373); the zone reconcile re-queues this
+		// record set when they change.
+		if dynamic := c.cache.dynamicConflictsOf(cur.Spec.ZoneRef.Name, key); len(dynamic) > 0 {
+			conflicts = append(slices.Clone(conflicts), dynamic...)
+		}
+	}
+	rv = rv.withConflicts(conflicts)
 
 	next := cur.DeepCopy()
 	next.Status.ObservedGeneration = cur.Generation

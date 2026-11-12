@@ -18,6 +18,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
+	"github.com/robertherbaugh/kudurru/internal/zonestate"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -53,6 +54,31 @@ func NewPrimaryStatus(o PrimaryStatusOptions) (*PrimaryStatus, error) {
 func (s *PrimaryStatus) Subscribe() <-chan struct{} { return s.opts.Publisher.Subscribe() }
 
 const primaryStatusRetry = time.Second
+
+// DynamicOwnership returns the index of the records a dynamic update added
+// to the committed head of the primary zone cached, read from the current
+// complete publication (D373). It writes nothing and needs no writer token;
+// known is false while no publication holds a committed head for that
+// exact zone, and the caller then keeps what it reported before.
+func (s *PrimaryStatus) DynamicOwnership(ctx context.Context, cached *public.DNSZone) (ownership *zonestate.DynamicOwnership, known bool, err error) {
+	if s == nil || ctx == nil || cached == nil || cached.Spec.Type != public.ZoneTypePrimary {
+		return nil, false, pr.ErrInvalid
+	}
+	lease, err := s.opts.Publisher.CaptureHTTP(ctx)
+	if err != nil {
+		if errors.Is(err, serving.ErrPending) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	defer lease.Release()
+	value, _ := lease.Bundle().Component("runtime")
+	owner, ok := value.(*RuntimeOwner)
+	if !ok || owner == nil || owner.Primary() == nil {
+		return nil, false, serving.ErrComponents
+	}
+	return owner.Primary().CommittedDynamicOwnership(cached.Name, string(cached.UID))
+}
 
 // Reconcile uses the ORIGINAL carried elector token; it never asks the store
 // for a new writer. Pending protected publication defers WITHOUT writing false

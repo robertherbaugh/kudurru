@@ -45,6 +45,8 @@ type rrsetVerdict struct {
 	// survive (served, or disabled on purpose).
 	Endpoints int
 	Kept      int
+	// kept holds the indexes of the endpoints Kept counts.
+	kept []int
 }
 
 // conflict is one endpoint the zone model refused.
@@ -223,18 +225,24 @@ func conflictOf(rs *v1alpha1.DNSRecordSet, e *field.Error) (conflict, bool) {
 // conflictsChanged returns the record sets whose conflicts differ between
 // two builds of a zone (prev may be nil).
 func conflictsChanged(prev, next *zoneBuild) []store.Key {
-	var out []store.Key
 	var before map[store.Key][]conflict
 	if prev != nil {
 		before = prev.Conflicts
 	}
-	for k, cs := range next.Conflicts {
+	return changedConflicts(before, next.Conflicts)
+}
+
+// changedConflicts returns the record sets whose conflicts differ between
+// two maps of them.
+func changedConflicts(before, after map[store.Key][]conflict) []store.Key {
+	var out []store.Key
+	for k, cs := range after {
 		if !slices.Equal(before[k], cs) {
 			out = append(out, k)
 		}
 	}
 	for k := range before {
-		if _, ok := next.Conflicts[k]; !ok {
+		if _, ok := after[k]; !ok {
 			out = append(out, k)
 		}
 	}
@@ -330,7 +338,7 @@ func buildZoneView(zone *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet, vali
 			verdict.BlockedMsg = msg
 			continue
 		}
-		for _, ep := range rs.Spec.Endpoints {
+		for i, ep := range rs.Spec.Endpoints {
 			name := canonicalName(ep.DNSName)
 			if !inZone(name, v.Origin) {
 				verdict.Outside = append(verdict.Outside, describe(ep))
@@ -343,6 +351,7 @@ func buildZoneView(zone *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet, vali
 			}
 			owner[id] = rs
 			verdict.Kept++
+			verdict.kept = append(verdict.kept, i)
 			if ep.Kudurru != nil && ep.Kudurru.Disabled {
 				continue
 			}

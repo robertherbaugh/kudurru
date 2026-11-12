@@ -42,6 +42,10 @@ type cache struct {
 	// record-set reconciles read the latest build instead of rebuilding.
 	builds  map[string]*zoneBuild
 	buildAt map[string]uint64
+	// dynamic holds, per primary zone, the endpoints of its record sets
+	// that collide with a record a dynamic update added to its committed
+	// data (dynamicConflicts).
+	dynamic map[string]map[store.Key][]conflict
 }
 
 type pendingStatus struct {
@@ -61,6 +65,7 @@ func newCache() *cache {
 		viewAt:       map[string]uint64{},
 		builds:       map[string]*zoneBuild{},
 		buildAt:      map[string]uint64{},
+		dynamic:      map[string]map[store.Key][]conflict{},
 	}
 }
 
