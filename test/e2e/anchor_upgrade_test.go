@@ -122,8 +122,9 @@ func offlineAnchorStatus(t *testing.T, dataDir string) anchorStatus {
 // start with managedTopology edges whose one declared edge is a 0.1.0
 // internal listener, which has no observation route, is refused and changes
 // nothing (that the refusal comes before any root question is proven
-// in-process by TestAnchorEdgeActivationRefusesUnsupportedPeer). With managedTopology direct and the
-// managed anchor settings written through the settings API, the node
+// in-process by TestAnchorEdgeActivationRefusesUnsupportedPeer). With
+// managedTopology direct and the managed anchor settings written through
+// the settings API, the node
 // bootstraps managed history from the root once, a restart keeps it without
 // asking again, and the 0.1.0 binary refuses the directory without
 // changing a byte.
@@ -384,6 +385,11 @@ func TestAnchorUpgradeStaticTwinV010(t *testing.T) {
 				}
 				seeded = refreshInterval(t, c)
 				t.Logf("blocking.refreshInterval after the first start: %v", seeded)
+				// The file's 12h seeded the settings: the later check below
+				// compares against it, so it must not pass on two absent keys.
+				if seeded != "12h0m0s" {
+					t.Fatalf("blocking.refreshInterval after the first start is %v, want the file's 12h0m0s", seeded)
+				}
 			}
 			settle(t, spec)
 			stop(t, n)
@@ -409,8 +415,16 @@ func TestAnchorUpgradeStaticTwinV010(t *testing.T) {
 		n := kudurrutest.StartReady(t, kudurruBin, spec, kudurrutest.Options{Env: env})
 		serves(t, n)
 		settle(t, spec)
+		if seeded == nil {
+			t.Fatal("the first start recorded no blocking.refreshInterval to compare with")
+		}
 		if got := refreshInterval(t, sessionClient(t, spec.Ports.API)); got != seeded {
 			t.Errorf("a file edit after the first start changed blocking.refreshInterval to %v (was %v): update the runbook's static twin paragraph", got, seeded)
+		}
+		// The start says the file's value is not in effect, not that the
+		// edit was applied (D373).
+		if log := n.Log(); !strings.Contains(log, "cluster settings in kudurru.yaml are not in effect") || !strings.Contains(log, "blocking.refreshInterval") {
+			t.Errorf("the start did not report that the file's blocking.refreshInterval is not in effect:\n%s", log)
 		}
 		stop(t, n)
 	})

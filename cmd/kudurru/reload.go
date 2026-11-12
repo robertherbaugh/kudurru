@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -52,6 +53,11 @@ type reloadTargets struct {
 	listFetcher  *listfetcher.Fetcher
 	listResolver *listfetcher.Resolver
 	qlOwner      *querylogRuntime
+	// overFile marks the first complete-serving pass, which applies the
+	// cluster settings object (Kudurru/default) over the cluster keys of
+	// kudurru.yaml the node started with. Its changes are not file edits
+	// taking effect, so they are logged as what is in effect instead.
+	overFile bool
 }
 
 // subscribeReload applies settings changes from r (the settings file
@@ -182,12 +188,34 @@ func applyReload(ctx context.Context, t reloadTargets, next *config.Config, chan
 	if config.ChangedUnder(changed, "querylog.retention") && t.qlWriter != nil {
 		t.qlWriter.SetRetention(next.Querylog.Retention.Raw.Std(), int64(next.Querylog.Retention.MaxDBBytes))
 	}
+	if t.overFile {
+		logOverFile(log, next, applied, restart)
+		return
+	}
 	if len(applied) > 0 {
 		log.Info("settings applied", "keys", applied)
 	}
 	if len(restart) > 0 {
 		log.Warn("settings changed that take effect after a restart", "keys", restart)
 	}
+}
+
+// logOverFile reports the cluster keys whose kudurru.yaml value differs from
+// the cluster settings object, with the values in effect. After the first
+// start of a complete-serving node that object owns them (D373): a file edit
+// of a cluster key changes nothing, so "settings applied" would mislead.
+// Only public cluster keys reach here; none of them is a secret.
+func logOverFile(log *slog.Logger, next *config.Config, applied, restart []string) {
+	if len(applied) == 0 && len(restart) == 0 {
+		return
+	}
+	flat := config.Flatten(next)
+	effective := make(map[string]any, len(applied)+len(restart))
+	for _, p := range append(slices.Clone(applied), restart...) {
+		effective[p] = flat[p]
+	}
+	log.Warn("cluster settings in kudurru.yaml are not in effect: the cluster settings object (Kudurru/default) owns them after the first start, and its values are in effect",
+		"keys", append(slices.Clone(applied), restart...), "effective", effective)
 }
 
 // parseLevel maps log.level (its first element: "info,dns=debug") onto a

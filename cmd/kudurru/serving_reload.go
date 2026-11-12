@@ -19,6 +19,9 @@ import (
 // pass. Preparation is detached before any operational callback runs.
 func (s *servingRuntime) runServingReload(ctx context.Context, targets reloadTargets, responseCache *cache.Cache) error {
 	previous := s.opts.Config
+	// The first pass applies the cluster settings object over the cluster
+	// keys of kudurru.yaml the node started with (reloadTargets.overFile).
+	overFile := true
 	var applied serving.Identity
 	for {
 		changed := s.publisher.Subscribe()
@@ -30,6 +33,7 @@ func (s *servingRuntime) runServingReload(ctx context.Context, targets reloadTar
 			}
 			operational := targets
 			operational.completeAuth = s.AuthControlsHotReload()
+			operational.overFile = overFile
 			if targets.qlOwner != nil {
 				targets.qlOwner.adoptPublished(logging, next.Querylog)
 				operational.qlOwner, operational.qlAsync, operational.qlWriter = nil, nil, nil
@@ -45,6 +49,7 @@ func (s *servingRuntime) runServingReload(ctx context.Context, targets reloadTar
 				}
 				previous = next
 			}
+			overFile = false
 		} else if errors.Is(err, serving.ErrClosed) {
 			// The publication owner can finish before this observer's caller
 			// receives cancellation. Closure is terminal, not a reload failure.

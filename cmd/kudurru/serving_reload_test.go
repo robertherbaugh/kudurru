@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -69,6 +70,76 @@ func TestServingReloadUsesPublishedCanonicalSettings(t *testing.T) {
 	awaitServingRuntime(t, f.s, func() bool { return limiter.Enabled() })
 	if !f.s.opts.Config.RateLimit.Enabled {
 		t.Fatal("operational watcher mutated startup host settings")
+	}
+}
+
+// TestServingReloadLogsClusterSettingsOverTheFileAsInEffect starts the
+// operational watcher with a host file whose ratelimit.enabled differs from
+// the committed cluster settings object. The first pass applies the
+// object's value; it must say the file's value is not in effect and name the
+// value that is, not "settings applied" as if the file edit had taken
+// effect (D373). A later cluster change is logged as applied.
+func TestServingReloadLogsClusterSettingsOverTheFileAsInEffect(t *testing.T) {
+	f := newServingCommandFixture(t)
+	write := func(enabled bool) {
+		t.Helper()
+		response := httptest.NewRecorder()
+		f.http.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next, err := f.s.Settings(r.Context())
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			next.RateLimit.Enabled = enabled
+			if err := f.s.WriteSettings(r.Context(), next, []string{"ratelimit.enabled"}); err != nil {
+				t.Error(err)
+				return
+			}
+			w.WriteHeader(204)
+		})).ServeHTTP(response, f.request())
+		if response.Code != 204 {
+			t.Fatal("canonical command failed", response.Code)
+		}
+		awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
+	}
+	if !f.s.opts.Config.RateLimit.Enabled {
+		t.Fatal("the fixture's host file must enable the rate limit")
+	}
+	write(false)
+	initial, err := ingress.RateLimitFromConfig(f.s.opts.Config.RateLimit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	limiter, err := ingress.NewRateLimiter(*initial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logs syncBuffer
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		done <- f.s.runServingReload(ctx, reloadTargets{logger: slog.New(slog.NewJSONHandler(&logs, nil)), limiter: limiter}, nil)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Error(err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Error("operational settings watcher did not join")
+		}
+	})
+	awaitServingRuntime(t, f.s, func() bool { return !limiter.Enabled() && strings.Contains(logs.String(), "not in effect") })
+	first := logs.String()
+	if strings.Contains(first, `"msg":"settings applied"`) || !strings.Contains(first, `"keys":["ratelimit.enabled"]`) || !strings.Contains(first, `"effective":{"ratelimit.enabled":false}`) {
+		t.Fatalf("the first pass did not log the cluster value in effect:\n%s", first)
+	}
+	write(true)
+	awaitServingRuntime(t, f.s, func() bool { return limiter.Enabled() && strings.Contains(logs.String(), `"msg":"settings applied"`) })
+	if later := strings.TrimPrefix(logs.String(), first); strings.Contains(later, "not in effect") || !strings.Contains(later, `"keys":["ratelimit.enabled"]`) {
+		t.Fatalf("a later cluster change was not logged as applied:\n%s", later)
 	}
 }
 
