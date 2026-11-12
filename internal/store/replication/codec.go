@@ -31,6 +31,25 @@ func canonical(raw []byte, depth int) ([]byte, error) {
 	return json.Marshal(value)
 }
 
+// canonicalImage is canonical for a complete encoded image. Its result is
+// remembered by the input's bytes and depth bound (memo.go), because each
+// owner that validates one image validates the same encoding. The returned
+// bytes are shared and must never be modified; Validated only reads them.
+func canonicalImage(raw []byte, depth int) ([]byte, error) {
+	key := sha256.Sum256(append(strconv.AppendInt(nil, int64(depth), 10), raw...))
+	if c, ok := canonicals.get(key); ok {
+		return c, nil
+	}
+	c, err := canonical(raw, depth)
+	if err != nil {
+		return nil, err
+	}
+	if len(c) <= maxRememberedImage {
+		canonicals.put(key, c)
+	}
+	return c, nil
+}
+
 func parseValue(d *json.Decoder, left int) (any, error) {
 	if left <= 0 {
 		return nil, fmt.Errorf("%w: JSON depth", ErrTooLarge)
@@ -92,11 +111,17 @@ type objectHeader struct {
 }
 
 func objectKey(raw json.RawMessage) (string, objectHeader, error) {
+	sum := sha256.Sum256(raw)
+	if id, ok := identities.get(sum); ok {
+		return id.key, id.header, nil
+	}
 	var h objectHeader
 	if err := json.Unmarshal(raw, &h); err != nil || h.Kind == "" || h.APIVersion == "" || h.Metadata.Name == "" {
 		return "", h, fmt.Errorf("%w: object identity", ErrInvalid)
 	}
-	return h.Kind + "\x00" + h.Metadata.Namespace + "\x00" + h.Metadata.Name, h, nil
+	key := h.Kind + "\x00" + h.Metadata.Namespace + "\x00" + h.Metadata.Name
+	identities.put(sum, objectIdentity{key: key, header: h})
+	return key, h, nil
 }
 
 // Seal sorts a producer's complete image and computes a stable digest. It
@@ -151,12 +176,20 @@ func Digest(i Image) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// The digest is a pure function of this encoding: equal bytes are the
+	// same manifest and payload, so the canonical form is not rebuilt.
+	key := sha256.Sum256(raw)
+	if digest, ok := digests.get(key); ok {
+		return digest, nil
+	}
 	b, err := canonical(raw, 64)
 	if err != nil {
 		return "", err
 	}
 	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:]), nil
+	digest := hex.EncodeToString(sum[:])
+	digests.put(key, digest)
+	return digest, nil
 }
 
 // Decode bounds, canonicalizes and validates an encoded complete image.
@@ -172,7 +205,7 @@ func Decode(r io.Reader, opts Validation) (*Validated, error) {
 	if int64(len(b)) > l.MaxBytes {
 		return nil, ErrTooLarge
 	}
-	c, err := canonical(b, l.MaxDepth)
+	c, err := canonicalImage(b, l.MaxDepth)
 	if err != nil {
 		return nil, err
 	}

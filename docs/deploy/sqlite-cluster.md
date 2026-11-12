@@ -256,11 +256,11 @@ once in the dashboard works the same way, with a result for each name.
   twice as slow. A waiting read is served whenever the node publishes within its two
   seconds. Measured on a shared test machine: 120 new record sets took 6
   seconds with a second caller reading all the time; DNS answered the whole
-  time (the longest gap between two answers was 0.8 seconds) and every read
-  succeeded. Under heavy
+  time (the longest gap between two answers was under 0.1 seconds, and the
+  zone never answered SERVFAIL) and every read succeeded. Under heavy
   load (race detector) the same request took about 2 minutes, DNS still
-  answered throughout (no gap above 0.13 seconds), but one publication took
-  up to ten seconds, and most reads were refused. Split very large files
+  answered throughout (no gap above 0.14 seconds), but one publication took
+  several seconds, and most reads were refused. Split very large files
   (many hundreds of documents), or apply them when other API callers can
   wait.
 - If something else is changed on the node while the request runs, the
