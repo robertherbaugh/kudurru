@@ -86,11 +86,15 @@ type Tracer struct {
 
 	// tailMu guards the tail rule's sliding window: tailAt holds the times
 	// at which the last tailN tail traces were kept, oldest at tailHead, in
-	// a ring of tailLimit entries.
+	// a ring of tailLimit entries; tailID holds the allowance number each
+	// entry was given (tailLast is the last one handed out), so a trace
+	// that returns its allowance removes its own entry.
 	tailMu   sync.Mutex
 	tailAt   []time.Time
+	tailID   []uint64
 	tailHead int
 	tailN    int
+	tailLast uint64
 
 	queue chan *Trace
 	mu    sync.Mutex
@@ -125,6 +129,7 @@ func New(c Config) (*Tracer, error) {
 	}
 	if t.tailLimit > 0 {
 		t.tailAt = make([]time.Time, t.tailLimit)
+		t.tailID = make([]uint64, t.tailLimit)
 	}
 	if t.code == 0 {
 		t.code = DefaultOptionCode
@@ -226,39 +231,55 @@ func (t *Tracer) Begin(m *dns.Msg, trusted bool, at time.Time) (tr *Trace, carri
 // allowTail reports whether one more trace may be kept by the tail rule:
 // fewer than tailLimit were kept in the second before now. The times kept
 // are a ring, oldest first; when it is full the oldest decides, and is
-// replaced when it is a second old.
-func (t *Tracer) allowTail() bool {
+// replaced when it is a second old. An allowed trace gets a nonzero
+// allowance number for returnTail; an unlimited tracer hands out none.
+func (t *Tracer) allowTail() (id uint64, ok bool) {
 	if t.tailLimit < 0 {
-		return true
+		return 0, true
 	}
 	now := t.now()
 	t.tailMu.Lock()
 	defer t.tailMu.Unlock()
-	if t.tailN < t.tailLimit {
-		t.tailAt[(t.tailHead+t.tailN)%t.tailLimit] = now
+	var slot int
+	switch {
+	case t.tailN < t.tailLimit:
+		slot = (t.tailHead + t.tailN) % t.tailLimit
 		t.tailN++
-		return true
+	case now.Sub(t.tailAt[t.tailHead]) < time.Second:
+		return 0, false
+	default:
+		slot = t.tailHead
+		t.tailHead = (t.tailHead + 1) % t.tailLimit
 	}
-	if now.Sub(t.tailAt[t.tailHead]) < time.Second {
-		return false
-	}
-	t.tailAt[t.tailHead] = now
-	t.tailHead = (t.tailHead + 1) % t.tailLimit
-	return true
+	t.tailLast++
+	t.tailAt[slot], t.tailID[slot] = now, t.tailLast
+	return t.tailLast, true
 }
 
-// returnTail gives back the allowance of a tail trace that never reached
-// the export queue. It drops the newest entry of the ring, which may be
-// another trace's (allowed a moment later): the count is what matters.
-func (t *Tracer) returnTail() {
-	if t.tailLimit < 0 {
+// returnTail gives back allowance id of a tail trace that never reached
+// the export queue: it removes that trace's own entry from the ring and
+// moves the newer entries down one place, so the times left are those of
+// the traces that did reach the queue. Removing another entry instead (the
+// newest, say) would leave the returning trace's older time behind and let
+// the window expire early. An entry already replaced (its second passed)
+// is not in the ring, and nothing is given back.
+func (t *Tracer) returnTail(id uint64) {
+	if t.tailLimit < 0 || id == 0 {
 		return
 	}
 	t.tailMu.Lock()
-	if t.tailN > 0 {
+	defer t.tailMu.Unlock()
+	for k := range t.tailN {
+		if t.tailID[(t.tailHead+k)%t.tailLimit] != id {
+			continue
+		}
+		for ; k < t.tailN-1; k++ {
+			to, from := (t.tailHead+k)%t.tailLimit, (t.tailHead+k+1)%t.tailLimit
+			t.tailAt[to], t.tailID[to] = t.tailAt[from], t.tailID[from]
+		}
 		t.tailN--
+		return
 	}
-	t.tailMu.Unlock()
 }
 
 // offer queues tr for export without blocking and reports whether it did.

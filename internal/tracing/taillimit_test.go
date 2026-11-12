@@ -135,3 +135,52 @@ func TestTailCapIsNotSpentOnQueueFull(t *testing.T) {
 		t.Fatalf("tail_limited = %v, want 1", got)
 	}
 }
+
+// TestTailCapHoldsWhenAnEarlierTraceIsDropped: a tail trace dropped as
+// queue_full after a later one was allowed gives back its own allowance,
+// not the later trace's. Giving back the newest would leave the dropped
+// trace's older time in the window, which then expires early and lets more
+// than TailLimit tail traces reach the queue within one second.
+func TestTailCapHoldsWhenAnEarlierTraceIsDropped(t *testing.T) {
+	tr, _, _ := newTestTracer(t, Config{Ratio: 0, TailLimit: 2, QueueSize: 1})
+	start := time.Unix(1_700_000_000, 0)
+	now := start
+	tr.now = func() time.Time { return now }
+	failed := func() *Trace {
+		trace, _ := tr.Begin(query(), false, now)
+		if !trace.Decide(0, true) {
+			return nil
+		}
+		return trace
+	}
+	// A and B are answered 0.9 s apart, and both are allowed.
+	a := failed()
+	now = start.Add(900 * time.Millisecond)
+	b := failed()
+	if a == nil || b == nil {
+		t.Fatal("the first two tail traces were limited")
+	}
+	// A finishes into a full queue and is dropped; B then reaches it.
+	filler, _ := tr.Begin(query(), false, now)
+	tr.queue <- filler
+	a.Finish(now)
+	if got := testutil.ToFloat64(tr.metrics.traces[resultQueueFull]); got != 1 {
+		t.Fatalf("queue_full = %v, want A dropped", got)
+	}
+	<-tr.queue
+	b.Finish(now)
+	<-tr.queue
+	// A's allowance is free again, so one more tail trace may follow B in
+	// B's second, and no second one.
+	now = start.Add(time.Second)
+	c := failed()
+	if c == nil {
+		t.Fatal("the allowance A gave back was not usable")
+	}
+	c.Finish(now)
+	<-tr.queue
+	now = start.Add(1050 * time.Millisecond)
+	if d := failed(); d != nil {
+		t.Fatal("a third tail trace (after B and C, 150 ms apart) reached the queue within one second at TailLimit 2")
+	}
+}

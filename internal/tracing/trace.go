@@ -103,9 +103,11 @@ type Trace struct {
 	finished bool
 	kept     bool
 	// limited is set when the tail rule would have kept the trace but
-	// the cap was reached; tail when the tail rule kept it.
+	// the cap was reached; tail when the tail rule kept it, and tailID is
+	// the allowance it was given (zero when the tracer has no cap).
 	limited bool
 	tail    bool
+	tailID  uint64
 	dropped int
 	spans   []Span
 	attrs   []spanAttr
@@ -303,13 +305,13 @@ func (t *Trace) Decide(latency time.Duration, failed bool) bool {
 	if t == nil {
 		return false
 	}
-	keep, limited, tail := t.sampled, false, false
+	keep, limited, tail, tailID := t.sampled, false, false, uint64(0)
 	if !keep && (failed || (t.tracer.slow > 0 && latency >= t.tracer.slow)) {
-		keep = t.tracer.allowTail()
+		tailID, keep = t.tracer.allowTail()
 		limited, tail = !keep, keep
 	}
 	t.mu.Lock()
-	t.kept, t.limited, t.tail = keep, limited, tail
+	t.kept, t.limited, t.tail, t.tailID = keep, limited, tail, tailID
 	t.mu.Unlock()
 	return keep
 }
@@ -332,12 +334,12 @@ func (t *Trace) Finish(end time.Time) {
 		}
 	}
 	t.finished = true
-	kept, limited, tail := t.kept, t.limited, t.tail
+	kept, limited, tail, tailID := t.kept, t.limited, t.tail, t.tailID
 	t.mu.Unlock()
 	switch {
 	case kept:
 		if !t.tracer.offer(t) && tail {
-			t.tracer.returnTail() // dropped, never exported
+			t.tracer.returnTail(tailID) // dropped, never exported
 		}
 	case limited:
 		t.tracer.metrics.trace(resultTailLimited, 1)

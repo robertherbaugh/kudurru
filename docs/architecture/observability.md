@@ -624,8 +624,9 @@ sequenceDiagram
    across a second boundary cannot keep 200), so a client asking for
    failing or slow names cannot force an export per query; the excess
    counts as `kudurru_tracing_traces_total{result="tail_limited"}`. A tail
-   trace that the full export queue drops (`queue_full`) gives its
-   allowance back. Every query is recorded
+   trace that the full export queue drops (`queue_full`) gives its own
+   allowance back: its keep time leaves the window, even when a later tail
+   trace was allowed in between. Every query is recorded
    while tracing is on, so the tail rule needs no second pass. Spans and
    attributes are recorded into arrays inline in the `Trace` (16 spans, 32
    attributes: the root, every stage and a few upstream attempts), and the
