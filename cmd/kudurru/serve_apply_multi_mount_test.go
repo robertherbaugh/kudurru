@@ -436,7 +436,11 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	}
 	// DNS answers the served publication throughout (D378): a commit that is
 	// not published yet, and a replaced provider resource set, withhold
-	// nothing. The probe asks every 50 ms with a 200 ms timeout.
+	// nothing. The probe asks every 50 ms with a 200 ms timeout, so a gap is
+	// usually about 55 ms and one dropped query makes it about 0.3 s. One
+	// retained run (CORE-OPEN3 run05) had a 1.39 s gap without any SERVFAIL
+	// whose cause is not known; the message below says what each probe in
+	// such a gap got.
 	if gap > time.Second {
 		mu.Lock()
 		var inGap []string
@@ -452,9 +456,10 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	// so a read is served within its two-second capture wait whenever the
 	// node publishes within it, as it does without the race detector (one
 	// publication of these 120 record sets takes 0.3 to 0.5 s there). Under
-	// the race detector on a loaded machine one publication takes up to ten
-	// seconds by the end of the request, and a read that waits for it is
-	// refused with generation_pending; the request still lets reads through.
+	// the race detector on a loaded machine one publication takes several
+	// seconds, longer than the capture wait, and most reads that wait for one
+	// are refused with generation_pending; the request still lets some reads
+	// through, which the last check requires.
 	// `make test` (hack/go-test.py, NORACE_TESTS) runs this test a second
 	// time without the race detector, so CI asserts the strict bound.
 	if !raceEnabled && failed > 0 {
