@@ -743,6 +743,12 @@ Flags:
       --backends-from string                membership source: static (from --backends) or
                                             endpointslice:<namespace>/<service> (default "static")
       --cache-size int                      resolver pool packet cache entries (default 200000)
+      --client-id-domain string             DNS suffix of DoT/DoQ client IDs (phone.<suffix>
+                                            selects phone), sent to kudurru in PROXYv2 TLV
+                                            0xE1; needs --proxy-protocol-secret-file
+      --client-ids                          accept DoH/DoH3 client IDs as one path component
+                                            (/dns-query/phone), sent to kudurru in PROXYv2 TLV
+                                            0xE1; needs --proxy-protocol-secret-file
       --console string                      dnsdist console address (loopback only) (default
                                             "127.0.0.1:5199")
       --dnstap-identity string              dnstap identity of the edge's messages; default
@@ -837,6 +843,12 @@ Flags:
       --backends-from string                 membership source: static (from --backends) or
                                              endpointslice:<namespace>/<service> (default "static")
       --cache-size int                       resolver pool packet cache entries (default 200000)
+      --client-id-domain string              DNS suffix of DoT/DoQ client IDs (phone.<suffix>
+                                             selects phone), sent to kudurru in PROXYv2 TLV
+                                             0xE1; needs --proxy-protocol-secret-file
+      --client-ids                           accept DoH/DoH3 client IDs as one path component
+                                             (/dns-query/phone), sent to kudurru in PROXYv2
+                                             TLV 0xE1; needs --proxy-protocol-secret-file
       --config-dir string                    directory for the rendered configuration (default
                                              "/etc/dnsdist")
       --console string                       dnsdist console address (loopback only) (default
