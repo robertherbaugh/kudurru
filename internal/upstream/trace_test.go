@@ -99,3 +99,50 @@ func TestRecursiveGroupRefusesPropagation(t *testing.T) {
 		t.Fatal("a recursive group with tracePropagation was accepted")
 	}
 }
+
+// TestTracePropagationOnlyForSampledTraces pins D382's one presence rule:
+// a receiver (kudurru, or dnsdist's own rule) treats the option's presence
+// as the sender's sampling decision, so a trace the head sampler did not
+// pick (ratio 0, no trusted parent) sends no TRACEPARENT even to a
+// flagged group. Otherwise every query would arrive "traced" downstream.
+func TestTracePropagationOnlyForSampledTraces(t *testing.T) {
+	inner := startFake(t)
+	s, err := New(Config{Groups: map[string]GroupConfig{
+		DefaultGroup: {Servers: []string{"inner=" + inner.addr}, Strategy: Strict, Timeout: time.Second, TracePropagation: true},
+	}}, Options{TraceOptionCode: 65432})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	tracer, err := tracing.New(tracing.Config{Ratio: 0, Exporter: &tracing.Memory{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := new(dns.Msg)
+	client.SetQuestion("www.example.org.", dns.TypeA)
+	client.SetEdns0(1232, false)
+	trace, _ := tracer.Begin(client, false, time.Now())
+	if trace.Sampled() {
+		t.Fatal("ratio 0 sampled the trace")
+	}
+	stage := trace.Start(tracing.Root, "kudurru.upstream", tracing.KindInternal, time.Now())
+	ctx := tracing.NewContext(context.Background(), trace, stage)
+	if _, err := s.Exchange(ctx, DefaultGroup, s.PrepareQuery(client, netip.Addr{})); err != nil {
+		t.Fatal(err)
+	}
+	if data := traceOption(inner.lastQuery(), 65432); data != nil {
+		t.Fatalf("an unsampled trace propagated TRACEPARENT %x", data)
+	}
+	// The attempt is still recorded, so a tail-kept trace shows it.
+	trace.Decide(0, true)
+	trace.Finish(time.Now())
+	spans := trace.Spans()
+	if len(spans) != 3 || spans[2].Name != "kudurru.upstream.exchange" {
+		t.Fatalf("spans %+v", spans)
+	}
+	for _, a := range spans[2].Attrs {
+		if a.Key == "kudurru.traceparent_sent" {
+			t.Fatal("the attempt claims it sent TRACEPARENT")
+		}
+	}
+}

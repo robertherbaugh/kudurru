@@ -96,7 +96,7 @@ type GroupConfig struct {
 	// (internal/recursor) walks the DNS tree from the root servers.
 	Recursive bool
 	// TracePropagation sends the query's TRACEPARENT option to the
-	// servers of this group (D382). Only for servers that belong to the
+	// servers of this group when the trace is sampled (D382). Only for servers that belong to the
 	// same tracing domain (another kudurru, a PowerDNS Recursor, dnsdist):
 	// a public resolver must never learn trace ids. Forward groups only.
 	TracePropagation bool `json:",omitempty"`

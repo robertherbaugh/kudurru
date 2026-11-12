@@ -312,7 +312,7 @@ type UpstreamGroup struct {
 	Servers  []string `koanf:"servers" json:"servers"`
 	Strategy string   `koanf:"strategy" json:"strategy"`
 	Timeout  Duration `koanf:"timeout" json:"timeout"`
-	// TracePropagation sends a traced query's TRACEPARENT EDNS option to
+	// TracePropagation sends a sampled trace's TRACEPARENT EDNS option to
 	// this group's servers (D382). Forward mode only.
 	TracePropagation bool `koanf:"tracePropagation" json:"tracePropagation,omitempty"`
 }

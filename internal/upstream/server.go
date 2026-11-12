@@ -145,12 +145,12 @@ func (s *server) exchange(parent context.Context, m *dns.Msg, timeout time.Durat
 	tr.SetStr(span, "kudurru.upstream", s.label)
 	tr.SetStr(span, "network.protocol.name", s.proto)
 	var option []byte
-	if s.propagate && span != 0 {
-		flags := byte(0)
-		if tr.Sampled() {
-			flags = tracing.FlagSampled
-		}
-		option = tracing.AppendOption(make([]byte, 0, 27), tr.ID(), tr.SpanID(span), flags)
+	// The receiver takes the option's presence as this hop's sampling
+	// decision (D382, as kudurru itself reads a trusted edge's option), so
+	// only a sampled trace sends it. A trace kept later by the tail rule
+	// (failed or slow) still records the attempt but has no downstream link.
+	if s.propagate && span != 0 && tr.Sampled() {
+		option = tracing.AppendOption(make([]byte, 0, 27), tr.ID(), tr.SpanID(span), tracing.FlagSampled)
 		tr.SetInt(span, "kudurru.traceparent_sent", 1)
 	}
 	a := s.exchangeOnce(parent, m, timeout, option)

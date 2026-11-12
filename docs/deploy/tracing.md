@@ -89,7 +89,11 @@ upstreams:
 ```
 
 Each attempt to such a server then carries a TRACEPARENT whose parent is
-that attempt's span. Never flag a group of public resolvers: they would
+that attempt's span, for the queries whose trace is sampled (`sampleRate`,
+or a trace continued from the edge). The receiver treats the option's
+presence as the decision to trace, so kudurru does not send it for the
+other queries; a query kept only because it failed or was slow shows its
+attempts but does not continue downstream. Never flag a group of public resolvers: they would
 learn trace ids. Recursive groups refuse the flag. Another kudurru receiving
 the option this way ignores it unless the query came through its own
 authenticated PROXYv2 path.

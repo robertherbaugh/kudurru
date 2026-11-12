@@ -600,7 +600,12 @@ sequenceDiagram
 3. **Propagation.** Upstream queries never carry client EDNS options
    (`PrepareQuery`). Only for a forward group with `tracePropagation: true`
    does each attempt add a fresh TRACEPARENT whose parent id is that
-   attempt's span. Recursive groups refuse the flag.
+   attempt's span, and only when the trace is sampled (head sampler or a
+   continued edge trace), with the sampled flag set. A receiver takes the
+   option's presence as the decision to trace, as kudurru does for its own
+   edges, so sending it for every traced query would make the next hop
+   keep everything; a trace kept later by the tail rule records its
+   attempts but has no downstream link. Recursive groups refuse the flag.
 4. **Keep rule.** When the query is answered the trace is kept if it
    continues a trusted peer's trace (the peer sends the option only for
    queries it traces, so its presence is the parent's decision; dnsdist
