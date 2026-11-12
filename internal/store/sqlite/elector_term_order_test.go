@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 )
 
@@ -16,13 +17,13 @@ import (
 // then tells an expected end of term from a failure only by the term context.
 // The store used to publish the new authority and leave the cancellation to
 // the elector goroutine, so a writer could report a failure for the term that
-// was ending (FLAKE-PRIMARY-UNAVAILABLE).
+// was ending ("primaryruntime: required adapter/publication unavailable").
 func TestElectorTermEndsBeforeAuthorityChangeIsVisible(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		change func(*testing.T, *Store) error
 	}{
-		{"higher-term-fence", func(t *testing.T, s *Store) error {
+		{"higher-term-fence", func(_ *testing.T, s *Store) error {
 			term := s.Authority().Term
 			term.Epoch++
 			term.PrimaryID, term.PromotionID = "successor", "successor-promotion"
@@ -41,7 +42,7 @@ func TestElectorTermEndsBeforeAuthorityChangeIsVisible(t *testing.T) {
 			_, err := s.EnablePrimary(context.Background(), imageOf(t, s).Generation())
 			return err
 		}},
-		{"close", func(t *testing.T, s *Store) error { return s.Close() }},
+		{"close", func(_ *testing.T, s *Store) error { return s.Close() }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := openTemp(t)
@@ -108,7 +109,10 @@ func TestElectorTermEndsBeforeAuthorityChangeIsVisible(t *testing.T) {
 			}
 			cancel()
 			select {
-			case <-done:
+			case err := <-done:
+				if err != nil && !errors.Is(err, store.ErrClosed) {
+					t.Fatal(err)
+				}
 			case <-time.After(5 * time.Second):
 				t.Fatal("elector did not stop")
 			}
