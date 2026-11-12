@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -182,6 +183,16 @@ func TestRecordsFirstPartyExternalDNSLifecycle(t *testing.T) {
 	receipt, err = p.Apply(t.Context(), built.Intent(0, time.Now()))
 	if err != nil || !receipt.Complete || posts.Load() != 3 {
 		t.Fatal("delete receipt", receipt, err)
+	}
+	// The ledger confirms a receipt only when the stored operation equals the
+	// one it saved; a receipt must survive the store's JSON round trip as is.
+	if b, err := json.Marshal(receipt); err != nil {
+		t.Fatal(err)
+	} else {
+		var stored kinds.Receipt
+		if err := json.Unmarshal(b, &stored); err != nil || !reflect.DeepEqual(stored, receipt) {
+			t.Fatalf("delete receipt changes in the store: %#v != %#v", stored, receipt)
+		}
 	}
 	if rows := peerRows(t, ed); len(rows) != 0 {
 		t.Fatal("data or registry row left after delete", rows)

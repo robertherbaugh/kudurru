@@ -631,7 +631,14 @@ func partial(op *kinds.IntegrationOperation, facts []kinds.TargetResult, at time
 	if op.Spec.Receipt != nil && at.Before(op.Spec.Receipt.ObservedAt) {
 		at = op.Spec.Receipt.ObservedAt
 	}
-	return kinds.Receipt{ObservedAt: at.UTC(), Targets: slices.Clone(facts)}
+	out := kinds.Receipt{ObservedAt: at.UTC()}
+	if len(facts) > 0 {
+		// No facts is nil, as the store returns it: the ledger confirms a
+		// receipt only when the stored operation equals the one it saved, so
+		// an empty non-nil list made every delete receipt unconfirmable.
+		out.Targets = slices.Clone(facts)
+	}
+	return out
 }
 
 func addFact(facts []kinds.TargetResult, fact kinds.TargetResult) []kinds.TargetResult {
