@@ -113,7 +113,9 @@ func anchorMountedObjects() []any {
 
 // mountedAnchorSession logs in once to a mounted node. A login is a command
 // held to the publication its request began on: any publication before its
-// commit refuses it with 503 and no effect (D313), and it is never replayed.
+// commit refuses it with 503 and no effect (D199, D208; pinned by
+// TestRunServeDirectAnchorsSeededFirstStartRefusesStraddlingLogin), and it is
+// never replayed.
 // Callers therefore log in only where no publication of the node's own
 // startup is still due.
 func mountedAnchorSession(t *testing.T, cfg *config.Config) (*http.Client, string, string) {
