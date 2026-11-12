@@ -609,8 +609,15 @@ sequenceDiagram
    if it failed (SERVFAIL from upstream failure or timeout, DNSSEC bogus,
    unsynced zone, a pipeline error; refusals and drops do not count) or if
    it took at least `tracing.slowThreshold` (250 ms). Every query is recorded
-   while tracing is on, so the tail rule needs no second pass; a query that
-   is not kept costs one allocation and is forgotten.
+   while tracing is on, so the tail rule needs no second pass. Spans and
+   attributes are recorded into arrays inline in the `Trace` (16 spans, 32
+   attributes: the root, every stage and a few upstream attempts), and the
+   per-span attribute slices are built only when a kept trace is read for
+   export. A query that is not kept therefore costs two allocations, the
+   `Trace` (about 5 KB) and the trace context of the upstream stage, plus
+   about 3 µs of span ids and clock reads (`TestTracedChainAllocations` and
+   `BenchmarkTracedChain` in `internal/pipeline`, over every stage of the
+   order).
 5. **Links.** A kept trace's id goes on the query event (`trace_id` in
    `querylog.db`, `GET /queries`, the live tail and every sink) and on the
    `kudurru_dns_request_duration_seconds` observation as an OpenMetrics

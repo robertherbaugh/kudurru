@@ -164,7 +164,7 @@ func (t *Tracer) Begin(m *dns.Msg, trusted bool, at time.Time) (tr *Trace, carri
 	}
 	ex := TakeOption(m, t.code)
 	tr = &Trace{tracer: t}
-	tr.spans = tr.inline[:0]
+	tr.spans, tr.attrs = tr.inline[:0], tr.inlineAttrs[:0]
 	switch {
 	case !ex.Present:
 	case !trusted:

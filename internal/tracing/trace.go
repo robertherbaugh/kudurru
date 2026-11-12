@@ -47,7 +47,18 @@ type Span struct {
 	// Error marks a failed operation; Message says why (never query data).
 	Error   bool
 	Message string
-	Attrs   []Attr
+	// Attrs are the span's attributes, filled in by Spans: while the
+	// query runs they are recorded in the trace's inline array, so a trace
+	// that is not kept never allocates for them.
+	Attrs []Attr
+
+	nattrs uint8
+}
+
+// spanAttr is one recorded attribute and the span it belongs to.
+type spanAttr struct {
+	span SpanRef
+	Attr
 }
 
 // SpanRef names a span within its trace. The zero value is "no span": a
@@ -65,14 +76,24 @@ const MaxSpans = 64
 // maxAttrs bounds the attributes of one span.
 const maxAttrs = 12
 
+// inlineSpans and inlineAttrs size the arrays a Trace carries, so the
+// common query records without allocating: the root span, one span per
+// pipeline stage (12) and a few upstream attempts, with a status per
+// stage and three attributes per attempt. A larger trace grows them.
+const (
+	inlineSpans = 16
+	inlineAttrs = 32
+)
+
 // Trace is the trace of one query.
 type Trace struct {
 	tracer *Tracer
 
 	id     TraceID
 	remote SpanID
-	// sampled is the head decision: the caller's sampled flag, or the
-	// ratio sampler when the caller sent none.
+	// sampled is the head decision: always true for a trace that
+	// continues an authenticated edge peer's TRACEPARENT (the option's
+	// flags are not used), the ratio sampler for every other query.
 	sampled bool
 	// fromPeer is set when the trace continues a TRACEPARENT from a trusted
 	// edge peer.
@@ -83,7 +104,11 @@ type Trace struct {
 	kept     bool
 	dropped  int
 	spans    []Span
-	inline   [12]Span
+	attrs    []spanAttr
+	// built is set once Spans has moved attrs into the spans.
+	built       bool
+	inline      [inlineSpans]Span
+	inlineAttrs [inlineAttrs]spanAttr
 }
 
 // ID returns the trace id; zero for a nil trace.
@@ -129,6 +154,23 @@ func (t *Trace) Spans() []Span {
 	defer t.mu.Unlock()
 	if !t.finished {
 		return nil
+	}
+	if !t.built {
+		t.built = true
+		// One slice for every attribute, cut into a full-capacity window
+		// per span; only a trace that is read (exported) pays for it.
+		flat := make([]Attr, len(t.attrs))
+		off := 0
+		for i := range t.spans {
+			n := int(t.spans[i].nattrs)
+			t.spans[i].Attrs = flat[off : off : off+n]
+			off += n
+		}
+		for _, a := range t.attrs {
+			s := &t.spans[a.span-1]
+			s.Attrs = append(s.Attrs, a.Attr)
+		}
+		t.attrs = nil
 	}
 	return t.spans
 }
@@ -222,8 +264,9 @@ func (t *Trace) setAttr(ref SpanRef, a Attr) {
 		return
 	}
 	s := &t.spans[ref-1]
-	if len(s.Attrs) < maxAttrs {
-		s.Attrs = append(s.Attrs, a)
+	if s.nattrs < maxAttrs {
+		s.nattrs++
+		t.attrs = append(t.attrs, spanAttr{span: ref, Attr: a})
 	}
 }
 
