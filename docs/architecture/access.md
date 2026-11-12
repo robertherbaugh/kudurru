@@ -141,8 +141,9 @@ still occurs outside locks before shared admission.
 
 SQLite browser starts, callbacks and CLI preparation use the shared request
 budgets below. Kubernetes browser starts and callbacks share the D310 Secret
-budget. An enrolled follower forwards local password login to its primary, so
-the password counters above are charged there
+budget. An enrolled follower forwards local password login and the caller's
+own password change to its primary (D363, D368), so the password counters
+above are charged there
 ([local sign-in on an enrolled follower](#local-sign-in-on-an-enrolled-follower-d363)).
 OIDC starts, callbacks and CLI preparation are not forwarded: their request
 budget is charged under the local elected writer, which a follower does not
