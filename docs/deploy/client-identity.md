@@ -76,9 +76,33 @@ Specific IP, MAC, CIDR or hostname matches take precedence over this group.
 Both ordinary and ID-specific DoH responses use private HTTP caching so shared
 HTTP caches cannot reuse answers across client policies.
 
-When an edge terminates TLS, the backend cannot read the original SNI or URL.
-Backend support accepts a normalized client ID in private PROXYv2 TLV `0xE1`
-only with a trusted transport peer and valid shared-secret TLV `0xE0`; even
-loopback ID propagation requires the secret. Ordinary HTTP forwarding headers
-and DNS EDNS options cannot set it. Edge rendering and packet-cache acceptance
-must be enabled together before relying on this forwarding path.
+## Client IDs through the dnsdist edge
+
+When the dnsdist edge terminates TLS, kudurru cannot read the original server
+name or URL. The edge derives the ID itself, with the same rules as a kudurru
+listener, and sends it to the backend in private PROXYv2 TLV `0xE1` (D389):
+
+```yaml
+edge:
+  proxyProtocolSecretFile: /run/secrets/proxy_secret   # required for client IDs
+  tlsDir: /run/secrets/edge-tls                         # covers *.dot.example.com
+  clientIDDomain: dot.example.com                       # DoT and DoQ: phone.dot.example.com
+  clientIDs: true                                       # DoH and DoH3: /dns-query/phone
+```
+
+The command-line forms are `kudurru edge run --client-id-domain dot.example.com
+--client-ids`. With these settings, the same client ID selects the same client
+group and policy whether the device talks to kudurru directly or through the
+edge. Through the edge, `phone.dot.example.com` and `/dns-query/phone` select
+`phone`. A server name with more than one label before the suffix carries no
+ID. With `clientIDs` on, the edge answers HTTP 404 for every other path below
+`/dns-query`, including empty, extra and escaped components, as a kudurru
+listener does. A query that carries an ID never uses the edge's packet cache,
+because that cache does not key on the client ID.
+
+kudurru accepts TLV `0xE1` only from a peer in `listeners.proxyProtocolFrom`
+that also sends the valid shared-secret TLV `0xE0`. This applies to loopback
+edges too. The edge refuses to render client IDs without
+`proxyProtocolSecretFile`. A forged TLV without the secret, or with a wrong
+one, drops the query. Ordinary HTTP forwarding headers and DNS EDNS options
+cannot set the ID. The settings are host-only and need a restart.

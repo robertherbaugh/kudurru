@@ -267,7 +267,16 @@ flowchart TD
     SEC -- "no (only 127.0.0.1<br/>and ::1 may be listed)" --> CMD{"PROXY command"}
     CMD -- "PROXY, INET/INET6" --> HDR["client = address in the header<br/>ProxiedFrom = dnsdist"]
     CMD -- "AF_UNSPEC" --> PEER
+    HDR --> CID{"TLV 0xE1<br/>client ID?"}
+    CID -- "none" --> DONE(["pipeline"])
+    CID -- "valid label and<br/>a secret is configured" --> ID["ClientID = the label"] --> DONE
+    CID -- "no secret configured,<br/>bad label or twice" --> DROP3["drop"]
 ```
+
+An edge that terminates DoT, DoQ, DoH or DoH3 sends the client ID it derived
+from the server name or the URL path in TLV `0xE1` (D389). kudurru honors
+it only next to a valid secret TLV from a listed peer; without a configured
+secret even a loopback peer's ID TLV drops the query.
 
 Dnsdist health checks use LOCAL without the query-rule TLV.
 For LOCAL, Kudurru keeps the transport peer and applies no advertised identity.

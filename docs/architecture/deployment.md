@@ -143,7 +143,7 @@ flowchart TD
     START(["explicit edge run"]) --> HOST["defaults → node file → environment<br/>→ explicitly supplied flags"]
     HOST --> MEM["backends: configured list,<br/>or an EndpointSlice (ready endpoints)"]
     MEM --> CRED["new console key, API key,<br/>dashboard password (per start)"]
-    CRED --> REN["render dnsdist.yml:<br/>resolver and authoritative pools uncached<br/>add TLV 0xE0, refuse XFR/NOTIFY/UPDATE<br/>health check TXT health.kudurru.internal."]
+    CRED --> REN["render dnsdist.yml:<br/>resolver and authoritative pools uncached<br/>add TLV 0xE0 (and the client ID in TLV 0xE1 when enabled),<br/>refuse XFR/NOTIFY/UPDATE<br/>health check TXT health.kudurru.internal."]
     REN --> CHK{"dnsdist --check-config"}
     CHK -- "fails" --> KEEP["keep the running config"]
     CHK -- "ok" --> SWAP["swap files atomically,<br/>write the API key to /run/kudurru"]
