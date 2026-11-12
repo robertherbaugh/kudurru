@@ -413,13 +413,18 @@ func (r *Runner) invoke(ctx context.Context, rn *runnable) (err error) {
 	rn.mu.Unlock()
 	r.metrics.active.WithLabelValues(rn.name).Set(1)
 	defer func() {
-		if p := recover(); p != nil {
+		p := recover()
+		if p != nil {
 			err = fmt.Errorf("panic: %v", p)
 			r.log.Error("runnable panicked", "role", rn.name, "panic", p, "stack", string(debug.Stack()))
 		}
 		rn.mu.Lock()
 		rn.active = false
-		if err != nil && !errors.Is(err, context.Canceled) {
+		// An error returned after ctx ended (a leader-only writer whose term
+		// is over answers ErrUnavailable or ErrFenced) is the end of the
+		// term or of the process, not a failure: superviseLeader and
+		// runAlways do not count it either. A panic is always a bug.
+		if err != nil && (p != nil || ctx.Err() == nil) && !errors.Is(err, context.Canceled) {
 			rn.lastErr = err.Error()
 		}
 		rn.mu.Unlock()
