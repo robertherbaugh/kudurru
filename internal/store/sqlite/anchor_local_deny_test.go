@@ -525,6 +525,16 @@ func TestAnchorLocalInstallCannotOmitPendingDeny(t *testing.T) {
 	if !errors.Is(err, accepted.ErrCAS) {
 		t.Fatal("newer image erased pending durable denial", err)
 	}
+	// The refusal is classified like every other refused owner: the image's
+	// owner still trusts the key this member denied locally.
+	var refusal *AnchorRefusal
+	denied := anchorLocalTestRead(t, follower).record.Denied
+	if len(denied) != 1 {
+		t.Fatalf("pending denials: got %d, want 1", len(denied))
+	}
+	if !errors.As(err, &refusal) || refusal.Reason != AnchorRefusedCarriedRevocation || !slices.Equal(refusal.Keys, []string{denied[0].ID}) {
+		t.Fatalf("in-term refusal of a pending denial: got %#v (%v), want %s naming %s", refusal, err, AnchorRefusedCarriedRevocation, denied[0].ID)
+	}
 	if source.cursor.Load() != before || !installed.Same(imageOf(t, follower).Generation()) || !sameAnchorLocal(before.local, anchorLocalTestRead(t, follower)) {
 		t.Fatal("refused image replaced owner/local cut")
 	}

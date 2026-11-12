@@ -306,7 +306,7 @@ func (o *anchorOperation) prepareInstall(image replication.Image, byTerm bool) e
 		}
 	}
 	if next.awaiting && !o.before.awaiting {
-		return accepted.ErrCAS
+		return anchorInstallRefusal(o.before, next, accepted.ErrCAS)
 	}
 	if !next.awaiting && o.source != nil {
 		if o.installGate != nil {
@@ -318,6 +318,15 @@ func (o *anchorOperation) prepareInstall(image replication.Image, byTerm bool) e
 			if err != nil {
 				return err
 			}
+		}
+	}
+	if o.before.local != nil {
+		// The carrier rule refuses an owner that drops a key this member
+		// denied locally (the same-term form of a carried revocation). Run its
+		// pure postimage first so that refusal is classified like the
+		// successor and adoption rules; stageLocal recomputes and enforces it.
+		if _, err := o.localPostimage(next); err != nil {
+			return anchorInstallRefusal(o.before, next, err)
 		}
 	}
 	return o.prepare(next)
