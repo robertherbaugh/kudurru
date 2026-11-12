@@ -890,10 +890,17 @@ flowchart TD
   the peer may serve other names, but a row this instance's registry claims
   stays in the snapshot outside them: narrowing `domains` makes it an owned
   row that is no longer desired (deleted under sync, retained otherwise,
-  removed by a Delete cleanup), never an absent one. An instance without
-  domains still names its destination, for cleanup only; the host syncs it
-  only while its roles include Publisher, which needs domains. Webhook peers
-  offer no adoption.
+  removed by a Delete cleanup), never an absent one. Removing every domain
+  ends publication: the instance still names its destination, for cleanup
+  only, but the host syncs it only while its roles include Publisher, which
+  needs domains, so its owned record sets stay as under Retain. A
+  records-only peer without domains has no role at all: `Roles` refuses it,
+  which ends an ordinary lease as ProvisionFailed, while `Check` accepts it,
+  so a Delete cleanup (which provisions and checks but never asks for roles)
+  still removes them. A registry row of another owner with no data row is a
+  claim: the snapshot names it (`RemoteSnapshot.Claimed`) and the planner
+  reports a conflict at its name (`plan.Input.Claimed`), so no create is
+  planned there. Webhook peers offer no adoption.
 - **Apply and Recover.** Apply rereads, requires the intent's Before hash,
   IDs and versions, sends one Changes body (create: data and, unless an own
   leftover exists, registry; update: old and new data; delete: data and own
@@ -908,9 +915,7 @@ flowchart TD
 - **Limits.** Nothing closes the window between the baseline reread and the
   POST; the verifying reread detects a concurrent writer, it does not prevent
   one. A peer must store TXT rows and underscore labels. Each change costs
-  three requests of the instance's budget. A registry row of another kudurru
-  with no data row is not shown to the planner, so a desired record there is
-  refused by Apply on each sync instead of being planned as a conflict.
+  three requests of the instance's budget.
 
 ## Tier-B hook events
 
@@ -926,7 +931,7 @@ flowchart TD
     Pending -- yes --> Drain
     Pending -- no --> Cursor["Read IntegrationEventCursor"]
     Cursor --> Feed["Root reads the store change feed after the cursor<br/>DNSZone, ZoneState, DNSRecordSet, Integration, Kudurru, current term"]
-    Feed -- "feed compacted or lineage changed" --> Resync["One zone.changed per zone, then a fresh baseline"]
+    Feed -- "feed compacted or lineage changed" --> Resync["One zone.changed per zone (versioned by the resync), then a fresh baseline"]
     Feed --> Map["At most 32 events: subject UID + monotone version"]
     Resync --> Map
     Map --> Known{"Row with this delivery ID exists?"}
@@ -934,7 +939,7 @@ flowchart TD
     Known -- no --> Queue["QueueDelivery (fenced ledger write)"]
     Skip --> Save["Save the cursor by exact CAS"]
     Queue --> Save
-    Save --> Drain["Evict the oldest terminal rows above 128 and expired ones, then deliver due rows"]
+    Save --> Drain["Evict terminal rows above 128 (superseded first) and expired ones, then deliver due rows"]
     Drain --> Post["POST /events: signed body, X-Kudurru-Delivery"]
     Post -- 2xx --> Ack["Acknowledged"]
     Post -- "5xx, attempt timeout, exhausted budget" --> Retry["Backoff, same ID and body"]
@@ -944,16 +949,21 @@ flowchart TD
 
 - **Source.** The store's resumable change feed (SQLite `changes`). A new
   instance takes a baseline and reports only later changes. A kind with no
-  change keeps its position until the store head is 1,024 revisions ahead,
-  so an idle tick writes nothing (each cursor write itself advances the
-  head). A cursor the feed can no longer resume (the store reports it
+  change keeps its position until the store head is 1,024 revisions ahead
+  (or a quarter of the store's feed retention, if that is less, so a quiet
+  kind is not compacted past while the ticks keep up), so an idle tick
+  writes nothing (each cursor write itself advances the head). A cursor the feed can no longer resume (the store reports it
   compacted past the cursor, or a replica replacement or promotion changed
   the watch lineage) degrades to one `zone.changed` per zone with
-  `change: "resync"`, then a fresh baseline: never one event per object. The
-  changes lost to the compaction are not reported one by one.
+  `change: "resync"`, versioned by that resync (a digest of the positions
+  that could not resume) and carrying the committed serial, then a fresh
+  baseline: never one event per object. The changes lost to the compaction
+  are not reported one by one.
 - **Topics shipped in v0.2.** `record.changed` (a DNSRecordSet generation or
-  its deletion), `zone.changed` (a zone's committed serial, read from its private
-  ZoneState head, or a change or deletion of the DNSZone object),
+  its deletion), `zone.changed` (a zone's committed serial, read from its
+  private ZoneState head, or the DNSZone's deletion; a DNSZone write reports
+  only a serial its own status carries, which is the same version, so each
+  zone has one version per serial),
   `blocking.toggled` (a committed change of Kudurru `status.blocking`; a
   timed disable that runs out writes nothing and is no event, so the
   disabling event carries `disabledUntil`), `integration.error` (an
@@ -967,8 +977,10 @@ flowchart TD
   instance UID, topic, subject UID and version. Producing the same change
   again (a crash between the queue and the cursor commit, a status write that
   does not change what the topic reports) finds the row and queues nothing
-  while the row exists; once it is pruned, such a status write sends the
-  same ID again, which the peer deduplicates. Delivery is unordered across
+  while the row exists; once it is evicted or pruned, such a status write
+  sends the same ID again, which the peer deduplicates. Count eviction takes
+  superseded rows (an older version of a subject that has a newer row)
+  first, because a status write reproduces only a subject's current version. Delivery is unordered across
   retries; each payload carries its version. The tick is the debounce.
 - **Visibility.** Every hook instance receives the events of every
   namespace: record-set and Integration names and namespaces, zone names,
@@ -977,11 +989,16 @@ flowchart TD
   subscription filter yet.
 - **Retention.** All by exact UID and resource version. An instance holds at
   most 384 rows: production waits at 256 undelivered rows or 384 in all, and
-  each drain evicts the instance's oldest terminal rows above 128. Rows
-  expire 24 hours after creation and are pruned an hour after that. Any hook
-  lease also prunes the expired terminal rows of other instances (also of a
-  live Integration that no longer runs a hook lease), and the undelivered
-  rows of an instance that no longer exists. With at most 128 instances per
+  each drain evicts the instance's terminal rows above 128, superseded ones
+  first, then the oldest. Rows expire 24 hours after creation and are pruned
+  an hour after that. Every lease prunes the rows of other instances an hour
+  past their deadline, delivered or not and whether or not their owner
+  exists: an owner that runs any lease has dead-lettered its own rows at the
+  deadline. Hook leases do this on each drain; leases without the hook role
+  every 300 poll intervals (10 minutes), when they also dead-letter their own
+  undelivered rows past the deadline without an attempt (a peer that stopped
+  advertising hooks). With no lease running at all nothing is pruned until
+  one runs. With at most 128 instances per
   host, delivery rows stay under 50,000 objects. The retention scan pages
   through all rows and keeps only this instance's and 64 prunable ones in
   memory, so it never stops at a listing size.

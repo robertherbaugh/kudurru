@@ -289,11 +289,21 @@ Integration names and namespaces, error reasons and the primary node ID. Treat
 creating a hooks Integration as a cluster-level privilege, and point it only at
 a peer that may see that. A per-namespace filter is not available yet.
 
+`zone.changed` reports a zone's committed serial (or its deletion), once per
+serial; a resync event is versioned by its resync, so it is sent even for a
+serial the peer already received.
+
 Kudurru keeps at most 384 delivery records per hook instance: it stops
-reading new changes while 256 events are undelivered and removes the oldest
-delivered or dropped records above 128. A status-only write of an object can
-send an event again under its earlier `X-Kudurru-Delivery` ID once that record
-is gone, so keep deduplicating on the ID.
+reading new changes while 256 events are undelivered and removes delivered or
+dropped records above 128, older versions of a subject first. A status-only
+write of an object can send its current event again under the same
+`X-Kudurru-Delivery` ID once that record is gone (when 128 newer events of
+other subjects completed, or a day and an hour after it was created), so keep
+deduplicating on the ID. Every running Integration, not only hook instances,
+removes delivery records an hour past their 24-hour deadline, and an instance
+whose peer stopped advertising hooks drops its own undelivered events at
+their deadline (`EventDeadLettered`). With no Integration running at all,
+nothing is removed until one runs.
 
 ### Tier-B webhook records
 
@@ -334,10 +344,14 @@ registry record names this instance stays the instance's after `domains` is
 narrowed. Under `policy: sync` the next sync deletes it with its registry
 record, as it deletes a record removed from the sources; under `upsert-only`
 and `create-only` it stays, and a `deletionPolicy: Delete` cleanup removes
-it. A record set that only another Kudurru's registry record claims, with no
-data record, is hidden from the plan: a desired record there is refused at
-apply time on every sync instead of being reported as a conflict (a known
-limit; remove the stale registry record at the peer).
+it. Removing every domain ends publication instead: the instance no longer
+syncs records (against a peer that offers only records it is refused as
+`ProvisionFailed`), and the record sets it owns stay at the peer as under
+`Retain`. To remove them, narrow `domains` instead, or delete the Integration
+with `deletionPolicy: Delete`, whose cleanup still reads the peer and removes
+them. A registry record of another Kudurru with no data record still claims
+its name: a desired record there is reported as a conflict and never
+created.
 
 Each change is one `POST /records` with the record set and its registry
 record. The answer, even a 204, is never taken as the result: Kudurru rereads
