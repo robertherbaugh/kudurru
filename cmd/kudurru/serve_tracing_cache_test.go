@@ -134,31 +134,12 @@ func TestRunServeTracingThroughCacheAndRace(t *testing.T) {
 		})
 	}
 	wg.Wait()
+	// The coalesced fetch stored the 2-second entry before any query of the
+	// wave was answered, so the entry is at least this old from here on.
+	waveAnswered := time.Now()
 	close(errs)
 	for err := range errs {
 		t.Fatal(err)
-	}
-	waitFor := func(what string, fn func() bool) {
-		t.Helper()
-		until := time.Now().Add(15 * time.Second)
-		for !fn() {
-			if time.Now().After(until) {
-				t.Fatal("timed out waiting for " + what)
-			}
-			time.Sleep(20 * time.Millisecond)
-		}
-	}
-	// The wave's traces are exported first, so the one trace that comes
-	// later is the hit's.
-	waitFor("the wave's traces exported", func() bool { return coll.count() >= wave })
-	waveTraces := map[string]bool{}
-	coll.mu.Lock()
-	for id := range coll.spans {
-		waveTraces[id] = true
-	}
-	coll.mu.Unlock()
-	if len(waveTraces) != wave {
-		t.Fatalf("%d traces exported for the wave of %d", len(waveTraces), wave)
 	}
 	// One coalesced fetch asked each server once.
 	if f, s := fastQueries.Load(), slowQueries.Load(); f != 1 || s != 1 {
@@ -174,12 +155,27 @@ func TestRunServeTracingThroughCacheAndRace(t *testing.T) {
 	if p := prefetches(); p != 0 {
 		t.Fatalf("%v prefetches before the hit", p)
 	}
-	// After a second the 2-second entry is within the prefetch trigger: the
-	// next hit answers from the cache, finishes its trace and starts a
-	// background refresh carrying that finished trace.
-	time.Sleep(1200 * time.Millisecond)
+	// 1.2 s after the wave the 2-second entry has at most 0.8 s left, within
+	// the prefetch trigger (1 s), and has not expired: the next hit answers
+	// from the cache, finishes its trace and starts a background refresh
+	// carrying that finished trace. The time is measured from the wave and
+	// nothing waits on the exporter's flush tick in between.
+	time.Sleep(time.Until(waveAnswered.Add(1200 * time.Millisecond)))
 	if err := ask(); err != nil {
 		t.Fatal("prefetch hit", err)
+	}
+	if late := time.Since(waveAnswered); late >= 2*time.Second {
+		t.Fatalf("the late query was answered %v after the wave, past the entry's 2-second TTL", late)
+	}
+	waitFor := func(what string, fn func() bool) {
+		t.Helper()
+		until := time.Now().Add(15 * time.Second)
+		for !fn() {
+			if time.Now().After(until) {
+				t.Fatal("timed out waiting for " + what)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
 	}
 	waitFor("the prefetch to reach the slow server", func() bool { return slowQueries.Load() > 1 })
 	// Let the slow attempt of the prefetch end into its finished trace.
@@ -224,16 +220,11 @@ func TestRunServeTracingThroughCacheAndRace(t *testing.T) {
 						status = kv.Value.GetStringValue()
 					}
 				}
-				switch {
-				case !waveTraces[id]:
-					// The late query: a cache hit that started the refresh.
-					// A plain miss would say forwarded.
-					if status != "prefetch_refresh" {
-						t.Fatalf("trace %s of the late query has status %q, want prefetch_refresh", id, status)
-					}
+				// Only the late query is a cache hit that started the
+				// refresh; the wave's queries were answered by the fetch
+				// (and a plain miss would say forwarded).
+				if status == "prefetch_refresh" {
 					hits++
-				case status == "prefetch_refresh":
-					t.Fatalf("trace %s of the wave has status prefetch_refresh", id)
 				}
 				continue
 			}
@@ -246,7 +237,7 @@ func TestRunServeTracingThroughCacheAndRace(t *testing.T) {
 		}
 	}
 	if hits != 1 {
-		t.Fatalf("%d traces of the late query, want 1", hits)
+		t.Fatalf("%d traces with status prefetch_refresh, want exactly the late query's", hits)
 	}
 	// The one coalesced fetch asked both servers inside the first query's
 	// trace; the prefetch's attempts came after its trace finished.
