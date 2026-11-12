@@ -281,8 +281,10 @@ func TestActualSQLiteSourceWaitsWithOriginalCancellationAndWriterToken(t *testin
 				}()
 				<-entered
 				waiting := make(chan struct{})
+				var original context.Context
 				commit := h.opts.CommitSource
 				h.opts.CommitSource = func(ctx context.Context, g ExecutionGuard, s SourceSnapshot) (*Result, error) {
+					original = ctx
 					close(waiting)
 					return commit(ctx, g, s)
 				}
@@ -293,6 +295,17 @@ func TestActualSQLiteSourceWaitsWithOriginalCancellationAndWriterToken(t *testin
 					cancel()
 				} else {
 					leaseCancel()
+				}
+				// The host links a lease to its operation through
+				// context.AfterFunc, so the cancellation reaches the waiting
+				// command a goroutine hop after leaseCancel returns. Release
+				// the writer only once the original operation context has
+				// observed it; a command entered inside that hop is still
+				// refused at commit by the synchronous lease check of final.
+				select {
+				case <-original.Done():
+				case <-time.After(5 * time.Second):
+					t.Fatal("original cancellation never reached the waiting command")
 				}
 				close(release)
 				if err := <-blocker; err != nil {
