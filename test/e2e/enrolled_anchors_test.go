@@ -282,8 +282,6 @@ func enrolledAnchorsRevoke(t *testing.T, e *enrolledAnchors, bin string, env []s
 		string(followerAfter["version"]) != string(followerBefore["version"]) || e.root.TCP(anchorRootRecovered) != 0 {
 		t.Fatal("refused follower recovery changed the database or acquired")
 	}
-	// The follower keeps running, unrestarted, through the primary's recovery.
-	follower = kudurrutest.Start(t, bin, b, kudurrutest.Options{Env: env})
 	out, err := e.offline(bin, env, recoverArgs(a)...)
 	if err != nil || decodeField[string](t, out, "outcome") != "committed" || decodeField[bool](t, out, "quarantined") || decodeField[int](t, out, "recoveries") != 1 {
 		t.Fatal("offline recovery on the stopped primary did not commit", err)
@@ -291,6 +289,12 @@ func enrolledAnchorsRevoke(t *testing.T, e *enrolledAnchors, bin string, env []s
 	if e.root.TCP(anchorRootRecovered) != 1 {
 		t.Fatal("recovery did not make exactly one acquisition", e.root.TCP(anchorRootRecovered))
 	}
+	// The follower starts again, still holding the quarantined image, and
+	// keeps running unrestarted until it has installed the recovered one. Its
+	// new process makes one deny-only check; with no trusted key it cannot
+	// authenticate the reply and that check stops for the process.
+	follower = kudurrutest.Start(t, bin, b, kudurrutest.Options{Env: env})
+	e.awaitTCP(anchorRootRecovered, 2, time.Second, "quarantined follower's own check")
 	primary = kudurrutest.StartReady(t, bin, a, kudurrutest.Options{Env: env})
 	e.awaitValidated(primary, "recovered primary")
 	// The hour-long wait outlived the session. Sign in again from a fresh
@@ -336,16 +340,17 @@ func enrolledAnchorsRevoke(t *testing.T, e *enrolledAnchors, bin string, env []s
 		adopted.Local == nil || adopted.Local.Retired || adopted.Authority.Mode != "follower" {
 		t.Fatalf("follower does not hold the recovered tombstones and record: %+v %+v", adopted.Owner, adopted.Local)
 	}
-	// The follower's deny-only check stopped with its denial for this
-	// process (D318): an install does not restart it. Exactly one recovery
-	// acquisition has happened; a follower restart starts a new check.
+	// The follower's deny-only check stopped for this process (D318) and the
+	// install does not restart it; its status names the stop. Nothing else
+	// acquired: one recovery and the follower's one check. A follower restart
+	// starts a new check, which now authenticates.
 	time.Sleep(2 * time.Second)
-	if e.root.TCP(anchorRootRecovered) != 1 || (adopted.Supervisor.State != "retired" && adopted.Supervisor.State != "stopped") {
+	if e.root.TCP(anchorRootRecovered) != 2 || adopted.Supervisor.State != "stopped" || !strings.Contains(adopted.Supervisor.Error, "unauthenticated") {
 		t.Fatalf("after recovery: %d acquisitions, supervisor %+v", e.root.TCP(anchorRootRecovered), adopted.Supervisor)
 	}
 	stop(follower)
 	follower = kudurrutest.StartReady(t, bin, b, kudurrutest.Options{Env: env})
-	e.awaitTCP(anchorRootRecovered, 2, time.Second, "follower restart after recovery")
+	e.awaitTCP(anchorRootRecovered, 3, time.Second, "follower restart after recovery")
 	e.status(apiB, func(s api.RootAnchorStatus) bool {
 		return s.Supervisor.State == "running" && s.Owner.Digest == recovered.Owner.Digest
 	})
