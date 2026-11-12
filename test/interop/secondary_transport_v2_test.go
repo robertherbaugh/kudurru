@@ -151,7 +151,10 @@ zone %q {
 	t.Log("real BIND IXFR rejected the wrong TSIG secret without partial data")
 }
 
-func secondaryTransportCertificate(t *testing.T, dir string) (string, string, *x509.CertPool) {
+// secondaryTransportCertificate writes a self-signed P-256 server
+// certificate for localhost, 127.0.0.1 and any extra addresses (a container
+// primary's address) to dir and returns its paths and a pool that trusts it.
+func secondaryTransportCertificate(t *testing.T, dir string, extra ...net.IP) (string, string, *x509.CertPool) {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -166,7 +169,7 @@ func secondaryTransportCertificate(t *testing.T, dir string) (string, string, *x
 		IsCA: true, BasicConstraintsValid: true,
 		KeyUsage:    x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:    []string{"localhost"}, IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)},
+		DNSNames:    []string{"localhost"}, IPAddresses: append([]net.IP{net.IPv4(127, 0, 0, 1)}, extra...),
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	if err != nil {

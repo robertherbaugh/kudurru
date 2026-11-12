@@ -69,14 +69,14 @@ func (f *knotFixture) mustDocker(args ...string) []byte {
 	return b
 }
 
-func newKnotFixture(t *testing.T) *knotFixture {
+// newKnotDocker checks the preconditions every actual-Knot test shares: the
+// opt-in, an explicitly selected private Docker socket, both pinned images
+// and the pinned knotd version. It creates no container or network.
+func newKnotDocker(t *testing.T) *knotFixture {
 	t.Helper()
 	kudurrutest.RequireE2E(t)
 	if os.Getenv("KUDURRU_KNOT") != "1" {
 		t.Skip("set KUDURRU_KNOT=1 or run hack/test-knot-catalog.sh for actual Knot qualification")
-	}
-	if os.Getenv(kudurrutest.EnvBinary) != "" {
-		t.Fatal("Knot qualification requires the temporary binary built from this checkout")
 	}
 	socket := os.Getenv("KUDURRU_KNOT_DOCKER_HOST")
 	if !strings.HasPrefix(socket, "unix:///") || socket == "unix:///var/run/docker.sock" {
@@ -86,17 +86,25 @@ func newKnotFixture(t *testing.T) *knotFixture {
 	if err != nil {
 		t.Fatal("Knot qualification requires the Docker CLI")
 	}
-	suffix := strings.ToLower(rand.Text()[:12])
 	f := &knotFixture{t: t, docker: docker, socket: socket, dir: t.TempDir(), secret: newSecret(t), client: &http.Client{Timeout: 2 * time.Second}}
-	f.primary, f.knot, f.netID = "kudurru-knot-primary-"+suffix, "kudurru-knot-consumer-"+suffix, "kudurru-knot-"+suffix
 	for _, image := range []string{knotImage, knotBase} {
 		f.mustDocker("image", "inspect", image, "--format", "{{.Id}}")
 	}
-	version := strings.TrimSpace(string(f.mustDocker("run", "--rm", "--network", "none", "--entrypoint", "knotd", knotImage, "-V")))
-	if version != knotVersion {
+	if version := strings.TrimSpace(string(f.mustDocker("run", "--rm", "--network", "none", "--entrypoint", "knotd", knotImage, "-V"))); version != knotVersion {
 		t.Fatal("pinned Knot executable version did not match the fixture")
 	}
-	t.Log("actual consumer: " + version + "; " + knotImage)
+	return f
+}
+
+func newKnotFixture(t *testing.T) *knotFixture {
+	t.Helper()
+	f := newKnotDocker(t)
+	if os.Getenv(kudurrutest.EnvBinary) != "" {
+		t.Fatal("Knot qualification requires the temporary binary built from this checkout")
+	}
+	suffix := strings.ToLower(rand.Text()[:12])
+	f.primary, f.knot, f.netID = "kudurru-knot-primary-"+suffix, "kudurru-knot-consumer-"+suffix, "kudurru-knot-"+suffix
+	t.Log("actual consumer: " + knotVersion + "; " + knotImage)
 	// Install cleanup before creating any resources. Only this test's named
 	// containers/network are removed. No daemon or shared cache is touched.
 	t.Cleanup(func() {
