@@ -948,6 +948,41 @@ func TestImageReadinessStatusWriteKeepsCommittedAuthority(t *testing.T) {
 			t.Fatal("realignment did not complete", step.name)
 		}
 	}
+	// A metadata-only change outside the intent digest (an annotation other
+	// than managed-by) is served like a status write: the receipt is pending
+	// realignment, but the committed head keeps answering.
+	if err := h.st.Get(ctx, store.KeyOf(childZone), childZone); err != nil {
+		t.Fatal(err)
+	}
+	if childZone.Annotations == nil {
+		childZone.Annotations = map[string]string{}
+	}
+	childZone.Annotations["example.com/note"] = "metadata only"
+	manager := store.ManagedBy(childZone)
+	if _, err := h.st.Apply(ctx, childZone, store.ApplyOptions{Manager: manager}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.st.Get(ctx, store.KeyOf(childZone), childZone); err != nil {
+		t.Fatal(err)
+	}
+	if childZone.Annotations["example.com/note"] != "metadata only" || store.ManagedBy(childZone) != manager {
+		t.Fatalf("fixture did not make a metadata-only change: %v", childZone.Annotations)
+	}
+	annotated := statusImage(t, h)
+	if annotated.SourceMatchesDesired(child.Spec.Zone) {
+		t.Fatal("metadata-only RV gap reported an aligned receipt")
+	}
+	for _, apex := range []string{"child.example.", "example."} {
+		if model := annotated.Cut(time.Now()).Match("x." + apex); !annotated.Admitted(apex, time.Now()) || model == nil || model.Name() != apex || !model.AvailableAt(time.Now()) {
+			t.Fatalf("metadata-only change made %s unavailable: %v", apex, model)
+		}
+	}
+	if _, err := h.r.Reconcile(ctx, child.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	if !statusImage(t, h).SourceMatchesDesired(child.Spec.Zone) {
+		t.Fatal("realignment after a metadata-only change did not complete")
+	}
 	// An intent change in the same window still serves unavailable coverage.
 	if err := h.st.Get(ctx, store.KeyOf(childZone), childZone); err != nil {
 		t.Fatal(err)

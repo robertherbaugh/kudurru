@@ -973,8 +973,11 @@ Every head commit is followed by the status write of its new serial, which
 advances the DNSZone RV, and then by the driver's realignment of the lifecycle
 receipt to that RV. A publication between the two still serves the zone (and
 keeps it bound as a child of its parent) when the lifecycle receipt differs
-from the DNSZone only in the RV: same UID, apex, type and intent digest, and a
-head whose frozen configuration, NS address dependency and source receipt match
+from the DNSZone only in fields outside the intent digest and the NS address
+dependency (status, and metadata such as the RV, annotations other than
+managed-by, finalizers and owner references). It needs the same UID, apex, type
+and intent digest, and a head whose frozen configuration, NS address dependency
+and source receipt match
 the DNSZone. Realignment serves the same head with the same configuration, so
 the answers are the same before and after it. Only serving readiness
 (`Admitted`) accepts this; `SourceMatchesDesired` stays exact, so publication

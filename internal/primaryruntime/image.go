@@ -340,11 +340,14 @@ func imageCurrentSource(l *zk.ZoneLifecycle, z *public.DNSZone) bool {
 // imageServingSource reports whether lifecycle l's source identity may serve
 // for desired z. The exact source token (imageCurrentSource) always
 // qualifies; callers apply their own config checks to it as before. A primary
-// lifecycle also qualifies when its receipt differs from z ONLY in the opaque
-// resourceVersion: same UID, apex, type and intent digest, not removed, and
-// configMatches (the head's frozen spec, NS address dependency and source
-// receipt equal z, PrimaryStatusObservation.ConfigMatchesDesired). The
-// intent digest excludes status and RV churn by definition, and the driver's
+// lifecycle also qualifies when its receipt differs from z only in fields
+// outside the intent digest and the NS address dependency: status, and
+// metadata such as the resourceVersion, annotations other than managed-by,
+// finalizers and owner references. It needs the same UID, apex, type and
+// intent digest, a source that is not removed, and configMatches (the head's
+// frozen spec, NS address dependency and source receipt equal z,
+// PrimaryStatusObservation.ConfigMatchesDesired). The serving runtime reads
+// none of those other fields for a DNSZone, and the driver's
 // realignment of such a receipt keeps the same head (restoreActualZoneReceipt),
 // so the answers are identical before and after it. No RV is substituted into
 // any durable object here, and nonprimary lifecycles stay exact.
