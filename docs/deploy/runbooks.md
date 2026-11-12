@@ -601,10 +601,14 @@ edge is upgraded.
 its first 0.2 start it keeps the cluster settings that start copied from
 `kudurru.yaml`: a later edit of a cluster key in the file is not applied.
 The start then logs the warning `cluster settings in kudurru.yaml are not in
-effect`, with the keys whose file value differs and the stored values that
-are in effect. This is a known gap of 0.2.0, and it applies to every cluster
-setting, not only the anchor keys. On static
-twins, put the managed anchor settings (`anchorMode: managed`,
+effect` for the differing keys that reload without a restart, with the
+stored values now in effect (list and object values are left out; read them
+with `kudurru settings get` or `GET /api/v1/settings`). Differing keys that
+need a restart get a second warning, `cluster settings in kudurru.yaml
+differ from the cluster settings object`, which names them and says the
+process keeps the values it started with. This is a known gap of 0.2.0,
+and it applies to every cluster setting, not only the anchor keys. On
+static twins, put the managed anchor settings (`anchorMode: managed`,
 `dnssec: true`, `trustAnchors` and, if you use them, `rootHints`) and every
 other cluster setting you want into `kudurru.yaml` **before** that host's
 first 0.2 start; `managedTopology` is a host key and can also be declared

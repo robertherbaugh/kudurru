@@ -74,14 +74,17 @@ func TestServingReloadUsesPublishedCanonicalSettings(t *testing.T) {
 }
 
 // TestServingReloadLogsClusterSettingsOverTheFileAsInEffect starts the
-// operational watcher with a host file whose ratelimit.enabled differs from
-// the committed cluster settings object. The first pass applies the
-// object's value; it must say the file's value is not in effect and name the
-// value that is, not "settings applied" as if the file edit had taken
-// effect (D373). A later cluster change is logged as applied.
+// operational watcher with a host file whose ratelimit.enabled (hot) and
+// blocking.initStrategy (restart-required) differ from the committed cluster
+// settings object. The first pass applies the object's ratelimit.enabled; it
+// must say the file's value is not in effect and name the value that is, not
+// "settings applied" as if the file edit had taken effect (D373). It does not
+// reconfigure blocking.initStrategy, so it must log that key separately as
+// kept from startup and must not name the stored value as in effect. A later
+// cluster change is logged as applied.
 func TestServingReloadLogsClusterSettingsOverTheFileAsInEffect(t *testing.T) {
 	f := newServingCommandFixture(t)
-	write := func(enabled bool) {
+	write := func(enabled bool, strategy string) {
 		t.Helper()
 		response := httptest.NewRecorder()
 		f.http.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +94,12 @@ func TestServingReloadLogsClusterSettingsOverTheFileAsInEffect(t *testing.T) {
 				return
 			}
 			next.RateLimit.Enabled = enabled
-			if err := f.s.WriteSettings(r.Context(), next, []string{"ratelimit.enabled"}); err != nil {
+			changed := []string{"ratelimit.enabled"}
+			if strategy != "" {
+				next.Blocking.InitStrategy = strategy
+				changed = append(changed, "blocking.initStrategy")
+			}
+			if err := f.s.WriteSettings(r.Context(), next, changed); err != nil {
 				t.Error(err)
 				return
 			}
@@ -102,10 +110,10 @@ func TestServingReloadLogsClusterSettingsOverTheFileAsInEffect(t *testing.T) {
 		}
 		awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
 	}
-	if !f.s.opts.Config.RateLimit.Enabled {
-		t.Fatal("the fixture's host file must enable the rate limit")
+	if !f.s.opts.Config.RateLimit.Enabled || f.s.opts.Config.Blocking.InitStrategy != "fast" {
+		t.Fatal("the fixture's host file must enable the rate limit and load lists fast")
 	}
-	write(false)
+	write(false, "blocking")
 	initial, err := ingress.RateLimitFromConfig(f.s.opts.Config.RateLimit)
 	if err != nil {
 		t.Fatal(err)
@@ -131,12 +139,17 @@ func TestServingReloadLogsClusterSettingsOverTheFileAsInEffect(t *testing.T) {
 			t.Error("operational settings watcher did not join")
 		}
 	})
-	awaitServingRuntime(t, f.s, func() bool { return !limiter.Enabled() && strings.Contains(logs.String(), "not in effect") })
+	awaitServingRuntime(t, f.s, func() bool {
+		return !limiter.Enabled() && strings.Contains(logs.String(), "not in effect") && strings.Contains(logs.String(), "keeps the values it started with")
+	})
 	first := logs.String()
-	if strings.Contains(first, `"msg":"settings applied"`) || !strings.Contains(first, `"keys":["ratelimit.enabled"]`) || !strings.Contains(first, `"effective":{"ratelimit.enabled":false}`) {
+	if strings.Contains(first, `"msg":"settings applied"`) || !strings.Contains(first, `"keys":["ratelimit.enabled"],"effective":{"ratelimit.enabled":false}`) {
 		t.Fatalf("the first pass did not log the cluster value in effect:\n%s", first)
 	}
-	write(true)
+	if strings.Contains(first, "take effect after a restart") || !strings.Contains(first, `keeps the values it started with","keys":["blocking.initStrategy"]`) || strings.Contains(first, `"blocking.initStrategy":`) {
+		t.Fatalf("the first pass did not log the restart-required key as kept from startup, without a value:\n%s", first)
+	}
+	write(true, "")
 	awaitServingRuntime(t, f.s, func() bool { return limiter.Enabled() && strings.Contains(logs.String(), `"msg":"settings applied"`) })
 	if later := strings.TrimPrefix(logs.String(), first); strings.Contains(later, "not in effect") || !strings.Contains(later, `"keys":["ratelimit.enabled"]`) {
 		t.Fatalf("a later cluster change was not logged as applied:\n%s", later)

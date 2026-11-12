@@ -537,10 +537,13 @@ with the number of dynamic DNAMEs. On SQLite the leader controller checks the
 kept endpoints of each record set against the same index, read from the
 committed head through the committed primary status, and reports each
 colliding endpoint as a `Duplicated` conflict in the record set's own
-conditions, also when other endpoints of the set are served. Only zone-wide
-capacity bounds (a million records, 64 MiB of records, a 128 MiB aggregate)
-still refuse the zone as a whole; it then keeps its last commit. `TestCompilerWithholdsEveryRefusalOfThePrimaryRuntime`
-is the table of these checks.
+conditions, also when other endpoints of the set are served; a publication
+that changed neither the zone's record sets nor its committed head keeps
+the conflicts already found. Only zone-wide capacity bounds (a million
+records, 64 MiB of records, a 128 MiB aggregate) still refuse the zone as a
+whole; it then keeps its last commit.
+`TestCompilerWithholdsEveryRefusalOfThePrimaryRuntime` is the table of these
+checks.
 
 A block list source (URL or ConfigMap) for which no body was ever published
 is compiled empty: its first download has not finished (the URL may accept
@@ -2218,10 +2221,14 @@ start seeds `Kudurru/default` from `kudurru.yaml`, and a later start keeps
 the stored object. With the API guard refusing settings writes, a static
 twin therefore has no path to change a cluster setting after its first start
 in 0.2.0 (a known gap). The first operational reload after a start applies
-the stored object over the file's cluster keys and logs that as a warning,
-`cluster settings in kudurru.yaml are not in effect`, with the differing keys
-and the stored values in effect; later reloads of a real cluster change log
-`settings applied`. Host keys and file objects keep following the files.
+the stored object over the file's cluster keys. For the keys that reload
+without a restart it logs the warning `cluster settings in kudurru.yaml are
+not in effect`, with those keys and the stored scalar values now in effect.
+The restart-required keys are not reloaded: it logs them by name in a
+second warning (`... differ from the cluster settings object ...`) that says
+the process keeps the values it started with, and claims no value for them.
+Later reloads of a real cluster change log `settings applied`. Host keys
+and file objects keep following the files.
 
 ```mermaid
 flowchart LR

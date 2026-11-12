@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/netip"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -221,5 +222,34 @@ func TestUpstreamReloadIsAllOrNothing(t *testing.T) {
 	defer func() { _ = set.Close() }()
 	if rec.Config().DNSSEC || set.Recursor() != rec {
 		t.Fatal("a successful reload must apply the recursion settings")
+	}
+}
+
+// TestApplyReloadOverFileSeparatesRestartKeysAndLogsScalarValuesOnly runs
+// the first complete-serving pass (overFile) with a hot scalar key, a hot
+// map key and two restart-required keys. Only the hot keys were applied, so
+// only they are named as the stored values in effect, and only the scalar
+// one with its value. The restart-required keys are logged by name as kept
+// from startup, with no value claimed for them (D373).
+func TestApplyReloadOverFileSeparatesRestartKeysAndLogsScalarValuesOnly(t *testing.T) {
+	cfg, err := config.Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.RateLimit.Enabled = false
+	var logs syncBuffer
+	applyReload(t.Context(), reloadTargets{logger: slog.New(slog.NewJSONHandler(&logs, nil)), overFile: true, completeAuth: true},
+		cfg, []string{"ratelimit.enabled", "upstreams.groups", "blockPage.enabled", "blocking.initStrategy"})
+	got := logs.String()
+	if !strings.Contains(got, `are in effect","keys":["ratelimit.enabled","upstreams.groups"],"effective":{"ratelimit.enabled":false}}`) {
+		t.Errorf("the applied keys were not logged with their scalar values only:\n%s", got)
+	}
+	if !strings.Contains(got, `keeps the values it started with","keys":["blockPage.enabled","blocking.initStrategy"]}`) {
+		t.Errorf("the restart-required keys were not logged as kept from startup:\n%s", got)
+	}
+	for _, bad := range []string{`"blockPage.enabled":`, `"blocking.initStrategy":`, `"upstreams.groups":`, "settings applied", "take effect after a restart"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("the log contains %s:\n%s", bad, got)
+		}
 	}
 }

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log/slog"
-	"slices"
 	"strings"
 	"time"
 
@@ -201,21 +200,36 @@ func applyReload(ctx context.Context, t reloadTargets, next *config.Config, chan
 }
 
 // logOverFile reports the cluster keys whose kudurru.yaml value differs from
-// the cluster settings object, with the values in effect. After the first
-// start of a complete-serving node that object owns them (D373): a file edit
-// of a cluster key changes nothing, so "settings applied" would mislead.
-// Only public cluster keys reach here; none of them is a secret.
+// the cluster settings object. After the first start of a complete-serving
+// node that object owns them (D373): a file edit of a cluster key changes
+// nothing, so "settings applied" would mislead.
+//
+// The hot keys (applied) were just reconfigured to the stored value, so the
+// warning names that value as in effect. The restart-required keys were not
+// reconfigured: the components that read them at startup keep the value they
+// were built with, which this pass cannot name per key, so they are logged
+// by name only and without a claim about which value is in effect.
+//
+// Values are logged for scalar keys only. List and object values (bindings,
+// identity providers, sinks, upstream groups) are left to `kudurru settings
+// get` and GET /api/v1/settings, the way the neighboring lines log key names.
 func logOverFile(log *slog.Logger, next *config.Config, applied, restart []string) {
-	if len(applied) == 0 && len(restart) == 0 {
-		return
+	if len(applied) > 0 {
+		flat := config.Flatten(next)
+		effective := make(map[string]any, len(applied))
+		for _, p := range applied {
+			switch v := flat[p].(type) {
+			case string, bool, float64:
+				effective[p] = v
+			}
+		}
+		log.Warn("cluster settings in kudurru.yaml are not in effect: the cluster settings object (Kudurru/default) owns them after the first start, and its values are in effect",
+			"keys", applied, "effective", effective)
 	}
-	flat := config.Flatten(next)
-	effective := make(map[string]any, len(applied)+len(restart))
-	for _, p := range append(slices.Clone(applied), restart...) {
-		effective[p] = flat[p]
+	if len(restart) > 0 {
+		log.Warn("cluster settings in kudurru.yaml differ from the cluster settings object (Kudurru/default), which owns them after the first start; they are read at startup, so this process does not reload them and keeps the values it started with",
+			"keys", restart)
 	}
-	log.Warn("cluster settings in kudurru.yaml are not in effect: the cluster settings object (Kudurru/default) owns them after the first start, and its values are in effect",
-		"keys", append(slices.Clone(applied), restart...), "effective", effective)
 }
 
 // parseLevel maps log.level (its first element: "info,dns=debug") onto a
