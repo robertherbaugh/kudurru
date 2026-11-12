@@ -260,13 +260,7 @@ func (o *anchorOperation) stageLocal(next *anchorCursor) error {
 	if o.localTx == nil {
 		return ErrAnchorUnavailable
 	}
-	var local *anchorLocal
-	var err error
-	if o.adoption {
-		local, err = anchorLocalForAdoption(old, o.before, next, o.member)
-	} else {
-		local, err = anchorLocalForOwner(old, next, o.member)
-	}
+	local, err := o.localPostimage(next)
 	if err != nil {
 		return err
 	}
@@ -276,6 +270,15 @@ func (o *anchorOperation) stageLocal(next *anchorCursor) error {
 	next.local = local
 	o.localChanged = !sameAnchorLocal(old, local)
 	return nil
+}
+
+// localPostimage is the bounded pure carrier postimage for next. It reads and
+// writes nothing; stageLocal compares and swaps the result.
+func (o *anchorOperation) localPostimage(next *anchorCursor) (*anchorLocal, error) {
+	if o.adoption {
+		return anchorLocalForAdoption(o.before.local, o.before, next, o.member)
+	}
+	return anchorLocalForOwner(o.before.local, next, o.member)
 }
 
 // restoreAnchorGate loads only the validated committed cut. It creates no read

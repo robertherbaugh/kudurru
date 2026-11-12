@@ -1036,6 +1036,8 @@ func TestAnchorRecheckRevocationVerifiedWhileAdoptionCommits(t *testing.T) {
 	anchorHistoryPoll(t, successor, root, false)
 	if err := anchorHistoryInstall(t, member, successor); !errors.Is(err, accepted.ErrCAS) {
 		t.Fatalf("a successor that omits a locally denied key: got %v, want %v", err, accepted.ErrCAS)
+	} else if refusal := (*AnchorRefusal)(nil); !errors.As(err, &refusal) || refusal.Reason != AnchorRefusedCarriedRevocation || !slices.Equal(refusal.Keys, []string{key}) {
+		t.Fatalf("a successor that omits a locally denied key is not classified: got %v, want %s naming %s", err, AnchorRefusedCarriedRevocation, key)
 	}
 	anchorRecheckRetired(t, member)
 	anchorHistoryPoll(t, successor, root, true)
