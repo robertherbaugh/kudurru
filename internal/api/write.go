@@ -181,6 +181,29 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult
 	} else if req.ifMatch != "" {
 		return writeResult{}, errPrecondition(req.ifMatch, "")
 	}
+	zone, _ := existing.(*v1alpha1.DNSZone)
+	groupChange := zone != nil && zoneGroupChanged(u.Object, zone)
+	if zone != nil {
+		// The zone-group rule (D385) is decided on this read, the one the
+		// write below is compare-and-swapped against, not on the caller's
+		// earlier read: a label removed in between cannot be put back by a
+		// member of the group it left.
+		sc := rbac.Scope{Kind: rbac.ScopeZone, Name: zone.Name}
+		if groupChange {
+			sc = clusterScope
+		}
+		if err := s.requireGroup(ctx, k.resource, "write", sc, zone.Name, storedZoneGroup(zone)); err != nil {
+			return writeResult{}, err
+		}
+		if groupChange {
+			// The document decides the label. Server-side apply keeps a label
+			// another field manager (kubectl, a GitOps tool) also owns when
+			// the document omits it, so a removal would answer success and
+			// leave the zone in its group. The write takes the zone over as
+			// a whole-object PUT, as for a bootstrap default.
+			force = true
+		}
+	}
 
 	var old *unstructured.Unstructured
 	if existing != nil {
@@ -222,8 +245,20 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult
 		opts.ExpectedResourceVersion = existing.GetResourceVersion()
 	}
 	written, err := s.opts.Store.Apply(ctx, obj, opts)
+	if zone != nil {
+		stateFrom(ctx).forgetZoneGroup(zone.Name)
+	}
 	if err != nil {
 		return writeResult{}, storeError(err)
+	}
+	if groupChange {
+		want, _ := nestedString(u.Object, "metadata", "labels", v1alpha1.ZoneGroupLabel)
+		got := written.GetLabels()[v1alpha1.ZoneGroupLabel]
+		if got != want {
+			return writeResult{}, newError(http.StatusConflict, KeyConflict,
+				fmt.Sprintf("%s was written but its %s label is %q, not %q: another writer keeps it", key, v1alpha1.ZoneGroupLabel, got, want),
+				"change the label where it is managed (kubectl or the GitOps source), then read the zone again")
+		}
 	}
 	res := ResultUpdated
 	if existing == nil {

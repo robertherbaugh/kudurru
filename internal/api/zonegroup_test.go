@@ -2,12 +2,16 @@ package api
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"slices"
+	"sync"
 	"testing"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api/apitest"
+	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -141,4 +145,178 @@ func TestMeZoneGroupScopedPermissions(t *testing.T) {
 	if !slices.Contains(me.ScopedPermissions["zone:example"]["records"], "write") || len(me.ScopedPermissions) != 1 {
 		t.Fatalf("zone grant: scoped=%v", me.ScopedPermissions)
 	}
+}
+
+// zoneGetHook is a store whose DNSZone reads can be observed, delayed into
+// an interleaving or failed, for the zone-group tests below.
+type zoneGetHook struct {
+	store.Store
+	mu     sync.Mutex
+	reads  map[string]int
+	before func(name string, n int) error
+}
+
+func (z *zoneGetHook) Get(ctx context.Context, key store.Key, into store.Object) error {
+	if key.Kind == "DNSZone" {
+		z.mu.Lock()
+		if z.reads == nil {
+			z.reads = map[string]int{}
+		}
+		z.reads[key.Name]++
+		n, before := z.reads[key.Name], z.before
+		z.mu.Unlock()
+		if before != nil {
+			if err := before(key.Name, n); err != nil {
+				return err
+			}
+		}
+	}
+	return z.Store.Get(ctx, key, into)
+}
+
+func (z *zoneGetHook) reset(before func(name string, n int) error) {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	z.reads, z.before = nil, before
+}
+
+func (z *zoneGetHook) total() int {
+	z.mu.Lock()
+	defer z.mu.Unlock()
+	n := 0
+	for _, c := range z.reads {
+		n += c
+	}
+	return n
+}
+
+func zoneGroupBindings() []rbac.Binding {
+	return append(apitest.StandardBindings(), rbac.Binding{Role: "zone-admin", Scope: rbac.Scope{Kind: rbac.ScopeZoneGroup, Name: "prod"}, Subjects: []rbac.Subject{{Kind: rbac.SubjectUser, Name: "grouper"}}})
+}
+
+// TestZoneGroupLabelRuleBindsToTheWrittenRead: the cluster-scope rule for
+// relabeling is decided on the read the write is compare-and-swapped
+// against (D385). Whichever DNSZone read of a group member's PUT the
+// administrator's label removal lands before, the PUT that still carries
+// the label never puts it back: it is refused, and the zone stays out of
+// the group.
+func TestZoneGroupLabelRuleBindsToTheWrittenRead(t *testing.T) {
+	hook := &zoneGetHook{}
+	h := newHarness(t, func(o *Options) {
+		hook.Store = o.Store
+		o.Store = hook
+		o.Authorizer = apitest.Authorizer(zoneGroupBindings()...)
+	})
+	edit := groupZoneDoc("b", "b.example.", "prod")
+	edit["spec"].(map[string]any)["defaultTTL"] = 120
+	for at := 1; ; at++ {
+		hook.reset(nil)
+		h.seed("api", groupZone("b", "b.example.", "prod"))
+		fired := false
+		hook.reset(func(name string, n int) error {
+			if name == "b" && n == at {
+				fired = true
+				var z v1alpha1.DNSZone
+				if err := h.st.Get(context.Background(), store.Key{Kind: "DNSZone", Name: "b"}, &z); err != nil {
+					return err
+				}
+				delete(z.Labels, v1alpha1.ZoneGroupLabel)
+				if _, err := h.st.Apply(context.Background(), &z, store.ApplyOptions{Manager: "api"}); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		r := h.do(http.MethodPut, "/api/v1/objects/dnszones/b", "grouper", edit)
+		hook.reset(nil)
+		if !fired {
+			if at == 1 {
+				t.Fatal("the PUT read zone b no time")
+			}
+			break
+		}
+		var z v1alpha1.DNSZone
+		if err := h.st.Get(t.Context(), store.Key{Kind: "DNSZone", Name: "b"}, &z); err != nil {
+			t.Fatal(err)
+		}
+		if g := v1alpha1.ZoneGroupOf(&z); g != "" || r.Code != http.StatusForbidden {
+			t.Fatalf("label removed before read %d of the PUT: HTTP %d, zone b in group %q: %s", at, r.Code, g, r.Body.String())
+		}
+	}
+}
+
+// TestZoneGroupResolutionReadsEachZoneOnce: resolving zone groups costs no
+// store read for a principal that is already allowed, none for a zone list
+// (decided on the listed objects) and one per distinct zone for a record
+// set list or GET /auth/me, not one per item or per verb (D385).
+func TestZoneGroupResolutionReadsEachZoneOnce(t *testing.T) {
+	hook := &zoneGetHook{}
+	h := newHarness(t, func(o *Options) {
+		hook.Store = o.Store
+		o.Store = hook
+		o.Authorizer = apitest.Authorizer(zoneGroupBindings()...)
+		o.Roles = func(context.Context, auth.Principal) []string { return []string{"zone-admin@zone:example"} }
+	})
+	h.seed("api", groupZone("a", "a.example.", "prod"), groupZone("c", "c.example.", ""), groupZone("example", "example.com.", ""))
+	var seeded []store.Object
+	for i := range 40 {
+		seeded = append(seeded, recordSetObj("dns", fmt.Sprintf("a-%d", i), "a", ep("www.a.example", "A", "192.0.2.1")), recordSetObj("dns", fmt.Sprintf("c-%d", i), "c", ep("www.c.example", "A", "192.0.2.3")))
+	}
+	h.seed("api", seeded...)
+
+	hook.reset(nil)
+	var sets ObjectList
+	h.do(http.MethodGet, "/api/v1/objects/dnsrecordsets", "grouper", nil).want(http.StatusOK).json(&sets)
+	if len(sets.Items) != 40 {
+		t.Fatalf("group member lists %d record sets, want the 40 of zone a", len(sets.Items))
+	}
+	if n := hook.total(); n > 2 {
+		t.Fatalf("record set list read DNSZones %d times, want at most one per zone (2)", n)
+	}
+	hook.reset(nil)
+	h.do(http.MethodGet, "/api/v1/zones", "grouper", nil).want(http.StatusOK)
+	h.do(http.MethodGet, "/api/v1/objects/dnszones", "grouper", nil).want(http.StatusOK)
+	if n := hook.total(); n != 0 {
+		t.Fatalf("zone lists read DNSZones %d times, want 0", n)
+	}
+	hook.reset(nil)
+	h.do(http.MethodGet, "/api/v1/objects/dnsrecordsets", "admin", nil).want(http.StatusOK)
+	h.do(http.MethodGet, "/api/v1/zones/a", "admin", nil).want(http.StatusOK)
+	if n := hook.total(); n > 1 {
+		t.Fatalf("administrator reads read DNSZones %d times, want only the handler's read of a", n)
+	}
+	hook.reset(nil)
+	h.do(http.MethodGet, "/api/v1/auth/me", "zoneadmin", nil).want(http.StatusOK)
+	if n := hook.total(); n > 1 {
+		t.Fatalf("GET /auth/me with one zone grant read DNSZones %d times, want at most 1", n)
+	}
+}
+
+// TestZoneGroupUnreadableZoneIsUnavailable: a zone whose group cannot be
+// read answers 503 like an unavailable authorizer, not an audited 403
+// (D385); an absent zone is still in no group.
+func TestZoneGroupUnreadableZoneIsUnavailable(t *testing.T) {
+	hook := &zoneGetHook{}
+	h := newHarness(t, func(o *Options) {
+		hook.Store = o.Store
+		o.Store = hook
+		o.Authorizer = apitest.Authorizer(zoneGroupBindings()...)
+	})
+	h.seed("api", groupZone("a", "a.example.", "prod"))
+	hook.reset(func(name string, n int) error {
+		if name == "a" && n == 1 {
+			return errors.New("apiserver unavailable")
+		}
+		return nil
+	})
+	before := len(h.audit.Events())
+	h.do(http.MethodGet, "/api/v1/zones/a", "grouper", nil).want(http.StatusServiceUnavailable)
+	for _, ev := range h.audit.Events()[before:] {
+		if ev.Result == audit.ResultDenied {
+			t.Fatalf("an unreadable zone group was audited as a denial: %+v", ev)
+		}
+	}
+	hook.reset(nil)
+	h.do(http.MethodGet, "/api/v1/zones/a", "grouper", nil).want(http.StatusOK)
+	h.do(http.MethodGet, "/api/v1/zones/missing", "grouper", nil).want(http.StatusForbidden)
 }

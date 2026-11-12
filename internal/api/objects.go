@@ -14,6 +14,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -307,6 +308,10 @@ func (s *Server) listObjects(ctx context.Context, in *listObjectsInput) (*object
 	}
 	items := make([]Object, 0, len(page.Items))
 	for _, obj := range page.Items {
+		if z, ok := obj.(*v1alpha1.DNSZone); ok {
+			// Decide each listed zone on the object shown (D385).
+			stateFrom(ctx).noteZoneGroup(z.Name, v1alpha1.ZoneGroupOf(z))
+		}
 		if !st.clusterAllowed && !s.allowed(ctx, k.resource, "read", objectScope(k, obj)) {
 			continue
 		}

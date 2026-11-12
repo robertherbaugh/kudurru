@@ -208,6 +208,7 @@ func (s *Server) listCapturedZones(ctx context.Context) (*zoneListOutput, error)
 		return nil, capturedZoneError(err)
 	}
 	st := stateFrom(ctx)
+	noteZoneGroups(ctx, objects.Zones())
 	items := make([]ZoneSummary, 0, len(objects.Zones()))
 	for _, z := range objects.Zones() {
 		if !st.clusterAllowed && !s.allowed(ctx, "zones", "read", rbac.Scope{Kind: rbac.ScopeZone, Name: z.Name}) {
@@ -478,6 +479,7 @@ func (s *Server) listZones(ctx context.Context, _ *struct{}) (*zoneListOutput, e
 		}
 	}
 	st := stateFrom(ctx)
+	noteZoneGroups(ctx, zones)
 	items := make([]ZoneSummary, 0, len(zones))
 	for _, z := range zones {
 		if !st.clusterAllowed && !s.allowed(ctx, "zones", "read", rbac.Scope{Kind: rbac.ScopeZone, Name: z.Name}) {

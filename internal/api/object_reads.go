@@ -13,6 +13,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
@@ -105,6 +106,9 @@ func (s *Server) listCapturedObjects(ctx context.Context, k kindInfo, in *listOb
 		}
 		// Apply authorization before either page boundaries or cursor keys. In
 		// particular, records use the captured spec.zoneRef, never a live one.
+		if z, ok := obj.(*v1alpha1.DNSZone); ok {
+			stateFrom(ctx).noteZoneGroup(z.Name, v1alpha1.ZoneGroupOf(z))
+		}
 		if !stateFrom(ctx).clusterAllowed && !s.allowed(ctx, k.resource, "read", objectScope(k, obj)) {
 			continue
 		}

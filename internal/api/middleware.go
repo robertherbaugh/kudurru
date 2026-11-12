@@ -14,6 +14,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -47,6 +48,38 @@ type reqState struct {
 	method    string
 	path      string
 	userAgent string
+	// zoneGroups holds the zone group of each zone this request resolved
+	// for an authorization decision or read in a zone list (D385), so a
+	// list filter or GET /auth/me reads each zone at most once.
+	zoneGroupMu sync.Mutex
+	zoneGroups  map[string]string
+}
+
+// knownZoneGroup returns the zone group this request recorded for zone.
+func (st *reqState) knownZoneGroup(zone string) (string, bool) {
+	st.zoneGroupMu.Lock()
+	defer st.zoneGroupMu.Unlock()
+	group, ok := st.zoneGroups[zone]
+	return group, ok
+}
+
+// noteZoneGroup records the zone group of zone as this request read it;
+// an empty group records that the zone is in none.
+func (st *reqState) noteZoneGroup(zone, group string) {
+	st.zoneGroupMu.Lock()
+	defer st.zoneGroupMu.Unlock()
+	if st.zoneGroups == nil {
+		st.zoneGroups = map[string]string{}
+	}
+	st.zoneGroups[zone] = group
+}
+
+// forgetZoneGroup drops what this request recorded for zone, after the
+// request itself wrote the zone.
+func (st *reqState) forgetZoneGroup(zone string) {
+	st.zoneGroupMu.Lock()
+	defer st.zoneGroupMu.Unlock()
+	delete(st.zoneGroups, zone)
 }
 
 type stateKey struct{}

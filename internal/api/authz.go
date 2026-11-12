@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -111,6 +113,25 @@ func (s *Server) actorMW(next http.Handler) http.Handler {
 
 // authorize asks the authorizer; a nil authorizer denies.
 func (s *Server) authorize(ctx context.Context, p auth.Principal, resource, verb string, sc rbac.Scope, name string) (rbac.Decision, error) {
+	return s.authorizeGroup(ctx, p, resource, verb, sc, name, s.zoneGroup)
+}
+
+// zoneGroupResolver states the zone group of the zone named name: "" for a
+// zone in no group or an absent zone, an error when it cannot be read.
+type zoneGroupResolver func(ctx context.Context, name string) (string, error)
+
+// storedZoneGroup is the resolver of a caller that holds the zone it
+// authorizes for: the group of that read, never another one.
+func storedZoneGroup(z *v1alpha1.DNSZone) zoneGroupResolver {
+	return func(context.Context, string) (string, error) { return v1alpha1.ZoneGroupOf(z), nil }
+}
+
+// authorizeGroup asks the authorizer with the zone group of a zone scope
+// taken from resolve (D385). The group is resolved only when the decision
+// without it is a denial: Scope.Admits only adds what a zonegroup scope
+// covers, so a grant without the group is a grant with it, and principals
+// whose cluster or zone bindings already allow never cost a zone read.
+func (s *Server) authorizeGroup(ctx context.Context, p auth.Principal, resource, verb string, sc rbac.Scope, name string, resolve zoneGroupResolver) (rbac.Decision, error) {
 	if p.Kind == auth.KindLocalRoot {
 		return rbac.Decision{Allowed: true, Path: "local"}, nil
 	}
@@ -118,45 +139,77 @@ func (s *Server) authorize(ctx context.Context, p auth.Principal, resource, verb
 	if s.opts.Authorizer == nil {
 		return rbac.Decision{Path: "none", Missing: &a, Reason: "no authorizer configured"}, nil
 	}
-	if sc.Kind == rbac.ScopeZone {
-		a.ZoneGroup = s.zoneGroup(ctx, sc.Name)
+	principal := rbacPrincipal(p)
+	dec, err := s.opts.Authorizer.Authorize(ctx, principal, a)
+	if err != nil || dec.Allowed || sc.Kind != rbac.ScopeZone || sc.Name == "" {
+		return dec, err
 	}
-	return s.opts.Authorizer.Authorize(ctx, rbacPrincipal(p), a)
+	group, err := resolve(ctx, sc.Name)
+	if err != nil {
+		return rbac.Decision{}, err
+	}
+	if group == "" {
+		return dec, nil
+	}
+	a.ZoneGroup = group
+	return s.opts.Authorizer.Authorize(ctx, principal, a)
 }
 
 // zoneGroup resolves the zone group of the DNSZone named name for one
 // authorization decision (D385): from this request's captured publication
 // when the runtime serves captured zone reads (the same cut the handler then
-// reads), otherwise from the store. A zone that is absent or cannot be read
-// is in no group, so a zonegroup binding grants nothing for it; zone and
-// cluster bindings do not depend on it. A command transaction resolves the
-// group again from its own read and ignores this value.
-func (s *Server) zoneGroup(ctx context.Context, name string) string {
-	if name == "" {
-		return ""
+// reads), otherwise from the store. The result is kept for the rest of the
+// request, so a list filter or GET /auth/me reads each zone once. An absent
+// zone is in no group, so a zonegroup binding grants nothing for it; a zone
+// that cannot be read is an error (the caller answers 503, not a denial).
+// Zone and cluster bindings do not depend on it. A command transaction
+// resolves the group again from its own read and ignores this value.
+func (s *Server) zoneGroup(ctx context.Context, name string) (string, error) {
+	st := stateFrom(ctx)
+	if group, ok := st.knownZoneGroup(name); ok {
+		return group, nil
 	}
-	if s.opts.ZoneReads != nil {
+	group := ""
+	switch {
+	case s.opts.ZoneReads != nil:
 		objects, err := s.opts.ZoneReads.ZoneObjects(ctx)
 		if err != nil {
-			return ""
+			return "", fmt.Errorf("zone group of %s: %w", name, err)
 		}
 		z, _ := objects.Zone(name)
-		return v1alpha1.ZoneGroupOf(z)
+		group = v1alpha1.ZoneGroupOf(z)
+	case s.opts.Store != nil:
+		var z v1alpha1.DNSZone
+		if err := s.opts.Store.Get(ctx, store.Key{Kind: "DNSZone", Name: name}, &z); err == nil {
+			group = v1alpha1.ZoneGroupOf(&z)
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return "", fmt.Errorf("zone group of %s: %w", name, err)
+		}
 	}
-	if s.opts.Store == nil {
-		return ""
+	st.noteZoneGroup(name, group)
+	return group, nil
+}
+
+// noteZoneGroups records the zone group of each listed zone for this
+// request, so the list filter decides each zone on the object it shows
+// instead of reading it again.
+func noteZoneGroups(ctx context.Context, zones []*v1alpha1.DNSZone) {
+	st := stateFrom(ctx)
+	for _, z := range zones {
+		st.noteZoneGroup(z.Name, v1alpha1.ZoneGroupOf(z))
 	}
-	var z v1alpha1.DNSZone
-	if err := s.opts.Store.Get(ctx, store.Key{Kind: "DNSZone", Name: name}, &z); err != nil {
-		return ""
-	}
-	return v1alpha1.ZoneGroupOf(&z)
 }
 
 // require authorizes resource.verb at sc for the request principal and
 // returns a 401/403 envelope error when it is not allowed. Handlers of
 // scopable routes call it per object.
 func (s *Server) require(ctx context.Context, resource, verb string, sc rbac.Scope, name string) error {
+	return s.requireGroup(ctx, resource, verb, sc, name, s.zoneGroup)
+}
+
+// requireGroup is require with the zone group of a zone scope taken from
+// resolve.
+func (s *Server) requireGroup(ctx context.Context, resource, verb string, sc rbac.Scope, name string, resolve zoneGroupResolver) error {
 	p, ok := auth.PrincipalFrom(ctx)
 	if !ok {
 		return errUnauthenticated()
@@ -165,7 +218,7 @@ func (s *Server) require(ctx context.Context, resource, verb string, sc rbac.Sco
 	if st.clusterAllowed && st.allowedResource == resource && st.allowedVerb == verb {
 		return nil
 	}
-	dec, err := s.authorize(ctx, p, resource, verb, sc, name)
+	dec, err := s.authorizeGroup(ctx, p, resource, verb, sc, name, resolve)
 	if _, current := auth.PrincipalFrom(ctx); !current {
 		return errUnauthenticated()
 	}
