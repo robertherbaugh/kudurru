@@ -345,6 +345,24 @@ func TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation(t *testing.T) {
 			}
 		})
 	}
+	// A resolution that asked an authority and then lost its native cache
+	// admission (for example to an anchor retirement) carries contact
+	// evidence and is in the retained class (D377,
+	// TestFailureUpstreamContacted "native cache admission refused after
+	// asking"). The retained class still requires the anchor input at emit:
+	// bound before the managed acceptance below, it is refused after it.
+	contactedRefusal, err := captureRootAnchorOutput(&pipeline.Request{Ctx: ctx, Msg: query, Serving: req.Serving})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refusal := new(dns.Msg)
+	refusal.SetRcode(query, dns.RcodeServerFailure)
+	if err := contactedRefusal.(*rootAnchorOutput).BindResponse(&pipeline.Response{Msg: refusal, Origin: pipeline.OriginUnknown, Status: pipeline.StatusServfailUpstream, UpstreamContacted: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !contactedRefusal.(*rootAnchorOutput).retainedDNS {
+		t.Fatal("a contacted failure was not in the retained class")
+	}
 	// Actual first Managed acceptance still retires all old static output and
 	// cache attempts; permitting a skipped cache insertion grants no fallback.
 	retired, err := captureRootAnchorInsertion(req)
@@ -353,6 +371,9 @@ func TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation(t *testing.T) {
 	}
 	if err := captureOutputBootstrap(ctx, t, f)(); err != nil {
 		t.Fatal(err)
+	}
+	if err := contactedRefusal.Emit(func() error { t.Fatal("retired anchor emitted a contacted failure"); return nil }); err == nil {
+		t.Fatal("a contacted failure outlived the anchor retirement")
 	}
 	if err := retired.Apply(func() error { t.Fatal("retired anchor mutated cache"); return nil }); err == nil {
 		t.Fatal("managed acceptance treated as an ordinary data commit")

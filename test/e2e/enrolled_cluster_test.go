@@ -617,18 +617,61 @@ func testEnrolledProcesses(t *testing.T, promote bool) {
 			awaitDNS(primary, names[last], fmt.Sprintf("198.51.100.%d", last%250+1), dns.RcodeSuccess)
 			awaitDNS(follower, names[last], fmt.Sprintf("198.51.100.%d", last%250+1), dns.RcodeSuccess)
 		}
-		// The refused documents were neither applied nor replayed: the node
-		// answers the last committed one and still none of the refused ones.
+		// Every refused document was neither applied nor replayed. Both nodes
+		// list exactly the committed documents of this file (the one at the
+		// cut only if its outcome is unknown and it did land), and answer
+		// NXDOMAIN for every refused one. The check runs again after more
+		// than one further pull of the follower, so a document that was
+		// sent again later would show up there.
 		enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
-		for _, i := range []int{committed + 1, size - 1} {
-			if i < size {
+		awaitDNS(follower, "seed", "192.0.2.42", dns.RcodeSuccess)
+		boundaryUnknown := applied.Items[committed].ErrorKey == "completion_unknown"
+		refusedNotApplied := func(pass string) {
+			t.Helper()
+			for _, c := range []struct {
+				name   string
+				client *staticProcessClient
+			}{{"primary", apiA}, {"follower", apiB}} {
+				var listed api.List[struct {
+					Metadata struct {
+						Name string `json:"name"`
+					} `json:"metadata"`
+				}]
+				c.client.request(t, http.MethodGet, "/objects/dnsrecordsets?limit=1000", nil, http.StatusOK, &listed)
+				if listed.Continue != "" {
+					t.Fatalf("%s: the record sets do not fit in one list page", c.name)
+				}
+				present := map[string]bool{}
+				for _, item := range listed.Items {
+					present[item.Metadata.Name] = true
+				}
+				for i, name := range names {
+					switch {
+					case i < committed && !present[name]:
+						t.Fatalf("%s %s: committed document %d of %d before the cut is missing", pass, c.name, i, size)
+					case i == committed && present[name] && !boundaryUnknown:
+						t.Fatalf("%s %s: document %d at the cut was refused as unavailable but applied", pass, c.name, i)
+					case i > committed && present[name]:
+						t.Fatalf("%s %s: document %d of %d, refused after the cut at %d, was applied", pass, c.name, i, size, committed)
+					}
+				}
+			}
+			for i := committed; i < size; i++ {
+				if i == committed && boundaryUnknown {
+					continue
+				}
 				for _, node := range []*kudurrutest.Node{primary, follower} {
 					if !checkDNS(node, names[i], "", dns.RcodeNameError) {
-						t.Fatalf("document %d, refused after the cut at %d, was applied on %s", i, committed, node.Name)
+						t.Fatalf("%s: document %d, refused after the cut at %d, is answered on %s", pass, i, committed, node.Name)
 					}
 				}
 			}
 		}
+		refusedNotApplied("after the request")
+		time.Sleep(6 * time.Second) // more than one follower pull (five seconds by default)
+		enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
+		refusedNotApplied("after another pull")
+		t.Logf("all %d refused documents of %d were checked on both nodes, twice", size-committed, size)
 		break
 	}
 	if !cut {

@@ -162,6 +162,24 @@ func (s endingNativeSource) Capture(context.Context) (recursor.CacheMutation, er
 	return nil, errors.New("retired source")
 }
 
+// lateRefusingNativeSource admits its first cache attempt and refuses every
+// later one, as a source whose admission is withdrawn mid-resolution (for
+// example a retired anchor) does.
+type lateRefusingNativeSource struct{ captured int }
+
+func (*lateRefusingNativeSource) Domain() [32]byte { return [32]byte{} }
+func (s *lateRefusingNativeSource) Capture(context.Context) (recursor.CacheMutation, error) {
+	s.captured++
+	if s.captured > 1 {
+		return nil, errors.New("retired source")
+	}
+	return retainedMutation{}, nil
+}
+
+type retainedMutation struct{}
+
+func (retainedMutation) Apply(fn func() error) error { return fn() }
+
 // TestFailureUpstreamContacted: only a failure of an exchange that asked a
 // server carries UpstreamContacted (D377). Refusals the stage produces before
 // any server is asked carry the same status without it.
@@ -273,6 +291,36 @@ func TestFailureUpstreamContacted(t *testing.T) {
 			t.Cleanup(func() { _ = set.Close() })
 			stage := NewStage(set)
 			stage.CaptureNative = func(*pipeline.Request) (recursor.CacheMutationSource, error) { return expiringNativeSource{}, nil }
+			return stage, asked
+		}, 3 * time.Second, true},
+		// The node withdrew the native cache admission after an authority
+		// had been asked: the resolution ran, so the failure carries contact
+		// evidence (D377). Whether it may still be sent is decided at output,
+		// which requires the query's DNS dependencies and anchor input
+		// (TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation).
+		{"native cache admission refused after asking", func(t *testing.T, _ context.CancelFunc) (*Stage, *int) {
+			cfg := recursor.DefaultConfig()
+			cfg.DNSSEC = false
+			cfg.IPv6 = recursor.IPv6Off
+			cfg.RootHints = []string{"10.0.0.1:53"}
+			asked := new(int)
+			r, err := recursor.New(cfg, recursor.Options{RequireCacheMutations: true, Exchanger: stageNativeExchange{func() { *asked++ }}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			set, err := upstreamset.New(upstreamset.Config{Groups: map[string]upstreamset.GroupConfig{"default": {Recursive: true}}, Recursion: cfg}, upstreamset.Options{Recursor: r})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = set.Close() })
+			stage := NewStage(set)
+			source := &lateRefusingNativeSource{}
+			stage.CaptureNative = func(*pipeline.Request) (recursor.CacheMutationSource, error) { return source, nil }
+			t.Cleanup(func() {
+				if source.captured < 2 {
+					t.Error("the source was never refused after its first admission", source.captured)
+				}
+			})
 			return stage, asked
 		}, 3 * time.Second, true},
 		// The node refused the native cache admission just as the query

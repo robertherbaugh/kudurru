@@ -339,7 +339,7 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	long := writeManifest(t, "long.yaml", documents...)
 
 	var mu sync.Mutex
-	var answered, read, failedRead []time.Time
+	var answered, servfail, read, failedRead []time.Time
 	var readError string
 	stop := make(chan struct{})
 	var probes sync.WaitGroup
@@ -354,6 +354,11 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 			query := new(dns.Msg)
 			query.SetQuestion("probe.multi.test.", dns.TypeA)
 			answer, _, err := client.Exchange(query, cfg.Listeners.DNS[0].Address)
+			if err == nil && answer.Rcode == dns.RcodeServerFailure {
+				mu.Lock()
+				servfail = append(servfail, time.Now())
+				mu.Unlock()
+			}
 			if err == nil && answer.Rcode == dns.RcodeSuccess && len(answer.Answer) == 1 {
 				if rr, ok := answer.Answer[0].(*dns.A); ok && rr.A.String() == "198.51.100.200" {
 					mu.Lock()
@@ -398,7 +403,7 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 		return in
 	}
 	mu.Lock()
-	answers, reads, failed := within(answered), within(read), len(within(failedRead))
+	answers, servfails, reads, failed := within(answered), len(within(servfail)), within(read), len(within(failedRead))
 	mu.Unlock()
 	edges := append(append([]time.Time{began}, answers...), ended)
 	slices.SortFunc(edges, func(a, b time.Time) int { return a.Compare(b) })
@@ -406,7 +411,17 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	for i := 1; i < len(edges); i++ {
 		gap = max(gap, edges[i].Sub(edges[i-1]))
 	}
-	t.Logf("apply of %d documents took %s: %d correct DNS answers, longest time without one %s, %d reads ok, %d reads failed", count, ended.Sub(began), len(answers), gap, len(reads), failed)
+	t.Logf("apply of %d documents took %s: %d correct DNS answers, %d SERVFAIL, longest time without one %s, %d reads ok, %d reads failed", count, ended.Sub(began), len(answers), servfails, gap, len(reads), failed)
+	// The zone answers its committed data across every status write of a new
+	// serial that follows each commit (D378 and the status-write row): a
+	// publication that lands while the zone's lifecycle receipt still names
+	// the DNSZone's previous resourceVersion serves the same head. Before
+	// that, such a publication answered the zone SERVFAIL until the
+	// lifecycle caught up, for up to 0.8 s, which left the gap bound below
+	// with little margin.
+	if servfails != 0 {
+		t.Fatalf("the zone answered SERVFAIL %d times for an existing record during one request", servfails)
+	}
 	// DNS answers the served publication throughout (D378): a commit that is
 	// not published yet, and a replaced provider resource set, withhold
 	// nothing. The probe asks every 50 ms with a 200 ms timeout.
