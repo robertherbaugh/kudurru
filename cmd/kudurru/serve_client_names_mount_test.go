@@ -34,14 +34,22 @@ func TestRunServeSQLiteReversePTRPolicy(t *testing.T) {
 		a.SetReply(q)
 		switch q.Question[0].Qtype {
 		case dns.TypePTR:
-			requests.Add(1)
 			if negative.Load() {
+				// The reacquisition answer arrives late, so an observation
+				// that reads the counter at the first unblocked answer
+				// (which an expired name gives at once, before any lookup)
+				// always sees it unsent. It stays inside the resolver's
+				// timeout, so the negative answer itself is admitted.
+				time.Sleep(250 * time.Millisecond)
 				a.Rcode = dns.RcodeNameError
 			} else {
 				a.Answer = []dns.RR{&dns.PTR{Hdr: dns.RR_Header{Name: q.Question[0].Name, Rrtype: dns.TypePTR, Class: dns.ClassINET, Ttl: 1}, Ptr: "phone.ptr.lan."}}
 			}
 		case dns.TypeA:
 			a.Answer = []dns.RR{&dns.A{Hdr: dns.RR_Header{Name: q.Question[0].Name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 0}, A: net.IPv4(192, 0, 2, 90)}}
+		}
+		if q.Question[0].Qtype == dns.TypePTR {
+			requests.Add(1)
 		}
 		_ = w.WriteMsg(a)
 	})}
@@ -145,10 +153,18 @@ func TestRunServeSQLiteReversePTRPolicy(t *testing.T) {
 		t.Fatal("mounted identification did not acquire reverse DNS")
 	}
 	negative.Store(true)
+	// An expired name is never served stale: the first query after expiry
+	// is answered unblocked at once and only queues the background lookup.
+	// So the unblocked answer alone does not show a reacquisition; observe
+	// the lookup reaching the PTR server, then require the negative answer
+	// to keep the client unidentified.
 	waitMountedDomainDNS(t, cfg, false)
-	if requests.Load() < 2 {
-		t.Fatal("expired identity did not reacquire")
+	for deadline := time.Now().Add(10 * time.Second); requests.Load() < 2; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("expired identity did not reacquire")
+		}
 	}
+	waitMountedDomainDNS(t, cfg, false)
 	wantCacheBypass()
 }
 
