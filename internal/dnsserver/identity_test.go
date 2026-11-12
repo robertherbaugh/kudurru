@@ -15,6 +15,7 @@ import (
 	"github.com/quic-go/quic-go/http3"
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/internal/testcert"
+	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/inventory"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
@@ -50,7 +51,10 @@ func testTransportClientIDs(t *testing.T, captured bool) {
 	options := fixtureOpts{cert: cert, specs: []Spec{
 		{Protocol: ProtoDoT, ClientIDDomain: "dot.example.com"}, {Protocol: ProtoDoQ, ClientIDDomain: "dot.example.com"},
 		{Protocol: ProtoDoH, ClientIDs: true}, {Protocol: ProtoDoH3, ClientIDs: true},
-	}, stages: []pipeline.Stage{identifier, identityAnswer{}}}
+		// The backend listeners of a dnsdist edge (D389): the ID arrives in
+		// TLV 0xE1 next to the shared secret.
+		{Protocol: ProtoUDP}, {Protocol: ProtoTCP},
+	}, stages: []pipeline.Stage{identifier, identityAnswer{}}, proxy: mustPolicy(t, []string{"127.0.0.2/32"}, proxySecret)}
 	if captured {
 		identifier.Capture = func(*pipeline.Request) (*policy.Index, error) { return ix, nil }
 		identifier.CaptureInventory = func(*pipeline.Request) (*inventory.Snapshot, error) { return nil, nil }
@@ -106,6 +110,25 @@ func testTransportClientIDs(t *testing.T, captured bool) {
 				t.Fatalf("%s %s: %s %v %v", proto, id, resp.Status, answer, err)
 			}
 		}
+	}
+	// An edge's authenticated client-ID TLV selects the same policy over
+	// the PROXYv2 backend listeners; without the secret it is dropped.
+	wire, _ := query("example.com").Pack()
+	for _, id := range []string{"phone", "other"} {
+		want := map[bool]int{true: dns.RcodeSuccess, false: dns.RcodeRefused}[id == "phone"]
+		tlvs := proxyproto.AppendTLV(secretTLV(proxySecret), proxyproto.TLVTypeClientID, []byte(id))
+		answer, err := udpFrom(t, "127.0.0.2", f.addr(ProtoUDP), append(ppHeader(t, proxyproto.TransportDatagram, f.addr(ProtoUDP), tlvs), wire...), time.Second)
+		if err != nil || answer.Rcode != want {
+			t.Fatalf("PROXYv2 UDP %s: %v %v", id, answer, err)
+		}
+		answer, err = tcpFrom(t, "127.0.0.2", f.addr(ProtoTCP), ppHeader(t, proxyproto.TransportStream, f.addr(ProtoTCP), tlvs), wire, nil)
+		if err != nil || answer.Rcode != want {
+			t.Fatalf("PROXYv2 TCP %s: %v %v", id, answer, err)
+		}
+	}
+	forged := proxyproto.AppendTLV(nil, proxyproto.TLVTypeClientID, []byte("phone"))
+	if answer, err := udpFrom(t, "127.0.0.2", f.addr(ProtoUDP), append(ppHeader(t, proxyproto.TransportDatagram, f.addr(ProtoUDP), forged), wire...), 300*time.Millisecond); err == nil {
+		t.Fatalf("client-ID TLV without the secret answered: %v", answer)
 	}
 	c := dohClient(t, f, true)
 	for _, path := range []string{"/dns-query/", "/dns-query/phone/extra", "/dns-query/ph%6fne", "/dns-query/phone%2Fextra"} {
