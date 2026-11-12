@@ -13559,7 +13559,7 @@
         "tags": [
           "auth"
         ],
-        "x-kudurru-follower": "primary",
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": "authenticated"
       }
     },
@@ -14012,7 +14012,7 @@
         "tags": [
           "auth"
         ],
-        "x-kudurru-follower": "primary",
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": "authenticated"
       }
     },
@@ -14118,7 +14118,7 @@
         "tags": [
           "auth"
         ],
-        "x-kudurru-follower": "primary",
+        "x-kudurru-follower": "forwarded",
         "x-kudurru-permission": "authenticated"
       },
       "get": {
