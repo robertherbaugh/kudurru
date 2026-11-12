@@ -80,7 +80,6 @@ func TestRootUpdateOutputActualCompletionAndFinalRefusals(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "writer":
-				f.expectWriterLoss.Store(true)
 				term := f.store.Authority().Term
 				term.Epoch++
 				term.PrimaryID, term.PromotionID = "other", "later"

@@ -28,7 +28,6 @@ func TestRootAnchorPreparationPublishesFencedDNSOnly(t *testing.T) {
 			t.Fatal("writable fixture did not answer authoritatively", m.Rcode)
 		}
 	}
-	f.expectWriterLoss.Store(true)
 	term := f.store.Authority().Term
 	term.Epoch++
 	term.PrimaryID, term.PromotionID = "other", "later"

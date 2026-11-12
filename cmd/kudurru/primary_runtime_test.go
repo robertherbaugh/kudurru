@@ -44,17 +44,16 @@ import (
 )
 
 type primaryNetworkFixture struct {
-	store            *sqlite.Store
-	publisher        *serving.Publisher
-	keys             *dnsserver.StaticKeyring
-	keyrings         *servingbuild.KeyringOwner
-	runtime          *primaryRuntime
-	chain            *pipeline.Chain
-	listeners        *dnsserver.Registry
-	pause            atomic.Bool
-	pauseNotify      atomic.Bool
-	expectWriterLoss atomic.Bool // only the explicit post-command fencing case
-	entered, resume  chan struct{}
+	store           *sqlite.Store
+	publisher       *serving.Publisher
+	keys            *dnsserver.StaticKeyring
+	keyrings        *servingbuild.KeyringOwner
+	runtime         *primaryRuntime
+	chain           *pipeline.Chain
+	listeners       *dnsserver.Registry
+	pause           atomic.Bool
+	pauseNotify     atomic.Bool
+	entered, resume chan struct{}
 }
 
 func newPrimaryNetworkFixture(t *testing.T, notify ...func(*primaryRuntime) pipeline.Next) *primaryNetworkFixture {
@@ -157,16 +156,10 @@ func newPrimaryNetworkFixtureWithOutput(t *testing.T, observer pipeline.Observer
 	go func() { done <- f.publisher.Run(ctx) }()
 	go func() {
 		done <- f.store.Elector("primary").Run(ctx, func(term context.Context) {
-			original, _ := sqlite.WriterTokenFromContext(term)
+			// A fence or any other authority change cancels this term before the
+			// driver can see its token retired, so an error with a live term is
+			// a real early end, including in the cases that fence the writer.
 			if err := f.runtime.Run(term); err != nil && term.Err() == nil {
-				if f.expectWriterLoss.Load() && errors.Is(err, pr.ErrUnavailable) {
-					current, blocked := f.store.ServingAuthority()
-					// ObserveAuthority blocks the original writer before its SQL
-					// commit publishes the successor term and cancels the elector.
-					if blocked || !current.Writable() || !current.Term.Same(original.Term()) || current.Incarnation != original.Incarnation() {
-						return // Only the explicitly expected retirement of this token.
-					}
-				}
 				t.Error("primary driver ended early", err)
 			}
 		}, nil)
