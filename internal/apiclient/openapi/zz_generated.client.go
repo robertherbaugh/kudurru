@@ -4962,6 +4962,98 @@ type RollupVerifyBody struct {
 	Valid bool `json:"valid"`
 }
 
+// RootAnchorAuthority defines model for RootAnchorAuthority.
+type RootAnchorAuthority struct {
+	Conflict           bool    `json:"conflict"`
+	FencedBehindTerm   bool    `json:"fencedBehindTerm"`
+	InstalledTermEpoch int64   `json:"installedTermEpoch"`
+	MemberID           *string `json:"memberID,omitempty"`
+	Mode               string  `json:"mode"`
+	TermEpoch          int64   `json:"termEpoch"`
+}
+
+// RootAnchorDenial defines model for RootAnchorDenial.
+type RootAnchorDenial struct {
+	FirstOwnerGeneration int64  `json:"firstOwnerGeneration"`
+	Id                   string `json:"id"`
+	KeyTag               *int32 `json:"keyTag,omitempty"`
+	RevokedByOwner       bool   `json:"revokedByOwner"`
+}
+
+// RootAnchorKey defines model for RootAnchorKey.
+type RootAnchorKey struct {
+	AcceptedAt               *time.Time `json:"acceptedAt,omitempty"`
+	Algorithm                int32      `json:"algorithm"`
+	FirstSeen                time.Time  `json:"firstSeen"`
+	HoldDownRemainingSeconds *float64   `json:"holdDownRemainingSeconds,omitempty"`
+	Id                       string     `json:"id"`
+	KeyTag                   int32      `json:"keyTag"`
+	MissingSince             *time.Time `json:"missingSince,omitempty"`
+	RevokedAt                *time.Time `json:"revokedAt,omitempty"`
+	Status                   string     `json:"status"`
+}
+
+// RootAnchorLocal defines model for RootAnchorLocal.
+type RootAnchorLocal struct {
+	Denied          *[]RootAnchorDenial `json:"denied"`
+	OwnerGeneration int64               `json:"ownerGeneration"`
+	Phase           string              `json:"phase"`
+	Retired         bool                `json:"retired"`
+	RetiredThrough  int64               `json:"retiredThrough"`
+	Terminal        bool                `json:"terminal"`
+}
+
+// RootAnchorOwner defines model for RootAnchorOwner.
+type RootAnchorOwner struct {
+	CheckpointAt         *time.Time       `json:"checkpointAt,omitempty"`
+	ClockUncertain       bool             `json:"clockUncertain"`
+	Digest               *string          `json:"digest,omitempty"`
+	Generation           int64            `json:"generation"`
+	Keys                 *[]RootAnchorKey `json:"keys"`
+	NextRefresh          *time.Time       `json:"nextRefresh,omitempty"`
+	Phase                string           `json:"phase"`
+	PolicyID             *string          `json:"policyID,omitempty"`
+	PureGeneration       int64            `json:"pureGeneration"`
+	Quarantined          bool             `json:"quarantined"`
+	RecoveryGenerations  *[]int64         `json:"recoveryGenerations"`
+	RetryIntervalSeconds float64          `json:"retryIntervalSeconds"`
+	SeedDigest           *string          `json:"seedDigest,omitempty"`
+}
+
+// RootAnchorPull defines model for RootAnchorPull.
+type RootAnchorPull struct {
+	At             time.Time  `json:"at"`
+	Refusal        *string    `json:"refusal,omitempty"`
+	RefusedKeyIDs  *[]string  `json:"refusedKeyIDs,omitempty"`
+	RefusedKeyTags *[]int32   `json:"refusedKeyTags,omitempty"`
+	RefusedSince   *time.Time `json:"refusedSince,omitempty"`
+	Result         string     `json:"result"`
+}
+
+// RootAnchorStatus defines model for RootAnchorStatus.
+type RootAnchorStatus struct {
+	AdmissionCurrent bool                `json:"admissionCurrent"`
+	AnchorMode       string              `json:"anchorMode"`
+	Authority        RootAnchorAuthority `json:"authority"`
+	Local            *RootAnchorLocal    `json:"local,omitempty"`
+	ManagedTopology  *string             `json:"managedTopology,omitempty"`
+	Node             string              `json:"node"`
+	Owner            RootAnchorOwner     `json:"owner"`
+	Pull             *RootAnchorPull     `json:"pull,omitempty"`
+	Supervisor       RootAnchorWorker    `json:"supervisor"`
+	Updater          RootAnchorWorker    `json:"updater"`
+	Warnings         *[]string           `json:"warnings"`
+}
+
+// RootAnchorWorker defines model for RootAnchorWorker.
+type RootAnchorWorker struct {
+	Error     *string    `json:"error,omitempty"`
+	LastError *string    `json:"lastError,omitempty"`
+	Next      *time.Time `json:"next,omitempty"`
+	Since     *time.Time `json:"since,omitempty"`
+	State     string     `json:"state"`
+}
+
 // SafeSearchEngine defines model for SafeSearchEngine.
 type SafeSearchEngine struct {
 	// Addresses Addresses answered directly when the vendor documents an address instead of a host name.
@@ -7568,6 +7660,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /cluster/activate (the `ActivateCluster` operationId).
 	ActivateCluster(ctx context.Context, body ActivateClusterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetClusterAnchors Read this node's managed root trust-anchor status
+	//
+	// Complete nonstatic SQLite runtime only. Requires cluster.read. A read-only view of this node's accepted root-anchor owner (RFC 5011 key states, hold-down, schedule, quarantine and recovery records), its node-local denials, its anchor workers and, on a member that pulls, whether it refuses the primary's owner and why. The response grants nothing and is not a recommendation. A fenced or conflicted member's HTTP API is closed; read its metrics (kudurru_root_anchor_*) or stop it and run `kudurru anchors status --offline`.
+	//
+	// Corresponds with GET /cluster/anchors (the `GetClusterAnchors` operationId).
+	GetClusterAnchors(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetClusterEnrollment Review the complete local enrollment source
 	//
@@ -10235,6 +10334,23 @@ func (c *Client) ActivateClusterWithBody(ctx context.Context, contentType string
 // Corresponds with POST /cluster/activate (the `ActivateCluster` operationId).
 func (c *Client) ActivateCluster(ctx context.Context, body ActivateClusterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewActivateClusterRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetClusterAnchors Read this node's managed root trust-anchor status
+//
+// Complete nonstatic SQLite runtime only. Requires cluster.read. A read-only view of this node's accepted root-anchor owner (RFC 5011 key states, hold-down, schedule, quarantine and recovery records), its node-local denials, its anchor workers and, on a member that pulls, whether it refuses the primary's owner and why. The response grants nothing and is not a recommendation. A fenced or conflicted member's HTTP API is closed; read its metrics (kudurru_root_anchor_*) or stop it and run `kudurru anchors status --offline`.
+//
+// Corresponds with GET /cluster/anchors (the `GetClusterAnchors` operationId).
+func (c *Client) GetClusterAnchors(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetClusterAnchorsRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -16556,6 +16672,33 @@ func NewActivateClusterRequestWithBody(server string, contentType string, body i
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetClusterAnchorsRequest constructs an http.Request for the GetClusterAnchors method
+func NewGetClusterAnchorsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/cluster/anchors")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -24601,6 +24744,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /cluster/activate (the `ActivateCluster` operationId).
 	ActivateClusterWithResponse(ctx context.Context, body ActivateClusterJSONRequestBody, reqEditors ...RequestEditorFn) (*ActivateClusterResponse, error)
 
+	// GetClusterAnchorsWithResponse Read this node's managed root trust-anchor status
+	//
+	// Complete nonstatic SQLite runtime only. Requires cluster.read. A read-only view of this node's accepted root-anchor owner (RFC 5011 key states, hold-down, schedule, quarantine and recovery records), its node-local denials, its anchor workers and, on a member that pulls, whether it refuses the primary's owner and why. The response grants nothing and is not a recommendation. A fenced or conflicted member's HTTP API is closed; read its metrics (kudurru_root_anchor_*) or stop it and run `kudurru anchors status --offline`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /cluster/anchors (the `GetClusterAnchors` operationId).
+	GetClusterAnchorsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetClusterAnchorsResponse, error)
+
 	// GetClusterEnrollmentWithResponse Review the complete local enrollment source
 	//
 	// Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
@@ -31719,6 +31871,89 @@ func (r ActivateClusterResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ActivateClusterResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetClusterAnchorsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RootAnchorStatus
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetClusterAnchorsResponse) GetJSON200() *RootAnchorStatus {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetClusterAnchorsResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetClusterAnchorsResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetClusterAnchorsResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetClusterAnchorsResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetClusterAnchorsResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetClusterAnchorsResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetClusterAnchorsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetClusterAnchorsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetClusterAnchorsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetClusterAnchorsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -45554,6 +45789,21 @@ func (c *ClientWithResponses) ActivateClusterWithResponse(ctx context.Context, b
 	return ParseActivateClusterResponse(rsp)
 }
 
+// GetClusterAnchorsWithResponse Read this node's managed root trust-anchor status
+//
+// Complete nonstatic SQLite runtime only. Requires cluster.read. A read-only view of this node's accepted root-anchor owner (RFC 5011 key states, hold-down, schedule, quarantine and recovery records), its node-local denials, its anchor workers and, on a member that pulls, whether it refuses the primary's owner and why. The response grants nothing and is not a recommendation. A fenced or conflicted member's HTTP API is closed; read its metrics (kudurru_root_anchor_*) or stop it and run `kudurru anchors status --offline`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /cluster/anchors (the `GetClusterAnchors` operationId).
+func (c *ClientWithResponses) GetClusterAnchorsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetClusterAnchorsResponse, error) {
+	rsp, err := c.GetClusterAnchors(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetClusterAnchorsResponse(rsp)
+}
+
 // GetClusterEnrollmentWithResponse Review the complete local enrollment source
 //
 // Complete nonstatic SQLite runtime only. Activation requires current cluster.join authority, cookie CSRF when applicable, and exact separately reviewed cluster/member/source/owner identities. One original 30-second request; no automatic refresh or retry. A confirmed commit requires process restart to mount the enrolled member listener. A lost or unknown response does not prove rollback; inspect enrollment before any new decision.
@@ -53047,6 +53297,74 @@ func ParseActivateClusterResponse(rsp *http.Response) (*ActivateClusterResponse,
 			return nil, err
 		}
 		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetClusterAnchorsResponse parses an HTTP response from a GetClusterAnchorsWithResponse call
+func ParseGetClusterAnchorsResponse(rsp *http.Response) (*GetClusterAnchorsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetClusterAnchorsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RootAnchorStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest Error

@@ -8319,6 +8319,360 @@
         ],
         "type": "object"
       },
+      "RootAnchorAuthority": {
+        "additionalProperties": false,
+        "properties": {
+          "conflict": {
+            "type": "boolean"
+          },
+          "fencedBehindTerm": {
+            "type": "boolean"
+          },
+          "installedTermEpoch": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "memberID": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "termEpoch": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mode",
+          "termEpoch",
+          "installedTermEpoch",
+          "fencedBehindTerm",
+          "conflict"
+        ],
+        "type": "object"
+      },
+      "RootAnchorDenial": {
+        "additionalProperties": false,
+        "properties": {
+          "firstOwnerGeneration": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "keyTag": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "revokedByOwner": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "firstOwnerGeneration",
+          "revokedByOwner"
+        ],
+        "type": "object"
+      },
+      "RootAnchorKey": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "algorithm": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "firstSeen": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "holdDownRemainingSeconds": {
+            "format": "double",
+            "type": "number"
+          },
+          "id": {
+            "type": "string"
+          },
+          "keyTag": {
+            "format": "int32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "missingSince": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyTag",
+          "algorithm",
+          "id",
+          "status",
+          "firstSeen"
+        ],
+        "type": "object"
+      },
+      "RootAnchorLocal": {
+        "additionalProperties": false,
+        "properties": {
+          "denied": {
+            "items": {
+              "$ref": "#/components/schemas/RootAnchorDenial"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "ownerGeneration": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "retired": {
+            "type": "boolean"
+          },
+          "retiredThrough": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "terminal": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "phase",
+          "ownerGeneration",
+          "retiredThrough",
+          "retired",
+          "terminal",
+          "denied"
+        ],
+        "type": "object"
+      },
+      "RootAnchorOwner": {
+        "additionalProperties": false,
+        "properties": {
+          "checkpointAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "clockUncertain": {
+            "type": "boolean"
+          },
+          "digest": {
+            "type": "string"
+          },
+          "generation": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "keys": {
+            "items": {
+              "$ref": "#/components/schemas/RootAnchorKey"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "nextRefresh": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "policyID": {
+            "type": "string"
+          },
+          "pureGeneration": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "quarantined": {
+            "type": "boolean"
+          },
+          "recoveryGenerations": {
+            "items": {
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "retryIntervalSeconds": {
+            "format": "double",
+            "type": "number"
+          },
+          "seedDigest": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase",
+          "generation",
+          "pureGeneration",
+          "quarantined",
+          "clockUncertain",
+          "keys",
+          "recoveryGenerations",
+          "retryIntervalSeconds"
+        ],
+        "type": "object"
+      },
+      "RootAnchorPull": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "refusal": {
+            "type": "string"
+          },
+          "refusedKeyIDs": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "refusedKeyTags": {
+            "items": {
+              "format": "int32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "refusedSince": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "result": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "result",
+          "at"
+        ],
+        "type": "object"
+      },
+      "RootAnchorStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "admissionCurrent": {
+            "type": "boolean"
+          },
+          "anchorMode": {
+            "type": "string"
+          },
+          "authority": {
+            "$ref": "#/components/schemas/RootAnchorAuthority"
+          },
+          "local": {
+            "$ref": "#/components/schemas/RootAnchorLocal"
+          },
+          "managedTopology": {
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/RootAnchorOwner"
+          },
+          "pull": {
+            "$ref": "#/components/schemas/RootAnchorPull"
+          },
+          "supervisor": {
+            "$ref": "#/components/schemas/RootAnchorWorker"
+          },
+          "updater": {
+            "$ref": "#/components/schemas/RootAnchorWorker"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "node",
+          "anchorMode",
+          "authority",
+          "owner",
+          "admissionCurrent",
+          "updater",
+          "supervisor",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "RootAnchorWorker": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "lastError": {
+            "type": "string"
+          },
+          "next": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
       "SafeSearchEngine": {
         "additionalProperties": false,
         "properties": {
@@ -18439,6 +18793,93 @@
           "resource": "cluster",
           "scope": "cluster",
           "verb": "join"
+        }
+      }
+    },
+    "/cluster/anchors": {
+      "get": {
+        "description": "Complete nonstatic SQLite runtime only. Requires cluster.read. A read-only view of this node's accepted root-anchor owner (RFC 5011 key states, hold-down, schedule, quarantine and recovery records), its node-local denials, its anchor workers and, on a member that pulls, whether it refuses the primary's owner and why. The response grants nothing and is not a recommendation. A fenced or conflicted member's HTTP API is closed; read its metrics (kudurru_root_anchor_*) or stop it and run `kudurru anchors status --offline`.",
+        "operationId": "getClusterAnchors",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RootAnchorStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Read this node's managed root trust-anchor status",
+        "tags": [
+          "cluster"
+        ],
+        "x-kudurru-permission": {
+          "resource": "cluster",
+          "scope": "cluster",
+          "verb": "read"
         }
       }
     },

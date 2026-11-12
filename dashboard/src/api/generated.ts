@@ -931,6 +931,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cluster/anchors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read this node's managed root trust-anchor status
+         * @description Complete nonstatic SQLite runtime only. Requires cluster.read. A read-only view of this node's accepted root-anchor owner (RFC 5011 key states, hold-down, schedule, quarantine and recovery records), its node-local denials, its anchor workers and, on a member that pulls, whether it refuses the primary's owner and why. The response grants nothing and is not a recommendation. A fenced or conflicted member's HTTP API is closed; read its metrics (kudurru_root_anchor_*) or stop it and run `kudurru anchors status --offline`.
+         */
+        get: operations["getClusterAnchors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/cluster/enrollment": {
         parameters: {
             query?: never;
@@ -5404,6 +5424,104 @@ export interface components {
         };
         RollupVerifyBody: {
             valid: boolean;
+        };
+        RootAnchorAuthority: {
+            conflict: boolean;
+            fencedBehindTerm: boolean;
+            /** Format: int64 */
+            installedTermEpoch: number;
+            memberID?: string;
+            mode: string;
+            /** Format: int64 */
+            termEpoch: number;
+        };
+        RootAnchorDenial: {
+            /** Format: int64 */
+            firstOwnerGeneration: number;
+            id: string;
+            /** Format: int32 */
+            keyTag?: number;
+            revokedByOwner: boolean;
+        };
+        RootAnchorKey: {
+            /** Format: date-time */
+            acceptedAt?: string;
+            /** Format: int32 */
+            algorithm: number;
+            /** Format: date-time */
+            firstSeen: string;
+            /** Format: double */
+            holdDownRemainingSeconds?: number;
+            id: string;
+            /** Format: int32 */
+            keyTag: number;
+            /** Format: date-time */
+            missingSince?: string;
+            /** Format: date-time */
+            revokedAt?: string;
+            status: string;
+        };
+        RootAnchorLocal: {
+            denied: components["schemas"]["RootAnchorDenial"][] | null;
+            /** Format: int64 */
+            ownerGeneration: number;
+            phase: string;
+            retired: boolean;
+            /** Format: int64 */
+            retiredThrough: number;
+            terminal: boolean;
+        };
+        RootAnchorOwner: {
+            /** Format: date-time */
+            checkpointAt?: string;
+            clockUncertain: boolean;
+            digest?: string;
+            /** Format: int64 */
+            generation: number;
+            keys: components["schemas"]["RootAnchorKey"][] | null;
+            /** Format: date-time */
+            nextRefresh?: string;
+            phase: string;
+            policyID?: string;
+            /** Format: int64 */
+            pureGeneration: number;
+            quarantined: boolean;
+            recoveryGenerations: number[] | null;
+            /** Format: double */
+            retryIntervalSeconds: number;
+            seedDigest?: string;
+        };
+        RootAnchorPull: {
+            /** Format: date-time */
+            at: string;
+            refusal?: string;
+            refusedKeyIDs?: string[] | null;
+            refusedKeyTags?: number[] | null;
+            /** Format: date-time */
+            refusedSince?: string;
+            result: string;
+        };
+        RootAnchorStatus: {
+            admissionCurrent: boolean;
+            anchorMode: string;
+            authority: components["schemas"]["RootAnchorAuthority"];
+            local?: components["schemas"]["RootAnchorLocal"];
+            managedTopology?: string;
+            node: string;
+            owner: components["schemas"]["RootAnchorOwner"];
+            pull?: components["schemas"]["RootAnchorPull"];
+            supervisor: components["schemas"]["RootAnchorWorker"];
+            updater: components["schemas"]["RootAnchorWorker"];
+            warnings: string[] | null;
+        };
+        RootAnchorWorker: {
+            error?: string;
+            lastError?: string;
+            /** Format: date-time */
+            next?: string;
+            /** Format: date-time */
+            since?: string;
+            state: string;
         };
         SafeSearchEngine: {
             /** @description Addresses answered directly when the vendor documents an address instead of a host name. */
@@ -11823,6 +11941,80 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getClusterAnchors: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RootAnchorStatus"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

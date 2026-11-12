@@ -96,6 +96,7 @@ them from its own copy.
 |---|---|---|---|---|
 | GET | `/api/v1/cluster` | Store, leader and shape | `cluster.read` (cluster) | - |
 | POST | `/api/v1/cluster/activate` | Activate an explicitly reviewed standalone SQLite primary | `cluster.join` (cluster) | local |
+| GET | `/api/v1/cluster/anchors` | Read this node's managed root trust-anchor status | `cluster.read` (cluster) | - |
 | GET | `/api/v1/cluster/enrollment` | Review the complete local enrollment source | `cluster.read` (cluster) | - |
 | POST | `/api/v1/cluster/join-token` | Issue an invitation from an explicitly reviewed primary | `cluster.join` (cluster) | local |
 | POST | `/api/v1/cluster/promote` | Promote an explicitly reviewed enrolled follower | `cluster.promote` (cluster) | local |
