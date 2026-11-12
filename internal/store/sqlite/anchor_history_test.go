@@ -477,9 +477,15 @@ func TestAnchorHistoryResolutionKeepingRemoteBranchAdopts(t *testing.T) {
 // the adoption refusal (D369): accepted.ErrCAS before any write, the member's
 // cut, image, carrier and authority unchanged and nothing quarantined. The
 // member keeps serving its own branch DNS-only.
-// It returns the classified refusal (every refusal of an image's owner is an
+func anchorHistoryRefused(t *testing.T, member, source *Store) {
+	t.Helper()
+	anchorHistoryRefusedAs(t, member, source)
+}
+
+// anchorHistoryRefusedAs is anchorHistoryRefused that also returns the
+// refusal's class and keys (every refusal of an image's owner is an
 // *AnchorRefusal that still matches accepted.ErrCAS).
-func anchorHistoryRefused(t *testing.T, member, source *Store) *AnchorRefusal {
+func anchorHistoryRefusedAs(t *testing.T, member, source *Store) (AnchorRefusalReason, []string) {
 	t.Helper()
 	before, installed, local, authority := anchorHistoryCursor(t, member), imageOf(t, member), anchorLocalTestRead(t, member), member.Authority()
 	err := anchorHistoryInstall(t, member, source)
@@ -496,7 +502,7 @@ func anchorHistoryRefused(t *testing.T, member, source *Store) *AnchorRefusal {
 	if _, err := member.ReadQuarantined(t.Context(), installed.Generation()); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("refused adoption quarantined the member's own branch", err)
 	}
-	return refusal
+	return refusal.Reason, refusal.Keys
 }
 
 // A member never loses a revocation by adopting a branch that has not seen it.

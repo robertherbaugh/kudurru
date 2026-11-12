@@ -167,8 +167,8 @@ func TestAnchorRecheckRevocationHeldAcrossTermsRestartsAndStalePromotion(t *test
 		t.Fatal("fixture successor does not trust the first key")
 	}
 	anchorHistoryObserve(t, old, t2.Term)
-	if refusal := anchorHistoryRefused(t, old, second); refusal.Reason != AnchorRefusedCarriedRevocation || !slices.Equal(refusal.Keys, []string{key}) {
-		t.Fatalf("refusal does not name the carried revocation: %+v", refusal)
+	if reason, keys := anchorHistoryRefusedAs(t, old, second); reason != AnchorRefusedCarriedRevocation || !slices.Equal(keys, []string{key}) {
+		t.Fatalf("refusal does not name the carried revocation: %s %v", reason, keys)
 	}
 	// A publication of the member's own branch that was captured before a
 	// refused pull still completes after it.
@@ -556,8 +556,8 @@ func TestAnchorRecheckRecoveryHistoryDisagreement(t *testing.T) {
 				return
 			}
 			member := anchorRecheckStuck(t, old, path, successor)
-			if refusal := anchorHistoryRefused(t, member, successor); refusal.Reason != AnchorRefusedRecoveryHistory || len(refusal.Keys) != 0 {
-				t.Fatalf("refusal does not name the recovery history: %+v", refusal)
+			if reason, keys := anchorHistoryRefusedAs(t, member, successor); reason != AnchorRefusedRecoveryHistory || len(keys) != 0 {
+				t.Fatalf("refusal does not name the recovery history: %s %v", reason, keys)
 			}
 			// A later canonical observation does not help: the record keeps
 			// its generation.
@@ -770,8 +770,8 @@ func TestAnchorRecheckManagedMemberAndDormantPrimary(t *testing.T) {
 		promoted := anchorHistoryPromote(t, successor, "recheck-dormant-primary")
 		anchorHistoryObserve(t, old, promoted.Term)
 		old = anchorRecheckStuck(t, old, path, successor)
-		if refusal := anchorHistoryRefused(t, old, successor); refusal.Reason != AnchorRefusedDormantOwner {
-			t.Fatalf("refusal does not name the dormant owner: %+v", refusal)
+		if reason, _ := anchorHistoryRefusedAs(t, old, successor); reason != AnchorRefusedDormantOwner {
+			t.Fatalf("refusal does not name the dormant owner: %s", reason)
 		}
 		anchorRecheckServes(t, old)
 		return old, successor, path, root, own
@@ -800,8 +800,8 @@ func TestAnchorRecheckManagedMemberAndDormantPrimary(t *testing.T) {
 			t.Fatal("fixture primary did not start from other seeds")
 		}
 		old = anchorRecheckStuck(t, old, path, successor)
-		if refusal := anchorHistoryRefused(t, old, successor); refusal.Reason != AnchorRefusedPolicy {
-			t.Fatalf("refusal does not name the seed policy: %+v", refusal)
+		if reason, _ := anchorHistoryRefusedAs(t, old, successor); reason != AnchorRefusedPolicy {
+			t.Fatalf("refusal does not name the seed policy: %s", reason)
 		}
 		anchorRecheckServes(t, old)
 		anchorRecheckReplacement(t, successor)

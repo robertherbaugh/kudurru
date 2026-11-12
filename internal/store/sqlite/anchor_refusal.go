@@ -148,7 +148,7 @@ func (s *Store) ReadAnchorStatus(ctx context.Context) (*replication.Image, *Anch
 	r := local.record
 	view := &AnchorLocalView{Phase: r.Phase, Owner: r.Owner, RetiredThrough: r.RetiredThrough, Terminal: r.Terminal}
 	for _, d := range r.Denied {
-		view.Denied = append(view.Denied, AnchorLocalDenial{ID: d.ID, FirstOwner: d.FirstOwner})
+		view.Denied = append(view.Denied, AnchorLocalDenial(d))
 	}
 	slices.SortFunc(view.Denied, func(a, b AnchorLocalDenial) int {
 		switch {
