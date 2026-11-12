@@ -33,7 +33,7 @@ import (
 // API tokens.
 const (
 	memberPassword = "auth.password"
-	memberTokens   = "auth.tokens"
+	memberTokens   = "auth.tokens" //nolint:gosec // G101: an operation name, not a credential
 	// memberSelfAnswerWait bounds how long a follower waits, after a
 	// committed command, for its own view to serve the result before it
 	// answers anyway.
@@ -616,7 +616,6 @@ type rootMemberTokenDomain struct {
 	deps     servingauth.Dependencies
 	in       memberTokenCommand
 	attrs    rbac.Attributes
-	intent   tokenIntent
 	raw      servingauth.Credential
 	lifetime *servingauth.CredentialLifetime
 	refused  *auth.Error
