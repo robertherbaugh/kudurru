@@ -522,7 +522,15 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	// services import (blocking.catalogue.adguardServicesURL).
 	catalogs := catalogue.NewHolder(nil)
 	clientInventory := inventory.New(nil)
-	if err := zc.Register(policy.Builder(policy.Options{DefaultNamespace: namespace, Services: catalogs, Inventory: true, Hostnames: leaseDNS}, logger)); err != nil {
+	// On Kubernetes the integration source runtime (D384) feeds the
+	// inventory the identify stage reads and the MAC grants of the policy.
+	var kubeSources *kubeSourceRuntime
+	policyOptions := policy.Options{DefaultNamespace: namespace, Services: catalogs, Inventory: true, Hostnames: leaseDNS}
+	if kubeStore != nil {
+		kubeSources = newKubeSourceRuntime(kubeStore, zc, releaseNamespace, time.Now, logger)
+		policyOptions.MACGrantsInput = kubeMACGrantsInput
+	}
+	if err := zc.Register(policy.Builder(policyOptions, logger)); err != nil {
 		return err
 	}
 	checker.Register("zonecache", zc.Ready)
@@ -959,6 +967,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	post.SetSettings(responseSettings)
 	idStage := identify.New(polSrc, nil)
 	idStage.Inventory = clientInventory
+	if kubeSources != nil {
+		idStage.Inventory = kubeSources
+	}
 	idStage.Hostnames = leaseDNS
 	ptrRun, err := mountReversePTR(cfg.ClientNames.ReversePTR, idStage)
 	if err != nil {
@@ -1138,16 +1149,19 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if sql == nil {
 		authHandler = legacyAuthHandler(ids)
 	}
-	// Kubernetes integration host (D384): Cloudflare publication runs under
-	// one verified Lease per Integration; other instances are refused on
-	// their objects. Administration routes stay unavailable on Kubernetes.
+	// Kubernetes integration host (D384): Cloudflare publication and UniFi
+	// inventory and groups run under one verified Lease per Integration,
+	// deletionPolicy Delete runs its cleanup, and the administration API
+	// answers on the Lease holder. Other instances are refused on their
+	// objects.
 	var kubeIntegrations *kubeIntegrationRuntime
 	if kubeStore != nil {
-		kubeIntegrations, err = newKubeIntegrationRuntime(kubeIntegrationOptions{Store: kubeStore, Cache: zc, Namespace: releaseNamespace, License: lic, Credentials: cfg.Credentials, FingerprintKey: encKey, Logger: logger})
+		kubeIntegrations, err = newKubeIntegrationRuntime(kubeIntegrationOptions{Store: kubeStore, Cache: zc, Namespace: releaseNamespace, License: lic, Credentials: cfg.Credentials, FingerprintKey: encKey, Logger: logger, Sources: kubeSources})
 		if err != nil {
 			return err
 		}
-		logger.Info("Kubernetes integration host mounted: Cloudflare publication runs; Integrations outside the release namespace and UniFi, webhook and deletionPolicy Delete instances are refused on their objects, and the integration administration API is unavailable on this store")
+		integrationAdmin = kubeIntegrations
+		logger.Info("Kubernetes integration host mounted: Cloudflare publication and UniFi inventory and groups run; Integrations outside the release namespace, webhook instances and UniFi record publication are refused on their objects")
 	}
 	if sql != nil {
 		complete, err = newServingRuntime(ctx, servingRuntimeOptions{
@@ -1535,6 +1549,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	if kubeIntegrations != nil {
 		if err := add("integration-host", false, kubeIntegrations.Run); err != nil {
+			return err
+		}
+	}
+	if kubeSources != nil {
+		if err := add("integration-sources", false, kubeSources.Run); err != nil {
 			return err
 		}
 	}

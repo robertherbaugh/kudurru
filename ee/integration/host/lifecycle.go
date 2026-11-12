@@ -38,6 +38,12 @@ func (h *Host) Statuses() []InstanceStatus {
 	return out
 }
 func instanceKey(i InstanceID) string { return i.Namespace + "/" + i.Name }
+
+// ElectionKey is the elector name of one instance: every incarnation of a
+// namespace and name shares it, so a successor cannot start while an older
+// job holds it. Root may read it to name the holder (D384).
+func ElectionKey(i InstanceID) string { return electionKey(i) }
+
 func electionKey(i InstanceID) string {
 	return "integration-" + kinds.Digest([]byte(i.Namespace + "/" + i.Name))[:32]
 }
@@ -251,10 +257,12 @@ func (h *Host) disposition(i *Instance) disposition {
 		reason = "LicenseUnavailable"
 	case d.Spec.Suspend:
 		reason = "Suspended"
-	case h.opts.Finalize != nil && store.ReservedFinalizerUnarmed(d):
+	case h.opts.Finalize != nil && store.ReservedFinalizerUnarmed(d) && (h.opts.Refuse == nil || h.opts.Refuse(d) == ""):
 		// The policy promises cleanup, but the object does not carry the
 		// finalizer that keeps the promise through a delete. Root refuses
 		// every effect of such an instance; say why instead of failing setup.
+		// An instance root refuses outright never runs a provider, so it
+		// owns nothing to clean up: its job only reports the refusal.
 		reason = ReasonFinalizerMissing
 	}
 	if reason != "" {

@@ -128,3 +128,64 @@ func TestRefusedInstanceRepublishesAfterFailedStatus(t *testing.T) {
 		t.Fatal("a refused instance constructed a provider")
 	}
 }
+
+// A refused instance whose policy is Delete but which carries no cleanup
+// finalizer still reports its refusal, instead of pausing as
+// CleanupFinalizerMissing with nothing on its object: root never runs it, so
+// it owns nothing to clean up (D384). An accepted instance in the same state
+// stays paused.
+func TestRefusedUnarmedDeleteInstanceReportsRefusal(t *testing.T) {
+	st := memory.New()
+	refused := webhook("sink")
+	refused.Spec.DeletionPolicy = public.IntegrationDeletionDelete
+	accepted := webhook("other")
+	accepted.Spec.DeletionPolicy = public.IntegrationDeletionDelete
+	in := captureInput(t, refused, accepted)
+	r, err := ledger.New(ledger.Options{Reader: st, Write: func(ctx context.Context, _ ledger.Guard, o store.Object, a store.ApplyOptions) (store.Object, error) {
+		return st.Apply(ctx, o, a)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var factories atomic.Int32
+	h, err := New(Options{Capture: func(context.Context) (Input, error) { return in, nil }, Factory: func(string) (integration.Integration, error) {
+		factories.Add(1)
+		return &fakePublisher{start: func(ctx context.Context) error { <-ctx.Done(); return nil }}, nil
+	}, Elector: st.Elector, Fence: func(context.Context, ExecutionGuard) error { return nil }, Ledger: r, Reader: st, Allowed: func() bool { return true },
+		Refuse: func(d *public.Integration) string {
+			if d.Name == "sink" {
+				return "UnsupportedOnKubernetes"
+			}
+			return ""
+		},
+		Purge:        func(context.Context, ExecutionGuard) (PurgeResult, error) { return PurgeResult{}, nil },
+		Finalize:     func(context.Context, ExecutionGuard, CleanupSummary) error { return nil },
+		Status:       func(context.Context, ExecutionGuard, InstanceStatus) error { return nil },
+		PollInterval: time.Millisecond, OperationTimeout: time.Second, StopTimeout: time.Second, MaxConcurrent: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- h.Run(ctx) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	reasons := func() map[string]string {
+		out := map[string]string{}
+		for _, s := range h.Statuses() {
+			out[s.Owner.Name] = s.Reason
+		}
+		return out
+	}
+	waitFor(t, func() bool {
+		got := reasons()
+		return got["sink"] == "UnsupportedOnKubernetes" && got["other"] == ReasonFinalizerMissing
+	})
+	if factories.Load() != 0 {
+		t.Fatal("a refused or unarmed instance constructed a provider")
+	}
+}

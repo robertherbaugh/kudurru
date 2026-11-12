@@ -61,7 +61,7 @@ func kubeIntegrationMount(t *testing.T, cfg *config.Config) func() {
 // Cloudflare peer. It proves: Cloudflare publishes through real ledger,
 // operation and budget Secrets with exactly one mutation; a suspended
 // instance makes no provider request even when its source changes, and
-// resuming publishes the change once; UniFi and deletionPolicy Delete
+// resuming publishes the change once; UniFi record publication and webhook
 // instances, and an instance outside the release namespace, are refused on
 // their objects with no provider request; an ambiguous effect is sent exactly
 // once, is not replayed while its peer cannot be read, and a restart resumes
@@ -223,18 +223,18 @@ func TestRunServeKubeCloudflarePublicationAndRefusals(t *testing.T) {
 		t.Fatal(err)
 	}
 	requestsBefore, _ := counts()
-	unifi := &public.Integration{ObjectMeta: metav1.ObjectMeta{Name: "inventory", Namespace: "default"}, Spec: public.IntegrationSpec{Type: "unifi", Credentials: map[string]public.CredentialReference{"apiKey": {File: credential}}, UniFi: &public.UniFiIntegration{Endpoint: "https://unifi.invalid", Site: "default", Poll: metav1.Duration{Duration: time.Minute}}}}
-	deleting := publisher.DeepCopy()
-	deleting.ObjectMeta = metav1.ObjectMeta{Name: "deleting", Namespace: "default"}
-	deleting.Spec.DeletionPolicy = public.IntegrationDeletionDelete
+	// UniFi record publication (spec.unifi.inventory) and webhook instances
+	// do not run on this store; UniFi inventory and groups alone do (D384).
+	unifi := &public.Integration{ObjectMeta: metav1.ObjectMeta{Name: "inventory", Namespace: "default"}, Spec: public.IntegrationSpec{Type: "unifi", Credentials: map[string]public.CredentialReference{"apiKey": {File: credential}}, UniFi: &public.UniFiIntegration{Endpoint: "https://unifi.invalid", Site: "default", Poll: metav1.Duration{Duration: time.Minute}, Inventory: &public.UniFiInventory{ZoneRef: public.ObjectRef{Name: "home"}}}}}
+	hook := &public.Integration{ObjectMeta: metav1.ObjectMeta{Name: "hook", Namespace: "default"}, Spec: public.IntegrationSpec{Type: "webhook", DeletionPolicy: public.IntegrationDeletionDelete, Webhook: &public.WebhookIntegration{Endpoint: "https://webhook.invalid"}}}
 	foreign := publisher.DeepCopy()
 	foreign.ObjectMeta = metav1.ObjectMeta{Name: "foreign", Namespace: "tenant"}
-	for _, d := range []*public.Integration{unifi, deleting, foreign} {
+	for _, d := range []*public.Integration{unifi, hook, foreign} {
 		if err := admin.Create(ctx, d); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for name, reason := range map[string]string{"default/inventory": reasonUnsupportedOnKubernetes, "default/deleting": reasonDeletionPolicyUnsupported, "tenant/foreign": reasonNamespaceNotAllowed} {
+	for name, reason := range map[string]string{"default/inventory": reasonRecordsUnsupported, "default/hook": reasonUnsupportedOnKubernetes, "tenant/foreign": reasonNamespaceNotAllowed} {
 		await(60*time.Second, name+" refused on its object", func() bool {
 			c, _ := readyIn(name)
 			return c != nil && c.Status == metav1.ConditionFalse && c.Reason == reason
@@ -369,10 +369,11 @@ func TestKubeIntegrationWriteSeamRefusals(t *testing.T) {
 	}
 	release := metav1.ObjectMeta{Namespace: "kudurru"}
 	for d, want := range map[*public.Integration]string{
-		{ObjectMeta: release, Spec: public.IntegrationSpec{Type: "cloudflare"}}:                                                   "",
-		{ObjectMeta: release, Spec: public.IntegrationSpec{Type: "cloudflare", DeletionPolicy: public.IntegrationDeletionDelete}}: reasonDeletionPolicyUnsupported,
-		{ObjectMeta: release, Spec: public.IntegrationSpec{Type: "unifi"}}:                                                        reasonUnsupportedOnKubernetes,
-		{ObjectMeta: release, Spec: public.IntegrationSpec{Type: "webhook"}}:                                                      reasonUnsupportedOnKubernetes,
+		{ObjectMeta: release, Spec: public.IntegrationSpec{Type: "cloudflare"}}:                                                                  "",
+		{ObjectMeta: release, Spec: public.IntegrationSpec{Type: "cloudflare", DeletionPolicy: public.IntegrationDeletionDelete}}:                "",
+		{ObjectMeta: release, Spec: public.IntegrationSpec{Type: "unifi", UniFi: &public.UniFiIntegration{}}}:                                    "",
+		{ObjectMeta: release, Spec: public.IntegrationSpec{Type: "unifi", UniFi: &public.UniFiIntegration{Inventory: &public.UniFiInventory{}}}}: reasonRecordsUnsupported,
+		{ObjectMeta: release, Spec: public.IntegrationSpec{Type: "webhook"}}:                                                                     reasonUnsupportedOnKubernetes,
 		// The credential allowlist is never lent to another namespace.
 		{ObjectMeta: metav1.ObjectMeta{Namespace: "tenant"}, Spec: public.IntegrationSpec{Type: "cloudflare"}}: reasonNamespaceNotAllowed,
 	} {

@@ -18,6 +18,7 @@ import (
 	ih "github.com/robertherbaugh/kudurru/ee/integration/host"
 	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
 	"github.com/robertherbaugh/kudurru/ee/integration/plan"
+	"github.com/robertherbaugh/kudurru/ee/integration/unifi"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/credentials"
 	"github.com/robertherbaugh/kudurru/internal/license"
@@ -30,13 +31,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Kubernetes refusal reasons (D384). Tranche 1 runs Cloudflare publication
-// only; every other instance is refused on its object before any provider
-// exists, instead of sitting inert.
+// Kubernetes refusal reasons (D384). Cloudflare publication and UniFi
+// inventory and group observation run; every other instance is refused on
+// its object before any provider exists, instead of sitting inert.
 const (
-	reasonUnsupportedOnKubernetes   = "UnsupportedOnKubernetes"
-	reasonDeletionPolicyUnsupported = "DeletionPolicyUnsupported"
-	reasonNamespaceNotAllowed       = "NamespaceNotAllowed"
+	reasonUnsupportedOnKubernetes = "UnsupportedOnKubernetes"
+	reasonRecordsUnsupported      = "RecordPublicationUnsupportedOnKubernetes"
+	reasonNamespaceNotAllowed     = "NamespaceNotAllowed"
 )
 
 // kubeIntegrationCache is the part of the replica's zonecache the root
@@ -72,6 +73,9 @@ type kubeIntegrationOptions struct {
 	FingerprintKey []byte
 	Logger         *slog.Logger
 	Now            func() time.Time
+	// Sources is this replica's consumer of committed source heads. A source
+	// commit wakes it and reports Published once it installed the new root.
+	Sources *kubeSourceRuntime
 	// Factory overrides the provider constructors (tests only).
 	Factory func(string) (integration.Integration, error)
 	// PollInterval overrides the host capture interval (tests only).
@@ -125,6 +129,9 @@ func newKubeIntegrationRuntime(o kubeIntegrationOptions) (*kubeIntegrationRuntim
 			return c != nil && c.Current() && c.Status().Allows(license.FeatureIntegrations)
 		},
 		Factory: r.factory, Status: r.status, Refuse: r.refusal, Now: o.Now, Logger: o.Logger, PollInterval: o.PollInterval,
+		ValidateSource: r.validateSource, BeforeObserve: r.beforeObserve, CommitSource: r.commitSource,
+		Purge: r.purge, Finalize: r.finalize,
+		Alive: func() bool { return true },
 	})
 	if err != nil {
 		return nil, err
@@ -141,16 +148,36 @@ func (r *kubeIntegrationRuntime) Run(ctx context.Context) error {
 	case <-r.opts.Cache.Initialized():
 	}
 	r.opts.Cache.OnPublish(func(*zonecache.Snapshot) { r.host.Wake() })
-	return r.host.Run(ctx)
+	armed := make(chan struct{})
+	go func() {
+		defer close(armed)
+		interval := r.opts.PollInterval
+		if interval <= 0 {
+			interval = 2 * time.Second
+		}
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			r.armCleanup(ctx)
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
+	err := r.host.Run(ctx)
+	<-armed
+	return err
 }
 
-// refusal names what tranche 1 does not run on Kubernetes. An Integration
-// outside the release namespace never runs with the node's credential
-// allowlist (see kubeIntegrationOptions.Namespace). UniFi and webhook
-// instances need the source commit and replica-side source runtime (and
-// webhook hooks their delivery producer); deletionPolicy Delete needs the
-// cleanup finalizer protocol, which the Kubernetes driver does not arm.
-// Running Delete as Retain would silently break its promise (D239).
+// refusal names what does not run on Kubernetes. An Integration outside the
+// release namespace never runs with the node's credential allowlist (see
+// kubeIntegrationOptions.Namespace). Webhook (Tier-B) instances need the
+// hook event producer, which reads SQLite's change feed. A UniFi instance
+// with spec.unifi.inventory publishes source-owned DNS records and reverse
+// zones, which this store does not certify yet; UniFi inventory and group
+// observation without it runs (F09b-K4).
 func (r *kubeIntegrationRuntime) refusal(d *public.Integration) string {
 	return kubeIntegrationRefusal(r.opts.Namespace, d)
 }
@@ -159,10 +186,10 @@ func kubeIntegrationRefusal(namespace string, d *public.Integration) string {
 	switch {
 	case d.Namespace != namespace:
 		return reasonNamespaceNotAllowed
-	case d.Spec.Type != "cloudflare":
+	case d.Spec.Type == "unifi" && d.Spec.UniFi != nil && d.Spec.UniFi.Inventory != nil:
+		return reasonRecordsUnsupported
+	case d.Spec.Type != "cloudflare" && d.Spec.Type != "unifi":
 		return reasonUnsupportedOnKubernetes
-	case d.Spec.DeletionPolicy == public.IntegrationDeletionDelete:
-		return reasonDeletionPolicyUnsupported
 	}
 	return ""
 }
@@ -171,8 +198,13 @@ func (r *kubeIntegrationRuntime) factory(typ string) (integration.Integration, e
 	if r.opts.Factory != nil {
 		return r.opts.Factory(typ)
 	}
-	if typ == "cloudflare" {
+	switch typ {
+	case "cloudflare":
 		return cloudflare.New(), nil
+	case "unifi":
+		// No allocation callback: an instance that would allocate names
+		// (spec.unifi.inventory) is refused before it is constructed.
+		return unifi.New(), nil
 	}
 	return nil, ih.ErrUnsupported
 }
@@ -257,6 +289,10 @@ func (r *kubeIntegrationRuntime) capture(ctx context.Context) (ih.Input, error) 
 				return ih.Input{}, ih.ErrInvalid
 			}
 			in.ReconcileDigests[i.Owner()] = kinds.Digest(raw)
+		default:
+			// An observer reads its provider on its own schedule; publisher
+			// sources neither wake nor replace it.
+			in.ReconcileDigests[i.Owner()] = kinds.Digest([]byte("observer"))
 		}
 		// Authority excludes the status and resourceVersion the lease holder
 		// itself writes, so a status write never replaces the instance.
@@ -369,13 +405,17 @@ func kubeSourceIdentity(obj store.Object) string {
 // current checks the guard against the latest capture: same term, license
 // current and allowing integrations, the instance still captured with the
 // same bundle and in the mode the guard claims, and its guard unchanged.
+//
+// A release (GuardRelease, D367) needs no license: it only removes the
+// cleanup finalizer. Every other mode needs the instance to run on this
+// store (no refusal).
 func (r *kubeIntegrationRuntime) current(g ih.ExecutionGuard) (*kubeIntegrationCut, error) {
 	c := r.cut
-	if c == nil || !c.input.Term.Same(g.Ledger.Term) || !c.license.Current() || !c.license.Status().Allows(license.FeatureIntegrations) || g.Mode != ih.GuardNormal {
+	if c == nil || !c.input.Term.Same(g.Ledger.Term) || g.Mode != ih.GuardRelease && (!c.license.Current() || !c.license.Status().Allows(license.FeatureIntegrations)) {
 		return nil, ih.ErrFenced
 	}
 	i := c.instances[g.Ledger.Owner]
-	if i == nil || i.BundleID() != g.BundleID || !integrationGuardAdmits(i.Definition(), g) || r.refusal(i.Definition()) != "" {
+	if i == nil || i.BundleID() != g.BundleID || !integrationGuardAdmits(i.Definition(), g) || g.Mode != ih.GuardRelease && r.refusal(i.Definition()) != "" {
 		return nil, ih.ErrFenced
 	}
 	expected, err := i.Guard(g.Ledger.LeaseID)
@@ -421,7 +461,7 @@ func (r *kubeIntegrationRuntime) check(ctx, lease context.Context, g ih.Executio
 	if err != nil {
 		return err
 	}
-	if !original.license.Current() || !original.license.Status().Allows(license.FeatureIntegrations) {
+	if g.Mode != ih.GuardRelease && (!original.license.Current() || !original.license.Status().Allows(license.FeatureIntegrations)) {
 		return ih.ErrFenced
 	}
 	if err := store.VerifyTerm(ctx, lease); err != nil {
@@ -444,10 +484,12 @@ func (r *kubeIntegrationRuntime) check(ctx, lease context.Context, g ih.Executio
 	if !integrationGuardAdmits(&stored, g) {
 		return ih.ErrFenced
 	}
-	if r.refusal(&stored) != "" {
+	if g.Mode != ih.GuardRelease && r.refusal(&stored) != "" {
 		return ih.ErrFenced
 	}
-	if integrationPublishes(&stored) {
+	// A terminating publisher deletes only what its ledger proves owned; its
+	// captured sources are not an input of that plan.
+	if g.Mode == ih.GuardNormal && integrationPublishes(&stored) {
 		snap := r.opts.Cache.Snapshot()
 		if snap == nil || snap.State != zonecache.Live {
 			return ih.ErrFenced
@@ -485,8 +527,8 @@ func (r *kubeIntegrationRuntime) currentRefused(g ih.ExecutionGuard) error {
 }
 
 // kubeRefusalAdmits is the guard rule for a refusal status: a live object
-// in normal mode. It does not ask for the cleanup finalizer, which the
-// Kubernetes driver never arms; the refusal of policy Delete is why.
+// in normal mode. It does not ask for the cleanup finalizer: root does not
+// arm a refused instance, which never runs a provider and owns nothing.
 func kubeRefusalAdmits(d *public.Integration, g ih.ExecutionGuard) bool {
 	mode, ok := ih.InstanceMode(d)
 	return ok && mode == ih.GuardNormal && g.Mode == ih.GuardNormal && !d.Spec.Suspend
@@ -583,10 +625,10 @@ func (r *kubeIntegrationRuntime) status(ctx context.Context, g ih.ExecutionGuard
 		}
 		d := integrationStatusObject(cut.instances[g.Ledger.Owner].Definition(), status)
 		if refused != "" {
-			message := "This integration type does not run on the Kubernetes store yet; only Cloudflare publication does."
+			message := "This integration type does not run on the Kubernetes store yet; Cloudflare publication and UniFi inventory and groups do."
 			switch refused {
-			case reasonDeletionPolicyUnsupported:
-				message = "deletionPolicy Delete is not supported on the Kubernetes store yet; use Retain."
+			case reasonRecordsUnsupported:
+				message = "UniFi DNS record publication (spec.unifi.inventory) does not run on the Kubernetes store yet; remove it to run inventory and groups."
 			case reasonNamespaceNotAllowed:
 				message = "On the Kubernetes store only Integrations in kudurru's release namespace run; create it in " + r.opts.Namespace + "."
 			}

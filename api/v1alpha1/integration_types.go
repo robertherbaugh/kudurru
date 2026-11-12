@@ -244,16 +244,18 @@ type IntegrationSpec struct {
 	// its provider records and private ledger in place; a recreated
 	// Integration has a new UID and sees them as another owner's. Delete
 	// keeps the object, with the reserved finalizer
-	// kudurru.io/integration-cleanup that the store adds and no document can
-	// set or strip, in a Terminating state until the elected writer has
+	// kudurru.io/integration-cleanup that kudurru adds (the store on SQLite,
+	// the integration host on Kubernetes) and no document can set or strip,
+	// in a Terminating state until the elected writer has
 	// deleted the record sets this incarnation provably owns (every row
 	// carries its cluster and UID marker and the ledger lists every provider
 	// ID; this overrides a zone's upsert-only or create-only policy), forgotten
 	// their ledger rows and purged its local source state; records of other
 	// owners are never touched. A cleanup that cannot finish stays Terminating
 	// with a reason; changing the policy to Retain, or the reviewed release
-	// command, removes the object without cleanup. On Kubernetes no
-	// Integration executes in this release, so the policy has no effect there.
+	// command, removes the object without cleanup. On Kubernetes an
+	// Integration the host refuses (another namespace, a webhook, UniFi record
+	// publication) is never armed and owns nothing to clean up.
 	// +kubebuilder:validation:Enum=Retain;Delete
 	// +kubebuilder:default=Retain
 	// +optional

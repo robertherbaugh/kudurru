@@ -272,14 +272,22 @@ func integrationPublicRecord(in *public.Endpoint) *api.IntegrationRecord {
 }
 
 func integrationProjectionSafe(op *integrationOperation, out *api.IntegrationExecutionResult) error {
+	return integrationProjectionSafeFor(op.ctx, op.cut.instances[op.guard.Ledger.Owner], out)
+}
+
+// integrationProjectionSafeFor bounds a command result and refuses one that
+// echoes any named credential of the captured instance (both drivers).
+func integrationProjectionSafeFor(ctx context.Context, i *ih.Instance, out *api.IntegrationExecutionResult) error {
 	encoded, err := json.Marshal(out)
 	if err != nil || len(encoded) > 1<<20 {
 		return ih.ErrCapacity
 	}
-	i := op.cut.instances[op.guard.Ledger.Owner]
+	if i == nil {
+		return ih.ErrFenced
+	}
 	secrets := make([]string, 0, len(i.Definition().Spec.Credentials))
 	for name := range i.Definition().Spec.Credentials {
-		secret, err := i.Secrets().Resolve(op.ctx, name)
+		secret, err := i.Secrets().Resolve(ctx, name)
 		if err != nil {
 			return ih.ErrProvider
 		}

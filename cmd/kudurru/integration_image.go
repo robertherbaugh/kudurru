@@ -195,18 +195,39 @@ func prepareIntegrationImage(ctx context.Context, image *replication.Image, prim
 	if err != nil {
 		return nil, nil, err
 	}
-	owner := &servingbuild.InventoryOwner{Snapshot: holder.Snapshot(), SourceRoots: map[string]string{}}
+	owner := &servingbuild.InventoryOwner{Snapshot: holder.Snapshot()}
+	owner.SourceRoots, owner.MACGrants, err = integrationSourceGrants(prepared, owner.Snapshot, func(key store.Key) (*public.ClientGroup, bool) {
+		group, ok := objects[key].(*public.ClientGroup)
+		return group, ok
+	}, at)
+	if err != nil {
+		return nil, nil, err
+	}
+	return owner, prepared.Groups, nil
+}
+
+// integrationSourceGrants derives what the eligible sources of one prepared
+// image grant at time at: the source root of each eligible head, and a MAC
+// grant for every contributed MAC of a client that currently wins one of its
+// addresses, into a current public group that still names the source's
+// Integration and does not list the MAC manually. A grant keeps the latest
+// original exclusive expiry of its clients; nothing renews it. Both drivers
+// use it: SQLite from its replication image, Kubernetes from committed
+// source heads (D384).
+func integrationSourceGrants(prepared *inbound.PreparedImage, snapshot *inventory.Snapshot, group func(store.Key) (*public.ClientGroup, bool), at time.Time) (map[string]string, []policy.MACGrant, error) {
+	roots := map[string]string{}
+	var grants []policy.MACGrant
 	for _, source := range prepared.Sources {
 		if !source.Eligible {
 			continue
 		}
-		owner.SourceRoots[source.Head.Name] = source.Head.Spec.RootDigest
+		roots[source.Head.Name] = source.Head.Spec.RootDigest
 		deadlines := map[string]time.Time{}
 		id := ih.SourceID(source.Head.Spec.Owner)
 		for _, client := range source.Document.Snapshot.Clients {
 			live := false
 			for _, ip := range client.IPs {
-				winner := owner.Snapshot.Lookup(ip, at)
+				winner := snapshot.Lookup(ip, at)
 				live = live || winner != nil && winner.Source == id && winner.ID == client.ID
 			}
 			if !live {
@@ -219,16 +240,16 @@ func prepareIntegrationImage(ctx context.Context, image *replication.Image, prim
 			}
 		}
 		for _, contribution := range source.Document.Groups {
-			group, ok := objects[store.Key{Kind: "ClientGroup", Namespace: contribution.Group.Namespace, Name: contribution.Group.Name}].(*public.ClientGroup)
-			if !ok || string(group.UID) != contribution.Group.UID || group.Namespace != source.Head.Spec.Owner.Namespace || group.Spec.Sources == nil || group.Spec.Sources.IntegrationRef == nil {
+			g, ok := group(store.Key{Kind: "ClientGroup", Namespace: contribution.Group.Namespace, Name: contribution.Group.Name})
+			if !ok || string(g.UID) != contribution.Group.UID || g.Namespace != source.Head.Spec.Owner.Namespace || g.Spec.Sources == nil || g.Spec.Sources.IntegrationRef == nil {
 				continue
 			}
-			ref := group.Spec.Sources.IntegrationRef
-			if ref.Name != source.Head.Spec.Owner.Name || ref.Namespace != "" && ref.Namespace != group.Namespace {
+			ref := g.Spec.Sources.IntegrationRef
+			if ref.Name != source.Head.Spec.Owner.Name || ref.Namespace != "" && ref.Namespace != g.Namespace {
 				continue
 			}
 			manual := map[string]bool{}
-			for _, matcher := range group.Spec.Clients {
+			for _, matcher := range g.Spec.Clients {
 				if mac, err := net.ParseMAC(matcher.MAC); err == nil {
 					manual[mac.String()] = true
 				}
@@ -237,14 +258,14 @@ func prepareIntegrationImage(ctx context.Context, image *replication.Image, prim
 				if deadlines[mac].IsZero() || manual[mac] {
 					continue
 				}
-				owner.MACGrants = append(owner.MACGrants, policy.MACGrant{Group: group.Namespace + "/" + group.Name, GroupUID: string(group.UID), MAC: mac, Source: id, ExpiresAt: deadlines[mac]})
-				if len(owner.MACGrants) > policy.MaxMACGrants {
+				grants = append(grants, policy.MACGrant{Group: g.Namespace + "/" + g.Name, GroupUID: string(g.UID), MAC: mac, Source: id, ExpiresAt: deadlines[mac]})
+				if len(grants) > policy.MaxMACGrants {
 					return nil, nil, ih.ErrCapacity
 				}
 			}
 		}
 	}
-	return owner, prepared.Groups, nil
+	return roots, grants, nil
 }
 
 // integrationAggregate resolves only the head/chunks from one original image.
