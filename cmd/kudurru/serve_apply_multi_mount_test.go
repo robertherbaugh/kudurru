@@ -340,6 +340,13 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 
 	var mu sync.Mutex
 	var answered, servfail, read, failedRead []time.Time
+	// missed holds every probe that got no correct answer, with what it got,
+	// so that a gap is explained in the failure message.
+	type miss struct {
+		at   time.Time
+		what string
+	}
+	var missed []miss
 	var readError string
 	stop := make(chan struct{})
 	var probes sync.WaitGroup
@@ -353,19 +360,21 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 			}
 			query := new(dns.Msg)
 			query.SetQuestion("probe.multi.test.", dns.TypeA)
+			sent := time.Now()
 			answer, _, err := client.Exchange(query, cfg.Listeners.DNS[0].Address)
-			if err == nil && answer.Rcode == dns.RcodeServerFailure {
-				mu.Lock()
+			mu.Lock()
+			switch {
+			case err != nil:
+				missed = append(missed, miss{sent, err.Error()})
+			case answer.Rcode == dns.RcodeServerFailure:
 				servfail = append(servfail, time.Now())
-				mu.Unlock()
+				missed = append(missed, miss{sent, "SERVFAIL"})
+			case answer.Rcode == dns.RcodeSuccess && len(answer.Answer) == 1 && probeAddress(answer.Answer[0]) == "198.51.100.200":
+				answered = append(answered, time.Now())
+			default:
+				missed = append(missed, miss{sent, dns.RcodeToString[answer.Rcode] + " " + fmt.Sprint(answer.Answer)})
 			}
-			if err == nil && answer.Rcode == dns.RcodeSuccess && len(answer.Answer) == 1 {
-				if rr, ok := answer.Answer[0].(*dns.A); ok && rr.A.String() == "198.51.100.200" {
-					mu.Lock()
-					answered = append(answered, time.Now())
-					mu.Unlock()
-				}
-			}
+			mu.Unlock()
 			time.Sleep(50 * time.Millisecond)
 		}
 	})
@@ -408,8 +417,11 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	edges := append(append([]time.Time{began}, answers...), ended)
 	slices.SortFunc(edges, func(a, b time.Time) int { return a.Compare(b) })
 	var gap time.Duration
+	var gapFrom time.Time
 	for i := 1; i < len(edges); i++ {
-		gap = max(gap, edges[i].Sub(edges[i-1]))
+		if d := edges[i].Sub(edges[i-1]); d > gap {
+			gap, gapFrom = d, edges[i-1]
+		}
 	}
 	t.Logf("apply of %d documents took %s: %d correct DNS answers, %d SERVFAIL, longest time without one %s, %d reads ok, %d reads failed", count, ended.Sub(began), len(answers), servfails, gap, len(reads), failed)
 	// The zone answers its committed data across every status write of a new
@@ -426,7 +438,15 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	// not published yet, and a replaced provider resource set, withhold
 	// nothing. The probe asks every 50 ms with a 200 ms timeout.
 	if gap > time.Second {
-		t.Fatalf("the node left an existing record unanswered for %s during one request of %s", gap, ended.Sub(began))
+		mu.Lock()
+		var inGap []string
+		for _, m := range missed {
+			if !m.at.Before(gapFrom) && m.at.Before(gapFrom.Add(gap)) {
+				inGap = append(inGap, fmt.Sprintf("+%s %s", m.at.Sub(gapFrom).Round(time.Millisecond), m.what))
+			}
+		}
+		mu.Unlock()
+		t.Fatalf("the node left an existing record unanswered for %s, %s after the request began, during one request of %s; probes in the gap: %q", gap, gapFrom.Sub(began).Round(time.Millisecond), ended.Sub(began), inGap)
 	}
 	// A waiting read makes the request let the node publish at its next item,
 	// so a read is served within its two-second capture wait whenever the
@@ -443,4 +463,11 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	if elapsed := ended.Sub(began); elapsed > 5*defaultItemPace.work && len(reads) == 0 {
 		t.Fatalf("no read of a second caller was answered during the %s of one request; last refusal: %s", elapsed, readError)
 	}
+}
+
+func probeAddress(rr dns.RR) string {
+	if a, ok := rr.(*dns.A); ok {
+		return a.A.String()
+	}
+	return ""
 }
