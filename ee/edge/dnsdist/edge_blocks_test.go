@@ -34,6 +34,13 @@ func (f *fakeBlocks) set(addr string, l internalapi.EdgeBlockList) {
 	f.lists[addr] = l
 }
 
+// drop makes addr answer as a backend without the route.
+func (f *fakeBlocks) drop(addr string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.lists, addr)
+}
+
 func (f *fakeBlocks) EdgeBlocks(_ context.Context, addr string) (internalapi.EdgeBlockList, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -67,10 +74,12 @@ func edgeStatus(t *testing.T, s *Supervisor) map[string]any {
 
 // TestSupervisorEdgeBlocks drives the supervisor with the fake dnsdist:
 // a pulled block is added through the console, a lagging replica cannot
-// resurrect a revoked block, revoke clears and reinstalls the rest, a new
-// child gets the whole set again, a supervisor restart with every backend
-// down reapplies the persisted set, an unacknowledged update is resent and
-// expiry removes a block from the desired set.
+// resurrect a revoked block (in the same pull, after the newer backend
+// stops answering, and after a supervisor restart), revoke clears and
+// reinstalls the rest, a new child gets the whole set again, a supervisor
+// restart with every backend down reapplies the persisted set, an
+// unacknowledged update is resent and expiry removes a block from the
+// desired set.
 func TestSupervisorEdgeBlocks(t *testing.T) {
 	blocks := &fakeBlocks{}
 	a := internalapi.EdgeBlock{ID: "00000000000000a1", Prefix: "192.0.2.0/24", Until: time.Now().Add(time.Hour).Truncate(time.Second)}
@@ -125,6 +134,18 @@ func TestSupervisorEdgeBlocks(t *testing.T) {
 	if h.count("dynblock add 192.0.2.0/24") != 1 || h.count("dynblock clear") != 1 {
 		t.Fatalf("lagging replica resurrected a revoked block:\n%s", h.log())
 	}
+	// The primary stops answering while the follower still serves revision
+	// 2: the revision already applied is remembered across pulls, so the
+	// revoked block stays revoked.
+	blocks.drop("10.0.0.11:8082")
+	calls := func() int { blocks.mu.Lock(); defer blocks.mu.Unlock(); return blocks.calls }
+	before := calls()
+	h.waitFor("several pulls answered only by the follower", func() bool { return calls() >= before+8 })
+	time.Sleep(300 * time.Millisecond)
+	if h.count("dynblock add 192.0.2.0/24") != 1 || h.count("dynblock clear") != 1 || h.count("dynblock add 2001:db8::/48") != 2 {
+		t.Fatalf("a lagging replica brought back a revoked block after the primary missed pulls:\n%s", h.log())
+	}
+	blocks.set("10.0.0.11:8082", blockList("cluster-1", 3, b))
 	persisted, err := os.ReadFile(filepath.Join(h.dir, edgeBlocksFile)) //nolint:gosec // test-owned path
 	if err != nil || !strings.Contains(string(persisted), "2001:db8::/48") || strings.Contains(string(persisted), "192.0.2.0/24") {
 		t.Fatalf("persisted set %s, %v", persisted, err)
@@ -188,6 +209,116 @@ func TestSupervisorEdgeBlocks(t *testing.T) {
 		defer h2.sup.mu.Unlock()
 		return len(h2.sup.blocks.desired) == 1
 	})
+	// The floor survives the restart: the lagging follower alone (revision
+	// 2 with the revoked block) does not reinstall it.
+	blocks.drop("10.0.0.11:8082")
+	blocks.mu.Lock()
+	blocks.down = false
+	blocks.mu.Unlock()
+	before = calls()
+	h2.waitFor("pulls answered by the lagging follower", func() bool { return calls() >= before+8 })
+	time.Sleep(300 * time.Millisecond)
+	if strings.Contains(h2.log(), "dynblock add 192.0.2.0/24") {
+		t.Fatalf("a restarted edge took a lagging replica's older revision:\n%s", h2.log())
+	}
+	if st := edgeStatus(t, h2.sup); st["source"] != "backends" {
+		t.Fatalf("status after the follower answered %+v", st)
+	}
+}
+
+// TestSupervisorEdgeBlocksPersistRetry proves a failed save of the set is
+// retried on later pulls although the set no longer changes, so a restart
+// does not reapply a revoked block from a stale file.
+func TestSupervisorEdgeBlocksPersistRetry(t *testing.T) {
+	blocks := &fakeBlocks{}
+	a := internalapi.EdgeBlock{ID: "00000000000000a1", Prefix: "192.0.2.0/24", Until: time.Now().Add(time.Hour).Truncate(time.Second)}
+	blocks.set("10.0.0.11:8082", blockList("cluster-1", 1, a))
+	h := newHarness(t, func(c *Config) {
+		c.Blocks, c.BlockPoll = blocks, 50*time.Millisecond
+		c.Source = &chanSource{initial: []cluster.Endpoint{ep("node-a", "10.0.0.11")}, ch: make(chan []cluster.Endpoint, 4)}
+	})
+	h.waitFor("ready", h.ready)
+	path := filepath.Join(h.dir, edgeBlocksFile)
+	h.waitFor("first set installed and persisted", func() bool {
+		data, err := os.ReadFile(path) //nolint:gosec // test-owned path
+		return err == nil && strings.Contains(string(data), "192.0.2.0/24") &&
+			h.count("dynblock add 192.0.2.0/24") == 1 && edgeStatus(t, h.sup)["installed"] == true
+	})
+	// A directory in the file's place makes every save fail.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	blocks.set("10.0.0.11:8082", blockList("cluster-1", 2))
+	h.waitFor("revoke applied", func() bool { return h.count("dynblock clear") == 1 && edgeStatus(t, h.sup)["active"] == float64(0) })
+	time.Sleep(200 * time.Millisecond)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor("unchanged set persisted after the failure", func() bool {
+		data, err := os.ReadFile(path) //nolint:gosec // test-owned path
+		return err == nil && !strings.Contains(string(data), "192.0.2.0/24") && strings.Contains(string(data), `"revision":"2"`)
+	})
+}
+
+// TestMergeEdgeBlocks covers the per-owner revision floor across pulls.
+func TestMergeEdgeBlocks(t *testing.T) {
+	now := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	a := internalapi.EdgeBlock{ID: "00000000000000a1", Prefix: "192.0.2.0/24", Until: now.Add(time.Hour)}
+	b := internalapi.EdgeBlock{ID: "00000000000000b2", Prefix: "2001:db8::/48", Until: now.Add(time.Hour)}
+	c := internalapi.EdgeBlock{ID: "00000000000000c3", Prefix: "198.51.100.0/24", Until: now.Add(time.Hour)}
+	hold := time.Minute
+	ids := func(bs []internalapi.EdgeBlock) string {
+		var out []string
+		for _, x := range bs {
+			out = append(out, x.ID[len(x.ID)-2:])
+		}
+		return strings.Join(out, ",")
+	}
+	owners, got := mergeEdgeBlocks(nil, []internalapi.EdgeBlockList{blockList("o", 3, b), blockList("o", 2, a, b)}, hold, now)
+	if ids(got) != "b2" || owners["o"].Revision != 3 {
+		t.Fatalf("same pull: %s %+v", ids(got), owners)
+	}
+	// Only the lagging copy answers: the floor holds the newer set.
+	owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 2, a, b)}, hold, now.Add(5*time.Second))
+	if ids(got) != "b2" || owners["o"].LowerSince.IsZero() {
+		t.Fatalf("lagging pull: %s %+v", ids(got), owners)
+	}
+	// The newer copy answers again: the lower streak is broken.
+	owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 3, b, c)}, hold, now.Add(10*time.Second))
+	if ids(got) != "b2,c3" || !owners["o"].LowerSince.IsZero() {
+		t.Fatalf("same revision with new content: %s %+v", ids(got), owners)
+	}
+	// A pull without the owner also breaks the streak, then a sustained
+	// lower revision for the whole hold is taken as a restore.
+	owners, _ = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 1, a)}, hold, now.Add(20*time.Second))
+	owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("other", 1)}, hold, now.Add(30*time.Second))
+	if got != nil || !owners["o"].LowerSince.IsZero() || owners["o"].Revision != 3 {
+		t.Fatalf("absent owner: %s %+v", ids(got), owners)
+	}
+	for i, at := range []time.Duration{40 * time.Second, 90 * time.Second} {
+		owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 1, a)}, hold, now.Add(at))
+		if ids(got) != "b2,c3" {
+			t.Fatalf("restore accepted early at step %d: %s", i, ids(got))
+		}
+	}
+	owners, got = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("o", 1, a)}, hold, now.Add(100*time.Second))
+	if ids(got) != "a1" || owners["o"].Revision != 1 {
+		t.Fatalf("restore after the hold: %s %+v", ids(got), owners)
+	}
+	// Absent owners are bounded and forgotten after the memory window.
+	for i := range maxEdgeBlockOwners + 3 {
+		owners, _ = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("twin-"+strings.Repeat("x", i+1), 1)}, hold, now.Add(time.Duration(200+i)*time.Second))
+	}
+	if len(owners) != maxEdgeBlockOwners {
+		t.Fatalf("%d owners remembered", len(owners))
+	}
+	owners, _ = mergeEdgeBlocks(owners, []internalapi.EdgeBlockList{blockList("fresh", 1)}, hold, now.Add(edgeBlockOwnerMemory+time.Hour))
+	if len(owners) != 1 {
+		t.Fatalf("expired owner memory kept: %+v", owners)
+	}
 }
 
 func TestEdgeBlockStatementsAndPlan(t *testing.T) {

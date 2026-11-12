@@ -81,6 +81,11 @@ type Config struct {
 	// through the console; nil disables edge blocks.
 	Blocks    EdgeBlockLister
 	BlockPoll time.Duration
+	// BlockRestoreHold is how long every pull reporting an owner must show
+	// only a revision below the one already applied before the edge takes
+	// it as a restore (default 5 min). Until then a lagging backend cannot
+	// undo a newer set.
+	BlockRestoreHold time.Duration
 	// StatusPoll is the dnsdist API poll interval feeding readiness and
 	// kudurru_edge_backend_up; default 1 s.
 	StatusPoll time.Duration
@@ -173,6 +178,9 @@ func New(cfg Config) (*Supervisor, error) {
 	}
 	if cfg.BlockPoll <= 0 {
 		cfg.BlockPoll = 5 * time.Second
+	}
+	if cfg.BlockRestoreHold <= 0 {
+		cfg.BlockRestoreHold = 5 * time.Minute
 	}
 	if cfg.StatusPoll <= 0 {
 		cfg.StatusPoll = time.Second
@@ -588,9 +596,9 @@ func (s *Supervisor) Run(ctx context.Context) error {
 	if s.cfg.Blocks != nil {
 		// The persisted set is in force until the first backend answers, so
 		// a supervisor restart reapplies unexpired blocks without a backend.
-		persisted := s.loadEdgeBlocks(time.Now())
+		persisted, owners := s.loadEdgeBlocks(time.Now())
 		s.mu.Lock()
-		s.blocks.desired = persisted
+		s.blocks.desired, s.blocks.owners = persisted, owners
 		if len(persisted) > 0 {
 			s.blocks.source = "persisted"
 		}

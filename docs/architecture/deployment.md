@@ -322,7 +322,7 @@ flowchart LR
     CM --> OBS["every replica refreshes<br/>its observation every 2 s"]
     PUB --> INT["GET /internal/edge/blocks<br/>(internal TLS + cluster token)"]
     OBS --> INT
-    INT --> SUP["edge supervisor pulls every backend<br/>every 5 s; newest revision per owner"]
+    INT --> SUP["edge supervisor pulls every backend<br/>every 5 s; newest revision per owner,<br/>remembered across pulls"]
     SUP --> FILE["edge-blocks.json in the<br/>configuration directory"]
     SUP --> CON["console: addDynamicBlock with the<br/>remaining seconds (Drop)"]
     FILE -- "supervisor restart,<br/>no backend reachable" --> CON
@@ -330,10 +330,23 @@ flowchart LR
 ```
 
 The supervisor keeps, per owner (the cluster ID, or the ConfigMap UID), the
-copy with the highest revision, so a lagging follower cannot bring back a
-revoked block; independent static twins are separate owners and their sets
-are combined. When no backend answers, the last set stays in force and is
-still expired locally. A new dnsdist child gets the whole set; an addition
+copy with the highest revision, and remembers that revision across pulls and
+restarts (it is stored in `edge-blocks.json` with the set). A backend that
+serves a lower revision than one already applied is ignored, so a lagging
+follower cannot bring back a revoked block or wipe a new one, also while the
+newer backend misses pulls. Only when every pull that reports the owner has
+shown a lower revision for five minutes (`BlockRestoreHold`) does the edge
+take it as a deliberate step back, such as a restored backup or a promoted
+follower that had lagged; a primary that stays unreachable that long while a
+follower serves an older revision therefore brings that revision back after
+five minutes, still bounded by each block's expiry. An owner's revision is
+remembered for seven days and one hour after it was first applied (longer
+than any block a lower revision can carry), and at most eight owners that no
+backend reports any more are kept. Independent static twins are separate
+owners and their sets are combined; only owners reported in a pull
+contribute blocks. When no backend answers, the last set stays in force and
+is still expired locally. A failed write of `edge-blocks.json` is retried on
+every pull until it succeeds. A new dnsdist child gets the whole set; an addition
 adds only the new entry; a revoke or a changed expiry clears the dynamic
 block table and reinstalls the rest, because dnsdist has no per-entry
 removal and only ever extends an entry. Clearing also drops blocks the
