@@ -619,9 +619,13 @@ sequenceDiagram
    decides, not the rcode, so the drain answer for the health names and a
    cached SERVFAIL do not count, nor do refusals and drops) or if it took
    at least `tracing.slowThreshold` (250 ms). Traces kept only by those two
-   tail rules are capped at 100 per second per node, so a client asking
-   for failing or slow names cannot force an export per query; the excess
-   counts as `kudurru_tracing_traces_total{result="tail_limited"}`. Every query is recorded
+   tail rules are capped at 100 in any one second per node (a sliding
+   window of the last 100 keep times, not a calendar second, so a burst
+   across a second boundary cannot keep 200), so a client asking for
+   failing or slow names cannot force an export per query; the excess
+   counts as `kudurru_tracing_traces_total{result="tail_limited"}`. A tail
+   trace that the full export queue drops (`queue_full`) gives its
+   allowance back. Every query is recorded
    while tracing is on, so the tail rule needs no second pass. Spans and
    attributes are recorded into arrays inline in the `Trace` (16 spans, 32
    attributes: the root, every stage and a few upstream attempts), and the

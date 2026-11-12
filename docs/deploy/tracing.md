@@ -119,7 +119,7 @@ counted, never sent again. Watch:
 | `kudurru_tracing_traces_total{result="queue_full"}` | dropped because the collector could not keep up |
 | `kudurru_tracing_traces_total{result="export_failed"}` | in batches the collector refused or did not answer |
 | `kudurru_tracing_traces_total{result="not_kept"}` | traced queries neither sampled, failed nor slow |
-| `kudurru_tracing_traces_total{result="tail_limited"}` | failed or slow, but over the cap of 100 such traces per second |
+| `kudurru_tracing_traces_total{result="tail_limited"}` | failed or slow, but over the cap of 100 such traces in any one second (a sliding second; tail traces dropped as `queue_full` do not count against it) |
 | `kudurru_tracing_queue_length` | kept traces waiting |
 
 A failed batch also logs `trace export failed; the batch is dropped` with

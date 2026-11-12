@@ -21,7 +21,7 @@ const (
 	DefaultFlushInterval = 2 * time.Second
 	DefaultTimeout       = 10 * time.Second
 	// DefaultTailLimit caps the traces kept only by the tail rule (failed
-	// or slow, not head-sampled) per second.
+	// or slow, not head-sampled) in any one second.
 	DefaultTailLimit = 100
 )
 
@@ -44,10 +44,12 @@ type Config struct {
 	// Slow keeps every query that took at least this long; zero disables
 	// the slow rule.
 	Slow time.Duration
-	// TailLimit caps, per second, the traces kept only because the query
-	// failed or was slow, so a client that asks for failing or slow names
-	// cannot force an export per query (DefaultTailLimit when zero, no cap
-	// when negative). The excess counts as tail_limited.
+	// TailLimit caps the traces kept only because the query failed or was
+	// slow at this many in any one second (a sliding window, not a calendar
+	// second), so a client that asks for failing or slow names cannot force
+	// an export per query (DefaultTailLimit when zero, no cap when
+	// negative). A trace the full export queue drops does not count. The
+	// excess counts as tail_limited.
 	TailLimit int
 	// OptionCode is the EDNS option code of TRACEPARENT (DefaultOptionCode
 	// when zero).
@@ -82,10 +84,13 @@ type Tracer struct {
 	tailLimit  int
 	now        func() time.Time
 
-	// tailMu guards the tail rule's one-second window.
-	tailMu  sync.Mutex
-	tailSec int64
-	tailN   int
+	// tailMu guards the tail rule's sliding window: tailAt holds the times
+	// at which the last tailN tail traces were kept, oldest at tailHead, in
+	// a ring of tailLimit entries.
+	tailMu   sync.Mutex
+	tailAt   []time.Time
+	tailHead int
+	tailN    int
 
 	queue chan *Trace
 	mu    sync.Mutex
@@ -117,6 +122,9 @@ func New(c Config) (*Tracer, error) {
 	}
 	if t.tailLimit == 0 {
 		t.tailLimit = DefaultTailLimit
+	}
+	if t.tailLimit > 0 {
+		t.tailAt = make([]time.Time, t.tailLimit)
 	}
 	if t.code == 0 {
 		t.code = DefaultOptionCode
@@ -215,37 +223,59 @@ func (t *Tracer) Begin(m *dns.Msg, trusted bool, at time.Time) (tr *Trace, carri
 	return tr, ex.Present
 }
 
-// allowTail reports whether one more trace may be kept by the tail rule
-// in the current second.
+// allowTail reports whether one more trace may be kept by the tail rule:
+// fewer than tailLimit were kept in the second before now. The times kept
+// are a ring, oldest first; when it is full the oldest decides, and is
+// replaced when it is a second old.
 func (t *Tracer) allowTail() bool {
 	if t.tailLimit < 0 {
 		return true
 	}
-	sec := t.now().Unix()
+	now := t.now()
 	t.tailMu.Lock()
 	defer t.tailMu.Unlock()
-	if sec != t.tailSec {
-		t.tailSec, t.tailN = sec, 0
+	if t.tailN < t.tailLimit {
+		t.tailAt[(t.tailHead+t.tailN)%t.tailLimit] = now
+		t.tailN++
+		return true
 	}
-	if t.tailN >= t.tailLimit {
+	if now.Sub(t.tailAt[t.tailHead]) < time.Second {
 		return false
 	}
-	t.tailN++
+	t.tailAt[t.tailHead] = now
+	t.tailHead = (t.tailHead + 1) % t.tailLimit
 	return true
 }
 
-func (t *Tracer) offer(tr *Trace) {
+// returnTail gives back the allowance of a tail trace that never reached
+// the export queue. It drops the newest entry of the ring, which may be
+// another trace's (allowed a moment later): the count is what matters.
+func (t *Tracer) returnTail() {
+	if t.tailLimit < 0 {
+		return
+	}
+	t.tailMu.Lock()
+	if t.tailN > 0 {
+		t.tailN--
+	}
+	t.tailMu.Unlock()
+}
+
+// offer queues tr for export without blocking and reports whether it did.
+func (t *Tracer) offer(tr *Trace) bool {
 	t.mu.Lock()
 	closed := t.closed
 	t.mu.Unlock()
 	if closed {
 		t.metrics.trace(resultShutdown, 1)
-		return
+		return false
 	}
 	select {
 	case t.queue <- tr:
+		return true
 	default:
 		t.metrics.trace(resultQueueFull, 1)
+		return false
 	}
 }
 

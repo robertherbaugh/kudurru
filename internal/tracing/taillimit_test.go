@@ -61,3 +61,77 @@ func TestTailKeepIsCappedPerSecond(t *testing.T) {
 		trace.Finish(now)
 	}
 }
+
+// TestTailCapHoldsInAnyOneSecond: the cap is a sliding second, not a
+// calendar second, so a burst on either side of a second boundary cannot
+// keep twice the limit; an allowance comes back once the trace it was given
+// to is a second old.
+func TestTailCapHoldsInAnyOneSecond(t *testing.T) {
+	tr, _, _ := newTestTracer(t, Config{Ratio: 0, TailLimit: 3})
+	now := time.Unix(1_700_000_000, 0).Add(999 * time.Millisecond)
+	tr.now = func() time.Time { return now }
+	failed := func() bool {
+		trace, _ := tr.Begin(query(), false, now)
+		kept := trace.Decide(0, true)
+		trace.Finish(now)
+		return kept
+	}
+	for i := range 3 {
+		if !failed() {
+			t.Fatalf("trace %d of the limit was not kept", i+1)
+		}
+	}
+	now = now.Add(2 * time.Millisecond) // the next calendar second
+	if failed() {
+		t.Fatal("a fourth tail trace was kept 2 ms after the first three")
+	}
+	now = now.Add(998 * time.Millisecond) // a second after the first three
+	for i := range 3 {
+		if !failed() {
+			t.Fatalf("trace %d after the window moved on was not kept", i+1)
+		}
+	}
+	if failed() {
+		t.Fatal("the cap let a fourth trace through in one second")
+	}
+	if got := testutil.ToFloat64(tr.metrics.traces[resultTailLimited]); got != 2 {
+		t.Fatalf("tail_limited = %v, want 2", got)
+	}
+}
+
+// TestTailCapIsNotSpentOnQueueFull: a tail trace the full export queue
+// drops was never exported, so it gives its allowance back; the cap counts
+// the tail traces that reach the queue.
+func TestTailCapIsNotSpentOnQueueFull(t *testing.T) {
+	tr, _, _ := newTestTracer(t, Config{Ratio: 0, TailLimit: 2, QueueSize: 1})
+	now := time.Unix(1_700_000_000, 0)
+	tr.now = func() time.Time { return now }
+	failed := func() bool {
+		trace, _ := tr.Begin(query(), false, now)
+		kept := trace.Decide(0, true)
+		trace.Finish(now)
+		return kept
+	}
+	// Run is not started: the first trace fills the queue, the next ones
+	// find it full.
+	for i := range 5 {
+		if !failed() {
+			t.Fatalf("trace %d was limited although only one reached the queue", i+1)
+		}
+	}
+	if got := testutil.ToFloat64(tr.metrics.traces[resultQueueFull]); got != 4 {
+		t.Fatalf("queue_full = %v, want 4", got)
+	}
+	// The queue empties: one more allowance is left in this second, then
+	// the cap holds.
+	<-tr.queue
+	if !failed() {
+		t.Fatal("the second allowance was spent on dropped traces")
+	}
+	if failed() {
+		t.Fatal("a third tail trace reached the queue in one second")
+	}
+	if got := testutil.ToFloat64(tr.metrics.traces[resultTailLimited]); got != 1 {
+		t.Fatalf("tail_limited = %v, want 1", got)
+	}
+}
