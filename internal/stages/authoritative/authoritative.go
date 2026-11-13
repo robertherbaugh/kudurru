@@ -289,7 +289,7 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 		if z2 != nil && z2.QueryAllowed(client) && !z2.RoutingAvailableAt(s.now()) {
 			return s.secondaryUnavailable(req, z2), nil
 		}
-		if z2 != nil && (z2.Type() == v1alpha1.ZoneTypePrimary || z2.Type() == v1alpha1.ZoneTypeSecondary) && z2.QueryAllowed(client) {
+		if z2 != nil && (z2.Type() == v1alpha1.ZoneTypePrimary || z2.Type() == v1alpha1.ZoneTypeSecondary || z2.Type() == v1alpha1.ZoneTypeExternal) && z2.QueryAllowed(client) {
 			r2, err := s.signedLookup(req, set, z2, target, q.Qtype, last.Hops)
 			if err != nil {
 				return s.signedFailure(req, z2), nil

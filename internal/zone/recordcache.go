@@ -215,7 +215,7 @@ func (p *ParsedRecordSet) Records(i int) ([]dns.RR, field.ErrorList) {
 func (p *ParsedRecordSet) Add(source string, i int) field.ErrorList {
 	path := field.NewPath("spec", "endpoints").Index(i)
 	ep := &p.endpoints[i]
-	if p.builder.z.typ != public.ZoneTypePrimary || !Served(ep, p.builder.now) {
+	if !p.builder.z.holdsRecords() || !Served(ep, p.builder.now) {
 		return p.builder.Add(source, path, ep)
 	}
 	records, errs := p.Records(i)

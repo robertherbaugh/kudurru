@@ -15,8 +15,9 @@ import (
 )
 
 // servedTypes are the zone types a complete serving image can carry. The
-// DNSZone schema also admits external, catalog and secondaryCatalog, which no
-// release serves yet.
+// DNSZone schema also admits external, which only the Kubernetes driver
+// serves (its records come from Kubernetes objects, D402), and catalog and
+// secondaryCatalog, which no release serves yet.
 var servedTypes = []v1alpha1.ZoneType{
 	v1alpha1.ZoneTypePrimary, v1alpha1.ZoneTypeForward, v1alpha1.ZoneTypeSecondary, v1alpha1.ZoneTypeStub,
 }
@@ -39,6 +40,10 @@ func BuildNonprimary(config *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet, no
 	switch config.Spec.Type {
 	case v1alpha1.ZoneTypePrimary:
 		return nil, nil, fmt.Errorf("a primary zone is built from its committed data")
+	case v1alpha1.ZoneTypeExternal:
+		// Build accepts an external zone for the Kubernetes zone view; a
+		// complete serving image has no Kubernetes sources to fill it.
+		return nil, nil, fmt.Errorf("an external zone is served only by the Kubernetes store driver")
 	case v1alpha1.ZoneTypeSecondary:
 		model, err = BuildSecondaryPlaceholder(config)
 	case v1alpha1.ZoneTypeStub:

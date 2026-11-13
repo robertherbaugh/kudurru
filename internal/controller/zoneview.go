@@ -332,6 +332,12 @@ func buildZoneView(zone *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet, vali
 			verdict.Blocked = ReasonNotSelected
 			verdict.BlockedMsg = fmt.Sprintf("DNSZone %q does not admit record sets from namespace %q with these labels (spec.recordSetSelector)", zone.Name, rs.Namespace)
 			continue
+		case zone.Spec.Type == v1alpha1.ZoneTypeExternal && !zonemodel.ExternalSourceOwned(rs):
+			// D402: an external zone serves only what its Kubernetes
+			// sources say (zone.ServedRecordSets applies the same rule).
+			verdict.Blocked = ReasonNotSelected
+			verdict.BlockedMsg = fmt.Sprintf("DNSZone %q is an external zone: it serves only the record sets kudurru derives from Ingresses, Gateway API routes and LoadBalancer Services", zone.Name)
+			continue
 		}
 		if msg := invalid(rs, validate); msg != "" {
 			verdict.Blocked = v1alpha1.ReasonInvalid
