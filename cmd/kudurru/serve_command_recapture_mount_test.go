@@ -46,41 +46,35 @@ func recaptureMountedSend(client *http.Client, base, method, path, csrf string, 
 	return response.StatusCode, raw, err
 }
 
-// mountedRefusal classifies one answer of the load below.
+// mountedRefusal names one answer of the load below.
 type mountedRefusal int
 
 const (
 	mountedAdmitted mountedRefusal = iota
-	// mountedSuperseded is the refusal D399 removes: a command captured on a
-	// publication that another commit superseded before dispatch.
+	// mountedSuperseded is the refusal of a command whose publication
+	// another commit superseded before dispatch, also after its five-second
+	// recapture bound (D399).
 	mountedSuperseded
-	// mountedBoundEnded is the same answer after the command waited its
-	// whole five-second recapture bound (D399) because the node kept
-	// publishing: the publication-starvation limit, not a superseded
-	// command that D399 failed to capture again.
-	mountedBoundEnded
 	// mountedAtCapture is a request refused before it was read, because the
 	// node had not published its newest commit within the capture wait (503
-	// generation_pending). Nothing of it ran; D399 does not change it.
+	// generation_pending).
 	mountedAtCapture
 	// mountedUnacknowledged is a sign-in whose session committed but whose
 	// publication did not arrive within the seal wait ("authentication
-	// operation unavailable"). D399 does not change it either.
+	// operation unavailable").
 	mountedUnacknowledged
 	mountedOther
 )
+
+func (r mountedRefusal) String() string {
+	return [...]string{"admitted", "refused as superseded", "refused at capture", "sign-in unacknowledged", "other"}[r]
+}
 
 func classifyMounted(status int, raw []byte, err error, ok ...int) mountedRefusal {
 	switch {
 	case err == nil && slices.Contains(ok, status):
 		return mountedAdmitted
 	case status == http.StatusServiceUnavailable && bytes.Contains(raw, []byte("current writable serving generation unavailable")):
-		var answer struct {
-			Took float64 `json:"took_ms"`
-		}
-		if json.Unmarshal(raw, &answer) == nil && answer.Took >= float64(commandRecaptureWait/time.Millisecond) {
-			return mountedBoundEnded
-		}
 		return mountedSuperseded
 	case status == http.StatusServiceUnavailable && bytes.Contains(raw, []byte(`"generation_pending"`)):
 		return mountedAtCapture
@@ -90,37 +84,39 @@ func classifyMounted(status int, raw []byte, err error, ok ...int) mountedRefusa
 	return mountedOther
 }
 
+// mountedPublicationLagBound is how long a record-set write may take, from
+// its 200 at commit, until the node answers it in DNS while it commits ten
+// signed UPDATEs a second (D405). The node prepares one publication at a
+// time from its whole image; it measured well under a second without the
+// race detector and under three seconds with it on a loaded machine (see
+// the PUBLISH-STARVATION evidence), so the bound leaves room for a slow
+// runner while still failing a node that stops publishing.
+const mountedPublicationLagBound = 10 * time.Second
+
 // A ready node that commits a steady stream of signed UPDATEs (10 per second,
-// each followed by the node's own zone status work) never refuses a sign-in
-// or a record-set write that it captured because one of those commits
-// published while the command ran (D399): no answer is "current writable
-// serving generation unavailable" before its five-second recapture bound
-// ended. Every request is sent once.
+// each followed by the node's own zone status work) serves its operators
+// meanwhile: 200 sign-ins, 200 record-set writes and 200 reads of the
+// written object, each sent exactly once and none retried, all succeed
+// (D399, D405), and each write is answered in DNS within
+// mountedPublicationLagBound of its commit. No refusal is tolerated: not at
+// capture (generation_pending), not as superseded, not after a committed
+// session (authentication operation unavailable).
 //
-// Before each command the test reads until the node serves a current
-// publication, so the command is captured on one and the background commits
-// land while it runs, which is the case D399 decides. The test does not
-// require every request to succeed: on a loaded machine the node's
-// publication falls behind a stream of commits (each commit cancels the
-// preparation in progress), so a request can be refused at capture
-// (generation_pending) or, for a sign-in, after its session committed
-// ("authentication operation unavailable"), or, when the node keeps
-// publishing for the whole bound, after five seconds with "current writable
-// serving generation unavailable". Those are counted and logged;
-// they belong to the open publication-starvation limit, not to D399. Any
-// other failure fails the test, and at least one sign-in and one write must
-// be admitted. The writer's own first sign-in is set-up, not a subject: it
-// is sent again only after a refusal before it was read or after the whole
-// bound, at most five times.
+// Before D405 the node's preparation time grew with every UPDATE (each
+// content commit left the whole previous zone content behind as unreferenced
+// chunks in the replicated image, all of which every publication read,
+// checked and decoded), and every Wake after a commit canceled the
+// preparation in progress, so the node fell minutes behind under the race
+// detector and refused requests at capture.
 func TestRunServeCommandsNotRefusedAsSupersededUnderSteadyUpdates(t *testing.T) {
 	if raceEnabled {
-		// Under the race detector the node's publication falls behind ten
-		// commits a second for a minute at a time (the publisher starts its
-		// preparation again on every new generation), so this run fails on
-		// that starvation and not on the rule it proves. Open as its own
-		// defect (D405). hack/go-test.py runs this test without the race
-		// detector (NORACE_TESTS).
-		t.Skip("publication starves under steady commits with the race detector; runs without it")
+		// Under the race detector one publication of this node takes one to
+		// three seconds on a loaded machine (the instrumented SQLite driver and
+		// the per-owner image validation, PUBLISH-STARVATION evidence), longer
+		// than the two-second capture wait, so reads and sign-ins are still
+		// refused at capture there; that limit is open (D405). hack/go-test.py
+		// runs this test without the race detector (NORACE_TESTS).
+		t.Skip("one publication outlasts the capture wait under the race detector; runs without it")
 	}
 	cfg, secret := mountedTestConfig(t)
 	cfg.Auth.IdentityProviders = nil
@@ -179,90 +175,104 @@ func TestRunServeCommandsNotRefusedAsSupersededUnderSteadyUpdates(t *testing.T) 
 			mu.Unlock()
 		}
 	}()
+	defer func() {
+		select {
+		case <-done:
+		default:
+			close(done)
+		}
+		updates.Wait()
+	}()
 	time.Sleep(time.Second)
 
-	const count = 30
+	const count = 200
 	counts := map[mountedRefusal]int{}
 	var failures []string
-	signIns, writes := 0, 0
+	record := func(what string, i, status int, raw []byte, err error, ok ...int) bool {
+		class := classifyMounted(status, raw, err, ok...)
+		counts[class]++
+		if class != mountedAdmitted {
+			failures = append(failures, fmt.Sprintf("%s %d (%s): status %d err %v: %s", what, i, class, status, err, raw))
+		}
+		return class == mountedAdmitted
+	}
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	writer := &http.Client{Jar: jar, Transport: &http.Transport{}, Timeout: 20 * time.Second}
 	defer writer.CloseIdleConnections()
-	// published waits, with reads only, until the node serves a current
-	// publication, so that the next command is captured on one; the
-	// background commits then land while that command runs.
-	published := func() {
-		for until := time.Now().Add(time.Minute); time.Now().Before(until); time.Sleep(20 * time.Millisecond) {
-			if response, err := writer.Get(base + "/auth/status"); err == nil {
-				_ = response.Body.Close()
-				if response.StatusCode == http.StatusOK {
-					return
+	var info api.SessionInfo
+	status, raw, err := recaptureMountedSend(writer, base, http.MethodPost, "/auth/login", "", login)
+	if !record("writer sign-in", 0, status, raw, err, http.StatusOK) || json.Unmarshal(raw, &info) != nil || info.CSRF == "" {
+		t.Fatalf("writer sign-in: status %d err %v: %s", status, err, raw)
+	}
+	resolver := &dns.Client{Timeout: 200 * time.Millisecond}
+	// served waits until name answers address and returns how long that took.
+	served := func(name, address string) (time.Duration, bool) {
+		started := time.Now()
+		for time.Since(started) < time.Minute {
+			query := new(dns.Msg)
+			query.SetQuestion(name, dns.TypeA)
+			if answer, _, err := resolver.Exchange(query, cfg.Listeners.DNS[0].Address); err == nil && answer != nil && answer.Rcode == dns.RcodeSuccess && len(answer.Answer) == 1 {
+				if rr, ok := answer.Answer[0].(*dns.A); ok && rr.A.String() == address {
+					return time.Since(started), true
 				}
 			}
+			time.Sleep(10 * time.Millisecond)
 		}
-		t.Fatal("the node did not publish for a minute")
+		return time.Minute, false
 	}
-	var info api.SessionInfo
-	for attempt := 0; info.CSRF == "" && attempt < 5; attempt++ {
-		published()
-		status, raw, err := recaptureMountedSend(writer, base, http.MethodPost, "/auth/login", "", login)
-		switch class := classifyMounted(status, raw, err, http.StatusOK); class {
-		case mountedAdmitted:
-			if json.Unmarshal(raw, &info) != nil || info.CSRF == "" {
-				t.Fatalf("writer sign-in: %s", raw)
-			}
-		case mountedAtCapture, mountedBoundEnded:
-			counts[class]++
-		default:
-			t.Fatalf("writer sign-in: status %d err %v: %s", status, err, raw)
-		}
-	}
-	if info.CSRF == "" {
-		t.Fatal("the writer's sign-in was refused five times")
-	}
-	record := func(what string, i, status int, raw []byte, err error, ok ...int) bool {
-		class := classifyMounted(status, raw, err, ok...)
-		counts[class]++
-		if class == mountedSuperseded || class == mountedOther {
-			failures = append(failures, fmt.Sprintf("%s %d: status %d err %v: %s", what, i, status, err, raw))
-		}
-		return class == mountedAdmitted
-	}
+	signIns, writes, reads := 0, 0, 0
+	var lags []time.Duration
+	began := time.Now()
 	for i := range count {
 		client := &http.Client{Transport: &http.Transport{}, Timeout: 20 * time.Second}
-		published()
 		status, raw, err := recaptureMountedSend(client, base, http.MethodPost, "/auth/login", "", login)
 		client.CloseIdleConnections()
 		if record("sign-in", i, status, raw, err, http.StatusOK) {
 			signIns++
 		}
-		// Five record sets replaced in turn keep the zone's size constant, so
-		// the node's time to publish does not grow with the run.
+		// Five record sets replaced in turn keep the zone's size constant.
 		name := fmt.Sprintf("w%d", i%5)
+		address := fmt.Sprintf("192.0.2.%d", i%250+1)
 		body := public.DNSRecordSet{TypeMeta: metav1.TypeMeta{APIVersion: "kudurru.io/v1alpha1", Kind: "DNSRecordSet"}, ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
-			Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: "load"}, Endpoints: []public.Endpoint{{DNSName: name + ".load.test.", RecordType: "A", Targets: []string{fmt.Sprintf("192.0.2.%d", i%250+1)}}}}}
-		published()
+			Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: "load"}, Endpoints: []public.Endpoint{{DNSName: name + ".load.test.", RecordType: "A", Targets: []string{address}}}}}
 		status, raw, err = recaptureMountedSend(writer, base, http.MethodPut, "/objects/dnsrecordsets/default/"+name, info.CSRF, body)
-		if record("record-set write", i, status, raw, err, http.StatusOK, http.StatusCreated) {
-			writes++
+		if !record("record-set write", i, status, raw, err, http.StatusOK, http.StatusCreated) {
+			continue
 		}
+		writes++
+		status, raw, err = recaptureMountedSend(writer, base, http.MethodGet, "/objects/dnsrecordsets/default/"+name, "", nil)
+		if record("record-set read", i, status, raw, err, http.StatusOK) {
+			reads++
+		}
+		lag, ok := served(name+".load.test.", address)
+		if !ok {
+			failures = append(failures, fmt.Sprintf("record-set write %d: %s was not answered with %s for a minute", i, name, address))
+		}
+		lags = append(lags, lag)
 	}
+	elapsed := time.Since(began)
 	close(done)
 	updates.Wait()
+	slices.Sort(lags)
+	var median, worst time.Duration
+	if len(lags) > 0 {
+		median, worst = lags[len(lags)/2], lags[len(lags)-1]
+	}
 	mu.Lock()
-	t.Logf("signed UPDATEs sent %d, rcodes %v; of %d sign-ins and %d writes: admitted %d and %d; refused as superseded %d, after the 5 s bound %d, at capture %d, sign-in unacknowledged %d, other %d",
-		sent.Load(), rcodes, count, count, signIns, writes, counts[mountedSuperseded], counts[mountedBoundEnded], counts[mountedAtCapture], counts[mountedUnacknowledged], counts[mountedOther])
+	t.Logf("in %s: signed UPDATEs sent %d, rcodes %v; of %d sign-ins, writes and reads admitted %d, %d and %d; refused as superseded %d, at capture %d, sign-in unacknowledged %d, other %d; write to DNS answer median %s, max %s",
+		elapsed.Round(time.Millisecond), sent.Load(), rcodes, count, signIns, writes, reads, counts[mountedSuperseded], counts[mountedAtCapture], counts[mountedUnacknowledged], counts[mountedOther], median.Round(time.Millisecond), worst.Round(time.Millisecond))
+	committed := rcodes[dns.RcodeSuccess]
 	mu.Unlock()
 	for _, failure := range failures {
 		t.Error(failure)
 	}
-	if signIns == 0 || writes == 0 {
-		t.Fatal("no sign-in or no record-set write was admitted during the load")
+	if worst > mountedPublicationLagBound {
+		t.Errorf("a write was answered in DNS %s after its commit; the bound is %s", worst.Round(time.Millisecond), mountedPublicationLagBound)
 	}
-	if rcodes[dns.RcodeSuccess] == 0 {
+	if committed == 0 {
 		t.Fatal("no signed UPDATE committed during the load")
 	}
 }
