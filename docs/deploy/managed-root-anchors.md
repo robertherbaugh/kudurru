@@ -103,8 +103,14 @@ managed mode on the backends. The details are in the
 - `kudurru anchors status --offline --database /var/lib/kudurru/state.db`
   reads the same state from a stopped node.
 - Metrics: `kudurru_root_anchor_worker_state`,
-  `kudurru_root_anchor_admission_current` and
-  `kudurru_root_anchor_adoption_refused`.
+  `kudurru_root_anchor_admission_current`,
+  `kudurru_root_anchor_adoption_refused` and
+  `kudurru_root_anchor_updater_acquisitions_total{outcome}` (the elected
+  updater's root queries since the process started: `applied`, `raced` when
+  an ordinary write landed while the reply was in flight and a new query
+  followed, `failed` for transport errors, `refused` when the updater stopped
+  for its term). A `raced` count that keeps growing means writes keep
+  interrupting the refresh.
 
 Alert on these conditions:
 

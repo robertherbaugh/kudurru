@@ -764,7 +764,12 @@ Each state above is visible without reading the database by hand (D369):
   the same signals are also metrics on its metrics listener:
   `kudurru_root_anchor_worker_state{worker,state}`,
   `kudurru_root_anchor_adoption_refused{reason}` and
-  `kudurru_root_anchor_admission_current`. A refusal also logs one warning when
+  `kudurru_root_anchor_admission_current`. The elected updater's root queries
+  are counted by outcome in
+  `kudurru_root_anchor_updater_acquisitions_total{outcome}` (`applied`,
+  `raced`, `failed`, `refused`), so every root query of a bootstrap or
+  refresh, including one discarded because an ordinary commit raced it, is
+  accounted for. A refusal also logs one warning when
   it begins or changes class and one line when an install ends it. A primary
   does not pull, so the refusal gauge reads 0 once the member holds the
   primary role (after a promotion, or when a resolution keeps its branch). A
