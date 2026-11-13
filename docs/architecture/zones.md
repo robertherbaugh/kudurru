@@ -972,7 +972,11 @@ changed under the request and nothing was sent. In a burst the newer commit
 is usually the previous update's own. The follower decides nothing that the
 primary does not decide again, so it waits, within the forward's bound, for
 its own current publication (`awaitFollowerPublication`), selects the zone and
-admits the key again there, and captures the forward on that source. Then the
+admits the key again there, and captures the forward on that source. The
+same happens when the forward finds the source changed only as it acquires it
+for the exchange, before the exchange with the primary began (the forwarder
+marks that refusal `clusterreplica.ErrNotSent`); a refusal once the exchange
+may have begun is never followed by a second send. Then the
 follower sends one version-1
 `dns.update` member command with the exact request minus its TSIG record, the
 key name, algorithm and secret-derived credential version, the transport and
@@ -1024,7 +1028,7 @@ sequenceDiagram
     participant P as Primary
     C->>F: TSIG-signed UPDATE
     F->>F: Zone in own cut, verify TSIG, admit key
-    Note over F: Source changed under the request: wait for own current publication, check again
+    Note over F: Source changed under the request, nothing sent yet: wait for own current publication, check again
     F->>P: dns.update member command (no TSIG record)
     P->>P: Wait for current writer publication, capture (again if only the lease was replaced)
     P->>P: Admit key identity, grants, prerequisites

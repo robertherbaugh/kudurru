@@ -127,8 +127,9 @@ func (s *servingRuntime) forwardUpdate(req *pipeline.Request, apex string) (*pip
 			held.Release()
 		}
 	}()
-	var identity dnsserver.TSIGIdentity
-	var request *sqlite.MemberForwardRequest
+	var wire []byte
+	commandID := uuid.NewString()
+	var result memberUpdateResult
 	for {
 		route := owner.Zones().Zones(time.Now()).Match(apex)
 		if route == nil || route.Name() != apex || route.Type() != public.ZoneTypePrimary {
@@ -138,17 +139,45 @@ func (s *servingRuntime) forwardUpdate(req *pipeline.Request, apex string) (*pip
 		if !verified || keys == nil || current == nil {
 			return reply(dns.RcodeRefused)
 		}
+		var request *sqlite.MemberForwardRequest
 		if current() {
-			var ok bool
-			identity, ok = keys.Identity(native.Identity().Key)
+			identity, ok := keys.Identity(native.Identity().Key)
 			if !ok || identity != native.Identity() {
 				return reply(dns.RcodeRefused)
 			}
+			if wire == nil {
+				msg := native.Message()
+				if msg == nil {
+					return reply(dns.RcodeServerFailure)
+				}
+				extra := msg.Extra[:0]
+				for _, rr := range msg.Extra {
+					if rr.Header().Rrtype != dns.TypeTSIG {
+						extra = append(extra, rr)
+					}
+				}
+				msg.Extra = extra
+				msg.Compress = false
+				if wire, err = msg.Pack(); err != nil {
+					return reply(dns.RcodeFormatError)
+				}
+			}
 			request, err = s.memberForward.Capture(ctx, token)
 			if err == nil {
-				break
+				err = s.sendMemberUpdate(ctx, req, request, commandID, identity, native.Deadline(), wire, &result)
+				if err == nil {
+					return reply(result.Rcode)
+				}
 			}
-			if !errors.Is(err, replication.ErrCAS) {
+			// Only a source change before anything was sent is waited out:
+			// the forward capture refused the changed source, or the forward
+			// found it changed when it acquired it, before its exchange with
+			// the primary began. Any other failure, and every failure once
+			// the exchange may have begun, answers SERVFAIL and is never
+			// retried or replayed: no rcode states "unknown", and RFC 2136
+			// section 4.5 directs the requestor to try another server on
+			// SERVFAIL.
+			if !errors.Is(err, replication.ErrCAS) || request != nil && !errors.Is(err, clusterreplica.ErrNotSent) {
 				return reply(dns.RcodeServerFailure)
 			}
 		}
@@ -177,53 +206,36 @@ func (s *servingRuntime) forwardUpdate(req *pipeline.Request, apex string) (*pip
 		}
 		owner = next
 	}
-	msg := native.Message()
-	if msg == nil {
-		return reply(dns.RcodeServerFailure)
-	}
-	extra := msg.Extra[:0]
-	for _, rr := range msg.Extra {
-		if rr.Header().Rrtype != dns.TypeTSIG {
-			extra = append(extra, rr)
-		}
-	}
-	msg.Extra = extra
-	msg.Compress = false
-	wire, err := msg.Pack()
-	if err != nil {
-		return reply(dns.RcodeFormatError)
-	}
+}
+
+// sendMemberUpdate sends one dns.update member command for the follower's
+// verified UPDATE on request and decodes the primary's rcode into result.
+// An error joined with clusterreplica.ErrNotSent was refused before the
+// exchange with the primary began; any other error may follow a dispatch.
+func (s *servingRuntime) sendMemberUpdate(ctx context.Context, req *pipeline.Request, request *sqlite.MemberForwardRequest, commandID string, identity dnsserver.TSIGIdentity, signature time.Time, wire []byte, result *memberUpdateResult) error {
 	deadline, _ := ctx.Deadline()
 	if forward := request.Deadline(); !forward.IsZero() && forward.Before(deadline) {
 		deadline = forward
 	}
-	payload, err := json.Marshal(memberUpdate{Message: wire, Algorithm: identity.Algorithm, Transport: req.Client.Proto.String(), SignatureDeadline: native.Deadline().UTC()})
+	payload, err := json.Marshal(memberUpdate{Message: wire, Algorithm: identity.Algorithm, Transport: req.Client.Proto.String(), SignatureDeadline: signature.UTC()})
 	if err != nil {
-		return reply(dns.RcodeServerFailure)
+		return errors.Join(clusterreplica.ErrNotSent, err)
 	}
 	issued := time.Now().UTC()
-	command := clusterreplica.Command{Format: clusterreplica.CommandFormat, Version: 1, ID: uuid.NewString(), ExpectedTerm: request.OriginalTerm(),
+	command := clusterreplica.Command{Format: clusterreplica.CommandFormat, Version: 1, ID: commandID, ExpectedTerm: request.OriginalTerm(),
 		Hops: 1, IssuedAt: issued, NotAfter: deadline, Operation: memberDNSUpdate,
 		Subject: clusterreplica.SubjectRef{Kind: clusterreplica.SubjectTSIGKey, ID: identity.Key, Provider: "tsig",
 			CredentialKind: clusterreplica.CredentialTSIG, CredentialID: identity.CredentialVersion, IssuedAt: issued},
 		Payload: payload}
-	var result memberUpdateResult
 	_, err = s.memberForward.Forward(ctx, request, command, func(_ context.Context, out clusterreplica.Outcome) error {
 		d := json.NewDecoder(bytes.NewReader(out.Body))
 		d.DisallowUnknownFields()
-		if out.Status != http.StatusOK || d.Decode(&result) != nil || result.Rcode < 0 || result.Rcode > 15 {
+		if out.Status != http.StatusOK || d.Decode(result) != nil || result.Rcode < 0 || result.Rcode > 15 {
 			return clusterreplica.ErrProtocol
 		}
 		return nil
 	})
-	if err != nil {
-		// Not sent, refused by the primary's member admission before
-		// execution, or lost after sending: no rcode states "unknown", and
-		// RFC 2136 section 4.5 directs the requestor to try another server
-		// on SERVFAIL. Nothing here retries or replays the command.
-		return reply(dns.RcodeServerFailure)
-	}
-	return reply(result.Rcode)
+	return err
 }
 
 // awaitFollowerPublication returns, within ctx, this follower's current
