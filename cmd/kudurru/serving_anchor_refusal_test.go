@@ -17,7 +17,9 @@ import (
 // policy of every node-produced refusal (D378): sent while a canonical commit
 // is not yet published. An unbound output keeps full data currency and is
 // withheld in the same state, which is how a client of the mounted node saw
-// no answer at all to a refused query sent right after a commit.
+// no answer at all to a refused query sent right after a commit. A bound
+// refusal of an UPDATE, a NOTIFY or a zone transfer is not in the served
+// class and keeps full data currency: it is withheld in the same state.
 func TestRootAnchorTSIGRefusalFollowsTheServedPublication(t *testing.T) {
 	f := newServingCommandFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -27,15 +29,16 @@ func TestRootAnchorTSIGRefusalFollowsTheServedPublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lease.Release()
-	request := func() *pipeline.Request {
+	query := func(q *dns.Msg) { q.SetQuestion("served.example.", dns.TypeA) }
+	request := func(build func(*dns.Msg)) *pipeline.Request {
 		q := new(dns.Msg)
-		q.SetQuestion("served.example.", dns.TypeA)
+		build(q)
 		q.SetTsig("refused.", dns.HmacSHA256, 300, time.Now().Unix())
 		return &pipeline.Request{Ctx: ctx, Msg: q, Serving: servingdns.Wrap(lease)}
 	}
-	capture := func() (*pipeline.Request, *rootAnchorOutput) {
+	capture := func(build func(*dns.Msg)) (*pipeline.Request, *rootAnchorOutput) {
 		t.Helper()
-		req := request()
+		req := request(build)
 		output, err := captureRootAnchorOutput(req)
 		if err != nil {
 			t.Fatal(err)
@@ -57,8 +60,22 @@ func TestRootAnchorTSIGRefusalFollowsTheServedPublication(t *testing.T) {
 		}
 		return called
 	}
-	boundReq, bound := capture()
-	_, unbound := capture()
+	boundReq, bound := capture(query)
+	_, unbound := capture(query)
+	strict := []struct {
+		name  string
+		build func(*dns.Msg)
+	}{
+		{"UPDATE", func(q *dns.Msg) { q.SetUpdate("served.example.") }},
+		{"NOTIFY", func(q *dns.Msg) { q.SetNotify("served.example.") }},
+		{"AXFR", func(q *dns.Msg) { q.SetQuestion("served.example.", dns.TypeAXFR) }},
+		{"IXFR", func(q *dns.Msg) { q.SetIxfr("served.example.", 1, "ns.served.example.", "hostmaster.served.example.") }},
+	}
+	strictReqs := make([]*pipeline.Request, len(strict))
+	strictOutputs := make([]*rootAnchorOutput, len(strict))
+	for i, c := range strict {
+		strictReqs[i], strictOutputs[i] = capture(c.build)
+	}
 	seal, err := servingdns.Component[*recursiveRootSeal](boundReq, recursiveRootComponent)
 	if err != nil {
 		t.Fatal(err)
@@ -96,5 +113,17 @@ func TestRootAnchorTSIGRefusalFollowsTheServedPublication(t *testing.T) {
 	}
 	if emitted(unbound) {
 		t.Fatal("an unbound output was admitted without full data currency")
+	}
+	for i, c := range strict {
+		output := strictOutputs[i]
+		if err := output.BindResponse(&pipeline.Response{Msg: refusal(strictReqs[i])}); err != nil {
+			t.Fatal(c.name, err)
+		}
+		if output.servedDNS || output.retainedDNS {
+			t.Fatal("a bound TSIG refusal of", c.name, "left full data currency", output.servedDNS, output.retainedDNS)
+		}
+		if emitted(output) {
+			t.Fatal("a bound TSIG refusal of", c.name, "was sent after an unpublished commit")
+		}
 	}
 }
