@@ -1,13 +1,16 @@
 package sqlite
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -215,9 +218,13 @@ func TestZoneStateCommitCollectsUnreferencedChunks(t *testing.T) {
 }
 
 // A head whose root manifest is missing references an unknown set of
-// chunks: the sweep deletes nothing then and the commit still lands.
+// chunks: the sweep deletes nothing then, says so in a warning, and the
+// commit still lands.
 func TestZoneStateCommitKeepsChunksWhenAHeadIsUnreadable(t *testing.T) {
-	s := openTemp(t, zoneStateOptions)
+	var logs syncBuffer
+	s := openTemp(t, zoneStateOptions, func(o *Options) {
+		o.Logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	})
 	r, b := zoneStateRepository(t, s)
 	ctx := context.Background()
 	broken := zonekinds.ZoneID{ClusterID: s.Authority().Term.ClusterID, ObjectName: "broken", UID: "broken-uid", Apex: "example."}
@@ -251,6 +258,27 @@ func TestZoneStateCommitKeepsChunksWhenAHeadIsUnreadable(t *testing.T) {
 	if len(after) <= len(before) {
 		t.Fatal("the commit's own chunks are missing")
 	}
+	if got := logs.String(); !strings.Contains(got, "zone chunk collection skipped") || !strings.Contains(got, head.Name) {
+		t.Fatalf("the skipped sweep was not logged with the head: %q", got)
+	}
+}
+
+// syncBuffer is a log sink that the store's goroutines may write concurrently.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // commitBeforeChunk is a backend that runs a hook once, just before the
