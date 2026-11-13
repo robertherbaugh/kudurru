@@ -429,10 +429,16 @@ func anchorEdgeLogin(t *testing.T, client *http.Client, base string) api.Session
 
 // anchorEdgePrimaryReady waits until a started writable backend serves the
 // zone, admits commands and has settled its startup zone status writes, so
-// later exchanges and commands do not race that cascade (D313/D332).
+// later exchanges and commands do not race that cascade (D313/D332). The
+// cascade is settled read-only before the first command: a command that
+// lands between one of its commits and the publication that serves it is
+// refused 503 with no effect, and the zone status reads below sign in once
+// each (F28-EF-1 failed there 2 of 3 runs when only the first sign-in
+// waited for admission).
 func anchorEdgePrimaryReady(t *testing.T, cfg *config.Config) {
 	t.Helper()
 	awaitMountedDNS(t, cfg, "answer.anchor.test.", "192.0.2.77")
+	awaitAnchorEdgeBackendSettled(t, cfg)
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
