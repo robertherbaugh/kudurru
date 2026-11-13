@@ -1,9 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"testing"
@@ -127,25 +124,9 @@ func awaitMountedPrimarySettled(t *testing.T, cfg *config.Config, zoneObject, na
 	base := "http://" + cfg.Listeners.API.Address + api.BasePath
 	awaitMountedDNS(t, cfg, name, address)
 	controlMountedRequest(t, client, base, http.MethodPost, "/auth/login", "", api.LoginRequest{Username: "admin", Password: "mounted-test-password-1"}, http.StatusOK, nil)
-	// The sign-in above is sent once: a ready node admits it even while its
-	// own status commits publish (D399). The zone reads below are
-	// observations; a read refused at capture with 503 generation_pending
-	// (the node did not publish within the capture wait) is read again.
 	read := func() (string, bool) {
 		var zone public.DNSZone
-		response, err := client.Get(base + "/objects/dnszones/" + zoneObject)
-		if err != nil {
-			t.Fatal("control HTTP transport failed")
-		}
-		raw, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
-		_ = response.Body.Close()
-		if response.StatusCode == http.StatusServiceUnavailable && bytes.Contains(raw, []byte("generation_pending")) {
-			t.Log("zone status read refused at capture (generation_pending); reading again")
-			return "", false
-		}
-		if err != nil || response.StatusCode != http.StatusOK || json.Unmarshal(raw, &zone) != nil {
-			t.Fatalf("control GET /objects/dnszones/%s: status=%d body=%s", zoneObject, response.StatusCode, raw)
-		}
+		controlMountedRequest(t, client, base, http.MethodGet, "/objects/dnszones/"+zoneObject, "", nil, http.StatusOK, &zone)
 		ready := meta.FindStatusCondition(zone.Status.Conditions, public.ConditionReady)
 		return zone.ResourceVersion, ready != nil && ready.Status == metav1.ConditionTrue && ready.ObservedGeneration == zone.Generation
 	}
