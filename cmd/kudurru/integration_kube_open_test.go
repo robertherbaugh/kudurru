@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -303,12 +304,22 @@ func TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation(t *testing.T) 
 	}
 
 	// (5) Credential rotation. The peer accepts both credentials while the
-	// file is replaced; the new provider must have replaced the old one, so
-	// after the first request with the new credential none uses the old.
+	// file is replaced. A sync of the old provider is held at its record
+	// listing across the rotation: the old provider's request must be
+	// canceled, and the old provider joined, before the new credential's
+	// first request; after that request none uses the old credential.
 	const rotated = "test-only-rotated-credential"
+	entered, release = make(chan struct{}), make(chan struct{})
 	peer.mu.Lock()
 	peer.accept = []string{"test-only-private-credential", rotated}
+	peer.holdRead, peer.readEntered = release, entered
 	peer.mu.Unlock()
+	setTarget("published", "192.0.2.85")
+	select {
+	case <-entered:
+	case <-time.After(60 * time.Second):
+		t.Fatal("the source change did not start a sync of the old provider")
+	}
 	staged := filepath.Join(filepath.Dir(credential), "credential.next")
 	if err := os.WriteFile(staged, []byte(rotated), 0600); err != nil {
 		t.Fatal(err)
@@ -316,6 +327,12 @@ func TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation(t *testing.T) 
 	if err := os.Rename(staged, credential); err != nil {
 		t.Fatal(err)
 	}
+	kubeAwait(t, 60*time.Second, "the held request of the old provider is canceled", func() bool {
+		peer.mu.Lock()
+		defer peer.mu.Unlock()
+		return peer.readCanceled
+	})
+	close(release)
 	kubeAwait(t, 60*time.Second, "the rotated credential replaces the provider", func() bool {
 		c, d := ready()
 		return c != nil && c.Status == metav1.ConditionTrue && d.Status.CredentialFingerprints["apiToken"] != "" && d.Status.CredentialFingerprints["apiToken"] != fingerprint
@@ -329,6 +346,12 @@ func TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation(t *testing.T) 
 	if first < 0 {
 		t.Fatal("no request used the rotated credential")
 	}
+	peer.mu.Lock()
+	canceledAt := peer.readCanceledAt
+	peer.mu.Unlock()
+	if first < canceledAt {
+		t.Fatalf("the rotated provider sent request %d before the old provider's held request was canceled (at %d)", first, canceledAt)
+	}
 	for i := first; i < len(tokens); i++ {
 		if tokens[i] != rotated {
 			t.Fatalf("request %d used the old credential after the rotated provider started (first rotated request %d of %d)", i, first, len(tokens))
@@ -336,30 +359,47 @@ func TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation(t *testing.T) 
 	}
 }
 
-// TestRunServeKubeCloudflareTwoReplicasShareBudget mounts two replicas, each
-// holding the Lease of one of two Cloudflare instances that publish to two
-// zones of the same account. (Two instances on one zone each count the
-// other's owned records as conflicts; that is provider behavior on either
-// store and not what this test is about.) Both publish exactly once, and
-// every request either replica sent was reserved in the one shared budget
-// Secret first (D384: the budget is one exact-resourceVersion Secret; a lost
-// reservation fails that request, never sends it unreserved).
+// TestRunServeKubeCloudflareTwoReplicasShareBudget mounts two replicas,
+// each holding the Leases of half of two or four Cloudflare instances that
+// publish to as many zones of the same account. (Two instances on one zone
+// each count the other's owned records as conflicts; that is provider
+// behavior on either store and not what this test is about.) Every instance
+// publishes exactly once, and every request either replica sent was reserved
+// in the one shared budget Secret first (D384: the budget is one
+// exact-resourceVersion Secret; a lost reservation is attempted again, fenced,
+// until the request's own deadline, and is never sent unreserved). Four
+// instances reserving together lose the budget CAS many times in a row; a
+// fixed bound of four attempts left one of them inert.
 func TestRunServeKubeCloudflareTwoReplicasShareBudget(t *testing.T) {
+	for _, n := range []int{2, 4} {
+		t.Run(fmt.Sprintf("instances=%d", n), func(t *testing.T) { testKubeCloudflareReplicasShareBudget(t, n) })
+	}
+}
+
+func testKubeCloudflareReplicasShareBudget(t *testing.T, n int) {
 	env := newKubeIntegrationEnv(t)
 	ctx := t.Context()
 	peer := kubeCloudflarePeer(t)
-	zoneIDs := map[string]string{"one": "33333333333333333333333333333333", "two": "44444444444444444444444444444444"}
+	names := []string{"one", "two", "three", "four"}[:n]
+	zoneIDs := map[string]string{}
 	peer.mu.Lock()
-	peer.zones = map[string]string{zoneIDs["one"]: "one.example", zoneIDs["two"]: "two.example"}
+	peer.zones = map[string]string{}
+	for i, name := range names {
+		zoneIDs[name] = strings.Repeat(string(rune('3'+i)), 32)
+		peer.zones[zoneIDs[name]] = name + ".example"
+	}
 	peer.mu.Unlock()
 	credential := kubeTestCredential(t)
 	objects := []client.Object{&public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "home"}, Spec: public.DNSZoneSpec{Type: public.ZoneTypePrimary, ZoneName: "example.", Nameservers: []string{"ns.example."}}}}
-	for _, name := range []string{"one", "two"} {
+	for _, name := range names {
 		objects = append(objects, &public.DNSRecordSet{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default", Labels: map[string]string{"publish": name}}, Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: "home"}, Endpoints: []public.Endpoint{{DNSName: name + ".example.", RecordType: "A", RecordTTL: 300, Targets: []string{"192.0.2.1"}}}}})
 	}
 	// Place each instance's Lease on its replica: a Lease held by a
 	// replica's own identity is renewed by it and waited on by the other.
-	holders := map[string]string{"one": "budget-a", "two": "budget-b"}
+	holders := map[string]string{}
+	for i, name := range names {
+		holders[name] = []string{"budget-a", "budget-b"}[i%2]
+	}
 	leaseName := func(name string) string {
 		return kube.DefaultLeasePrefix + ih.ElectionKey(ih.InstanceID{Namespace: "default", Name: name})
 	}
@@ -383,7 +423,7 @@ func TestRunServeKubeCloudflareTwoReplicasShareBudget(t *testing.T) {
 			return status == http.StatusOK
 		})
 	}
-	for _, name := range []string{"one", "two"} {
+	for _, name := range names {
 		d := &public.Integration{ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"}, Spec: public.IntegrationSpec{Type: "cloudflare", Resync: metav1.Duration{Duration: time.Hour}, Credentials: map[string]public.CredentialReference{"apiToken": {File: credential}}, Cloudflare: &public.CloudflareIntegration{Zones: []public.CloudflareZone{{Zone: name + ".example", ZoneID: zoneIDs[name]}}}}}
 		if err := env.admin.Create(ctx, d); err != nil {
 			t.Fatal(err)
@@ -399,11 +439,16 @@ func TestRunServeKubeCloudflareTwoReplicasShareBudget(t *testing.T) {
 	}
 	deadline := time.Now().Add(90 * time.Second)
 	published := func() bool {
-		return readyOf("one") && readyOf("two") && kubePeerTarget(peer, "one.example") == "192.0.2.1" && kubePeerTarget(peer, "two.example") == "192.0.2.1"
+		for _, name := range names {
+			if !readyOf(name) || kubePeerTarget(peer, name+".example") != "192.0.2.1" {
+				return false
+			}
+		}
+		return true
 	}
 	for !published() {
 		if time.Now().After(deadline) {
-			for _, name := range []string{"one", "two"} {
+			for _, name := range names {
 				var d public.Integration
 				_ = env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: name}, &d)
 				t.Logf("%s: status %+v", name, d.Status)
@@ -411,7 +456,7 @@ func TestRunServeKubeCloudflareTwoReplicasShareBudget(t *testing.T) {
 			peer.mu.Lock()
 			t.Logf("peer rows %v requests %d writes %d", peer.rows, peer.requests, peer.writes)
 			peer.mu.Unlock()
-			t.Fatal("never converged: both instances publish and report Ready")
+			t.Fatal("never converged: every instance publishes and reports Ready")
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -426,8 +471,8 @@ func TestRunServeKubeCloudflareTwoReplicasShareBudget(t *testing.T) {
 		}
 	}
 	requests, writes := kubePeerCounts(peer)
-	if writes != 2 {
-		t.Fatal("two instances did not publish by exactly one write each", writes)
+	if writes != n {
+		t.Fatal("the instances did not publish by exactly one write each", n, writes)
 	}
 	var list corev1.SecretList
 	if err := env.admin.List(ctx, &list, client.InNamespace("default"), client.MatchingLabels{kube.InternalKindLabel: kinds.KindIntegrationBudget}); err != nil {

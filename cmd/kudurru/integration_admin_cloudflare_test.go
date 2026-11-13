@@ -46,8 +46,12 @@ type integrationCloudflarePeer struct {
 	// applies and answers the batch. Each hold is used once.
 	hold, entered chan struct{}
 	// holdRead, when set, holds the next record listing the same way, before
-	// it is answered. Each holdRead is used once.
+	// it is answered. Each holdRead is used once. readCanceledAt, when
+	// readCanceled is set, is len(tokens) at the moment the client canceled
+	// a held listing (its connection closed while the peer held it).
 	holdRead, readEntered chan struct{}
+	readCanceled          bool
+	readCanceledAt        int
 	// accept, when set, lists the bearer credentials the peer accepts
 	// (default test-only-private-credential); tokens lists the credential of
 	// every request it served, in order, and contents the record contents
@@ -105,8 +109,14 @@ func integrationCloudflareTLS(t *testing.T) *integrationCloudflarePeer {
 				hold, entered := peer.holdRead, peer.readEntered
 				peer.holdRead, peer.readEntered = nil, nil
 				peer.mu.Unlock()
+				stop := context.AfterFunc(r.Context(), func() {
+					peer.mu.Lock()
+					defer peer.mu.Unlock()
+					peer.readCanceled, peer.readCanceledAt = true, len(peer.tokens)
+				})
 				close(entered)
 				<-hold
+				stop()
 				peer.mu.Lock()
 			}
 			if peer.unreadable {
