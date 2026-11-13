@@ -64,12 +64,20 @@ func TestCodecClientGroupViews(t *testing.T) {
 		t.Fatal("views leaked into the default records")
 	}
 	for name, mutate := range map[string]func(*Aggregate){
-		"dynamic":   func(a *Aggregate) { a.Views[0].Records[0].Provenance = Provenance{Key: "key.", CredentialVersion: "v1"} },
-		"system":    func(a *Aggregate) { a.Views[0].Records[0].Provenance = Provenance{SourceID: "system"} },
-		"unknown":   func(a *Aggregate) { a.Views[0].Records[0].Provenance = Provenance{SourceID: "DNSRecordSet/dns/other"} },
-		"ns":        func(a *Aggregate) { a.Views[0].Records[0] = viewRecord(t, "sub.example. 60 IN NS ns.example.net.", "DNSRecordSet/dns/split") },
-		"soa":       func(a *Aggregate) { a.Views[0].Records[0] = viewRecord(t, "example. 60 IN SOA a. b. 1 2 3 4 5", "DNSRecordSet/dns/split") },
-		"outside":   func(a *Aggregate) { a.Views[0].Records[0] = viewRecord(t, "www.example.net. 60 IN A 10.0.0.1", "DNSRecordSet/dns/split") },
+		"dynamic": func(a *Aggregate) {
+			a.Views[0].Records[0].Provenance = Provenance{Key: "key.", CredentialVersion: "v1"}
+		},
+		"system":  func(a *Aggregate) { a.Views[0].Records[0].Provenance = Provenance{SourceID: "system"} },
+		"unknown": func(a *Aggregate) { a.Views[0].Records[0].Provenance = Provenance{SourceID: "DNSRecordSet/dns/other"} },
+		"ns": func(a *Aggregate) {
+			a.Views[0].Records[0] = viewRecord(t, "sub.example. 60 IN NS ns.example.net.", "DNSRecordSet/dns/split")
+		},
+		"soa": func(a *Aggregate) {
+			a.Views[0].Records[0] = viewRecord(t, "example. 60 IN SOA a. b. 1 2 3 4 5", "DNSRecordSet/dns/split")
+		},
+		"outside": func(a *Aggregate) {
+			a.Views[0].Records[0] = viewRecord(t, "www.example.net. 60 IN A 10.0.0.1", "DNSRecordSet/dns/split")
+		},
 		"duplicate": func(a *Aggregate) { a.Views[0].Records[1] = a.Views[0].Records[0] },
 		"group":     func(a *Aggregate) { a.Views[1].Group = "dns/lan" },
 		"empty":     func(a *Aggregate) { a.Views[1].Records = nil },
