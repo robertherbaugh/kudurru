@@ -106,7 +106,11 @@ func (s *servingRuntime) forwardUpdate(req *pipeline.Request, apex string) (*pip
 		return reply(dns.RcodeServerFailure)
 	}
 	native, verified := dnsserver.VerifiedTSIGFor(req, now)
-	ctx, cancel := context.WithTimeout(req.Ctx, memberForwardUpdateTimeout)
+	bound := memberForwardUpdateTimeout
+	if s.memberForwardUpdateBound > 0 {
+		bound = s.memberForwardUpdateBound
+	}
+	ctx, cancel := context.WithTimeout(req.Ctx, bound)
 	defer cancel()
 	if verified {
 		if signed := native.Deadline(); !signed.IsZero() {

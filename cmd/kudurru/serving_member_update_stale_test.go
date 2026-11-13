@@ -28,11 +28,14 @@ import (
 // memberUpdateFollowerDNS mounts the follower's native DNS listener over its
 // complete publication, with the follower's own TSIG keyring, as runServe
 // does. An UPDATE pauses right after it captured its publication while
-// pause is set.
+// pause is set. The pipeline and the client allow 30 seconds instead of five:
+// a held request's own deadline started when it was received, so the
+// fixture's hold (a commit on the primary and a pull) must not be charged
+// to it.
 func memberUpdateFollowerDNS(t *testing.T, s *servingRuntime) *primaryNetworkFixture {
 	t.Helper()
 	f := &primaryNetworkFixture{store: s.opts.Store, publisher: s.publisher, keys: s.opts.Keyrings.Capture().Keys(), keyrings: s.opts.Keyrings, runtime: s.primary,
-		entered: make(chan struct{}, 1), resume: make(chan struct{}, 1)}
+		entered: make(chan struct{}, 1), resume: make(chan struct{}, 1), timeout: memberUpdateFixtureBound}
 	i, a, u := identify.New(nil, nil), authoritative.New(nil), upstream.NewStage(nil)
 	a.Update = s.primary.Update
 	b, err := blocking.New(blocking.Options{})
@@ -62,7 +65,7 @@ func memberUpdateFollowerDNS(t *testing.T, s *servingRuntime) *primaryNetworkFix
 		return lease, err
 	})
 	logger := slog.New(slog.DiscardHandler)
-	f.listeners, err = dnsserver.NewRegistry(dnsserver.Options{Handler: &dnsserver.Handler{Chain: f.chain, Logger: logger}, Logger: logger, TSIG: f.keys, Sockets: 1})
+	f.listeners, err = dnsserver.NewRegistry(dnsserver.Options{Handler: &dnsserver.Handler{Chain: f.chain, Logger: logger, QueryTimeout: memberUpdateFixtureBound}, Logger: logger, TSIG: f.keys, Sockets: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,6 +135,14 @@ func memberUpdateApplyOnPrimary(t *testing.T, f *memberForwardHTTPFixture, obj s
 	})
 }
 
+// memberUpdateFixtureBound replaces, in the mounted follower fixture, the
+// DNS pipeline's five-second deadline, the client's timeout and the
+// follower's four-second forward bound. Under the race detector on a shared
+// machine a publication alone can take longer than four seconds, so the
+// production bounds made the held-UPDATE test fail on timing instead of on
+// behavior (HA-OPEN5 review). The process test keeps the production bounds.
+const memberUpdateFixtureBound = 30 * time.Second
+
 func memberUpdateRcode(msg *dns.Msg) int {
 	if msg == nil {
 		return -1
@@ -153,6 +164,7 @@ func memberUpdateRcode(msg *dns.Msg) int {
 // record is committed exactly once (D381).
 func TestRootMemberFollowerUpdateAcrossInstallWaitsForItsPublication(t *testing.T) {
 	f := newMemberForwardHTTPFixture(t, true)
+	f.follower.memberForwardUpdateBound = memberUpdateFixtureBound - 5*time.Second
 	memberUpdateApplyOnPrimary(t, f, &public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "home"}, Spec: public.DNSZoneSpec{ZoneName: "example.", Type: public.ZoneTypePrimary, Nameservers: []string{"ns.example."},
 		Policy: public.ZonePolicy{Notify: public.NotifyNone, Update: public.AccessAllow, UpdatePolicies: []public.UpdatePolicy{{TSIGKeyRef: "updates", Name: "*.example.", Types: []string{"A"}}}}}})
 	admitted := func(s *servingRuntime) bool {

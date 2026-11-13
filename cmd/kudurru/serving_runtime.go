@@ -114,6 +114,10 @@ type servingRuntime struct {
 	// memberPullInterval replaces the scheduled pull's default interval of an
 	// enrolled member; tests only. Zero keeps the default.
 	memberPullInterval time.Duration
+	// memberForwardUpdateBound replaces memberForwardUpdateTimeout, the
+	// bound of a follower's forwarded UPDATE; tests only. Zero keeps the
+	// default.
+	memberForwardUpdateBound time.Duration
 	// memberSelfPull replaces the explicit pull that a follower makes after a
 	// forwarded self-service command commits; tests only. Nil pulls through
 	// member.
