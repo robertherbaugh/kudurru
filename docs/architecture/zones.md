@@ -293,7 +293,13 @@ Rules and limits:
 - RFC 2136 UPDATE reads and writes the default data: prerequisites are
   evaluated against it, and added records are default records. On SQLite a
   static view endpoint still reserves its name and type against UPDATE, as
-  disabled and publish-only endpoints do.
+  disabled and publish-only endpoints do. That reservation includes takeover:
+  when the operator authorizes a takeover of dynamic data, a view endpoint
+  that collides with records an UPDATE added (the same name and type, or a
+  DNAME at or above its name) removes them from the committed records like a
+  default endpoint would, although the view serves only its group. Default
+  clients then lose that dynamic data; authorize a takeover only for record
+  sets whose view endpoints are meant to replace it.
 - The content hash covers the views, so a view change advances the serial.
   On SQLite the committed aggregate keeps views in their own `views` list,
   apart from the default `records`.
