@@ -311,6 +311,11 @@ func (s *Store) installReplica(ctx context.Context, image replication.Image, opt
 		}
 		if image.Revision == current.Revision {
 			if current.Digest != image.PayloadSHA256 {
+				// writeBlocked was false above, so this divergence is in
+				// flight for DNS output until its authority is published
+				// (DNSServingAuthority).
+				s.fenceInFlight.Store(true)
+				defer s.fenceInFlight.Store(false)
 				s.blockWritesLocked()
 				a.Mode, a.Divergence = replication.Fenced, new(replication.Generation)
 				*a.Divergence = image.Generation()

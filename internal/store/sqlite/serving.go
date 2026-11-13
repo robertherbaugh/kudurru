@@ -172,6 +172,31 @@ func (s *Store) ServingAuthority() (a replication.Authority, blocked bool) {
 	return a, blocked
 }
 
+// DNSServingAuthority is ServingAuthority for the answers a node keeps giving
+// from the publication it serves: DNS output and the root anchor inputs that
+// admit it (D369). It differs only while an observed fence, conflict or
+// divergence of an unblocked store is being persisted (fenceInFlight): writers
+// are already blocked and every elected term is retired, but the member keeps
+// answering DNS from the same last-good data and accepted managed trust that
+// its DNS-only role will serve once the new authority is published. A fence
+// whose persistence failed keeps the store blocked, and with it DNS, as before.
+// Protected reads, publication and every writer use ServingAuthority.
+func (s *Store) DNSServingAuthority() (a replication.Authority, blocked bool) {
+	blocked = s.dnsOutputBlocked()
+	a = s.Authority()
+	blocked = blocked || s.dnsOutputBlocked()
+	return a, blocked
+}
+
+// dnsOutputBlocked is the DNS form of the write block (DNSServingAuthority).
+// writeBlocked is read first: an attempt sets fenceInFlight before it blocks
+// and clears it only after it published its outcome, so a failed fence is
+// observed as blocked by every later read.
+func (s *Store) dnsOutputBlocked() bool {
+	blocked := s.writeBlocked.Load()
+	return s.isClosed() || (blocked && !s.fenceInFlight.Load())
+}
+
 // AuthorityChanges is coalesced. Subscribe BEFORE sampling Authority. Unlike
 // GenerationChanges this also signals higher-term observations without images.
 func (s *Store) AuthorityChanges() <-chan struct{} {

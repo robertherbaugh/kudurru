@@ -441,7 +441,7 @@ func (i *AnchorStaticInput) Current() bool {
 		return false
 	}
 	cursor := i.source.cursor.Load()
-	return cursor != nil && cursor.mark == (retirement.Mark{}) && i.source.mode == i.mode && i.source.store.anchors.Load() == i.source && !i.source.closed.Load() && !i.source.store.isClosed() && !i.source.store.anchorBlocked.Load() && !i.source.store.writeBlocked.Load() && i.mode.current(false)
+	return cursor != nil && cursor.mark == (retirement.Mark{}) && i.source.mode == i.mode && i.source.store.anchors.Load() == i.source && !i.source.closed.Load() && !i.source.store.isClosed() && !i.source.store.anchorBlocked.Load() && !i.source.store.dnsOutputBlocked() && i.mode.current(false)
 }
 
 // AnchorStaticRead is a one-use original query attempt, not a serving permit.

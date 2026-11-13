@@ -41,7 +41,10 @@ func (a *rootAnchorAdmission) current() bool {
 	if a.edges != nil && (a.edges.owner == nil || a.edges.owner.adopted.Load() != a || a.edges.owner.result.Load() != a.edges) {
 		return false
 	}
-	authority, blocked := a.owner.store.ServingAuthority()
+	// DNS output keeps the accepted owner while an observed fence or
+	// conflict is persisted (DNSServingAuthority, D369); the updater and
+	// every writer still require the write-blocked form.
+	authority, blocked := a.owner.store.DNSServingAuthority()
 	return !blocked && servingAnchorRole(authority) && authority.MemberID == a.member
 }
 

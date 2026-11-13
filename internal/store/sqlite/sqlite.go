@@ -222,10 +222,16 @@ type Store struct {
 	termsMu           sync.Mutex                    // after wmu; guards terms and termSeq
 	terms             map[uint64]context.CancelFunc // live elected terms (retireTermsLocked)
 	termSeq           uint64
-	generationChanged chan struct{}                // coalesced complete-image notifications
-	writeBlocked      atomic.Bool                  // fail closed if persisting a fence fails
-	anchors           atomic.Pointer[AnchorSource] // explicit committed-owner lifecycle, never serving authority
-	anchorBlocked     atomic.Bool                  // terminal uncertain anchor effect for this Store instance
+	generationChanged chan struct{} // coalesced complete-image notifications
+	writeBlocked      atomic.Bool   // fail closed if persisting a fence fails
+	// fenceInFlight is set, before writeBlocked, only while one observed
+	// fence or divergence of an unblocked store is being persisted, and is
+	// cleared once that attempt has published its authority (D369). DNS
+	// output reads the pair through dnsOutputBlocked; every writer, protected
+	// read and publication keeps reading writeBlocked alone.
+	fenceInFlight atomic.Bool
+	anchors       atomic.Pointer[AnchorSource] // explicit committed-owner lifecycle, never serving authority
+	anchorBlocked atomic.Bool                  // terminal uncertain anchor effect for this Store instance
 
 	bus *broadcaster
 

@@ -618,6 +618,19 @@ by install, or to conflict or divergence) is a durable authority transition, so
 it joins the old child and admits one new child; ordinary installs still cannot
 rearm a terminal result.
 
+The move into a fenced, conflicted or divergent role does not interrupt that
+DNS. The store blocks its writers and retires every elected term first, then
+persists the new authority (an fsync), then publishes it, and only after that
+does the publisher swap in the DNS-only cut. While that write is in flight the
+member still holds the same image and accepted owner its DNS-only role will
+serve, so DNS output and the managed resolver input read the write block in
+its DNS form (`Store.DNSServingAuthority`, D369): validated recursion and zone
+answers continue from the served publication, while writers, protected HTTP,
+publication and the updater see the store blocked. A fence whose write fails
+leaves the store blocked for DNS as well, as before: the member cannot prove
+which authority it holds, so it answers `SERVFAIL` until a retried observation
+persists, and a retry does not reopen DNS while it waits.
+
 The poller and the updater compare this node's wall clock with the wall time of
 the committed checkpoint before acquiring. A node whose clock trails that
 checkpoint by at most five minutes (`trustanchors.ClockTolerance`) waits until

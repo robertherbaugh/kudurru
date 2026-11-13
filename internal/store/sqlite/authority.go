@@ -377,6 +377,12 @@ func (s *Store) observeAuthorityLocked(ctx context.Context, term replication.Ter
 		return a, result
 	}
 	// Block immediately, including when disk failure prevents a durable fence.
+	// Only a transition of an unblocked store is in flight for DNS output
+	// (DNSServingAuthority): a retry after a failed fence stays blocked.
+	if !s.writeBlocked.Load() {
+		s.fenceInFlight.Store(true)
+		defer s.fenceInFlight.Store(false)
+	}
 	s.blockWritesLocked()
 	if a.Incarnation < math.MaxUint64 {
 		a.Incarnation++

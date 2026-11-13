@@ -39,12 +39,15 @@ type managedDNSOnlyFixture struct {
 	writerLoss atomic.Bool // only the explicit fencing of the original writer
 }
 
-func newManagedDNSOnlyFixture(t *testing.T, endpoint string, seeds []string) *managedDNSOnlyFixture {
+func newManagedDNSOnlyFixture(t *testing.T, endpoint string, seeds []string, mutate ...func(*config.Config)) *managedDNSOnlyFixture {
 	t.Helper()
 	base := newServingRuntimeFixture(t)
 	cfg, err := config.FromFlat(config.Flatten(base.opts.Config))
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, m := range mutate {
+		m(cfg)
 	}
 	cfg.Auth.IdentityProviders = nil
 	cfg.Upstreams.Recursion.ManagedTopology = "direct"
@@ -106,6 +109,12 @@ func newManagedDNSOnlyFixture(t *testing.T, endpoint string, seeds []string) *ma
 		t.Fatal(err)
 	}
 	c := cache.New(cachedata.New(cachedata.Options{}), cache.Settings{}, u)
+	if cfg.Upstreams.Groups["default"].Mode == "recursive" {
+		// As runServe mounts them: native recursion and cache insertions
+		// are admitted by the accepted managed root.
+		u.CaptureNative = captureRootNativeSource
+		c.CaptureInsertion = captureRootAnchorInsertion
+	}
 	r := &postprocess.Stage{}
 	ctl := control.New(control.Options{})
 	f.net.chain, err = pipeline.New(i, ctl, r, a, b, c, u)
