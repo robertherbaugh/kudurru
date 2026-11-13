@@ -105,6 +105,12 @@ type Options struct {
 	// CommittedPrimaryStatus replaces the primary serial/hash/readiness stamper
 	// with exact committed status admission. Nil preserves legacy behavior.
 	CommittedPrimaryStatus CommittedPrimaryStatus
+	// ExternalZoneSources reports that the Kubernetes source adapter of
+	// external zones runs (the host setting externalZones.enabled). When
+	// false, every DNSZone of type external is Degraded{SourcesNotRead}:
+	// it is served, but only from record sets derived earlier, and no
+	// source change reaches it.
+	ExternalZoneSources bool
 	// ReconcileHook, if set, is called after every reconcile with its
 	// duration and outcome (tracing and measurements).
 	ReconcileHook func(key store.Key, took time.Duration, wroteStatus bool, err error)

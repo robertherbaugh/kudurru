@@ -24,6 +24,8 @@ const (
 	ReasonMissingReference = v1alpha1.ReasonMissingReference
 	// ReasonUnsupported: the zone type is not served by this version.
 	ReasonUnsupported = v1alpha1.ReasonUnsupported
+	// ReasonSourcesNotRead: an external zone without the source adapter.
+	ReasonSourcesNotRead = v1alpha1.ReasonSourcesNotRead
 )
 
 // verdict is the desired Ready and Degraded pair for one object.

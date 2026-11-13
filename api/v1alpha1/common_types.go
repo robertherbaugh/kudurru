@@ -45,4 +45,8 @@ const (
 	// ReasonOccluded: records below a DNAME owner, which no lookup can
 	// reach (RFC 6672 §2.4), were left out of the zone.
 	ReasonOccluded = "Occluded"
+	// ReasonSourcesNotRead: an external zone is served, but this server
+	// does not run the Kubernetes source adapter (externalZones.enabled
+	// is off), so nothing keeps its records current.
+	ReasonSourcesNotRead = "SourcesNotRead"
 )
