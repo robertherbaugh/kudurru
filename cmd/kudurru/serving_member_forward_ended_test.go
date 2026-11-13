@@ -205,3 +205,39 @@ func TestRootMemberForwardCanceledRequestIsRefusedAsAForward(t *testing.T) {
 		t.Fatal("a canceled request reached the primary", err)
 	}
 }
+
+// A forwarded write that the primary committed and answered, but whose answer
+// the follower can no longer relay, answers 503 completion_unknown and tells
+// the caller to inspect the object: it was applied. It never answers
+// unavailable, which says that nothing was made, and nothing is sent again
+// (HA-OPEN5 finding 6, D368). The follower holds its Store lock from the
+// forward's acquisition through the relay (WithMemberForward), so it cannot
+// install a newer commit in between; what can end the relay is a pinned
+// dependency or the request's own lifetime. Here the 30-second forwarding
+// lifetime ends while the follower holds the primary's answer.
+func TestRootMemberForwardAnswerNotRelayedIsUnknown(t *testing.T) {
+	f := newMemberForwardHTTPFixture(t, true)
+	primary := f.primary.s.opts.Store
+	ctx, cancel := context.WithTimeout(t.Context(), memberForwardLifetime+30*time.Second)
+	defer cancel()
+	relays := 0
+	f.follower.memberRelay = func(scope context.Context) {
+		relays++
+		<-scope.Done()
+	}
+	got := f.exchange(ctx, http.MethodPut, "/clientgroups/default/relayed", memberForwardGroup("relayed", "192.0.2.91"))
+	f.follower.memberRelay = nil
+	if got.err != nil {
+		t.Fatal(got.err)
+	}
+	key, message := got.refusal()
+	if got.status != http.StatusServiceUnavailable || key != "completion_unknown" || !strings.Contains(message, "inspect the object") || !strings.Contains(message, "do not replay") {
+		t.Fatalf("answer not relayed: status=%d key=%q message=%q", got.status, key, message)
+	}
+	if relays != 1 {
+		t.Fatal("the forwarded write was relayed more than once", relays)
+	}
+	if err := primary.Get(t.Context(), store.Key{Kind: "ClientGroup", Namespace: "default", Name: "relayed"}, &public.ClientGroup{}); err != nil {
+		t.Fatal("the write the primary answered is not on the primary", err)
+	}
+}

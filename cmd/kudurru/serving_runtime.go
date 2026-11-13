@@ -130,6 +130,12 @@ type servingRuntime struct {
 	// anchorUpdaterWall replaces the mounted writer updater's wall clock (its
 	// due and checkpoint comparisons only); nil means time.Now. Tests only.
 	anchorUpdaterWall func() time.Time
+
+	// memberRelay runs when a follower received the primary's answer to a
+	// forwarded HTTP command, before it checks its own source again and
+	// relays the answer; tests only. Nil does nothing.
+	memberRelay func(context.Context)
+
 	// anchorCaptureRead runs right after a root anchor operation read its
 	// image, before it checks that image is still current; tests only. Nil
 	// does nothing.

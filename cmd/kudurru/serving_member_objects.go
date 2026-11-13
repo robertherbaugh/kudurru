@@ -337,6 +337,9 @@ func (s *servingRuntime) forwardMemberCommand(ctx context.Context, token sqlite.
 			Subject:    clusterreplica.SubjectRef{Kind: principal.Kind, ID: principal.ID, Provider: principal.Provider, CredentialKind: kind, CredentialID: reference, IssuedAt: principal.CredentialIssuedAt},
 			Credential: proof, Preconditions: preconditions, Payload: payload}
 		received, err := s.memberForward.Forward(ctx, request, command, func(scope context.Context, out clusterreplica.Outcome) error {
+			if s.memberRelay != nil {
+				s.memberRelay(scope)
+			}
 			if err := current(scope); err != nil {
 				return err
 			}

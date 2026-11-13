@@ -355,3 +355,69 @@ func TestRootMemberUpdateBurstActualHTTP(t *testing.T) {
 		}
 	}
 }
+
+// A forwarded UPDATE for a zone that the primary is retiring is answered at
+// once and applies nothing: a lifecycle never returns from retirement, so
+// unlike a zone whose lifecycle is being realigned it is not waited for until
+// the command's bound (captureUpdate, HA-OPEN5 c8c9e3b1).
+func TestRootMemberUpdateForRetiringZoneIsAnsweredAtOnce(t *testing.T) {
+	h, identity := newMemberUpdateHarness(t)
+	f := h.f
+	h.client.Timeout = 25 * time.Second
+	status, out := h.send(h.command("delete-home", memberObjectDelete, api.ForwardedObject{Operation: api.ForwardedDelete, Kind: "DNSZone", Name: "home"}))
+	if status != http.StatusOK || out.Status != http.StatusOK {
+		t.Fatal("primary zone delete refused", status, out.Status, string(out.Body))
+	}
+	// Wait until the primary's current publication shows the zone retiring
+	// or retired.
+	awaitServingRuntime(t, f.s, func() bool {
+		lease, err := f.s.publisher.CaptureHTTP(t.Context())
+		if err != nil {
+			return false
+		}
+		defer lease.Release()
+		value, _ := lease.Bundle().Component("runtime")
+		owner, ok := value.(*servingbuild.RuntimeOwner)
+		if !ok || owner.Primary() == nil {
+			return false
+		}
+		member, found := owner.Primary().Cut(time.Now()).Member("example.")
+		return found && (member.Phase == zk.PhaseRetiring || member.Phase == zk.PhaseRetired)
+	})
+	m := new(dns.Msg)
+	m.SetUpdate("example.")
+	m.Insert([]dns.RR{&dns.A{Hdr: dns.RR_Header{Name: "late.example.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60}, A: []byte{192, 0, 2, 10}}})
+	wire, err := m.Pack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(memberUpdate{Message: wire, Algorithm: identity.Algorithm, Transport: "udp", SignatureDeadline: time.Now().Add(time.Minute).UTC()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	const bound = 20 * time.Second
+	command := clusterreplica.Command{Format: clusterreplica.CommandFormat, Version: 1, ID: "retiring", ExpectedTerm: f.s.opts.Store.Authority().Term,
+		Hops: 1, IssuedAt: now, NotAfter: now.Add(bound), Operation: memberDNSUpdate,
+		Subject: clusterreplica.SubjectRef{Kind: clusterreplica.SubjectTSIGKey, ID: identity.Key, Provider: "tsig", CredentialKind: clusterreplica.CredentialTSIG, CredentialID: identity.CredentialVersion, IssuedAt: now},
+		Payload: payload}
+	started := time.Now()
+	status, out = h.send(command)
+	elapsed := time.Since(started)
+	if status != http.StatusOK || out.Status != http.StatusOK {
+		t.Fatalf("forwarded UPDATE for a retiring zone was not answered after %s: status=%d outcome=%d err=%v", elapsed, status, out.Status, *h.sendErr)
+	}
+	var result memberUpdateResult
+	if err := json.Unmarshal(out.Body, &result); err != nil {
+		t.Fatal(err)
+	}
+	// SERVFAIL while it is retiring or retired in the cut, NOTAUTH once it
+	// left the cut; never NOERROR, and never after waiting out the bound.
+	if result.Rcode != dns.RcodeServerFailure && result.Rcode != dns.RcodeNotAuth {
+		t.Fatalf("forwarded UPDATE for a retiring zone answered %s, want SERVFAIL or NOTAUTH", dns.RcodeToString[result.Rcode])
+	}
+	if elapsed > bound/2 {
+		t.Fatalf("forwarded UPDATE for a retiring zone waited %s of its %s bound", elapsed, bound)
+	}
+	t.Logf("forwarded UPDATE for a retiring zone answered %s after %s", dns.RcodeToString[result.Rcode], elapsed)
+}
