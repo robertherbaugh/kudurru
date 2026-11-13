@@ -73,6 +73,15 @@ type servingRuntimeOptions struct {
 	// Registerer receives the kudurru_root_anchor_* metrics once; nil leaves
 	// them unregistered (tests).
 	Registerer prometheus.Registerer
+	// IntegrationBounds replaces the integration host's capture and
+	// operation bounds where nonzero. Zero in production, which keeps the
+	// host's defaults (10 and 30 seconds); only tests set it.
+	IntegrationBounds integrationBounds
+}
+
+// integrationBounds is a test override of the integration host's bounds.
+type integrationBounds struct {
+	Capture, Operation time.Duration
 }
 
 // servingRuntime owns the complete publisher and provider/primary workers.

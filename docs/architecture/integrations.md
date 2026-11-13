@@ -73,7 +73,12 @@ differ from its frame only by status (`host.StatusOnly`: same UID,
 generation, spec, labels, annotations, finalizers, owners and deletion) and
 accepts a review of any of them; the command runs on, and every effect is
 fenced by, the current frame. Its local status follows the frame too, so the
-admin API keeps knowing the status of a healthy idle instance (D384).
+admin API keeps knowing the status of a healthy idle instance (D384). The
+tolerance starts only once the host has captured the frame that carries the
+status write: until then the root reads a revision that is neither the
+reviewed one nor the capture's, and a review of a revision the host never
+captured is not a predecessor, so both still answer `409` and a client
+rereads and retries once.
 
 ```mermaid
 flowchart LR

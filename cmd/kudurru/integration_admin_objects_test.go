@@ -355,11 +355,18 @@ func TestIntegrationManifestsMatchKubernetesRefusals(t *testing.T) {
 				"spec.unifi.push.dnsServers":            func(p *public.UniFiPush) { p.DNSServers = []string{"192.0.2.53"} },
 				"spec.unifi.push.networks":              func(p *public.UniFiPush) { p.Networks = []string{"LAN"} },
 				"spec.unifi.push.mirrorRecords.domains": func(p *public.UniFiPush) { p.MirrorRecords.Domains = []string{"example"} },
+				"spec.unifi.push.mirrorRecords.types":   func(p *public.UniFiPush) { p.MirrorRecords.Types = []string{"A"} },
+				"spec.unifi.push.mirrorRecords.labels":  func(p *public.UniFiPush) { p.MirrorRecords.Labels = map[string]string{"site": "home"} },
+				"spec.unifi.push.mirrorRecords.exclude": func(p *public.UniFiPush) { p.MirrorRecords.Exclude = []string{"printer"} },
 			} {
 				d := base("unifi")
 				set(&d.Spec.UniFi.Push)
 				if reason := kubeIntegrationRefusal("kudurru-system", d); reason != "" || slices.Contains(item.Refused, field) {
 					t.Errorf("%s alone: refused=%v reason=%q", field, item.Refused, reason)
+				}
+				// It is listed as inert, so a form can hide it on this store.
+				if !slices.ContainsFunc(item.FieldLimits, func(l api.IntegrationFieldLimit) bool { return l.Field == field && l.Effect == "inert" }) {
+					t.Errorf("%s is not listed as inert: %+v", field, item.FieldLimits)
 				}
 			}
 		}
@@ -386,7 +393,7 @@ func TestIntegrationManifestsMatchKubernetesRefusals(t *testing.T) {
 		if !slices.Equal(refused, item.Refused) {
 			t.Errorf("%s: refused %v, limits refuse %v", item.Type, item.Refused, refused)
 		}
-		if item.Type == "unifi" && len(item.FieldLimits) != 6 {
+		if item.Type == "unifi" && len(item.FieldLimits) != 10 {
 			t.Errorf("unifi limits: %+v", item.FieldLimits)
 		}
 		if len(item.Credentials) == 0 && item.Type != "webhook" || item.ConfigField != item.Type || !json.Valid(item.ConfigSchema) {
