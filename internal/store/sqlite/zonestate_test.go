@@ -147,7 +147,7 @@ func zoneChunkNames(t *testing.T, s *Store) map[string]bool {
 }
 
 // referencedChunks returns the chunk names that the stored head of id resolves.
-func referencedChunks(t *testing.T, s *Store, b zonestate.Backend, id zonekinds.ZoneID) map[string]bool {
+func referencedChunks(t *testing.T, b zonestate.Backend, id zonekinds.ZoneID) map[string]bool {
 	t.Helper()
 	head, _, err := b.Head(context.Background(), id)
 	if err != nil {
@@ -175,7 +175,7 @@ func TestZoneStateCommitCollectsUnreferencedChunks(t *testing.T) {
 	ctx := context.Background()
 	other := zonekinds.ZoneID{ClusterID: s.Authority().Term.ClusterID, ObjectName: "other", UID: "other-zone-uid", Apex: "example."}
 	zonestatetest.Initialize(t, r, other)
-	keep := referencedChunks(t, s, b, other)
+	keep := referencedChunks(t, b, other)
 	id := zoneStateID(s, "updates")
 	v := zonestatetest.Initialize(t, r, id)
 	// A chunk that an earlier version left behind: valid, staged, unreferenced.
@@ -199,7 +199,7 @@ func TestZoneStateCommitCollectsUnreferencedChunks(t *testing.T) {
 		if v, err = r.Read(ctx, id); err != nil {
 			t.Fatal(i, err)
 		}
-		want := referencedChunks(t, s, b, id)
+		want := referencedChunks(t, b, id)
 		for name := range keep {
 			want[name] = true
 		}
