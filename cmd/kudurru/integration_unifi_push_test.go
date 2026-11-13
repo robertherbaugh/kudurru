@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -19,7 +18,6 @@ import (
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
-	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
 	"github.com/robertherbaugh/kudurru/ee/integration/unifi"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -516,8 +514,9 @@ func TestIntegrationUniFiPushMirrorUncertainCreate(t *testing.T) {
 	}
 	// Polling neither replays the create nor adopts the policy it may have made.
 	unifiPushReview(t, f, router)
-	if _, err := f.s.integrations.host.Sync(t.Context(), owner, ""); !errors.Is(err, ledger.ErrPending) {
-		t.Fatal("an unproven policy settled the pending intent", err)
+	// The pending intent is reported and the inventory observation still runs.
+	if result, err := f.s.integrations.host.Sync(t.Context(), owner, ""); err != nil || result == nil || result.Pending != 1 || result.Source == nil {
+		t.Fatal("an unproven policy settled the pending intent, or polling stopped observing", err, result)
 	}
 	if writes := peer.written(); len(writes) != 1 {
 		t.Fatal("uncertain create replayed", writes)
@@ -533,8 +532,8 @@ func TestIntegrationUniFiPushMirrorUncertainCreate(t *testing.T) {
 	peer.mu.Unlock()
 	// The operator removed it in UniFi: the next tick settles without a write.
 	unifiPushReview(t, f, router)
-	if _, err := f.s.integrations.host.Sync(t.Context(), owner, ""); err != nil {
-		t.Fatal("baseline did not settle the pending intent", err)
+	if result, err := f.s.integrations.host.Sync(t.Context(), owner, ""); err != nil || result == nil || result.Pending != 0 {
+		t.Fatal("baseline did not settle the pending intent", err, result)
 	}
 	if writes := peer.written(); len(writes) != 1 || stray == "" {
 		t.Fatal("settling wrote", writes)
