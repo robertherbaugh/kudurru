@@ -722,7 +722,7 @@ What 0.1 stored and 0.2 does not accept:
 | Object | What to do |
 |---|---|
 | DNSZone of type `secondary` or `stub` without `spec.secondary.primaries` or `spec.stub.nameservers` | 0.1 did not serve these types. Add the configuration or delete the zone. |
-| DNSZone of type `external`, `catalog` or `secondaryCatalog` | No release serves these types yet. Delete the zone. |
+| DNSZone of type `external`, `catalog` or `secondaryCatalog` | The SQLite store does not serve these types (`external` zones are served on Kubernetes only, with `externalZones.enabled`). Delete the zone. |
 | Two or more DNSZones with one `spec.zoneName` | Keep one and delete the others. 0.1 kept serving the zone as it was before the second object appeared, and later changes to either object had no effect. |
 | DNSZone with an entry in `spec.policy.queryACL` or `transferACL` that is not an address or a network, or an entry in `notifyTargets` that is not an address | 0.1 reported it on the zone and did not serve the zone. Correct the entry. |
 | Primary DNSZone with `spec.policy.update` other than `deny` or `allow` | Updates were not implemented in 0.1, which stored any access mode. Set `deny`, or `allow` with `updatePolicies`. |

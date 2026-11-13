@@ -26,9 +26,13 @@ zone always get an answer.
 The wizard creates primary, forward, secondary and stub zones. Catalog zones
 are reserved for a later release.
 
-The schema also has the types `external`, `catalog` and `secondaryCatalog`,
-which kudurru does not serve. On the SQLite store the API refuses such a
-zone with `invalid` and names `spec.type`. Nothing is stored.
+The schema also has the types `external`, `catalog` and `secondaryCatalog`.
+On Kubernetes, an `external` zone is filled from Ingresses, Gateway API routes
+and LoadBalancer Services when the server runs with `externalZones.enabled`
+(Helm value `externalZones.enabled`); you edit those objects, not the zone's
+records. kudurru does not serve the catalog types. On the SQLite store the API
+refuses a zone of any of the three types with `invalid` and names `spec.type`.
+Nothing is stored.
 
 ### See the zones
 

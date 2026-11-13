@@ -37,14 +37,17 @@ erDiagram
     }
 ```
 
-Primary, forward, secondary, and stub zones are served. The other
-types in the schema (`external`, `catalog`, `secondaryCatalog`) are accepted
-by Kubernetes admission and are not served. The zone controller, which runs
-on both stores, gives such a zone `Ready=False, reason Unsupported`
-(`zoneVerdict` in `internal/controller`). The SQLite store does not store
-one: `zone.ServingErrors` refuses the type at write as `invalid` with
-`spec.type: Unsupported value`, and the state.db upgrade refuses a data
-directory that holds one (see below).
+Primary, forward, secondary, and stub zones are served. On the Kubernetes
+store, `external` zones are served too, from Kubernetes objects
+([External zones on Kubernetes](#external-zones-on-kubernetes), D402). The
+other types in the schema (`catalog`, `secondaryCatalog`) are accepted by
+Kubernetes admission and are not served. The zone controller, which runs on
+both stores, gives such a zone `Ready=False, reason Unsupported`
+(`zoneVerdict` in `internal/controller`). The SQLite store does not store an
+`external`, `catalog` or `secondaryCatalog` zone: `zone.ServingErrors`
+refuses the type at write as `invalid` with `spec.type: Unsupported value`,
+and the state.db upgrade refuses a data directory that holds one (see
+below).
 
 A `BlockList` source that never published a body does not hold back the
 SQLite candidate, even when no policy refers to the list. List preparation
@@ -221,6 +224,92 @@ invalidates the parse entry without extending it. The cache retains at most
 zone inputs and evicts least recently used entries. Invalid parses are not
 retained. This cache supplies neither authority nor a publication receipt;
 committed serving models still materialize verified raw records.
+
+## External zones on Kubernetes
+
+A DNSZone of type `external` is filled from Kubernetes objects (D402): the
+Ingresses, Gateway API routes (HTTPRoute, GRPCRoute, TLSRoute) and Services
+of type `LoadBalancer` that its `spec.external` selects. It needs the
+Kubernetes store and the host setting `externalZones.enabled` (Helm value
+`externalZones.enabled`, which also grants the read-only RBAC); the SQLite
+store refuses the type.
+
+```yaml
+apiVersion: kudurru.io/v1alpha1
+kind: DNSZone
+metadata: {name: apps}
+spec:
+  zoneName: apps.example.com.
+  type: external
+  nameservers: [ns1.example.com.]
+  external: {ingress: true, gateway: true, loadBalancerServices: true}
+  recordSetSelector: {namespaces: [web, shop]}
+```
+
+The source adapter (`internal/sources/k8s`) is a leader-only runnable, the
+same pattern as the DNSEndpoint source (D303). On each pass it lists the
+external zones and every enabled source kind in all namespaces with
+complete, bounded lists, keeps only the fields it needs, and derives one
+`DNSRecordSet` per source object and zone in the source's namespace:
+
+| Source | Names | Targets |
+|---|---|---|
+| Ingress | `spec.rules[].host`, `spec.tls[].hosts` | `status.loadBalancer.ingress` |
+| HTTPRoute, GRPCRoute, TLSRoute | `spec.hostnames`, else the parent listener's hostname | `status.addresses` of each parent Gateway that has accepted the route |
+| Service (`type: LoadBalancer`) | the hostname annotation only | `status.loadBalancer.ingress` |
+
+The external-dns annotations `external-dns.kubernetes.io/hostname` (adds
+names), `/target` (replaces the targets; on a Gateway, for its routes) and
+`/ttl` (seconds or a duration) are honored, and so are their
+`external-dns.alpha.kubernetes.io/` forms; the current prefix wins. Address
+targets become A and AAAA records; otherwise the first host name in sorted
+order becomes a CNAME. A name goes to the external zone with the longest
+apex that contains it; two zones with the same apex select neither. A route
+only publishes through a Gateway whose `Accepted` condition for it is
+`True`, so a route cannot claim names through a Gateway that refuses it.
+The derived record set carries the source's labels, so the zone's
+`recordSetSelector` decides which namespaces and labels may contribute.
+
+```mermaid
+flowchart LR
+    Sources["Ingress, routes + Gateways, LoadBalancer Services (read-only list and watch)"] --> Adapter["Elected source adapter (bounded pass)"]
+    Zones["DNSZones of type external"] --> Adapter
+    Adapter -->|"create-only or exact resourceVersion"| Sets["Source-owned DNSRecordSets (managedBy kubernetes-source:UID)"]
+    Sets --> Controller["Zone controller: status, serial"]
+    Sets --> Cache["Zone cache on every replica"]
+    Cache --> DNS["DNS answers (memory only)"]
+```
+
+A derived record set has a deterministic name, the manager
+`kubernetes-source:<source UID>`, the source UID and name in annotations,
+the label `kudurru.io/external-source: <kind>` and one owner reference to its
+source. An external zone is built only from record sets with that complete
+identity (`zone.ExternalSourceOwned`); any other record set that names it is
+`NotSelected` and not served, so the zone serves what its sources say. The
+API refuses a record set for an external zone with `conflict`, and the zone
+record and import endpoints refuse it as they do for every non-primary zone.
+RFC 2136 UPDATE finds no primary zone for the apex and is refused.
+
+Writes follow D303. A record set is written only after the zone and the
+source are confirmed unchanged since the list (UID and resourceVersion);
+creation requires absence and an update requires the observed
+resourceVersion. A record set with the derived name that someone else owns is
+never taken over. A record set is removed only when its source is confirmed
+absent or replaced (a fresh read by name), when its zone no longer takes it,
+or when no external zone enables its kind any more; the delete carries the
+observed UID and resourceVersion. A failed or refused list (a missing
+Gateway API CRD, RBAC, a list over 4,096 objects or 32 MiB) never authorizes
+cleanup: the kind keeps the record sets of the last complete pass. Invalid
+source data (an unusable TTL annotation) withdraws only that source's
+records. Watch events only wake a new pass; without events a pass runs every
+ten seconds. Sources are never written.
+
+Kubernetes has no transaction across the source, the zone and the record
+sets, so the adapter converges eventually. When the elected replica loses
+its Lease, its term context ends every pending write and the next leader
+derives the same names, so a term change cannot duplicate record sets
+(`TestRunServeExternalZonesFromKubernetesSources`). Every replica answers
+from its zone cache; the DNS query path never reads the API server.
 
 ## Serials
 
@@ -677,7 +766,8 @@ ancestor deadline, checked from memory at query time. Missing or expired runtime
 retains unavailable coverage; retiring primary coverage wins at an equal apex.
 RPZ selection preserves ordered canonical list names and required unavailable
 feeds. Unknown names reject selection; reserved service labels belong to the
-same captured catalog. External zones still require their separate compiler.
+same captured catalog. The complete image does not carry external zones; only
+the Kubernetes zone view builds them (D402).
 
 ```mermaid
 flowchart LR
@@ -1008,8 +1098,8 @@ and child boundaries survive the static replacement.
 
 ## Remaining work
 
-Catalog zones and DNSSEC signing remain planned, and `external` zones are not
-built. SQLite mounts the atomic
+Catalog zones and DNSSEC signing remain planned. `external` zones are
+served on Kubernetes only. SQLite mounts the atomic
 RFC 2136 handler and durable primary history described above; on Kubernetes, RFC 2136
 uses one UPDATE-owned DNSRecordSet per zone (described below). An enrolled
 SQLite follower forwards a signed UPDATE to its primary (D381). IXFR out has no

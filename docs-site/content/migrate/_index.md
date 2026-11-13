@@ -64,8 +64,10 @@ forward zone can set its own choice ([DNSSEC validation](/deploy/dnssec-validati
 It does not sign zones. Forwarding stays the default; see
 [resolving names yourself](/start/home/#7-resolve-names-yourself-optional).
 A schema field for a future feature does not mean that feature is active.
-In particular, the zone types `external`, `catalog` and `secondaryCatalog`
-and zone signing (`spec.dnssec`) are in the schema and are not served.
+In particular, the zone types `catalog` and `secondaryCatalog` and zone
+signing (`spec.dnssec`) are in the schema and are not served, and the type
+`external` is served only on Kubernetes (from Ingresses, Gateway API routes
+and LoadBalancer Services, with `externalZones.enabled`).
 
 On the SQLite store the API refuses a zone of those three types with
 `invalid` (`spec.type: Unsupported value`), and nothing is stored. An upgrade
