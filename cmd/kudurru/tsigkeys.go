@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	tsigkinds "github.com/robertherbaugh/kudurru/api/tsigkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/apiclient"
 	"github.com/robertherbaugh/kudurru/internal/cli"
@@ -22,6 +23,9 @@ import (
 // maxTSIGSecretFile bounds the secret file read; a canonical secret of the
 // largest supported size is 684 base64 characters.
 const maxTSIGSecretFile = 4096
+
+// maxTSIGAlgorithm matches the server's bound on the algorithm field.
+const maxTSIGAlgorithm = 64
 
 // newTSIGKeysCmd is `kudurru tsigkeys`: stored TSIG key management through
 // the /tsigkeys routes (D394). Secrets are read only from a file or stdin,
@@ -43,6 +47,9 @@ the fresh metadata before any further action. Exit status 0 with "published:
 false" (HTTP 202) means the change committed but the node could not confirm
 its publication in time; it was not rolled back.`}
 	root.AddCommand(&cobra.Command{Use: "list", Short: "List file and stored TSIG key metadata", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if _, err := o.format(); err != nil {
+			return err
+		}
 		c, _, err := o.client()
 		if err != nil {
 			return err
@@ -70,15 +77,24 @@ its publication in time; it was not rolled back.`}
 			Short: tsigKeyCommandHelp[operation],
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
+				// Every local check runs before the secret is read or anything
+				// is sent: a typo in -o must not follow a committed mutation.
+				if _, err := o.format(); err != nil {
+					return err
+				}
 				name := args[0]
-				if name == "" || len(name) > 254 || strings.ContainsAny(name, "/\\\x00\r\n\t ") {
-					return errors.New("NAME must be one TSIG key name of at most 254 characters")
+				canonical := tsigkinds.CanonicalName(name)
+				if name == "" || len(name) > 254 || strings.ContainsAny(name, "/\\\x00\r\n\t ") || canonical == "" {
+					return errors.New("NAME must be one TSIG key name of at most 254 characters; nothing was sent")
 				}
 				if operation != api.TSIGKeyCreate && (uid == "" || len(uid) > 256 || rv == "" || len(rv) > 256) {
 					return errors.New("exact --uid and --resource-version from the reviewed key are required")
 				}
 				if operation == api.TSIGKeyCreate && algorithm == "" {
 					return errors.New("--algorithm is required (hmac-sha256 or hmac-sha512)")
+				}
+				if len(algorithm) > maxTSIGAlgorithm {
+					return errors.New("--algorithm must be hmac-sha256 or hmac-sha512; nothing was sent")
 				}
 				var secret []byte
 				if operation == api.TSIGKeyCreate || operation == api.TSIGKeyReplace {
@@ -88,7 +104,7 @@ its publication in time; it was not rolled back.`}
 					}
 					defer clear(secret)
 				}
-				body, err := tsigKeyCommandBody(operation, name, algorithm, uid, rv, secret)
+				body, err := tsigKeyCommandBody(operation, canonical, algorithm, uid, rv, secret)
 				if err != nil {
 					return err
 				}
@@ -97,7 +113,7 @@ its publication in time; it was not rolled back.`}
 				if err != nil {
 					return err
 				}
-				keyName := name
+				keyName := canonical
 				if operation == api.TSIGKeyCreate {
 					keyName = ""
 				}
@@ -108,7 +124,10 @@ its publication in time; it was not rolled back.`}
 				var receipt api.TSIGKeyCommandReceipt
 				if json.Unmarshal(raw, &receipt) != nil || !receipt.Committed || receipt.Operation != operation ||
 					receipt.Removed != (operation == api.TSIGKeyRevoke) || receipt.Published != (status != http.StatusAccepted) ||
-					receipt.Key.KeyName == "" || receipt.Key.Source != "store" || operation != api.TSIGKeyCreate && receipt.Key.UID != uid {
+					receipt.Key.KeyName != canonical || receipt.Key.Source != "store" || operation != api.TSIGKeyCreate && receipt.Key.UID != uid ||
+					operation == api.TSIGKeyRevoke && receipt.Key.ResourceVersion != rv {
+					// The receipt must name the requested key and, for revoke, the
+					// reviewed resourceVersion; the server checks both as well.
 					return tsigKeyCommandError(operation, apiclient.ErrTSIGKeyOutcomeUnknown)
 				}
 				if !receipt.Published {
@@ -240,6 +259,9 @@ func tsigKeyCommandBody(operation api.TSIGKeyOperation, name, algorithm, uid, rv
 // hint, so scripts can match it) and states that nothing was retried. A
 // refusal before the command ran is distinguished from an unknown outcome.
 func tsigKeyCommandError(operation api.TSIGKeyOperation, err error) error {
+	if errors.Is(err, apiclient.ErrTSIGKeyNotSent) {
+		return fmt.Errorf("tsigkeys %s: %w", operation, err)
+	}
 	if errors.Is(err, apiclient.ErrTSIGKeyOutcomeUnknown) {
 		return fmt.Errorf("tsigkeys %s: %w", operation, err)
 	}

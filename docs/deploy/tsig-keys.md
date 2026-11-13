@@ -36,8 +36,13 @@ kudurru tsigkeys revoke transfer-key. --uid <uid> --resource-version <rv>
 ```
 
 Each command prints its receipt (`-o json` or `-o yaml` for the full
-document). The CLI sends every command once and never follows a redirect,
-refreshes a binding or retries. A refusal keeps the server's status and key.
+document). The output format, the key name, the binding flags, the algorithm
+length and the secret are all checked before anything is sent, so a typo is
+refused locally and changes nothing. The CLI sends every command once and
+never follows a redirect, refreshes a binding or retries. A receipt that does
+not name the requested key, the reviewed UID (and, for revoke, the reviewed
+resourceVersion) or the operation reports an unknown outcome instead of
+success. A refusal keeps the server's status and key.
 On an enrolled SQLite follower the commands answer `503 primary_required`
 before they run; nothing changes, and the command must be sent to the primary
 (for example with `--server`). A `202` receipt exits with status 0 and a note

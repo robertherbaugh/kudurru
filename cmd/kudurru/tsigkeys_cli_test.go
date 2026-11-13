@@ -6,12 +6,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -210,8 +212,37 @@ func TestCLIRealRouterTSIGKeys(t *testing.T) {
 	if err == nil || strings.Contains(err.Error()+stderr, "private") {
 		t.Fatal("an invalid secret was accepted or echoed")
 	}
-	if commands.count() != sent || f.count(http.MethodPost, "/api/v1/tsigkeys") != 1 {
+	// An unknown -o format, a name that is not one canonical key name, or an
+	// algorithm over the server's bound is refused before anything is sent,
+	// and the error says so instead of claiming an uncertain outcome.
+	for _, args := range [][]string{
+		{"tsigkeys", "create", "other-key", "--algorithm", "hmac-sha256", "--secret-file", secretFile, "-o", "bogus"},
+		{"tsigkeys", "replace", "transfer-key.", "--uid", receipt.Key.UID, "--resource-version", "43", "--secret-file", secretFile, "-o", "bogus"},
+		{"tsigkeys", "reseal", "transfer-key.", "--uid", receipt.Key.UID, "--resource-version", "43", "-o", "bogus"},
+		{"tsigkeys", "revoke", "transfer-key.", "--uid", receipt.Key.UID, "--resource-version", "43", "-o", "bogus"},
+		{"tsigkeys", "reseal", "..", "--uid", receipt.Key.UID, "--resource-version", "43"},
+		{"tsigkeys", "reseal", ".", "--uid", receipt.Key.UID, "--resource-version", "43"},
+		{"tsigkeys", "create", "bad..name", "--algorithm", "hmac-sha256", "--secret-file", secretFile},
+		{"tsigkeys", "create", "other-key", "--algorithm", strings.Repeat("a", 5000), "--secret-file", secretFile},
+	} {
+		_, _, err := f.run(args...)
+		if commands.count() != sent {
+			t.Fatalf("%v reached the command", args)
+		}
+		if err == nil || strings.Contains(err.Error(), "unknown;") || strings.Contains(err.Error(), "uncertain") {
+			t.Fatalf("%v was not refused as unsent: %v", args, err)
+		}
+	}
+	if _, _, err := f.run("tsigkeys", "list", "-o", "bogus"); err == nil {
+		t.Fatal("list accepted an unknown output format")
+	}
+	if commands.count() != sent || f.count(http.MethodPost, "/api/v1/tsigkeys") != 1 || f.count(http.MethodGet, "/api/v1/tsigkeys") != 1 {
 		t.Fatal("a locally refused command reached the server")
+	}
+	for _, op := range []string{"replace", "reseal", "revoke"} {
+		if f.count(http.MethodPost, "/api/v1/tsigkeys/transfer-key./"+op) != 1 {
+			t.Fatalf("a locally refused %s reached the server", op)
+		}
 	}
 
 	// Server refusals keep their status and key and are sent once.
@@ -292,10 +323,64 @@ func TestCLITSIGKeyUnknownOutcome(t *testing.T) {
 	}
 }
 
+// The CLI's own receipt check binds a success answer to the command: a receipt
+// for another key, another UID or resourceVersion, another operation, a
+// published flag contradicting the status, a non-store source, a missing
+// removed flag, or a body that is not an object is an unknown outcome,
+// reported once and never retried. The real router refuses such receipts
+// first, so this stub stands in for a server that does not.
+func TestCLITSIGKeyReceiptBinding(t *testing.T) {
+	const uid, other = "0f9c2b1e-1111-4222-8333-944445555666", "0f9c2b1e-1111-4222-8333-944445555667"
+	receipt := func(op, name, keyUID, rv, source string, published, removed bool) string {
+		return fmt.Sprintf(`{"operation":%q,"committed":true,"published":%t,"removed":%t,"key":{"keyName":%q,"algorithm":"hmac-sha256.","source":%q,"uid":%q,"resourceVersion":%q,"createdAt":"2026-11-10T12:00:00Z"}}`,
+			op, published, removed, name, source, keyUID, rv)
+	}
+	bound := []string{"--uid", uid, "--resource-version", "7"}
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+		args   []string
+	}{
+		{"create 201 unpublished", http.StatusCreated, receipt("create", "k.", uid, "1", "store", false, false), []string{"create", "k", "--algorithm", "hmac-sha256", "--secret-file", "-"}},
+		{"create for another key", http.StatusCreated, receipt("create", "someone-elses-key.", uid, "1", "store", true, false), []string{"create", "k", "--algorithm", "hmac-sha256", "--secret-file", "-"}},
+		{"create from a file source", http.StatusCreated, receipt("create", "k.", "", "", "file", true, false), []string{"create", "k", "--algorithm", "hmac-sha256", "--secret-file", "-"}},
+		{"reseal another uid", http.StatusOK, receipt("reseal", "k.", other, "8", "store", true, false), append([]string{"reseal", "k."}, bound...)},
+		{"reseal 202 published", http.StatusAccepted, receipt("reseal", "k.", uid, "8", "store", true, false), append([]string{"reseal", "k."}, bound...)},
+		{"reseal as another operation", http.StatusOK, receipt("replace", "k.", uid, "8", "store", true, false), append([]string{"reseal", "k."}, bound...)},
+		{"reseal not an object", http.StatusOK, `["reseal"]`, append([]string{"reseal", "k."}, bound...)},
+		{"revoke another key", http.StatusOK, receipt("revoke", "someone-elses-key.", uid, "7", "store", true, true), append([]string{"revoke", "k."}, bound...)},
+		{"revoke another resourceVersion", http.StatusOK, receipt("revoke", "k.", uid, "8", "store", true, true), append([]string{"revoke", "k."}, bound...)},
+		{"revoke not removed", http.StatusOK, receipt("revoke", "k.", uid, "7", "store", true, false), append([]string{"revoke", "k."}, bound...)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls atomic.Int32
+			server := newTSIGStatusServer(t, func(w http.ResponseWriter) {
+				calls.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			})
+			h := &harness{t: t, cfgPath: filepath.Join(t.TempDir(), "cli.yaml"), env: map[string]string{"KUDURRU_TOKEN": "kdr_test"}, keyring: &memKeyring{}}
+			h.stdin = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+			out, _, err := h.run(append([]string{"--server", server, "tsigkeys"}, tc.args...)...)
+			if err == nil || !strings.Contains(err.Error(), "outcome unknown") || !strings.Contains(err.Error(), "not retried") {
+				t.Fatalf("mismatched receipt was not an unknown outcome: %v\n%s", err, out)
+			}
+			if strings.Contains(out, "someone-elses-key") {
+				t.Fatal("a receipt for another key was rendered")
+			}
+			if calls.Load() != 1 {
+				t.Fatalf("command was sent %d times", calls.Load())
+			}
+		})
+	}
+}
+
 func newTSIGStatusServer(t *testing.T, answer func(http.ResponseWriter)) string {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/tsigkeys" {
+		if r.Method != http.MethodPost || !strings.HasPrefix(r.URL.Path, "/api/v1/tsigkeys") {
 			http.NotFound(w, r)
 			return
 		}

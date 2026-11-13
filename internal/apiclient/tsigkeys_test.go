@@ -1,6 +1,7 @@
 package apiclient
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -22,13 +23,16 @@ func TestTSIGKeyCommandShapeAndSingleAttempt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, bad := range []struct{ op, name string }{{"create", "named."}, {"replace", ""}, {"revoke", "a/b"}, {"delete", "k."}, {"reseal", strings.Repeat("a", 255)}} {
-		if _, _, err := c.TSIGKeyCommand(t.Context(), bad.op, bad.name, []byte(`{}`)); err == nil {
-			t.Fatalf("%s %q was accepted", bad.op, bad.name)
+	for _, bad := range []struct{ op, name string }{{"create", "named."}, {"replace", ""}, {"revoke", "a/b"}, {"delete", "k."}, {"reseal", strings.Repeat("a", 255)}, {"reseal", "."}, {"revoke", ".."}} {
+		if _, _, err := c.TSIGKeyCommand(t.Context(), bad.op, bad.name, []byte(`{}`)); !errors.Is(err, ErrTSIGKeyNotSent) || errors.Is(err, ErrTSIGKeyOutcomeUnknown) {
+			t.Fatalf("%s %q was not refused as unsent: %v", bad.op, bad.name, err)
 		}
 	}
-	if _, _, err := c.TSIGKeyCommand(t.Context(), "reseal", "k.", make([]byte, maxTSIGKeyRequest+1)); err == nil {
-		t.Fatal("an oversized body was accepted")
+	if _, _, err := c.TSIGKeyCommand(t.Context(), "reseal", "k.", make([]byte, maxTSIGKeyRequest+1)); !errors.Is(err, ErrTSIGKeyNotSent) || !strings.Contains(err.Error(), "exceeds 4 KiB") {
+		t.Fatalf("an oversized body was not refused as unsent: %v", err)
+	}
+	if _, _, err := c.TSIGKeyCommand(t.Context(), "reseal", "k.", nil); !errors.Is(err, ErrTSIGKeyNotSent) || strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("an empty body was not refused as unsent: %v", err)
 	}
 	if calls.Load() != 0 {
 		t.Fatal("a locally refused command was sent")

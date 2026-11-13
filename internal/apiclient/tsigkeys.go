@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -22,6 +23,10 @@ const maxTSIGKeyReceipt = 64 << 10
 // missing or unusable. The command may have committed; it was not retried.
 var ErrTSIGKeyOutcomeUnknown = errors.New("apiclient: stored TSIG key command outcome unknown; it was not retried; inspect fresh metadata before any further action")
 
+// ErrTSIGKeyNotSent marks a stored TSIG key command refused by the client
+// before any request was built or sent, so nothing changed on the server.
+var ErrTSIGKeyNotSent = errors.New("apiclient: stored TSIG key command was not sent; nothing changed")
+
 // TSIGKeyCommand sends one stored TSIG key command (create, replace, reseal
 // or revoke) exactly once through generated dispatch. Redirects, replayable
 // bodies and idempotency headers are disabled, as for the other reviewed
@@ -32,14 +37,19 @@ var ErrTSIGKeyOutcomeUnknown = errors.New("apiclient: stored TSIG key command ou
 // for a commit without bounded publication acknowledgment) and the raw
 // receipt. A non-2xx answer is the server's *Error. A missing response or a
 // success status outside the operation's contract returns an error wrapping
-// ErrTSIGKeyOutcomeUnknown.
+// ErrTSIGKeyOutcomeUnknown. A refusal before sending (an invalid operation,
+// key name or body) wraps ErrTSIGKeyNotSent instead. Any error from the round
+// trip itself stays an unknown outcome, because the request may have left.
 func (c *Client) TSIGKeyCommand(ctx context.Context, operation, keyName string, body []byte) (int, json.RawMessage, error) {
 	path, success, ok := tsigKeyCommandPath(operation, keyName)
 	if !ok {
-		return 0, nil, errors.New("apiclient: invalid stored TSIG key operation")
+		return 0, nil, fmt.Errorf("%w: invalid stored TSIG key operation or key name", ErrTSIGKeyNotSent)
 	}
-	if len(body) == 0 || len(body) > maxTSIGKeyRequest {
-		return 0, nil, errors.New("apiclient: stored TSIG key command body exceeds 4 KiB")
+	if len(body) == 0 {
+		return 0, nil, fmt.Errorf("%w: stored TSIG key command body is empty", ErrTSIGKeyNotSent)
+	}
+	if len(body) > maxTSIGKeyRequest {
+		return 0, nil, fmt.Errorf("%w: stored TSIG key command body exceeds 4 KiB", ErrTSIGKeyNotSent)
 	}
 	response, err := c.raw(ctx, Request{Method: http.MethodPost, Path: path, Body: bytes.NewReader(body)}, true)
 	if err != nil {
@@ -67,7 +77,8 @@ func tsigKeyCommandPath(operation, keyName string) (string, int, bool) {
 	case "create":
 		return "/tsigkeys", http.StatusCreated, keyName == ""
 	case "replace", "reseal", "revoke":
-		if keyName == "" || len(keyName) > 254 || strings.ContainsAny(keyName, "/\\\x00\r\n") {
+		// "." and ".." are dot segments that no URL can carry as a key name.
+		if keyName == "" || keyName == "." || keyName == ".." || len(keyName) > 254 || strings.ContainsAny(keyName, "/\\\x00\r\n") {
 			return "", 0, false
 		}
 		return "/tsigkeys/" + url.PathEscape(keyName) + "/" + operation, http.StatusOK, true
