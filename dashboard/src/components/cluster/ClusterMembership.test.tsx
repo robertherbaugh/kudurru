@@ -84,6 +84,13 @@ async function reviewAndConfirm(d: HTMLElement, confirm: RegExp) {
   await atStep(d, 'member');
 }
 
+/** Clicks a step of the wizard's stepper (it jumps to any step already reached). */
+function stepper(d: HTMLElement, label: string) {
+  const list = d.querySelector('ol');
+  if (!list) throw new Error('no stepper');
+  fireEvent.click(within(list as HTMLElement).getByRole('button', { name: new RegExp(`^Go to step \\d+: ${label}`) }));
+}
+
 /** Waits for the wizard to show a step (Next validates asynchronously). */
 const atStep = (d: HTMLElement, id: string) => waitFor(() => expect(d.querySelector(`[data-step="${id}"]`)).not.toBeNull());
 
@@ -276,6 +283,185 @@ describe('cluster membership on the Nodes page', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(posts).toBe(1);
     expect(within(d).queryByTestId('cluster-invitation')).toBeNull();
+  });
+
+  it.each([
+    ['Read again', (d: HTMLElement) => click(d, 'Read again')],
+    ['unticking the confirmation', (d: HTMLElement) => fireEvent.click(within(d).getByRole('checkbox', { name: /I reviewed/ }))],
+  ])('sends no invitation after %s on a revisited review step, even through the stepper', async (_name, unconfirm) => {
+    let n = 1;
+    mount({ role: 'primary', enroll: () => enrollment('primary', false, n) });
+    let posts = 0;
+    server.use(http.post(`${API}/cluster/join-token`, () => {
+      posts++;
+      return HttpResponse.json({ committed: true, invitation: SECRET, expiresAt: new Date(Date.now() + 300_000).toISOString() });
+    }));
+    renderWithApp(<NodesPage />, { route: '/nodes' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Invite a member' }));
+    const d = await dialog('Invite a member');
+    await reviewAndConfirm(d, /I reviewed/);
+    type(d, /^Member name/, 'node-b');
+    type(d, /^Internal address/, '10.0.0.12:8082');
+    type(d, /^Reason/, 'add node-b');
+    click(d, 'Next');
+    await atStep(d, 'issue');
+    // Back to the review through the stepper; the primary's data changed meanwhile.
+    n = 2;
+    stepper(d, 'Review');
+    await atStep(d, 'review');
+    unconfirm(d);
+    await waitFor(() => expect(within(d).getByRole('checkbox', { name: /I reviewed/ })).not.toBeChecked());
+    // Straight to the last step without Next, and finish there.
+    stepper(d, 'Issue');
+    await atStep(d, 'issue');
+    click(d, 'Issue invitation');
+    await atStep(d, 'review');
+    expect(await within(d).findByText('Confirm that you reviewed the enrollment.')).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(posts).toBe(0);
+  });
+
+  it('sends exactly the confirmed review, never a re-read one that was not confirmed again', async () => {
+    let n = 1;
+    mount({ role: 'standalone', enroll: () => enrollment('standalone', true, n) });
+    const bodies: Record<string, unknown>[] = [];
+    server.use(http.post(`${API}/cluster/activate`, async ({ request }) => {
+      bodies.push((await request.json()) as Record<string, unknown>);
+      return HttpResponse.json({ committed: true, clusterID: CLUSTER_ID, memberID: MEMBER_ID, restartRequired: true });
+    }));
+    renderWithApp(<NodesPage />, { route: '/nodes' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Activate cluster' }));
+    const d = await dialog('Activate cluster');
+    await reviewAndConfirm(d, /I reviewed/);
+    type(d, /^Internal address/, '10.0.0.11:8082');
+    type(d, /^Reason/, 'start');
+    click(d, 'Next');
+    await atStep(d, 'activate');
+    n = 2;
+    click(d, 'Edit review');
+    await atStep(d, 'review');
+    click(d, 'Read again');
+    await within(d).findByText('2'.repeat(64));
+    stepper(d, 'Activate');
+    await atStep(d, 'activate');
+    click(d, 'Activate cluster');
+    expect(await within(d).findByText('Confirm that you reviewed the enrollment.')).toBeInTheDocument();
+    expect(bodies).toHaveLength(0);
+    // Confirming the new values sends those, and only those.
+    fireEvent.click(within(d).getByRole('checkbox', { name: /I reviewed/ }));
+    stepper(d, 'Activate');
+    await atStep(d, 'activate');
+    click(d, 'Activate cluster');
+    expect(await screen.findByText('Cluster activated: restart kudurru on this node')).toBeInTheDocument();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({ sourceDigest: '2'.repeat(64) });
+  });
+
+  it('sends no promotion when a re-read review is no longer eligible', async () => {
+    let p = promotion(true, 'eligible');
+    mount({ role: 'follower', enroll: enrollment('follower', false), promotion: undefined });
+    server.use(http.get(`${API}/cluster/promotion`, () => HttpResponse.json(p)));
+    let posts = 0;
+    server.use(http.post(`${API}/cluster/promote`, () => {
+      posts++;
+      return HttpResponse.json({ error: { key: 'conflict', message: 'x' } }, { status: 409 });
+    }));
+    renderWithApp(<NodesPage />, { route: '/nodes' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Review promotion' }));
+    const d = await dialog('Promote this follower');
+    await within(d).findByText('Eligible for promotion');
+    fireEvent.click(within(d).getByRole('checkbox', { name: /I reviewed/ }));
+    click(d, 'Next');
+    await atStep(d, 'decide');
+    type(d, /^Type the node name/, 'kudurru-0');
+    type(d, /^Reason/, 'node-a is lost');
+    click(d, 'Next');
+    await atStep(d, 'promote');
+    p = promotion(false, 'awaiting_missed_pulls');
+    stepper(d, 'Review');
+    await atStep(d, 'review');
+    click(d, 'Read again');
+    expect(await within(d).findByText('Not eligible for promotion')).toBeInTheDocument();
+    fireEvent.click(within(d).getByRole('checkbox', { name: /I reviewed/ }));
+    stepper(d, 'Promote');
+    await atStep(d, 'promote');
+    click(d, 'Promote kudurru-0');
+    await atStep(d, 'review');
+    await waitFor(() => expect(within(d).getAllByText(/The primary still answers/).length).toBeGreaterThan(1));
+    expect(posts).toBe(0);
+  });
+
+  it('offers invitation lifetimes that leave a margin below the primary maximum', async () => {
+    mount({ role: 'primary', enroll: enrollment('primary', false) });
+    const bodies: Record<string, unknown>[] = [];
+    server.use(http.post(`${API}/cluster/join-token`, async ({ request }) => {
+      bodies.push((await request.json()) as Record<string, unknown>);
+      return HttpResponse.json({ committed: true, invitation: SECRET, expiresAt: new Date(Date.now() + 540_000).toISOString() });
+    }));
+    renderWithApp(<NodesPage />, { route: '/nodes' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Invite a member' }));
+    const d = await dialog('Invite a member');
+    await reviewAndConfirm(d, /I reviewed/);
+    type(d, /^Member name/, 'node-b');
+    type(d, /^Internal address/, '10.0.0.12:8082');
+    type(d, /^Reason/, 'add node-b');
+    fireEvent.click(within(d).getByRole('combobox', { name: /^Valid for/ }));
+    const offered = screen.getAllByRole('option').map((o) => o.textContent ?? '');
+    expect(offered.some((o) => /10 minutes/.test(o))).toBe(false);
+    fireEvent.click(screen.getByRole('option', { name: /^9 minutes/ }));
+    expect(within(d).getByRole('combobox', { name: /^Valid for/ })).toHaveAttribute('data-value', '9');
+    click(d, 'Next');
+    await atStep(d, 'issue');
+    click(d, 'Issue invitation');
+    await within(d).findByTestId('cluster-invitation');
+    // A browser clock up to a minute ahead of the primary still stays within its ten minutes.
+    expect(Date.parse(String(bodies[0]!.expiresAt))).toBeLessThanOrEqual(Date.now() + 600_000 - 60_000);
+  });
+
+  it('names the correctable causes when the primary refuses an invitation with 409', async () => {
+    mount({ role: 'primary', enroll: enrollment('primary', false) });
+    server.use(http.post(`${API}/cluster/join-token`, () => HttpResponse.json({ error: { key: 'conflict', message: 'cluster source changed or is not an enrolled primary' } }, { status: 409 })));
+    renderWithApp(<NodesPage />, { route: '/nodes' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Invite a member' }));
+    const d = await dialog('Invite a member');
+    await reviewAndConfirm(d, /I reviewed/);
+    type(d, /^Member name/, 'node-b');
+    type(d, /^Internal address/, '10.0.0.12:8082');
+    type(d, /^Reason/, 'add node-b');
+    click(d, 'Next');
+    await atStep(d, 'issue');
+    click(d, 'Issue invitation');
+    expect(await within(d).findByText('The primary refused the invitation')).toBeInTheDocument();
+    expect(within(d).getByText(/name or internal address is already used or reserved/)).toBeInTheDocument();
+    expect(within(d).getByText(/clock/)).toBeInTheDocument();
+    expect(within(d).getByRole('button', { name: 'Issue invitation' })).toBeDisabled();
+  });
+
+  it('cannot be closed while the invitation request is in flight', async () => {
+    mount({ role: 'primary', enroll: enrollment('primary', false) });
+    let answer: (() => void) | undefined;
+    server.use(http.post(`${API}/cluster/join-token`, async () => {
+      await new Promise<void>((r) => (answer = r));
+      return HttpResponse.json({ committed: true, invitation: SECRET, expiresAt: new Date(Date.now() + 300_000).toISOString() });
+    }));
+    renderWithApp(<NodesPage />, { route: '/nodes' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Invite a member' }));
+    const d = await dialog('Invite a member');
+    await reviewAndConfirm(d, /I reviewed/);
+    type(d, /^Member name/, 'node-b');
+    type(d, /^Internal address/, '10.0.0.12:8082');
+    type(d, /^Reason/, 'add node-b');
+    click(d, 'Next');
+    await atStep(d, 'issue');
+    click(d, 'Issue invitation');
+    await waitFor(() => expect(answer).toBeDefined());
+    expect(within(d).getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    fireEvent.keyDown(d, { key: 'Escape' });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Invite a member' })).toBeInTheDocument();
+    answer!();
+    expect(await within(d).findByTestId('cluster-invitation')).toHaveTextContent(SECRET);
   });
 
   it('blocks the promotion of a follower that is not eligible, with the reason', async () => {

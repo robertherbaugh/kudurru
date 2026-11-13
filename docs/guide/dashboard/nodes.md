@@ -30,8 +30,9 @@ Use [Diagnosis](diagnosis.md) for linked configuration problems and [Tools](tool
 On a SQLite node, **Cluster membership** shows this node's enrollment: its
 mode (`standalone`, `primary` or `follower`), the cluster ID and the member
 ID. The button next to the title depends on the mode. Each wizard reads the
-current state when it opens and sends exactly what it showed. It sends its
-command once: if the reviewed state changed (`409`) or the answer was lost or
+current state when it opens and sends exactly what you confirmed: if you read
+the state again or untick "I reviewed", confirm again before you finish. It
+sends its command once, and you cannot close the dialog until it answers: if the reviewed state changed (`409`) or the answer was lost or
 says that the outcome is unknown, it sends nothing more; close it, check the
 enrollment and decide again. The commands need the `admin` role.
 
@@ -40,8 +41,12 @@ enrollment and decide again. The commands need the `admin` role.
   listener, port 8082 by default) and a reason, then activate. Restart
   kudurru on that node afterwards; until then followers cannot join.
 - **Invite a member** (the primary): review the enrollment, give the new
-  member's name and internal address, how long the invitation is valid (at
-  most ten minutes) and a reason, then issue it. The next screen shows the
+  member's name and internal address, how long the invitation is valid (2, 5
+  or 9 minutes, counted on your computer's clock; the primary accepts at most
+  ten on its own clock) and a reason, then issue it. A `409` refusal means
+  that the primary's state changed, that the name or address is already used
+  or reserved by an earlier member, or that the expiry is too far ahead or
+  already past on the primary's clock; start a new wizard. The next screen shows the
   invitation once, with the `kudurru cluster join --offline` command and the
   Docker Compose changes for the new node. Copy the invitation over a private
   channel; closing the dialog drops it and it is not shown again. If the join

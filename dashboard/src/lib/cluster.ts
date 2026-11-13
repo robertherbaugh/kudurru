@@ -90,6 +90,17 @@ export function lockedText(outcome: Exclude<CommandOutcome, 'refused'>, what: st
   return `The dashboard cannot tell whether the ${what} happened. It does not send it again: close this wizard, check the enrollment on this page and decide from what it shows.`;
 }
 
+/**
+ * The sentence after a 409 to an invitation. The primary answers 409 to more
+ * than a changed source: also to a member name or internal address that an
+ * earlier member used or reserved, and to an expiry more than ten minutes
+ * ahead (or already past) on the primary's own clock. The answer does not
+ * say which, so the wizard names all three and still sends nothing more.
+ */
+export function invitationConflictText(): string {
+  return "The primary did not issue it. Either its state changed since your review, the member name or internal address is already used or reserved by an earlier member, or the expiry is more than ten minutes ahead or already past on the primary's clock (check this computer's clock against the primary's). Close this wizard and open it again with a fresh review and, if needed, another name or address; the dashboard does not send this invitation again.";
+}
+
 /** The offline join command for the new member (binary or package install). */
 export function joinCommand(name: string, address: string, invitationFile: string): string {
   return [

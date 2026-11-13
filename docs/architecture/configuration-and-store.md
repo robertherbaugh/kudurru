@@ -1415,15 +1415,24 @@ The Nodes page drives the same reviewed membership commands as the CLI
 (`dashboard/src/components/wizards/ClusterWizards.tsx`). Each wizard reads its
 review (`GET /cluster/enrollment` or `GET /cluster/promotion`) once when it
 opens, never refetches it behind the operator (the follower read-back skips
-review queries), and sends exactly the values it showed: activation of a
-dormant standalone node, an invitation from the primary with an absolute
-expiry computed when the operator issues it, or the promotion of a follower
-with its reviewed installed generation, the typed node name and one request ID
-per opening. A command is sent once. A 409 (the review changed) or an answer
-that leaves the outcome unknown (`completion_unknown`,
-`committed_output_unavailable`, a lost response or the client's 35-second
-bound) locks the wizard; only a definite refusal before any commit (400, 403,
-`primary_required`) can be corrected and decided again. The invitation is
+review queries), and sends exactly the values the operator confirmed:
+ticking "I reviewed" snapshots the review on screen, "Read again" or
+unticking drops the snapshot, and the finishing action validates every
+earlier step again (the stepper can jump past the review step), so a re-read
+review is never sent without a new confirmation. The commands are activation
+of a dormant standalone node, an invitation from the primary with an absolute
+expiry computed on the browser's clock when the operator issues it (at most
+nine minutes, a minute below the primary's maximum measured on its own
+clock), or the promotion of a follower with its reviewed installed
+generation, the typed node name and one request ID per opening. A command is
+sent once, and its dialog cannot be closed while it is in flight. A 409 (the
+review changed; for an invitation also a name or address already used or
+reserved, or an expiry the primary's clock refuses) or an answer that leaves
+the outcome unknown (`completion_unknown`, `committed_output_unavailable`,
+any other 5xx, a lost response or the client's 35-second bound) locks the
+wizard; only a definite refusal before any commit (400, 401, 403, 413, 415,
+429, and 503 `primary_required`, `cluster_fenced`, `cluster_conflict` or
+`generation_pending`) can be corrected and decided again. The invitation is
 requested with a plain call, never through the query or mutation cache, lives
 only in the state of the step that shows it, and is dropped when its dialog
 closes. `GET /cluster/anchors` is shown beside it with the documented action
@@ -1434,10 +1443,13 @@ its metrics or `anchors status --offline` instead.
 ```mermaid
 flowchart LR
     O["Open wizard"] --> R["One review read<br/>(enrollment or promotion)"]
-    R --> C["Operator confirms<br/>and fills the step fields"]
-    C --> S["One POST"]
+    R --> C["Operator confirms (snapshot)<br/>and fills the step fields"]
+    C -->|"Read again or untick"| R
+    C --> V["Every step validated again"]
+    V -->|"not confirmed"| C
+    V --> S["One POST of the snapshot<br/>(dialog cannot close)"]
     S -->|"2xx"| D["Close; invitation shown<br/>once in its step"]
-    S -->|"400, 403, primary_required"| C
+    S -->|"definite refusal before a commit"| C
     S -->|"409, unknown or lost"| L["Locked: review again<br/>in a new wizard"]
 ```
 

@@ -10,7 +10,12 @@
 //   by name and promote it.
 //
 // Every wizard reads its review fresh when it opens and sends exactly the
-// values it showed. It sends its command once: after a 409 (the reviewed state
+// values the operator confirmed: ticking the confirmation snapshots the
+// review on screen, reading again or unticking drops the snapshot, and the
+// finishing action checks every step again (the stepper can jump past the
+// review step), so a re-read review is never sent without a new
+// confirmation. While the command is in flight the dialog cannot be closed.
+// It sends its command once: after a 409 (the reviewed state
 // changed) or an answer that leaves the outcome unknown it sends nothing more
 // and says to review again (lib/cluster.ts commandOutcome). The invitation is
 // a bearer secret: it is requested with a plain call (no query or mutation
@@ -24,10 +29,10 @@ import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList'
 import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { qk, useApi } from '../../api/context';
 import type { ClusterActivationReceipt, ClusterEnrollmentInfo, ClusterJoinTokenReceipt, ClusterPromotionInfo, ClusterPromotionReceipt } from '../../api/types';
-import { CLUSTER_DOCS, commandOutcome, composeCommands, composeSnippet, joinCommand, lockedText, memberAddressError, memberNameError, promotionReasonText, reasonError, type CommandOutcome } from '../../lib/cluster';
+import { CLUSTER_DOCS, commandOutcome, composeCommands, composeSnippet, invitationConflictText, joinCommand, lockedText, memberAddressError, memberNameError, promotionReasonText, reasonError, type CommandOutcome } from '../../lib/cluster';
 import { formatDateTime, formatRelative } from '../../lib/format';
 import { DialogForm } from '../FormDialog';
 import { ErrorBanner, errorText, Loading } from '../Feedback';
@@ -55,6 +60,26 @@ export function refreshCluster(qc: QueryClient): void {
 /** A review read once per wizard opening: never refetched behind the operator's back. */
 function useReview<T>(key: readonly unknown[], read: () => Promise<T>) {
   return useQuery({ queryKey: key, queryFn: read, staleTime: Infinity, gcTime: 0, retry: false, refetchOnWindowFocus: false, refetchInterval: false, refetchOnReconnect: false });
+}
+
+/**
+ * The review the operator confirmed: a snapshot of the data on screen taken
+ * when the box is ticked. It counts only while that same data is shown (not
+ * while a read is running); the command sends the snapshot, never live data.
+ */
+function useConfirmed<T>(q: { data: T | undefined; isFetching: boolean }) {
+  const [snapshot, setSnapshot] = useState<T>();
+  const reviewed = snapshot !== undefined && !q.isFetching && q.data === snapshot ? snapshot : undefined;
+  return { reviewed, confirmed: reviewed !== undefined, setConfirmed: (v: boolean) => setSnapshot(v ? q.data : undefined) };
+}
+
+/** Tells the dialog while a command is in flight (it then cannot be closed). */
+function usePendingReport(pending: boolean, onPending: ((pending: boolean) => void) | undefined) {
+  useEffect(() => {
+    onPending?.(pending);
+    // onPending is a new function on every render of the dialog.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending]);
 }
 
 /** Sends one command at most once; after a stale or uncertain answer it stays locked. */
@@ -87,12 +112,12 @@ function useOnce() {
   return { pending, error, locked, run };
 }
 
-function CommandError({ error, locked, what }: { error: unknown; locked: Exclude<CommandOutcome, 'refused'> | undefined; what: string }) {
+function CommandError({ error, locked, what, stale }: { error: unknown; locked: Exclude<CommandOutcome, 'refused'> | undefined; what: string; stale?: { title: string; text: string } }) {
   if (error === undefined) return null;
   if (!locked) return <ErrorBanner error={error} />;
-  return (
-    <Banner status="warning" title={locked === 'stale' ? 'The reviewed state changed' : 'Outcome unknown'} description={`${lockedText(locked, what)} The server said: ${errorText(error)}`} />
-  );
+  const title = locked === 'stale' ? (stale?.title ?? 'The reviewed state changed') : 'Outcome unknown';
+  const text = locked === 'stale' && stale ? stale.text : lockedText(locked, what);
+  return <Banner status="warning" title={title} description={`${text} The server said: ${errorText(error)}`} />;
 }
 
 function Mono({ children }: { children: ReactNode }) {
@@ -158,14 +183,15 @@ function ReviewStep<T>({ q, confirmed, setConfirmed, confirmLabel, children }: R
 // ---------------------------------------------------------------------------
 // Activate
 
-function ActivateWizard({ node, onActivated }: { node: string; onActivated: (r: ClusterActivationReceipt) => void }) {
+function ActivateWizard({ node, onActivated, onPending }: { node: string; onActivated: (r: ClusterActivationReceipt) => void; onPending?: (pending: boolean) => void }) {
   const api = useApi();
   const q = useReview(clusterKeys.enrollmentReview, () => api.cluster.enrollment());
-  const [confirmed, setConfirmed] = useState(false);
+  const { reviewed, confirmed, setConfirmed } = useConfirmed(q);
   const [name, setName] = useState(node);
   const [address, setAddress] = useState('');
   const [reason, setReason] = useState('');
   const once = useOnce();
+  usePendingReport(once.pending, onPending);
   const review = q.data;
   const steps: WizardStep[] = [
     {
@@ -178,7 +204,7 @@ function ActivateWizard({ node, onActivated }: { node: string; onActivated: (r: 
         </ReviewStep>
       ),
       validate: () =>
-        !review
+        !review || q.isFetching
           ? 'Wait until the enrollment is read.'
           : review.mode !== 'standalone' || !review.dormant
             ? `Only a dormant standalone node can be activated; this node is ${review.mode}${review.dormant ? '' : ' and not dormant'}.`
@@ -236,10 +262,12 @@ function ActivateWizard({ node, onActivated }: { node: string; onActivated: (r: 
       isFinishing={once.pending}
       isFinishDisabled={!!once.locked}
       error={<CommandError error={once.error} locked={once.locked} what="activation" />}
+      revalidateOnFinish
+      isCancelDisabled={once.pending}
       onFinish={() =>
-        review
+        reviewed
           ? once.run(
-              (signal) => api.cluster.activate({ clusterID: review.clusterID, memberID: review.memberID, sourceDigest: review.sourceDigest, ownerDigest: review.ownerDigest, name, address, reason }, signal),
+              (signal) => api.cluster.activate({ clusterID: reviewed.clusterID, memberID: reviewed.memberID, sourceDigest: reviewed.sourceDigest, ownerDigest: reviewed.ownerDigest, name, address, reason }, signal),
               onActivated,
             )
           : undefined
@@ -249,9 +277,10 @@ function ActivateWizard({ node, onActivated }: { node: string; onActivated: (r: 
 }
 
 export function ActivateDialog({ isOpen, onClose, node, onActivated }: { isOpen: boolean; onClose: () => void; node: string; onActivated: (r: ClusterActivationReceipt) => void }) {
+  const [busy, setBusy] = useState(false);
   return (
-    <WizardDialog isOpen={isOpen} onClose={onClose} title="Activate cluster" what="activation">
-      <ActivateWizard node={node} onActivated={onActivated} />
+    <WizardDialog isOpen={isOpen} onClose={onClose} title="Activate cluster" what="activation" isBusy={busy}>
+      <ActivateWizard node={node} onActivated={onActivated} onPending={setBusy} />
     </WizardDialog>
   );
 }
@@ -259,10 +288,14 @@ export function ActivateDialog({ isOpen, onClose, node, onActivated }: { isOpen:
 // ---------------------------------------------------------------------------
 // Invite
 
+// The primary accepts at most ten minutes on its own clock, and the dashboard
+// computes the absolute expiry on the browser's clock: the longest choice
+// keeps a minute's margin so that a browser clock a little ahead of the
+// primary is not refused.
 const EXPIRY_OPTIONS = [
   { value: '2', label: '2 minutes', help: 'Enough when you run the join right away.' },
   { value: '5', label: '5 minutes' },
-  { value: '10', label: '10 minutes', help: 'The longest the primary accepts, on its own clock.' },
+  { value: '9', label: '9 minutes', help: "The longest the dashboard offers: the primary accepts at most ten minutes on its own clock, and the minute left over covers this computer's clock running a little ahead." },
 ];
 
 /** The shown-once invitation, the join command and the Compose changes for the new member. */
@@ -296,15 +329,16 @@ function InvitationView({ receipt, name, address, version, onDone }: { receipt: 
   );
 }
 
-function InviteWizard({ onIssued }: { onIssued: (receipt: ClusterJoinTokenReceipt, name: string, address: string) => void }) {
+function InviteWizard({ onIssued, onPending }: { onIssued: (receipt: ClusterJoinTokenReceipt, name: string, address: string) => void; onPending: (pending: boolean) => void }) {
   const api = useApi();
   const q = useReview(clusterKeys.enrollmentReview, () => api.cluster.enrollment());
-  const [confirmed, setConfirmed] = useState(false);
+  const { reviewed, confirmed, setConfirmed } = useConfirmed(q);
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [minutes, setMinutes] = useState('5');
   const [reason, setReason] = useState('');
   const once = useOnce();
+  usePendingReport(once.pending, onPending);
   const review = q.data;
   const steps: WizardStep[] = [
     {
@@ -316,7 +350,7 @@ function InviteWizard({ onIssued }: { onIssued: (receipt: ClusterJoinTokenReceip
           {(r) => <EnrollmentFacts review={r} />}
         </ReviewStep>
       ),
-      validate: () => (!review ? 'Wait until the enrollment is read.' : review.mode !== 'primary' ? `Only the primary issues invitations; this node is ${review.mode}.` : !confirmed ? 'Confirm that you reviewed the enrollment.' : null),
+      validate: () => (!review || q.isFetching ? 'Wait until the enrollment is read.' : review.mode !== 'primary' ? `Only the primary issues invitations; this node is ${review.mode}.` : !confirmed ? 'Confirm that you reviewed the enrollment.' : null),
     },
     {
       id: 'member',
@@ -326,7 +360,7 @@ function InviteWizard({ onIssued }: { onIssued: (receipt: ClusterJoinTokenReceip
         <VStack gap={3}>
           <TextField label="Member name" value={name} onChange={setName} mono placeholder="node-b" error={name ? (memberNameError(name) ?? undefined) : undefined} help="The new node's node.name: up to 63 lowercase letters, digits and hyphens." />
           <TextField label="Internal address" value={address} onChange={setAddress} mono placeholder="10.0.0.12:8082" error={address ? (memberAddressError(address) ?? undefined) : undefined} help="host:port of the new node's internal listener that every member can reach." />
-          <SelectField label="Valid for" value={minutes} options={EXPIRY_OPTIONS} onChange={setMinutes} help="Counted from the moment you issue it. Run the join within this time." />
+          <SelectField label="Valid for" value={minutes} options={EXPIRY_OPTIONS} onChange={setMinutes} help="Counted from the moment you issue it, on this computer's clock; the primary checks it on its own. Run the join within this time." />
           <TextField label="Reason" value={reason} onChange={setReason} help="Recorded in the audit log." />
         </VStack>
       ),
@@ -368,17 +402,19 @@ function InviteWizard({ onIssued }: { onIssued: (receipt: ClusterJoinTokenReceip
       finishLabel="Issue invitation"
       isFinishing={once.pending}
       isFinishDisabled={!!once.locked}
-      error={<CommandError error={once.error} locked={once.locked} what="invitation" />}
+      error={<CommandError error={once.error} locked={once.locked} what="invitation" stale={{ title: 'The primary refused the invitation', text: invitationConflictText() }} />}
+      revalidateOnFinish
+      isCancelDisabled={once.pending}
       onFinish={() =>
-        review
+        reviewed
           ? once.run(
               (signal) =>
                 api.cluster.issueJoinToken(
                   {
-                    clusterID: review.clusterID,
-                    memberID: review.memberID,
-                    sourceDigest: review.sourceDigest,
-                    ownerDigest: review.ownerDigest,
+                    clusterID: reviewed.clusterID,
+                    memberID: reviewed.memberID,
+                    sourceDigest: reviewed.sourceDigest,
+                    ownerDigest: reviewed.ownerDigest,
                     name,
                     address,
                     // The original absolute expiry; the server never renews it.
@@ -396,12 +432,13 @@ function InviteWizard({ onIssued }: { onIssued: (receipt: ClusterJoinTokenReceip
 }
 
 /** The invitation flow: the wizard, then (only in this component's state) the issued invitation. */
-function InviteFlow({ version, onShown, onDone }: { version: string | undefined; onShown: () => void; onDone: () => void }) {
+function InviteFlow({ version, onShown, onDone, onPending }: { version: string | undefined; onShown: () => void; onDone: () => void; onPending: (pending: boolean) => void }) {
   const qc = useQueryClient();
   const [issued, setIssued] = useState<{ receipt: ClusterJoinTokenReceipt; name: string; address: string }>();
   if (issued) return <InvitationView receipt={issued.receipt} name={issued.name} address={issued.address} version={version} onDone={onDone} />;
   return (
     <InviteWizard
+      onPending={onPending}
       onIssued={(receipt, name, address) => {
         setIssued({ receipt, name, address });
         onShown();
@@ -413,6 +450,9 @@ function InviteFlow({ version, onShown, onDone }: { version: string | undefined;
 
 export function InviteDialog({ isOpen, onClose, version }: { isOpen: boolean; onClose: () => void; version: string | undefined }) {
   const [shown, setShown] = useState(false);
+  // While the request is in flight the dialog stays open: closing it would
+  // drop an invitation the primary may already have committed.
+  const [busy, setBusy] = useState(false);
   const close = () => {
     setShown(false);
     onClose();
@@ -423,9 +463,10 @@ export function InviteDialog({ isOpen, onClose, version }: { isOpen: boolean; on
       onClose={close}
       title="Invite a member"
       what="invitation"
+      isBusy={busy}
       discard={shown ? { title: 'Close the invitation?', description: 'It is not shown again. Copy it first if the new member does not have it yet.', actionLabel: 'Close', cancelLabel: 'Keep it open' } : undefined}
     >
-      <InviteFlow version={version} onShown={() => setShown(true)} onDone={close} />
+      <InviteFlow version={version} onShown={() => setShown(true)} onDone={close} onPending={setBusy} />
     </WizardDialog>
   );
 }
@@ -456,15 +497,16 @@ function PromotionFacts({ review }: { review: ClusterPromotionInfo }) {
   );
 }
 
-function PromoteWizard({ onPromoted }: { onPromoted: (r: ClusterPromotionReceipt) => void }) {
+function PromoteWizard({ onPromoted, onPending }: { onPromoted: (r: ClusterPromotionReceipt) => void; onPending: (pending: boolean) => void }) {
   const api = useApi();
   const q = useReview(clusterKeys.promotionReview, () => api.cluster.promotion());
-  const [confirmed, setConfirmed] = useState(false);
+  const { reviewed, confirmed, setConfirmed } = useConfirmed(q);
   const [confirmNode, setConfirmNode] = useState('');
   const [reason, setReason] = useState('');
   // One identifier for this one operator decision.
   const [requestID] = useState(() => `dashboard-${crypto.randomUUID()}`);
   const once = useOnce();
+  usePendingReport(once.pending, onPending);
   const review = q.data;
   const steps: WizardStep[] = [
     {
@@ -476,7 +518,7 @@ function PromoteWizard({ onPromoted }: { onPromoted: (r: ClusterPromotionReceipt
           {(r) => <PromotionFacts review={r} />}
         </ReviewStep>
       ),
-      validate: () => (!review ? 'Wait until the review is read.' : !review.eligible ? promotionReasonText(review.reason) : !confirmed ? 'Confirm that you reviewed the state.' : null),
+      validate: () => (!review || q.isFetching ? 'Wait until the review is read.' : !review.eligible ? promotionReasonText(review.reason) : !confirmed ? 'Confirm that you reviewed the state.' : null),
     },
     {
       id: 'decide',
@@ -524,9 +566,11 @@ function PromoteWizard({ onPromoted }: { onPromoted: (r: ClusterPromotionReceipt
       isFinishing={once.pending}
       isFinishDisabled={!!once.locked}
       error={<CommandError error={once.error} locked={once.locked} what="promotion" />}
+      revalidateOnFinish
+      isCancelDisabled={once.pending}
       onFinish={() =>
-        review
-          ? once.run((signal) => api.cluster.promote({ memberID: review.memberID, installed: review.installed, confirmNode, requestID, reason }, signal), onPromoted)
+        reviewed
+          ? once.run((signal) => api.cluster.promote({ memberID: reviewed.memberID, installed: reviewed.installed, confirmNode, requestID, reason }, signal), onPromoted)
           : undefined
       }
     />
@@ -534,9 +578,10 @@ function PromoteWizard({ onPromoted }: { onPromoted: (r: ClusterPromotionReceipt
 }
 
 export function PromoteDialog({ isOpen, onClose, onPromoted }: { isOpen: boolean; onClose: () => void; onPromoted: (r: ClusterPromotionReceipt) => void }) {
+  const [busy, setBusy] = useState(false);
   return (
-    <WizardDialog isOpen={isOpen} onClose={onClose} title="Promote this follower" what="promotion">
-      <PromoteWizard onPromoted={onPromoted} />
+    <WizardDialog isOpen={isOpen} onClose={onClose} title="Promote this follower" what="promotion" isBusy={busy}>
+      <PromoteWizard onPromoted={onPromoted} onPending={setBusy} />
     </WizardDialog>
   );
 }
