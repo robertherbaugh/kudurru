@@ -145,7 +145,11 @@ func anchorPublicationCursor(cursor *anchorCursor) bool {
 // This is a borrowed source predicate, not response authority. Exact cursor
 // identity preserves local-only denial and same-byte interposition boundaries.
 func anchorPublicationSource(source *AnchorSource, cursor *anchorCursor) error {
-	if source == nil || source.store == nil || source.closed.Load() || source.store.isClosed() || source.store.anchorBlocked.Load() || source.store.writeBlocked.Load() {
+	// The DNS form of the write block (DNSServingAuthority): a fence being
+	// persisted does not end the accepted trust a DNS-only role keeps
+	// serving; a failed or ambiguous fence still does. Publication itself
+	// stays refused while writes are blocked (publishIfCurrentLocked).
+	if source == nil || source.store == nil || source.closed.Load() || source.store.isClosed() || source.store.anchorBlocked.Load() || source.store.dnsOutputBlocked() {
 		return ErrAnchorUnavailable
 	}
 	if source.store.anchors.Load() != source || source.cursor.Load() != cursor {
