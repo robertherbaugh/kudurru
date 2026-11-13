@@ -17,17 +17,36 @@ import (
 type integrationDriverLimits struct {
 	// unsupported maps a type to the status reason of every instance.
 	unsupported map[string]string
-	// refused maps a type to the spec fields that make an instance refused.
-	refused map[string][]string
+	// fields maps a type to the spec fields that make an instance refused,
+	// and the ones that have no effect because what they need is refused.
+	fields map[string][]api.IntegrationFieldLimit
 }
 
 var (
 	sqliteIntegrationLimits = integrationDriverLimits{}
 	kubeIntegrationLimits   = integrationDriverLimits{
 		unsupported: map[string]string{"webhook": reasonUnsupportedOnKubernetes},
-		refused:     map[string][]string{"unifi": {"spec.unifi.inventory", "spec.unifi.push.dhcpDNSServers", "spec.unifi.push.mirrorRecords", "spec.unifi.push.clientActions"}},
+		fields: map[string][]api.IntegrationFieldLimit{"unifi": {
+			{Field: "spec.unifi.inventory", Effect: "refused", Reason: reasonRecordsUnsupported, Message: kubeRefusalMessage(reasonRecordsUnsupported, "")},
+			{Field: "spec.unifi.push.dhcpDNSServers", Effect: "refused", Reason: reasonPushUnsupported, Message: kubeRefusalMessage(reasonPushUnsupported, "")},
+			{Field: "spec.unifi.push.mirrorRecords.enabled", Effect: "refused", Reason: reasonPushUnsupported, Message: kubeRefusalMessage(reasonPushUnsupported, "")},
+			{Field: "spec.unifi.push.clientActions", Effect: "refused", Reason: reasonPushUnsupported, Message: kubeRefusalMessage(reasonPushUnsupported, "")},
+			{Field: "spec.unifi.push.dnsServers", Effect: "inert", Requires: "spec.unifi.push.dhcpDNSServers", Message: "Used only by spec.unifi.push.dhcpDNSServers, which the Kubernetes store refuses; it has no effect here."},
+			{Field: "spec.unifi.push.networks", Effect: "inert", Requires: "spec.unifi.push.dhcpDNSServers", Message: "Used only by spec.unifi.push.dhcpDNSServers, which the Kubernetes store refuses; it has no effect here."},
+		}},
 	}
 )
+
+// refused is the Refused list of a type: the fields whose limit refuses.
+func (l integrationDriverLimits) refused(typ string) []string {
+	out := []string{}
+	for _, f := range l.fields[typ] {
+		if f.Effect == "refused" {
+			out = append(out, f.Field)
+		}
+	}
+	return out
+}
 
 // integrationManifests builds the manifests answer from the provider types
 // compiled into this build and the node's own configuration. It reads no
@@ -45,9 +64,9 @@ func integrationManifests(driver, namespace string, grants config.CredentialGran
 	for _, m := range integration.Types() {
 		item := api.IntegrationManifest{Type: m.Type, DisplayName: m.DisplayName, Version: m.Version, Capabilities: []string{}, IOClass: m.IOClass,
 			ConfigField: m.Type, ConfigSchema: slices.Clone(m.ConfigSchema), Credentials: []api.IntegrationCredentialKey{}, Docs: m.Docs,
-			Supported: true, Refused: slices.Clone(limits.refused[m.Type])}
-		if item.Refused == nil {
-			item.Refused = []string{}
+			Supported: true, Refused: limits.refused(m.Type), FieldLimits: slices.Clone(limits.fields[m.Type])}
+		if item.FieldLimits == nil {
+			item.FieldLimits = []api.IntegrationFieldLimit{}
 		}
 		for _, c := range m.Capabilities {
 			item.Capabilities = append(item.Capabilities, string(c))

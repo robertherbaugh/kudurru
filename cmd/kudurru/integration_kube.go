@@ -212,9 +212,10 @@ func (r *kubeIntegrationRuntime) refusalIn(c *kubeIntegrationCut, d *public.Inte
 
 // refusedFor reports whether root's refusal of d in the capture c fences an
 // effect under mode. A release needs no provider and is never refused. A
-// cleanup is admitted for one refusal only: a UniFi instance that was armed
-// for Delete and later gained spec.unifi.inventory. It is not a publisher,
-// so its cleanup is the local purge of its source carriers and the finalizer
+// cleanup is admitted only where kubeRefusalAdmitsCleanup says: a UniFi
+// instance that was armed for Delete and later gained spec.unifi.inventory
+// or a push switch that is no publication. It is not a publisher, so its
+// cleanup is the local purge of its source carriers and the finalizer
 // removal, with no provider request; refusing it would leave the object
 // Terminating with its carriers in place. A source conflict never refuses a
 // terminating publisher: its cleanup reads only its ledger.
@@ -229,8 +230,32 @@ func (r *kubeIntegrationRuntime) refusedFor(c *kubeIntegrationCut, mode ih.Guard
 	return true
 }
 
+// kubeRefusalAdmitsCleanup admits the cleanup of a terminating instance
+// that is no publisher and is refused only for a field this root does not
+// run: spec.unifi.inventory, or a UniFi push switch that makes no instance a
+// publisher (dhcpDNSServers, clientActions). Such a refusal never let a
+// provider run here, so the cleanup is the local purge and the finalizer
+// removal, with no provider request (D384). spec.unifi.push.mirrorRecords
+// makes the instance a publisher, whose cleanup needs its provider: it stays
+// Terminating until that switch is turned off or the cleanup is released.
 func kubeRefusalAdmitsCleanup(reason string, d *public.Integration) bool {
-	return reason == reasonRecordsUnsupported && !integrationPublishes(d) && !d.DeletionTimestamp.IsZero()
+	return (reason == reasonRecordsUnsupported || reason == reasonPushUnsupported) && !integrationPublishes(d) && !d.DeletionTimestamp.IsZero()
+}
+
+// kubeRefusalMessage is the Ready condition message of a refused instance,
+// and the message the manifests give for a refused field (D384).
+func kubeRefusalMessage(reason, namespace string) string {
+	switch reason {
+	case reasonRecordsUnsupported:
+		return "UniFi DNS record publication (spec.unifi.inventory) does not run on the Kubernetes store yet; remove it to run inventory and groups."
+	case reasonPushUnsupported:
+		return "UniFi writes (spec.unifi.push dhcpDNSServers, mirrorRecords.enabled and clientActions) run only on the SQLite store, where they are audited reviewed commands; turn them off to run inventory and groups."
+	case reasonNamespaceNotAllowed:
+		return "On the Kubernetes store only Integrations in kudurru's release namespace run; create it in " + namespace + "."
+	case reasonSourceConflicted:
+		return "An admitted record set this integration publishes is not served as written; the integration halts until the conflict is resolved."
+	}
+	return "This integration type does not run on the Kubernetes store yet; Cloudflare publication and UniFi inventory and groups do."
 }
 
 // kubeIntegrationCredentialless reports whether d is refused outright on
@@ -736,13 +761,8 @@ func (r *kubeIntegrationRuntime) status(ctx context.Context, g ih.ExecutionGuard
 		}
 		d := integrationStatusObject(cut.instances[g.Ledger.Owner].Definition(), status)
 		if refused != "" {
-			message := "This integration type does not run on the Kubernetes store yet; Cloudflare publication and UniFi inventory and groups do."
-			switch refused {
-			case reasonRecordsUnsupported:
-				message = "UniFi DNS record publication (spec.unifi.inventory) does not run on the Kubernetes store yet; remove it to run inventory and groups."
-			case reasonNamespaceNotAllowed:
-				message = "On the Kubernetes store only Integrations in kudurru's release namespace run; create it in " + r.opts.Namespace + "."
-			case reasonSourceConflicted:
+			message := kubeRefusalMessage(refused, r.opts.Namespace)
+			if refused == reasonSourceConflicted {
 				message = cut.conflict
 			}
 			if c := meta.FindStatusCondition(d.Status.Conditions, "Ready"); c != nil {

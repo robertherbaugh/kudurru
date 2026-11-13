@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -262,5 +263,47 @@ func TestMirrorApplyRefusesForeignPoliciesAtTheName(t *testing.T) {
 				t.Fatal("refused apply wrote", writes)
 			}
 		})
+	}
+}
+
+// The manifest's dnsServers pattern admits exactly the dotted forms
+// validatePush accepts as written (D384); the addresses it refuses beyond
+// the form are named in the field's description.
+func TestManifestDNSServerPatternMatchesValidation(t *testing.T) {
+	var schema struct {
+		Properties struct {
+			Push struct {
+				Properties struct {
+					DNSServers struct {
+						Description string `json:"description"`
+						Items       struct {
+							Pattern string `json:"pattern"`
+						} `json:"items"`
+					} `json:"dnsServers"`
+				} `json:"properties"`
+			} `json:"push"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(New().Manifest().ConfigSchema, &schema); err != nil {
+		t.Fatal(err)
+	}
+	field := schema.Properties.Push.Properties.DNSServers
+	pattern := regexp.MustCompile(field.Items.Pattern)
+	for _, form := range []string{"192.0.2.53", "10.0.0.1", "255.255.255.254", "1.2.3.4", "192.0.2.053", "01.2.3.4", "1.2.3", "1.2.3.4.5", "256.1.1.1", "::1", " 1.2.3.4", "1.2.3.4\n", "1.02.3.4"} {
+		valid := validatePush(public.UniFiIntegration{Push: public.UniFiPush{DNSServers: []string{form}}}) == nil
+		if pattern.MatchString(form) != valid {
+			t.Errorf("%q: pattern %t, validatePush %t", form, pattern.MatchString(form), valid)
+		}
+	}
+	// Valid in form, refused by the provider, and named in the description.
+	for _, refused := range []string{"0.0.0.0", "127.0.0.1", "224.0.0.1", "255.255.255.255"} {
+		if !pattern.MatchString(refused) || validatePush(public.UniFiIntegration{Push: public.UniFiPush{DNSServers: []string{refused}}}) == nil {
+			t.Errorf("%q: not a well-formed address the provider refuses", refused)
+		}
+	}
+	for _, named := range []string{"0.0.0.0", "loopback", "multicast", "255.255.255.255"} {
+		if !strings.Contains(field.Description, named) {
+			t.Errorf("description does not name %s: %q", named, field.Description)
+		}
 	}
 }
