@@ -50,7 +50,8 @@ func (h *servingHTTP) captureClusterOutput(next http.Handler) http.Handler {
 				return nil, err
 			}
 			if !h.opts.Runtime.ClusterEnrollmentAvailable() {
-				return nil, &auth.Error{Status: 503, Key: "unavailable", Message: "cluster enrollment requires the complete nonstatic SQLite runtime"}
+				return nil, &auth.Error{Status: 503, Key: "unavailable", Message: "cluster enrollment requires the complete nonstatic SQLite runtime", NoRetryAfter: true,
+					Hint: "enrollment needs a SQLite node that is not static; see docs/deploy/sqlite-cluster.md"}
 			}
 			token, err := servinghttp.SourceToken(r.Context())
 			if err != nil {

@@ -135,5 +135,6 @@ func servingCLIInvalid() error {
 	return &auth.Error{Status: 401, Key: "cli_login_invalid", Message: "public CLI login proof expired or was rejected; start again"}
 }
 func servingCLIUnavailable() error {
-	return &auth.Error{Status: 503, Key: "unavailable", Message: "public CLI provider unavailable"}
+	return &auth.Error{Status: 503, Key: "unavailable", Message: "public CLI provider unavailable",
+		Hint: "GET /api/v1/auth/cli/providers lists the identity providers this server offers for command-line login; log in with an API token (kudurru login --token) or a local account (kudurru login --username), or try again when the provider is reachable"}
 }

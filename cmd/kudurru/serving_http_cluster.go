@@ -56,7 +56,8 @@ func clusterReviewConflict() error {
 
 func (h *servingHTTP) getClusterEnrollment(w http.ResponseWriter, r *http.Request) error {
 	if !h.opts.Runtime.ClusterEnrollmentAvailable() {
-		return &auth.Error{Status: http.StatusServiceUnavailable, Key: "unavailable", Message: "cluster enrollment requires the complete nonstatic SQLite runtime"}
+		return &auth.Error{Status: http.StatusServiceUnavailable, Key: "unavailable", Message: "cluster enrollment requires the complete nonstatic SQLite runtime", NoRetryAfter: true,
+			Hint: "enrollment needs a SQLite node that is not static; see docs/deploy/sqlite-cluster.md"}
 	}
 	if r.URL.RawQuery != "" {
 		return servingHTTPInvalid("enrollment review does not accept query parameters")
@@ -125,7 +126,8 @@ func activationIdentity(path, member string) (*memberidentity.Identity, error) {
 func (h *servingHTTP) activateCluster(w http.ResponseWriter, r *http.Request) error {
 	s := h.opts.Runtime
 	if !s.ClusterEnrollmentAvailable() {
-		return &auth.Error{Status: http.StatusServiceUnavailable, Key: "unavailable", Message: "cluster enrollment requires the complete nonstatic SQLite runtime"}
+		return &auth.Error{Status: http.StatusServiceUnavailable, Key: "unavailable", Message: "cluster enrollment requires the complete nonstatic SQLite runtime", NoRetryAfter: true,
+			Hint: "enrollment needs a SQLite node that is not static; see docs/deploy/sqlite-cluster.md"}
 	}
 	v, _, err := h.permission(r.Context(), "cluster", "join")
 	if err != nil {

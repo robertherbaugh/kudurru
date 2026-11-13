@@ -173,7 +173,7 @@ func (a *Adapter) Middleware(next http.Handler) http.Handler {
 		defer lease.Release()
 		r = r.WithContext(context.WithValue(ctx, leaseKey{}, lease))
 		if _, err := Component[*servingauth.View](r.Context(), "auth"); err != nil {
-			auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "generation_pending", Message: "authentication generation unavailable", RetryAfter: time.Second})
+			auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "generation_pending", Message: "authentication generation unavailable", Hint: "this node is preparing its next configuration; send the request again after Retry-After", RetryAfter: time.Second})
 			return
 		}
 		verify.ServeHTTP(w, r)
@@ -197,7 +197,7 @@ func (a *Adapter) captureRefusal() *auth.Error {
 	if refusal := AuthorityRefusal(a.options.Publisher.Status().Authority); refusal != nil {
 		return refusal
 	}
-	return &auth.Error{Status: http.StatusServiceUnavailable, Key: "generation_pending", Message: "complete serving generation unavailable", RetryAfter: time.Second}
+	return &auth.Error{Status: http.StatusServiceUnavailable, Key: "generation_pending", Message: "complete serving generation unavailable", Hint: "this node is preparing its next configuration; send the request again after Retry-After", RetryAfter: time.Second}
 }
 
 // AuthorityRefusal is the answer of a member whose durable authority closed

@@ -37,7 +37,7 @@ func registerUnavailableCLILogin(mux *http.ServeMux) {
 	} {
 		mux.HandleFunc(route.method+" "+api.BasePath+route.path, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Referrer-Policy", "no-referrer")
-			auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "cli_login_unavailable",
+			auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "cli_login_unavailable", NoRetryAfter: true,
 				Message: "public CLI login requires the complete SQLite authentication runtime",
 				Hint:    "log in with an API token (kudurru login --token) or a local account (kudurru login --username)"})
 		})
@@ -51,7 +51,7 @@ func registerUnavailableProviderLogout(mux *http.ServeMux) {
 	for _, path := range []string{"/auth/oidc/{idp}/logout", "/auth/oidc/{idp}/logout/callback"} {
 		mux.HandleFunc(http.MethodGet+" "+api.BasePath+path, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Referrer-Policy", "no-referrer")
-			auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "provider_logout_unavailable",
+			auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "provider_logout_unavailable", NoRetryAfter: true,
 				Message: "provider logout continuation requires the complete SQLite authentication runtime",
 				Hint:    "the local session ends with POST /api/v1/auth/logout/browser; end the provider session at the identity provider"})
 		})
@@ -63,7 +63,7 @@ func registerUnavailableProviderLogout(mux *http.ServeMux) {
 // a real operation that this runtime does not serve.
 func registerLegacyAuthFallback(mux *http.ServeMux) {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: api.KeyUnavailable,
+		auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: api.KeyUnavailable, NoRetryAfter: true,
 			Message: "this operation is unavailable on this server", Hint: "requires the complete SQLite runtime"})
 	})
 }

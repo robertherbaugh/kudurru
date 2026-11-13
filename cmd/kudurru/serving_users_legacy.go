@@ -14,7 +14,8 @@ func registerUnavailableLocalUsers(mux *http.ServeMux) {
 		mux.HandleFunc(http.MethodPost+" "+api.BasePath+path, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("Referrer-Policy", "no-referrer")
-			auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "user_management_unavailable", Message: "local user commands require the complete current-command runtime"})
+			auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "user_management_unavailable", NoRetryAfter: true, Message: "local user commands require the complete current-command runtime",
+				Hint: "reset a password on the replica's admin socket (kudurru admin reset-password NAME) and give other people access through OIDC and role bindings"})
 		})
 	}
 }

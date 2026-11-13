@@ -20,7 +20,8 @@ func (s *servingRuntime) ClusterPromotionAvailable() bool {
 }
 
 func promotionUnavailable() error {
-	return &auth.Error{Status: 503, Key: "unavailable", Message: "cluster promotion requires the complete enrolled SQLite runtime"}
+	return &auth.Error{Status: 503, Key: "unavailable", Message: "cluster promotion requires the complete enrolled SQLite runtime", NoRetryAfter: true,
+		Hint: "only an enrolled follower is promoted; a standalone node already holds write authority and a static node has none to take (docs/deploy/sqlite-cluster.md)"}
 }
 func promotionConflict() error {
 	return &auth.Error{Status: 409, Key: "conflict", Message: "promotion source changed or follower is ineligible; review current state before a new decision"}

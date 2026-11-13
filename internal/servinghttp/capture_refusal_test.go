@@ -110,7 +110,8 @@ func TestCaptureRefusalNamesFencedAndConflictedAuthority(t *testing.T) {
 			return err
 		})
 		recorder, body := refuse(t, f)
-		if body.Error.Key != "generation_pending" || body.Error.Hint != "" || recorder.Header().Get("Retry-After") != "1" {
+		// A pending publication says to wait, not what a durable state says.
+		if body.Error.Key != "generation_pending" || body.Error.Hint != "this node is preparing its next configuration; send the request again after Retry-After" || recorder.Header().Get("Retry-After") != "1" {
 			t.Fatalf("pending refusal: retry-after=%q %s", recorder.Header().Get("Retry-After"), recorder.Body)
 		}
 	})
