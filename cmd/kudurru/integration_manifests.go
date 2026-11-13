@@ -22,6 +22,10 @@ type integrationDriverLimits struct {
 	fields map[string][]api.IntegrationFieldLimit
 }
 
+// mirrorInert is the message of a record mirror setting on Kubernetes,
+// where the mirror's switch is refused.
+const mirrorInert = "Used only by spec.unifi.push.mirrorRecords.enabled, which the Kubernetes store refuses; it has no effect here."
+
 var (
 	sqliteIntegrationLimits = integrationDriverLimits{}
 	kubeIntegrationLimits   = integrationDriverLimits{
@@ -33,6 +37,10 @@ var (
 			{Field: "spec.unifi.push.clientActions", Effect: "refused", Reason: reasonPushUnsupported, Message: kubeRefusalMessage(reasonPushUnsupported, "")},
 			{Field: "spec.unifi.push.dnsServers", Effect: "inert", Requires: "spec.unifi.push.dhcpDNSServers", Message: "Used only by spec.unifi.push.dhcpDNSServers, which the Kubernetes store refuses; it has no effect here."},
 			{Field: "spec.unifi.push.networks", Effect: "inert", Requires: "spec.unifi.push.dhcpDNSServers", Message: "Used only by spec.unifi.push.dhcpDNSServers, which the Kubernetes store refuses; it has no effect here."},
+			{Field: "spec.unifi.push.mirrorRecords.types", Effect: "inert", Requires: "spec.unifi.push.mirrorRecords.enabled", Message: mirrorInert},
+			{Field: "spec.unifi.push.mirrorRecords.domains", Effect: "inert", Requires: "spec.unifi.push.mirrorRecords.enabled", Message: mirrorInert},
+			{Field: "spec.unifi.push.mirrorRecords.labels", Effect: "inert", Requires: "spec.unifi.push.mirrorRecords.enabled", Message: mirrorInert},
+			{Field: "spec.unifi.push.mirrorRecords.exclude", Effect: "inert", Requires: "spec.unifi.push.mirrorRecords.enabled", Message: mirrorInert},
 		}},
 	}
 )
