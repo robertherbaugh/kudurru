@@ -58,6 +58,14 @@ type testPublication struct {
 	held    atomic.Bool
 	mu      sync.Mutex
 	changed chan struct{}
+	// observe (setObserve) sees the member of every Wait.
+	observe func(pr.Member)
+}
+
+func (p *testPublication) setObserve(fn func(pr.Member)) {
+	p.mu.Lock()
+	p.observe = fn
+	p.mu.Unlock()
 }
 
 func (p *testPublication) Wake() {}
@@ -74,6 +82,12 @@ func (p *testPublication) release() {
 	p.mu.Unlock()
 }
 func (p *testPublication) Wait(ctx context.Context, w Writer, m pr.Member) error {
+	p.mu.Lock()
+	observe := p.observe
+	p.mu.Unlock()
+	if observe != nil {
+		observe(m)
+	}
 	if p.held.Load() {
 		return pr.ErrUnavailable
 	}
