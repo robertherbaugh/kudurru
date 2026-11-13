@@ -21,7 +21,9 @@ func TestSelectOriginalPublicAndExpiry(t *testing.T) {
 	now := metav1.NewTime(in.Now)
 	later := metav1.NewTime(in.Now.Add(time.Second))
 	r := in.Sources[0].Records
-	r.Spec.Endpoints = []public.Endpoint{endpoint("public.example.com.", "A", "192.0.2.1"), endpoint("disabled.example.com.", "A", "192.0.2.2"), endpoint("expired.example.com.", "A", "192.0.2.3"), endpoint("future.example.com.", "A", "192.0.2.4")}
+	r.Spec.Endpoints = []public.Endpoint{endpoint("public.example.com.", "A", "192.0.2.1"), endpoint("disabled.example.com.", "A", "192.0.2.2"), endpoint("expired.example.com.", "A", "192.0.2.3"), endpoint("future.example.com.", "A", "192.0.2.4"), endpoint("future.example.com.", "A", "10.0.0.4")}
+	// A client-group view (D403) is never published.
+	r.Spec.Endpoints[4].Kudurru = &public.EndpointExt{View: "lan"}
 	r.Spec.Endpoints[0].Kudurru = &public.EndpointExt{View: "public"}
 	r.Spec.Endpoints[1].Kudurru = &public.EndpointExt{Disabled: true}
 	r.Spec.Endpoints[2].Kudurru = &public.EndpointExt{ExpiresAt: &now}

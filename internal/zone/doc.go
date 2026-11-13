@@ -7,7 +7,9 @@
 //   - NewBuilder validates a DNSZone and Builder.Add turns each
 //     api/v1alpha1 Endpoint into RRsets, parsing presentation-format
 //     targets with miekg/dns against the zone origin and default TTL.
-//     Disabled, expired and view-scoped endpoints are skipped (D28);
+//     Disabled, expired and publish-only ("public") endpoints are
+//     skipped (D28); endpoints of a client-group view build that group's
+//     variant of the zone (view.go, D403);
 //     anything that does not parse or conflicts (CNAME exclusivity,
 //     duplicates across objects) is reported as a field.Error whose path
 //     points into the offending object, ready for a condition.

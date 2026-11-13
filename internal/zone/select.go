@@ -140,7 +140,8 @@ func RecordSetError(rs *v1alpha1.DNSRecordSet) error {
 }
 
 // EndpointIdentity returns the duplicate-detection key of an endpoint as
-// text: the canonical owner, the upper-case type and the set identifier.
+// text: the canonical owner, the upper-case type, the set identifier and,
+// for a client-group view, the view (D403).
 // Two endpoints with the same identity in one record set make it invalid;
 // across record sets the later one is Duplicated.
 func EndpointIdentity(ep v1alpha1.Endpoint) string {
@@ -148,5 +149,11 @@ func EndpointIdentity(ep v1alpha1.Endpoint) string {
 	if k, err := canonicalKey(owner); err == nil {
 		owner = nameFromKey(k)
 	}
-	return owner + " " + strings.ToUpper(strings.TrimSpace(ep.RecordType)) + " " + ep.SetIdentifier
+	id := owner + " " + strings.ToUpper(strings.TrimSpace(ep.RecordType)) + " " + ep.SetIdentifier
+	if view := GroupView(&ep); view != "" {
+		// A client-group view's RRset is distinct from the default one of
+		// the same name and type (D403).
+		id += " view=" + view
+	}
+	return id
 }

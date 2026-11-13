@@ -176,6 +176,7 @@ func (c *RecordCache) RecordSetValid(z *public.DNSZone, rs *public.DNSRecordSet,
 // input. It cannot be fabricated with caller-supplied unchecked records.
 type ParsedRecordSet struct {
 	builder   *Builder
+	namespace string
 	endpoints []public.Endpoint
 	parsed    *recordParse
 }
@@ -186,7 +187,7 @@ func (b *Builder) ParseRecordSet(rs *public.DNSRecordSet) *ParsedRecordSet {
 	for i := range endpoints {
 		rs.Spec.Endpoints[i].DeepCopyInto(&endpoints[i])
 	}
-	return &ParsedRecordSet{b, endpoints, b.records.load(b.recordScope, rs, b.now)}
+	return &ParsedRecordSet{b, rs.Namespace, endpoints, b.records.load(b.recordScope, rs, b.now)}
 }
 
 // Records returns detached RRs and errors for endpoint i, before serving/conflict
@@ -215,8 +216,12 @@ func (p *ParsedRecordSet) Records(i int) ([]dns.RR, field.ErrorList) {
 func (p *ParsedRecordSet) Add(source string, i int) field.ErrorList {
 	path := field.NewPath("spec", "endpoints").Index(i)
 	ep := &p.endpoints[i]
+	if p.builder.z.holdsRecords() && GroupView(ep) != "" && Live(ep, p.builder.now) {
+		records, errs := p.Records(i)
+		return p.builder.addView(p.namespace, source, path, ep, records, errs)
+	}
 	if !p.builder.z.holdsRecords() || !Served(ep, p.builder.now) {
-		return p.builder.Add(source, path, ep)
+		return p.builder.add(p.namespace, source, path, ep)
 	}
 	records, errs := p.Records(i)
 	return p.builder.addParsed(source, path, ep, records, errs)

@@ -24,7 +24,7 @@ func TestAuthoritativeOriginalProofAndLegacyBypass(t *testing.T) {
 	if key, mode := authoritativeTarget(o, "validated-original-key", "qualified", true); key != "validated-original-key" || mode != "qualified" {
 		t.Fatal("explicit original proof did not qualify")
 	}
-	for _, mode := range []string{"bypass-stale", "bypass-invalid", "bypass-zone-client-acl", "bypass-client-scope", "bypass-unavailable", "bypass-source"} {
+	for _, mode := range []string{"bypass-stale", "bypass-invalid", "bypass-zone-client-acl", "bypass-zone-client-view", "bypass-client-scope", "bypass-unavailable", "bypass-source"} {
 		if key, got := authoritativeTarget(o, "", mode, true); key != "" || got != mode {
 			t.Fatal("failed original proof was repaired")
 		}

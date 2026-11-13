@@ -70,7 +70,9 @@ func appendSignedAuthority(prefix, suffix []dns.RR) []dns.RR {
 }
 
 func (s *Stage) signedLookup(req *pipeline.Request, set zone.Set, z *zone.Zone, name string, qtype uint16, hops int) (zone.Result, error) {
-	return z.LookupSignedWithin(name, qtype, hops, func(target string) bool { return set.Match(target) == z }, signedDO(req), s.now())
+	// z may be a client-group variant (D403); the set holds default zones.
+	base := z.Base()
+	return z.LookupSignedWithin(name, qtype, hops, func(target string) bool { return set.Match(target) == base }, signedDO(req), s.now())
 }
 
 func (s *Stage) signedSplice(req *pipeline.Request, z *zone.Zone, answer, authority []dns.RR, resp *pipeline.Response, err error) *pipeline.Response {

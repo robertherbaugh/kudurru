@@ -212,6 +212,10 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		return s.unsynced(req, gate), nil
 	}
 
+	// Client-group views (D403): answer from the client's variant of the
+	// zone. Transfers above and the zone match use the default zone; a
+	// zone without views returns itself without allocating.
+	z = z.ForGroups(req.Client.GroupIDs)
 	res, err := s.signedLookup(req, set, z, q.Name, q.Qtype, 0)
 	if err != nil {
 		return s.signedFailure(req, z), nil
@@ -290,6 +294,7 @@ func (s *Stage) chase(req *pipeline.Request, set zone.Set, z *zone.Zone, res zon
 			return s.secondaryUnavailable(req, z2), nil
 		}
 		if z2 != nil && (z2.Type() == v1alpha1.ZoneTypePrimary || z2.Type() == v1alpha1.ZoneTypeSecondary || z2.Type() == v1alpha1.ZoneTypeExternal) && z2.QueryAllowed(client) {
+			z2 = z2.ForGroups(req.Client.GroupIDs)
 			r2, err := s.signedLookup(req, set, z2, target, q.Qtype, last.Hops)
 			if err != nil {
 				return s.signedFailure(req, z2), nil

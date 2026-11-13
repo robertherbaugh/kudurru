@@ -50,6 +50,31 @@ func TestAuthoritativeCacheFrozenPrimaryACLAndImportedSignatures(t *testing.T) {
 	}
 }
 
+// A served model with client-group views is refused even when no desired
+// record set names a view any more (D403).
+func TestAuthoritativeCacheRefusesServedClientViews(t *testing.T) {
+	config := &public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "static"}, Spec: public.DNSZoneSpec{Type: public.ZoneTypePrimary, ZoneName: "static.example."}}
+	var records []dns.RR
+	for _, text := range []string{"static.example. 60 IN SOA ns.static.example. admin.static.example. 1 60 30 600 30", "name.static.example. 60 IN A 192.0.2.1"} {
+		rr, err := dns.NewRR(text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		records = append(records, rr)
+	}
+	view, err := dns.NewRR("name.static.example. 60 IN A 10.0.0.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	model, err := zone.BuildCommittedPrimaryWithViews(config, records, []zone.CommittedView{{Group: "default/lan", Records: []dns.RR{view}}}, 1, time.Time{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := authoritativeModelBypass(model); got != "zone-client-view" {
+		t.Fatalf("model proof = %q, want zone-client-view", got)
+	}
+}
+
 func TestAuthoritativeCacheOriginalStaticAndUnavailableSources(t *testing.T) {
 	f := newFixture(t)
 	settings := settings("192.0.2.11")
@@ -83,6 +108,11 @@ func TestAuthoritativeCacheOriginalStaticAndUnavailableSources(t *testing.T) {
 		state, err := edge.State(t.Context())
 		if err != nil || state.AuthoritativeAvailable || state.AuthoritativeReason != tc.reason {
 			t.Fatal("unsafe original record contribution qualified", tc.reason)
+		}
+		// The edge packet cache keys on the question only: a client-group
+		// view must also keep the resolver pool from caching (D403).
+		if tc.reason == "zone-client-view" && (state.Available || state.UnavailableReason != tc.reason) {
+			t.Fatal("client-group view left the resolver pool cache available")
 		}
 	}
 	if err := f.store.Delete(t.Context(), store.Key{Kind: "DNSRecordSet", Namespace: "default", Name: "unsafe"}, store.DeleteOptions{Manager: store.ManagerSystem}); err != nil {

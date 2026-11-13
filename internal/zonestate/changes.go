@@ -175,6 +175,20 @@ func ReplaceSource(a *Aggregate, p Projection, now time.Time, l Limits) (*Aggreg
 		}
 		out.Records = append(out.Records, r)
 	}
+	// A projection carries no client-group view data: the source's view
+	// records leave with its old fragment (D403).
+	out.Views = nil
+	for _, v := range a.Views {
+		kept := ViewRecords{Group: v.Group}
+		for _, r := range v.Records {
+			if r.Provenance.SourceID != p.Source.ID {
+				kept.Records = append(kept.Records, r)
+			}
+		}
+		if len(kept.Records) > 0 {
+			out.Views = append(out.Views, kept)
+		}
+	}
 	// Keep only caller-supplied inactive reservations; visible source records
 	// automatically reserve their identities in View.UpdateState.
 	if !p.Removed {

@@ -155,6 +155,12 @@ func Select(in SelectionInput) (*Selection, error) {
 			if e.Kudurru != nil && (e.Kudurru.Disabled || e.Kudurru.ExpiresAt != nil && !in.Now.Before(e.Kudurru.ExpiresAt.Time)) {
 				continue
 			}
+			// A client-group view is served only to that group's clients and
+			// is never published to a sink (D403). "public" is the
+			// publish-only view and is selected.
+			if e.Kudurru != nil && e.Kudurru.View != "" && e.Kudurru.View != "public" {
+				continue
+			}
 			n, err := Normalize(e)
 			if err != nil {
 				return nil, err

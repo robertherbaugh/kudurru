@@ -16,6 +16,13 @@ import (
 // ownership includes explicit apex data beyond generated SOA/NS. Signatures
 // are data, never proof of AD.
 func BuildCommittedPrimary(config *v1alpha1.DNSZone, records []dns.RR, serial uint32, expiry time.Time, apexOverride bool) (*Zone, error) {
+	return BuildCommittedPrimaryWithViews(config, records, nil, serial, expiry, apexOverride)
+}
+
+// BuildCommittedPrimaryWithViews is BuildCommittedPrimary with the committed
+// client-group views (D403), sorted by group. View data that a view cannot
+// hold, or any view in a zone with DNSSEC data, is a structural error.
+func BuildCommittedPrimaryWithViews(config *v1alpha1.DNSZone, records []dns.RR, views []CommittedView, serial uint32, expiry time.Time, apexOverride bool) (*Zone, error) {
 	b, err := committedBuilder(config)
 	if err != nil {
 		return nil, err
@@ -112,6 +119,9 @@ func BuildCommittedPrimary(config *v1alpha1.DNSZone, records []dns.RR, serial ui
 	z.access.nsAddrs = append(z.access.nsAddrs, z.nameserverAddrs()...)
 	z.transfer.nsAddrs = append(z.transfer.nsAddrs, z.nameserverAddrs()...)
 	z.hash = contentHash(z)
+	if err := z.addCommittedViews(views); err != nil {
+		return nil, err
+	}
 	return z, nil
 }
 

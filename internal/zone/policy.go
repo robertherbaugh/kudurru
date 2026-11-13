@@ -135,7 +135,7 @@ func ParseNotifyTarget(s string) (netip.AddrPort, error) {
 }
 
 // claim records the identity of an endpoint that is not served (disabled,
-// expired or view-scoped) so a later object cannot take it over. Endpoints
+// expired or publish-only) so a later object cannot take it over. Endpoints
 // whose owner or type does not parse claim nothing.
 func (b *Builder) claim(source string, ep *v1alpha1.Endpoint) {
 	owner, err := OwnerName(b.z.name, ep.DNSName)
@@ -150,7 +150,7 @@ func (b *Builder) claim(source string, ep *v1alpha1.Endpoint) {
 	if err != nil {
 		return
 	}
-	id := identity{key, t, ep.SetIdentifier}
+	id := identity{key, t, ep.SetIdentifier, GroupView(ep)}
 	if _, ok := b.owners[id]; !ok {
 		b.owners[id] = source
 	}
