@@ -3,7 +3,7 @@
 // that it forwards to the primary or runs itself; every other mutation answers
 // 503 primary_required. The dashboard reads the node's own lists, so a newer
 // or older follower is described by what it actually does.
-import type { ClusterInfo } from '../api/types';
+import type { AuthStatus, ClusterInfo } from '../api/types';
 
 export interface ClusterRole {
   /** standalone, primary or follower on the SQLite driver; undefined elsewhere. */
@@ -30,6 +30,40 @@ export function clusterRole(info: ClusterInfo | undefined): ClusterRole {
     forwarded: follower ? new Set(info.forwardedOperations ?? []) : NONE,
     local: follower ? new Set(info.localOperations ?? []) : NONE,
   };
+}
+
+/**
+ * The operationIds an enrolled follower of this release forwards to its
+ * primary (`x-kudurru-follower: forwarded` in api/openapi.json). Used only
+ * when GET /cluster cannot be read (it needs cluster.read, which only the
+ * admin role holds) and the public GET /auth/status says the node is a
+ * follower; follower.test.ts keeps it equal to the OpenAPI document.
+ */
+export const DOCUMENT_FORWARDED: readonly string[] = [
+  'apply', 'batchDeleteBlocklists', 'batchDeleteClientgroups', 'batchDeleteDnsrecordsets', 'batchDeleteDnszones', 'batchDeletePolicies',
+  'browserLogout', 'changePassword', 'createBlocklists', 'createClientgroups', 'createObject', 'createPolicies', 'createToken',
+  'deleteBlocklists', 'deleteClientgroups', 'deleteClusterObject', 'deleteObject', 'deletePolicies', 'deleteToken', 'deleteZone',
+  'deleteZoneRecord', 'importZone', 'login', 'logout', 'patchSettings', 'putBlocklists', 'putClientgroups', 'putClusterObject',
+  'putObject', 'putPolicies', 'revokeSession', 'setBlocking', 'upsertZoneRecord',
+];
+
+/** The operationIds a follower of this release runs itself
+ * (`x-kudurru-follower: local`); see DOCUMENT_FORWARDED. */
+export const DOCUMENT_LOCAL: readonly string[] = [
+  'activateCluster', 'changeSettingsOwnership', 'deleteDHCPReservation', 'dnsQuery', 'exportSettingsSectionYAML', 'flushCache',
+  'importDHCPLeases', 'issueClusterJoinToken', 'promoteCluster', 'purgeQuerylog', 'putDHCPReservation', 'putDHCPScopeConfig',
+  'putDHCPSetup', 'verifyRollupEvidence',
+];
+
+/**
+ * The role from the public GET /auth/status, for a session that cannot read
+ * GET /cluster: a follower names itself and its primary there, and its lists
+ * are taken from the OpenAPI document this dashboard was built with (the
+ * dashboard is embedded in the binary, so they describe the same release).
+ */
+export function statusRole(status: AuthStatus | undefined): ClusterRole {
+  if (status?.role !== 'follower') return NO_ROLE;
+  return { role: 'follower', follower: true, primary: status.primary || undefined, forwarded: new Set(DOCUMENT_FORWARDED), local: new Set(DOCUMENT_LOCAL) };
 }
 
 /**

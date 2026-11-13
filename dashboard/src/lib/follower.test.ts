@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ClusterInfo } from '../api/types';
-import { clusterRole, needsPrimary, NO_ROLE, PERMISSION_OPERATIONS, permissionNeedsPrimary, primaryFromMessage, primaryOnlyReason } from './follower';
+import { clusterRole, DOCUMENT_FORWARDED, DOCUMENT_LOCAL, needsPrimary, NO_ROLE, PERMISSION_OPERATIONS, permissionNeedsPrimary, primaryFromMessage, primaryOnlyReason, statusRole } from './follower';
 
 interface Permission { resource?: string; resources?: string[]; verb?: string }
 interface Operation { operationId?: string; 'x-kudurru-permission'?: Permission | string; 'x-kudurru-follower'?: string }
@@ -68,6 +68,25 @@ describe('follower permission table', () => {
     // A permission that also gates a read is never refused as a whole.
     expect(permissionNeedsPrimary(role, 'settings', 'write')).toBe(false);
     expect(permissionNeedsPrimary(role, 'integrations', 'read')).toBe(false);
+  });
+
+  it('keeps the build-time follower lists equal to the document, for sessions without cluster.read', () => {
+    const forwarded: string[] = [];
+    const local: string[] = [];
+    for (const ops of Object.values(openapi())) {
+      for (const [method, op] of Object.entries(ops)) {
+        if (SAFE.has(method) || !op.operationId) continue;
+        if (op['x-kudurru-follower'] === 'forwarded') forwarded.push(op.operationId);
+        if (op['x-kudurru-follower'] === 'local') local.push(op.operationId);
+      }
+    }
+    expect([...DOCUMENT_FORWARDED].sort()).toEqual(forwarded.sort());
+    expect([...DOCUMENT_LOCAL].sort()).toEqual(local.sort());
+    const fromStatus = statusRole({ localLogin: true, providers: [], hasDefaultCredentials: false, role: 'follower', primary: 'a' });
+    const fromCluster = clusterRole(info({ role: 'follower', primary: 'a', primaryRequired: true, forwardedOperations: forwarded, localOperations: local }));
+    expect(fromStatus).toEqual(fromCluster);
+    expect(statusRole({ localLogin: true, providers: [], hasDefaultCredentials: false })).toBe(NO_ROLE);
+    expect(statusRole(undefined)).toBe(NO_ROLE);
   });
 
   it('gates nothing on a primary, a standalone node or an unknown role', () => {

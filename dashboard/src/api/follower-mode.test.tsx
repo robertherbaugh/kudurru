@@ -2,25 +2,33 @@
 // controls with the reason, refusal texts, the Nodes page, the login page and
 // sign-out, and the delayed refetch after a forwarded change.
 import { act, fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react';
-import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery as useQueryHook } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { makeQueryClient } from '../App';
 import { ApiError } from './client';
-import { ApiProvider, FOLLOWER_SYNC_MS, qk, scheduleFollowerRefetch, useCan, useCannotReason, useClusterRole, usePrimaryOnly, useSignOut } from './context';
+import { ApiProvider, FOLLOWER_SYNC_MS, qk, ROLE_POLL_MS, useApiContext, useCan, useCannotReason, useClusterRole, usePrimaryOnly, useSession, useSignOut } from './context';
 import type { ClusterInfo } from './types';
 import { ErrorBanner, errorText } from '../components/Feedback';
 import { FollowerBanner } from '../components/FollowerBanner';
 import { AuthenticatorPanel } from '../components/access/Authenticators';
+import { PolicyWizardDialog } from '../components/wizards/PolicyWizard';
+import { mockDB } from '../mocks/handlers';
+import { getSelector, pick } from '../test/controls';
 import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
 import AllowlistPage from '../pages/AllowlistPage';
+import ListDetailPage from '../pages/ListDetailPage';
 import ListsPage from '../pages/ListsPage';
 import { LoginPage } from '../pages/LoginPage';
 import NodesPage from '../pages/NodesPage';
+import PoliciesPage from '../pages/PoliciesPage';
+import RequestDetailPage from '../pages/RequestDetailPage';
+import RequestsPage from '../pages/RequestsPage';
+import SettingsPage from '../pages/SettingsPage';
+import ZoneDetailPage from '../pages/ZoneDetailPage';
 
 /** The follower lists exactly as the OpenAPI document classifies them. */
 function documentLists(): { forwarded: string[]; local: string[] } {
@@ -56,6 +64,45 @@ function asFollower() {
   server.use(http.get(`${API}/cluster`, () => HttpResponse.json(followerInfo())));
 }
 
+/** The built-in operator role: blocklists.* and unblockrequests.*, but no
+ * cluster.read, so GET /cluster answers 403 (internal/rbac/permissions.yaml). */
+const OPERATOR_PERMISSIONS = {
+  blocklists: ['read', 'write', 'delete', 'refresh'], unblockrequests: ['read', 'decide', 'delete'], edgeblocks: ['read', 'write'],
+  zones: ['read'], records: ['read'], policies: ['read'], clientgroups: ['read'], querylog: ['read'], stats: ['read'], settings: ['read'],
+};
+
+/** An operator session on a follower: /cluster is forbidden, the public
+ * /auth/status names the role and the primary. Returns the /cluster reads. */
+function asOperatorOnFollower(): { clusterReads: () => number; statusReads: () => number } {
+  let cluster = 0;
+  let status = 0;
+  server.use(
+    http.get(`${API}/auth/me`, () => HttpResponse.json({ principal: { kind: 'User', id: 'local:ops', name: 'ops', auth: 'cookie', provider: 'local' }, roles: ['operator'], csrf: 'csrf-mock-token', permissions: OPERATOR_PERMISSIONS })),
+    http.get(`${API}/cluster`, () => {
+      cluster++;
+      return HttpResponse.json({ error: { key: 'forbidden', message: 'You may not read cluster', hint: { missing: { resource: 'cluster', verb: 'read', scope: 'cluster' } } } }, { status: 403 });
+    }),
+    http.get(`${API}/auth/status`, () => {
+      status++;
+      return HttpResponse.json({ localLogin: true, localLoginMode: 'enabled', providers: [], hasDefaultCredentials: false, role: 'follower', primary: 'kudurru-0', capabilities: { factorManagement: true, localUserCommands: true } });
+    }),
+  );
+  return { clusterReads: () => cluster, statusReads: () => status };
+}
+
+/** Counts GETs of an API path while the test runs. */
+function countReads(pathname: string): () => number {
+  let n = 0;
+  const listener = ({ request }: { request: Request }) => {
+    if (request.method === 'GET' && new URL(request.url).pathname === `/api/v1${pathname}`) n++;
+  };
+  server.events.on('request:start', listener);
+  afterEachCleanups.push(() => server.events.removeListener('request:start', listener));
+  return () => n;
+}
+
+const afterEachCleanups: (() => void)[] = [];
+
 function wrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={queryClient}><ApiProvider baseUrl={API}>{children}</ApiProvider></QueryClientProvider>;
@@ -64,6 +111,7 @@ function wrapper(queryClient: QueryClient) {
 
 afterEach(() => {
   vi.useRealTimers();
+  for (const f of afterEachCleanups.splice(0)) f();
 });
 
 describe('enrolled follower capabilities', () => {
@@ -213,6 +261,22 @@ describe('follower refusals', () => {
     hook.unmount();
   });
 
+  it('keeps the session when the sign-out never reached the server, and rejects', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const me = { principal: { name: 'original' } };
+    queryClient.setQueryData(qk.me, me);
+    server.use(http.post(`${API}/auth/logout/browser`, () => HttpResponse.error()));
+    const hook = renderHook(() => useSignOut(), { wrapper: wrapper(queryClient) });
+    let rejected: unknown;
+    await act(async () => { await hook.result.current().catch((err: unknown) => { rejected = err; }); });
+    expect(rejected).toBeInstanceOf(ApiError);
+    expect((rejected as ApiError).status).toBe(0);
+    // Nothing cleared the cookie, so the dashboard does not pretend it signed out.
+    expect(queryClient.getQueryData(qk.me)).toBe(me);
+    expect(queryClient.getQueryData(qk.signOutNotice)).toBeUndefined();
+    hook.unmount();
+  });
+
   it('explains on the login page of a follower why single sign-on is absent', async () => {
     server.use(http.get(`${API}/auth/status`, () => HttpResponse.json({ localLogin: true, localLoginMode: 'enabled', providers: [], hasDefaultCredentials: false, role: 'follower', primary: 'kudurru-0' })));
     renderWithApp(<LoginPage />, { user: null });
@@ -222,27 +286,183 @@ describe('follower refusals', () => {
 });
 
 describe('read after a forwarded change', () => {
-  it('refetches once more after the follower’s next pull, and never on a primary', async () => {
-    vi.useFakeTimers();
-    const client = makeQueryClient();
+  /** A hook harness: the session, an active query and the API client. */
+  function harness(queryClient: QueryClient, reads: () => Promise<string>) {
+    queryClient.setQueryData(qk.me, { principal: { name: 'admin' }, permissions: { '*': ['*'] } });
+    return renderHook(() => ({ ctx: useApiContext(), session: useSession(), role: useClusterRole(), objects: useQueryObserver(reads) }), { wrapper: wrapper(queryClient) });
+  }
+
+  it('refetches once more after the follower’s next pull for any write the client sends, and never on a primary', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    server.use(http.post(`${API}/probe-write`, () => new HttpResponse(null, { status: 204 })));
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     const reads = vi.fn(() => Promise.resolve('value'));
-    // An active query (one observer) is refetched by an invalidation.
-    const watch = new QueryObserver(client, { queryKey: ['objects', 'x'], queryFn: reads });
-    const stop = watch.subscribe(() => undefined);
+    // The first answer is a primary: a write schedules nothing.
+    server.use(http.get(`${API}/cluster`, () => HttpResponse.json({ ...followerInfo(), role: 'primary', primaryRequired: false, forwardedOperations: undefined, localOperations: undefined })));
+    const hook = harness(queryClient, reads);
+    await vi.waitFor(() => expect(hook.result.current.role.role).toBe('primary'));
     await vi.waitFor(() => expect(reads).toHaveBeenCalledTimes(1));
-
-    client.setQueryData(qk.cluster, { ...followerInfo(), primaryRequired: false });
-    scheduleFollowerRefetch(client);
-    await vi.advanceTimersByTimeAsync(FOLLOWER_SYNC_MS + 100);
+    // A plain await of the client, the way the wizards write (not useMutation).
+    await act(async () => { await hook.result.current.ctx.client.request('POST', '/probe-write'); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(FOLLOWER_SYNC_MS + 100); });
     expect(reads).toHaveBeenCalledTimes(1);
 
-    client.setQueryData(qk.cluster, followerInfo());
-    await client.getMutationCache().build(client, { mutationFn: () => Promise.resolve('ok') }).execute(undefined);
-    await vi.advanceTimersByTimeAsync(FOLLOWER_SYNC_MS - 100);
+    queryClient.setQueryData(qk.cluster, followerInfo());
+    await act(async () => { await hook.result.current.ctx.client.request('POST', '/probe-write'); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(FOLLOWER_SYNC_MS - 100); });
     expect(reads).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(200);
-    expect(reads).toHaveBeenCalledTimes(2);
-    stop();
-    client.clear();
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    await vi.waitFor(() => expect(reads).toHaveBeenCalledTimes(2));
+    hook.unmount();
+    queryClient.clear();
+  });
+
+  it('reads the policies again after the wizard created one on a follower', async () => {
+    asFollower();
+    const policyReads = countReads('/objects/policies');
+    renderWithApp(<><PoliciesPage /><PolicyWizardDialog isOpen onClose={() => {}} /></>, { route: '/policies' });
+    await screen.findByRole('checkbox', { name: 'kids' });
+    fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: 'follower-made' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'kids' }));
+    for (const step of ['What', 'Safe search', 'How', 'When', 'Review']) {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      await screen.findByRole('heading', { level: 3, name: step });
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Create policy' }));
+    await waitFor(() => expect(mockDB().policies.some((p) => p.metadata.name === 'follower-made')).toBe(true));
+    // The wizard's own invalidation reads at once; the follower has not pulled yet.
+    await waitFor(() => expect(policyReads()).toBeGreaterThanOrEqual(1));
+    const afterWrite = policyReads();
+    await new Promise((resolve) => setTimeout(resolve, FOLLOWER_SYNC_MS / 2));
+    expect(policyReads()).toBe(afterWrite);
+    await waitFor(() => expect(policyReads()).toBe(afterWrite + 1), { timeout: FOLLOWER_SYNC_MS + 4000 });
+  }, 40_000);
+});
+
+describe('a session without cluster.read on a follower', () => {
+  it('shows the banner and gates primary-only actions from /auth/status', async () => {
+    const { statusReads } = asOperatorOnFollower();
+    renderWithApp(<><FollowerBanner /><RequestsPage /></>, { route: '/requests' });
+    const banner = await screen.findByTestId('follower-banner');
+    expect(within(banner).getByText('This node is a follower of kudurru-0')).toBeInTheDocument();
+    expect(statusReads()).toBeGreaterThan(0);
+    // Unblock decisions need the primary: shown disabled with the reason, not hidden.
+    const approve = await within(await screen.findByTestId('request-tiktokv.com')).findByRole('button', { name: 'Approve' });
+    await waitFor(() => expect(approve).toHaveAttribute('aria-disabled', 'true'));
+    expect(approve).toHaveAccessibleDescription(/Runs only on the primary, kudurru-0/);
+  });
+
+  it('gates the same permissions as GET /cluster would', async () => {
+    asOperatorOnFollower();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(qk.me, { principal: { name: 'ops' }, permissions: OPERATOR_PERMISSIONS });
+    const hook = renderHook(() => ({ role: useClusterRole(), can: useCan(), primaryOnly: usePrimaryOnly() }), { wrapper: wrapper(queryClient) });
+    await waitFor(() => expect(hook.result.current.role.follower).toBe(true));
+    expect(hook.result.current.role.primary).toBe('kudurru-0');
+    expect(hook.result.current.can('unblockrequests', 'decide')).toBe(false);
+    expect(hook.result.current.can('blocklists', 'refresh')).toBe(false);
+    expect(hook.result.current.can('blocklists', 'write')).toBe(true);
+    expect(hook.result.current.primaryOnly('createAllowlistEntries')).toContain('kudurru-0');
+    expect(hook.result.current.primaryOnly('createBlocklists')).toBeUndefined();
+    hook.unmount();
+    queryClient.clear();
+  });
+
+  it('shows no banner when /auth/status names no role', async () => {
+    asOperatorOnFollower();
+    server.use(http.get(`${API}/auth/status`, () => HttpResponse.json({ localLogin: true, localLoginMode: 'enabled', providers: [], hasDefaultCredentials: false })));
+    const { client } = renderWithApp(<FollowerBanner />);
+    await waitFor(() => expect(client.getQueryData(qk.authStatus)).toBeDefined());
+    expect(screen.queryByTestId('follower-banner')).toBeNull();
   });
 });
+
+describe('the role after a failover', () => {
+  it('rereads the role on a timer and at once when a write answers primary_required', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    let primary = true;
+    server.use(
+      http.get(`${API}/cluster`, () => HttpResponse.json(primary ? { ...followerInfo(), node: 'kudurru-1', role: 'primary', primaryRequired: false, forwardedOperations: undefined, localOperations: undefined } : followerInfo())),
+      http.post(`${API}/probe-write`, () => HttpResponse.json(PRIMARY_REQUIRED, { status: 503 })),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(qk.me, { principal: { name: 'admin' }, permissions: { '*': ['*'] } });
+    const hook = renderHook(() => ({ ctx: useApiContext(), role: useClusterRole() }), { wrapper: wrapper(queryClient) });
+    await vi.waitFor(() => expect(hook.result.current.role.role).toBe('primary'));
+    // Demoted: a refused write rereads the role without waiting for the poll.
+    primary = false;
+    await act(async () => { await hook.result.current.ctx.client.request('POST', '/probe-write').catch(() => undefined); });
+    await vi.waitFor(() => expect(hook.result.current.role.follower).toBe(true));
+    // Promoted again: the poll picks it up.
+    primary = true;
+    await act(async () => { await vi.advanceTimersByTimeAsync(ROLE_POLL_MS + 100); });
+    await vi.waitFor(() => expect(hook.result.current.role.follower).toBe(false));
+    hook.unmount();
+    queryClient.clear();
+  });
+});
+
+describe('gated surfaces on a follower', () => {
+  it('disables Approve, Deny and Delete on a request with the primary named', async () => {
+    asFollower();
+    renderWithApp(<RequestDetailPage params={{ ns: 'default', name: 'tiktokv-com-c0a8011e' }} />, { route: '/requests/default/tiktokv-com-c0a8011e' });
+    for (const name of ['Approve', 'Deny', 'Delete']) {
+      const btn = await screen.findByRole('button', { name });
+      await waitFor(() => expect(btn).toHaveAttribute('aria-disabled', 'true'));
+      expect(btn).toHaveAccessibleDescription(/Runs only on the primary, kudurru-0/);
+    }
+  });
+
+  it('disables Send NOTIFY on a zone and keeps record writes', async () => {
+    asFollower();
+    renderWithApp(<ZoneDetailPage params={{ zone: 'example-internal' }} />, { route: '/zones/example-internal' });
+    const notify = await screen.findByRole('button', { name: 'Send NOTIFY' });
+    await waitFor(() => expect(notify).toHaveAttribute('aria-disabled', 'true'));
+    expect(notify).toHaveAccessibleDescription(/Runs only on the primary, kudurru-0/);
+    expect(screen.getByRole('button', { name: 'Add record' })).not.toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('disables "Refresh now" on a list with the primary named', async () => {
+    asFollower();
+    renderWithApp(<ListDetailPage params={{ ns: 'default', name: 'family' }} />, { route: '/lists/default/family' });
+    const refresh = await screen.findByRole('button', { name: 'Refresh now' });
+    await waitFor(() => expect(refresh).toHaveAttribute('aria-disabled', 'true'));
+    expect(refresh).toHaveAccessibleDescription(/Runs only on the primary, kudurru-0/);
+  });
+
+  it('keeps reading node values on the Settings page', async () => {
+    asFollower();
+    const nodeReads = countReads('/node/config');
+    const { client } = renderWithApp(<SettingsPage />, { route: '/settings' });
+    await waitFor(() => expect(client.getQueryData(qk.cluster)).toBeDefined());
+    await waitFor(() => expect(nodeReads()).toBeGreaterThan(0));
+    await waitFor(() => expect(client.getQueryData(qk.nodeConfig)).toBeDefined());
+  });
+
+  it('does not open the add dialog from ?add= on a follower', async () => {
+    asFollower();
+    const { client } = renderWithApp(<AllowlistPage />, { route: '/allowlist?add=cdn.example.org' });
+    await screen.findByTestId('entry-s.youtube.com');
+    await waitFor(() => expect(client.getQueryData(qk.cluster)).toBeDefined());
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('says on the Settings row that a forwarded save has an unknown outcome', async () => {
+    asFollower();
+    server.use(http.patch(`${API}/settings`, () => HttpResponse.json({ error: { key: 'completion_unknown', message: "the forwarded write's outcome is unknown; do not replay this request" } }, { status: 503 })));
+    renderWithApp(<SettingsPage />, { route: '/settings' });
+    const r = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>('[data-configkey="blocking.defaultResponse"]');
+      if (!el) throw new Error('no row');
+      return el;
+    });
+    pick(getSelector('Default block response', r), 'NXDOMAIN');
+    fireEvent.click(within(r).getByRole('button', { name: 'Save' }));
+    expect(await within(r).findByTestId('setting-error')).toHaveTextContent('Reload to check what is in effect before you try again.');
+  });
+});
+
+/** An active query (one observer), so an invalidation refetches it. */
+function useQueryObserver(reads: () => Promise<string>) {
+  return useQueryHook({ queryKey: ['objects', 'x'], queryFn: reads });
+}

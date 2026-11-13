@@ -120,7 +120,9 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
   const [adding, setAdding] = useState(false);
   // ?add=<domain> (the query log's "Allow" / "Deny"): the add dialog, prefilled.
   const addParam = sp.get('add');
-  const addOpen = adding || addParam !== null;
+  // Not on a follower or without blocklists.write: the deep link would only
+  // open a form the server refuses.
+  const addOpen = canWrite && (adding || addParam !== null);
   const [attaching, setAttaching] = useState<DomainUnattached | null>(null);
   const [editing, setEditing] = useState<DomainEntry | null>(null);
   const [deleting, setDeleting] = useState<DomainEntry[] | null>(null);

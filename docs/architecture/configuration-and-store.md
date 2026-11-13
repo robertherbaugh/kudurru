@@ -1346,10 +1346,19 @@ the OpenAPI document; a permission that also gates a read is never refused as
 a whole. An action under a mixed permission (an allow or deny entry under
 `blocklists.write`, an import under `settings.write`) asks `usePrimaryOnly`
 with its own operation ID. The disabled control's tooltip names the primary,
-a banner above every page says which changes go there, and a successful
-mutation on a follower is followed by one more refetch after six seconds, the
-follower's pull interval plus a margin. Until `/cluster` answers, nothing is
-gated and the server decides.
+and a banner above every page says which changes go there. `GET /cluster`
+needs `cluster.read`, which only the built-in admin role holds, so for any
+other session (or when `/cluster` fails) the role and the primary come from
+the public `GET /auth/status`, and the two lists from a build-time copy of the
+`x-kudurru-follower` classification (`DOCUMENT_FORWARDED`, `DOCUMENT_LOCAL`;
+a test keeps them equal to the OpenAPI document, and the dashboard is embedded
+in the binary it describes). The role is reread every 30 seconds and at once
+when a write answers `primary_required`, so an open tab follows a promotion or
+demotion. The API client reports every POST, PUT, PATCH and DELETE that the
+server answered (`ApiClient` `onMutation`), however a page issues it; on a
+follower a success is followed by one more refetch of the active queries after
+six seconds, the follower's pull interval plus a margin. Until one of the two
+reads answers, nothing is gated and the server decides.
 
 The command seams repeat the answer for anything that reaches them on a
 follower's request without passing that middleware (a route with a safe method

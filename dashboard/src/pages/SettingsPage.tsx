@@ -15,12 +15,11 @@ import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { ApiError } from '../api/client';
 import { can as hasPermission, qk, useApi, useCan, useSession } from '../api/context';
 import type { SettingKey, SettingsBody } from '../api/types';
 import { BrandingSettings, isBrandingSetting } from '../components/BrandingSettings';
 import { AppearanceControls } from '../components/AppearanceButton';
-import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
+import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
 import { BlockPageIntro } from '../components/BlockPagePreview';
 import { AdGuardImportNote } from '../components/CatalogueSources';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
@@ -184,8 +183,7 @@ export default function SettingsPage() {
       setNotice(noticeFor(body));
       notify.success(`${k.path} ${value === null ? 'reset to its default' : 'saved'}${k.restartRequired || body.restartRequired?.length ? '; takes effect after a restart' : ''}`);
     } catch (err) {
-      const msg = err instanceof ApiError ? err.describe() : (err as Error).message;
-      throw new Error(msg, { cause: err });
+      throw new Error(errorText(err), { cause: err });
     }
   };
 

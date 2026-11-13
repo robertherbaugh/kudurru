@@ -118,7 +118,7 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
       onSubmit={submit}
       footer={
         <>
-          {forced ? <Button label="Sign out" variant="ghost" onClick={() => void signOut()} /> : <Button label="Cancel" variant="ghost" onClick={close} />}
+          {forced ? <Button label="Sign out" variant="ghost" onClick={() => signOut().catch((err: unknown) => notify.error(err, 'Sign-out failed'))} /> : <Button label="Cancel" variant="ghost" onClick={close} />}
           <Button type="submit" label="Change password" variant="primary" isLoading={m.isPending} />
         </>
       }
@@ -184,6 +184,7 @@ export function AccountMenu() {
   const { data } = useSession();
   const readOnly = useStaticMode();
   const signOut = useSignOut();
+  const notify = useNotify();
   if (!data) return null;
   return (
     <HStack gap={1} vAlign="center">
@@ -198,7 +199,7 @@ export function AccountMenu() {
         isIconOnly
         icon={<LogOut size={16} aria-hidden="true" />}
         tooltip="Sign out"
-        onClick={() => void signOut()}
+        onClick={() => signOut().catch((err: unknown) => notify.error(err, 'Sign-out failed'))}
       />
       {data.mustChangePassword && isLocalUser(data) ? readOnly
         ? <Banner status="warning" title="Account setup required" description="Ask the host administrator to provision your password before enabling static mode." />

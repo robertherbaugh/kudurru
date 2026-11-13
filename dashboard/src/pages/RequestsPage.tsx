@@ -15,7 +15,7 @@ import { Token } from '@astryxdesign/core/Token';
 import { VStack } from '@astryxdesign/core/VStack';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { qk, useApi, useCan } from '../api/context';
+import { can as hasPermission, qk, useApi, useCan, usePrimaryOnlyPermission, useSession } from '../api/context';
 import { useFeature } from '../api/hooks';
 import type { UnblockCounts, UnblockRequest, UnblockState } from '../api/types';
 import { ErrorBanner, Loading } from '../components/Feedback';
@@ -84,6 +84,12 @@ function RequestsView() {
   const [approving, setApproving] = useState<UnblockRequest | null>(null);
   const [denying, setDenying] = useState<UnblockRequest | null>(null);
   const canDecide = can('unblockrequests', 'decide');
+  // An enrolled follower does not forward decisions (D368): a user who may
+  // decide still sees the buttons, disabled, with the primary named.
+  const { data: me } = useSession();
+  const followerTip = usePrimaryOnlyPermission()('unblockrequests', 'decide');
+  const decideTip = !canDecide && me && hasPermission(me, 'unblockrequests', 'decide') ? followerTip : undefined;
+  const showDecide = canDecide || decideTip !== undefined;
   const limit = domain ? DOMAIN_PAGE : PAGE;
 
   const q = useInfiniteQuery({
@@ -159,8 +165,8 @@ function RequestsView() {
       width: pixel(136),
       renderCell: (r) => (
         <VStack gap={1} align="start">
-          {canDecide && canApprove(r) ? <Button label="Approve" size="sm" variant="primary" onClick={() => setApproving(r)} /> : null}
-          {canDecide && canDeny(r) ? <Button label="Deny" size="sm" variant="secondary" onClick={() => setDenying(r)} /> : null}
+          {showDecide && canApprove(r) ? <Button label="Approve" size="sm" variant="primary" isDisabled={!canDecide} tooltip={decideTip} onClick={() => setApproving(r)} /> : null}
+          {showDecide && canDeny(r) ? <Button label="Deny" size="sm" variant="secondary" isDisabled={!canDecide} tooltip={decideTip} onClick={() => setDenying(r)} /> : null}
         </VStack>
       ),
     },

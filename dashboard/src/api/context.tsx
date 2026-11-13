@@ -5,9 +5,9 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState, type
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { ApiClient, ApiError } from './client';
 import { endpoints, type Endpoints, type ScopeParams } from './endpoints';
-import type { ClusterInfo, Me } from './types';
+import type { AuthStatus, ClusterInfo, Me } from './types';
 import { browserLogoutContinuation } from './logout';
-import { clusterRole, needsPrimary, permissionNeedsPrimary, primaryOnlyReason, type ClusterRole } from '../lib/follower';
+import { clusterRole, needsPrimary, permissionNeedsPrimary, primaryOnlyReason, statusRole, type ClusterRole } from '../lib/follower';
 
 interface ApiContextValue {
   client: ApiClient;
@@ -29,11 +29,18 @@ export function ApiProvider({
   const csrf = useRef<string | undefined>(undefined);
   const unauth = useRef(onUnauthenticated);
   unauth.current = onUnauthenticated;
+  const queryClient = useQueryClient();
+  const qc = useRef(queryClient);
+  qc.current = queryClient;
   const value = useMemo(() => {
     const client = new ApiClient({
       baseUrl,
       csrf: () => csrf.current,
       onUnauthenticated: () => unauth.current?.(),
+      // Every write the dashboard sends passes here, however a page issues
+      // it (useMutation or a plain await), so the follower read-back and the
+      // role refresh do not depend on the calling component (D368).
+      onMutation: (err) => afterMutation(qc.current, err),
     });
     return {
       client,
@@ -163,11 +170,23 @@ export function usePrimaryOnlyPermission(): (resource: string, verb: string) => 
   return useCallback((resource: string, verb: string) => (permissionNeedsPrimary(role, resource, verb) ? primaryOnlyReason(role.primary) : undefined), [role]);
 }
 
-/** GET /cluster, shared by the capability hooks (one request per minute). */
+/** How often the capability hooks reread the node's role, so a tab left on
+ * one page follows a promotion or a demotion. */
+export const ROLE_POLL_MS = 30_000;
+
+/** GET /cluster, shared by the capability hooks. */
 function useClusterInfo() {
   const api = useApi();
   const { data: session } = useSession();
-  return useQuery({ queryKey: qk.cluster, queryFn: () => api.cluster.info(), enabled: !!session, staleTime: 60_000, retry: false });
+  return useQuery({ queryKey: qk.cluster, queryFn: () => api.cluster.info(), enabled: !!session, staleTime: 60_000, refetchInterval: ROLE_POLL_MS, retry: false });
+}
+
+/** The public GET /auth/status, for a session that cannot read GET /cluster
+ * (cluster.read is the admin role's only): a follower names itself and its
+ * primary there. */
+function useStatusRole(enabled: boolean) {
+  const api = useApi();
+  return useQuery<AuthStatus>({ queryKey: qk.authStatus, queryFn: () => api.auth.status(), enabled, staleTime: 60_000, refetchInterval: ROLE_POLL_MS, retry: false });
 }
 
 /** Host mode is a UI capability; the API independently rejects each mutation. */
@@ -176,10 +195,43 @@ export function useStaticMode(): boolean {
 }
 
 /** This node's replication role, its primary and what a follower forwards
- * (D368). Until /cluster answers, nothing is gated and the server decides. */
+ * (D368), from GET /cluster; for a session without cluster.read (or when
+ * /cluster fails) from GET /auth/status and the lists of the OpenAPI document
+ * this dashboard was built with. Until one of them answers, nothing is gated
+ * and the server decides. */
 export function useClusterRole(): ClusterRole {
-  const data = useClusterInfo().data;
-  return useMemo(() => clusterRole(data), [data]);
+  const { data: session } = useSession();
+  const cluster = useClusterInfo();
+  const fallback = !!session && cluster.data === undefined && (cluster.isError || !can(session, 'cluster', 'read'));
+  const status = useStatusRole(fallback);
+  const info = cluster.data;
+  const statusData = fallback ? status.data : undefined;
+  return useMemo(() => (info ? clusterRole(info) : statusRole(statusData)), [info, statusData]);
+}
+
+/** Whether the cached answers say this node is an enrolled follower. */
+function cachedFollower(client: QueryClient): boolean {
+  const info = client.getQueryData<ClusterInfo>(qk.cluster);
+  if (info) return info.primaryRequired === true;
+  return client.getQueryData<AuthStatus>(qk.authStatus)?.role === 'follower';
+}
+
+/**
+ * Called by the API client after every POST, PUT, PATCH and DELETE that got
+ * an answer: a success on a follower schedules the read-back; a
+ * primary_required refusal rereads the node's role at once, since the
+ * dashboard may still describe it as a primary (the dashboard sends no
+ * promotion; ROLE_POLL_MS follows one made with the CLI).
+ */
+export function afterMutation(client: QueryClient, err: ApiError | undefined): void {
+  if (!err) {
+    scheduleFollowerRefetch(client);
+    return;
+  }
+  if (err.key === 'primary_required') {
+    void client.invalidateQueries({ queryKey: qk.cluster, exact: true });
+    void client.invalidateQueries({ queryKey: qk.authStatus, exact: true });
+  }
 }
 
 /** How long after a change on a follower the dashboard reads again: the
@@ -191,12 +243,12 @@ export const FOLLOWER_SYNC_MS = 6_000;
 const followerTimers = new WeakMap<QueryClient, ReturnType<typeof setTimeout>>();
 
 /**
- * Called for every successful mutation: on an enrolled follower, refetch
+ * Called for every successful write (afterMutation): on an enrolled follower, refetch
  * the active queries once more after FOLLOWER_SYNC_MS (one timer per client;
  * a later change restarts it). Elsewhere it does nothing.
  */
 export function scheduleFollowerRefetch(client: QueryClient): void {
-  if (client.getQueryData<ClusterInfo>(qk.cluster)?.primaryRequired !== true) return;
+  if (!cachedFollower(client)) return;
   const pending = followerTimers.get(client);
   if (pending !== undefined) clearTimeout(pending);
   followerTimers.set(
@@ -234,11 +286,13 @@ export function canAnyScope(me: Me, resource: string, verb: string): boolean {
 }
 
 /**
- * Signs out of the browser session. The local session ends either way (the
- * server clears the cookie also when it cannot revoke the session, as an
- * enrolled follower does when its primary is unreachable); when the server
- * refused or could not confirm the sign-out, its explanation is kept for the
- * login page, because the session may stay valid until it expires.
+ * Signs out of the browser session. Once the server has answered, the local
+ * session ends (the server clears the cookie also when it cannot revoke the
+ * session, as an enrolled follower does when its primary is unreachable);
+ * when it refused or could not confirm the sign-out, its explanation is kept
+ * for the login page, because the session may stay valid until it expires.
+ * When the request never reached the server, nothing cleared the cookie, so
+ * the session is kept and the promise rejects for the caller to show.
  */
 export function useSignOut(): () => Promise<void> {
   const { api, client, setCsrf } = useApiContext();
@@ -250,6 +304,8 @@ export function useSignOut(): () => Promise<void> {
       const result = await api.auth.browserLogout();
       continuation = browserLogoutContinuation(client.baseUrl, result?.continuePath, window.location.origin);
     } catch (err) {
+      // status 0: the request never reached the server (ApiClient.request).
+      if (err instanceof ApiError && err.status === 0) throw err;
       failure = err;
     }
     await qc.cancelQueries();

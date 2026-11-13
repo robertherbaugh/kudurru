@@ -365,23 +365,32 @@ marks the node-scope settings `readOnly`, because `PATCH /node/config` is not
 forwarded; cluster settings stay writable there, because `PATCH /settings` is
 forwarded to the primary.
 
-The dashboard reads those lists from the node it is served by. On a follower
-it shows a banner above every page that names the primary and says which
+The dashboard reads those lists from the node it is served by. A session
+without `cluster.read` (every built-in role except admin) cannot read
+`GET /cluster`; the dashboard then takes the role and the primary from the
+public `GET /auth/status` and the lists from the release it is built with. On
+a follower it shows a banner above every page, for every signed-in role, that names the primary and says which
 changes are sent there, and the Nodes page shows the node's role, the primary
 and how many kinds of change are forwarded or run locally. A control whose
 change needs the primary is disabled, and its tooltip names the primary: the
 allow and deny lists and a block list's source entries, list refresh, Send
 NOTIFY, imports, authenticator setup, external account and authenticator
-recovery commands, and unblock decisions. Everything a follower forwards
-stays available, and about six seconds after a forwarded change the dashboard
-reads its pages again, because the follower serves the primary's commit only
-after its next pull. A refusal that still reaches the dashboard (for example
+recovery commands, and unblock decisions (on the Requests list and on a
+request's page). Everything a follower forwards stays available, and about six
+seconds after any change sent from the dashboard (from a dialog, a wizard or
+a row action) it reads its pages again, because the follower serves the
+primary's commit only after its next pull. The dashboard rereads the node's
+role every 30 seconds and at once when a change answers `primary_required`,
+so an open tab follows a promotion. A refusal that still reaches the dashboard (for example
 from an older page) is shown as "Needs the primary" with the primary's name,
 and `503 completion_unknown` as "Outcome unknown", asking you to reload and
-check before you try again. When a sign-out cannot be confirmed (the follower
-could not reach the primary, or its answer was lost), the dashboard still
-signs out of the browser and the login page says that the session may stay
-valid until it expires. The login page of a follower says that single
+check before you try again. When the server answers a sign-out but cannot
+confirm it (the follower could not reach the primary, or its answer was lost),
+the server clears the session cookie, the dashboard signs out of the browser
+and the login page says that the session may stay valid until it expires.
+When the sign-out request does not reach the server at all, nothing cleared
+the cookie, so the dashboard stays signed in and says that the sign-out
+failed. The login page of a follower says that single
 sign-on runs on the primary.
 
 On a follower the block page keeps explaining a block, but it shows "This
