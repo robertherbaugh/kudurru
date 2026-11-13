@@ -3,6 +3,8 @@ package main
 import (
 	"encoding/json"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -21,7 +23,8 @@ import (
 // unsigned RPZ primary and reads the feed through the real CLI, the API
 // route and /metrics (D391): a serving copy with its serial, counts and
 // ignored rules, then, with the primary failing, the expired copy with its
-// last error while DNS answers SERVFAIL.
+// last error while DNS answers SERVFAIL, each also on /info/messages and
+// in kudurru doctor (the captured diagnosis read SQLite mounts).
 func TestRunServeSQLiteRPZFeedDiagnostics(t *testing.T) {
 	t.Setenv(license.EnvKey, "")
 	t.Setenv(license.EnvKeyFile, "")
@@ -60,6 +63,38 @@ func TestRunServeSQLiteRPZFeedDiagnostics(t *testing.T) {
 		}
 		return items
 	}
+	// /info/messages on SQLite is the captured read (InfoMessageReads), which
+	// is also what kudurru doctor reports.
+	diagnosis := func(severity, reason, text string) bool {
+		t.Helper()
+		out, stderr, err := cli.run("api", "/info/messages")
+		if err != nil {
+			t.Fatalf("info messages: %v\n%s", err, stderr)
+		}
+		var list struct {
+			Items []api.DiagnosisMessage `json:"items"`
+		}
+		if err := json.Unmarshal([]byte(out), &list); err != nil {
+			t.Fatalf("decode %q: %v", out, err)
+		}
+		for _, m := range list.Items {
+			if m.Source == "rpz" && m.Severity == severity && m.Reason == reason && m.Object == "BlockList/default/feed" && strings.Contains(m.Message, text) && m.Node == cfg.Node.Name {
+				return true
+			}
+		}
+		return false
+	}
+	// doctor reads the server through the CLI context; its local config only
+	// needs to parse.
+	doctorConfig := filepath.Join(t.TempDir(), "doctor.yaml")
+	if err := os.WriteFile(doctorConfig, []byte("node:\n  name: doctor\n  dataDir: "+t.TempDir()+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	doctor := func() string {
+		t.Helper()
+		out, _, _ := cli.run("--config", doctorConfig, "doctor", "--skip-ports")
+		return out
+	}
 	items := feeds("feed")
 	if len(items) != 1 {
 		t.Fatalf("feeds = %+v", items)
@@ -83,6 +118,12 @@ func TestRunServeSQLiteRPZFeedDiagnostics(t *testing.T) {
 		!kubeRPZMetric(cfg, `kudurru_rpz_feed_ignored_rules{list="default/feed",reason="resolver-ns-provenance",source="native"} 1`) {
 		t.Fatal("feed metrics missing")
 	}
+	if !diagnosis("info", "RPZRulesIgnored", "1 unsupported and 0 invalid") || diagnosis("error", "RPZExpired", "") {
+		t.Fatal("serving feed diagnoses missing on /info/messages")
+	}
+	if out := doctor(); !strings.Contains(out, "  INFO RPZRulesIgnored: RPZ feed policy.test. (source native): 1 unsupported and 0 invalid policy owners are ignored (resolver-ns-provenance). [blocklist/default/feed]") {
+		t.Fatalf("doctor lacks the ignored-rules diagnosis:\n%s", out)
+	}
 
 	// The primary fails: the copy expires 6 s after its last confirmation.
 	primary.failing.Store(true)
@@ -103,6 +144,12 @@ func TestRunServeSQLiteRPZFeedDiagnostics(t *testing.T) {
 	}
 	if !kubeRPZMetric(cfg, `kudurru_rpz_feed_available{list="default/feed",source="native"} 0`) {
 		t.Fatal("expired feed metric missing")
+	}
+	if !diagnosis("error", "RPZExpired", "SERVFAIL") || !diagnosis("info", "RPZRulesIgnored", "resolver-ns-provenance") {
+		t.Fatal("expired feed diagnoses missing on /info/messages")
+	}
+	if out := doctor(); !strings.Contains(out, "  ERROR RPZExpired: RPZ feed policy.test. (source native): The last copy has expired") || !strings.Contains(out, "diagnoses: FAIL") {
+		t.Fatalf("doctor lacks the expired diagnosis:\n%s", out)
 	}
 	if primary.transfers.Load() == 0 {
 		t.Fatal("no real transfer")

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -29,6 +30,9 @@ func newListsRPZCmd(o *cliOpts) *cobra.Command {
 			"(unsupported or malformed); -o wide lists them per reason.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if all && len(args) == 1 {
+				return errors.New("--all-namespaces cannot be combined with a list name")
+			}
 			c, r, err := o.client()
 			if err != nil {
 				return err
@@ -45,7 +49,7 @@ func newListsRPZCmd(o *cliOpts) *cobra.Command {
 				return err
 			}
 			return o.render(cmd, raws, func(wide bool) (*cli.Table, error) {
-				return rpzFeedTable(feeds, wide, all && len(args) == 0, o.now()), nil
+				return rpzFeedTable(feeds, wide, all, o.now()), nil
 			})
 		},
 	}

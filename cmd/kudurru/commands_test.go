@@ -44,6 +44,9 @@ func TestConvenienceGolden(t *testing.T) {
 	if got := h.api.requested("GET /api/v1/blocklists/_rpz"); len(got) != 2 || !strings.HasSuffix(got[0], "?namespace=default") || strings.Contains(got[1], "namespace") {
 		t.Fatalf("RPZ feed requests %v", got)
 	}
+	if _, _, err := h.run("lists", "rpz", "threats", "-A"); err == nil || !strings.Contains(err.Error(), "--all-namespaces cannot be combined with a list name") {
+		t.Fatalf("lists rpz <name> -A: %v", err)
+	}
 	if got := h.api.requested("GET /api/v1/blocklists/default/threats/rpz"); len(got) != 1 {
 		t.Fatalf("list RPZ feed requests %v", got)
 	}
