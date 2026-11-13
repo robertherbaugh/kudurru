@@ -563,7 +563,13 @@ func enrolledFencedClosed(t *testing.T, c *staticProcessClient, newer string) {
 
 // enrolledQuietReview returns the enrollment review once the reviewed source
 // digest has stayed the same for quiet. It only reads; no decision is sent
-// or repeated.
+// or repeated. It is a stopgap, not a readiness proof: a ready node still
+// refuses a writer command 503 unavailable (no effect, Retry-After) when one
+// of its own post-zone-write commits (LifecycleCAS, Admission,
+// PrimaryStatus) publishes while the command runs, and the quiet period
+// only makes that unlikely. Changing the product needs the decision
+// CI-RED-2 proposed (capture again before the first effect, or a defined
+// client retry on that answer).
 func enrolledQuietReview(t *testing.T, c *staticProcessClient, quiet time.Duration) api.ClusterEnrollmentInfo {
 	t.Helper()
 	var last api.ClusterEnrollmentInfo

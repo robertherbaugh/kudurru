@@ -690,7 +690,10 @@ func TestV01BinaryRefusesEnrolledDirectory(t *testing.T) {
 		enrolledProcessRead(t, apiA, "/cluster/enrollment", func(body []byte) bool { return json.Unmarshal(body, &result) == nil })
 		return result
 	}
-	original := review()
+	// Review only once the source has been quiet: an activation that the
+	// node's own post-zone-write commits supersede is refused 503 with no
+	// effect (enrolledQuietReview, CI-RED-3).
+	original := enrolledQuietReview(t, apiA, 3*time.Second)
 	var activated api.ClusterActivationReceipt
 	apiA.request(t, http.MethodPost, "/cluster/activate", api.ActivateClusterCommand{ClusterEnrollmentReview: original.ClusterEnrollmentReview,
 		Name: a.Name, Address: a.Ports.Internal, Reason: "mixed-version acceptance"}, http.StatusOK, &activated)

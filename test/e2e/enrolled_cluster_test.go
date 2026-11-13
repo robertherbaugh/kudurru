@@ -284,7 +284,10 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		enrolledProcessRead(t, apiA, "/cluster/enrollment", func(body []byte) bool { return json.Unmarshal(body, &result) == nil })
 		return result
 	}
-	original := review()
+	// Review only once the source has been quiet: an activation that the
+	// node's own post-zone-write commits supersede is refused 503 with no
+	// effect (enrolledQuietReview, CI-RED-3).
+	original := enrolledQuietReview(t, apiA, 3*time.Second)
 	if !original.Dormant || original.Mode != "standalone" {
 		t.Fatal("new process did not expose dormant enrollment")
 	}
