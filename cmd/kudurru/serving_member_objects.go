@@ -285,7 +285,7 @@ func memberItemRefusal(err error, primary string) error {
 		where += " " + primary
 	}
 	switch {
-	case refusal.Body.Key == api.KeyUnavailable && strings.HasPrefix(refusal.Body.Message, "the follower's source changed"):
+	case refusal.Body.Key == api.KeyUnavailable && refusal.Body.Message == memberSourceChanged:
 		return objectForwardUnavailable("the follower's source changed while this request ran (it installed newer data from the primary, " +
 			"usually this request's own earlier items); this item was not sent and was not applied, and neither was any later one; " +
 			"send the items that were not applied, or the whole file, to " + where + ", which applies them in one request; " +
@@ -367,6 +367,11 @@ func objectForwardUnavailable(message string) error {
 	return &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: api.KeyUnavailable, Message: message}}
 }
 
+// memberSourceChanged is memberCaptureError's answer when the follower's own
+// source changed before the write was sent. memberItemRefusal recognizes a
+// cut item by this exact message, so both use the constant.
+const memberSourceChanged = "the follower's source changed; review current state before a new decision"
+
 // memberCaptureError explains why a follower could not bind its request for
 // forwarding. Capture sends nothing, so in every case the write was not
 // applied; only a changed source needs a review of current state first.
@@ -374,7 +379,7 @@ func memberCaptureError(ctx context.Context, err error) error {
 	deadline, finite := ctx.Deadline()
 	switch {
 	case errors.Is(err, replication.ErrCAS):
-		return objectForwardUnavailable("the follower's source changed; review current state before a new decision")
+		return objectForwardUnavailable(memberSourceChanged)
 	case errors.Is(ctx.Err(), context.Canceled):
 		return objectForwardUnavailable("the request was canceled before this write was sent; it was not applied")
 	case !finite || time.Until(deadline) > memberForwardLifetime:

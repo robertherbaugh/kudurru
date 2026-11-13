@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
+	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 )
 
@@ -41,11 +44,35 @@ func TestMemberItemRefusalNamesThePrimary(t *testing.T) {
 	if !errors.As(unknown, &refusal) || refusal.Body.Key != "completion_unknown" || !strings.Contains(refusal.Body.Message, "the items after it were not applied; send them to the enrolled primary node-a") {
 		t.Fatalf("item at the cut: %+v", refusal)
 	}
+	// The cut is recognized by memberCaptureError's exact answer, not by a
+	// message that merely starts the same way.
+	similar := objectForwardUnavailable("the follower's source changed; retry the login")
+	if got := memberItemRefusal(similar, "node-a"); got != similar {
+		t.Fatalf("a refusal that only starts like the cut changed: %v", got)
+	}
 	other := objectForwardUnavailable("the enrolled primary is unavailable; the write was not applied")
 	if got := memberItemRefusal(other, "node-a"); got != other {
 		t.Fatalf("an unrelated refusal changed: %v", got)
 	}
 	if got := memberItemRefusal(nil, "node-a"); got != nil {
 		t.Fatalf("a committed item became an error: %v", got)
+	}
+}
+
+// A cookie caller's committed password change that the follower could not
+// seal into a session names why (D368).
+func TestMemberSessionUnservedNamesTheCause(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		want string
+	}{
+		{context.DeadlineExceeded, "this follower could not install the new session in time"},
+		{fmt.Errorf("seal: %w", context.Canceled), "this follower could not install the new session in time"},
+		{fmt.Errorf("seal: %w", serving.ErrSuperseded), "this follower's cookie settings changed before it could issue the new session"},
+		{errors.New("sealer refused"), "this follower could not issue the new session"},
+	} {
+		if got := memberSessionUnserved(c.err); got != c.want {
+			t.Errorf("%v: %q, want %q", c.err, got, c.want)
+		}
 	}
 }
