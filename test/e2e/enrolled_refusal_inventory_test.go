@@ -80,17 +80,22 @@ func enrolledRefusalInventory(t *testing.T, c *staticProcessClient, shape api.Ru
 	if err != nil {
 		t.Fatal(err)
 	}
-	refused, dump := 0, os.Getenv("KUDURRU_REFUSAL_INVENTORY_DUMP") != ""
+	refused, validation, notFound, dump := 0, 0, 0, os.Getenv("KUDURRU_REFUSAL_INVENTORY_DUMP") != ""
 	for _, r := range results {
 		if dump {
 			t.Logf("DUMP %s %s %s %d %s %q %q", shape, r.Operation.ID, r.Operation.Method, r.Answer.Status, r.Answer.Key, r.Answer.Message, r.Answer.Hint)
 		}
-		if r.Answer.Status == http.StatusNotImplemented || r.Answer.Status == http.StatusServiceUnavailable {
+		switch {
+		case r.Answer.Status == http.StatusNotImplemented || r.Answer.Status == http.StatusServiceUnavailable:
 			refused++
+		case refusalinventory.StoppedAtValidation(r.Answer):
+			validation++
+		case r.Answer.Status == http.StatusNotFound:
+			notFound++
 		}
 		for _, problem := range r.Problems {
 			t.Error(problem)
 		}
 	}
-	t.Logf("%s: %d operations walked, %d answered a declared 501 or 503", shape, len(results), refused)
+	t.Logf("%s: %d operations walked, %d answered a declared 501 or 503, %d stopped at request validation, %d answered 404", shape, len(results), refused, validation, notFound)
 }

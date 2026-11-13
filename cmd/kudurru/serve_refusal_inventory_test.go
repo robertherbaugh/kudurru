@@ -81,10 +81,15 @@ func refusalInventoryReport(t *testing.T, shape api.RuntimeShape, c refusalinven
 		t.Fatalf("%s: walked %d of %d operations", shape, len(results), len(operations))
 	}
 	dump := os.Getenv("KUDURRU_REFUSAL_INVENTORY_DUMP") != ""
-	refused := 0
+	refused, validation, notFound := 0, 0, 0
 	for _, r := range results {
-		if r.Answer.Status == http.StatusNotImplemented || r.Answer.Status == http.StatusServiceUnavailable {
+		switch {
+		case r.Answer.Status == http.StatusNotImplemented || r.Answer.Status == http.StatusServiceUnavailable:
 			refused++
+		case refusalinventory.StoppedAtValidation(r.Answer):
+			validation++
+		case r.Answer.Status == http.StatusNotFound:
+			notFound++
 		}
 		if dump {
 			t.Logf("DUMP %s %s %s %d %s %q %q", shape, r.Operation.ID, r.Operation.Method, r.Answer.Status, r.Answer.Key, r.Answer.Message, r.Answer.Hint)
@@ -93,7 +98,7 @@ func refusalInventoryReport(t *testing.T, shape api.RuntimeShape, c refusalinven
 			t.Error(problem)
 		}
 	}
-	t.Logf("%s: %d operations walked, %d answered a declared 501 or 503", shape, len(results), refused)
+	t.Logf("%s: %d operations walked, %d answered a declared 501 or 503, %d stopped at request validation, %d answered 404", shape, len(results), refused, validation, notFound)
 }
 
 // refusalInventoryConfig is the mounted SQLite fixture with what an operator
