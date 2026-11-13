@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -168,6 +169,19 @@ func expectRefusedOnce(t *testing.T, w *httptest.ResponseRecorder) {
 	}
 }
 
+// expectNoRetryAfter requires that a refusal from inside, at or after a
+// command's transaction is not answered with Retry-After: only a refusal
+// before any body began says that nothing was applied (D399).
+func expectNoRetryAfter(t *testing.T, err error) {
+	t.Helper()
+	var e *api.Error
+	if !errors.As(currentCommandAPIError(err), &e) || e.Status != http.StatusServiceUnavailable {
+		t.Error("refusal not mapped to 503", err)
+	} else if e.GetHeaders().Get("Retry-After") != "" {
+		t.Error("a refusal after dispatch answered Retry-After")
+	}
+}
+
 func clientGroupAbsent(t *testing.T, s *servingRuntime, name string) {
 	t.Helper()
 	var group public.ClientGroup
@@ -284,6 +298,7 @@ func TestServingCommandRecaptureRefusesWhatItMustNotRetry(t *testing.T) {
 			if !errors.Is(err, serving.ErrPending) {
 				t.Error("body refusal not returned", err)
 			}
+			expectNoRetryAfter(t, err)
 		})).ServeHTTP(httptest.NewRecorder(), f.request())
 		if calls.Load() != 1 {
 			t.Fatal("a refusal from inside the transaction was repeated", calls.Load())
@@ -311,5 +326,136 @@ func TestServingCommandRecaptureRefusesWhatItMustNotRetry(t *testing.T) {
 			t.Fatal("bounded recapture did not end at its bound without dispatch")
 		}
 		clientGroupAbsent(t, f.s, "bounded")
+	})
+}
+
+// A command whose body began has dispatched: a refusal at its commit and an
+// uncertain outcome after it (the commit landed, its publication was not
+// acknowledged) are returned once and never repeated (D399).
+func TestServingCommandRecaptureNeverRepeatsADispatchedCommand(t *testing.T) {
+	t.Run("refused at commit", func(t *testing.T) {
+		f := newServingCommandFixture(t)
+		probe := supersedeCommand(t, f.s)
+		var checks atomic.Int32
+		f.http.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			err := f.s.currentAuthCommand(r.Context(), func(_ context.Context, tx *sqlite.CommandTx, _ servingauth.Dependencies) error {
+				return tx.RequireCommitCheck(func(context.Context) error {
+					checks.Add(1)
+					return serving.ErrPending
+				})
+			})
+			if !errors.Is(err, serving.ErrPending) {
+				t.Error("commit refusal not returned", err)
+			}
+			expectNoRetryAfter(t, err)
+		})).ServeHTTP(httptest.NewRecorder(), f.request())
+		if checks.Load() != 1 {
+			t.Fatal("a command refused at commit was repeated", checks.Load())
+		}
+		probe.want(t, 1, 0, 1)
+	})
+	t.Run("uncertain outcome after commit", func(t *testing.T) {
+		f := newServingCommandFixture(t)
+		key := store.Key{Kind: "ClientGroup", Namespace: "default", Name: "uncertain"}
+		probe := supersedeCommand(t, f.s)
+		var bodies atomic.Int32
+		f.http.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			committed, err := f.s.currentAuthCommandThen(r.Context(), func(ctx context.Context, tx *sqlite.CommandTx, _ servingauth.Dependencies) error {
+				bodies.Add(1)
+				_, err := tx.Apply(ctx, servingObjectGroup(key.Name), store.ApplyOptions{Manager: store.ManagerAPI})
+				return err
+			}, func(context.Context, serving.TermActivation) error { return serving.ErrPending })
+			if !committed || !errors.Is(err, serving.ErrPending) {
+				t.Error("uncertain outcome not reported as committed", committed, err)
+			}
+			expectNoRetryAfter(t, err)
+		})).ServeHTTP(httptest.NewRecorder(), f.request())
+		if bodies.Load() != 1 {
+			t.Fatal("a committed command was repeated", bodies.Load())
+		}
+		probe.want(t, 1, 0, 1)
+		if rows := auditRows(t, f.s, sqlite.AuditQuery{Kind: key.Kind, Namespace: key.Namespace, Name: key.Name}); len(rows) > 1 {
+			t.Fatalf("audit rows of an uncertain command: %d", len(rows))
+		}
+	})
+}
+
+// An integration operation's first no-op holds the integration host's lease
+// barrier and its runtime lock: a superseded publication refuses it at once,
+// without a recapture wait under those locks.
+func TestServingCommandRecaptureIntegrationOperationRefusesAtOnce(t *testing.T) {
+	f := newIntegrationOperationFixture(t)
+	probe := supersedeCommand(t, f.s, otherCommit(f.s, "integration-concurrent"))
+	r := httptest.NewRequest(http.MethodPost, "https://kudurru.test/api/v1/integration-operation", nil)
+	r.Header.Set("Authorization", "Bearer "+f.token)
+	called := false
+	var took time.Duration
+	f.adapter.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		called = true
+		began := time.Now()
+		op, err := f.s.integrations.beginOperation(r.Context(), integrationOwner(f.s, f.d), f.d.ResourceVersion, "check")
+		took = time.Since(began)
+		if err == nil {
+			op.close()
+			t.Error("a superseded integration operation was admitted")
+		} else if !errors.Is(err, serving.ErrPending) {
+			t.Error("superseded integration operation:", err)
+		}
+	})).ServeHTTP(httptest.NewRecorder(), r)
+	if !called {
+		t.Fatal("request did not reach the operation")
+	}
+	probe.want(t, 1, 0, 0)
+	if took >= commandRecaptureWait {
+		t.Fatal("the refusal waited for a recapture", took)
+	}
+}
+
+// issueJoinTokenOnce sends one reviewed join-token command.
+func issueJoinTokenOnce(t *testing.T, f *servingHTTPFixture, in api.ClusterJoinTokenCommand) *joinTokenWriter {
+	t.Helper()
+	r := httptest.NewRequest("POST", "/api/v1/cluster/join-token", strings.NewReader(roleBindingBody(t, in)))
+	r.Header.Set("Authorization", "Bearer "+f.token)
+	r.Header.Set("Content-Type", "application/json")
+	w := &joinTokenWriter{ResponseRecorder: httptest.NewRecorder()}
+	f.server.ServeHTTP(w, r)
+	return w
+}
+
+// A join-token command compares its reviewed source digest only outside its
+// transaction, so it captures again only on the same source generation
+// (WithExactSource): a commit that changed the source refuses it once, a
+// republication of the same source admits it once.
+func TestServingCommandRecaptureJoinTokenExactSource(t *testing.T) {
+	t.Run("source changed by the superseding commit", func(t *testing.T) {
+		f := newJoinTokenFixture(t)
+		in := joinTokenReview(t, f)
+		probe := supersedeCommand(t, f.s, otherCommit(f.s, "join-concurrent"))
+		w := issueJoinTokenOnce(t, f, in)
+		f.s.commandHooks.Store(nil)
+		expectRefusedOnce(t, w.ResponseRecorder)
+		probe.want(t, 1, 0, 0)
+		if audit, err := f.s.opts.Store.ReadAudit(t.Context(), sqlite.AuditQuery{Kind: "Cluster", Name: in.ClusterID}); err != nil || len(audit) != 0 {
+			t.Fatal("a refused join-token command was audited", err)
+		}
+		if _, owner, err := f.s.opts.Store.ReadMemberEnrollment(t.Context()); err != nil || owner.Digest() != in.OwnerDigest {
+			t.Fatal("a refused join-token command changed enrollment", err)
+		}
+	})
+	t.Run("same source published again", func(t *testing.T) {
+		f := newJoinTokenFixture(t)
+		in := joinTokenReview(t, f)
+		probe := supersedeCommand(t, f.s, func(context.Context) error { f.s.publisher.Wake(); return nil })
+		w := issueJoinTokenOnce(t, f, in)
+		f.s.commandHooks.Store(nil)
+		if w.Code != http.StatusOK {
+			t.Fatalf("join-token on a republished source: %d %s", w.Code, w.Body)
+		}
+		probe.want(t, 2, 1, 1)
+		var receipt api.ClusterJoinTokenReceipt
+		if err := json.Unmarshal(w.Body.Bytes(), &receipt); err != nil {
+			t.Fatal(err)
+		}
+		checkJoinToken(t, f, in, receipt) // one invitation, one audit row
 	})
 }

@@ -105,6 +105,18 @@ func WithExactSource(ctx context.Context) context.Context {
 	return context.WithValue(ctx, exactSourceKey{}, true)
 }
 
+type noRecaptureKey struct{}
+
+// WithoutRecapture marks a command whose caller holds locks or leases that
+// were sized for the immediate, memory-only refusal of a superseded
+// publication (an integration operation's first no-op holds the integration
+// host's lease barrier and its runtime lock). Recapture refuses such a command
+// at once instead of waiting for a newer publication, so the caller answers its
+// original effect-free refusal without holding those locks through a wait.
+func WithoutRecapture(ctx context.Context) context.Context {
+	return context.WithValue(ctx, noRecaptureKey{}, true)
+}
+
 // Recapture replaces the request's lease with the current publication after
 // one of the request's commands was refused before its transaction body
 // began, only because another commit superseded the publication the request
@@ -129,6 +141,9 @@ func WithExactSource(ctx context.Context) context.Context {
 func Recapture(ctx, wait context.Context, publisher *serving.Publisher, now func() time.Time) error {
 	if ctx == nil || wait == nil || publisher == nil || now == nil {
 		return serving.ErrComponents
+	}
+	if refused, _ := ctx.Value(noRecaptureKey{}).(bool); refused {
+		return ErrNotRecaptured
 	}
 	cell, ok := ctx.Value(leaseKey{}).(*requestCell)
 	if !ok || cell == nil {

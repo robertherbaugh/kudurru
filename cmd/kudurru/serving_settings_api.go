@@ -120,10 +120,10 @@ func currentCommandAPIError(err error) error {
 		errors.Is(err, providercoordinator.ErrStale), errors.Is(err, providercoordinator.ErrClosed), errors.Is(err, providerresources.ErrStale), errors.Is(err, providerresources.ErrUnavailable), errors.Is(err, providerresources.ErrClosed),
 		errors.Is(err, providerhost.ErrStale), errors.Is(err, providerhost.ErrContinuity), errors.Is(err, providerhost.ErrClosed), errors.Is(err, servingauth.ErrDependency):
 		refusal := &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: api.KeyUnavailable, Message: "current writable serving generation unavailable"}}
-		if errors.Is(err, serving.ErrPending) {
-			// Nothing was applied, and a command refused before dispatch
-			// already captured again for up to five seconds (D399): the node
-			// kept publishing other commits. The caller may send it again.
+		if notDispatched := (notDispatchedError{}); errors.As(err, &notDispatched) {
+			// No transaction body of the command began, so nothing was
+			// applied (D399): the caller may send it again. A refusal from
+			// inside a body, at commit or after it carries no Retry-After.
 			refusal.GetHeaders().Set("Retry-After", "1")
 		}
 		return refusal

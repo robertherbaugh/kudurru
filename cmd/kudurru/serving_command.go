@@ -130,7 +130,7 @@ func (s *servingRuntime) recaptureCommand(ctx context.Context, attempt func(bega
 		}
 		if items := requestItemsFrom(ctx); items != nil && items.chain.Anchored() {
 			// A later item is bound to its request's command chain (D378).
-			return false, err
+			return false, notDispatchedError{err}
 		}
 		if wait == nil {
 			var cancel context.CancelFunc
@@ -138,13 +138,22 @@ func (s *servingRuntime) recaptureCommand(ctx context.Context, attempt func(bega
 			defer cancel()
 		}
 		if servinghttp.Recapture(ctx, wait, s.publisher, s.opts.Now) != nil {
-			return false, err
+			return false, notDispatchedError{err}
 		}
 		if hooks := s.commandHooks.Load(); hooks != nil && hooks.afterRecapture != nil {
 			hooks.afterRecapture(ctx)
 		}
 	}
 }
+
+// notDispatchedError is a current command's serving.ErrPending refusal
+// returned before any of its transaction bodies began (D399): nothing was
+// applied, so the API answer may carry Retry-After. A refusal from inside a
+// body, at commit or after it is returned unwrapped.
+type notDispatchedError struct{ err error }
+
+func (e notDispatchedError) Error() string { return e.err.Error() }
+func (e notDispatchedError) Unwrap() error { return e.err }
 
 // commandHooks are test observers of current commands. beforeCheck runs in
 // every dispatch attempt after the writer binding and before the first
