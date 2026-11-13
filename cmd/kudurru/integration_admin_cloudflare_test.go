@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,6 +45,19 @@ type integrationCloudflarePeer struct {
 	// closes entered, waits until hold is closed (without its lock), and then
 	// applies and answers the batch. Each hold is used once.
 	hold, entered chan struct{}
+	// holdRead, when set, holds the next record listing the same way, before
+	// it is answered. Each holdRead is used once.
+	holdRead, readEntered chan struct{}
+	// accept, when set, lists the bearer credentials the peer accepts
+	// (default test-only-private-credential); tokens lists the credential of
+	// every request it served, in order, and contents the record contents
+	// every batch wrote.
+	accept   []string
+	tokens   []string
+	contents []string
+	// zones names further zone IDs the peer serves (ID to zone name). Rows
+	// are kept per zone; the default zone is integrationCloudflareZone.
+	zones map[string]string
 }
 
 const integrationCloudflareZone = "11111111111111111111111111111111"
@@ -55,22 +69,46 @@ func integrationCloudflareTLS(t *testing.T) *integrationCloudflarePeer {
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		peer.mu.Lock()
 		defer peer.mu.Unlock()
-		if r.Host != "api.cloudflare.com" || r.Header.Get("Authorization") != "Bearer test-only-private-credential" {
+		accept := peer.accept
+		if accept == nil {
+			accept = []string{"test-only-private-credential"}
+		}
+		accepted, bearer := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if r.Host != "api.cloudflare.com" || !bearer || !slices.Contains(accept, accepted) {
 			t.Error("original Cloudflare origin or credential missing")
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
 		peer.requests++
+		peer.tokens = append(peer.tokens, accepted)
 		w.Header().Set("Content-Type", "application/json")
+		zone, zoneName, path := integrationCloudflareZone, "example", r.URL.Path
+		for id, name := range peer.zones {
+			if rest, ok := strings.CutPrefix(path, "/client/v4/zones/"+id); ok {
+				zone, zoneName, path = id, name, "/client/v4/zones/"+integrationCloudflareZone+rest
+			}
+		}
+		inZone := func(row map[string]any) bool {
+			id, _ := row["zone_id"].(string)
+			return id == zone || id == "" && zone == integrationCloudflareZone
+		}
 		success := func(result any) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "errors": []any{}, "messages": []any{}, "result": result})
 		}
-		switch r.URL.Path {
+		switch path {
 		case "/client/v4/user/tokens/verify":
 			success(map[string]any{"id": integrationCloudflareAccount, "status": "active"})
 		case "/client/v4/zones/" + integrationCloudflareZone:
-			success(map[string]any{"id": integrationCloudflareZone, "name": "example", "account": map[string]any{"id": integrationCloudflareAccount}, "plan": map[string]any{"name": "Free Website"}})
+			success(map[string]any{"id": zone, "name": zoneName, "account": map[string]any{"id": integrationCloudflareAccount}, "plan": map[string]any{"name": "Free Website"}})
 		case "/client/v4/zones/" + integrationCloudflareZone + "/dns_records":
+			if peer.holdRead != nil {
+				hold, entered := peer.holdRead, peer.readEntered
+				peer.holdRead, peer.readEntered = nil, nil
+				peer.mu.Unlock()
+				close(entered)
+				<-hold
+				peer.mu.Lock()
+			}
 			if peer.unreadable {
 				w.WriteHeader(http.StatusServiceUnavailable)
 				return
@@ -84,7 +122,9 @@ func integrationCloudflareTLS(t *testing.T) *integrationCloudflarePeer {
 			}
 			rows := []any{}
 			for _, row := range peer.rows {
-				rows = append(rows, row)
+				if inZone(row) {
+					rows = append(rows, row)
+				}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"success": true, "result": rows, "result_info": map[string]any{"page": 1, "per_page": 500, "count": len(rows), "total_count": len(rows), "total_pages": 1}})
 		case "/client/v4/zones/" + integrationCloudflareZone + "/dns_records/batch":
@@ -132,7 +172,13 @@ func integrationCloudflareTLS(t *testing.T) *integrationCloudflarePeer {
 					for k, v := range body {
 						row[k] = v
 					}
+					if content, ok := body["content"].(string); ok {
+						peer.contents = append(peer.contents, content)
+					}
 					row["id"] = id
+					if zone != integrationCloudflareZone {
+						row["zone_id"] = zone
+					}
 					peer.rows[id] = row
 					list = append(list, row)
 				}
