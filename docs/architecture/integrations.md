@@ -125,7 +125,9 @@ flowchart TD
 
 Every actual provider request, including a retry or batch fallback, must enter
 the host's request adapter with its original operation context. A cluster-wide
-Cloudflare budget survives token/instance replacement. Rate limits and temporary
+Cloudflare budget survives token/instance replacement. A reservation that loses
+the budget's compare-and-swap to another instance is attempted again, fenced,
+at most four times in all. Rate limits and temporary
 failures use bounded backoff only when explicitly classified temporary or
 rate-limited. Fencing, refused, permanent and unclassified failures wait for
 changed input or an explicit command; no refused command is automatically replayed. Preview binds all destinations, and sync rejects a changed
@@ -175,10 +177,24 @@ publisher, the admitted record sets from that replica's live watch snapshot.
 A replica serving a `local.db` snapshot captures nothing. Only Integrations in
 the release namespace run: the credential allowlist is node-wide, so an
 Integration in any other namespace is refused with reason
-`NamespaceNotAllowed` before any provider exists. While the controller reports,
-for an admitted record set's current generation, that the zone drops or
-rejects part of it (`Duplicated`, `Occluded` or `Invalid`), the capture is
-unavailable, as SQLite's is for a duplicated source projection.
+`NamespaceNotAllowed` before any provider exists. An Integration the root
+refuses outright (another namespace, a webhook, UniFi record publication) has
+its credential references left unresolved, so no fingerprint of an
+allowlisted credential is written to its status. While the controller
+reports, for an admitted record set's current generation, that the zone drops
+or rejects part of it (`Duplicated`, `Occluded` or `Invalid`), every publisher
+is refused with reason `SourceConflicted` and a message naming up to five
+such record sets, written on each publisher's object by its Lease holder.
+SQLite makes the whole capture unavailable for a duplicated source
+projection; Kubernetes halts only the publishers, because only they read
+sources: UniFi observers keep running. All publishers halt, not only those
+whose selection includes the record set, because a publisher plans from its
+whole selection and the root would otherwise have to repeat each provider's
+own zone, label, type and exclusion rules to tell; leaving the record set
+out of the selection instead would let a `sync` publisher delete its remote
+copy. The refusal is asked again after every capture, so a running publisher
+is stopped and joined when a conflict appears, and replaced by a running one
+when it clears.
 
 ```mermaid
 sequenceDiagram
@@ -203,7 +219,11 @@ every captured source zone and record set against the replica's current
 snapshot by UID and identity: everything but status, resourceVersion and
 managed fields. The controller writes zone and record set status after every
 change; those writes change no published input, so they neither fence an
-effect reserved just before them nor wake or replace the instance. Only
+effect reserved just before them nor wake or replace the instance. The one
+part of that status the check does read is a conflict report: a captured
+record set the controller has since reported `Duplicated`, `Occluded` or
+`Invalid` fences the next effect, before the next capture refuses the
+publisher. Only
 the private ledger, operation, budget, delivery and event-cursor kinds can be
 written, each by one create-only or exact-resourceVersion Secret write that is
 never forced or repeated; only ledger, operation, delivery and cursor rows can
@@ -212,7 +232,12 @@ Integration status is written by the Lease holder with the captured
 resourceVersion as precondition; the capture leaves status and
 resourceVersion out of each instance's authority, so a status write never
 replaces the instance. A refusal status that could not be written marks its
-job, and the next capture replaces the job so a new term writes it again.
+job with a retry time: one poll interval after the first failure, doubling
+with each consecutive failure up to five minutes. The first capture at or
+after that time replaces the job, so a new term writes the refusal again.
+Nothing wakes the host early, so a status write that keeps failing (RBAC, an
+admission webhook, validation) costs at most one Lease term, one capture and
+one status write per backoff step.
 
 What this does **not** make atomic: the Lease is a rejection check, not a
 lock, so a request or write already sent after a passing check can land after
@@ -220,8 +245,14 @@ the Lease is lost (it is then a serializable predecessor of the successor's
 CAS or a conflict, and a pending intent it leaves forces a fresh reread); the
 Integration and source checks are reads just before the write, not part of
 it; a multi-row forget can stop part way; and remote provider effects are not
-atomic with any store write, as on SQLite. A lost shared request-budget CAS
-fails that request, and the instance tries again on its schedule. The Lease
+atomic with any store write, as on SQLite. The shared request budget is one
+Secret written by exact CAS, and a lost CAS writes nothing; the request then
+makes up to three more fresh reservation attempts, each after a pause of 10
+to 50 ms and its own fence (a reservation is commutative and idempotent by its
+ID, D364), and fails if all four lose. Without them two instances starting
+together on two replicas collided on the budget's first write and the loser's
+setup failed, leaving it inert until its object changed. No request is sent
+unreserved. The Lease
 proof is holder identity, acquire time and transition count, and the identity
 is the node name: two live processes that share a name (a force-deleted
 StatefulSet pod still running on a partitioned node and its replacement) both

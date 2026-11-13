@@ -25,7 +25,18 @@ reason `NamespaceNotAllowed`. The reason is the credential trust model: the
 node-wide, and an Integration may name any allowlisted credential. Whoever can
 create an Integration in the release namespace can therefore use every
 allowlisted credential, so grant that only to principals you already trust
-with kudurru's own Secrets there. Native Kubernetes Secret references
+with kudurru's own Secrets there. A refused Integration's credential
+references are not read, and no credential fingerprint is written to its
+status. On Kubernetes, while the controller reports any DNSRecordSet that an
+enabled primary zone admits as `Duplicated`, `Occluded` or `Invalid` (see its
+`Ready` and `Degraded` conditions), every Cloudflare publisher stops
+publishing and shows `Ready=False` with reason `SourceConflicted` and a
+message naming up to five such record sets; UniFi inventory and groups keep
+running. Anyone who may create a DNSRecordSet that such a zone admits can
+therefore pause all Cloudflare publication until the record set is fixed or
+removed, after which publication resumes on its own. Restrict who may create
+record sets in zones you publish, or narrow the zones' record set selectors.
+Native Kubernetes Secret references
 are not resolved by either host: mount the Secret as a file and allowlist its
 path under `credentials.allowedFiles`. Both deletion policies are supported on both stores; see
 [Deleting an integration](#deleting-an-integration). Optional UniFi
