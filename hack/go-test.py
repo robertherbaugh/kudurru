@@ -22,7 +22,8 @@ MAX_BATCH_NAMES = 100
 # race detector (cmd/kudurru/norace_test.go). Each must be in the inventory.
 NORACE_TESTS = ("TestRunServeSQLiteLongApplyKeepsServingDNSAndReads",
                 "TestRunServeSQLiteZonesAnswerAcrossCommits",
-                "TestRunServeSQLitePrimaryParentAndChildZones")
+                "TestRunServeSQLitePrimaryParentAndChildZones",
+                "TestRunServeCommandsNotRefusedAsSupersededUnderSteadyUpdates")
 
 
 def inventory(output, package):
