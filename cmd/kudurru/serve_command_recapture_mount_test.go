@@ -85,7 +85,7 @@ func classifyMounted(status int, raw []byte, err error, ok ...int) mountedRefusa
 }
 
 // mountedPublicationLagBound is how long a record-set write may take, from
-// its 200 at commit, until the node answers it in DNS while it commits ten
+// its 200 at commit, until the node answers it in DNS while it is sent ten
 // signed UPDATEs a second (D405). The node prepares one publication at a
 // time from its whole image; it measured well under a second without the
 // race detector and under three seconds with it on a loaded machine (see
@@ -93,7 +93,7 @@ func classifyMounted(status int, raw []byte, err error, ok ...int) mountedRefusa
 // runner while still failing a node that stops publishing.
 const mountedPublicationLagBound = 10 * time.Second
 
-// A ready node that commits a steady stream of signed UPDATEs (10 per second,
+// A ready node that is sent a steady stream of signed UPDATEs (10 per second,
 // each followed by the node's own zone status work) serves its operators
 // meanwhile: 200 sign-ins, 200 record-set writes and 200 reads of the
 // written object, each sent exactly once and none retried, all succeed
@@ -208,15 +208,15 @@ func TestRunServeCommandsNotRefusedAsSupersededUnderSteadyUpdates(t *testing.T) 
 		t.Fatalf("writer sign-in: status %d err %v: %s", status, err, raw)
 	}
 	resolver := &dns.Client{Timeout: 200 * time.Millisecond}
-	// served waits until name answers address and returns how long that took.
-	served := func(name, address string) (time.Duration, bool) {
-		started := time.Now()
-		for time.Since(started) < time.Minute {
+	// served waits until name answers address and returns how long that took
+	// since committed, the moment the write's 200 came back.
+	served := func(name, address string, committed time.Time) (time.Duration, bool) {
+		for time.Since(committed) < time.Minute {
 			query := new(dns.Msg)
 			query.SetQuestion(name, dns.TypeA)
 			if answer, _, err := resolver.Exchange(query, cfg.Listeners.DNS[0].Address); err == nil && answer != nil && answer.Rcode == dns.RcodeSuccess && len(answer.Answer) == 1 {
 				if rr, ok := answer.Answer[0].(*dns.A); ok && rr.A.String() == address {
-					return time.Since(started), true
+					return time.Since(committed), true
 				}
 			}
 			time.Sleep(10 * time.Millisecond)
@@ -239,6 +239,9 @@ func TestRunServeCommandsNotRefusedAsSupersededUnderSteadyUpdates(t *testing.T) 
 		body := public.DNSRecordSet{TypeMeta: metav1.TypeMeta{APIVersion: "kudurru.io/v1alpha1", Kind: "DNSRecordSet"}, ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
 			Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: "load"}, Endpoints: []public.Endpoint{{DNSName: name + ".load.test.", RecordType: "A", Targets: []string{address}}}}}
 		status, raw, err = recaptureMountedSend(writer, base, http.MethodPut, "/objects/dnsrecordsets/default/"+name, info.CSRF, body)
+		// The lag is measured from here: the read below waits for this
+		// write's publication too, and that wait belongs to the lag.
+		committedAt := time.Now()
 		if !record("record-set write", i, status, raw, err, http.StatusOK, http.StatusCreated) {
 			continue
 		}
@@ -247,7 +250,7 @@ func TestRunServeCommandsNotRefusedAsSupersededUnderSteadyUpdates(t *testing.T) 
 		if record("record-set read", i, status, raw, err, http.StatusOK) {
 			reads++
 		}
-		lag, ok := served(name+".load.test.", address)
+		lag, ok := served(name+".load.test.", address, committedAt)
 		if !ok {
 			failures = append(failures, fmt.Sprintf("record-set write %d: %s was not answered with %s for a minute", i, name, address))
 		}
@@ -266,6 +269,11 @@ func TestRunServeCommandsNotRefusedAsSupersededUnderSteadyUpdates(t *testing.T) 
 		elapsed.Round(time.Millisecond), sent.Load(), rcodes, count, signIns, writes, reads, counts[mountedSuperseded], counts[mountedAtCapture], counts[mountedUnacknowledged], counts[mountedOther], median.Round(time.Millisecond), worst.Round(time.Millisecond))
 	committed := rcodes[dns.RcodeSuccess]
 	mu.Unlock()
+	// The load is ten UPDATEs sent a second; how many of them commit depends
+	// on the runner (most of the rest answer SERVFAIL: an UPDATE's ingress
+	// check needs a current publication and is not recaptured, D399), so the
+	// committed rate is logged with the result it was proven at.
+	t.Logf("signed UPDATEs committed %d, %.2f a second", committed, float64(committed)/elapsed.Seconds())
 	for _, failure := range failures {
 		t.Error(failure)
 	}
