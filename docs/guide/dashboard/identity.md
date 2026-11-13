@@ -27,7 +27,27 @@ account ([External accounts](access.md#external-accounts)). A node with
 Kubernetes storage does not have these actions.
 
 A role binding connects a user, group or service account to a role.
-A zone scope limits a `zone-admin` binding to one zone.
+A zone scope limits a `zone-admin` binding to one zone. 
+A zone-group scope covers every zone labeled `kudurru.io/zonegroup: <group>` and its records.
+Removing the label from a zone takes the access away at once.
+Only an administrator with cluster-wide `zones.write` can move a zone into or out of a group.
+
+## Create a role binding
+
+On a node with SQLite storage, an administrator can create a binding here.
+
+1. Click **New role binding** in **Role bindings**.
+2. Enter a name and a namespace, and pick the role.
+3. Pick the scope: **Everything**, **One zone** or **A zone group**.
+4. Pick the zone, or type the group. The form lists the groups your zones use.
+5. Pick the subject kind, type its name and click **Create**.
+
+A name that already exists is refused.
+On an enrolled follower the button is disabled; open the dashboard on the primary.
+A node with Kubernetes storage refuses the command; use `kubectl` there.
+
+People with a zone or zone-group binding see the actions of their zones
+enabled on the zone pages, and the actions of other zones disabled.
 A sign-in provider alone does not grant access; a matching role binding is also required.
 
 ## Change access at its source

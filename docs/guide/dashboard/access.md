@@ -26,6 +26,11 @@ On a node with SQLite storage, the tab has two more sections.
 See [Use an authenticator](../admin/09-people-and-tokens.md#use-an-authenticator)
 and [See and end your browser sessions](../admin/09-people-and-tokens.md#see-and-end-your-browser-sessions).
 
+A node with Kubernetes storage offers no authenticators.
+There, **Authenticator** says so and the sign-in page has no code field.
+**Identity** also has no authenticator recovery.
+Use the second factor of your identity provider instead.
+
 ## Create a token for one program
 
 1. Enter the program's purpose in **Description**.

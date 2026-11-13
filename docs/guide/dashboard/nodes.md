@@ -70,6 +70,20 @@ or stop it and run `kudurru anchors status --offline`.
 [Enrolled SQLite cluster](../../deploy/sqlite-cluster.md) describes every step
 with the CLI.
 
+## Query-log sinks
+
+**Query-log sinks** lists the destinations of `querylog.sinks` that this node runs.
+It needs the `querylog.read` permission.
+Each row shows the sink type and its queue: the waiting queries and the bound.
+It also shows the accepted and dropped queries and the failed attempts.
+**Last success** is the time of the last successful write.
+**raw** marks a dnstap sink that receives queries before the privacy transform.
+Every node runs its own sinks, so open the dashboard of each node.
+
+The panel never shows the address or credentials of a sink, and no error text.
+The node's log and the `kudurru_sink_errors_total` metric name the reason of a failure.
+See [Query-log sinks](../../deploy/query-log-sinks.md).
+
 ## Check the result
 
 All expected nodes are ready and use the intended version.
