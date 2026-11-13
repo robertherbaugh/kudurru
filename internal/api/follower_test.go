@@ -96,7 +96,7 @@ func TestFollowerOperationsClassifyEveryMutation(t *testing.T) {
 	}
 	// The reviewed sizes of the contract. Update them with the table and
 	// with docs/deploy/sqlite-join.md.
-	if counts[FollowerForwarded] != 34 || counts[FollowerLocal] != 14 || counts[FollowerPrimary] != 49 {
+	if counts[FollowerForwarded] != 34 || counts[FollowerLocal] != 14 || counts[FollowerPrimary] != 58 {
 		t.Errorf("follower contract changed: forwarded=%d local=%d primary=%d", counts[FollowerForwarded], counts[FollowerLocal], counts[FollowerPrimary])
 	}
 }

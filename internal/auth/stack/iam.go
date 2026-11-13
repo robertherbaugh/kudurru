@@ -296,6 +296,44 @@ func (s *Stack) handleIAMRoleBinding(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// handleIAMServiceAccount reads one ServiceAccount object for operator review,
+// with its exact UID and resourceVersion, as the complete SQLite runtime's item
+// route returns it. The stack has no ServiceAccount write routes (D396).
+func (s *Stack) handleIAMServiceAccount(w http.ResponseWriter, r *http.Request) {
+	key := store.Key{Kind: internalv1.KindServiceAccount, Namespace: r.PathValue("namespace"), Name: r.PathValue("name")}
+	if r.URL.RawQuery != "" || len(validation.IsDNS1123Label(key.Namespace)) != 0 || len(validation.IsDNS1123Subdomain(key.Name)) != 0 {
+		writeErr(w, r, &auth.Error{Status: http.StatusBadRequest, Key: "invalid", Message: "invalid ServiceAccount target"})
+		return
+	}
+	sa, ok := s.tokens.ServiceAccounts().Get(key)
+	if !ok {
+		writeErr(w, r, &auth.Error{Status: http.StatusNotFound, Key: "not_found", Message: "ServiceAccount " + key.Namespace + "/" + key.Name + " not found"})
+		return
+	}
+	out := sa.DeepCopy()
+	out.APIVersion, out.Kind = publicv1.GroupVersion.String(), internalv1.KindServiceAccount
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleIAMIdentityProvider reads one IdentityProvider object for operator
+// review. Configuration-file providers are not objects and appear only in the
+// list. The object holds a credential reference, never a secret value.
+func (s *Stack) handleIAMIdentityProvider(w http.ResponseWriter, r *http.Request) {
+	key := store.Key{Kind: internalv1.KindIdentityProvider, Name: r.PathValue("name")}
+	if r.URL.RawQuery != "" || len(validation.IsDNS1123Label(key.Name)) != 0 {
+		writeErr(w, r, &auth.Error{Status: http.StatusBadRequest, Key: "invalid", Message: "invalid IdentityProvider target"})
+		return
+	}
+	idp, ok := s.idps.Get(key)
+	if !ok {
+		writeErr(w, r, &auth.Error{Status: http.StatusNotFound, Key: "not_found", Message: "IdentityProvider " + key.Name + " not found"})
+		return
+	}
+	out := idp.DeepCopy()
+	out.APIVersion, out.Kind = publicv1.GroupVersion.String(), internalv1.KindIdentityProvider
+	writeJSON(w, http.StatusOK, out)
+}
+
 // IdentityProviderInfo is a configured provider as listed (no secrets).
 type IdentityProviderInfo struct {
 	ID          string   `json:"id"`

@@ -67,6 +67,20 @@ type RoleBindingCommandRuntime interface{ RoleBindingCommandsAvailable() bool }
 // forwardRoleBinding performs capability admission after the ordinary declared
 // permission middleware. The body is preserved byte-for-byte for strict review.
 func (s *Server) forwardRoleBinding(op huma.Operation, p perm, req, resp any) {
+	s.forwardReviewedCommand(op, p, req, resp, func() error {
+		runtime, ok := s.opts.CanonicalSettings.(RoleBindingCommandRuntime)
+		if !ok || !runtime.RoleBindingCommandsAvailable() || s.opts.AuthHandler == nil {
+			return newError(http.StatusServiceUnavailable, KeyUnavailable, "public RoleBinding command unavailable", "requires the complete SQLite runtime")
+		}
+		return nil
+	})
+}
+
+// forwardReviewedCommand registers a reviewed IAM command that the complete
+// SQLite runtime serves. available runs after authentication and the declared
+// permission, before the auth handler sees the body; it refuses every runtime
+// that does not offer the command. The body is preserved byte-for-byte.
+func (s *Server) forwardReviewedCommand(op huma.Operation, p perm, req, resp any, available func() error) {
 	reg := s.api.OpenAPI().Components.Schemas
 	schema := reg.Schema(reflect.TypeOf(req), true, "")
 	op.RequestBody = &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{"application/json": {Schema: schema}}}
@@ -85,9 +99,8 @@ func (s *Server) forwardRoleBinding(op huma.Operation, p perm, req, resp any) {
 		op.Parameters = append(op.Parameters, &huma.Param{Name: m[1], In: "path", Required: true, Schema: &huma.Schema{Type: "string"}})
 	}
 	register(s, op, p, func(_ context.Context, in *forwardBodyInput) (*huma.StreamResponse, error) {
-		runtime, ok := s.opts.CanonicalSettings.(RoleBindingCommandRuntime)
-		if !ok || !runtime.RoleBindingCommandsAvailable() || s.opts.AuthHandler == nil {
-			return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "public RoleBinding command unavailable", "requires the complete SQLite runtime")
+		if err := available(); err != nil {
+			return nil, err
 		}
 		return &huma.StreamResponse{Body: func(ctx huma.Context) {
 			r, w := humago.Unwrap(ctx)

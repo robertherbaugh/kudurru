@@ -71,6 +71,7 @@ func newServingHTTP(o servingHTTPOptions) (*servingHTTP, error) {
 	h.registerLocalUsers()
 	h.registerExternalUsers()
 	h.registerRoleBindings()
+	h.registerIAMWriters()
 	h.registerClusterEnrollment()
 	return h, nil
 }

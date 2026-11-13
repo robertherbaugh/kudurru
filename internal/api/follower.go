@@ -155,6 +155,17 @@ var followerOperations = map[string]FollowerClass{
 	"createRoleBinding":      FollowerPrimary,
 	"replaceRoleBinding":     FollowerPrimary,
 	"deleteRoleBinding":      FollowerPrimary,
+	// IAM writers (D396): local account changes, ServiceAccounts and their
+	// tokens, and IdentityProvider objects commit on the primary only.
+	"updateLocalUser":           FollowerPrimary,
+	"deleteLocalUser":           FollowerPrimary,
+	"createServiceAccount":      FollowerPrimary,
+	"replaceServiceAccount":     FollowerPrimary,
+	"deleteServiceAccount":      FollowerPrimary,
+	"createServiceAccountToken": FollowerPrimary,
+	"createIdentityProvider":    FollowerPrimary,
+	"replaceIdentityProvider":   FollowerPrimary,
+	"deleteIdentityProvider":    FollowerPrimary,
 	// Stored TSIG keys are sealed by the primary.
 	"createStoredTSIGKey":  FollowerPrimary,
 	"replaceStoredTSIGKey": FollowerPrimary,

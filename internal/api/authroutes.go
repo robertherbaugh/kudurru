@@ -86,6 +86,7 @@ type auditOutput struct{ Body *AuditPage }
 func (s *Server) registerAuth() {
 	s.registerExternalUsers()
 	s.registerRoleBindings()
+	s.registerIAMWriters()
 	s.registerCLILogin()
 	public := perm{public: true}
 	authed := perm{authenticated: true}

@@ -24,7 +24,8 @@ type (
 	// client can hide controls it would only see refused (D387).
 	AuthCapabilities struct {
 		FactorManagement  bool `json:"factorManagement" doc:"Authenticator (TOTP) enrollment, disabling and recovery, and authenticator codes at login. False on the Kubernetes driver, where the routes answer 503 factor_management_unavailable: use the identity provider's second factor (D387)."`
-		LocalUserCommands bool `json:"localUserCommands" doc:"Creating local users and resetting their passwords (POST /iam/users, POST /iam/users/{name}/password). False on the Kubernetes driver, where the routes answer 503 user_management_unavailable (D387)."`
+		LocalUserCommands bool `json:"localUserCommands" doc:"Creating, changing and deleting local users and resetting their passwords (POST /iam/users, PATCH and DELETE /iam/users/{name}, POST /iam/users/{name}/password). False on the Kubernetes driver, where the routes answer 503 user_management_unavailable (D387, D396)."`
+		IAMObjectCommands bool `json:"iamObjectCommands" doc:"Creating, replacing and deleting ServiceAccounts, IdentityProviders and RoleBindings, and issuing service account tokens. False on the Kubernetes driver, where the ServiceAccount and IdentityProvider commands answer 503 iam_management_unavailable and the RoleBinding commands 503 unavailable: change those objects with kubectl (D294, D396)."`
 	}
 	// AuthProvider is one OIDC login option.
 	AuthProvider struct {

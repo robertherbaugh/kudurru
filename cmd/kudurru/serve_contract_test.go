@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
@@ -76,7 +77,7 @@ func TestForwardedShapes(t *testing.T) {
 	}
 	// D387: the Kubernetes stack offers neither authenticator management nor
 	// local-user commands, and says so before a client tries them.
-	if status.Capabilities.FactorManagement || status.Capabilities.LocalUserCommands {
+	if status.Capabilities.FactorManagement || status.Capabilities.LocalUserCommands || status.Capabilities.IAMObjectCommands {
 		t.Fatalf("stack capabilities %+v, want none", status.Capabilities)
 	}
 	var login api.SessionInfo
@@ -95,6 +96,19 @@ func TestForwardedShapes(t *testing.T) {
 	c.call(http.MethodPost, "/iam/users/admin/totp/recover", api.TOTPRecoverRequest{UID: "unavailable"}, http.StatusServiceUnavailable, nil)
 	c.call(http.MethodPost, "/iam/users", api.CreateLocalUserRequest{Name: "unavailable", Password: "unused-password"}, http.StatusServiceUnavailable, nil)
 	c.call(http.MethodPost, "/iam/users/admin/password", api.ResetLocalUserPasswordRequest{UID: "unavailable", ResourceVersion: "unavailable", NewPassword: "unused-password"}, http.StatusServiceUnavailable, nil)
+	// D396: the IAM writers refuse on the Kubernetes driver with a keyed,
+	// hinted answer; the objects are changed with kubectl there.
+	review := api.ObjectReview{UID: "unavailable", ResourceVersion: "unavailable"}
+	c.callKey(http.MethodPatch, "/iam/users/admin", map[string]any{"uid": "unavailable", "resourceVersion": "unavailable", "disabled": true}, "user_management_unavailable")
+	c.callKey(http.MethodDelete, "/iam/users/admin", review, "user_management_unavailable")
+	sa := api.ServiceAccountDesired{APIVersion: "kudurru.io/v1alpha1", Kind: "ServiceAccount", Metadata: api.ServiceAccountMetadata{Name: "ci", Namespace: "default"}}
+	c.callKey(http.MethodPost, "/iam/serviceaccounts", sa, api.KeyIAMManagementUnavailable)
+	c.callKey(http.MethodPut, "/iam/serviceaccounts/default/ci", api.ReplaceServiceAccountCommand{ObjectReview: review, ServiceAccount: sa}, api.KeyIAMManagementUnavailable)
+	c.callKey(http.MethodDelete, "/iam/serviceaccounts/default/ci", review, api.KeyIAMManagementUnavailable)
+	c.callKey(http.MethodPost, "/iam/serviceaccounts/default/ci/tokens", api.CreateServiceAccountTokenRequest{UID: "unavailable"}, api.KeyIAMManagementUnavailable)
+	c.callKey(http.MethodPost, "/iam/identityproviders", api.IdentityProviderDesired{APIVersion: "kudurru.io/v1alpha1", Kind: "IdentityProvider"}, api.KeyIAMManagementUnavailable)
+	c.callKey(http.MethodPut, "/iam/identityproviders/corp", api.ReplaceIdentityProviderCommand{ObjectReview: review}, api.KeyIAMManagementUnavailable)
+	c.callKey(http.MethodDelete, "/iam/identityproviders/corp", review, api.KeyIAMManagementUnavailable)
 	var me api.Me
 	c.call(http.MethodGet, "/auth/me", nil, http.StatusOK, &me)
 	if !slices.Equal(me.Roles, login.Roles) || me.CSRF != login.CSRF || me.MustChangePassword || len(me.Permissions) == 0 {
@@ -148,6 +162,15 @@ func TestForwardedShapes(t *testing.T) {
 		t.Fatalf("role binding item %+v", binding)
 	}
 	c.call(http.MethodGet, "/iam/rolebindings/default/absent", nil, http.StatusNotFound, nil)
+	// The item reads of D396 answer on Kubernetes too, with the identity an
+	// operator reviews before a kubectl change.
+	var account publicv1.ServiceAccount
+	c.call(http.MethodGet, "/iam/serviceaccounts/default/ci", nil, http.StatusOK, &account)
+	if account.Kind != "ServiceAccount" || account.APIVersion != "kudurru.io/v1alpha1" || account.UID == "" || account.ResourceVersion == "" || account.Spec.Description != "CI" {
+		t.Fatalf("service account item %+v", account)
+	}
+	c.call(http.MethodGet, "/iam/serviceaccounts/default/absent", nil, http.StatusNotFound, nil)
+	c.call(http.MethodGet, "/iam/identityproviders/absent", nil, http.StatusNotFound, nil)
 	c.call(http.MethodGet, "/auth/cli/providers", nil, http.StatusServiceUnavailable, nil)
 	c.call(http.MethodPost, "/auth/cli/corp/prepare", api.CLILoginPrepareBody{Mode: "device"}, http.StatusServiceUnavailable, nil)
 	c.call(http.MethodPost, "/auth/cli/corp/verify", api.CLILoginVerifyBody{Receipt: "unavailable", AccessToken: "unavailable"}, http.StatusServiceUnavailable, nil)
@@ -164,6 +187,21 @@ func TestForwardedShapes(t *testing.T) {
 	}
 }
 
+// callKey expects a durable 503 with this key, a hint and no Retry-After.
+func (c *contractClient) callKey(method, path string, body any, key string) {
+	c.t.Helper()
+	var envelope struct {
+		Error struct {
+			Key  string `json:"key"`
+			Hint any    `json:"hint"`
+		} `json:"error"`
+	}
+	header := c.call(method, path, body, http.StatusServiceUnavailable, nil)
+	if err := json.Unmarshal(c.last, &envelope); err != nil || envelope.Error.Key != key || envelope.Error.Hint == nil || header.Get("Retry-After") != "" {
+		c.t.Fatalf("%s %s: %s (Retry-After %q), want key %s with a hint", method, path, c.last, header.Get("Retry-After"), key)
+	}
+}
+
 // contractClient calls the API with a cookie session and decodes answers
 // strictly.
 type contractClient struct {
@@ -171,9 +209,10 @@ type contractClient struct {
 	base string
 	http *http.Client
 	csrf string
+	last []byte
 }
 
-func (c *contractClient) call(method, path string, body any, code int, out any) {
+func (c *contractClient) call(method, path string, body any, code int, out any) http.Header {
 	c.t.Helper()
 	var rd io.Reader
 	if body != nil {
@@ -196,11 +235,12 @@ func (c *contractClient) call(method, path string, body any, code int, out any) 
 	}
 	defer func() { _ = res.Body.Close() }()
 	raw, _ := io.ReadAll(res.Body)
+	c.last = raw
 	if res.StatusCode != code {
 		c.t.Fatalf("%s %s: %d, want %d: %s", method, path, res.StatusCode, code, raw)
 	}
 	if out == nil {
-		return
+		return res.Header
 	}
 	reflect.ValueOf(out).Elem().SetZero()
 	dec := json.NewDecoder(bytes.NewReader(raw))
@@ -208,6 +248,7 @@ func (c *contractClient) call(method, path string, body any, code int, out any) 
 	if err := dec.Decode(out); err != nil {
 		c.t.Fatalf("%s %s: the answer does not match the documented %T: %v\n%s", method, path, out, err, raw)
 	}
+	return res.Header
 }
 
 // jsonShape renders the JSON encoding of t: field names with their

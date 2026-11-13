@@ -75,6 +75,8 @@ type Route struct {
 //	GET    /iam/rolebindings               rolebindings.read
 //	GET    /iam/rolebindings/{namespace}/{name}  rolebindings.read
 //	GET    /iam/identityproviders          identityproviders.read
+//	GET    /iam/serviceaccounts/{namespace}/{name}  serviceaccounts.read
+//	GET    /iam/identityproviders/{name}   identityproviders.read
 func (s *Stack) Routes() []Route {
 	return []Route{
 		{Method: http.MethodGet, Path: "/auth/status", Access: AccessPublic, Handler: http.HandlerFunc(s.handleStatus)},
@@ -103,6 +105,8 @@ func (s *Stack) Routes() []Route {
 		{Method: http.MethodGet, Path: "/iam/rolebindings", Access: AccessPermission, Resource: "rolebindings", Verb: "read", Handler: http.HandlerFunc(s.handleIAMRoleBindings)},
 		{Method: http.MethodGet, Path: "/iam/rolebindings/{namespace}/{name}", Access: AccessPermission, Resource: "rolebindings", Verb: "read", Handler: http.HandlerFunc(s.handleIAMRoleBinding)},
 		{Method: http.MethodGet, Path: "/iam/identityproviders", Access: AccessPermission, Resource: "identityproviders", Verb: "read", Handler: http.HandlerFunc(s.handleIAMIdentityProviders)},
+		{Method: http.MethodGet, Path: "/iam/serviceaccounts/{namespace}/{name}", Access: AccessPermission, Resource: "serviceaccounts", Verb: "read", Handler: http.HandlerFunc(s.handleIAMServiceAccount)},
+		{Method: http.MethodGet, Path: "/iam/identityproviders/{name}", Access: AccessPermission, Resource: "identityproviders", Verb: "read", Handler: http.HandlerFunc(s.handleIAMIdentityProvider)},
 	}
 }
 
@@ -187,7 +191,7 @@ type StatusResponse struct {
 	Role    string `json:"role,omitempty"`
 	Primary string `json:"primary,omitempty"`
 	// Capabilities are the account commands this runtime offers. The stack
-	// serves the Kubernetes driver, which offers neither (D387).
+	// serves the Kubernetes driver, which offers none of them (D387, D396).
 	Capabilities StatusCapabilities `json:"capabilities"`
 }
 
@@ -195,6 +199,7 @@ type StatusResponse struct {
 type StatusCapabilities struct {
 	FactorManagement  bool `json:"factorManagement"`
 	LocalUserCommands bool `json:"localUserCommands"`
+	IAMObjectCommands bool `json:"iamObjectCommands"`
 }
 
 type oidcProviderInfo struct {
