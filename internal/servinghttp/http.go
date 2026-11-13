@@ -64,8 +64,12 @@ func New(options Options) (*Adapter, error) {
 type leaseKey struct{}
 type proofKey struct{}
 
+// proof binds a verified raw credential to the request whose lease verified
+// it. holder is the request's lease value (its requestCell in a mounted
+// request), so the proof survives a pre-dispatch recapture (D399) of that
+// same request and no other.
 type proof struct {
-	lease      *serving.Lease
+	holder     any
 	credential servingauth.Credential
 }
 
@@ -76,7 +80,7 @@ func (p proof) GoString() string { return p.String() }
 // Callers must not retain the result beyond the synchronous handler lifetime.
 func Component[T any](ctx context.Context, name string) (T, error) {
 	var zero T
-	lease, ok := ctx.Value(leaseKey{}).(*serving.Lease)
+	lease, ok := requestLease(ctx)
 	if !ok || lease.Bundle() == nil || ctx.Err() != nil {
 		return zero, serving.ErrReleased
 	}
@@ -105,8 +109,8 @@ func nilValue(value any) bool {
 // Passwords are accepted only by explicit login command endpoints.
 func Credential(ctx context.Context) (servingauth.Credential, error) {
 	p, ok := ctx.Value(proofKey{}).(proof)
-	lease, _ := ctx.Value(leaseKey{}).(*serving.Lease)
-	if !ok || p.lease == nil || p.lease != lease || lease.Bundle() == nil || ctx.Err() != nil {
+	lease, _ := requestLease(ctx)
+	if !ok || p.holder == nil || p.holder != ctx.Value(leaseKey{}) || lease == nil || lease.Bundle() == nil || ctx.Err() != nil {
 		return servingauth.Credential{}, servingauth.ErrCredentials
 	}
 	return p.credential, nil
@@ -115,7 +119,7 @@ func Credential(ctx context.Context) (servingauth.Credential, error) {
 // Identity returns the actual served cut of this request, never an installed
 // generation sampled independently from the credential or object readers.
 func Identity(ctx context.Context) (serving.Identity, error) {
-	lease, _ := ctx.Value(leaseKey{}).(*serving.Lease)
+	lease, _ := requestLease(ctx)
 	if lease == nil || lease.Bundle() == nil || ctx.Err() != nil {
 		return serving.Identity{}, serving.ErrReleased
 	}
@@ -131,7 +135,7 @@ func CheckWriter(ctx context.Context, publisher *serving.Publisher, target servi
 	if ctx == nil || publisher == nil {
 		return serving.ErrComponents
 	}
-	lease, _ := ctx.Value(leaseKey{}).(*serving.Lease)
+	lease, _ := requestLease(ctx)
 	if lease == nil || lease.Bundle() == nil {
 		return serving.ErrReleased
 	}
@@ -150,7 +154,7 @@ func CheckWriterAdvanced(ctx context.Context, publisher *serving.Publisher, targ
 	if ctx == nil || publisher == nil {
 		return serving.ErrComponents
 	}
-	lease, _ := ctx.Value(leaseKey{}).(*serving.Lease)
+	lease, _ := requestLease(ctx)
 	if lease == nil || lease.Bundle() == nil {
 		return serving.ErrReleased
 	}
@@ -170,8 +174,9 @@ func (a *Adapter) Middleware(next http.Handler) http.Handler {
 			auth.WriteError(w, r, a.captureRefusal())
 			return
 		}
-		defer lease.Release()
-		r = r.WithContext(context.WithValue(ctx, leaseKey{}, lease))
+		cell := newRequestCell(lease)
+		defer cell.release()
+		r = r.WithContext(context.WithValue(ctx, leaseKey{}, cell))
 		if _, err := Component[*servingauth.View](r.Context(), "auth"); err != nil {
 			auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "generation_pending", Message: "authentication generation unavailable", RetryAfter: time.Second})
 			return
@@ -349,8 +354,7 @@ func (a *Adapter) authenticate(_ http.ResponseWriter, r *http.Request) (auth.Pri
 			return auth.Principal{}, nil, err
 		}
 	}
-	lease, _ := r.Context().Value(leaseKey{}).(*serving.Lease)
-	r = r.WithContext(context.WithValue(r.Context(), proofKey{}, proof{lease, credential}))
+	r = r.WithContext(context.WithValue(r.Context(), proofKey{}, proof{r.Context().Value(leaseKey{}), credential}))
 	return principal, r, nil
 }
 

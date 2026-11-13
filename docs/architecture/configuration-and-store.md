@@ -246,8 +246,10 @@ at most 1,000 zone steps; the last zone step also completes its attempt. Initial
 uses the original HTTP lease. Each subsequent command captures its initial whole
 lease, reauthenticates the original raw request credential against transaction-local
 IAM, and retains the original elected writer episode and all current dependency
-exclusions through final commit. A failed command ends the program; it never
-retries against a successor lease or writer. Browser disconnects do not cancel
+exclusions through final commit. A step whose cut another commit superseded
+before its transaction body began captures again within its 5 s wait, as a
+sign-in or a whole-object write does (D399). Any other failed command ends the program; it never
+retries against a successor lease or writer once its body began. Browser disconnects do not cancel
 background jobs. Shutdown, credential revocation, expiry, and writer replacement
 stop further steps. Plans are never replayed after restart.
 
@@ -1988,6 +1990,15 @@ acknowledgment, so startup recovery cannot deadlock on its own publication.
 Publication acknowledgment never wakes or cancels the preparer: committed
 source and dependency changes already schedule that work. Pending waits observe
 publication or authority changes, avoiding a feedback loop between the driver and publisher.
+
+The preparer runs one preparation at a time. A new generation, authority or
+dependency cursor cancels the preparation in progress, because its publication
+would be refused. A `Wake` does not (D405): most commands wake the publisher
+right after their commit, when the commit's own generation has already started
+a preparation, and canceling it made every commit cost two preparations and let
+a node that commits steadily go without publishing. The Wake count is noted
+before a preparation reads its candidate; Wakes that arrive after that are
+answered by exactly one more preparation once it has published.
 
 ```mermaid
 flowchart LR

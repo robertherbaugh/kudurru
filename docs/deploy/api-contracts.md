@@ -65,6 +65,45 @@ reached; it was not applied"). Give the client a timeout of five minutes for
 large requests; `kudurru apply` and `kudurru restore` do so unless
 `--request-timeout` is set.
 
+## Commands refused because the node published meanwhile
+
+On SQLite a request captures the node's newest publication when it arrives
+and authenticates on it. When the node has not published its newest commit
+within two seconds, the request is refused before it is read with `503
+generation_pending` (`Retry-After: 1`); send it again.
+
+The node commits its own work on its own schedule (zone status and
+lifecycle writes, signed UPDATEs, admission), and each commit replaces the
+publication that requests in flight captured. What a command does when that
+happened before it began depends on the command (D399):
+
+- A sign-in (`POST /auth/login`), a sign-out (`POST /auth/logout`) and a
+  single whole-object write without `If-Match` (`PUT` or `POST` of one object
+  under `/objects`) wait for the newer publication, up to five seconds or the
+  request's deadline, and run once on it. They are refused only when the
+  node kept publishing for those five seconds, or when the caller's
+  credential, session or roles, the cluster settings or the node's authority
+  changed meanwhile: `503 unavailable` ("current writable serving
+  generation unavailable"), nothing applied. An object route then answers
+  `Retry-After: 1`; send the same request again.
+- Every other command is refused at once with the same `503 unavailable`,
+  without `Retry-After` on the object routes: a write with `If-Match`, a
+  delete, a source entries edit, every document of a `POST /apply` request,
+  settings, node settings, cache and domain-list commands, imports and
+  adoptions, TSIG keys and cluster commands. Nothing was applied, but the
+  command was bound to what its request saw (a resource version, a reviewed
+  plan or source, a lease, key material), so read the current state and
+  decide again instead of sending the same request blindly.
+
+On the object routes `Retry-After: 1` with `unavailable` means that no part
+of the request ran. An object write answered `unavailable` ("current
+writable serving generation unavailable") was not applied, with or without
+`Retry-After`: an object command has no step after its commit that can
+refuse. The authentication and cluster routes answer every `503` with
+`Retry-After`, so there the header does not say whether anything ran; their
+messages do (for example "invitation committed but its secret response is
+unavailable; do not replay this command").
+
 ## Reviewing and replacing zone options
 
 Review the complete specification before changing it:

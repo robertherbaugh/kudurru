@@ -34,6 +34,11 @@ func (s *Server) commandWriteObject(ctx context.Context, req writeRequest, manag
 		}
 	}
 	var result writeResult
+	if req.ifMatch == "" {
+		// The whole document is the request and every decision that depends
+		// on the stored object is made in the command (D399).
+		ctx = withRecapturableCommand(ctx)
+	}
 	err := s.opts.ObjectCommand(ctx, key, s.writeCommandBody(req, manager, u, key, &result))
 	if err != nil {
 		return writeResult{}, storeError(err)
@@ -42,6 +47,27 @@ func (s *Server) commandWriteObject(ctx context.Context, req writeRequest, manag
 		return writeResult{}, errUnavailable("current object command returned no result")
 	}
 	return result, nil
+}
+
+type recapturableCommandKey struct{}
+
+// withRecapturableCommand marks a whole-object write without If-Match: the
+// request carries the complete document and nothing it read from its first
+// capture, and the command reads, authorizes and admits the stored object in
+// its own transaction. Such a write may capture the current publication again
+// when another commit superseded its request's publication before its
+// transaction began (D399). A partial edit (a source entries PATCH), a
+// delete, a write with If-Match and every item of a multi-item request are not
+// marked: they keep the immediate refusal of D199 and D208.
+func withRecapturableCommand(ctx context.Context) context.Context {
+	return context.WithValue(ctx, recapturableCommandKey{}, true)
+}
+
+// RecapturableCommand reports whether the API marked ctx's object command as
+// one that may capture again before dispatch (D399).
+func RecapturableCommand(ctx context.Context) bool {
+	marked, _ := ctx.Value(recapturableCommandKey{}).(bool)
+	return marked
 }
 
 // writeCommandBody is the exact transaction body of one canonical write, shared
