@@ -968,10 +968,12 @@ there), uses the listener's verified TSIG proof, and admits the key against its
 own keyring (REFUSED for a missing proof or an unknown key). When the
 follower installed a newer commit or replaced a dependency after the request
 captured its publication, that keyring is no longer current: the source
-changed under the request, so it answers SERVFAIL and sends nothing, not
-REFUSED. In a burst the newer commit is often the previous update's own;
-`captureUpdate` on the primary maps a keyring that stopped being current the
-same way. Otherwise the follower sends one version-1
+changed under the request and nothing was sent. In a burst the newer commit
+is usually the previous update's own. The follower decides nothing that the
+primary does not decide again, so it waits, within the forward's bound, for
+its own current publication (`awaitFollowerPublication`), selects the zone and
+admits the key again there, and captures the forward on that source. Then the
+follower sends one version-1
 `dns.update` member command with the exact request minus its TSIG record, the
 key name, algorithm and secret-derived credential version, the transport and
 the signature deadline. The exchange is bounded by four seconds, the DNS
@@ -986,11 +988,18 @@ command returns the retained rcode without a second commit. The zone runtime
 commits in its own fenced transaction, bound to the writer, the term and the
 key identity. The sender's enrollment is rechecked in a transaction only when
 the acknowledgment is admitted, so a member revoked during those milliseconds
-gets its update committed and its answer withheld. The primary captures a
-fresh serving lease for each command. While its previous commit is still being
-republished, that lease fails the writer check in `captureUpdate`, and the
-update answers SERVFAIL before anything is applied, as a native UPDATE does.
-Back-to-back updates can therefore see a few SERVFAILs. The primary
+gets its update committed and its answer withheld. The primary runs the
+command on its current writer publication (`runMemberUpdate`): it waits for
+one within the command's bound (`Publisher.WaitTerm`) and captures it. Each
+commit is followed by its publication and often by the node's own status write
+and another publication, so that lease can still be replaced before
+`captureUpdate` checks it. `captureUpdate` then rejects the update before any
+admission and marks the rejection as only a stale lease, and the command
+waits and captures again. A rejection for any other reason, and every answer
+after capture, is final; nothing that reached `Apply` runs again. Before this,
+most of a burst of back-to-back updates through a follower answered SERVFAIL.
+A native UPDATE sent to the primary still answers SERVFAIL in that window,
+before anything is applied. The primary
 acknowledges its rcode inside the member request's command output scope. The
 follower relays that rcode, signed with the request's key. The answer
 carries an acknowledgment bound to the verified key and the unchanged empty
@@ -1008,7 +1017,9 @@ sequenceDiagram
     participant P as Primary
     C->>F: TSIG-signed UPDATE
     F->>F: Zone in own cut, verify TSIG, admit key
+    Note over F: Source changed under the request: wait for own current publication, check again
     F->>P: dns.update member command (no TSIG record)
+    P->>P: Wait for current writer publication, capture (again if only the lease was replaced)
     P->>P: Admit key identity, grants, prerequisites
     P->>P: Atomic commit, publish (retry ID = command ID)
     P-->>F: rcode inside command output scope
