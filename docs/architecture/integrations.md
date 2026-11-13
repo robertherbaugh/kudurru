@@ -120,6 +120,10 @@ receipt advances it. A current same-UID guard may record recovered historical
 facts, but does not authorize replay under stale configuration or credentials.
 Abandonment terminalizes the intent before releasing the reservation and requires
 fresh authenticated before-state evidence after provider calls have stopped.
+An intent with acknowledged effects is abandoned only by a publisher that has
+no recovery path (the reviewed UniFi mirror, D401), and only when the same
+complete reread shows the baseline and none of the provider IDs acknowledged
+to it; those facts stay in the operation as `undone`.
 
 ```mermaid
 flowchart LR
@@ -199,7 +203,7 @@ provider a publisher whose roles say `Reviewed`: a periodic or reconcile sync
 of such a publisher builds no plan and applies nothing. It reads the provider
 only when a ledger row is pending, and then only settles that intent from a
 fresh complete reread (confirm, or abandon when the site shows exactly the
-baseline). New operations run only from a reviewed sync bound to a preview
+baseline and none of the policies a partial create had acknowledged). New operations run only from a reviewed sync bound to a preview
 digest. DNS policies cannot carry an ownership marker, so the adapter reports
 every A and CNAME policy as an `Unmarked` row, and every other policy as a
 claim on its name. The planner treats an unmarked row as the Integration's

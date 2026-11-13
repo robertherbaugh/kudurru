@@ -272,8 +272,15 @@ func (r *Repository) Abandon(ctx context.Context, g Guard, res *Reservation, pro
 		if receipt.Complete || proof.ObservedAt.Before(receipt.ObservedAt) {
 			return nil, ErrPending
 		}
+		gone := map[string]bool{}
+		for _, id := range proof.Gone {
+			gone[id] = id != ""
+		}
+		for _, id := range op.Spec.ProviderIDs {
+			gone[id] = false
+		}
 		for _, t := range receipt.Targets {
-			if t.Applied {
+			if t.Applied && !gone[t.ProviderID] {
 				return nil, ErrPending
 			}
 		}
@@ -281,6 +288,15 @@ func (r *Repository) Abandon(ctx context.Context, g Guard, res *Reservation, pro
 	// Terminalize first with operation CAS; a receipt racing this transition
 	// conflicts or observes AbandonedAt, so it cannot resurrect released work.
 	if op.Spec.AbandonedAt.IsZero() {
+		if op.Spec.Receipt != nil {
+			// An acknowledged effect proven gone stays in the history, with its
+			// provider ID, as an effect observed undone (D401).
+			for i, t := range op.Spec.Receipt.Targets {
+				if t.Applied {
+					op.Spec.Receipt.Targets[i].Applied, op.Spec.Receipt.Targets[i].ErrorClass = false, ErrorUndone
+				}
+			}
+		}
 		op.Spec.AbandonedAt = proof.ObservedAt
 		if _, err := r.putOperation(ctx, g, op, false); err != nil {
 			return nil, err
