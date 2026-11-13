@@ -295,14 +295,16 @@ func TestAnchorLifecycleBoundsBeforeOwnerAllocation(t *testing.T) {
 }
 
 func TestAnchorSQLActualTermination(t *testing.T) {
-	for _, kind := range []string{"rollback", "unchanged", "commit", "already-rolled-back", "commit-error"} {
+	for _, kind := range []string{"rollback", "unchanged", "commit", "already-rolled-back", "commit-error", "context-ended", "context-ended-after-commit"} {
 		t.Run(kind, func(t *testing.T) {
 			s := openTemp(t)
-			tx, err := s.w.BeginTx(t.Context(), nil)
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			tx, err := s.w.BeginTx(ctx, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			boundary := anchorSQL{tx: tx}
+			boundary := anchorSQL{tx: tx, ctx: ctx}
 			var result error
 			expected := AnchorRolledBack
 			switch kind {
@@ -325,6 +327,23 @@ func TestAnchorSQLActualTermination(t *testing.T) {
 				}
 				result = boundary.commit()
 				expected = AnchorUnknown
+			case "context-ended":
+				// database/sql rolls the transaction back when its context
+				// ends; no commit was attempted, so nothing committed
+				// (HA-OPEN6: a canceled pull's install).
+				cancel()
+				awaitTxDone(t, tx)
+				result = ctx.Err()
+			case "context-ended-after-commit":
+				// A commit attempt stays unknown even when the context
+				// ended first.
+				if err := tx.Commit(); err != nil {
+					t.Fatal(err)
+				}
+				boundary.attempted = true
+				cancel()
+				result = errors.New("after commit")
+				expected = AnchorUnknown
 			}
 			boundary.finish(&result)
 			if boundary.outcome != expected {
@@ -336,6 +355,26 @@ func TestAnchorSQLActualTermination(t *testing.T) {
 			if kind == "already-rolled-back" && !errors.Is(result, sql.ErrTxDone) {
 				t.Fatal("lost unconfirmed rollback category")
 			}
+			if kind == "context-ended" && (!errors.Is(result, context.Canceled) || errors.Is(result, sql.ErrTxDone)) {
+				t.Fatal("a context rollback changed the caller's error", result)
+			}
 		})
+	}
+}
+
+// awaitTxDone waits until database/sql has ended tx after its context ended.
+func awaitTxDone(t *testing.T, tx *sql.Tx) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		// A read on an ended transaction answers ErrTxDone and changes nothing.
+		var one int
+		if err := tx.QueryRow("SELECT 1").Scan(&one); errors.Is(err, sql.ErrTxDone) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the transaction did not end with its context")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }

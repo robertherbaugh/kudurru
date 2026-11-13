@@ -246,7 +246,7 @@ func (s *Store) installReplica(ctx context.Context, image replication.Image, opt
 	if err != nil {
 		return replication.Generation{}, err
 	}
-	boundary := anchorSQL{tx: tx}
+	boundary := anchorSQL{tx: tx, ctx: ctx}
 	defer func() {
 		boundary.finish(&result)
 		operation.sql = boundary

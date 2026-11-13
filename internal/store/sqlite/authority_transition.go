@@ -136,7 +136,7 @@ func (s *Store) resolveConflict(ctx context.Context, image replication.Image, re
 	if err != nil {
 		return replication.Authority{}, err
 	}
-	boundary := anchorSQL{tx: tx}
+	boundary := anchorSQL{tx: tx, ctx: ctx}
 	defer func() {
 		boundary.finish(&result)
 		operation.sql = boundary
