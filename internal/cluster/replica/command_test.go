@@ -236,10 +236,17 @@ func TestHTTPForwardingAmbiguousTimeoutAndExplicitSameIDRetry(t *testing.T) {
 	service := serviceFor(p, d)
 	server := serverFor(t, p, creds, mirror.Authority().MemberID, service)
 	var drop atomic.Bool
+	handled := make(chan struct{})
 	address := tlsServer(t, creds, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if drop.CompareAndSwap(false, true) {
+			// The first exchange commits and its response is lost. It runs
+			// to its end even when the client already gave up: a loaded
+			// machine can reach the client's short timeout before the
+			// commit, and a command canceled before it committed may
+			// rightly execute on the retry.
+			defer close(handled)
 			record := httptest.NewRecorder()
-			server.Handler().ServeHTTP(record, r)
+			server.Handler().ServeHTTP(record, r.WithContext(context.WithoutCancel(r.Context())))
 			<-r.Context().Done()
 			return
 		}
@@ -251,10 +258,18 @@ func TestHTTPForwardingAmbiguousTimeoutAndExplicitSameIDRetry(t *testing.T) {
 	if _, e := client.Write(ctx, peer, cmd); !errors.Is(e, ErrOutcomeUnknown) {
 		t.Fatalf("ambiguous outcome falsely definite: %v", e)
 	}
+	select {
+	case <-handled:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the dropped exchange never ended")
+	}
 	if d.executions.Load() != 1 {
 		t.Fatal("fixture did not commit before dropping response")
 	}
-	out, e := client.Write(ctx, peer, cmd)
+	// Only the dropped exchange needs the short timeout. The explicit retry
+	// must complete, so it gets a bound that a loaded machine cannot reach.
+	retry := clientFor(t, mirror, creds, func(o *ClientOptions) { o.Timeout = 10 * time.Second })
+	out, e := retry.Write(ctx, peer, cmd)
 	if e != nil || out.Status != 200 {
 		t.Fatalf("explicit same-ID retry: %v", e)
 	}

@@ -738,7 +738,7 @@ member of the abandoned term adopts that branch under the same rules.
 | Fenced; another history, policy or seed digest | DNS-only from its own branch | Nothing. Replace the member |
 | Terminal carrier (the bounded denial list is full) | `SERVFAIL` | Nothing. Replace the member |
 | Fenced or refusing, and the primary and every member that followed it are lost for good | DNS-only from its own branch (or `SERVFAIL` with a pending local denial) | `cluster resolve --offline --abandon-term` with the reviewed term's epoch: a new term on the member's own owner and carrier, unchanged. A pending local denial still ends only with the writer's own observation of the REVOKE |
-| Anchor admission closed for the process: unknown SQL completion, or a verified REVOKE that could not be written because an install replaced the owner it was captured for | `SERVFAIL` | Restart. The committed cut binds again, and the next root check records the REVOKE against it |
+| Anchor admission closed for the process: unknown SQL completion (a transaction that its context ended before any commit was attempted counts as rolled back, so a pull canceled or timed out during an install does not close it), or a verified REVOKE that could not be written because an install replaced the owner it was captured for | `SERVFAIL` | Restart. The committed cut binds again, and the next root check records the REVOKE against it |
 
 ##### Reading these states
 

@@ -172,8 +172,21 @@ func (p *primaryRuntime) captureUpdate(req *pipeline.Request, apex string) (pr.V
 		return reject(dns.RcodeServerFailure)
 	}
 	target := serving.TermActivation{Term: fence.Term, Incarnation: fence.Incarnation}
-	if err := servingdns.CheckWriter(req, p.publisher, target); err != nil {
+	forwarded, isForwarded := forwardedUpdateFrom(req.Ctx)
+	// stale rejects a forwarded UPDATE whose lease is no longer this node's
+	// current writer publication, or whose publication does not serve the
+	// zone for updates at this moment (its lifecycle is being realigned
+	// after a commit). Nothing has been admitted yet, so the member command
+	// may wait for the next publication and capture again within its bound
+	// (D381).
+	stale := func() (pr.VerifiedUpdate, error) {
+		if isForwarded {
+			forwarded.stale = true
+		}
 		return reject(dns.RcodeServerFailure)
+	}
+	if err := servingdns.CheckWriter(req, p.publisher, target); err != nil {
+		return stale()
 	}
 	owner, err := servingdns.Component[*servingbuild.RuntimeOwner](req, "runtime")
 	if err != nil || owner.Primary() == nil || owner.Zones() == nil {
@@ -184,21 +197,29 @@ func (p *primaryRuntime) captureUpdate(req *pipeline.Request, apex string) (pr.V
 	if !found || member.Zone.Apex != apex || member.Type != public.ZoneTypePrimary {
 		return reject(dns.RcodeNotAuth)
 	}
-	if member.Phase != zk.PhaseActive || member.Incarnation == 0 || member.Version.CommitSequence == 0 || !owner.Primary().Admitted(apex, now) {
+	if member.Phase == zk.PhaseRetiring || member.Phase == zk.PhaseRetired {
+		// A lifecycle never returns from retirement: no later publication
+		// admits this zone, so even a forwarded UPDATE is answered at once.
 		return reject(dns.RcodeServerFailure)
+	}
+	if member.Phase != zk.PhaseActive || member.Incarnation == 0 || member.Version.CommitSequence == 0 || !owner.Primary().Admitted(apex, now) {
+		return stale()
 	}
 	route := owner.Zones().Zones(now).Match(apex)
 	if route == nil || route.Name() != apex || route.Type() != public.ZoneTypePrimary || !route.RoutingAvailableAt(now) {
-		return reject(dns.RcodeServerFailure)
+		return stale()
 	}
 	_, keys, current := owner.NotifyKeys()
 	var proof pr.VerifiedUpdate
-	if forwarded, ok := forwardedUpdateFrom(req.Ctx); ok {
+	if isForwarded {
 		// A follower verified the signature (D381). This node admits only the
 		// exact key identity of its own current keyring: same name, algorithm
 		// and secret-derived credential version.
-		if keys == nil || current == nil || !current() {
+		if keys == nil || current == nil {
 			return reject(dns.RcodeRefused)
+		}
+		if !current() {
+			return stale() // the source changed under the request
 		}
 		identity, ok := keys.Identity(forwarded.key.Key)
 		if !ok || identity.Key != forwarded.key.Key || identity.Algorithm != forwarded.key.Algorithm || identity.CredentialVersion != forwarded.key.CredentialVersion {
@@ -211,8 +232,11 @@ func (p *primaryRuntime) captureUpdate(req *pipeline.Request, apex string) (pr.V
 		}
 	} else {
 		native, ok := dnsserver.VerifiedTSIGFor(req, now)
-		if !ok || keys == nil || current == nil || !current() {
+		if !ok || keys == nil || current == nil {
 			return reject(dns.RcodeRefused)
+		}
+		if !current() {
+			return reject(dns.RcodeServerFailure) // the source changed under the request
 		}
 		identity, ok := keys.Identity(native.Identity().Key)
 		if !ok || identity != native.Identity() {
@@ -226,10 +250,13 @@ func (p *primaryRuntime) captureUpdate(req *pipeline.Request, apex string) (pr.V
 	}
 	issued, err := p.ingress.Verify(req.Ctx, proof.Proof, proof.Wire)
 	if err != nil || !issued.Term.Same(fence.Term) || issued.AuthorityIncarnation != fence.Incarnation {
+		if current != nil && !current() {
+			return stale()
+		}
 		return reject(dns.RcodeServerFailure)
 	}
 	if err := servingdns.CheckWriter(req, p.publisher, target); err != nil {
-		return reject(dns.RcodeServerFailure)
+		return stale()
 	}
 	return proof, nil
 }

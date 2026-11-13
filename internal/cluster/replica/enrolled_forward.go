@@ -2,6 +2,7 @@ package replica
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
@@ -63,6 +64,12 @@ func (f *EnrolledForwarder) Forward(ctx context.Context, request *sqlite.MemberF
 	}
 	ctx, cancel := context.WithDeadline(ctx, command.NotAfter)
 	defer cancel()
+	dispatched := false
+	defer func() {
+		if result != nil && !dispatched {
+			result = errors.Join(ErrNotSent, result)
+		}
+	}()
 	err := f.opts.Store.WithMemberForward(ctx, f.opts.Identity.Trust(), request, func(scope context.Context, original *sqlite.MemberAcquisition) error {
 		member, term := original.Peer(), original.Term()
 		peer := Peer{MemberID: member.ID, ClusterID: term.ClusterID, Address: member.Address, Trust: member.Trust}
@@ -72,6 +79,7 @@ func (f *EnrolledForwarder) Forward(ctx context.Context, request *sqlite.MemberF
 		if err != nil {
 			return err
 		}
+		dispatched = true // from here on the exchange may have begun
 		out, err := client.Write(scope, peer, command)
 		if err != nil {
 			return err

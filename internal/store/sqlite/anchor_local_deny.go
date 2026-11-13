@@ -249,7 +249,7 @@ func (s *Store) writeAnchorDenial(c *anchorDenial, p *anchorVerifiedDenial, o *a
 	if err != nil {
 		return err
 	}
-	boundary := anchorSQL{tx: tx}
+	boundary := anchorSQL{tx: tx, ctx: c.original}
 	defer func() { boundary.finish(&result); o.sql = boundary }()
 	if err := o.enter(c.original, s, tx, c.cursor.owner.Inspect().ClusterID); err != nil {
 		return err

@@ -54,6 +54,8 @@ type primaryNetworkFixture struct {
 	pause           atomic.Bool
 	pauseNotify     atomic.Bool
 	entered, resume chan struct{}
+	// timeout replaces the client's five-second exchange timeout when set.
+	timeout time.Duration
 }
 
 func newPrimaryNetworkFixture(t *testing.T, notify ...func(*primaryRuntime) pipeline.Next) *primaryNetworkFixture {
@@ -268,7 +270,11 @@ func (f *primaryNetworkFixture) exchange(msg *dns.Msg, tcp bool) (*dns.Msg, erro
 	if tcp {
 		proto, network = dnsserver.ProtoTCP, "tcp"
 	}
-	response, _, err := (&dns.Client{Net: network, Timeout: 5 * time.Second, TsigProvider: dnsserver.TSIGProvider(f.keys)}).Exchange(msg, f.listeners.Addr(proto).String())
+	timeout := 5 * time.Second
+	if f.timeout > 0 {
+		timeout = f.timeout
+	}
+	response, _, err := (&dns.Client{Net: network, Timeout: timeout, TsigProvider: dnsserver.TSIGProvider(f.keys)}).Exchange(msg, f.listeners.Addr(proto).String())
 	return response, err
 }
 

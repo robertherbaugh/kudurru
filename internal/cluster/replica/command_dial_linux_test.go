@@ -3,6 +3,7 @@
 package replica
 
 import (
+	"context"
 	"errors"
 	"net"
 	"os"
@@ -65,8 +66,43 @@ func TestWriteWhoseDialRunsIntoTheDeadlineStaysUnknown(t *testing.T) {
 	creds := credentials(t, 1)
 	peer := Peer{MemberID: p.Authority().MemberID, ClusterID: p.Authority().Term.ClusterID, Address: address}
 	client := clientFor(t, mirror, creds, func(o *ClientOptions) { o.Timeout = 2 * time.Second })
-	_, e := client.Write(t.Context(), peer, commandFor(p, "dial-timed-out"))
-	if !errors.Is(e, ErrUnavailable) || !errors.Is(e, ErrOutcomeUnknown) {
-		t.Fatalf("dial that ran into the deadline: %v", e)
+	// The dialer's timeout and the client's are the same exchange timeout,
+	// so either timer may end the pending dial (hosted CI saw the dialer's
+	// "i/o timeout" first). A shorter caller deadline ends it through the
+	// context instead. Every way stays unknown.
+	for _, c := range []struct {
+		name    string
+		timeout time.Duration
+	}{{"exchange timeout", 0}, {"caller deadline", 500 * time.Millisecond}} {
+		ctx := t.Context()
+		if c.timeout > 0 {
+			var cancel func()
+			ctx, cancel = context.WithTimeout(ctx, c.timeout)
+			defer cancel()
+		}
+		_, e := client.Write(ctx, peer, commandFor(p, "dial-timed-out"))
+		if !errors.Is(e, ErrUnavailable) && !errors.Is(e, context.DeadlineExceeded) || !errors.Is(e, ErrOutcomeUnknown) {
+			t.Fatalf("dial that ran into the deadline (%s): %v", c.name, e)
+		}
 	}
 }
+
+// A dial that the dialer's own timer ended is reported like one the
+// exchange's deadline ended, whichever fires first; only a dial that failed
+// outright (refused, unreachable) was certainly not sent.
+func TestDialTimeoutIsNotANotSentDial(t *testing.T) {
+	timeout := errors.Join(ErrUnavailable, &net.OpError{Op: "dial", Net: "tcp", Err: timeoutError{}})
+	if notDispatched(timeout) {
+		t.Fatal("a timed-out dial was reported as not sent")
+	}
+	refused := errors.Join(ErrUnavailable, &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED})
+	if !notDispatched(refused) {
+		t.Fatal("a refused dial was not reported as not sent")
+	}
+}
+
+type timeoutError struct{}
+
+func (timeoutError) Error() string   { return "i/o timeout" }
+func (timeoutError) Timeout() bool   { return true }
+func (timeoutError) Temporary() bool { return true }
