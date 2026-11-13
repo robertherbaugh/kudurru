@@ -16,6 +16,7 @@ import (
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/ee/integration"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -451,5 +452,22 @@ func TestObjectCommandAttributesIntegrationSecrets(t *testing.T) {
 		if got := objectCommandAttributes(tc.key, resource, tc.attrs); got != tc.want {
 			t.Errorf("%s: admitted=%t, want %t", name, got, tc.want)
 		}
+	}
+}
+
+// The credential names a refusal may repeat (internal/api) are exactly the
+// names the providers of this build read (D384).
+func TestIntegrationCredentialNamesMatchProviders(t *testing.T) {
+	var names []string
+	for _, m := range integration.Types() {
+		for _, k := range m.SecretKeys {
+			if !slices.Contains(names, k.Path) {
+				names = append(names, k.Path)
+			}
+		}
+	}
+	slices.Sort(names)
+	if got := api.IntegrationCredentialNames(); !slices.Equal(got, names) {
+		t.Fatalf("api names %v, providers read %v", got, names)
 	}
 }

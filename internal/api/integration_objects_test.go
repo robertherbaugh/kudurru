@@ -165,6 +165,34 @@ func runIntegrationObjectWrites(t *testing.T, h *harness) {
 			t.Fatalf("apply of %q: %s", v, r.Body.String())
 		}
 	}
+	// A secret pasted as a map key is not repeated either, at the
+	// credential name or inside a reference (D384); a known credential name
+	// is still named.
+	for _, credentials := range []map[string]any{
+		{"pasted-key-secret-0123456789!": map[string]any{"value": "X"}},
+		{"apiToken": map[string]any{"unk-field-secret-0123456\n": "X"}},
+		{"apiToken": map[string]any{"env": "CF_API_TOKEN", "pasted-key-secret-0123456789": "X"}},
+	} {
+		var pasted string
+		for k, v := range credentials {
+			pasted = k
+			if k == "apiToken" {
+				for inner := range v.(map[string]any) {
+					if inner != "env" {
+						pasted = inner
+					}
+				}
+			}
+		}
+		doc := integrationDoc("edge", credentials, false)
+		r := h.do(http.MethodPut, path, "admin", doc).want(http.StatusBadRequest)
+		assertNoEcho(t, r.Body.String(), pasted)
+		if r.errKey() != KeyInvalid {
+			t.Fatalf("refusal of a pasted key: %s", r.Body.String())
+		}
+		r = h.do(http.MethodPost, "/api/v1/apply", "admin", []any{doc}, "Content-Type", "application/json").want(http.StatusOK)
+		assertNoEcho(t, r.Body.String(), pasted)
+	}
 	if integrationExists(t, h, key) {
 		t.Fatal("an invalid document stored the Integration")
 	}
