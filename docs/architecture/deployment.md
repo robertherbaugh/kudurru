@@ -222,8 +222,9 @@ completion cannot retain it. Unknown acknowledgment retires only the captured
 child. `/status` distinguishes configured and installed bypass and exposes the
 retained deployment identity separately. The durable file alone never proves
 that a child is running or that either cache was detached. These local
-observations are not backend activation grants: edge-backed managed activation
-is still disabled pending the coordinator's original, exact edge admission.
+observations are not backend activation grants: an edge-backed managed backend
+activates only through its own startup admission, which authenticates every
+declared edge's installed bypass and exact membership (D319).
 The separate `upstreams.recursion.managedTopology: direct` host declaration
 permits only standalone SQLite listeners with no caching proxy or configured
 PROXYv2 ingress; it must never be used for a backend behind these edges.
@@ -249,8 +250,8 @@ credentials; it is independent of dnsdist's configurable `serverID`.
 
 This endpoint exposes an authenticated observation, not a backend activation
 permit. It cannot prove an exhaustive deployment topology or replace the
-backend's original local policy/writer/publication admission. The remaining
-activation coordinator must check those boundaries; it is still unmounted.
+backend's original local policy/writer/publication admission; the backend's
+startup admission checks those boundaries itself (D319).
 
 The private root fleet collector validates every explicit peer requirement before
 contacting any edge. It captures one detached nonempty fleet and a finite original

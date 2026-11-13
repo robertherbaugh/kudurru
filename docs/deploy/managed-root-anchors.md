@@ -133,11 +133,13 @@ node stays unready and answers SERVFAIL. The log line is
 `root anchor updater stopped for this writer term`. Fix the configuration,
 then restart: each start makes one new attempt.
 
-**Hold-down and restarts.** A new root key becomes trusted after 30 days of
-hold-down (or the DNSKEY TTL, if longer), plus one more authenticated poll
-after that. Only time measured inside one process counts: the node checkpoints
-its progress at every committed poll, and a restart or failover loses the
-time since the last checkpoint. It never loses the time already committed.
+**Hold-down and restarts.** A new root key becomes trusted at the first
+authenticated poll strictly after 30 days of accrued hold-down (or the DNSKEY
+TTL, if longer). No extra poll is needed beyond that one, but a poll that
+lands exactly on the 30-day mark waits for the next. Only time measured
+inside one process counts: the node checkpoints its progress at every
+committed poll, and a restart or failover loses the time since the last
+checkpoint. It never loses the time already committed.
 Polls are as frequent as RFC 5011 section 2.3 allows: half the DNSKEY TTL,
 at least one hour. At the real root (TTL two days) that is daily. A node
 that restarts more often than once a day therefore accrues no hold-down
