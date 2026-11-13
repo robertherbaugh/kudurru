@@ -150,7 +150,11 @@ func (b *Builder) claim(source string, ep *v1alpha1.Endpoint) {
 	if err != nil {
 		return
 	}
-	id := identity{key, t, ep.SetIdentifier, GroupView(ep)}
+	id := identity{key, t, ep.SetIdentifier}
+	if view := GroupView(ep); view != "" {
+		b.claimView(viewIdentity{id, view}, source)
+		return
+	}
 	if _, ok := b.owners[id]; !ok {
 		b.owners[id] = source
 	}

@@ -252,8 +252,8 @@ func (b *Builder) addView(namespace, source string, path *field.Path, ep *v1alph
 	if key == b.z.key && rrtype == dns.TypeCNAME {
 		return field.ErrorList{field.Invalid(dnsName, ep.DNSName, "a CNAME cannot be at the zone apex (RFC 1912 §2.4)")}
 	}
-	id := identity{key, rrtype, ep.SetIdentifier, view}
-	if prev, ok := b.owners[id]; ok && prev != source && !b.merge {
+	id := viewIdentity{identity{key, rrtype, ep.SetIdentifier}, view}
+	if prev, ok := b.viewOwners[id]; ok && prev != source && !b.merge {
 		return field.ErrorList{&field.Error{
 			Type:     field.ErrorTypeDuplicate,
 			Field:    dnsName.String(),
@@ -282,9 +282,7 @@ func (b *Builder) addView(namespace, source string, path *field.Path, ep *v1alph
 			return field.ErrorList{field.Invalid(dnsName, ep.DNSName, fmt.Sprintf("%s: the name already has a CNAME in view %s; no other records may exist there (RFC 1034 §3.6.2)", v1alpha1.ReasonInvalid, view))}
 		}
 	}
-	if _, ok := b.owners[id]; !ok {
-		b.owners[id] = source
-	}
+	b.claimView(id, source)
 	if n == nil {
 		n = p.name(key, owner)
 	}
@@ -309,6 +307,16 @@ func (b *Builder) addView(namespace, source string, path *field.Path, ep *v1alph
 		}
 	}
 	return nil
+}
+
+// claimView records the first source of a view identity.
+func (b *Builder) claimView(id viewIdentity, source string) {
+	if b.viewOwners == nil {
+		b.viewOwners = map[viewIdentity]string{}
+	}
+	if _, ok := b.viewOwners[id]; !ok {
+		b.viewOwners[id] = source
+	}
 }
 
 // finishViews builds the variants of the finished default zone b.z from

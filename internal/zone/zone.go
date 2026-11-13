@@ -311,23 +311,29 @@ type Builder struct {
 	// views holds the client-group view data by group ID until Build
 	// (view.go, D403); viewErrs and viewServed are Build's outcome.
 	views      map[string]*pendingView
+	viewOwners map[viewIdentity]string
 	viewErrs   map[string]field.ErrorList
 	viewServed map[string]bool
 }
 
 // identity is the duplicate-detection key of an endpoint within a zone:
-// owner, type, the external-dns set identifier and the client-group view
-// (empty for default and publish-only endpoints). Endpoints with
+// owner, type and the external-dns set identifier. Endpoints with
 // different set identifiers are distinct (kudurru has no routing policies,
 // so their records are served as one RRset); the same identity from a
-// later source is Duplicated. A view endpoint and a default endpoint of
-// one name and type are distinct: the view's RRset replaces the default
-// one for the group (D403).
+// later source is Duplicated. Client-group view endpoints have their own
+// identities (viewIdentity), distinct from the default endpoint of one
+// name and type: the view's RRset replaces the default one for the group
+// (D403).
 type identity struct {
 	key   string
 	t     uint16
 	setID string
-	view  string
+}
+
+// viewIdentity is the identity of an endpoint in a client-group view.
+type viewIdentity struct {
+	identity
+	view string
 }
 
 // NewBuilder validates the DNSZone and returns a Builder for its records.
@@ -572,7 +578,7 @@ func (b *Builder) addParsed(source string, path *field.Path, ep *v1alpha1.Endpoi
 			return field.ErrorList{field.Invalid(dnsName, ep.DNSName, "a CNAME cannot be at the zone apex (RFC 1912 §2.4)")}
 		}
 	}
-	id := identity{key, rrtype, ep.SetIdentifier, ""}
+	id := identity{key, rrtype, ep.SetIdentifier}
 	if prev, ok := b.owners[id]; ok && prev != source && !b.merge {
 		return field.ErrorList{&field.Error{
 			Type:     field.ErrorTypeDuplicate,
