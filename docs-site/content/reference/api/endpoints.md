@@ -253,7 +253,7 @@ them from its own copy.
 | Method | Path | Summary | Permission | On a follower |
 |---|---|---|---|---|
 | GET | `/api/v1/queries` | Query log page (keyset cursor, newest first) | `querylog.read` (cluster) | - |
-| GET | `/api/v1/queries/export` | Download one filtered query-log page as JSON (up to 1000 rows) | `querylog.read` (cluster) | - |
+| GET | `/api/v1/queries/export` | Download one filtered query-log page as JSON (up to 1000 rows) | `querylog.export` (cluster) | - |
 | GET | `/api/v1/queries/stream` | Live query tail (Server-Sent Events) | `querylog.read` (cluster) | - |
 | GET | `/api/v1/queries/suggestions` | Filter value suggestions | `querylog.read` (cluster) | - |
 | POST | `/api/v1/queries/{id}/actions` | Allow or deny the domain of a logged query | `blocklists.write` (cluster) | refused |

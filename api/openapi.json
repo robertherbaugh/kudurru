@@ -30723,7 +30723,7 @@
         "x-kudurru-permission": {
           "resource": "querylog",
           "scope": "cluster",
-          "verb": "read"
+          "verb": "export"
         }
       }
     },
