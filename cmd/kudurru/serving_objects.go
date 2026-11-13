@@ -29,6 +29,10 @@ func (s *servingRuntime) ObjectCommand(ctx context.Context, key store.Key, fn fu
 	if err != nil {
 		return currentCommandAPIError(err)
 	}
+	if api.RecapturableCommand(ctx) {
+		// A whole-object write without If-Match (D399).
+		ctx = servinghttp.WithRecapture(ctx)
+	}
 	err = s.currentAuthCommand(ctx, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 		var active, attempted, authorized, poisoned atomic.Bool
 		active.Store(true)

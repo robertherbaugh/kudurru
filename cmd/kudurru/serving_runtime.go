@@ -154,6 +154,10 @@ type servingRuntime struct {
 	// image, before it checks that image is still current; tests only. Nil
 	// does nothing.
 	anchorCaptureRead func()
+
+	// commandHooks observe current commands' dispatch attempts and
+	// pre-dispatch recaptures (D399); tests only. Nil runs none.
+	commandHooks atomic.Pointer[commandHooks]
 }
 
 func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *servingRuntime, err error) {

@@ -203,6 +203,122 @@ privileged deletion explicitly resets it. The D309 policy and document bounds
 apply. This budget does not provide a cross-object session transaction or shared
 TOTP replay prevention. Public CLI preparation uses the complete SQLite path.
 
+## Commands superseded before dispatch (D399)
+
+Every HTTP request captures one complete publication before it
+authenticates, and a command is held to it (D199): the command's first
+check, and the same check again in its transaction before its body runs,
+require that publication to still be the current one in the request's
+elected writer incarnation (`servinghttp.CheckWriter`, D208). The node's own
+work commits on its own schedule (zone status and lifecycle writes,
+admission, the anchor updater, signed UPDATEs), and each such commit retires
+the publication of every request that is in flight.
+
+Most commands keep that refusal: they carry something derived from their
+first capture into their transaction, and a newer publication must not
+silently repair it. A small set of commands carries nothing of the kind, and
+only those opt in (`servinghttp.WithRecapture`). When such a command is
+refused before its transaction body began it has dispatched nothing, so it
+captures the current publication again and is dispatched once on it
+(`recaptureCommand` in the root, `servinghttp.Recapture`):
+
+```mermaid
+flowchart TD
+  CAP["request captures publication P1,<br/>authenticates on P1"] --> CHK{"command check:<br/>P1 still current?"}
+  CHK -- "yes" --> BODY["transaction body runs<br/>(dispatched once)"]
+  CHK -- "no: another commit<br/>published P2" --> MARK{"command marked<br/>WithRecapture, single item?"}
+  MARK -- "no" --> NOW["503 unavailable at once,<br/>nothing applied (D199, D208)"]
+  MARK -- "yes" --> WAIT{"within 5 s and the<br/>request deadline?"}
+  WAIT -- "no" --> R503["503 unavailable,<br/>Retry-After: 1, nothing applied"]
+  WAIT -- "yes" --> NEW["capture P2"]
+  NEW --> SAME{"no earlier command of the request dispatched,<br/>P2's authority = P1's but its revision,<br/>same auth dependencies, controls and settings,<br/>same credential, principal, session and roles on P2?"}
+  SAME -- "no" --> R503
+  SAME -- "yes" --> CHK
+  BODY --> FINAL["any refusal from here on is final:<br/>never repeated"]
+```
+
+Captured again (marked):
+
+- a local password sign-in (`POST /auth/login`): it proves its password in
+  the transaction; the only thing it read from its first capture is the
+  settings (local sign-in enabled), which a recapture requires unchanged;
+- a sign-out (`POST /auth/logout`): it verifies its credential again in the
+  transaction and revokes only its own session;
+- a whole-object write without `If-Match` (`PUT` or `POST` of one object
+  under `/objects`, `api.RecapturableCommand`): the request is the whole
+  document, and the command reads, authorizes and admits the stored object
+  in its own transaction.
+
+Never captured again (unmarked), each with the test that states it:
+
+- a write with `If-Match`, an object delete, and a source entries edit, which
+  is bound to the incarnation its request saw
+  (`TestServingSourceCommandRetainsOriginalRequest`);
+- every item of a multi-item request (`POST /apply`, batch deletes), the
+  first one too: the request's chain (D378) is bound to its first capture
+  (`TestServingItemsFirstItemKeepsTheOriginalSource`);
+- domain-list commands, which run a reviewed plan prepared for the captured
+  publication (`TestServingDomainCommandRetainsOriginalLeaseAndPlan`);
+- cache invalidation, bound to the captured keyring and invalidation
+  generation (`TestServingCacheCommandRefusesOriginalAuthorityLoss`);
+- node-local settings (`TestServingNodeCommandActualRefusesStaleAuthorityAndFinalExpiry`);
+- import adoption and migration steps, bound to the reviewed selection and
+  their own cut (`TestServingAdoptionActualHTTPOriginalWriterProofAndLease`;
+  a later migration step recaptures only its cut, as before);
+- cluster settings and control changes, which merge into the captured
+  settings (`TestRunServeSQLiteControlSettingsRestart`);
+- cluster activation, `join-token` and promotion, bound to a reviewed
+  source; OIDC callbacks and browser sign-out, bound to captured provider
+  evidence; TSIG keys, factors, tokens, users, role bindings, IAM writers,
+  blocking, notify and every integration operation (whose first no-op holds
+  the integration host's lease barrier and runtime lock).
+
+Rules of the recapture itself:
+
+- The wait is bounded by five seconds (the same bound as a later import
+  step's wait for its cut) or the request's deadline, whichever ends first.
+  When it ends the answer is the same effect-free `503 unavailable`, now with
+  `Retry-After: 1` on the object routes. Only a refusal returned before any
+  transaction body of the request began carries that header there; a refusal
+  from inside a body, at commit or after it does not, and neither does the
+  refusal of a later command of a request one of whose commands already
+  dispatched (D405). The authentication routes answer every `503` with
+  `Retry-After` (`auth.WriteError`), so there the header says nothing about
+  what ran.
+- Only a request none of whose commands has dispatched yet captures again
+  (`servinghttp.MarkDispatched`): after its own first commit a request is
+  held to its publication exactly as before.
+- The new publication must carry the original authority, advanced only in
+  its installed revision: a fence, a term or incarnation change, a mode
+  change, a conflict or divergence refuses. Its auth view must have the same
+  dependency identity (license, permissions, role bindings, session and
+  factor keys, providers, auth controls such as the cookie policy) and the
+  same cluster settings object. The original raw credential must verify on
+  the new publication's auth view as the same principal, with the same
+  session (ID, CSRF secret, issue and absolute expiry; the idle expiry may
+  advance) and the same effective roles. A sign-in carries no prior
+  credential and proves its password in the transaction, as before.
+- The transaction then repeats its own authorization and every source
+  check against the new capture. A refusal from inside the transaction
+  body, a refusal at commit and an uncertain outcome are never repeated.
+- The request keeps every lease it held until it ends.
+- This covers a request that was read. A request that arrives while the
+  node has not published its newest commit is still refused at capture,
+  before it is read, with `503 generation_pending` (the middleware's
+  two-second capture wait). D405 shortened that window: a `Wake` no longer
+  cancels the preparation in progress, and a zone content commit deletes the
+  chunks no head references. A preparation that outlasts the capture wait
+  (one to three seconds under the race detector on a loaded machine) still
+  refuses requests at capture; that limit stays open.
+- A follower's early admission and its forwarded commands stay bound to the
+  follower's captured publication. The primary's entry for forwarded
+  commands is bound to the member request's authority, not to a
+  publication, so the primary's own commits do not refuse it.
+- A signed RFC 2136 UPDATE is not recaptured: its publication is the DNS
+  transport's capture, whose keyring verified the signature and whose output
+  signs the answer. Its pre-dispatch refusal stays an effect-free SERVFAIL
+  (`Handler.resolve`), and the withheld acknowledgment (D313) is unchanged.
+
 ## Browser response completion (D306)
 
 Browser start, callback and local logout retain their original complete HTTP

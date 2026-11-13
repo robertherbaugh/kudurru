@@ -44,10 +44,16 @@ func (s *servingRuntime) currentAuthCommandOutput(ctx context.Context, request *
 		}
 		return servinghttp.CheckWriter(ctx, s.publisher, target)
 	}
+	// An output command (join-token) is never captured again (D399): its
+	// reviewed source digest was compared outside its transaction.
+	if hooks := s.commandHooks.Load(); hooks != nil && hooks.beforeCheck != nil {
+		hooks.beforeCheck(ctx)
+	}
 	if err := check(ctx); err != nil {
 		return false, err
 	}
 	committed, err := s.providers.WithCommandOutput(ctx, target, request, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
+		s.dispatchHook(ctx)
 		if err := check(ctx); err != nil {
 			return err
 		}
