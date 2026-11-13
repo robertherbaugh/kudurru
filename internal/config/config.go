@@ -308,9 +308,12 @@ type CacheServeStale struct {
 type UpstreamGroup struct {
 	// Mode is forward (the default: ask Servers) or recursive (resolve
 	// from the root servers with the built-in resolver; no Servers).
-	Mode     string   `koanf:"mode" json:"mode,omitempty"`
-	Servers  []string `koanf:"servers" json:"servers"`
-	Strategy string   `koanf:"strategy" json:"strategy"`
+	Mode    string   `koanf:"mode" json:"mode,omitempty"`
+	Servers []string `koanf:"servers" json:"servers"`
+	// Strategy is forward mode only. A recursive group leaves it empty and
+	// omits it, so the settings it seeds pass the Kudurru CRD's enum (the
+	// dashboard sends no strategy for a recursive group either).
+	Strategy string   `koanf:"strategy" json:"strategy,omitempty"`
 	Timeout  Duration `koanf:"timeout" json:"timeout"`
 	// TracePropagation sends a sampled trace's TRACEPARENT EDNS option to
 	// this group's servers (D382). Forward mode only.
