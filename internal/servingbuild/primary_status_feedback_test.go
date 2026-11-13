@@ -155,8 +155,12 @@ func (h *primaryFeedbackFixture) observe(name string, wantAvailable bool) (pr.Pr
 	z := object.(*public.DNSZone)
 	admitted := owner.Primary().Admitted(z.Spec.ZoneName, h.now())
 	route := owner.Zones().Zones(h.now()).Match(z.Spec.ZoneName)
-	if admitted != wantAvailable || route == nil || route.Name() != z.Spec.ZoneName || route.RoutingAvailableAt(h.now()) != wantAvailable {
-		h.t.Fatalf("unexpected admission/route for %s: admitted=%t want=%t", name, admitted, wantAvailable)
+	// DNS routing follows Serves, which also keeps the same zone answering
+	// its committed head while a new configuration is pending (D395); it is
+	// never narrower than admission.
+	serves := owner.Primary().Serves(z.Spec.ZoneName, h.now())
+	if admitted != wantAvailable || (admitted && !serves) || route == nil || route.Name() != z.Spec.ZoneName || route.RoutingAvailableAt(h.now()) != serves {
+		h.t.Fatalf("unexpected admission/route for %s: admitted=%t serves=%t want=%t", name, admitted, serves, wantAvailable)
 	}
 	h.t.Logf("%s publicRV=%s sourceRV=%s lifecycle=%d head=%d config=%t admitted=%t", name, z.ResourceVersion, o.Source.ResourceVersion, o.Member.Sequence, o.Member.Version.CommitSequence, o.ConfigMatchesDesired, admitted)
 	return o, z

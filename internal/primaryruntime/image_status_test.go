@@ -251,18 +251,24 @@ func TestImageStatusActualSourceAdvancedOldHeadAdmissionWindow(t *testing.T) {
 			p, finish := imageHoldReconcile(t, h, l.Spec.Zone)
 			o, ok := p.CommittedPrimaryStatus(z.Name)
 			now := time.Now()
-			admitted := p.Admitted(l.Spec.Zone.Apex, now)
-			coverage := p.Cut(now).Match("x.example.")
-			t.Logf("source-advanced gap: admitted=%t configMatches=%t lifecycleRV=%s committedSourceRV=%s headRV=%s headSequence=%d", admitted, o.ConfigMatchesDesired, o.Source.ResourceVersion, o.CommittedSource.ResourceVersion, o.HeadResourceVersion, o.Member.Version.CommitSequence)
+			admitted, serves := p.Admitted(l.Spec.Zone.Apex, now), p.Serves(l.Spec.Zone.Apex, now)
+			retained := p.Cut(now).Match("x.example.")
+			t.Logf("source-advanced gap: admitted=%t serves=%t configMatches=%t lifecycleRV=%s committedSourceRV=%s headRV=%s headSequence=%d", admitted, serves, o.ConfigMatchesDesired, o.Source.ResourceVersion, o.CommittedSource.ResourceVersion, o.HeadResourceVersion, o.Member.Version.CommitSequence)
 			finish()
 			if !ok || admitted || o.ConfigMatchesDesired || o.Source.ResourceVersion != token.ResourceVersion || o.Source.IntentDigest != token.IntentDigest || o.Member.Version != version(old) || o.HeadResourceVersion != old.Head.ResourceVersion || p.Versions()[l.Spec.Zone.Apex] != version(old) {
-				t.Fatal("source-new/head-old gap invented serving or changed durable evidence", o, admitted)
+				t.Fatal("source-new/head-old gap invented admission or changed durable evidence", o, admitted)
 			}
-			if coverage == nil || coverage.Name() != "example." || coverage.AvailableAt(now) || coverage.SOA() != nil {
-				t.Fatal("old head leaked through config gap coverage")
+			// DNS keeps answering the old committed head in the gap (D395),
+			// under the current query access, and refuses transfers of it.
+			heldModel := held.Cut(now).Match("x.example.")
+			if !serves || retained == nil || retained.Name() != "example." || !retained.AvailableAt(now) || retained.SOA() == nil || retained.Serial() != heldModel.Serial() || retained.ContentHash() != heldModel.ContentHash() {
+				t.Fatal("the config gap did not keep answering the old committed head", serves, retained)
 			}
-			if tc.name == "query-policy" && (coverage.QueryAllowed(netip.MustParseAddr("198.51.100.1")) || !coverage.QueryAllowed(netip.MustParseAddr("192.0.2.1"))) {
-				t.Fatal("coverage used stale desired ACL")
+			if retained.TransferAllowed(netip.MustParseAddr("192.0.2.1"), "") || retained.TransferAllowed(netip.MustParseAddr("127.0.0.1"), "") {
+				t.Fatal("the config gap allowed a transfer of the old head")
+			}
+			if tc.name == "query-policy" && (retained.QueryAllowed(netip.MustParseAddr("198.51.100.1")) || !retained.QueryAllowed(netip.MustParseAddr("192.0.2.1"))) {
+				t.Fatal("the retained head used the stale query ACL")
 			}
 			if (o.CommittedSource.IntentDigest == token.IntentDigest) != tc.statusOnly || o.CommittedSource.ResourceVersion == token.ResourceVersion {
 				t.Fatal("old receipt was relabeled", o.CommittedSource, token)

@@ -670,6 +670,22 @@ configuration identity. Binding uses the credential recorded with the acquired
 durable copy, not the scheduler's later credential. Matching restored key bytes
 may reuse an unexpired copy; this is not a fresh-acquisition guarantee.
 
+A write of a zone's own `DNSZone` (a query ACL, name servers, a selector) keeps
+the zone answering (D395). Until the driver has refreshed the zone's lifecycle
+receipt and, for a primary, committed a head of the new configuration,
+`PreparedImage.Serves` keeps the same zone (same name, UID, apex and type, a
+source that is not removed, an active lifecycle and head) in DNS routing: a
+primary answers its last committed head under the query access mode and ACL
+of the new configuration (`zone.RetainCommittedPrimary`), with zone transfers
+refused, and a nonprimary answers its new configuration, from which its model
+is always built. Before D395 every publication in that gap served
+committed-unavailable coverage, so the zone answered SERVFAIL for up to about
+0.3 s after each such write. `PreparedImage.Admitted` stays strict for that
+gap, so UPDATE, NOTIFY, status projection, publication acknowledgment and
+integrations wait for the driver; a deleted, replaced or retyped zone, a head
+that is not active and expiry still serve coverage. A child's own write no
+longer unbinds its parent either.
+
 Nonprimary replacements use persisted lifecycle admission, current source and
 parent witnesses. A source name with an old lifecycle cannot bypass coordination
 by being recreated with a new UID or apex. Admission has a precomputed earliest
@@ -721,8 +737,9 @@ original writer, verified key, dependency installations and pre-command output
 attempt. The command's own data-generation advance does not invalidate this
 receipt. Ordinary answers are bound to the publication that is served (D378):
 a commit that is not published yet does not withhold them, a published
-successor does. API writes do not wait for publication, so right after an
-acknowledged write DNS answers the previous data (`NXDOMAIN` for a new name)
+successor does, one second after the swap for a query that was already in
+flight on the old publication (D395). API writes do not wait for
+publication, so right after an acknowledged write DNS answers the previous data (`NXDOMAIN` for a new name)
 until the node publishes, and for as long as it cannot publish, deleted
 records and zones included; readiness then reports `prepare_failed` and the
 log says `complete serving generation not published`. Response replacement,

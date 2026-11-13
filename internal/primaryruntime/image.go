@@ -44,6 +44,10 @@ type PreparedImage struct {
 	durable            map[zk.ZoneID]*entry
 	sourceCurrent      map[zk.ZoneID]bool
 	status             map[string]PrimaryStatusObservation
+	// retained marks apices that serve while their lifecycle or head does
+	// not yet carry the DNSZone's current intent (imageSameZone, D395):
+	// Serves admits them for DNS, Admitted does not.
+	retained map[string]bool
 }
 
 // Base identifies the complete image from which all members and heads came.
@@ -69,6 +73,18 @@ func (p *PreparedImage) Cut(now time.Time) Cut {
 // Missing members and desired-only placeholders are never admitted. Other
 // owners still check their own node-local secondary/stub/RPZ deadlines.
 func (p *PreparedImage) Admitted(apex string, now time.Time) bool {
+	return p.Serves(apex, now) && !p.retained[canonical(apex)]
+}
+
+// Serves reports whether DNS answers the zone at apex from this image: the
+// Admitted predicate, and also a zone whose DNSZone intent changed while its
+// lifecycle and head still carry the previous one (D395). Such a primary
+// answers its last committed head under the current query access
+// (zone.RetainCommittedPrimary); a nonprimary answers its current
+// configuration, from which its model is always built. Everything that acts
+// for the zone (UPDATE, NOTIFY, status projection, publication
+// acknowledgment, integrations) keeps Admitted and waits for the driver.
+func (p *PreparedImage) Serves(apex string, now time.Time) bool {
 	if p == nil || now.IsZero() {
 		return false
 	}
@@ -165,6 +181,7 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 	durable := make(map[zk.ZoneID]*entry, len(roster.ledgers))
 	sourceCurrent := make(map[zk.ZoneID]bool, len(roster.ledgers))
 	status := make(map[string]PrimaryStatusObservation, len(roster.ledgers))
+	retained := make(map[string]bool)
 	for _, l := range roster.ledgers {
 		coordinated[l.Spec.Zone.ObjectName] = true
 		if err := ctx.Err(); err != nil {
@@ -193,7 +210,16 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 		current[l.Spec.Zone.Apex] = imageCurrentSource(l, z)
 		sourceCurrent[l.Spec.Zone] = current[l.Spec.Zone.Apex]
 		if l.Spec.Type != public.ZoneTypePrimary {
-			continue // Other owners supply nonprimary data, never this builder.
+			// Other owners supply nonprimary data, never this builder, and
+			// they build it from the current DNSZone. A source refresh of
+			// the same zone (a status write or a new configuration) only
+			// realigns the receipt; the zone keeps serving across it
+			// (D395). SourceMatchesDesired stays exact.
+			if !current[l.Spec.Zone.Apex] && imageSameZone(l, z) {
+				current[l.Spec.Zone.Apex] = true
+				retained[l.Spec.Zone.Apex] = true
+			}
+			continue
 		}
 		// Lifecycle source CAS precedes head compilation. Only a head with the
 		// current frozen zone config/receipt can grant serving readiness.
@@ -210,6 +236,9 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 		// check still compares the exact token (see imageServingSource).
 		current[l.Spec.Zone.Apex] = imageServingSource(l, z, matches) && matches
 		if !current[l.Spec.Zone.Apex] {
+			// head is the model of the committed head when buildWithStatus
+			// found it active, otherwise the head's own coverage.
+			head, headCoverage := e.model, e.coverage
 			e.model = e.coverage
 			if z != nil && z.Spec.Type == public.ZoneTypePrimary && canonical(z.Spec.ZoneName) == l.Spec.Zone.Apex {
 				// Source replacement uses CURRENT query ACLs for no-data coverage.
@@ -218,6 +247,19 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 					return nil, err
 				}
 				e.model = e.coverage
+				// The same zone with a new configuration keeps answering
+				// its last committed head until the driver commits the
+				// new one (D395), under the CURRENT query access and with
+				// transfers refused. A head that is not active, an
+				// expired head (Cut.Match) and a replaced or removed
+				// source still get the coverage.
+				if imageSameZone(l, z) && l.Spec.Phase == zk.PhaseActive && view != nil && head != nil && head != headCoverage {
+					if e.model, err = zone.RetainCommittedPrimary(head, e.coverage); err != nil {
+						return nil, err
+					}
+					current[l.Spec.Zone.Apex] = true
+					retained[l.Spec.Zone.Apex] = true
+				}
 			}
 		}
 		if imageRemovalComplete(l, z) {
@@ -280,7 +322,7 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 			}
 			childEntry := entries[apex]
 			bound := false
-			if childEntry != nil && childEntry.lifecycle != nil && imageServingSource(childEntry.lifecycle, child, status[childEntry.lifecycle.Spec.Zone.ObjectName].ConfigMatchesDesired) && phaseOrder(childEntry.member.Phase) <= phaseOrder(zk.PhaseActive) {
+			if childEntry != nil && childEntry.lifecycle != nil && (imageServingSource(childEntry.lifecycle, child, status[childEntry.lifecycle.Spec.Zone.ObjectName].ConfigMatchesDesired) || imageSameZone(childEntry.lifecycle, child)) && phaseOrder(childEntry.member.Phase) <= phaseOrder(zk.PhaseActive) {
 				for _, p := range childEntry.member.Parents {
 					if p.Zone == parent.member.Version.Zone && p.Incarnation == parent.member.Incarnation && p.CommitSequence != 0 && !p.Released && parent.member.Version.CommitSequence >= p.CommitSequence && (parent.member.Version.CommitSequence != p.CommitSequence || parent.member.Version.RootDigest == p.RootDigest) && hasFence(parent.view, apex) {
 						bound = true
@@ -319,7 +361,7 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 		return nil, err
 	}
 	imageStatusDeadlines(status)
-	return &PreparedImage{base: base, cut: c, versions: versions, desired: desired, admissionDeadlines: deadlines, coordinated: coordinated, durable: durable, sourceCurrent: sourceCurrent, status: status}, nil
+	return &PreparedImage{base: base, cut: c, versions: versions, desired: desired, admissionDeadlines: deadlines, coordinated: coordinated, durable: durable, sourceCurrent: sourceCurrent, status: status, retained: retained}, nil
 }
 
 func imageAncestors(apex string) []string {
@@ -362,6 +404,18 @@ func imageServingSource(l *zk.ZoneLifecycle, z *public.DNSZone, configMatches bo
 	}
 	token, err := primaryzone.SourceToken(z)
 	return err == nil && token.UID == l.Spec.Source.UID && token.IntentDigest == l.Spec.Source.IntentDigest
+}
+
+// imageSameZone reports whether lifecycle l is still the lifecycle of desired
+// z, whatever z's resourceVersion and intent: the same UID, apex and type,
+// and a source that is not removed. The driver then refreshes l in place (a
+// nonprimary receipt, or a primary Reconcile that commits a head of the new
+// configuration) instead of retiring it, so the zone may keep serving across
+// that refresh (D395). A type, apex or UID change, or a deleted DNSZone,
+// retires the lifecycle and gets coverage.
+func imageSameZone(l *zk.ZoneLifecycle, z *public.DNSZone) bool {
+	return z != nil && !l.Spec.Source.Removed && string(z.UID) == l.Spec.Zone.UID && l.Spec.Source.UID == string(z.UID) &&
+		canonical(z.Spec.ZoneName) == l.Spec.Zone.Apex && z.Spec.Type == l.Spec.Type && z.Name == l.Spec.Zone.ObjectName
 }
 
 func imageCoverageConfig(l *zk.ZoneLifecycle, z *public.DNSZone) *public.DNSZone {

@@ -2,6 +2,7 @@ package zone
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/miekg/dns"
@@ -140,6 +141,31 @@ func committedBuilder(config *v1alpha1.DNSZone) (*Builder, error) {
 	}
 	b.z.committed = true
 	return b, nil
+}
+
+// RetainCommittedPrimary serves the data of committed, a primary built from
+// its last committed head, while the zone's DNSZone has a new configuration
+// whose head the node has not committed yet (D395). Queries are admitted by
+// the query access mode and ACL of current, the committed-unavailable
+// coverage of that new configuration, so a tightened query ACL applies from
+// the first publication after the write, as the coverage did before. The
+// zone name server addresses those modes may name are the current
+// configuration's (status.nameserverAddresses) and those of the committed
+// apex NS records, exactly what a head of the new configuration over the
+// same data would compile. Zone transfers are refused: a transfer carries a
+// head of the new configuration or nothing.
+// committed is not modified; the result shares its immutable data.
+func RetainCommittedPrimary(committed, current *Zone) (*Zone, error) {
+	if committed == nil || current == nil || !committed.committed || committed.committedUnavailable || committed.typ != v1alpha1.ZoneTypePrimary ||
+		!current.committed || current.typ != v1alpha1.ZoneTypePrimary || current.name != committed.name {
+		return nil, fmt.Errorf("committed primary and its current coverage required")
+	}
+	z := *committed
+	nsAddrs := append(slices.Clone(current.access.nsAddrs), committed.nameserverAddrs()...)
+	z.access = accessPolicy{mode: current.access.mode, acl: current.access.acl, nsAddrs: nsAddrs}
+	z.transfer = accessPolicy{mode: v1alpha1.AccessDeny}
+	z.transferKeys = nil
+	return &z, nil
 }
 
 // BuildCommittedFailureCoverage copies the frozen query ACL and primary

@@ -36,7 +36,7 @@ func (c composed) Match(name string) *zone.Zone {
 	if other == nil {
 		return nil
 	}
-	if c.coordinated[other.Name()] && !c.prepared.Admitted(other.Name(), c.now) {
+	if c.coordinated[other.Name()] && !c.prepared.Serves(other.Name(), c.now) {
 		return c.coverage[other.Name()]
 	}
 	var runtime *zone.Zone

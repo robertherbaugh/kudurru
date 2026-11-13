@@ -316,7 +316,11 @@ func TestActualNonprimarySourceMutationMissingWitnessAndPreparing(t *testing.T) 
 	if mutated.Primary.Admitted("child.example.", f.now) {
 		t.Fatal("stale same-UID source token admitted")
 	}
-	unavailable(t, mustPrepare(t, mutated), "child.example.", f.now)
+	// The same zone with a new configuration keeps serving, from its
+	// current configuration, until the driver refreshes its receipt (D395).
+	if !mutated.Primary.Serves("child.example.", f.now) || mustPrepare(t, mutated).Zones(f.now).Match("x.child.example.").UpstreamGroup() != "new" {
+		t.Fatal("a same-zone source refresh stopped serving the forward zone")
+	}
 	if p.Zones(f.now).Match("x.child.example.").UpstreamGroup() != "corp" {
 		t.Fatal("held old cut changed")
 	}

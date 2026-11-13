@@ -315,9 +315,11 @@ func TestPrimaryPublicationStopsWaitingForChangedDesiredSource(t *testing.T) {
 				t.Fatalf("obsolete source blocked reconciliation: %v", err)
 			}
 			// A status-only RV change keeps answering from the same committed
-			// head (CORE-STATUS-WRITE-SERVFAIL); every other change does not.
+			// head (CORE-STATUS-WRITE-SERVFAIL), and so does a new
+			// configuration of the same zone until its head is committed
+			// (D395); a deleted or replaced zone does not.
 			want := dns.RcodeServerFailure
-			if change == "status" {
+			if change == "status" || change == "nameservers" {
 				want = dns.RcodeSuccess
 			}
 			if query(t, f.chain, nil, z.Spec.ZoneName).Msg.Rcode != want {

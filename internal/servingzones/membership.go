@@ -10,12 +10,14 @@ import (
 )
 
 // Legacy nonprimary configurations without a lifecycle or primary ancestor may
-// still serve. Coordinated incarnations use only the complete image admission
-// predicate, never a public ObjectSet or a transfer identity as lifecycle proof.
+// still serve. Coordinated incarnations use only the complete image serving
+// predicate (PreparedImage.Serves, which also keeps the same zone serving
+// while its lifecycle receipt is refreshed, D395), never a public ObjectSet
+// or a transfer identity as lifecycle proof.
 func membership(image *primaryruntime.PreparedImage, cut primaryruntime.Cut, config *public.DNSZone, now time.Time) (eligible, coordinated bool) {
 	apex := dns.CanonicalName(config.Spec.ZoneName)
 	if member, exists := cut.Member(apex); exists {
-		return member.Zone.ObjectName == config.Name && member.Zone.UID == string(config.UID) && member.Type == config.Spec.Type && image.Admitted(apex, now), true
+		return member.Zone.ObjectName == config.Name && member.Zone.UID == string(config.UID) && member.Type == config.Spec.Type && image.Serves(apex, now), true
 	}
 	if image.Coordinated(config.Name) {
 		return false, true

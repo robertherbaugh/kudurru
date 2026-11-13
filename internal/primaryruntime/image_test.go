@@ -611,14 +611,23 @@ func TestImageReadinessActualParentConfigGapClosesPrimaryAndNonprimaryChildren(t
 		t.Fatal(err)
 	}
 	gap, finish := imageHoldReconcile(t, h, parent.Spec.Zone)
+	// In the parent's config gap the parent keeps answering its committed
+	// head, which still holds both delegation fences, under its CURRENT
+	// query access (D395). It is not admitted for anything that acts for
+	// the zone until the driver commits the new head. Its children did not
+	// change: they stay admitted and served, bound to the same fences.
 	for _, name := range []string{"parent", "child", "forward"} {
 		o, _ := gap.CommittedPrimaryStatus(name)
-		if gap.Admitted(o.Member.Zone.Apex, time.Now()) || o.Member.Version != original[name].Member.Version || !reflect.DeepEqual(o.Member.Parents, original[name].Member.Parents) || !o.ExpiresAt.Equal(expiry) {
-			t.Fatal("config gap lost evidence or admitted descendant", o)
+		if !gap.Serves(o.Member.Zone.Apex, time.Now()) || gap.Admitted(o.Member.Zone.Apex, time.Now()) != (name != "parent") || o.Member.Version != original[name].Member.Version || !reflect.DeepEqual(o.Member.Parents, original[name].Member.Parents) || !o.ExpiresAt.Equal(expiry) {
+			t.Fatal("config gap lost evidence, stopped serving or admitted the changed parent", name, o)
 		}
 	}
-	assertImageCoverage(t, gap, "example.", time.Now())
-	assertImageCoverage(t, gap, "child.example.", time.Now())
+	if model := gap.Cut(time.Now()).Match("x.example."); model == nil || !model.AvailableAt(time.Now()) || model.Serial() != held.Cut(time.Now()).Match("x.example.").Serial() {
+		t.Fatal("parent gap did not keep its committed head", model)
+	}
+	if model := gap.Cut(time.Now()).Match("x.child.example."); model == nil || model.Name() != "child.example." || !model.AvailableAt(time.Now()) {
+		t.Fatal("parent gap closed its unchanged child", model)
+	}
 	if gap.Cut(time.Now()).Match("x.example.").QueryAllowed(netip.MustParseAddr("192.0.2.1")) {
 		t.Fatal("parent gap retained old query ACL")
 	}
@@ -983,7 +992,10 @@ func TestImageReadinessStatusWriteKeepsCommittedAuthority(t *testing.T) {
 	if !statusImage(t, h).SourceMatchesDesired(child.Spec.Zone) {
 		t.Fatal("realignment after a metadata-only change did not complete")
 	}
-	// An intent change in the same window still serves unavailable coverage.
+	// An intent change in the same window is not admitted, but DNS keeps
+	// answering the committed head under the current query access, with
+	// transfers refused, until the head is recompiled (D395).
+	committedChild := statusImage(t, h).Cut(time.Now()).Match("x.child.example.")
 	if err := h.st.Get(ctx, store.KeyOf(childZone), childZone); err != nil {
 		t.Fatal(err)
 	}
@@ -993,11 +1005,20 @@ func TestImageReadinessStatusWriteKeepsCommittedAuthority(t *testing.T) {
 	}
 	changed := statusImage(t, h)
 	if changed.Admitted("child.example.", time.Now()) {
-		t.Fatal("an intent change was served as a status-only RV change")
+		t.Fatal("an intent change was admitted as a status-only RV change")
 	}
-	assertImageCoverage(t, changed, "child.example.", time.Now())
-	// A frozen NS address dependency change is status, not intent, and still
-	// fails closed until the head is recompiled.
+	model := changed.Cut(time.Now()).Match("x.child.example.")
+	if !changed.Serves("child.example.", time.Now()) || model == nil || !model.AvailableAt(time.Now()) || model.ContentHash() != committedChild.ContentHash() {
+		t.Fatal("an intent change stopped answering the committed head", model)
+	}
+	if model.QueryAllowed(netip.MustParseAddr("127.0.0.1")) || model.TransferAllowed(netip.MustParseAddr("127.0.0.1"), "") {
+		t.Fatal("the retained head ignored the current deny query access or allowed a transfer")
+	}
+	if !changed.Admitted("example.", time.Now()) {
+		t.Fatal("the child's intent change unbound its parent")
+	}
+	// A frozen NS address dependency change is status, not intent: it is
+	// not admitted either, and DNS answers the same way.
 	if _, err := h.r.Reconcile(ctx, child.Spec.Zone); err != nil {
 		t.Fatal(err)
 	}
@@ -1008,7 +1029,11 @@ func TestImageReadinessStatusWriteKeepsCommittedAuthority(t *testing.T) {
 	if err := h.st.UpdateStatus(ctx, parentZone); err != nil {
 		t.Fatal(err)
 	}
-	if statusImage(t, h).Admitted("example.", time.Now()) {
-		t.Fatal("NS address status change was served as a status-only RV change")
+	nsChange := statusImage(t, h)
+	if nsChange.Admitted("example.", time.Now()) {
+		t.Fatal("NS address status change was admitted as a status-only RV change")
+	}
+	if model := nsChange.Cut(time.Now()).Match("x.example."); !nsChange.Serves("example.", time.Now()) || model == nil || !model.AvailableAt(time.Now()) {
+		t.Fatal("NS address status change stopped answering the committed head", model)
 	}
 }
