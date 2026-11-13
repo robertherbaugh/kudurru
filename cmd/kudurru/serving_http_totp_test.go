@@ -92,11 +92,22 @@ func TestServingHTTPTOTPLoginPasswordConsumeExactlyOnce(t *testing.T) {
 		return false
 	})
 	expectServingHTTPStatus(t, f.call(t, "POST", "/auth/login", `{"username":"root-command","password":"initial-password"}`, "", nil, ""), 401)
-	code := servingHTTPFactorCode(t, seed, time.Now())
+	// The factor limiter admits one attempt per second of the runtime clock,
+	// counted from the attempt's admission, before its sign-in commits and
+	// waits for the publication of its session. On a loaded machine that wait
+	// alone can exceed a second, after which the repeat below met an expired
+	// limiter and the durable replay check (401) instead of the limiter (429).
+	// The clock stays at one instant from the first attempt to the repeat, so
+	// the repeat is inside the limiter's second however long the first took.
+	frozen := time.Now()
+	restore := f.clock.Set(func() time.Time { return frozen })
+	code := servingHTTPFactorCode(t, seed, frozen)
 	//nolint:gosec // G117: intentional test-only login request, never logged.
 	body, _ := json.Marshal(api.LoginRequest{Username: "root-command", Password: "initial-password", TOTPCode: code})
+	started := time.Now()
 	w := f.call(t, "POST", "/auth/login", string(body), "", nil, "")
 	expectServingHTTPStatus(t, w, 200)
+	t.Logf("factor sign-in answered after %s", time.Since(started).Round(time.Millisecond))
 	cookies := w.Result().Cookies()
 	var info api.SessionInfo
 	if err = json.Unmarshal(w.Body.Bytes(), &info); err != nil || len(cookies) != 1 {
@@ -105,6 +116,7 @@ func TestServingHTTPTOTPLoginPasswordConsumeExactlyOnce(t *testing.T) {
 	// Local admission can reject immediately, and durable replay rejects after
 	// the per-second limiter expires. No second password/TOTP verification occurs.
 	expectServingHTTPStatus(t, f.call(t, "POST", "/auth/login", string(body), "", nil, ""), 429)
+	f.clock.Set(restore)
 	f.h.factorLimit.Reset("root-command")
 	expectServingHTTPStatus(t, f.call(t, "POST", "/auth/login", string(body), "", nil, ""), 401)
 	f.h.factorLimit.Reset("root-command")
