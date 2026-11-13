@@ -1,6 +1,7 @@
 package interop
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"slices"
@@ -8,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/miekg/dns"
 
 	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
 )
@@ -66,7 +69,12 @@ const refreshWindow = 120 * time.Second
 // only the updater's due comparison: the acquisition, its receipt sample,
 // the authentication and the committed state are production behavior. The
 // last restart uses no seam. Exactly two acquisitions are made, and a third
-// in the quarantine case (see below).
+// in the quarantine case (see below). Both refresh instants are checked
+// against the RFC 5011 interval computed from the TTL and signature
+// expiration BIND publishes, and the node is required to stop before its
+// moved clock reaches the rescheduled one. A binary without the seam fails
+// at requireMovedUpdaterClock: its refresh is, correctly, an hour away
+// (the hosted failures of November 13, 2026, D398).
 func TestBINDManagedRootRevocation(t *testing.T) {
 	kudurrutest.RequireE2E(t)
 	t.Log("authority: " + namedVersion(t))
@@ -89,7 +97,9 @@ func TestBINDManagedRootRevocation(t *testing.T) {
 			if tc.bothSeeded {
 				seeds = append(seeds, s.ds(next))
 			}
+			published := publishedTimers(t, root.addr)
 			spec := managedRootNode(t, dir, "managed", root.ap, seeds)
+			started := time.Now()
 			node := kudurrutest.StartReady(t, bin, spec, kudurrutest.Options{})
 			booted := time.Now()
 			requireValidated(t, node, "after bootstrap")
@@ -103,15 +113,24 @@ func TestBINDManagedRootRevocation(t *testing.T) {
 			if want := sortedKeys(t, old, "Valid", next, pending); boot.keys() != want {
 				t.Fatalf("bootstrap keys %s, want %s", boot.keys(), want)
 			}
-			if boot.Owner.NextRefresh == nil || time.Until(*boot.Owner.NextRefresh) > time.Hour {
-				t.Fatal("no committed refresh within the one-hour minimum", boot.Owner.NextRefresh)
+			// The committed refresh is the RFC 5011 section 2.3 interval from
+			// the timers this BIND publishes, counted from the bootstrap
+			// acquisition (made between started and booted).
+			if boot.Owner.NextRefresh == nil {
+				t.Fatal("no committed refresh after the bootstrap")
 			}
+			earliest, latest := started.Add(published.refresh(started)), booted.Add(published.refresh(booted))
+			if nr := *boot.Owner.NextRefresh; nr.Before(earliest.Add(-time.Second)) || nr.After(latest.Add(time.Second)) {
+				t.Fatalf("committed refresh %v, want between %v and %v (%s)", nr, earliest, latest, published)
+			}
+			t.Logf("published %s: refresh %v after the bootstrap", published, published.refresh(booted))
 
 			// Stage 2: the old KSK is revoked; the revoked key and the new KSK
 			// sign the set.
 			revoked := s.revoke(old)
 			s.sign(2, []string{revoked, next, zsk}, []string{revoked, next, zsk}, "now-3600", "now+2592000")
 			root.reload(t, 2)
+			republished := publishedTimers(t, root.addr)
 			if n := root.acquisitions(); n != 1 {
 				t.Fatal("acquired before the refresh was due", n)
 			}
@@ -129,7 +148,9 @@ func TestBINDManagedRootRevocation(t *testing.T) {
 			if tc.bothSeeded {
 				start = kudurrutest.StartReady
 			}
+			restarting := time.Now()
 			node = start(t, bin, spec, kudurrutest.Options{Env: []string{"KUDURRU_TEST_ANCHOR_UPDATER_AHEAD=" + ahead.String()}})
+			requireMovedUpdaterClock(t, node)
 			// The quarantining observation is authenticated only by the
 			// revoked key itself, so it commits the tombstone without a new
 			// refresh schedule (trustanchors.Advance reschedules only
@@ -153,6 +174,7 @@ func TestBINDManagedRootRevocation(t *testing.T) {
 					t.Fatal("the poll after the quarantine did not stop the updater")
 				}
 			}
+			stopping := time.Now()
 			node.Stop(15 * time.Second)
 			if n := root.acquisitions(); n != want {
 				t.Fatal("unexpected refreshes", n, want)
@@ -165,8 +187,25 @@ func TestBINDManagedRootRevocation(t *testing.T) {
 			if after.keys() != keys || after.Owner.Quarantined == tc.bothSeeded {
 				t.Fatalf("after the revocation: keys %s quarantined %v, want %s", after.keys(), after.Owner.Quarantined, keys)
 			}
-			if rescheduled := after.Owner.NextRefresh != nil && after.Owner.NextRefresh.After(*boot.Owner.NextRefresh); rescheduled != tc.bothSeeded {
-				t.Fatalf("refresh after the revocation %v (before %v)", after.Owner.NextRefresh, boot.Owner.NextRefresh)
+			if after.Owner.NextRefresh == nil {
+				t.Fatal("no committed refresh after the revocation")
+			}
+			if tc.bothSeeded {
+				// The authenticated refresh is rescheduled by the published
+				// timers. The moved clock reaches that instant at real time
+				// NextRefresh - ahead; the node must have stopped before, or
+				// a third acquisition was due and "exactly 2" would not hold.
+				nr := *after.Owner.NextRefresh
+				if lo, hi := restarting.Add(republished.refresh(restarting)), stopping.Add(republished.refresh(stopping)); nr.Before(lo) || nr.After(hi.Add(time.Second)) {
+					t.Fatalf("refresh after the revocation %v, want between %v and %v (%s)", nr, lo, hi, republished)
+				}
+				if dueAgain := nr.Add(-ahead); !stopping.Before(dueAgain) {
+					t.Fatalf("the node ran until %v, past %v when its moved clock reached the next refresh: raise refreshWindow", stopping, dueAgain)
+				}
+			} else if !after.Owner.NextRefresh.Equal(*boot.Owner.NextRefresh) {
+				// The quarantining observation is not authenticated by a
+				// trusted key and never reschedules.
+				t.Fatalf("refresh after the quarantine %v, want the bootstrap's %v", after.Owner.NextRefresh, boot.Owner.NextRefresh)
 			}
 
 			// A production restart keeps the outcome and does not acquire: the
@@ -183,6 +222,77 @@ func TestBINDManagedRootRevocation(t *testing.T) {
 			}
 			t.Logf("revocation of key %d: keys %s, quarantined %v, %d acquisitions", keyTag(t, old), after.keys(), after.Owner.Quarantined, want)
 		})
+	}
+}
+
+// rootTimers are the RFC 5011 section 2.3 inputs the authority publishes for
+// the root DNSKEY set: its original TTL and the expiration of the
+// signatures over it.
+type rootTimers struct {
+	ttl        uint32
+	expiration time.Time
+}
+
+func (p rootTimers) String() string {
+	return fmt.Sprintf("DNSKEY TTL %d s, signatures until %s", p.ttl, p.expiration.UTC().Format(time.RFC3339))
+}
+
+// refresh is the active refresh interval for an observation at: the larger
+// of one hour and the smallest of 15 days, half the original TTL and half
+// the remaining signature validity. It is written out here from the RFC,
+// not taken from internal/trustanchors, so that the node's schedule is
+// checked against the specification.
+func (p rootTimers) refresh(at time.Time) time.Duration {
+	return max(time.Hour, min(15*24*time.Hour, time.Duration(p.ttl)*time.Second/2, p.expiration.Sub(at)/2))
+}
+
+// publishedTimers reads the root DNSKEY set over UDP (which the
+// managedAcquisition count never matches) and returns its timers. Every
+// signature over the set must expire at the same second, so the interval
+// does not depend on which key authenticated the observation.
+func publishedTimers(t *testing.T, addr string) rootTimers {
+	t.Helper()
+	q := new(dns.Msg)
+	q.SetQuestion(".", dns.TypeDNSKEY)
+	q.RecursionDesired = false
+	q.SetEdns0(4096, true)
+	c := &dns.Client{Net: "udp", Timeout: 3 * time.Second, UDPSize: 4096}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	m, _, err := c.ExchangeContext(ctx, q, addr)
+	if err != nil || m.Rcode != dns.RcodeSuccess || m.Truncated {
+		t.Fatalf("root DNSKEY over UDP: %v %v", err, m)
+	}
+	var p rootTimers
+	for _, rr := range m.Answer {
+		sig, ok := rr.(*dns.RRSIG)
+		if !ok || sig.TypeCovered != dns.TypeDNSKEY {
+			continue
+		}
+		until := time.Unix(int64(sig.Expiration), 0)
+		if p.ttl != 0 && (sig.OrigTtl != p.ttl || !until.Equal(p.expiration)) {
+			t.Fatalf("signatures over the root DNSKEY set disagree: %s", m)
+		}
+		p.ttl, p.expiration = sig.OrigTtl, until
+	}
+	if p.ttl == 0 {
+		t.Fatalf("no signature over the root DNSKEY set: %s", m)
+	}
+	return p
+}
+
+// requireMovedUpdaterClock fails unless the node's writer updater logs that
+// it runs on the moved clock. A binary without the licensetest seam (a
+// prebuilt one, or a checkout without
+// cmd/kudurru/anchor_updater_wall_licensetest.go) ignores
+// KUDURRU_TEST_ANCHOR_UPDATER_AHEAD, and its refresh is correctly not due
+// for an hour: that must fail here, not as a missing acquisition.
+func requireMovedUpdaterClock(t *testing.T, node *kudurrutest.Node) {
+	t.Helper()
+	if !kudurrutest.Eventually(20*time.Second, 50*time.Millisecond, func() bool {
+		return strings.Contains(node.Log(), `msg="root anchor updater runs its due checks on a moved test clock"`)
+	}) {
+		t.Fatal("the restarted node's updater does not run on the moved clock: the binary lacks the KUDURRU_TEST_ANCHOR_UPDATER_AHEAD seam (cmd/kudurru/anchor_updater_wall_licensetest.go)")
 	}
 }
 
