@@ -1,6 +1,7 @@
 package driver
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -8,9 +9,11 @@ import (
 	"time"
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	zk "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	pr "github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/primaryzone"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // A new child zone's lifecycle steps run back to back (D404): each step
@@ -168,4 +171,114 @@ func TestLeadingZonesKeepTheRotationFair(t *testing.T) {
 		l := f.ledger(last)
 		return l != nil && l.Spec.Source.ResourceVersion == edited
 	})
+}
+
+// Only a zone that is being created takes the focus (D404). An active
+// nonprimary zone whose DNSZone changes before every pass refreshes its
+// lifecycle source on each of its steps; that refresh wakes the loop but
+// must not end the pass and resume at the same zone. Otherwise the zone took
+// up to maxFocus+1 steps for every step of the rest of the rotation. Here a
+// status write of the forward zone's DNSZone follows every committed change
+// of its lifecycle, so its source is always ahead at the next roster read.
+// The test reads the forward zone's lifecycle sequence at every publication
+// wait of the other zones and fails when it advanced more than a fair
+// rotation allows between two of them (one step per pass, so at most two
+// across a pass boundary).
+func TestRefreshedActiveZoneDoesNotTakeTheFocus(t *testing.T) {
+	const others = 8
+	f := setup(t)
+	for i := range others {
+		f.zone(fmt.Sprintf("other-%d", i), fmt.Sprintf("other%d.example.", i))
+	}
+	fwd := &public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "forward"}, Spec: public.DNSZoneSpec{ZoneName: "forward.test.", Type: public.ZoneTypeForward, Forward: &public.ForwardSpec{UpstreamGroup: "default"}, Policy: public.ZonePolicy{QueryAccess: public.AccessAllow}}}
+	if _, err := f.s.Apply(f.ctx(), fwd, store.ApplyOptions{Manager: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	var (
+		mu       sync.Mutex
+		counting bool
+		last     uint64
+		seen     bool
+		worst    uint64
+		waits    int
+	)
+	cas := func(ctx context.Context, current, next *zk.ZoneLifecycle) (*zk.ZoneLifecycle, error) {
+		out, err := f.a.LifecycleCAS(ctx, current, next)
+		mu.Lock()
+		touch := counting
+		mu.Unlock()
+		if err == nil && touch && next.Spec.Zone.ObjectName == "forward" {
+			var z public.DNSZone
+			if err := f.s.Get(f.ctx(), store.Key{Kind: "DNSZone", Name: "forward"}, &z); err != nil {
+				t.Error(err)
+			} else {
+				z.Status.Serial++
+				if err := f.s.UpdateStatus(f.ctx(), &z); err != nil {
+					t.Error(err)
+				}
+			}
+		}
+		return out, err
+	}
+	r, err := pr.New(pr.Options{Store: f.s, Repository: f.repo, Reader: primaryzone.NewReader(f.s, primaryzone.ReaderOptions{PageSize: 1}), LifecycleCAS: cas, Admit: f.a.Admission, Publish: f.pub.publish, Notify: f.notify, Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.r = r
+	d, stop := f.start()
+	defer stop()
+	awaitConverged(t, func() bool {
+		if !f.active("forward.test.", 1) {
+			return false
+		}
+		for i := range others {
+			if !f.active(fmt.Sprintf("other%d.example.", i), 1) {
+				return false
+			}
+		}
+		return true
+	})
+	f.pub.setObserve(func(m pr.Member) {
+		mu.Lock()
+		defer mu.Unlock()
+		if !counting || m.Zone.Apex == "forward.test." {
+			return
+		}
+		l := f.ledger("forward")
+		if l == nil {
+			return
+		}
+		if seen && l.Spec.Sequence-last > worst {
+			worst = l.Spec.Sequence - last
+		}
+		last, seen = l.Spec.Sequence, true
+		waits++
+	})
+	start := f.ledger("forward").Spec.Sequence
+	mu.Lock()
+	counting = true
+	mu.Unlock()
+	// Start the chain: one status write; each refresh then causes the next.
+	f.statusWrite("forward")
+	d.Wake()
+	awaitConverged(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return waits >= 10*others
+	})
+	mu.Lock()
+	counting = false
+	got, n := worst, waits
+	mu.Unlock()
+	refreshed := f.ledger("forward").Spec.Sequence - start
+	t.Logf("forward zone refreshed %d times during %d publication waits of %d other zones; at most %d refreshes between two of them", refreshed, n, others, got)
+	// The chain of refreshes must stay alive for the count to mean
+	// anything (a fair rotation refreshes it about once per pass of the
+	// other zones; with the focus it refreshed 27 times here).
+	if refreshed < 2 {
+		t.Fatalf("the forward zone refreshed only %d times; its DNSZone did not stay ahead of the driver", refreshed)
+	}
+	if got > 2 {
+		t.Fatalf("the refreshed forward zone took %d steps between two steps of the other zones; want at most 2", got)
+	}
 }
