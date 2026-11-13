@@ -62,6 +62,11 @@ func TestRefusalInventoryNamesEveryOperation(t *testing.T) {
 			t.Errorf("featureRefusals names %q, which is no registered operation", id)
 		}
 	}
+	for id := range featureRefusalShapes {
+		if _, ok := featureRefusals[id]; !ok {
+			t.Errorf("featureRefusalShapes names %q, which has no line in featureRefusals", id)
+		}
+	}
 	for id := range transientUnavailable {
 		if !registered[id] {
 			t.Errorf("transientUnavailable names %q, which is no registered operation", id)
@@ -105,7 +110,7 @@ func TestExpectedRefusalInheritance(t *testing.T) {
 	}{
 		// The follower refuses a FollowerPrimary mutation whatever the line
 		// says, and inherits the standalone key otherwise.
-		{ShapeFollower, "createToken", http.MethodPost, KeyPrimaryRequired, true},
+		{ShapeFollower, "createAllowlistEntries", http.MethodPost, KeyPrimaryRequired, true},
 		{ShapeFollower, "exportSettingsSectionYAML", http.MethodPost, KeyUnavailable, true},
 		{ShapeFollower, "flushCache", http.MethodPost, "", true},
 		// Static and primary inherit the standalone key; a line overrides it.
@@ -134,6 +139,19 @@ func TestExpectedRefusalInheritance(t *testing.T) {
 		if got, _ := ExpectedRefusal(shape, "listQueries", http.MethodGet, FeatureDHCP); got != "" {
 			t.Errorf("listQueries on %s without DHCP: %q", shape, got)
 		}
+	}
+	// A line of featureRefusalShapes limits the feature's refusal: only a
+	// Kubernetes node without DHCP refuses a DHCP setup write.
+	for shape, want := range map[RuntimeShape]string{ShapeKubernetes: KeyUnavailable, ShapeStandalone: "", ShapeFollower: "", ShapeStatic: KeyReadOnly} {
+		if got, _ := ExpectedRefusal(shape, "putDHCPSetup", http.MethodPut, FeatureDHCP); got != want {
+			t.Errorf("putDHCPSetup on %s without DHCP: %q, want %q", shape, got, want)
+		}
+	}
+	if got, _ := ExpectedRefusal(ShapeKubernetes, "putDHCPSetup", http.MethodPut); got != "" {
+		t.Errorf("putDHCPSetup on Kubernetes with DHCP: %q", got)
+	}
+	if got, _ := ExpectedRefusal(ShapeStandalone, "rollupEvidence", http.MethodGet, FeatureCentralHistory); got != KeyUnavailable {
+		t.Errorf("rollupEvidence without a central database: %q", got)
 	}
 	if got, _ := ExpectedRefusal(ShapeFenced, "listQueries", http.MethodGet, FeatureQueryLog); got != "cluster_fenced" {
 		t.Errorf("listQueries on a fenced member: %q", got)

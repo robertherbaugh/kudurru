@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -151,7 +152,19 @@ var probeRequests = map[string]probeRequest{
 	"deleteDHCPReservation": {IfMatch: `"refusal-probe"`},
 	"putDHCPScopeConfig":    {Body: `{"rangeStart":"192.0.2.100","rangeEnd":"192.0.2.200","router":"192.0.2.1","dnsServers":["192.0.2.1"],"domainName":"","leaseDuration":"1h","registerDNS":false,"dnsTTL":"60s"}`, IfMatch: `"refusal-probe"`},
 	"importDHCPLeases":      {Body: `{"format":"native","data":""}`},
+	// The DHCP setup write reaches the setup manager, or its absence; the
+	// If-Match names no revision.
+	"putDHCPSetup": {Body: `{"enabled":false,"scopes":[],"scopeRevisions":{}}`, IfMatch: `"refusal-probe"`},
+	// History reads that need a field, or a closed hour of the last day
+	// (an older hour needs the long-term license feature first).
+	"querySuggestions":     {Query: "field=domain"},
+	"rollupEvidence":       {Query: "source=refusal-probe&hour=" + closedHour},
+	"verifyRollupEvidence": {Body: `{"scope":"node","nodes":[],"partial":false,"source_id":"refusal-probe","node":"refusal-probe","hour":` + closedHour + `,"revision":0,"head":0,"digest":"refusal-probe","expires_at":"2000-01-01T00:00:00Z"}`},
 }
+
+// closedHour in a probeRequests query or body is replaced, when the probe is
+// sent, with the start of the UTC hour two hours before (Unix seconds).
+const closedHour = "{closedHour}"
 
 const integrationReview = `{"uid":"refusal-probe","revision":"refusal-probe"}`
 
@@ -223,6 +236,9 @@ func (c Client) probeOnce(ctx context.Context, op Operation, timeout time.Durati
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	probe := probeRequests[op.ID]
+	hour := strconv.FormatInt(time.Now().Add(-2*time.Hour).Unix()/3600*3600, 10)
+	probe.Query = strings.ReplaceAll(probe.Query, closedHour, hour)
+	probe.Body = strings.ReplaceAll(probe.Body, closedHour, hour)
 	var body io.Reader = http.NoBody
 	if op.Method != http.MethodGet {
 		raw := probe.Body
