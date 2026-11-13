@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -248,5 +250,113 @@ func TestZoneStateCommitKeepsChunksWhenAHeadIsUnreadable(t *testing.T) {
 	}
 	if len(after) <= len(before) {
 		t.Fatal("the commit's own chunks are missing")
+	}
+}
+
+// commitBeforeChunk is a backend that runs a hook once, just before the
+// first chunk read: the window between Repository.Read's head read and its
+// chunk reads, in which a content commit of the same zone can land.
+type commitBeforeChunk struct {
+	zonestate.Backend
+	once sync.Once
+	hook func()
+}
+
+func (b *commitBeforeChunk) Chunk(ctx context.Context, digest string) (*zonekinds.ZoneChunk, error) {
+	b.once.Do(b.hook)
+	return b.Backend.Chunk(ctx, digest)
+}
+
+// A content commit that lands between a read's head and its chunks deletes
+// the chunks that head named (D405). The read must not fail for it, and
+// above all must not answer store.ErrNotFound, which its callers take as
+// "the zone has no head": it reads the new head instead.
+func TestZoneStateReadAcrossACommitReadsTheNewHead(t *testing.T) {
+	s := openTemp(t, zoneStateOptions)
+	r, b := zoneStateRepository(t, s)
+	ctx := context.Background()
+	id := zoneStateID(s, "updates")
+	v := zonestatetest.Initialize(t, r, id)
+	p, err := zonestatetest.Candidate(v, zonestatetest.Message(t, nil, []string{"u.example. 60 IN A 192.0.2.9"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var committed *zonestate.View
+	reader := zonestate.NewRepository(&commitBeforeChunk{Backend: b, hook: func() {
+		var err error
+		if committed, err = r.Commit(ctx, v.Expected, p, nil); err != nil {
+			t.Error(err)
+		}
+	}}, zonestate.Limits{})
+	got, err := reader.Read(ctx, id)
+	if err != nil {
+		t.Fatalf("a read across a commit failed (not found %v): %v", errors.Is(err, store.ErrNotFound), err)
+	}
+	if committed == nil || got.Expected != committed.Expected {
+		t.Fatalf("the read answered %+v, not the head the commit wrote", got.Expected)
+	}
+}
+
+// Repository.Read against a steady stream of content commits never fails.
+func TestZoneStateReadDuringSteadyCommits(t *testing.T) {
+	s := openTemp(t, zoneStateOptions)
+	r, _ := zoneStateRepository(t, s)
+	ctx := context.Background()
+	id := zoneStateID(s, "updates")
+	v := zonestatetest.Initialize(t, r, id)
+	var stop atomic.Bool
+	var reads, failed atomic.Int64
+	var first atomic.Value
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Go(func() {
+			for !stop.Load() {
+				_, err := r.Read(ctx, id)
+				reads.Add(1)
+				if err != nil {
+					failed.Add(1)
+					first.CompareAndSwap(nil, err.Error())
+				}
+			}
+		})
+	}
+	for i := range 100 {
+		p, err := zonestatetest.Candidate(v, zonestatetest.Message(t, nil, []string{fmt.Sprintf("u%d.example. 60 IN A 192.0.2.%d", i%3, i%250+1)}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v, err = r.Commit(ctx, v.Expected, p, nil); err != nil {
+			t.Fatal(i, err)
+		}
+	}
+	stop.Store(true)
+	wg.Wait()
+	t.Logf("%d reads during 100 commits", reads.Load())
+	if failed.Load() != 0 {
+		t.Fatalf("%d of %d reads failed during commits: %v", failed.Load(), reads.Load(), first.Load())
+	}
+}
+
+// A head whose chunk is missing while the head stays put is damage, not a
+// zone without a head: the read answers ErrInvalid, never store.ErrNotFound.
+func TestZoneStateReadOfADamagedHeadIsNotNotFound(t *testing.T) {
+	s := openTemp(t, zoneStateOptions)
+	r, b := zoneStateRepository(t, s)
+	ctx := context.Background()
+	id := zoneStateID(s, "broken")
+	zonestatetest.Initialize(t, r, id)
+	head, _, err := b.Head(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *CommandTx) error {
+		return tx.Delete(ctx, store.Key{Kind: zonekinds.KindZoneChunk, Name: zonekinds.ChunkName(head.Spec.RootDigest)}, store.DeleteOptions{Manager: zoneStateManager})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := r.Read(ctx, id)
+	if v != nil || !errors.Is(err, zonestate.ErrInvalid) || errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("read of a damaged head: view %v, %v", v != nil, err)
 	}
 }
