@@ -73,7 +73,7 @@ func TestLateChildConvergesWhileParentReceiptIsBehind(t *testing.T) {
 	f := setup(t)
 	f.zone("parent", "example.")
 	_, stop := f.start()
-	await(t, func() bool { return f.admitted("example.") })
+	awaitConverged(t, func() bool { return f.admitted("example.") })
 	stop()
 	f.statusWrite("parent")
 	if !f.receiptBehind("parent") {
@@ -83,14 +83,14 @@ func TestLateChildConvergesWhileParentReceiptIsBehind(t *testing.T) {
 	f.restart()
 	_, stop = f.start()
 	defer stop()
-	await(t, func() bool { return f.admitted("example.") && f.admitted("child.example.") })
+	awaitConverged(t, func() bool { return f.admitted("example.") && f.admitted("child.example.") })
 }
 
 func TestPreparingChildConvergesWhileItsReceiptIsBehind(t *testing.T) {
 	f := setup(t)
 	f.zone("parent", "example.")
 	_, stop := f.start()
-	await(t, func() bool { return f.admitted("example.") })
+	awaitConverged(t, func() bool { return f.admitted("example.") })
 	stop()
 	// The driver's first step for a new child: a Preparing lifecycle with an
 	// unfenced obligation to its parent. A status write of the child lands
@@ -111,21 +111,21 @@ func TestPreparingChildConvergesWhileItsReceiptIsBehind(t *testing.T) {
 	}
 	_, stop = f.start()
 	defer stop()
-	await(t, func() bool { return f.admitted("example.") && f.admitted("child.example.") })
+	awaitConverged(t, func() bool { return f.admitted("example.") && f.admitted("child.example.") })
 }
 
 func TestLateParentConvergesWhileChildReceiptIsBehind(t *testing.T) {
 	f := setup(t)
 	f.zone("child", "child.example.")
 	_, stop := f.start()
-	await(t, func() bool { return f.admitted("child.example.") })
+	awaitConverged(t, func() bool { return f.admitted("child.example.") })
 	stop()
 	f.statusWrite("child")
 	f.zone("parent", "example.")
 	f.restart()
 	_, stop = f.start()
 	defer stop()
-	await(t, func() bool { return f.admitted("example.") && f.admitted("child.example.") })
+	awaitConverged(t, func() bool { return f.admitted("example.") && f.admitted("child.example.") })
 }
 
 // Both orders, and the child deleted and created again, with a status
@@ -133,6 +133,13 @@ func TestLateParentConvergesWhileChildReceiptIsBehind(t *testing.T) {
 // parent obligations, as the committed-status controller writes after a
 // committed change. (Like that controller, it does not write again for a
 // receipt realignment alone, which would never settle.)
+//
+// Each step commits several lifecycle and boundary transactions under a
+// concurrent status writer, so refusals and retry backoff are part of the
+// path. Under the race detector one step took 3 to 11.6 s on a loaded
+// shared runner, against the shared 8 s await. The tests in this file use
+// awaitConverged, sized for that as the servingbuild pair test's minute is,
+// and log every wait over 3 s so a slowdown stays visible.
 func TestParentAndChildConvergeUnderStatusWrites(t *testing.T) {
 	for _, parentFirst := range []bool{true, false} {
 		f := setup(t)
@@ -169,11 +176,11 @@ func TestParentAndChildConvergeUnderStatusWrites(t *testing.T) {
 		if parentFirst {
 			f.zone("parent", "example.")
 			d.Wake()
-			await(t, func() bool { return f.admitted("example.") })
+			awaitConverged(t, func() bool { return f.admitted("example.") })
 		} else {
 			f.zone("child", "child.example.")
 			d.Wake()
-			await(t, func() bool { return f.admitted("child.example.") })
+			awaitConverged(t, func() bool { return f.admitted("child.example.") })
 		}
 		for round := range 3 {
 			if parentFirst || round > 0 {
@@ -182,12 +189,12 @@ func TestParentAndChildConvergeUnderStatusWrites(t *testing.T) {
 				f.zone("parent", "example.")
 			}
 			d.Wake()
-			await(t, func() bool { return f.admitted("example.") && f.admitted("child.example.") })
+			awaitConverged(t, func() bool { return f.admitted("example.") && f.admitted("child.example.") })
 			if err := f.s.Delete(f.ctx(), store.Key{Kind: "DNSZone", Name: "child"}, store.DeleteOptions{Manager: "api"}); err != nil {
 				t.Fatal(err)
 			}
 			d.Wake()
-			await(t, func() bool {
+			awaitConverged(t, func() bool {
 				l := f.ledger("child")
 				return l != nil && l.Spec.Phase == zk.PhaseRetired && f.admitted("example.")
 			})
@@ -196,4 +203,28 @@ func TestParentAndChildConvergeUnderStatusWrites(t *testing.T) {
 		<-done
 		stop()
 	}
+}
+
+// awaitConverged is the bound of the tests in this file: every wait spans
+// several committed lifecycle and boundary steps.
+func awaitConverged(t *testing.T, fn func() bool) {
+	t.Helper()
+	awaitWithin(t, time.Minute, 3*time.Second, fn)
+}
+
+// awaitWithin polls fn until it holds or bound expires, and logs a wait
+// longer than slow.
+func awaitWithin(t *testing.T, bound, slow time.Duration, fn func() bool) {
+	t.Helper()
+	start := time.Now()
+	for time.Since(start) < bound {
+		if fn() {
+			if waited := time.Since(start); waited > slow {
+				t.Logf("converged after %s", waited.Round(time.Millisecond))
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("condition did not converge within %s", bound)
 }
