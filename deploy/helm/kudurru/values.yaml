@@ -571,6 +571,14 @@ blockPage:
     # kube-vip.io/loadbalancerIPs naming ipv4.
     annotations: {}
 
+externalZones:
+  # -- Fill DNSZones of type external from Kubernetes Ingresses, Gateway API
+  # routes and LoadBalancer Services (D402; config externalZones.enabled).
+  # Only then does the ClusterRole grant read access (get, list, watch) to
+  # networking.k8s.io ingresses and gateway.networking.k8s.io gateways,
+  # httproutes, grpcroutes and tlsroutes. Needs mode kubernetes.
+  enabled: false
+
 externalDNS:
   webhook:
     # -- Serve the external-dns webhook provider contract on every replica

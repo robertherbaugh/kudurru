@@ -285,6 +285,9 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- if .Values.dhcp.enabled -}}
 {{- $_ := set $base "dhcp" (dict "enabled" true "serverIP" .Values.dhcp.serverAddress "interface" .Values.dhcp.interface) -}}
 {{- end -}}
+{{- if .Values.externalZones.enabled -}}
+{{- $_ := set $base "externalZones" (dict "enabled" true) -}}
+{{- end -}}
 {{- $cfg := mergeOverwrite $base (deepCopy (.Values.config.node | default dict)) -}}
 {{- toYaml $cfg -}}
 {{- end -}}
@@ -321,6 +324,15 @@ D106) and hot-reloads it, so settings changes do not roll the pods.
 {{- $set := (($tree.auth | default dict).kubernetes | default dict).mode -}}
 {{- if and $set (ne (toString $set) $kubeMode) -}}
 {{- fail (printf "set auth.kubernetes.mode, not %s.auth.kubernetes.mode: the chart grants the impersonate permission only from auth.kubernetes.mode" $src) -}}
+{{- end -}}
+{{- end -}}
+{{- if and $v.externalZones.enabled (eq $v.mode "standalone") -}}
+{{- fail "externalZones.enabled reads Kubernetes Ingresses, routes and Services and needs mode kubernetes" -}}
+{{- end -}}
+{{- range $src, $tree := dict "config.node" ($v.config.node | default dict) "config.settings" ($v.config.settings | default dict) -}}
+{{- $set := ($tree.externalZones | default dict).enabled -}}
+{{- if and (not (kindIs "invalid" $set)) (ne (toString $set) (toString $v.externalZones.enabled)) -}}
+{{- fail (printf "set externalZones.enabled, not %s.externalZones.enabled: the chart grants the RBAC to read the source kinds only from externalZones.enabled" $src) -}}
 {{- end -}}
 {{- end -}}
 {{- if not (has $v.service.api.sessionAffinity (list "None" "ClientIP")) -}}

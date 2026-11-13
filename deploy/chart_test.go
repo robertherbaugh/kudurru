@@ -44,6 +44,13 @@ var chartCases = []chartCase{
 		if m := r.config(t).Auth.Kubernetes.Mode; m != "sar" {
 			t.Errorf("default auth.kubernetes.mode = %q, want sar", m)
 		}
+		// D402: no read access to external zone sources by default.
+		if rules := fmt.Sprint(dig(r.object(t, "ClusterRole", "kudurru"), "rules")); strings.Contains(rules, "ingresses") || strings.Contains(rules, "gateway.networking.k8s.io") {
+			t.Errorf("the default ClusterRole reads external zone sources: %s", rules)
+		}
+		if r.config(t).ExternalZones.Enabled {
+			t.Error("externalZones.enabled is on by default")
+		}
 		r.wantObject(t, "Secret", "kudurru-encryption-key")
 		r.wantObject(t, "Secret", "kudurru-admin")
 		svc := r.object(t, "Service", "kudurru-dns")
@@ -545,6 +552,31 @@ var chartCases = []chartCase{
 			t.Errorf("node config auth = %+v", cfg.Auth)
 		}
 	}},
+	{name: "kubernetes-external-zones", values: "externalZones: {enabled: true}", wantKind: "Deployment", check: func(t *testing.T, r *rendered) {
+		// D402: read-only access to the source kinds only when enabled, in
+		// the ClusterRole (sources live in any namespace), and the node file
+		// turns the adapter on.
+		want := map[string]string{"[networking.k8s.io]": "[ingresses]", "[gateway.networking.k8s.io]": "[gateways httproutes grpcroutes tlsroutes]"}
+		for _, rule := range list(dig(r.object(t, "ClusterRole", "kudurru"), "rules")) {
+			m := mapOf(rule)
+			groups := fmt.Sprint(m["apiGroups"])
+			if resources, ok := want[groups]; ok {
+				if fmt.Sprint(m["resources"]) != resources || fmt.Sprint(m["verbs"]) != "[get list watch]" {
+					t.Errorf("external zone source rule %v", m)
+				}
+				delete(want, groups)
+			}
+		}
+		if len(want) != 0 {
+			t.Errorf("externalZones.enabled rendered no rule for %v", want)
+		}
+		if rules := fmt.Sprint(dig(r.object(t, "Role", "kudurru"), "rules")); strings.Contains(rules, "ingresses") || strings.Contains(rules, "httproutes") {
+			t.Errorf("the namespaced Role reads external zone sources: %s", rules)
+		}
+		if !r.config(t).ExternalZones.Enabled {
+			t.Error("externalZones.enabled did not reach the node config")
+		}
+	}},
 	{name: "everything", values: "edge: {enabled: true, tlsSecretName: dns-tls}\nservice: {dot: {enabled: true}, doh: {enabled: true}}\nvip: {provider: metallb, address: 192.0.2.53}\ningress: {enabled: true, host: dns.example.com}\nserviceMonitor: {enabled: true}\nprometheusRule: {enabled: true}\ngrafanaDashboard: {enabled: true}\nnetworkPolicy: {enabled: true, apiFrom: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}}]}\npriorityClassName: system-cluster-critical\nexternalDNS: {webhook: {enabled: true}}\nauth: {bootstrapToken: {enabled: true}}", wantKind: "Deployment"},
 }
 
@@ -592,6 +624,9 @@ var failCases = []struct{ name, values, want string }{
 	{"bad-kubernetes-mode", "auth: {kubernetes: {mode: impersonation}}", "auth.kubernetes.mode must be sar or impersonate"},
 	{"impersonate-standalone", "mode: standalone\nauth: {kubernetes: {mode: impersonate}}", "needs mode kubernetes"},
 	{"impersonate-through-config-node", "config: {node: {auth: {kubernetes: {mode: impersonate}}}}", "set auth.kubernetes.mode, not config.node"},
+	{"external-zones-standalone", "mode: standalone\nexternalZones: {enabled: true}", "externalZones.enabled reads Kubernetes"},
+	{"external-zones-through-config-node", "config: {node: {externalZones: {enabled: true}}}", "set externalZones.enabled, not config.node"},
+	{"external-zones-through-config-settings", "config: {settings: {externalZones: {enabled: true}}}", "set externalZones.enabled, not config.settings"},
 	{"impersonate-through-config-settings", "config: {settings: {auth: {kubernetes: {mode: impersonate}}}}", "set auth.kubernetes.mode, not config.settings"},
 	{"dhcp-hostnetwork", "hostNetwork: {enabled: true}\ndhcp: {enabled: true, serverAddress: 192.0.2.67}", "hostNetwork"},
 }

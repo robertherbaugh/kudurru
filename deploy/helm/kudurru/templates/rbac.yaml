@@ -43,6 +43,17 @@ rules:
   - apiGroups: ["authorization.k8s.io"]
     resources: ["subjectaccessreviews"]
     verbs: ["create"]
+  {{- if .Values.externalZones.enabled }}
+  # externalZones.enabled (D402): the elected replica reads the sources of
+  # DNSZones of type external. Services are already readable above. The
+  # derived DNSRecordSets are kudurru.io objects; sources are never written.
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways", "httproutes", "grpcroutes", "tlsroutes"]
+    verbs: ["get", "list", "watch"]
+  {{- end }}
   {{- if eq (include "kudurru.impersonate" .) "true" }}
   # auth.kubernetes.mode=impersonate (D386): API writes are sent as the
   # signed-in principal. Kubernetes cannot narrow impersonation to a name
