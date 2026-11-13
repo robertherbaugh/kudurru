@@ -42,7 +42,9 @@ path under `credentials.allowedFiles`. Both deletion policies are supported on b
 [Deleting an integration](#deleting-an-integration). Integrations can be
 written from files, with `kubectl` on Kubernetes, or through the API and CLI
 (see [Writing integrations through the API](#writing-integrations-through-the-api)).
-Optional UniFi mutations and the dashboard's Integrations page remain separate. The external-dns webhook listener is a separate inbound feature.
+Optional UniFi writes run on SQLite only (see [UniFi optional writes](#unifi-optional-writes));
+on Kubernetes an Integration that enables one is refused with reason
+`UniFiPushUnsupportedOnKubernetes`. The dashboard's Integrations page remains separate. The external-dns webhook listener is a separate inbound feature.
 
 ## Deleting an integration
 
@@ -313,8 +315,8 @@ integrations NAME`). The rules are those of every object write:
 integrations manifests`) lists the provider types of this build with their
 configuration schema, credential keys and which are required, and what this
 node's host refuses: on Kubernetes the release namespace is the only one that
-runs, webhook instances are unsupported and `spec.unifi.inventory` is refused;
-UniFi push fields are refused on both drivers. It also reports whether the
+runs, webhook instances are unsupported and `spec.unifi.inventory` and the
+UniFi push fields are refused; SQLite refuses none of them. It also reports whether the
 license covers integrations and which reference forms this node resolves; the
 allowlisted file paths and environment names are included only for a caller
 that holds `integrations.secrets`.
@@ -548,6 +550,92 @@ expiry. Restart and replica promotion preserve those absolute times. A new
 successful observation is required to extend them. In-flight provider work from
 a fenced writer cannot commit under successor authority.
 
+## UniFi optional writes
+
+Every UniFi write is off by default, enabled per Integration, and runs only as
+an explicit reviewed operator command: inventory polling and background ticks
+never write to the controller. These writes run on SQLite only. They were
+tested against a TLS double of the documented UniFi Network API (10.6.106),
+not against a live controller.
+
+```yaml
+spec:
+  type: unifi
+  unifi:
+    endpoint: https://controller.example.com
+    legacy: true                 # required by clientActions only
+    push:
+      dhcpDNSServers: true
+      dnsServers: [192.0.2.53, 192.0.2.54]
+      networks: [LAN, IoT]
+      clientActions: true
+      mirrorRecords:
+        enabled: true
+        domains: [example.com]
+        types: [A, CNAME]        # empty mirrors both
+        labels: {mirror: unifi}  # optional
+        exclude: ["*.internal.example.com"]
+```
+
+**Mirrored records as DNS policies.** With `mirrorRecords.enabled`, the
+Integration is also a publisher whose destination is the site's DNS policies,
+so the gateway can answer when kudurru is down. Records are selected as for
+Cloudflare (`domains`, `labels`, `exclude`, and zone publish rules naming the
+Integration), limited to A and CNAME. Records with a view, wildcards and names
+longer than 127 characters cannot be mirrored and make the preview fail;
+exclude them. TTLs above the policy maximum are capped. Review and apply
+exactly as for Cloudflare:
+
+```sh
+kudurru integrations preview gateway -n default --uid UID --revision REVISION
+kudurru integrations sync gateway -n default --uid UID --revision REVISION --mode publish --preview-digest DIGEST
+```
+
+A DNS policy has no field that could carry an ownership marker, so ownership
+comes only from the private ledger: a policy is the Integration's when a
+confirmed operation of this Integration created it. Every other policy at a
+selected name, including forwarded domains and other record types, is a
+conflict in the preview and is never modified. A repeated preview of an
+applied plan is empty, a changed address or TTL of an owned policy previews as
+an update (drift), and a record removed from the selection previews as a
+delete of only its own policy. Disabling `mirrorRecords` leaves applied
+policies in place; `deletionPolicy: Delete` removes them when the Integration
+is deleted. If a create is not acknowledged, the sync answers
+`integration_uncertain` and nothing is retried. The policy it may have made is
+never treated as owned (it shows as a conflict), and further reviewed syncs
+are refused until the next poll finds the site exactly as before the intent.
+Removing such a policy in UniFi lets that happen. A changed address that was
+not acknowledged settles by itself at the next poll, without a write.
+
+**DHCP DNS servers.** With `dhcpDNSServers`, the `dhcp-dns-servers` action
+writes `dnsServers` (one to four IPv4 addresses, for example the kudurru VIP,
+in order) into the DHCP DNS server override of each named network. Preview,
+then apply with the returned digest:
+
+```sh
+kudurru integrations act gateway dhcp-dns-servers -n default --uid UID --revision REVISION --params '{"mode":"preview"}'
+kudurru integrations act gateway dhcp-dns-servers -n default --uid UID --revision REVISION --params '{"mode":"apply","digest":"DIGEST"}'
+```
+
+The preview lists each network as `update` (with its current servers),
+`unchanged`, `missing` or `unsupported` (not a gateway network with a DHCP
+server). The digest binds every network body read; any change to one of those
+networks refuses the apply with `409` before a write. Apply refuses a plan with
+a missing or unsupported network (`501`), sends one update per changed network
+(the network as read, without its `id` and `metadata`, with only the IPv4 DHCP
+DNS server override replaced), and rereads to confirm. A later preview shows
+drift if someone changes the servers back. The previous servers appear in the
+preview; restore them in UniFi if you want to undo the change.
+
+**Block and unblock clients.** With `clientActions` (which requires
+`legacy: true`), `block-client` and `unblock-client` take `{"mac":"..."}` and
+send one legacy `cmd/stamgr` `block-sta` or `unblock-sta` command. They are
+never run automatically.
+
+All three actions require `integrations.act`, are audited (actor, action and
+parameter digest), and an unacknowledged write answers `integration_uncertain`
+without a retry.
+
 ## Cloudflare publication
 
 Use the [Integration sample](../../deploy/kustomize/samples/kudurru.io_v1alpha1_integration.yaml)
@@ -631,9 +719,12 @@ kudurru integrations sync inventory -n default --uid UID --revision REVISION --m
 
 Permissions are `integrations.read`, `.check`, `.sync` and `.act` as appropriate;
 server-side cookie calls also require CSRF. `integrations actions NAME --uid UID
---revision REVISION` lists only advertised actions. Current built-in providers
-advertise none. `integrations act NAME ACTION --uid UID --revision REVISION
---params '{}'` cannot enable an unsupported provider action.
+--revision REVISION` lists only advertised actions. Of the built-in providers
+only UniFi advertises actions, and only those its spec enables (see
+[UniFi optional writes](#unifi-optional-writes)). `integrations act NAME ACTION --uid UID --revision REVISION
+--params '{}'` cannot enable an unsupported provider action. An acknowledged
+action's answer is returned in `result`; the audit row of an act names the
+action and the SHA-256 digest of its parameters.
 
 On SQLite these routes require complete runtime authority, and each effect
 re-authorizes the original credential. On Kubernetes list and get answer on

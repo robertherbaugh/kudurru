@@ -15,7 +15,7 @@ complete-image inventory publication and the `Delete` cleanup job (see
 [Deletion policy](#deletion-policy-and-the-cleanup-finalizer)). The Kubernetes
 store mounts the same host for Cloudflare publication, UniFi inventory and
 group observation, the `Delete` cleanup and the administration API, and refuses
-UniFi record publication and webhook instances on their objects (see
+UniFi record publication, UniFi optional writes and webhook instances on their objects (see
 [Kubernetes execution](#kubernetes-execution)). Integrations are written
 through the generic object routes on both stores (see
 [Writing Integrations](#writing-integrations)). Those refusals, and dashboard
@@ -189,7 +189,42 @@ observation cannot establish a complete RRset hash or masquerade as absence;
 ordinary preview and executable planning still require consistent original rows.
 
 Actions validate advertised bounded schemas and redact named credentials from
-responses. Event delivery persists sanitized input and a stable delivery ID
+responses.
+
+### UniFi optional writes (D401)
+
+UniFi writes are explicit operator commands on SQLite; the Kubernetes root
+refuses an Integration that enables one. The record mirror makes the UniFi
+provider a publisher whose roles say `Reviewed`: a periodic or reconcile sync
+of such a publisher builds no plan and applies nothing. It reads the provider
+only when a ledger row is pending, and then only settles that intent from a
+fresh complete reread (confirm, or abandon when the site shows exactly the
+baseline). New operations run only from a reviewed sync bound to a preview
+digest. DNS policies cannot carry an ownership marker, so the adapter reports
+every A and CNAME policy as an `Unmarked` row, and every other policy as a
+claim on its name. The planner treats an unmarked row as the Integration's
+exactly when the confirmed ledger of its RRset lists its ID; recovery also
+accepts an ID that the provider acknowledged to the pending intent's own
+receipt. Any other policy is a conflict that is never modified or adopted.
+The DHCP DNS server override and client block/unblock are advertised actions
+(`dhcp-dns-servers`, `block-client`, `unblock-client`) present only when the
+spec enables them. The DHCP action previews a plan whose digest binds every
+network body it read, and applies only under that digest. An action may refuse
+before any effect with a stale review or an inapplicable plan; every other
+action failure is an uncertain outcome, and nothing is replayed.
+
+```mermaid
+flowchart TD
+    Tick["Poll or reconcile tick"] --> Pending{"Ledger row pending?"}
+    Pending -- no --> Observe["Observe inventory only"]
+    Pending -- yes --> Reread["Complete DNS policy reread"] --> Settle["Confirm, abandon, or stay pending"] --> Observe
+    Review["Reviewed sync with preview digest"] --> Plan["Plan: unmarked rows owned only by ledger IDs"]
+    Plan --> Effects["One request per policy effect, no retry"]
+    Effects --> Receipt["Reread and receipt"]
+    Act["Reviewed act (integrations.act)"] --> Action{"Action"}
+    Action -- dhcp-dns-servers --> DHCP["Preview digest, or apply under it"]
+    Action -- block or unblock --> Station["One legacy cmd/stamgr command"]
+``` Event delivery persists sanitized input and a stable delivery ID
 before callbacks, retries to the original 24-hour deadline, and retains terminal
 records for deduplication and audit. Delivery is at least once. Retention
 bounds the rows of each hook instance by count and by time (see the hook
@@ -223,7 +258,7 @@ A replica serving a `local.db` snapshot captures nothing. Only Integrations in
 the release namespace run: the credential allowlist is node-wide, so an
 Integration in any other namespace is refused with reason
 `NamespaceNotAllowed` before any provider exists. An Integration the root
-refuses outright (another namespace, a webhook, UniFi record publication) has
+refuses outright (another namespace, a webhook, UniFi record publication or an optional UniFi write) has
 its credential references left unresolved, so no fingerprint of an
 allowlisted credential is written to its status. While the controller
 reports, for an admitted record set's current generation, that the zone drops
