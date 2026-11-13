@@ -48,6 +48,74 @@ export const DOCUMENT_FORWARDED: readonly string[] = [
   'putObject', 'putPolicies', 'revokeSession', 'setBlocking', 'upsertZoneRecord',
 ];
 
+/**
+ * The route of every operation in DOCUMENT_FORWARDED, as `METHOD /path` with
+ * `{name}` for one path segment (relative to /api/v1). The API client tells
+ * which write it answered by method and path, so the read-back after a
+ * forwarded change (scheduleFollowerRefetch) needs the operationId of a
+ * route; follower.test.ts keeps this table equal to the OpenAPI document.
+ */
+export const FORWARDED_ROUTES: Readonly<Record<string, string>> = {
+  apply: 'POST /apply',
+  batchDeleteBlocklists: 'POST /blocklists:batchDelete',
+  batchDeleteClientgroups: 'POST /clientgroups:batchDelete',
+  batchDeleteDnsrecordsets: 'POST /dnsrecordsets:batchDelete',
+  batchDeleteDnszones: 'POST /dnszones:batchDelete',
+  batchDeletePolicies: 'POST /policies:batchDelete',
+  browserLogout: 'POST /auth/logout/browser',
+  changePassword: 'POST /auth/password',
+  createBlocklists: 'POST /blocklists',
+  createClientgroups: 'POST /clientgroups',
+  createObject: 'POST /objects/{kind}',
+  createPolicies: 'POST /policies',
+  createToken: 'POST /auth/tokens',
+  deleteBlocklists: 'DELETE /blocklists/{namespace}/{name}',
+  deleteClientgroups: 'DELETE /clientgroups/{namespace}/{name}',
+  deleteClusterObject: 'DELETE /objects/{kind}/{name}',
+  deleteObject: 'DELETE /objects/{kind}/{namespace}/{name}',
+  deletePolicies: 'DELETE /policies/{namespace}/{name}',
+  deleteToken: 'DELETE /auth/tokens/{id}',
+  deleteZone: 'DELETE /zones/{zone}',
+  deleteZoneRecord: 'DELETE /zones/{zone}/records/{name}/{type}',
+  importZone: 'POST /zones/{zone}/import',
+  login: 'POST /auth/login',
+  logout: 'POST /auth/logout',
+  patchSettings: 'PATCH /settings',
+  putBlocklists: 'PUT /blocklists/{namespace}/{name}',
+  putClientgroups: 'PUT /clientgroups/{namespace}/{name}',
+  putClusterObject: 'PUT /objects/{kind}/{name}',
+  putObject: 'PUT /objects/{kind}/{namespace}/{name}',
+  putPolicies: 'PUT /policies/{namespace}/{name}',
+  revokeSession: 'DELETE /auth/sessions/{id}',
+  setBlocking: 'POST /dns/blocking',
+  upsertZoneRecord: 'POST /zones/{zone}/records',
+};
+
+/** FORWARDED_ROUTES as matchers: method, then each segment a literal or a parameter (null). */
+const FORWARDED_MATCHERS = Object.entries(FORWARDED_ROUTES).map(([operationId, route]) => {
+  const [method = '', template = ''] = route.split(' ');
+  return { operationId, method, segments: template.split('/').slice(1).map((seg) => (/^\{[^}]+\}$/.test(seg) ? null : seg)) };
+});
+
+/**
+ * The forwarded operationId that a request of the API client is, by its
+ * method and its path relative to /api/v1 (a query string is ignored);
+ * undefined for every other request.
+ */
+export function forwardedOperation(method: string, path: string): string | undefined {
+  const segments = (path.split('?')[0] ?? '').replace(/^\/+/, '').split('/');
+  const m = method.toUpperCase();
+  const hit = FORWARDED_MATCHERS.find((r) => r.method === m && r.segments.length === segments.length && r.segments.every((seg, i) => (seg === null ? segments[i] !== '' : segments[i] === seg)));
+  return hit?.operationId;
+}
+
+/**
+ * Forwarded operations whose effect the dashboard does not read back: signing
+ * in and out replace the session (and its caches) anyway, and a password
+ * change shows nothing.
+ */
+export const NO_READ_BACK: ReadonlySet<string> = new Set(['login', 'logout', 'browserLogout', 'changePassword']);
+
 /** The operationIds a follower of this release runs itself
  * (`x-kudurru-follower: local`); see DOCUMENT_FORWARDED. */
 export const DOCUMENT_LOCAL: readonly string[] = [

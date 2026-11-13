@@ -7,7 +7,7 @@ import { ApiClient, ApiError } from './client';
 import { endpoints, type Endpoints, type ScopeParams } from './endpoints';
 import type { AuthStatus, ClusterInfo, Me } from './types';
 import { browserLogoutContinuation } from './logout';
-import { clusterRole, needsPrimary, permissionNeedsPrimary, primaryOnlyReason, statusRole, type ClusterRole } from '../lib/follower';
+import { clusterRole, forwardedOperation, needsPrimary, NO_READ_BACK, permissionNeedsPrimary, primaryOnlyReason, statusRole, type ClusterRole } from '../lib/follower';
 
 interface ApiContextValue {
   client: ApiClient;
@@ -40,7 +40,7 @@ export function ApiProvider({
       // Every write the dashboard sends passes here, however a page issues
       // it (useMutation or a plain await), so the follower read-back and the
       // role refresh do not depend on the calling component (D368).
-      onMutation: (err) => afterMutation(qc.current, err),
+      onMutation: (err, request) => afterMutation(qc.current, err, request),
     });
     return {
       client,
@@ -175,11 +175,24 @@ export function usePrimaryOnlyPermission(): (resource: string, verb: string) => 
  * one page follows a promotion or a demotion. */
 export const ROLE_POLL_MS = 30_000;
 
-/** GET /cluster, shared by the capability hooks. */
+/**
+ * GET /cluster, shared by the capability hooks. Only a session that holds
+ * cluster.read sends it: the server audits every refused read as a denial, so
+ * a session without the permission takes the role from the public GET
+ * /auth/status instead (useStatusRole). A 403 (a permission withdrawn during
+ * the session) also ends the poll.
+ */
 function useClusterInfo() {
   const api = useApi();
   const { data: session } = useSession();
-  return useQuery({ queryKey: qk.cluster, queryFn: () => api.cluster.info(), enabled: !!session, staleTime: 60_000, refetchInterval: ROLE_POLL_MS, retry: false });
+  return useQuery({
+    queryKey: qk.cluster,
+    queryFn: () => api.cluster.info(),
+    enabled: !!session && can(session, 'cluster', 'read'),
+    staleTime: 60_000,
+    refetchInterval: (query) => (query.state.error instanceof ApiError && query.state.error.status === 403 ? false : ROLE_POLL_MS),
+    retry: false,
+  });
 }
 
 /** The public GET /auth/status, for a session that cannot read GET /cluster
@@ -201,32 +214,46 @@ export function useStaticMode(): boolean {
  * this dashboard was built with. Until one of them answers, nothing is gated
  * and the server decides. */
 export function useClusterRole(): ClusterRole {
+  return useRoleAnswer().role;
+}
+
+/** Whether GET /cluster or the GET /auth/status fallback has answered (also
+ * with an error), so the role useClusterRole reports is the node's: a control
+ * that opens by itself (a ?add= deep link) waits for it instead of opening
+ * before a follower is known to refuse it. */
+export function useClusterRoleKnown(): boolean {
+  return useRoleAnswer().known;
+}
+
+function useRoleAnswer(): { role: ClusterRole; known: boolean } {
   const { data: session } = useSession();
   const cluster = useClusterInfo();
   const fallback = !!session && cluster.data === undefined && (cluster.isError || !can(session, 'cluster', 'read'));
   const status = useStatusRole(fallback);
   const info = cluster.data;
   const statusData = fallback ? status.data : undefined;
-  return useMemo(() => (info ? clusterRole(info) : statusRole(statusData)), [info, statusData]);
+  const role = useMemo(() => (info ? clusterRole(info) : statusRole(statusData)), [info, statusData]);
+  return { role, known: info !== undefined || (fallback && (status.data !== undefined || status.isError)) };
 }
 
-/** Whether the cached answers say this node is an enrolled follower. */
-function cachedFollower(client: QueryClient): boolean {
+/** The node's role as the cached answers describe it (GET /cluster, else
+ * GET /auth/status). */
+function cachedRole(client: QueryClient): ClusterRole {
   const info = client.getQueryData<ClusterInfo>(qk.cluster);
-  if (info) return info.primaryRequired === true;
-  return client.getQueryData<AuthStatus>(qk.authStatus)?.role === 'follower';
+  return info ? clusterRole(info) : statusRole(client.getQueryData<AuthStatus>(qk.authStatus));
 }
 
 /**
  * Called by the API client after every POST, PUT, PATCH and DELETE that got
- * an answer: a success on a follower schedules the read-back; a
+ * an answer: a forwarded change on a follower schedules the read-back; a
  * primary_required refusal rereads the node's role at once, since the
  * dashboard may still describe it as a primary (the dashboard sends no
  * promotion; ROLE_POLL_MS follows one made with the CLI).
  */
-export function afterMutation(client: QueryClient, err: ApiError | undefined): void {
+export function afterMutation(client: QueryClient, err: ApiError | undefined, request: { method: string; path: string }): void {
   if (!err) {
-    scheduleFollowerRefetch(client);
+    const op = forwardedOperation(request.method, request.path);
+    if (op !== undefined && !NO_READ_BACK.has(op)) scheduleFollowerRefetch(client, op);
     return;
   }
   if (err.key === 'primary_required') {
@@ -244,12 +271,17 @@ export const FOLLOWER_SYNC_MS = 6_000;
 const followerTimers = new WeakMap<QueryClient, ReturnType<typeof setTimeout>>();
 
 /**
- * Called for every successful write (afterMutation): on an enrolled follower, refetch
- * the active queries once more after FOLLOWER_SYNC_MS (one timer per client;
- * a later change restarts it). Elsewhere it does nothing.
+ * Called for every successful forwarded change (afterMutation, with its
+ * operationId): when the cached role says this node is an enrolled follower
+ * that forwards the operation, refetch the active queries once more after
+ * FOLLOWER_SYNC_MS (one timer per client; a later change restarts it). A
+ * write the node runs itself, a read sent as POST (a DNS query) and every
+ * write on a primary schedule nothing: the immediate refetch already sees
+ * them.
  */
-export function scheduleFollowerRefetch(client: QueryClient): void {
-  if (!cachedFollower(client)) return;
+export function scheduleFollowerRefetch(client: QueryClient, operationId: string): void {
+  const role = cachedRole(client);
+  if (!role.follower || !role.forwarded.has(operationId)) return;
   const pending = followerTimers.get(client);
   if (pending !== undefined) clearTimeout(pending);
   followerTimers.set(

@@ -1379,13 +1379,21 @@ other session (or when `/cluster` fails) the role and the primary come from
 the public `GET /auth/status`, and the two lists from a build-time copy of the
 `x-kudurru-follower` classification (`DOCUMENT_FORWARDED`, `DOCUMENT_LOCAL`;
 a test keeps them equal to the OpenAPI document, and the dashboard is embedded
-in the binary it describes). The role is reread every 30 seconds and at once
-when a write answers `primary_required`, so an open tab follows a promotion or
-demotion. The API client reports every POST, PUT, PATCH and DELETE that the
-server answered (`ApiClient` `onMutation`), however a page issues it; on a
-follower a success is followed by one more refetch of the active queries after
-six seconds, the follower's pull interval plus a margin. Until one of the two
-reads answers, nothing is gated and the server decides.
+in the binary it describes). Only a session that holds `cluster.read` sends
+`GET /cluster`, because the server audits every refused read as a denial; a
+403 also ends that poll. The role is reread every 30 seconds (from whichever
+of the two routes the session reads) and at once when a write answers
+`primary_required`, so an open tab follows a promotion or demotion. The API
+client reports every POST, PUT, PATCH and DELETE that the server answered
+(`ApiClient` `onMutation`, with its method and path), however a page issues
+it; on a follower a successful forwarded change (matched to its operation ID
+by `FORWARDED_ROUTES`, a table a test keeps equal to the OpenAPI document) is
+followed by one more refetch of the active queries after six seconds, the
+follower's pull interval plus a margin. Sign-in, sign-out, a password change,
+a read sent as POST (a DNS query) and the changes a follower runs itself
+schedule nothing. Until one of the two reads answers, nothing is gated and the
+server decides, except that a control that would open by itself (the `?add=`
+link of the Allowlist and Denylist) waits for the answer.
 
 The command seams repeat the answer for anything that reaches them on a
 follower's request without passing that middleware (a route with a safe method

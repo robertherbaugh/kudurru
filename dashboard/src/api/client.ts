@@ -96,8 +96,8 @@ export interface ClientOptions {
   onUnauthenticated?: () => void;
   /** Called after every POST, PUT, PATCH or DELETE that the server answered:
    * with undefined on success, with the error otherwise (not when the
-   * request never reached the server). */
-  onMutation?: (err: ApiError | undefined) => void;
+   * request never reached the server), and the request's method and path. */
+  onMutation?: (err: ApiError | undefined, request: { method: string; path: string }) => void;
   fetch?: typeof fetch;
 }
 
@@ -164,10 +164,10 @@ export class ApiClient {
     }
     if (!res.ok) {
       const err = await toError(res, path, this.opts.onUnauthenticated);
-      if (MUTATING.has(method)) this.opts.onMutation?.(err);
+      if (MUTATING.has(method)) this.opts.onMutation?.(err, { method, path });
       throw err;
     }
-    if (MUTATING.has(method)) this.opts.onMutation?.(undefined);
+    if (MUTATING.has(method)) this.opts.onMutation?.(undefined, { method, path });
     if (res.status === 204) return undefined as T;
     if (o.asText) return (await res.text()) as T;
     const ct = res.headers.get('Content-Type') ?? '';

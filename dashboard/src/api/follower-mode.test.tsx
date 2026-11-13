@@ -292,9 +292,9 @@ describe('read after a forwarded change', () => {
     return renderHook(() => ({ ctx: useApiContext(), session: useSession(), role: useClusterRole(), objects: useQueryObserver(reads) }), { wrapper: wrapper(queryClient) });
   }
 
-  it('refetches once more after the follower’s next pull for any write the client sends, and never on a primary', async () => {
+  it('refetches once more after the follower’s next pull for a forwarded change the client sends, and never on a primary', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    server.use(http.post(`${API}/probe-write`, () => new HttpResponse(null, { status: 204 })));
+    server.use(http.put(`${API}/objects/policies/default/probe`, () => new HttpResponse(null, { status: 204 })));
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     const reads = vi.fn(() => Promise.resolve('value'));
     // The first answer is a primary: a write schedules nothing.
@@ -303,16 +303,38 @@ describe('read after a forwarded change', () => {
     await vi.waitFor(() => expect(hook.result.current.role.role).toBe('primary'));
     await vi.waitFor(() => expect(reads).toHaveBeenCalledTimes(1));
     // A plain await of the client, the way the wizards write (not useMutation).
-    await act(async () => { await hook.result.current.ctx.client.request('POST', '/probe-write'); });
+    await act(async () => { await hook.result.current.ctx.client.request('PUT', '/objects/policies/default/probe', { body: {} }); });
     await act(async () => { await vi.advanceTimersByTimeAsync(FOLLOWER_SYNC_MS + 100); });
     expect(reads).toHaveBeenCalledTimes(1);
 
     queryClient.setQueryData(qk.cluster, followerInfo());
-    await act(async () => { await hook.result.current.ctx.client.request('POST', '/probe-write'); });
+    await act(async () => { await hook.result.current.ctx.client.request('PUT', '/objects/policies/default/probe', { body: {} }); });
     await act(async () => { await vi.advanceTimersByTimeAsync(FOLLOWER_SYNC_MS - 100); });
     expect(reads).toHaveBeenCalledTimes(1);
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
     await vi.waitFor(() => expect(reads).toHaveBeenCalledTimes(2));
+    hook.unmount();
+    queryClient.clear();
+  });
+
+  it('schedules no read-back on a follower for a sign-in, a DNS query or a change the node runs itself', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    server.use(
+      http.post(`${API}/auth/login`, () => HttpResponse.json({ principal: { kind: 'User', name: 'admin', id: 'local:admin' }, roles: ['admin'], permissions: { '*': ['*'] }, csrf: 'c' })),
+      http.post(`${API}/dns/query`, () => HttpResponse.json({ answers: [] })),
+      http.post(`${API}/cache/flush`, () => new HttpResponse(null, { status: 204 })),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    const reads = vi.fn(() => Promise.resolve('value'));
+    asFollower();
+    const hook = harness(queryClient, reads);
+    await vi.waitFor(() => expect(hook.result.current.role.follower).toBe(true));
+    await vi.waitFor(() => expect(reads).toHaveBeenCalledTimes(1));
+    for (const path of ['/auth/login', '/dns/query', '/cache/flush']) {
+      await act(async () => { await hook.result.current.ctx.client.request('POST', path, { body: {} }); });
+    }
+    await act(async () => { await vi.advanceTimersByTimeAsync(FOLLOWER_SYNC_MS * 2); });
+    expect(reads).toHaveBeenCalledTimes(1);
     hook.unmount();
     queryClient.clear();
   });
@@ -364,6 +386,37 @@ describe('a session without cluster.read on a follower', () => {
     expect(hook.result.current.can('blocklists', 'write')).toBe(true);
     expect(hook.result.current.primaryOnly('createAllowlistEntries')).toContain('kudurru-0');
     expect(hook.result.current.primaryOnly('createBlocklists')).toBeUndefined();
+    hook.unmount();
+    queryClient.clear();
+  });
+
+  it('never asks GET /cluster, which would be audited as a denial, and follows the role through /auth/status', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    const { clusterReads, statusReads } = asOperatorOnFollower();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    queryClient.setQueryData(qk.me, { principal: { name: 'ops' }, permissions: OPERATOR_PERMISSIONS });
+    const hook = renderHook(() => ({ role: useClusterRole(), can: useCan() }), { wrapper: wrapper(queryClient) });
+    await vi.waitFor(() => expect(hook.result.current.role.follower).toBe(true));
+    const first = statusReads();
+    for (let i = 0; i < 4; i++) await act(async () => { await vi.advanceTimersByTimeAsync(ROLE_POLL_MS + 100); });
+    expect(clusterReads()).toBe(0);
+    // The public route carries the poll instead.
+    expect(statusReads()).toBeGreaterThanOrEqual(first + 4);
+    hook.unmount();
+    queryClient.clear();
+  });
+
+  it('stops polling GET /cluster after a 403', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    const { clusterReads } = asOperatorOnFollower();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // The session claims cluster.read (a grant withdrawn since /auth/me was read).
+    queryClient.setQueryData(qk.me, { principal: { name: 'ops' }, permissions: { ...OPERATOR_PERMISSIONS, cluster: ['read'] } });
+    const hook = renderHook(() => ({ role: useClusterRole() }), { wrapper: wrapper(queryClient) });
+    await vi.waitFor(() => expect(hook.result.current.role.follower).toBe(true));
+    expect(clusterReads()).toBe(1);
+    for (let i = 0; i < 4; i++) await act(async () => { await vi.advanceTimersByTimeAsync(ROLE_POLL_MS + 100); });
+    expect(clusterReads()).toBe(1);
     hook.unmount();
     queryClient.clear();
   });
@@ -445,6 +498,37 @@ describe('gated surfaces on a follower', () => {
     await screen.findByTestId('entry-s.youtube.com');
     await waitFor(() => expect(client.getQueryData(qk.cluster)).toBeDefined());
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('does not open the add dialog from ?add= before the role of a follower is known, and drops the link', async () => {
+    let answer: (() => void) | undefined;
+    server.use(http.get(`${API}/cluster`, async () => {
+      await new Promise<void>((r) => (answer = r));
+      return HttpResponse.json(followerInfo());
+    }));
+    const opened = vi.fn();
+    const observer = new MutationObserver(() => {
+      if (screen.queryByRole('dialog')) opened();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    afterEachCleanups.push(() => observer.disconnect());
+    const { client } = renderWithApp(<AllowlistPage />, { route: '/allowlist?add=cdn.example.org' });
+    await screen.findByTestId('entry-s.youtube.com');
+    await waitFor(() => expect(answer).toBeDefined());
+    // The list is on screen and the role has not answered: still no dialog.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(opened).not.toHaveBeenCalled();
+    answer!();
+    await waitFor(() => expect(client.getQueryData(qk.cluster)).toBeDefined());
+    await waitFor(() => expect(window.location.search).not.toContain('add='));
+    expect(opened).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('opens the add dialog from ?add= once a primary answers', async () => {
+    renderWithApp(<AllowlistPage />, { route: '/allowlist?add=cdn.example.org' });
+    const d = await screen.findByRole('dialog');
+    expect(within(d).getByDisplayValue('cdn.example.org')).toBeInTheDocument();
   });
 
   it('says on the Settings row that a forwarded save has an unknown outcome', async () => {

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ClusterInfo } from '../api/types';
-import { clusterRole, DOCUMENT_FORWARDED, DOCUMENT_LOCAL, needsPrimary, NO_ROLE, PERMISSION_OPERATIONS, permissionNeedsPrimary, primaryFromMessage, primaryOnlyReason, statusRole } from './follower';
+import { clusterRole, DOCUMENT_FORWARDED, DOCUMENT_LOCAL, FORWARDED_ROUTES, forwardedOperation, needsPrimary, NO_ROLE, PERMISSION_OPERATIONS, permissionNeedsPrimary, primaryFromMessage, primaryOnlyReason, statusRole } from './follower';
 
 interface Permission { resource?: string; resources?: string[]; verb?: string }
 interface Operation { operationId?: string; 'x-kudurru-permission'?: Permission | string; 'x-kudurru-follower'?: string }
@@ -68,6 +68,27 @@ describe('follower permission table', () => {
     // A permission that also gates a read is never refused as a whole.
     expect(permissionNeedsPrimary(role, 'settings', 'write')).toBe(false);
     expect(permissionNeedsPrimary(role, 'integrations', 'read')).toBe(false);
+  });
+
+  it('keeps the routes of the forwarded operations equal to the document, and matches requests by them', () => {
+    const routes: Record<string, string> = {};
+    for (const [p, ops] of Object.entries(openapi())) {
+      for (const [method, op] of Object.entries(ops)) {
+        if (op.operationId && op['x-kudurru-follower'] === 'forwarded') routes[op.operationId] = `${method.toUpperCase()} ${p}`;
+      }
+    }
+    expect({ ...FORWARDED_ROUTES }).toEqual(routes);
+    expect(Object.keys(FORWARDED_ROUTES).sort()).toEqual([...DOCUMENT_FORWARDED].sort());
+    expect(forwardedOperation('PUT', '/objects/policies/default/kids')).toBe('putObject');
+    expect(forwardedOperation('PUT', '/objects/upstreamgroups/default')).toBe('putClusterObject');
+    expect(forwardedOperation('POST', '/policies:batchDelete')).toBe('batchDeletePolicies');
+    expect(forwardedOperation('DELETE', '/zones/example.org/records/www/A')).toBe('deleteZoneRecord');
+    expect(forwardedOperation('POST', '/auth/logout/browser')).toBe('browserLogout');
+    expect(forwardedOperation('POST', '/apply?dryRun=true')).toBe('apply');
+    expect(forwardedOperation('post', '/dns/blocking')).toBe('setBlocking');
+    for (const [method, p] of [['POST', '/dns/query'], ['POST', '/cache/flush'], ['GET', '/settings'], ['POST', '/zones/example.org/notify'], ['DELETE', '/zones//records/www/A'], ['POST', '/objects/policies/x']]) {
+      expect(forwardedOperation(method!, p!), `${method} ${p}`).toBeUndefined();
+    }
   });
 
   it('keeps the build-time follower lists equal to the document, for sessions without cluster.read', () => {
