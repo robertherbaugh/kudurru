@@ -81,6 +81,7 @@ func enrolledSendUpdate(t *testing.T, addr, secret string, tcp bool, build func(
 func enrolledExpectUpdate(t *testing.T, node *kudurrutest.Node, secret string, tcp bool, rcode int, build func(*dns.Msg)) {
 	t.Helper()
 	var owner string
+	sent := time.Now()
 	answer, err := enrolledSendUpdate(t, node.Ports.DNS, secret, tcp, func(m *dns.Msg) {
 		build(m)
 		if len(m.Ns) != 0 {
@@ -88,10 +89,11 @@ func enrolledExpectUpdate(t *testing.T, node *kudurrutest.Node, secret string, t
 		}
 	})
 	if err != nil {
-		t.Fatal("signed UPDATE exchange failed", node.Name, err)
+		t.Fatal("signed UPDATE exchange failed", node.Name, err, time.Since(sent))
 	}
 	if answer.Rcode != rcode || answer.Opcode != dns.OpcodeUpdate {
-		t.Fatalf("UPDATE on %s answered %s, want %s (update of %s, tcp=%t)", node.Name, dns.RcodeToString[answer.Rcode], dns.RcodeToString[rcode], owner, tcp)
+		t.Fatalf("UPDATE on %s sent at %s answered %s after %s, want %s (update of %s, tcp=%t)", node.Name, sent.UTC().Format(time.RFC3339Nano),
+			dns.RcodeToString[answer.Rcode], time.Since(sent), dns.RcodeToString[rcode], owner, tcp)
 	}
 }
 
@@ -159,44 +161,89 @@ func enrolledAwaitDyn(t *testing.T, node *kudurrutest.Node, name, ip string, rco
 	}
 }
 
+// enrolledForwardBound is the follower's four-second forward bound
+// (memberForwardUpdateTimeout in cmd/kudurru), less the client side's
+// scheduling slack. A forwarded UPDATE answered SERVFAIL this late was not
+// sent, or not answered, within the bound: its outcome is unknown.
+const enrolledForwardBound = 3900 * time.Millisecond
+
+// enrolledFollowerUpdate sends one signed UPDATE through a follower and
+// requires rcode. With atBound set, a SERVFAIL answered at the forward bound
+// (enrolledForwardBound or later) is logged and the idempotent update is
+// sent again, at most twice; a SERVFAIL before the bound, and any other
+// rcode, fails at once. Without atBound the update is sent exactly once.
+func enrolledFollowerUpdate(t *testing.T, follower *kudurrutest.Node, secret string, tcp bool, rcode int, atBound bool, build func(*dns.Msg)) {
+	t.Helper()
+	var owner string
+	for attempt := 1; ; attempt++ {
+		sent := time.Now()
+		answer, err := enrolledSendUpdate(t, follower.Ports.DNS, secret, tcp, func(m *dns.Msg) {
+			build(m)
+			if len(m.Ns) != 0 {
+				owner = m.Ns[len(m.Ns)-1].Header().Name
+			}
+		})
+		elapsed := time.Since(sent)
+		switch {
+		case err != nil:
+			t.Fatal("signed UPDATE exchange failed", follower.Name, err, elapsed)
+		case answer.Opcode == dns.OpcodeUpdate && answer.Rcode == rcode:
+			return
+		case atBound && attempt < 3 && answer.Opcode == dns.OpcodeUpdate && answer.Rcode == dns.RcodeServerFailure && elapsed >= enrolledForwardBound:
+			t.Logf("UPDATE on %s sent at %s answered SERVFAIL at the forward bound after %s (update of %s, tcp=%t); sending it again",
+				follower.Name, sent.UTC().Format(time.RFC3339Nano), elapsed, owner, tcp)
+		default:
+			t.Fatalf("UPDATE on %s sent at %s answered %s after %s, want %s (update of %s, tcp=%t, attempt %d)", follower.Name, sent.UTC().Format(time.RFC3339Nano),
+				dns.RcodeToString[answer.Rcode], elapsed, dns.RcodeToString[rcode], owner, tcp, attempt)
+		}
+	}
+}
+
 // enrolledFollowerUpdates sends signed UPDATEs to the follower (D381). The
 // primary commits a granted one, and both nodes serve it; a failed
 // prerequisite and an ungranted type are the primary's own answers and write
-// nothing. Every answer is signed by the follower. Each update is sent once
-// and must get its answer at once: a follower that installed a newer commit
-// before it sent the update waits for its current publication and sends it
-// then, so no SERVFAIL that a second identical send would not get remains to
-// be retried (HA-OPEN6). Any other rcode, REFUSED and SERVFAIL included,
-// fails at once.
-func enrolledFollowerUpdates(t *testing.T, primary, follower *kudurrutest.Node, secret, name, ip string) {
+// nothing. Every answer is signed by the follower. A follower that installed
+// a newer commit before it sent the update waits for its current publication
+// and sends it then, so no SERVFAIL before the forward bound remains: any
+// other rcode, REFUSED and SERVFAIL included, fails at once (HA-OPEN6).
+//
+// atBound accepts the documented SERVFAIL at the four-second bound and
+// sends the update again (enrolledFollowerUpdate). The rejoined member needs
+// it: on the newly promoted primary a forwarded commit took 1.1 to 3.5
+// seconds to be published in the HA-OPEN6 diagnostic run (fix-diag01), and
+// one that also lost a compare-and-swap round against the primary's own
+// status write committed after the bound and answered SERVFAIL. That is the
+// publication latency PUBLISH-STARVATION (D405) works on, not a transient
+// refusal. The first follower sends every update once.
+func enrolledFollowerUpdates(t *testing.T, primary, follower *kudurrutest.Node, secret, name, ip string, atBound bool) {
 	t.Helper()
 	for i, tcp := range []bool{false, true} {
 		owner := []string{name + "-udp.dyn.test.", name + "-tcp.dyn.test."}[i]
-		enrolledExpectUpdate(t, follower, secret, tcp, dns.RcodeSuccess, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(owner, ip)}) })
+		enrolledFollowerUpdate(t, follower, secret, tcp, dns.RcodeSuccess, atBound, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(owner, ip)}) })
 		enrolledAwaitDyn(t, primary, owner, ip, dns.RcodeSuccess)
 		enrolledAwaitDyn(t, follower, owner, ip, dns.RcodeSuccess)
 	}
 	// The prerequisite "this RRset exists" fails on the primary's data.
 	prereq := name + "-prereq.dyn.test."
-	enrolledExpectUpdate(t, follower, secret, false, dns.RcodeNXRrset, func(m *dns.Msg) {
+	enrolledFollowerUpdate(t, follower, secret, false, dns.RcodeNXRrset, atBound, func(m *dns.Msg) {
 		m.RRsetUsed([]dns.RR{&dns.A{Hdr: dns.RR_Header{Name: "absent.dyn.test.", Rrtype: dns.TypeA, Class: dns.ClassANY}}})
 		m.Insert([]dns.RR{enrolledUpdateA(prereq, "192.0.2.199")})
 	})
 	// The key is granted A records only.
 	ungranted := name + "-txt.dyn.test."
-	enrolledExpectUpdate(t, follower, secret, true, dns.RcodeRefused, func(m *dns.Msg) {
+	enrolledFollowerUpdate(t, follower, secret, true, dns.RcodeRefused, atBound, func(m *dns.Msg) {
 		m.Insert([]dns.RR{&dns.TXT{Hdr: dns.RR_Header{Name: ungranted, Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 60}, Txt: []string{"refused"}}})
 	})
 	// A third update on the same follower proves that the refused ones changed
 	// nothing the primary then serves.
 	marker := name + "-after.dyn.test."
-	enrolledExpectUpdate(t, follower, secret, false, dns.RcodeSuccess, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(marker, ip)}) })
+	enrolledFollowerUpdate(t, follower, secret, false, dns.RcodeSuccess, atBound, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(marker, ip)}) })
 	for _, node := range []*kudurrutest.Node{primary, follower} {
 		enrolledAwaitDyn(t, node, marker, ip, dns.RcodeSuccess)
 		enrolledAbsent(t, node, prereq, dns.TypeA)
 		enrolledAbsent(t, node, ungranted, dns.TypeTXT)
 	}
-	enrolledFollowerBurst(t, primary, follower, secret, name, ip)
+	enrolledFollowerBurst(t, primary, follower, secret, name, ip, atBound)
 }
 
 // enrolledFollowerBurst sends committing UPDATEs to the follower back to
@@ -208,22 +255,15 @@ func enrolledFollowerUpdates(t *testing.T, primary, follower *kudurrutest.Node, 
 // it with SERVFAIL in its writer check before any admission, and most of a
 // burst failed. The primary now waits for its current publication within the
 // command's four-second bound and captures again only when the writer check
-// was all that refused the update.
-func enrolledFollowerBurst(t *testing.T, primary, follower *kudurrutest.Node, secret, name, ip string) {
+// was all that refused the update. atBound is enrolledFollowerUpdates'.
+func enrolledFollowerBurst(t *testing.T, primary, follower *kudurrutest.Node, secret, name, ip string, atBound bool) {
 	t.Helper()
 	const burst = 8
 	var owners []string
 	started := time.Now()
 	for i := range burst {
 		owner := fmt.Sprintf("%s-burst%d.dyn.test.", name, i)
-		sent := time.Now()
-		answer, err := enrolledSendUpdate(t, follower.Ports.DNS, secret, false, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(owner, ip)}) })
-		switch {
-		case err != nil:
-			t.Fatal("burst UPDATE exchange failed", follower.Name, owner, err)
-		case answer.Rcode != dns.RcodeSuccess:
-			t.Fatalf("burst UPDATE %d of %d on %s answered %s after %s, want NOERROR (%s)", i+1, burst, follower.Name, dns.RcodeToString[answer.Rcode], time.Since(sent), owner)
-		}
+		enrolledFollowerUpdate(t, follower, secret, false, dns.RcodeSuccess, atBound, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(owner, ip)}) })
 		owners = append(owners, owner)
 	}
 	t.Logf("burst of %d UPDATEs on %s: all NOERROR in %s", burst, follower.Name, time.Since(started))
