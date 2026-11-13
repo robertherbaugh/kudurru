@@ -34,6 +34,8 @@ type loanHost struct {
 	owner   host.InstanceID
 	loans   atomic.Int32
 	request func(context.Context, func(context.Context) error) error
+	// writes admits mutating requests; only the D401 write tests set it.
+	writes bool
 }
 
 func (h *loanHost) IntegrationOwner() host.InstanceID { return h.owner }
@@ -44,7 +46,7 @@ func (*loanHost) Resolve(context.Context, dns.Question) (*dns.Msg, error) {
 }
 func (*loanHost) SetCondition(context.Context, string, string, string, bool) error { return nil }
 func (h *loanHost) Request(ctx context.Context, provider, account string, mutating bool, fn func(context.Context) error) error {
-	if provider != "unifi" || len(account) != 64 || mutating {
+	if provider != "unifi" || len(account) != 64 || mutating && !h.writes {
 		return host.ErrInvalid
 	}
 	h.loans.Add(1)
