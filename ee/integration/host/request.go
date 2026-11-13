@@ -153,7 +153,7 @@ func (p providerHost) reserve(ctx context.Context, g ExecutionGuard, c ledger.Bu
 		if err == nil || !errors.Is(err, store.ErrConflict) {
 			return err
 		}
-		jittered := pause/2 + time.Duration(kindsDigest(fmt.Sprintf("%s/%d", c.ID, attempt))%uint64(pause/2+1))
+		jittered := pause/2 + time.Duration(kindsDigest(fmt.Sprintf("%s/%d", c.ID, attempt))%1024)*(pause/2)/1024
 		timer := time.NewTimer(jittered)
 		select {
 		case <-ctx.Done():
