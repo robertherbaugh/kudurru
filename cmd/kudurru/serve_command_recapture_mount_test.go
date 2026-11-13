@@ -113,6 +113,15 @@ func classifyMounted(status int, raw []byte, err error, ok ...int) mountedRefusa
 // is sent again only after a refusal before it was read or after the whole
 // bound, at most five times.
 func TestRunServeCommandsNotRefusedAsSupersededUnderSteadyUpdates(t *testing.T) {
+	if raceEnabled {
+		// Under the race detector the node's publication falls behind ten
+		// commits a second for a minute at a time (the publisher starts its
+		// preparation again on every new generation), so this run fails on
+		// that starvation and not on the rule it proves. Open as its own
+		// defect (D405). hack/go-test.py runs this test without the race
+		// detector (NORACE_TESTS).
+		t.Skip("publication starves under steady commits with the race detector; runs without it")
+	}
 	cfg, secret := mountedTestConfig(t)
 	cfg.Auth.IdentityProviders = nil
 	cfg.Blocking.Enabled = false
