@@ -236,7 +236,12 @@ func (d *Driver) step(ctx context.Context, w Writer, all roster, name string) er
 		if l != nil {
 			for _, p := range l.Spec.Parents {
 				if !p.Released {
+					// The desired zone of this name waits for the release
+					// before its new incarnation is created.
 					_, err := d.o.Runtime.ReleaseParents(ctx, l.Spec.Zone)
+					if err == nil {
+						d.advance()
+					}
 					return err
 				}
 			}
@@ -282,6 +287,10 @@ func (d *Driver) step(ctx context.Context, w Writer, all roster, name string) er
 		}
 		_, err = d.o.Runtime.RetireSource(ctx, l.Spec.Zone, observed)
 		d.o.Publication.Wake()
+		if err == nil && z != nil {
+			// A desired replacement of this name waits for the retirement.
+			d.advance()
+		}
 		return err
 	}
 	// Source identity refresh and late ancestry are separate durable CAS steps.
