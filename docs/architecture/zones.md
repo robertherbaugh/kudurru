@@ -593,9 +593,12 @@ an explicit authorized cleanup; it cannot activate without durable witnesses.
 
 A boundary command (a child's fence in its parent head, or its release) changes
 nothing in the parent head but that child's system reservation. It checks both
-zones' exact lifecycles and source identity (UID, type, apex), not their latest
-DNSZone revisions, and the fence's child transition records the child's current
-revision. The parent records its own once the child is fenced. Requiring the
+zones' exact lifecycles and source identity (UID, type, apex, not deleting),
+not their latest DNSZone revisions, and the fence's child transition records
+the child's current revision. The SQLite adapter and the production background
+guard (`currentguard`, for the parent-fence, late-parent-fence and
+parent-release reasons) apply the same rule; every other background reason
+still needs the recorded revision. The parent records its own once the child is fenced. Requiring the
 latest revisions left a parent/child pair SERVFAIL for good when either DNSZone
 moved on (a status write, an edit) just as the child was created: an Active
 parent's source refresh needs every desired child fenced, and the driver fences
