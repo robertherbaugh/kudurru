@@ -623,6 +623,26 @@ aggregate. The SQLite adapter commits through its writer transaction and term
 fence. Kubernetes stages immutable Secrets and replaces the head using its
 exact resourceVersion; a conflict requires a new read and a fresh plan.
 
+Chunks are content-addressed and only heads resolve them. A SQLite commit that
+moves a head to new content (every signed UPDATE and every applied desired
+change) therefore deletes, in the same transaction, every chunk that no head
+references any more: it marks the root manifest and parts of every head,
+tombstoned ones included, and deletes the rest, which also removes chunks an
+earlier version left behind (D405). Before, each content commit left the whole
+previous zone content in the replicated image, which every publication reads
+and validates, so the time to publish grew with every UPDATE. When a head's
+root manifest cannot be read, the sweep deletes nothing and logs a warning
+naming that head. The Kubernetes backend does not collect yet: its staging is
+not transactional.
+
+A repository read takes the head and then its chunks in separate store
+reads, so a content commit in between can delete the chunks of the head it
+holds. A missing chunk is therefore checked against the head again: when the
+head moved, the read starts over with the new head (at most 16 times, then a
+conflict); when it did not, the stored zone is damaged and the read answers
+invalid. A read answers "not found" only when the zone has no head, which is
+what the lifecycle callers rely on.
+
 `internal/primaryzone` reads the complete actual desired source set, bounded by
 count, bytes, pages and time. SQLite pages share one transaction; Kubernetes
 uses continuation tokens and checks the zone identity and intent around the
@@ -732,7 +752,8 @@ delivery, rotation and failed acknowledgment retain the whole durable intent.
 `primaryruntime.PrepareImage` reconstructs committed primary routing from one
 complete replication image and the explicit local kind manifest, including
 zero-count kinds. It validates every head and chunk, including historical heads
-and orphan chunks awaiting collection. Desired primaries without a committed
+and unreferenced chunks (a SQLite commit collects them; an image from an
+earlier version or from Kubernetes can still carry some). Desired primaries without a committed
 head install unavailable coverage with no invented durable version. Retiring
 coverage remains until the persisted lifecycle permits removal or replacement.
 Parent witnesses, source identity and effective head incarnation all come from
