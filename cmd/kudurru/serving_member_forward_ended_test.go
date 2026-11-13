@@ -214,7 +214,11 @@ func TestRootMemberForwardCanceledRequestIsRefusedAsAForward(t *testing.T) {
 // forward's acquisition through the relay (WithMemberForward), so it cannot
 // install a newer commit in between; what can end the relay is a pinned
 // dependency or the request's own lifetime. Here the 30-second forwarding
-// lifetime ends while the follower holds the primary's answer.
+// lifetime ends while the follower holds the primary's answer, so this test
+// covers objectForwardError's deadline answer only. Its answer for a source
+// change after the primary answered (sent with ErrCAS or ErrFenced) has no
+// cause this fixture can produce while the follower holds that lock, and is
+// pinned by TestObjectForwardErrorAfterTheAnswerIsUnknown alone.
 func TestRootMemberForwardAnswerNotRelayedIsUnknown(t *testing.T) {
 	f := newMemberForwardHTTPFixture(t, true)
 	primary := f.primary.s.opts.Store
@@ -231,7 +235,8 @@ func TestRootMemberForwardAnswerNotRelayedIsUnknown(t *testing.T) {
 		t.Fatal(got.err)
 	}
 	key, message := got.refusal()
-	if got.status != http.StatusServiceUnavailable || key != "completion_unknown" || !strings.Contains(message, "inspect the object") || !strings.Contains(message, "do not replay") {
+	if got.status != http.StatusServiceUnavailable || key != "completion_unknown" || !strings.Contains(message, "outcome is unknown") ||
+		!strings.Contains(message, "inspect the object") || !strings.Contains(message, "do not replay") {
 		t.Fatalf("answer not relayed: status=%d key=%q message=%q", got.status, key, message)
 	}
 	if relays != 1 {
