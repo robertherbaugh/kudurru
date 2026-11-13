@@ -58,10 +58,11 @@ A request can be refused before its first document in two ways. Nothing was
 applied in either case, and the same request may be sent again:
 
 - `503 generation_pending` (`Retry-After: 1`): the node had not finished
-  publishing its newest commit when the request arrived, so the request was
-  not read. This still happens on a ready node that commits steadily (its
-  own status and lifecycle work, signed UPDATEs); clients send the request
-  again.
+  publishing its newest commit within two seconds of the request's arrival,
+  so the request was not read. A ready node that commits steadily (its own
+  status and lifecycle work, signed UPDATEs) now usually publishes within
+  that bound (D405), but a node whose preparation takes longer, on a slow or
+  overloaded host, still answers this; clients send the request again.
 - every item reporting `unavailable` ("current writable serving generation
   unavailable", `Retry-After: 1`): the request was read, and another commit
   published while it ran. Such a request now waits for that publication and
@@ -70,8 +71,12 @@ applied in either case, and the same request may be sent again:
   session, roles, the cluster settings or the node's authority changed in
   the meantime.
 
-`Retry-After: 1` on `unavailable` means that no part of the command ran; a
-refusal from inside a command or after its commit carries no `Retry-After`.
+`Retry-After: 1` on `unavailable` means that no part of the request ran; a
+refusal from inside a command or after its commit carries no `Retry-After`,
+and neither does a refusal after an earlier command of the same request was
+dispatched. An object write answered `unavailable` ("current writable serving
+generation unavailable") was not applied, with or without `Retry-After`: an
+object command has no step after its commit that can refuse.
 Of two large requests sent at the same time one may still end this way, so
 send them one after another. An item reached after the request's five-minute lifetime
 reports `unavailable` ("the request's lifetime ended before this item was

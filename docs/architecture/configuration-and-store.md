@@ -1991,6 +1991,15 @@ Publication acknowledgment never wakes or cancels the preparer: committed
 source and dependency changes already schedule that work. Pending waits observe
 publication or authority changes, avoiding a feedback loop between the driver and publisher.
 
+The preparer runs one preparation at a time. A new generation, authority or
+dependency cursor cancels the preparation in progress, because its publication
+would be refused. A `Wake` does not (D405): most commands wake the publisher
+right after their commit, when the commit's own generation has already started
+a preparation, and canceling it made every commit cost two preparations and let
+a node that commits steadily go without publishing. The Wake count is noted
+before a preparation reads its candidate; Wakes that arrive after that are
+answered by exactly one more preparation once it has published.
+
 ```mermaid
 flowchart LR
     Image["Installed complete SQLite image + token"] --> Prepare["Prepare every owner and exact dependency"]

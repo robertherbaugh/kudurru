@@ -280,9 +280,13 @@ func TestServingCommandRecaptureRefusesWhatItMustNotRetry(t *testing.T) {
 				t.Error("first command", err)
 			}
 			awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
-			if err := f.s.ObjectCommand(r.Context(), key, write); err == nil {
+			err := f.s.ObjectCommand(r.Context(), key, write)
+			if err == nil {
 				t.Error("a request captured again after its own commit")
 			}
+			// The request's first command committed: the refusal of its second
+			// must not invite sending the request again (D405).
+			expectNoRetryAfter(t, err)
 		})).ServeHTTP(httptest.NewRecorder(), f.request())
 		probe.want(t, 2, 0, 1)
 	})
@@ -458,4 +462,48 @@ func TestServingCommandRecaptureJoinTokenExactSource(t *testing.T) {
 		}
 		checkJoinToken(t, f, in, receipt) // one invitation, one audit row
 	})
+}
+
+// An object write answered 503 "current writable serving generation
+// unavailable" took no effect, wherever the refusal arose: before dispatch
+// (TestServingCommandRecaptureRefusesWhatItMustNotRetry, bound subtest),
+// inside the transaction body after the object was staged, or at commit. An
+// object command has no step after its commit that can refuse (it passes no
+// acknowledgment to currentAuthCommandThen), so that answer is never an
+// unknown outcome and a client may treat it as "not applied" (D405).
+func TestServingObjectWriteUnavailableIsEffectFree(t *testing.T) {
+	for _, refuse := range []struct {
+		name string
+		at   func(context.Context, *sqlite.CommandTx) error
+	}{
+		{"inside the body after the object was staged", func(context.Context, *sqlite.CommandTx) error { return serving.ErrPending }},
+		{"at commit", func(_ context.Context, tx *sqlite.CommandTx) error {
+			return tx.RequireCommitCheck(func(context.Context) error { return serving.ErrPending })
+		}},
+	} {
+		t.Run(refuse.name, func(t *testing.T) {
+			f := newServingCommandFixture(t)
+			key := store.Key{Kind: "ClientGroup", Namespace: "default", Name: "effect-free"}
+			f.http.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				err := f.s.ObjectCommand(r.Context(), key, func(ctx context.Context, tx *sqlite.CommandTx, authorize api.ObjectAuthorize) error {
+					if err := authorize(ctx, []rbac.Attributes{{Resource: "clientgroups", Verb: "write", Scope: rbac.Scope{Kind: rbac.ScopeCluster}, Namespace: key.Namespace, Name: key.Name}}); err != nil {
+						return err
+					}
+					if _, err := tx.Apply(ctx, servingObjectGroup(key.Name), store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+						return err
+					}
+					return refuse.at(ctx, tx)
+				})
+				var e *api.Error
+				if !errors.As(err, &e) || e.Status != http.StatusServiceUnavailable || e.Body.Message != "current writable serving generation unavailable" {
+					t.Fatal("not the 503 under test", err)
+				}
+				expectNoRetryAfter(t, err)
+			})).ServeHTTP(httptest.NewRecorder(), f.request())
+			clientGroupAbsent(t, f.s, key.Name)
+			if rows := auditRows(t, f.s, sqlite.AuditQuery{Kind: key.Kind, Namespace: key.Namespace, Name: key.Name}); len(rows) != 0 {
+				t.Fatalf("audit rows of a refused write: %d", len(rows))
+			}
+		})
+	}
 }

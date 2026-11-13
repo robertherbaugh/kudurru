@@ -520,6 +520,17 @@ aggregate. The SQLite adapter commits through its writer transaction and term
 fence. Kubernetes stages immutable Secrets and replaces the head using its
 exact resourceVersion; a conflict requires a new read and a fresh plan.
 
+Chunks are content-addressed and only heads resolve them. A SQLite commit that
+moves a head to new content (every signed UPDATE and every applied desired
+change) therefore deletes, in the same transaction, every chunk that no head
+references any more: it marks the root manifest and parts of every head,
+tombstoned ones included, and deletes the rest, which also removes chunks an
+earlier version left behind (D405). Before, each content commit left the whole
+previous zone content in the replicated image, which every publication reads
+and validates, so the time to publish grew with every UPDATE. When a head's
+root manifest cannot be read, the sweep deletes nothing. The Kubernetes
+backend does not collect yet: its staging is not transactional.
+
 `internal/primaryzone` reads the complete actual desired source set, bounded by
 count, bytes, pages and time. SQLite pages share one transaction; Kubernetes
 uses continuation tokens and checks the zone identity and intent around the
@@ -629,7 +640,8 @@ delivery, rotation and failed acknowledgment retain the whole durable intent.
 `primaryruntime.PrepareImage` reconstructs committed primary routing from one
 complete replication image and the explicit local kind manifest, including
 zero-count kinds. It validates every head and chunk, including historical heads
-and orphan chunks awaiting collection. Desired primaries without a committed
+and unreferenced chunks (a SQLite commit collects them; an image from an
+earlier version or from Kubernetes can still carry some). Desired primaries without a committed
 head install unavailable coverage with no invented durable version. Retiring
 coverage remains until the persisted lifecycle permits removal or replacement.
 Parent witnesses, source identity and effective head incarnation all come from

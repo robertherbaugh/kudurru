@@ -235,14 +235,22 @@ flowchart TD
   step's wait for its cut) or the request's deadline, whichever ends first.
   When it ends the answer is the same effect-free `503 unavailable`, now with
   `Retry-After: 1`. Only a refusal returned before any transaction body of
-  the command began carries `Retry-After`; a refusal from inside a body, at
-  commit or after it does not.
+  the request began carries `Retry-After`; a refusal from inside a body, at
+  commit or after it does not, and neither does the refusal of a later
+  command or item of a request one of whose commands already dispatched
+  (D405): part of that request may have been applied.
 - This covers a request that was read. A request that arrives while the
   node has not published its newest commit is still refused at capture,
-  before it is read, with `503 generation_pending` (the middleware's capture
-  wait); D399 does not change that, and under a steady stream of commits
-  the publisher can fall behind (each new generation and each wake cancels
-  the preparation in progress), which is an open limit.
+  before it is read, with `503 generation_pending` (the middleware's
+  two-second capture wait); D399 does not change that. D405 shortened that
+  window: a `Wake` no longer cancels the preparation in progress (it is
+  coalesced into one more preparation after it), and a zone content commit
+  deletes the chunks no head references, so the image a publication reads no
+  longer grows with every signed UPDATE. Without the race detector a node
+  under ten signed UPDATEs a second then admitted 200 of 200 sign-ins, writes
+  and reads, each sent once. A preparation that outlasts the capture wait
+  (one to three seconds under the race detector on a loaded machine) still
+  refuses requests at capture; that limit stays open.
 - An integration operation's first no-op command holds the integration
   host's lease barrier and its runtime lock, so it is marked
   `WithoutRecapture` and keeps the immediate refusal rather than waiting
