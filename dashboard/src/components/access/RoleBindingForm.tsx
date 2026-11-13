@@ -1,6 +1,7 @@
 // "New role binding" on the Identity tab: one POST /iam/rolebindings that
 // creates a public RoleBinding once (409 when the name exists; never an
-// adoption). The scope picker offers the whole cluster, one zone, or a zone
+// adoption). Edit… and Delete… of an API-managed binding read it again and
+// send one PUT or DELETE bound to that read's UID and resourceVersion. The scope picker offers the whole cluster, one zone, or a zone
 // group: every zone labeled kudurru.io/zonegroup with the group and their
 // record sets (D385). The command needs rolebindings.write at cluster scope
 // and runs only on the primary of an enrolled SQLite cluster and on the
@@ -11,12 +12,14 @@
 // as a refusal (roleBindingOutcomeUnknown).
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
+import { HStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState } from 'react';
-import { qk, useApi, useCan, useCannotReason } from '../../api/context';
-import type { RoleBindingDesired } from '../../api/types';
+import { qk, useApi } from '../../api/context';
+import type { IamRoleBinding, RoleBindingDesired, RoleBindingDocument } from '../../api/types';
 import { roleBindingOutcomeUnknown } from '../../lib/cluster';
+import { managerOf } from '../../lib/iam';
 import { ROLES, SCOPE_KINDS, type ScopeKind } from '../../lib/rbac';
 import { zoneGroupError } from '../../lib/zones';
 import { EnumSelect, type EnumOption } from '../fields/EnumSelect';
@@ -24,6 +27,7 @@ import { ObjectRefPicker } from '../fields/ObjectRefPicker';
 import { TextField } from '../fields/TextField';
 import { ErrorBanner, errorText, useNotify } from '../Feedback';
 import { FormDialog } from '../FormDialog';
+import { useIamCommand, useIamObjectReason, useReviewRead } from './iamCommand';
 
 const SUBJECT_KINDS: EnumOption[] = [
   { value: 'User', label: 'User', help: 'A local user or a single sign-on user, by name.' },
@@ -90,23 +94,116 @@ const EMPTY: RoleBindingDraft = { name: '', namespace: 'default', role: 'zone-ad
 
 /** "New role binding", disabled with the reason when the session or node cannot create one. */
 export function NewRoleBindingButton() {
-  const can = useCan();
-  const cannot = useCannotReason();
+  const reason = useIamObjectReason()('rolebindings', 'write');
   const [open, setOpen] = useState(false);
-  const allowed = can('rolebindings', 'write');
   return (
     <>
-      <Button label="New role binding" variant="secondary" size="sm" isDisabled={!allowed} tooltip={allowed ? undefined : cannot('rolebindings', 'write')} onClick={() => setOpen(true)} />
+      <Button label="New role binding" variant="secondary" size="sm" isDisabled={!!reason} tooltip={reason} onClick={() => setOpen(true)} />
       {open ? <RoleBindingDialog onClose={() => setOpen(false)} /> : null}
     </>
   );
 }
 
-function RoleBindingDialog({ onClose }: { onClose: () => void }) {
+/** The draft of a stored binding with one subject (the form edits one). */
+export function draftOfBinding(doc: RoleBindingDocument): RoleBindingDraft {
+  const subject = doc.spec.subjects?.[0];
+  const kind = doc.spec.scope?.kind;
+  return {
+    name: doc.metadata.name ?? '',
+    namespace: doc.metadata.namespace ?? '',
+    role: doc.spec.role,
+    scopeKind: (kind === 'zone' || kind === 'zonegroup' ? kind : 'cluster'),
+    scopeName: doc.spec.scope?.name ?? '',
+    subjectKind: subject?.kind ?? 'User',
+    subjectName: subject?.name ?? '',
+    subjectNamespace: subject?.namespace ?? 'default',
+  };
+}
+
+/** Edit… and Delete… of one RoleBinding object row (D294): each reads the binding again and sends one command bound to that read. */
+export function RoleBindingActions({ binding }: { binding: IamRoleBinding }) {
+  const reason = useIamObjectReason();
+  const [action, setAction] = useState<'edit' | 'delete' | null>(null);
+  if (binding.source !== 'object' || !binding.namespace) return null;
+  const row = binding.managedBy && binding.managedBy !== 'api' ? `Managed by ${binding.managedBy}: change it there` : undefined;
+  const subjects = binding.subjects?.length ?? 0;
+  const edit = row ?? (subjects > 1 ? `It has ${subjects} subjects and this form edits one: use kudurru iam rolebindings replace` : undefined) ?? reason('rolebindings', 'write');
+  const del = row ?? reason('rolebindings', 'delete');
+  const label = `${binding.namespace}/${binding.name}`;
+  return (
+    <HStack gap={1} wrap="wrap">
+      <Button label={`Edit ${label}`} size="sm" variant="ghost" isDisabled={!!edit} tooltip={edit} onClick={() => setAction('edit')}>
+        Edit…
+      </Button>
+      <Button label={`Delete ${label}`} size="sm" variant="ghost" isDisabled={!!del} tooltip={del} onClick={() => setAction('delete')}>
+        Delete…
+      </Button>
+      {action ? <ReviewedBindingDialog namespace={binding.namespace} name={binding.name} action={action} onClose={() => setAction(null)} /> : null}
+    </HStack>
+  );
+}
+
+function ReviewedBindingDialog({ namespace, name, action, onClose }: { namespace: string; name: string; action: 'edit' | 'delete'; onClose: () => void }) {
+  const api = useApi();
+  const review = useReviewRead((signal) => api.iam.roleBinding(namespace, name, signal));
+  const title = action === 'edit' ? `Edit role binding ${namespace}/${name}` : `Delete role binding ${namespace}/${name}?`;
+  const doc = review.data;
+  if (!doc || managerOf(doc.metadata) !== 'api' || (action === 'edit' && (doc.spec.subjects?.length ?? 0) > 1)) {
+    return (
+      <FormDialog isOpen onClose={onClose} title={title} width={520} footer={<Button label="Close" variant="ghost" onClick={onClose} />}>
+        {review.error ? (
+          <ErrorBanner error={review.error} title="The role binding could not be read" />
+        ) : !doc ? (
+          <Text>Reading the role binding…</Text>
+        ) : managerOf(doc.metadata) !== 'api' ? (
+          <Banner status="info" title="Managed elsewhere" description={`This binding belongs to ${managerOf(doc.metadata) || 'no API manager'}. Change it where it is declared.`} />
+        ) : (
+          <Banner status="info" title="More than one subject" description="This form edits a binding with one subject. Use kudurru iam rolebindings replace for this one." />
+        )}
+      </FormDialog>
+    );
+  }
+  return action === 'edit' ? <RoleBindingDialog review={doc} onClose={onClose} /> : <DeleteBindingDialog doc={doc} title={title} onClose={onClose} />;
+}
+
+function DeleteBindingDialog({ doc, title, onClose }: { doc: RoleBindingDocument; title: string; onClose: () => void }) {
+  const api = useApi();
+  const notify = useNotify();
+  const cmd = useIamCommand('role binding');
+  const submit = async () => {
+    const r = await cmd.run((signal) => api.iam.deleteRoleBinding(doc.metadata.namespace ?? '', doc.metadata.name ?? '', { uid: doc.metadata.uid ?? '', resourceVersion: doc.metadata.resourceVersion ?? '' }, signal));
+    if (r.ok) {
+      notify.success(`Deleted role binding ${doc.metadata.namespace}/${doc.metadata.name}`);
+      onClose();
+    }
+  };
+  return (
+    <FormDialog
+      isOpen
+      onClose={onClose}
+      title={title}
+      width={480}
+      onSubmit={() => void submit()}
+      footer={
+        <>
+          <Button label={cmd.locked ? 'Close' : 'Cancel'} variant="ghost" onClick={onClose} />
+          <Button type="submit" label="Delete role binding" variant="destructive" isLoading={cmd.pending} isDisabled={cmd.locked} />
+        </>
+      }
+    >
+      <Text as="p">
+        Role {doc.spec.role} for {(doc.spec.subjects ?? []).map((s) => `${s.kind} ${s.namespace ? `${s.namespace}/` : ''}${s.name}`).join(', ')}. The subjects lose what it granted at once, on every node; their sessions and tokens stay but no longer carry the role.
+      </Text>
+      {cmd.outcome}
+    </FormDialog>
+  );
+}
+
+function RoleBindingDialog({ onClose, review }: { onClose: () => void; review?: RoleBindingDocument }) {
   const api = useApi();
   const qc = useQueryClient();
   const notify = useNotify();
-  const [d, setD] = useState<RoleBindingDraft>(EMPTY);
+  const [d, setD] = useState<RoleBindingDraft>(review ? draftOfBinding(review) : EMPTY);
   const [touched, setTouched] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<unknown>();
@@ -124,8 +221,10 @@ function RoleBindingDialog({ onClose }: { onClose: () => void }) {
     setPending(true);
     setError(undefined);
     try {
-      const doc = await api.iam.createRoleBinding(roleBindingManifest(d));
-      notify.success(`Created role binding ${doc.metadata.namespace ?? d.namespace}/${doc.metadata.name ?? d.name}`);
+      const doc = review
+        ? await api.iam.replaceRoleBinding(d.namespace.trim(), d.name.trim(), { uid: review.metadata.uid ?? '', resourceVersion: review.metadata.resourceVersion ?? '', binding: roleBindingManifest(d) })
+        : await api.iam.createRoleBinding(roleBindingManifest(d));
+      notify.success(`${review ? 'Updated' : 'Created'} role binding ${doc.metadata.namespace ?? d.namespace}/${doc.metadata.name ?? d.name}`);
       onClose();
     } catch (err) {
       setError(err);
@@ -141,18 +240,18 @@ function RoleBindingDialog({ onClose }: { onClose: () => void }) {
     <FormDialog
       isOpen
       onClose={onClose}
-      title="New role binding"
+      title={review ? `Edit role binding ${review.metadata.namespace}/${review.metadata.name}` : 'New role binding'}
       width={540}
       onSubmit={() => void submit()}
       footer={
         <>
           <Button label={unknown ? 'Close' : 'Cancel'} variant="ghost" onClick={onClose} />
-          <Button type="submit" label="Create" variant="primary" isLoading={pending} isDisabled={unknown} />
+          <Button type="submit" label={review ? 'Save changes' : 'Create'} variant="primary" isLoading={pending} isDisabled={unknown} />
         </>
       }
     >
-      <TextField label="Name" value={d.name} onChange={(v) => update({ name: v })} mono isRequired placeholder="prod-zone-admins" error={shown('name')} />
-      <TextField label="Namespace" value={d.namespace} onChange={(v) => update({ namespace: v })} mono isRequired error={shown('namespace')} />
+      <TextField label="Name" value={d.name} onChange={(v) => update({ name: v })} mono isRequired isDisabled={!!review} placeholder="prod-zone-admins" error={shown('name')} />
+      <TextField label="Namespace" value={d.namespace} onChange={(v) => update({ namespace: v })} mono isRequired isDisabled={!!review} error={shown('namespace')} />
       <EnumSelect label="Role" value={d.role} options={ROLES} onChange={(v) => update({ role: v })} error={shown('role')} />
       <EnumSelect label="Scope" value={d.scopeKind} options={SCOPE_KINDS} onChange={(v) => update({ scopeKind: v as ScopeKind, scopeName: '' })} />
       {d.scopeKind === 'zone' ? <ObjectRefPicker kind="dnszones" label="Zone" value={d.scopeName ? [d.scopeName] : []} onChange={(v) => update({ scopeName: v[0] ?? '' })} {...(shown('scopeName') ? { error: shown('scopeName') } : {})} /> : null}
@@ -167,7 +266,7 @@ function RoleBindingDialog({ onClose }: { onClose: () => void }) {
       ) : null}
       {error !== undefined ? (
         unknown ? (
-          <Banner status="warning" title="Outcome unknown" description={`The dashboard cannot tell whether the binding was created and does not send it again. Close this dialog and check the role bindings list. The server said: ${errorText(error)}`} />
+          <Banner status="warning" title="Outcome unknown" description={`The dashboard cannot tell whether the binding was ${review ? 'changed' : 'created'} and does not send it again. Close this dialog and check the role bindings list. The server said: ${errorText(error)}`} />
         ) : (
           <ErrorBanner error={error} />
         )

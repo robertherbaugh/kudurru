@@ -46,7 +46,7 @@ If you lose it, revoke it and create another token.
 Programs send `Authorization: Bearer <token>` to the API.
 Use one token per program so you can revoke access independently.
 Click **Revoke** in its row when the program no longer needs access.
-Use [Identity](identity.md) to inspect users, role bindings and sign-in providers.
+Use [Identity](identity.md) to manage users, service accounts and their tokens, role bindings and sign-in providers.
 
 ## Check the result
 

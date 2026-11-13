@@ -55,7 +55,7 @@ to check. Screenshots show demo data.
 | **Tools** | [Test DNS, flush the cache and run checks](tools.md) or [import configuration](import.md) |
 | **Diagnosis** | [Find and repair a reported problem](diagnosis.md) |
 | **License** | [Check features, limits and key status](license.md) |
-| **Access** | [Manage your account and tokens](access.md) or [check identity configuration](identity.md) |
+| **Access** | [Manage your account and tokens](access.md) or [manage users, service accounts, roles and providers](identity.md) |
 | **Audit Log** | [Trace and export a change](audit.md) |
 
 ## Check the result

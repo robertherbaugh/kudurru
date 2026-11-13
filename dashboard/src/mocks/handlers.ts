@@ -5,6 +5,7 @@
 // If-Match mismatch, keyset cursors, took_ms, the settings envelope and
 // the presentation-form dig answer.
 import { http, HttpResponse, sse, type JsonBodyType } from 'msw';
+import { iamHandlers, resetIAM, storeCreatedRoleBinding, userUID } from './iam';
 import type {
   AnyObject,
   ApiToken,
@@ -88,6 +89,7 @@ export function resetDB(now?: number): MockDB {
   db = addBrandingFixture(createDB(now));
   resetDHCP();
   resetIntegrations();
+  resetIAM();
   mockFactors.clear();
   mockSetups.clear();
   mockSessions.clear();
@@ -764,6 +766,7 @@ let tailTimer = 0;
 export const handlers = [
   ...dhcpHandlers(guard),
   ...integrationHandlers(guard, (resource, verb) => !!db.session && (permissions(db.session.user.roles)[resource] ?? []).includes(verb)),
+  ...iamHandlers(guard, () => db),
   // auth ------------------------------------------------------------------
   http.get(`${B}/auth/status`, () =>
     ok({
@@ -855,7 +858,8 @@ export const handlers = [
     const name = String(params.name);
     const body = await request.json() as Record<string, unknown>;
     if (Object.keys(body).length !== 1 || typeof body.uid !== 'string') return fail(400, 'invalid', 'UID required');
-    if (!db.users.some((u) => u.username === name) || body.uid !== `mock-user-${name}`) return fail(409, 'conflict', 'Account changed');
+    const target = db.users.find((u) => u.username === name);
+    if (!target || body.uid !== userUID(target)) return fail(409, 'conflict', 'Account changed');
     mockFactors.delete(name); mockSetups.delete(name);
     if (db.session?.user.username === name) db.session = null;
     return new HttpResponse(null, { status: 204 });
@@ -1714,45 +1718,12 @@ export const handlers = [
     const scope = body.spec.scope;
     if (scope?.kind === 'zonegroup' && !/^[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$/.test(scope.name ?? '')) return fail(400, 'invalid', 'spec.scope.name: not a valid label value');
     db.createdRoleBindings.push(structuredClone(body));
-    return HttpResponse.json({ apiVersion: body.apiVersion, kind: body.kind, metadata: { name, namespace, uid: `rb-${name}`, resourceVersion: '1' }, spec: body.spec }, { status: 201 });
+    return HttpResponse.json(storeCreatedRoleBinding(body), { status: 201 });
   }),
   http.get(`${B}/info/messages`, ({ request }) => guard(request, 'settings', 'read') ?? ok({ items: db.messages })),
   http.get(`${B}/version`, () => ok({ version: 'v0.1.0-rc.1', commit: '3e52e5a', date: '2026-10-10T18:00:00Z', go: 'go1.27.2', platform: 'linux/amd64', node: 'kudurru-0', api: 'v1' })),
 
-  // iam and audit -------------------------------------------------------------
-  http.get(`${B}/iam/:what`, ({ request, params }) => {
-    const what = String(params.what);
-    const g = guard(request, what === 'rolebindings' ? 'rolebindings' : what === 'identityproviders' ? 'identityproviders' : what === 'serviceaccounts' ? 'serviceaccounts' : 'users', 'read');
-    if (g) return g;
-    const items: Record<string, unknown[]> = {
-      users: db.users.map((u) => ({
-        name: u.username,
-        uid: `mock-user-${u.username}`,
-        ...(u.name !== u.username ? { displayName: u.name } : {}),
-        builtinAdmin: u.username === 'admin',
-        disabled: false,
-        mustChangePassword: !!u.mustChangePassword,
-        ...(u.roles.includes('admin') ? { groups: ['kudurru-admins'] } : {}),
-        lastLoginAt: new Date(db.now - 3_600_000).toISOString(),
-      })),
-      serviceaccounts: [
-        { namespace: 'default', name: 'grafana', description: 'dashboards', disabled: false, builtinAdmin: false, tokens: 1 },
-        { namespace: 'kudurru', name: 'external-dns', disabled: false, builtinAdmin: false, tokens: 0 },
-      ],
-      rolebindings: [
-        { source: 'config', name: 'rbac.bindings[0]', role: 'admin', scope: { kind: 'cluster' }, subjects: [{ kind: 'Group', name: 'kudurru-admins' }] },
-        { source: 'object', namespace: 'default', name: 'viewers', role: 'viewer', scope: { kind: 'cluster' }, subjects: [{ kind: 'Group', name: 'everyone' }], managedBy: 'file:objects.d/rbac.yaml' },
-        { source: 'object', namespace: 'default', name: 'home-admin', role: 'zone-admin', scope: { kind: 'zone', name: 'home-arpa' }, subjects: [{ kind: 'User', name: 'robert@example.com' }] },
-        { source: 'object', namespace: 'kudurru', name: 'external-dns', role: 'integration:external-dns', scope: { kind: 'cluster' }, subjects: [{ kind: 'ServiceAccount', namespace: 'kudurru', name: 'external-dns' }] },
-        ...db.createdRoleBindings.map((b) => ({ source: 'object', namespace: b.metadata.namespace, name: b.metadata.name, role: b.spec.role, scope: b.spec.scope ?? { kind: 'cluster' }, subjects: b.spec.subjects, managedBy: 'api' })),
-      ],
-      identityproviders: [
-        { id: 'dex', displayName: 'Dex (corporate SSO)', issuer: 'https://dex.example.com', clientID: 'kudurru', scopes: ['openid', 'email', 'groups'], redirectURL: 'https://kudurru.example.com/api/v1/auth/oidc/dex/callback', source: 'config' },
-        { id: 'github', displayName: 'GitHub', issuer: 'https://token.actions.githubusercontent.com', clientID: 'kudurru-gh', scopes: ['openid'], redirectURL: 'https://kudurru.example.com/api/v1/auth/oidc/github/callback', source: 'object' },
-      ],
-    };
-    return items[what] ? ok({ items: items[what] }) : fail(404, 'not_found', `no IAM collection ${what}`);
-  }),
+  // license and audit (IAM: mocks/iam.ts) ------------------------------------
   http.get(`${B}/license`, ({ request }) =>
     guard(request, 'settings', 'read') ?? ok({ ...db.license, nodesInUse: db.nodes.length, overLimit: db.nodes.length > db.license.nodes }),
   ),

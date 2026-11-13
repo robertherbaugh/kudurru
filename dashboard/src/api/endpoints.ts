@@ -89,6 +89,7 @@ import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntriesPage,
 import type { CatalogueCategory, CatalogueIconIndex, CatalogueInfo, CatalogueService, PolicyState, SafeSearchEngine } from './types';
 import type { UnblockApproval, UnblockDecisionResult, UnblockDenial, UnblockRequest, UnblockRequestList, UnblockState } from './types';
 import type { ZoneDeleteResult } from './types';
+import type { CreateLocalUserRequest, CreateServiceAccountTokenRequest, IdentityProviderDesired, IdentityProviderDocument, ObjectReview, ReplaceIdentityProviderCommand, ReplaceRoleBindingCommand, ReplaceServiceAccountCommand, ResetLocalUserPasswordRequest, RoleBindingReview, ServiceAccountDesired, ServiceAccountDocument, UpdateLocalUserRequest } from './types';
 import type { Integration, IntegrationExecutionResult, IntegrationManifests, IntegrationReleaseResult, IntegrationReview, IntegrationSummary } from './types';
 import type { MigrationPlan, MigrationRequest, MigrationResult, MigrationRun, MigrationCutoverPlan, MigrationAuthorityChange } from './types';
 
@@ -368,6 +369,27 @@ export function endpoints(c: ApiClient) {
       /** Creates once (409 when the name exists); complete SQLite runtime only. */
       createRoleBinding: (binding: RoleBindingDesired) => c.post<RoleBindingDocument>('/iam/rolebindings', binding),
       identityProviders: () => c.get<IamList<IamIdentityProvider>>('/iam/identityproviders'),
+      // Reviewed IAM writers (D294, D396): complete SQLite runtime only, one
+      // request per command that the dashboard never repeats. Replace and
+      // delete name the exact UID and resourceVersion of the reviewed read.
+      roleBinding: (namespace: string, name: string, signal?: AbortSignal) => c.get<RoleBindingDocument>(`/iam/rolebindings/${enc(namespace)}/${enc(name)}`, undefined, signal),
+      replaceRoleBinding: (namespace: string, name: string, cmd: ReplaceRoleBindingCommand, signal?: AbortSignal) => c.request<RoleBindingDocument>('PUT', `/iam/rolebindings/${enc(namespace)}/${enc(name)}`, { body: cmd, signal }),
+      deleteRoleBinding: (namespace: string, name: string, review: RoleBindingReview, signal?: AbortSignal) => c.request<void>('DELETE', `/iam/rolebindings/${enc(namespace)}/${enc(name)}`, { body: review, signal }),
+      /** The password goes only into this request; nothing keeps it. */
+      createUser: (req: CreateLocalUserRequest, signal?: AbortSignal) => c.request<IamUser>('POST', '/iam/users', { body: req, signal }),
+      updateUser: (name: string, req: UpdateLocalUserRequest, signal?: AbortSignal) => c.request<IamUser>('PATCH', `/iam/users/${enc(name)}`, { body: req, signal }),
+      deleteUser: (name: string, review: ObjectReview, signal?: AbortSignal) => c.request<void>('DELETE', `/iam/users/${enc(name)}`, { body: review, signal }),
+      resetUserPassword: (name: string, req: ResetLocalUserPasswordRequest, signal?: AbortSignal) => c.request<void>('POST', `/iam/users/${enc(name)}/password`, { body: req, signal }),
+      serviceAccount: (namespace: string, name: string, signal?: AbortSignal) => c.get<ServiceAccountDocument>(`/iam/serviceaccounts/${enc(namespace)}/${enc(name)}`, undefined, signal),
+      createServiceAccount: (sa: ServiceAccountDesired, signal?: AbortSignal) => c.request<ServiceAccountDocument>('POST', '/iam/serviceaccounts', { body: sa, signal }),
+      replaceServiceAccount: (namespace: string, name: string, cmd: ReplaceServiceAccountCommand, signal?: AbortSignal) => c.request<ServiceAccountDocument>('PUT', `/iam/serviceaccounts/${enc(namespace)}/${enc(name)}`, { body: cmd, signal }),
+      deleteServiceAccount: (namespace: string, name: string, review: ObjectReview, signal?: AbortSignal) => c.request<void>('DELETE', `/iam/serviceaccounts/${enc(namespace)}/${enc(name)}`, { body: review, signal }),
+      /** The answer holds the token secret once: call it directly, never through a query or mutation cache. */
+      createServiceAccountToken: (namespace: string, name: string, req: CreateServiceAccountTokenRequest, signal?: AbortSignal) => c.request<CreatedToken>('POST', `/iam/serviceaccounts/${enc(namespace)}/${enc(name)}/tokens`, { body: req, signal }),
+      identityProvider: (name: string, signal?: AbortSignal) => c.get<IdentityProviderDocument>(`/iam/identityproviders/${enc(name)}`, undefined, signal),
+      createIdentityProvider: (idp: IdentityProviderDesired, signal?: AbortSignal) => c.request<IdentityProviderDocument>('POST', '/iam/identityproviders', { body: idp, signal }),
+      replaceIdentityProvider: (name: string, cmd: ReplaceIdentityProviderCommand, signal?: AbortSignal) => c.request<IdentityProviderDocument>('PUT', `/iam/identityproviders/${enc(name)}`, { body: cmd, signal }),
+      deleteIdentityProvider: (name: string, review: ObjectReview, signal?: AbortSignal) => c.request<void>('DELETE', `/iam/identityproviders/${enc(name)}`, { body: review, signal }),
     },
 
     audit: {

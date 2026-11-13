@@ -483,8 +483,8 @@ the original successful proof's final time checks and clears its cookie after
 commit, without reauthorizing against its own newly raised floor. No replacement
 credential is issued. A stale version requires a fresh read and deliberate
 request; commands are not retried automatically. Kubernetes explicitly returns
-503 for these writes. Profile/groups, disable/delete and other IAM writers remain
-separate work.
+503 for these writes. Profile and group changes, disable and delete are the
+D396 writers below.
 
 SQLite OIDC start/callback routes use the captured browser adapter described
 below; an unavailable capability returns 503 without a legacy Stack fallback.
@@ -1411,6 +1411,27 @@ that can no longer authenticate is open work.
 All of these operations are `primary` in the follower contract (D368). On
 Kubernetes they refuse as listed above; `GET /iam/serviceaccounts/{namespace}/{name}`
 and `GET /iam/identityproviders/{name}` read the object there too.
+
+The dashboard's Identity tab (Access page) is a client of these commands
+(`dashboard/src/components/access/`). A local-account command takes the UID
+and resourceVersion of the row the operator chose (`GET /iam/users` carries
+both); a ServiceAccount, IdentityProvider or RoleBinding command first reads
+the item (`GET .../{name}`) and sends that read's values, and refuses an
+object whose `kudurru.io/managed-by` is not `api` before sending anything. A
+replace sends the whole object: the dashboard carries the stored labels,
+operator annotations (never the manager annotation) and the provider fields
+its form does not edit. Each dialog sends one request and never repeats it: a
+4xx is shown as a refusal and locks a reviewed command; no answer, a 5xx, or
+a bare `503 unavailable` (the catch-all of `servingHTTPAuthError`, which the
+security-row bound also answers) is shown as an unknown outcome and locks the
+dialog; the follower, static, and driver refusals (`primary_required`,
+`read_only`, `user_management_unavailable`, `iam_management_unavailable`)
+are refusals. Controls are disabled with the reason from the session's
+permissions, static mode, the follower table (`dashboard/src/lib/follower.ts`)
+and `GET /auth/status` `capabilities.localUserCommands`/`iamObjectCommands`.
+An issued service account token lives only in the token dialog's component
+state: it is not in a query or mutation cache, and it is gone when the dialog
+closes.
 
 ## Node to node (`:8082`)
 

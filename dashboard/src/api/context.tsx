@@ -344,15 +344,16 @@ export function canAnyScope(me: Me, resource: string, verb: string): boolean {
   return Object.values(me.scopedPermissions ?? {}).some((perms) => grants(perms, resource, verb));
 }
 
-/** GET /auth/status capabilities (D387): whether this driver offers
- * authenticator (TOTP) management and the local-user commands. Until the
- * answer arrives, and from a server that does not report them, both count
+/** GET /auth/status capabilities (D387, D396): whether this driver offers
+ * authenticator (TOTP) management, the local-user commands and the
+ * ServiceAccount, IdentityProvider and RoleBinding commands. Until the
+ * answer arrives, and from a server that does not report them, each counts
  * as offered and the server decides. */
-export function useAuthCapabilities(): { factorManagement: boolean; localUserCommands: boolean } {
+export function useAuthCapabilities(): { factorManagement: boolean; localUserCommands: boolean; iamObjectCommands: boolean } {
   const api = useApi();
   const q = useQuery<AuthStatus>({ queryKey: qk.authStatus, queryFn: () => api.auth.status(), staleTime: 60_000, retry: false });
   const caps = q.data?.capabilities;
-  return { factorManagement: caps?.factorManagement !== false, localUserCommands: caps?.localUserCommands !== false };
+  return { factorManagement: caps?.factorManagement !== false, localUserCommands: caps?.localUserCommands !== false, iamObjectCommands: caps?.iamObjectCommands !== false };
 }
 
 /**

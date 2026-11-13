@@ -36,6 +36,15 @@ export interface MockUser {
   name: string;
   roles: string[];
   mustChangePassword?: boolean;
+  /** IAM inventory fields (mocks/iam.ts); fixture accounts derive them. */
+  uid?: string;
+  resourceVersion?: string;
+  disabled?: boolean;
+  groups?: string[];
+  /** 'api' (the default) or another manager, which the writers refuse. */
+  managedBy?: string;
+  /** null: never signed in. */
+  lastLoginAt?: string | null;
 }
 
 export interface MockDB {
@@ -85,8 +94,8 @@ export interface MockDB {
   querylogSinks: QuerylogSink[];
   /** RoleBindings created through POST /iam/rolebindings. */
   createdRoleBindings: RoleBindingDesired[];
-  /** GET /auth/status capabilities (D387); the complete SQLite runtime offers both. */
-  authCapabilities: { factorManagement: boolean; localUserCommands: boolean };
+  /** GET /auth/status capabilities (D387, D396); the complete SQLite runtime offers all of them. */
+  authCapabilities: { factorManagement: boolean; localUserCommands: boolean; iamObjectCommands?: boolean };
 }
 
 /** Every licensed feature (internal/license Features). */
@@ -819,7 +828,7 @@ export function createDB(now = FIXED_NOW): MockDB {
       { name: 'collector', type: 'dnstap', raw: true, queued: 0, queue_size: 10_000, sent: 0, dropped: 0, errors: 3 },
     ],
     createdRoleBindings: [],
-    authCapabilities: { factorManagement: true, localUserCommands: true },
+    authCapabilities: { factorManagement: true, localUserCommands: true, iamObjectCommands: true },
     license: {
       state: 'active',
       plan: 'personal',

@@ -1,7 +1,7 @@
+// Access: the signed-in principal, its roles and permissions, its own API
+// tokens (the kdr_ secret is shown once), and on the Identity tab the IAM
+// inventory with the reviewed writers of the SQLite driver (D294, D396).
 import { ExternalUsersPanel } from '../components/access/ExternalUsers';
-// Access: the signed-in principal, its roles and permissions, its
-// own API tokens (the kdr_ secret is shown once), the read-only IAM views
-// (the write API is v0.2; IAM is declared in YAML today).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -17,11 +17,14 @@ import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { canAnyScope, qk, useApi, useCan, useSession, useStaticMode } from '../api/context';
+import { canAnyScope, qk, useApi, useAuthCapabilities, useCan, useSession, useStaticMode } from '../api/context';
 import { useFeature } from '../api/hooks';
-import type { ApiToken, CreatedToken, IamIdentityProvider, IamRoleBinding, IamServiceAccount, IamUser, RbacScope } from '../api/types';
-import { AuthenticatorPanel, RecoverAuthenticatorButton } from '../components/access/Authenticators';
-import { NewRoleBindingButton } from '../components/access/RoleBindingForm';
+import type { ApiToken, CreatedToken, IamRoleBinding, RbacScope } from '../api/types';
+import { AuthenticatorPanel } from '../components/access/Authenticators';
+import { IdentityProvidersPanel } from '../components/access/IdentityProviders';
+import { LocalUsersPanel } from '../components/access/LocalUsers';
+import { NewRoleBindingButton, RoleBindingActions } from '../components/access/RoleBindingForm';
+import { ServiceAccountsPanel } from '../components/access/ServiceAccounts';
 import { SessionsPanel } from '../components/access/Sessions';
 import { ChangePasswordButton, principalName } from '../components/AccountMenu';
 import { ErrorBanner, useNotify } from '../components/Feedback';
@@ -257,58 +260,7 @@ function Diagnoses({ items }: { items: string[] | undefined }) {
   return <Banner status="warning" title="Some entries were ignored" description={items.join('; ')} />;
 }
 
-type UserRow = IamUser & Record<string, unknown>;
-type ServiceAccountRow = IamServiceAccount & Record<string, unknown>;
 type BindingRow = IamRoleBinding & Record<string, unknown>;
-type ProviderRow = IamIdentityProvider & Record<string, unknown>;
-
-const userColumns: TableColumn<UserRow>[] = [
-  {
-    key: 'name',
-    header: 'User',
-    width: proportional(2, { minWidth: 180 }),
-    renderCell: (u) => (
-      <HStack gap={1} vAlign="center" wrap="wrap">
-        <Text weight="semibold">{u.displayName || u.name}</Text>
-        {u.displayName ? (
-          <Text type="code" size="sm" color="secondary">
-            {u.name}
-          </Text>
-        ) : null}
-        {u.builtinAdmin ? <Badge variant="blue" label="admin" /> : null}
-        {u.disabled ? <Badge variant="warning" label="disabled" /> : null}
-        {u.mustChangePassword ? <Badge variant="orange" label="must change password" /> : null}
-      </HStack>
-    ),
-  },
-  { key: 'groups', header: 'Groups', width: proportional(1.5, { minWidth: 120 }), renderCell: (u) => <Text size="sm">{u.groups?.length ? u.groups.join(', ') : '–'}</Text> },
-  { key: 'lastLoginAt', header: 'Last sign-in', width: proportional(1, { minWidth: 110 }), renderCell: (u) => <Text size="sm">{u.lastLoginAt ? formatRelative(u.lastLoginAt) : 'never'}</Text> },
-  {
-    key: 'passwordChangedAt',
-    header: 'Password changed',
-    width: proportional(1.5, { minWidth: 192 }),
-    renderCell: (u) => <Text size="sm">{u.passwordChangedAt ? formatRelative(u.passwordChangedAt) : '–'}</Text>,
-  },
-];
-
-const serviceAccountColumns: TableColumn<ServiceAccountRow>[] = [
-  {
-    key: 'name',
-    header: 'Service account',
-    width: proportional(2, { minWidth: 200 }),
-    renderCell: (s) => (
-      <HStack gap={1} vAlign="center" wrap="wrap">
-        <Text type="code">
-          {s.namespace}/{s.name}
-        </Text>
-        {s.builtinAdmin ? <Badge variant="blue" label="admin" /> : null}
-        {s.disabled ? <Badge variant="warning" label="disabled" /> : null}
-      </HStack>
-    ),
-  },
-  { key: 'description', header: 'Description', width: proportional(2, { minWidth: 160 }), renderCell: (s) => <Text size="sm">{s.description || '–'}</Text> },
-  { key: 'tokens', header: 'Tokens', align: 'end', width: pixel(96), renderCell: (s) => <Text hasTabularNumbers>{s.tokens}</Text> },
-];
 
 const bindingColumns: TableColumn<BindingRow>[] = [
   { key: 'role', header: 'Role', width: proportional(1, { minWidth: 190 }), renderCell: (b) => <Badge variant="blue" label={b.role} /> },
@@ -334,88 +286,29 @@ const bindingColumns: TableColumn<BindingRow>[] = [
   },
 ];
 
-const providerColumns: TableColumn<ProviderRow>[] = [
-  {
-    key: 'id',
-    header: 'Provider',
-    width: proportional(1.5, { minWidth: 160 }),
-    renderCell: (p) => (
-      <HStack gap={1} vAlign="center" wrap="wrap">
-        <Text weight="semibold">{p.displayName || p.id}</Text>
-        <Text type="code" size="sm" color="secondary">
-          {p.id}
-        </Text>
-      </HStack>
-    ),
-  },
-  {
-    key: 'issuer',
-    header: 'Issuer',
-    width: proportional(2, { minWidth: 160 }),
-    renderCell: (p) => (
-      <Text type="code" size="sm">
-        {p.issuer}
-      </Text>
-    ),
-  },
-  {
-    key: 'clientID',
-    header: 'Client ID',
-    width: proportional(1, { minWidth: 120 }),
-    renderCell: (p) => (
-      <Text type="code" size="sm">
-        {p.clientID}
-      </Text>
-    ),
-  },
-  { key: 'source', header: 'Source', width: proportional(1, { minWidth: 100 }), renderCell: (p) => <Text size="sm">{p.source === 'config' ? 'kudurru.yaml' : (p.source ?? '–')}</Text> },
-];
-
 function Iam() {
   const api = useApi();
   const can = useCan();
-  const users = useQuery({ queryKey: ['iam', 'users'], queryFn: () => api.iam.users(), enabled: can('users', 'read') });
-  const sas = useQuery({ queryKey: ['iam', 'sa'], queryFn: () => api.iam.serviceAccounts(), enabled: can('serviceaccounts', 'read') });
   const rbs = useQuery({ queryKey: ['iam', 'rb'], queryFn: () => api.iam.roleBindings(), enabled: can('rolebindings', 'read') });
-  const idps = useQuery({ queryKey: ['iam', 'idp'], queryFn: () => api.iam.identityProviders(), enabled: can('identityproviders', 'read') });
   const rbac = useFeature('rbac');
-  const oidc = useFeature('oidc');
-  const empty = (what: string, loading: boolean) => (
-    <Text type="supporting" as="p">
-      {loading ? 'Loading…' : `No ${what}.`}
-    </Text>
-  );
+  const { localUserCommands, iamObjectCommands } = useAuthCapabilities();
+  const readOnly = useStaticMode();
   return (
     <VStack gap={4}>
       <Banner
         status="info"
         title="Identity management"
-        description="Users are managed with `kudurru admin` on the host. Administrators with cluster users.write can recover a selected user’s authenticator here. Role bindings can be created here on the SQLite driver; service accounts, identity providers and the other role bindings are declared in kudurru.yaml or as objects (objects.d or Kubernetes)."
+        description={
+          readOnly
+            ? 'This node runs in static mode: identity is read-only here. Change accounts with kudurru admin on each host and objects in the distributed files.'
+            : !localUserCommands || !iamObjectCommands
+              ? 'This server (the Kubernetes driver) does not change identity through the API: manage people in your identity provider, service accounts, identity providers and role bindings with kubectl or your GitOps tool, and the built-in admin with kudurru admin. Administrators with users.write can still disable or sign out external accounts.'
+              : 'Local users, service accounts with their tokens, identity providers and role bindings are created and changed here on the SQLite driver; on a cluster, use the primary. Objects of kudurru.yaml or objects.d are changed where they are declared, and the built-in admin with kudurru admin on the host. Every change names the exact version you reviewed and is sent once.'
+        }
       />
-      <Panel title="Local users" headingId="iam-users">
-        {users.error ? <ErrorBanner error={users.error} /> : null}
-        <Diagnoses items={users.data?.diagnoses} />
-        {users.data?.items.length ? (
-          <Table<UserRow> aria-label="Local users" density="compact" idKey="name" data={users.data.items} columns={[...userColumns, { key: 'actions', header: 'Actions', width: proportional(1, { minWidth: 190 }), renderCell: (u) => <RecoverAuthenticatorButton user={u} /> }]} />
-        ) : (
-          empty('local users', users.isLoading)
-        )}
-      </Panel>
+      <LocalUsersPanel />
       <ExternalUsersPanel />
-      <Panel title="Service accounts" headingId="iam-sa">
-        {sas.error ? <ErrorBanner error={sas.error} /> : null}
-        {sas.data?.items.length ? (
-          <Table<ServiceAccountRow>
-            aria-label="Service accounts"
-            density="compact"
-            idKey={(s) => `${s.namespace}/${s.name}`}
-            data={sas.data.items as ServiceAccountRow[]}
-            columns={serviceAccountColumns}
-          />
-        ) : (
-          empty('service accounts', sas.isLoading)
-        )}
-      </Panel>
+      <ServiceAccountsPanel />
       <Panel title="Role bindings" headingId="iam-rb" actions={<NewRoleBindingButton />}>
         {rbs.error ? <ErrorBanner error={rbs.error} /> : null}
         {!rbac.allowed && rbs.data?.items.length ? (
@@ -434,30 +327,15 @@ function Iam() {
             density="compact"
             idKey={(b) => `${b.source}/${bindingName(b)}`}
             data={rbs.data.items as BindingRow[]}
-            columns={bindingColumns}
+            columns={[...bindingColumns, { key: 'actions', header: 'Actions', width: proportional(1.5, { minWidth: 180 }), renderCell: (b) => <RoleBindingActions binding={b} /> }]}
           />
         ) : (
-          empty('role bindings', rbs.isLoading)
+          <Text type="supporting" as="p">
+            {rbs.isLoading ? 'Loading…' : 'No role bindings.'}
+          </Text>
         )}
       </Panel>
-      <Panel title="Identity providers" headingId="iam-idp">
-        {idps.error ? <ErrorBanner error={idps.error} /> : null}
-        {!oidc.allowed && idps.data?.items.length ? (
-          <Banner
-            data-testid="oidc-locked"
-            status="warning"
-            title="Single sign-on needs a license key"
-            description="Without one these identity providers are configured but switched off. Local sign-in keeps working."
-            endContent={<Link href="/license">View license</Link>}
-          />
-        ) : null}
-        <Diagnoses items={idps.data?.diagnoses} />
-        {idps.data?.items.length ? (
-          <Table<ProviderRow> aria-label="Identity providers" density="compact" idKey="id" data={idps.data.items as ProviderRow[]} columns={providerColumns} />
-        ) : (
-          empty('identity providers', idps.isLoading)
-        )}
-      </Panel>
+      <IdentityProvidersPanel />
     </VStack>
   );
 }

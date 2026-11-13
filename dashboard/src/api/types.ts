@@ -844,7 +844,7 @@ export type DoctorCheck = S['DoctorCheck'];
 export type DoctorReport = S['DoctorReport'];
 
 // ---------------------------------------------------------------------------
-// IAM (read-only in v0.1; the write API is v0.2). Hand-written from
+// IAM reads. Hand-written from
 // internal/auth/stack/iam.go and internal/auth/adminsock (see the header).
 
 /** A local user (adminsock User). */
@@ -900,6 +900,27 @@ export interface IamIdentityProvider {
   redirectURL?: string;
   source?: 'config' | 'object';
 }
+
+// IAM writers on the complete SQLite runtime (D294, D396). Every replace and
+// delete names the exact UID and resourceVersion of the reviewed read.
+export type CreateLocalUserRequest = S['CreateLocalUserRequest'];
+export type UpdateLocalUserRequest = S['UpdateLocalUserRequest'];
+export type ResetLocalUserPasswordRequest = S['ResetLocalUserPasswordRequest'];
+/** The exact UID and resourceVersion a reviewed replace or delete names. */
+export type ObjectReview = S['ObjectReview'];
+export type ServiceAccountDesired = S['ServiceAccountDesired'];
+/** A ServiceAccount as stored, with its UID and resourceVersion. */
+export type ServiceAccountDocument = S['ServiceAccountDocument'];
+export type ReplaceServiceAccountCommand = S['ReplaceServiceAccountCommand'];
+/** POST /iam/serviceaccounts/{namespace}/{name}/tokens; the answer is a CreatedToken. */
+export type CreateServiceAccountTokenRequest = S['CreateServiceAccountTokenRequest'];
+export type IdentityProviderDesired = S['IdentityProviderDesired'];
+export type IdentityProviderSpec = S['IdentityProviderSpec'];
+/** An IdentityProvider object as stored; its client secret is a reference, never a value. */
+export type IdentityProviderDocument = S['IdentityProviderDocument'];
+export type ReplaceIdentityProviderCommand = S['ReplaceIdentityProviderCommand'];
+export type ReplaceRoleBindingCommand = S['ReplaceRoleBindingCommand'];
+export type RoleBindingReview = S['RoleBindingReview'];
 
 /** The IAM list envelope; diagnoses explain ignored bindings or providers. */
 export interface IamList<T> extends ListEnvelope<T> {
