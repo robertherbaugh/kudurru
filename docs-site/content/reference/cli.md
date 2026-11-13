@@ -1546,6 +1546,14 @@ List bounded integration status in one namespace.
 kudurru integrations list
 ```
 
+### kudurru integrations manifests
+
+List provider types and what this node's integration host refuses.
+
+```text
+kudurru integrations manifests
+```
+
 ### kudurru integrations preview
 
 Preview complete changes without applying them.

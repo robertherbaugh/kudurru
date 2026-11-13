@@ -209,6 +209,7 @@ them from its own copy.
 | Method | Path | Summary | Permission | On a follower |
 |---|---|---|---|---|
 | GET | `/api/v1/integrations` | List bounded integration status | `integrations.read` (cluster) | - |
+| GET | `/api/v1/integrations/manifests` | List provider manifests and this node's integration limits | `integrations.read` (cluster) | - |
 | GET | `/api/v1/integrations/{namespace}/{name}` | Read exact integration status | `integrations.read` (cluster) | - |
 | GET | `/api/v1/integrations/{namespace}/{name}/actions` | List original advertised actions | `integrations.read` (cluster) | - |
 | POST | `/api/v1/integrations/{namespace}/{name}/actions/{action}` | Invoke one reviewed advertised action | `integrations.act` (cluster) | refused |
@@ -216,6 +217,7 @@ them from its own copy.
 | POST | `/api/v1/integrations/{namespace}/{name}/preview` | Run a reviewed integration preview | `integrations.read` (cluster) | refused |
 | POST | `/api/v1/integrations/{namespace}/{name}/release` | Release one reviewed terminating integration without cleanup | `integrations.release` (cluster) | refused |
 | POST | `/api/v1/integrations/{namespace}/{name}/sync` | Run a reviewed integration sync | `integrations.sync` (cluster) | refused |
+| POST | `/api/v1/integrations:batchDelete` | Delete several integrations | `integrations.delete` (cluster) | forwarded |
 
 ## meta
 
