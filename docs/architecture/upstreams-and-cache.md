@@ -362,6 +362,10 @@ only the anchor child parked. Successful preparation cancellation does not expir
 The pure `internal/trustanchors` state remains distinct from durable acceptance
 and root publication authority.
 
+Operators enable and monitor this with the
+[managed root anchors page](../deploy/managed-root-anchors.md), which also lists
+the deviations from RFC 5011 below and their operational consequences.
+
 Its immutable state retains explicit DS seeds, every actual authenticating
 supporter, original hold-down times and permanent bounded revocation tombstones.
 Only checkpointed monotonic progress in the same process session counts toward
@@ -394,6 +398,19 @@ writer lock through commit. The hash-chained audit commits with the trust change
 actual completion, including committed-with-error, remains distinct from output
 success. Restart keeps the original configured policy/seeds and publishes through
 the usual complete admission path. See the [recovery runbook](../deploy/runbooks.md#recover-a-quarantined-managed-root-anchor).
+
+Qualification of the timers (D398). The hold-down, refresh and retry
+constants are production values and release binaries carry no clock seam. The
+pure state machine is driven through a 39-day synthetic timeline on DNSKEY
+replies that BIND and Knot DNS signed and served, captured with provenance
+(`internal/trustanchors/testdata/rfc5011`). Separate processes bootstrap from
+real BIND and Knot roots over the production acquisition, and refuse a wrong
+DS, a revoked seed and an expired signature. They observe a real revocation
+at the committed refresh, reached through the `-tags licensetest` updater-due
+seam (`test/interop`, `TestBINDManagedRoot*`, `TestKnotManagedRootBootstrap`).
+An opt-in check (`KUDURRU_LIVE_DNS=1`, `TestLiveRootManagedBootstrap`) runs the
+production acquisition and strict parser against all 13 root letters. No
+running node is taken from `AddPend` to `Valid` in real time.
 
 Mixed versions (D370). Members exchange anchor history only inside complete
 images, and every image exchange requires the exact store schema (9) and the

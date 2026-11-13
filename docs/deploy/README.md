@@ -36,6 +36,7 @@ More pages, by task:
 | Create, replace and revoke stored TSIG keys | [tsig-keys.md](tsig-keys.md) |
 | Transfer RPZ feeds, supported triggers and actions, check a feed on each node | [rpz.md](rpz.md) |
 | Validate DNSSEC on forwarded answers; trust anchors and exceptions | [dnssec-validation.md](dnssec-validation.md) |
+| Update recursive root trust anchors automatically (RFC 5011): enable order, monitoring, behavior | [managed-root-anchors.md](managed-root-anchors.md) |
 | Rewrite, filter and check forwarded answers (DNS64, rebinding protection) | [response-processing.md](response-processing.md) |
 | Limit client networks and refuse query types | [dns-controls.md](dns-controls.md) |
 | Match clients by MAC address, hostname or client ID | [client-identity.md](client-identity.md) |

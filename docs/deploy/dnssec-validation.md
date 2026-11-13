@@ -28,9 +28,11 @@ even when the client's DO bit is clear.
 `dnssec.useBuiltinAnchors: true` trusts the IANA root DS anchors shipped with
 the binary. This version includes key tags 20326 and 38696, from IANA's
 signed root-anchor publication verified on October 14, 2026. Software upgrades
-and explicit operator changes maintain anchors. This version does not run an
-RFC 5011 trust-anchor update worker and never promotes a fetched DNSKEY to a
-trust anchor automatically.
+and explicit operator changes maintain the anchors of forwarded validation:
+no RFC 5011 trust-anchor update worker runs for `dnssec.*`, and forwarded
+validation never promotes a fetched DNSKEY to a trust anchor. Recursive
+groups on SQLite can opt into automatic RFC 5011 root-key updates instead;
+see [Managed root anchors (RFC 5011)](managed-root-anchors.md).
 
 `dnssec.trustAnchors` adds complete DS or DNSKEY records in DNS presentation
 format. With `useBuiltinAnchors: false`, the supplied records replace the
