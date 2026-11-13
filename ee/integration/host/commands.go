@@ -149,22 +149,25 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 		}
 	}()
 	if err != nil {
-		h.setLocal(j, "Degraded", "ProvisionFailed", Result{}, true)
+		h.provisionFailed(j)
 		return
 	}
 	syncEnabled, interval, err := syncSchedule(provider, instance.definition)
 	if err != nil {
-		h.setLocal(j, "Degraded", "ProvisionFailed", Result{}, true)
+		h.provisionFailed(j)
 		return
 	}
 	startCtx, err := h.scopedOriginal(ctx, j, originalFrame, ExecutionGuard{Ledger: g, BundleID: instance.BundleID()})
 	if err != nil {
-		h.setLocal(j, "Degraded", "ProvisionFailed", Result{}, true)
+		h.provisionFailed(j)
 		return
 	}
 	started := make(chan error, 1)
 	startDone = make(chan struct{})
 	go func() { defer close(startDone); started <- provider.Start(startCtx) }()
+	h.mu.Lock()
+	delete(h.provisionFailures, j.key)
+	h.mu.Unlock()
 	h.setLocal(j, "Running", "Provisioned", Result{}, true)
 	// Start must honor cancellation; Stop quiesces rather than spawning writes.
 	var timer *time.Timer
@@ -304,6 +307,30 @@ func (h *Host) refuse(ctx context.Context, j *job, f frame, g ExecutionGuard, re
 // refusalBackoff is the wait before the failures-th retry of a refusal
 // publication: one poll interval, doubled per consecutive failure, at most
 // five minutes (or one poll interval, if that is longer).
+// provisionFailed reports a lease whose provider setup failed (Provision,
+// Validate, Check, its declared schedule, or the original scope) and marks
+// the job for replacement once a backoff has passed (D384). Before, such an
+// instance stayed Degraded until its object, credential or license changed,
+// so a provider that was briefly unreachable during setup, or a setup run
+// cut by its bound on a loaded node, never polled again on a quiet node.
+// Setup makes no provider write, so repeating it is safe; consecutive
+// failures of one instance back off like refusals (refusalBackoff).
+func (h *Host) provisionFailed(j *job) {
+	h.setLocal(j, "Degraded", "ProvisionFailed", Result{}, true)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.jobs[j.key] != j {
+		return
+	}
+	failures := h.provisionFailures[j.key]
+	if failures < 32 {
+		failures++
+	}
+	h.provisionFailures[j.key] = failures
+	j.provisionRetry = true
+	j.provisionRetryAt = h.opts.Now().Add(refusalBackoff(h.opts.PollInterval, failures))
+}
+
 func refusalBackoff(poll time.Duration, failures uint32) time.Duration {
 	limit := max(5*time.Minute, poll)
 	delay := poll

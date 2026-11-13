@@ -235,12 +235,15 @@ type Host struct {
 	// refusalFailures counts consecutive failed refusal publications per
 	// instance name, across the jobs that replace each other, for backoff.
 	refusalFailures map[string]uint32
-	wake            chan struct{}
-	slots           chan struct{}
-	running         atomic.Bool
-	sequence        atomic.Uint64
-	requestSequence atomic.Uint64
-	sourceSequence  atomic.Uint64
+	// provisionFailures counts consecutive failed provider setups per
+	// instance name, across the jobs that replace each other, for backoff.
+	provisionFailures map[string]uint32
+	wake              chan struct{}
+	slots             chan struct{}
+	running           atomic.Bool
+	sequence          atomic.Uint64
+	requestSequence   atomic.Uint64
+	sourceSequence    atomic.Uint64
 }
 type frame struct {
 	instance *Instance
@@ -268,6 +271,11 @@ type job struct {
 	// term publishes it again with exponential backoff (refusalBackoff).
 	refusalUnpublished bool
 	refusalRetryAt     time.Time
+	// provisionRetry is set when the lease's provider setup failed; the
+	// first capture at or after provisionRetryAt replaces the job, so a new
+	// term sets the provider up again (provisionFailed).
+	provisionRetry   bool
+	provisionRetryAt time.Time
 	// statusPredecessors are the latest earlier resource versions of the
 	// frame's instance that differ from it only by status writes, oldest
 	// first (D384). A command reviewed at one of them reviewed the same
@@ -354,5 +362,5 @@ func New(o Options) (*Host, error) {
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return nil, ErrInvalid
 	}
-	return &Host{incarnation: hex.EncodeToString(nonce[:]), opts: o, forgetBatch: 4096, jobs: map[string]*job{}, statuses: map[string]InstanceStatus{}, refusalFailures: map[string]uint32{}, wake: make(chan struct{}, 1), slots: make(chan struct{}, o.MaxConcurrent)}, nil
+	return &Host{incarnation: hex.EncodeToString(nonce[:]), opts: o, forgetBatch: 4096, jobs: map[string]*job{}, statuses: map[string]InstanceStatus{}, refusalFailures: map[string]uint32{}, provisionFailures: map[string]uint32{}, wake: make(chan struct{}, 1), slots: make(chan struct{}, o.MaxConcurrent)}, nil
 }
