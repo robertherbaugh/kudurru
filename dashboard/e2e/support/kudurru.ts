@@ -136,6 +136,8 @@ export interface ServerOptions {
    * free limit of one policy.
    */
   community?: boolean;
+  /** credentials.allowedFiles of the node: the files an Integration may reference. */
+  allowedCredentialFiles?: string[];
 }
 
 export interface Server {
@@ -225,6 +227,7 @@ async function startServerOnce(bin: string, opts: ServerOptions): Promise<Server
     // may name the loopback stub publisher (support/lists.ts).
     blocking: { initStrategy: 'blocking', allowLocalListURLs: true },
     auth: { adminSocket: { path: path.join(dir, 'admin.sock') } },
+    ...(opts.allowedCredentialFiles?.length ? { credentials: { allowedFiles: opts.allowedCredentialFiles } } : {}),
     log: { level: 'info', format: 'text' },
   };
   const configFile = path.join(dir, 'kudurru.yaml');

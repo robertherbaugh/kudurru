@@ -142,7 +142,8 @@ export function useCan(): (resource: string, verb: string, on?: ObjectScope) => 
   );
 }
 
-const STATIC_VERBS = ['write', 'delete', 'decide', 'import', 'sync', 'act'];
+// internal/api/static.go refuses these verbs on a static host.
+const STATIC_VERBS = ['write', 'delete', 'decide', 'import', 'sync', 'act', 'release'];
 
 /**
  * Why useCan refuses resource.verb, for a disabled control's tooltip:

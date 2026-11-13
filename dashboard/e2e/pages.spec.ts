@@ -22,6 +22,7 @@ const NAV = [
   ['/leases', 'Leases'],
   ['/upstreams', 'Upstreams'],
   ['/nodes', 'Nodes'],
+  ['/integrations', 'Integrations'],
   ['/settings', 'Settings'],
   ['/tools', 'Tools'],
   ['/messages', 'Diagnosis'],

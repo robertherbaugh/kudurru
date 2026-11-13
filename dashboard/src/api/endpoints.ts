@@ -89,6 +89,7 @@ import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntriesPage,
 import type { CatalogueCategory, CatalogueIconIndex, CatalogueInfo, CatalogueService, PolicyState, SafeSearchEngine } from './types';
 import type { UnblockApproval, UnblockDecisionResult, UnblockDenial, UnblockRequest, UnblockRequestList, UnblockState } from './types';
 import type { ZoneDeleteResult } from './types';
+import type { Integration, IntegrationExecutionResult, IntegrationManifests, IntegrationReleaseResult, IntegrationReview, IntegrationSummary } from './types';
 import type { MigrationPlan, MigrationRequest, MigrationResult, MigrationRun, MigrationCutoverPlan, MigrationAuthorityChange } from './types';
 
 /** `scope=node|cluster&node=<name>` on every stats and log call (§10). */
@@ -108,6 +109,12 @@ const enc = encodeURIComponent;
 export function withoutStatus<T extends AnyObject>(obj: T): Omit<T, 'status'> {
   const { status: _status, took_ms: _took, ...rest } = obj as T & { took_ms?: number };
   return rest as Omit<T, 'status'>;
+}
+
+/** An Integration to send: status is server-owned and never sent. */
+function integrationBody(obj: Integration): Omit<Integration, 'status'> {
+  const { status: _status, took_ms: _took, ...rest } = obj as Integration & { took_ms?: number };
+  return rest;
 }
 
 /** /objects path of one object; cluster-scoped kinds omit the namespace. */
@@ -172,6 +179,40 @@ export function endpoints(c: ApiClient) {
         c.request<{ items: ApplyResult[] }>('POST', '/apply', { text: yamlOrJson, contentType }),
       batchDelete: (kind: ObjectKind, names: string[], namespace?: string) =>
         c.post<Processed>(`/${kind}:batchDelete`, { names, namespace }),
+    },
+
+    /**
+     * Integrations (docs/deploy/integrations.md). The objects are written
+     * through the generic object routes (D400) with references only; check,
+     * preview, sync, actions and release are bound to one reviewed UID and
+     * revision and run on the primary.
+     */
+    integrations: {
+      manifests: () => c.get<IntegrationManifests>('/integrations/manifests'),
+      list: (namespace: string) => c.get<{ items: IntegrationSummary[] }>('/integrations', { namespace }),
+      get: (namespace: string, name: string) => c.get<IntegrationSummary>(`/integrations/${enc(namespace)}/${enc(name)}`),
+      objects: (q?: { namespace?: string }) => c.get<ListEnvelope<Integration>>('/objects/integrations', q),
+      object: (namespace: string, name: string) => c.get<Integration>(`/objects/integrations/${enc(namespace)}/${enc(name)}`),
+      /** Create-only: 409 when the object exists. */
+      create: (obj: Integration) => c.post<Integration>('/objects/integrations', integrationBody(obj)),
+      /** Replace, bound to the reviewed resourceVersion (412 otherwise). */
+      replace: (obj: Integration) =>
+        c.put<Integration>(
+          `/objects/integrations/${enc(obj.metadata.namespace ?? '')}/${enc(obj.metadata.name)}`,
+          integrationBody(obj),
+          obj.metadata.resourceVersion ? { 'If-Match': obj.metadata.resourceVersion } : undefined,
+        ),
+      remove: (namespace: string, name: string, resourceVersion?: string) =>
+        c.request<void>('DELETE', `/objects/integrations/${enc(namespace)}/${enc(name)}`, resourceVersion ? { headers: { 'If-Match': resourceVersion } } : {}),
+      check: (namespace: string, name: string, review: IntegrationReview) => c.post<IntegrationExecutionResult>(`/integrations/${enc(namespace)}/${enc(name)}/check`, review),
+      preview: (namespace: string, name: string, review: IntegrationReview) => c.post<IntegrationExecutionResult>(`/integrations/${enc(namespace)}/${enc(name)}/preview`, review),
+      sync: (namespace: string, name: string, review: IntegrationReview) => c.post<IntegrationExecutionResult>(`/integrations/${enc(namespace)}/${enc(name)}/sync`, review),
+      actions: (namespace: string, name: string, review: Pick<IntegrationReview, 'uid' | 'revision'>) =>
+        c.get<IntegrationExecutionResult>(`/integrations/${enc(namespace)}/${enc(name)}/actions`, { uid: review.uid, revision: review.revision }),
+      act: (namespace: string, name: string, action: string, review: IntegrationReview) =>
+        c.post<IntegrationExecutionResult>(`/integrations/${enc(namespace)}/${enc(name)}/actions/${enc(action)}`, review),
+      release: (namespace: string, name: string, review: Pick<IntegrationReview, 'uid' | 'revision'>) =>
+        c.post<IntegrationReleaseResult>(`/integrations/${enc(namespace)}/${enc(name)}/release`, { uid: review.uid, revision: review.revision }),
     },
 
     zones: {

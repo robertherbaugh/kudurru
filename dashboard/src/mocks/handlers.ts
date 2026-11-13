@@ -53,6 +53,7 @@ import { entryError, sourceName } from '../lib/lists';
 import { derivePolicyState } from '../lib/policies';
 import { rng } from './rand';
 import { dhcpHandlers, resetDHCP } from './dhcp';
+import { integrationHandlers, resetIntegrations } from './integrations';
 import type { RoleBindingDesired, UnblockAllow, UnblockApproval, UnblockDenial, UnblockRequest } from '../api/types';
 import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntryPatch, ListEntriesPatch } from '../api/types';
 
@@ -86,6 +87,7 @@ function ownSessions(username: string): SessionRecordInfo[] {
 export function resetDB(now?: number): MockDB {
   db = addBrandingFixture(createDB(now));
   resetDHCP();
+  resetIntegrations();
   mockFactors.clear();
   mockSetups.clear();
   mockSessions.clear();
@@ -147,7 +149,7 @@ export const RESOURCE_VERBS: Record<string, string[]> = {
   tokens: ['read', 'write', 'delete', 'own'],
   identityproviders: ['read', 'write', 'delete'],
   rolebindings: ['read', 'write', 'delete'],
-  integrations: ['read', 'write', 'delete', 'sync', 'check', 'secrets', 'act'],
+  integrations: ['read', 'write', 'delete', 'sync', 'check', 'secrets', 'act', 'release'],
   cluster: ['read', 'join', 'promote', 'drain'],
   edge: ['read', 'write'],
   edgeblocks: ['read', 'write'],
@@ -761,6 +763,7 @@ let tailTimer = 0;
 
 export const handlers = [
   ...dhcpHandlers(guard),
+  ...integrationHandlers(guard, (resource, verb) => !!db.session && (permissions(db.session.user.roles)[resource] ?? []).includes(verb)),
   // auth ------------------------------------------------------------------
   http.get(`${B}/auth/status`, () =>
     ok({

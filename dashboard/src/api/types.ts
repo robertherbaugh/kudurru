@@ -1115,3 +1115,53 @@ export type BrandingInfo = S['BrandingInfo'];
 export type ExternalUser = S['ExternalUser'];
 export type ExternalUserCommand = S['ExternalUserCommand'];
 export type ExternalUserPage = S['AuthListExternalUser'];
+
+// ---------------------------------------------------------------------------
+// Integrations (docs/deploy/integrations.md, D367, D400)
+
+/** GET /integrations/manifests: the provider types this node runs and its limits. */
+export type IntegrationManifests = S['IntegrationManifests'];
+export type IntegrationManifest = S['IntegrationManifest'];
+export type IntegrationCredentialKey = S['IntegrationCredentialKey'];
+/** GET /integrations and /integrations/{ns}/{name}: status of one exact revision. */
+export type IntegrationSummary = S['IntegrationSummary'];
+/** The exact review a check, preview, sync, action or release is bound to. */
+export type IntegrationReview = S['IntegrationReview'];
+export type IntegrationExecutionResult = S['IntegrationExecutionResult'];
+export type IntegrationPreview = S['IntegrationPreview'];
+export type IntegrationPlanOperation = S['IntegrationPlanOperation'];
+export type IntegrationPlanConflict = S['IntegrationPlanConflict'];
+export type IntegrationRecord = S['IntegrationRecord'];
+export type IntegrationAction = S['IntegrationAction'];
+export type IntegrationReleaseResult = S['IntegrationReleaseResult'];
+
+/** api/v1alpha1 CredentialReference: a reference to a credential, never its value. */
+export interface CredentialReference {
+  file?: string;
+  env?: string;
+  /** Accepted by the CRD; not resolved for Integrations by either host. */
+  secretRef?: { name: string; key: string };
+}
+
+/** api/v1alpha1 IntegrationSpec; the provider block sits under the manifest's configField. */
+export interface IntegrationSpec {
+  type: string;
+  credentials?: Record<string, CredentialReference>;
+  resync?: string;
+  suspend?: boolean;
+  deletionPolicy?: 'Retain' | 'Delete';
+  [configField: string]: unknown;
+}
+
+export interface IntegrationStatus {
+  observedGeneration?: number;
+  conditions?: Condition[];
+  lastSyncTime?: string;
+  records?: { managed?: number; drift?: number; conflicts?: number };
+  clients?: number;
+}
+
+/** An Integration object of /objects/integrations (metadata may carry a deletion timestamp). */
+export type Integration = Omit<KObject<'Integration', IntegrationSpec, IntegrationStatus>, 'metadata'> & {
+  metadata: ObjectMeta & { deletionTimestamp?: string; finalizers?: string[] };
+};

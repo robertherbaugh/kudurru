@@ -14,6 +14,7 @@ import {
   Monitor,
   MonitorSmartphone,
   Network,
+  Plug,
   Router,
   Scale,
   ScrollText,
@@ -82,6 +83,8 @@ const Messages = lazy(() => import('./pages/MessagesPage'));
 const Access = lazy(() => import('./pages/AccessPage'));
 const Audit = lazy(() => import('./pages/AuditPage'));
 const License = lazy(() => import('./pages/LicensePage'));
+const Integrations = lazy(() => import('./pages/IntegrationsPage'));
+const IntegrationDetail = lazy(() => import('./pages/IntegrationDetailPage'));
 const Requests = lazy(() => import('./pages/RequestsPage'));
 const RequestDetail = lazy(() => import('./pages/RequestDetailPage'));
 
@@ -113,6 +116,8 @@ export const ROUTES: RouteDef[] = [
   { path: '/dhcp/:scope', navKey: 'dhcp', label: 'DHCP scope', section: 'DHCP', icon: Router, page: DHCPScope, hidden: true },
   { path: '/leases', navKey: 'leases', label: 'Leases', section: 'DHCP', icon: MonitorSmartphone, page: DHCPLeases },
   { path: '/nodes', navKey: 'nodes', label: 'Nodes', section: 'System', icon: Server, page: Nodes },
+  { path: '/integrations', navKey: 'integrations', label: 'Integrations', section: 'System', icon: Plug, page: Integrations },
+  { path: '/integrations/:ns/:name', navKey: 'integrations', label: 'Integration', section: 'System', icon: Plug, page: IntegrationDetail, hidden: true },
   { path: '/settings', navKey: 'settings', label: 'Settings', section: 'System', icon: Settings, page: SettingsPage },
   { path: '/tools', navKey: 'tools', label: 'Tools', section: 'System', icon: Wrench, page: Tools },
   { path: '/tools/migrations/:id', navKey: 'tools', label: 'Migration run', section: 'System', icon: Wrench, page: MigrationRun, hidden: true },
