@@ -230,11 +230,28 @@ func mountedParentAndChildZones(t *testing.T, cfg *config.Config, call mountedCa
 		})
 	}
 	set := func(label string) { mu.Lock(); action = label; mu.Unlock() }
-	// awaitAnswer waits for the zone's first answer (awaitMountedDNS also
-	// waits for readiness: never stuck) and then probes it.
+	// awaitAnswer waits for the zone's first answer (the await also waits
+	// for readiness: never stuck) and then probes it. Under the race
+	// detector a new child took 13 to 50 s to answer on a loaded runner
+	// (fix-07, fix-08, fix-14 and review-07 logs): the serial driver steps
+	// every zone, and each step, including the republish and publication
+	// wait of an unchanged active zone, took 1 to 4 s under race. That is
+	// close to the shared one-minute bound, so this test allows three under
+	// race; without race a first answer took under 13 s. Waits over 5 s are
+	// logged.
+	bound := time.Minute
+	if raceEnabled {
+		bound = 3 * time.Minute
+	}
 	awaitAnswer := func(name, address string) {
 		t.Helper()
-		awaitMountedDNS(t, cfg, name, address)
+		awaitMountedDNSResultWithin(t, cfg, name, address, bound, func(answer *dns.Msg) bool {
+			if answer.Rcode != dns.RcodeSuccess || len(answer.Answer) != 1 {
+				return false
+			}
+			rr, ok := answer.Answer[0].(*dns.A)
+			return ok && rr.A.String() == address
+		})
 		mu.Lock()
 		watched[name] = address
 		mu.Unlock()

@@ -498,8 +498,13 @@ func awaitMountedDNSResult(t *testing.T, cfg *config.Config, name, expected stri
 	// Complete publication can require another bounded driver attempt after a
 	// concurrent status update. Allow those attempts under race instrumentation;
 	// the production operation deadlines and all serving assertions stay intact.
+	awaitMountedDNSResultWithin(t, cfg, name, expected, time.Minute, matches)
+}
+
+func awaitMountedDNSResultWithin(t *testing.T, cfg *config.Config, name, expected string, bound time.Duration, matches func(*dns.Msg) bool) {
+	t.Helper()
 	started := time.Now()
-	deadline := started.Add(time.Minute)
+	deadline := started.Add(bound)
 	client := &dns.Client{Timeout: 200 * time.Millisecond}
 	for {
 		query := new(dns.Msg)
