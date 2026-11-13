@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/robertherbaugh/kudurru/ee/integration"
@@ -54,5 +55,35 @@ func TestAdvertisedActionSchemaAndEscapedSecretRedaction(t *testing.T) {
 	a = h.execute(context.Background(), j, command{kind: "invoke", action: "block", params: json.RawMessage(`{}`)})
 	if !errors.Is(a.err, ErrUnsupported) {
 		t.Fatal("remote schema fetched/ignored", a.err)
+	}
+}
+
+type auditingProvider struct {
+	integration.Integration
+	subject string
+}
+
+func (p auditingProvider) AuditSubject(string, json.RawMessage) (string, bool) {
+	return p.subject, true
+}
+
+// The host keeps an ActionAuditor subject only when it is short, printable
+// and carries no resolved credential (D384).
+func TestAuditSubjectIsBoundedAndCarriesNoSecret(t *testing.T) {
+	secrets := map[string][]byte{"apiKey": []byte("resolved-secret-value")}
+	for subject, want := range map[string]string{
+		"client 02:ab:cd:00:00:01":     "client 02:ab:cd:00:00:01",
+		"":                             "",
+		"client resolved-secret-value": "",
+		"line\nbreak":                  "",
+		strings.Repeat("x", 257):       "",
+		"client café":                  "client café",
+	} {
+		if got := auditSubject(auditingProvider{subject: subject}, "a", json.RawMessage(`{}`), secrets); got != want {
+			t.Errorf("%q: %q, want %q", subject, got, want)
+		}
+	}
+	if got := auditSubject(&fakePublisher{}, "a", json.RawMessage(`{}`), secrets); got != "" {
+		t.Errorf("a provider without an auditor named %q", got)
 	}
 }

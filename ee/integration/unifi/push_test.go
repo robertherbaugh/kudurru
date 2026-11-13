@@ -307,3 +307,24 @@ func TestManifestDNSServerPatternMatchesValidation(t *testing.T) {
 		}
 	}
 }
+
+// A client action names its client in the canonical form the controller is
+// sent, whatever case was asked; other actions and bad input name nothing.
+func TestAuditSubjectNamesTheClient(t *testing.T) {
+	p := New()
+	for _, tc := range []struct {
+		action, params, want string
+		ok                   bool
+	}{
+		{ActionBlockClient, `{"mac":"02:AB:cd:00:00:01"}`, "client 02:ab:cd:00:00:01", true},
+		{ActionUnblockClient, `{"mac":"02:ab:cd:00:00:01"}`, "client 02:ab:cd:00:00:01", true},
+		{ActionBlockClient, `{"mac":"not-a-mac"}`, "", false},
+		{ActionBlockClient, `{"mac":"02:ab:cd:00:00:01","extra":1}`, "", false},
+		{ActionDHCPDNSServers, `{"mode":"preview"}`, "", false},
+	} {
+		got, ok := p.AuditSubject(tc.action, json.RawMessage(tc.params))
+		if got != tc.want || ok != tc.ok {
+			t.Errorf("%s %s: %q %t", tc.action, tc.params, got, ok)
+		}
+	}
+}

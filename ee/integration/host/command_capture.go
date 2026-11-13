@@ -167,11 +167,20 @@ func (c *CommandCapture) Sync(ctx context.Context, expected string) (*Result, er
 
 // Invoke submits one advertised action with a detached bounded input.
 func (c *CommandCapture) Invoke(ctx context.Context, action string, params json.RawMessage) (json.RawMessage, error) {
+	value, _, err := c.InvokeAudited(ctx, action, params)
+	return value, err
+}
+
+// InvokeAudited is Invoke that also returns what the invocation affects, as
+// the provider's ActionAuditor names it ("" when it names nothing), for the
+// command's audit row (D384). The subject is set whenever the provider was
+// reached, also when the outcome is an error.
+func (c *CommandCapture) InvokeAudited(ctx context.Context, action string, params json.RawMessage) (json.RawMessage, string, error) {
 	if action == "" || len(action) > 128 || len(params) > 64<<10 || !json.Valid(params) {
-		return nil, ErrInvalid
+		return nil, "", ErrInvalid
 	}
 	a := c.submit(ctx, command{kind: "invoke", action: action, params: append(json.RawMessage(nil), params...)})
-	return a.value, a.err
+	return a.value, a.audit, a.err
 }
 
 // Actions returns only the original provider's bounded advertised schemas.

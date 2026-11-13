@@ -43,6 +43,27 @@ func (p *Provider) Actions() []integration.ActionSpec {
 	return out
 }
 
+// AuditSubject names the client a block-client or unblock-client action
+// affects, in the canonical lowercase form the controller is sent, so that
+// audit rows of one client match whatever letter case was asked (D384).
+// The DHCP action is described by its digest alone.
+func (p *Provider) AuditSubject(name string, params json.RawMessage) (string, bool) {
+	if name != ActionBlockClient && name != ActionUnblockClient {
+		return "", false
+	}
+	var in struct {
+		MAC string `json:"mac"`
+	}
+	if decode(params, &in, true) != nil {
+		return "", false
+	}
+	mac, err := normalizeMAC(in.MAC)
+	if err != nil {
+		return "", false
+	}
+	return "client " + mac, true
+}
+
 // Invoke runs one advertised action. Nothing here retries a write.
 func (p *Provider) Invoke(ctx context.Context, name string, params json.RawMessage) (json.RawMessage, error) {
 	if !slices.ContainsFunc(p.Actions(), func(a integration.ActionSpec) bool { return a.Name == name }) {

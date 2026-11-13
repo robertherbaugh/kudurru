@@ -294,7 +294,10 @@ type answer struct {
 	preview *Preview
 	result  *Result
 	value   json.RawMessage
-	err     error
+	// audit is the provider's ActionAuditor subject of an invocation, set
+	// before the provider is invoked so that it survives a failure.
+	audit string
+	err   error
 }
 
 // New validates bounded execution dependencies without doing I/O.

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"time"
+	"unicode/utf8"
 
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
@@ -461,6 +462,7 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 		if err := h.fence(ctx, j, g); err != nil {
 			return answer{err: err}
 		}
+		audit := auditSubject(j.provider, c.action, c.params, f.instance.secrets)
 		result, err := actions.Invoke(ctx, c.action, c.params)
 		if err != nil {
 			// A provider may refuse before any effect: a reviewed plan that
@@ -469,28 +471,50 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 			if ctx.Err() == nil {
 				for _, refusal := range []error{ErrStalePreview, ErrUnsupported} {
 					if errors.Is(err, refusal) {
-						return answer{err: refusal}
+						return answer{audit: audit, err: refusal}
 					}
 				}
 			}
-			return answer{err: safeError(ctx, err)}
+			return answer{audit: audit, err: safeError(ctx, err)}
 		}
 		if len(result) > 64<<10 || !json.Valid(result) {
-			return answer{err: ErrProvider}
+			return answer{audit: audit, err: ErrProvider}
 		}
 		// Defense in depth for the resolved named capabilities; wrappers still
 		// sanitize authenticated responses before returning them.
 		if containsSecret(result, f.instance.secrets) {
-			return answer{err: ErrProvider}
+			return answer{audit: audit, err: ErrProvider}
 		}
 		if err := h.fence(ctx, j, g); err != nil {
-			return answer{err: err}
+			return answer{audit: audit, err: err}
 		}
-		return answer{value: result}
+		return answer{value: result, audit: audit}
 	default:
 		return answer{err: ErrInvalid}
 	}
 }
+
+// auditSubject is the provider's ActionAuditor subject of one invocation,
+// or "" when it has none or the text is unusable: too long, not printable
+// or carrying a resolved credential (D384).
+func auditSubject(provider integration.Integration, action string, params json.RawMessage, secrets map[string][]byte) string {
+	auditor, ok := provider.(integration.ActionAuditor)
+	if !ok {
+		return ""
+	}
+	subject, ok := auditor.AuditSubject(action, params)
+	encoded, err := json.Marshal(subject)
+	if !ok || subject == "" || len(subject) > 256 || err != nil || containsSecret(encoded, secrets) {
+		return ""
+	}
+	for _, r := range subject {
+		if r < 0x20 || r == 0x7f || r == utf8.RuneError {
+			return ""
+		}
+	}
+	return subject
+}
+
 func valueResult(r *Result) Result {
 	if r == nil {
 		return Result{}
