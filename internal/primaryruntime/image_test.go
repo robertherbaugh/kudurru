@@ -445,7 +445,7 @@ func TestImageStrictRegistryBoundsCarriersAndOrphanChunks(t *testing.T) {
 	}
 }
 
-func TestImageLateDesiredChildBeforeLifecycleBlocksParent(t *testing.T) {
+func TestImageLateDesiredChildBeforeLifecycleHoldsParentAdmission(t *testing.T) {
 	h := newHarness(t, "sqlite")
 	parent := h.begin(h.zone("parent", "example."))
 	if _, err := h.r.Reconcile(context.Background(), parent.Spec.Zone); err != nil {
