@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -56,14 +57,25 @@ func (p *remoteCachePoll) Zones(ctx context.Context, addr string) (internalapi.Z
 // This opt-in case runs the real root, SQLite publications, authenticated
 // internal listener and generated supervisor against the pinned external daemon.
 func TestRunServeRemoteEdgeRegexAndLateFill(t *testing.T) {
-	runServeRemoteEdgeCache(t, false)
+	runServeRemoteEdgeCache(t, false, false)
 }
 
 func TestRunServeRemoteEdgeAuthoritativeCacheACL(t *testing.T) {
-	runServeRemoteEdgeCache(t, true)
+	runServeRemoteEdgeCache(t, true, false)
 }
 
-func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly bool) {
+// TestRunServeRemoteEdgeClientGroupViews is the D403 edge acceptance: two
+// ClientGroups get different answers for one name through the pinned
+// dnsdist, whose authoritative pool cache was warm with the default answer
+// just before. The client address reaches kudurru through the edge's
+// PROXYv2 header, so kudurru selects the group's view, and the edge detaches
+// both packet caches (zone-client-view) instead of sharing one client's
+// answer with another. Removing the views reattaches the cache.
+func TestRunServeRemoteEdgeClientGroupViews(t *testing.T) {
+	runServeRemoteEdgeCache(t, true, true)
+}
+
+func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly, views bool) {
 	if os.Getenv("KUDURRU_F39_LIVE") != "1" {
 		t.Skip("set KUDURRU_F39_LIVE=1 for owned pinned dnsdist acceptance")
 	}
@@ -613,6 +625,120 @@ func runServeRemoteEdgeCache(t *testing.T, authoritativeOnly bool) {
 	})
 	authPID := pid() // topology changes can use the existing validated restart
 	t.Log("PASS measured real authoritative pool cache hit across two original PROXYv2 clients")
+	readRecords := func() {
+		t.Helper()
+		awaitPrimarySource()
+		wait("original record set readable", func() bool {
+			response, err := client.Get(base + "/objects/dnsrecordsets/default/cache-primary")
+			if err != nil {
+				return false
+			}
+			defer func() { _ = response.Body.Close() }()
+			if response.StatusCode == http.StatusServiceUnavailable {
+				return false
+			}
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("record set read status=%d", response.StatusCode)
+			}
+			if err := json.NewDecoder(io.LimitReader(response.Body, 2<<20)).Decode(records); err != nil {
+				t.Fatal("original record set read decode failed")
+			}
+			return true
+		})
+	}
+	if views {
+		for _, g := range []struct{ name, ip string }{{"lan", "127.0.0.2"}, {"kids", "127.0.0.3"}} {
+			group := &public.ClientGroup{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "ClientGroup"}, ObjectMeta: metav1.ObjectMeta{Name: g.name, Namespace: "default"}, Spec: public.ClientGroupSpec{Clients: []public.ClientMatcher{{IP: g.ip}}}}
+			writePublished(http.MethodPost, "/objects/clientgroups", group, http.StatusCreated)
+		}
+		readRecords()
+		defaults := records.Spec.Endpoints
+		viewed := func(name, target, view string) public.Endpoint {
+			return public.Endpoint{DNSName: name, RecordType: "A", Targets: []string{target}, RecordTTL: 300, Kudurru: &public.EndpointExt{View: view}}
+		}
+		records.Spec.Endpoints = append(append([]public.Endpoint(nil), defaults...),
+			viewed("probe.private.example.", "10.0.0.2", "lan"),
+			viewed("probe.private.example.", "10.9.0.3", "kids"),
+			viewed("nas.private.example.", "10.0.0.20", "lan"))
+		writePublished(http.MethodPut, "/objects/dnsrecordsets/default/cache-primary", records, http.StatusOK)
+		isolated := func(mode string) bool { return mode == "bypass-client-scope" || mode == "bypass-zone-client-view" }
+		var observed string
+		defer func() {
+			if t.Failed() {
+				t.Log("last edge observation:", observed)
+			}
+		}()
+		wait("client-group views detach both edge caches", func() bool {
+			mode, _, _, size := authoritativeStatus()
+			resolverMode, _ := status()
+			m, err := from("127.0.0.2", "probe.private.example.")
+			observed = fmt.Sprintf("authoritative %s (cache size %v), resolver %s, lan answer %v %v", mode, size, resolverMode, m, err)
+			// ClientGroups with address matchers already make the policy
+			// index client dependent (client-scope), which kudurru reports
+			// before the zone's own reason; zone-client-view is checked on
+			// its own below.
+			return isolated(mode) && isolated(resolverMode) && size == 0 && err == nil && m != nil && m.Authoritative && len(m.Answer) == 1 && m.Answer[0].(*dns.A).A.String() == "10.0.0.2"
+		})
+		groupMode, _, hits, _ := authoritativeStatus()
+		t.Log("edge cache mode with the ClientGroups present:", groupMode)
+		// The default answer was cached a moment ago; every client order
+		// must still get its own group's answer, and nothing is a cache hit.
+		for range 3 {
+			clientAnswer("127.0.0.2", "probe.private.example.", "10.0.0.2", dns.RcodeSuccess)
+			clientAnswer("127.0.0.3", "probe.private.example.", "10.9.0.3", dns.RcodeSuccess)
+			clientAnswer("127.0.0.3", "probe.private.example.", "10.9.0.3", dns.RcodeSuccess)
+			clientAnswer("127.0.0.4", "probe.private.example.", "192.0.2.81", dns.RcodeSuccess)
+			clientAnswer("127.0.0.2", "probe.private.example.", "10.0.0.2", dns.RcodeSuccess)
+			clientAnswer("127.0.0.2", "nas.private.example.", "10.0.0.20", dns.RcodeSuccess)
+			clientAnswer("127.0.0.4", "nas.private.example.", "", dns.RcodeNameError)
+			clientAnswer("127.0.0.3", "nas.private.example.", "", dns.RcodeNameError)
+			clientAnswer("127.0.0.2", "nas.private.example.", "10.0.0.20", dns.RcodeSuccess)
+		}
+		if mode, _, after, size := authoritativeStatus(); !isolated(mode) || after != hits || size != 0 {
+			t.Fatalf("the edge answered client-group view questions from a cache: mode %s, hits %v then %v, size %v", mode, hits, after, size)
+		}
+		if pid() != authPID {
+			t.Fatal("client-group view bypass restarted actual daemon")
+		}
+		t.Log("PASS two ClientGroups and the default get their own answers through the actual edge after a warm cache; both caches detached; same PID")
+		// Without the ClientGroups the policy index is client independent
+		// again, but the zone still serves views: kudurru must report
+		// zone-client-view itself and the edge keep both caches detached.
+		writePublished(http.MethodDelete, "/objects/clientgroups/default/lan", nil, http.StatusNoContent)
+		writePublished(http.MethodDelete, "/objects/clientgroups/default/kids", nil, http.StatusNoContent)
+		wait("zone-client-view alone detaches both edge caches", func() bool {
+			mode, _, _, size := authoritativeStatus()
+			resolverMode, _ := status()
+			m, err := from("127.0.0.2", "probe.private.example.")
+			observed = fmt.Sprintf("authoritative %s (cache size %v), resolver %s, former lan answer %v %v", mode, size, resolverMode, m, err)
+			return mode == "bypass-zone-client-view" && resolverMode == "bypass-zone-client-view" && size == 0 && err == nil && m != nil && len(m.Answer) == 1 && m.Answer[0].(*dns.A).A.String() == "192.0.2.81"
+		})
+		_, _, hits, _ = authoritativeStatus()
+		for range 3 {
+			for _, source := range []string{"127.0.0.2", "127.0.0.3", "127.0.0.4"} {
+				clientAnswer(source, "probe.private.example.", "192.0.2.81", dns.RcodeSuccess)
+				clientAnswer(source, "nas.private.example.", "", dns.RcodeNameError)
+			}
+		}
+		if mode, _, after, size := authoritativeStatus(); mode != "bypass-zone-client-view" || after != hits || size != 0 {
+			t.Fatalf("zone-client-view did not keep the authoritative cache detached: mode %s, hits %v then %v, size %v", mode, hits, after, size)
+		}
+		t.Log("PASS a zone that still serves views keeps both caches detached as zone-client-view after its ClientGroups are gone")
+		readRecords()
+		records.Spec.Endpoints = defaults
+		writePublished(http.MethodPut, "/objects/dnsrecordsets/default/cache-primary", records, http.StatusOK)
+		wait("uniform primary cache restored after views", func() bool {
+			mode, _, _, size := authoritativeStatus()
+			resolverMode, _ := status()
+			return mode == "qualified" && resolverMode == "qualified" && size > 0
+		})
+		for _, source := range []string{"127.0.0.2", "127.0.0.3", "127.0.0.4"} {
+			clientAnswer(source, "probe.private.example.", "192.0.2.81", dns.RcodeSuccess)
+			clientAnswer(source, "nas.private.example.", "", dns.RcodeNameError)
+		}
+		t.Log("PASS removing the views restores the default answer for every client and requalifies both caches")
+		return
+	}
 	readPrimary := func() {
 		// Warm DNS and cache eligibility do not imply that independent primary
 		// status/notification work has settled. Observe those original durable

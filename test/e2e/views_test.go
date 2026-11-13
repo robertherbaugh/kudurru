@@ -1,12 +1,16 @@
 package e2e
 
 import (
+	"io"
 	"net"
+	"net/http"
+	"net/http/cookiejar"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
 )
 
@@ -15,7 +19,9 @@ import (
 // name over UDP and TCP, a view-only name does not exist for other clients,
 // a lan-only overlay name answered locally for lan never reaches the
 // response cache that other clients share, publish-only data is never
-// served, and AXFR carries the default data only.
+// served, and AXFR, IXFR and the mounted export carry the default data
+// only: a view-only change advances the serial, and IXFR from the old
+// serial returns the unchanged default data with the new serial.
 func TestClientGroupViewsSplitHorizon(t *testing.T) {
 	kudurrutest.RequireE2E(t)
 	up := kudurrutest.StartUpstream(t, map[string]string{
@@ -62,6 +68,7 @@ func TestClientGroupViewsSplitHorizon(t *testing.T) {
 			endpoint("printer.overlay.e2e.test", "A", "10.0.0.40", "lan"),
 		}}),
 	}
+	splitSet := cfg["objects"].([]any)[4].(map[string]any)
 	kudurrutest.WriteConfig(t, spec.Config, cfg)
 	kudurrutest.StartReady(t, kudurruBin, spec, kudurrutest.Options{Env: []string{"KUDURRU_ADMIN_PASSWORD=views-test-only-password"}})
 	query := func(name, client, transport string) *dns.Msg {
@@ -118,34 +125,124 @@ func TestClientGroupViewsSplitHorizon(t *testing.T) {
 		}
 	}
 	// AXFR from a lan client carries the default data only.
-	tr := &dns.Transfer{DialTimeout: 3 * time.Second, ReadTimeout: 3 * time.Second}
+	transfer := func(m *dns.Msg) []dns.RR {
+		t.Helper()
+		tr := &dns.Transfer{DialTimeout: 3 * time.Second, ReadTimeout: 3 * time.Second}
+		conn, err := (&net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.2")}}).DialContext(t.Context(), "tcp", spec.Ports.DNS)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tr.Conn = &dns.Conn{Conn: conn}
+		envelopes, err := tr.In(m, spec.Ports.DNS)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var records []dns.RR
+		for e := range envelopes {
+			if e.Error != nil {
+				t.Fatal(e.Error)
+			}
+			records = append(records, e.RR...)
+		}
+		return records
+	}
+	private := []string{"10.0.0.", "10.9.0.", "nas.split", "tunnel"}
+	noGroupData := func(what, all string) {
+		t.Helper()
+		if !strings.Contains(all, "203.0.113.10") {
+			t.Fatalf("%s lost default data:\n%s", what, all)
+		}
+		for _, p := range private {
+			if strings.Contains(all, p) {
+				t.Fatalf("%s leaked client-group or publish-only data %q:\n%s", what, p, all)
+			}
+		}
+	}
 	axfr := new(dns.Msg)
 	axfr.SetAxfr("split.e2e.test.")
-	conn, err := (&net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.2")}}).DialContext(t.Context(), "tcp", spec.Ports.DNS)
+	records := transfer(axfr)
+	var lines []string
+	for _, rr := range records {
+		lines = append(lines, rr.String())
+	}
+	noGroupData("AXFR", strings.Join(lines, "\n"))
+	before := records[0].(*dns.SOA).Serial
+
+	// The mounted export route serves the default data only.
+	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tr.Conn = &dns.Conn{Conn: conn}
-	envelopes, err := tr.In(axfr, spec.Ports.DNS)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var records []string
-	for e := range envelopes {
-		if e.Error != nil {
-			t.Fatal(e.Error)
+	client := &http.Client{Jar: jar, Timeout: 5 * time.Second}
+	base := "http://" + spec.Ports.API + api.BasePath
+	var session api.SessionInfo
+	(&staticProcessClient{client: client, base: base}).request(t, http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "views-test-only-password"}, http.StatusOK, &session) // #nosec G101 -- disposable loopback test credential created by this fixture
+	export := func() string {
+		t.Helper()
+		response, err := client.Get(base + "/zones/split/export")
+		if err != nil {
+			t.Fatal(err)
 		}
-		for _, rr := range e.RR {
-			records = append(records, rr.String())
+		defer func() { _ = response.Body.Close() }()
+		body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+		if err != nil || response.StatusCode != http.StatusOK {
+			t.Fatalf("export: HTTP %d %v", response.StatusCode, err)
 		}
+		return string(body)
 	}
-	all := strings.Join(records, "\n")
-	if !strings.Contains(all, "203.0.113.10") {
-		t.Fatalf("AXFR lost default data:\n%s", all)
+	noGroupData("export", export())
+
+	// A view-only change (lan's www moves) advances the serial, and
+	// neither IXFR nor the export carries the new view data.
+	splitSet["spec"].(map[string]any)["endpoints"].([]any)[2] = endpoint("www.split.e2e.test", "A", "10.0.0.11", "lan")
+	kudurrutest.WriteConfig(t, spec.Config, cfg)
+	// While the changed zone is being committed the node withholds its
+	// answer (fail-closed, D313/D332): wait without failing on a timeout.
+	if !kudurrutest.Eventually(10*time.Second, 20*time.Millisecond, func() bool {
+		q := new(dns.Msg)
+		q.SetQuestion("www.split.e2e.test.", dns.TypeA)
+		c := &dns.Client{Timeout: time.Second, Dialer: &net.Dialer{LocalAddr: &net.UDPAddr{IP: net.ParseIP("127.0.0.2")}}}
+		m, _, err := c.ExchangeContext(t.Context(), q, spec.Ports.DNS)
+		return err == nil && firstA(m) == "10.0.0.11"
+	}) {
+		t.Fatal("the view-only change did not reach the served zone")
 	}
-	for _, private := range []string{"10.0.0.", "10.9.0.", "nas.split", "tunnel"} {
-		if strings.Contains(all, private) {
-			t.Fatalf("AXFR leaked client-group or publish-only data %q:\n%s", private, all)
+	if got := firstA(query("www.split.e2e.test.", "127.0.0.1", "udp")); got != "203.0.113.10" {
+		t.Fatalf("a view-only change moved the default answer: %s", got)
+	}
+	ixfr := new(dns.Msg)
+	ixfr.SetIxfr("split.e2e.test.", before, "ns1.split.e2e.test.", "hostmaster.split.e2e.test.")
+	delta := transfer(ixfr)
+	if len(delta) == 0 {
+		t.Fatal("empty IXFR response")
+	}
+	after := delta[0].(*dns.SOA).Serial
+	if after == before {
+		t.Fatalf("a view-only change kept serial %d", before)
+	}
+	// The IXFR answer is the default zone with the new serial: in AXFR form
+	// (this node keeps no IXFR journal for it, RFC 1995 §4) holding exactly
+	// the default records the first AXFR held, and no group data.
+	defaults := func(rrs []dns.RR) string {
+		var out []string
+		for _, rr := range rrs {
+			if rr.Header().Rrtype != dns.TypeSOA {
+				out = append(out, rr.String())
+			}
 		}
+		return strings.Join(out, "\n")
+	}
+	if last, ok := delta[len(delta)-1].(*dns.SOA); !ok || last.Serial != after || defaults(delta) != defaults(records) {
+		t.Fatalf("IXFR %d to %d is not the unchanged default data with the new serial:\n%v", before, after, delta)
+	}
+	var deltaLines []string
+	for _, rr := range delta {
+		deltaLines = append(deltaLines, rr.String())
+	}
+	noGroupData("IXFR after the view change", strings.Join(deltaLines, "\n"))
+	if all := export(); strings.Contains(all, "10.0.0.11") {
+		t.Fatalf("export leaked the changed view data:\n%s", all)
+	} else {
+		noGroupData("export after the view change", all)
 	}
 }

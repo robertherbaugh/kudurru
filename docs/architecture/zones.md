@@ -205,9 +205,11 @@ matches what is served:
 
 1. Order record sets oldest first (creation time, then namespace, then name).
 2. An endpoint whose name is not under the apex is dropped: `OutsideZone`.
-3. The identity of an endpoint is (name, type, setIdentifier), plus the view
-   for an endpoint in a client-group view. A later record set that repeats
-   an identity loses that endpoint: `Duplicated`.
+3. The identity of an endpoint is (name, type, setIdentifier), plus the
+   ClientGroup (`namespace/name`) for an endpoint in a client-group view. A
+   later record set that repeats an identity loses that endpoint:
+   `Duplicated`. A view endpoint that would replace default data another
+   namespace defined is `Duplicated` too (see below).
 4. A record set from a namespace the selector does not allow is `NotSelected`;
    one that points at a missing zone is `ZoneNotFound`.
 
@@ -245,9 +247,14 @@ spec:
 A zone with views is built as its default zone plus one complete variant per
 group. In a variant, a view RRset replaces the default RRset of the same name
 and type; a view CNAME replaces everything at its name, and any view RRset
-replaces a default CNAME at its name. Views never remove a name, so a group
-client sees every default name, while every other client gets the default
-zone's NXDOMAIN or NODATA (with the default SOA) for view-only names. A client
+replaces a default CNAME at its name. Views never remove a default name,
+while every other client gets the default zone's NXDOMAIN or NODATA (with the
+default SOA) for view-only names. A view name, and each empty non-terminal it
+creates, exists in the group's variant, so a default wildcard does not
+synthesize answers there for the group (RFC 4592): with `*.example.com` in the
+default data and a lan view `a.b.example.com`, lan clients get NXDOMAIN for
+`x.b.example.com` and NODATA for `b.example.com`, where other clients get the
+wildcard's answer. A client
 in several groups with views of one zone gets the view of the group whose
 `namespace/name` sorts first. The authoritative stage picks the variant after
 the zone match and query ACL (`Zone.ForGroups`, no allocation; a zone without
@@ -256,12 +263,30 @@ use the client's variant there too.
 
 Rules and limits:
 
+- A view replaces only default data of its own namespace. A view RRset that
+  would replace another namespace's default RRset (same name and type, or a
+  CNAME on either side) is refused as `Duplicated`, as the same data as a
+  default endpoint would be; a view-only name is allowed in any namespace the
+  zone admits. Otherwise a namespace that may write a DNSRecordSet and a
+  ClientGroup could override another namespace's names for any clients its
+  group matches.
 - A view holds leaf data only: NS, DNAME, SOA and DNSSEC types are refused, as
-  is a CNAME at the apex. View data at or below a default delegation or below
-  a DNAME is refused as `Occluded`. A zone serves at most 16 views.
+  is a CNAME at the apex. View data at or below a delegation or below a DNAME
+  is refused as `Occluded`, including, on SQLite, a delegation an RFC 2136
+  UPDATE added.
+- A zone serves at most 16 views. The budget is per zone and shared by every
+  record set that feeds it, in the build order above: once 16 groups have
+  views, a later record set's view of another group is refused, whatever its
+  namespace. Each view is a full copy of the zone's names and index (the RRs
+  are shared), rebuilt with the zone.
 - Views are not served in a DNSSEC-signed zone (`spec.dnssec.enabled`, or
-  default data with RRSIG, NSEC, NSEC3 or DNSKEY records): the view endpoints
-  are reported `Invalid` and the group gets the default data.
+  default data, static or added by UPDATE, with RRSIG, NSEC, NSEC3 or DNSKEY
+  records): the view endpoints are refused as `Invalid` and the group gets the
+  default data.
+- A refused view endpoint is reported on its record set like any other
+  dropped endpoint. On SQLite a record set's projection carries one outcome,
+  so the refusal is visible only when nothing else in the record set is
+  served; a record set that serves other data stays `served`.
 - AXFR, IXFR, the IXFR journal, NOTIFY serials, `GET .../export` and
   integration sinks (Cloudflare, UniFi) carry the default data only. A
   secondary never receives group data, and there is no per-key view transfer.
@@ -276,7 +301,12 @@ Rules and limits:
   response cache. The edge's packet caches key on the question, not on the
   client's group, so any group view (desired, or still served by a committed
   model) makes kudurru report `zone-client-view` for both the authoritative
-  and the resolver pool, and the edge bypasses both caches.
+  and the resolver pool, and the edge bypasses both caches. While a
+  ClientGroup with client matchers exists, the policy index is already
+  client dependent and kudurru reports `client-scope` first; both caches are
+  bypassed either way. The edge passes the client address to kudurru in its
+  PROXYv2 header, so kudurru picks the group's view behind it
+  (`TestRunServeRemoteEdgeClientGroupViews`, pinned dnsdist).
 
 ## External zones on Kubernetes
 
