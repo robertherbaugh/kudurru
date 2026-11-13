@@ -355,6 +355,55 @@ func TestPublisherCancelsObsoletePreparationAndNeverServesSkippedCut(t *testing.
 	checkCut(t, l, []string{"current", "current"})
 }
 
+// A Wake does not cancel the preparation in progress (D405). Wakes that
+// arrive after it read its candidate are answered by exactly one more
+// preparation once it has published, however many there were: before, every
+// Wake after a commit started the preparation again, so a node that commits
+// and wakes steadily published late or not at all.
+func TestPublisherWakeDuringPreparationIsCoalescedNotCanceling(t *testing.T) {
+	s := primary(t)
+	entered, release := make(chan struct{}), make(chan struct{})
+	var calls, canceled atomic.Int64
+	var once sync.Once
+	p := runPublisher(t, Options{Source: s, Prepare: func(ctx context.Context, c Candidate) (Prepared, error) {
+		if c.Image.Revision == 1 {
+			calls.Add(1)
+			once.Do(func() {
+				close(entered)
+				select {
+				case <-release:
+				case <-ctx.Done():
+					canceled.Add(1)
+				}
+			})
+		}
+		return allComponents(c)
+	}})
+	first := waitStatus(t, p, func(s Status) bool { return s.ProtectedReady })
+	applyPair(t, s, "woken")
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("preparer did not enter")
+	}
+	for range 5 {
+		p.Wake()
+	}
+	close(release)
+	// The cut is published once, and the coalesced Wakes ask for one more
+	// preparation of it, published once more.
+	settled := waitStatus(t, p, func(s Status) bool {
+		return s.ProtectedReady && s.Served.Base.Revision == 1 && s.Served.Publication == first.Served.Publication+2
+	})
+	time.Sleep(200 * time.Millisecond)
+	if canceled.Load() != 0 {
+		t.Fatal("a Wake canceled the preparation in progress")
+	}
+	if calls.Load() != 2 || p.Status().Served.Publication != settled.Served.Publication {
+		t.Fatalf("five Wakes during one preparation cost %d preparations of the cut, want 2", calls.Load())
+	}
+}
+
 func TestPublisherActualPinSpansPromotionCASAndActivationWait(t *testing.T) {
 	primaryStore := primary(t)
 	applyPair(t, primaryStore, "accepted")
