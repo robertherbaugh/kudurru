@@ -327,6 +327,134 @@ func TestActualSQLiteSourceWaitsWithOriginalCancellationAndWriterToken(t *testin
 	}
 }
 
+// heldLease is a lease context whose cancellation is visible through Err and
+// Done at once, while every context.AfterFunc registered on it (and so every
+// context derived from it) runs only at flush. It holds the goroutine hop
+// between a lease cancel and the operation context seeing it open.
+type heldLease struct {
+	context.Context
+	mu       sync.Mutex
+	done     chan struct{}
+	canceled bool
+	held     []func()
+}
+
+func newHeldLease(parent context.Context) *heldLease {
+	return &heldLease{Context: parent, done: make(chan struct{})}
+}
+
+func (l *heldLease) Done() <-chan struct{} { return l.done }
+
+func (l *heldLease) Err() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.canceled {
+		return context.Canceled
+	}
+	return nil
+}
+
+func (l *heldLease) cancel() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.canceled {
+		l.canceled = true
+		close(l.done)
+	}
+}
+
+// AfterFunc makes context.AfterFunc and context.WithCancel register here.
+func (l *heldLease) AfterFunc(f func()) func() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	i := len(l.held)
+	l.held = append(l.held, f)
+	return func() bool {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		if l.held[i] == nil {
+			return false
+		}
+		l.held[i] = nil
+		return true
+	}
+}
+
+func (l *heldLease) flush() {
+	l.mu.Lock()
+	held := l.held
+	l.held = make([]func(), len(held))
+	l.mu.Unlock()
+	for _, f := range held {
+		if f != nil {
+			f()
+		}
+	}
+}
+
+// A command that enters its transaction after the lease was canceled but
+// before the cancellation reached the operation context (the AfterFunc hop)
+// is refused at commit by final's synchronous lease check, and writes nothing.
+func TestActualSQLiteSourceLeaseCancelBeforePropagationFencesAtCommit(t *testing.T) {
+	h, j, s, token := sourceSQLiteFixture(t)
+	lease := newHeldLease(j.leaseCtx)
+	defer lease.flush()
+	j.leaseCtx = lease
+	before, err := s.ReadGeneration(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	waiting := make(chan struct{})
+	var commands atomic.Int32
+	var operation context.Context
+	h.opts.CommitSource = func(ctx context.Context, g ExecutionGuard, _ SourceSnapshot) (*Result, error) {
+		c, err := h.SourceCapture(ctx, g)
+		if err != nil {
+			return nil, err
+		}
+		err = h.WithSource(ctx, c, func(ctx context.Context, final func(context.Context) error) error {
+			operation = ctx
+			close(waiting)
+			return s.Command(ctx, g.Ledger.Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+				commands.Add(1)
+				if err := tx.RequireCommitCheck(final); err != nil {
+					return err
+				}
+				return tx.PutSection(ctx, "dedup", replication.Entry{Key: "source-host-probe", Data: json.RawMessage(`{"committed":true}`)})
+			})
+		})
+		return nil, err
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	blocker := make(chan error, 1)
+	go func() {
+		blocker <- s.Command(sqlite.WithWriterToken(t.Context(), token), token.Term(), func(context.Context, *sqlite.CommandTx) error { close(entered); <-release; return nil })
+	}()
+	<-entered
+	done := make(chan answer, 1)
+	go func() { done <- h.execute(context.Background(), j, command{kind: "sync"}) }()
+	<-waiting
+	lease.cancel()
+	if operation.Err() != nil {
+		t.Fatal("the operation context saw the cancel before the held hop")
+	}
+	close(release)
+	if err := <-blocker; err != nil {
+		t.Fatal(err)
+	}
+	a := <-done
+	if !errors.Is(a.err, ErrFenced) || commands.Load() != 1 {
+		t.Fatal("a command entered inside the cancel hop was not fenced at commit", a, commands.Load())
+	}
+	after, err := s.ReadGeneration(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Revision != before.Revision || len(after.Payload.Dedup) != 0 {
+		t.Fatal("a command fenced at commit changed durable data", after.Revision, before.Revision, len(after.Payload.Dedup))
+	}
+}
+
 func TestActualSQLiteSourceRequestIDSurvivesHTTPAttemptBudgets(t *testing.T) {
 	h, j, s, token := sourceSQLiteFixture(t)
 	var original SourceCapture
