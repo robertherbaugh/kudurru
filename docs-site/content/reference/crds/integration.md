@@ -79,11 +79,17 @@ Validation: unifi requires an apiKey credential reference (`self.type != 'unifi'
 | `spec.unifi.inventory.zoneRef.namespace` | `string` |  |
 | `spec.unifi.legacy` | `boolean` | Legacy enables version-detected supplementary inventory endpoints and explicitly authorized legacy actions; it never enables them by default. |
 | `spec.unifi.poll` | `string` | Default: `60s` |
-| `spec.unifi.push` | `object` | UniFiPush defaults every external write to disabled. |
-| `spec.unifi.push.dhcpDNSServers` | `boolean` |  |
-| `spec.unifi.push.mirrorRecords` | `object` | UniFiRecordMirror controls optional record publication to the gateway. |
+| `spec.unifi.push` | `object` | UniFiPush defaults every external write to disabled. Each write is an explicit, reviewed operator command (D401); polling never writes. |
+| `spec.unifi.push.clientActions` | `boolean` | ClientActions advertises the block-client and unblock-client actions. They use the legacy controller API and so also require legacy: true. |
+| `spec.unifi.push.dhcpDNSServers` | `boolean` | DHCPDNSServers enables the reviewed dhcp-dns-servers action, which writes DNSServers into the DHCP DNS server override of Networks. |
+| `spec.unifi.push.dnsServers` | `[]string` | DNSServers are the IPv4 addresses (such as the kudurru VIP) DHCP hands out on Networks. Required when DHCPDNSServers is set.<br>Items: at most 4<br>List type: `set` |
+| `spec.unifi.push.mirrorRecords` | `object` | UniFiRecordMirror controls optional record publication to the gateway as UniFi DNS policies (D401). Mirroring writes only after an operator applies a reviewed preview; it changes only policies its own ledger proves it created and never modifies another policy. |
+| `spec.unifi.push.mirrorRecords.domains` | `[]string` | Domains names the zones (and their subdomains) whose records are mirrored. It is required when mirroring is enabled.<br>Items: at most 64<br>List type: `set` |
 | `spec.unifi.push.mirrorRecords.enabled` | `boolean` |  |
-| `spec.unifi.push.mirrorRecords.types` | `[]string` | Items: at most 2<br>List type: `set` |
+| `spec.unifi.push.mirrorRecords.exclude` | `[]string` | Exclude contains exact names or leading \*. suffix patterns.<br>Items: at most 256 |
+| `spec.unifi.push.mirrorRecords.labels` | `map[string]string` | Labels, when set, mirrors only records whose labels match. Zone publish rules naming this Integration also select records.<br>Properties: at most 64 |
+| `spec.unifi.push.mirrorRecords.types` | `[]string` | Types limits mirrored records; empty mirrors both A and CNAME.<br>Items: at most 2<br>List type: `set` |
+| `spec.unifi.push.networks` | `[]string` | Networks names the UniFi networks whose DHCP DNS servers are written. Required when DHCPDNSServers is set.<br>Items: at most 64<br>List type: `set` |
 | `spec.unifi.site` | `string` | Default: `default`<br>Length: 1 to 253 |
 | `spec.unifi.tlsFingerprint` | `string` | TLSFingerprint pins the provider certificate for a private CA deployment.<br>Pattern: `^sha256:[a-fA-F0-9]{64}$` |
 | `spec.webhook` | `object` | WebhookIntegration connects an independently deployed Tier-B provider. |

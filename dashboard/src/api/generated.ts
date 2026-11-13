@@ -4422,6 +4422,7 @@ export interface components {
             pending: number;
             preview?: components["schemas"]["IntegrationPreview"];
             reachable?: boolean;
+            result?: unknown;
             sourceCommitted: boolean;
             sourcePublished: boolean;
             uncertain: boolean;

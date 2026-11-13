@@ -4793,6 +4793,7 @@
           "reachable": {
             "type": "boolean"
           },
+          "result": {},
           "sourceCommitted": {
             "type": "boolean"
           },

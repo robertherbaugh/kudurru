@@ -3855,6 +3855,7 @@ type IntegrationExecutionResult struct {
 	Pending         int64                `json:"pending"`
 	Preview         *IntegrationPreview  `json:"preview,omitempty"`
 	Reachable       *bool                `json:"reachable,omitempty"`
+	Result          interface{}          `json:"result,omitempty"`
 	SourceCommitted bool                 `json:"sourceCommitted"`
 	SourcePublished bool                 `json:"sourcePublished"`
 	Uncertain       bool                 `json:"uncertain"`
