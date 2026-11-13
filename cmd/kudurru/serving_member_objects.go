@@ -260,7 +260,41 @@ func (s *servingRuntime) ObjectForward(ctx context.Context, in api.ForwardedObje
 		}
 		return nil
 	})
+	if api.InObjectItems(ctx) {
+		err = memberItemRefusal(err, token.Authority().Term.PrimaryName)
+	}
 	return result, true, err
+}
+
+// memberItemRefusal says what to do with one item of a multi-item request
+// (POST /apply, POST /{kind}:batchDelete) that a follower cut because its
+// own source changed while the request ran (D375). The follower installs the
+// primary's commits, usually this request's own earlier items, and does not
+// chain later items on them as the primary does (D378), so every later item
+// is cut too. Running the same file through the follower again does not
+// finish it either: each document it sends again commits a deduplication
+// record on the primary, and the next pull cuts the run again. The primary
+// applies every document of the file in one request.
+func memberItemRefusal(err error, primary string) error {
+	var refusal *api.Error
+	if !errors.As(err, &refusal) || refusal.Status != http.StatusServiceUnavailable {
+		return err
+	}
+	where := "the enrolled primary"
+	if primary != "" {
+		where += " " + primary
+	}
+	switch {
+	case refusal.Body.Key == api.KeyUnavailable && strings.HasPrefix(refusal.Body.Message, "the follower's source changed"):
+		return objectForwardUnavailable("the follower's source changed while this request ran (it installed newer data from the primary, " +
+			"usually this request's own earlier items); this item was not sent and was not applied, and neither was any later one; " +
+			"send the items that were not applied, or the whole file, to " + where + ", which applies them in one request; " +
+			"running it again through this follower stops in the same way")
+	case refusal.Body.Key == "completion_unknown":
+		return &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: "completion_unknown",
+			Message: refusal.Body.Message + "; the items after it were not applied; send them to " + where}}
+	}
+	return err
 }
 
 // forwardMemberCommand sends one typed command for a follower's public request
@@ -362,6 +396,12 @@ func objectForwardError(err error, sent bool) error {
 		return &api.Error{Status: http.StatusForbidden, Body: api.ErrorBody{Key: api.KeyForbidden, Message: "the primary refused this credential for the object"}}
 	case errors.Is(err, clusterreplica.ErrUnauthorized):
 		return &api.Error{Status: http.StatusUnauthorized, Body: api.ErrorBody{Key: api.KeyUnauthenticated, Message: "the primary did not accept this credential"}}
+	case sent && (errors.Is(err, replication.ErrFenced) || errors.Is(err, replication.ErrCAS)):
+		// The primary answered, and this follower's recheck before relaying
+		// the answer failed: its own source or membership changed during the
+		// exchange. The primary may have committed.
+		return &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: "completion_unknown",
+			Message: "the primary answered, but this follower's source changed before it could relay the answer; the write may have been applied; inspect the object before a new decision; do not replay this request"}}
 	case errors.Is(err, replication.ErrFenced), errors.Is(err, replication.ErrCAS), errors.Is(err, replication.ErrReadOnly), errors.Is(err, replication.ErrPromotionConflict), errors.Is(err, clusterreplica.ErrExpired):
 		return objectForwardUnavailable("cluster authority changed; review current state before a new decision")
 	case !sent && !errors.Is(err, clusterreplica.ErrOutcomeUnknown):

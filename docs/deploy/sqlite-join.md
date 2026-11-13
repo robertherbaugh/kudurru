@@ -177,7 +177,11 @@ single-item route answers `503 unavailable` with the same messages. An item
 whose exchange with the primary fails after a connection was made, or whose
 connection attempt runs into the deadline, reports `completion_unknown`, and
 one whose connection was refused or whose host was reported unreachable
-reports `unavailable`, as a single write does. Earlier items stay
+reports `unavailable`, as a single write does. An item that the primary
+answered, but whose answer the follower could not relay because its own data
+changed during the exchange, reports `completion_unknown` too: it may have
+been applied. A cut item's message says what to do: it names the primary and
+asks you to send the items that were not applied there. Earlier items stay
 committed and nothing is replayed. Check the per-item results. Running the
 apply again through the follower does not reliably finish a file that was
 cut: the
