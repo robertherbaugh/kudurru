@@ -1032,33 +1032,11 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)
 		awaitDNS(primary, "seed", "", dns.RcodeNameError)
 		// The write that the fenced former primary refused exists on neither
-		// node. The answer is waited for, and every answer that differs is
-		// logged as it was received. Right after the forwarded settings patch
-		// above, the new primary republishes, and a UDP query whose answer was
-		// resolved from the generation that the republication replaced gets
-		// no answer: the guarded emission refuses the write ("write failed",
-		// "serving: dependency changed", proto=udp, at debug level) and UDP
-		// sends nothing, so the client times out after 3 seconds (HA-OPEN
-		// e2e03, e2e06, fix-03, fix-05). That is a DNS-path follow-up, not
-		// what this check asserts. An applied record would answer NOERROR and
-		// never converge.
+		// node, and both answer that at once over UDP and TCP, right after the
+		// forwarded settings patch and the UPDATEs above made the new primary
+		// republish (enrolledAbsent).
 		for _, node := range []*kudurrutest.Node{primary, follower} {
-			if !kudurrutest.Eventually(20*time.Second, 50*time.Millisecond, func() bool {
-				for _, tcp := range []bool{false, true} {
-					answer, err := exchange(node.Ports.DNS, "refused-fenced.e2e.test.", dns.TypeA, tcp)
-					switch {
-					case err != nil:
-						t.Logf("refused-fenced on %s (tcp=%t) at %s: %v", node.Name, tcp, time.Now().Format(time.RFC3339Nano), err)
-						return false
-					case answer.Rcode != dns.RcodeNameError || firstA(answer) != "" || !answer.Authoritative:
-						t.Logf("refused-fenced on %s (tcp=%t): rcode=%s aa=%t a=%q", node.Name, tcp, dns.RcodeToString[answer.Rcode], answer.Authoritative, firstA(answer))
-						return false
-					}
-				}
-				return true
-			}) {
-				t.Fatal("a write refused by the fenced former primary was applied", node.Name)
-			}
+			enrolledAbsent(t, node, "refused-fenced.e2e.test.", dns.TypeA)
 		}
 		if identity(a) != aIdentity || identity(b) != bIdentity {
 			t.Fatal("promotion/reconnection replaced private member identities")
