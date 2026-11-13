@@ -674,6 +674,24 @@ func (e IdentityProviderInfoSource) Valid() bool {
 	}
 }
 
+// Defines values for IntegrationFieldLimitEffect.
+const (
+	IntegrationFieldLimitEffectInert   IntegrationFieldLimitEffect = "inert"
+	IntegrationFieldLimitEffectRefused IntegrationFieldLimitEffect = "refused"
+)
+
+// Valid indicates whether the value is a known member of the IntegrationFieldLimitEffect enum.
+func (e IntegrationFieldLimitEffect) Valid() bool {
+	switch e {
+	case IntegrationFieldLimitEffectInert:
+		return true
+	case IntegrationFieldLimitEffectRefused:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IntegrationManifestsDriver.
 const (
 	IntegrationManifestsDriverKube   IntegrationManifestsDriver = "kube"
@@ -3862,6 +3880,18 @@ type IntegrationExecutionResult struct {
 	Unchanged       int64                `json:"unchanged"`
 }
 
+// IntegrationFieldLimit defines model for IntegrationFieldLimit.
+type IntegrationFieldLimit struct {
+	Effect   IntegrationFieldLimitEffect `json:"effect"`
+	Field    string                      `json:"field"`
+	Message  string                      `json:"message"`
+	Reason   *string                     `json:"reason,omitempty"`
+	Requires *string                     `json:"requires,omitempty"`
+}
+
+// IntegrationFieldLimitEffect defines model for IntegrationFieldLimit.Effect.
+type IntegrationFieldLimitEffect string
+
 // IntegrationListOutputBody defines model for IntegrationListOutputBody.
 type IntegrationListOutputBody struct {
 	Items []IntegrationSummary `json:"items"`
@@ -3876,6 +3906,7 @@ type IntegrationManifest struct {
 	Credentials  []IntegrationCredentialKey `json:"credentials"`
 	DisplayName  string                     `json:"displayName"`
 	Docs         *string                    `json:"docs,omitempty"`
+	FieldLimits  []IntegrationFieldLimit    `json:"fieldLimits"`
 	IoClass      string                     `json:"ioClass"`
 	Reason       *string                    `json:"reason,omitempty"`
 	Refused      []string                   `json:"refused"`
