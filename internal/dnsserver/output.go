@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
 
@@ -26,6 +27,21 @@ type CaptureOutput func(*pipeline.Request) (Output, error)
 // A refused binding drops the response; it must not recapture an output owner.
 type ResponseOutput interface {
 	BindResponse(*pipeline.Response) error
+}
+
+// bindRefusal binds a TSIG refusal, which the transport answers itself before
+// any pipeline work, exactly as the pipeline binds its own response. Without
+// it the output stays unbound and is held to full data currency, so a refusal
+// arriving between a canonical commit and the next publication was sent to
+// nobody: the client timed out instead of reading NOTAUTH (D378 binds
+// node-produced refusals to the served publication). The refusal carries no
+// zone data. A refused binding leaves the output terminal, so Emit then
+// refuses too; nothing is recaptured.
+func bindRefusal(output Output, m *dns.Msg) error {
+	if bound, ok := output.(ResponseOutput); ok {
+		return bound.BindResponse(&pipeline.Response{Msg: m})
+	}
+	return nil
 }
 
 // CapturedOutput returns only the original pre-verification output capability.

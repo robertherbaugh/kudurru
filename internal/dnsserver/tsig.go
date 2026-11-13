@@ -319,6 +319,12 @@ func verifyTSIG(h *Handler, e *env, w dns.ResponseWriter, r *dns.Msg, client *pi
 	// BADKEY and BADSIG replies are unsigned (RFC 8945 §5.3.2); miekg's
 	// writer leaves the MAC empty for them and signs BADTIME.
 	m = paddingFor(r, client.Proto).apply(m)
+	if captured, ok := w.(*capturedNativeWriter); ok {
+		if err := bindRefusal(captured.output, m); err != nil {
+			h.logger().Debug("tsig refusal not bound", "err", err)
+			return signer{}, false
+		}
+	}
 	if err := w.WriteMsg(m); err != nil {
 		h.logger().Debug("write failed", "err", err)
 	}

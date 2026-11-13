@@ -123,7 +123,12 @@ cache admission, a query that ended before any server was tried, indeterminate
 DNSSEC validation, a failed rewrite target and other failure-origin answers. As
 an ordinary query response it follows the served-publication policy above: it
 is sent while its publication is still served, including after an unpublished
-commit, and withheld once a successor is published.
+commit, and withheld once a successor is published. The same holds for the
+NOTAUTH that the transport sends for a failed TSIG check of an ordinary query
+before any pipeline work: it binds its own message to the captured output, so
+a client that sends a wrong or replaced key right after a commit reads BADKEY,
+BADSIG or BADTIME instead of timing out. A TSIG refusal of an UPDATE, NOTIFY
+or transfer keeps full data currency.
 Ingress-only node-health and CHAOS identity replies also retain the original
 complete route during a failed settings preparation; their internal status
 establishes provenance, not a canonical zone-data grant. These retained

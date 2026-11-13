@@ -32,6 +32,9 @@ type encryptedReply struct {
 	check    func() error
 	output   Output
 	deadline time.Time
+	// refusal is the TSIG refusal this reply carries, bound to the output
+	// before emission (bindRefusal). Nil for every other reply.
+	refusal *dns.Msg
 }
 
 // Close releases original publication ownership after actual transport emission.
@@ -108,6 +111,11 @@ func (h *Handler) resolveEncrypted(ctx context.Context, e *env, wire []byte, req
 		defer func() {
 			if reply != nil && resultErr == nil {
 				reply.output, _ = ctx.Value(transportOutputKey{}).(Output)
+				if reply.refusal != nil {
+					// A refused binding leaves the output terminal, so its
+					// emission is refused as well.
+					_ = bindRefusal(reply.output, reply.refusal)
+				}
 				if deadline, finite := ctx.Deadline(); finite && (reply.deadline.IsZero() || deadline.Before(reply.deadline)) {
 					reply.deadline = deadline
 				}
@@ -171,7 +179,7 @@ func (h *Handler) resolveEncrypted(ctx context.Context, e *env, wire []byte, req
 			if e != nil && e.onTSIGFailure != nil {
 				e.onTSIGFailure(reason)
 			}
-			return sig.failure(code, padding)
+			return sig.failure(code, padding, true)
 		}
 		client.TSIGKey = TSIGKeyName(ts.Hdr.Name)
 	}
@@ -189,7 +197,7 @@ func (h *Handler) resolveEncrypted(ctx context.Context, e *env, wire []byte, req
 			if e != nil && e.onTSIGFailure != nil {
 				e.onTSIGFailure(TSIGBadTime)
 			}
-			return sig.failure(dns.RcodeBadTime, padding)
+			return sig.failure(dns.RcodeBadTime, padding, false)
 		}
 	}
 	encode := func(m *dns.Msg) (*encryptedReply, error) {
@@ -227,7 +235,7 @@ func (h *Handler) resolveEncrypted(ctx context.Context, e *env, wire []byte, req
 			if e != nil && e.onTSIGFailure != nil {
 				e.onTSIGFailure(TSIGBadTime)
 			}
-			return sig.failure(dns.RcodeBadTime, padding)
+			return sig.failure(dns.RcodeBadTime, padding, false)
 		}
 	}
 	if ctx.Err() != nil {
@@ -247,7 +255,10 @@ func encryptedTSIGFailure(err error) (string, uint16) {
 	}
 }
 
-func (s *encryptedSigner) failure(code uint16, padding responsePadding) (*encryptedReply, error) {
+// failure builds the TSIG refusal. beforePipeline marks a refusal sent instead
+// of any pipeline work; a later BADTIME replaces a response the pipeline has
+// already bound, so it keeps that binding.
+func (s *encryptedSigner) failure(code uint16, padding responsePadding, beforePipeline bool) (*encryptedReply, error) {
 	r := s.request
 	t := r.IsTsig()
 	m := new(dns.Msg).SetRcode(r, dns.RcodeNotAuth)
@@ -260,7 +271,11 @@ func (s *encryptedSigner) failure(code uint16, padding responsePadding) (*encryp
 	m.Extra = append(m.Extra, rr)
 	m = padding.apply(m)
 	out, _, err := dns.TsigGenerateWithProvider(m, s.provider, t.MAC, false)
-	return &encryptedReply{wire: out, cache: "no-store"}, err
+	reply := &encryptedReply{wire: out, cache: "no-store"}
+	if beforePipeline {
+		reply.refusal = m
+	}
+	return reply, err
 }
 
 // TSIG must occur exactly once, in the last additional RR, and at the end of
