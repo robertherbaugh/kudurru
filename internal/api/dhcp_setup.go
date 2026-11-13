@@ -222,7 +222,8 @@ func (s *Server) dhcpPutSetup(ctx context.Context, in *dhcpSetupInput) (*dhcpSet
 	}
 	manager := s.opts.DHCPSetup
 	if manager == nil {
-		return nil, errUnavailable("DHCP setup manager is not available on this node")
+		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "DHCP setup manager is not available on this node",
+			"set dhcp.enabled and a complete DHCP configuration in this node's file and restart it; see docs/deploy/dhcp.md")
 	}
 	before, err := manager.Read(ctx)
 	if err != nil {
