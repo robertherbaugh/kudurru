@@ -127,6 +127,7 @@ func (s *Server) registerRoutes() {
 	s.registerPolicies()
 	s.registerRuntime()
 	s.registerStats()
+	s.registerInventory()
 	s.registerQueryExport()
 	s.registerSettings()
 	s.registerDHCP()

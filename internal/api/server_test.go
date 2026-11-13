@@ -342,7 +342,7 @@ func TestMeWithBearerRoles(t *testing.T) {
 		t.Fatalf("me %+v", me)
 	}
 	h.do(http.MethodGet, "/api/v1/auth/me", "admin", nil).want(http.StatusOK).json(&me)
-	if len(me.Permissions) != 27 {
+	if len(me.Permissions) != 28 { // one entry per resource; inventory joined in D397
 		t.Fatalf("admin permissions %d: %v", len(me.Permissions), me.Permissions)
 	}
 }

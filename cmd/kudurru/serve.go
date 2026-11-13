@@ -973,6 +973,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		idStage.Inventory = kubeSources
 	}
 	idStage.Hostnames = leaseDNS
+	// DHCP lease MACs fill the MAC of a query without an inventory MAC on
+	// both drivers (D397). leaseDNS reads committed in-memory lease snapshots.
+	idStage.LeaseMACs = leaseDNS
 	ptrRun, err := mountReversePTR(cfg.ClientNames.ReversePTR, idStage)
 	if err != nil {
 		return err
@@ -1123,6 +1126,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	var canonicalSettings api.CanonicalSettings
 	var integrationAdmin api.IntegrationAdministration
 	var brandingReads api.BrandingReadSource
+	// Kubernetes reads the shared producer holder the identify stage reads;
+	// the complete SQLite runtime reads the request's original serving cut.
+	inventoryReads := api.InventoryReadSource(func(context.Context) (*inventory.Snapshot, error) { return clientInventory.Snapshot(), nil })
 	var blockPagePreview api.BlockPagePreviewer = blockPage
 	var nodeConfigCommand api.NodeConfigCommand
 	var cacheFlushCommand api.CacheFlushCommand
@@ -1223,6 +1229,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		objectForward, zoneForward, settingsForward = complete.ObjectForward, complete.ZoneForward, complete.SettingsForward
 		clusterRole = complete.ClusterRole
 		brandingReads = complete.Branding
+		inventoryReads = servingbuild.InventoryReads
 		blockPagePreview = servingBrandingPreview{runtime: complete, server: blockPage, cache: &brandCache}
 		nodeConfigCommand, err = newServingNodeCommand(complete, reload, logLevel)
 		if err != nil {
@@ -1451,6 +1458,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectItems: objectItems, ObjectForward: objectForward, ObjectReads: objectReads, ZoneCommand: zoneCommand, ZoneForward: zoneForward, SettingsForward: settingsForward, ClusterRole: clusterRole, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
 		BlockingReads: blockingReads, BlockingCommand: blockingCommand, AuditBlockingCommand: kubeBlocking != nil, EdgeBlocks: edgeBlocks, AuditEdgeBlocks: kubeEdge != nil, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
 		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
+		InventoryReads: inventoryReads, InventoryLeases: leaseDNS,
 		TSIGKeyReads: tsigKeyReads, TSIGKeyCommand: tsigKeyCommand,
 		Querylog: qlLogs.reader(), QuerylogSource: qlLogs.reader, Tail: qlTail, QuerylogSinks: qlLogs.sinks.Status, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),

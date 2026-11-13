@@ -39,6 +39,7 @@ var SARResources = map[string]string{
 	"policies":          "policies",
 	"clientgroups":      "clientgroups",
 	"clients":           "clients",
+	"inventory":         "inventories",
 	"querylog":          "querylogs",
 	"stats":             "stats",
 	"cache":             "caches",

@@ -1,11 +1,14 @@
 package servingbuild
 
 import (
+	"context"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/inventory"
 	"github.com/robertherbaugh/kudurru/internal/inventory/persistence"
 	"github.com/robertherbaugh/kudurru/internal/policy"
+	"github.com/robertherbaugh/kudurru/internal/serving"
+	"github.com/robertherbaugh/kudurru/internal/servinghttp"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 )
 
@@ -28,4 +31,24 @@ func prepareInventory(image *replication.Image, now time.Time) (*InventoryOwner,
 		return nil, err
 	}
 	return &InventoryOwner{Snapshot: holder.Snapshot()}, nil
+}
+
+// InventoryReads returns the inventory snapshot of the original HTTP request's
+// serving cut: the same immutable owner DNS queries of that generation use
+// (D397). It never reads the store or a live producer holder.
+func InventoryReads(ctx context.Context) (*inventory.Snapshot, error) {
+	if ctx == nil {
+		return nil, serving.ErrComponents
+	}
+	if _, err := servinghttp.Identity(ctx); err != nil {
+		return nil, err
+	}
+	owner, err := servinghttp.Component[*InventoryOwner](ctx, "inventory")
+	if err != nil {
+		return nil, err
+	}
+	if owner == nil {
+		return nil, serving.ErrComponents
+	}
+	return owner.Snapshot, nil
 }

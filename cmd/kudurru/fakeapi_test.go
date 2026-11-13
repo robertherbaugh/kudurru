@@ -510,6 +510,21 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("GET /api/v1/queries", f.queriesPage)
 	mux.HandleFunc("GET /api/v1/queries/stream", f.queriesStream)
+	mux.HandleFunc("GET /api/v1/inventory", func(w http.ResponseWriter, r *http.Request) {
+		// Two pages of internal/api.InventoryDevice rows (D397).
+		if r.URL.Query().Get("continue") == "" {
+			f.writeJSON(w, 200, map[string]any{"node": "node-a", "generation": 3, "readAt": "2026-10-11T12:00:00Z", "continue": "p2", "items": []map[string]any{
+				{"source": "dhcp/lan", "kind": "dhcp", "id": "192.168.1.40", "hostname": "printer", "macs": []string{"02:00:5e:00:00:40"}, "tags": []string{},
+					"addresses": []map[string]any{{"ip": "192.168.1.40", "state": "assigned"}}, "expiresAt": "2026-10-11T18:00:00Z", "stale": false},
+			}})
+			return
+		}
+		f.writeJSON(w, 200, map[string]any{"node": "node-a", "generation": 3, "readAt": "2026-10-11T12:00:00Z", "items": []map[string]any{
+			{"source": "integration-0f3a", "kind": "inventory", "id": "tv", "name": "Living room TV", "macs": []string{"02:00:5e:00:00:41"}, "tags": []string{"media"},
+				"addresses":  []map[string]any{{"ip": "192.168.1.41", "state": "superseded", "ownerSource": "integration-0f3a", "ownerId": "tv-2"}},
+				"observedAt": "2026-10-11T11:00:00Z", "expiresAt": "2026-10-11T11:30:00Z", "stale": true},
+		}})
+	})
 	mux.HandleFunc("GET /api/v1/nodes", func(w http.ResponseWriter, _ *http.Request) {
 		f.writeJSON(w, 200, map[string]any{"items": []map[string]any{
 			{"name": "node-a", "address": "10.0.0.11", "self": true, "leader": true, "ready": true, "version": "v0.1.0", "state": "live"},

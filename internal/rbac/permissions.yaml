@@ -12,6 +12,7 @@ resources:
   policies: [read, write, delete]
   clientgroups: [read, write, delete]
   clients: [read, write]
+  inventory: [read]
   querylog: [read, export, purge, raw]
   stats: [read]
   cache: [read, flush]
@@ -62,6 +63,7 @@ roles:
     - dhcp.read
     - dhcpleases.read
     - dhcpleases.export
+    - inventory.read
     - querylog.read
     - querylog.export
     - audit.read
@@ -85,6 +87,7 @@ roles:
     - dhcp.read
     - dhcpleases.read
     - dhcpleases.export
+    - inventory.read
     - querylog.read
     - unblockrequests.*
     - edgeblocks.*

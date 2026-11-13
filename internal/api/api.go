@@ -287,6 +287,11 @@ type Options struct {
 	CanonicalSettings CanonicalSettings
 	// Integrations is the optional complete original-operation runtime.
 	Integrations IntegrationAdministration
+	// InventoryReads returns the inventory snapshot that serves DNS for the
+	// request and InventoryLeases this node's bound DHCP leases (GET
+	// /inventory, D397). Nil InventoryReads answers 503.
+	InventoryReads  InventoryReadSource
+	InventoryLeases InventoryLeaseSource
 	// BrandingReads projects public branding from the original serving cut.
 	BrandingReads BrandingReadSource
 	// NodeConfigCommand admits local node PATCHes separately from cluster
