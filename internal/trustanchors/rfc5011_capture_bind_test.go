@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/internal/testutil/kudurrutest"
 )
 
@@ -78,7 +79,28 @@ func generateBINDRollover(t *testing.T) rolloverCapture {
 const stageSummary = "s1 {K1,ZSK} by K1; s2 {K1,K2,ZSK} by K1; s3 {K1,K2,ZSK} by K2; s4 {K2,ZSK} by K2; s5 {K1+REVOKE,K2,ZSK} by K1+REVOKE and K2"
 
 // captureNamed starts named for one zone file, captures the reply and stops.
+// named logs "running on ..." before it listens, so readiness is the first
+// authoritative NOERROR reply to the capture request itself. BIND 9.18.50
+// (seen with the Amazon Linux 2023 package) can abort at startup in
+// dns_cache_create; like the interop fixture, named is started up to three
+// times.
 func captureNamed(t *testing.T, bin, dir, file string) []byte {
+	t.Helper()
+	for attempt := 1; ; attempt++ {
+		raw, log, ok := tryCaptureNamed(t, bin, dir, file)
+		if ok {
+			return raw
+		}
+		if attempt == 3 {
+			t.Fatalf("named did not answer for %s:\n%s", file, log)
+		}
+		t.Logf("named exited or did not answer at startup (attempt %d); starting it again", attempt)
+	}
+}
+
+// tryCaptureNamed is one named start: it returns the captured reply, or
+// named's log and false when named exited or did not answer in time.
+func tryCaptureNamed(t *testing.T, bin, dir, file string) ([]byte, string, bool) {
 	t.Helper()
 	port := kudurrutest.FreePort(t)
 	conf := filepath.Join(dir, "named.conf")
@@ -117,18 +139,29 @@ zone "." { type primary; file %[3]q; };
 			<-done
 		}
 	}()
-	logged := func() string { mu.Lock(); defer mu.Unlock(); return log.String() }
-	if !kudurrutest.Eventually(15*time.Second, 50*time.Millisecond, func() bool {
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+	var raw []byte
+	ok := kudurrutest.Eventually(15*time.Second, 50*time.Millisecond, func() bool {
 		select {
 		case <-done:
 			return true
 		default:
 		}
-		return strings.Contains(logged(), "running")
-	}) || !strings.Contains(logged(), "running") {
-		t.Fatalf("named did not start:\n%s", logged())
-	}
-	return captureTCP(t, fmt.Sprintf("127.0.0.1:%d", port))
+		got, err := tryCaptureTCP(addr)
+		if err != nil {
+			return false
+		}
+		m := new(dns.Msg)
+		if m.Unpack(got) != nil || m.Rcode != dns.RcodeSuccess || !m.Authoritative {
+			return false
+		}
+		raw = got
+		return true
+	})
+	mu.Lock()
+	logged := log.String()
+	mu.Unlock()
+	return raw, logged, ok && raw != nil
 }
 
 type writerFunc func([]byte) (int, error)
