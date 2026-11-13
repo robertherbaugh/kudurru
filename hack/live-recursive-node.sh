@@ -79,16 +79,16 @@ q() { dig +time=5 +tries=2 -p "$dns" @127.0.0.1 "$@" || true; }
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
 
 out=$(q +dnssec example.com A)
-echo "$out" | grep -E 'status:|flags:|^example\.com\.'
+echo "$out" | grep -E 'status:|flags:|^example\.com\.' || true
 check "example.com has the AD flag" 'echo "$out" | grep -q "flags:.* ad[ ;]"'
 
 out=$(q +dnssec dnssec-failed.org A)
-echo "$out" | grep -E 'status:|EDE'
+echo "$out" | grep -E 'status:|EDE' || true
 check "dnssec-failed.org is SERVFAIL" 'echo "$out" | grep -q "status: SERVFAIL"'
 check "dnssec-failed.org carries EDE 6" 'echo "$out" | grep -q "EDE: 6"'
 
 out=$(q +dnssec +cd dnssec-failed.org A)
-echo "$out" | grep -E 'status:|^dnssec-failed\.org\.'
+echo "$out" | grep -E 'status:|^dnssec-failed\.org\.' || true
 check "dnssec-failed.org +cd returns the data" 'echo "$out" | grep -q "status: NOERROR" && echo "$out" | grep -qE "^dnssec-failed\.org\.[[:space:]].*IN[[:space:]]+A[[:space:]]"'
 
 metrics_out=$(curl -sf "http://127.0.0.1:$metrics/metrics" | grep '^kudurru_recursor_outgoing_queries_total' || true)
