@@ -129,5 +129,78 @@ func (t *CommandTx) CommitZoneState(ctx context.Context, e zonestate.Expected, p
 	if err != nil {
 		return nil, t.poison(err)
 	}
+	if old == nil || old.Spec.RootDigest != head.Spec.RootDigest {
+		if err := t.collectZoneChunks(ctx, l); err != nil {
+			return nil, t.poison(err)
+		}
+	}
 	return out.(*zonekinds.ZoneState), nil
+}
+
+// collectZoneChunks deletes, in the commit that moved a head to new content,
+// every ZoneChunk that no ZoneState head references any more (D405). Chunks
+// are immutable and content-addressed and only heads resolve them, so a chunk
+// that no head names is unreachable: before this, every content commit (each
+// signed UPDATE) left the previous content's chunks behind, and the
+// replicated image, with the time to read, check and prepare it for
+// publication, grew with every commit. Every head is marked, including
+// tombstoned ones, and the sweep also removes chunks that an earlier version
+// left behind. A head whose root manifest cannot be read references an
+// unknown set: nothing is deleted then, and the commit is not refused for it.
+func (t *CommandTx) collectZoneChunks(ctx context.Context, l zonestate.Limits) error {
+	heads, err := t.List(ctx, zonekinds.KindZoneState, store.ListOptions{})
+	if err != nil {
+		return err
+	}
+	referenced := map[string]bool{}
+	get := func(digest string) (*zonekinds.ZoneChunk, error) {
+		var c zonekinds.ZoneChunk
+		if err := t.Get(ctx, store.Key{Kind: zonekinds.KindZoneChunk, Name: zonekinds.ChunkName(digest)}, &c); err != nil {
+			return nil, err
+		}
+		return &c, nil
+	}
+	for _, item := range heads.Items {
+		head, ok := item.(*zonekinds.ZoneState)
+		if !ok {
+			return nil
+		}
+		refs, err := zonestate.References(head, get, l)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return nil
+		}
+		for _, digest := range refs {
+			referenced[zonekinds.ChunkName(digest)] = true
+		}
+	}
+	rows, err := t.tx.QueryContext(ctx, `SELECT name FROM objects WHERE kind = ? AND namespace = ''`, zonekinds.KindZoneChunk)
+	if err != nil {
+		return fmt.Errorf("store/sqlite: list zone chunks: %w", err)
+	}
+	var unreferenced []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if !referenced[name] {
+			unreferenced = append(unreferenced, name)
+		}
+	}
+	err = errors.Join(rows.Err(), rows.Close())
+	if err != nil {
+		return err
+	}
+	for _, name := range unreferenced {
+		// Only zone state writes chunks; Force keeps a chunk that an import
+		// recorded under another manager from refusing this commit.
+		if err := t.Delete(ctx, store.Key{Kind: zonekinds.KindZoneChunk, Name: name}, store.DeleteOptions{Manager: zoneStateManager, Force: true}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

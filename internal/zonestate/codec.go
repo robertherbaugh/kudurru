@@ -351,6 +351,44 @@ func Prepare(a *Aggregate, base *zonekinds.ZoneState, l Limits) (*Prepared, erro
 	return prepared, nil
 }
 
+// References returns every chunk digest that head resolves: its root manifest
+// and the manifest's parts, without reading or verifying the parts. A store
+// uses it to find the chunks that no head references any more (D405). It
+// fails when the root is missing or malformed; such a head references an
+// unknown set, so the caller must then delete nothing.
+func References(head *zonekinds.ZoneState, get func(string) (*zonekinds.ZoneChunk, error), l Limits) ([]string, error) {
+	l = l.Defaults()
+	if head == nil || get == nil {
+		return nil, ErrInvalid
+	}
+	if err := head.Validate(); err != nil {
+		return nil, err
+	}
+	root, err := get(head.Spec.RootDigest)
+	if err != nil {
+		return nil, err
+	}
+	if root == nil || root.Validate() != nil || root.Spec.Digest != head.Spec.RootDigest {
+		return nil, ErrInvalid
+	}
+	var m manifest
+	if err := strictDecode(root.Spec.Data, &m); err != nil {
+		return nil, err
+	}
+	if m.FormatVersion != zonekinds.FormatVersion || m.Zone != head.Spec.Zone || len(m.Parts) == 0 || len(m.Parts) >= l.MaxChunks {
+		return nil, ErrInvalid
+	}
+	out := make([]string, 0, len(m.Parts)+1)
+	out = append(out, head.Spec.RootDigest)
+	for _, digest := range m.Parts {
+		if !zonekinds.ValidDigest(digest) {
+			return nil, ErrInvalid
+		}
+		out = append(out, digest)
+	}
+	return out, nil
+}
+
 // Decode verifies a flat manifest, all digests/identity/counts and the entire
 // aggregate before returning usable data. It never follows arbitrary trees.
 func Decode(head *zonekinds.ZoneState, get func(string) (*zonekinds.ZoneChunk, error), l Limits) (*Aggregate, error) {

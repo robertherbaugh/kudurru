@@ -3,6 +3,8 @@ package sqlite
 import (
 	"context"
 	"errors"
+	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	zonekinds "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/zonestate"
 	"github.com/robertherbaugh/kudurru/internal/zonestate/zonestatetest"
@@ -126,5 +129,124 @@ func TestZoneStateAbruptRestartDurableCommit(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("accepted update missing after abrupt restart")
+	}
+}
+
+// zoneChunkNames lists the stored ZoneChunk names.
+func zoneChunkNames(t *testing.T, s *Store) map[string]bool {
+	t.Helper()
+	list, err := s.List(context.Background(), zonekinds.KindZoneChunk, store.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]bool{}
+	for _, item := range list.Items {
+		out[item.GetName()] = true
+	}
+	return out
+}
+
+// referencedChunks returns the chunk names that the stored head of id resolves.
+func referencedChunks(t *testing.T, s *Store, b zonestate.Backend, id zonekinds.ZoneID) map[string]bool {
+	t.Helper()
+	head, _, err := b.Head(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs, err := zonestate.References(head, func(d string) (*zonekinds.ZoneChunk, error) { return b.Chunk(context.Background(), d) }, zonestate.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string]bool{}
+	for _, d := range refs {
+		out[zonekinds.ChunkName(d)] = true
+	}
+	return out
+}
+
+// A content commit deletes the chunks that no head references any more, in
+// its own transaction (D405): a stream of UPDATEs keeps the stored chunks at
+// what the heads reference instead of adding the whole zone content again
+// for every commit. Chunks of other zones and chunks an earlier version left
+// behind are handled by the same sweep: the first are kept, the second go.
+func TestZoneStateCommitCollectsUnreferencedChunks(t *testing.T) {
+	s := openTemp(t, zoneStateOptions)
+	r, b := zoneStateRepository(t, s)
+	ctx := context.Background()
+	other := zonekinds.ZoneID{ClusterID: s.Authority().Term.ClusterID, ObjectName: "other", UID: "other-zone-uid", Apex: "example."}
+	zonestatetest.Initialize(t, r, other)
+	keep := referencedChunks(t, s, b, other)
+	id := zoneStateID(s, "updates")
+	v := zonestatetest.Initialize(t, r, id)
+	// A chunk that an earlier version left behind: valid, staged, unreferenced.
+	leftover, err := zonestate.Prepare(zonestatetest.Fixture(t, zonekinds.ZoneID{ClusterID: id.ClusterID, ObjectName: "gone", UID: "gone-uid", Apex: "example."}), nil, zonestate.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range leftover.Chunks {
+		if err := b.Stage(ctx, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := range 20 {
+		p, err := zonestatetest.Candidate(v, zonestatetest.Message(t, nil, []string{fmt.Sprintf("u%d.example. 60 IN A 192.0.2.%d", i%3, i+1)}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.Commit(ctx, v.Expected, p, nil); err != nil {
+			t.Fatal(i, err)
+		}
+		if v, err = r.Read(ctx, id); err != nil {
+			t.Fatal(i, err)
+		}
+		want := referencedChunks(t, s, b, id)
+		for name := range keep {
+			want[name] = true
+		}
+		if got := zoneChunkNames(t, s); !maps.Equal(got, want) {
+			t.Fatalf("commit %d: stored chunks %d, referenced by the heads %d", i, len(got), len(want))
+		}
+	}
+	if _, err := r.Read(ctx, other); err != nil {
+		t.Fatal("the other zone lost its content", err)
+	}
+}
+
+// A head whose root manifest is missing references an unknown set of
+// chunks: the sweep deletes nothing then and the commit still lands.
+func TestZoneStateCommitKeepsChunksWhenAHeadIsUnreadable(t *testing.T) {
+	s := openTemp(t, zoneStateOptions)
+	r, b := zoneStateRepository(t, s)
+	ctx := context.Background()
+	broken := zonekinds.ZoneID{ClusterID: s.Authority().Term.ClusterID, ObjectName: "broken", UID: "broken-uid", Apex: "example."}
+	zonestatetest.Initialize(t, r, broken)
+	head, _, err := b.Head(ctx, broken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = s.Command(ctx, s.Authority().Term, func(ctx context.Context, tx *CommandTx) error {
+		return tx.Delete(ctx, store.Key{Kind: zonekinds.KindZoneChunk, Name: zonekinds.ChunkName(head.Spec.RootDigest)}, store.DeleteOptions{Manager: zoneStateManager})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := zoneStateID(s, "updates")
+	v := zonestatetest.Initialize(t, r, id)
+	before := zoneChunkNames(t, s)
+	p, err := zonestatetest.Candidate(v, zonestatetest.Message(t, nil, []string{"u.example. 60 IN A 192.0.2.9"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Commit(ctx, v.Expected, p, nil); err != nil {
+		t.Fatal(err)
+	}
+	after := zoneChunkNames(t, s)
+	for name := range before {
+		if !after[name] {
+			t.Fatal("a chunk was deleted although a head could not be resolved")
+		}
+	}
+	if len(after) <= len(before) {
+		t.Fatal("the commit's own chunks are missing")
 	}
 }
