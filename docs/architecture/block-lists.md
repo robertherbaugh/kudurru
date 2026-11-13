@@ -422,8 +422,28 @@ flowchart LR
     KSelect --> KHit["blocked_rpz + list + rule"]
 ```
 
-Per-feed transfer status (`rpz.Manager.Statuses`: serial, primary, expiry,
-errors) is not exposed through the API, the CLI, metrics or the dashboard.
+Per-feed state is node-local and is read from the feed manager at request
+time (D391), on both drivers. `GET /blocklists/_rpz` and
+`GET /blocklists/{namespace}/{name}/rpz` (`blocklists.read`) map each
+`rpz.Status` to a state (`pending`, `serving`, `expired`, `unavailable`) with
+the serial, primary, confirmation, expiry, next attempt, last error, compiler
+counts, rule counts by trigger and action, and every ignored reason with its
+complete count and bounded examples. `kudurru lists rpz` renders the same items,
+`/info/messages` adds a diagnosis per feed that is not serving cleanly or ignores
+owners, and an `rpz.Collector` exports `kudurru_rpz_feed_*` gauges at scrape
+time. None of these reads touch the DNS path; they can disagree briefly with
+the serving snapshot a dig explanation reports, and they converge within one
+publication. The dashboard does not show them yet. Operator guide:
+[docs/deploy/rpz.md](../deploy/rpz.md).
+
+```mermaid
+flowchart LR
+    M["rpz.Manager (per node)"] --> S["Statuses / ListStatuses"]
+    S --> API["GET /blocklists/_rpz<br/>GET /blocklists/{ns}/{name}/rpz"]
+    S --> Msg["/info/messages (source rpz)"]
+    S --> Met["/metrics kudurru_rpz_feed_*"]
+    API --> CLI["kudurru lists rpz"]
+```
 
 ### Regex impact inspection
 

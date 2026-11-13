@@ -34,6 +34,7 @@ More pages, by task:
 | Put `local.db` or the query log on separate storage | [sqlite-storage.md](sqlite-storage.md) |
 | Accept RFC 2136 dynamic updates (`nsupdate`) for a zone | [dynamic-updates.md](dynamic-updates.md) |
 | Create, replace and revoke stored TSIG keys | [tsig-keys.md](tsig-keys.md) |
+| Transfer RPZ feeds, supported triggers and actions, check a feed on each node | [rpz.md](rpz.md) |
 | Validate DNSSEC on forwarded answers; trust anchors and exceptions | [dnssec-validation.md](dnssec-validation.md) |
 | Rewrite, filter and check forwarded answers (DNS64, rebinding protection) | [response-processing.md](response-processing.md) |
 | Limit client networks and refuse query types | [dns-controls.md](dns-controls.md) |
