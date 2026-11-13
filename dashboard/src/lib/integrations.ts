@@ -340,9 +340,27 @@ function prune(v: unknown): unknown {
   return out;
 }
 
-/** The first problem of a draft's provider block, or null. */
+/** A shape with no field marked required, at any depth. */
+function withoutRequired(s: UiShape): UiShape {
+  return {
+    ...s,
+    ...(s.fields ? { fields: s.fields.map((f) => ({ ...withoutRequired(f), name: f.name, required: false })) } : {}),
+    ...(s.items ? { items: withoutRequired(s.items) } : {}),
+    ...(s.values ? { values: withoutRequired(s.values) } : {}),
+  };
+}
+
+/**
+ * The first problem of a draft's provider block, or null. The draft check
+ * covers what only the draft shows (half-typed numbers, durations, map
+ * keys); required-ness is checked on the built value against the schema,
+ * because a required child of an optional object is required only when
+ * that object is set (Cloudflare adoptFrom.externalDNSOwner, UniFi
+ * inventory.zoneRef), and the built value leaves an untouched optional
+ * object out.
+ */
 export function configError(m: IntegrationManifest, d: IntegrationDraft): string | null {
-  return shapeError(providerShape(m), d.config) ?? schemaError(configSchema(m), configValue(m, d), '');
+  return shapeError(withoutRequired(providerShape(m)), d.config) ?? schemaError(configSchema(m), configValue(m, d), '');
 }
 
 /** The first problem of a draft's credentials, or null. */

@@ -6,8 +6,10 @@ import {
   buildIntegration,
   commandErrorText,
   configError,
+  configValue,
   credentialRefError,
   credentialsError,
+  DESTINATION_FIELDS,
   draftOf,
   humanize,
   needsSecrets,
@@ -18,6 +20,9 @@ import {
   type JSONSchema,
 } from './integrations';
 import { ApiError } from '../api/client';
+import { mockManifests } from '../mocks/integrations';
+import { emptyDraft } from './shapes';
+import type { UiShape } from './settingsMeta';
 
 /** The configuration schemas exactly as the Go manifests declare them. */
 function goSchema(provider: string): JSONSchema {
@@ -62,6 +67,50 @@ describe('manifest-driven provider shapes', () => {
     expect(schemaError(goSchema('cloudflare'), { zones: [] }, '')).toMatch(/at least 1 entry/);
     expect(schemaError(goSchema('cloudflare'), { zones: [{ zone: 'example.org', zoneID: 'XYZ' }] }, '')).toMatch(/Zone ID/);
     expect(schemaError(goSchema('cloudflare'), { zones: [{ zone: 'example.org', policy: 'sync' }] }, '')).toBeNull();
+  });
+
+  it('creates and saves minimal instances against the real schemas (optional objects stay optional)', () => {
+    // The wizard path: a new draft, then a fresh zone row as the list editor adds it.
+    const cf = manifest('cloudflare', { capabilities: ['RecordSink'] });
+    const zones = providerShape(cf).fields?.find((f) => f.name === 'zones');
+    const d = newDraft(cf, 'default');
+    d.config = { zones: [{ ...(emptyDraft(zones?.items as UiShape) as Record<string, unknown>), zone: 'example.org' }] };
+    expect(configError(cf, d)).toBeNull();
+    expect(configValue(cf, d)).toEqual({ zones: [{ zone: 'example.org' }] });
+    // Format and bounds checks of the fields inside an optional object still apply.
+    const zone = (d.config as { zones: Record<string, unknown>[] }).zones[0] as Record<string, unknown>;
+    zone.adoptFrom = { externalDNSOwner: 'edns-a' };
+    expect(configError(cf, d)).toBeNull();
+    expect(configValue(cf, d)).toEqual({ zones: [{ zone: 'example.org', adoptFrom: { externalDNSOwner: 'edns-a' } }] });
+    zone.defaults = { proxied: false, ttl: '0', comment: '' };
+    expect(configError(cf, d)).toMatch(/TTL/);
+
+    // A stored zone opens and saves unchanged.
+    const stored: Integration = { apiVersion: 'kudurru.io/v1alpha1', kind: 'Integration', metadata: { name: 'cf', namespace: 'default', uid: 'u', resourceVersion: '1' }, spec: { type: 'cloudflare', cloudflare: { zones: [{ zone: 'example.com' }] } } };
+    const sd = draftOf(stored, cf);
+    expect(configError(cf, sd)).toBeNull();
+    sd.suspend = true;
+    expect(configError(cf, sd)).toBeNull();
+    expect(buildIntegration(cf, sd, stored).spec.cloudflare).toEqual({ zones: [{ zone: 'example.com' }] });
+
+    // UniFi on SQLite without an inventory zone, new and stored.
+    const unifi = manifest('unifi', { refused: ['spec.unifi.push.dhcpDNSServers', 'spec.unifi.push.mirrorRecords'] });
+    const ud = newDraft(unifi, 'default');
+    expect(configError(unifi, ud)).toBe('Endpoint is required');
+    (ud.config as Record<string, unknown>).endpoint = 'https://unifi.example';
+    expect(configError(unifi, ud)).toBeNull();
+    expect(configValue(unifi, ud)).toEqual({ endpoint: 'https://unifi.example' });
+    const us = draftOf({ ...stored, spec: { type: 'unifi', unifi: { endpoint: 'https://unifi.example' } } }, unifi);
+    expect(configError(unifi, us)).toBeNull();
+    // Setting part of the inventory makes its zone required, as on the server.
+    ((us.config as Record<string, unknown>).inventory as Record<string, unknown>).ttl = '60';
+    expect(configError(unifi, us)).toBe('Inventory Zone ref is required');
+    ((us.config as Record<string, unknown>).inventory as Record<string, unknown>).zoneRef = { name: 'lan', namespace: '' };
+    expect(configError(unifi, us)).toBeNull();
+  });
+
+  it('serves the exact Go schemas from the dashboard mock', () => {
+    for (const m of mockManifests('sqlite')) expect(m.configSchema).toEqual(goSchema(m.type));
   });
 
   it('humanizes camelCase names with acronyms', () => {
@@ -122,6 +171,33 @@ describe('documents', () => {
     expect(publishes(webhook, { type: 'webhook', webhook: { endpoint: 'http://127.0.0.1:1' } })).toBe(false);
     expect(publishes(webhook, { type: 'webhook', webhook: { endpoint: 'http://127.0.0.1:1', domains: ['example.org'] } })).toBe(true);
     expect(publishes(manifest('unifi', { capabilities: ['ClientSource'] }), { type: 'unifi', unifi: { endpoint: 'https://u' } })).toBe(false);
+  });
+
+  it('keeps the publish rule and the destination fields in step with the server', () => {
+    const goSource = (rel: string) => fs.readFileSync(path.resolve(process.cwd(), `../${rel}`), 'utf8');
+    // internal/api integrationDestinationFields, as dotted paths.
+    const fields = /var integrationDestinationFields = \[\]\[\]string\{([\s\S]*?)\n\}/.exec(goSource('internal/api/integration_objects.go'))?.[1] ?? '';
+    const server = [...fields.matchAll(/\{([^}]*)\}/g)].map((m) => [...(m[1] ?? '').matchAll(/"([^"]+)"/g)].map((x) => x[1]).join('.'));
+    expect(server.length).toBeGreaterThan(0);
+    expect([...DESTINATION_FIELDS].sort()).toEqual([...server].sort());
+
+    // cmd/kudurru integrationPublishes: "a Cloudflare block, or a webhook
+    // with domains". publishes() reads it as "a record sink whose block has
+    // a non-empty top-level list", which is the same rule only while the
+    // record sinks' top-level lists are exactly these and Cloudflare's zones
+    // must be non-empty. When this fails, change publishes() (or have the
+    // manifest report it) together with the server rule.
+    const body = /func integrationPublishes\(d \*public\.Integration\) bool \{\s*([^\n]+)\n\}/.exec(goSource('cmd/kudurru/integration_runtime.go'))?.[1]?.trim();
+    expect(body).toBe('return d.Spec.Cloudflare != nil || d.Spec.Webhook != nil && len(d.Spec.Webhook.Domains) > 0');
+    const lists = (type: string) => Object.entries(goSchema(type).properties ?? {}).filter(([, v]) => v.type === 'array').map(([k]) => k);
+    expect(lists('cloudflare')).toEqual(['zones']);
+    expect(goSchema('cloudflare').required).toContain('zones');
+    expect(goSchema('cloudflare').properties?.zones?.minItems).toBe(1);
+    expect(lists('webhook')).toEqual(['domains']);
+    for (const m of mockManifests('sqlite')) {
+      const src = goSource(`ee/integration/${m.type}/manifest.go`);
+      expect(m.capabilities.includes('RecordSink'), m.type).toBe(/integration\.CapRecordSink/.test(src));
+    }
   });
 
   it('needs integrations.secrets to bind a credential or move where a bound one is sent', () => {

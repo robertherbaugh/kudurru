@@ -195,6 +195,16 @@ describe('IntegrationDetailPage', () => {
     expect(synced).toHaveLength(1);
   });
 
+  it('saves a UniFi instance that sets no inventory zone (real schema)', async () => {
+    mockIntegrations().objects[1]!.metadata.annotations = { 'kudurru.io/managed-by': 'api' };
+    detail('office');
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Configuration' }));
+    fireEvent.click(screen.getByRole('switch', { name: /Suspended/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save Configuration' }));
+    await waitFor(() => expect(mockIntegrations().objects[1]!.spec.suspend).toBe(true));
+    expect(mockIntegrations().objects[1]!.spec.unifi).toEqual({ endpoint: 'https://unifi.lan', site: 'default' });
+  });
+
   it('checks, and syncs an observing provider without a digest', async () => {
     mockIntegrations().objects[1]!.metadata.annotations = { 'kudurru.io/managed-by': 'api' };
     const synced = bodies('/sync');

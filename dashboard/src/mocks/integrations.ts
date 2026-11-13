@@ -1,16 +1,17 @@
 // MSW handlers for the integration administration routes (internal/api
 // integrations.go, D367, D400) over a small in-memory state: the manifests
 // of the three providers of this build (the configuration schemas of
-// ee/integration/*/manifest.go), Integration objects written through
+// ee/integration/*/manifest.go, verbatim: lib/integrations.test.ts
+// compares them), Integration objects written through
 // /objects/integrations with references only, the host's status of each
 // exact revision, and the reviewed commands. Tests change the state with
 // mockIntegrations() (license, driver, a stale preview, an uncertain sync).
 import { http, HttpResponse, type JsonBodyType } from 'msw';
 import type { Integration, IntegrationExecutionResult, IntegrationManifest, IntegrationManifests, IntegrationReview, IntegrationSummary } from '../api/types';
 
-const CLOUDFLARE_SCHEMA = { type: 'object', required: ['zones'], additionalProperties: false, properties: { zones: { type: 'array', minItems: 1, maxItems: 256, items: { type: 'object', required: ['zone'], additionalProperties: false, properties: { zone: { type: 'string', maxLength: 253 }, zoneID: { type: 'string', pattern: '^[a-f0-9]{32}$' }, policy: { type: 'string', enum: ['sync', 'upsert-only', 'create-only'] }, adoptUnowned: { type: 'boolean' }, defaults: { type: 'object', additionalProperties: false, properties: { proxied: { type: 'boolean' }, ttl: { type: 'integer', minimum: 1, maximum: 86400 }, comment: { type: 'string', maxLength: 500 } } } } } } } };
-const UNIFI_SCHEMA = { type: 'object', required: ['endpoint'], additionalProperties: false, properties: { endpoint: { type: 'string', maxLength: 2048, pattern: '^https://[^/]+.*$' }, tlsFingerprint: { type: 'string', pattern: '^sha256:[a-fA-F0-9]{64}$' }, site: { type: 'string', minLength: 1, maxLength: 253 }, poll: { type: 'string' }, inventory: { type: 'object', required: ['zoneRef'], additionalProperties: false, properties: { zoneRef: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: { type: 'string' }, namespace: { type: 'string' } } }, ttl: { type: 'integer', minimum: 1, maximum: 86400 } } }, push: { type: 'object', additionalProperties: false, properties: { dhcpDNSServers: { type: 'boolean' } } } } };
-const WEBHOOK_SCHEMA = { type: 'object', required: ['endpoint'], additionalProperties: false, properties: { endpoint: { type: 'string', maxLength: 2048 }, timeout: { type: 'string' }, domains: { type: 'array', maxItems: 256, items: { type: 'string', maxLength: 253 } }, policy: { type: 'string', enum: ['sync', 'upsert-only', 'create-only'] } } };
+const CLOUDFLARE_SCHEMA = {"type":"object","required":["zones"],"additionalProperties":false,"properties":{"zones":{"type":"array","minItems":1,"maxItems":256,"items":{"type":"object","required":["zone"],"additionalProperties":false,"properties":{"zone":{"type":"string","maxLength":253},"zoneID":{"type":"string","pattern":"^[a-f0-9]{32}$"},"policy":{"type":"string","enum":["sync","upsert-only","create-only"]},"adoptUnowned":{"type":"boolean"},"adoptFrom":{"type":"object","required":["externalDNSOwner"],"additionalProperties":false,"properties":{"externalDNSOwner":{"type":"string","minLength":1,"maxLength":253}}},"defaults":{"type":"object","additionalProperties":false,"properties":{"proxied":{"type":"boolean"},"ttl":{"type":"integer","minimum":1,"maximum":86400},"comment":{"type":"string","maxLength":500}}},"select":{"type":"object","additionalProperties":false,"properties":{"labels":{"type":"object","additionalProperties":{"type":"string"},"maxProperties":64},"types":{"type":"array","maxItems":64,"items":{"type":"string"}},"exclude":{"type":"array","maxItems":256,"items":{"type":"string"}}}},"translate":{"type":"object","maxProperties":64,"additionalProperties":{"type":"string"}}}}}}};
+const UNIFI_SCHEMA = {"type":"object","required":["endpoint"],"additionalProperties":false,"properties":{"endpoint":{"type":"string","maxLength":2048,"pattern":"^https://[^/]+.*$"},"tlsFingerprint":{"type":"string","pattern":"^sha256:[a-fA-F0-9]{64}$"},"site":{"type":"string","minLength":1,"maxLength":253},"poll":{"type":"string"},"legacy":{"type":"boolean"},"inventory":{"type":"object","required":["zoneRef"],"additionalProperties":false,"properties":{"zoneRef":{"type":"object","required":["name"],"additionalProperties":false,"properties":{"name":{"type":"string"},"namespace":{"type":"string"}}},"reverseZones":{"type":"string","enum":["auto","disabled"]},"nameTemplate":{"type":"string","maxLength":500},"ttl":{"type":"integer","minimum":1,"maximum":86400},"includeNetworks":{"type":"array","maxItems":256,"items":{"type":"string"},"uniqueItems":true}}},"groups":{"type":"object","additionalProperties":false,"properties":{"byNetwork":{"type":"object","maxProperties":256,"additionalProperties":{"type":"string"}},"byNote":{"type":"string","maxLength":128}}},"push":{"type":"object","additionalProperties":false,"properties":{"dhcpDNSServers":{"type":"boolean"},"mirrorRecords":{"type":"object","additionalProperties":false,"properties":{"enabled":{"type":"boolean"},"types":{"type":"array","items":{"type":"string","enum":["A","CNAME"]},"maxItems":2}}}}}}};
+const WEBHOOK_SCHEMA = {"type":"object","required":["endpoint"],"additionalProperties":false,"properties":{"endpoint":{"type":"string","maxLength":2048},"timeout":{"type":"string"},"domains":{"type":"array","maxItems":256,"items":{"type":"string","maxLength":253}},"policy":{"type":"string","enum":["sync","upsert-only","create-only"]}}};
 
 function manifests(driver: 'sqlite' | 'kube'): IntegrationManifest[] {
   const push = ['spec.unifi.push.dhcpDNSServers', 'spec.unifi.push.mirrorRecords'];
@@ -24,6 +25,9 @@ function manifests(driver: 'sqlite' | 'kube'): IntegrationManifest[] {
     },
   ];
 }
+
+/** The manifests the mock serves for a store driver (tests compare them with the Go manifests). */
+export const mockManifests = manifests;
 
 export interface IntegrationsMock {
   driver: 'sqlite' | 'kube';
