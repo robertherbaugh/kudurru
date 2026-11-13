@@ -113,7 +113,10 @@ would route that name to the defining block (longest matching zone on the
 same port); the rest are counted in the loss report. Blocks that are not
 converted take part in that routing: a classless reverse prefix with the zones
 CoreDNS expands it to, and a block whose keys cannot be read makes the routing
-unknown, so no local answer is imported. Every emitted plan is checked in tests
+unknown, so no local answer is imported (imported conditional routes are
+reported as possibly taken by it). When blocks on different ports answer the
+same name, the block on the lowest port wins and the other answers are
+reported; on one port such a conflict is refused. Every emitted plan is checked in tests
 with the CRD validator and the configuration validation (D392). Every other plugin is named in the loss report;
 directive names that are not documented CoreDNS plugins are counted with the
 name redacted. The resulting `Plan` follows the same selection, size checks and

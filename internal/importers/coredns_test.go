@@ -598,3 +598,99 @@ home.example:5353 {
 		t.Fatalf("shadowed name on the same port was imported: %v", got)
 	}
 }
+
+// An encrypted classless reverse prefix is an encrypted key like any other:
+// alone it omits its block with the encrypted-listener line, and next to a
+// plain key it is named (redacted) in the encrypted-keys line. It never
+// aborts the import or disappears from the report.
+func TestCoreDNSOfflineEncryptedClasslessKeys(t *testing.T) {
+	p := corednsPreview(t, `. {
+    hosts {
+        10.1.1.10 nas.lan
+    }
+    forward . 192.0.2.53
+}
+tls://10.0.0.0/12 {
+    forward . 192.168.1.1
+}
+`)
+	got := rewriteNames(p)
+	for _, name := range []string{"nas.lan/", "10.1.1.10.in-addr.arpa/PTR"} {
+		if !got[name] {
+			t.Errorf("root block answer %s missing: %v", name, got)
+		}
+	}
+	report := strings.Join(p.Warnings, "\n")
+	if want := "Server block tls://(classless prefix):853: encrypted or gRPC listener block omitted with its certificates and directives;"; !strings.Contains(report, want) {
+		t.Errorf("loss report lacks %q:\n%s", want, report)
+	}
+	if strings.Contains(report, "10.0.0.0") {
+		t.Fatalf("classless prefix echoed: %s", report)
+	}
+
+	p = corednsPreview(t, "tls://10.0.0.0/12 example.org {\n forward . 192.168.1.1\n}\n")
+	if got := p.Settings["upstreams"].(map[string]any)["conditional"].(map[string]string); got["example.org."] == "" {
+		t.Fatalf("plain key of a mixed block not converted: %v", got)
+	}
+	report = strings.Join(p.Warnings, "\n")
+	if want := "Server block tls://(classless prefix):853 example.org:53: encrypted or gRPC keys tls://(classless prefix):853 are omitted with their certificates;"; !strings.Contains(report, want) {
+		t.Errorf("loss report lacks %q:\n%s", want, report)
+	}
+	if strings.Contains(report, "10.0.0.0") {
+		t.Fatalf("classless prefix echoed: %s", report)
+	}
+}
+
+// Blocks on different ports may both answer a name. kudurru has one
+// listener set, so it keeps the answer of the block on the lowest port and
+// names the port whose answer it omits. On one port the conflict is still
+// refused.
+func TestCoreDNSOfflineSameNameOnTwoPorts(t *testing.T) {
+	for _, input := range []string{
+		". {\n hosts {\n  192.168.1.10 nas.home.example\n  no_reverse\n }\n forward . 192.0.2.53\n}\nhome.example:5353 {\n hosts {\n  10.9.9.9 nas.home.example\n  no_reverse\n }\n forward . 192.168.1.1\n}\n",
+		"home.example:5353 {\n hosts {\n  10.9.9.9 nas.home.example\n  no_reverse\n }\n forward . 192.168.1.1\n}\n. {\n hosts {\n  192.168.1.10 nas.home.example\n  no_reverse\n }\n forward . 192.0.2.53\n}\n",
+	} {
+		p := corednsPreview(t, input)
+		var targets []string
+		for _, obj := range p.Objects {
+			raw, _ := json.Marshal(obj)
+			if strings.Contains(string(raw), "10.9.9.9") {
+				t.Fatalf("answer of the port 5353 block kept: %s", raw)
+			}
+			if strings.Contains(string(raw), "192.168.1.10") {
+				targets = append(targets, "192.168.1.10")
+			}
+		}
+		if len(targets) != 1 {
+			t.Fatalf("port 53 answer missing: %v", rewriteNames(p))
+		}
+		report := strings.Join(p.Warnings, "\n")
+		want := "hosts and rewrite: 1 names have another local answer in a server block on a different port; kudurru keeps the answer of the block on the lowest port and omits the answers on port 5353 (names redacted)."
+		if !strings.Contains(report, want) {
+			t.Errorf("loss report lacks %q:\n%s", want, report)
+		}
+	}
+	_, err := PreviewCoreDNS(t.Context(), OfflineRequest{Namespace: "dns"}, strings.NewReader(". {\n hosts {\n  192.168.1.10 nas.home.example\n  no_reverse\n }\n rewrite name nas.home.example media.home.example\n}\n"))
+	if err == nil || !strings.Contains(err.Error(), "more than one local answer") {
+		t.Fatalf("same-port conflict not refused: %v", err)
+	}
+}
+
+// While a block with unreadable keys exists, CoreDNS may send any name to
+// it, including the zones of imported conditional routes: the report says
+// so once.
+func TestCoreDNSOfflineUnreadableBlockAndConditionalRoutes(t *testing.T) {
+	p := corednsPreview(t, ". {\n forward home.example 192.0.2.53\n forward . 1.1.1.1\n}\n{$Z} {\n forward . 192.168.1.1\n}\n")
+	if got := p.Settings["upstreams"].(map[string]any)["conditional"].(map[string]string); got["home.example."] == "" {
+		t.Fatalf("conditional route missing: %v", got)
+	}
+	report := strings.Join(p.Warnings, "\n")
+	want := "Corefile: 1 conditional forwarding routes are imported, but a server block whose keys cannot be read may receive those queries in CoreDNS (names redacted)."
+	if !strings.Contains(report, want) {
+		t.Errorf("loss report lacks %q:\n%s", want, report)
+	}
+	p = corednsPreview(t, ". {\n forward home.example 192.0.2.53\n forward . 1.1.1.1\n}\n")
+	if strings.Contains(strings.Join(p.Warnings, "\n"), "conditional forwarding routes are imported") {
+		t.Fatalf("line emitted without an unreadable block:\n%s", strings.Join(p.Warnings, "\n"))
+	}
+}

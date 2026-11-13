@@ -87,6 +87,13 @@ type corednsConverter struct {
 	// opaque counts server blocks whose keys cannot be read (environment
 	// placeholders, unsupported forms): CoreDNS may route any name to them.
 	opaque int
+	// blockPorts are the ports of each converted block and rewriteBlock the
+	// block that defined each local answer, by name. portDrops counts the
+	// answers omitted because a block on a lower port answers the same name,
+	// by the omitted block's lowest port.
+	blockPorts   map[int][]int
+	rewriteBlock map[string]int
+	portDrops    map[int]int
 }
 
 // route returns the zone of the plain DNS server block that CoreDNS sends a
@@ -237,6 +244,9 @@ func keyRoutes(blk *cfServerBlock) (zones []corednsZone, encrypted []string, rea
 			if !ok {
 				if scheme, classless, ok := classlessKey(part); ok {
 					if scheme != "dns" {
+						// An encrypted listener: omitted like any other
+						// encrypted key, with the prefix redacted.
+						encrypted = append(encrypted, scheme+"://(classless prefix):"+strconv.Itoa(classless[0].port))
 						continue
 					}
 					routes = append(routes, classless...)
@@ -362,6 +372,7 @@ func (c *corednsConverter) convert(cf *corefile) error {
 		}
 	}
 	sort.Ints(c.ports)
+	c.blockPorts, c.rewriteBlock, c.portDrops = map[int][]int{}, map[string]int{}, map[int]int{}
 	for i, blk := range cf.blocks {
 		if err := c.ctx.Err(); err != nil {
 			return err
@@ -370,6 +381,23 @@ func (c *corednsConverter) convert(cf *corefile) error {
 		if err := c.block(blk); err != nil {
 			return err
 		}
+	}
+	if c.opaque > 0 && len(c.conditional) > 0 {
+		c.p.loss(fmt.Sprintf("Corefile: %d conditional forwarding routes are imported, but a server block whose keys cannot be read may receive those queries in CoreDNS (names redacted).", len(c.conditional)))
+	}
+	if len(c.portDrops) > 0 {
+		ports := make([]int, 0, len(c.portDrops))
+		n := 0
+		for port, count := range c.portDrops {
+			ports = append(ports, port)
+			n += count
+		}
+		sort.Ints(ports)
+		list := make([]string, len(ports))
+		for i, port := range ports {
+			list[i] = strconv.Itoa(port)
+		}
+		c.p.loss(fmt.Sprintf("hosts and rewrite: %d names have another local answer in a server block on a different port; kudurru keeps the answer of the block on the lowest port and omits the answers on port %s (names redacted).", n, strings.Join(list, ", ")))
 	}
 	if !c.rootSeen {
 		c.note("Corefile: no plain DNS server block serves the root zone; destination upstreams.groups.default, cache and access settings are kept.")
@@ -445,6 +473,7 @@ func (c *corednsConverter) block(blk *cfServerBlock) error {
 		}
 		names = append(names, z.name)
 	}
+	c.blockPorts[c.current] = append([]int{}, c.curPorts...)
 	root := false
 	for _, n := range names {
 		root = root || n == "."
@@ -868,15 +897,51 @@ func containsString(list []string, s string) bool {
 	return false
 }
 
+// addRewrite records a local answer. A second answer for the same name is
+// refused, unless it comes from a block on other ports than the first one:
+// kudurru answers every listener alike, so the block on the lowest port
+// wins and the other answer is counted in portDrops.
 func (c *corednsConverter) addRewrite(r public.Rewrite) error {
 	for _, typ := range []string{"", "PTR", "CNAME"} {
-		if _, dup := c.rewrites[r.Name+"/"+typ]; dup {
+		key := r.Name + "/" + typ
+		if _, dup := c.rewrites[key]; !dup {
+			continue
+		}
+		prev, ok := c.rewriteBlock[r.Name]
+		if !ok || prev == c.current || sharesPort(c.blockPorts[prev], c.curPorts) {
 			return errors.New("corefile gives the same name more than one local answer")
 		}
+		if minPort(c.blockPorts[prev]) <= minPort(c.curPorts) {
+			c.portDrops[minPort(c.curPorts)]++
+			return nil
+		}
+		c.portDrops[minPort(c.blockPorts[prev])]++
+		delete(c.rewrites, key)
+		break
 	}
 	sort.Strings(r.Targets)
 	c.rewrites[r.Name+"/"+r.Type] = r
+	c.rewriteBlock[r.Name] = c.current
 	return nil
+}
+
+func sharesPort(a, b []int) bool {
+	for _, p := range a {
+		if containsInt(b, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func minPort(ports []int) int {
+	m := 0
+	for i, p := range ports {
+		if i == 0 || p < m {
+			m = p
+		}
+	}
+	return m
 }
 
 // rewrite maps only "rewrite [stop] name [exact] FROM TO [answer auto]" to a

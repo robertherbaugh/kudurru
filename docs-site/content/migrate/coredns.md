@@ -57,7 +57,9 @@ The preview's warnings name this syntax version.
 
 - Server block keys for `tls://`, `https://`, `https3://`, `grpc://` and
   `quic://`, with their certificates; each block is reported with its keys.
-  A block that also has plain DNS keys converts for those keys only.
+  A block that also has plain DNS keys converts for those keys only. An
+  encrypted classless prefix such as `tls://10.0.0.0/12` is reported the same
+  way, with the prefix redacted.
   Configure the kudurru DoT, DoH and DoQ listeners instead. Listener ports are
   not imported.
 - `file` and `auto` zones: the loss report names each zone. Import the zone
@@ -102,12 +104,17 @@ the zones CoreDNS expands it to, so the root block's PTR answers inside
 `10.0.0.0/12` are omitted. When a block key cannot be read at all (an
 environment placeholder or an unsupported form), the importer cannot tell which
 names that block receives, so no `hosts` or `rewrite` answer is imported from
-any block, and the report counts them.
+any block, and the report counts them. `forward` routes are still imported,
+and the report says how many conditional routes such a block may take in
+CoreDNS.
 
 Routing is per port, as in CoreDNS: a `home.example:5353` block does not shadow
 the root block's `nas.home.example` on port 53, so that answer is imported.
 kudurru answers every listener alike, so the report counts such names and
-names the port where CoreDNS sent them to another block.
+names the port where CoreDNS sent them to another block. When blocks on
+different ports both answer the same name, kudurru keeps the answer of the
+block on the lowest port and the report counts the omitted answers and names
+their port. Two answers for one name on the same port are refused.
 
 Hosts and rewrite answers replace a destination `Policy/default`, including
 its block lists. They are answered locally with the `response.ttl` setting
