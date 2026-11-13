@@ -503,3 +503,19 @@ func TestAnchorUpdaterCaptureRaceRetriesPacedWithoutStopping(t *testing.T) {
 		t.Fatal("the next capture did not succeed, reset the pace and wait for the accepted refresh", err, reads.Load(), u.captureRaced)
 	}
 }
+
+// A capture that keeps racing ordinary commits stays paced at one second
+// (TestAnchorUpdaterCaptureRaceRetriesPacedWithoutStopping), so its warning
+// is rate limited instead: the first, second, fourth, eighth and so on
+// consecutive race logs, an hour of races at most a dozen lines (F28-OPEN6).
+func TestAnchorCaptureRaceLogIsBounded(t *testing.T) {
+	logged := 0
+	for n := 1; n <= 3600; n++ {
+		if anchorCaptureRaceLogged(n) {
+			logged++
+		}
+	}
+	if logged != 12 || !anchorCaptureRaceLogged(1) || !anchorCaptureRaceLogged(2) || anchorCaptureRaceLogged(3) || !anchorCaptureRaceLogged(4) || anchorCaptureRaceLogged(0) {
+		t.Fatal("raced capture warnings are not bounded to powers of two", logged)
+	}
+}

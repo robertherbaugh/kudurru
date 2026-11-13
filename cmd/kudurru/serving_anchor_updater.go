@@ -53,7 +53,8 @@ type anchorUpdater struct {
 	// commit moved the canonical generation first; it paces their retries.
 	raced int
 	// captureRaced counts consecutive captures refused the same way before
-	// any acquisition (logged, not paced); a successful capture resets it.
+	// any acquisition (not backed off; logged at powers of two); a
+	// successful capture resets it.
 	captureRaced int
 	stopped      error
 	// wall reads this node's wall clock for its due and checkpoint
@@ -203,6 +204,34 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 	return step, nil
 }
 
+// anchorCaptureRaceLogged reports whether the n-th consecutive raced capture
+// logs its warning: the first, second, fourth, eighth and so on. A capture
+// that keeps racing ordinary commits keeps its one-second pace (it is a
+// local read, and before the bootstrap it is what lets a node publish), so
+// its log must be bounded instead (F28-OPEN6). The status board shows every
+// race as "raced".
+func anchorCaptureRaceLogged(n int) bool {
+	return n > 0 && n&(n-1) == 0
+}
+
+// anchorWriterWall is the mounted writer updater's wall clock for its due and
+// checkpoint comparisons: the runtime's test override, else the licensetest
+// build seam; nil (time.Now) in a release binary.
+func (s *servingRuntime) anchorWriterWall() func() time.Time {
+	if s.anchorUpdaterWall != nil {
+		return s.anchorUpdaterWall
+	}
+	return anchorUpdaterBuildWall // nil except in a -tags licensetest binary
+}
+
+// anchorWriterNow reads anchorWriterWall.
+func (s *servingRuntime) anchorWriterNow() time.Time {
+	if wall := s.anchorWriterWall(); wall != nil {
+		return wall()
+	}
+	return time.Now()
+}
+
 // anchorUpdateRaced reports a definite rollback caused only by a canonical
 // generation change: the update transaction rolled back with the store's
 // authority CAS and no denial was committed first. An accepted-owner change
@@ -231,11 +260,7 @@ func (s *servingRuntime) runAnchorUpdaterReady(ctx context.Context, target servi
 	if err != nil {
 		return err
 	}
-	wall := s.anchorUpdaterWall
-	if wall == nil {
-		wall = anchorUpdaterBuildWall // nil except in a -tags licensetest binary
-	}
-	u := anchorUpdater{runtime: s, target: target, host: host, clock: clock, wall: wall}
+	u := anchorUpdater{runtime: s, target: target, host: host, clock: clock, wall: s.anchorWriterWall()}
 	for {
 		// Subscribe before the read. The local anchor notice has a single
 		// publisher consumer; use the Store broadcast so this worker cannot
@@ -258,7 +283,7 @@ func (s *servingRuntime) runAnchorUpdaterReady(ctx context.Context, target servi
 			// discarded one reply. Each logs its own consecutive count.
 			if step.attempted {
 				slog.Warn("root anchor update raced an ordinary commit; new acquisition scheduled", "next", step.next, "consecutive", u.raced)
-			} else {
+			} else if anchorCaptureRaceLogged(u.captureRaced) {
 				slog.Warn("root anchor capture raced an ordinary commit; capturing again", "next", step.next, "consecutive", u.captureRaced)
 			}
 		}

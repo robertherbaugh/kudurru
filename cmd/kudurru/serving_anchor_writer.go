@@ -95,15 +95,18 @@ func (s *servingRuntime) runAnchorWriterReady(ctx context.Context, target servin
 	defer s.anchorStatus.setUpdater(anchorWorkerNotRunning, time.Time{}, nil)
 	if run.acquire {
 		s.anchorStatus.setUpdater(anchorWorkerRunning, time.Time{}, nil)
-		if s.anchorOwnerManaged(ctx) {
-			// This node already holds accepted managed trust, so it publishes
-			// and reports ready: the other elected services (which admit
-			// writer commands) must not wait for this child's first step,
-			// which can be a root round trip of up to 30 seconds (F28-OPEN6).
-			// Their startup writes may now race that step; a raced capture
-			// or update is retried with a NEW, paced acquisition. Before the
+		if s.anchorFirstStepNotDue(ctx) {
+			// This node already holds accepted managed trust that is not due
+			// for a refresh, so it publishes and reports ready, and its first
+			// step only captures and schedules: the other elected services
+			// (which admit writer commands) need not wait for it (F28-OPEN6).
+			// A startup write that races that capture refuses only the
+			// capture (nothing acquired) and a new one follows. A due refresh
+			// keeps the startup sequencing below: its reply may be a REVOKE,
+			// and a revocation denial that a startup write rolls back is
+			// terminal for the writer term (anchorUpdateRaced). Before the
 			// bootstrap the node cannot publish (managed mode fails closed),
-			// so the first attempt still precedes those services.
+			// so that first attempt precedes those services as well.
 			signal()
 		}
 		if s.anchors != nil && s.anchors.admission != nil {
@@ -133,14 +136,35 @@ func (s *servingRuntime) runAnchorWriterReady(ctx context.Context, target servin
 	return ctx.Err()
 }
 
-// anchorOwnerManaged reports whether the committed image this writer starts on
-// already carries an accepted managed owner. Any read or decode failure
-// reports false, which keeps the startup sequencing.
-func (s *servingRuntime) anchorOwnerManaged(ctx context.Context) bool {
+// anchorEarlyReleaseMargin is how far ahead of the committed refresh a writer
+// still releases its startup gate before its first step. It covers the time
+// between this read and the step's own due check, so a refresh that becomes
+// due meanwhile still runs ahead of the other writer services.
+const anchorEarlyReleaseMargin = time.Minute
+
+// anchorFirstStepNotDue reports whether the committed image this writer starts
+// on carries an accepted managed owner whose refresh is not due within
+// anchorEarlyReleaseMargin by the updater's own wall clock (the same due rule
+// as anchorUpdater.step, including a checkpoint ahead of this clock). Any
+// read, decode or state failure reports false, which keeps the startup
+// sequencing.
+func (s *servingRuntime) anchorFirstStepNotDue(ctx context.Context) bool {
 	image, err := s.opts.Store.ReadGeneration(ctx)
 	if err != nil || image == nil || accepted.IsAwaitingOwner(image.Payload.Runtime) {
 		return false
 	}
 	owner, err := accepted.DecodeRows(image.Payload.Runtime, image.Term.ClusterID)
-	return err == nil && owner.Inspect().Phase == accepted.Managed
+	if err != nil || owner.Inspect().Phase != accepted.Managed {
+		return false
+	}
+	state, err := owner.State()
+	if err != nil {
+		return false
+	}
+	view := state.Inspect()
+	next := view.Schedule.NextRefresh
+	if view.Checkpoint.Wall.After(next) {
+		next = view.Checkpoint.Wall
+	}
+	return s.anchorWriterNow().Add(anchorEarlyReleaseMargin).Before(next)
 }
