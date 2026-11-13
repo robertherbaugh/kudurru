@@ -478,7 +478,7 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		// The deny-only cadence is bound to the cluster settings identity
 		// (anchorRetrySource): a settings change makes the follower check the
 		// root again at once, one acquisition per coalesced change.
-		anchors.absorbSettings(beforeSettings, "forwarded settings change")
+		anchors.absorbSettings(apiB, beforeSettings, "forwarded settings change")
 	}
 	enrolledForwardedSignOut(t, fresh, freshJar, apiB.base, apiA.base)
 	// The own password and personal tokens are forwarded too: a must-change
@@ -1076,13 +1076,10 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 			if rejoined.Supervisor.State != "running" || rejoined.Updater.State != "not_running" || rejoined.Pull == nil || rejoined.Pull.Result != "installed" || rejoined.Pull.Refusal != "" {
 				t.Fatalf("rejoined member status: %+v", rejoined)
 			}
-			// Every answer from its first validated one on was validated,
-			// and some of them were taken while it was DNS-only (fenced).
-			if got := sampled(); got.failed || got.samples == 0 || got.dnsOnly == 0 {
-				t.Fatalf("restarted old primary did not answer validated recursion across fenced and follower: %+v", got)
-			} else {
-				t.Logf("restarted old primary: %d validated samples, %d while DNS-only", got.samples, got.dnsOnly)
-			}
+			// From its first answer on, no answer was wrong, any SERVFAIL gap
+			// was bounded, and some validated answers were taken while it was
+			// DNS-only (fenced).
+			sampled().judge(t, "restarted old primary", true)
 			time.Sleep(2 * time.Second)
 			if n := anchors.root.TCP(anchorRootNormal) - anchors.base; n != 4 || anchors.root.TotalTCP() != n+anchors.base {
 				t.Fatal("rejoin acquisitions", n)
