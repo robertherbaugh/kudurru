@@ -101,7 +101,7 @@ func tryCaptureTCP(addr string) ([]byte, error) {
 		return nil, err
 	}
 	frame := make([]byte, 2+len(packet))
-	binary.BigEndian.PutUint16(frame, uint16(len(packet)))
+	binary.BigEndian.PutUint16(frame, uint16(len(packet))) //nolint:gosec // one question, far below 64 KiB
 	copy(frame[2:], packet)
 	if _, err := conn.Write(frame); err != nil {
 		return nil, err
@@ -126,13 +126,13 @@ func sha256Hex(b []byte) string {
 // refresh path for the committed testdata).
 func writeCapture(t *testing.T, dir string, c rolloverCapture) {
 	t.Helper()
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil { //nolint:gosec // the operator's KUDURRU_RFC5011_CAPTURE_DIR
 		t.Fatal(err)
 	}
 	c.provenance.Files = map[string]string{}
 	for _, stage := range rolloverStages {
 		c.provenance.Files[stage+".wire"] = sha256Hex(c.wires[stage])
-		if err := os.WriteFile(filepath.Join(dir, stage+".wire"), c.wires[stage], 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, stage+".wire"), c.wires[stage], 0o600); err != nil { //nolint:gosec // the operator's KUDURRU_RFC5011_CAPTURE_DIR
 			t.Fatal(err)
 		}
 	}
@@ -140,7 +140,7 @@ func writeCapture(t *testing.T, dir string, c rolloverCapture) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "provenance.json"), append(b, '\n'), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "provenance.json"), append(b, '\n'), 0o600); err != nil { //nolint:gosec // the operator's KUDURRU_RFC5011_CAPTURE_DIR
 		t.Fatal(err)
 	}
 }
