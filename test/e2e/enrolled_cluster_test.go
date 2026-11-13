@@ -1017,7 +1017,7 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		if anchors != nil {
 			// A changed settings identity ends the follower's cooldown, so
 			// the rejoined member checks the root again (D369).
-			anchors.absorbSettings(beforeSettings, "settings change through the rejoined member")
+			anchors.absorbSettings(apiA, beforeSettings, "settings change through the rejoined member")
 		}
 		// The new primary applies a signed UPDATE itself, and the rejoined
 		// former primary now forwards one to it.
