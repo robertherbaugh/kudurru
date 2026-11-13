@@ -155,9 +155,31 @@ func enrolledZoneSettled(t *testing.T, c *staticProcessClient, dnsAddr, name, ip
 // zoneObject, whose data answers fqdn with ip. Every zone created before a
 // review needs its own wait: each zone's first Ready status write is its own
 // publication, and a review taken before it names a source that the decision
-// then finds changed (409 conflict).
+// then finds changed (409 conflict). A record change is followed by a status
+// write of its zone as well (serial, content hash, record count), and a
+// command whose request began before that write publishes is refused 503
+// unavailable. So the zone's status serial must also equal the SOA serial the
+// primary serves: Ready alone is already true from the zone's first status
+// write.
 func enrolledZoneObjectSettled(t *testing.T, c *staticProcessClient, dnsAddr, zoneObject, fqdn, ip string) {
 	t.Helper()
+	apex := strings.ReplaceAll(zoneObject, "-", ".") + "."
+	if !dns.IsSubDomain(apex, fqdn) {
+		t.Fatal("zone settle name is outside the zone", zoneObject, fqdn)
+	}
+	served := func() uint32 {
+		answer, err := exchange(dnsAddr, apex, dns.TypeSOA, true)
+		if err != nil || answer.Rcode != dns.RcodeSuccess || !answer.Authoritative {
+			return 0
+		}
+		for _, rr := range answer.Answer {
+			if soa, ok := rr.(*dns.SOA); ok {
+				return soa.Serial
+			}
+		}
+		return 0
+	}
+	var lastStatus, lastServed uint32
 	read := func() (string, bool) {
 		var zone struct {
 			Metadata struct {
@@ -165,6 +187,7 @@ func enrolledZoneObjectSettled(t *testing.T, c *staticProcessClient, dnsAddr, zo
 				Generation      int64  `json:"generation"`
 			} `json:"metadata"`
 			Status struct {
+				Serial     uint32 `json:"serial"`
 				Conditions []struct {
 					Type               string `json:"type"`
 					Status             string `json:"status"`
@@ -182,7 +205,8 @@ func enrolledZoneObjectSettled(t *testing.T, c *staticProcessClient, dnsAddr, zo
 			}
 			return true
 		})
-		return zone.Metadata.ResourceVersion, ready
+		lastStatus, lastServed = zone.Status.Serial, served()
+		return zone.Metadata.ResourceVersion, ready && lastStatus != 0 && lastStatus == lastServed
 	}
 	answers := func() bool {
 		answer, err := exchange(dnsAddr, fqdn, dns.TypeA, false)
@@ -196,7 +220,7 @@ func enrolledZoneObjectSettled(t *testing.T, c *staticProcessClient, dnsAddr, zo
 			}
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("primary zone status never settled")
+			t.Fatal("primary zone status never settled", zoneObject, "status serial", lastStatus, "served SOA serial", lastServed)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -820,6 +844,9 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		"spec": map[string]any{"zoneRef": map[string]any{"name": "e2e-test"}, "endpoints": []any{
 			map[string]any{"dnsName": "later.e2e.test.", "recordType": "A", "targets": []string{"192.0.2.43"}}}}}
 	apiA.request(t, http.MethodPost, "/objects/dnsrecordsets", newRecord, http.StatusCreated, nil)
+	// The deletion of hosts below is a single command on the primary: it
+	// starts after the zone's status write for this record has published.
+	enrolledZoneSettled(t, apiA, a.Ports.DNS, "later", "192.0.2.43")
 	// A batch deletion through the partitioned follower reports its item as
 	// an error. The later assertions on this record prove that it was neither
 	// applied nor replayed.
