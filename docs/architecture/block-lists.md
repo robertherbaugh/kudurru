@@ -425,7 +425,9 @@ flowchart LR
 Per-feed state is node-local and is read from the feed manager at request
 time (D391), on both drivers. `GET /blocklists/_rpz` and
 `GET /blocklists/{namespace}/{name}/rpz` (`blocklists.read`) map each
-`rpz.Status` to a state (`pending`, `serving`, `expired`, `unavailable`) with
+`rpz.Status` to a state (`pending`, `serving`, `expired`, `unavailable`; every
+state but `serving` answers SERVFAIL for a selecting policy, and `expired` is
+reported only once the copy's absolute expiry has passed) with
 the serial, primary, confirmation, expiry, next attempt, last error, compiler
 counts, rule counts by trigger and action, and every ignored reason with its
 complete count and bounded examples. `kudurru lists rpz` renders the same items,

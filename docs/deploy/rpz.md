@@ -130,10 +130,19 @@ $ kudurru lists rpz threats -o json   # every field
 
 | State | Meaning | DNS for clients whose policy selects the list |
 |---|---|---|
-| `pending` | No copy yet and no failure | Not applied until the first copy (startup load window) |
+| `pending` | No copy yet and no failure | SERVFAIL until the first complete transfer (the list is in the policy, the feed is not) |
 | `serving` | An unexpired copy is in use; `lastError` may report a failed refresh | Applied |
 | `expired` | The last copy passed its SOA expire | SERVFAIL |
-| `unavailable` | No usable copy: a transfer, configuration or credential failure (`reason`, `message`) | SERVFAIL |
+| `unavailable` | No usable copy: a transfer, configuration or credential failure (`reason`, `message`), or an unexpired copy the node cannot use (discarded because the configuration or credential changed while it was accepted, or confirmed after the node's current clock time) | SERVFAIL |
+
+A feed is pending as soon as the node's configuration lists it, and from then on
+it is required coverage, so clients whose policy selects it get SERVFAIL until
+the first transfer completes. That is different from the short window right
+after a start, before the list resolver has compiled the list: until then the
+list is not in the policy at all and its feeds are not applied (see
+[block lists](../architecture/block-lists.md)). The `/info/messages` diagnosis
+for a pending feed is `info`, not an error, because every new feed starts there;
+a feed whose first transfer fails moves to `unavailable` (an error).
 
 The same data is available from the API, with `blocklists.read`:
 
