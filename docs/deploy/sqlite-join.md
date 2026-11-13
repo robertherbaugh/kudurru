@@ -188,7 +188,12 @@ cut: the
 follower forwards the committed documents again, the primary records every
 forwarded command with its deduplication record, also one whose result is
 `unchanged`, and the follower's next pull therefore changes its source again.
-Send an apply of many documents, and every restore, to the primary.
+The rules for a multi-item request on the primary (each later item chained on
+the request's own commits, D378) and for a command superseded before its
+dispatch (D399) do not change this: the follower's own pull of the request's
+earlier items is what cuts it. In the release's process tests a file of 40
+documents through a follower applied 25 to 37 of them before the cut. Send
+an apply of many documents, and every restore, to the primary.
 
 On the primary, and on a standalone node, `POST /api/v1/apply` and
 `:batchDelete` run one command for each document or name inside the one
