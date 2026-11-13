@@ -100,21 +100,43 @@ func enrolledExpectUpdate(t *testing.T, node *kudurrutest.Node, secret string, t
 // fails at once; every SERVFAIL is logged.
 func enrolledEventuallyUpdate(t *testing.T, node *kudurrutest.Node, secret string, build func(*dns.Msg)) {
 	t.Helper()
+	enrolledEventuallyRcode(t, node, secret, false, dns.RcodeSuccess, build)
+}
+
+// enrolledEventuallyRcode sends an idempotent signed UPDATE until it is
+// answered rcode. SERVFAIL is retried and logged: an enrolled follower answers
+// it, sending nothing, when its source changes under the request (it installed
+// the primary's next commit, often an asynchronous status write), and the
+// primary answers it when a republication replaced the lease the UPDATE
+// captured (D381); an RFC 2136 client sends the update again. Any other rcode
+// than the wanted one fails at once.
+func enrolledEventuallyRcode(t *testing.T, node *kudurrutest.Node, secret string, tcp bool, rcode int, build func(*dns.Msg)) {
+	t.Helper()
+	var owner string
 	if !kudurrutest.Eventually(20*time.Second, 200*time.Millisecond, func() bool {
-		answer, err := enrolledSendUpdate(t, node.Ports.DNS, secret, false, build)
+		answer, err := enrolledSendUpdate(t, node.Ports.DNS, secret, tcp, func(m *dns.Msg) {
+			build(m)
+			if len(m.Ns) != 0 {
+				owner = m.Ns[len(m.Ns)-1].Header().Name
+			}
+		})
 		switch {
 		case err != nil:
-			t.Logf("UPDATE on %s at %s: %v", node.Name, time.Now().Format(time.RFC3339Nano), err)
+			t.Logf("UPDATE on %s at %s: %v (update of %s, tcp=%t)", node.Name, time.Now().Format(time.RFC3339Nano), err, owner, tcp)
 			return false
+		case answer.Opcode != dns.OpcodeUpdate:
+			t.Fatalf("UPDATE on %s answered opcode %d (update of %s, tcp=%t)", node.Name, answer.Opcode, owner, tcp)
+		case answer.Rcode == rcode:
+			return true
 		case answer.Rcode == dns.RcodeServerFailure:
-			t.Logf("UPDATE on %s at %s: SERVFAIL", node.Name, time.Now().Format(time.RFC3339Nano))
+			t.Logf("UPDATE on %s at %s: SERVFAIL (update of %s, tcp=%t)", node.Name, time.Now().Format(time.RFC3339Nano), owner, tcp)
 			return false
-		case answer.Rcode != dns.RcodeSuccess:
-			t.Fatalf("UPDATE on %s answered %s", node.Name, dns.RcodeToString[answer.Rcode])
+		default:
+			t.Fatalf("UPDATE on %s answered %s, want %s (update of %s, tcp=%t)", node.Name, dns.RcodeToString[answer.Rcode], dns.RcodeToString[rcode], owner, tcp)
 		}
-		return true
+		return false
 	}) {
-		t.Fatal("UPDATE never answered NOERROR", node.Name)
+		t.Fatalf("UPDATE on %s never answered %s (update of %s, tcp=%t)", node.Name, dns.RcodeToString[rcode], owner, tcp)
 	}
 }
 
@@ -140,34 +162,58 @@ func enrolledAwaitDyn(t *testing.T, node *kudurrutest.Node, name, ip string, rco
 // enrolledFollowerUpdates sends signed UPDATEs to the follower (D381). The
 // primary commits a granted one, and both nodes serve it; a failed
 // prerequisite and an ungranted type are the primary's own answers and write
-// nothing. Every answer is signed by the follower.
+// nothing. Every answer is signed by the follower. Each update is idempotent
+// and is sent again after a SERVFAIL, as an RFC 2136 client does; any other
+// unexpected rcode, REFUSED included, fails at once.
 func enrolledFollowerUpdates(t *testing.T, primary, follower *kudurrutest.Node, secret, name, ip string) {
 	t.Helper()
 	for i, tcp := range []bool{false, true} {
 		owner := []string{name + "-udp.dyn.test.", name + "-tcp.dyn.test."}[i]
-		enrolledExpectUpdate(t, follower, secret, tcp, dns.RcodeSuccess, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(owner, ip)}) })
+		enrolledEventuallyRcode(t, follower, secret, tcp, dns.RcodeSuccess, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(owner, ip)}) })
 		enrolledAwaitDyn(t, primary, owner, ip, dns.RcodeSuccess)
 		enrolledAwaitDyn(t, follower, owner, ip, dns.RcodeSuccess)
 	}
 	// The prerequisite "this RRset exists" fails on the primary's data.
 	prereq := name + "-prereq.dyn.test."
-	enrolledExpectUpdate(t, follower, secret, false, dns.RcodeNXRrset, func(m *dns.Msg) {
+	enrolledEventuallyRcode(t, follower, secret, false, dns.RcodeNXRrset, func(m *dns.Msg) {
 		m.RRsetUsed([]dns.RR{&dns.A{Hdr: dns.RR_Header{Name: "absent.dyn.test.", Rrtype: dns.TypeA, Class: dns.ClassANY}}})
 		m.Insert([]dns.RR{enrolledUpdateA(prereq, "192.0.2.199")})
 	})
 	// The key is granted A records only.
 	ungranted := name + "-txt.dyn.test."
-	enrolledExpectUpdate(t, follower, secret, true, dns.RcodeRefused, func(m *dns.Msg) {
+	enrolledEventuallyRcode(t, follower, secret, true, dns.RcodeRefused, func(m *dns.Msg) {
 		m.Insert([]dns.RR{&dns.TXT{Hdr: dns.RR_Header{Name: ungranted, Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 60}, Txt: []string{"refused"}}})
 	})
 	// A third update on the same follower proves that the refused ones changed
 	// nothing the primary then serves.
 	marker := name + "-after.dyn.test."
-	enrolledExpectUpdate(t, follower, secret, false, dns.RcodeSuccess, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(marker, ip)}) })
+	enrolledEventuallyRcode(t, follower, secret, false, dns.RcodeSuccess, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(marker, ip)}) })
+	// The absence is waited for and every differing answer is logged: a UDP
+	// query resolved from a generation that a republication replaced gets no
+	// answer (see refused-fenced in the promote test). An applied record would
+	// answer NOERROR and never converge.
 	for _, node := range []*kudurrutest.Node{primary, follower} {
 		enrolledAwaitDyn(t, node, marker, ip, dns.RcodeSuccess)
-		if !enrolledDynAnswer(node, prereq, dns.TypeA, "", dns.RcodeNameError) || !enrolledDynAnswer(node, ungranted, dns.TypeTXT, "", dns.RcodeNameError) {
-			t.Fatal("a refused forwarded UPDATE was applied", node.Name)
+		for _, absent := range []struct {
+			owner string
+			qtype uint16
+		}{{prereq, dns.TypeA}, {ungranted, dns.TypeTXT}} {
+			if !kudurrutest.Eventually(20*time.Second, 50*time.Millisecond, func() bool {
+				for _, tcp := range []bool{false, true} {
+					answer, err := exchange(node.Ports.DNS, absent.owner, absent.qtype, tcp)
+					switch {
+					case err != nil:
+						t.Logf("%s on %s (tcp=%t) at %s: %v", absent.owner, node.Name, tcp, time.Now().Format(time.RFC3339Nano), err)
+						return false
+					case answer.Rcode != dns.RcodeNameError || len(answer.Answer) != 0 || !answer.Authoritative:
+						t.Logf("%s on %s (tcp=%t): rcode=%s aa=%t answers=%d", absent.owner, node.Name, tcp, dns.RcodeToString[answer.Rcode], answer.Authoritative, len(answer.Answer))
+						return false
+					}
+				}
+				return true
+			}) {
+				t.Fatal("a refused forwarded UPDATE was applied", node.Name, absent.owner)
+			}
 		}
 	}
 	enrolledFollowerBurst(t, primary, follower, secret, name, ip)
