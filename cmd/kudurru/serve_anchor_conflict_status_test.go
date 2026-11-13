@@ -165,10 +165,7 @@ func awaitConflictFixtureSettled(t *testing.T, cfg *config.Config, zoneObject, n
 	base := "http://" + cfg.Listeners.API.Address + api.BasePath
 	awaitMountedDNS(t, cfg, name, address)
 	deadline := time.Now().Add(time.Minute)
-	for {
-		if conflictFixtureLogin(client, base) {
-			break
-		}
+	for !conflictFixtureLogin(client, base) {
 		if time.Now().After(deadline) {
 			t.Fatal("mounted primary never accepted a sign-in")
 		}
@@ -205,7 +202,8 @@ func awaitConflictFixtureSettled(t *testing.T, cfg *config.Config, zoneObject, n
 
 // conflictFixtureLogin signs the fixture administrator in and reports success.
 func conflictFixtureLogin(client *http.Client, base string) bool {
-	raw, err := json.Marshal(api.LoginRequest{Username: "admin", Password: "mounted-test-password-1"}) // #nosec G101 -- disposable fixture credential
+	// #nosec G101 G117 -- disposable fixture credential of a test-only server
+	raw, err := json.Marshal(api.LoginRequest{Username: "admin", Password: "mounted-test-password-1"})
 	if err != nil {
 		return false
 	}
