@@ -64,7 +64,7 @@ import { fromDraft, toDraft } from '../lib/shapes';
 import { useNavigate } from '../lib/router';
 import { toYAML } from '../lib/yaml';
 import { INTEGRATIONS_KEY, useCanReadIntegrations, useIntegrationManifests, useIntegrationObject, useIntegrationSummary } from '../lib/useIntegrations';
-import { hostUnavailable, IntegrationState } from './IntegrationsPage';
+import { hostUnavailable, IntegrationState, objectPhase } from './IntegrationsPage';
 
 const LICENSE_REASON = 'Needs a license that covers integrations';
 const TERMINATING_REASON = 'Refused while the Integration is terminating';
@@ -147,6 +147,13 @@ function IntegrationView({ obj, summary, summaryError, manifests, manifestsError
   const [releaseError, setReleaseError] = useState<string | null>(null);
 
   const refresh = () => qc.invalidateQueries({ queryKey: INTEGRATIONS_KEY });
+  // The object is gone: leave its page without reading it again (a 404).
+  const leave = () => {
+    qc.removeQueries({ queryKey: [...INTEGRATIONS_KEY, 'object', namespace, name] });
+    qc.removeQueries({ queryKey: [...INTEGRATIONS_KEY, 'summary', namespace, name] });
+    navigate('/integrations');
+    void refresh();
+  };
 
   const deleteReason = cannot('integrations', 'delete') ?? (!own.editable ? readOnlyReason(own) : undefined);
   const releaseReason = cannot('integrations', 'release') ?? (staticMode ? 'Read-only in static mode' : undefined) ?? primaryOnly('releaseIntegration');
@@ -156,12 +163,12 @@ function IntegrationView({ obj, summary, summaryError, manifests, manifestsError
     try {
       await api.integrations.remove(namespace, name, obj.metadata.resourceVersion);
       setDeleting(false);
-      await refresh();
       if (obj.spec.deletionPolicy === 'Delete') {
+        await refresh();
         notify.success(`Deleting ${name}: it stays terminating until its cleanup finishes`);
       } else {
         notify.success(`Deleted integration ${name}`);
-        navigate('/integrations');
+        leave();
       }
     } catch (err) {
       setDeleting(false);
@@ -180,8 +187,7 @@ function IntegrationView({ obj, summary, summaryError, manifests, manifestsError
       setReleasing(false);
       const kept = r.ledgerRows < 0 ? 'more ledger rows than one command counts' : `${formatExact(r.ledgerRows)} ledger rows and ${formatExact(r.operations)} operations`;
       notify.success(`Released ${name} without cleanup; retained ${kept}`);
-      await refresh();
-      navigate('/integrations');
+      leave();
     } catch (err) {
       setReleaseError(commandErrorText(err, 'release') ?? errorText(err));
     } finally {
@@ -191,7 +197,7 @@ function IntegrationView({ obj, summary, summaryError, manifests, manifestsError
 
   const meta = (
     <>
-      <IntegrationState summary={summary} />
+      <IntegrationState summary={summary} obj={obj} />
       <ManagedBadge owner={obj.metadata.annotations?.[MANAGED_BY]} />
       {obj.spec.suspend ? <Badge variant="neutral" label="Suspended" /> : null}
       <Text type="supporting">{manifest?.displayName ?? obj.spec.type}</Text>
@@ -297,7 +303,7 @@ function StatusPanel({ obj, summary }: { obj: Integration; summary: IntegrationS
   return (
     <Panel title="Status" data-testid="integration-status">
       <MetadataList columns="multi">
-        <MetadataListItem label="Phase">{summary ? (summary.statusKnown ? summary.phase : 'No status for this revision yet') : 'unknown'}</MetadataListItem>
+        <MetadataListItem label="Phase">{summary ? (summary.statusKnown ? summary.phase : `${objectPhase(obj) ?? 'unknown'} (from the object's status; the host has not reported this revision)`) : 'unknown'}</MetadataListItem>
         <MetadataListItem label="Reason">{summary?.reason ? (REASON_TEXT[summary.reason] ?? summary.reason) : 'none'}</MetadataListItem>
         <MetadataListItem label="Lease held here">{summary ? (summary.leader ? 'yes' : 'no') : 'unknown'}</MetadataListItem>
         <MetadataListItem label="Last sync">{summary?.lastSync ? `${formatRelative(summary.lastSync)} (${formatDateTime(summary.lastSync)})` : 'never'}</MetadataListItem>
@@ -352,6 +358,8 @@ function CommandsPanel({ obj, summary, manifest, licenseReason }: CommandsProps)
   // refusal of a stale review rereads the status, which changes the key).
   const shown = outcome;
 
+  // The server decides whether the host has taken up this revision; a
+  // refusal (409) says so and rereads the status.
   const noReview = !review ? 'Waiting for the status of this revision' : undefined;
   const checkReason = licenseReason ?? cannot('integrations', 'check') ?? noReview;
   const previewReason = licenseReason ?? cannot('integrations', 'read') ?? primaryOnly('previewIntegration') ?? noReview;

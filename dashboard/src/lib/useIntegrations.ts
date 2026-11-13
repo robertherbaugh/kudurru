@@ -17,13 +17,13 @@ export function useCanReadIntegrations(): boolean {
 export function useIntegrationManifests() {
   const api = useApi();
   const enabled = useCanReadIntegrations();
-  return useQuery({ queryKey: [...INTEGRATIONS_KEY, 'manifests'], queryFn: () => api.integrations.manifests(), enabled, staleTime: 60_000, retry: false });
+  return useQuery({ queryKey: [...INTEGRATIONS_KEY, 'manifests'], queryFn: () => api.integrations.manifests(), enabled, staleTime: 60_000 });
 }
 
 export function useIntegrationObjects() {
   const api = useApi();
   const enabled = useCanReadIntegrations();
-  return useQuery({ queryKey: [...INTEGRATIONS_KEY, 'objects'], queryFn: () => api.integrations.objects(), enabled, refetchInterval: STATUS_POLL_MS, retry: false });
+  return useQuery({ queryKey: [...INTEGRATIONS_KEY, 'objects'], queryFn: () => api.integrations.objects(), enabled, refetchInterval: STATUS_POLL_MS });
 }
 
 /** GET /integrations for each namespace, merged by namespace/name. */
@@ -36,7 +36,6 @@ export function useIntegrationSummaries(namespaces: string[]) {
       queryFn: () => api.integrations.list(ns),
       enabled,
       refetchInterval: STATUS_POLL_MS,
-      retry: false,
     })),
     combine: (qs) => {
       const byKey = new Map<string, IntegrationSummary>();
@@ -49,11 +48,11 @@ export function useIntegrationSummaries(namespaces: string[]) {
 export function useIntegrationSummary(namespace: string, name: string) {
   const api = useApi();
   const enabled = useCanReadIntegrations();
-  return useQuery({ queryKey: [...INTEGRATIONS_KEY, 'summary', namespace, name], queryFn: () => api.integrations.get(namespace, name), enabled, refetchInterval: STATUS_POLL_MS, retry: false });
+  return useQuery({ queryKey: [...INTEGRATIONS_KEY, 'summary', namespace, name], queryFn: () => api.integrations.get(namespace, name), enabled, refetchInterval: STATUS_POLL_MS });
 }
 
 export function useIntegrationObject(namespace: string, name: string) {
   const api = useApi();
   const enabled = useCanReadIntegrations();
-  return useQuery({ queryKey: [...INTEGRATIONS_KEY, 'object', namespace, name], queryFn: () => api.integrations.object(namespace, name), enabled, refetchInterval: STATUS_POLL_MS, retry: false });
+  return useQuery({ queryKey: [...INTEGRATIONS_KEY, 'object', namespace, name], queryFn: () => api.integrations.object(namespace, name), enabled, refetchInterval: STATUS_POLL_MS });
 }

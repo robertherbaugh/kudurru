@@ -209,6 +209,14 @@ describe('IntegrationDetailPage', () => {
     expect(synced).toEqual([{ uid: 'uid-office', revision: '11', mode: 'observe' }]);
   });
 
+  it('shows the written Ready condition while the host reports an older revision', async () => {
+    mockIntegrations().status['default/public-dns'] = { statusKnown: false, phase: 'Unknown', reason: 'NoMatchingObservation' };
+    detail();
+    expect(await screen.findByText(/Ready \(from the object's status; the host has not reported this revision\)/)).toBeInTheDocument();
+    // The server decides each command; nothing is held back on the client.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Check' })).not.toHaveAttribute('aria-disabled', 'true'));
+  });
+
   it('refuses a review of a changed revision', async () => {
     detail();
     const check = await screen.findByRole('button', { name: 'Check' });
@@ -221,6 +229,7 @@ describe('IntegrationDetailPage', () => {
 
   it('shows a terminating instance with its counts and releases it by its exact review', async () => {
     const released = bodies('/release');
+    const seen = requests();
     detail();
     fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
     expect(await screen.findByText(/Its deletion policy is Delete/)).toBeInTheDocument();
@@ -240,6 +249,10 @@ describe('IntegrationDetailPage', () => {
     const rv = String(mockIntegrations().revision);
     expect(released).toEqual([{ uid: 'uid-public-dns', revision: rv }]);
     expect(mockIntegrations().objects.some((o) => o.metadata.name === 'public-dns')).toBe(false);
+    // The page leaves without reading the removed object again (no 404).
+    await new Promise((r) => setTimeout(r, 100));
+    const after = seen.slice(seen.findIndex((p) => p.endsWith('/release')) + 1);
+    expect(after.filter((p) => p.includes('/integrations/default/public-dns'))).toEqual([]);
   });
 
   it('keeps a file-managed instance read-only with the reason', async () => {

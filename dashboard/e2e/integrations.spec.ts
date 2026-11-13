@@ -49,6 +49,7 @@ test.describe('integrations with a webhook peer', () => {
     await page.getByLabel(/^Password/).fill(password);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(main(page).getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+    await settle(page);
 
     await page.goto(`${server.url}/integrations`);
     await settle(page);
@@ -78,16 +79,32 @@ test.describe('integrations with a webhook peer', () => {
     await expect.poll(() => peer.rows()[`${ZONE.host}/A`], { timeout: 60_000 }).toEqual([ZONE.hostA]);
     expect(Object.keys(peer.rows()).some((k) => k.startsWith('_kudurru-'))).toBe(true);
 
+    // Each status write gives the object a new revision, and a command is
+    // bound to the revision on screen: review once it is stable.
+    const steady = async () => {
+      let last = '';
+      await expect
+        .poll(async () => {
+          const r = (await (await page.request.get(`${server.url}/api/v1/integrations/default/records`)).json()) as { revision?: string };
+          const same = !!r.revision && r.revision === last;
+          last = r.revision ?? '';
+          return same;
+        }, { timeout: 60_000, intervals: [3_000] })
+        .toBe(true);
+      await page.reload();
+      await settle(page);
+    };
+    await steady();
+    const preview = main(page).getByRole('button', { name: 'Preview' });
+    await expect(preview).not.toHaveAttribute('aria-disabled', 'true');
     // The peer loses them: a reviewed preview plans their return.
     peer.wipe();
     const before = peer.posts();
-    const preview = main(page).getByRole('button', { name: 'Preview' });
-    await expect(preview).not.toHaveAttribute('aria-disabled', 'true', { timeout: 30_000 });
     await preview.click();
     const plan = page.getByTestId('integration-preview');
     await expect(plan).toBeVisible({ timeout: 30_000 });
     await expect(plan).toContainText(/Plan digest [0-9a-f]{64}/);
-    await expect(plan.getByRole('table', { name: 'Planned changes' })).toContainText(`${ZONE.host} A`);
+    await expect(plan.getByRole('table', { name: 'Planned changes' })).toContainText(`${ZONE.host}. A`);
     expect(peer.posts()).toBe(before);
     await main(page).getByRole('button', { name: 'Publish this plan' }).click();
     await expect(page.getByTestId('command-outcome')).toContainText('Sync completed', { timeout: 30_000 });
@@ -95,10 +112,12 @@ test.describe('integrations with a webhook peer', () => {
     expect(peer.posts()).toBeGreaterThan(before);
 
     // Check reaches the peer with the referenced credential.
+    await steady();
     await main(page).getByRole('button', { name: 'Check' }).click();
     await expect(page.getByTestId('command-outcome')).toContainText('Reachable: yes. Credential accepted: yes.', { timeout: 30_000 });
 
     // Delete (Retain): the object goes, the records stay at the peer.
+    await steady();
     await main(page).getByRole('button', { name: 'Delete' }).click();
     await page.getByRole('alertdialog').getByRole('button', { name: 'Delete integration' }).click();
     await expect(page).toHaveURL(/\/integrations$/);

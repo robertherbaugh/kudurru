@@ -32,14 +32,30 @@ const rowAttrs: TablePlugin<Row> = {
   transformBodyRow: (props, r) => ({ ...props, htmlProps: { ...props.htmlProps, ...({ 'data-testid': `integration-${r.key}` } as Record<string, string>) } }),
 };
 
+/**
+ * The phase the object's own Ready condition records for its current
+ * generation (the host writes it), or undefined. The host reports its live
+ * status for the revision it captured; a status write gives the object a
+ * new revision, so the list falls back to the written condition until the
+ * host reports the stored one.
+ */
+export function objectPhase(obj: Integration | undefined): string | undefined {
+  const ready = obj?.status?.conditions?.find((c) => c.type === 'Ready');
+  if (!ready || (ready.observedGeneration !== undefined && obj?.metadata.generation !== undefined && ready.observedGeneration !== obj.metadata.generation)) return undefined;
+  return ready.status === 'True' ? 'Ready' : ready.reason || 'Not ready';
+}
+
 /** The state badge and reason of one instance. */
-export function IntegrationState({ summary }: { summary: IntegrationSummary | undefined }) {
+export function IntegrationState({ summary, obj }: { summary: IntegrationSummary | undefined; obj?: Integration | undefined }) {
   if (!summary) return <Text type="supporting">No status</Text>;
-  const label = summary.terminating ? 'Terminating' : summary.statusKnown ? summary.phase : 'Pending';
+  const fallback = summary.statusKnown ? undefined : objectPhase(obj);
+  const label = summary.terminating ? 'Terminating' : summary.statusKnown ? summary.phase : (fallback ?? 'Pending');
+  const variant = summary.statusKnown || summary.terminating || !fallback ? phaseVariant(summary) : fallback === 'Ready' ? 'success' : 'warning';
+  const reason = summary.statusKnown || summary.terminating ? summary.reason : fallback ? '' : summary.reason;
   return (
     <VStack gap={0.5} align="start">
-      <Badge variant={phaseVariant(summary)} label={label} />
-      {summary.reason ? <Text type="supporting">{REASON_TEXT[summary.reason] ?? summary.reason}</Text> : null}
+      <Badge variant={variant} label={label} />
+      {reason ? <Text type="supporting">{REASON_TEXT[reason] ?? reason}</Text> : null}
     </VStack>
   );
 }
@@ -108,7 +124,7 @@ export default function IntegrationsPage() {
       ),
     },
     { key: 'type', header: 'Provider', width: proportional(1, { minWidth: 110 }), renderCell: (r) => <Text>{manifestFor(manifests.data, r.obj.spec.type)?.displayName ?? r.obj.spec.type}</Text> },
-    { key: 'state', header: 'State', width: proportional(1.6, { minWidth: 160 }), renderCell: (r) => <IntegrationState summary={r.summary} /> },
+    { key: 'state', header: 'State', width: proportional(1.6, { minWidth: 160 }), renderCell: (r) => <IntegrationState summary={r.summary} obj={r.obj} /> },
     {
       key: 'policy',
       header: 'When deleted',
