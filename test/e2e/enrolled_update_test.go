@@ -106,10 +106,10 @@ func enrolledEventuallyUpdate(t *testing.T, node *kudurrutest.Node, secret strin
 // enrolledEventuallyRcode sends an idempotent signed UPDATE until it is
 // answered rcode. SERVFAIL is retried and logged, as an RFC 2136 client sends
 // the update again: a native UPDATE to the primary still gets it right after
-// a commit, before anything is applied. A forwarded UPDATE waits for the
-// current publication on both nodes instead (D381); one whose exchange is
-// lost still answers SERVFAIL. Any other rcode than the wanted one fails at
-// once.
+// a commit, before anything is applied (the D399 recapture does not cover a
+// signed UPDATE; docs/architecture/access.md). An UPDATE through a follower
+// is sent once instead (enrolledExpectUpdate). Any other rcode than the
+// wanted one fails at once.
 func enrolledEventuallyRcode(t *testing.T, node *kudurrutest.Node, secret string, tcp bool, rcode int, build func(*dns.Msg)) {
 	t.Helper()
 	var owner string
@@ -162,32 +162,35 @@ func enrolledAwaitDyn(t *testing.T, node *kudurrutest.Node, name, ip string, rco
 // enrolledFollowerUpdates sends signed UPDATEs to the follower (D381). The
 // primary commits a granted one, and both nodes serve it; a failed
 // prerequisite and an ungranted type are the primary's own answers and write
-// nothing. Every answer is signed by the follower. Each update is idempotent
-// and is sent again after a SERVFAIL, as an RFC 2136 client does; any other
-// unexpected rcode, REFUSED included, fails at once.
+// nothing. Every answer is signed by the follower. Each update is sent once
+// and must get its answer at once: a follower that installed a newer commit
+// before it sent the update waits for its current publication and sends it
+// then, so no SERVFAIL that a second identical send would not get remains to
+// be retried (HA-OPEN6). Any other rcode, REFUSED and SERVFAIL included,
+// fails at once.
 func enrolledFollowerUpdates(t *testing.T, primary, follower *kudurrutest.Node, secret, name, ip string) {
 	t.Helper()
 	for i, tcp := range []bool{false, true} {
 		owner := []string{name + "-udp.dyn.test.", name + "-tcp.dyn.test."}[i]
-		enrolledEventuallyRcode(t, follower, secret, tcp, dns.RcodeSuccess, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(owner, ip)}) })
+		enrolledExpectUpdate(t, follower, secret, tcp, dns.RcodeSuccess, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(owner, ip)}) })
 		enrolledAwaitDyn(t, primary, owner, ip, dns.RcodeSuccess)
 		enrolledAwaitDyn(t, follower, owner, ip, dns.RcodeSuccess)
 	}
 	// The prerequisite "this RRset exists" fails on the primary's data.
 	prereq := name + "-prereq.dyn.test."
-	enrolledEventuallyRcode(t, follower, secret, false, dns.RcodeNXRrset, func(m *dns.Msg) {
+	enrolledExpectUpdate(t, follower, secret, false, dns.RcodeNXRrset, func(m *dns.Msg) {
 		m.RRsetUsed([]dns.RR{&dns.A{Hdr: dns.RR_Header{Name: "absent.dyn.test.", Rrtype: dns.TypeA, Class: dns.ClassANY}}})
 		m.Insert([]dns.RR{enrolledUpdateA(prereq, "192.0.2.199")})
 	})
 	// The key is granted A records only.
 	ungranted := name + "-txt.dyn.test."
-	enrolledEventuallyRcode(t, follower, secret, true, dns.RcodeRefused, func(m *dns.Msg) {
+	enrolledExpectUpdate(t, follower, secret, true, dns.RcodeRefused, func(m *dns.Msg) {
 		m.Insert([]dns.RR{&dns.TXT{Hdr: dns.RR_Header{Name: ungranted, Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 60}, Txt: []string{"refused"}}})
 	})
 	// A third update on the same follower proves that the refused ones changed
 	// nothing the primary then serves.
 	marker := name + "-after.dyn.test."
-	enrolledEventuallyRcode(t, follower, secret, false, dns.RcodeSuccess, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(marker, ip)}) })
+	enrolledExpectUpdate(t, follower, secret, false, dns.RcodeSuccess, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(marker, ip)}) })
 	for _, node := range []*kudurrutest.Node{primary, follower} {
 		enrolledAwaitDyn(t, node, marker, ip, dns.RcodeSuccess)
 		enrolledAbsent(t, node, prereq, dns.TypeA)
