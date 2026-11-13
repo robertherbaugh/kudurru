@@ -121,6 +121,7 @@ func (s *Server) registerRoutes() {
 	s.registerZones()
 	s.registerTSIGKeys()
 	s.registerLists()
+	s.registerRPZFeeds()
 	s.registerDomainLists()
 	s.registerCatalogue()
 	s.registerPolicies()

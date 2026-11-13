@@ -232,6 +232,9 @@ type Options struct {
 	Secondaries *secondary.Manager
 	// Stubs reports discovered authority routes and expiry on this node.
 	Stubs *stub.Manager
+	// RPZ reports this node's RPZ feeds (rpz.Manager, D391); nil answers 501
+	// on the feed routes and adds no feed diagnoses.
+	RPZ RPZFeedSource
 	// Policy is the policy index source (policy.Source{Cache}).
 	Policy PolicySource
 	// Blocking is the blocking stage; its Toggle backs /dns/blocking.

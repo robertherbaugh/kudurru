@@ -373,6 +373,7 @@ func (s *Server) infoMessages(ctx context.Context, _ *struct{}) (*messagesOutput
 				Message: runtime.Message, Hint: "This node's discovered authorities and expiry are available in the zone's stub status."})
 		}
 	}
+	_ = s.rpzFeedMessages(func(m DiagnosisMessage) error { add(m); return nil })
 	if s.opts.Objects != nil && s.opts.Objects.APIReadOnly() {
 		add(DiagnosisMessage{Severity: "info", Source: "cluster", Reason: "ReadOnly", Message: "objects are read-only through the API (ha-static)",
 			Hint: "edit objects.d on every node"})
@@ -417,6 +418,9 @@ func (s *Server) infoOperationalMessages(ctx context.Context, now time.Time, add
 				return err
 			}
 		}
+	}
+	if err := s.rpzFeedMessages(add); err != nil {
+		return err
 	}
 	if s.opts.Central != nil {
 		st := s.opts.Central.State()
