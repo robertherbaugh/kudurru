@@ -550,6 +550,12 @@ expiry. Restart and replica promotion preserve those absolute times. A new
 successful observation is required to extend them. In-flight provider work from
 a fenced writer cannot commit under successor authority.
 
+A UniFi Integration polls every `spec.unifi.poll` (default one minute) or every
+`spec.resync` (default ten minutes), whichever is shorter. Before v0.2.0 it
+ignored `spec.resync`, so a poll longer than ten minutes now runs every ten
+minutes unless you raise `resync` as well. Observations still expire three
+`spec.unifi.poll` intervals after they were made.
+
 ## UniFi optional writes
 
 Every UniFi write is off by default, enabled per Integration, and runs only as
@@ -605,7 +611,16 @@ is deleted. If a create is not acknowledged, the sync answers
 never treated as owned (it shows as a conflict), and further reviewed syncs
 are refused until the next poll finds the site exactly as before the intent.
 Removing such a policy in UniFi lets that happen. A changed address that was
-not acknowledged settles by itself at the next poll, without a write.
+not acknowledged settles by itself at the next poll, without a write. The same
+holds for a record with several addresses whose creation stopped part way (a
+failed, refused or timed-out second create): the policies already
+acknowledged are this Integration's unfinished work, so they are not
+conflicts, but they keep the intent pending. Remove them in UniFi; the next
+poll, finding the site exactly as before and none of those policies left,
+settles the intent without a write, and the record previews as a create
+again. Every failed write, including a definite refusal by the controller, is
+reported as `integration_uncertain`; a record the controller keeps refusing
+stops each sync at that record until you exclude it.
 
 **DHCP DNS servers.** With `dhcpDNSServers`, the `dhcp-dns-servers` action
 writes `dnsServers` (one to four IPv4 addresses, for example the kudurru VIP,
