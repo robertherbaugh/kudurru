@@ -32,6 +32,7 @@ More pages, by task:
 | Accept RFC 2136 dynamic updates (`nsupdate`) for a zone | [dynamic-updates.md](dynamic-updates.md) |
 | Create, replace and revoke stored TSIG keys | [tsig-keys.md](tsig-keys.md) |
 | Validate DNSSEC on forwarded answers; trust anchors and exceptions | [dnssec-validation.md](dnssec-validation.md) |
+| Update recursive root trust anchors automatically (RFC 5011): enable order, monitoring, behavior | [managed-root-anchors.md](managed-root-anchors.md) |
 | Rewrite, filter and check forwarded answers (DNS64, rebinding protection) | [response-processing.md](response-processing.md) |
 | Limit client networks and refuse query types | [dns-controls.md](dns-controls.md) |
 | Match clients by MAC address, hostname or client ID | [client-identity.md](client-identity.md) |
