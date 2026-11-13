@@ -1521,6 +1521,10 @@ scope; the historical estimate above has not been reassessed. Secure-update
 interoperability and atomic/durable storage per deployment mode are required
 feasibility gates.
 
+What of this scope is implemented and what is open, package by package, is
+in the [v0.2 feature package acceptance table](milestones/v0.2/gaps.md#feature-package-acceptance-at-154a779a-november-13-2026);
+the text above is the original scope and is not edited.
+
 ### 13.3 v1.0 — "temple" (~16-20 weeks)
 
 DNSSEC **signing** on the leader (ECDSAP256SHA256 CSK default, Ed25519 opt-in, NSEC or NSEC3 with RFC 9276 params, CoreDNS `sign` timers/jitter, RFC 7583 key state machine, KSK activation gated on observed parent DS with manual override, ZSK `rolloverDays`, CDS/CDNSKEY, BIND-format key import, keys encrypted in the store, `ldns-verify-zone`/`delv` in CI, leader takeover without re-sign); **catalog zones** (RFC 9432) produced and consumed; **RPZ publishing**: a compiled `BlockList` served as a transferable RPZ zone with NOTIFY to subscribing resolvers (D61); **raft** `Store` driver (hashicorp/raft, SQLite FSM, single-voter bootstrap, learner join via single-permission token, snapshot before membership change, never fork on join failure, `MinVersion` migrations) replacing follower mode; native ACME DNS-01 via certmagic (leader); ClickHouse-backed exact cluster top-N; `clientgroup:` RBAC scope; back-channel logout; Pi-hole v6-compatible façade module; `/api/v1` freeze + deprecation policy; CRD `v1beta1`; third-party security review; published dnsperf numbers per profile; OLM bundle after `v1` CRDs.

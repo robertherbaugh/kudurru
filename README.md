@@ -19,9 +19,11 @@
 | Load balancing at the edge | [dnsdist](https://dnsdist.org) | An optional kudurru supervisor renders, validates and runs dnsdist; authenticated PROXYv2 preserves client IPs on the backend hop |
 | Virtual IPs on bare metal | [keepalived](https://www.keepalived.org) | A kudurru supervisor renders and runs keepalived (VRRPv3, authenticated, `nopreempt`) so the VIP follows dnsdist health |
 
-kudurru combines **Kubernetes CRDs as the source of truth in a cluster**, **OIDC sign-in and role-based access control** (viewer, auditor, operator, zone-admin and admin, with zone-scoped permissions), and **an integration framework with an external-dns webhook provider**. OIDC, scoped roles and integrations need a license key; eligible personal users can request one for free. The Cloudflare split-horizon sink and UniFi inventory source are planned for v0.2. See [access](docs/architecture/access.md), [licensing](LICENSING.md) and the [roadmap](#roadmap).
+kudurru combines **Kubernetes CRDs as the source of truth in a cluster**, **OIDC sign-in and role-based access control** (viewer, auditor, operator, zone-admin and admin, with zone-scoped permissions), and **an integration framework with an external-dns webhook provider**. OIDC, scoped roles and integrations need a license key; eligible personal users can request one for free. v0.2.0, in development and not yet released, adds the Cloudflare split-horizon sink and the UniFi inventory source ([integrations](docs/deploy/integrations.md)). See [access](docs/architecture/access.md), [licensing](LICENSING.md) and the [roadmap](#roadmap).
 
 > **v0.1.0 — “stone” · 18 October 2026.** Read the [release notes](https://github.com/robertherbaugh/kudurru/releases/tag/v0.1.0) and [changelog](CHANGELOG.md) for the first release's scope and known limitations. The [architecture tour](docs/architecture/README.md#built-and-not-built) distinguishes implemented features from future plans.
+
+> **v0.2.0 — “clay copies” · in development, not released.** The [feature package acceptance table](dev-docs/milestones/v0.2/gaps.md#feature-package-acceptance-at-154a779a-november-13-2026) states, for each of the 11 packages, what is implemented and what is still open.
 
 ## Dashboard
 
@@ -55,7 +57,7 @@ Principles that shaped it (the full list is in the [design record](dev-docs/desi
 | Kubernetes, multi-replica | CRDs in the apiserver | every pod serves from memory, survives apiserver outages | apiserver HA | v0.1.0 |
 | Kubernetes, standalone ("Pi-hole on k3s") | `state.db` on a PVC | none | n/a | v0.1.0 |
 | Compose HA, static twins | identical file-managed config distributed to independent SQLite nodes, dnsdist and keepalived | all nodes | distribute files to every node | v0.1.0 |
-| Compose HA, follower mode | primary's `state.db`, pulled by followers | all nodes | primary, fenced promote | v0.2 |
+| Enrolled SQLite cluster (follower mode) | the primary's `state.db`, installed by its followers ([guide](docs/deploy/sqlite-cluster.md)) | all nodes | primary; followers forward; reviewed promotion | v0.2.0 (in development) |
 | Compose HA, raft | replicated `state.db` | all nodes | any node | v1.0 |
 
 ## Quick start
@@ -104,7 +106,7 @@ and [`deploy/compose/`](deploy/compose/).
 | Release | Name | Headline |
 |---|---|---|
 | v0.1.0 | stone | Resolver with DoT/DoH/DoQ/DoH3, opt-in validating recursion, opt-in DHCPv4 on Linux with dashboard setup, on SQLite (with three-node quorum failover) or Kubernetes (DHCPScope and DHCPLease objects), primary and forward zones with AXFR/IXFR out, IP/CIDR client groups, blocked services and safe search, dashboard and CLI, optional central PostgreSQL for logs and statistics, OIDC + RBAC, CRDs + Helm, compose HA with dnsdist + keepalived |
-| v0.2.0 | clay copies | secondary/stub zones, RFC 2136, [Active Directory DNS replacement preview (unfinished; Windows qualification deferred)](dev-docs/active-directory-dns.md), DNSSEC validation of forwarded answers, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing |
+| v0.2.0 | clay copies | secondary/stub zones, RFC 2136, [Active Directory DNS replacement preview (unfinished; Windows qualification deferred)](dev-docs/active-directory-dns.md), DNSSEC validation of forwarded answers, RPZ feed import, Cloudflare split-horizon sink, UniFi inventory source, follower-mode HA, IAM and Integration CRDs, dnstap and tracing. In development: see the [acceptance table](dev-docs/milestones/v0.2/gaps.md#feature-package-acceptance-at-154a779a-november-13-2026) |
 | v1.0 | temple | DNSSEC signing, catalog zones, RPZ publishing, raft store, ACME, Pi-hole API façade, API freeze |
 
 v0.1.0 includes opt-in DHCPv4 for Linux. In Kubernetes, scopes are
@@ -124,7 +126,7 @@ OIDC, scoped roles, long-term statistics, integrations and the edge need
 the corresponding license entitlements; a free eligible personal key
 unlocks them. Full milestones and planned features are in
 [dev-docs/design-record.md §13](dev-docs/design-record.md#13-roadmap).
-The [v0.2 implementation plan](dev-docs/milestones/v0.2/README.md) reconciles that scope with the current code and groups the remaining work by dependency and acceptance criteria.
+The [v0.2 implementation plan](dev-docs/milestones/v0.2/README.md) reconciles that scope with the code and sets the acceptance criteria; the [acceptance table](dev-docs/milestones/v0.2/gaps.md#feature-package-acceptance-at-154a779a-november-13-2026) records, package by package, what is implemented and what remains before v0.2.0 can be released.
 
 ## Documentation
 

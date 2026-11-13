@@ -12,6 +12,10 @@ record, although both need reconciliation with recent code.
 
 ## Starting point
 
+This section is the October 14 planning baseline and is historical; the
+release candidate, `VERSION` and the PR statements below are not current.
+`VERSION` is now `0.2.0` on the PR branch, which is not released.
+
 The v0.1 implementation is a suitable base for beginning v0.2 development.
 It already has the resolver transports, primary and forward zones, outbound
 transfers and NOTIFY, blocking, the two production store drivers, auth, the
@@ -38,6 +42,14 @@ so keep v0.2 feature commits out of the v0.1 candidate promotion. This review
 does not bump versions or change the release workflow.
 
 ## Implementation progress
+
+**Current state (November 13, 2026).** The
+[feature package acceptance table](gaps.md#feature-package-acceptance-at-154a779a-november-13-2026) is the current statement for each of
+the 11 packages: none is accepted, hosted CI is not green, and the release
+is not ready. The paragraphs below are a dated progress record written as
+the work landed. Sentences that later work overtook are corrected in place
+with the decision that changed them; for anything else, the acceptance table
+and the [completion plan](completion-plan.md) take precedence.
 
 The current [implementation and validation gap ledger](gaps.md) tracks
 remaining work, the completed administration repair batches, and the evidence
@@ -89,9 +101,10 @@ with nullable client-policy overrides, live settings, CLI metadata and dashboard
 editors. Native UDP/TCP and browser acceptance pass; see the
 [response-processing guide](../../../docs/deploy/response-processing.md). The modifier
 compiler includes `$important` and `$badfilter`; the first-party AdGuard corpus
-now runs against a pinned official executable in CI. Native-recursive NTAs,
-remaining resolver follow-ups, scale and real edge packet-cache isolation
-still require the acceptance identified in the follow-up audit.
+now runs against a pinned official executable in CI. Native-recursive NTAs are integrated
+(F29b, `ddc5f2d`). Remaining resolver follow-ups, scale and real edge
+packet-cache isolation still require the acceptance identified in the
+follow-up audit.
 
 The HA foundation includes complete versioned replication images, atomic
 replacement, persisted authority fencing, local follower reads, authenticated
@@ -102,8 +115,12 @@ listeners. Authentication now has a complete-image owner and a leased HTTP
 adapter; strict list preparation requires exact published body digests.
 The real complete-owner builder has restart, follower install, promotion and
 held DNS/HTTP lease acceptance. SQLite production DNS/HTTP mounting now uses the
-complete runtime. Peer transition exclusion, remaining public adapters and
-multi-node partition/rejoin acceptance remain open; this is not consensus.
+complete runtime. Enrolled activation, invitations, join, promotion and
+follower login are mounted (D345, D347, D351, D354, D355, D363), with peer
+authority observation and offline conflict resolution, and followers
+forward typed writes (D368, D375, D376); multi-node partition/rejoin
+acceptance in hosted CI and the HA-OPEN5/HA-OPEN6 findings remain open. This
+is not consensus.
 
 RFC 2136 parsing/planning, prerequisite and ownership checks, bounded private
 zone aggregates, SQLite transactions and Kubernetes immutable-chunk/head CAS
@@ -137,8 +154,9 @@ failure after copy/JSON normalization. Nonempty obligations and all other result
 fields still require exact equality.
 Earlier active-child and mounted publication timeouts remain unattributed; this
 correction does not establish their cause.
-The root runtime assembly is mounted on SQLite DNS listeners; Kubernetes
-barriers and authenticated forwarding remain in progress.
+The root runtime assembly is mounted on SQLite DNS listeners. RFC 2136 on
+Kubernetes uses one UPDATE-owned record set per zone (D366), and enrolled
+followers forward signed UPDATEs to the primary (D381).
 The combined root assembly now runs provider acquisition/publication on every
 role and resets provider floors under the original elected writer before primary
 work. Actual elector, native UPDATE, license replacement, restart/promotion and
@@ -169,12 +187,12 @@ omitted. RPZ feeds remain a separate diagnostic surface.
 Source-entry PATCH now edits inline values, structured switches and URL/ConfigMap
 exclusions in one current object command, including authorization and ownership
 checks on no-ops. Actual mounted acceptance covers publication and restart.
-Query-log allow/deny actions remain gated with the unconverted domain writer.
+Query-log allow/deny actions were restored as current commands (G01, `4db982a`).
 Local cache flushes now require current raw-proof admission before invalidating
 the DNS cache. Exact-name removal includes all resolution scopes and ECS variants,
 counts actual removals, and fences detached fills even when no entry exists.
 Native DNS/HTTP acceptance proves a scoped cached answer is fetched again after
-the flush. Admission remains primary-local; follower-local administration is open.
+the flush. An enrolled follower runs its own cache flush as a node-local command (D368).
 Built-in HTTP DNS queries retain the original authenticated installation through
 the DNS pipeline instead of acquiring a newer bundle. Captured serving messages
 on `/info/messages` use original policy, list and zone availability; process
@@ -195,14 +213,18 @@ cleanup. It also lists and individually revokes the account's browser sessions,
 preserving other sessions and rejecting late cleanup from a replaced session.
 Local CLI login accepts an explicit hidden or stdin authenticator code in its
 single password login. Typed credential commands refuse redirects and automatic
-replay; browser/device CLI sign-in remains open.
+replay. Browser (loopback PKCE) and device CLI sign-in are integrated on
+SQLite (F61a `4fddbce`, F61b `b09fc77`); Kubernetes answers
+`503 cli_login_unavailable` (D374).
 LocalUser creation and exact UID/version administrator password reset now use
 current commands for ordinary API-managed accounts. Reset preserves TOTP and
 deletes exact-owned personal tokens atomically; both flows require the user's
 subsequent password change. Built-in/other-manager targets and remaining IAM
 writers stay separate. Node-local log changes now require current command
-admission and adopt the actual log level before acknowledgment. They remain
-memory-only and primary-local; requested format does not replace the handler.
+admission and adopt the actual log level before acknowledgment. Node-scope
+API changes now persist on SQLite with host precedence, and unsupported node
+writes are refused (F32, `ffcf20e`/`bd47907`); requested format does not
+replace the handler.
 Remaining administrative/source writer integration stays open.
 Manual NOTIFY now enqueues or coalesces the exact committed head under current
 admission, without changing records or serial. Signed mounted acceptance covers
@@ -218,8 +240,9 @@ complete publication and current command commit; identical polls preserve the
 installation. Actual manager/full-builder acceptance covers held old copies and
 same-image runtime replacement. RPZ has
 bounded compilation, per-node AXFR/IXFR/TLS/TSIG acquisition, durable expiry and
-native BIND policy comparisons; selected-policy stage rendering, production
-publication, reporting and UI are in progress.
+native BIND policy comparisons. The adapter is mounted on SQLite and
+Kubernetes (D390) with per-node feed diagnostics (D391); the dashboard feed
+view (DASH-RPZ) is not merged.
 
 Credential identity now binds immutable account UIDs, and service-account
 bootstrap authority resides in private UID-bound PrincipalState objects.
@@ -246,8 +269,9 @@ original deadline checks through complete commands. The provider host now retain
 explicit entitlement continuity, local trust/credential/auth-key policy, and
 follower taint baselines. Root static preparation and key exclusion use actual
 loaded capabilities. Production host/coordinator and browser route mounting now
-use those owners; CLI login, remaining route adoption and
-wider IAM/session acceptance remain open.
+use those owners. CLI login is integrated (F61a, F61b); remaining IAM
+writers (IAM-WRITERS, D396, not merged), route adoption and wider IAM/session
+acceptance remain open.
 
 The integration host and private ledger now fence per-instance execution,
 preserve operation intent and partial receipts, and enforce durable request
@@ -264,9 +288,11 @@ source authority. Strict pure source codecs and stable allocation planning are
 implemented.
 The host retains original observation identity, lease and deadline through the
 current command and preserves committed-but-unpublished receipts as pending.
-Production source transactions, durable allocation storage,
-remaining providers, optional writes, external-zone controls
-and the dashboard remain open.
+The SQLite host is mounted (F09b, `687371f`), the Kubernetes host runs
+Cloudflare publication and UniFi inventory (D384), and Integration objects are
+written through the generic object routes (D400). Optional UniFi writes
+(D401), `external` zones (D402), ClientGroup views (D403) and the dashboard
+Integrations page remain open.
 
 None of these checkpoints closes an entire package prematurely. The remaining
 feature packages and detailed follow-ups below retain their full scope.
