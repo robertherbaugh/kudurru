@@ -76,17 +76,8 @@ func rolloverRequest() *dns.Msg {
 	return q
 }
 
-// captureTCP sends the managed acquisition request over TCP and returns the
-// exact reply frame.
-func captureTCP(t *testing.T, addr string) []byte {
-	t.Helper()
-	raw, err := tryCaptureTCP(addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return raw
-}
-
+// tryCaptureTCP sends the managed acquisition request over TCP and returns
+// the exact reply frame.
 func tryCaptureTCP(addr string) ([]byte, error) {
 	packet, err := rolloverRequest().Pack()
 	if err != nil {
@@ -302,7 +293,9 @@ func replayRollover(t *testing.T, c rolloverCapture) {
 	}
 
 	// K2 appears at T0+1d and is held down for 30 days of same-session
-	// credit, then needs one more observation strictly after the threshold.
+	// credit. The observation that brings the credit to 30 days accepts it
+	// only if it is strictly after FirstSeen plus the hold-down: the one
+	// exactly at the threshold does not, the next one does.
 	main("s2", a(day))
 	expect(s, "K2 published", false, map[string]trustanchors.Status{k1: trustanchors.Valid, k2: trustanchors.AddPending})
 	beforeRestart := s

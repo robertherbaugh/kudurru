@@ -17,7 +17,7 @@
     "knotd -c knot.conf; capture s5",
     "keymgr -c knot.conf . set f2d43bf1bb7663c9fb24306294609d68b49e6bd1 retire=1794559555 remove=1794559556",
     "knotd -c knot.conf; capture s4",
-    "knotd serves each stage on loopback; the reply to the managed acquisition request (RD clear, EDNS 1232 with DO) over TCP is kept as \u003cstage\u003e.wire; rrsig-lifetime 90d; DNSKEY TTL 172800; stages: s1 {K1,ZSK} by K1; s2 {K1,K2,ZSK} by K1; s3 {K1,K2,ZSK} by K2; s4 {K2,ZSK} by K2; s5 {K1+REVOKE,K2,ZSK} by K1+REVOKE and K2 (Knot co-signs s2 and s3 with every published KSK)"
+    "knotd serves each stage on loopback; the reply to the managed acquisition request (RD clear, EDNS 1232 with DO) over TCP is kept as \u003cstage\u003e.wire; rrsig-lifetime 90d; DNSKEY TTL 172800; stages: s1 {K1,ZSK} by K1; s2 {K1,K2,ZSK} by K1 and K2 (Knot signs with K2 once it is published); s3 repeats s2 (the ready/active step changes nothing served); s4 {K2,ZSK} by K2; s5 {K1+REVOKE,K2,ZSK} by K1+REVOKE and K2; four distinct stages"
   ],
   "files": {
     "s1.wire": "f422beb87f28f4a108b458aa5bf0f92edf15f1762fa634c4c04f557c16f70ed4",

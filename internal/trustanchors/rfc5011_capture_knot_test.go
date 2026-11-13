@@ -27,7 +27,11 @@ const (
 // signing under a manual key policy, driving the key timeline with keymgr
 // (generate, set publish/ready/active/revoke/retire/remove), and captures
 // each stage's reply from knotd. Knot signs the DNSKEY set with every
-// published KSK, so its s2 and s3 carry signatures by K1 and K2; the
+// published KSK, K2 included as soon as it is published, so s2 already
+// carries signatures by K1 and K2 and the keymgr ready/active step before s3
+// changes nothing knotd serves: s3 repeats s2's key set and signatures, and
+// Knot yields four distinct stages. Only the BIND capture has "K2 published,
+// signed by K1 only" and "K1 still published, signed by K2 only". The
 // timeline and its assertions are the same. It needs KUDURRU_KNOT=1 and a
 // private Docker daemon in KUDURRU_KNOT_DOCKER_HOST, as the catalog fixture.
 func generateKnotRollover(t *testing.T) rolloverCapture {
@@ -53,13 +57,21 @@ func generateKnotRollover(t *testing.T) rolloverCapture {
 	server := "kudurru-f28-rfc-knotd-" + suffix
 	uid := fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())
 	var steps []string
-	dockerRun := func(args ...string) (string, error) {
-		ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	dockerRunIn := func(parent context.Context, args ...string) (string, error) {
+		ctx, cancel := context.WithTimeout(parent, 60*time.Second)
 		defer cancel()
 		out, err := exec.CommandContext(ctx, docker, append([]string{"-H", socket}, args...)...).CombinedOutput() //nolint:gosec // explicit private test daemon and fixed executable
 		return strings.TrimSpace(string(out)), err
 	}
-	t.Cleanup(func() { _, _ = dockerRun("rm", "-f", server) })
+	dockerRun := func(args ...string) (string, error) { return dockerRunIn(t.Context(), args...) }
+	// Go cancels t.Context() before cleanups run, so the cleanup has its
+	// own bounded context and checks that knotd is really gone.
+	t.Cleanup(func() {
+		_, _ = dockerRunIn(context.Background(), "rm", "-f", server)
+		if left, err := dockerRunIn(context.Background(), "ps", "-aq", "--filter", "name=^"+server+"$"); err != nil || left != "" {
+			t.Errorf("knotd container %s was not removed: %q %v", server, left, err)
+		}
+	})
 	keymgr := func(args ...string) string {
 		t.Helper()
 		// keymgr opens the KASP database exclusively; knotd is stopped here.
@@ -177,7 +189,11 @@ zone:
 	c.provenance = rolloverProvenance{
 		Signer: "Knot DNS online signing (manual policy, keymgr timeline)", Authority: version + "; " + knotImage,
 		T0: t0, Captured: time.Now().UTC().Truncate(time.Second), SeedDS: seed,
-		Steps: append(steps, fmt.Sprintf("knotd serves each stage on loopback; the reply to the managed acquisition request (RD clear, EDNS 1232 with DO) over TCP is kept as <stage>.wire; rrsig-lifetime 90d; DNSKEY TTL %d; stages: %s (Knot co-signs s2 and s3 with every published KSK)", rolloverTTL, stageSummary)),
+		Steps: append(steps, fmt.Sprintf("knotd serves each stage on loopback; the reply to the managed acquisition request (RD clear, EDNS 1232 with DO) over TCP is kept as <stage>.wire; rrsig-lifetime 90d; DNSKEY TTL %d; stages: %s", rolloverTTL, knotStageSummary)),
 	}
 	return c
 }
+
+// knotStageSummary names what each Knot stage publishes and who signs it.
+// Knot signs with every published KSK, so s3 repeats s2.
+const knotStageSummary = "s1 {K1,ZSK} by K1; s2 {K1,K2,ZSK} by K1 and K2 (Knot signs with K2 once it is published); s3 repeats s2 (the ready/active step changes nothing served); s4 {K2,ZSK} by K2; s5 {K1+REVOKE,K2,ZSK} by K1+REVOKE and K2; four distinct stages"
