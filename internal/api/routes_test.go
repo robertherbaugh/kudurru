@@ -200,12 +200,13 @@ func f(s *Server) {
 
 // permissionCheckCallees are the functions and methods whose adjacent
 // string-literal resource and verb arguments are authorization checks:
-// Server.require, Server.allowed and Server.authorize (internal/api),
+// Server.require, Server.allowed, Server.listAllowed and Server.authorize
+// (internal/api),
 // zoneRequirement (zone command plans), servingHTTP.permission and
 // servingHTTPCluster (cmd/kudurru). A method is matched by its name on any
 // receiver.
 var permissionCheckCallees = map[string]bool{
-	"require": true, "allowed": true, "authorize": true, "zoneRequirement": true,
+	"require": true, "allowed": true, "listAllowed": true, "authorize": true, "zoneRequirement": true,
 	"permission": true, "servingHTTPCluster": true,
 }
 
