@@ -388,6 +388,10 @@ export interface AuthStatus {
   providers: { id: string; displayName: string }[] | null;
   hasDefaultCredentials: boolean;
   session?: { idleTimeout: string; lifetime: string };
+  /** "follower" on an enrolled SQLite follower, which offers local login only (D368). */
+  role?: string;
+  /** The primary, set together with role. */
+  primary?: string;
 }
 
 /** Who owns a token (api/internalkinds TokenOwner). */

@@ -13,7 +13,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ApiError } from '../api/client';
-import { qk, useApi, useApiContext } from '../api/context';
+import { qk, useApi, useApiContext, useSignOutNotice } from '../api/context';
 import { useBranding } from '../lib/branding';
 import { BrandLogo } from '../components/BrandLogo';
 import { errorText } from '../components/Feedback';
@@ -33,6 +33,8 @@ export function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const oidcError = loc.search.get('error');
+  const signOutNotice = useSignOutNotice();
+  const follower = status.data?.role === 'follower';
 
   const localEnabled = status.data ? status.data.localLogin && status.data.localLoginMode !== 'disabled' : true;
   const providers = status.data?.providers ?? [];
@@ -52,6 +54,7 @@ export function LoginPage() {
       const me = await api.auth.login(username, password, totpCode || undefined);
       setPassword('');
       setCsrf(me.csrf);
+      qc.setQueryData(qk.signOutNotice, null);
       qc.setQueryData(qk.me, me);
       await qc.invalidateQueries({ queryKey: qk.authStatus });
     } catch (err) {
@@ -75,6 +78,16 @@ export function LoginPage() {
               status="warning"
               title="Default credentials are active"
               description="The bootstrap admin still has its first-boot password. Sign in and change it, or run `kudurru admin reset-password` on the host."
+            />
+          ) : null}
+          {signOutNotice ? (
+            <Banner status="warning" title="Sign-out not confirmed" description={signOutNotice} isDismissable onDismiss={() => qc.setQueryData(qk.signOutNotice, null)} />
+          ) : null}
+          {follower ? (
+            <Banner
+              status="info"
+              title="Single sign-on runs on the primary"
+              description={`This node is a follower${status.data?.primary ? ` of ${status.data.primary}` : ''} and offers local sign-in only. To sign in with an identity provider, open the dashboard on ${status.data?.primary ?? 'the primary'}.`}
             />
           ) : null}
           {oidcError ? <Banner status="error" title="Single sign-on failed" description={oidcError} /> : null}

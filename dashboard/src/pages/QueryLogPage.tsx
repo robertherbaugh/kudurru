@@ -13,7 +13,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { qk, useApi, useCan, useScopeParams } from '../api/context';
+import { qk, useApi, useCan, usePrimaryOnly, useScopeParams } from '../api/context';
 import { useFeature } from '../api/hooks';
 import type { QueryFilter, QueryRow, ScopeInfo, StatusClass, UnblockRequest } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
@@ -153,7 +153,9 @@ export default function QueryLogPage() {
     staleTime: 60_000,
   });
   const byDomain = useMemo(() => requestsByDomain(requests.data?.items ?? []), [requests.data]);
-  const canWrite = can('blocklists', 'write');
+  const primaryOnly = usePrimaryOnly();
+  const actTip = can('blocklists', 'write') ? primaryOnly('createAllowlistEntries') : 'Needs blocklists.write';
+  const canWrite = !actTip;
   const unblock = useCallback((r: QueryRow) => unblockLink(r.domain, byDomain, canWrite), [byDomain, canWrite]);
 
   const anyFilter = FILTER_KEYS.some((k) => sp.get(k));
@@ -272,6 +274,7 @@ export default function QueryLogPage() {
         loadingMore={!liveOnly && q.isFetchingNextPage}
         onLoadMore={loadMore}
         canAct={canWrite}
+        actReason={actTip}
         onAction={(row, a) => action.mutate({ row, action: a })}
         unblockLink={unblock}
       />

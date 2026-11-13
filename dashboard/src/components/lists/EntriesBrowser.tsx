@@ -23,7 +23,7 @@ import { VStack } from '@astryxdesign/core/VStack';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
 import { ApiError } from '../../api/client';
-import { qk, useApi } from '../../api/context';
+import { qk, useApi, usePrimaryOnly } from '../../api/context';
 import type { BlockList, ListEntriesPatch, ListEntry, SourceEntriesPage } from '../../api/types';
 import { actionPath } from '../../lib/domains';
 import { formatDateTime, formatExact, formatRelative } from '../../lib/format';
@@ -61,8 +61,12 @@ function plural(n: number, one: string, many: string): string {
   return `${formatExact(n)} ${n === 1 ? one : many}`;
 }
 
-export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowserProps) {
+export function EntriesBrowser({ list, index, editable: listEditable, onClose }: EntriesBrowserProps) {
   const api = useApi();
+  // Entry switches and inline additions are a source-entries command, which
+  // an enrolled follower does not forward (D368).
+  const followerTip = usePrimaryOnly()('patchSourceEntries');
+  const editable = listEditable && !followerTip;
   const qc = useQueryClient();
   const notify = useNotify();
   const titleId = useId();
@@ -396,7 +400,7 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
                     value={r.enabled}
                     isLoading={pending.has(r.value)}
                     isDisabled={!editable || pending.has(r.value)}
-                    disabledMessage={editable ? undefined : 'Read-only: the list is managed elsewhere or you lack blocklists.write'}
+                    disabledMessage={editable ? undefined : (followerTip ?? 'Read-only: the list is managed elsewhere or you lack blocklists.write')}
                     onChange={(on) => patch.mutate(on ? { enable: [r.value] } : { disable: [r.value] })}
                   />
                 ),

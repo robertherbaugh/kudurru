@@ -18,7 +18,7 @@ import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useEffect, useState } from 'react';
-import { qk, useApi, useCan } from '../api/context';
+import { qk, useApi, useCan, useCannotReason } from '../api/context';
 import type { BlockList, BlockResponse, Condition, ListSource, Policy } from '../api/types';
 import { DurationField } from '../components/fields/DurationField';
 import { EnumSelect } from '../components/fields/EnumSelect';
@@ -72,6 +72,7 @@ export default function ListDetailPage({ params }: PageProps) {
   const name = params.name ?? '';
   const api = useApi();
   const can = useCan();
+  const cannot = useCannotReason();
   const qc = useQueryClient();
   const notify = useNotify();
   const navigate = useNavigate();
@@ -235,7 +236,7 @@ export default function ListDetailPage({ params }: PageProps) {
         actions={
           <>
             {sources.some((s) => s.url) ? (
-              <Button label="Refresh now" variant="secondary" isDisabled={!can('blocklists', 'refresh') || !enabled} tooltip={enabled ? undefined : 'Disabled lists are not fetched'} isLoading={refresh.isPending} onClick={() => refresh.mutate()} />
+              <Button label="Refresh now" variant="secondary" isDisabled={!can('blocklists', 'refresh') || !enabled} tooltip={enabled ? cannot('blocklists', 'refresh') : 'Disabled lists are not fetched'} isLoading={refresh.isPending} onClick={() => refresh.mutate()} />
             ) : null}
             <Button label="View as YAML" variant="ghost" onClick={() => setYaml(true)} />
             {own.editable ? <Button label="Delete list" variant="ghost" isDisabled={!can('blocklists', 'delete')} onClick={() => setDeletingList(true)} /> : null}

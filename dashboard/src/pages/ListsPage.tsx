@@ -13,7 +13,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { qk, useApi, useCan } from '../api/context';
+import { qk, useApi, useCan, useCannotReason, usePrimaryOnly } from '../api/context';
 import type { BlockList, ListSource } from '../api/types';
 import { ErrorBanner, useNotify } from '../components/Feedback';
 import { TextField } from '../components/fields/TextField';
@@ -92,6 +92,9 @@ function describeSources(sources: ListSource[]): string[] {
 export default function ListsPage() {
   const api = useApi();
   const can = useCan();
+  const cannot = useCannotReason();
+  const primaryOnly = usePrimaryOnly();
+  const addDomainsTip = can('blocklists', 'write') ? primaryOnly('createAllowlistEntries') : 'Needs blocklists.write';
   const notify = useNotify();
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
@@ -127,10 +130,10 @@ export default function ListsPage() {
       onSaved={pollStatus}
       detailPath={listPath}
       wizard={ListWizardDialog}
-      headerActions={<Button label="Add domains" variant="secondary" isDisabled={!can('blocklists', 'write')} tooltip={can('blocklists', 'write') ? 'Add to the Allowlist or Denylist' : 'Needs blocklists.write'} onClick={() => setAdding(true)} />}
+      headerActions={<Button label="Add domains" variant="secondary" isDisabled={!!addDomainsTip} tooltip={addDomainsTip ?? 'Add to the Allowlist or Denylist'} onClick={() => setAdding(true)} />}
       rowActions={(l) =>
         l.spec.sources.some((s) => s.url && sourceEnabled(s)) ? (
-          <Button label="Refresh" size="sm" variant="ghost" isDisabled={!can('blocklists', 'refresh')} isLoading={refresh.isPending && refresh.variables === l} onClick={() => refresh.mutate(l)} />
+          <Button label="Refresh" size="sm" variant="ghost" isDisabled={!can('blocklists', 'refresh')} tooltip={cannot('blocklists', 'refresh')} isLoading={refresh.isPending && refresh.variables === l} onClick={() => refresh.mutate(l)} />
         ) : null
       }
       columns={[

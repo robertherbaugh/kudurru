@@ -6,7 +6,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
-import { qk, useApi, useCan, useSession } from '../../api/context';
+import { qk, useApi, useCan, usePrimaryOnlyPermission, useSession } from '../../api/context';
 import type { ExternalUser, Me } from '../../api/types';
 import { FormDialog } from '../FormDialog';
 import { Panel } from '../layout/Page';
@@ -33,6 +33,7 @@ export function ExternalUsersPanel() {
 function ExternalAccounts({ me }: { me: Me }) {
   const api = useApi();
   const can = useCan();
+  const primaryOnly = usePrimaryOnlyPermission();
   const qc = useQueryClient();
   const scope = useId();
   const alive = useRef(false);
@@ -94,8 +95,8 @@ function ExternalAccounts({ me }: { me: Me }) {
     { key: 'uid', header: 'Account UID', width: proportional(2), renderCell: (row) => <Text type="code">{row.uid}</Text> },
     { key: 'disabled', header: 'State', renderCell: (row) => <Text>{row.disabled ? 'Disabled' : 'Enabled'}</Text> },
     { key: 'actions', header: 'Actions', width: proportional(2), renderCell: (row) => <HStack gap={2}>
-      <Button label={row.disabled ? 'Enable account' : 'Disable account'} size="sm" variant="ghost" isDisabled={!can('users', 'write') || pending || q.isFetching || needsRead} onClick={() => choose(row, row.disabled ? 'enable' : 'disable')} />
-      <Button label="Log out everywhere" size="sm" variant="ghost" isDisabled={!can('users', 'write') || pending || q.isFetching || needsRead} onClick={() => choose(row, 'logout')} />
+      <Button label={row.disabled ? 'Enable account' : 'Disable account'} size="sm" variant="ghost" isDisabled={!can('users', 'write') || pending || q.isFetching || needsRead} tooltip={primaryOnly('users', 'write')} onClick={() => choose(row, row.disabled ? 'enable' : 'disable')} />
+      <Button label="Log out everywhere" size="sm" variant="ghost" isDisabled={!can('users', 'write') || pending || q.isFetching || needsRead} tooltip={primaryOnly('users', 'write')} onClick={() => choose(row, 'logout')} />
     </HStack> },
   ];
   const unavailable = q.error instanceof ApiError && q.error.key === 'external_users_unavailable';

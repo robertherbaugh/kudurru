@@ -22,6 +22,7 @@ import { BrandLogo } from './BrandLogo';
 import { SidebarStatus } from './SidebarStatus';
 import { DefaultCredentialsBanner } from './DefaultCredentialsBanner';
 import { LicenseBanner } from './LicenseBanner';
+import { FollowerBanner } from './FollowerBanner';
 import { UnblockBadge } from './UnblockBadge';
 import { Page, PageHeader } from './layout/Page';
 
@@ -139,6 +140,7 @@ export function Shell() {
     <AppShell variant="section" sideNav={<Navigation navKey={match?.route.navKey} />} topNav={top} banner={
         <>
           <DefaultCredentialsBanner />
+          <FollowerBanner />
           <LicenseBanner />
         </>
       } contentPadding={0}>

@@ -1,12 +1,12 @@
 // The application root: providers (query cache, API client, appearance,
 // router, node scope, toasts) and the session gate. Signed-out visitors get
 // the login page; everyone else gets the shell with the routed pages.
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LinkProvider } from '@astryxdesign/core/Link';
 import { LayerProvider } from '@astryxdesign/core/Layer';
 import { useState, type ReactNode } from 'react';
 import { ApiError } from './api/client';
-import { ApiProvider, qk, ScopeProvider, useSession } from './api/context';
+import { ApiProvider, qk, scheduleFollowerRefetch, ScopeProvider, useSession } from './api/context';
 import { apiBaseFor } from './lib/basePath';
 import { Link, RouterProvider } from './lib/router';
 import { BrandingProvider } from './lib/branding';
@@ -17,7 +17,9 @@ import { FullPageSpinner } from './components/Feedback';
 
 /** A QueryClient with defaults suited to a dashboard polling one API. */
 export function makeQueryClient(): QueryClient {
-  return new QueryClient({
+  const client: QueryClient = new QueryClient({
+    // A follower serves a forwarded change after its next pull (D368).
+    mutationCache: new MutationCache({ onSuccess: () => scheduleFollowerRefetch(client) }),
     defaultOptions: {
       queries: {
         staleTime: 5_000,
@@ -30,6 +32,7 @@ export function makeQueryClient(): QueryClient {
       mutations: { retry: false },
     },
   });
+  return client;
 }
 
 /** Providers shared by the app and the component tests. */

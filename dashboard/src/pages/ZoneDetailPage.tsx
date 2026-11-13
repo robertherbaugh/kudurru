@@ -14,7 +14,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { qk, useApi, useCan } from '../api/context';
+import { qk, useApi, useCan, useCannotReason } from '../api/context';
 import type { ZoneImportResult, ZoneRecord } from '../api/types';
 import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
 import { TextAreaField, TextField } from '../components/fields/TextField';
@@ -152,6 +152,7 @@ function ZoneDetail({ zone }: { zone: string }) {
   const api = useApi();
   const navigate = useNavigate();
   const can = useCan();
+  const cannot = useCannotReason();
   const qc = useQueryClient();
   const notify = useNotify();
   const [editing, setEditing] = useState<ZoneRecord | 'new' | null>(null);
@@ -311,7 +312,7 @@ function ZoneDetail({ zone }: { zone: string }) {
                 <Button label="Add record" variant="primary" isDisabled={!zoneEditable || !canWrite} onClick={() => setEditing('new')} />
                 <Button label="Import BIND" variant="secondary" isDisabled={!zoneEditable || !canWrite} onClick={() => setImporting(true)} />
                 <Button label="Export" variant="secondary" onClick={() => setExporting(true)} />
-                <Button label="Send NOTIFY" variant="ghost" isDisabled={!can('zones', 'transfer')} isLoading={notifyM.isPending} onClick={() => notifyM.mutate()} />
+                <Button label="Send NOTIFY" variant="ghost" isDisabled={!can('zones', 'transfer')} tooltip={cannot('zones', 'transfer')} isLoading={notifyM.isPending} onClick={() => notifyM.mutate()} />
               </>
             ) : null}
             <Button

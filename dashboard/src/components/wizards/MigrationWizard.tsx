@@ -6,7 +6,7 @@ import { Table, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useApi, useCan } from '../../api/context';
+import { useApi, useCan, usePrimaryOnly } from '../../api/context';
 import type { AnyObject, MigrationPlan, MigrationRequest, MigrationRun, DNSZone } from '../../api/types';
 import { useNavigate } from '../../lib/router';
 import { ErrorBanner, errorText } from '../Feedback';
@@ -136,12 +136,14 @@ function MigrationWizard({ onImported }: { onImported: (run: MigrationRun) => vo
 
 export function MigrationImport() {
   const can = useCan();
+  const primaryOnly = usePrimaryOnly();
+  const importTip = can('settings', 'write') ? primaryOnly('previewMigration') : 'Needs settings.write';
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   return (
     <>
       <Panel title="Move from another DNS server" headingId="migration-title" description="Connect to Pi-hole v6 or Technitium, preview your configuration, then import lists, groups, supported zones and upstreams directly.">
-        <Button label="Import from DNS server" variant="primary" isDisabled={!can('settings', 'write')} onClick={() => setOpen(true)} />
+        <Button label="Import from DNS server" variant="primary" isDisabled={!!importTip} tooltip={importTip} onClick={() => setOpen(true)} />
         <WizardDialog isOpen={open} onClose={() => setOpen(false)} title="Import from DNS server" what="migration">
           <MigrationWizard onImported={(r) => { setOpen(false); navigate(`/tools/migrations/${encodeURIComponent(r.id)}`); }} />
         </WizardDialog>

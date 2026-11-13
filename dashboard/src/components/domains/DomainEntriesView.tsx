@@ -18,7 +18,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { Toolbar } from '@astryxdesign/core/Toolbar';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { qk, useApi, useCan } from '../../api/context';
+import { qk, useApi, useCan, usePrimaryOnly } from '../../api/context';
 import type { BlockList, ClientGroup, DomainAction, DomainEntriesPage, DomainEntriesQuery, DomainEntry, DomainListInfo, DomainUnattached } from '../../api/types';
 import { ACTION_LABEL, ACTION_OPTIONS, actionPath, ENABLED_OPTIONS, entriesWord, KIND_OPTIONS, refField, refPath, shortRef, TYPE_OPTIONS, uiListAction } from '../../lib/domains';
 import { formatExact } from '../../lib/format';
@@ -58,7 +58,11 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
   const qc = useQueryClient();
   const notify = useNotify();
   const invalidate = useInvalidateDomains();
-  const canWrite = can('blocklists', 'write');
+  const primaryOnly = usePrimaryOnly();
+  // Every change on this page is an allow/deny command, which an enrolled
+  // follower does not forward (D368).
+  const writeTip = can('blocklists', 'write') ? primaryOnly('patchAllowlistEntry') : 'Needs blocklists.write';
+  const canWrite = !writeTip;
   const [sp, setParams] = useSearchParams();
   const key = action ?? 'all';
 
@@ -254,7 +258,6 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
   const unattached = q.data?.unattached ?? [];
   const offLists = lists.filter((l) => !l.enabled);
   const first = page * PAGE + 1;
-  const writeTip = canWrite ? undefined : 'Needs blocklists.write';
 
   return (
     <Page>
@@ -351,6 +354,7 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
           entries={items}
           showAction={!action}
           canWrite={canWrite}
+          writeReason={writeTip}
           selected={selected}
           setSelected={setSelected}
           pending={pending}

@@ -16,7 +16,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { VStack } from '@astryxdesign/core/VStack';
 import { useQuery } from '@tanstack/react-query';
 import { useId, useState } from 'react';
-import { qk, useApi, useCan, useScopeParams } from '../api/context';
+import { qk, useApi, useCan, useCannotReason, useScopeParams } from '../api/context';
 import type { ScopeParams } from '../api/endpoints';
 import { useDeleteUnblock, useFeature } from '../api/hooks';
 import type { QueryFilter, UnblockAllow, UnblockDecision, UnblockRequest } from '../api/types';
@@ -57,6 +57,7 @@ function RequestDetailView({ params }: PageProps) {
   const name = params.name ?? '';
   const api = useApi();
   const can = useCan();
+  const cannot = useCannotReason();
   const notify = useNotify();
   const navigate = useNavigate();
   const [dialog, setDialog] = useState<'approve' | 'deny' | 'delete' | null>(null);
@@ -75,7 +76,7 @@ function RequestDetailView({ params }: PageProps) {
   if (!r) return <Loading />;
 
   const canDecide = can('unblockrequests', 'decide');
-  const decideTip = canDecide ? undefined : 'Needs unblockrequests.decide';
+  const decideTip = cannot('unblockrequests', 'decide');
   const remove = () =>
     del.mutate(
       { namespace: ns, name },
@@ -125,7 +126,7 @@ function RequestDetailView({ params }: PageProps) {
               label="Delete"
               variant="destructive"
               isDisabled={!can('unblockrequests', 'delete')}
-              tooltip={can('unblockrequests', 'delete') ? undefined : 'Needs unblockrequests.delete'}
+              tooltip={cannot('unblockrequests', 'delete')}
               onClick={() => setDialog('delete')}
             />
           </>

@@ -1337,6 +1337,20 @@ term, a hint and no `Retry-After`. Nothing is sent and no handler runs.
 `GET /settings/_schema` marks a setting read-only when its PATCH route would
 be refused.
 
+The dashboard uses that report as a capability, as it uses `readOnly` in
+static mode (`useClusterRole` in `dashboard/src/api/context.tsx`,
+`dashboard/src/lib/follower.ts`). `useCan` refuses a permission whose every
+mutating operation is outside the two lists, from a table of the
+mutation-only permissions and their operation IDs that a test keeps equal to
+the OpenAPI document; a permission that also gates a read is never refused as
+a whole. An action under a mixed permission (an allow or deny entry under
+`blocklists.write`, an import under `settings.write`) asks `usePrimaryOnly`
+with its own operation ID. The disabled control's tooltip names the primary,
+a banner above every page says which changes go there, and a successful
+mutation on a follower is followed by one more refetch after six seconds, the
+follower's pull interval plus a margin. Until `/cluster` answers, nothing is
+gated and the server decides.
+
 The command seams repeat the answer for anything that reaches them on a
 follower's request without passing that middleware (a route with a safe method
 that still has an effect, or a handler called outside the API router):

@@ -365,6 +365,25 @@ marks the node-scope settings `readOnly`, because `PATCH /node/config` is not
 forwarded; cluster settings stay writable there, because `PATCH /settings` is
 forwarded to the primary.
 
+The dashboard reads those lists from the node it is served by. On a follower
+it shows a banner above every page that names the primary and says which
+changes are sent there, and the Nodes page shows the node's role, the primary
+and how many kinds of change are forwarded or run locally. A control whose
+change needs the primary is disabled, and its tooltip names the primary: the
+allow and deny lists and a block list's source entries, list refresh, Send
+NOTIFY, imports, authenticator setup, external account and authenticator
+recovery commands, and unblock decisions. Everything a follower forwards
+stays available, and about six seconds after a forwarded change the dashboard
+reads its pages again, because the follower serves the primary's commit only
+after its next pull. A refusal that still reaches the dashboard (for example
+from an older page) is shown as "Needs the primary" with the primary's name,
+and `503 completion_unknown` as "Outcome unknown", asking you to reload and
+check before you try again. When a sign-out cannot be confirmed (the follower
+could not reach the primary, or its answer was lost), the dashboard still
+signs out of the browser and the login page says that the session may stay
+valid until it expires. The login page of a follower says that single
+sign-on runs on the primary.
+
 On a follower the block page keeps explaining a block, but it shows "This
 server cannot take a request for access right now" in place of the request
 form, because only the primary stores unblock requests. A request that the

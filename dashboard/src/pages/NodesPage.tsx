@@ -169,7 +169,8 @@ export default function NodesPage() {
       key: 'leader',
       header: 'Role',
       width: proportional(1, { minWidth: 90 }),
-      renderCell: (n) => (n.leader ? <Badge variant="blue" label="leader" /> : <Text color="secondary">follower</Text>),
+      // The SQLite driver names write authority "primary" (GET /cluster role).
+      renderCell: (n) => (n.leader ? <Badge variant="blue" label={c?.role ? 'primary' : 'leader'} /> : <Text color="secondary">follower</Text>),
     },
     { key: 'snapshotAge', header: 'Snapshot age', width: proportional(1.35, { minWidth: 148 }), renderCell: (n) => <Text>{n.snapshotAge ?? '–'}</Text> },
     {
@@ -197,8 +198,9 @@ export default function NodesPage() {
             <>
               <Badge variant="neutral" label={`store ${c.driver}`} />
               <Text type="supporting" color="primary">
-                leader {c.leader || 'none'}
+                {c.role ? `primary ${c.primary || c.leader || 'none'}` : `leader ${c.leader || 'none'}`}
               </Text>
+              {c.role ? <Text type="supporting">this node: {c.role}</Text> : null}
               {c.readOnly ? <Badge variant="warning" label="read-only" /> : null}
             </>
           ) : null
@@ -222,12 +224,26 @@ export default function NodesPage() {
           {c ? (
             <MetadataList columns="multi">
               <MetadataListItem label="Store">{c.driver}</MetadataListItem>
-              <MetadataListItem label="Leader">{c.leader || 'none'}</MetadataListItem>
+              {c.role ? (
+                <>
+                  <MetadataListItem label="This node">{c.role}</MetadataListItem>
+                  <MetadataListItem label="Primary">{c.primary || 'unknown'}</MetadataListItem>
+                </>
+              ) : (
+                <MetadataListItem label="Leader">{c.leader || 'none'}</MetadataListItem>
+              )}
               <MetadataListItem label="Nodes">{c.nodes}</MetadataListItem>
               <MetadataListItem label="Epoch">
                 <Text type="code">{c.epoch}</Text>
               </MetadataListItem>
-              <MetadataListItem label="Object writes">{c.readOnly ? 'refused (objects are file-managed on every node)' : 'accepted'}</MetadataListItem>
+              <MetadataListItem label="Object writes">
+                {c.readOnly ? 'refused (objects are file-managed on every node)' : c.primaryRequired ? `forwarded to ${c.primary || 'the primary'}` : 'accepted'}
+              </MetadataListItem>
+              {c.primaryRequired ? (
+                <MetadataListItem label="Changes on this follower">
+                  {`${c.forwardedOperations?.length ?? 0} kinds of change are forwarded to ${c.primary || 'the primary'} and ${c.localOperations?.length ?? 0} run on this node; every other change answers primary_required and is made on ${c.primary || 'the primary'}`}
+                </MetadataListItem>
+              ) : null}
               {c.clusterID ? (
                 <MetadataListItem label="Cluster ID">
                   <Text type="code" size="sm">

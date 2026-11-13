@@ -2,11 +2,12 @@
 // GET /auth/me (principal, permission matrix, CSRF token) and the node
 // scope every stats/log call carries.
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { ApiClient, ApiError } from './client';
 import { endpoints, type Endpoints, type ScopeParams } from './endpoints';
-import type { Me } from './types';
+import type { ClusterInfo, Me } from './types';
 import { browserLogoutContinuation } from './logout';
+import { clusterRole, needsPrimary, permissionNeedsPrimary, primaryOnlyReason, type ClusterRole } from '../lib/follower';
 
 interface ApiContextValue {
   client: ApiClient;
@@ -58,6 +59,8 @@ export function useApi(): Endpoints {
 /** Query keys in one place so mutations invalidate the right caches. */
 export const qk = {
   me: ['auth', 'me'] as const,
+  /** Why the last sign-out could not be confirmed; shown on the login page. */
+  signOutNotice: ['auth', 'signOutNotice'] as const,
   authStatus: ['auth', 'status'] as const,
   tokens: ['auth', 'tokens'] as const,
   objects: (kind: string) => ['objects', kind] as const,
@@ -112,26 +115,107 @@ export function useSession() {
   return q;
 }
 
-/** Whether the session may perform verb on resource (cluster scope). */
+/** Whether the session may perform verb on resource (cluster scope). On a
+ * static host and on an enrolled follower it also says whether this node
+ * carries the change out (a follower refuses a permission whose every
+ * operation needs the primary); the API independently decides each request. */
 export function useCan(): (resource: string, verb: string) => boolean {
   const { data } = useSession();
   const readOnly = useStaticMode();
+  const role = useClusterRole();
   return useCallback(
     (resource: string, verb: string) => {
       if (!data) return false;
-      if (readOnly && ['write', 'delete', 'decide', 'import', 'sync', 'act'].includes(verb)) return false;
+      if (readOnly && STATIC_VERBS.includes(verb)) return false;
+      if (permissionNeedsPrimary(role, resource, verb)) return false;
       return can(data, resource, verb);
     },
-    [data, readOnly],
+    [data, readOnly, role],
   );
+}
+
+const STATIC_VERBS = ['write', 'delete', 'decide', 'import', 'sync', 'act'];
+
+/**
+ * Why useCan refuses resource.verb, for a disabled control's tooltip:
+ * undefined when it is allowed.
+ */
+export function useCannotReason(): (resource: string, verb: string) => string | undefined {
+  const { data } = useSession();
+  const readOnly = useStaticMode();
+  const role = useClusterRole();
+  return useCallback(
+    (resource: string, verb: string) => {
+      if (!data || !can(data, resource, verb)) return `Needs ${resource}.${verb}`;
+      if (readOnly && STATIC_VERBS.includes(verb)) return 'Read-only in static mode';
+      if (permissionNeedsPrimary(role, resource, verb)) return primaryOnlyReason(role.primary);
+      return undefined;
+    },
+    [data, readOnly, role],
+  );
+}
+
+/** The follower half of useCannotReason: the tooltip when only the primary
+ * carries resource.verb out, undefined otherwise (also without the
+ * permission, so a control can keep its own wording for that case). */
+export function usePrimaryOnlyPermission(): (resource: string, verb: string) => string | undefined {
+  const role = useClusterRole();
+  return useCallback((resource: string, verb: string) => (permissionNeedsPrimary(role, resource, verb) ? primaryOnlyReason(role.primary) : undefined), [role]);
+}
+
+/** GET /cluster, shared by the capability hooks (one request per minute). */
+function useClusterInfo() {
+  const api = useApi();
+  const { data: session } = useSession();
+  return useQuery({ queryKey: qk.cluster, queryFn: () => api.cluster.info(), enabled: !!session, staleTime: 60_000, retry: false });
 }
 
 /** Host mode is a UI capability; the API independently rejects each mutation. */
 export function useStaticMode(): boolean {
-  const api = useApi();
-  const { data: session } = useSession();
-  const cluster = useQuery({ queryKey: qk.cluster, queryFn: () => api.cluster.info(), enabled: !!session, staleTime: 60_000, retry: false });
-  return cluster.data?.readOnly === true;
+  return useClusterInfo().data?.readOnly === true;
+}
+
+/** This node's replication role, its primary and what a follower forwards
+ * (D368). Until /cluster answers, nothing is gated and the server decides. */
+export function useClusterRole(): ClusterRole {
+  const data = useClusterInfo().data;
+  return useMemo(() => clusterRole(data), [data]);
+}
+
+/** How long after a change on a follower the dashboard reads again: the
+ * follower installs its primary's commits at its next pull (every 5 s by
+ * default, internal/cluster/replica/coordinator.go), so the immediate refetch
+ * of a forwarded write can still show the old state. */
+export const FOLLOWER_SYNC_MS = 6_000;
+
+const followerTimers = new WeakMap<QueryClient, ReturnType<typeof setTimeout>>();
+
+/**
+ * Called for every successful mutation: on an enrolled follower, refetch
+ * the active queries once more after FOLLOWER_SYNC_MS (one timer per client;
+ * a later change restarts it). Elsewhere it does nothing.
+ */
+export function scheduleFollowerRefetch(client: QueryClient): void {
+  if (client.getQueryData<ClusterInfo>(qk.cluster)?.primaryRequired !== true) return;
+  const pending = followerTimers.get(client);
+  if (pending !== undefined) clearTimeout(pending);
+  followerTimers.set(
+    client,
+    setTimeout(() => {
+      followerTimers.delete(client);
+      void client.invalidateQueries({ predicate: (q) => !sameKey(q.queryKey, qk.me) && !sameKey(q.queryKey, qk.signOutNotice) });
+    }, FOLLOWER_SYNC_MS),
+  );
+}
+
+/**
+ * For an action that one API operation carries out: the tooltip sentence
+ * when this node is a follower that answers it with 503 primary_required,
+ * undefined when the node runs or forwards it.
+ */
+export function usePrimaryOnly(): (operationId: string) => string | undefined {
+  const role = useClusterRole();
+  return useCallback((operationId: string) => (needsPrimary(role, operationId) ? primaryOnlyReason(role.primary) : undefined), [role]);
 }
 
 export function can(me: Me, resource: string, verb: string): boolean {
@@ -149,25 +233,53 @@ export function canAnyScope(me: Me, resource: string, verb: string): boolean {
   });
 }
 
+/**
+ * Signs out of the browser session. The local session ends either way (the
+ * server clears the cookie also when it cannot revoke the session, as an
+ * enrolled follower does when its primary is unreachable); when the server
+ * refused or could not confirm the sign-out, its explanation is kept for the
+ * login page, because the session may stay valid until it expires.
+ */
 export function useSignOut(): () => Promise<void> {
   const { api, client, setCsrf } = useApiContext();
   const qc = useQueryClient();
   return useCallback(async () => {
     let continuation: string | undefined;
+    let failure: unknown;
     try {
       const result = await api.auth.browserLogout();
       continuation = browserLogoutContinuation(client.baseUrl, result?.continuePath, window.location.origin);
-    } finally {
-      await qc.cancelQueries();
-      setCsrf(undefined);
-      // Signed out first, so the session gate renders the login page; then
-      // drop every other cached answer. qc.clear() would also remove the
-      // null session and leave the gate on stale data.
-      qc.setQueryData(qk.me, null);
-      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== qk.me[0] || q.queryKey[1] !== qk.me[1] });
+    } catch (err) {
+      failure = err;
     }
+    await qc.cancelQueries();
+    setCsrf(undefined);
+    qc.setQueryData(qk.signOutNotice, failure === undefined ? null : signOutNotice(failure));
+    // Signed out first, so the session gate renders the login page; then
+    // drop every other cached answer. qc.clear() would also remove the
+    // null session and leave the gate on stale data.
+    qc.setQueryData(qk.me, null);
+    qc.removeQueries({ predicate: (q) => !sameKey(q.queryKey, qk.me) && !sameKey(q.queryKey, qk.signOutNotice) });
     if (continuation) window.location.assign(continuation);
   }, [api, client, qc, setCsrf]);
+}
+
+function sameKey(a: readonly unknown[], b: readonly unknown[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+function signOutNotice(err: unknown): string {
+  const reason = err instanceof ApiError ? err.describe() : err instanceof Error ? err.message : String(err);
+  const sentence = `${reason.charAt(0).toUpperCase()}${reason.slice(1).replace(/\.$/, '')}.`;
+  // A follower's answer already says what became of the session.
+  if (/valid until it expires/.test(reason)) return sentence;
+  return `${sentence} The dashboard signed out, but the server did not confirm that the session ended; it may stay valid until it expires.`;
+}
+
+/** The notice useSignOut left for the login page, null when there is none. */
+export function useSignOutNotice(): string | null {
+  const q = useQuery<string | null>({ queryKey: qk.signOutNotice, queryFn: () => null, enabled: false, staleTime: Infinity });
+  return q.data ?? null;
 }
 
 // ---------------------------------------------------------------------------

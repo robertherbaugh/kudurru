@@ -5,7 +5,7 @@ import { Table, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useApi, useCan } from '../../api/context';
+import { useApi, useCan, usePrimaryOnly } from '../../api/context';
 import type { MigrationAuthorityChange, MigrationCutoverPlan, MigrationResult, MigrationRun } from '../../api/types';
 import { useNavigate } from '../../lib/router';
 import { migrationCounts } from '../migration/results';
@@ -94,6 +94,7 @@ export function MigrationHistory() {
   const api = useApi();
   const can = useCan();
   const enabled = can('settings', 'write');
+  const trackTip = usePrimaryOnly()('adoptExistingImports');
   const navigate = useNavigate();
   const [track, setTrack] = useState(false);
   const query = useInfiniteQuery({ queryKey: ['migration-runs'], queryFn: ({ pageParam }) => api.imports.runs(pageParam), initialPageParam: undefined as string | undefined, getNextPageParam: (last) => last.continue || undefined, enabled, refetchInterval: (q) => q.state.data?.pages.some((p) => p.items.some((r) => r.data.status === 'running')) ? 2000 : 15000 });
@@ -108,7 +109,7 @@ export function MigrationHistory() {
   ];
   return <Panel title="Migration history" headingId="migration-history" description="Review import results and replace source nameservers when kudurru is ready to take over.">
     {!enabled ? <Text>Migration history requires settings.write.</Text> : <VStack gap={4}>
-      <Button label="Track previous imports" onClick={() => setTrack(true)} />
+      <Button label="Track previous imports" isDisabled={!!trackTip} tooltip={trackTip} onClick={() => setTrack(true)} />
       {query.error ? <ErrorBanner error={query.error} /> : query.isPending ? <Loading label="Loading migration history" /> : <Table<Row> aria-label="Migration runs" data={query.data?.pages.flatMap((p) => p.items) ?? []} columns={columns} idKey="id" density="compact" />}
       {query.hasNextPage ? <Button label="Load more runs" isLoading={query.isFetchingNextPage} onClick={() => { void query.fetchNextPage(); }} /> : null}
     </VStack>}

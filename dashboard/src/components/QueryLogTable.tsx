@@ -46,6 +46,8 @@ export interface QueryLogTableProps {
   onLoadMore: () => void;
   onAction?: (row: QueryRow, action: 'allow' | 'deny') => void;
   canAct: boolean;
+  /** Why the row actions are disabled while canAct is false (default: the missing permission). */
+  actReason?: string | undefined;
   /** The "Requests" / "Request unblock" link of a blocked row's "why" row. */
   unblockLink?: (row: QueryRow) => UnblockLink | null;
   /** Pixel rect used before the scroll container is measured (tests, SSR). */
@@ -168,7 +170,7 @@ const wideRegion: TablePlugin<Record<string, unknown>> = {
 };
 const PLUGINS = { wideRegion };
 
-export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, onAction, canAct, unblockLink, initialRect, emptyMessage = 'No queries match these filters.' }: QueryLogTableProps) {
+export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, onAction, canAct, actReason = 'Needs blocklists.write', unblockLink, initialRect, emptyMessage = 'No queries match these filters.' }: QueryLogTableProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 
@@ -260,7 +262,7 @@ export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, o
                           size="sm"
                           variant="secondary"
                           isDisabled={!canAct}
-                          tooltip={canAct ? `Add ${r.domain} to the allow list` : 'Needs blocklists.write'}
+                          tooltip={canAct ? `Add ${r.domain} to the allow list` : actReason}
                           onClick={() => onAction(r, 'allow')}
                         />
                       ) : (
@@ -269,7 +271,7 @@ export function QueryLogTable({ rows, fresh, hasMore, loadingMore, onLoadMore, o
                           size="sm"
                           variant="ghost"
                           isDisabled={!canAct}
-                          tooltip={canAct ? `Add ${r.domain} to the deny list` : 'Needs blocklists.write'}
+                          tooltip={canAct ? `Add ${r.domain} to the deny list` : actReason}
                           onClick={() => onAction(r, 'deny')}
                         />
                       )

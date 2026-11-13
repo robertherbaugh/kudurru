@@ -16,7 +16,7 @@ import { TextInput } from '@astryxdesign/core/TextInput';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { ApiError } from '../api/client';
-import { qk, useApi, useCan } from '../api/context';
+import { can as hasPermission, qk, useApi, useCan, useSession } from '../api/context';
 import type { SettingKey, SettingsBody } from '../api/types';
 import { BrandingSettings, isBrandingSetting } from '../components/BrandingSettings';
 import { AppearanceControls } from '../components/AppearanceButton';
@@ -147,7 +147,10 @@ export default function SettingsPage() {
 
   const schema = useQuery({ queryKey: qk.schema, queryFn: () => api.settings.schema(), staleTime: Infinity });
   const cluster = useQuery({ queryKey: qk.settings, queryFn: () => api.settings.get() });
-  const node = useQuery({ queryKey: qk.nodeConfig, queryFn: () => api.settings.nodeConfig(), enabled: can('node', 'config') });
+  const { data: me } = useSession();
+  // The node's values stay readable on a follower, where useCan refuses
+  // node.config because PATCH /node/config needs the primary.
+  const node = useQuery({ queryKey: qk.nodeConfig, queryFn: () => api.settings.nodeConfig(), enabled: !!me && hasPermission(me, 'node', 'config') });
 
   const keys = useMemo(() => {
     const all = schema.data?.items ?? [];
