@@ -156,6 +156,7 @@ func inventoryAwait(t *testing.T, c *http.Client, url string, within time.Durati
 // serving generation yet) is retried as clients do; other answers fail.
 func inventoryLogin(t *testing.T, c *http.Client, base, password string) api.SessionInfo {
 	t.Helper()
+	//nolint:gosec // G117: disposable loopback fixture login, never logged.
 	body, err := json.Marshal(api.LoginRequest{Username: "admin", Password: password})
 	if err != nil {
 		t.Fatal(err)
