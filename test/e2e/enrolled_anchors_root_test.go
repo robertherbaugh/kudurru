@@ -218,6 +218,24 @@ func anchorValidated(node string) bool {
 // not validated (network, rcode, AD bit, answer count and any extended DNS
 // error), or returns "" when both were.
 func anchorValidatedWhy(node string) string {
+	_, why := anchorValidatedProbe(node)
+	return why
+}
+
+// What one validated-recursion probe found, worst first: an answer with
+// wrong content (an rcode other than SERVFAIL, or NOERROR that is not the
+// validated key set), SERVFAIL, no answer at all (a network error or
+// timeout), or a validated answer on both transports.
+const (
+	anchorProbeWrong = iota
+	anchorProbeServfail
+	anchorProbeNoAnswer
+	anchorProbeValidated
+)
+
+// anchorValidatedProbe asks like anchorValidated and classifies the first
+// answer that was not validated.
+func anchorValidatedProbe(node string) (int, string) {
 	for _, network := range []string{"udp", "tcp"} {
 		q := new(dns.Msg)
 		q.SetQuestion(".", dns.TypeDNSKEY)
@@ -228,7 +246,7 @@ func anchorValidatedWhy(node string) string {
 		answer, _, err := c.ExchangeContext(ctx, q, node)
 		cancel()
 		if err != nil {
-			return network + ": " + err.Error()
+			return anchorProbeNoAnswer, network + ": " + err.Error()
 		}
 		if answer.Rcode != dns.RcodeSuccess || !answer.AuthenticatedData || len(answer.Answer) != 2 {
 			why := fmt.Sprintf("%s: %s ad=%v answers=%d", network, dns.RcodeToString[answer.Rcode], answer.AuthenticatedData, len(answer.Answer))
@@ -239,10 +257,13 @@ func anchorValidatedWhy(node string) string {
 					}
 				}
 			}
-			return why
+			if answer.Rcode == dns.RcodeServerFailure && len(answer.Answer) == 0 && !answer.AuthenticatedData {
+				return anchorProbeServfail, why
+			}
+			return anchorProbeWrong, why
 		}
 	}
-	return ""
+	return anchorProbeValidated, ""
 }
 
 // anchorServfail reports that one node answers SERVFAIL over UDP and TCP to
