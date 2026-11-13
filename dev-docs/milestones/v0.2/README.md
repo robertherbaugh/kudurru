@@ -242,7 +242,7 @@ same-image runtime replacement. RPZ has
 bounded compilation, per-node AXFR/IXFR/TLS/TSIG acquisition, durable expiry and
 native BIND policy comparisons. The adapter is mounted on SQLite and
 Kubernetes (D390) with per-node feed diagnostics (D391); the dashboard feed
-view (DASH-RPZ) is not merged.
+views and RPZ source wizard (DASH-RPZ, `5b94bd81`) are merged.
 
 Credential identity now binds immutable account UIDs, and service-account
 bootstrap authority resides in private UID-bound PrincipalState objects.
