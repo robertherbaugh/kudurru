@@ -156,13 +156,15 @@ func (h *Host) refresh(ctx context.Context) {
 				nextDigest = digest
 			}
 			changed := j.sourceDigest != nextDigest
-			if !j.active && (changed || j.frame.input.BundleID != i.BundleID() || j.refusalUnpublished && !h.opts.Now().Before(j.refusalRetryAt)) {
+			if !j.active && (changed || j.frame.input.BundleID != i.BundleID() || j.refusalUnpublished && !h.opts.Now().Before(j.refusalRetryAt) || j.provisionRetry && !h.opts.Now().Before(j.provisionRetryAt)) {
 				// A setup refusal releases its callback, not the elector's Run.
 				// Changed authority must join that old election before a new
 				// lifecycle can start; unchanged refused work is never replayed.
 				// A root refusal whose status write failed is the exception: it
 				// makes no provider call, and a new term only reports it again,
-				// once its backoff has passed (refuse).
+				// once its backoff has passed (refuse). So is a failed provider
+				// setup, which makes no provider write: a new term sets it up
+				// again once its backoff has passed (provisionFailed, D384).
 				j.cancel()
 				continue
 			}
@@ -222,6 +224,11 @@ func (h *Host) refresh(ctx context.Context) {
 	for key := range h.refusalFailures {
 		if _, ok := desired[key]; !ok {
 			delete(h.refusalFailures, key)
+		}
+	}
+	for key := range h.provisionFailures {
+		if _, ok := desired[key]; !ok {
+			delete(h.provisionFailures, key)
 		}
 	}
 	for key, i := range desired {
