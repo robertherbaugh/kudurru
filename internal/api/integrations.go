@@ -360,10 +360,12 @@ func (s *Server) registerIntegrations() {
 }
 
 // errIntegrationsUnavailable refuses integration administration on a server
-// without the complete SQLite integration runtime (the Kubernetes driver).
+// that was started without the integration runtime. kudurru serve mounts it
+// on the SQLite store and on Kubernetes, so a production node does not
+// answer this.
 func errIntegrationsUnavailable() *Error {
 	return newError(http.StatusServiceUnavailable, KeyUnavailable, "complete integration administration unavailable",
-		"integrations run only on the SQLite store; see docs/deploy/integrations.md")
+		"this server was started without the integration runtime; send the request to a kudurru serve node, which runs integrations on SQLite and on Kubernetes (docs/deploy/integrations.md)")
 }
 
 func (s *Server) executeIntegration(ctx context.Context, in IntegrationExecution) (*integrationExecutionOutput, error) {
