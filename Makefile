@@ -279,11 +279,13 @@ interop:
 ## qualify instead of in test/interop: response policy zones transferred from
 ## BIND (internal/rpz), a BIND-signed secondary zone through the listeners
 ## (internal/stages/authoritative) and stub zone discovery
-## (internal/zoneview). `make test` skips them where named is not installed
-## (and the RPZ tests without KUDURRU_E2E); CI's e2e job runs them here.
-INTEROP_INTERNAL_PKGS ?= ./internal/rpz ./internal/stages/authoritative ./internal/zoneview
+## (internal/zoneview), and the RFC 5011 rollover timeline on freshly
+## BIND-signed root wires (internal/trustanchors, D398). `make test` skips
+## them where named is not installed (and the RPZ tests without
+## KUDURRU_E2E); CI's e2e job runs them here.
+INTEROP_INTERNAL_PKGS ?= ./internal/rpz ./internal/stages/authoritative ./internal/zoneview ./internal/trustanchors
 interop-internal:
-	CGO_ENABLED=1 KUDURRU_E2E=1 go test $(E2E_FLAGS) -v -run '^TestBIND' $(INTEROP_INTERNAL_PKGS)
+	CGO_ENABLED=1 KUDURRU_E2E=1 go test $(E2E_FLAGS) -v -run '^Test(BIND|RFC5011RolloverFromBINDWires)' $(INTEROP_INTERNAL_PKGS)
 
 ## fuzz: every fuzz target for FUZZTIME each (hack/fuzz.sh --list); FUZZ_JOBS
 ## targets at a time. Without -fuzz, `make test` replays the seed corpora.
