@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/providercoordinator"
@@ -85,10 +87,82 @@ func (s *servingRuntime) currentAuthCommand(ctx context.Context, fn func(context
 // postcommit observation outside all transaction and dependency pins. committed
 // reports actual command completion, including a no-op, even when publication
 // acknowledgment fails or the original writer is canceled after commit.
+//
+// A command refused before fn began, only because another commit superseded
+// the request's publication, captures again and is dispatched once (D399,
+// recaptureCommand).
 func (s *servingRuntime) currentAuthCommandThen(ctx context.Context, fn func(context.Context, *sqlite.CommandTx, servingauth.Dependencies) error, after func(context.Context, serving.TermActivation) error) (committed bool, err error) {
 	if s == nil || ctx == nil || fn == nil {
 		return false, serving.ErrComponents
 	}
+	return s.recaptureCommand(ctx, func(began *bool) (bool, error) {
+		return s.currentAuthCommandOnce(ctx, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
+			*began = true
+			s.dispatchHook(ctx)
+			return fn(ctx, tx, deps)
+		}, after)
+	})
+}
+
+// commandRecaptureWait bounds how long one command waits, in total, for
+// publications to capture again on (D399). The request's own deadline may
+// end it earlier. It is the same bound as a later import step's wait for its
+// cut.
+const commandRecaptureWait = 5 * time.Second
+
+// recaptureCommand runs attempt and, while attempt was refused with
+// serving.ErrPending before its transaction body began (began false), lets
+// the request capture the current publication again and runs attempt once
+// more (D399). A command whose body began has dispatched: its refusal or
+// uncertain outcome is final and never repeated. Any other refusal (a fence,
+// an authority change, a credential, session or role that differs in the
+// new publication, a later item of a multi-item request) is final too. When
+// the bound ends without an admissible publication, the original effect-free
+// refusal is returned.
+func (s *servingRuntime) recaptureCommand(ctx context.Context, attempt func(began *bool) (bool, error)) (bool, error) {
+	var wait context.Context
+	for {
+		began := false
+		committed, err := attempt(&began)
+		if committed || began || !errors.Is(err, serving.ErrPending) {
+			return committed, err
+		}
+		if items := requestItemsFrom(ctx); items != nil && items.chain.Anchored() {
+			// A later item is bound to its request's command chain (D378).
+			return false, err
+		}
+		if wait == nil {
+			var cancel context.CancelFunc
+			wait, cancel = context.WithTimeout(ctx, commandRecaptureWait)
+			defer cancel()
+		}
+		if servinghttp.Recapture(ctx, wait, s.publisher, s.opts.Now) != nil {
+			return false, err
+		}
+		if hooks := s.commandHooks.Load(); hooks != nil && hooks.afterRecapture != nil {
+			hooks.afterRecapture(ctx)
+		}
+	}
+}
+
+// commandHooks are test observers of current commands. beforeCheck runs in
+// every dispatch attempt after the writer binding and before the first
+// publication check; afterRecapture runs after a pre-dispatch recapture.
+// dispatch runs when an attempt's transaction body begins.
+type commandHooks struct {
+	beforeCheck    func(ctx context.Context)
+	afterRecapture func(ctx context.Context)
+	dispatch       func(ctx context.Context)
+}
+
+func (s *servingRuntime) dispatchHook(ctx context.Context) {
+	if hooks := s.commandHooks.Load(); hooks != nil && hooks.dispatch != nil {
+		hooks.dispatch(ctx)
+	}
+}
+
+// currentAuthCommandOnce is one dispatch attempt of currentAuthCommandThen.
+func (s *servingRuntime) currentAuthCommandOnce(ctx context.Context, fn func(context.Context, *sqlite.CommandTx, servingauth.Dependencies) error, after func(context.Context, serving.TermActivation) error) (committed bool, err error) {
 	status := s.primary.driver.Status()
 	if !status.Running {
 		// A request that began on an enrolled follower has no local writer by
@@ -136,6 +210,9 @@ func (s *servingRuntime) currentAuthCommandThen(ctx context.Context, fn func(con
 			return s.checkLaterItem(ctx, target)
 		}
 		return servinghttp.CheckWriter(ctx, s.publisher, target)
+	}
+	if hooks := s.commandHooks.Load(); hooks != nil && hooks.beforeCheck != nil {
+		hooks.beforeCheck(ctx)
 	}
 	if err := check(ctx); err != nil {
 		return false, err

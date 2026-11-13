@@ -203,6 +203,68 @@ privileged deletion explicitly resets it. The D309 policy and document bounds
 apply. This budget does not provide a cross-object session transaction or shared
 TOTP replay prevention. Public CLI preparation uses the complete SQLite path.
 
+## Commands superseded before dispatch (D399)
+
+Every HTTP request captures one complete publication before it
+authenticates, and a command is held to it (D199): the command's first
+check, and the same check again in its transaction before its body runs,
+require that publication to still be the current one in the request's
+elected writer incarnation (`servinghttp.CheckWriter`, D208). The node's own
+work commits on its own schedule (zone status and lifecycle writes,
+admission, the anchor updater, signed UPDATEs), and each such commit retires
+the publication of every request that is in flight.
+
+A command refused for that reason before its transaction body began has
+dispatched nothing. It captures the current publication again and is
+dispatched once on it (`recaptureCommand` in the root, `servinghttp.Recapture`):
+
+```mermaid
+flowchart TD
+  CAP["request captures publication P1,<br/>authenticates on P1"] --> CHK{"command check:<br/>P1 still current?"}
+  CHK -- "yes" --> BODY["transaction body runs<br/>(dispatched once)"]
+  CHK -- "no: another commit<br/>published P2" --> WAIT{"within 5 s and the<br/>request deadline?"}
+  WAIT -- "no" --> R503["503 unavailable,<br/>Retry-After: 1, nothing applied"]
+  WAIT -- "yes" --> NEW["capture P2"]
+  NEW --> SAME{"P2's authority = P1's but its revision,<br/>same credential, principal,<br/>session and roles on P2?"}
+  SAME -- "no" --> R503
+  SAME -- "yes" --> CHK
+  BODY --> FINAL["any refusal from here on is final:<br/>never repeated"]
+```
+
+- The wait is bounded by five seconds (the same bound as a later import
+  step's wait for its cut) or the request's deadline, whichever ends first.
+  When it ends the answer is the same effect-free `503 unavailable`, now with
+  `Retry-After: 1`.
+- The new publication must carry the original authority, advanced only in
+  its installed revision: a fence, a term or incarnation change, a mode
+  change, a conflict or divergence refuses. The original raw credential must
+  verify on the new publication's auth view as the same principal, with the
+  same session (ID, CSRF secret, issue and absolute expiry; the idle expiry
+  may advance) and the same effective roles; otherwise the request is
+  refused. A sign-in carries no prior credential and proves its password in
+  the transaction, as before.
+- The transaction then repeats its own authorization and every source
+  check against the new capture. A command whose admission compares the
+  exact reviewed source digest only outside its transaction (cluster
+  `join-token`) captures again only on the same source generation; cluster
+  activation compares the reviewed source again in its transaction and so
+  answers `409 conflict` when a commit made the review stale.
+- A refusal from inside the transaction body, a refusal at commit, an
+  uncertain outcome, and every later item of a multi-item request (bound to
+  its command chain, D378) are never repeated.
+- A follower's early admission and its forwarded commands stay bound to the
+  follower's captured publication: they are not recaptured. The primary's
+  entry for forwarded commands is bound to the member request's authority
+  (mode, member, term and incarnation), not to a publication, so the
+  primary's own commits do not refuse it. Cluster promotion is bound to the
+  exact installed generation the operator reviewed and is not recaptured.
+- A signed RFC 2136 UPDATE is not recaptured. Its publication is the DNS
+  transport's capture: the keyring that verified its signature and the
+  output that signs and sends the answer come from it, so a new capture
+  would admit the same wire message a second time. Its pre-dispatch refusal
+  is an effect-free SERVFAIL, which RFC 2136 clients send again with a fresh
+  TSIG time, and a server-side wait would overlap their own retransmission.
+
 ## Browser response completion (D306)
 
 Browser start, callback and local logout retain their original complete HTTP
