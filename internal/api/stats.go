@@ -291,6 +291,10 @@ func (s *Server) querylogSinks(context.Context, *struct{}) (*querylogSinksOutput
 	return &querylogSinksOutput{Body: body}, nil
 }
 
+// queryHistoryHint explains a node with neither a local query log nor a
+// central database to read history from.
+const queryHistoryHint = "set querylog.enabled: true and querylog.sink: sqlite on this node, or connect the node to a central database (docs/deploy/postgres.md)"
+
 // reader returns the query-log reader or 503 when the log is off.
 func (s *Server) reader() (*sqlitelog.Reader, error) {
 	if s.localQuerylog() == nil {
@@ -683,7 +687,7 @@ func (s *Server) querySuggestions(ctx context.Context, in *suggestionsInput) (*s
 	}
 	r := scoped.direct()
 	if r == nil {
-		return nil, errUnavailable("dictionary suggestions require local or central history")
+		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "dictionary suggestions require local or central history", queryHistoryHint)
 	}
 	res, err := r.Suggestions(ctx, in.Field, in.Prefix, in.N)
 	if err != nil {
@@ -699,7 +703,7 @@ func (s *Server) querylogStatus(ctx context.Context, in *HistoryScopeParams) (*q
 	}
 	r := scoped.direct()
 	if r == nil {
-		return nil, errUnavailable("query-log status requires local or central history")
+		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "query-log status requires local or central history", queryHistoryHint)
 	}
 	res, err := r.Status(ctx)
 	if err != nil {
@@ -1000,7 +1004,8 @@ func (s *Server) queryStream(ctx context.Context, in *streamInput) (*huma.Stream
 // The selected immutable domain remains input to the existing current command.
 func (s *Server) queryActionReader(ctx context.Context, in *queryActionInput) (*sqlitelog.Reader, error) {
 	if in.Scope == sqlitelog.ScopeCluster && in.Node == "" && s.opts.CentralQuerylog == nil {
-		return nil, errUnavailable("central query history unavailable")
+		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "central query history unavailable",
+			"an action on cluster-wide history needs a central database (docs/deploy/postgres.md); act on one node's history with scope=node")
 	}
 	r, err := s.scopedReader(ctx, in.Scope, in.Node)
 	if err != nil {
@@ -1009,5 +1014,5 @@ func (s *Server) queryActionReader(ctx context.Context, in *queryActionInput) (*
 	if d := r.direct(); d != nil {
 		return d, nil
 	}
-	return nil, errUnavailable("query actions require local or central history")
+	return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "query actions require local or central history", queryHistoryHint)
 }

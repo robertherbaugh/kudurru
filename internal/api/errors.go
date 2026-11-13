@@ -142,8 +142,12 @@ func errNotFound(what string) *Error {
 	return newError(http.StatusNotFound, KeyNotFound, what+" not found", "")
 }
 
+// errNotImplemented refuses an operation whose part of the runtime this
+// server was started without. A complete kudurru serve node wires every one
+// of them, so the answer names that, never a request to retry.
 func errNotImplemented(what string) *Error {
-	return newError(http.StatusNotImplemented, KeyNotImplemented, what+" is not available on this node", "")
+	return newError(http.StatusNotImplemented, KeyNotImplemented, what+" is not available on this node",
+		"this server was started without that part of the runtime; a complete kudurru serve node provides it (see docs/deploy/capabilities.md)")
 }
 
 func errUnauthenticated() *Error {
