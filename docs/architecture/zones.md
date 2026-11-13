@@ -288,21 +288,35 @@ identity (`zone.ExternalSourceOwned`); any other record set that names it is
 `NotSelected` and not served, so the zone serves what its sources say. The
 API refuses a record set for an external zone with `conflict`, and the zone
 record and import endpoints refuse it as they do for every non-primary zone.
-RFC 2136 UPDATE finds no primary zone for the apex and is refused.
+RFC 2136 UPDATE finds no primary zone for the apex and is refused with
+`NOTAUTH`, writing nothing. On a server without `externalZones.enabled` the
+zone controller reports an external zone `Degraded`, reason
+`SourcesNotRead`: it is still served, but only from record sets derived
+earlier, and source changes do not reach it.
 
 Writes follow D303. A record set is written only after the zone and the
-source are confirmed unchanged since the list (UID and resourceVersion);
+source are confirmed unchanged since the list: the source by UID and
+resourceVersion, the zone by UID, generation and spec (and still neither
+deleting nor disabled). The zone's resourceVersion is not compared, because
+the zone controller rewrites the zone's status (serial, record count) after
+every record set a pass writes;
 creation requires absence and an update requires the observed
 resourceVersion. A record set with the derived name that someone else owns is
 never taken over. A record set is removed only when its source is confirmed
 absent or replaced (a fresh read by name), when its zone no longer takes it,
 or when no external zone enables its kind any more; the delete carries the
 observed UID and resourceVersion. A failed or refused list (a missing
-Gateway API CRD, RBAC, a list over 4,096 objects or 32 MiB) never authorizes
-cleanup: the kind keeps the record sets of the last complete pass. Invalid
-source data (an unusable TTL annotation) withdraws only that source's
-records. Watch events only wake a new pass; without events a pass runs every
-ten seconds. Sources are never written.
+Gateway API CRD, RBAC, a list over 4,096 objects or 32 MiB, or a list page
+of 64 objects over the 4 MiB response bound) never authorizes cleanup: the
+kind keeps the record sets of the last complete pass, which are no longer
+updated. Every Service in the cluster counts toward the 4,096-object bound of
+its kind, not only LoadBalancer Services. Invalid source data (an unusable TTL
+annotation) withdraws only that source's records. Watch events only wake a
+new pass; without events a pass runs every ten seconds. Passes start at least
+one second apart, so a burst of source events (controllers updating status)
+coalesces into one relist, and a pass that met a concurrent change
+(`conflict`) is retried after that second instead of after the full ten.
+Sources are never written.
 
 Kubernetes has no transaction across the source, the zone and the record
 sets, so the adapter converges eventually. When the elected replica loses

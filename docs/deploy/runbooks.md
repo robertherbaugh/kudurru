@@ -841,6 +841,29 @@ servers are dead do not cause backoff while other lookups succeed.
 A single name with SERVFAIL and status `dnssec_bogus` is not this case: the
 zone's DNSSEC is broken (the EDE text names it), and `dig +cd` shows the data.
 
+## External zone stays empty or stale
+
+Symptoms: a DNSZone of type `external` answers NXDOMAIN for names its
+Ingresses, Gateway API routes or LoadBalancer Services publish, or keeps
+answering an old address.
+
+1. `kubectl get dnszone <name> -o yaml`: `Degraded` with reason
+   `SourcesNotRead` means the server runs without `externalZones.enabled`, so
+   nothing reads the sources. Set the Helm value `externalZones.enabled: true`
+   (it also grants the read RBAC) and upgrade.
+2. The elected replica's log warns `external zone reconciliation incomplete`
+   with the refused kind. `forbidden` means the ClusterRole lacks `list` and
+   `watch` on that kind (with the kustomize bases, add the rules from
+   [the Helm guide](helm.md#external-zones-externalzonesenabled)).
+   `object too large` means the kind has more than 4,096 objects or 32 MiB in the
+   cluster (every Service counts, whatever its type), or a single list page
+   of 64 objects exceeds 4 MiB. That kind is skipped on every pass: its record
+   sets are kept but no longer follow their sources. Reduce the number of
+   objects of that kind or disable the kind in `spec.external` of every zone.
+3. A warning `external zone record set name held by another writer` means a
+   record set with the derived name exists and belongs to someone else; it is
+   never taken over. Delete it if it is not needed.
+
 ## AuditLog CRD missing
 
 Symptom: the log line "the AuditLog CRD is not installed" and each replica's
