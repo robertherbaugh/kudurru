@@ -146,7 +146,8 @@ func (t *CommandTx) CommitZoneState(ctx context.Context, e zonestate.Expected, p
 // publication, grew with every commit. Every head is marked, including
 // tombstoned ones, and the sweep also removes chunks that an earlier version
 // left behind. A head whose root manifest cannot be read references an
-// unknown set: nothing is deleted then, and the commit is not refused for it.
+// unknown set: nothing is deleted then, the skip is logged as a warning, and
+// the commit is not refused for it.
 func (t *CommandTx) collectZoneChunks(ctx context.Context, l zonestate.Limits) error {
 	heads, err := t.List(ctx, zonekinds.KindZoneState, store.ListOptions{})
 	if err != nil {
@@ -170,6 +171,10 @@ func (t *CommandTx) collectZoneChunks(ctx context.Context, l zonestate.Limits) e
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			// Until that head is repaired or deleted, no commit collects
+			// chunks, and the stored zone content grows with every commit
+			// again: say so on every skipped sweep instead of silently.
+			t.s.log.Warn("zone chunk collection skipped: a zone head's chunks cannot be resolved", "head", head.Name, "err", err)
 			return nil
 		}
 		for _, digest := range refs {
