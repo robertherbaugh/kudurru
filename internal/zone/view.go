@@ -350,7 +350,11 @@ func (b *Builder) finishViews() {
 		slices.SortFunc(names, func(x, y *viewName) int { return strings.Compare(x.key, y.key) })
 		kept := names[:0]
 		for _, n := range names {
-			switch why := b.z.viewOcclusion(n.key); {
+			why := b.z.viewOcclusion(n.key)
+			if why == "" && b.viewFence != nil {
+				why = b.viewFence(n.name)
+			}
+			switch {
 			case signed:
 				refuse(n, v1alpha1.ReasonInvalid+": client-group views are not served in a DNSSEC-signed zone (D403)")
 			case why != "":
@@ -374,6 +378,16 @@ func (b *Builder) finishViews() {
 	}
 	b.z.setViews(views)
 }
+
+// FenceViews makes Build refuse view data that records the builder does
+// not hold would hide once they are merged into the zone: on SQLite the
+// dynamic (RFC 2136) records of the committed primary join the static
+// records only after the compiler, so a delegation or DNSSEC data an UPDATE
+// added must refuse a view endpoint here, as default data does, instead of
+// failing the committed build of the whole zone (D373, D403). fence gets
+// the view's owner name and returns the refusal ("Occluded: ..." or
+// "Invalid: ...") or "". Call it before Build.
+func (b *Builder) FenceViews(fence func(owner string) string) { b.viewFence = fence }
 
 // ViewErrors returns the view endpoints Build refused, by source: data the
 // default zone hides (below a DNAME or a delegation) and every view of a

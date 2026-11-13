@@ -135,6 +135,11 @@ type DynamicOwnership struct {
 	// dnames holds the owner names of the dynamic DNAMEs: a static record
 	// at or below one of them conflicts with it.
 	dnames map[string]bool
+	// delegations holds the owner names of the dynamic NS records, and
+	// signed whether any dynamic record is DNSSEC data: both hide a
+	// client-group view (ViewHidden, D403).
+	delegations map[string]bool
+	signed      bool
 	// version identifies the committed head the index was built from; it
 	// is zero without one.
 	version Version
@@ -153,7 +158,7 @@ func (o *DynamicOwnership) Version() Version {
 // NewDynamicOwnership indexes the dynamic records of base. A view without
 // a committed head has none: ReplaceStatic checks nothing against it.
 func NewDynamicOwnership(base *View) (*DynamicOwnership, error) {
-	o := &DynamicOwnership{byName: map[string][]dns.RR{}, covered: map[string]bool{}, dnames: map[string]bool{}}
+	o := &DynamicOwnership{byName: map[string][]dns.RR{}, covered: map[string]bool{}, dnames: map[string]bool{}, delegations: map[string]bool{}}
 	if base == nil || base.Head == nil || base.Aggregate == nil {
 		return o, nil
 	}
@@ -171,8 +176,13 @@ func NewDynamicOwnership(base *View) (*DynamicOwnership, error) {
 			continue
 		}
 		o.byName[name] = append(o.byName[name], rr)
-		if rr.Header().Rrtype == dns.TypeDNAME {
+		switch rr.Header().Rrtype {
+		case dns.TypeDNAME:
 			o.dnames[name] = true
+		case dns.TypeNS:
+			o.delegations[name] = true
+		case dns.TypeRRSIG, dns.TypeNSEC, dns.TypeNSEC3, dns.TypeNSEC3PARAM, dns.TypeDNSKEY, dns.TypeSIG:
+			o.signed = true
 		}
 		if !o.covered[name] {
 			ancestors(name, func(a string) bool {
@@ -185,6 +195,37 @@ func NewDynamicOwnership(base *View) (*DynamicOwnership, error) {
 		}
 	}
 	return o, nil
+}
+
+// ViewHidden reports how the dynamic records keep a client-group view
+// record at owner from being served once they are merged with the static
+// projection: cut is the owner of a dynamic delegation at or above owner
+// and below apex (canonical), or ""; signed reports DNSSEC data among the
+// dynamic records, in which case no view is served at all (D403). The
+// compiler withholds such view endpoints instead of committing views the
+// committed build would refuse.
+func (o *DynamicOwnership) ViewHidden(owner, apex string) (cut string, signed bool) {
+	if o == nil {
+		return "", false
+	}
+	if len(o.delegations) == 0 {
+		return "", o.signed
+	}
+	name, err := dynamicupdate.CanonicalName(owner)
+	if err != nil {
+		return "", o.signed
+	}
+	ancestors(name, func(a string) bool {
+		if a == apex || !dns.IsSubDomain(apex, a) {
+			return false
+		}
+		if o.delegations[a] {
+			cut = a
+			return false
+		}
+		return true
+	})
+	return cut, o.signed
 }
 
 // Empty reports whether no dynamic record is indexed.
