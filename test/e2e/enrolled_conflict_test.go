@@ -151,8 +151,14 @@ func testEnrolledConflictResolution(t *testing.T, anchors *enrolledAnchors) {
 		})
 		return result
 	}
-	anyInfo := func(api.ClusterEnrollmentInfo) bool { return true }
-	original := enrollment(apiA, anyInfo)
+	// A zone write is followed by the node's own lifecycle and head commits
+	// (LifecycleCAS, Admission, PrimaryStatus), which keep landing for
+	// seconds after the zone's status reads Ready, up to 1.8 s apart under
+	// race. An activation whose publication such a commit supersedes is
+	// refused 503 unavailable with no effect (hosted CI on ecd633b1), and a
+	// review taken before one is stale (409). Review only once the source
+	// itself has been quiet for longer than that gap.
+	original := enrolledQuietReview(t, apiA, 3*time.Second)
 	var activated api.ClusterActivationReceipt
 	apiA.request(t, http.MethodPost, "/cluster/activate", api.ActivateClusterCommand{ClusterEnrollmentReview: original.ClusterEnrollmentReview,
 		Name: a.Name, Address: addrA, Reason: "disposable conflict acceptance"}, http.StatusOK, &activated)
@@ -552,5 +558,31 @@ func enrolledFencedClosed(t *testing.T, c *staticProcessClient, newer string) {
 			!strings.Contains(answer.Error.Message, "the newer primary "+newer) || !strings.Contains(answer.hint(), "current primary") {
 			t.Fatalf("fenced member %s: status=%d key=%q retry-after=%q message=%q hint=%q", name, answer.status, answer.Error.Key, answer.retryAfter, answer.Error.Message, answer.hint())
 		}
+	}
+}
+
+// enrolledQuietReview returns the enrollment review once the reviewed source
+// digest has stayed the same for quiet. It only reads; no decision is sent
+// or repeated.
+func enrolledQuietReview(t *testing.T, c *staticProcessClient, quiet time.Duration) api.ClusterEnrollmentInfo {
+	t.Helper()
+	var last api.ClusterEnrollmentInfo
+	since := time.Now()
+	deadline := since.Add(30 * time.Second)
+	for {
+		var info api.ClusterEnrollmentInfo
+		enrolledProcessRead(t, c, "/cluster/enrollment", func(body []byte) bool {
+			info = api.ClusterEnrollmentInfo{}
+			return json.Unmarshal(body, &info) == nil
+		})
+		if info.ClusterEnrollmentReview != last.ClusterEnrollmentReview {
+			last, since = info, time.Now()
+		} else if time.Since(since) >= quiet {
+			return last
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("enrollment source never stayed unchanged for", quiet)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
