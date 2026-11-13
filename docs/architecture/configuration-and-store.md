@@ -1407,7 +1407,39 @@ no HTTP request gets a lease. The lease adapter answers those requests itself:
 bounded capture wait. The provider-login admission, which runs before the
 lease adapter, answers the same two keys from the same observation
 (`servinghttp.AuthorityRefusal`). A publication that is only being prepared
-keeps `503 generation_pending` with `Retry-After: 1`.
+keeps `503 generation_pending` with `Retry-After: 1`. The dashboard names
+both states (`errorTitle` in `dashboard/src/components/Feedback.tsx`) and
+links the operator documentation from the banner and the sign-in page.
+
+The Nodes page drives the same reviewed membership commands as the CLI
+(`dashboard/src/components/wizards/ClusterWizards.tsx`). Each wizard reads its
+review (`GET /cluster/enrollment` or `GET /cluster/promotion`) once when it
+opens, never refetches it behind the operator (the follower read-back skips
+review queries), and sends exactly the values it showed: activation of a
+dormant standalone node, an invitation from the primary with an absolute
+expiry computed when the operator issues it, or the promotion of a follower
+with its reviewed installed generation, the typed node name and one request ID
+per opening. A command is sent once. A 409 (the review changed) or an answer
+that leaves the outcome unknown (`completion_unknown`,
+`committed_output_unavailable`, a lost response or the client's 35-second
+bound) locks the wizard; only a definite refusal before any commit (400, 403,
+`primary_required`) can be corrected and decided again. The invitation is
+requested with a plain call, never through the query or mutation cache, lives
+only in the state of the step that shows it, and is dropped when its dialog
+closes. `GET /cluster/anchors` is shown beside it with the documented action
+for each state that needs an operator (`anchorAdvice` in
+`dashboard/src/lib/cluster.ts`); a member whose API is closed is read with
+its metrics or `anchors status --offline` instead.
+
+```mermaid
+flowchart LR
+    O["Open wizard"] --> R["One review read<br/>(enrollment or promotion)"]
+    R --> C["Operator confirms<br/>and fills the step fields"]
+    C --> S["One POST"]
+    S -->|"2xx"| D["Close; invitation shown<br/>once in its step"]
+    S -->|"400, 403, primary_required"| C
+    S -->|"409, unknown or lost"| L["Locked: review again<br/>in a new wizard"]
+```
 
 At startup, a SQLite runtime reads its complete enrollment owner and authority
 from one bounded transaction. Explicit dormant enrollment retains the legacy

@@ -22,6 +22,15 @@ import type {
   ClientsResult,
   ClientTimeseries,
   ClusterInfo,
+  ActivateClusterCommand,
+  ClusterActivationReceipt,
+  ClusterEnrollmentInfo,
+  ClusterJoinTokenCommand,
+  ClusterJoinTokenReceipt,
+  ClusterPromoteCommand,
+  ClusterPromotionInfo,
+  ClusterPromotionReceipt,
+  RootAnchorStatus,
   CreateTokenRequest,
   EdgeInfo,
   LicenseInfo,
@@ -275,6 +284,16 @@ export function endpoints(c: ApiClient) {
       health: (name: string) => c.get<NodeHealth>(`/nodes/${enc(name)}/health`),
       info: () => c.get<ClusterInfo>('/cluster'),
       edge: () => c.get<EdgeInfo>('/edge'),
+      // Enrolled SQLite membership (docs/deploy/sqlite-cluster.md). Each
+      // command is one request that the dashboard never repeats; the signal
+      // ends a request the server's 30-second bound did not answer.
+      enrollment: () => c.get<ClusterEnrollmentInfo>('/cluster/enrollment'),
+      activate: (cmd: ActivateClusterCommand, signal?: AbortSignal) => c.request<ClusterActivationReceipt>('POST', '/cluster/activate', { body: cmd, signal }),
+      /** The receipt holds a bearer secret: call it directly, never through a query or mutation cache. */
+      issueJoinToken: (cmd: ClusterJoinTokenCommand, signal?: AbortSignal) => c.request<ClusterJoinTokenReceipt>('POST', '/cluster/join-token', { body: cmd, signal }),
+      promotion: () => c.get<ClusterPromotionInfo>('/cluster/promotion'),
+      promote: (cmd: ClusterPromoteCommand, signal?: AbortSignal) => c.request<ClusterPromotionReceipt>('POST', '/cluster/promote', { body: cmd, signal }),
+      anchors: () => c.get<RootAnchorStatus>('/cluster/anchors'),
       messages: () => c.get<ListEnvelope<DiagnosisMessage>>('/info/messages'),
       version: () => c.get<VersionInfo>('/version'),
       doctor: () => c.get<DoctorReport>('/doctor'),

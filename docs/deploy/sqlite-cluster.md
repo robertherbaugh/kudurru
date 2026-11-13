@@ -32,6 +32,13 @@ stateDiagram-v2
 
 `mode` in the answer of `kudurru cluster enrollment` shows where a member is.
 
+The dashboard's **Nodes** page runs the same reviewed steps: **Activate
+cluster**, **Invite a member** (it shows the invitation once, with the join
+command and the Docker Compose changes for the new node) and **Review
+promotion**, and it shows the member's root trust-anchor state
+([Check node and cluster health](../guide/dashboard/nodes.md#run-an-enrolled-sqlite-cluster)).
+The offline join itself always runs on the new node.
+
 ## Before you start
 
 - **The same encryption key on every member, set explicitly.** Set

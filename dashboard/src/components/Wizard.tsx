@@ -59,6 +59,8 @@ export interface WizardProps {
   /** Above the footer's buttons, e.g. the API error of the finishing call. */
   error?: ReactNode;
   isFinishing?: boolean;
+  /** Disables the finishing action (a command whose outcome is unknown is never sent again). */
+  isFinishDisabled?: boolean;
   /** Start somewhere else than the first step. */
   initialStep?: number;
   onStepChange?: (index: number) => void;
@@ -113,9 +115,11 @@ export interface WizardDialogProps {
   width?: number;
   /** The caller's wizard: a component rendering <Wizard>, mounted while open. */
   children: ReactNode;
+  /** Replaces "Discard the new …?" and its sentence, e.g. once a secret is shown. */
+  discard?: { title: string; description: string; actionLabel: string; cancelLabel: string } | undefined;
 }
 
-export function WizardDialog({ isOpen, onClose, title, subtitle, what, width = 820, children }: WizardDialogProps) {
+export function WizardDialog({ isOpen, onClose, title, subtitle, what, width = 820, children, discard }: WizardDialogProps) {
   const [dirty, setDirty] = useState(false);
   const [confirming, setConfirming] = useState(false);
   // Every opening starts pristine (state adjusted during render, as FormDialog does).
@@ -141,10 +145,10 @@ export function WizardDialog({ isOpen, onClose, title, subtitle, what, width = 8
         onOpenChange={(open) => {
           if (!open) setConfirming(false);
         }}
-        title={`Discard the new ${what}?`}
-        description="What you entered in this wizard is lost."
-        cancelLabel="Keep editing"
-        actionLabel="Discard"
+        title={discard?.title ?? `Discard the new ${what}?`}
+        description={discard?.description ?? 'What you entered in this wizard is lost.'}
+        cancelLabel={discard?.cancelLabel ?? 'Keep editing'}
+        actionLabel={discard?.actionLabel ?? 'Discard'}
         onAction={() => {
           setConfirming(false);
           onClose();
@@ -154,7 +158,7 @@ export function WizardDialog({ isOpen, onClose, title, subtitle, what, width = 8
   );
 }
 
-export function Wizard({ label, steps, finishLabel, onFinish, onCancel, isDirty, notice, error, isFinishing, initialStep = 0, onStepChange }: WizardProps) {
+export function Wizard({ label, steps, finishLabel, onFinish, onCancel, isDirty, notice, error, isFinishing, isFinishDisabled, initialStep = 0, onStepChange }: WizardProps) {
   const frame = useDialogFrame();
   const [active, setActive] = useState(() => Math.min(Math.max(initialStep, 0), steps.length - 1));
   // The furthest step every earlier step validated for.
@@ -209,6 +213,7 @@ export function Wizard({ label, steps, finishLabel, onFinish, onCancel, isDirty,
   const next = async () => {
     if (!(await validateCurrent())) return;
     if (last) {
+      if (isFinishDisabled) return;
       await onFinish();
       return;
     }
@@ -283,7 +288,7 @@ export function Wizard({ label, steps, finishLabel, onFinish, onCancel, isDirty,
                 {cancel ? <Button label="Cancel" variant="ghost" onClick={cancel} /> : null}
                 <StackItem size="fill">{message ? <FieldStatus type="error" variant="detached" message={message} /> : null}</StackItem>
                 {active > 0 ? <Button label="Back" variant="secondary" onClick={() => go(active - 1)} /> : null}
-                <Button type="submit" label={last ? finishLabel : 'Next'} variant="primary" isLoading={checking || (last && isFinishing)} />
+                <Button type="submit" label={last ? finishLabel : 'Next'} variant="primary" isLoading={checking || (last && isFinishing)} isDisabled={last && isFinishDisabled} />
               </HStack>
             </VStack>
           </LayoutFooter>

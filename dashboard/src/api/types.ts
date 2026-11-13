@@ -729,6 +729,21 @@ export type NodeHealth = Omit<S['NodeHealth'], 'health'> & { health: HealthDoc }
 /** GET /cluster: store driver, leader, epoch and shape. */
 export type ClusterInfo = S['ClusterInfo'];
 
+/** GET /cluster/enrollment: the local enrollment source, reviewed before activation or an invitation. */
+export type ClusterEnrollmentInfo = S['ClusterEnrollmentInfo'];
+export type ActivateClusterCommand = S['ActivateClusterCommand'];
+export type ClusterActivationReceipt = S['ClusterActivationReceipt'];
+export type ClusterJoinTokenCommand = S['ClusterJoinTokenCommand'];
+/** Carries the invitation, a bearer secret: never cache, log or route it. */
+export type ClusterJoinTokenReceipt = S['ClusterJoinTokenReceipt'];
+/** GET /cluster/promotion. `installed` is sent back exactly as received
+ * (its revision and term epoch are strings on the wire). */
+export type ClusterPromotionInfo = S['ClusterPromotionInfo'];
+export type ClusterPromoteCommand = S['ClusterPromoteCommand'];
+export type ClusterPromotionReceipt = S['ClusterPromotionReceipt'];
+/** GET /cluster/anchors: this node's managed root trust-anchor state (D369). */
+export type RootAnchorStatus = S['RootAnchorStatus'];
+
 /** GET /license: the effective license of the node (state, limits, licensed features). */
 export type LicenseInfo = S['LicenseInfo'];
 

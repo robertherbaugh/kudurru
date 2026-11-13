@@ -255,7 +255,7 @@ export function scheduleFollowerRefetch(client: QueryClient): void {
     client,
     setTimeout(() => {
       followerTimers.delete(client);
-      void client.invalidateQueries({ predicate: (q) => !sameKey(q.queryKey, qk.me) && !sameKey(q.queryKey, qk.signOutNotice) });
+      void client.invalidateQueries({ predicate: (q) => !sameKey(q.queryKey, qk.me) && !sameKey(q.queryKey, qk.signOutNotice) && !isReview(q.queryKey) });
     }, FOLLOWER_SYNC_MS),
   );
 }
@@ -318,6 +318,12 @@ export function useSignOut(): () => Promise<void> {
     qc.removeQueries({ predicate: (q) => !sameKey(q.queryKey, qk.me) && !sameKey(q.queryKey, qk.signOutNotice) });
     if (continuation) window.location.assign(continuation);
   }, [api, client, qc, setCsrf]);
+}
+
+/** A wizard's operator review (['cluster', 'enrollment', 'review']): read
+ * once per opening, never refetched behind the operator's back. */
+function isReview(key: readonly unknown[]): boolean {
+  return key[0] === 'cluster' && key[2] === 'review';
 }
 
 function sameKey(a: readonly unknown[], b: readonly unknown[]): boolean {

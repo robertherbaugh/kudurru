@@ -8,6 +8,7 @@ import { Card } from '@astryxdesign/core/Card';
 import { Center } from '@astryxdesign/core/Center';
 import { Divider } from '@astryxdesign/core/Divider';
 import { Heading } from '@astryxdesign/core/Heading';
+import { Link } from '@astryxdesign/core/Link';
 import { VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -16,7 +17,7 @@ import { ApiError } from '../api/client';
 import { qk, useApi, useApiContext, useSignOutNotice } from '../api/context';
 import { useBranding } from '../lib/branding';
 import { BrandLogo } from '../components/BrandLogo';
-import { errorText } from '../components/Feedback';
+import { clusterStateDocs, errorText, errorTitle } from '../components/Feedback';
 import { TextField } from '../components/fields/TextField';
 import { useLocation } from '../lib/router';
 
@@ -94,8 +95,9 @@ export function LoginPage() {
           {status.isError ? (
             <Banner
               status="error"
-              title={status.error instanceof ApiError && status.error.status === 0 ? 'The kudurru API is unreachable' : 'Sign-in options could not be loaded'}
+              title={status.error instanceof ApiError && status.error.status === 0 ? 'The kudurru API is unreachable' : clusterStateDocs(status.error) ? `${errorTitle(status.error)}: its API is closed` : 'Sign-in options could not be loaded'}
               description={errorText(status.error)}
+              endContent={clusterStateDocs(status.error) ? <Link href={clusterStateDocs(status.error)} isExternalLink>What to do</Link> : undefined}
             />
           ) : null}
           {localEnabled ? (

@@ -1,10 +1,12 @@
 // Loading, error and toast helpers shared by every page.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Center } from '@astryxdesign/core/Center';
+import { Link } from '@astryxdesign/core/Link';
 import { Spinner } from '@astryxdesign/core/Spinner';
 import { useToast } from '@astryxdesign/core/Toast';
 import { useCallback, useMemo } from 'react';
 import { ApiError } from '../api/client';
+import { CLUSTER_DOCS } from '../lib/cluster';
 import { primaryFromMessage } from '../lib/follower';
 
 /** A centered spinner for the whole viewport (session check, lazy pages). */
@@ -65,6 +67,8 @@ export function errorTitle(err: unknown): string {
     if (err.status === 403) return 'Not permitted';
     if (err.key === 'primary_required') return 'Needs the primary';
     if (err.key === 'completion_unknown') return 'Outcome unknown';
+    if (err.key === 'cluster_fenced') return 'This node is fenced';
+    if (err.key === 'cluster_conflict') return 'This node holds a promotion conflict';
   }
   return 'Something went wrong';
 }
@@ -73,7 +77,17 @@ export function errorTitle(err: unknown): string {
  * follower's refusals name the primary. */
 export function ErrorBanner({ error, title }: { error: unknown; title?: string }) {
   const warning = error instanceof ApiError && (error.status === 403 || error.key === 'primary_required' || error.key === 'completion_unknown');
-  return <Banner status={warning ? 'warning' : 'error'} title={title ?? errorTitle(error)} description={errorText(error)} />;
+  const docs = clusterStateDocs(error);
+  return <Banner status={warning ? 'warning' : 'error'} title={title ?? errorTitle(error)} description={errorText(error)} endContent={docs ? <Link href={docs} isExternalLink>What to do</Link> : undefined} />;
+}
+
+/** The operator documentation for a member whose API its authority closed
+ * (503 cluster_fenced or cluster_conflict), undefined for any other error. */
+export function clusterStateDocs(err: unknown): string | undefined {
+  if (!(err instanceof ApiError)) return undefined;
+  if (err.key === 'cluster_fenced') return CLUSTER_DOCS.fenced;
+  if (err.key === 'cluster_conflict') return CLUSTER_DOCS.conflict;
+  return undefined;
 }
 
 export interface Notify {

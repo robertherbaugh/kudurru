@@ -3,6 +3,9 @@
 // (GET /cluster: store driver, epoch, leader), the edge supervisors
 // (GET /edge: dnsdist and keepalived state, dnsdist backends) and the
 // health components of this node on demand (GET /nodes/{name}/health).
+// On the SQLite driver (GET /cluster role) also this node's enrollment with
+// the activation, invitation and promotion wizards, and its managed root
+// trust-anchor state (GET /cluster/enrollment, /cluster/anchors).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
@@ -20,6 +23,8 @@ import { useState, type ReactNode } from 'react';
 import { qk, useApi } from '../api/context';
 import { useNodes } from '../api/hooks';
 import type { EdgeComponentState, HealthComponent, NodeInfo } from '../api/types';
+import { ClusterMembership } from '../components/cluster/ClusterMembership';
+import { RootAnchors } from '../components/cluster/RootAnchors';
 import { ErrorBanner, Loading } from '../components/Feedback';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { formatRelative } from '../lib/format';
@@ -302,6 +307,12 @@ export default function NodesPage() {
           ) : null}
         </Panel>
       </Grid>
+      {c?.role && !c.readOnly ? (
+        <Grid columns={{ minWidth: 420, repeat: 'fit' }} gap={4}>
+          <ClusterMembership node={c.node} />
+          <RootAnchors />
+        </Grid>
+      ) : null}
     </Page>
   );
 }
