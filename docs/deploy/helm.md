@@ -599,6 +599,27 @@ writes without a signed-in principal (controllers, RFC 2136 UPDATE, the
 external-dns webhook, integrations) stay on the kudurru ServiceAccount, and
 so does the `kudurru admin` socket.
 
+### External zones (`externalZones.enabled`)
+
+`externalZones.enabled: true` (D402) turns on the source adapter that fills
+DNSZones of type `external` from Ingresses, Gateway API routes and
+LoadBalancer Services ([external zones](../architecture/zones.md#external-zones-on-kubernetes)).
+Only with this value does the ClusterRole gain `get`, `list` and `watch` on
+`networking.k8s.io` `ingresses` and on `gateway.networking.k8s.io`
+`gateways`, `httproutes`, `grpcroutes` and `tlsroutes`; Services are already
+readable. The adapter never writes those objects. Set the value here, not in
+`config.node` or `config.settings` (the chart refuses those, because they
+would enable the adapter without the grant). The Gateway API CRDs are
+optional: a kind the API server does not serve is skipped.
+
+```yaml
+externalZones:
+  enabled: true
+```
+
+With the kustomize bases, set `externalZones.enabled: true` in the node
+configuration and add the two rules above to the kudurru ClusterRole.
+
 The server keeps one Secret of its own in the release namespace that the chart
 does not create or remove: `kudurru-grant-floors`, the record of removed role
 binding grants ([role bindings on Kubernetes](rolebindings.md#kubernetes)).

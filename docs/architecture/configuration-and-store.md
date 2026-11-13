@@ -514,8 +514,8 @@ The sqlite driver adds what the schema cannot say. Its serving image is
 complete or absent ([Complete serving publication](#complete-serving-publication)):
 a stored DNSZone that the image cannot build would stop DNS, readiness and
 the API together, and the API would then not be there to correct it. `Apply`
-therefore refuses a DNSZone of a type no release serves (`external`,
-`catalog`, `secondaryCatalog`), with a query, transfer or notify policy that
+therefore refuses a DNSZone of a type its image cannot carry (`external`,
+which only the Kubernetes driver serves, `catalog`, `secondaryCatalog`), with a query, transfer or notify policy that
 does not compile, a primary zone whose `spec.policy.update` is neither
 `deny` nor `allow` (the only update modes the primary runtime compiles) or
 whose `spec.policy.updatePolicies` has an entry the primary runtime cannot
