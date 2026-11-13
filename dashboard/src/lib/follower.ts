@@ -61,6 +61,7 @@ export const FORWARDED_ROUTES: Readonly<Record<string, string>> = {
   batchDeleteClientgroups: 'POST /clientgroups:batchDelete',
   batchDeleteDnsrecordsets: 'POST /dnsrecordsets:batchDelete',
   batchDeleteDnszones: 'POST /dnszones:batchDelete',
+  batchDeleteIntegrations: 'POST /integrations:batchDelete',
   batchDeletePolicies: 'POST /policies:batchDelete',
   browserLogout: 'POST /auth/logout/browser',
   changePassword: 'POST /auth/password',
