@@ -1972,13 +1972,17 @@ to, until the node has published again. A request's items commit back to
 back, so without a bound the node would have no current publication for
 other callers for the whole request. DNS does not wait for it: an ordinary
 answer from local, authoritative or mixed data is bound to the publication
-that is served (`Publisher.Serves`), not to the latest commit, and its
+that is served (`Publisher.Serves`, or for one second after the swap that
+replaced it, a publication that was served when the query arrived,
+`Publisher.ServedWithin`, D395), not to the latest commit, and its
 dependency check (`RuntimeOwner.DNSDependenciesCurrent`) covers only what DNS
 answers are computed from, the root lifetime, the DNS keyring and the
 transferred and catalog zone data, not the provider host, the license cut or
 the provider resource set that only HTTP authentication uses. A published
-successor retires the old answers at once, so no answer from older data is
-sent after a change was published. Transfers, UPDATE acknowledgments, API
+successor retires the old answers for every query captured after the swap,
+and one second after it for a query already in flight, so no query that
+arrives after a change was published gets older data. Transfers, UPDATE
+acknowledgments, API
 dig, cache insertions and native resolver mutations keep full data currency
 (a superseded cache or native resolver write is skipped, and the query still
 answers; D332, D377).

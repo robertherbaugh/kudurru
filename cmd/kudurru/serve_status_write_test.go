@@ -228,15 +228,14 @@ func TestRunServeSQLitePrimaryAnswersAcrossStatusWrites(t *testing.T) {
 	if seen.answered < 100 {
 		t.Fatalf("probe answered only %d queries", seen.answered)
 	}
-	// A query whose output is emitted after its publication stopped being
-	// served (a successor was published) gets no answer:
-	// rootAnchorOutput.Emit rechecks the captured publication and a refused
-	// output is dropped, never rebuilt from a replacement (D313, D378). A
-	// real client can therefore see an occasional 200 ms timeout around a
-	// publication, but never SERVFAIL. Runs have seen 2 to 10 such queries
-	// across the 24 changes, on a loaded shared machine. The bound is one per
-	// change: more than that means answers are lost in every window. It is a
-	// coarse gate; it does not catch a loss of exactly one query per change.
+	// A query in flight across a publication swap still gets its answer
+	// within servedSuccessorGrace (D395); before that, such a query got no
+	// answer, and runs saw 2 to 10 across the 24 changes. A query can still
+	// miss the 200 ms client timeout on a loaded machine (the race detector
+	// on shared CPUs). The bound is one per change: more than that means
+	// answers are lost in every window. It is a coarse gate;
+	// TestRunServeSQLiteZonesAnswerAcrossCommits requires every probe to be
+	// answered.
 	if seen.silent > changes {
 		t.Fatalf("probe got no answer to %d queries across %d changes (%d answered)", seen.silent, changes, seen.answered)
 	}

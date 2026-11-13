@@ -104,7 +104,14 @@ error. It is not reset, replayed or presented as evidence of remote receipt.
 Authoritative, local and mixed answers of an ordinary query are bound to the
 publication that is served, not to the latest commit (D378): after a canonical
 commit that the node has not published yet they are still sent, and once a
-successor is published they are withheld. Forwarded and policy-blocked ordinary
+successor is published they are withheld, except that a query whose
+publication was captured before the swap still gets its answer for up to one
+second after the swap that replaced that publication, however many swaps
+followed (`servedSuccessorGrace`, `Publisher.ServedWithin`, D395). Nothing
+qualifies across a DNS-only (fenced) publication, and the DNS dependency and
+anchor checks still apply at the handoff. Before D395 the queries in flight
+across each publication (about one in a few thousand) got no reply at all.
+Forwarded and policy-blocked ordinary
 queries retain their original immutable policy across unrelated canonical
 commits, including a published successor, while still requiring the original
 dependency installations, anchor input and finite output attempt.
@@ -123,7 +130,8 @@ cache admission, a query that ended before any server was tried, indeterminate
 DNSSEC validation, a failed rewrite target and other failure-origin answers. As
 an ordinary query response it follows the served-publication policy above: it
 is sent while its publication is still served, including after an unpublished
-commit, and withheld once a successor is published. The same holds for the
+commit and within the grace after a swap, and withheld after that. The same
+holds for the
 NOTAUTH that the transport sends for a failed TSIG check of an ordinary query
 before any pipeline work: it binds its own message to the captured output, so
 a client that sends a wrong or replaced key right after a commit reads BADKEY,

@@ -709,3 +709,109 @@ func TestPublisherManifestAndWholePreparationValidation(t *testing.T) {
 		t.Fatal("panicked dependency check granted eligibility")
 	}
 }
+
+// ServedWithin keeps an answer of a publication that stopped being served
+// for a bounded grace after the swap that replaced it (D395), however many
+// swaps followed it within that grace, for the last retiredDepth replaced
+// publications: never past the grace, never across a DNS-only (fenced)
+// publication and never after Close.
+func TestPublisherServedWithinKeepsRecentlyReplacedPublications(t *testing.T) {
+	s := primary(t)
+	applyPair(t, s, "first")
+	pointers := func(_ context.Context, candidate Candidate) (Prepared, error) {
+		prepared, err := allComponents(candidate)
+		for i := range prepared.Components {
+			view := prepared.Components[i].Value.(fixtureView)
+			prepared.Components[i].Value = &view
+		}
+		return prepared, err
+	}
+	p := runPublisher(t, Options{Source: s, Prepare: pointers})
+	// Each value is held by a lease, as a query in flight holds it, so the
+	// weak record of its publication stays valid.
+	var published uint64
+	captured := func() any {
+		t.Helper()
+		status := waitStatus(t, p, func(s Status) bool { return s.Served.Publication > published && s.ProtectedReady })
+		published = status.Served.Publication
+		lease, err := p.Capture()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(lease.Release)
+		value, _ := lease.Bundle().Component("runtime")
+		return value
+	}
+	first := captured()
+	if !p.Serves("runtime", first) || !p.ServedWithin("runtime", first, time.Second) {
+		t.Fatal("the served publication is not served")
+	}
+	if p.ServedWithin("runtime", fixtureView{}, time.Hour) || p.ServedWithin("runtime", nil, time.Hour) {
+		t.Fatal("a value that is not a pointer was served")
+	}
+
+	applyPair(t, s, "second")
+	second := captured()
+	if p.Serves("runtime", first) {
+		t.Fatal("a replaced publication is still served")
+	}
+	if !p.ServedWithin("runtime", first, time.Minute) || !p.ServedWithin("runtime", second, time.Minute) {
+		t.Fatal("the replaced publication was refused within its grace")
+	}
+	time.Sleep(20 * time.Millisecond)
+	if p.ServedWithin("runtime", first, 10*time.Millisecond) || p.ServedWithin("runtime", first, 0) {
+		t.Fatal("the replaced publication was served past its grace")
+	}
+	if p.ServedWithin("runtime", other(first), time.Minute) || p.ServedWithin("other", first, time.Minute) {
+		t.Fatal("a value or component name the publication does not have was served")
+	}
+
+	// A second swap does not end the grace of the first replaced
+	// publication: it counts from the swap that replaced it.
+	applyPair(t, s, "third")
+	third := captured()
+	if !p.ServedWithin("runtime", first, time.Hour) || !p.ServedWithin("runtime", second, time.Hour) || !p.ServedWithin("runtime", third, time.Hour) {
+		t.Fatal("a publication replaced two swaps ago was refused within its grace")
+	}
+	// The second was replaced after the first: a grace that still covers
+	// its swap but no longer the first one's admits only the second.
+	time.Sleep(20 * time.Millisecond)
+	applyPair(t, s, "fourth")
+	_ = captured()
+	if !p.ServedWithin("runtime", third, 10*time.Millisecond) || p.ServedWithin("runtime", first, 10*time.Millisecond) {
+		t.Fatal("the grace did not count from each publication's own replacement")
+	}
+	// Only the last retiredDepth replaced publications are recognized.
+	for i := range retiredDepth {
+		applyPair(t, s, fmt.Sprint("later", i))
+		_ = captured()
+	}
+	if p.ServedWithin("runtime", first, time.Hour) || p.ServedWithin("runtime", third, time.Hour) {
+		t.Fatal("a publication older than the retired record was served")
+	}
+
+	// A fence publishes DNS-only last-good data: no replaced publication
+	// qualifies across it.
+	applyPair(t, s, "before-fence")
+	unfenced := captured()
+	a := s.Authority()
+	if _, err := s.ObserveAuthority(t.Context(), replication.Term{ClusterID: a.Term.ClusterID, Epoch: a.Term.Epoch + 1, PrimaryID: "other", PromotionID: "other"}); err != nil {
+		t.Fatal(err)
+	}
+	p.Wake()
+	waitStatus(t, p, func(s Status) bool { return s.Served.Publication > published && s.DNSOnly })
+	if p.ServedWithin("runtime", unfenced, time.Hour) {
+		t.Fatal("a publication replaced by a DNS-only publication was served")
+	}
+
+	p.Close()
+	if p.ServedWithin("runtime", unfenced, time.Hour) {
+		t.Fatal("a closed publisher served")
+	}
+}
+
+// other returns a distinct pointer to a copy of the value behind v.
+func other(v any) any {
+	cp := *(v.(*fixtureView))
+	return &cp
+}

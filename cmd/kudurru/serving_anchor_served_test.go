@@ -23,7 +23,9 @@ import (
 // test holds the publisher's barrier across the commit, so the publication
 // cannot be replaced while the first half runs. The same holds for a SERVFAIL
 // the node produced without asking an upstream; only a failure of an
-// upstream that was asked is retained past the successor (D377).
+// upstream that was asked is retained past the successor (D377). A query in
+// flight across the swap still gets its answer for servedSuccessorGrace after
+// it (D395); after that grace the old lease is refused as before.
 func TestRootAnchorServedDNSFollowsThePublication(t *testing.T) {
 	f := newServingCommandFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -82,6 +84,7 @@ func TestRootAnchorServedDNSFollowsThePublication(t *testing.T) {
 		before[i] = capture(t, query(dns.TypeA))
 	}
 	beforeLater := capture(t, query(dns.TypeA))
+	beforeGrace := capture(t, query(dns.TypeA))
 
 	var release func()
 	awaitServingRuntime(t, f.s, func() bool {
@@ -175,12 +178,51 @@ func TestRootAnchorServedDNSFollowsThePublication(t *testing.T) {
 	awaitServingRuntime(t, f.s, func() bool {
 		return f.s.publisher.Status().ProtectedReady && !f.s.publisher.Serves(recursiveRootComponent, seal)
 	})
+	// Hold the barrier again so that no second swap can follow, then answer
+	// within the grace: the replaced publication still answers every
+	// ordinary query, captured before the swap or on its lease after it.
+	awaitServingRuntime(t, f.s, func() bool {
+		_, held, err := f.s.publisher.Pin(ctx)
+		if err != nil {
+			return false
+		}
+		release = held
+		return true
+	})
+	pinned = true
+	if !f.s.publisher.ServedWithin(recursiveRootComponent, seal, servedSuccessorGrace) {
+		t.Fatal("the replaced publication was not served within its grace")
+	}
+	{
+		if !seal.servedCurrent() {
+			t.Fatal("the replaced publication did not count as served within its grace")
+		}
+		req := query(dns.TypeA)
+		if !emit(t, req, beforeGrace, local(req, pipeline.OriginLocal, pipeline.StatusLocalRecord)) {
+			t.Fatal("a query in flight across the swap was withheld within the grace")
+		}
+		for _, tc := range refusals {
+			req := query(dns.TypeA)
+			if !emit(t, req, capture(t, req), refusal(req, tc.origin, tc.contacted)) {
+				t.Fatal("a SERVFAIL in flight across the swap was withheld within the grace", tc.name)
+			}
+		}
+		axfr := query(dns.TypeAXFR)
+		if emit(t, axfr, capture(t, axfr), local(axfr, pipeline.OriginAuthoritative, pipeline.StatusAuthoritative)) {
+			t.Fatal("a transfer of the predecessor was emitted within the grace")
+		}
+	}
+	pinned = false
+	release()
+	awaitServingRuntime(t, f.s, func() bool {
+		return !f.s.publisher.ServedWithin(recursiveRootComponent, seal, servedSuccessorGrace)
+	})
 	if seal.servedCurrent() || !seal.dnsCurrent() {
 		t.Fatal("a superseded publication still counts as served, or lost its DNS dependencies")
 	}
 	req := query(dns.TypeA)
 	if emit(t, req, beforeLater, local(req, pipeline.OriginLocal, pipeline.StatusLocalRecord)) {
-		t.Fatal("a local answer of a superseded publication was emitted after the node published its successor")
+		t.Fatal("a local answer of a superseded publication was emitted after the grace of its successor")
 	}
 	for _, tc := range refusals {
 		t.Run("published successor "+tc.name, func(t *testing.T) {

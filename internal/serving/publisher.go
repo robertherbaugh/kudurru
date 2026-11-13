@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"weak"
 
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -81,6 +82,31 @@ type Publisher struct {
 	// awaiting counts HTTP callers that wait for an eligible publication
 	// before they own a lease (AwaitHTTP).
 	awaiting atomic.Int64
+	// retired names the last publications that swaps replaced, newest
+	// first, each with the moment it stopped being served, for ServedWithin
+	// (D395). A DNS-only (fenced) publication and Close clear it. The
+	// pointers are weak: they never keep a released publication's memory
+	// alive. Only publish and Close write it, under the publication lock.
+	retired [retiredDepth]atomic.Pointer[retiredBundle]
+}
+
+// retiredDepth bounds how many replaced publications ServedWithin still
+// recognizes. Several swaps can follow one another within a few milliseconds
+// (a zone write is several commits), so a query in flight can outlive more
+// than its own publication's immediate successor.
+const retiredDepth = 8
+
+type retiredBundle struct {
+	bundle weak.Pointer[Bundle]
+	at     time.Time
+}
+
+// clearRetired forgets every replaced publication. Caller holds the
+// publication lock.
+func (p *Publisher) clearRetired() {
+	for i := range p.retired {
+		p.retired[i].Store(nil)
+	}
 }
 
 // New validates the complete owner manifest. No partial/zone-only default is
@@ -224,6 +250,14 @@ func (p *Publisher) publish(ctx context.Context, next *Bundle) error {
 		next.identity.Publication = sequence
 		previous = p.current.Swap(next)
 		swapped = true
+		if previous != nil && !next.dnsOnly {
+			for i := retiredDepth - 1; i > 0; i-- {
+				p.retired[i].Store(p.retired[i-1].Load())
+			}
+			p.retired[0].Store(&retiredBundle{bundle: weak.Make(previous), at: time.Now()})
+		} else {
+			p.clearRetired()
+		}
 		return nil
 	})
 	p.unlock()
@@ -355,6 +389,7 @@ func (p *Publisher) Close() {
 	// Do not hold a publication lock while invoking an owner hook.
 	<-p.publication
 	previous := p.current.Swap(nil)
+	p.clearRetired()
 	p.unlock()
 	if previous != nil {
 		previous.release()
@@ -457,6 +492,42 @@ func (p *Publisher) Serves(name string, value any) bool {
 	}
 	c, ok := bundle.components[name]
 	return ok && c.Value == value
+}
+
+// ServedWithin reports whether value is, by pointer identity, the named
+// component of the publication that is served now, or of a publication that
+// stopped being served at most grace ago (D395). A lease of such a
+// publication was captured while it was served, so an answer computed from
+// it was computed from committed data that was current when the query was
+// received; emitting it a moment after the swap is what the client would
+// have seen had the query been answered a moment earlier. It counts from the
+// swap that replaced that publication, however many swaps followed it, and
+// covers the last retiredDepth replaced publications. Nothing qualifies
+// across a DNS-only (fenced) publication or after Close, and nothing past
+// grace. Like Serves it reads atomics and immutable maps, takes no lock,
+// allocates nothing and never reads the Store.
+func (p *Publisher) ServedWithin(name string, value any, grace time.Duration) bool {
+	if p.Serves(name, value) {
+		return true
+	}
+	if p == nil || grace <= 0 || p.closed.Load() || value == nil || reflect.ValueOf(value).Kind() != reflect.Pointer {
+		return false
+	}
+	for i := range p.retired {
+		r := p.retired[i].Load()
+		if r == nil || time.Since(r.at) > grace {
+			// Entries are newest first: every later one retired earlier.
+			return false
+		}
+		bundle := r.bundle.Value()
+		if bundle == nil {
+			continue
+		}
+		if c, ok := bundle.components[name]; ok && c.Value == value {
+			return true
+		}
+	}
+	return false
 }
 
 // Pin is a real publication barrier compatible with replica.ServingPin. It

@@ -29,10 +29,28 @@ type rootAnchorOwner struct {
 	incarnation [32]byte
 	admission   *rootAnchorAdmission
 	// served reports whether a seal belongs to the publication that is served
-	// now (Publisher.Serves). Root sets it once its publisher exists; without
-	// it local DNS output keeps the strict data guard.
+	// now, or to one that stopped being served at most servedSuccessorGrace
+	// ago (Publisher.ServedWithin). Root sets it once its
+	// publisher exists; without it local DNS output keeps the strict data
+	// guard.
 	served func(*recursiveRootSeal) bool
 }
+
+// servedSuccessorGrace is how long after a publication was replaced an
+// ordinary query answer computed from it may still be sent (D395). Every
+// such query was received, and its publication captured, while that
+// publication was served (Capture only returns the served one), so its
+// answer is committed data that was current at that moment; withholding it
+// only made the client time out (one query in a few thousand across each
+// publication, measured). The grace covers a local, authoritative or mixed
+// lookup that is in flight across one or more swaps. It counts from the swap
+// that replaced the query's own publication, never across a DNS-only
+// (fenced) publication, and the DNS dependencies and the anchor
+// input are still checked at the handoff, so a replaced DNS keyring,
+// transferred zone data, a retired anchor or the end of the root lifetime
+// still withhold at once. Transfers, UPDATE acknowledgments and the other
+// strict outputs keep full data currency.
+const servedSuccessorGrace = time.Second
 
 // The coalesced signal wakes rebuilding; it never grants output admission.
 func (o *rootAnchorOwner) watch(ctx context.Context, wake func()) error {
@@ -104,9 +122,11 @@ func (s *recursiveRootSeal) dnsCurrent() bool {
 // commit that the node has not published yet does not retire it: DNS keeps
 // answering from the last complete publication, as a follower does from its
 // last pull, instead of withholding every local answer until the node has
-// published again. A successor publication retires it at once, so an answer
-// computed on older data is never sent after a write was acknowledged as
-// published. Installed dependencies and the static/managed anchor owner stay
+// published again. A successor publication retires it after
+// servedSuccessorGrace (D395): a query captured before the swap still gets
+// its answer, and no query captured after it can use the old publication,
+// so no query that arrives after a write was acknowledged as published gets
+// older data. Installed dependencies and the static/managed anchor owner stay
 // mandatory, exactly as for retained recursive output. It is never stricter
 // than full data currency: an answer whose data is still current is admitted
 // even when the node has meanwhile published a successor of the same data.

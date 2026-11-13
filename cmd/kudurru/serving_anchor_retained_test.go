@@ -130,13 +130,14 @@ func TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation(t *testing.T) {
 	// admissible while its publication is served (D378,
 	// TestRootAnchorServedDNSFollowsThePublication). The cases below that
 	// refuse them are about an original lease whose successor the node has
-	// already published.
+	// already published, past the grace of a query in flight across that
+	// swap (servedSuccessorGrace, D395).
 	seal, err := servingdns.Component[*recursiveRootSeal](req, recursiveRootComponent)
 	if err != nil {
 		t.Fatal(err)
 	}
 	awaitServingRuntime(t, f.s, func() bool {
-		return f.s.publisher.Status().ProtectedReady && !f.s.publisher.Serves(recursiveRootComponent, seal)
+		return f.s.publisher.Status().ProtectedReady && !f.s.publisher.ServedWithin(recursiveRootComponent, seal, servedSuccessorGrace)
 	})
 	for _, tc := range []struct {
 		name   string

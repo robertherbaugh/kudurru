@@ -262,7 +262,9 @@ func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *serving
 	// D373). Wake is buffered and never blocks.
 	o.Lists.OnAwaitedBody(s.publisher.Wake)
 	publisher := s.publisher
-	s.anchors.served = func(seal *recursiveRootSeal) bool { return publisher.Serves(recursiveRootComponent, seal) }
+	s.anchors.served = func(seal *recursiveRootSeal) bool {
+		return publisher.ServedWithin(recursiveRootComponent, seal, servedSuccessorGrace)
+	}
 	s.host, err = providerhost.New(providerhost.Options{Store: o.Store, Publisher: s.publisher, Resources: s.resources, License: o.License, Schema: authSchema, Static: prepared, Now: o.Now, PinAuthKeys: o.AuthKeys.withCurrent, Withdraw: func(ctx context.Context, tx *sqlite.CommandTx, at time.Time) error {
 		return security.AcceptProviderAuthorities(ctx, tx, []providerregistry.DesiredAuthority{}, at)
 	}})
