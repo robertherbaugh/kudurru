@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"testing"
@@ -31,6 +33,44 @@ func awaitMountedBearer(t *testing.T, base, path, token string, want int) {
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("GET %s with the issued token never answered %d", path, want)
+		}
+		select {
+		case <-t.Context().Done():
+			t.Fatal("canceled")
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+}
+
+// awaitMountedPublished waits until an independent GET observes the committed
+// state: want is 200 (with the exact resourceVersion when one is given), or
+// 404 after a delete.
+// A later command needs the previous commit's serving generation; a mutation
+// sent before it is published may answer 503 generation_pending, and the
+// test never retries a mutation to hide that.
+func awaitMountedPublished(t *testing.T, client *http.Client, base, path string, want int, resourceVersion string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := client.Do(req)
+		if err == nil {
+			var meta struct {
+				Metadata struct {
+					ResourceVersion string `json:"resourceVersion"`
+				} `json:"metadata"`
+			}
+			decoded := json.NewDecoder(io.LimitReader(res.Body, 64<<10)).Decode(&meta)
+			_ = res.Body.Close()
+			if res.StatusCode == want && (want != http.StatusOK || resourceVersion == "" || decoded == nil && meta.Metadata.ResourceVersion == resourceVersion) {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("GET %s never observed the committed state (%d)", path, want)
 		}
 		select {
 		case <-t.Context().Done():
@@ -95,20 +135,25 @@ func TestRunServeSQLiteIAMWritersRevokeAcrossRestart(t *testing.T) {
 		}
 		var login api.SessionInfo
 		mountedFactorRequest(t, admin, base, http.MethodPost, "/auth/login", "", api.LoginRequest{Username: "admin", Password: "mounted-test-password-1"}, http.StatusOK, &login)
+		// The session enrolled by the login is a commit of its own.
+		awaitMountedPublished(t, admin, base, "/auth/me", http.StatusOK, "")
 		if restart == 0 {
 			desired := api.ServiceAccountDesired{APIVersion: publicv1.GroupVersion.String(), Kind: publicv1.KindServiceAccount, Metadata: api.ServiceAccountMetadata{Name: "mounted-robot", Namespace: "apps"}}
 			mountedFactorRequest(t, admin, base, http.MethodPost, "/iam/serviceaccounts", login.CSRF, desired, http.StatusCreated, &account)
+			awaitMountedPublished(t, admin, base, "/iam/serviceaccounts/apps/mounted-robot", http.StatusOK, account.ResourceVersion)
 			var first, second api.CreatedToken
 			body := api.CreateServiceAccountTokenRequest{UID: string(account.UID), ExpiresIn: "1h"}
 			mountedFactorRequest(t, admin, base, http.MethodPost, "/iam/serviceaccounts/apps/mounted-robot/tokens", login.CSRF, body, http.StatusCreated, &first)
 			awaitMountedBearer(t, base, "/auth/me", first.Token, http.StatusOK)
 			mountedFactorRequest(t, admin, base, http.MethodDelete, "/iam/serviceaccounts/apps/mounted-robot", login.CSRF, api.ObjectReview{UID: string(account.UID), ResourceVersion: account.ResourceVersion}, http.StatusNoContent, nil)
+			awaitMountedPublished(t, admin, base, "/iam/serviceaccounts/apps/mounted-robot", http.StatusNotFound, "")
 			awaitMountedBearer(t, base, "/auth/me", first.Token, http.StatusUnauthorized)
 			revoked = first.Token
 			// A second account keeps its token across the restart.
 			desired.Metadata.Name = "mounted-kept"
 			var keptAccount publicv1.ServiceAccount
 			mountedFactorRequest(t, admin, base, http.MethodPost, "/iam/serviceaccounts", login.CSRF, desired, http.StatusCreated, &keptAccount)
+			awaitMountedPublished(t, admin, base, "/iam/serviceaccounts/apps/mounted-kept", http.StatusOK, keptAccount.ResourceVersion)
 			mountedFactorRequest(t, admin, base, http.MethodPost, "/iam/serviceaccounts/apps/mounted-kept/tokens", login.CSRF, api.CreateServiceAccountTokenRequest{UID: string(keptAccount.UID)}, http.StatusCreated, &second)
 			kept = second.Token
 			awaitMountedBearer(t, base, "/auth/me", kept, http.StatusOK)
