@@ -139,16 +139,19 @@ func memberUpdateRcode(msg *dns.Msg) int {
 	return msg.Rcode
 }
 
-// TestRootMemberFollowerUpdateAcrossInstallAnswersServfail is the follower
-// half of a DHCP burst: a signed UPDATE captured the follower's publication,
-// and the follower then installed the primary's next commit (here another
-// object; in a burst, the previous UPDATE's own commit) before the forward
-// checked its keyring. The keyring that verified the request is no longer
-// current, which is a source change under the request, not a refusal of the
-// key: the follower answers SERVFAIL, signed, sends nothing and never
-// retries, so an RFC 2136 client retries and is not told its key is refused
-// (D381). Before this was fixed the follower answered REFUSED.
-func TestRootMemberFollowerUpdateAcrossInstallAnswersServfail(t *testing.T) {
+// TestRootMemberFollowerUpdateAcrossInstallWaitsForItsPublication is the
+// follower half of a DHCP burst: a signed UPDATE captured the follower's
+// publication, and the follower then installed the primary's next commit
+// (here another object; in a burst, the previous UPDATE's own commit) before
+// the forward checked its keyring. The keyring that verified the request is
+// no longer current, which is a source change under the request, not a
+// refusal of the key, and nothing was sent. The follower answered SERVFAIL
+// for it (and before that REFUSED), so most of a burst through a follower
+// failed. It now waits, within the forward's bound, for its own current
+// publication, selects the zone and admits the key again there, and sends
+// the update once: the answer is the primary's NOERROR, signed, and the
+// record is committed exactly once (D381).
+func TestRootMemberFollowerUpdateAcrossInstallWaitsForItsPublication(t *testing.T) {
 	f := newMemberForwardHTTPFixture(t, true)
 	memberUpdateApplyOnPrimary(t, f, &public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "home"}, Spec: public.DNSZoneSpec{ZoneName: "example.", Type: public.ZoneTypePrimary, Nameservers: []string{"ns.example."},
 		Policy: public.ZonePolicy{Notify: public.NotifyNone, Update: public.AccessAllow, UpdatePolicies: []public.UpdatePolicy{{TSIGKeyRef: "updates", Name: "*.example.", Types: []string{"A"}}}}}})
@@ -219,22 +222,22 @@ func TestRootMemberFollowerUpdateAcrossInstallAnswersServfail(t *testing.T) {
 	if got.msg.IsTsig() == nil {
 		t.Fatal("held UPDATE answer was not signed")
 	}
-	if rcode := memberUpdateRcode(got.msg); rcode != dns.RcodeServerFailure {
-		t.Fatalf("UPDATE held across a follower install answered %s, want SERVFAIL", dns.RcodeToString[rcode])
+	if rcode := memberUpdateRcode(got.msg); rcode != dns.RcodeSuccess {
+		t.Fatalf("UPDATE held across a follower install answered %s, want NOERROR", dns.RcodeToString[rcode])
 	}
 
-	// Nothing was sent: after a later forwarded UPDATE commits and the
-	// follower serves it, the held name is still absent.
+	// It was sent once, on the newer publication: the follower serves it
+	// after its next pull, and a request that requires the name to be unused
+	// now fails its prerequisite.
 	memberUpdatePull(t, f)
-	answer, err = dnsf.exchange(primaryUpdateMessage("example.", "after.example.", true), true)
-	if err != nil || memberUpdateRcode(answer) != dns.RcodeSuccess {
-		t.Fatalf("forwarded UPDATE after the held one: rcode=%d err=%v", memberUpdateRcode(answer), err)
+	if rcode := served("held.example."); rcode != dns.RcodeSuccess {
+		t.Fatal("the UPDATE held across the install is not served", dns.RcodeToString[rcode])
 	}
-	memberUpdatePull(t, f)
-	if rcode := served("after.example."); rcode != dns.RcodeSuccess {
-		t.Fatal("later forwarded UPDATE not served", dns.RcodeToString[rcode])
-	}
-	if rcode := served("held.example."); rcode != dns.RcodeNameError {
-		t.Fatal("the UPDATE answered SERVFAIL was applied", dns.RcodeToString[rcode])
+	unused := primaryUpdateMessage("example.", "held.example.", false)
+	unused.NameNotUsed([]dns.RR{&dns.ANY{Hdr: dns.RR_Header{Name: "held.example."}}})
+	unused.SetTsig("updates.", dns.HmacSHA256, 300, time.Now().Unix())
+	answer, err = dnsf.exchange(unused, true)
+	if err != nil || memberUpdateRcode(answer) != dns.RcodeYXDomain {
+		t.Fatalf("held.example. after its UPDATE: a name-not-in-use prerequisite answered rcode=%d err=%v, want YXDOMAIN", memberUpdateRcode(answer), err)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -13,6 +14,9 @@ import (
 	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	pr "github.com/robertherbaugh/kudurru/internal/primaryruntime"
+	"github.com/robertherbaugh/kudurru/internal/primaryruntime/network"
+	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
 	"github.com/robertherbaugh/kudurru/internal/servingdns"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -52,6 +56,10 @@ type forwardedUpdate struct {
 	key      dnsserver.TSIGIdentity
 	deadline time.Time
 	retryID  string
+	// stale is set by captureUpdate when it rejected the request only
+	// because its lease was not this node's current writer publication,
+	// before anything was admitted or applied.
+	stale bool
 }
 
 type forwardedUpdateKey struct{}
@@ -97,25 +105,73 @@ func (s *servingRuntime) forwardUpdate(req *pipeline.Request, apex string) (*pip
 	if err != nil || owner.Zones() == nil {
 		return reply(dns.RcodeServerFailure)
 	}
-	route := owner.Zones().Zones(now).Match(apex)
-	if route == nil || route.Name() != apex || route.Type() != public.ZoneTypePrimary {
-		return reply(dns.RcodeNotAuth)
+	native, verified := dnsserver.VerifiedTSIGFor(req, now)
+	ctx, cancel := context.WithTimeout(req.Ctx, memberForwardUpdateTimeout)
+	defer cancel()
+	if verified {
+		if signed := native.Deadline(); !signed.IsZero() {
+			var stop context.CancelFunc
+			ctx, stop = context.WithDeadline(ctx, signed)
+			defer stop()
+		}
 	}
-	native, ok := dnsserver.VerifiedTSIGFor(req, now)
-	_, keys, current := owner.NotifyKeys()
-	if !ok || keys == nil || current == nil {
-		return reply(dns.RcodeRefused)
-	}
-	if !current() {
-		// This node installed a newer commit (in a burst, often the previous
-		// UPDATE's own) or replaced a dependency after the request captured
-		// its publication. The source changed under the request; the key is
-		// not refused. Not sent, never retried (D381).
-		return reply(dns.RcodeServerFailure)
-	}
-	identity, ok := keys.Identity(native.Identity().Key)
-	if !ok || identity != native.Identity() {
-		return reply(dns.RcodeRefused)
+	// held is a later publication of this node that the forward uses instead
+	// of the request's own, see below.
+	var held *serving.Lease
+	defer func() {
+		if held != nil {
+			held.Release()
+		}
+	}()
+	var identity dnsserver.TSIGIdentity
+	var request *sqlite.MemberForwardRequest
+	for {
+		route := owner.Zones().Zones(time.Now()).Match(apex)
+		if route == nil || route.Name() != apex || route.Type() != public.ZoneTypePrimary {
+			return reply(dns.RcodeNotAuth)
+		}
+		_, keys, current := owner.NotifyKeys()
+		if !verified || keys == nil || current == nil {
+			return reply(dns.RcodeRefused)
+		}
+		if current() {
+			var ok bool
+			identity, ok = keys.Identity(native.Identity().Key)
+			if !ok || identity != native.Identity() {
+				return reply(dns.RcodeRefused)
+			}
+			request, err = s.memberForward.Capture(ctx, token)
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, replication.ErrCAS) {
+				return reply(dns.RcodeServerFailure)
+			}
+		}
+		// This node installed a newer commit (in a burst, usually the
+		// previous UPDATE's own) or replaced a dependency after the request
+		// captured its publication: the source changed under the request,
+		// and nothing was sent. The follower decides nothing that the
+		// primary does not decide again, so instead of refusing it waits,
+		// within the forward's bound, until it serves a current publication,
+		// and selects the zone and admits the key again there (D381). A
+		// command that was sent is never sent again.
+		var previous *serving.Bundle
+		if held != nil {
+			previous = held.Bundle()
+		}
+		lease, next, err := s.awaitFollowerPublication(ctx, previous)
+		if err != nil {
+			return reply(dns.RcodeServerFailure)
+		}
+		if held != nil {
+			held.Release()
+		}
+		held = lease
+		if token, err = lease.SourceToken(); err != nil || token.Authority().Mode != replication.Follower {
+			return reply(dns.RcodeServerFailure)
+		}
+		owner = next
 	}
 	msg := native.Message()
 	if msg == nil {
@@ -132,17 +188,6 @@ func (s *servingRuntime) forwardUpdate(req *pipeline.Request, apex string) (*pip
 	wire, err := msg.Pack()
 	if err != nil {
 		return reply(dns.RcodeFormatError)
-	}
-	ctx, cancel := context.WithTimeout(req.Ctx, memberForwardUpdateTimeout)
-	defer cancel()
-	if signed := native.Deadline(); !signed.IsZero() {
-		var stop context.CancelFunc
-		ctx, stop = context.WithDeadline(ctx, signed)
-		defer stop()
-	}
-	request, err := s.memberForward.Capture(ctx, token)
-	if err != nil {
-		return reply(dns.RcodeServerFailure)
 	}
 	deadline, _ := ctx.Deadline()
 	if forward := request.Deadline(); !forward.IsZero() && forward.Before(deadline) {
@@ -175,6 +220,36 @@ func (s *servingRuntime) forwardUpdate(req *pipeline.Request, apex string) (*pip
 		return reply(dns.RcodeServerFailure)
 	}
 	return reply(result.Rcode)
+}
+
+// awaitFollowerPublication returns, within ctx, this follower's current
+// complete publication, waiting while it prepares one, with its runtime
+// owner. A publication that is the previous one is waited past, so a caller
+// that found it no longer current does not get it again. It never installs
+// anything itself.
+func (s *servingRuntime) awaitFollowerPublication(ctx context.Context, previous *serving.Bundle) (*serving.Lease, *servingbuild.RuntimeOwner, error) {
+	for {
+		changed := s.publisher.Subscribe()
+		lease, err := s.publisher.CaptureHTTP(ctx)
+		switch {
+		case err == nil && lease.Bundle() != previous:
+			value, _ := lease.Bundle().Component("runtime")
+			if owner, ok := value.(*servingbuild.RuntimeOwner); ok && owner != nil && owner.Zones() != nil {
+				return lease, owner, nil
+			}
+			lease.Release()
+			return nil, nil, serving.ErrComponents
+		case err == nil:
+			lease.Release()
+		case !errors.Is(err, serving.ErrPending):
+			return nil, nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		case <-changed:
+		}
+	}
 }
 
 // executeMemberUpdate runs one forwarded UPDATE on the primary through the
@@ -226,24 +301,11 @@ func (s *servingRuntime) executeMemberUpdate(ctx context.Context, request *sqlit
 		return err
 	}
 	defer release()
-	lease, err := s.publisher.Capture()
+	response, releaseLease, err := s.runMemberUpdate(bound, status.Writer, command.ID, msg, proto, claim, in)
 	if err != nil {
 		return err
 	}
-	serving := servingdns.Wrap(lease)
-	defer serving.Release()
-	forwarded := &forwardedUpdate{key: dnsserver.TSIGIdentity{Key: claim.ID, Algorithm: in.Algorithm, CredentialVersion: claim.CredentialID},
-		deadline: in.SignatureDeadline, retryID: command.ID}
-	deadline, _ := bound.Deadline()
-	update := &pipeline.Request{Ctx: withForwardedUpdate(bound, forwarded), Msg: msg, Received: time.Now(), Deadline: deadline, Serving: serving,
-		Client: pipeline.Client{Proto: proto, TSIGKey: claim.ID}}
-	response, err := s.primary.update(update)
-	if err != nil {
-		return err
-	}
-	if response == nil || response.Msg == nil {
-		return clusterreplica.ErrProtocol
-	}
+	defer releaseLease()
 	defer response.Close()
 	body, err := json.Marshal(memberUpdateResult{Rcode: response.Msg.Rcode})
 	if err != nil {
@@ -278,4 +340,82 @@ func (s *servingRuntime) executeMemberUpdate(ctx context.Context, request *sqlit
 		return check(scope)
 	})
 	return err
+}
+
+// runMemberUpdate runs a forwarded UPDATE on the primary's current writer
+// publication. Each commit is followed within milliseconds by its
+// publication, and often by the node's own status and lifecycle writes and
+// their publications, so a lease captured at once is often already replaced,
+// or its zone is briefly not admitted for updates, and captureUpdate refuses
+// it with SERVFAIL before any admission: most of a burst of UPDATEs through a
+// follower failed so (D381). A forwarded UPDATE instead waits, inside the
+// member command's bound, until this writer serves a current publication. It
+// runs again only when nothing was decided or committed: when captureUpdate
+// rejected it only because of that publication state (forwardedUpdate.stale),
+// or when every compare-and-swap attempt of Apply lost against another writer
+// of the zone and nothing committed (pr.ErrConflict). It then waits for the
+// next publication first. Every other answer is final, including a commit
+// whose publication failed; the command ID is the retry identity in the
+// zone's receipt ledger throughout, so no attempt can apply twice. The
+// returned release ends the serving lease the answer was computed under.
+func (s *servingRuntime) runMemberUpdate(ctx context.Context, writer pr.PublicationFence, commandID string, msg *dns.Msg, proto pipeline.Proto, claim clusterreplica.SubjectRef, in memberUpdate) (*pipeline.Response, func(), error) {
+	target := serving.TermActivation{Term: writer.Term, Incarnation: writer.Incarnation}
+	var previous *serving.Bundle
+	for {
+		if previous != nil {
+			// The last attempt's publication is still served: wait until it
+			// is replaced instead of capturing it again.
+			changed := s.publisher.Subscribe()
+			if lease, err := s.publisher.Capture(); err == nil {
+				same := lease.Bundle() == previous
+				lease.Release()
+				if same {
+					select {
+					case <-ctx.Done():
+						return nil, nil, ctx.Err()
+					case <-changed:
+					}
+					continue
+				}
+			}
+		}
+		if err := s.publisher.WaitTerm(ctx, target); err != nil {
+			return nil, nil, err
+		}
+		captured, err := s.publisher.Capture()
+		if err != nil {
+			return nil, nil, err
+		}
+		lease := servingdns.Wrap(captured)
+		forwarded := &forwardedUpdate{key: dnsserver.TSIGIdentity{Key: claim.ID, Algorithm: in.Algorithm, CredentialVersion: claim.CredentialID},
+			deadline: in.SignatureDeadline, retryID: commandID}
+		deadline, _ := ctx.Deadline()
+		var applied *pr.UpdateOutcome
+		attempt := network.WithOutcome(withForwardedUpdate(ctx, forwarded), func(out pr.UpdateOutcome) { applied = &out })
+		update := &pipeline.Request{Ctx: attempt, Msg: msg.Copy(), Received: time.Now(), Deadline: deadline, Serving: lease,
+			Client: pipeline.Client{Proto: proto, TSIGKey: claim.ID}}
+		response, err := s.primary.update(update)
+		if err != nil {
+			lease.Release()
+			return nil, nil, err
+		}
+		if response == nil || response.Msg == nil {
+			if response != nil {
+				response.Close()
+			}
+			lease.Release()
+			return nil, nil, clusterreplica.ErrProtocol
+		}
+		// Apply also refuses, without committing, when every one of its
+		// compare-and-swap attempts lost against another writer of the zone
+		// (the node's own status and lifecycle writes follow each commit).
+		lost := applied != nil && !applied.Committed && errors.Is(applied.Err, pr.ErrConflict)
+		if (forwarded.stale || lost) && response.Msg.Rcode == dns.RcodeServerFailure {
+			previous = captured.Bundle()
+			response.Close()
+			lease.Release()
+			continue
+		}
+		return response, lease.Release, nil
+	}
 }

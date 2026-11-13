@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	zk "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
+	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -115,12 +117,12 @@ func memberUpdateHead(t *testing.T, s *servingRuntime) uint64 {
 	return 0
 }
 
-// The primary admits a forwarded UPDATE only for the exact key identity of
-// its own current keyring (D381): the follower verified the MAC, so this is
-// the only authorization of the key on the forwarded branch. A repeated
-// command ID returns the retained outcome without a second effect, and an
-// expired signature deadline applies nothing.
-func TestRootMemberUpdateKeyIdentityAndRetryActualHTTP(t *testing.T) {
+// newMemberUpdateHarness creates the served primary zone example. through
+// the forwarded object path on the mounted member listener, so that a
+// forwarded UPDATE reaches the primary's key admission, and returns the
+// fixture keyring's identity of the granted key updates.
+func newMemberUpdateHarness(t *testing.T) (*rootMemberHarness, dnsserver.TSIGIdentity) {
+	t.Helper()
 	h := newRootMemberHarness(t)
 	// The command fixture removes the runtime fixture's primary zone. Create
 	// it again through the forwarded object path so that a forwarded UPDATE
@@ -151,6 +153,17 @@ func TestRootMemberUpdateKeyIdentityAndRetryActualHTTP(t *testing.T) {
 	if !ok || identity.CredentialVersion == "" || identity.Algorithm != dns.HmacSHA256 {
 		t.Fatal("fixture keyring has no identity for updates.")
 	}
+	return h, identity
+}
+
+// The primary admits a forwarded UPDATE only for the exact key identity of
+// its own current keyring (D381): the follower verified the MAC, so this is
+// the only authorization of the key on the forwarded branch. A repeated
+// command ID returns the retained outcome without a second effect, and an
+// expired signature deadline applies nothing.
+func TestRootMemberUpdateKeyIdentityAndRetryActualHTTP(t *testing.T) {
+	h, identity := newMemberUpdateHarness(t)
+	f := h.f
 	wire := func(build func(*dns.Msg)) []byte {
 		m := new(dns.Msg)
 		m.SetUpdate("example.")
@@ -244,5 +257,69 @@ func TestRootMemberUpdateKeyIdentityAndRetryActualHTTP(t *testing.T) {
 	}
 	if after := memberUpdateHead(t, f.s); after != committed {
 		t.Fatal("a failed prerequisite changed the zone", committed, after)
+	}
+}
+
+// A burst of forwarded UPDATEs, each sent as soon as the previous one was
+// answered as a DHCP server does, commits every one (D381). A commit is
+// followed by its publication and often by the node's own writes and their
+// publications, so the next command often arrives while the primary's
+// served publication is about to be replaced. Before the fix such a command
+// answered SERVFAIL from captureUpdate's writer check, before any admission.
+func TestRootMemberUpdateBurstActualHTTP(t *testing.T) {
+	h, identity := newMemberUpdateHarness(t)
+	f := h.f
+	// command inserts an A record for owner and requires that owner is not
+	// in use, so it answers YXDOMAIN once the record exists.
+	command := func(id, owner string) clusterreplica.Command {
+		t.Helper()
+		m := new(dns.Msg)
+		m.SetUpdate("example.")
+		m.NameNotUsed([]dns.RR{&dns.ANY{Hdr: dns.RR_Header{Name: owner}}})
+		m.Insert([]dns.RR{&dns.A{Hdr: dns.RR_Header{Name: owner, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60}, A: []byte{192, 0, 2, 9}}})
+		wire, err := m.Pack()
+		if err != nil {
+			t.Fatal(err)
+		}
+		payload, err := json.Marshal(memberUpdate{Message: wire, Algorithm: identity.Algorithm, Transport: "udp", SignatureDeadline: time.Now().Add(time.Minute).UTC()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now().UTC()
+		// A follower bounds its exchange at four seconds. A publication under
+		// the race detector on a loaded machine can take longer, so this is
+		// the bound the other member tests use; the process test keeps the
+		// follower's own.
+		return clusterreplica.Command{Format: clusterreplica.CommandFormat, Version: 1, ID: id, ExpectedTerm: f.s.opts.Store.Authority().Term,
+			Hops: 1, IssuedAt: now, NotAfter: now.Add(20 * time.Second), Operation: memberDNSUpdate,
+			Subject: clusterreplica.SubjectRef{Kind: clusterreplica.SubjectTSIGKey, ID: identity.Key, Provider: "tsig", CredentialKind: clusterreplica.CredentialTSIG, CredentialID: identity.CredentialVersion, IssuedAt: now},
+			Payload: payload}
+	}
+	answer := func(c clusterreplica.Command) (int, error) {
+		status, out := h.send(c)
+		if status != http.StatusOK || out.Status != http.StatusOK {
+			return 0, fmt.Errorf("forwarded UPDATE %s was not answered: status=%d outcome=%d err=%v", c.ID, status, out.Status, *h.sendErr)
+		}
+		var result memberUpdateResult
+		if err := json.Unmarshal(out.Body, &result); err != nil {
+			return 0, err
+		}
+		return result.Rcode, nil
+	}
+	var owners []string
+	for i := range 12 {
+		owner := fmt.Sprintf("burst%d.example.", i)
+		rcode, err := answer(command(fmt.Sprintf("burst-%d", i), owner))
+		if err != nil || rcode != dns.RcodeSuccess {
+			t.Fatalf("burst UPDATE %d answered %s, want NOERROR (%v)", i+1, dns.RcodeToString[rcode], err)
+		}
+		owners = append(owners, owner)
+	}
+	// A new command that requires the name to be unused proves each record
+	// was committed.
+	for _, owner := range owners {
+		if rcode, err := answer(command("present-"+strings.TrimSuffix(owner, "."), owner)); err != nil || rcode != dns.RcodeYXDomain {
+			t.Errorf("%s after its UPDATE: a name-not-in-use prerequisite answered %s, want YXDOMAIN (%v)", owner, dns.RcodeToString[rcode], err)
+		}
 	}
 }

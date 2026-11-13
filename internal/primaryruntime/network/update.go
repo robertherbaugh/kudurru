@@ -3,6 +3,7 @@
 package network
 
 import (
+	"context"
 	"errors"
 
 	"github.com/miekg/dns"
@@ -79,8 +80,21 @@ func NewUpdate(o UpdateOptions) (pipeline.Next, error) {
 		if o.Observe != nil {
 			observe(o.Observe, out)
 		}
+		if fn, ok := req.Ctx.Value(outcomeKey{}).(func(pr.UpdateOutcome)); ok && fn != nil {
+			observe(fn, out)
+		}
 		return reply(out.Rcode)
 	}, nil
+}
+
+type outcomeKey struct{}
+
+// WithOutcome lets the caller of one UPDATE see the runtime's outcome of it,
+// for example whether a SERVFAIL committed anything. It is called only when
+// the request reached Apply, after the wire rcode was decided, and cannot
+// change that rcode.
+func WithOutcome(ctx context.Context, fn func(pr.UpdateOutcome)) context.Context {
+	return context.WithValue(ctx, outcomeKey{}, fn)
 }
 
 // Diagnostics must not change an already determined DNS outcome.
