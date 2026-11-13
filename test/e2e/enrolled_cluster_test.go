@@ -956,6 +956,11 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		// The fenced former primary cannot apply a signed UPDATE and cannot
 		// reach the new primary: SERVFAIL, never applied (D381).
 		enrolledUnreachedUpdate(t, primary, updateSecret, "fenced-update.dyn.test.", "192.0.2.103")
+		if anchors != nil {
+			// Fenced is a supervised role: its child checks the root once
+			// (D369), before the partition heals.
+			anchors.awaitTCP(anchorRootNormal, 3, 0, "fenced restart")
+		}
 		relayB.partition(false)
 		var sampled func() (int, bool)
 		if anchors != nil {
@@ -982,7 +987,20 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		enrolledPrimaryRequired(t, apiA, b.Name, http.MethodPost, "/allowlist", map[string]any{"domain": "rejoined-allow.e2e.test"})
 		// The rejoined former primary forwards a settings patch to the new
 		// primary, which commits it; both nodes then serve the change.
+		var beforeSettings int32
+		if anchors != nil {
+			// Installing the successor is a role change (fenced to
+			// follower): the fenced child is joined and the follower child
+			// checks the root once at its start.
+			anchors.awaitTCP(anchorRootNormal, 4, time.Second, "rejoin as follower")
+			beforeSettings = anchors.root.TCP(anchorRootNormal)
+		}
 		enrolledForwardedSettings(t, apiB, apiA, a.Name, "46s", "47s")
+		if anchors != nil {
+			// A changed settings identity ends the follower's cooldown, so
+			// the rejoined member checks the root again (D369).
+			anchors.absorbSettings(beforeSettings, "settings change through the rejoined member")
+		}
 		// The new primary applies a signed UPDATE itself, and the rejoined
 		// former primary now forwards one to it.
 		// Right after the forwarded settings patch the new primary republishes,
@@ -1032,9 +1050,13 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		}
 		if anchors != nil {
 			// The old primary was fenced and installed the successor: the
-			// same owner, no refusal, and a deny-only check for each
-			// supervised role it passed through (fenced, then follower), so
-			// one or two acquisitions depending on when it was fenced.
+			// same owner and no refusal. Since the promotion it checked the
+			// root once per supervised role it passed through (fenced, then
+			// follower: one child each) and once per coalesced settings
+			// change (absorbed into the baseline above). Nothing else
+			// acquires: the new primary's updater waits for the committed
+			// refresh and each child's normal check holds the one-hour
+			// cooldown for an unchanged owner and settings identity.
 			rejoined := anchors.owner(apiA, "follower", func(s api.RootAnchorStatus) bool {
 				return s.Pull != nil && s.Pull.Result == "installed" && s.Supervisor.State == "running"
 			})
@@ -1045,7 +1067,7 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 				t.Fatalf("restarted old primary did not answer validated recursion across fenced and follower: %d samples, failed %v", samples, failed)
 			}
 			time.Sleep(2 * time.Second)
-			if n := anchors.root.TCP(anchorRootNormal) - anchors.base; n < 3 || n > 4 || anchors.root.TotalTCP() != n+anchors.base {
+			if n := anchors.root.TCP(anchorRootNormal) - anchors.base; n != 4 || anchors.root.TotalTCP() != n+anchors.base {
 				t.Fatal("rejoin acquisitions", n)
 			}
 			anchors.awaitValidated(primary, "rejoined member")
