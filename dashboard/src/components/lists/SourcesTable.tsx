@@ -3,8 +3,10 @@
 // the number of inline entries, format, subdomains, the per-source status
 // ("N of M entries enabled" once single entries are switched off, last
 // fetch, error) and the entries browser, edit and delete actions. Every
-// kind of source opens the entries browser. A disabled source's cells are
-// drawn in the secondary colour.
+// kind of source but an RPZ feed opens the entries browser; a feed is
+// transferred by every node itself, so its rules and state are in the RPZ
+// feeds section below the table. A disabled source's cells are drawn in the
+// secondary color.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { FieldStatus } from '@astryxdesign/core/FieldStatus';
@@ -16,17 +18,21 @@ import { pixel, proportional, Table, type TableColumn, type TablePlugin } from '
 import { Text } from '@astryxdesign/core/Text';
 import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
-import { Database, FileText, Link as LinkIcon, ListChecks, Pencil, Trash2 } from 'lucide-react';
+import { Database, FileText, Link as LinkIcon, ListChecks, Pencil, ShieldAlert, Trash2 } from 'lucide-react';
 import type { BlockList, ListSource, SourceStatus } from '../../api/types';
 import { formatExact, formatRelative } from '../../lib/format';
 import { enabledEntriesText, formatLabel, sourceEnabled, sourceKind, sourceName, sourceStatus, type SourceKind } from '../../lib/lists';
+import { rpzSummary } from '../../lib/rpz';
 
 const KIND: Record<SourceKind, { label: string; Icon: typeof LinkIcon }> = {
   url: { label: 'URL', Icon: LinkIcon },
   inline: { label: 'Inline entries', Icon: FileText },
   configMap: { label: 'ConfigMap', Icon: Database },
   entries: { label: 'Allow or deny entries', Icon: ListChecks },
+  rpz: { label: 'RPZ feed', Icon: ShieldAlert },
 };
+
+const PER_NODE = 'Each node transfers this feed itself; its rules and state on this node are under RPZ feeds';
 
 /** One source as a table row (a type literal, as the Table's Record constraint needs). */
 type Row = { key: string; index: number; name: string; src: ListSource; kind: SourceKind; st: SourceStatus | undefined; on: boolean };
@@ -99,6 +105,10 @@ export function SourcesTable({ list, editable, pending, onToggle, onEdit, onDele
           <Link label={`Browse the ${formatExact(r.src.inline?.length ?? 0)} inline entries of ${r.name}`} onClick={() => onBrowse(r.index)}>
             {formatExact(r.src.inline?.length ?? 0)} inline entries
           </Link>
+        ) : r.kind === 'rpz' ? (
+          <Text type="code" size="sm" color={tone(r)} wordBreak="break-all" maxLines={3}>
+            {rpzSummary(r.src)}
+          </Text>
         ) : r.kind === 'entries' ? (
           <Link label={`Browse the ${formatExact(r.src.entries?.length ?? 0)} entries of ${r.name}`} onClick={() => onBrowse(r.index)}>
             {formatExact(r.src.entries?.length ?? 0)} {list.spec.mode === 'allow' ? 'allow' : 'deny'} entries
@@ -124,7 +134,7 @@ export function SourcesTable({ list, editable, pending, onToggle, onEdit, onDele
       key: 'subdomains',
       header: 'Subdomains',
       width: pixel(108),
-      renderCell: (r) => (r.src.subdomains ? <Badge variant="info" label="yes" /> : <Text type="supporting">no</Text>),
+      renderCell: (r) => (r.kind === 'rpz' ? <Text type="supporting">–</Text> : r.src.subdomains ? <Badge variant="info" label="yes" /> : <Text type="supporting">no</Text>),
     },
     {
       key: 'entries',
@@ -132,7 +142,11 @@ export function SourcesTable({ list, editable, pending, onToggle, onEdit, onDele
       width: pixel(92),
       align: 'end',
       renderCell: (r) =>
-        r.on ? (
+        r.kind === 'rpz' ? (
+          <Tooltip content={PER_NODE} hasHoverIndication={false}>
+            <Text type="supporting">per node</Text>
+          </Tooltip>
+        ) : r.on ? (
           <VStack gap={0}>
             <Text>{enabledEntriesText(r.st)}</Text>
             {r.st?.invalid ? <Text type="supporting">{formatExact(r.st.invalid)} invalid</Text> : null}
@@ -150,6 +164,10 @@ export function SourcesTable({ list, editable, pending, onToggle, onEdit, onDele
       renderCell: (r) =>
         !r.on ? (
           <Text type="supporting">disabled</Text>
+        ) : r.kind === 'rpz' ? (
+          <Tooltip content={PER_NODE} hasHoverIndication={false}>
+            <Text type="supporting">per node</Text>
+          </Tooltip>
         ) : r.kind === 'inline' || r.kind === 'entries' ? (
           <Tooltip content="Inline entries are compiled from the object; there is nothing to fetch" hasHoverIndication={false}>
             <Text type="supporting">compiled</Text>
@@ -189,7 +207,7 @@ export function SourcesTable({ list, editable, pending, onToggle, onEdit, onDele
       width: pixel(editable ? 156 : 92),
       renderCell: (r) => (
         <HStack gap={0.5} wrap="nowrap">
-          <Button label="Entries" size="sm" variant="ghost" tooltip={`Browse and switch off single entries of ${r.name}`} onClick={() => onBrowse(r.index)} />
+          {r.kind !== 'rpz' ? <Button label="Entries" size="sm" variant="ghost" tooltip={`Browse and switch off single entries of ${r.name}`} onClick={() => onBrowse(r.index)} /> : null}
           {editable ? (
             <>
               {r.kind !== 'entries' ? <Button label="Edit" size="sm" variant="ghost" isIconOnly icon={<Pencil size={16} aria-hidden="true" />} tooltip={`Edit ${r.name}`} onClick={() => onEdit(r.index)} /> : null}

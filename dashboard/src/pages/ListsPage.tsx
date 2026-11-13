@@ -1,6 +1,8 @@
 // Block and allow lists: one row per list with its enable switch, mode,
 // sources ("3 of 4 enabled"), entries, health and last update; rows open
-// the list page (/lists/:ns/:name) and "New list" the wizard (?new=1).
+// the list page (/lists/:ns/:name) and "New list" the wizard (?new=1). A
+// block list with RPZ feeds also shows the worst feed state this node
+// reports (GET /blocklists/_rpz, D391) under its health.
 // Also the multi-add of exact or regex domains into the ui-allow / ui-deny
 // lists and "which lists contain this domain" (GET /blocklists/_search).
 import { Badge } from '@astryxdesign/core/Badge';
@@ -14,8 +16,9 @@ import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { qk, useApi, useCan, useCannotReason, usePrimaryOnly } from '../api/context';
-import type { BlockList, ListSource } from '../api/types';
-import { ErrorBanner, useNotify } from '../components/Feedback';
+import type { BlockList, ListSource, RPZFeed } from '../api/types';
+import { ErrorBanner, errorText, useNotify } from '../components/Feedback';
+import { ApiError } from '../api/client';
 import { TextField } from '../components/fields/TextField';
 import { AddEntryDialog } from '../components/domains/DomainEntryDialogs';
 import { Panel } from '../components/layout/Page';
@@ -23,7 +26,9 @@ import { ObjectsPage } from '../components/ObjectsPage';
 import { ListWizardDialog } from '../components/wizards/ListWizard';
 import { formatExact, formatRelative } from '../lib/format';
 import { listHealth } from '../lib/listHealth';
-import { listPath, sourceEnabled, sourcesSummary } from '../lib/lists';
+import { isRPZSource, listPath, sourceEnabled, sourceName, sourcesSummary } from '../lib/lists';
+import { feedStateView, feedsOf, hasEnabledFeed, worstFeed } from '../lib/rpz';
+import { RPZ_POLL_MS } from '../components/lists/RPZFeeds';
 import { SCHEMAS } from '../lib/objectSchemas';
 
 function ListSearch() {
@@ -73,9 +78,9 @@ function ListSearch() {
   );
 }
 
-/** Whether every source is inline, so there is nothing to fetch and no "last fetched". */
+/** Whether every source is inline, so there is nothing to fetch and no "last fetched" (an RPZ feed is transferred, not inline). */
 export function inlineOnly(sources: ListSource[] | undefined): boolean {
-  return !!sources?.length && sources.every((s) => !s.url && !s.configMapRef);
+  return !!sources?.length && sources.every((s) => !s.url && !s.configMapRef && !isRPZSource(s));
 }
 
 /** How long the page polls list status after a create or refresh. */
@@ -83,10 +88,52 @@ export const STATUS_POLL_MS = 20_000;
 
 /** The sources one by one, a line each, for the Sources cell's tooltip. */
 function describeSources(sources: ListSource[]): string[] {
-  return sources.map((s) => {
-    const what = s.url ?? (s.configMapRef ? `ConfigMap ${s.configMapRef.name}` : `${s.inline?.length ?? 0} inline entries`);
+  return sources.map((s, i) => {
+    const what = isRPZSource(s) ? `RPZ feed ${s.rpz?.zoneName ?? sourceName(i, s)}` : (s.url ?? (s.configMapRef ? `ConfigMap ${s.configMapRef.name}` : `${s.inline?.length ?? 0} inline entries`));
     return sourceEnabled(s) ? what : `${what} (off)`;
   });
+}
+
+/**
+ * The worst RPZ feed state of a list on this node, or why it is unknown:
+ * plain text while every feed serves, a badge only when clients get
+ * SERVFAIL or a refresh failed (Astryx: badges for states that need action).
+ */
+function FeedCell({ list, feeds, unknown }: { list: BlockList; feeds: RPZFeed[] | undefined; unknown: string | undefined }) {
+  if (unknown !== undefined || feeds === undefined) {
+    return (
+      <Tooltip content={unknown ?? "Reading this node's feed state"} hasHoverIndication={false}>
+        <Text type="supporting" size="sm">
+          RPZ unknown
+        </Text>
+      </Tooltip>
+    );
+  }
+  const mine = feedsOf(feeds, list);
+  const worst = worstFeed(mine);
+  if (!worst) {
+    return (
+      <Tooltip content="This node reports no feed for this list yet; its configuration may not include the list." hasHoverIndication={false}>
+        <Text type="supporting" size="sm">
+          RPZ not reported
+        </Text>
+      </Tooltip>
+    );
+  }
+  const view = feedStateView(worst);
+  const detail = [`${worst.source ?? worst.origin ?? 'feed'}${mine.length > 1 ? ` (worst of ${mine.length} feeds)` : ''} on ${worst.node ? `node ${worst.node}` : 'this node'}`, worst.message].filter(Boolean).join(': ');
+  const tip = view.servfail ? `${detail} Clients whose policy uses this list get SERVFAIL from this node.` : detail;
+  return (
+    <Tooltip content={tip} hasHoverIndication={false}>
+      {view.tone === 'success' ? (
+        <Text size="sm" data-testid="rpz-state">
+          RPZ {view.label}
+        </Text>
+      ) : (
+        <Badge variant={view.tone} label={`RPZ ${view.label}`} data-testid="rpz-state" />
+      )}
+    </Tooltip>
+  );
 }
 
 export default function ListsPage() {
@@ -113,6 +160,11 @@ export default function ListsPage() {
     enabled: polling > 0,
     refetchInterval: polling > 0 ? 2_000 : false,
   });
+  // This node's feed state, read only while a block list has an enabled feed.
+  const lists = useQuery({ queryKey: qk.objects('blocklists'), queryFn: () => api.objects.list<BlockList>('blocklists'), enabled: false });
+  const anyFeed = (lists.data?.items ?? []).some((l) => l.spec.mode !== 'allow' && hasEnabledFeed(l));
+  const feeds = useQuery({ queryKey: ['rpz', 'all'], queryFn: () => api.lists.rpzFeeds(), enabled: anyFeed && can('blocklists', 'read'), refetchInterval: RPZ_POLL_MS, retry: false });
+  const feedsUnknown = feeds.error ? (feeds.error instanceof ApiError && feeds.error.status === 501 ? 'This node runs no RPZ feed manager' : `Could not read this node's feed state: ${errorText(feeds.error)}`) : undefined;
   const refresh = useMutation({
     mutationFn: (l: BlockList) => api.lists.refresh(l.metadata.namespace ?? 'default', l.metadata.name),
     onSuccess: (_r, l) => {
@@ -168,10 +220,17 @@ export default function ListsPage() {
           width: proportional(1.9, { minWidth: 152 }),
           cell: (l) => {
             const h = listHealth(l);
-            return (
+            const health = (
               <Tooltip content={h.detail} isEnabled={!!h.detail} hasHoverIndication={false}>
                 <Badge variant={h.tone === 'neutral' ? 'neutral' : h.tone} label={h.label} />
               </Tooltip>
+            );
+            if (l.spec.mode === 'allow' || !hasEnabledFeed(l)) return health;
+            return (
+              <VStack gap={0.5} hAlign="start">
+                {health}
+                <FeedCell list={l} feeds={feeds.data ? (feeds.data.items ?? []) : undefined} unknown={feedsUnknown} />
+              </VStack>
             );
           },
         },

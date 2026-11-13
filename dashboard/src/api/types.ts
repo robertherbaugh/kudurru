@@ -176,7 +176,8 @@ export type DNSRecordSet = KObject<
   { observedGeneration?: number; names?: number; conditions?: Condition[] }
 >;
 
-export type ListFormat = 'auto' | 'hosts' | 'domains' | 'adblock' | 'regex';
+/** rpz only with an rpz block (an RPZ feed source); the others for url, inline and configMap sources. */
+export type ListFormat = 'auto' | 'hosts' | 'domains' | 'adblock' | 'regex' | 'rpz';
 /** blockPage answers A/AAAA with the block-page address (ux-plan C5). */
 export type BlockResponse = 'nxdomain' | 'zeroIP' | 'refused' | 'customIP' | 'blockPage';
 
@@ -192,8 +193,22 @@ export interface ListSource {
   enabled?: boolean;
   /** Structured entries (the dashboard's allow and deny lists ui-*); exclusive with url, inline and configMapRef. */
   entries?: ListSourceEntry[];
-  /** Normalised rules of this url, configMap or inline source that are switched off. */
+  /** Normalized rules of this url, configMap or inline source that are switched off; for an RPZ feed, absolute policy owner names. */
   exclude?: string[];
+  /** A response policy zone each node transfers itself (AXFR/IXFR, api/v1alpha1 RPZSource); requires format rpz and a block list. */
+  rpz?: RPZSource;
+}
+
+/** api/v1alpha1 RPZSource: a policy zone transferred from its primaries, never secret material. */
+export interface RPZSource {
+  /** The non-root absolute policy-zone origin. */
+  zoneName: string;
+  /** Tried in order (host or host:port, [IPv6]:port), 1 to 32. */
+  primaries: string[];
+  /** tcp (the default) or tls. */
+  transferProtocol?: 'tcp' | 'tls';
+  /** A stored or file TSIG key name. */
+  tsigKeyRef?: string;
 }
 
 export interface BlockListSpec {
@@ -314,6 +329,26 @@ export type ZoneSummary = Omit<S['ZoneSummary'], 'type'> & {
 
 /** The responding node's secondary snapshot, independent of shared status. */
 export type SecondaryRuntime = S['SecondaryRuntime'];
+
+// RPZ feed state of the answering node (D391), GET /blocklists/_rpz and
+// /blocklists/{namespace}/{name}/rpz. Every field is optional here: the
+// dashboard renders what the node reports (a discarded copy, for example,
+// carries no serial or counts) and never fills a field in itself.
+type Loose<T> = { [K in keyof T]?: T[K] | undefined };
+export type RPZFeedState = S['RPZFeed']['state'];
+export type RPZFeedCounts = Loose<S['RPZFeedCounts']>;
+export type RPZRuleCounts = Loose<S['RPZRuleCounts']>;
+export type RPZIgnoredReason = Loose<S['RPZIgnoredReason']>;
+export type RPZFeed = Loose<Omit<S['RPZFeed'], 'counts' | 'rules' | 'ignored' | 'state'>> & {
+  /** pending, serving, expired or unavailable; a newer node may report another word. */
+  state?: RPZFeedState | (string & {});
+  counts?: RPZFeedCounts;
+  rules?: RPZRuleCounts;
+  ignored?: RPZIgnoredReason[] | null;
+};
+export interface RPZFeedList {
+  items?: RPZFeed[] | null;
+}
 export type StubRuntime = S['StubRuntime'];
 
 export interface ZoneTransferStatus {

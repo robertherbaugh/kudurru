@@ -31,6 +31,7 @@ import type {
   ClusterPromotionInfo,
   ClusterPromotionReceipt,
   RootAnchorStatus,
+  RPZFeedList,
   CreateTokenRequest,
   EdgeInfo,
   LicenseInfo,
@@ -205,6 +206,10 @@ export function endpoints(c: ApiClient) {
     lists: {
       refresh: (namespace: string, name: string) => c.post<void>(`/blocklists/${enc(namespace)}/${enc(name)}/refresh`),
       search: (domain: string) => c.get<ListEnvelope<ListSearchHit>>('/blocklists/_search', { domain }),
+      /** The RPZ feeds of every list (or of one namespace's) on the answering node (D391). */
+      rpzFeeds: (namespace?: string) => c.get<RPZFeedList>('/blocklists/_rpz', namespace ? { namespace } : undefined),
+      /** The RPZ feeds of one list on the answering node: 404 when its configuration has no such list, 501 without a feed manager, 503 before any configuration. */
+      rpz: (namespace: string, name: string) => c.get<RPZFeedList>(`/blocklists/${enc(namespace)}/${enc(name)}/rpz`),
       /**
        * A page of one source's entries, any kind: inline lines, the rules of a
        * url or configMap body this node cached, or structured entries; `q`

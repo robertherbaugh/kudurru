@@ -2,8 +2,9 @@
 // mode, health, entries, unsupported rules, last refresh, owner, which
 // policies use it), the sources table with Pi-hole-style enable switches
 // (spec.sources[].enabled, ux-plan C2), the inline entries browser
-// (?source=<name>), the list-level settings with their own Save, and "View
-// as YAML". Objects managed elsewhere show the same page read-only.
+// (?source=<name>), the RPZ feeds of a block list as this node reports them
+// (D391), the list-level settings with their own Save, and "View as YAML".
+// Objects managed elsewhere show the same page read-only.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -27,13 +28,14 @@ import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedba
 import { FormDialog } from '../components/FormDialog';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { EntriesBrowser } from '../components/lists/EntriesBrowser';
+import { RPZFeedsPanel } from '../components/lists/RPZFeeds';
 import { SourceDialog } from '../components/lists/SourceDialog';
 import { SourcesTable } from '../components/lists/SourcesTable';
 import { ManagedBadge } from '../components/ManagedBadge';
 import { YamlDialog } from '../components/YamlDialog';
 import { formatDateTime, formatExact, formatRelative } from '../lib/format';
 import { listHealth } from '../lib/listHealth';
-import { listKey, MODE_OPTIONS, RESPONSE_OPTIONS, sourceName, sourcesSummary, withSourceEnabled } from '../lib/lists';
+import { isRPZSource, listKey, MODE_OPTIONS, RESPONSE_OPTIONS, sourceName, sourcesSummary, withSourceEnabled } from '../lib/lists';
 import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { durationError } from '../lib/objectSchemas';
 import { useNavigate, useSearchParams } from '../lib/router';
@@ -193,6 +195,8 @@ export default function ListDetailPage({ params }: PageProps) {
   const taken = (except: number | null) => sources.flatMap((s, i) => (i === except ? [] : [sourceName(i, s)]));
   const editingIndex = sourceDialog?.index ?? null;
   const ready = st?.conditions?.find((c) => c.type === 'Ready');
+  const hasFeeds = list.spec.mode !== 'allow' && sources.some(isRPZSource);
+  const browsingFeed = browseIndex >= 0 && !!sources[browseIndex] && isRPZSource(sources[browseIndex]);
 
   const saveSource = async (src: ListSource) => {
     const next = editingIndex === null ? [...sources, src] : sources.map((s, i) => (i === editingIndex ? src : s));
@@ -325,8 +329,12 @@ export default function ListDetailPage({ params }: PageProps) {
         />
       </Panel>
 
+      {hasFeeds ? <RPZFeedsPanel namespace={ns} name={name} listEnabled={enabled} /> : null}
+
       {browsing !== null ? (
-        browseIndex >= 0 ? (
+        browsingFeed ? (
+          <Banner status="info" title={`${browsing} is an RPZ feed`} description="A feed has no entries to browse: every node transfers it itself. Its rules and ignored owners on this node are under RPZ feeds." />
+        ) : browseIndex >= 0 ? (
           <EntriesBrowser key={browsing} list={list} index={browseIndex} editable={editable} onClose={() => setParams({ source: null }, { push: true })} />
         ) : (
           <Banner status="warning" title="No such source" description={`${name} has no source named ${browsing}.`} />
@@ -343,6 +351,7 @@ export default function ListDetailPage({ params }: PageProps) {
           initial={editingIndex === null ? undefined : sources[editingIndex]}
           taken={taken(editingIndex)}
           onSave={saveSource}
+          mode={list.spec.mode}
         />
       ) : null}
 

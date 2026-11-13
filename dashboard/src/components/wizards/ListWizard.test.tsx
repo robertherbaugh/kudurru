@@ -4,6 +4,7 @@ import type { BlockList, Policy } from '../../api/types';
 import { mockDB } from '../../mocks/handlers';
 import { getSelector, pick, valueOf } from '../../test/controls';
 import { renderWithApp } from '../../test/utils';
+import { EMPTY_RPZ } from '../../lib/rpz';
 import { ListWizardDialog, withListRef, wizardSources } from './ListWizard';
 
 const next = () => fireEvent.click(screen.getByRole('button', { name: 'Next' }));
@@ -92,7 +93,7 @@ describe('ListWizardDialog', () => {
 
 describe('wizard helpers', () => {
   it('names sources uniquely', () => {
-    const base = { mode: 'block' as const, urls: [], paste: '', pasteFormat: 'auto' as const, name: '', nameTouched: false, namespace: 'default', comment: '', refreshInterval: '', response: '', v4: '', v6: '', enabled: true, policies: null };
+    const base = { mode: 'block' as const, urls: [], paste: '', pasteFormat: 'auto' as const, rpzOn: false, rpz: EMPTY_RPZ, name: '', nameTouched: false, namespace: 'default', comment: '', refreshInterval: '', response: '', v4: '', v6: '', enabled: true, policies: null };
     const s = wizardSources({
       ...base,
       curated: ['oisd-small'],

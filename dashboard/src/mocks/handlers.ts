@@ -265,7 +265,14 @@ function validateObject(kind: ObjectKind, obj: AnyObject): string | null {
     const s = (obj as BlockList).spec;
     if (!Array.isArray(s.sources) || s.sources.length === 0) return 'spec.sources: at least one source is required';
     for (const [i, src] of s.sources.entries()) {
-      if (!src.url && !src.inline?.length && !src.configMapRef) return `spec.sources[${i}]: one of url, inline or configMapRef is required`;
+      // The CRD rules: exactly one kind; rpz exactly with format rpz, in block mode, without subdomains.
+      const kinds = [!!src.url, !!src.inline?.length, !!src.configMapRef, !!src.entries, !!src.rpz].filter(Boolean).length;
+      if (kinds === 0) return `spec.sources[${i}]: one of url, inline or configMapRef is required`;
+      if (kinds > 1) return `spec.sources[${i}]: exactly one of url, inline, configMapRef, entries or rpz must be set`;
+      if (!!src.rpz !== (src.format === 'rpz')) return `spec.sources[${i}]: RPZ transfer configuration requires format rpz, and format rpz requires RPZ configuration`;
+      if (src.rpz && src.subdomains) return `spec.sources[${i}]: RPZ wildcard semantics cannot be overridden with subdomains`;
+      if (src.rpz && s.mode === 'allow') return 'spec: RPZ sources require block mode';
+      if (src.rpz && (!src.rpz.zoneName || !src.rpz.primaries?.length)) return `spec.sources[${i}].rpz: zoneName and at least one primary are required`;
       if (src.url && !/^https?:\/\//.test(src.url)) return `spec.sources[${i}].url: must be an http(s) URL`;
     }
   }
@@ -1111,6 +1118,22 @@ export const handlers = [
     if (!l) return fail(404, 'not_found', `BlockList ${String(params.ns)}/${String(params.name)} not found`);
     if (l.status) l.status.lastFetched = new Date().toISOString();
     return new HttpResponse(null, { status: 202 });
+  }),
+  // This node's RPZ feeds (D391): 501 without a feed manager, 404 for a list
+  // the node's configuration lacks; the feeds are the test's db.rpzFeeds.
+  http.get(`${B}/blocklists/_rpz`, ({ request }) => {
+    const g = guard(request, 'blocklists', 'read');
+    if (g) return g;
+    if (db.rpzFeeds === false) return fail(501, 'not_implemented', 'RPZ feed state is not available on this node');
+    const ns = new URL(request.url).searchParams.get('namespace') ?? '';
+    return ok({ items: db.rpzFeeds.filter((f) => !ns || f.namespace === ns) });
+  }),
+  http.get(`${B}/blocklists/:ns/:name/rpz`, ({ request, params }) => {
+    const g = guard(request, 'blocklists', 'read');
+    if (g) return g;
+    if (db.rpzFeeds === false) return fail(501, 'not_implemented', 'RPZ feed state is not available on this node');
+    if (!db.lists.some((x) => x.metadata.name === params.name && (x.metadata.namespace ?? 'default') === params.ns)) return fail(404, 'not_found', 'blocklist not found');
+    return ok({ items: db.rpzFeeds.filter((f) => f.list === params.name && f.namespace === params.ns) });
   }),
   http.get(`${B}/blocklists/_search`, ({ request }) => {
     const g = guard(request, 'blocklists', 'read');

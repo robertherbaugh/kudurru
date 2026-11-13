@@ -17,6 +17,7 @@ import type {
   Policy,
   QueryRow,
   SettingKey,
+  RPZFeed,
   SecondaryRuntime,
   StubRuntime,
   TimeseriesPoint,
@@ -43,6 +44,8 @@ export interface MockDB {
   /** Node-local receiver state, deliberately separate from DNSZone status. */
   secondaryRuntime: Record<string, SecondaryRuntime>;
   stubRuntime: Record<string, StubRuntime>;
+  /** This node's RPZ feeds (GET /blocklists/_rpz, D391); node-local like secondaryRuntime. false: no feed manager (501). */
+  rpzFeeds: RPZFeed[] | false;
   recordSets: DNSRecordSet[];
   lists: BlockList[];
   groups: ClientGroup[];
@@ -770,6 +773,7 @@ export function createDB(now = FIXED_NOW): MockDB {
     now,
     zones,
     secondaryRuntime: {},
+    rpzFeeds: [],
     stubRuntime: {},
     recordSets,
     lists: buildLists(now),
