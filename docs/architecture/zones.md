@@ -842,7 +842,9 @@ credential, source, encryption/provider owners and elected writer, then runs
 once in the current transaction with final lifetime checks and safe audit.
 Replace, revoke and reseal require the reviewed UID and resourceVersion. File
 keys remain read-only. The virtual `tsigkeys.kudurru.io` permission does not grant
-access to Kubernetes Secrets.
+access to Kubernetes Secrets. The `kudurru tsigkeys` CLI (D394) sends each command once
+through generated dispatch with redirects and replayable bodies disabled, reads
+the secret only from a file or stdin, and renders the 201/200/202 receipt.
 
 On Kubernetes the same routes run through `kubeTSIGLive` (D365). A command first
 rereads the complete stored source and requires it to equal the node's published

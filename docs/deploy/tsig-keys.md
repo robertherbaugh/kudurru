@@ -18,14 +18,33 @@ All paths below are relative to `/api/v1`.
 | `POST /tsigkeys/{keyName}/revoke` | `uid`, `resourceVersion` | `tsigkeys.delete` |
 | `POST /tsigkeys/{keyName}/reseal` | `uid`, `resourceVersion` | `tsigkeys.write` |
 
-The CLI has no dedicated command for these routes. Use `kudurru api`, with the
-request in a private file so that the secret is not a command argument:
+`kudurru tsigkeys` drives these routes. It reads the secret only from
+`--secret-file` (a private file, or `-` for stdin), never from an argument,
+and no command prints a secret: the server never returns one, so keep your own
+copy for the peers that share the key. The file holds the standard base64
+secret; whitespace and line breaks are ignored, so wrapped `openssl` output
+works.
 
 ```sh
-# key.json: {"keyName": "transfer-key", "algorithm": "hmac-sha256", "secret": "<base64 secret>"}
-kudurru api POST /tsigkeys --data @key.json
-kudurru api /tsigkeys
+umask 077
+openssl rand -base64 32 > transfer-key.secret
+kudurru tsigkeys create transfer-key --algorithm hmac-sha256 --secret-file transfer-key.secret
+kudurru tsigkeys list                       # names, algorithms, UID and resourceVersion
+kudurru tsigkeys replace transfer-key. --uid <uid> --resource-version <rv> --secret-file new.secret
+kudurru tsigkeys reseal transfer-key. --uid <uid> --resource-version <rv>
+kudurru tsigkeys revoke transfer-key. --uid <uid> --resource-version <rv>
 ```
+
+Each command prints its receipt (`-o json` or `-o yaml` for the full
+document). The CLI sends every command once and never follows a redirect,
+refreshes a binding or retries. A refusal keeps the server's status and key.
+On an enrolled SQLite follower the commands answer `503 primary_required`
+before they run; nothing changes, and the command must be sent to the primary
+(for example with `--server`). A `202` receipt exits with status 0 and a note
+on standard error that publication was not confirmed. A missing or unusable
+response reports an unknown outcome: run `kudurru tsigkeys list` and review
+the fresh metadata before any further action. `kudurru api` still reaches the
+same routes for scripts that build their own requests.
 
 A zone names the key in `spec.policy.transferTSIGKeyRefs`,
 `spec.policy.notifyTSIGKeyRef` or, for [dynamic updates](dynamic-updates.md),

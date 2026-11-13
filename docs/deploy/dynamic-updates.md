@@ -40,14 +40,12 @@ tsigKeys:
 ```
 
 Or a stored key, created once through the API and used by every node without
-a restart ([tsig-keys.md](tsig-keys.md)). Write the request to a private file
-so that the secret is not a command argument:
+a restart ([tsig-keys.md](tsig-keys.md)). The CLI reads the secret from a
+private file so that it is not a command argument:
 
 ```sh
-# ddns-key.json: {"keyName": "ddns-key", "algorithm": "hmac-sha256", "secret": "<base64 secret>"}
-kudurru api POST /tsigkeys --data @ddns-key.json
-kudurru api /tsigkeys          # names and algorithms, never secrets
-rm ddns-key.json
+kudurru tsigkeys create ddns-key --algorithm hmac-sha256 --secret-file /etc/kudurru/ddns-key.secret
+kudurru tsigkeys list          # names and algorithms, never secrets
 ```
 
 ## Allow updates for a zone
