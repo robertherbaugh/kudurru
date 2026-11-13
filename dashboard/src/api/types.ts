@@ -1144,6 +1144,8 @@ export type ExternalUserPage = S['AuthListExternalUser'];
 export type IntegrationManifests = S['IntegrationManifests'];
 export type IntegrationManifest = S['IntegrationManifest'];
 export type IntegrationCredentialKey = S['IntegrationCredentialKey'];
+/** One spec field this node's host refuses (effect refused) or accepts without effect (inert), D384. */
+export type IntegrationFieldLimit = S['IntegrationFieldLimit'];
 /** GET /integrations and /integrations/{ns}/{name}: status of one exact revision. */
 export type IntegrationSummary = S['IntegrationSummary'];
 /** The exact review a check, preview, sync, action or release is bound to. */

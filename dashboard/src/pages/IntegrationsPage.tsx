@@ -34,10 +34,14 @@ const rowAttrs: TablePlugin<Row> = {
 
 /**
  * The phase the object's own Ready condition records for its current
- * generation (the host writes it), or undefined. The host reports its live
- * status for the revision it captured; a status write gives the object a
- * new revision, so the list falls back to the written condition until the
- * host reports the stored one.
+ * generation (the host writes it), or undefined. On SQLite the host reports
+ * its live status for the revision it captured. Since D384 it follows its
+ * own status write, but only once it has captured the object again (at most
+ * one capture interval, two seconds by default, and never for a revision it
+ * skipped between two captures): until then GET /integrations answers
+ * statusKnown false for a healthy instance, so the list falls back to the
+ * written condition. On Kubernetes the server reads the same condition, so
+ * the fallback changes nothing there.
  */
 export function objectPhase(obj: Integration | undefined): string | undefined {
   const ready = obj?.status?.conditions?.find((c) => c.type === 'Ready');

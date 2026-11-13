@@ -7,25 +7,48 @@
 // exact revision, and the reviewed commands. Tests change the state with
 // mockIntegrations() (license, driver, a stale preview, an uncertain sync).
 import { http, HttpResponse, type JsonBodyType } from 'msw';
-import type { Integration, IntegrationExecutionResult, IntegrationManifest, IntegrationManifests, IntegrationReview, IntegrationSummary } from '../api/types';
+import type { Integration, IntegrationExecutionResult, IntegrationFieldLimit, IntegrationManifest, IntegrationManifests, IntegrationReview, IntegrationSummary } from '../api/types';
 
 const CLOUDFLARE_SCHEMA = {"type":"object","required":["zones"],"additionalProperties":false,"properties":{"zones":{"type":"array","minItems":1,"maxItems":256,"items":{"type":"object","required":["zone"],"additionalProperties":false,"properties":{"zone":{"type":"string","maxLength":253},"zoneID":{"type":"string","pattern":"^[a-f0-9]{32}$"},"policy":{"type":"string","enum":["sync","upsert-only","create-only"]},"adoptUnowned":{"type":"boolean"},"adoptFrom":{"type":"object","required":["externalDNSOwner"],"additionalProperties":false,"properties":{"externalDNSOwner":{"type":"string","minLength":1,"maxLength":253}}},"defaults":{"type":"object","additionalProperties":false,"properties":{"proxied":{"type":"boolean"},"ttl":{"type":"integer","minimum":1,"maximum":86400},"comment":{"type":"string","maxLength":500}}},"select":{"type":"object","additionalProperties":false,"properties":{"labels":{"type":"object","additionalProperties":{"type":"string"},"maxProperties":64},"types":{"type":"array","maxItems":64,"items":{"type":"string"}},"exclude":{"type":"array","maxItems":256,"items":{"type":"string"}}}},"translate":{"type":"object","maxProperties":64,"additionalProperties":{"type":"string"}}}}}}};
-const UNIFI_SCHEMA = {"type":"object","required":["endpoint"],"additionalProperties":false,"properties":{"endpoint":{"type":"string","maxLength":2048,"pattern":"^https://[^/]+.*$"},"tlsFingerprint":{"type":"string","pattern":"^sha256:[a-fA-F0-9]{64}$"},"site":{"type":"string","minLength":1,"maxLength":253},"poll":{"type":"string"},"legacy":{"type":"boolean"},"inventory":{"type":"object","required":["zoneRef"],"additionalProperties":false,"properties":{"zoneRef":{"type":"object","required":["name"],"additionalProperties":false,"properties":{"name":{"type":"string"},"namespace":{"type":"string"}}},"reverseZones":{"type":"string","enum":["auto","disabled"]},"nameTemplate":{"type":"string","maxLength":500},"ttl":{"type":"integer","minimum":1,"maximum":86400},"includeNetworks":{"type":"array","maxItems":256,"items":{"type":"string"},"uniqueItems":true}}},"groups":{"type":"object","additionalProperties":false,"properties":{"byNetwork":{"type":"object","maxProperties":256,"additionalProperties":{"type":"string"}},"byNote":{"type":"string","maxLength":128}}},"push":{"type":"object","additionalProperties":false,"properties":{"dhcpDNSServers":{"type":"boolean"},"dnsServers":{"type":"array","maxItems":4,"uniqueItems":true,"items":{"type":"string","format":"ipv4"}},"networks":{"type":"array","maxItems":64,"uniqueItems":true,"items":{"type":"string","minLength":1,"maxLength":253}},"clientActions":{"type":"boolean"},"mirrorRecords":{"type":"object","additionalProperties":false,"properties":{"enabled":{"type":"boolean"},"types":{"type":"array","items":{"type":"string","enum":["A","CNAME"]},"maxItems":2,"uniqueItems":true},"domains":{"type":"array","maxItems":64,"uniqueItems":true,"items":{"type":"string","maxLength":253}},"labels":{"type":"object","maxProperties":64,"additionalProperties":{"type":"string"}},"exclude":{"type":"array","maxItems":256,"items":{"type":"string","maxLength":253}}}}}}}};
+const UNIFI_SCHEMA = {"type":"object","required":["endpoint"],"additionalProperties":false,"properties":{"endpoint":{"type":"string","maxLength":2048,"pattern":"^https://[^/]+.*$"},"tlsFingerprint":{"type":"string","pattern":"^sha256:[a-fA-F0-9]{64}$"},"site":{"type":"string","minLength":1,"maxLength":253},"poll":{"type":"string"},"legacy":{"type":"boolean"},"inventory":{"type":"object","required":["zoneRef"],"additionalProperties":false,"properties":{"zoneRef":{"type":"object","required":["name"],"additionalProperties":false,"properties":{"name":{"type":"string"},"namespace":{"type":"string"}}},"reverseZones":{"type":"string","enum":["auto","disabled"]},"nameTemplate":{"type":"string","maxLength":500},"ttl":{"type":"integer","minimum":1,"maximum":86400},"includeNetworks":{"type":"array","maxItems":256,"items":{"type":"string"},"uniqueItems":true}}},"groups":{"type":"object","additionalProperties":false,"properties":{"byNetwork":{"type":"object","maxProperties":256,"additionalProperties":{"type":"string"}},"byNote":{"type":"string","maxLength":128}}},"push":{"type":"object","additionalProperties":false,"properties":{"dhcpDNSServers":{"type":"boolean"},"dnsServers":{"type":"array","maxItems":4,"uniqueItems":true,"description":"IPv4 addresses DHCP hands out, written in canonical dotted form without leading zeros. The provider also refuses 0.0.0.0, loopback, multicast and 255.255.255.255.","items":{"type":"string","format":"ipv4","pattern":"^(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(\\.(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}$"}},"networks":{"type":"array","maxItems":64,"uniqueItems":true,"items":{"type":"string","minLength":1,"maxLength":253}},"clientActions":{"type":"boolean"},"mirrorRecords":{"type":"object","additionalProperties":false,"properties":{"enabled":{"type":"boolean"},"types":{"type":"array","items":{"type":"string","enum":["A","CNAME"]},"maxItems":2,"uniqueItems":true},"domains":{"type":"array","maxItems":64,"uniqueItems":true,"items":{"type":"string","maxLength":253}},"labels":{"type":"object","maxProperties":64,"additionalProperties":{"type":"string"}},"exclude":{"type":"array","maxItems":256,"items":{"type":"string","maxLength":253}}}}}}}};
 const WEBHOOK_SCHEMA = {"type":"object","required":["endpoint"],"additionalProperties":false,"properties":{"endpoint":{"type":"string","maxLength":2048},"timeout":{"type":"string"},"domains":{"type":"array","maxItems":256,"items":{"type":"string","maxLength":253}},"policy":{"type":"string","enum":["sync","upsert-only","create-only"]}}};
 
-// cmd/kudurru integration_manifests.go: the SQLite root refuses nothing
-// (it runs every UniFi write, D401); the Kubernetes root refuses UniFi
-// inventory publication and every UniFi write, and every webhook.
-const KUBE_UNIFI_REFUSED = ['spec.unifi.inventory', 'spec.unifi.push.dhcpDNSServers', 'spec.unifi.push.mirrorRecords', 'spec.unifi.push.clientActions'];
+// cmd/kudurru integration_manifests.go (D384): the SQLite root limits no
+// field (it runs every UniFi write, D401). The Kubernetes root refuses
+// UniFi inventory publication and the three UniFi write switches, with the
+// status reason and Ready message (kubeRefusalMessage) an instance that sets
+// one shows; the settings only those switches use are inert there. It runs
+// no webhook. lib/integrations.test.ts compares these with the Go code.
+const PUSH_REFUSED = 'UniFi writes (spec.unifi.push dhcpDNSServers, mirrorRecords.enabled and clientActions) run only on the SQLite store, where they are audited reviewed commands; turn them off to run inventory and groups.';
+const DHCP_INERT = 'Used only by spec.unifi.push.dhcpDNSServers, which the Kubernetes store refuses; it has no effect here.';
+const MIRROR_INERT = 'Used only by spec.unifi.push.mirrorRecords.enabled, which the Kubernetes store refuses; it has no effect here.';
+const KUBE_UNIFI_LIMITS: IntegrationFieldLimit[] = [
+  { field: 'spec.unifi.inventory', effect: 'refused', reason: 'RecordPublicationUnsupportedOnKubernetes', message: 'UniFi DNS record publication (spec.unifi.inventory) does not run on the Kubernetes store yet; remove it to run inventory and groups.' },
+  { field: 'spec.unifi.push.dhcpDNSServers', effect: 'refused', reason: 'UniFiPushUnsupportedOnKubernetes', message: PUSH_REFUSED },
+  { field: 'spec.unifi.push.mirrorRecords.enabled', effect: 'refused', reason: 'UniFiPushUnsupportedOnKubernetes', message: PUSH_REFUSED },
+  { field: 'spec.unifi.push.clientActions', effect: 'refused', reason: 'UniFiPushUnsupportedOnKubernetes', message: PUSH_REFUSED },
+  { field: 'spec.unifi.push.dnsServers', effect: 'inert', requires: 'spec.unifi.push.dhcpDNSServers', message: DHCP_INERT },
+  { field: 'spec.unifi.push.networks', effect: 'inert', requires: 'spec.unifi.push.dhcpDNSServers', message: DHCP_INERT },
+  ...['types', 'domains', 'labels', 'exclude'].map((f): IntegrationFieldLimit => ({ field: `spec.unifi.push.mirrorRecords.${f}`, effect: 'inert', requires: 'spec.unifi.push.mirrorRecords.enabled', message: MIRROR_INERT })),
+];
 
 function manifests(driver: 'sqlite' | 'kube'): IntegrationManifest[] {
+  const unifiLimits = driver === 'kube' ? KUBE_UNIFI_LIMITS.map((l) => ({ ...l })) : [];
   return [
-    { type: 'cloudflare', displayName: 'Cloudflare', version: '1', capabilities: ['RecordSink'], ioClass: 'cloud_polling', configField: 'cloudflare', configSchema: CLOUDFLARE_SCHEMA, credentials: [{ name: 'apiToken', required: true, verify: 'user/tokens/verify' }], supported: true, refused: [] },
-    { type: 'unifi', displayName: 'UniFi Network', version: '1', capabilities: ['ClientSource', 'RecordSink', 'Actions'], ioClass: 'local_polling', configField: 'unifi', configSchema: UNIFI_SCHEMA, credentials: [{ name: 'apiKey', required: true, verify: 'integration/v1/info' }], supported: true, refused: driver === 'kube' ? [...KUBE_UNIFI_REFUSED] : [] },
+    {
+      type: 'cloudflare', displayName: 'Cloudflare', version: '1', capabilities: ['RecordSink'], ioClass: 'cloud_polling', configField: 'cloudflare', configSchema: CLOUDFLARE_SCHEMA,
+      credentials: [{ name: 'apiToken', required: true, verify: 'user/tokens/verify' }], docs: 'https://developers.cloudflare.com/api/resources/dns/subresources/records/', supported: true, refused: [], fieldLimits: [],
+    },
+    {
+      type: 'unifi', displayName: 'UniFi Network', version: '1', capabilities: ['ClientSource', 'RecordSink', 'Actions'], ioClass: 'local_polling', configField: 'unifi', configSchema: UNIFI_SCHEMA,
+      credentials: [{ name: 'apiKey', required: true, verify: 'integration/v1/info' }], docs: 'https://developer.ui.com/network/v10.6.106/', supported: true,
+      // The refused list keeps its shape: the fields whose limit refuses.
+      refused: unifiLimits.filter((l) => l.effect === 'refused').map((l) => l.field), fieldLimits: unifiLimits,
+    },
     {
       type: 'webhook', displayName: 'Webhook', version: '1', capabilities: ['Actions', 'ClientSource', 'Hook', 'RecordSink'], ioClass: 'local_polling', configField: 'webhook', configSchema: WEBHOOK_SCHEMA,
       credentials: ['bearerToken', 'ca', 'clientCertificate', 'clientKey', 'hmacKey'].map((name) => ({ name, required: false })),
-      supported: driver !== 'kube', ...(driver === 'kube' ? { reason: 'UnsupportedOnKubernetes' } : {}), refused: [],
+      supported: driver !== 'kube', ...(driver === 'kube' ? { reason: 'UnsupportedOnKubernetes' } : {}), refused: [], fieldLimits: [],
     },
   ];
 }

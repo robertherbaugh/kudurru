@@ -143,12 +143,16 @@ describe('IntegrationsPage', () => {
     expect(await screen.findByRole('textbox', { name: /^Namespace/ })).toHaveValue('kudurru');
     const fields = screen.getByTestId('provider-fields');
     expect(within(fields).queryByRole('group', { name: /Inventory/ })).toBeNull();
-    // Every UniFi write is refused there, so no push field is offered, with the reason.
+    // The three UniFi write switches are refused there and the settings they
+    // use are inert, so no push field is offered; the manifest's reasons and
+    // messages say why.
     expect(within(fields).queryByRole('group', { name: /Push/ })).toBeNull();
     expect(within(fields).queryByRole('switch', { name: /DHCP DNS servers|Client actions/ })).toBeNull();
     const refused = within(fields).getByTestId('refused-fields');
-    expect(refused).toHaveTextContent('spec.unifi.inventory');
-    expect(refused).toHaveTextContent(/spec\.unifi\.push\.dhcpDNSServers, spec\.unifi\.push\.mirrorRecords, spec\.unifi\.push\.clientActions\. UniFi writes \(spec\.unifi\.push\) run on SQLite only.*\(UniFiPushUnsupportedOnKubernetes\)/);
+    expect(refused).toHaveTextContent(/\(refused\): spec\.unifi\.inventory\. UniFi DNS record publication \(spec\.unifi\.inventory\) does not run on the Kubernetes store yet.*\(RecordPublicationUnsupportedOnKubernetes\)/);
+    expect(refused).toHaveTextContent(/\(refused\): spec\.unifi\.push\.dhcpDNSServers, spec\.unifi\.push\.mirrorRecords\.enabled, spec\.unifi\.push\.clientActions\. UniFi writes .* run only on the SQLite store.*\(UniFiPushUnsupportedOnKubernetes\)/);
+    expect(refused).toHaveTextContent(/\(no effect here\): spec\.unifi\.push\.dnsServers, spec\.unifi\.push\.networks\. Used only by spec\.unifi\.push\.dhcpDNSServers, which the Kubernetes store refuses/);
+    expect(refused).toHaveTextContent(/\(no effect here\): spec\.unifi\.push\.mirrorRecords\.types, spec\.unifi\.push\.mirrorRecords\.domains, spec\.unifi\.push\.mirrorRecords\.labels, spec\.unifi\.push\.mirrorRecords\.exclude\. Used only by spec\.unifi\.push\.mirrorRecords\.enabled/);
   });
 
   it('creates a UniFi instance with a push block from the manifest and reviews it as a publisher', async () => {
@@ -258,8 +262,9 @@ describe('IntegrationDetailPage', () => {
     await waitFor(() => expect(syncNow).not.toHaveAttribute('aria-disabled', 'true'));
     fireEvent.click(syncNow);
     expect(await screen.findByText('Sync: outcome unknown')).toBeInTheDocument();
-    // A host status write moves the revision; a stale Check is refused and
-    // rereads it. The new revision does not lift the guard.
+    // The revision moves (a change, or a host status write the host has not
+    // captured yet, which the server still refuses, D384); a stale Check is
+    // refused and rereads it. The new revision does not lift the guard.
     mockIntegrations().objects[1]!.metadata.resourceVersion = '12';
     fireEvent.click(screen.getByRole('button', { name: 'Check' }));
     expect(await screen.findByText('Check refused')).toBeInTheDocument();
