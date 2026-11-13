@@ -73,6 +73,9 @@ type Config struct {
 	Notify Notify `koanf:"notify" json:"notify"`
 	// ExternalDNS configures the external-dns webhook provider (§5.6).
 	ExternalDNS ExternalDNS `koanf:"externalDNS" json:"externalDNS"`
+	// ExternalZones fills DNSZones of type external from Kubernetes
+	// Ingresses, Gateway API routes and LoadBalancer Services (D402).
+	ExternalZones ExternalZones `koanf:"externalZones" json:"externalZones"`
 
 	// Objects are inline CRD-shaped documents and ObjectsDir the directory
 	// of object files, both reconciled by internal/objects (§6.2).
@@ -925,6 +928,9 @@ func (c *Config) Validate() error {
 	errs = append(errs, c.ExternalDNS.validate()...)
 	if c.ExternalDNS.CRD.Enabled && c.Store.Driver != "kube" {
 		errs = append(errs, errors.New("externalDNS.crd.enabled requires store.driver: kube"))
+	}
+	if c.ExternalZones.Enabled && c.Store.Driver != "kube" {
+		errs = append(errs, errors.New("externalZones.enabled requires store.driver: kube (external zones are filled from Kubernetes objects)"))
 	}
 	if c.Auth.Kubernetes.Mode == KubernetesModeImpersonate && c.Store.Driver != "kube" {
 		errs = append(errs, errors.New("auth.kubernetes.mode: impersonate requires store.driver: kube (it impersonates principals at the Kubernetes apiserver)"))

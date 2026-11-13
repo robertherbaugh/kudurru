@@ -73,6 +73,15 @@ type ExternalDNS struct {
 	CRD     ExternalDNSCRD     `koanf:"crd" json:"crd"`
 }
 
+// ExternalZones enables the Kubernetes source adapter of external zones
+// (D402): the elected replica reads Ingresses, Gateway API routes and
+// LoadBalancer Services and maintains the record sets of every DNSZone of
+// type external. The Kubernetes RBAC to read those kinds is separate (the
+// Helm chart grants it only with externalZones.enabled).
+type ExternalZones struct {
+	Enabled bool `koanf:"enabled" json:"enabled"`
+}
+
 // ExternalDNSCRD reads external-dns objects without taking ownership of them.
 // Generated DNSRecordSets remain in their source namespace.
 type ExternalDNSCRD struct {

@@ -80,6 +80,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/servingdns"
 	"github.com/robertherbaugh/kudurru/internal/servinghttp"
 	"github.com/robertherbaugh/kudurru/internal/settings"
+	k8ssource "github.com/robertherbaugh/kudurru/internal/sources/k8s"
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
@@ -1516,6 +1517,23 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	}
 
+	// External zones (D402): the elected replica derives the record sets of
+	// DNSZones of type external from Ingresses, Gateway API routes and
+	// LoadBalancer Services. Every replica serves them from its zone cache.
+	var externalZones *k8ssource.Controller
+	if cfg.ExternalZones.Enabled {
+		if kubeStore == nil {
+			return errors.New("externalZones.enabled requires the Kubernetes store")
+		}
+		externalZones, err = k8ssource.New(kubeStore.RESTConfig(), k8ssource.Options{
+			Store: st, Validator: v, Logger: logger.With("component", "external-zones"),
+			Admit: func(term context.Context) error { return term.Err() },
+		})
+		if err != nil {
+			return err
+		}
+	}
+
 	// Controller: leader-only reconcilers (status, serials, Events).
 	ctrlOpts := controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe()}
 	if complete != nil {
@@ -1797,6 +1815,11 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	if endpointCRDs != nil {
 		if err := add("externaldns-crd", true, endpointCRDs.Run); err != nil {
+			return err
+		}
+	}
+	if externalZones != nil {
+		if err := add("external-zones", true, externalZones.Run); err != nil {
 			return err
 		}
 	}
