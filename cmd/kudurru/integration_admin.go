@@ -212,9 +212,14 @@ func (r *integrationRuntime) IntegrationExecute(ctx context.Context, in api.Inte
 		if len(in.Review.Params) == 0 {
 			in.Review.Params = json.RawMessage(`{}`)
 		}
-		_, err = op.capture.Invoke(op.ctx, in.Action, in.Review.Params)
-		// These errors originate in host capability/parameter admission, before Invoke.
-		refusedBeforeEffect = errors.Is(err, ih.ErrUnsupported) || errors.Is(err, ih.ErrInvalid)
+		var value json.RawMessage
+		value, err = op.capture.Invoke(op.ctx, in.Action, in.Review.Params)
+		if err == nil && len(value) > 0 && string(value) != "null" {
+			out.Result = value
+		}
+		// These errors originate in host capability/parameter admission, or
+		// in a provider refusal that precedes every effect (D401).
+		refusedBeforeEffect = errors.Is(err, ih.ErrUnsupported) || errors.Is(err, ih.ErrInvalid) || errors.Is(err, ih.ErrStalePreview)
 	}
 	if err == nil {
 		err = integrationProjectionSafe(op, out)
@@ -222,6 +227,9 @@ func (r *integrationRuntime) IntegrationExecute(ctx context.Context, in api.Inte
 	var audit *integrationAuditRow
 	if in.Command == "sync" || in.Command == "act" {
 		audit = &integrationAuditRow{action: "integration." + in.Command, name: in.Action}
+		if in.Command == "act" {
+			audit.params = "sha256:" + kinds.Digest(in.Review.Params)
+		}
 	}
 	if err == nil {
 		err = op.finish(audit)

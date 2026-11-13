@@ -115,9 +115,18 @@ func TestStrictEndpointAndOfflineConfiguration(t *testing.T) {
 	if calls.Load() != 0 {
 		t.Fatal("offline provision/validate made network calls")
 	}
+	// D401: a push is accepted only complete, and client actions only with
+	// the legacy API they need. Each refusal is visible before any I/O.
 	raw, _ := json.Marshal(public.UniFiIntegration{Endpoint: s.URL, Push: public.UniFiPush{DHCPDNSServers: true}})
+	if err := New().Provision(context.Background(), fixtureLoan(), raw, fixtureSecrets{}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("incomplete DHCP push did not fail visibly", err)
+	}
+	raw, _ = json.Marshal(public.UniFiIntegration{Endpoint: s.URL, Push: public.UniFiPush{ClientActions: true}})
 	if err := New().Provision(context.Background(), fixtureLoan(), raw, fixtureSecrets{}); !errors.Is(err, host.ErrUnsupported) {
-		t.Fatal("unsupported push did not fail visibly", err)
+		t.Fatal("client actions without the legacy API did not fail visibly", err)
+	}
+	if calls.Load() != 0 {
+		t.Fatal("refused push made network calls")
 	}
 }
 

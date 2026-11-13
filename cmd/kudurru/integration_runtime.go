@@ -510,7 +510,7 @@ func (r *integrationRuntime) command(ctx context.Context, g ih.ExecutionGuard, f
 // publisher selects sources, pins them in its effects and syncs under a
 // reviewed preview digest.
 func integrationPublishes(d *public.Integration) bool {
-	return d.Spec.Cloudflare != nil || d.Spec.Webhook != nil && len(d.Spec.Webhook.Domains) > 0
+	return d.Spec.Cloudflare != nil || d.Spec.Webhook != nil && len(d.Spec.Webhook.Domains) > 0 || d.Spec.UniFi != nil && d.Spec.UniFi.Push.MirrorRecords.Enabled
 }
 
 // integrationInputsCurrent compares desired objects in the actual transaction

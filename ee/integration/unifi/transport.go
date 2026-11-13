@@ -89,6 +89,27 @@ func (p *Provider) get(ctx context.Context, budget *pollBudget, path string) ([]
 }
 
 func (p *Provider) getPath(ctx context.Context, budget *pollBudget, path string) ([]byte, error) {
+	return p.exchange(ctx, budget, http.MethodGet, path, nil)
+}
+
+// write sends one mutation (D401). It is never retried here or by the
+// transport: a request that may have reached the controller returns an error
+// that refused() does not recognize, and callers record it as uncertain.
+func (p *Provider) write(ctx context.Context, budget *pollBudget, method, path string, payload []byte) ([]byte, error) {
+	if method != http.MethodPost && method != http.MethodPut && method != http.MethodDelete || len(payload) > 64<<10 {
+		return nil, ErrInvalid
+	}
+	return p.exchange(ctx, budget, method, path, payload)
+}
+
+// refused reports an answer that proves the controller did not apply a
+// mutation: a client error other than a timeout.
+func refused(err error) bool {
+	var response *responseError
+	return errors.As(err, &response) && response.code >= 400 && response.code < 500 && response.code != http.StatusRequestTimeout
+}
+
+func (p *Provider) exchange(ctx context.Context, budget *pollBudget, method, path string, payload []byte) ([]byte, error) {
 	p.mu.RLock()
 	ready := p.host != nil && !p.stopped
 	p.mu.RUnlock()
@@ -99,17 +120,27 @@ func (p *Provider) getPath(ctx context.Context, budget *pollBudget, path string)
 		return nil, ErrCapacity
 	}
 	budget.attempts++
-	// Build only the supported read request. Network I/O remains inside the
+	// Build only the supported request. Network I/O remains inside the
 	// original host loan below; no login, background context or retry is added.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.origin+path, nil)
+	mutating := method != http.MethodGet
+	var reader io.Reader
+	if mutating && payload != nil {
+		reader = bytes.NewReader(payload)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, p.origin+path, reader)
 	if err != nil {
 		return nil, ErrInvalid
 	}
+	// No GetBody: the client can never replay a mutation body.
+	req.GetBody = nil
 	req.Header.Set("X-API-Key", p.key)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Accept-Encoding", "identity")
+	if reader != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	var body []byte
-	err = p.host.Request(ctx, "unifi", p.bucket, false, func(loan context.Context) error {
+	err = p.host.Request(ctx, "unifi", p.bucket, mutating, func(loan context.Context) error {
 		requestCtx, cancel := context.WithCancel(loan)
 		defer cancel()
 		stop := make(chan struct{})
@@ -129,7 +160,8 @@ func (p *Provider) getPath(ctx context.Context, budget *pollBudget, path string)
 			return &host.Failure{Kind: host.FailureTemporary}
 		}
 		defer func() { _ = response.Body.Close() }()
-		if response.StatusCode != http.StatusOK {
+		accepted := response.StatusCode == http.StatusOK || mutating && (response.StatusCode == http.StatusCreated || response.StatusCode == http.StatusNoContent)
+		if !accepted {
 			return &responseError{response.StatusCode, statusFailure(response.StatusCode, response.Header.Get("Retry-After"), p.now())}
 		}
 		compressed, err := io.ReadAll(io.LimitReader(response.Body, maxResponse+1))

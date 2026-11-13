@@ -46,6 +46,10 @@ type integrationOperation struct {
 type integrationAuditRow struct {
 	action, name string
 	uncertain    bool
+	// params is the digest of an act's parameters (D401), so the row
+	// identifies what was asked (for example which client was blocked)
+	// without storing caller-supplied values.
+	params string
 }
 
 func (*integrationOperation) String() string     { return "private integration operation" }
@@ -247,6 +251,9 @@ func (o *integrationOperation) auditEntry(cut *integrationCut, a integrationAudi
 	subject := "reviewed sync"
 	if a.action == "integration.act" {
 		subject = "reviewed action " + a.name
+		if a.params != "" {
+			subject += " with params " + a.params
+		}
 	}
 	revision := ""
 	if i := cut.instances[owner]; i != nil {

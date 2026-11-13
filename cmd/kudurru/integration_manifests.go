@@ -12,8 +12,8 @@ import (
 
 // integrationDriverLimits is what one driver's host refuses, per provider
 // type (D400). It must change with the refusals it describes: the SQLite
-// adapters refuse UniFi push (ee/integration/unifi validateConfig), and the
-// Kubernetes root refuses what kubeIntegrationRefusal names (D384).
+// root runs every UniFi push (D401), and the Kubernetes root refuses what
+// kubeIntegrationRefusal names (D384).
 type integrationDriverLimits struct {
 	// unsupported maps a type to the status reason of every instance.
 	unsupported map[string]string
@@ -22,12 +22,10 @@ type integrationDriverLimits struct {
 }
 
 var (
-	sqliteIntegrationLimits = integrationDriverLimits{
-		refused: map[string][]string{"unifi": {"spec.unifi.push.dhcpDNSServers", "spec.unifi.push.mirrorRecords"}},
-	}
-	kubeIntegrationLimits = integrationDriverLimits{
+	sqliteIntegrationLimits = integrationDriverLimits{}
+	kubeIntegrationLimits   = integrationDriverLimits{
 		unsupported: map[string]string{"webhook": reasonUnsupportedOnKubernetes},
-		refused:     map[string][]string{"unifi": {"spec.unifi.inventory", "spec.unifi.push.dhcpDNSServers", "spec.unifi.push.mirrorRecords"}},
+		refused:     map[string][]string{"unifi": {"spec.unifi.inventory", "spec.unifi.push.dhcpDNSServers", "spec.unifi.push.mirrorRecords", "spec.unifi.push.clientActions"}},
 	}
 )
 
