@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -151,6 +152,40 @@ func inventoryAwait(t *testing.T, c *http.Client, url string, within time.Durati
 	}
 }
 
+// inventoryLogin signs in as admin. A 503 answer (no current writable
+// serving generation yet) is retried as clients do; other answers fail.
+func inventoryLogin(t *testing.T, c *http.Client, base, password string) api.SessionInfo {
+	t.Helper()
+	body, err := json.Marshal(api.LoginRequest{Username: "admin", Password: password})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, base+"/auth/login", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("Content-Type", "application/json")
+		response, err := c.Do(request)
+		if err == nil {
+			raw, readErr := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+			_ = response.Body.Close()
+			var session api.SessionInfo
+			if response.StatusCode == http.StatusOK && readErr == nil && json.Unmarshal(raw, &session) == nil {
+				return session
+			}
+			if response.StatusCode != http.StatusServiceUnavailable {
+				t.Fatalf("login status %d", response.StatusCode)
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("login not admitted within 30s")
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 func inventoryByKey(body api.InventoryBody) map[string]api.InventoryDevice {
 	out := map[string]api.InventoryDevice{}
 	for _, d := range body.Items {
@@ -287,8 +322,7 @@ func TestRunServeSQLiteInventoryAPIAndLeaseMACs(t *testing.T) {
 	c := &http.Client{Transport: transport, Jar: jar, Timeout: 10 * time.Second}
 	base := "http://" + cfg.Listeners.API.Address + api.BasePath
 	tsigMountAwaitRead(t, c, base+"/auth/status", nil)
-	var session api.SessionInfo
-	controlMountedRequest(t, c, base, http.MethodPost, "/auth/login", "", api.LoginRequest{Username: "admin", Password: "mounted-test-password-1"}, http.StatusOK, &session)
+	session := inventoryLogin(t, c, base, "mounted-test-password-1")
 
 	// UniFi devices are listed from the serving inventory before any of them
 	// sends a DNS query; the official API device at 127.0.0.4 owns its address.

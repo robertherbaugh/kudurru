@@ -111,8 +111,7 @@ func TestRunServeKubeLeaseMACSelectsGroupAndInventory(t *testing.T) {
 	c := &http.Client{Transport: transport, Jar: jar, Timeout: 10 * time.Second}
 	base := "http://" + cfg.Listeners.API.Address + api.BasePath
 	tsigMountAwaitRead(t, c, base+"/auth/status", nil)
-	var session api.SessionInfo
-	controlMountedRequest(t, c, base, http.MethodPost, "/auth/login", "", api.LoginRequest{Username: "admin", Password: "offline-test-password-1"}, http.StatusOK, &session)
+	inventoryLogin(t, c, base, "offline-test-password-1")
 
 	awaitInventoryAnswer(t, cfg, "192.0.2.100", "leased.test.", false, kubeInventoryAnswer)
 	lease := &dhcpv1.DHCPLease{ObjectMeta: metav1.ObjectMeta{Name: "lan.192.0.2.100", Namespace: "default", Labels: map[string]string{dhcpv1.LabelScope: "lan"}},
