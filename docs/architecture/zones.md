@@ -647,17 +647,19 @@ The loop steps zones in a fair rotation, but a zone that is still being
 created steps first (D404): a desired zone without an active lifecycle of its
 own source goes ahead of the rotation, without moving its cursor, and a zone
 whose step just committed a lifecycle change that needs another step (its
-creation, a parent fence, the Preparing-to-Fencing CAS) ends the pass, so the
+creation, a parent fence, the Preparing-to-Fencing CAS, and for a re-created
+zone the release or retirement of its old incarnation) ends the pass, so the
 next pass, on a fresh read, resumes at that zone, at most eight times in a row.
 Only the rest of the pass already running when the zone was created can still
 come first. Before, each of a new zone's three or four steps waited behind a
 step of every other zone, and each such step reconciles that zone and waits
-for its publication, so the wait grew with the number of zones: on a mounted node with 23 zones, without the race detector, a
-new child under its parent answered 4.8 to 13.2 s (median 9.8 s) after its
-creation before this order and 2.2 to 10.0 s (median 5.1 s) with it. What
-remains is the rest of the pass already running and the child's own steps,
-each a transaction and a publication wait (about 0.5 to 1 s each on a loaded
-runner).
+for its publication, so the wait grew with the number of zones: on a mounted node with 23 zones, without the race detector on
+a shared runner, a new or re-created child under its parent answered 3.4 to
+14.6 s (median 4.5 s) after its creation before this order and 2.5 to 4.9 s
+(median 3.9 s) with it, in alternating runs. What remains is the rest of the
+pass already running and the child's own four or five steps, each one or more
+transactions, a publication wait and a fresh read (about 0.2 to 1 s each on a
+loaded runner).
 
 Until a new primary child's first publication, names at and below its apex
 answer SERVFAIL from the child's unavailable coverage (the longer routing
