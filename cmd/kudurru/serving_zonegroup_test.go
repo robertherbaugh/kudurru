@@ -43,7 +43,7 @@ func TestServingObjectCommandResolvesZoneGroupInTransaction(t *testing.T) {
 		}
 		return z
 	}
-	for _, z := range []*public.DNSZone{zone("member", "prod"), zone("outside", "")} {
+	for _, z := range []*public.DNSZone{zone("member", "prod"), zone("outside", ""), zone("gone", "prod")} {
 		if _, err := f.s.opts.Store.Apply(t.Context(), z, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
 			t.Fatal(err)
 		}
@@ -125,6 +125,20 @@ func TestServingObjectCommandResolvesZoneGroupInTransaction(t *testing.T) {
 		t.Fatal("member zone write refused", w.Code, w.Body)
 	}
 	awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
+	// A member zone that an administrator deleted is not created again by
+	// the group token's PUT of it (D385): the transaction reads no zone and
+	// decides the write as a create, which needs cluster scope.
+	if err := f.s.opts.Store.Delete(t.Context(), store.Key{Kind: "DNSZone", Name: "gone"}, store.DeleteOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
+	if w := send("/api/v1/objects/dnszones/gone", zone("gone", "prod")); w.Code != http.StatusForbidden {
+		t.Fatal("a zonegroup token created a deleted member zone again", w.Code, w.Body)
+	}
+	var recreated public.DNSZone
+	if err := f.s.opts.Store.Get(t.Context(), store.Key{Kind: "DNSZone", Name: "gone"}, &recreated); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("refused zone create committed:", err)
+	}
 	if w := send("/api/v1/objects/dnszones/member", zone("member", "")); w.Code != http.StatusForbidden {
 		t.Fatal("a zonegroup token moved its zone out of the group", w.Code, w.Body)
 	}

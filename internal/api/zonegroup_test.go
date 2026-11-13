@@ -320,3 +320,57 @@ func TestZoneGroupUnreadableZoneIsUnavailable(t *testing.T) {
 	h.do(http.MethodGet, "/api/v1/zones/a", "grouper", nil).want(http.StatusOK)
 	h.do(http.MethodGet, "/api/v1/zones/missing", "grouper", nil).want(http.StatusForbidden)
 }
+
+// TestZoneDeletedDuringPutIsNotRecreated: a zone that an administrator
+// deletes while a zone-group member's or a zone-admin's PUT of it runs is
+// not created again by that PUT, whichever DNSZone read of the PUT the
+// deletion lands before (D385). Creating a zone needs zones.write at
+// cluster scope, and the write decides that on its own read: before it,
+// the authorization read saw the zone and admitted the PUT at zone scope.
+func TestZoneDeletedDuringPutIsNotRecreated(t *testing.T) {
+	hook := &zoneGetHook{}
+	h := newHarness(t, func(o *Options) {
+		hook.Store = o.Store
+		o.Store = hook
+		o.Authorizer = apitest.Authorizer(zoneGroupBindings()...)
+	})
+	for _, tc := range []struct{ user, zone, apex, group string }{
+		{"grouper", "b", "b.example.", "prod"},
+		{"zoneadmin", "example", "example.com.", ""},
+	} {
+		edit := groupZoneDoc(tc.zone, tc.apex, tc.group)
+		edit["spec"].(map[string]any)["defaultTTL"] = 120
+		for at := 1; ; at++ {
+			hook.reset(nil)
+			h.seed("api", groupZone(tc.zone, tc.apex, tc.group))
+			fired := false
+			hook.reset(func(name string, n int) error {
+				if name == tc.zone && n == at {
+					fired = true
+					if err := h.st.Delete(context.Background(), store.Key{Kind: "DNSZone", Name: tc.zone}, store.DeleteOptions{Manager: "api"}); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+			r := h.do(http.MethodPut, "/api/v1/objects/dnszones/"+tc.zone, tc.user, edit)
+			hook.reset(nil)
+			if !fired {
+				if at == 1 {
+					t.Fatalf("%s: the PUT read zone %s no time", tc.user, tc.zone)
+				}
+				break
+			}
+			var z v1alpha1.DNSZone
+			err := h.st.Get(t.Context(), store.Key{Kind: "DNSZone", Name: tc.zone}, &z)
+			if !errors.Is(err, store.ErrNotFound) || (r.Code != http.StatusForbidden && r.Code != http.StatusConflict) {
+				t.Fatalf("%s: zone %s deleted before read %d of the PUT: HTTP %d, read after: %v: %s", tc.user, tc.zone, at, r.Code, err, r.Body.String())
+			}
+		}
+	}
+	// An administrator still creates the zone with the same PUT.
+	if err := h.st.Delete(t.Context(), store.Key{Kind: "DNSZone", Name: "b"}, store.DeleteOptions{Manager: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	h.do(http.MethodPut, "/api/v1/objects/dnszones/b", "admin", groupZoneDoc("b", "b.example.", "prod")).want(http.StatusCreated)
+}

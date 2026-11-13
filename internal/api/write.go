@@ -184,6 +184,15 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (result writ
 	}
 	zone, _ := existing.(*v1alpha1.DNSZone)
 	groupChange := zone != nil && zoneGroupChanged(u.Object, zone)
+	if k.kind == "DNSZone" && existing == nil {
+		// Creating a zone needs zones.write at cluster scope (§8.5), decided
+		// on this read too (D385): a zone deleted after the caller's
+		// authorization read is created again only by a cluster-scope writer,
+		// never through a zone or zone-group binding of the deleted zone.
+		if err := s.require(ctx, k.resource, "write", clusterScope, key.Name); err != nil {
+			return writeResult{}, err
+		}
+	}
 	if zone != nil {
 		// The zone-group rule (D385) is decided on this read, the one the
 		// write below is compare-and-swapped against, not on the caller's
