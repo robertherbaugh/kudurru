@@ -209,7 +209,13 @@ func (f *fixture) zone(name, apex string) *public.DNSZone {
 }
 func (f *fixture) start() (*Driver, func()) {
 	f.t.Helper()
-	d, err := New(Options{Store: f.s, Runtime: f.r, Image: f.image, Publication: f.pub, PollInterval: 10 * time.Millisecond, Timeout: time.Second})
+	return f.startWithin(time.Second)
+}
+
+// startWithin starts the driver with the given operation timeout.
+func (f *fixture) startWithin(timeout time.Duration) (*Driver, func()) {
+	f.t.Helper()
+	d, err := New(Options{Store: f.s, Runtime: f.r, Image: f.image, Publication: f.pub, PollInterval: 10 * time.Millisecond, Timeout: timeout})
 	if err != nil {
 		f.t.Fatal(err)
 	}

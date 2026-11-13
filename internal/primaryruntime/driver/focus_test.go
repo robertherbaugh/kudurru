@@ -1,12 +1,16 @@
 package driver
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
 	"time"
 
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	pr "github.com/robertherbaugh/kudurru/internal/primaryruntime"
+	"github.com/robertherbaugh/kudurru/internal/primaryzone"
+	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
 // A new child zone's lifecycle steps run back to back (D404): each step
@@ -23,9 +27,10 @@ import (
 // child's remaining steps (the parent fence, the Preparing-to-Fencing CAS,
 // then activation) run back to back and no other zone is stepped between
 // them; and the first pass on a roster with the new zone steps it first,
-// so only the pass already running when it was created can come first.
-// Without this each of those steps waited behind a full pass: 72 waits of
-// 8 zones after the child's lifecycle existed (focus04-before.log).
+// so only the rest of the pass already running when it was created can come
+// first. Without this each of those steps waited behind a full pass: 72
+// waits of 8 zones after the child's lifecycle existed, 73 after its
+// DNSZone was created (focus04-before.log).
 func TestNewChildStepsAreNotQueuedBehindEveryZone(t *testing.T) {
 	const others = 8
 	f := setup(t)
@@ -33,7 +38,17 @@ func TestNewChildStepsAreNotQueuedBehindEveryZone(t *testing.T) {
 	for i := range others {
 		f.zone(fmt.Sprintf("other-%d", i), fmt.Sprintf("other%d.example.", i))
 	}
-	_, stop := f.start()
+	// The production operation timeout (10 s), not the fixture's 1 s: under
+	// the race detector on a loaded runner a fence or activation step can
+	// take longer than a second, and a step that times out is retried after
+	// a backoff, during which the rotation rightly steps the other zones.
+	// The count below is about the order of steps that succeed.
+	r, err := pr.New(pr.Options{Store: f.s, Repository: f.repo, Reader: primaryzone.NewReader(f.s, primaryzone.ReaderOptions{PageSize: 1}), LifecycleCAS: f.a.LifecycleCAS, Admit: f.a.Admission, Publish: f.pub.publish, Notify: f.notify, Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.r = r
+	_, stop := f.startWithin(10 * time.Second)
 	defer stop()
 	awaitConverged(t, func() bool {
 		if !f.active("family.example.", 1) {
@@ -91,4 +106,66 @@ func TestNewChildStepsAreNotQueuedBehindEveryZone(t *testing.T) {
 	if got > 2 {
 		t.Fatalf("the child's steps waited behind %d publication waits of %d other zones; want at most 2", got, others)
 	}
+}
+
+// Stepping zones that are being created ahead of the rotation must not
+// starve the zones late in it: the rotation's cursor keeps its place, so an
+// edit of the last zone is still reconciled while another zone's status is
+// written every few milliseconds and a new zone is created meanwhile.
+func TestLeadingZonesKeepTheRotationFair(t *testing.T) {
+	const others = 8
+	f := setup(t)
+	for i := range others {
+		f.zone(fmt.Sprintf("other-%d", i), fmt.Sprintf("other%d.example.", i))
+	}
+	_, stop := f.start()
+	defer stop()
+	awaitConverged(t, func() bool {
+		for i := range others {
+			if !f.active(fmt.Sprintf("other%d.example.", i), 1) {
+				return false
+			}
+		}
+		return true
+	})
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		tick := time.NewTicker(5 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-tick.C:
+			}
+			var z public.DNSZone
+			if err := f.s.Get(f.ctx(), store.Key{Kind: "DNSZone", Name: "other-0"}, &z); err != nil {
+				t.Error(err)
+				return
+			}
+			z.Status.Serial++
+			if err := f.s.UpdateStatus(f.ctx(), &z); err != nil && !errors.Is(err, store.ErrConflict) {
+				t.Error(err)
+				return
+			}
+		}
+	})
+	defer func() { close(done); wg.Wait() }()
+	last := fmt.Sprintf("other-%d", others-1)
+	var z public.DNSZone
+	if err := f.s.Get(f.ctx(), store.Key{Kind: "DNSZone", Name: last}, &z); err != nil {
+		t.Fatal(err)
+	}
+	z.Spec.DefaultTTL = 120
+	saved, err := f.s.Apply(f.ctx(), &z, store.ApplyOptions{Manager: "api"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := saved.GetResourceVersion()
+	f.zone("new-zone", "new.example.")
+	awaitConverged(t, func() bool {
+		l := f.ledger(last)
+		return l != nil && l.Spec.Source.ResourceVersion == edited
+	})
 }
