@@ -767,7 +767,8 @@ Each state above is visible without reading the database by hand (D369):
   `kudurru_root_anchor_admission_current`. The elected updater's root queries
   are counted by outcome in
   `kudurru_root_anchor_updater_acquisitions_total{outcome}` (`applied`,
-  `raced`, `failed`, `refused`), so every root query of a bootstrap or
+  `raced`, `failed`, `canceled` when the writer term ended during the query,
+  `refused`), so every root query of a bootstrap or
   refresh, including one discarded because an ordinary commit raced it, is
   accounted for. A refusal also logs one warning when
   it begins or changes class and one line when an install ends it. A primary

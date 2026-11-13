@@ -38,15 +38,19 @@ var anchorWorkerStates = []string{anchorWorkerNotRunning, anchorWorkerRunning, a
 // committed or found unchanged), raced (an ordinary commit moved the
 // canonical generation while the reply was in flight, so the reply was
 // discarded and a new acquisition follows), failed (transport; a new
-// acquisition is scheduled) and refused (a terminal refusal for the term).
+// acquisition is scheduled), canceled (the writer term or process ended
+// while it was in flight; nothing is retried in that term) and refused (any
+// other error, which stops the updater for the term: a trust or admission
+// refusal, or a store failure).
 const (
-	anchorAcquisitionApplied = "applied"
-	anchorAcquisitionRaced   = "raced"
-	anchorAcquisitionFailed  = "failed"
-	anchorAcquisitionRefused = "refused"
+	anchorAcquisitionApplied  = "applied"
+	anchorAcquisitionRaced    = "raced"
+	anchorAcquisitionFailed   = "failed"
+	anchorAcquisitionCanceled = "canceled"
+	anchorAcquisitionRefused  = "refused"
 )
 
-var anchorAcquisitionOutcomes = []string{anchorAcquisitionApplied, anchorAcquisitionRaced, anchorAcquisitionFailed, anchorAcquisitionRefused}
+var anchorAcquisitionOutcomes = []string{anchorAcquisitionApplied, anchorAcquisitionRaced, anchorAcquisitionFailed, anchorAcquisitionCanceled, anchorAcquisitionRefused}
 
 // Pull results (api.RootAnchorPull.Result).
 const (

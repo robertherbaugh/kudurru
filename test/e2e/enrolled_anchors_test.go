@@ -80,11 +80,12 @@ type enrolledAnchors struct {
 // discard that reply and acquire again (F28-EF-1), and the primary's
 // kudurru_root_anchor_updater_acquisitions_total counts each such race. So
 // the root must have answered exactly 1 + raced acquisitions, every one of
-// them in normal mode, with none failed or refused.
+// them in normal mode, with none failed or refused, and at most
+// enrolledBootstrapRaces raced: more is an acquisition storm, not a race.
 func (e *enrolledAnchors) settleBootstrap(primary *kudurrutest.Node) {
 	e.t.Helper()
 	counts := map[string]int32{}
-	for _, outcome := range []string{"applied", "raced", "failed", "refused"} {
+	for _, outcome := range []string{"applied", "raced", "failed", "canceled", "refused"} {
 		v, ok := scrapeGauge(e.t, primary.Ports.Metrics, "kudurru_root_anchor_updater_acquisitions_total", `outcome="`+outcome+`"`)
 		if !ok {
 			e.t.Fatal("the standalone primary does not export its updater acquisitions", outcome)
@@ -92,11 +93,17 @@ func (e *enrolledAnchors) settleBootstrap(primary *kudurrutest.Node) {
 		counts[outcome] = int32(v)
 	}
 	e.base = e.root.TCP(anchorRootNormal)
-	if counts["applied"] != 1 || counts["failed"] != 0 || counts["refused"] != 0 || e.base != 1+counts["raced"] || e.root.TotalTCP() != e.base {
+	if counts["applied"] != 1 || counts["raced"] > enrolledBootstrapRaces || counts["failed"] != 0 || counts["canceled"] != 0 || counts["refused"] != 0 || e.base != 1+counts["raced"] || e.root.TotalTCP() != e.base {
 		e.t.Fatalf("standalone bootstrap: %d root acquisitions, updater counted %v (at %s: %s)", e.base, counts, time.Now().Format("15:04:05.000"), e.root.TCPLog())
 	}
 	e.t.Logf("standalone bootstrap: %d root acquisitions, %d of them raced", e.base, counts["raced"])
 }
+
+// enrolledBootstrapRaces bounds the raced bootstrap acquisitions of a fresh
+// standalone primary. Its startup cascade (one status write per zone, the
+// first login) can race the bootstrap a few times; the live edge test allows
+// the same (cmd/kudurru anchorEdgeBootstrapReads, three reads in all).
+const enrolledBootstrapRaces = 2
 
 func newEnrolledAnchors(t *testing.T, recovery bool) *enrolledAnchors {
 	return &enrolledAnchors{t: t, root: newAnchorRoot(t), recovery: recovery}

@@ -527,3 +527,32 @@ func TestAnchorCaptureRaceLogIsBounded(t *testing.T) {
 		t.Fatal("raced capture warnings are not bounded to powers of two", logged)
 	}
 }
+
+// An error that ends an acquisition after the writer context ended is
+// counted as canceled, not as a refusal that stopped the updater on the
+// reply, whatever the error is. With the context live, a transport failure
+// stays failed and any other error refused.
+func TestAnchorAcquisitionOutcomeSeparatesCancellation(t *testing.T) {
+	live := context.Background()
+	ended, cancel := context.WithCancel(context.Background())
+	cancel()
+	transport := &anchorAcquisitionFailure{err: context.Canceled}
+	store := errors.New("sql: transaction has already been committed or rolled back")
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+		err  error
+		want string
+	}{
+		{"transport", live, transport, anchorAcquisitionFailed},
+		{"refusal", live, trustanchors.ErrProof, anchorAcquisitionRefused},
+		{"store", live, store, anchorAcquisitionRefused},
+		{"canceled transport", ended, transport, anchorAcquisitionCanceled},
+		{"canceled store", ended, store, anchorAcquisitionCanceled},
+		{"canceled terminal", ended, &anchorTerminalFailure{err: context.Canceled}, anchorAcquisitionCanceled},
+	} {
+		if got := anchorAcquisitionOutcome(tc.ctx, anchorCompletion{}, tc.err); got != tc.want {
+			t.Errorf("%s: outcome %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
