@@ -2,10 +2,13 @@ package host
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
+	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
 type scopeKey struct{}
@@ -72,7 +75,7 @@ func (p providerHost) Request(ctx context.Context, provider, account string, _ b
 		account = "all"
 	}
 	id := kinds.Digest([]byte(fmt.Sprintf("%s/%s/%s/%d", g.Ledger.Owner.UID, g.Ledger.LeaseID, provider, p.h.requestSequence.Add(1))))
-	if _, err := p.h.opts.Ledger.ReserveBudget(ctx, g.Ledger, ledger.BudgetCharge{Provider: provider, Account: account, ID: id, Cost: 1, Capacity: 1000, WindowSeconds: 300}); err != nil {
+	if err := p.reserve(ctx, g, ledger.BudgetCharge{Provider: provider, Account: account, ID: id, Cost: 1, Capacity: 1000, WindowSeconds: 300}); err != nil {
 		return err
 	}
 	// Reservation is a distinct transaction. Both reads and writes must retain
@@ -122,4 +125,33 @@ func (h *Host) RequestResource(ctx context.Context, expected ledger.Guard) (any,
 		return nil, ErrFenced
 	}
 	return s.original.input.Resource, nil
+}
+
+// budgetAttempts bounds the fresh reservation attempts of one request.
+const budgetAttempts = 4
+
+// reserve makes the request's budget reservation. ReserveBudget writes once
+// by exact CAS and never retries; a lost CAS (store.ErrConflict) means
+// another instance, on this or another replica, reserved first and nothing
+// was written. A reservation is commutative and idempotent by its ID, so the
+// request makes a bounded number of fresh explicit attempts (D364, D384),
+// each after a short jittered pause and its own fence. Any other failure,
+// including an unknown outcome, is returned at once. No provider request is
+// sent without a reservation.
+func (p providerHost) reserve(ctx context.Context, g ExecutionGuard, c ledger.BudgetCharge) error {
+	for attempt := 1; ; attempt++ {
+		_, err := p.h.opts.Ledger.ReserveBudget(ctx, g.Ledger, c)
+		if err == nil || !errors.Is(err, store.ErrConflict) || attempt == budgetAttempts {
+			return err
+		}
+		pause := time.Duration(10+kindsDigest(fmt.Sprintf("%s/%d", c.ID, attempt))%40) * time.Millisecond
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(pause):
+		}
+		if err := p.h.fence(ctx, p.j, g); err != nil {
+			return err
+		}
+	}
 }
