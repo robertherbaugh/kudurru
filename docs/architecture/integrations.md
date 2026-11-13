@@ -81,7 +81,16 @@ listed but not selectable; each credential key is a reference of a form in
 Every command is bound to the UID and revision of the status on screen; a
 publishing sync sends the digest of the preview the operator reviewed, and
 a refused (409) or uncertain (503 `integration_uncertain`) sync spends that
-preview and is not sent again.
+preview. After an uncertain sync the open page offers no other sync of that
+instance (held by UID, so a status write that moves the revision does not
+lift it) until a Check or a Preview succeeds; the hold is page state, so a
+reload or another client is not held. A preview whose revision is no longer
+the one on screen is dropped with a "Preview superseded" notice. Form
+validation checks draft-only problems (half-typed numbers, durations, map
+keys) on the draft and required fields on the built value against the
+schema, so a required field of an optional object (Cloudflare
+`adoptFrom.externalDNSOwner`, UniFi `inventory.zoneRef`) is required only
+when that object is set.
 
 ```mermaid
 sequenceDiagram

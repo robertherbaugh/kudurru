@@ -332,7 +332,10 @@ sync, who manages it), and each instance has its own page.
   /api/v1/integrations/manifests`: the provider types of this build (a type
   this node does not run, such as a webhook on Kubernetes, is shown with the
   reason and cannot be chosen), the provider's settings from its
-  configuration schema without the fields this node refuses, and one
+  configuration schema without the fields this node refuses (an optional
+  group of settings, such as a Cloudflare zone's `adoptFrom` or the UniFi
+  `inventory`, is left out unless one of its fields is set, and only then
+  are its required fields required), and one
   reference per credential the provider reads. A reference is a file or an
   environment name the node configuration grants; the page has no field for
   a credential value. It needs `integrations.write`, `integrations.secrets`
@@ -342,9 +345,14 @@ sync, who manages it), and each instance has its own page.
   leaves alone and the plan's digest, and **Publish this plan** applies
   exactly that plan. When the plan expired or no longer matches (the
   instance, its zones or the provider changed), the server refuses it and
-  nothing is published: preview again. An inventory provider has **Sync
+  nothing is published: preview again. When the instance's revision moves
+  after a preview (a host status write moves it too), the page drops the
+  plan and says the preview was superseded. An inventory provider has **Sync
   now** instead. When the provider does not acknowledge a sync, the page
-  says the outcome is unknown and does not send it again.
+  says the outcome is unknown and does not offer another sync of that
+  instance until a Check or a Preview succeeds. That hold is kept by the
+  open page only: reloading or leaving the page drops it, and another
+  client is not held.
 - **Load actions** lists the actions the provider advertises, with their
   parameters, and runs one with `integrations.act`.
 - **Configuration** edits the instance in place; a change of a credential

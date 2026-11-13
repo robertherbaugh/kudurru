@@ -195,6 +195,47 @@ describe('IntegrationDetailPage', () => {
     expect(synced).toHaveLength(1);
   });
 
+  it('keeps an uncertain sync from being sent again after the revision moves, until a Check succeeds', async () => {
+    mockIntegrations().objects[1]!.metadata.annotations = { 'kudurru.io/managed-by': 'api' };
+    mockIntegrations().uncertainNextSync = true;
+    const synced = bodies('/sync');
+    detail('office');
+    const syncNow = await screen.findByRole('button', { name: 'Sync now' });
+    await waitFor(() => expect(syncNow).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(syncNow);
+    expect(await screen.findByText('Sync: outcome unknown')).toBeInTheDocument();
+    // A host status write moves the revision; a stale Check is refused and
+    // rereads it. The new revision does not lift the guard.
+    mockIntegrations().objects[1]!.metadata.resourceVersion = '12';
+    fireEvent.click(screen.getByRole('button', { name: 'Check' }));
+    expect(await screen.findByText('Check refused')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Check' })).not.toHaveAttribute('aria-disabled', 'true'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Sync now' })).toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+    expect(synced).toHaveLength(1);
+    // A Check at the current revision succeeds and lifts it.
+    fireEvent.click(screen.getByRole('button', { name: 'Check' }));
+    expect(await screen.findByText('Reachable: yes. Credential accepted: yes.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Sync now' })).not.toHaveAttribute('aria-disabled', 'true'));
+  });
+
+  it('says so when the instance changed since the preview', async () => {
+    detail();
+    const previewButton = await screen.findByRole('button', { name: 'Preview' });
+    await waitFor(() => expect(previewButton).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(previewButton);
+    await screen.findByTestId('integration-preview');
+    mockIntegrations().objects[0]!.metadata.resourceVersion = '99';
+    fireEvent.click(screen.getByRole('button', { name: 'Check' }));
+    const banner = await screen.findByTestId('preview-superseded');
+    expect(banner).toHaveTextContent('revision 10, now 99');
+    expect(screen.queryByTestId('integration-preview')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Publish this plan' })).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    await screen.findByTestId('integration-preview');
+    expect(screen.queryByTestId('preview-superseded')).toBeNull();
+  });
+
   it('saves a UniFi instance that sets no inventory zone (real schema)', async () => {
     mockIntegrations().objects[1]!.metadata.annotations = { 'kudurru.io/managed-by': 'api' };
     detail('office');

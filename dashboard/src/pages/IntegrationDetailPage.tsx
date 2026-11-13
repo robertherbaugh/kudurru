@@ -350,10 +350,15 @@ function CommandsPanel({ obj, summary, manifest, licenseReason }: CommandsProps)
   const publisher = publishes(manifest, obj.spec);
   const [preview, setPreview] = useState<{ key: string; plan: IntegrationPreview } | null>(null);
   const [outcome, setOutcome] = useState<(Outcome & { key: string }) | null>(null);
-  // A sync whose outcome is unknown is never sent again for the same review.
-  const [uncertainKey, setUncertainKey] = useState<string | null>(null);
+  // After a sync with an unknown outcome this page sends no other sync of
+  // the instance (by UID, so a status write that moves the revision does
+  // not lift it) until a Check or a Preview succeeds. It is page state:
+  // leaving or reloading the page drops it.
+  const [uncertainUid, setUncertainUid] = useState<string | null>(null);
   const [busy, setBusy] = useState<IntegrationCommand | null>(null);
   const currentPreview = preview && preview.key === reviewKey ? preview.plan : null;
+  // A plan reviewed at an older revision is not sent; say why it went away.
+  const supersededPreview = preview && reviewKey && preview.key !== reviewKey ? preview : null;
   // The last outcome stays in view after the review it ran on changed (a
   // refusal of a stale review rereads the status, which changes the key).
   const shown = outcome;
@@ -366,7 +371,9 @@ function CommandsPanel({ obj, summary, manifest, licenseReason }: CommandsProps)
   const syncBase = licenseReason ?? cannot('integrations', 'sync') ?? noReview;
   const syncReason =
     syncBase ??
-    (uncertainKey === reviewKey ? 'The last sync of this revision has an unknown outcome and is not sent again; check the provider, then preview again' : undefined) ??
+    (review && uncertainUid === review.uid
+      ? `The last sync has an unknown outcome and is not sent again from this page; check the provider, then run ${publisher ? 'Preview' : 'Check'}`
+      : undefined) ??
     (publisher && !currentPreview ? 'Preview first: a publishing sync applies exactly the reviewed plan' : undefined);
 
   const run = async (cmd: IntegrationCommand, call: () => Promise<IntegrationExecutionResult>, after?: (r: IntegrationExecutionResult) => void) => {
@@ -381,7 +388,7 @@ function CommandsPanel({ obj, summary, manifest, licenseReason }: CommandsProps)
       if (cmd === 'sync') {
         // A refused or uncertain sync consumed the reviewed plan.
         setPreview(null);
-        if (uncertain) setUncertainKey(reviewKey);
+        if (uncertain && review) setUncertainUid(review.uid);
       }
     } finally {
       setBusy(null);
@@ -389,7 +396,7 @@ function CommandsPanel({ obj, summary, manifest, licenseReason }: CommandsProps)
     }
   };
 
-  const check = () => review && run('check', () => api.integrations.check(namespace, name, review));
+  const check = () => review && run('check', () => api.integrations.check(namespace, name, review), () => setUncertainUid(null));
   const doPreview = () =>
     review &&
     run(
@@ -397,7 +404,7 @@ function CommandsPanel({ obj, summary, manifest, licenseReason }: CommandsProps)
       () => api.integrations.preview(namespace, name, review),
       (r) => {
         if (r.preview) setPreview({ key: reviewKey, plan: r.preview });
-        setUncertainKey(null);
+        setUncertainUid(null);
       },
     );
   const sync = () => {
@@ -429,6 +436,14 @@ function CommandsPanel({ obj, summary, manifest, licenseReason }: CommandsProps)
         />
       </HStack>
       {currentPreview ? <PreviewPlan plan={currentPreview} /> : null}
+      {supersededPreview ? (
+        <Banner
+          status="info"
+          title="Preview superseded"
+          description={`The instance changed since this preview (revision ${supersededPreview.key.slice(supersededPreview.key.lastIndexOf('@') + 1)}, now ${review?.revision ?? 'unknown'}), so its plan is not published. Preview again and review the new plan.`}
+          data-testid="preview-superseded"
+        />
+      ) : null}
       {shown ? <OutcomeBanner outcome={shown} /> : null}
       {manifest.capabilities.includes('Actions') ? <ActionsSection obj={obj} review={review} licenseReason={licenseReason} /> : null}
     </Panel>
