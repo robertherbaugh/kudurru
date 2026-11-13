@@ -75,7 +75,7 @@ func (r *integrationRuntime) beginOperation(ctx context.Context, owner ih.Instan
 		return nil, err
 	}
 	original, ok := objects.Objects.Get(store.Key{Kind: "Integration", Namespace: owner.Namespace, Name: owner.Name})
-	if !ok || string(original.GetUID()) != owner.UID || original.GetResourceVersion() != revision {
+	if !ok || string(original.GetUID()) != owner.UID {
 		return nil, ih.ErrFenced
 	}
 	attrs := rbac.Attributes{Resource: "integrations", Verb: verb, Namespace: owner.Namespace, Name: owner.Name, Scope: rbac.Scope{Kind: rbac.ScopeCluster}}
@@ -103,6 +103,12 @@ func (r *integrationRuntime) beginOperation(ctx context.Context, owner ih.Instan
 	op.capture, err = r.host.CaptureCommand(ctx, owner, revision)
 	if err != nil {
 		return nil, err
+	}
+	// The host accepts a review of an earlier revision that differs from its
+	// frame only by status writes (D384). This node's published object must
+	// still be the reviewed revision or that frame's.
+	if rv := original.GetResourceVersion(); rv != revision && rv != op.capture.Revision() {
+		return nil, ih.ErrFenced
 	}
 	ctx, op.guard, err = op.capture.Bind(ctx)
 	if err != nil {

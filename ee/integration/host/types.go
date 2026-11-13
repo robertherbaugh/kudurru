@@ -268,7 +268,18 @@ type job struct {
 	// term publishes it again with exponential backoff (refusalBackoff).
 	refusalUnpublished bool
 	refusalRetryAt     time.Time
+	// statusPredecessors are the latest earlier resource versions of the
+	// frame's instance that differ from it only by status writes, oldest
+	// first (D384). A command reviewed at one of them reviewed the same
+	// spec and metadata, so it is not stale; any other change clears them.
+	statusPredecessors []string
 }
+
+// maxStatusPredecessors bounds how many status-only writes a review
+// survives. The host writes status once per operation, so a review older
+// than this many writes is refused as stale like any other.
+const maxStatusPredecessors = 8
+
 type command struct {
 	ctx                    context.Context
 	original               *CommandCapture

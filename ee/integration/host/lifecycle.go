@@ -11,9 +11,11 @@ import (
 	"time"
 
 	kinds "github.com/robertherbaugh/kudurru/api/integrationkinds/v1alpha1"
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
 	"github.com/robertherbaugh/kudurru/ee/integration/plan"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"k8s.io/apimachinery/pkg/api/equality"
 )
 
 // Wake coalesces root's background change notifications into one level trigger.
@@ -47,6 +49,23 @@ func ElectionKey(i InstanceID) string { return electionKey(i) }
 func electionKey(i InstanceID) string {
 	return "integration-" + kinds.Digest([]byte(i.Namespace + "/" + i.Name))[:32]
 }
+
+// StatusOnly reports whether next differs from prev, an earlier capture of
+// the same object, by nothing but its status and resource version: the same
+// UID, generation, spec, labels, annotations, finalizers, owners and
+// deletion. Such a change is a status write, usually the host's own, and
+// changes nothing an operator reviewed (D384).
+func StatusOnly(prev, next *public.Integration) bool {
+	if prev == nil || next == nil {
+		return false
+	}
+	return prev.UID == next.UID && prev.Namespace == next.Namespace && prev.Name == next.Name && prev.Generation == next.Generation &&
+		equality.Semantic.DeepEqual(prev.Spec, next.Spec) &&
+		maps.Equal(prev.Labels, next.Labels) && maps.Equal(prev.Annotations, next.Annotations) &&
+		slices.Equal(prev.Finalizers, next.Finalizers) && equality.Semantic.DeepEqual(prev.OwnerReferences, next.OwnerReferences) &&
+		prev.DeletionTimestamp.Equal(next.DeletionTimestamp) && equality.Semantic.DeepEqual(prev.DeletionGracePeriodSeconds, next.DeletionGracePeriodSeconds)
+}
+
 func sameInstance(a, b *Instance) bool {
 	return a.owner == b.owner && a.configDigest == b.configDigest && a.credentialDigest == b.credentialDigest && a.term.Same(b.term) && a.credentialError == b.credentialError
 }
@@ -152,14 +171,27 @@ func (h *Host) refresh(ctx context.Context) {
 			// frame so periodic polls cannot fence a longer source observation.
 			// Any real bundle/source/RV replacement still revokes that frame.
 			if changed || j.frame.input.BundleID != i.BundleID() || j.frame.instance.definition.ResourceVersion != i.definition.ResourceVersion {
+				previous := j.frame.instance.definition
+				if previous.ResourceVersion != i.definition.ResourceVersion {
+					if StatusOnly(previous, i.definition) {
+						j.statusPredecessors = append(j.statusPredecessors, previous.ResourceVersion)
+						if n := len(j.statusPredecessors); n > maxStatusPredecessors {
+							j.statusPredecessors = slices.Clone(j.statusPredecessors[n-maxStatusPredecessors:])
+						}
+					} else {
+						j.statusPredecessors = nil
+					}
+				}
 				nextInput := input
 				nextInput.BundleID = i.BundleID()
 				j.frame = frame{i, nextInput}
-				// A terminating job reports why its instance still exists and
-				// may wait long between runs. Its own status write is a new
-				// resource version of the same instance in the same mode, so
-				// the report follows the frame instead of going stale.
-				if s, ok := h.statuses[key]; ok && j.mode != GuardNormal && s.Owner == i.owner {
+				// The job is still this instance in this mode (sameInstance:
+				// same UID, spec, credentials and term), so its report still
+				// describes it. Its own status write is a new resource version,
+				// and a terminating job may wait long between runs, as may a
+				// healthy idle one: the report follows the frame instead of
+				// going stale or unknown (D384).
+				if s, ok := h.statuses[key]; ok && s.Owner == i.owner {
 					s.Revision = i.definition.ResourceVersion
 					h.statuses[key] = s
 				}
