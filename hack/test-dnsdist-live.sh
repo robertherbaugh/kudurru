@@ -68,7 +68,7 @@ for suite in "${suites[@]}"; do
     f28) KUDURRU_F28_EDGE_LIVE=1 KUDURRU_F28_EDGE_WORKDIR="$work" \
       go test -p 2 -count=1 -timeout=5m "${flags[@]}" -run '^TestManagedCacheLivePinnedTransition$' ./ee/edge/dnsdist || status=1 ;;
     f39) KUDURRU_F39_LIVE=1 KUDURRU_F39_WORKDIR="$work" \
-      go test -p 2 -count=1 -timeout=8m "${flags[@]}" -run '^TestRunServeRemoteEdge(RegexAndLateFill|AuthoritativeCacheACL)$' ./cmd/kudurru || status=1 ;;
+      go test -p 2 -count=1 -timeout=8m "${flags[@]}" -run '^TestRunServeRemoteEdge(RegexAndLateFill|AuthoritativeCacheACL|ClientGroupViews)$' ./cmd/kudurru || status=1 ;;
     anchor) KUDURRU_ANCHOR_EDGE_LIVE=1 KUDURRU_ANCHOR_EDGE_WORKDIR="$work" \
       go test -p 2 -count=1 -timeout=6m "${flags[@]}" -run '^TestRunServeManagedEdgePinnedDaemonRestart$' ./cmd/kudurru || status=1 ;;
     f18c) KUDURRU_F18C_DNSDIST=1 \
