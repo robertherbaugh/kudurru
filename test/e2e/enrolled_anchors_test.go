@@ -547,6 +547,13 @@ func enrolledAnchorsRevoke(t *testing.T, e *enrolledAnchors, bin string, env []s
 	if !kudurrutest.Eventually(30*time.Second, 50*time.Millisecond, func() bool { return checkDNS(follower, "later", "192.0.2.43", dns.RcodeSuccess) }) {
 		t.Fatal("follower did not serve its zone after installing the recovered image")
 	}
+	// The new session was created on the primary after the follower installed
+	// the recovered image; the follower accepts it once a scheduled pull has
+	// installed the commit that carries it (every five seconds here). Until
+	// then it answers 401 for that cookie, which is replication lag, not a
+	// refusal of the follower's state (diag08: the read 2.1 s after the
+	// sign-in was refused).
+	enrolledSessionInstalled(t, apiB)
 	adopted := e.status(apiB, func(s api.RootAnchorStatus) bool { return s.Owner.Digest == recovered.Owner.Digest })
 	keys := func(s api.RootAnchorStatus) []string {
 		var out []string
@@ -680,6 +687,27 @@ func enrolledAnchorsRefusal(t *testing.T, e *enrolledAnchors, bin string, env []
 	}
 	if !anchorServfail(follower.Ports.DNS, "later.e2e.test.") {
 		t.Fatal("refusing retired follower served")
+	}
+}
+
+// enrolledSessionInstalled waits until node accepts the client's session
+// (GET /auth/me answers 200): a session created on the primary reaches a
+// follower with its next installed image. 401 and 503 are retried for up to
+// 20 seconds, four of the follower's scheduled pulls; any other status fails.
+func enrolledSessionInstalled(t *testing.T, node *staticProcessClient) {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		status := enrolledProcessStatus(t, node, http.MethodGet, "/auth/me", nil)
+		switch {
+		case status == http.StatusOK:
+			return
+		case status != http.StatusUnauthorized && status != http.StatusServiceUnavailable:
+			t.Fatal("session read on the follower answered", status)
+		case time.Now().After(deadline):
+			t.Fatal("the follower never installed the session created on the primary", status)
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
