@@ -869,23 +869,25 @@ running child and original membership epoch. Old observations cannot reattach;
 unknown acknowledgment retires that child. Managed backend projections refuse
 both fresh remote cache leases, including before a local-denial rebuild.
 
-The coordinator must still bind backend activation to the installed edge's
-original evidence, and the complete retirement acceptance matrix remains
-required before activation. A status boolean is not this authority. Managed recursive
-input will not alter forwarded DNSSEC's independent anchors and exception policy.
+Backend activation behind edges is bound to the installed edges' original
+evidence by the startup admission described under managed topology above
+(D319). A status boolean is not this authority. Managed recursive input does
+not alter forwarded DNSSEC's independent anchors and exception policy.
 
-Planned managed mode also refuses an ordinary switch back to static/default
-anchors after managed history exists: a shipped seed could otherwise restore a
+Managed mode also refuses an ordinary switch back to static/default anchors
+after managed history exists: a shipped seed could otherwise restore a
 permanently revoked key. Static-only installations retain their existing
-semantics. Recovery requires a separate explicit path that preserves revocation
-history; no reset or recovery path is mounted yet.
+semantics. The only way out of quarantine is the explicit offline recovery
+above (`kudurru anchors recover --offline`, D320/D321), which preserves
+revocation history; there is no online reset.
 
 Managed activation also requires retirement of held answers at final local
-response admission and durable follower quarantine. The current remote cache
-eligibility lease cannot guarantee immediate retirement; managed pools need
-proven cache bypass installed before activation or a stronger per-hit protocol.
-The local installed-policy prerequisite has real dnsdist coverage; its backend
-activation admission is still pending. Neither is supplied by the pure package.
+response admission and durable follower quarantine. The remote cache
+eligibility lease cannot guarantee immediate retirement, so managed pools run
+only behind the retained cache bypass, whose installation the startup admission
+authenticates on every declared edge. The pinned dnsdist test covers both the
+edge's installed policy and a backend admitted behind it. Neither is supplied
+by the pure package.
 
 ### Names that never leave the network
 
