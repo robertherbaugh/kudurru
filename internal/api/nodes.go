@@ -228,8 +228,14 @@ func (s *Server) nodeHealth(ctx context.Context, in *nodeNameInput) (*nodeHealth
 		if p.Name != in.Name {
 			continue
 		}
-		if p.Self || s.opts.InternalClient == nil || p.Address == "" {
+		if p.Self {
 			return nil, errUnavailable("peer health: unavailable")
+		}
+		if s.opts.InternalClient == nil || p.Address == "" {
+			// A deployment limit: this node has no internal credentials, or
+			// the peer announces no internal address.
+			return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "peer health: unavailable",
+				peerTransportHint+"; or read GET "+BasePath+"/nodes/{name}/health on that node itself")
 		}
 		out, err := s.opts.InternalClient.Health(peerCtx, p.Address, p.Name)
 		if err != nil {

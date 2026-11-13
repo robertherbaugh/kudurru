@@ -261,7 +261,7 @@ func (s *Server) registerIntegrations() {
 		"binding or changing spec.credentials also needs integrations.secrets) (D400)."
 	register(s, manifests, read, func(ctx context.Context, _ *struct{}) (*integrationManifestsOutput, error) {
 		if s.opts.Integrations == nil {
-			return nil, errUnavailable("complete integration administration unavailable")
+			return nil, errIntegrationsUnavailable()
 		}
 		out, err := s.opts.Integrations.IntegrationManifests(ctx)
 		if err != nil {
