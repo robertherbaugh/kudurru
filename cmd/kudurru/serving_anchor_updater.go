@@ -71,6 +71,10 @@ type anchorUpdater struct {
 // TestDefaultBuildHasNoAnchorUpdaterWall.
 var anchorUpdaterBuildWall func() time.Time
 
+// anchorUpdaterMovedClockLog is the warning a writer updater logs when it
+// starts on a moved wall clock. A release binary never logs it.
+const anchorUpdaterMovedClockLog = "root anchor updater runs its due checks on a moved test clock"
+
 type anchorPollStep struct {
 	next             time.Time
 	attempted        bool
@@ -280,6 +284,12 @@ func (s *servingRuntime) runAnchorUpdaterReady(ctx context.Context, target servi
 		return err
 	}
 	u := anchorUpdater{runtime: s, target: target, host: host, clock: clock, wall: s.anchorWriterWall()}
+	if u.wall != nil {
+		// Only a -tags licensetest binary or an in-process test moves this
+		// clock. Saying so lets a separate-process test tell a binary that
+		// lacks the seam from a refresh that never came due (D398).
+		slog.Warn(anchorUpdaterMovedClockLog, "ahead", time.Until(u.wall()).Round(time.Second))
+	}
 	for {
 		// Subscribe before the read. The local anchor notice has a single
 		// publisher consumer; use the Store broadcast so this worker cannot
