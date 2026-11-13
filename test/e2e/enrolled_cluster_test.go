@@ -438,6 +438,13 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 	}
 	enrolledProcessRead(t, apiA, "/dns/blocking", blockingOff)
 	enrolledProcessRead(t, apiB, "/dns/blocking", blockingOff)
+	if anchors != nil {
+		// The blocking switch writes the cluster settings (Kudurru/default
+		// status), so the follower that now serves it checks the root once
+		// for the changed settings identity, as for any settings change.
+		anchors.awaitTCP(anchorRootNormal, 2, time.Second, "forwarded blocking switch")
+		anchors.base++
+	}
 	// A fresh client logs in through the follower: the primary admits it under
 	// the shared counters and the follower seals the session after installing it.
 	freshJar, err := cookiejar.New(nil)
