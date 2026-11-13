@@ -35,7 +35,8 @@ func (s *Server) registerBlockPage() {
 	op.Description = "The same HTML the block page listener serves, marked as a preview. It renders whether or not blockPage.enabled is set."
 	register(s, op, perm{resource: "settings", verb: "read"}, func(ctx context.Context, in *blockPagePreviewInput) (*blockPagePreviewOutput, error) {
 		if s.opts.BlockPage == nil {
-			return nil, errUnavailable("the block page is not available on this node")
+			return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "the block page is not available on this node",
+				"this server was started without the block page renderer; a complete kudurru serve node provides it")
 		}
 		var document blockpage.Document
 		switch preview := s.opts.BlockPage.(type) {
