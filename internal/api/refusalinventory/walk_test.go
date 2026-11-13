@@ -200,3 +200,60 @@ func TestProbeWaitsForReadinessBeforeResending(t *testing.T) {
 		t.Fatalf("operation sent %d times, readiness probed %d times", starts.Load(), readiness.Load())
 	}
 }
+
+// The command path's 503 for a writable state that changed while the command
+// was admitted is a race with the node's own commits, not the shape's
+// answer: the probe is sent again, as for generation_pending. Any other 503
+// unavailable is the observation, sent once.
+func TestProbeResendsAfterCommandStateChanged(t *testing.T) {
+	for _, tc := range []struct {
+		message    string
+		sends      int64
+		wantStatus int
+	}{
+		{commandStateChangedMessage, 2, http.StatusBadRequest},
+		{"another refusal", 1, http.StatusServiceUnavailable},
+	} {
+		var sends atomic.Int64
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != api.BasePath+"/policies" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if sends.Add(1) == 1 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"error":{"key":"unavailable","message":"` + tc.message + `","hint":"h"}}`))
+				return
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"key":"invalid","message":"m"}}`))
+		}))
+		c := Client{HTTP: server.Client(), Base: server.URL}
+		answer, err := c.Probe(t.Context(), Operation{Method: http.MethodPut, Path: "/policies", ID: "putPolicies"})
+		server.Close()
+		if err != nil || answer.Status != tc.wantStatus || sends.Load() != tc.sends {
+			t.Errorf("%q: answer %v, %v after %d sends", tc.message, answer, err, sends.Load())
+		}
+	}
+}
+
+// Every probe but the session-ending ones runs in path order: no probe is
+// moved to avoid an answer that another one provokes.
+func TestOperationsKeepDHCPSetupInPathOrder(t *testing.T) {
+	ops, err := Operations([]byte(`{"paths":{
+ "/auth/logout":{"post":{"operationId":"logout"}},
+ "/dhcp/setup":{"put":{"operationId":"putDHCPSetup"}},
+ "/policies":{"put":{"operationId":"putPolicies"}}
+}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, op := range ops {
+		ids = append(ids, op.ID)
+	}
+	if got := strings.Join(ids, " "); got != "putDHCPSetup putPolicies logout" {
+		t.Fatal("operation order:", got)
+	}
+}
