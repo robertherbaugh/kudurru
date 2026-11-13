@@ -462,6 +462,17 @@ describe('cluster membership on the Nodes page', () => {
     expect(screen.getByRole('dialog', { name: 'Invite a member' })).toBeInTheDocument();
     answer!();
     expect(await within(d).findByTestId('cluster-invitation')).toHaveTextContent(SECRET);
+    // Once the answer is shown the dialog closes again (the wizard that was
+    // in flight unmounted with the answer): Escape and the close button ask
+    // first, as for an instant answer.
+    fireEvent.keyDown(d, { key: 'Escape' });
+    const ask = await screen.findByRole('alertdialog', { name: 'Close the invitation?' });
+    fireEvent.click(within(ask).getByRole('button', { name: 'Keep it open' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    click(d, /^Close/);
+    fireEvent.click(within(await screen.findByRole('alertdialog', { name: 'Close the invitation?' })).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Invite a member' })).toBeNull());
+    expect(document.body.textContent).not.toContain(SECRET);
   });
 
   it('blocks the promotion of a follower that is not eligible, with the reason', async () => {

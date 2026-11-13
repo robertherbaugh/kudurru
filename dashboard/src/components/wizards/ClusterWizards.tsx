@@ -73,10 +73,19 @@ function useConfirmed<T>(q: { data: T | undefined; isFetching: boolean }) {
   return { reviewed, confirmed: reviewed !== undefined, setConfirmed: (v: boolean) => setSnapshot(v ? q.data : undefined) };
 }
 
-/** Tells the dialog while a command is in flight (it then cannot be closed). */
+/**
+ * Tells the dialog while a command is in flight (it then cannot be closed).
+ * A wizard can unmount in the same render that ends the command (the
+ * invitation view replaces InviteWizard when the answer arrives), so the
+ * effect's cleanup also reports the end: otherwise the dialog would stay
+ * unclosable.
+ */
 function usePendingReport(pending: boolean, onPending: ((pending: boolean) => void) | undefined) {
   useEffect(() => {
     onPending?.(pending);
+    return () => {
+      if (pending) onPending?.(false);
+    };
     // onPending is a new function on every render of the dialog.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending]);
