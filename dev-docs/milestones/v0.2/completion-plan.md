@@ -223,6 +223,12 @@ tests cannot substitute for any external result.
 | G24 | Applicable release checklist, Compose/Kubernetes, licensing and artifact checks; independent two-VM VIP acceptance is owner-deferred follow-up (D358), not passed; no release publication implied. November 11: prebuilt-artifact switches for the harnesses merged; no checklist item closed. November 13 (17b7c87a): no checklist item closed. |
 | G25 | Keep this plan, audit closures, gap ledger, changelog and PR consistent with exact commits/results. November 11: decision rows D367–D378, the completion-pass sections and the changelog folded for what is merged at 68a709e2; later lanes still owe their sections, and the PR body is not updated. Open. November 13 (17b7c87a): decision rows D379–D394 and the replaced D368, D369, D372, D373, D377 and D378, the second-splice sections and the folded changelog record what is at 17b7c87a; packages merged after 85913663 owe a third splice; the PR body is not updated. Open. |
 
+The explicit verdict for each of the 11 feature packages, with its F rows,
+evidence and open items, is the table
+[Feature package acceptance at 154a779a](gaps.md#feature-package-acceptance-at-154a779a-november-13-2026)
+in the gap ledger (November 13, G25-DOCS). No package is accepted there, and
+the release is not ready.
+
 Current integrated static check: golangci-lint v2.15.0 scans all root packages
 with the unchanged repository rules and passes with zero issues (November 8).
 Earlier unavailable/failed lint evidence remains in the audit; this does not
