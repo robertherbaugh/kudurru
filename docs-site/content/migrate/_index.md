@@ -17,7 +17,8 @@ pages say where.
 | [AdGuard Home](/migrate/adguard-home/) | Configuration backup, filter compatibility, exceptions, persistent clients, rewrites and encrypted DNS |
 | [Technitium](/migrate/technitium/) | Zone export/import, conditional forwarders, allowed/blocked zones, DNS Apps and features to retain elsewhere |
 | [Blocky](/migrate/blocky/) | Offline YAML conversion, client policy selection, suffix-wide local mappings and explicit conversion losses |
-| [Offline configuration conversion](/migrate/offline-config/) | AdGuard Home and Blocky preview, selection, tracked application and limits |
+| [CoreDNS](/migrate/coredns/) | Offline Corefile conversion of forwarders, inline hosts, exact name rewrites, cache and access rules, with every other plugin named |
+| [Offline configuration conversion](/migrate/offline-config/) | AdGuard Home, Blocky and CoreDNS preview, selection, tracked application and limits |
 | [Cutover and rollback checklist](/migrate/cutover/) | Parallel installation, CLI setup, client identity, real DNS tests, IPv4/IPv6 rollout and recovery |
 
 **Pi-hole v6 and Technitium have built-in API importers.** In **Tools**, choose
@@ -25,7 +26,8 @@ pages say where.
 `kudurru import pihole|technitium --source-url URL --apply`. Supported objects
 and upstreams transfer automatically; the preview reports unsupported features.
 `kudurru import adguard|blocky --file PATH` converts supported YAML
-settings offline; it is a partial conversion with a loss report. kudurru cannot
+settings offline, and `kudurru import coredns --file Corefile` converts a
+CoreDNS Corefile; each is a partial conversion with a loss report. kudurru cannot
 restore a Pi-hole Teleporter archive, a product working directory or a Technitium backup. `kudurru import bind` imports standard DNS zone files.
 Migration time
 depends on your rules and services; a server that also provides DHCP,

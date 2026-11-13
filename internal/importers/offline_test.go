@@ -47,7 +47,7 @@ func TestOfflineCancellation(t *testing.T) {
 	}
 }
 func TestOfflineNeverBroadensLiveRouting(t *testing.T) {
-	for _, source := range []string{"adguard", "blocky"} {
+	for _, source := range []string{"adguard", "blocky", "coredns"} {
 		_, err := Preview(t.Context(), MigrationRequest{Source: source, URL: "http://127.0.0.1", Credential: "secret-marker"})
 		if err == nil || strings.Contains(err.Error(), "secret-marker") {
 			t.Fatal("offline source accepted as a live credential destination")

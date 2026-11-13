@@ -19,8 +19,14 @@ func newOfflineMigrationCmd(o *cliOpts, source string, preview offlinePreview) *
 	var file string
 	var apply, dryRun, wait, skipSettings, useVIPs, updateNameservers bool
 	var objects, settings, names, addresses, zones []string
-	cmd := &cobra.Command{Use: source + " --file PATH", Short: "Preview or import an offline " + source + " YAML configuration", Args: cobra.NoArgs,
-		Long: "Convert a single YAML file (at most 4 MiB) without reading referenced files or fetching network sources. Use --file - for stdin. The default prints a partial conversion and a bounded loss report without contacting kudurru. Review unsupported semantics before --apply, which starts the existing tracked migration with normal validation, ownership and license checks. --wait requires --apply and returns the final result; without it, success means only that the job was accepted. Select objects and settings explicitly to limit application. Destination-derived targets (--use-vips or --update-nameservers) explicitly opt into destination access. No source credentials or file paths enter the plan or migration journal.",
+	format, input, extra := "YAML configuration", "a single YAML file", ""
+	if source == "coredns" {
+		// The Corefile reader states its syntax version in every preview (D392).
+		format, input = "Corefile", "a single Corefile in "+importers.CorefileSyntax+" syntax"
+		extra = " Snippets defined in the Corefile are expanded; imported files, zone files and hosts files are never read."
+	}
+	cmd := &cobra.Command{Use: source + " --file PATH", Short: "Preview or import an offline " + source + " " + format, Args: cobra.NoArgs,
+		Long: "Convert " + input + " (at most 4 MiB) without reading referenced files or fetching network sources. Use --file - for stdin. The default prints a partial conversion and a bounded loss report without contacting kudurru. Review unsupported semantics before --apply, which starts the existing tracked migration with normal validation, ownership and license checks. --wait requires --apply and returns the final result; without it, success means only that the job was accepted. Select objects and settings explicitly to limit application. Destination-derived targets (--use-vips or --update-nameservers) explicitly opt into destination access. No source credentials or file paths enter the plan or migration journal." + extra,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if apply && dryRun {
 				return fmt.Errorf("--apply and --dry-run cannot be used together")
@@ -67,7 +73,7 @@ func newOfflineMigrationCmd(o *cliOpts, source string, preview offlinePreview) *
 			}
 			return finishMigration(cmd, o, plan, f, apply, wait)
 		}}
-	cmd.Flags().StringVarP(&file, "file", "f", "", "source YAML file; - reads stdin (maximum 4 MiB)")
+	cmd.Flags().StringVarP(&file, "file", "f", "", "source "+map[bool]string{true: "Corefile", false: "YAML file"}[source == "coredns"]+"; - reads stdin (maximum 4 MiB)")
 	cmd.Flags().BoolVar(&apply, "apply", false, "start a tracked background migration of the reviewed conversion")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview only (the default)")
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait for final migration results (requires --apply)")

@@ -38,7 +38,7 @@ type MigrationRequest struct {
 
 // SourceInfo identifies the source without credentials. Offline formats have no URL.
 type SourceInfo struct {
-	Type string `json:"type" enum:"pihole,technitium,adguard,blocky"`
+	Type string `json:"type" enum:"pihole,technitium,adguard,blocky,coredns"`
 	URL  string `json:"url,omitempty"`
 }
 

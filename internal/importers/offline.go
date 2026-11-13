@@ -37,18 +37,9 @@ const maxOfflineWarnings = 96
 type offlineConverter func(context.Context, OfflineRequest, *offlineMap, *Plan) error
 
 func previewOffline(ctx context.Context, source string, req OfflineRequest, r io.Reader, convert offlineConverter) (*Plan, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	b, err := io.ReadAll(io.LimitReader(offlineReader{ctx, r}, maxOfflineBytes+1))
+	b, err := readOffline(ctx, r)
 	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, errors.New("cannot read offline source")
-	}
-	if len(b) > maxOfflineBytes {
-		return nil, errors.New("offline source exceeds 4 MiB")
+		return nil, err
 	}
 	dec := yaml.NewDecoder(strings.NewReader(string(b)))
 	var doc, next yaml.Node
@@ -66,25 +57,57 @@ func previewOffline(ctx context.Context, source string, req OfflineRequest, r io
 	if err != nil {
 		return nil, err
 	}
+	req, p, err := newOfflinePlan(source, req)
+	if err != nil {
+		return nil, err
+	}
+	if err := convert(ctx, req, root, p); err != nil {
+		return nil, err
+	}
+	root.finish(p, "root")
+	return finishOfflinePlan(ctx, p)
+}
+
+// readOffline reads one bounded source document from the operator's reader.
+func readOffline(ctx context.Context, r io.Reader) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	b, err := io.ReadAll(io.LimitReader(offlineReader{ctx, r}, maxOfflineBytes+1))
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, errors.New("cannot read offline source")
+	}
+	if len(b) > maxOfflineBytes {
+		return nil, errors.New("offline source exceeds 4 MiB")
+	}
+	return b, nil
+}
+
+// newOfflinePlan validates the shared conversion options and starts a plan
+// with the common offline warnings.
+func newOfflinePlan(source string, req OfflineRequest) (OfflineRequest, *Plan, error) {
 	if req.Namespace == "" {
 		req.Namespace = "default"
 	}
 	names, err := Nameservers(req.Nameservers)
 	if err != nil {
-		return nil, err
+		return req, nil, err
 	}
 	addresses, err := NameserverAddresses(req.NameserverAddresses)
 	if err != nil {
-		return nil, err
+		return req, nil, err
 	}
 	if len(names) > 0 && len(addresses) > 0 {
-		return nil, errors.New("choose nameservers or nameserverAddresses, not both")
+		return req, nil, errors.New("choose nameservers or nameserverAddresses, not both")
 	}
 	req.LocalZones = append([]string{}, req.LocalZones...)
 	for i, s := range req.LocalZones {
 		canonical, ok := offlineDomain(s)
 		if !ok {
-			return nil, errors.New("local zones must be valid non-root DNS suffixes")
+			return req, nil, errors.New("local zones must be valid non-root DNS suffixes")
 		}
 		req.LocalZones[i] = canonical
 	}
@@ -94,10 +117,11 @@ func previewOffline(ctx context.Context, source string, req OfflineRequest, r io
 		"Import replaces objects with the same identities, including Policy/default and upstreams.groups.default. Successful object writes remain on partial failure; settings apply only after all selected objects succeed.",
 		"Authentication, secrets, listener privileges, DHCP, query history, runtime clients and source file paths are not imported. No referenced files or network sources are read during conversion.",
 	}, nameservers: names, addresses: addresses}
-	if err := convert(ctx, req, root, p); err != nil {
-		return nil, err
-	}
-	root.finish(p, "root")
+	return req, p, nil
+}
+
+// finishOfflinePlan applies the shared destination bounds and identity checks.
+func finishOfflinePlan(ctx context.Context, p *Plan) (*Plan, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

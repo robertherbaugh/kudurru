@@ -204,7 +204,7 @@ func (s *Server) buildMigrationRun(ctx context.Context, plan *importers.Plan, so
 	if plan.Source != nil {
 		r.Spec.Source = plan.Source.Type
 		switch plan.Source.Type {
-		case "adguard", "blocky":
+		case "adguard", "blocky", "coredns":
 			if plan.Source.URL != "" {
 				return nil, errInvalid("offline migration source must not include a URL or file path")
 			}

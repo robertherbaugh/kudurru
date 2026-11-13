@@ -1,13 +1,13 @@
 ---
 title: Preview an offline DNS configuration
 linkTitle: Offline configuration
-description: Convert supported AdGuard Home or Blocky YAML settings locally, review losses and selections, and apply through a tracked migration.
+description: Convert supported AdGuard Home or Blocky YAML settings or a CoreDNS Corefile locally, review losses and selections, and apply through a tracked migration.
 weight: 25
 ---
 
-`kudurru import adguard` and `kudurru import blocky` convert a
-supported subset of a saved configuration into a reviewable object/settings
-plan. This does not import a whole product or its working directory losslessly.
+`kudurru import adguard`, `kudurru import blocky` and `kudurru import coredns`
+convert a supported subset of a saved configuration into a reviewable
+object/settings plan. This does not import a whole product or its working directory losslessly.
 Keep the source serving DNS and retain its backup until cutover tests pass.
 
 ## Preview before applying
@@ -16,6 +16,7 @@ Keep the source serving DNS and retain its backup until cutover tests pass.
 kudurru import adguard --file AdGuardHome.yaml -n default -o json > preview.json
 kudurru import blocky --file config.yaml -n default -o json > preview.json
 cat config.yaml | kudurru import blocky --file - -o yaml
+kudurru import coredns --file Corefile -n default -o json > preview.json
 ```
 
 The default and `--dry-run` only convert and print the plan, including a bounded
@@ -23,9 +24,13 @@ loss report in `warnings`. They do not contact either DNS server or write
 configuration. The converter never reads referenced paths, downloads lists,
 resolves client hostnames, or imports passwords, authentication hashes,
 certificate/key paths, listener privileges, DHCP, users or query history.
-An input must be one YAML mapping of at most 4 MiB. Duplicate keys, anchors,
+A YAML input must be one YAML mapping of at most 4 MiB. Duplicate keys, anchors,
 aliases, merge keys, custom tags, excessive depth/node/scalar sizes and
 ambiguous supported identities are rejected without echoing source values.
+A Corefile must be UTF-8 text of at most 4 MiB; unbalanced braces, unterminated
+quotes, duplicate snippets, excessive nesting or expansion, and zones served by
+more than one plain DNS server block are rejected the same way. See
+[From CoreDNS](/migrate/coredns/) for the Corefile grammar that is read.
 
 The plan records the source type without a filename or URL. Credential-bearing
 URLs with userinfo, queries or fragments are omitted. Resolver stamps and
@@ -58,6 +63,7 @@ Applying may replace existing objects with the same names, including
 | AdGuard local records | Exact IP/CNAME rewrites within explicitly selected `--local-zone` suffixes; authority generated through the normal zone helpers | Wildcard and A/AAAA passthrough rewrites are omitted. Selected suffixes become authoritative; missing names stop forwarding. Record TTL is 300 seconds, SOA/NS are generated, and local answers bypass filtering. |
 | Blocky | Groups-based upstreams with `strict`, `parallel_best` or `random` strategy and timeout; numeric/plain-IP, `tcp+udp`, DoT, DoH and DoQ endpoints; plain conditional mappings; URL and literal-block hosts/domain/wildcard/RE2 lists; IP/CIDR list assignments and matching upstream selectors; exclusive allow mode; block type and TTL | Hostname/glob/FQDN clients, resolver stamps/TLS name overrides, local list paths, query rewrites, conditional fallback, schedules, response-IP/CNAME checks and source loading semantics require review. A policy selecting a partially omitted or scheduled list group receives no filtering references, with an explicit warning; rebuild it before applying. |
 | Blocky local records | `customDNS.mapping` IP lists with `filterUnmappedTypes: true`, unit-bearing TTLs or integer minutes | Each mapping becomes an authoritative suffix zone with apex and wildcard IP records. Generated SOA/NS add answers; automatic reverse records are omitted. Unmapped-type forwarding, query rewriting and zone-file extensions are omitted. Local answers bypass filtering. |
+| CoreDNS | Plain DNS server blocks (domain, root or octet/nibble reverse-prefix keys); `forward` to IP, `dns://` and `tls://` servers with `policy` and `force_tcp`; inline `hosts` entries with PTR answers; `rewrite name [exact] FROM TO`; root-block `cache` (TTL, `success`, `denial`, `prefetch`, `serve_stale`) and `acl` in the form type blocks, network allows, final block; snippets defined in the file | `tls://`, `https://`, `grpc://` and `quic://` listener blocks, ports, imported files, environment placeholders, `file`/`auto` zone files (listed for `kudurru import bind`), hosts files, `secondary`, `forward` with `tls_servername`, `tls`, `except` or a resolv.conf file, other `rewrite` forms, zone-scoped `cache` or `acl`, and every other plugin. Hosts and rewrite answers become `Policy/default` rewrites (at most 128) that use `response.ttl`; an exact name rewrite becomes a CNAME answer. |
 
 Client matching uses kudurru's most-specific IP/CIDR tier. Review overlapping
 assignments, inherited defaults and the license required for additional policies.
@@ -117,4 +123,6 @@ follow the [cutover and rollback checklist](/migrate/cutover/).
 
 The converters were derived from public format documentation:
 [AdGuard Home Configuration](https://github.com/AdguardTeam/AdGuardHome/wiki/Configuration)
-and [Blocky configuration](https://0xerr0r.github.io/blocky/latest/configuration/).
+[Blocky configuration](https://0xerr0r.github.io/blocky/latest/configuration/)
+and the [CoreDNS manual](https://coredns.io/manual/configuration/) with the
+[CoreDNS plugin documentation](https://coredns.io/plugins/).

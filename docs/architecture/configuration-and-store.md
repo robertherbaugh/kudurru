@@ -99,6 +99,19 @@ options explicitly opt into destination context/VIP access. YAML aliases,
 anchors, duplicate keys and ambiguous identities are refused. Unsupported
 settings produce a bounded loss report with values redacted.
 
+`import coredns --file PATH` reads a CoreDNS Corefile with a hand-written
+reader of the documented server-block grammar (`internal/importers/corefile.go`,
+D392): comments, quoted tokens, braced or single braceless server blocks,
+directive sub-blocks and snippets defined in the same file. Imports of files,
+environment placeholders, zone files and hosts files stay unresolved and are
+reported. The converter (`coredns.go`) maps `forward` to upstream groups and
+conditional routes, inline `hosts` entries and exact `rewrite name` rules to
+`Policy/default` rewrites, and the root block's `cache` and `acl` to the global
+cache and control settings. Every other plugin is named in the loss report;
+directive names that are not documented CoreDNS plugins are counted with the
+name redacted. The resulting `Plan` follows the same selection, size checks and
+tracked apply as the YAML importers.
+
 The v0.2 complete SQLite runtime mounts migration apply/start, reviewed
 adoption and decommission through current compound commands, described below.
 Imported settings use the shared transaction-local canonical planner. The

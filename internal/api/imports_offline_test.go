@@ -9,7 +9,7 @@ import (
 )
 
 func TestOfflineMigrationSourceIdentity(t *testing.T) {
-	for _, source := range []string{"adguard", "blocky"} {
+	for _, source := range []string{"adguard", "blocky", "coredns"} {
 		h := newHarness(t)
 		plan := &importers.Plan{Source: &importers.SourceInfo{Type: source}, Objects: []map[string]any{}, Settings: map[string]any{}, Warnings: []string{}}
 		run, err := h.srv.buildMigrationRun(t.Context(), plan, "")

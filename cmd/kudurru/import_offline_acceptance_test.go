@@ -26,6 +26,9 @@ import (
 )
 
 func offlineAcceptanceInput(source string) string {
+	if source == "coredns" {
+		return corednsCLIInput
+	}
 	if source == "adguard" {
 		return `dns: {upstream_dns: [192.0.2.53]}
 filtering:
@@ -236,7 +239,7 @@ func TestOfflineCLIActualOwnershipPartialReport(t *testing.T) {
 	}
 }
 func TestOfflineCLIWaitCancellationKeepsTrackedJob(t *testing.T) {
-	for _, source := range []string{"adguard", "blocky"} {
+	for _, source := range []string{"adguard", "blocky", "coredns"} {
 		t.Run(source, func(t *testing.T) {
 			f := newServingCommandFixture(t)
 			s := migrationServingAPI(t, f, nil)
@@ -320,7 +323,7 @@ func TestOfflineCLIGeneratedPlanLimitBeforePreviewOrWrites(t *testing.T) {
 }
 
 func TestOfflineCLIContextNamespaceWithoutDestinationAccess(t *testing.T) {
-	for _, source := range []string{"adguard", "blocky"} {
+	for _, source := range []string{"adguard", "blocky", "coredns"} {
 		t.Run(source, func(t *testing.T) {
 			h := newHarness(t)
 			h.stdin = offlineAcceptanceInput(source)
@@ -356,7 +359,7 @@ contexts:
 }
 
 func TestOfflineCLIRefusedStartIsNeverReplayed(t *testing.T) {
-	for _, source := range []string{"adguard", "blocky"} {
+	for _, source := range []string{"adguard", "blocky", "coredns"} {
 		for _, status := range []int{http.StatusForbidden, http.StatusConflict, http.StatusServiceUnavailable} {
 			t.Run(fmt.Sprintf("%s/%d", source, status), func(t *testing.T) {
 				h := newHarness(t)

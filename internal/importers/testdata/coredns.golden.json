@@ -1,0 +1,140 @@
+{
+  "source": {
+    "type": "coredns"
+  },
+  "objects": [
+    {
+      "apiVersion": "kudurru.io/v1alpha1",
+      "kind": "Policy",
+      "metadata": {
+        "name": "default",
+        "namespace": "dns"
+      },
+      "spec": {
+        "clientGroupRefs": [
+          "default"
+        ],
+        "rewrites": [
+          {
+            "name": "1.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.d.f.ip6.arpa",
+            "targets": [
+              "printer.home.example."
+            ],
+            "type": "PTR"
+          },
+          {
+            "name": "10.1.168.192.in-addr.arpa",
+            "targets": [
+              "nas.home.example.",
+              "nas.lan.example."
+            ],
+            "type": "PTR"
+          },
+          {
+            "name": "11.1.168.192.in-addr.arpa",
+            "targets": [
+              "printer.home.example."
+            ],
+            "type": "PTR"
+          },
+          {
+            "name": "nas.home.example",
+            "targets": [
+              "192.168.1.10"
+            ]
+          },
+          {
+            "name": "nas.lan.example",
+            "targets": [
+              "192.168.1.10"
+            ]
+          },
+          {
+            "name": "printer.home.example",
+            "targets": [
+              "192.168.1.11",
+              "fd00::11"
+            ]
+          },
+          {
+            "cname": "media.home.example.",
+            "name": "tv.home.example"
+          }
+        ]
+      }
+    }
+  ],
+  "settings": {
+    "cache": {
+      "maxEntries": 7000,
+      "maxTTL": "5m0s",
+      "minTTL": "10s",
+      "negativeTTL": "1m0s",
+      "prefetch": {
+        "threshold": 10,
+        "window": "2m0s"
+      },
+      "serveStale": {
+        "ttl": "24h0m0s"
+      }
+    },
+    "control": {
+      "allowedNetworks": [
+        "10.0.0.7/32",
+        "192.168.1.0/24",
+        "fd00::/64"
+      ],
+      "blockedQTypes": [
+        "ANY",
+        "HINFO"
+      ]
+    },
+    "upstreams": {
+      "conditional": {
+        "10.in-addr.arpa.": "coredns-forward-a30b6ea30e9e6640",
+        "home.example.": "coredns-forward-a30b6ea30e9e6640"
+      },
+      "groups": {
+        "coredns-forward-a30b6ea30e9e6640": {
+          "mode": "forward",
+          "servers": [
+            "tcp://192.168.1.1"
+          ],
+          "strategy": "random",
+          "timeout": "2s"
+        },
+        "default": {
+          "mode": "forward",
+          "servers": [
+            "192.0.2.53",
+            "tls://198.51.100.53",
+            "[2001:db8::53]:5353"
+          ],
+          "strategy": "strict",
+          "timeout": "2s"
+        }
+      }
+    }
+  },
+  "warnings": [
+    "Offline conversion is partial. Review every warning and selected item before applying; retain the source backup and test DNS before cutover.",
+    "Import replaces objects with the same identities, including Policy/default and upstreams.groups.default. Successful object writes remain on partial failure; settings apply only after all selected objects succeed.",
+    "Authentication, secrets, listener privileges, DHCP, query history, runtime clients and source file paths are not imported. No referenced files or network sources are read during conversion.",
+    "Read as CoreDNS 1.12 Corefile syntax: server blocks, comments, quoted tokens and snippet imports. Converted plugins: forward, hosts (inline entries), rewrite (exact name), cache and acl; file and auto zones are listed for a separate BIND import. Every other plugin is named below and not converted.",
+    "Corefile: 1 import lines omitted; only argument-free imports of snippets defined in this file are expanded, and files are not read.",
+    "acl allow networks become control.allowedNetworks; kudurru always answers loopback clients.",
+    "hosts: the hosts file (by default the system hosts file) is not read; only inline entries are converted.",
+    "rewrite name becomes a CNAME answer to the target name; CoreDNS answered under the original name.",
+    "forward health-check, failure, connection and next options are not converted; kudurru applies its own upstream health tracking.",
+    "Server block .:53: plugins not converted: errors, health, log, loop, prometheus, reload.",
+    "Server block .:53: 1 unknown directives omitted (names redacted).",
+    "Server block home.example:53 10.in-addr.arpa:53: file zones home.example are loaded from files that are not read; import each with kudurru import bind ZONE -f FILE.",
+    "Server block corp.example:53: forward with a TLS server name override or client certificate omitted as a unit; use tls://NAME servers manually (values redacted).",
+    "Server block for tls://: encrypted or gRPC listener blocks are omitted with their certificates; configure listeners.dot, listeners.doh or listeners.doq instead.",
+    "Server block ports are not imported; kudurru answers on its listeners.dns addresses.",
+    "Server block lab.example:1053: forward to a resolv.conf-style file omitted as a unit; the file is not read.",
+    "Server block lab.example:1053: template uses an environment placeholder; directive omitted (value redacted).",
+    "Server block lab.example:1053: plugins not converted: kubernetes.",
+    "hosts and rewrite answers become rewrites of Policy/default, which replaces a destination Policy/default and its lists. Rewritten answers use the response.ttl setting."
+  ]
+}
