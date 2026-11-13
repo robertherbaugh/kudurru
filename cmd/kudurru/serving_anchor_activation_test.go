@@ -98,7 +98,9 @@ func startDirectAnchorWriter(original context.Context, t *testing.T, s *servingR
 		case err := <-done:
 			joined = true
 			cancel()
-			t.Error("direct writer stopped before caller cancellation", err)
+			// Name what ended it: the elected term (the elector's lease,
+			// which ends original) or a writer child of its own.
+			t.Error("direct writer stopped before caller cancellation", err, "elected term ended:", original.Err(), context.Cause(original), "authority:", s.opts.Store.Authority().Mode)
 			return
 		default:
 		}
