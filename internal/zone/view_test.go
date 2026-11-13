@@ -312,3 +312,31 @@ func TestCommittedPrimaryViews(t *testing.T) {
 		t.Error("views accepted in a signed committed zone")
 	}
 }
+
+// The cached parse path (Kubernetes zone view, SQLite compiler) resolves
+// view group IDs in each record set's namespace too, on a hit as on a miss.
+func TestClientGroupViewsThroughRecordCache(t *testing.T) {
+	cache := &RecordCache{}
+	sets := []*v1alpha1.DNSRecordSet{
+		recordSet("dns", "a", ep("www.example.org", "A", "192.0.2.1"), inView(ep("www.example.org", "A", "10.0.0.1"), "lan")),
+		recordSet("apps", "b", inView(ep("app.example.org", "A", "10.1.0.1"), "lan")),
+	}
+	for range 2 {
+		z, errs := Build(dnsZone("example.org."), sets, BuildOptions{Now: testNow, Records: cache})
+		if !errs.Empty() {
+			t.Fatal(errs.RecordSets)
+		}
+		if !slices.Equal(z.ViewGroups(), []string{"apps/lan", "dns/lan"}) {
+			t.Fatalf("groups %v", z.ViewGroups())
+		}
+		if got := addrs(z.ForGroups([]string{"dns/lan"}).Lookup("www.example.org.", dns.TypeA)); !slices.Equal(got, []string{"10.0.0.1"}) {
+			t.Fatalf("dns/lan www %v", got)
+		}
+		if z.ForGroups([]string{"dns/lan"}).Lookup("app.example.org.", dns.TypeA).Kind != NXDomain {
+			t.Fatal("a view in another namespace leaked to dns/lan")
+		}
+		if got := addrs(z.ForGroups([]string{"apps/lan"}).Lookup("app.example.org.", dns.TypeA)); !slices.Equal(got, []string{"10.1.0.1"}) {
+			t.Fatalf("apps/lan app %v", got)
+		}
+	}
+}
