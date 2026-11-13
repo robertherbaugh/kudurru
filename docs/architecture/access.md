@@ -1138,7 +1138,17 @@ verb is checked by a mounted route or a handler, or is listed under
 `reserved:` in `permissions.yaml` with the release that is to use it
 (`TestPermissionVerbsAreUsedOrReserved`). Reserved verbs (for example
 `zones.sign`, `groups.*`, `integrations.write`) can appear in roles but
-allow nothing yet.
+allow nothing yet. Each reservation names its target release: the IAM
+administration verbs (`groups.*`, `users.delete`, `serviceaccounts.write`,
+`serviceaccounts.delete`, `identityproviders.write`,
+`identityproviders.delete`) and the integration administration verbs
+(`integrations.write`, `integrations.delete`, `integrations.secrets`) are
+still v0.2 surfaces; the rest are v1.0. The source scan credits a handler
+check only through the known check helpers (`require`, `allowed`,
+`authorize`, `permission`, `zoneRequirement`, `servingHTTPCluster`) and
+permission literal types (`perm`, `rbac.Attributes`, the auth stack
+`Route`); a resource and verb pair of the same shape anywhere else fails
+the lint until the helper is added to the scan or the code is changed.
 
 A binding gives a role at a scope (`cluster`, `zone:<name>` or
 `zonegroup:<group>`) to users, groups (the prefixed IdP group names) or

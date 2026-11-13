@@ -126,22 +126,25 @@ kubernetes:
 # declared verb that is neither checked nor listed here, and for an entry
 # here that a route or handler already checks: remove the entry in the
 # change that starts using the verb. Built-in roles may already grant a
-# reserved verb; holding it allows nothing until it is used.
+# reserved verb; holding it allows nothing until it is used. The v0.2
+# entries are surfaces the v0.2 tracker still requires (design record
+# section 10 lists CRUD /iam/* and /integrations as v0.2); they stay here
+# until their lane lands or the owner retargets them.
 reserved:
   zones.sign: "v1.0: DNSSEC signing on the leader (design record 13.3, D14)"
   zones.share: "v1.0: delegating a zone to other principals from the API"
   clients.write: "v1.0: naming and editing client inventory entries"
-  groups.read: "v1.0: local group administration (IAM write API)"
-  groups.write: "v1.0: local group administration (IAM write API)"
-  groups.delete: "v1.0: local group administration (IAM write API)"
-  users.delete: "v1.0: deleting local accounts from the API"
-  serviceaccounts.write: "v1.0: service account administration from the API"
-  serviceaccounts.delete: "v1.0: service account administration from the API"
+  groups.read: "v0.2: local group administration, CRUD /iam/groups (IAM write API, G12)"
+  groups.write: "v0.2: local group administration, CRUD /iam/groups (IAM write API, G12)"
+  groups.delete: "v0.2: local group administration, CRUD /iam/groups (IAM write API, G12)"
+  users.delete: "v0.2: deleting local accounts, CRUD /iam/users (IAM write API, G12)"
+  serviceaccounts.write: "v0.2: service account administration, CRUD /iam/serviceaccounts (G12)"
+  serviceaccounts.delete: "v0.2: service account administration, CRUD /iam/serviceaccounts (G12)"
   tokens.write: "v1.0: issuing API tokens for another principal"
-  identityproviders.write: "v1.0: identity provider administration from the API"
-  identityproviders.delete: "v1.0: identity provider administration from the API"
-  integrations.write: "v1.0: integration configuration from the API"
-  integrations.delete: "v1.0: integration configuration from the API"
-  integrations.secrets: "v1.0: reading and rotating integration credentials"
+  identityproviders.write: "v0.2: identity provider administration, CRUD /iam/identityproviders (G12)"
+  identityproviders.delete: "v0.2: identity provider administration, CRUD /iam/identityproviders (G12)"
+  integrations.write: "v0.2: Integration create and replace from the API and UI (G21-09)"
+  integrations.delete: "v0.2: Integration delete from the API and UI (G21-09)"
+  integrations.secrets: "v0.2: integration credentials in the administration surface (G21-09)"
   cluster.drain: "v1.0: draining a member from the API (today only kudurru vip drain)"
-  edge.write: "v1.0: edge configuration from the API"
+  edge.write: "v1.0: edge configuration from the API (edge blocks use edgeblocks.*)"

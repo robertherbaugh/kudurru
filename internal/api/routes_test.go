@@ -101,8 +101,12 @@ func TestPermissionVerbsAreUsedOrReserved(t *testing.T) {
 			used[res+"."+r.Verb] = append(used[res+"."+r.Verb], "route "+r.Method+" "+r.Path)
 		}
 	}
-	for perm, where := range handlerPermissionChecks(t, perms, filepath.Join("..", ".."), "internal", "cmd", "ee") {
+	found, unrecognized := handlerPermissionChecks(t, perms, filepath.Join("..", ".."), "internal", "cmd", "ee")
+	for perm, where := range found {
 		used[perm] = append(used[perm], where...)
+	}
+	for perm, where := range unrecognized {
+		t.Errorf("%s appears as a resource/verb pair in a call or literal the scan does not know as a permission check: %s; add the helper to permissionCheckCallees or the type to permissionCheckTypes if it checks, or write it differently if it does not", perm, strings.Join(where, ", "))
 	}
 	for _, err := range rbac.LintVerbUse(perms, used) {
 		t.Error(err)
@@ -141,16 +145,97 @@ func TestLintVerbUseCatchesUnusedAndStale(t *testing.T) {
 	}
 }
 
+// TestHandlerPermissionScanCreditsOnlyChecks: the reverse lint's source
+// scan credits a verb only for the known check helpers and permission
+// literal types, and reports a resource/verb pair of the same shape
+// anywhere else instead of counting it as a use.
+func TestHandlerPermissionScanCreditsOnlyChecks(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "pkg"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	src := `package pkg
+
+var routes = []perm{{Resource: "zones", Verb: "transfer"}}
+
+var hint = Missing{Resource: "zones", Verb: "sign"}
+
+func f(s *Server) {
+	_ = s.require(ctx, "zones", "write", clusterScope, "")
+	_ = rbac.Attributes{Resource: "records", Verb: "read"}
+	_ = perm{Resource: "zones", Verb: "read"}
+	cacheGet("zones", "delete")
+	_ = Missing{Resource: "zones", Verb: dynamic}
+}
+`
+	if err := os.WriteFile(filepath.Join(root, "pkg", "x.go"), []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	perms := &rbac.Permissions{Resources: map[string][]string{
+		"zones":   {"read", "write", "delete", "transfer", "sign"},
+		"records": {"read"},
+	}}
+	found, unrecognized := handlerPermissionChecks(t, perms, root, "pkg")
+	keys := func(m map[string][]string) string {
+		var out []string
+		for k := range m {
+			out = append(out, k)
+		}
+		sort.Strings(out)
+		return strings.Join(out, ",")
+	}
+	if got, want := keys(found), "records.read,zones.read,zones.transfer,zones.write"; got != want {
+		t.Errorf("credited %s, want %s", got, want)
+	}
+	if got, want := keys(unrecognized), "zones.delete,zones.sign"; got != want {
+		t.Errorf("unrecognized %s, want %s", got, want)
+	}
+	if w := strings.Join(unrecognized["zones.sign"], ""); !strings.Contains(w, "pkg/x.go:5") || !strings.Contains(w, "literal Missing{}") {
+		t.Errorf("zones.sign location %q", w)
+	}
+	if w := strings.Join(unrecognized["zones.delete"], ""); !strings.Contains(w, "call cacheGet()") {
+		t.Errorf("zones.delete location %q", w)
+	}
+}
+
+// permissionCheckCallees are the functions and methods whose adjacent
+// string-literal resource and verb arguments are authorization checks:
+// Server.require, Server.allowed and Server.authorize (internal/api),
+// zoneRequirement (zone command plans), servingHTTP.permission and
+// servingHTTPCluster (cmd/kudurru). A method is matched by its name on any
+// receiver.
+var permissionCheckCallees = map[string]bool{
+	"require": true, "allowed": true, "authorize": true, "zoneRequirement": true,
+	"permission": true, "servingHTTPCluster": true,
+}
+
+// permissionCheckTypes are the composite literal types whose
+// string-literal Resource and Verb fields are a permission check or a
+// mounted route declaration: perm (internal/api route permissions),
+// rbac.Attributes (an authorization request) and stack.Route (the auth
+// stack's route table, written as Route inside its package). An elided
+// literal counts when the slice or map it sits in has one of these
+// element types.
+var permissionCheckTypes = map[string]bool{
+	"perm": true, "rbac.Attributes": true, "Attributes": true, "Route": true, "stack.Route": true,
+}
+
 // handlerPermissionChecks finds the permissions that production code
-// checks outside the route table: a composite literal with string-literal
-// Resource and Verb fields (rbac.Attributes, perm, auth stack routes), or
-// a call with two adjacent string-literal arguments naming a declared
-// resource and one of its verbs (s.require, s.allowed, s.authorize,
-// zoneRequirement, h.permission, servingHTTPCluster and the like). Test
-// files are skipped, so a check only a test performs does not count.
-func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string, dirs ...string) map[string][]string {
+// checks outside the route table: a composite literal of a type in
+// permissionCheckTypes with string-literal Resource and Verb fields, or a
+// call to a function in permissionCheckCallees with two adjacent
+// string-literal arguments naming a declared resource and one of its
+// verbs. Test files are skipped, so a check only a test performs does not
+// count. A literal or call of the same shape outside the allowlists (a
+// Missing{} hint, an unrelated f("cache", "read")) is not credited and is
+// returned in unrecognized, so the caller fails until the new helper or
+// type is added here on purpose. Limitations: the scan does not prove the
+// checking code is reachable (a perm{} in a registration function nobody
+// calls still counts), and a check whose resource or verb is computed is
+// not seen and needs a route declaration or a reservation.
+func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string, dirs ...string) (found, unrecognized map[string][]string) {
 	t.Helper()
-	found := map[string][]string{}
+	found, unrecognized = map[string][]string{}, map[string][]string{}
 	fset := token.NewFileSet()
 	str := func(e ast.Expr) (string, bool) {
 		lit, ok := e.(*ast.BasicLit)
@@ -159,6 +244,39 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 		}
 		v, err := strconv.Unquote(lit.Value)
 		return v, err == nil
+	}
+	var typeName func(e ast.Expr) string
+	typeName = func(e ast.Expr) string {
+		switch e := e.(type) {
+		case *ast.Ident:
+			return e.Name
+		case *ast.SelectorExpr:
+			if x, ok := e.X.(*ast.Ident); ok {
+				return x.Name + "." + e.Sel.Name
+			}
+		case *ast.StarExpr:
+			return typeName(e.X)
+		}
+		return ""
+	}
+	// elementType is the type an elided literal inside lit has.
+	elementType := func(lit *ast.CompositeLit) string {
+		switch tt := lit.Type.(type) {
+		case *ast.ArrayType:
+			return typeName(tt.Elt)
+		case *ast.MapType:
+			return typeName(tt.Value)
+		}
+		return ""
+	}
+	callee := func(e ast.Expr) string {
+		switch e := e.(type) {
+		case *ast.Ident:
+			return e.Name
+		case *ast.SelectorExpr:
+			return e.Sel.Name
+		}
+		return ""
 	}
 	for _, dir := range dirs {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
@@ -175,14 +293,25 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 			if err != nil {
 				return err
 			}
-			add := func(res, verb string, at token.Pos) {
-				if perms.Has(res, verb) {
-					p := fset.Position(at)
-					rel, _ := filepath.Rel(root, p.Filename)
-					found[res+"."+verb] = append(found[res+"."+verb], "handler "+filepath.ToSlash(rel)+":"+strconv.Itoa(p.Line))
+			add := func(res, verb string, at token.Pos, shape string, ok bool) {
+				if !perms.Has(res, verb) {
+					return
+				}
+				p := fset.Position(at)
+				rel, _ := filepath.Rel(root, p.Filename)
+				where := "handler " + filepath.ToSlash(rel) + ":" + strconv.Itoa(p.Line)
+				if ok {
+					found[res+"."+verb] = append(found[res+"."+verb], where)
+				} else {
+					unrecognized[res+"."+verb] = append(unrecognized[res+"."+verb], where+" ("+shape+")")
 				}
 			}
+			var stack []ast.Node
 			ast.Inspect(f, func(n ast.Node) bool {
+				if n == nil {
+					stack = stack[:len(stack)-1]
+					return true
+				}
 				switch n := n.(type) {
 				case *ast.CompositeLit:
 					var res, verb string
@@ -202,16 +331,28 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 							verb = v
 						}
 					}
-					add(res, verb, n.Pos())
+					name := typeName(n.Type)
+					if n.Type == nil {
+						name = "elided"
+						for i := len(stack) - 1; i >= 0; i-- {
+							if outer, ok := stack[i].(*ast.CompositeLit); ok && outer.Type != nil {
+								name = elementType(outer)
+								break
+							}
+						}
+					}
+					add(res, verb, n.Pos(), "literal "+name+"{}", permissionCheckTypes[name])
 				case *ast.CallExpr:
+					name := callee(n.Fun)
 					for i := 0; i+1 < len(n.Args); i++ {
 						res, ok1 := str(n.Args[i])
 						verb, ok2 := str(n.Args[i+1])
 						if ok1 && ok2 {
-							add(res, verb, n.Args[i].Pos())
+							add(res, verb, n.Args[i].Pos(), "call "+name+"()", permissionCheckCallees[name])
 						}
 					}
 				}
+				stack = append(stack, n)
 				return true
 			})
 			return nil
@@ -220,7 +361,7 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 			t.Fatal(err)
 		}
 	}
-	return found
+	return found, unrecognized
 }
 
 // TestOpenAPIDrift fails when api/openapi.json or api/openapi-3.0.json
