@@ -368,9 +368,10 @@ func (s *servingRuntime) executeMemberUpdate(ctx context.Context, request *sqlit
 // member command's bound, until this writer serves a current publication. It
 // runs again only when nothing was decided or committed: when captureUpdate
 // rejected it only because of that publication state (forwardedUpdate.stale),
-// or when every compare-and-swap attempt of Apply lost against another writer
-// of the zone and nothing committed (pr.ErrConflict). It then waits for the
-// next publication first. Every other answer is final, including a commit
+// when every compare-and-swap attempt of Apply lost against another writer
+// of the zone and nothing committed (pr.ErrConflict), or when the command ID
+// was already in the receipt ledger and only the publication of its
+// retained outcome failed. It then waits for the next publication first. Every other answer is final, including a commit
 // whose publication failed; the command ID is the retry identity in the
 // zone's receipt ledger throughout, so no attempt can apply twice. The
 // returned release ends the serving lease the answer was computed under.
@@ -426,7 +427,14 @@ func (s *servingRuntime) runMemberUpdate(ctx context.Context, writer pr.Publicat
 		// compare-and-swap attempts lost against another writer of the zone
 		// (the node's own status and lifecycle writes follow each commit).
 		lost := applied != nil && !applied.Committed && errors.Is(applied.Err, pr.ErrConflict)
-		if (forwarded.stale || lost) && response.Msg.Rcode == dns.RcodeServerFailure {
+		// A command ID the zone's receipt ledger already holds commits
+		// nothing again: Apply only publishes the retained outcome, and that
+		// publication can meet a replaced writer publication ("requested term
+		// superseded"; 2 of 15 HA-OPEN6 fix-diag04 runs of
+		// TestRootMemberUpdateKeyIdentityAndRetryActualHTTP). The retained
+		// answer is read again on the next publication.
+		replay := applied != nil && applied.Deduplicated && !applied.Published
+		if (forwarded.stale || lost || replay) && response.Msg.Rcode == dns.RcodeServerFailure {
 			previous = captured.Bundle()
 			response.Close()
 			lease.Release()
