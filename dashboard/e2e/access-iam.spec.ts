@@ -2,7 +2,10 @@
 // (D396): create a local account in the dashboard, sign in as it in a second
 // browser (it must change its first password), disable it (its session ends
 // and sign-in is refused), delete it; create a service account, issue a
-// token in the dashboard and use it once. Only status codes are recorded:
+// token in the dashboard and use it once; edit and delete an API-owned role
+// binding (its labels and operator annotations survive the edit, and a
+// binding of a scope kind the form does not offer is not editable). Only
+// status codes are recorded:
 // never a password, a token, a cookie or a CSRF value.
 import { randomBytes } from 'node:crypto';
 import type { Locator, Page } from '@playwright/test';
@@ -166,5 +169,53 @@ test.describe('IAM writers on an isolated node', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0);
     expect(await page.content()).not.toContain(secret);
     await expect(sas.getByRole('row').filter({ hasText: 'apps/e2e-robot' })).toContainText('1', { timeout: 15_000 });
+  });
+
+  test('edits and deletes an API-owned role binding and keeps its metadata', async ({ page }) => {
+    test.setTimeout(90_000);
+    expect(await signIn(page, node, ADMIN_USER, adminPassword), 'admin sign-in').toBe(200);
+    await expect(main(page).getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
+    const me = await page.request.get(`${node.url}/api/v1/auth/me`);
+    const headers = { 'X-Kudurru-CSRF': ((await me.json()) as { csrf: string }).csrf };
+    await me.dispose();
+    const binding = (name: string, scope: { kind: string; name?: string }, subject: string) => ({
+      apiVersion: 'kudurru.io/v1alpha1', kind: 'RoleBinding',
+      metadata: { name, namespace: 'default', labels: { team: 'dns' }, annotations: { 'example.com/ticket': 'OPS-12' } },
+      spec: { role: 'viewer', scope, subjects: [{ kind: 'User', name: subject }] },
+    });
+    for (const b of [binding('e2e-rb', { kind: 'zonegroup', name: 'prod' }, 'e2e-viewer'), binding('e2e-rb-clients', { kind: 'clientgroup', name: 'kids' }, 'e2e-parent')]) {
+      const r = await page.request.post(`${node.url}/api/v1/iam/rolebindings`, { data: b, headers });
+      expect(r.status(), `create ${b.metadata.name}`).toBe(201);
+      await r.dispose();
+    }
+    await page.goto(`${node.url}/access?tab=iam`);
+    const table = main(page).getByRole('table', { name: 'Role bindings' });
+    // The reserved clientgroup scope is not edited here (the form would send it back cluster-wide).
+    await expect(table.getByRole('button', { name: 'Delete default/e2e-rb-clients', exact: true })).toBeEnabled({ timeout: 15_000 });
+    await expect(table.getByRole('button', { name: 'Edit default/e2e-rb-clients', exact: true })).toBeDisabled();
+
+    await rowAction(page, 'Role bindings', 'Edit default/e2e-rb');
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('button', { name: 'Save changes', exact: true })).toBeDisabled({ timeout: 15_000 });
+    await dialog.getByLabel(/^User name/).fill('e2e-viewer-2');
+    expect(await submitOnce(page, 'Save changes', 'PUT', '/api/v1/iam/rolebindings/default/e2e-rb'), 'single replace').toBe(200);
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const read = await page.request.get(`${node.url}/api/v1/iam/rolebindings/default/e2e-rb`);
+    expect(read.status()).toBe(200);
+    const doc = (await read.json()) as { metadata: { labels?: Record<string, string>; annotations?: Record<string, string> }; spec: { scope: unknown; subjects: unknown } };
+    await read.dispose();
+    expect(doc.spec.scope).toEqual({ kind: 'zonegroup', name: 'prod' });
+    expect(doc.spec.subjects).toEqual([{ kind: 'User', name: 'e2e-viewer-2' }]);
+    expect(doc.metadata.labels).toEqual({ team: 'dns' });
+    expect(doc.metadata.annotations?.['example.com/ticket']).toBe('OPS-12');
+    expect(doc.metadata.annotations?.['kudurru.io/managed-by']).toBe('api');
+
+    for (const name of ['e2e-rb', 'e2e-rb-clients']) {
+      await rowAction(page, 'Role bindings', `Delete default/${name}`);
+      await expect(page.getByRole('dialog').getByRole('button', { name: 'Delete role binding', exact: true })).toBeVisible({ timeout: 15_000 });
+      expect(await submitOnce(page, 'Delete role binding', 'DELETE', `/api/v1/iam/rolebindings/default/${name}`), `single delete ${name}`).toBe(204);
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(table.getByRole('button', { name: `Delete default/${name}`, exact: true })).toHaveCount(0, { timeout: 15_000 });
+    }
   });
 });
