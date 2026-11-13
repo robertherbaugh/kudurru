@@ -64,6 +64,7 @@ func (s *servingRuntime) currentAuthCommandOutputOnce(ctx context.Context, reque
 	}
 	committed, err := s.providers.WithCommandOutput(ctx, target, request, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 		*began = true
+		servinghttp.MarkDispatched(ctx)
 		s.dispatchHook(ctx)
 		if err := check(ctx); err != nil {
 			return err

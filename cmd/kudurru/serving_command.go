@@ -98,6 +98,7 @@ func (s *servingRuntime) currentAuthCommandThen(ctx context.Context, fn func(con
 	return s.recaptureCommand(ctx, func(began *bool) (bool, error) {
 		return s.currentAuthCommandOnce(ctx, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 			*began = true
+			servinghttp.MarkDispatched(ctx)
 			s.dispatchHook(ctx)
 			return fn(ctx, tx, deps)
 		}, after)

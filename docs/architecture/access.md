@@ -225,7 +225,7 @@ flowchart TD
   CHK -- "no: another commit<br/>published P2" --> WAIT{"within 5 s and the<br/>request deadline?"}
   WAIT -- "no" --> R503["503 unavailable,<br/>Retry-After: 1, nothing applied"]
   WAIT -- "yes" --> NEW["capture P2"]
-  NEW --> SAME{"P2's authority = P1's but its revision,<br/>same credential, principal,<br/>session and roles on P2?"}
+  NEW --> SAME{"no earlier command of the request dispatched,<br/>P2's authority = P1's but its revision,<br/>same auth dependencies, credential,<br/>principal, session and roles on P2?"}
   SAME -- "no" --> R503
   SAME -- "yes" --> CHK
   BODY --> FINAL["any refusal from here on is final:<br/>never repeated"]
@@ -235,9 +235,17 @@ flowchart TD
   step's wait for its cut) or the request's deadline, whichever ends first.
   When it ends the answer is the same effect-free `503 unavailable`, now with
   `Retry-After: 1`.
+- Only a request none of whose commands has dispatched yet captures again:
+  after its own first commit a request is held to its publication exactly as
+  before (its later items follow the D378 chain).
 - The new publication must carry the original authority, advanced only in
   its installed revision: a fence, a term or incarnation change, a mode
-  change, a conflict or divergence refuses. The original raw credential must
+  change, a conflict or divergence refuses. Its auth view must have the same
+  dependency identity (license, permissions, role bindings, session and
+  factor keys, providers, auth controls such as the cookie policy) and the
+  same cluster settings object, so a request never adopts a successor policy
+  and a settings change prepared from the original settings never
+  overwrites a newer one. The original raw credential must
   verify on the new publication's auth view as the same principal, with the
   same session (ID, CSRF secret, issue and absolute expiry; the idle expiry
   may advance) and the same effective roles; otherwise the request is

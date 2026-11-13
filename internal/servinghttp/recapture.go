@@ -3,6 +3,7 @@ package servinghttp
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"sync"
 	"time"
@@ -26,9 +27,31 @@ var ErrNotRecaptured = errors.New("servinghttp: request not recaptured")
 // ends, because owner values read from it must not be released under the
 // handler.
 type requestCell struct {
-	mu      sync.Mutex
-	current *serving.Lease
-	held    []*serving.Lease
+	mu         sync.Mutex
+	current    *serving.Lease
+	held       []*serving.Lease
+	dispatched bool
+}
+
+// MarkDispatched records that a command of this request began its
+// transaction body. From then on the request's own commits may be what
+// superseded its publication, so no later command of the request captures
+// again (D399): a request is held to its publication after its first
+// dispatch exactly as before.
+func MarkDispatched(ctx context.Context) {
+	if cell, ok := ctx.Value(leaseKey{}).(*requestCell); ok && cell != nil {
+		cell.mu.Lock()
+		cell.dispatched = true
+		cell.mu.Unlock()
+	}
+}
+
+// lockedForRecapture returns the current lease of a request that has not
+// dispatched a command yet.
+func (c *requestCell) lockedForRecapture() (*serving.Lease, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.current, !c.dispatched
 }
 
 func newRequestCell(lease *serving.Lease) *requestCell {
@@ -91,12 +114,16 @@ func WithExactSource(ctx context.Context) context.Context {
 // it.
 //
 // Recapture waits for the next complete publication, bounded by wait. It
-// then requires that the new publication's authority is the original one
-// advanced only in its installed revision, that the original raw credential
-// still verifies in the new publication's auth view as the same principal,
-// with the same session (ID, CSRF secret, issue and expiry) and the same
-// effective roles, and that an unauthenticated request stays
-// unauthenticated. Any difference returns ErrNotRecaptured and leaves the
+// requires that no command of the request has dispatched yet
+// (MarkDispatched); that the new publication's authority is the original one
+// advanced only in its installed revision; that its auth view has the same
+// dependency identity (license, permissions, role bindings, keys, providers
+// and auth overrides), the same auth controls and the same cluster settings
+// object; and that the original raw credential still verifies
+// on that view as the same principal, with the same session (ID, CSRF
+// secret, issue and absolute expiry) and the same effective roles. An
+// unauthenticated request (sign-in) proves its credential in the
+// transaction. Any difference returns ErrNotRecaptured and leaves the
 // request's lease unchanged, so the caller answers its original refusal.
 // The superseded lease stays held until the request ends.
 func Recapture(ctx, wait context.Context, publisher *serving.Publisher, now func() time.Time) error {
@@ -107,9 +134,12 @@ func Recapture(ctx, wait context.Context, publisher *serving.Publisher, now func
 	if !ok || cell == nil {
 		return ErrNotRecaptured
 	}
-	original := cell.lease()
+	original, fresh := cell.lockedForRecapture()
 	if original == nil || original.Bundle() == nil {
 		return serving.ErrReleased
+	}
+	if !fresh {
+		return ErrNotRecaptured
 	}
 	before, err := original.SourceToken()
 	if err != nil {
@@ -159,6 +189,32 @@ func recaptureAdmits(ctx context.Context, original, next *serving.Lease, before 
 	was, typed := oldView.(*servingauth.View)
 	now, current := newView.(*servingauth.View)
 	if !ok || !found || !typed || !current || was == nil || now == nil {
+		return ErrNotRecaptured
+	}
+	// The auth view's dependencies (license, permissions, role bindings,
+	// session keys, factor keys, providers, auth controls such as the cookie
+	// policy) must be the same: a request never adopts a successor policy.
+	if was.DependencyIdentity() != now.DependencyIdentity() {
+		return ErrNotRecaptured
+	}
+	// The cluster settings and the auth controls derived from them must be
+	// the same too: a handler may have prepared its change from the original
+	// settings (a settings merge) or checked them (local sign-in enabled),
+	// and its transaction relies on the publication check for that.
+	wasControls, err := was.AuthControls()
+	if err != nil {
+		return ErrNotRecaptured
+	}
+	nowControls, err := now.AuthControls()
+	if err != nil || !reflect.DeepEqual(wasControls, nowControls) {
+		return ErrNotRecaptured
+	}
+	wasSettings, err := was.Settings()
+	if err != nil {
+		return ErrNotRecaptured
+	}
+	nowSettings, err := now.Settings()
+	if err != nil || !reflect.DeepEqual(wasSettings, nowSettings) {
 		return ErrNotRecaptured
 	}
 	p, authenticated := ctx.Value(proofKey{}).(proof)

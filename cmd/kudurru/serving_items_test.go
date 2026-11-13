@@ -217,8 +217,10 @@ func TestServingItemsApplyFollowsOwnCommitsAcrossFollowUpWrites(t *testing.T) {
 }
 
 // The request's first item is admitted exactly as a single write is: a commit
-// by anyone between the request's capture and that item refuses it, and no
-// later item is admitted on the newer state.
+// by another writer between the request's capture and that item supersedes
+// the request's publication before anything was dispatched, so the item
+// captures the newer publication again and is dispatched once on it (D399).
+// The later items then follow the request's own chain.
 func TestServingItemsFirstItemKeepsTheOriginalSource(t *testing.T) {
 	f := newItemsFixture(t, nil)
 	f.between = func(n int, _ context.Context) {
@@ -228,12 +230,12 @@ func TestServingItemsFirstItemKeepsTheOriginalSource(t *testing.T) {
 	}
 	results := f.apply(t, f.server, "strict-a", "strict-b", "strict-c")
 	for _, result := range results {
-		if result.Result != api.ResultError || result.ErrorKey != api.KeyUnavailable || result.Error != itemsStaleSource {
-			t.Fatalf("a request whose source changed before its first item was admitted: %s", itemsResults(results))
+		if result.Result != api.ResultCreated || result.Error != "" {
+			t.Fatalf("a request whose publication another commit superseded before its first item was not admitted on the newer one: %s", itemsResults(results))
 		}
 	}
-	if f.exists(t, "strict-a") || f.exists(t, "strict-b") || f.exists(t, "strict-c") || f.commands != 3 {
-		t.Fatal("a refused item was applied or replayed", f.commands)
+	if !f.exists(t, "strict-a") || !f.exists(t, "strict-b") || !f.exists(t, "strict-c") || f.commands != 3 {
+		t.Fatal("an item was not applied, or one ran more than once", f.commands)
 	}
 }
 

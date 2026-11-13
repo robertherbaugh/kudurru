@@ -15,6 +15,7 @@ import (
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
+	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/servinghttp"
@@ -217,6 +218,59 @@ func TestServingCommandRecaptureRefusesWhatItMustNotRetry(t *testing.T) {
 		if sessionCount(t, f, cookie) != 1 {
 			t.Fatal("a refused sign-out revoked its session")
 		}
+	})
+	t.Run("cluster settings changed by the superseding commit", func(t *testing.T) {
+		f := newServingCommandFixture(t)
+		srv := servingObjectAPI(t, f, nil)
+		probe := supersedeCommand(t, f.s, func(ctx context.Context) error {
+			var settings public.Kudurru
+			if err := f.s.opts.Store.Get(ctx, store.Key{Kind: "Kudurru", Name: "default"}, &settings); err != nil {
+				return err
+			}
+			settings.Labels = map[string]string{"recapture": "settings-changed"}
+			_, err := f.s.opts.Store.Apply(ctx, &settings, store.ApplyOptions{Manager: store.ManagerSystem})
+			return err
+		})
+		w := servingObjectRequest(t, f, srv, http.MethodPut, "/api/v1/objects/clientgroups/default/settings-changed", servingObjectGroup("settings-changed"), "")
+		expectRefusedOnce(t, w)
+		probe.want(t, 1, 0, 0)
+		clientGroupAbsent(t, f.s, "settings-changed")
+	})
+	t.Run("role bindings changed by the superseding commit", func(t *testing.T) {
+		f := newServingCommandFixture(t)
+		srv := servingObjectAPI(t, f, nil)
+		probe := supersedeCommand(t, f.s, func(ctx context.Context) error {
+			_, err := f.s.opts.Store.Apply(ctx, &public.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: "recapture-binding", Namespace: "apps"}, Spec: public.RoleBindingSpec{Role: "viewer", Subjects: []public.BindingSubject{{Kind: "User", Name: "other"}}}}, store.ApplyOptions{Manager: store.ManagerSystem})
+			return err
+		})
+		w := servingObjectRequest(t, f, srv, http.MethodPut, "/api/v1/objects/clientgroups/default/binding-changed", servingObjectGroup("binding-changed"), "")
+		expectRefusedOnce(t, w)
+		probe.want(t, 1, 0, 0)
+		clientGroupAbsent(t, f.s, "binding-changed")
+	})
+	t.Run("a second command after the request's own commit", func(t *testing.T) {
+		f := newServingCommandFixture(t)
+		key := store.Key{Kind: "ClientGroup", Namespace: "default", Name: "own-commit"}
+		probe := supersedeCommand(t, f.s)
+		f.http.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			write := func(ctx context.Context, tx *sqlite.CommandTx, authorize api.ObjectAuthorize) error {
+				if err := authorize(ctx, []rbac.Attributes{{Resource: "clientgroups", Verb: "write", Scope: rbac.Scope{Kind: rbac.ScopeCluster}, Namespace: key.Namespace, Name: key.Name}}); err != nil {
+					return err
+				}
+				group := servingObjectGroup(key.Name)
+				group.Labels = map[string]string{"n": time.Now().Format("150405.000000000")}
+				_, err := tx.Apply(ctx, group, store.ApplyOptions{Manager: store.ManagerAPI})
+				return err
+			}
+			if err := f.s.ObjectCommand(r.Context(), key, write); err != nil {
+				t.Error("first command", err)
+			}
+			awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
+			if err := f.s.ObjectCommand(r.Context(), key, write); err == nil {
+				t.Error("a request captured again after its own commit")
+			}
+		})).ServeHTTP(httptest.NewRecorder(), f.request())
+		probe.want(t, 2, 0, 1)
 	})
 	t.Run("refused inside the transaction body", func(t *testing.T) {
 		f := newServingCommandFixture(t)
