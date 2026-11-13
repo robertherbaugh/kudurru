@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
@@ -84,10 +87,39 @@ func TestRunServeSQLitePrimaryAnswersAcrossStatusWrites(t *testing.T) {
 	var login api.SessionInfo
 	client.call(http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "mounted-test-password-1"}, 200, &login)
 	client.csrf = login.CSRF
+	statusPending := 0
+	// zoneStatus reads the zone's committed status. A GET answered 503
+	// generation_pending (the newest committed generation is not published
+	// yet) is a refusal before any effect and safe to repeat; the transport
+	// already asks again for five seconds, and under the race detector on
+	// shared CPUs that was once not enough. Ask again for up to 30 seconds,
+	// as TestRunServeSQLiteZonesAnswerAcrossCommits does for its setup
+	// requests. What the test asserts is DNS, never this read.
 	zoneStatus := func() (string, uint32) {
 		t.Helper()
 		var zone map[string]any
-		client.call(http.MethodGet, "/objects/dnszones/home", nil, 200, &zone)
+		for deadline := time.Now().Add(30 * time.Second); ; {
+			response, err := client.http.Get(client.base + "/objects/dnszones/home")
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
+			_ = response.Body.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if response.StatusCode == http.StatusOK {
+				if err := json.Unmarshal(raw, &zone); err != nil {
+					t.Fatal(err)
+				}
+				break
+			}
+			if response.StatusCode != http.StatusServiceUnavailable || !bytes.Contains(raw, []byte("generation_pending")) || time.Now().After(deadline) {
+				t.Fatalf("GET /objects/dnszones/home: %d, want 200: %s", response.StatusCode, raw)
+			}
+			statusPending++
+			time.Sleep(25 * time.Millisecond)
+		}
 		metadata, _ := zone["metadata"].(map[string]any)
 		status, _ := zone["status"].(map[string]any)
 		rv, _ := metadata["resourceVersion"].(string)
@@ -218,7 +250,7 @@ func TestRunServeSQLitePrimaryAnswersAcrossStatusWrites(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	t.Logf("%d status writes of %d new serials; probe: %d answered, %d SERVFAIL, %d other, %d without an answer within 200 ms; %d UPDATE retries after SERVFAIL or no answer", statusWrites, len(serials)-1, seen.answered, seen.servfail, seen.wrong, seen.silent, updateRetries)
+	t.Logf("%d status writes of %d new serials; probe: %d answered, %d SERVFAIL, %d other, %d without an answer within 200 ms; %d UPDATE retries after SERVFAIL or no answer; %d status reads asked again after generation_pending", statusWrites, len(serials)-1, seen.answered, seen.servfail, seen.wrong, seen.silent, updateRetries, statusPending)
 	if statusWrites < 20 || len(serials)-1 < 20 {
 		t.Fatalf("only %d status writes and %d serial advances observed", statusWrites, len(serials)-1)
 	}
