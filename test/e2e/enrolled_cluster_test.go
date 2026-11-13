@@ -910,10 +910,12 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 	}
 	var fencedDocument []byte
 	var fencedSession *staticProcessClient
-	if promote {
+	if promote && anchors == nil {
 		// The fenced walk below holds the former primary to the contract it
 		// served, with a credential of its own: a fenced member refuses a
-		// sign-in, so both are taken while it is still the primary.
+		// sign-in, so both are taken while it is still the primary. The
+		// managed anchor variants (enrolled_anchors_test.go) count root
+		// acquisitions across this flow and do not walk.
 		fencedDocument = enrolledOpenAPI(t, apiA)
 		fencedSession = enrolledRefusalSession(t, apiA.base, "audit-e2e-password-1") // #nosec G101 -- disposable loopback fixture credential
 	}
@@ -973,7 +975,9 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		// and every operation of the served contract answers cluster_fenced
 		// to the session made before the promotion (G21-11).
 		enrolledFencedLoginRefused(t, apiA.base, b.Name)
-		enrolledRefusalInventory(t, fencedSession, api.ShapeFenced, fencedDocument)
+		if fencedSession != nil {
+			enrolledRefusalInventory(t, fencedSession, api.ShapeFenced, fencedDocument)
+		}
 		awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)
 		// The fenced former primary cannot apply a signed UPDATE and cannot
 		// reach the new primary: SERVFAIL, never applied (D381).
@@ -1110,10 +1114,14 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		anchors.awaitValidated(primary, "restarted primary")
 		enrolledAnchorsRevoke(t, anchors, bin, env, apiA, apiB, primary, follower, a, b, stop, checkDNS)
 	}
+	if anchors != nil {
+		return
+	}
 	// Every operation of the served contract, on both roles, answers only
 	// what the refusal inventory declares (G21-11). The walk runs last: the
 	// probes that a member accepts (an empty apply, a cache flush, a query-log
 	// purge, an unnamed token) must not change what an earlier step reads.
+	// The managed anchor variants end after the anchor checks above.
 	document := enrolledOpenAPI(t, apiA)
 	enrolledRefusalInventory(t, enrolledRefusalSession(t, apiA.base, "audit-e2e-password-1"), api.ShapePrimary, document)  // #nosec G101 -- disposable loopback fixture credential
 	enrolledRefusalInventory(t, enrolledRefusalSession(t, apiB.base, "audit-e2e-password-1"), api.ShapeFollower, document) // #nosec G101 -- disposable loopback fixture credential
