@@ -553,6 +553,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/blocklists/_rpz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** RPZ feed state on this node */
+        get: operations["listRPZFeeds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/blocklists/_search": {
         parameters: {
             query?: never;
@@ -600,6 +617,23 @@ export interface paths {
         put?: never;
         /** Fetch a BlockList's sources now */
         post: operations["refreshBlockList"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/blocklists/{namespace}/{name}/rpz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** RPZ feed state of one BlockList on this node */
+        get: operations["getBlockListRPZFeeds"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4554,6 +4588,16 @@ export interface components {
              */
             took_ms: number;
         };
+        ListRPZFeed: {
+            /** @description Opaque keyset token for the next page; empty on the last page. */
+            continue?: string;
+            items: components["schemas"]["RPZFeed"][];
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
+        };
         ListSafeSearchEngine: {
             /** @description Opaque keyset token for the next page; empty on the last page. */
             continue?: string;
@@ -5244,6 +5288,91 @@ export interface components {
             /** Format: int64 */
             wal_bytes: number;
             writer: components["schemas"]["Stats"];
+        };
+        RPZFeed: {
+            /** @description Whether DNS on this node can apply the feed now. */
+            available: boolean;
+            configurationError?: string;
+            counts?: components["schemas"]["RPZFeedCounts"];
+            /**
+             * Format: date-time
+             * @description Absolute expiry of the copy (confirmation plus SOA expire).
+             */
+            expiresAt?: string;
+            /** @description Ignored policy owners per reason; complete counts, bounded examples. */
+            ignored: components["schemas"]["RPZIgnoredReason"][];
+            /**
+             * Format: date-time
+             * @description Last transfer or SOA check that confirmed the copy.
+             */
+            lastConfirmedAt?: string;
+            lastError?: string;
+            /** @description BlockList name. */
+            list: string;
+            message?: string;
+            namespace: string;
+            /** Format: date-time */
+            nextAttemptAt?: string;
+            /** @description The node that answered; feed state is per node. */
+            node: string;
+            /** @description Policy-zone origin as configured. */
+            origin: string;
+            /** @description Primary that served the copy. */
+            primary?: string;
+            reason?: string;
+            rules?: components["schemas"]["RPZRuleCounts"];
+            /** Format: int64 */
+            serial?: number;
+            /** @description Source name, or rpz-<index> when the source has none. */
+            source: string;
+            /** @enum {string} */
+            state: "pending" | "serving" | "expired" | "unavailable";
+        };
+        RPZFeedCounts: {
+            /** Format: int64 */
+            excluded: number;
+            /** Format: int64 */
+            ignoredRecords: number;
+            /** Format: int64 */
+            invalid: number;
+            /** Format: int64 */
+            records: number;
+            /** Format: int64 */
+            rules: number;
+            /** Format: int64 */
+            staleExcludes: number;
+            /** Format: int64 */
+            unsupported: number;
+        };
+        RPZIgnoredReason: {
+            /** Format: int64 */
+            count: number;
+            /** @description Up to five owner names. */
+            examples: string[];
+            /** @description apex-policy, resolver-ns-provenance, invalid-address-trigger, unknown-reserved-trigger, nonterminal-wildcard, dname-action, invalid-cname-action, unknown-reserved-action or nonterminal-cname-wildcard. */
+            reason: string;
+            /** @description True for well-formed policy kudurru does not implement, false for a malformed owner. */
+            unsupported: boolean;
+        };
+        RPZRuleCounts: {
+            /** Format: int64 */
+            clientIP: number;
+            /** Format: int64 */
+            drop: number;
+            /** Format: int64 */
+            localData: number;
+            /** Format: int64 */
+            nodata: number;
+            /** Format: int64 */
+            nxdomain: number;
+            /** Format: int64 */
+            passthru: number;
+            /** Format: int64 */
+            qname: number;
+            /** Format: int64 */
+            responseIP: number;
+            /** Format: int64 */
+            tcpOnly: number;
         };
         RecentBlockedBody: {
             items: components["schemas"]["BlockedItem"][] | null;
@@ -9498,6 +9627,92 @@ export interface operations {
             };
         };
     };
+    listRPZFeeds: {
+        parameters: {
+            query?: {
+                /** @description Only feeds of lists in this namespace; empty means every namespace. */
+                namespace?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListRPZFeed"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     searchBlockLists: {
         parameters: {
             query: {
@@ -9965,6 +10180,92 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getBlockListRPZFeeds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                namespace: string;
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListRPZFeed"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

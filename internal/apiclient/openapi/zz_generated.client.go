@@ -818,6 +818,30 @@ func (e QueryActionInputBodyAction) Valid() bool {
 	}
 }
 
+// Defines values for RPZFeedState.
+const (
+	RPZFeedStateExpired     RPZFeedState = "expired"
+	RPZFeedStatePending     RPZFeedState = "pending"
+	RPZFeedStateServing     RPZFeedState = "serving"
+	RPZFeedStateUnavailable RPZFeedState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the RPZFeedState enum.
+func (e RPZFeedState) Valid() bool {
+	switch e {
+	case RPZFeedStateExpired:
+		return true
+	case RPZFeedStatePending:
+		return true
+	case RPZFeedStateServing:
+		return true
+	case RPZFeedStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RoleBindingInfoSource.
 const (
 	RoleBindingInfoSourceConfig RoleBindingInfoSource = "config"
@@ -4017,6 +4041,16 @@ type ListNodeInfo struct {
 	TookMs float64 `json:"took_ms"`
 }
 
+// ListRPZFeed defines model for ListRPZFeed.
+type ListRPZFeed struct {
+	// Continue Opaque keyset token for the next page; empty on the last page.
+	Continue *string   `json:"continue,omitempty"`
+	Items    []RPZFeed `json:"items"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
 // ListSafeSearchEngine defines model for ListSafeSearchEngine.
 type ListSafeSearchEngine struct {
 	// Continue Opaque keyset token for the next page; empty on the last page.
@@ -4763,6 +4797,87 @@ type QuerylogStatusBody struct {
 	TookMs   float64 `json:"took_ms"`
 	WalBytes int64   `json:"wal_bytes"`
 	Writer   Stats   `json:"writer"`
+}
+
+// RPZFeed defines model for RPZFeed.
+type RPZFeed struct {
+	// Available Whether DNS on this node can apply the feed now.
+	Available          bool           `json:"available"`
+	ConfigurationError *string        `json:"configurationError,omitempty"`
+	Counts             *RPZFeedCounts `json:"counts,omitempty"`
+
+	// ExpiresAt Absolute expiry of the copy (confirmation plus SOA expire).
+	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+
+	// Ignored Ignored policy owners per reason; complete counts, bounded examples.
+	Ignored []RPZIgnoredReason `json:"ignored"`
+
+	// LastConfirmedAt Last transfer or SOA check that confirmed the copy.
+	LastConfirmedAt *time.Time `json:"lastConfirmedAt,omitempty"`
+	LastError       *string    `json:"lastError,omitempty"`
+
+	// List BlockList name.
+	List          string     `json:"list"`
+	Message       *string    `json:"message,omitempty"`
+	Namespace     string     `json:"namespace"`
+	NextAttemptAt *time.Time `json:"nextAttemptAt,omitempty"`
+
+	// Node The node that answered; feed state is per node.
+	Node string `json:"node"`
+
+	// Origin Policy-zone origin as configured.
+	Origin string `json:"origin"`
+
+	// Primary Primary that served the copy.
+	Primary *string        `json:"primary,omitempty"`
+	Reason  *string        `json:"reason,omitempty"`
+	Rules   *RPZRuleCounts `json:"rules,omitempty"`
+	Serial  *int64         `json:"serial,omitempty"`
+
+	// Source Source name, or rpz-<index> when the source has none.
+	Source string       `json:"source"`
+	State  RPZFeedState `json:"state"`
+}
+
+// RPZFeedState defines model for RPZFeed.State.
+type RPZFeedState string
+
+// RPZFeedCounts defines model for RPZFeedCounts.
+type RPZFeedCounts struct {
+	Excluded       int64 `json:"excluded"`
+	IgnoredRecords int64 `json:"ignoredRecords"`
+	Invalid        int64 `json:"invalid"`
+	Records        int64 `json:"records"`
+	Rules          int64 `json:"rules"`
+	StaleExcludes  int64 `json:"staleExcludes"`
+	Unsupported    int64 `json:"unsupported"`
+}
+
+// RPZIgnoredReason defines model for RPZIgnoredReason.
+type RPZIgnoredReason struct {
+	Count int64 `json:"count"`
+
+	// Examples Up to five owner names.
+	Examples []string `json:"examples"`
+
+	// Reason apex-policy, resolver-ns-provenance, invalid-address-trigger, unknown-reserved-trigger, nonterminal-wildcard, dname-action, invalid-cname-action, unknown-reserved-action or nonterminal-cname-wildcard.
+	Reason string `json:"reason"`
+
+	// Unsupported True for well-formed policy kudurru does not implement, false for a malformed owner.
+	Unsupported bool `json:"unsupported"`
+}
+
+// RPZRuleCounts defines model for RPZRuleCounts.
+type RPZRuleCounts struct {
+	ClientIP   int64 `json:"clientIP"`
+	Drop       int64 `json:"drop"`
+	LocalData  int64 `json:"localData"`
+	Nodata     int64 `json:"nodata"`
+	Nxdomain   int64 `json:"nxdomain"`
+	Passthru   int64 `json:"passthru"`
+	Qname      int64 `json:"qname"`
+	ResponseIP int64 `json:"responseIP"`
+	TcpOnly    int64 `json:"tcpOnly"`
 }
 
 // RecentBlockedBody defines model for RecentBlockedBody.
@@ -6132,6 +6247,12 @@ type ListBlocklistsParams struct {
 // CreateBlocklistsJSONBody defines parameters for CreateBlocklists.
 type CreateBlocklistsJSONBody map[string]interface{}
 
+// ListRPZFeedsParams defines parameters for ListRPZFeeds.
+type ListRPZFeedsParams struct {
+	// Namespace Only feeds of lists in this namespace; empty means every namespace.
+	Namespace *string `form:"namespace,omitempty" json:"namespace,omitempty"`
+}
+
 // SearchBlockListsParams defines parameters for SearchBlockLists.
 type SearchBlockListsParams struct {
 	Domain string `form:"domain" json:"domain"`
@@ -7440,6 +7561,11 @@ type ClientInterface interface {
 	// Corresponds with POST /blocklists (the `CreateBlocklists` operationId).
 	CreateBlocklists(ctx context.Context, body CreateBlocklistsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListRPZFeeds RPZ feed state on this node
+	//
+	// Corresponds with GET /blocklists/_rpz (the `ListRPZFeeds` operationId).
+	ListRPZFeeds(ctx context.Context, params *ListRPZFeedsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// SearchBlockLists Which lists contain a domain
 	//
 	// Corresponds with GET /blocklists/_search (the `SearchBlockLists` operationId).
@@ -7473,6 +7599,11 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /blocklists/{namespace}/{name}/refresh (the `RefreshBlockList` operationId).
 	RefreshBlockList(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetBlockListRPZFeeds RPZ feed state of one BlockList on this node
+	//
+	// Corresponds with GET /blocklists/{namespace}/{name}/rpz (the `GetBlockListRPZFeeds` operationId).
+	GetBlockListRPZFeeds(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSourceEntries Page through the entries of a BlockList source
 	//
@@ -9773,6 +9904,21 @@ func (c *Client) CreateBlocklists(ctx context.Context, body CreateBlocklistsJSON
 	return c.Client.Do(req)
 }
 
+// ListRPZFeeds RPZ feed state on this node
+//
+// Corresponds with GET /blocklists/_rpz (the `ListRPZFeeds` operationId).
+func (c *Client) ListRPZFeeds(ctx context.Context, params *ListRPZFeedsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListRPZFeedsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // SearchBlockLists Which lists contain a domain
 //
 // Corresponds with GET /blocklists/_search (the `SearchBlockLists` operationId).
@@ -9857,6 +10003,21 @@ func (c *Client) PutBlocklists(ctx context.Context, namespace string, name strin
 // Corresponds with POST /blocklists/{namespace}/{name}/refresh (the `RefreshBlockList` operationId).
 func (c *Client) RefreshBlockList(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRefreshBlockListRequest(c.Server, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetBlockListRPZFeeds RPZ feed state of one BlockList on this node
+//
+// Corresponds with GET /blocklists/{namespace}/{name}/rpz (the `GetBlockListRPZFeeds` operationId).
+func (c *Client) GetBlockListRPZFeeds(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetBlockListRPZFeedsRequest(c.Server, namespace, name)
 	if err != nil {
 		return nil, err
 	}
@@ -15230,6 +15391,60 @@ func NewCreateBlocklistsRequestWithBody(server string, contentType string, body 
 	return req, nil
 }
 
+// NewListRPZFeedsRequest constructs an http.Request for the ListRPZFeeds method
+func NewListRPZFeedsRequest(server string, params *ListRPZFeedsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/blocklists/_rpz")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Namespace != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "namespace", *params.Namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewSearchBlockListsRequest constructs an http.Request for the SearchBlockLists method
 func NewSearchBlockListsRequest(server string, params *SearchBlockListsParams) (*http.Request, error) {
 	var err error
@@ -15480,6 +15695,47 @@ func NewRefreshBlockListRequest(server string, namespace string, name string) (*
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetBlockListRPZFeedsRequest constructs an http.Request for the GetBlockListRPZFeeds method
+func NewGetBlockListRPZFeedsRequest(server string, namespace string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/blocklists/%s/%s/rpz", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -24485,6 +24741,13 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /blocklists (the `CreateBlocklists` operationId).
 	CreateBlocklistsWithResponse(ctx context.Context, body CreateBlocklistsJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateBlocklistsResponse, error)
 
+	// ListRPZFeedsWithResponse RPZ feed state on this node
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /blocklists/_rpz (the `ListRPZFeeds` operationId).
+	ListRPZFeedsWithResponse(ctx context.Context, params *ListRPZFeedsParams, reqEditors ...RequestEditorFn) (*ListRPZFeedsResponse, error)
+
 	// SearchBlockListsWithResponse Which lists contain a domain
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -24526,6 +24789,13 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /blocklists/{namespace}/{name}/refresh (the `RefreshBlockList` operationId).
 	RefreshBlockListWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*RefreshBlockListResponse, error)
+
+	// GetBlockListRPZFeedsWithResponse RPZ feed state of one BlockList on this node
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /blocklists/{namespace}/{name}/rpz (the `GetBlockListRPZFeeds` operationId).
+	GetBlockListRPZFeedsWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetBlockListRPZFeedsResponse, error)
 
 	// ListSourceEntriesWithResponse Page through the entries of a BlockList source
 	//
@@ -29321,6 +29591,96 @@ func (r CreateBlocklistsResponse) ContentType() string {
 	return ""
 }
 
+type ListRPZFeedsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ListRPZFeed
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListRPZFeedsResponse) GetJSON200() *ListRPZFeed {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListRPZFeedsResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListRPZFeedsResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListRPZFeedsResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListRPZFeedsResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ListRPZFeedsResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListRPZFeedsResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListRPZFeedsResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListRPZFeedsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListRPZFeedsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListRPZFeedsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListRPZFeedsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type SearchBlockListsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -29824,6 +30184,96 @@ func (r RefreshBlockListResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r RefreshBlockListResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetBlockListRPZFeedsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ListRPZFeed
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetBlockListRPZFeedsResponse) GetJSON200() *ListRPZFeed {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetBlockListRPZFeedsResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetBlockListRPZFeedsResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetBlockListRPZFeedsResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetBlockListRPZFeedsResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r GetBlockListRPZFeedsResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetBlockListRPZFeedsResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetBlockListRPZFeedsResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetBlockListRPZFeedsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetBlockListRPZFeedsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetBlockListRPZFeedsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetBlockListRPZFeedsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -45320,6 +45770,19 @@ func (c *ClientWithResponses) CreateBlocklistsWithResponse(ctx context.Context, 
 	return ParseCreateBlocklistsResponse(rsp)
 }
 
+// ListRPZFeedsWithResponse RPZ feed state on this node
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /blocklists/_rpz (the `ListRPZFeeds` operationId).
+func (c *ClientWithResponses) ListRPZFeedsWithResponse(ctx context.Context, params *ListRPZFeedsParams, reqEditors ...RequestEditorFn) (*ListRPZFeedsResponse, error) {
+	rsp, err := c.ListRPZFeeds(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListRPZFeedsResponse(rsp)
+}
+
 // SearchBlockListsWithResponse Which lists contain a domain
 //
 // Returns a wrapper object for the known response body format(s).
@@ -45396,6 +45859,19 @@ func (c *ClientWithResponses) RefreshBlockListWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseRefreshBlockListResponse(rsp)
+}
+
+// GetBlockListRPZFeedsWithResponse RPZ feed state of one BlockList on this node
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /blocklists/{namespace}/{name}/rpz (the `GetBlockListRPZFeeds` operationId).
+func (c *ClientWithResponses) GetBlockListRPZFeedsWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetBlockListRPZFeedsResponse, error) {
+	rsp, err := c.GetBlockListRPZFeeds(ctx, namespace, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetBlockListRPZFeedsResponse(rsp)
 }
 
 // ListSourceEntriesWithResponse Page through the entries of a BlockList source
@@ -51001,6 +51477,81 @@ func ParseCreateBlocklistsResponse(rsp *http.Response) (*CreateBlocklistsRespons
 	return response, nil
 }
 
+// ParseListRPZFeedsResponse parses an HTTP response from a ListRPZFeedsWithResponse call
+func ParseListRPZFeedsResponse(rsp *http.Response) (*ListRPZFeedsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListRPZFeedsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ListRPZFeed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseSearchBlockListsResponse parses an HTTP response from a SearchBlockListsWithResponse call
 func ParseSearchBlockListsResponse(rsp *http.Response) (*SearchBlockListsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -51444,6 +51995,81 @@ func ParseRefreshBlockListResponse(rsp *http.Response) (*RefreshBlockListRespons
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetBlockListRPZFeedsResponse parses an HTTP response from a GetBlockListRPZFeedsWithResponse call
+func ParseGetBlockListRPZFeedsResponse(rsp *http.Response) (*GetBlockListRPZFeedsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetBlockListRPZFeedsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ListRPZFeed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest Error

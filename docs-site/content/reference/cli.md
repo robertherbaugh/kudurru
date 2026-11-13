@@ -1713,6 +1713,22 @@ Fetch lists now instead of waiting for their refresh interval.
 kudurru lists refresh <name...>
 ```
 
+### kudurru lists rpz
+
+Show the RPZ feeds of the node that answers. Every node transfers its own copy, so run it against each node to compare them. With a name, only that BlockList's feeds.
+
+STATE is pending, serving, expired or unavailable; queries whose policy selects a feed that is not serving answer SERVFAIL. IGNORED counts policy rules the compiler skipped (unsupported or malformed); -o wide lists them per reason.
+
+```text
+kudurru lists rpz [name] [flags]
+```
+
+Flags:
+
+```text
+  -A, --all-namespaces   show feeds of lists in every namespace
+```
+
 ### kudurru lists search
 
 Show which lists contain a domain.

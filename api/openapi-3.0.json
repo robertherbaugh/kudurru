@@ -5402,6 +5402,31 @@
         ],
         "type": "object"
       },
+      "ListRPZFeed": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Opaque keyset token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RPZFeed"
+            },
+            "type": "array"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "took_ms"
+        ],
+        "type": "object"
+      },
       "ListSafeSearchEngine": {
         "additionalProperties": false,
         "properties": {
@@ -7522,6 +7547,230 @@
           "nodes",
           "partial",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "RPZFeed": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "description": "Whether DNS on this node can apply the feed now.",
+            "type": "boolean"
+          },
+          "configurationError": {
+            "type": "string"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/RPZFeedCounts"
+          },
+          "expiresAt": {
+            "description": "Absolute expiry of the copy (confirmation plus SOA expire).",
+            "format": "date-time",
+            "type": "string"
+          },
+          "ignored": {
+            "description": "Ignored policy owners per reason; complete counts, bounded examples.",
+            "items": {
+              "$ref": "#/components/schemas/RPZIgnoredReason"
+            },
+            "type": "array"
+          },
+          "lastConfirmedAt": {
+            "description": "Last transfer or SOA check that confirmed the copy.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastError": {
+            "type": "string"
+          },
+          "list": {
+            "description": "BlockList name.",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "nextAttemptAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "node": {
+            "description": "The node that answered; feed state is per node.",
+            "type": "string"
+          },
+          "origin": {
+            "description": "Policy-zone origin as configured.",
+            "type": "string"
+          },
+          "primary": {
+            "description": "Primary that served the copy.",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/RPZRuleCounts"
+          },
+          "serial": {
+            "format": "int64",
+            "maximum": 4294967295,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "source": {
+            "description": "Source name, or rpz-\u003cindex\u003e when the source has none.",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "serving",
+              "expired",
+              "unavailable"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "namespace",
+          "list",
+          "source",
+          "origin",
+          "state",
+          "available",
+          "ignored"
+        ],
+        "type": "object"
+      },
+      "RPZFeedCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "excluded": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ignoredRecords": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "invalid": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "records": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "rules": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "staleExcludes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "unsupported": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "records",
+          "rules",
+          "invalid",
+          "unsupported",
+          "excluded",
+          "ignoredRecords",
+          "staleExcludes"
+        ],
+        "type": "object"
+      },
+      "RPZIgnoredReason": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "examples": {
+            "description": "Up to five owner names.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "reason": {
+            "description": "apex-policy, resolver-ns-provenance, invalid-address-trigger, unknown-reserved-trigger, nonterminal-wildcard, dname-action, invalid-cname-action, unknown-reserved-action or nonterminal-cname-wildcard.",
+            "type": "string"
+          },
+          "unsupported": {
+            "description": "True for well-formed policy kudurru does not implement, false for a malformed owner.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "reason",
+          "unsupported",
+          "count",
+          "examples"
+        ],
+        "type": "object"
+      },
+      "RPZRuleCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "clientIP": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "drop": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "localData": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "nodata": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "nxdomain": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "passthru": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "qname": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "responseIP": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "tcpOnly": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "qname",
+          "clientIP",
+          "responseIP",
+          "nxdomain",
+          "nodata",
+          "passthru",
+          "drop",
+          "tcpOnly",
+          "localData"
         ],
         "type": "object"
       },
@@ -15185,6 +15434,114 @@
         }
       }
     },
+    "/blocklists/_rpz": {
+      "get": {
+        "operationId": "listRPZFeeds",
+        "parameters": [
+          {
+            "description": "Only feeds of lists in this namespace; empty means every namespace.",
+            "explode": false,
+            "in": "query",
+            "name": "namespace",
+            "schema": {
+              "description": "Only feeds of lists in this namespace; empty means every namespace.",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListRPZFeed"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "RPZ feed state on this node",
+        "tags": [
+          "blocklists"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
     "/blocklists/_search": {
       "get": {
         "operationId": "searchBlockLists",
@@ -15864,6 +16221,120 @@
           "resource": "blocklists",
           "scope": "cluster",
           "verb": "refresh"
+        }
+      }
+    },
+    "/blocklists/{namespace}/{name}/rpz": {
+      "get": {
+        "operationId": "getBlockListRPZFeeds",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListRPZFeed"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "RPZ feed state of one BlockList on this node",
+        "tags": [
+          "blocklists"
+        ],
+        "x-kudurru-permission": {
+          "resource": "blocklists",
+          "scope": "cluster",
+          "verb": "read"
         }
       }
     },

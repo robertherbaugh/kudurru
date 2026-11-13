@@ -58,11 +58,13 @@ them from its own copy.
 |---|---|---|---|---|
 | GET | `/api/v1/blocklists` | List blocklists | `blocklists.read` (cluster) | - |
 | POST | `/api/v1/blocklists` | Create a BlockList | `blocklists.write` (cluster) | forwarded |
+| GET | `/api/v1/blocklists/_rpz` | RPZ feed state on this node | `blocklists.read` (cluster) | - |
 | GET | `/api/v1/blocklists/_search` | Which lists contain a domain | `blocklists.read` (cluster) | - |
 | GET | `/api/v1/blocklists/{namespace}/{name}` | Get a BlockList | `blocklists.read` (cluster) | - |
 | PUT | `/api/v1/blocklists/{namespace}/{name}` | Create or replace a BlockList | `blocklists.write` (cluster) | forwarded |
 | DELETE | `/api/v1/blocklists/{namespace}/{name}` | Delete a BlockList | `blocklists.delete` (cluster) | forwarded |
 | POST | `/api/v1/blocklists/{namespace}/{name}/refresh` | Fetch a BlockList's sources now | `blocklists.refresh` (cluster) | refused |
+| GET | `/api/v1/blocklists/{namespace}/{name}/rpz` | RPZ feed state of one BlockList on this node | `blocklists.read` (cluster) | - |
 | GET | `/api/v1/blocklists/{namespace}/{name}/sources/{source}/entries` | Page through the entries of a BlockList source | `blocklists.read` (cluster) | - |
 | PATCH | `/api/v1/blocklists/{namespace}/{name}/sources/{source}/entries` | Switch entries of a BlockList source off and on, add and remove inline entries | `blocklists.write` (cluster) | refused |
 | POST | `/api/v1/blocklists:batchDelete` | Delete several blocklists | `blocklists.delete` (cluster) | forwarded |

@@ -169,6 +169,10 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.CreateBlocklistsWithBody(ctx, contentType, body, editors...)
 		return response, true, err
 	}
+	if method == "GET" && len(parts) == 2 && parts[0] == "blocklists" && parts[1] == "_rpz" {
+		response, err := c.ListRPZFeeds(ctx, nil, editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 2 && parts[0] == "blocklists" && parts[1] == "_search" {
 		response, err := c.SearchBlockLists(ctx, nil, editors...)
 		return response, true, err
@@ -187,6 +191,10 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 	}
 	if method == "POST" && len(parts) == 4 && parts[0] == "blocklists" && parts[3] == "refresh" {
 		response, err := c.RefreshBlockList(ctx, parts[1], parts[2], editors...)
+		return response, true, err
+	}
+	if method == "GET" && len(parts) == 4 && parts[0] == "blocklists" && parts[3] == "rpz" {
+		response, err := c.GetBlockListRPZFeeds(ctx, parts[1], parts[2], editors...)
 		return response, true, err
 	}
 	if method == "GET" && len(parts) == 6 && parts[0] == "blocklists" && parts[3] == "sources" && parts[5] == "entries" {
