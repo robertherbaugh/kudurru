@@ -17,6 +17,7 @@ package identify
 
 import (
 	"context"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -44,10 +45,20 @@ type Stage struct {
 	// FallbackHostnames supplies untrusted asynchronous observations only when
 	// neither captured inventory nor local DHCP supplies a client name.
 	FallbackHostnames policy.HostnameResolver
+	// LeaseMACs supplies this node's live DHCP lease MACs. A lease fills the
+	// MAC only when the captured inventory supplied none for the address, and
+	// source-bound inventory grants never apply to it (D397).
+	LeaseMACs LeaseMACSource
 	// Capture and CaptureInventory read typed owners from Request.Serving.
 	// A captured query never falls back to src or the live inventory holder.
 	Capture          func(*pipeline.Request) (*policy.Index, error)
 	CaptureInventory func(*pipeline.Request) (*inventory.Snapshot, error)
+}
+
+// LeaseMACSource reads committed in-memory DHCP bindings; it must never
+// read a store or depend on a leader (dhcpdns.Resolver).
+type LeaseMACSource interface {
+	LeaseMAC(addr netip.Addr, at time.Time) (string, bool)
 }
 
 // New returns the stage. now is the clock for schedules when a request
@@ -113,7 +124,7 @@ func (s *Stage) identify(req *pipeline.Request) (*identification, error) {
 	if at.IsZero() {
 		at = s.now()
 	}
-	if (s.Inventory != nil || s.CaptureInventory != nil || s.Hostnames != nil || s.FallbackHostnames != nil || req.Serving != nil) && !req.Client.IdentityCaptured {
+	if (s.Inventory != nil || s.CaptureInventory != nil || s.Hostnames != nil || s.FallbackHostnames != nil || s.LeaseMACs != nil || req.Serving != nil) && !req.Client.IdentityCaptured {
 		var snapshot *inventory.Snapshot
 		if s.CaptureInventory != nil {
 			var err error
@@ -132,6 +143,14 @@ func (s *Stage) identify(req *pipeline.Request) (*identification, error) {
 		if c := snapshot.Lookup(req.Client.Addr.Addr(), at); c != nil {
 			req.Client.MACs, req.Client.Names, req.Client.Tags = c.MACs, c.Names(), c.Tags
 			req.Client.InventorySource = c.Source
+		}
+		if len(req.Client.MACs) == 0 && s.LeaseMACs != nil {
+			if mac, ok := s.LeaseMACs.LeaseMAC(req.Client.Addr.Addr(), at); ok {
+				req.Client.MACs = []string{mac}
+				// Private grants are bound to the source that observed the
+				// MAC; a lease MAC is matched only by ClientGroup mac matchers.
+				req.Client.InventorySource = ""
+			}
 		}
 		if s.Hostnames != nil {
 			names := append([]string(nil), req.Client.Names...)
