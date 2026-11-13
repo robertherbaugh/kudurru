@@ -111,6 +111,14 @@ type servingRuntime struct {
 
 	// itemPace replaces defaultItemPace for multi-item requests; tests only.
 	itemPace *itemPace
+
+	// anchorUpdaterWall replaces the mounted writer updater's wall clock (its
+	// due and checkpoint comparisons only); nil means time.Now. Tests only.
+	anchorUpdaterWall func() time.Time
+	// anchorCaptureRead runs right after a root anchor operation read its
+	// image, before it checks that image is still current; tests only. Nil
+	// does nothing.
+	anchorCaptureRead func()
 }
 
 func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *servingRuntime, err error) {

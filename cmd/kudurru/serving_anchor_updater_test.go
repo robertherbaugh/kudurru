@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -447,5 +448,58 @@ func TestAnchorUpdaterRacedRevokeDenialStaysTerminal(t *testing.T) {
 	}
 	if anchorOperationOwner(ctx, t, s).Version() != before {
 		t.Fatal("rolled-back revocation denial changed accepted history")
+	}
+}
+
+// A commit that lands between a capture's image read and its currency check
+// refuses only that capture (ErrCAS): nothing was acquired, so the updater
+// keeps running and captures again one second later, counting consecutive
+// raced captures on their own; a successful capture resets the count
+// (F28-OPEN6). The pace is not backed off: a capture is a local read, and on
+// a fresh node a backed-off bootstrap kept the node unready for many seconds.
+func TestAnchorUpdaterCaptureRaceRetriesPacedWithoutStopping(t *testing.T) {
+	endpoint, seeds, reads := anchorOperationServer(t, 2, nil)
+	s, ctx, target, host := anchorOperationFixture(t, endpoint, seeds)
+	clock, err := trustanchors.NewSessionClock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := &anchorUpdater{runtime: s, target: target, host: host, clock: clock}
+	if first, err := u.step(ctx); err != nil || !first.attempted || reads.Load() != 1 {
+		t.Fatal("fixture did not commit one original bootstrap", err, reads.Load())
+	}
+	state, err := anchorOperationOwner(ctx, t, s).State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var writes atomic.Int32
+	s.anchorCaptureRead = func() {
+		writes.Add(1)
+		anchorOrdinaryWrite(ctx, t, s.opts.Store, target.Term, fmt.Sprintf("capture-race-%d", writes.Load()))
+	}
+	for i := range 3 {
+		pace := time.Second
+		started := time.Now()
+		raced, err := u.step(ctx)
+		if err != nil || u.stopped != nil {
+			t.Fatal("a raced capture stopped the updater", i, err)
+		}
+		if raced.attempted || !raced.raced || raced.acquisitionError != nil || reads.Load() != 1 || u.offset != 1 || !u.retryAt.IsZero() {
+			t.Fatal("a raced capture acquired, rotated or scheduled a transport retry", i, reads.Load(), u.offset)
+		}
+		if u.captureRaced != i+1 || u.raced != 0 {
+			t.Fatal("raced capture was not counted on its own", i, u.captureRaced, u.raced)
+		}
+		if raced.next.Before(started.Add(pace)) || raced.next.After(time.Now().Add(pace)) {
+			t.Fatal("raced capture was not paced", i, raced.next.Sub(started), pace)
+		}
+	}
+	if int(writes.Load()) != 3 {
+		t.Fatal("fixture write did not run inside each capture", writes.Load())
+	}
+	s.anchorCaptureRead = nil
+	again, err := u.step(ctx)
+	if err != nil || again.attempted || again.raced || !again.next.Equal(state.Inspect().Schedule.NextRefresh) || reads.Load() != 1 || u.captureRaced != 0 {
+		t.Fatal("the next capture did not succeed, reset the pace and wait for the accepted refresh", err, reads.Load(), u.captureRaced)
 	}
 }

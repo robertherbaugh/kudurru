@@ -278,9 +278,11 @@ func (s *servingRuntime) writerEpisode(ctx context.Context, target serving.TermA
 	if s.anchors != nil && s.anchors.admission != nil {
 		ready := make(chan struct{})
 		g.Go(func() error { return s.runAnchorWriterReady(ctx, target, host, func() { close(ready) }) })
-		// The first anchor capture must precede unrelated elected startup
-		// writes. No locks are held across acquisition. Every outcome releases
-		// this bounded phase; a terminal anchor child then parks independently.
+		// Before the bootstrap, the first anchor attempt precedes unrelated
+		// elected startup writes; a node that already holds accepted managed
+		// trust releases this at once (F28-OPEN6). No locks are held across
+		// acquisition. Every outcome releases this bounded phase; a terminal
+		// anchor child then parks independently.
 		select {
 		case <-ctx.Done():
 			return g.Wait()

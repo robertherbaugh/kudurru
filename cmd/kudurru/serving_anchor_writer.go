@@ -9,6 +9,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/auth/providercoordinator"
 	"github.com/robertherbaugh/kudurru/internal/serving"
+	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 )
 
 // This state belongs to the runtime, not a writerEpisode or one invocation of
@@ -94,6 +95,17 @@ func (s *servingRuntime) runAnchorWriterReady(ctx context.Context, target servin
 	defer s.anchorStatus.setUpdater(anchorWorkerNotRunning, time.Time{}, nil)
 	if run.acquire {
 		s.anchorStatus.setUpdater(anchorWorkerRunning, time.Time{}, nil)
+		if s.anchorOwnerManaged(ctx) {
+			// This node already holds accepted managed trust, so it publishes
+			// and reports ready: the other elected services (which admit
+			// writer commands) must not wait for this child's first step,
+			// which can be a root round trip of up to 30 seconds (F28-OPEN6).
+			// Their startup writes may now race that step; a raced capture
+			// or update is retried with a NEW, paced acquisition. Before the
+			// bootstrap the node cannot publish (managed mode fails closed),
+			// so the first attempt still precedes those services.
+			signal()
+		}
 		if s.anchors != nil && s.anchors.admission != nil {
 			err = s.prepareAnchorWriter(ctx, target, host)
 		}
@@ -119,4 +131,16 @@ func (s *servingRuntime) runAnchorWriterReady(ctx context.Context, target servin
 	// runtime-owned terminal record survives host/caller replacement.
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+// anchorOwnerManaged reports whether the committed image this writer starts on
+// already carries an accepted managed owner. Any read or decode failure
+// reports false, which keeps the startup sequencing.
+func (s *servingRuntime) anchorOwnerManaged(ctx context.Context) bool {
+	image, err := s.opts.Store.ReadGeneration(ctx)
+	if err != nil || image == nil || accepted.IsAwaitingOwner(image.Payload.Runtime) {
+		return false
+	}
+	owner, err := accepted.DecodeRows(image.Payload.Runtime, image.Term.ClusterID)
+	return err == nil && owner.Inspect().Phase == accepted.Managed
 }
