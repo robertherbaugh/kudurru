@@ -171,6 +171,7 @@ func (r *integrationRuntime) IntegrationExecute(ctx context.Context, in api.Inte
 	defer op.close()
 	out := &api.IntegrationExecutionResult{}
 	refusedBeforeEffect := false
+	actSubject := ""
 	switch in.Command {
 	case "check":
 		checked, e := op.capture.Check(op.ctx)
@@ -213,7 +214,7 @@ func (r *integrationRuntime) IntegrationExecute(ctx context.Context, in api.Inte
 			in.Review.Params = json.RawMessage(`{}`)
 		}
 		var value json.RawMessage
-		value, err = op.capture.Invoke(op.ctx, in.Action, in.Review.Params)
+		value, actSubject, err = op.capture.InvokeAudited(op.ctx, in.Action, in.Review.Params)
 		if err == nil && len(value) > 0 && string(value) != "null" {
 			out.Result = value
 		}
@@ -228,7 +229,7 @@ func (r *integrationRuntime) IntegrationExecute(ctx context.Context, in api.Inte
 	if in.Command == "sync" || in.Command == "act" {
 		audit = &integrationAuditRow{action: "integration." + in.Command, name: in.Action}
 		if in.Command == "act" {
-			audit.params = "sha256:" + integrationParamsDigest(in.Review.Params)
+			audit.params, audit.subject = "sha256:"+integrationParamsDigest(in.Review.Params), actSubject
 		}
 	}
 	if err == nil {

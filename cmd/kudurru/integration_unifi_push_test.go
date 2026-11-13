@@ -485,8 +485,9 @@ func TestIntegrationUniFiPushActionsReviewed(t *testing.T) {
 	if len(peer.written()) != 1 {
 		t.Fatal("drift preview wrote")
 	}
-	act(unifi.ActionBlockClient, `{"mac":"00:11:22:33:44:55"}`, http.StatusOK)
-	act(unifi.ActionUnblockClient, `{"mac":"00:11:22:33:44:55"}`, http.StatusOK)
+	// One client in two letter cases: both rows name it the same way (D384).
+	act(unifi.ActionBlockClient, `{"mac":"02:ab:cd:00:00:01"}`, http.StatusOK)
+	act(unifi.ActionUnblockClient, `{"mac":"02:AB:CD:00:00:01"}`, http.StatusOK)
 	act(unifi.ActionBlockClient, `{"mac":"not-a-mac"}`, http.StatusBadRequest)
 	writes = peer.written()
 	peer.mu.Lock()
@@ -495,14 +496,20 @@ func TestIntegrationUniFiPushActionsReviewed(t *testing.T) {
 	if len(writes) != 3 || writes[1] != "POST /proxy/network/api/s/default/cmd/stamgr" || commands[0] != "block-sta" || commands[1] != "unblock-sta" {
 		t.Fatal("client actions", writes, commands)
 	}
-	acts := 0
+	acts, clients := 0, 0
 	for _, entry := range integrationAudit(t, f.s, f.d) {
 		if entry.Action == "integration.act" && entry.Result == sqlite.AuditSuccess && strings.Contains(entry.Reason, "with params sha256:") {
 			acts++
 		}
+		if entry.Action == "integration.act" && (strings.Contains(entry.Reason, "reviewed action "+unifi.ActionBlockClient+" for client 02:ab:cd:00:00:01 with params") || strings.Contains(entry.Reason, "reviewed action "+unifi.ActionUnblockClient+" for client 02:ab:cd:00:00:01 with params")) {
+			clients++
+		}
+		if strings.Contains(entry.Reason, "AB:CD") || strings.Contains(entry.Reason, "dhcp-dns-servers for ") {
+			t.Fatal("an audit row names a client in its asked case, or names a subject for the DHCP action", entry.Reason)
+		}
 	}
-	if acts != 7 {
-		t.Fatal("actions were not audited with their parameters", acts)
+	if acts != 7 || clients != 2 {
+		t.Fatal("actions were not audited with their parameters and client", acts, clients)
 	}
 	// Without integrations.act no action reaches the controller.
 	r := unifiPushReview(t, f, router)

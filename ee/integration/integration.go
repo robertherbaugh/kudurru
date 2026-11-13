@@ -167,6 +167,16 @@ type ActionProvider interface {
 	Invoke(ctx context.Context, name string, params json.RawMessage) (json.RawMessage, error)
 }
 
+// ActionAuditor optionally names what an action invocation affects, for the
+// audit row of the reviewed command (D384), for example "client
+// 00:11:22:33:44:55" for a client block. It is pure (no I/O), runs before
+// Invoke so an uncertain outcome is still attributed, and must return a
+// canonical, non-secret text of at most 256 bytes; ok is false when the
+// parameters name nothing it can describe.
+type ActionAuditor interface {
+	AuditSubject(name string, params json.RawMessage) (subject string, ok bool)
+}
+
 // Host is what the host lends an integration. The concrete readers and
 // writers arrive with the integration runner in v0.2; the interface is the
 // seam.
