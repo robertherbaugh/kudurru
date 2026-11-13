@@ -994,9 +994,16 @@ one within the command's bound (`Publisher.WaitTerm`) and captures it. Each
 commit is followed by its publication and often by the node's own status write
 and another publication, so that lease can still be replaced before
 `captureUpdate` checks it. `captureUpdate` then rejects the update before any
-admission and marks the rejection as only a stale lease, and the command
-waits and captures again. A rejection for any other reason, and every answer
-after capture, is final; nothing that reached `Apply` runs again. Before this,
+admission and marks the rejection as stale (the lease was replaced, the
+keyring is no longer current, or the zone is briefly not admitted or routed
+while its lifecycle is realigned), and the command waits for the next
+publication and captures again. `Apply` that lost every compare-and-swap
+attempt and committed nothing runs again the same way. A retiring or retired
+zone is refused at once, since no later publication admits it. A rejection
+for any other reason, and every other answer, is final, a commit whose
+publication failed included; the command ID is the retry identity in the
+zone's receipt ledger, so no attempt applies twice. A cause that does not
+clear ends at the command's bound with nothing applied. Before this,
 most of a burst of back-to-back updates through a follower answered SERVFAIL.
 A native UPDATE sent to the primary still answers SERVFAIL in that window,
 before anything is applied. The primary
