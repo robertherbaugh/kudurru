@@ -221,6 +221,11 @@ func TestRefusedInstanceStatusFailureBacksOff(t *testing.T) {
 	go func() { done <- h.Run(ctx) }()
 	const window = 1500 * time.Millisecond
 	time.Sleep(window)
+	// Read the backoff state while the host runs: a refresh with a canceled
+	// capture forgets the instance and its count.
+	h.mu.RLock()
+	failures := h.refusalFailures[instanceKey(InstanceID{Namespace: "dns", Name: "sink"})]
+	h.mu.RUnlock()
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
@@ -241,10 +246,7 @@ func TestRefusedInstanceStatusFailureBacksOff(t *testing.T) {
 	if factories.Load() != 0 {
 		t.Fatal("a refused instance constructed a provider")
 	}
-	h.mu.RLock()
-	failures := h.refusalFailures[instanceKey(InstanceID{Namespace: "dns", Name: "sink"})]
-	h.mu.RUnlock()
-	if failures != uint32(got) {
+	if failures < 3 || int64(failures) > int64(got) {
 		t.Fatalf("consecutive failures %d, attempts %d", failures, got)
 	}
 }

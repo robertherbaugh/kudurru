@@ -398,7 +398,10 @@ func TestRunServeKubeCloudflareTwoReplicasShareBudget(t *testing.T) {
 		return c != nil && c.Status == metav1.ConditionTrue
 	}
 	deadline := time.Now().Add(90 * time.Second)
-	for !(readyOf("one") && readyOf("two") && kubePeerTarget(peer, "one.example") == "192.0.2.1" && kubePeerTarget(peer, "two.example") == "192.0.2.1") {
+	published := func() bool {
+		return readyOf("one") && readyOf("two") && kubePeerTarget(peer, "one.example") == "192.0.2.1" && kubePeerTarget(peer, "two.example") == "192.0.2.1"
+	}
+	for !published() {
 		if time.Now().After(deadline) {
 			for _, name := range []string{"one", "two"} {
 				var d public.Integration
