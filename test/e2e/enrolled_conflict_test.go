@@ -280,6 +280,7 @@ func testEnrolledConflictResolution(t *testing.T, anchors *enrolledAnchors) {
 		return receipt
 	}
 	promotedB, promotedC := promote(apiB, b), promote(apiC, c)
+	document := enrolledOpenAPI(t, apiB)
 	if promotedB.Term.Same(promotedC.Term) || promotedB.Term.Epoch != promotedC.Term.Epoch {
 		t.Fatal("fixture did not produce two equal-epoch promotions")
 	}
@@ -313,6 +314,8 @@ func testEnrolledConflictResolution(t *testing.T, anchors *enrolledAnchors) {
 		// The closed API names the durable state and the offline commands that
 		// end it, and does not ask the client to retry in a second.
 		enrolledConflictClosed(t, c)
+		// So does every other operation of the served contract (G21-11).
+		enrolledRefusalInventory(t, c, api.ShapeConflicted, document)
 	}
 	describeDNS := func(node *kudurrutest.Node, name string) string {
 		var out []string
