@@ -138,6 +138,8 @@ var operationRefusals = map[string]refusals{
 	"verifyCLILogin":        {ShapeStandalone: KeyUnavailable, ShapeKubernetes: "cli_login_unavailable"},
 	// blocklists
 	"addDomains":            {ShapeStatic: KeyReadOnly},
+	"getBlockListRPZFeeds":  {},
+	"listRPZFeeds":          {},
 	"batchDeleteBlocklists": {ShapeStatic: KeyReadOnly},
 	"createBlocklists":      {ShapeStatic: KeyReadOnly},
 	"deleteBlocklists":      {ShapeStatic: KeyReadOnly},
@@ -167,6 +169,7 @@ var operationRefusals = map[string]refusals{
 	"doctor":                {},
 	"getCluster":            {},
 	"getClusterEnrollment":  {ShapeStatic: KeyUnavailable, ShapeKubernetes: KeyUnavailable},
+	"getClusterAnchors":     {ShapeStatic: KeyUnavailable, ShapeKubernetes: KeyUnavailable},
 	"getClusterPromotion":   {ShapeStandalone: KeyUnavailable, ShapePrimary: noRefusal, ShapeFollower: noRefusal, ShapeKubernetes: KeyUnavailable},
 	"getEdge":               {},
 	"getLicense":            {},
@@ -176,6 +179,9 @@ var operationRefusals = map[string]refusals{
 	"nodeHealth":            {},
 	"promoteCluster":        {ShapeStandalone: KeyUnavailable, ShapePrimary: noRefusal, ShapeFollower: noRefusal, ShapeKubernetes: KeyUnavailable},
 	"vipEventStream":        {},
+	"createEdgeBlock":       {ShapeStatic: KeyReadOnly},
+	"listEdgeBlocks":        {},
+	"revokeEdgeBlock":       {ShapeStatic: KeyReadOnly},
 	// dhcp
 	"deleteDHCPReservation": {ShapeStatic: KeyReadOnly},
 	"exportDHCPLeases":      {},
@@ -239,14 +245,16 @@ var operationRefusals = map[string]refusals{
 	"previewMigrationDecommission": {ShapeStatic: KeyReadOnly},
 	"startMigration":               {ShapeStatic: KeyReadOnly},
 	// integrations
-	"checkIntegration":        {ShapeKubernetes: KeyUnavailable},
-	"getIntegration":          {ShapeKubernetes: KeyUnavailable},
-	"invokeIntegrationAction": {ShapeStatic: KeyReadOnly, ShapeKubernetes: KeyUnavailable},
-	"listIntegrationActions":  {ShapeKubernetes: KeyUnavailable},
-	"listIntegrations":        {ShapeKubernetes: KeyUnavailable},
-	"previewIntegration":      {ShapeKubernetes: KeyUnavailable},
-	"releaseIntegration":      {ShapeStatic: KeyReadOnly, ShapeKubernetes: KeyUnavailable},
-	"syncIntegration":         {ShapeStatic: KeyReadOnly, ShapeKubernetes: KeyUnavailable},
+	"batchDeleteIntegrations":  {ShapeStatic: KeyReadOnly},
+	"checkIntegration":         {},
+	"getIntegration":           {},
+	"invokeIntegrationAction":  {ShapeStatic: KeyReadOnly},
+	"listIntegrationActions":   {},
+	"listIntegrationManifests": {},
+	"listIntegrations":         {},
+	"previewIntegration":       {},
+	"releaseIntegration":       {ShapeStatic: KeyReadOnly},
+	"syncIntegration":          {ShapeStatic: KeyReadOnly},
 	// meta
 	"getBranding": {},
 	"getVersion":  {},
@@ -276,6 +284,7 @@ var operationRefusals = map[string]refusals{
 	"queryStream":          {},
 	"querySuggestions":     {},
 	"querylogStatus":       {},
+	"querylogSinks":        {},
 	"rollupEvidence":       {},
 	"verifyRollupEvidence": {},
 	// runtime
@@ -339,6 +348,9 @@ const (
 	FeatureDHCP Feature = "dhcp"
 	// FeatureVIP is local VRRP virtual address observation.
 	FeatureVIP Feature = "vip"
+	// FeatureCentralHistory is the query log in the central database
+	// (database.dsn with database.querylog.ship).
+	FeatureCentralHistory Feature = "central-history"
 )
 
 // featureRefusals names the operations that refuse on a node where their
@@ -348,6 +360,7 @@ var featureRefusals = map[string]Feature{
 	"listQueries":           FeatureQueryLog,
 	"exportQueries":         FeatureQueryLog,
 	"querylogStatus":        FeatureQueryLog,
+	"querySuggestions":      FeatureQueryLog,
 	"statsClientTimeseries": FeatureQueryLog,
 	"statsRecentBlocked":    FeatureQueryLog,
 	"statsSummary":          FeatureQueryLog,
@@ -361,6 +374,16 @@ var featureRefusals = map[string]Feature{
 	"putDHCPReservation":    FeatureDHCP,
 	"deleteDHCPReservation": FeatureDHCP,
 	"vipEventStream":        FeatureVIP,
+	"rollupEvidence":        FeatureCentralHistory,
+	"verifyRollupEvidence":  FeatureCentralHistory,
+	"putDHCPSetup":          FeatureDHCP,
+}
+
+// featureRefusalShapes limits a line of featureRefusals to the shapes that
+// answer it. A SQLite node on Linux opens its DHCP setup manager whether DHCP
+// is on or off, so only a Kubernetes node with DHCP off refuses a setup write.
+var featureRefusalShapes = map[string][]RuntimeShape{
+	"putDHCPSetup": {ShapeKubernetes},
 }
 
 // sessionEndingOperations end the session that a probe used.
@@ -397,7 +420,9 @@ func ExpectedRefusal(shape RuntimeShape, operationID, method string, off ...Feat
 		key = ""
 	}
 	if feature, ok := featureRefusals[operationID]; key == "" && ok && slices.Contains(off, feature) {
-		key = KeyUnavailable
+		if shapes, limited := featureRefusalShapes[operationID]; !limited || slices.Contains(shapes, shape) {
+			key = KeyUnavailable
+		}
 	}
 	return key, true
 }

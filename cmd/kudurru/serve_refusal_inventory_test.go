@@ -21,7 +21,7 @@ import (
 
 // refusalInventorySession signs the admin in on a mounted API with a cookie
 // session, the credential the dashboard uses, and returns a walk client. The
-// mounted fixtures run without DHCP and without a VRRP address.
+// mounted fixtures run without DHCP, a VRRP address and a central database.
 func refusalInventorySession(t *testing.T, address, password string) refusalinventory.Client {
 	t.Helper()
 	jar, err := cookiejar.New(nil)
@@ -38,7 +38,7 @@ func refusalInventorySession(t *testing.T, address, password string) refusalinve
 	if session.CSRF == "" {
 		t.Fatal("admin session lacks CSRF")
 	}
-	return refusalinventory.Client{HTTP: c, Base: "http://" + address, FeaturesOff: []api.Feature{api.FeatureDHCP, api.FeatureVIP}, Prepare: func(r *http.Request) { r.Header.Set("X-Kudurru-CSRF", session.CSRF) }}
+	return refusalinventory.Client{HTTP: c, Base: "http://" + address, FeaturesOff: []api.Feature{api.FeatureDHCP, api.FeatureVIP, api.FeatureCentralHistory}, Prepare: func(r *http.Request) { r.Header.Set("X-Kudurru-CSRF", session.CSRF) }}
 }
 
 // refusalInventoryWalk walks every operation of the served OpenAPI document
