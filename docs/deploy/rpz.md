@@ -46,6 +46,11 @@ for the host name you give. `tsigKeyRef` names a key from
 secret itself. `exclude` takes absolute policy owner names inside the RPZ.
 RPZ sources have no editable entries: change the feed at its origin.
 
+In the dashboard, add a feed to a block list with **Add source → RPZ feed**
+on the list's page, or turn on **Add an RPZ feed** in the Sources step of
+**Lists → New list**. Both take the policy zone, the primaries in order, the
+transport and an optional TSIG key name.
+
 A list can mix RPZ and ordinary sources. `spec.sources[].enabled: false`
 switches one feed off, and the `kudurru.io/enabled` annotation the whole list.
 
@@ -144,6 +149,18 @@ closed from the first answer (see [block lists](../architecture/block-lists.md))
 for a pending feed is `info`, not an error, because every new feed starts there;
 a feed whose first transfer fails moves to `unavailable` (an error).
 
+In the dashboard, a block list's page shows an **RPZ feeds on this node**
+section for every enabled feed of the list: the state, a SERVFAIL warning for
+every state but `serving` (pending included), the reason and message the node's
+diagnosis gives, the next transfer attempt, the serial, primary, confirmation
+and expiry, the last error, the compiled rules by trigger and action, and a
+table of ignored reasons with their counts and example owners. It names the
+node that answered and is read again every 30 seconds. The **Lists** page shows
+the worst feed state of each block list with feeds under its health. In static
+mode, and without `blocklists.write`, the section is read-only like the rest of
+the page; on an enrolled follower it shows the follower's own copy, and source
+changes are forwarded to the primary like every other list change.
+
 The same data is available from the API, with `blocklists.read`:
 
 - `GET /api/v1/blocklists/_rpz?namespace=` lists the feeds of every list on
@@ -187,5 +204,3 @@ kudurru_rpz_feed_expires_timestamp_seconds > 0
   past the earliest feed expiry (SQLite). On Kubernetes the edge cache is not
   flushed when a feed changes, so an edge-cached answer can outlive a feed
   update by its TTL.
-- The dashboard does not show RPZ feed state yet; use the CLI, the API or
-  the metrics.

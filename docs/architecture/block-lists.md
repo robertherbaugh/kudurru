@@ -436,8 +436,12 @@ complete count and bounded examples. `kudurru lists rpz` renders the same items,
 owners, and an `rpz.Collector` exports `kudurru_rpz_feed_*` gauges at scrape
 time. None of these reads touch the DNS path; they can disagree briefly with
 the serving snapshot a dig explanation reports, and they converge within one
-publication. The dashboard does not show them yet. Operator guide:
-[docs/deploy/rpz.md](../deploy/rpz.md).
+publication. The dashboard reads the same routes: a list page with an RPZ
+source shows an "RPZ feeds on this node" section from the per-list route
+(polled every 30 s), and the Lists page reads `GET /blocklists/_rpz` once a
+block list has an enabled feed and shows the worst feed state under the list's
+health. Both say which node answered and render only the fields that node
+sends. Operator guide: [docs/deploy/rpz.md](../deploy/rpz.md).
 
 ```mermaid
 flowchart LR
@@ -446,6 +450,7 @@ flowchart LR
     S --> Msg["/info/messages (source rpz)"]
     S --> Met["/metrics kudurru_rpz_feed_*"]
     API --> CLI["kudurru lists rpz"]
+    API --> UI["Dashboard: list page section,<br/>Lists page state"]
 ```
 
 ### Regex impact inspection
