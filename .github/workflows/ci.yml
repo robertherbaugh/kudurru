@@ -298,7 +298,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubicloud-standard-4-ubuntu-2404
-    timeout-minutes: 30
+    # The process tests of test/e2e alone take about 20 minutes under the race
+    # detector (the enrolled cluster and managed anchor flows are 2 to 3
+    # minutes each); E2E_FLAGS in the Makefile bounds each package at 45.
+    timeout-minutes: 75
     # The server of the go job.
     services:
       postgres:

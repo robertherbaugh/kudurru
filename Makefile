@@ -261,7 +261,7 @@ test-auth-e2e: $(DEX_BIN)
 ## Without the tag and the variable they skip;
 ## KUDURRU_REQUIRE_PREVIOUS_RELEASE=1 turns that into a failure too.
 .PHONY: e2e interop interop-internal fuzz upgrade-fixture
-E2E_FLAGS ?= -race -count=1 -timeout 20m
+E2E_FLAGS ?= -race -count=1 -timeout 45m
 e2e:
 	CGO_ENABLED=1 KUDURRU_E2E=1 go test $(E2E_FLAGS) -v ./test/e2e/ ./test/interop/
 
