@@ -257,6 +257,18 @@ On the owner's hardware:
       `kudurru_recursor_outgoing_queries_total{result="timeout"}` stays low.
       Check that the built-in trust anchors still match IANA's
       root-anchors.xml.
+- [ ] **Managed root anchors against the real root servers** (D398):
+      `KUDURRU_LIVE_DNS=1 go test -count=1 -v -run TestLiveRootManagedBootstrap ./cmd/kudurru`
+      passes: every reachable root address gives a reply the strict
+      bootstrap parser accepts, and the log names the shipped seeds that
+      authenticate the root DNSKEY set (November 13, 2026: 38696 on all 13
+      IPv4 addresses; 20326 published but not signing). Record that line in
+      the release notes, and check that the seed advice in
+      docs/deploy/managed-root-anchors.md still matches it.
+- [ ] **Managed root anchors against Knot DNS** (D398), with the pinned image
+      on a private daemon: `hack/test-knot-managed-root.sh` passes unskipped
+      (`TestKnotManagedRootBootstrap` and the generated
+      `TestRFC5011RolloverFromKnotWires`).
 
 ## 4. Promote and publish
 
