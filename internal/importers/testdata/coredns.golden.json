@@ -18,7 +18,7 @@
           {
             "name": "1.1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.d.f.ip6.arpa",
             "targets": [
-              "printer.home.example."
+              "printer.lan.example."
             ],
             "type": "PTR"
           },
@@ -33,15 +33,9 @@
           {
             "name": "11.1.168.192.in-addr.arpa",
             "targets": [
-              "printer.home.example."
+              "printer.lan.example."
             ],
             "type": "PTR"
-          },
-          {
-            "name": "nas.home.example",
-            "targets": [
-              "192.168.1.10"
-            ]
           },
           {
             "name": "nas.lan.example",
@@ -50,15 +44,15 @@
             ]
           },
           {
-            "name": "printer.home.example",
+            "name": "printer.lan.example",
             "targets": [
               "192.168.1.11",
               "fd00::11"
             ]
           },
           {
-            "cname": "media.home.example.",
-            "name": "tv.home.example"
+            "cname": "media.lan.example.",
+            "name": "tv.lan.example"
           }
         ]
       }
@@ -126,11 +120,12 @@
     "hosts: the hosts file (by default the system hosts file) is not read; only inline entries are converted.",
     "rewrite name becomes a CNAME answer to the target name; CoreDNS answered under the original name.",
     "forward health-check, failure, connection and next options are not converted; kudurru applies its own upstream health tracking.",
+    "Server block .:53: 1 hosts or rewrite names fall inside the more specific server block for home.example, which CoreDNS sends those queries to; omitted (names redacted).",
     "Server block .:53: plugins not converted: errors, health, log, loop, prometheus, reload.",
     "Server block .:53: 1 unknown directives omitted (names redacted).",
     "Server block home.example:53 10.in-addr.arpa:53: file zones home.example are loaded from files that are not read; import each with kudurru import bind ZONE -f FILE.",
     "Server block corp.example:53: forward with a TLS server name override or client certificate omitted as a unit; use tls://NAME servers manually (values redacted).",
-    "Server block for tls://: encrypted or gRPC listener blocks are omitted with their certificates; configure listeners.dot, listeners.doh or listeners.doq instead.",
+    "Server block tls://.:853: encrypted or gRPC listener block omitted with its certificates and directives; configure listeners.dot, listeners.doh or listeners.doq instead.",
     "Server block ports are not imported; kudurru answers on its listeners.dns addresses.",
     "Server block lab.example:1053: forward to a resolv.conf-style file omitted as a unit; the file is not read.",
     "Server block lab.example:1053: template uses an environment placeholder; directive omitted (value redacted).",

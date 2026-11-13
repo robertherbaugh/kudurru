@@ -95,8 +95,9 @@ func TestCoreDNSOfflineConversionShapes(t *testing.T) {
 		t.Fatalf("objects: %v", p.Objects)
 	}
 	rewrites := p.Objects[0]["spec"].(map[string]any)["rewrites"].([]any)
-	// nas, nas.lan, printer, tv CNAME and three PTR answers.
-	if len(rewrites) != 7 {
+	// nas.lan, printer, tv CNAME and three PTR answers; nas.home.example is
+	// served by the home.example block, so the root block never answered it.
+	if len(rewrites) != 6 {
 		t.Fatalf("rewrites: %v", rewrites)
 	}
 	report := strings.Join(p.Warnings, "\n")
@@ -109,7 +110,8 @@ func TestCoreDNSOfflineConversionShapes(t *testing.T) {
 		"forward to a resolv.conf-style file omitted",
 		"plugins not converted: kubernetes.",
 		"template uses an environment placeholder",
-		"Server block for tls://",
+		"Server block tls://.:853: encrypted or gRPC listener block omitted",
+		"Server block .:53: 1 hosts or rewrite names fall inside the more specific server block for home.example",
 		"Server block ports are not imported",
 		CorefileSyntax,
 	} {
@@ -259,5 +261,148 @@ func TestCoreDNSOfflineLargeInputsStayLinear(t *testing.T) {
 		if d := time.Since(start); d > 20*time.Second {
 			t.Errorf("%s took %v", name, d)
 		}
+	}
+}
+
+func rewriteNames(p *Plan) map[string]bool {
+	out := map[string]bool{}
+	for _, o := range p.Objects {
+		for _, r := range o["spec"].(map[string]any)["rewrites"].([]any) {
+			m := r.(map[string]any)
+			typ, _ := m["type"].(string)
+			out[m["name"].(string)+"/"+typ] = true
+		}
+	}
+	return out
+}
+
+// CoreDNS sends each query to the server block with the longest matching
+// zone, so local answers defined in a less specific block, or for reverse
+// names no query reaches, were never served there and must not be imported.
+func TestCoreDNSOfflineServerBlockRouting(t *testing.T) {
+	p := corednsPreview(t, `. {
+    hosts {
+        192.168.1.10 nas.home.example nas.lan.example
+        fallthrough
+    }
+    rewrite name tv.home.example media.lan.example
+    rewrite name tv.lan.example media.lan.example
+    forward . 192.0.2.53
+    forward home.example 192.0.2.99
+    cache
+}
+home.example {
+    forward . 192.168.1.1
+}
+`)
+	got := rewriteNames(p)
+	for _, name := range []string{"nas.lan.example/", "10.1.168.192.in-addr.arpa/PTR", "tv.lan.example/"} {
+		if !got[name] {
+			t.Errorf("served answer %s missing: %v", name, got)
+		}
+	}
+	if got["nas.home.example/"] || got["tv.home.example/"] {
+		t.Fatalf("answers for names routed to the home.example block were imported: %v", got)
+	}
+	up := p.Settings["upstreams"].(map[string]any)
+	if routes := up["conditional"].(map[string]string); len(routes) != 1 || len(up["groups"].(map[string]any)) != 2 {
+		t.Fatalf("shadowed forward FROM was imported: %v %v", routes, up["groups"])
+	}
+	report := strings.Join(p.Warnings, "\n")
+	for _, want := range []string{
+		"Server block .:53: 2 hosts or rewrite names fall inside the more specific server block for home.example",
+		"Server block .:53: forward FROM inside the more specific server block for home.example never matches; omitted.",
+	} {
+		if !strings.Contains(report, want) {
+			t.Errorf("loss report lacks %q:\n%s", want, report)
+		}
+	}
+
+	// Reverse names: a forward-zone block never receives PTR queries, and a
+	// reverse block shadows the root block's PTR answers. Two blocks sharing
+	// an address are valid and must not collide.
+	p = corednsPreview(t, `. {
+    hosts {
+        10.0.0.5 five.example
+        192.0.2.5 other.example
+    }
+}
+10.0.0.0/8 {
+    forward . 192.0.2.53
+}
+example.org {
+    hosts {
+        10.0.0.1 a.example.org
+    }
+}
+example.net {
+    hosts {
+        10.0.0.1 b.example.net
+    }
+}
+`)
+	got = rewriteNames(p)
+	for _, name := range []string{"five.example/", "other.example/", "5.2.0.192.in-addr.arpa/PTR", "a.example.org/", "b.example.net/"} {
+		if !got[name] {
+			t.Errorf("served answer %s missing: %v", name, got)
+		}
+	}
+	if got["5.0.0.10.in-addr.arpa/PTR"] || got["1.0.0.10.in-addr.arpa/PTR"] {
+		t.Fatalf("PTR answers CoreDNS never served were invented: %v", got)
+	}
+	report = strings.Join(p.Warnings, "\n")
+	for _, want := range []string{
+		"Server block .:53: 1 hosts PTR answers fall inside the more specific server block for 10.in-addr.arpa",
+		"Server block example.org:53: 1 hosts PTR answers omitted; CoreDNS sends those queries to no server block or to another one.",
+	} {
+		if !strings.Contains(report, want) {
+			t.Errorf("loss report lacks %q:\n%s", want, report)
+		}
+	}
+
+	// A block mixing an encrypted key with a plain key keeps the plain key,
+	// and each encrypted key is named per block.
+	p = corednsPreview(t, "tls://example.org example.net {\n forward . 192.0.2.1\n}\ngrpc://a.example {\n}\ngrpc://b.example {\n}\n")
+	if routes := p.Settings["upstreams"].(map[string]any)["conditional"].(map[string]string); len(routes) != 1 || routes["example.net."] == "" {
+		t.Fatalf("plain key of a mixed block was not converted: %v", routes)
+	}
+	report = strings.Join(p.Warnings, "\n")
+	for _, want := range []string{
+		"Server block tls://example.org:853 example.net:53: encrypted or gRPC keys tls://example.org:853 are omitted with their certificates; the plain DNS keys are converted.",
+		"Server block grpc://a.example:443: encrypted or gRPC listener block omitted with its certificates and directives;",
+		"Server block grpc://b.example:443: encrypted or gRPC listener block omitted",
+	} {
+		if !strings.Contains(report, want) {
+			t.Errorf("loss report lacks %q:\n%s", want, report)
+		}
+	}
+}
+
+// Cache numbers outside the DNS TTL range or the capacity bound, or values
+// kudurru reads differently (0 TTL is "no limit", 0 capacity turns the cache
+// off), omit the cache directive as a unit.
+func TestCoreDNSOfflineCacheBounds(t *testing.T) {
+	for _, body := range []string{
+		"cache 99999999999",
+		"cache 2147483648",
+		"cache {\n  success 100 0\n }",
+		"cache {\n  denial 100 2147483648\n }",
+		"cache {\n  denial 9223372036854775807\n }",
+		"cache {\n  success 0\n }",
+		"cache {\n  success 100 60 2147483648\n }",
+		"cache {\n  success 100 x\n }",
+	} {
+		p := corednsPreview(t, ". {\n "+body+"\n}\n")
+		if _, ok := p.Settings["cache"]; ok {
+			t.Errorf("%q produced cache settings: %v", body, p.Settings["cache"])
+		}
+		if !strings.Contains(strings.Join(p.Warnings, "\n"), "cache with an invalid or out-of-range value omitted as a unit.") {
+			t.Errorf("%q: loss report lacks the cache note: %v", body, p.Warnings)
+		}
+	}
+	p := corednsPreview(t, ". {\n cache 2147483647 {\n  success 1073741824 60 0\n  denial 1 2147483647\n }\n}\n")
+	cache := p.Settings["cache"].(map[string]any)
+	if cache["maxEntries"] != 1073741825 || cache["maxTTL"] != "1m0s" || cache["negativeTTL"] != (2147483647*time.Second).String() || cache["minTTL"] != "0s" {
+		t.Fatalf("in-range cache values: %v", cache)
 	}
 }

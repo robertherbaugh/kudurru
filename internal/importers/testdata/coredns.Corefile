@@ -16,12 +16,12 @@
         block
     }
     hosts /etc/secret-hosts-file {
-        192.168.1.10 nas.home.example nas.lan.example
-        192.168.1.11 printer.home.example
-        fd00::11 printer.home.example
+        192.168.1.10 nas.lan.example nas.home.example
+        192.168.1.11 printer.lan.example
+        fd00::11 printer.lan.example
         fallthrough
     }
-    rewrite name exact tv.home.example media.home.example
+    rewrite name exact tv.lan.example media.lan.example
     forward . 192.0.2.53 tls://198.51.100.53 dns://[2001:db8::53]:5353 {
         policy sequential
         max_fails 3

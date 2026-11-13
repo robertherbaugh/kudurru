@@ -107,7 +107,10 @@ environment placeholders, zone files and hosts files stay unresolved and are
 reported. The converter (`coredns.go`) maps `forward` to upstream groups and
 conditional routes, inline `hosts` entries and exact `rewrite name` rules to
 `Policy/default` rewrites, and the root block's `cache` and `acl` to the global
-cache and control settings. Every other plugin is named in the loss report;
+cache and control settings. It first collects every plain DNS server block's
+zones and keeps a local answer, PTR answer or `forward FROM` only when CoreDNS
+would route that name to the defining block (longest matching zone); the rest
+are counted in the loss report. Every other plugin is named in the loss report;
 directive names that are not documented CoreDNS plugins are counted with the
 name redacted. The resulting `Plan` follows the same selection, size checks and
 tracked apply as the YAML importers.

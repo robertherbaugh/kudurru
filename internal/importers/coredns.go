@@ -74,6 +74,97 @@ type corednsConverter struct {
 	control     map[string]any
 	rootSeen    bool
 	notes       map[string]bool
+	// owner maps each zone of a convertible plain DNS server block to the
+	// block's index, and current is the index of the block being converted.
+	// CoreDNS routes a query to the block with the longest matching zone.
+	owner   map[string]int
+	current int
+}
+
+// route returns the zone of the plain DNS server block that CoreDNS sends a
+// query for name to, and whether that block is the one being converted. The
+// zone is "" when no block serves the name.
+func (c *corednsConverter) route(name string) (string, bool) {
+	for n := name; ; {
+		if i, ok := c.owner[n]; ok {
+			return n, i == c.current
+		}
+		if n == "." {
+			return "", false
+		}
+		if dot := strings.IndexByte(n, '.'); dot >= 0 && dot+1 < len(n) {
+			n = n[dot+1:]
+		} else {
+			n = "."
+		}
+	}
+}
+
+// unserved counts local answers a block defines for names CoreDNS never
+// sends to that block: shadowed names fall inside a more specific block
+// (named by zone), and other names reach no block or a different one.
+type unserved struct {
+	zones map[string]bool
+	n     int
+	other int
+}
+
+// serves reports whether CoreDNS sends queries for name to the block being
+// converted, whose zones are blockZones, and counts the name in u if not.
+func (c *corednsConverter) serves(name string, blockZones []string, u *unserved) bool {
+	z, mine := c.route(name)
+	if mine {
+		return true
+	}
+	if z != "" && within(z, blockZones) {
+		if u.zones == nil {
+			u.zones = map[string]bool{}
+		}
+		u.zones[z] = true
+		u.n++
+	} else {
+		u.other++
+	}
+	return false
+}
+
+func (c *corednsConverter) reportUnserved(path, what string, u *unserved) {
+	if u.n > 0 {
+		zones := make([]string, 0, len(u.zones))
+		for z := range u.zones {
+			zones = append(zones, displayZone(z))
+		}
+		sort.Strings(zones)
+		c.p.loss(fmt.Sprintf("%s: %d %s fall inside the more specific server block for %s, which CoreDNS sends those queries to; omitted (names redacted).", path, u.n, what, strings.Join(zones, ", ")))
+	}
+	if u.other > 0 {
+		c.p.loss(fmt.Sprintf("%s: %d %s omitted; CoreDNS sends those queries to no server block or to another one.", path, u.other, what))
+	}
+}
+
+// keyZones splits a server block's keys into plain DNS zones and labels of
+// encrypted or gRPC keys. A non-empty reason means the block is omitted.
+func keyZones(blk *cfServerBlock) (zones []corednsZone, encrypted []string, reason string) {
+	for _, key := range blk.keys {
+		for _, part := range strings.Split(key.text, ",") {
+			if part == "" {
+				continue
+			}
+			if key.placeholder() {
+				return nil, nil, "Server block: key with an environment placeholder; block omitted (value redacted)."
+			}
+			scheme, z, ok := corednsKey(part)
+			if !ok {
+				return nil, nil, "Server block: unsupported key; block omitted (value redacted)."
+			}
+			if scheme != "dns" {
+				encrypted = append(encrypted, scheme+"://"+displayZone(z.name)+":"+strconv.Itoa(z.port))
+				continue
+			}
+			zones = append(zones, z)
+		}
+	}
+	return zones, encrypted, ""
 }
 
 func (c *corednsConverter) note(message string) {
@@ -93,10 +184,26 @@ func (c *corednsConverter) convert(cf *corefile) error {
 	if cf.unresolved > 0 {
 		c.p.loss(fmt.Sprintf("Corefile: %d import lines omitted; only argument-free imports of snippets defined in this file are expanded, and files are not read.", cf.unresolved))
 	}
-	for _, blk := range cf.blocks {
+	// Collect every plain DNS zone first: whether a block's local answer was
+	// ever served depends on the blocks that follow it too. A zone listed by
+	// two blocks is refused when the second block is converted.
+	c.owner = map[string]int{}
+	for i, blk := range cf.blocks {
+		zones, _, reason := keyZones(blk)
+		if reason != "" {
+			continue
+		}
+		for _, z := range zones {
+			if _, dup := c.owner[z.name]; !dup {
+				c.owner[z.name] = i
+			}
+		}
+	}
+	for i, blk := range cf.blocks {
 		if err := c.ctx.Err(); err != nil {
 			return err
 		}
+		c.current = i
 		if err := c.block(blk); err != nil {
 			return err
 		}
@@ -141,34 +248,25 @@ func (c *corednsConverter) convert(cf *corefile) error {
 }
 
 func (c *corednsConverter) block(blk *cfServerBlock) error {
-	var zones []corednsZone
-	label := []string{}
-	for _, key := range blk.keys {
-		for _, part := range strings.Split(key.text, ",") {
-			if part == "" {
-				continue
-			}
-			if key.placeholder() {
-				c.p.loss("Server block: key with an environment placeholder; block omitted (value redacted).")
-				return nil
-			}
-			scheme, z, ok := corednsKey(part)
-			if !ok {
-				c.p.loss("Server block: unsupported key; block omitted (value redacted).")
-				return nil
-			}
-			if scheme != "dns" {
-				c.note(fmt.Sprintf("Server block for %s://: encrypted or gRPC listener blocks are omitted with their certificates; configure listeners.dot, listeners.doh or listeners.doq instead.", scheme))
-				return nil
-			}
-			zones = append(zones, z)
-			label = append(label, displayZone(z.name)+":"+strconv.Itoa(z.port))
-		}
+	zones, encrypted, reason := keyZones(blk)
+	if reason != "" {
+		c.p.loss(reason)
+		return nil
 	}
-	if len(zones) == 0 {
-		return errors.New("corefile server block has no keys")
+	label := append([]string{}, encrypted...)
+	for _, z := range zones {
+		label = append(label, displayZone(z.name)+":"+strconv.Itoa(z.port))
 	}
 	path := "Server block " + strings.Join(label, " ")
+	switch {
+	case len(zones) == 0 && len(encrypted) == 0:
+		return errors.New("corefile server block has no keys")
+	case len(zones) == 0:
+		c.p.loss(path + ": encrypted or gRPC listener block omitted with its certificates and directives; configure listeners.dot, listeners.doh or listeners.doq instead.")
+		return nil
+	case len(encrypted) > 0:
+		c.p.loss(path + ": encrypted or gRPC keys " + strings.Join(encrypted, " ") + " are omitted with their certificates; the plain DNS keys are converted. Configure listeners.dot, listeners.doh or listeners.doq instead.")
+	}
 	names := []string{}
 	for _, z := range zones {
 		if c.served[z.name] {
@@ -189,6 +287,7 @@ func (c *corednsConverter) block(blk *cfServerBlock) error {
 	unknown := 0
 	seen := map[string]int{}
 	hasCache := false
+	local := unserved{}
 	for _, d := range blk.directives {
 		if err := c.ctx.Err(); err != nil {
 			return err
@@ -211,9 +310,9 @@ func (c *corednsConverter) block(blk *cfServerBlock) error {
 			if seen[name] > 1 {
 				return errors.New("corefile server block uses hosts more than once")
 			}
-			err = c.hosts(path, names, d)
+			err = c.hosts(path, names, d, &local)
 		case "rewrite":
-			err = c.rewrite(path, names, d)
+			err = c.rewrite(path, names, d, &local)
 		case "cache":
 			if seen[name] > 1 {
 				return errors.New("corefile server block uses cache more than once")
@@ -231,6 +330,7 @@ func (c *corednsConverter) block(blk *cfServerBlock) error {
 			return err
 		}
 	}
+	c.reportUnserved(path, "hosts or rewrite names", &local)
 	if root && !hasCache {
 		c.note(path + ": no cache plugin; destination cache settings are kept and kudurru caches answers by default.")
 	}
@@ -390,6 +490,10 @@ func (c *corednsConverter) forward(path string, zones []string, root bool, d *cf
 	if from == "." {
 		suffixes = append(suffixes, zones...)
 	} else if within(from, zones) {
+		if z, mine := c.route(from); !mine {
+			c.p.loss(path + ": forward FROM inside the more specific server block for " + displayZone(z) + " never matches; omitted.")
+			return nil
+		}
 		suffixes = append(suffixes, from)
 	} else {
 		c.p.loss(path + ": forward FROM outside the server block zones never matches; omitted.")
@@ -475,7 +579,8 @@ func (c *corednsConverter) forward(path string, zones []string, root bool, d *cf
 
 // hosts converts inline entries into exact-name policy rewrites, with PTR
 // answers unless no_reverse is set. The hosts file itself is never read.
-func (c *corednsConverter) hosts(path string, zones []string, d *cfDirective) error {
+func (c *corednsConverter) hosts(path string, blockZones []string, d *cfDirective, u *unserved) error {
+	zones := blockZones
 	c.note("hosts: the hosts file (by default the system hosts file) is not read; only inline entries are converted.")
 	if len(d.args) > 1 {
 		zones = zones[:0:0]
@@ -534,7 +639,16 @@ func (c *corednsConverter) hosts(path string, zones []string, d *cfDirective) er
 	if !fall {
 		c.note("hosts without fallthrough answered SERVFAIL for other names in its zones; kudurru forwards them.")
 	}
-	for name, ips := range addresses {
+	names := make([]string, 0, len(addresses))
+	for name := range addresses {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		ips := addresses[name]
+		if !c.serves(name, blockZones, u) {
+			continue
+		}
 		if len(ips) > 16 {
 			c.p.loss(path + ": hosts name with more than 16 addresses omitted (value redacted).")
 			continue
@@ -544,7 +658,19 @@ func (c *corednsConverter) hosts(path string, zones []string, d *cfDirective) er
 		}
 	}
 	if reverse {
-		for rev, targets := range pointers {
+		// CoreDNS hosts answers PTR queries outside its zones too, but only
+		// those that CoreDNS sends to this server block.
+		revs := make([]string, 0, len(pointers))
+		for rev := range pointers {
+			revs = append(revs, rev)
+		}
+		sort.Strings(revs)
+		ptr := unserved{}
+		for _, rev := range revs {
+			targets := pointers[rev]
+			if !c.serves(rev, blockZones, &ptr) {
+				continue
+			}
 			if len(targets) > 16 {
 				c.p.loss(path + ": hosts address with more than 16 names has no PTR answer (value redacted).")
 				continue
@@ -554,6 +680,7 @@ func (c *corednsConverter) hosts(path string, zones []string, d *cfDirective) er
 				return err
 			}
 		}
+		c.reportUnserved(path, "hosts PTR answers", &ptr)
 	}
 	return nil
 }
@@ -580,7 +707,7 @@ func (c *corednsConverter) addRewrite(r public.Rewrite) error {
 
 // rewrite maps only "rewrite [stop] name [exact] FROM TO [answer auto]" to a
 // CNAME rewrite; every other form changes semantics kudurru cannot express.
-func (c *corednsConverter) rewrite(path string, zones []string, d *cfDirective) error {
+func (c *corednsConverter) rewrite(path string, zones []string, d *cfDirective, u *unserved) error {
 	args := append([]cfToken{}, d.args...)
 	if len(args) > 0 && args[0].text == "stop" {
 		args = args[1:]
@@ -612,21 +739,42 @@ func (c *corednsConverter) rewrite(path string, zones []string, d *cfDirective) 
 		c.p.loss(path + ": rewrite name with an invalid or out-of-zone name is not converted (values redacted).")
 		return nil
 	}
+	if !c.serves(from, zones, u) {
+		return nil
+	}
 	c.note("rewrite name becomes a CNAME answer to the target name; CoreDNS answered under the original name.")
 	return c.addRewrite(public.Rewrite{Name: strings.TrimSuffix(from, "."), CNAME: to})
 }
 
-// cacheDirective maps the root block's cache plugin to the global cache.
+// Cache bounds: TTLs are DNS TTLs (RFC 2181 limits them to 2^31-1 seconds)
+// and each capacity stays far below an int overflow when summed.
+const (
+	maxCacheSeconds  = 1<<31 - 1
+	maxCacheCapacity = 1 << 30
+)
+
+// cacheDirective maps the root block's cache plugin to the global cache. A
+// value outside the bounds, a zero TTL (kudurru reads cache.maxTTL 0 as no
+// limit) or a zero capacity (0 cache.maxEntries turns the cache off) omits
+// the directive as a unit.
 func (c *corednsConverter) cacheDirective(path string, root bool, d *cfDirective) {
+	invalid := func() { c.p.loss(path + ": cache with an invalid or out-of-range value omitted as a unit.") }
+	seconds := func(n, lowest int) (time.Duration, bool) {
+		if n < lowest || n > maxCacheSeconds {
+			return 0, false
+		}
+		return time.Duration(n) * time.Second, true
+	}
 	args := d.args
 	maxTTL, negTTL := time.Hour, 30*time.Minute
 	if len(args) > 0 {
-		if n, err := strconv.Atoi(args[0].text); err == nil {
-			if n <= 0 {
-				c.p.loss(path + ": cache with an invalid TTL omitted as a unit.")
+		if n, err := strconv.Atoi(args[0].text); err == nil || errors.Is(err, strconv.ErrRange) {
+			ttl, ok := seconds(n, 1)
+			if err != nil || !ok {
+				invalid()
 				return
 			}
-			maxTTL, negTTL = time.Duration(n)*time.Second, time.Duration(n)*time.Second
+			maxTTL, negTTL = ttl, ttl
 			args = args[1:]
 		}
 	}
@@ -637,20 +785,24 @@ func (c *corednsConverter) cacheDirective(path string, root bool, d *cfDirective
 	out := map[string]any{}
 	capacity, explicit := [2]int{9984, 9984}, false
 	for _, opt := range d.block {
-		nums := []int{}
-		for _, a := range opt.args {
-			n, err := strconv.Atoi(a.text)
-			if err != nil || n < 0 {
-				nums = nil
-				break
-			}
-			nums = append(nums, n)
-		}
 		switch opt.name.text {
 		case "success", "denial":
-			if len(nums) != len(opt.args) || len(nums) < 1 || len(nums) > 3 {
-				c.p.loss(path + ": cache " + opt.name.text + " with invalid values omitted.")
-				continue
+			if len(opt.args) < 1 || len(opt.args) > 3 {
+				invalid()
+				return
+			}
+			nums := make([]int, 0, len(opt.args))
+			for _, a := range opt.args {
+				n, err := strconv.Atoi(a.text)
+				if err != nil {
+					invalid()
+					return
+				}
+				nums = append(nums, n)
+			}
+			if nums[0] < 1 || nums[0] > maxCacheCapacity {
+				invalid()
+				return
 			}
 			i := 0
 			if opt.name.text == "denial" {
@@ -658,15 +810,25 @@ func (c *corednsConverter) cacheDirective(path string, root bool, d *cfDirective
 			}
 			capacity[i], explicit = nums[0], true
 			if len(nums) > 1 {
+				ttl, ok := seconds(nums[1], 1)
+				if !ok {
+					invalid()
+					return
+				}
 				if opt.name.text == "success" {
-					maxTTL = time.Duration(nums[1]) * time.Second
+					maxTTL = ttl
 				} else {
-					negTTL = time.Duration(nums[1]) * time.Second
+					negTTL = ttl
 				}
 			}
 			if len(nums) > 2 {
+				minTTL, ok := seconds(nums[2], 0)
+				if !ok {
+					invalid()
+					return
+				}
 				if opt.name.text == "success" {
-					out["minTTL"] = (time.Duration(nums[2]) * time.Second).String()
+					out["minTTL"] = minTTL.String()
 				} else {
 					c.note("cache denial MINTTL is not converted; kudurru applies cache.minTTL to every answer.")
 				}
