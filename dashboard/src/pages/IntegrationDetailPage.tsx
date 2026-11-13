@@ -352,7 +352,9 @@ function CommandsPanel({ obj, summary, manifest, licenseReason }: CommandsProps)
   const [outcome, setOutcome] = useState<(Outcome & { key: string }) | null>(null);
   // After a sync with an unknown outcome this page sends no other sync of
   // the instance (by UID, so a status write that moves the revision does
-  // not lift it) until a Check or a Preview succeeds. It is page state:
+  // not lift it) until a Check that reports the endpoint reachable and the
+  // credential accepted, or a Preview, succeeds. A Check that answers 200
+  // but reports either one failing leaves it in place. It is page state:
   // leaving or reloading the page drops it.
   const [uncertainUid, setUncertainUid] = useState<string | null>(null);
   const [busy, setBusy] = useState<IntegrationCommand | null>(null);
@@ -372,7 +374,7 @@ function CommandsPanel({ obj, summary, manifest, licenseReason }: CommandsProps)
   const syncReason =
     syncBase ??
     (review && uncertainUid === review.uid
-      ? `The last sync has an unknown outcome and is not sent again from this page; check the provider, then run ${publisher ? 'Preview' : 'Check'}`
+      ? `The last sync has an unknown outcome and is not sent again from this page; check the provider, then run ${publisher ? 'Preview' : 'a Check that reports it reachable with the credential accepted'}`
       : undefined) ??
     (publisher && !currentPreview ? 'Preview first: a publishing sync applies exactly the reviewed plan' : undefined);
 
@@ -396,7 +398,15 @@ function CommandsPanel({ obj, summary, manifest, licenseReason }: CommandsProps)
     }
   };
 
-  const check = () => review && run('check', () => api.integrations.check(namespace, name, review), () => setUncertainUid(null));
+  const check = () =>
+    review &&
+    run(
+      'check',
+      () => api.integrations.check(namespace, name, review),
+      (r) => {
+        if (r.reachable && r.authenticated) setUncertainUid(null);
+      },
+    );
   const doPreview = () =>
     review &&
     run(

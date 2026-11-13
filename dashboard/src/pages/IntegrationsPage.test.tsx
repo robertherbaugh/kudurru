@@ -273,6 +273,37 @@ describe('IntegrationDetailPage', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Sync now' })).not.toHaveAttribute('aria-disabled', 'true'));
   });
 
+  it('keeps the uncertain-sync hold after a Check that reports the endpoint unreachable or the credential refused', async () => {
+    mockIntegrations().objects[1]!.metadata.annotations = { 'kudurru.io/managed-by': 'api' };
+    mockIntegrations().uncertainNextSync = true;
+    const synced = bodies('/sync');
+    detail('office');
+    const syncNow = await screen.findByRole('button', { name: 'Sync now' });
+    await waitFor(() => expect(syncNow).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(syncNow);
+    expect(await screen.findByText('Sync: outcome unknown')).toBeInTheDocument();
+    const held = () => expect(screen.getByRole('button', { name: 'Sync now' })).toHaveAttribute('aria-disabled', 'true');
+    // 200, but not reachable: the hold stays.
+    mockIntegrations().checkResult = { reachable: false, authenticated: false };
+    fireEvent.click(screen.getByRole('button', { name: 'Check' }));
+    expect(await screen.findByText('Reachable: no. Credential accepted: no.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Check' })).not.toHaveAttribute('aria-disabled', 'true'));
+    held();
+    // 200, reachable but the credential is refused: the hold stays.
+    mockIntegrations().checkResult = { reachable: true, authenticated: false };
+    fireEvent.click(screen.getByRole('button', { name: 'Check' }));
+    expect(await screen.findByText('Reachable: yes. Credential accepted: no.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Check' })).not.toHaveAttribute('aria-disabled', 'true'));
+    held();
+    fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
+    expect(synced).toHaveLength(1);
+    // Both confirmed: lifted.
+    mockIntegrations().checkResult = { reachable: true, authenticated: true };
+    fireEvent.click(screen.getByRole('button', { name: 'Check' }));
+    expect(await screen.findByText('Reachable: yes. Credential accepted: yes.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Sync now' })).not.toHaveAttribute('aria-disabled', 'true'));
+  });
+
   it('says so when the instance changed since the preview', async () => {
     detail();
     const previewButton = await screen.findByRole('button', { name: 'Preview' });

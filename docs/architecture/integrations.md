@@ -83,7 +83,9 @@ publishing sync sends the digest of the preview the operator reviewed, and
 a refused (409) or uncertain (503 `integration_uncertain`) sync spends that
 preview. After an uncertain sync the open page offers no other sync of that
 instance (held by UID, so a status write that moves the revision does not
-lift it) until a Check or a Preview succeeds; the hold is page state, so a
+lift it) until a Check reports the endpoint reachable and the credential
+accepted, or a Preview succeeds (a Check that answers but reports either one
+failing keeps the hold); the hold is page state, so a
 reload or another client is not held. A preview whose revision is no longer
 the one on screen is dropped with a "Preview superseded" notice. Form
 validation checks draft-only problems (half-typed numbers, durations, map

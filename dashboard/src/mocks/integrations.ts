@@ -49,6 +49,8 @@ export interface IntegrationsMock {
   expireNextPreview: boolean;
   /** The next sync answers 503 integration_uncertain. */
   uncertainNextSync: boolean;
+  /** What the next Checks report (both true unless a test sets them). */
+  checkResult: { reachable: boolean; authenticated: boolean };
   /** Request bodies of the commands, newest last (tests assert on them). */
   calls: { path: string; body: unknown }[];
   revision: number;
@@ -73,7 +75,7 @@ function fixture(): IntegrationsMock {
         status: { clients: 23 },
       },
     ],
-    status: {}, digests: {}, expireNextPreview: false, uncertainNextSync: false, calls: [], revision: 20,
+    status: {}, digests: {}, expireNextPreview: false, uncertainNextSync: false, checkResult: { reachable: true, authenticated: true }, calls: [], revision: 20,
   };
 }
 
@@ -180,7 +182,7 @@ export function integrationHandlers(guard: Guard, allowed: Allowed) {
       const o = find(String(params.ns), String(params.name));
       return o ? HttpResponse.json(summary(o)) : fail(404, 'not_found', 'integration not found');
     }),
-    command('check', 'check', () => HttpResponse.json(result({ reachable: true, authenticated: true }))),
+    command('check', 'check', () => HttpResponse.json(result({ ...state.checkResult }))),
     command('preview', 'read', (o, _r, ns, name) => {
       if (!publishes(o)) return fail(501, 'not_implemented', 'integration capability is not implemented');
       const digest = (++n).toString(16).padStart(64, 'a');
