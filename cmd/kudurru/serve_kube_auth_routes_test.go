@@ -78,10 +78,12 @@ func kubeAuthRouteRequest(t *testing.T, c *http.Client, method, address, csrf st
 	return answer
 }
 
-// Every auth and IAM route that the API forwards to the Kubernetes
-// authentication stack answers with a result or the JSON error envelope. None
-// falls through to the mux's plain-text 404 (G21-01).
-func TestRunServeKubeForwardedAuthRoutesAnswerEnvelope(t *testing.T) {
+// startKubeRuntimeMount starts an envtest control plane and a runServe of
+// the Kubernetes store driver against it, and returns the node's
+// configuration and an admin client of the control plane. prepare runs
+// before the server starts.
+func startKubeRuntimeMount(t *testing.T, prepare func(admin client.Client)) *config.Config {
+	t.Helper()
 	control := &envtest.Environment{BinaryAssetsDirectory: mountedKubeTestAssets(t), CRDDirectoryPaths: []string{"../../deploy/kustomize/crd/bases"}, ErrorIfCRDPathMissing: true}
 	control.ControlPlane.GetAPIServer().Configure().Set("advertise-address", "127.0.0.1").Set("endpoint-reconciler-type", "none")
 	actual, err := control.Start()
@@ -124,12 +126,25 @@ func TestRunServeKubeForwardedAuthRoutesAnswerEnvelope(t *testing.T) {
 	cfg.Blocking.Enabled = false
 	cfg.DNSSEC.Enabled = false
 	cfg.Cache.MaxEntries = 0
-	binding := &public.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: "contract-viewer", Namespace: "default"},
-		Spec: public.RoleBindingSpec{Role: "viewer", Subjects: []public.BindingSubject{{Kind: "User", Name: "contract-reader"}}}}
-	if err := admin.Create(t.Context(), binding); err != nil {
-		t.Fatal(err)
+	if prepare != nil {
+		prepare(admin)
 	}
 	startStaticMount(t, cfg)
+	return cfg
+}
+
+// Every auth and IAM route that the API forwards to the Kubernetes
+// authentication stack answers with a result or the JSON error envelope. None
+// falls through to the mux's plain-text 404 (G21-01).
+func TestRunServeKubeForwardedAuthRoutesAnswerEnvelope(t *testing.T) {
+	var binding *public.RoleBinding
+	cfg := startKubeRuntimeMount(t, func(admin client.Client) {
+		binding = &public.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: "contract-viewer", Namespace: "default"},
+			Spec: public.RoleBindingSpec{Role: "viewer", Subjects: []public.BindingSubject{{Kind: "User", Name: "contract-reader"}}}}
+		if err := admin.Create(t.Context(), binding); err != nil {
+			t.Fatal(err)
+		}
+	})
 
 	jar, err := cookiejar.New(nil)
 	if err != nil {
