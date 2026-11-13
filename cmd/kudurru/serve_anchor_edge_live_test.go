@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -51,6 +52,9 @@ type anchorEdgeLab struct {
 	// observations counts authenticated managed-bypass observations served
 	// to backends; each backend start observes each edge exactly once.
 	observations atomic.Int32
+	// edge is the supervisor the observation listener serves; nil while the
+	// edge child restarts, when an observation is counted and refused.
+	edge atomic.Pointer[dnsdist.Supervisor]
 }
 
 // newAnchorEdgeLab prepares the edge and configures cfg as a backend behind
@@ -186,13 +190,19 @@ func (l *anchorEdgeLab) start(backends ...cluster.Endpoint) (*dnsdist.Supervisor
 }
 
 // observe serves sup's installed managed bypass on the fixed observation
-// address under the edge's internal credentials.
+// address under the edge's internal credentials. lab.edge switches the
+// served supervisor without closing the listener.
 func (l *anchorEdgeLab) observe(sup *dnsdist.Supervisor) func() {
 	t := l.t
 	t.Helper()
+	l.edge.Store(sup)
 	server, err := internalapi.NewServer(internalapi.ServerOptions{Credentials: l.creds, EdgeBypass: func(ctx context.Context, deployment string) (internalapi.EdgeBypassState, error) {
 		l.observations.Add(1)
-		return sup.ManagedBypass(ctx, deployment)
+		current := l.edge.Load()
+		if current == nil {
+			return internalapi.EdgeBypassState{}, errors.New("edge child restarting")
+		}
+		return current.ManagedBypass(ctx, deployment)
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -668,7 +678,7 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 	if added.Deployment != installed.Deployment || added.Run == installed.Run || len(added.Backends) != 2 {
 		t.Fatal("backend addition lost the retained deployment, run identity or membership", len(added.Backends))
 	}
-	stopObservation = lab.observe(sup)
+	lab.observe(sup) // its cleanup stops this listener
 	lab.states(sup, map[string]bool{primary.Address: true, follower.Address: false})
 	lab.ask(true)
 
@@ -730,14 +740,16 @@ func TestRunServeManagedEdgePinnedDaemonFollower(t *testing.T) {
 
 	// The edge child restarts again while the joined follower serves alone:
 	// the fresh run identity does not disturb the admitted follower, which
-	// keeps serving and does not observe the fleet again.
-	stopObservation()
+	// keeps serving and does not observe the fleet again. The observation
+	// listener stays up across the restart, so an observation attempted
+	// while the child is down is counted (and refused) too.
+	lab.edge.Store(nil)
 	stopEdge()
 	sup, _, rerun := lab.start(primary, follower) // its cleanup stops this edge
 	if rerun.Deployment != installed.Deployment || rerun.Run == added.Run || len(rerun.Backends) != 2 {
 		t.Fatal("edge restart under the serving follower lost the retained deployment, run identity or membership", len(rerun.Backends))
 	}
-	lab.observe(sup)
+	lab.edge.Store(sup)
 	lab.states(sup, map[string]bool{primary.Address: false, follower.Address: true})
 	lab.ask(true)
 	if got := lab.observations.Load() - observed; got != 1 {

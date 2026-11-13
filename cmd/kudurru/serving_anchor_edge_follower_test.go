@@ -27,7 +27,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 )
 
-// F28-EF-1 (D370). The supported order for a new follower behind managed
+// F28-EF-1. The supported order for a new follower behind managed
 // edges: the primary has bootstrapped managed trust, the receiver is joined
 // with the real offline `cluster join` CLI (its first image carries the
 // managed owner), and only then is the follower started with edges topology.
