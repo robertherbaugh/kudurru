@@ -47,15 +47,15 @@ func joinPrimaryLifetimeFixture(t *testing.T, lifetime time.Duration) (*servingR
 // its member listener and returns the invitation issuer. Tests that need a
 // particular primary (for example one with managed root anchors) use it.
 //
-// The member identity is created in the runtime's data directory. A running
-// runtime reads its host configuration on every preparation, so a runtime that
-// already runs must have been built with that directory set (as
-// anchorOperationFixtureTopology does); only a runtime that has not started yet
-// gets a fresh one here.
+// The member identity is created in the runtime's data directory, which the
+// runtime fixtures make private to the test before the runtime is built
+// (newServingRuntimeFixtureProviders). It is not set here: a running runtime
+// reads its host configuration on every preparation, and writing it under a
+// running publisher was a data race (TestAnchorEdgeActivationJoinedFollower).
 func joinPrimaryOn(t *testing.T, p *servingRuntime, lifetime time.Duration) (*internalapi.Credentials, func(string) enrollment.Invitation) {
 	t.Helper()
 	if p.opts.Config.Node.DataDir == "" {
-		p.opts.Config.Node.DataDir = t.TempDir()
+		t.Fatal("join primary fixture has no private data directory")
 	}
 	i, err := memberidentity.Create(filepath.Join(p.opts.Config.Node.DataDir, memberIdentityFile), p.opts.Store.Authority().MemberID)
 	if err != nil {
