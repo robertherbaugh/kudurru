@@ -110,6 +110,7 @@ jobs:
           python3 -m unittest discover -s hack -p test_go_test.py
           python3 -B -m unittest discover -s hack -p 'test_bench_*.py'
           python3 -B -m unittest discover -s hack -p test_sync_version.py
+          python3 -B -m unittest discover -s hack -p test_snapshot_images.py
           make test TEST_PKGS="$(hack/go-test-shard.sh "$SHARD" 2 | tr '\n' ' ')"
       # Only what this run used: go marks a cache entry used by touching it
       # (when it is over an hour old), so the cache does not grow forever.

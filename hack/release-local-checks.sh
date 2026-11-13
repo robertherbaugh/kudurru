@@ -8,8 +8,11 @@
 #   --rc N            the candidate number for release-manifests (default: the
 #                     next one, from hack/release-tag.sh rc)
 #   --full-snapshot   also `goreleaser release --snapshot --clean --skip=publish,sign`
-#                     (needs Docker and syft on PATH; images go to $DOCKER_HOST's
-#                     daemon and are removed afterwards)
+#                     (needs Docker, syft on PATH and an estimated 14 GB free;
+#                     the ko images go to $DOCKER_HOST's daemon as
+#                     goreleaser.ko.local:<version>[-debug], must print the
+#                     snapshot version and are removed afterwards:
+#                     hack/snapshot-images.sh)
 #   --live            also the live-internet checks (port 53 and HTTPS egress):
 #                     TestLiveInternet, TestLiveIANATrustAnchors, TestLiveRootManagedBootstrap
 #                     and hack/live-recursive-node.sh on the bin/kudurru that make size built
@@ -140,40 +143,33 @@ snapshot_full() {
 	command -v syft >/dev/null || { echo "syft is not on PATH (the sboms step needs it)"; return 1; }
 	docker info >/dev/null 2>&1 || { echo "no Docker daemon at ${DOCKER_HOST:-the default socket}"; return 1; }
 	# Four cross-compiled builds, archives, packages and images: a first run
-	# filled a disk that had 8.5 GB free. Refuse instead of filling it.
+	# filled a disk that had 8.5 GB free. Refuse instead of filling it. The
+	# threshold is an unverified estimate (no full run has succeeded yet);
+	# replace it with the measured need after the first one. It measures the
+	# checkout's filesystem only, not a Go build cache or Docker data root
+	# that lives elsewhere.
 	local free
 	free=$(df -Pk . | awk 'NR == 2 {print int($4 / 1048576)}')
 	if [ "$free" -lt "$SNAPSHOT_MIN_FREE_GB" ]; then
-		echo "only $free GB free here; the full snapshot needs about $SNAPSHOT_MIN_FREE_GB GB (SNAPSHOT_MIN_FREE_GB)"
+		echo "only $free GB free here; the full snapshot needs an estimated $SNAPSHOT_MIN_FREE_GB GB (unverified; SNAPSHOT_MIN_FREE_GB)"
 		return 1
 	fi
+	# goreleaser loads the snapshot ko images into the daemon as
+	# goreleaser.ko.local:<version>[-debug] (hack/snapshot-images.sh); what
+	# is there before the run is kept.
+	hack/snapshot-images.sh list >"$scratch/images-before" || { echo "could not list the daemon's images"; return 1; }
 	"$scratch/goreleaser" release --snapshot --clean --skip=publish,sign
 	local status=$?
 	echo "## dist/ (artifacts, without the build directories)"
 	find dist -maxdepth 1 -type f -printf '%s %p\n' | sort -k2
 	echo "## dist/checksums.txt"
 	cat dist/checksums.txt 2>/dev/null
-	echo "## images created by this run"
-	local images
-	images=$(docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep '^ghcr.io/robertherbaugh/kudurru:.*SNAPSHOT' || true)
-	echo "$images"
 	local snapshot
 	snapshot=$(python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' dist/metadata.json 2>/dev/null)
-	echo "## kudurru version in each image ($snapshot)"
-	while read -r ref _; do
-		[ -n "$ref" ] || continue
-		echo "$ref: $(docker run --rm --network none "$ref" version 2>&1 | head -1)"
-	done <<<"$images"
-	echo "## hack/volume-check.sh on the snapshot images"
-	echo "(a snapshot uses the plain distroless bases unless KUDURRU_BASE_IMAGE is set;"
-	echo " publish.yml builds images/base first, so a FAIL here on the plain bases is expected)"
-	if [ -n "$images" ]; then
-		# shellcheck disable=SC2046 # one argument per image
-		hack/volume-check.sh $(awk '{print $1}' <<<"$images") || true
-	fi
-	# Only the snapshot tags: other users of a shared daemon keep their images.
-	echo "## removing the snapshot images"
-	awk '{print $1}' <<<"$images" | xargs -r docker rmi
+	echo "## snapshot version (dist/metadata.json): ${snapshot:-none}"
+	# Runs (and removes what the run created) even when goreleaser failed
+	# part-way; it fails unless both images print the snapshot version.
+	hack/snapshot-images.sh check "$scratch/images-before" "${snapshot:-unknown}" || { [ "$status" -ne 0 ] || status=1; }
 	return "$status"
 }
 

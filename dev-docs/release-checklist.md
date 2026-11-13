@@ -159,8 +159,15 @@ goreleaser v2 (a downloaded release binary, checksum verified, or
       `go test ./dashboard/...` and `make size`, `goreleaser check`, the
       single-target and full snapshots, the live-internet checks) on a clean
       tree, writes one log per step and a `summary.txt` naming the commit,
-      and restores the tree and removes `dist/` and the snapshot images
-      afterwards. Repeat it on the final release commit.
+      and restores the tree and removes `dist/` afterwards. With
+      `--full-snapshot` it needs Docker, syft and an estimated 14 GB free
+      (unverified: no full snapshot has succeeded on the shared sandbox),
+      and `hack/snapshot-images.sh` fails the step unless both ko images
+      that goreleaser loaded into the daemon
+      (`goreleaser.ko.local:<snapshot version>` and `...-debug`) print the
+      snapshot version from `dist/metadata.json`; it runs
+      `hack/volume-check.sh` on them and removes the images the run
+      created. Repeat it on the final release commit.
 
 Historical dry runs made during v0.1.0-rc.1 preparation:
 
