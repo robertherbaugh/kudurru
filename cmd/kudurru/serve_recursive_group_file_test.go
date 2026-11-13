@@ -50,7 +50,10 @@ upstreams:
 		}
 		cancel()
 		select {
-		case <-done:
+		case err := <-done:
+			if err != nil {
+				t.Errorf("recursive group node stopped with %v", err)
+			}
 		case <-time.After(15 * time.Second):
 			t.Error("recursive group node failed to stop")
 		}
