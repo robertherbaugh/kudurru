@@ -47,7 +47,7 @@ func recaptureIn(t *testing.T, f *fixture, inside func(ctx context.Context)) {
 	}
 }
 
-func identityOf(t *testing.T, ctx context.Context) serving.Identity {
+func identityOf(ctx context.Context, t *testing.T) serving.Identity {
 	t.Helper()
 	identity, err := Identity(ctx)
 	if err != nil {
@@ -70,12 +70,12 @@ func TestRecaptureAdmitsOnlyAnUnchangedRequest(t *testing.T) {
 	t.Run("unrelated commit is admitted with the same credential", func(t *testing.T) {
 		f := newFixture(t)
 		recaptureIn(t, f, func(ctx context.Context) {
-			before := identityOf(t, ctx)
+			before := identityOf(ctx, t)
 			unrelatedCommit(t, f, "admitted")
 			if err := recaptureFor(ctx, f, 5*time.Second); err != nil {
 				t.Fatal("unchanged request not recaptured", err)
 			}
-			after := identityOf(t, ctx)
+			after := identityOf(ctx, t)
 			if after.Base.Revision <= before.Base.Revision || after.Publication <= before.Publication {
 				t.Fatalf("request still on its superseded publication: %+v -> %+v", before, after)
 			}
@@ -87,7 +87,7 @@ func TestRecaptureAdmitsOnlyAnUnchangedRequest(t *testing.T) {
 	t.Run("cookie session revoked by the superseding commit", func(t *testing.T) {
 		f := newFixture(t)
 		recaptureIn(t, f, func(ctx context.Context) {
-			before := identityOf(t, ctx)
+			before := identityOf(ctx, t)
 			f.command(t, func(ctx context.Context, tx *sqlite.CommandTx) error {
 				s, err := security.Load(ctx, tx)
 				if err != nil {
@@ -101,7 +101,7 @@ func TestRecaptureAdmitsOnlyAnUnchangedRequest(t *testing.T) {
 			if err := recaptureFor(ctx, f, 5*time.Second); !errors.Is(err, ErrNotRecaptured) {
 				t.Fatal("a revoked session was recaptured", err)
 			}
-			if identityOf(t, ctx) != before {
+			if identityOf(ctx, t) != before {
 				t.Fatal("a refused recapture replaced the request's lease")
 			}
 		})
@@ -109,7 +109,7 @@ func TestRecaptureAdmitsOnlyAnUnchangedRequest(t *testing.T) {
 	t.Run("authority fenced while the request waits", func(t *testing.T) {
 		f := newFixture(t)
 		recaptureIn(t, f, func(ctx context.Context) {
-			before := identityOf(t, ctx)
+			before := identityOf(ctx, t)
 			term := f.store.Authority().Term
 			term.Epoch++
 			term.PrimaryID, term.PromotionID, term.PrimaryName = "other-member", "other-promotion", "node-b"
@@ -122,7 +122,7 @@ func TestRecaptureAdmitsOnlyAnUnchangedRequest(t *testing.T) {
 			if err := recaptureFor(ctx, f, 500*time.Millisecond); err == nil {
 				t.Fatal("a fenced request was recaptured")
 			}
-			if identityOf(t, ctx) != before {
+			if identityOf(ctx, t) != before {
 				t.Fatal("a refused recapture replaced the request's lease")
 			}
 		})
@@ -131,12 +131,12 @@ func TestRecaptureAdmitsOnlyAnUnchangedRequest(t *testing.T) {
 		f := newFixture(t)
 		recaptureIn(t, f, func(ctx context.Context) {
 			ctx = WithExactSource(ctx)
-			before := identityOf(t, ctx)
+			before := identityOf(ctx, t)
 			unrelatedCommit(t, f, "exact-source")
 			if err := recaptureFor(ctx, f, 5*time.Second); !errors.Is(err, ErrNotRecaptured) {
 				t.Fatal("an exact-source request was recaptured on another source generation", err)
 			}
-			if identityOf(t, ctx) != before {
+			if identityOf(ctx, t) != before {
 				t.Fatal("a refused recapture replaced the request's lease")
 			}
 		})
@@ -145,12 +145,12 @@ func TestRecaptureAdmitsOnlyAnUnchangedRequest(t *testing.T) {
 		f := newFixture(t)
 		recaptureIn(t, f, func(ctx context.Context) {
 			ctx = WithExactSource(ctx)
-			before := identityOf(t, ctx)
+			before := identityOf(ctx, t)
 			f.publisher.Wake()
 			if err := recaptureFor(ctx, f, 5*time.Second); err != nil {
 				t.Fatal("a republication of the same source was refused", err)
 			}
-			after := identityOf(t, ctx)
+			after := identityOf(ctx, t)
 			if after.Base != before.Base || after.Publication <= before.Publication {
 				t.Fatalf("want a new publication of the same source: %+v -> %+v", before, after)
 			}
@@ -159,13 +159,13 @@ func TestRecaptureAdmitsOnlyAnUnchangedRequest(t *testing.T) {
 	t.Run("after the request dispatched a command", func(t *testing.T) {
 		f := newFixture(t)
 		recaptureIn(t, f, func(ctx context.Context) {
-			before := identityOf(t, ctx)
+			before := identityOf(ctx, t)
 			MarkDispatched(ctx)
 			unrelatedCommit(t, f, "dispatched")
 			if err := recaptureFor(ctx, f, 5*time.Second); !errors.Is(err, ErrNotRecaptured) {
 				t.Fatal("a request captured again after its own dispatch", err)
 			}
-			if identityOf(t, ctx) != before {
+			if identityOf(ctx, t) != before {
 				t.Fatal("a refused recapture replaced the request's lease")
 			}
 		})
@@ -187,7 +187,7 @@ func TestRecaptureAdmitsOnlyAnUnchangedRequest(t *testing.T) {
 	t.Run("caller marked without recapture", func(t *testing.T) {
 		f := newFixture(t)
 		recaptureIn(t, f, func(ctx context.Context) {
-			before := identityOf(t, ctx)
+			before := identityOf(ctx, t)
 			unrelatedCommit(t, f, "without")
 			began := time.Now()
 			if err := recaptureFor(WithoutRecapture(ctx), f, 5*time.Second); !errors.Is(err, ErrNotRecaptured) {
@@ -196,7 +196,7 @@ func TestRecaptureAdmitsOnlyAnUnchangedRequest(t *testing.T) {
 			if took := time.Since(began); took > time.Second {
 				t.Fatal("a caller marked without recapture waited", took)
 			}
-			if identityOf(t, ctx) != before {
+			if identityOf(ctx, t) != before {
 				t.Fatal("a refused recapture replaced the request's lease")
 			}
 		})
