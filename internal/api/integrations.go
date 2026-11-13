@@ -71,9 +71,33 @@ type IntegrationManifest struct {
 	// instance would show.
 	Supported bool   `json:"supported"`
 	Reason    string `json:"reason,omitempty"`
-	// Refused lists spec fields that, when set, make the host refuse the
-	// instance on this node (for example spec.unifi.push).
+	// Refused lists spec fields that, when set (a boolean: when true), make
+	// the host refuse the instance on this node (for example
+	// spec.unifi.push.clientActions). FieldLimits says why, field by field.
 	Refused []string `json:"refused" nullable:"false"`
+	// FieldLimits names, per spec field, what this node's host does
+	// differently with it (D384): every field of Refused, with the status
+	// reason and message the instance would show, and every field that is
+	// accepted but has no effect here because the field it needs is refused.
+	FieldLimits []IntegrationFieldLimit `json:"fieldLimits" nullable:"false"`
+}
+
+// IntegrationFieldLimit is one spec field of a provider type that this
+// node's host refuses, or accepts without effect.
+type IntegrationFieldLimit struct {
+	// Field is the spec path, for example spec.unifi.push.clientActions.
+	Field string `json:"field"`
+	// Effect is refused when setting the field (a boolean: to true) makes
+	// the host refuse the instance, and inert when the field is accepted
+	// but does nothing on this node.
+	Effect string `json:"effect" enum:"refused,inert"`
+	// Reason is the status reason a refused instance shows on its Ready
+	// condition; empty for an inert field.
+	Reason string `json:"reason,omitempty"`
+	// Requires names, for an inert field, the refused field it only works with.
+	Requires string `json:"requires,omitempty"`
+	// Message explains the limit and what to change, in one sentence.
+	Message string `json:"message"`
 }
 
 // IntegrationCredentialKey is one credential a provider reads.

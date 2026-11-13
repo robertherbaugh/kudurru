@@ -338,9 +338,9 @@ func TestIntegrationManifestsMatchKubernetesRefusals(t *testing.T) {
 			}
 			// Each UniFi push is refused on Kubernetes and named (D401).
 			for field, set := range map[string]func(*public.UniFiPush){
-				"spec.unifi.push.dhcpDNSServers": func(p *public.UniFiPush) { p.DHCPDNSServers = true },
-				"spec.unifi.push.mirrorRecords":  func(p *public.UniFiPush) { p.MirrorRecords.Enabled = true },
-				"spec.unifi.push.clientActions":  func(p *public.UniFiPush) { p.ClientActions = true },
+				"spec.unifi.push.dhcpDNSServers":        func(p *public.UniFiPush) { p.DHCPDNSServers = true },
+				"spec.unifi.push.mirrorRecords.enabled": func(p *public.UniFiPush) { p.MirrorRecords.Enabled = true },
+				"spec.unifi.push.clientActions":         func(p *public.UniFiPush) { p.ClientActions = true },
 			} {
 				d := base("unifi")
 				set(&d.Spec.UniFi.Push)
@@ -348,6 +348,45 @@ func TestIntegrationManifestsMatchKubernetesRefusals(t *testing.T) {
 					t.Errorf("%s: refused=%v reason=%q", field, item.Refused, kubeIntegrationRefusal("kudurru-system", d))
 				}
 			}
+			// The fields a refused switch needs, and the mirror's settings
+			// while it is off, refuse nothing (D384).
+			for field, set := range map[string]func(*public.UniFiPush){
+				"spec.unifi.push.dnsServers":            func(p *public.UniFiPush) { p.DNSServers = []string{"192.0.2.53"} },
+				"spec.unifi.push.networks":              func(p *public.UniFiPush) { p.Networks = []string{"LAN"} },
+				"spec.unifi.push.mirrorRecords.domains": func(p *public.UniFiPush) { p.MirrorRecords.Domains = []string{"example"} },
+			} {
+				d := base("unifi")
+				set(&d.Spec.UniFi.Push)
+				if reason := kubeIntegrationRefusal("kudurru-system", d); reason != "" || slices.Contains(item.Refused, field) {
+					t.Errorf("%s alone: refused=%v reason=%q", field, item.Refused, reason)
+				}
+			}
+		}
+		// Every refused field has its limit with the reason the root gives,
+		// and every limit names a reason or the refused field it needs.
+		var refused []string
+		for _, limit := range item.FieldLimits {
+			switch {
+			case limit.Message == "" || !strings.HasPrefix(limit.Field, "spec."+item.Type+"."):
+				t.Errorf("%s limit: %+v", item.Type, limit)
+			case limit.Effect == "refused":
+				refused = append(refused, limit.Field)
+				if limit.Reason == "" || limit.Requires != "" || limit.Message != kubeRefusalMessage(limit.Reason, "") {
+					t.Errorf("%s refused limit: %+v", item.Type, limit)
+				}
+			case limit.Effect == "inert":
+				if limit.Reason != "" || !slices.Contains(item.Refused, limit.Requires) {
+					t.Errorf("%s inert limit: %+v", item.Type, limit)
+				}
+			default:
+				t.Errorf("%s limit effect: %+v", item.Type, limit)
+			}
+		}
+		if !slices.Equal(refused, item.Refused) {
+			t.Errorf("%s: refused %v, limits refuse %v", item.Type, item.Refused, refused)
+		}
+		if item.Type == "unifi" && len(item.FieldLimits) != 6 {
+			t.Errorf("unifi limits: %+v", item.FieldLimits)
 		}
 		if len(item.Credentials) == 0 && item.Type != "webhook" || item.ConfigField != item.Type || !json.Valid(item.ConfigSchema) {
 			t.Errorf("%s manifest: %+v", item.Type, item)
@@ -373,7 +412,7 @@ func TestIntegrationManifestsSQLiteRunsUniFiPush(t *testing.T) {
 			continue
 		}
 		found = true
-		if !item.Supported || len(item.Refused) != 0 || !slices.Contains(item.Capabilities, "RecordSink") || !slices.Contains(item.Capabilities, "Actions") {
+		if !item.Supported || len(item.Refused) != 0 || item.FieldLimits == nil || len(item.FieldLimits) != 0 || !slices.Contains(item.Capabilities, "RecordSink") || !slices.Contains(item.Capabilities, "Actions") {
 			t.Fatalf("SQLite UniFi manifest: %+v", item)
 		}
 	}
