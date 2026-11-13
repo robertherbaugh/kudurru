@@ -60,7 +60,8 @@ func TestProblemsNameWhatToAdd(t *testing.T) {
 		{"no hint", api.ShapeKubernetes, get, envelope(503, "sessions_unavailable", "", ""), "without a hint"},
 		{"durable with Retry-After", api.ShapeKubernetes, get, envelope(503, "sessions_unavailable", "h", "1"), "Retry-After"},
 		{"transient without Retry-After", api.ShapeStandalone, post, envelope(503, "generation_pending", "h", ""), "declares no refusal"},
-		{"follower refusal", api.ShapeFollower, post, envelope(503, api.KeyPrimaryRequired, "h", ""), ""},
+		// The follower runs no allowlist entry write and forwards none.
+		{"follower refusal", api.ShapeFollower, Operation{Method: http.MethodPost, Path: "/allowlist", ID: "createAllowlistEntries"}, envelope(503, api.KeyPrimaryRequired, "h", ""), ""},
 		{"unknown key", api.ShapeStandalone, Operation{Method: http.MethodPost, Path: "/x", ID: "exportSettingsSectionYAML"}, envelope(503, "something_new", "h", ""), `declares "unavailable" there`},
 		{"succeeded mutation", api.ShapeStandalone, Operation{Method: http.MethodDelete, Path: "/objects/{kind}/{namespace}/{name}", ID: "deleteObject"}, Answer{Status: 200}, "add it to probeMutations"},
 		{"reviewed mutation", api.ShapeStandalone, post, Answer{Status: 201}, ""},

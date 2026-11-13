@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -51,6 +52,33 @@ func enrolledRefusalSession(t *testing.T, base, password string) *staticProcessC
 	return c
 }
 
+// enrolledFencedLoginRefused checks that a fenced member refuses a password
+// sign-in with valid credentials: 503 cluster_fenced naming the newer
+// primary, without Retry-After and without a session cookie. A walk of a
+// fenced member therefore needs a credential made before it was fenced.
+func enrolledFencedLoginRefused(t *testing.T, base, newer string) {
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &http.Transport{}
+	t.Cleanup(transport.CloseIdleConnections)
+	c := &staticProcessClient{client: &http.Client{Jar: jar, Transport: transport, Timeout: 35 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, base: base}
+	answer := enrolledSend(t, c, http.MethodPost, "/auth/login", api.LoginRequest{Username: "admin", Password: "audit-e2e-password-1"}) // #nosec G101 -- disposable loopback fixture credential
+	if answer.status != http.StatusServiceUnavailable || answer.Error.Key != "cluster_fenced" || answer.retryAfter != "" || !strings.Contains(answer.Error.Message, "the newer primary "+newer) {
+		t.Fatalf("fenced member answered a sign-in: status=%d key=%q retry-after=%q message=%q", answer.status, answer.Error.Key, answer.retryAfter, answer.Error.Message)
+	}
+	target, err := url.Parse(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cookies := jar.Cookies(target); len(cookies) != 0 {
+		t.Fatalf("fenced member set %d cookies on a refused sign-in", len(cookies))
+	}
+}
+
 // enrolledRefusalInventory walks every operation of the document on one
 // member process and reports each answer that the refusal inventory of
 // internal/api does not explain (G21-11): an error without the envelope, or a
@@ -69,9 +97,9 @@ func enrolledRefusalInventory(t *testing.T, c *staticProcessClient, shape api.Ru
 		// serving gate's bounded capture wait.
 		parallel = 16
 	}
-	// The enrolled fixtures run without the query log, DHCP and a VRRP
-	// address.
-	walker := refusalinventory.Client{HTTP: c.client, Parallel: parallel, FeaturesOff: []api.Feature{api.FeatureQueryLog, api.FeatureDHCP, api.FeatureVIP}, Base: strings.TrimSuffix(c.base, api.BasePath), Prepare: func(r *http.Request) {
+	// The enrolled fixtures run without the query log, DHCP, a VRRP
+	// address and a central database.
+	walker := refusalinventory.Client{HTTP: c.client, Parallel: parallel, FeaturesOff: []api.Feature{api.FeatureQueryLog, api.FeatureDHCP, api.FeatureVIP, api.FeatureCentralHistory}, Base: strings.TrimSuffix(c.base, api.BasePath), Prepare: func(r *http.Request) {
 		if csrf != "" {
 			r.Header.Set("X-Kudurru-CSRF", csrf)
 		}
