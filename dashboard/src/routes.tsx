@@ -6,6 +6,7 @@ import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import {
   Activity,
   BookLock,
+  Boxes,
   Gauge,
   Globe,
   History,
@@ -68,6 +69,7 @@ const Policies = lazy(() => import('./pages/PoliciesPage'));
 const PolicyDetail = lazy(() => import('./pages/PolicyDetailPage'));
 const GroupDetail = lazy(() => import('./pages/GroupDetailPage'));
 const ClientDetail = lazy(() => import('./pages/ClientDetailPage'));
+const Inventory = lazy(() => import('./pages/InventoryPage'));
 const Zones = lazy(() => import('./pages/ZonesPage'));
 const ZoneDetail = lazy(() => import('./pages/ZoneDetailPage'));
 const Upstreams = lazy(() => import('./pages/UpstreamsPage'));
@@ -102,6 +104,7 @@ export const ROUTES: RouteDef[] = [
   { path: '/groups/new', navKey: 'groups', label: 'New group', section: 'Filtering', icon: Users, page: newRedirect('/groups'), hidden: true },
   { path: '/groups/:ns/:name', navKey: 'groups', label: 'Group', section: 'Filtering', icon: Users, page: GroupDetail, hidden: true },
   { path: '/clients', navKey: 'clients', label: 'Clients', section: 'Filtering', icon: Monitor, page: Clients, scoped: true },
+  { path: '/inventory', navKey: 'inventory', label: 'Inventory', section: 'Filtering', icon: Boxes, page: Inventory },
   { path: '/clients/:key', navKey: 'clients', label: 'Client', section: 'Filtering', icon: Monitor, page: ClientDetail, scoped: true, hidden: true },
   { path: '/policies', navKey: 'policies', label: 'Policies', section: 'Filtering', icon: Scale, page: Policies },
   { path: '/policies/new', navKey: 'policies', label: 'New policy', section: 'Filtering', icon: Scale, page: newRedirect('/policies'), hidden: true },

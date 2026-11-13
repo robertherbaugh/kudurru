@@ -55,6 +55,7 @@ import { derivePolicyState } from '../lib/policies';
 import { rng } from './rand';
 import { dhcpHandlers, resetDHCP } from './dhcp';
 import { integrationHandlers, resetIntegrations } from './integrations';
+import { inventoryHandlers, resetInventory } from './inventory';
 import type { RoleBindingDesired, UnblockAllow, UnblockApproval, UnblockDenial, UnblockRequest } from '../api/types';
 import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntryPatch, ListEntriesPatch } from '../api/types';
 
@@ -89,6 +90,7 @@ export function resetDB(now?: number): MockDB {
   db = addBrandingFixture(createDB(now));
   resetDHCP();
   resetIntegrations();
+  resetInventory();
   resetIAM();
   mockFactors.clear();
   mockSetups.clear();
@@ -137,6 +139,7 @@ export const RESOURCE_VERBS: Record<string, string[]> = {
   policies: ['read', 'write', 'delete'],
   clientgroups: ['read', 'write', 'delete'],
   clients: ['read', 'write'],
+  inventory: ['read'],
   querylog: ['read', 'export', 'purge', 'raw'],
   stats: ['read'],
   cache: ['read', 'flush'],
@@ -181,6 +184,7 @@ export function permissions(roles: string[]): Record<string, string[]> {
     out.querylog = ['read', 'export'];
     out.unblockrequests = ['read'];
     out.dhcpleases = ['read', 'export'];
+    out.inventory = ['read'];
   }
   return out;
 }
@@ -765,6 +769,7 @@ let tailTimer = 0;
 
 export const handlers = [
   ...dhcpHandlers(guard),
+  ...inventoryHandlers(guard),
   ...integrationHandlers(guard, (resource, verb) => !!db.session && (permissions(db.session.user.roles)[resource] ?? []).includes(verb)),
   ...iamHandlers(guard, () => db),
   // auth ------------------------------------------------------------------
@@ -1020,22 +1025,24 @@ export const handlers = [
     const origin = z.spec.zoneName.replace(/\.$/, '');
     if (e.dnsName !== origin && !e.dnsName.endsWith(`.${origin}`)) return fail(400, 'invalid', `dnsName: ${e.dnsName} is not inside ${origin}`);
     if (e.recordType === 'A' && e.targets.some((t) => !/^\d+\.\d+\.\d+\.\d+$/.test(t))) return fail(400, 'invalid', 'targets: not an IPv4 address');
-    const rsName = new URL(request.url).searchParams.get('recordSet') ?? `api-${zone}`;
-    let rs = db.recordSets.find((x) => x.metadata.name === rsName);
+    const rsRef = new URL(request.url).searchParams.get('recordSet') ?? `api-${zone}`;
+    // "ns/name" or a bare name in the default namespace, as the server's splitRef.
+    const [rsNS, rsName] = rsRef.includes('/') ? [rsRef.slice(0, rsRef.indexOf('/')), rsRef.slice(rsRef.indexOf('/') + 1)] : ['default', rsRef];
+    let rs = db.recordSets.find((x) => x.metadata.name === rsName && (x.metadata.namespace ?? 'default') === rsNS);
     if (rs && rs.metadata.annotations?.[MANAGED] !== 'api') {
       const owner = rs.metadata.annotations?.[MANAGED] ?? '';
       return fail(409, 'managed_by', `DNSRecordSet ${rsName} is managed by ${owner}`, owner);
     }
     if (!rs) {
       db.rv += 1;
-      rs = { apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSRecordSet', metadata: { name: rsName, namespace: 'default', resourceVersion: String(db.rv), annotations: { [MANAGED]: 'api' } }, spec: { zoneRef: { name: zone }, endpoints: [] } };
+      rs = { apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSRecordSet', metadata: { name: rsName, namespace: rsNS, resourceVersion: String(db.rv), annotations: { [MANAGED]: 'api' } }, spec: { zoneRef: { name: zone }, endpoints: [] } };
       db.recordSets.push(rs);
     }
-    const idx = rs.spec.endpoints.findIndex((x) => x.dnsName === e.dnsName && x.recordType === e.recordType && (x.setIdentifier ?? '') === (e.setIdentifier ?? ''));
+    const idx = rs.spec.endpoints.findIndex((x) => x.dnsName === e.dnsName && x.recordType === e.recordType && (x.setIdentifier ?? '') === (e.setIdentifier ?? '') && (x.kudurru?.view ?? '') === (e.kudurru?.view ?? ''));
     if (idx >= 0) rs.spec.endpoints[idx] = e;
     else rs.spec.endpoints.push(e);
     bumpZone(zone);
-    return ok({ recordSet: rsName, namespace: 'default', ...e, managedBy: 'api' }, { status: idx >= 0 ? 200 : 201 });
+    return ok({ recordSet: rsName, namespace: rsNS, ...e, managedBy: 'api' }, { status: idx >= 0 ? 200 : 201 });
   }),
   http.delete(`${B}/zones/:zone/records/:name/:type`, ({ request, params }) => {
     const g = guard(request, 'records', 'delete');
@@ -1044,11 +1051,14 @@ export const handlers = [
     const q = new URL(request.url).searchParams;
     const rsName = q.get('recordSet');
     const setID = q.get('setIdentifier');
+    // internal/api zones.go viewSelected: "" every view, "-" the default data.
+    const view = q.get('view') ?? '';
+    const inView = (x: Endpoint) => view === '' || (view === '-' ? !x.kudurru?.view : x.kudurru?.view === view);
     let found = false;
     for (const rs of db.recordSets) {
       if (rs.spec.zoneRef.name !== zone || (rsName && rs.metadata.name !== rsName)) continue;
       const before = rs.spec.endpoints.length;
-      const keep = rs.spec.endpoints.filter((x) => !(x.dnsName === params.name && x.recordType === params.type && (!setID || x.setIdentifier === setID)));
+      const keep = rs.spec.endpoints.filter((x) => !(x.dnsName === params.name && x.recordType === params.type && (!setID || x.setIdentifier === setID) && inView(x)));
       if (keep.length !== before) {
         const owner = rs.metadata.annotations?.[MANAGED] ?? '';
         if (owner !== 'api') return fail(409, 'managed_by', `DNSRecordSet ${rs.metadata.name} is managed by ${owner}`, owner);

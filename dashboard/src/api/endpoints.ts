@@ -3,6 +3,7 @@
 import type { ApiClient, Query } from './client';
 import type { ExternalUser, ExternalUserCommand, ExternalUserPage } from './types';
 import type { DomainRegexImpact } from './types';
+import type { InventoryBody, InventoryQuery } from './types';
 import { dhcpEndpoints } from './dhcp';
 import type {
   BrandingInfo,
@@ -231,8 +232,9 @@ export function endpoints(c: ApiClient) {
       records: (zone: string) => c.get<ListEnvelope<ZoneRecord>>(`/zones/${enc(zone)}/records`),
       upsertRecord: (zone: string, ep: Endpoint, recordSet?: string) =>
         c.post<ZoneRecord>(`/zones/${enc(zone)}/records`, ep, recordSet ? { recordSet } : undefined),
-      deleteRecord: (zone: string, name: string, type: string, recordSet?: string, setIdentifier?: string) =>
-        c.delete(`/zones/${enc(zone)}/records/${enc(name)}/${enc(type)}`, { recordSet, setIdentifier }),
+      /** `view` narrows the delete to one view (D403): a ClientGroup name, public, or "-" for the default data. */
+      deleteRecord: (zone: string, name: string, type: string, recordSet?: string, setIdentifier?: string, view?: string) =>
+        c.delete(`/zones/${enc(zone)}/records/${enc(name)}/${enc(type)}`, { recordSet, setIdentifier, view }),
       /** Imports a BIND file; `origin` creates the zone when it does not exist yet. */
       importBind: (zone: string, text: string, origin?: string) =>
         c.request<ZoneImportResult>('POST', `/zones/${enc(zone)}/import`, {
@@ -284,6 +286,12 @@ export function endpoints(c: ApiClient) {
 
     clients: {
       list: (s: ScopeParams, q: { window?: string } = {}) => c.get<ClientsResult>('/clients', { ...scopeQuery(s), ...q }),
+    },
+
+    /** GET /inventory (inventory.read, D397): the answering node's view. */
+    inventory: {
+      list: (q: InventoryQuery = {}, signal?: AbortSignal) =>
+        c.get<InventoryBody>('/inventory', Object.fromEntries(Object.entries(q).filter(([, v]) => v !== '' && v !== undefined)), signal),
     },
 
     runtime: {

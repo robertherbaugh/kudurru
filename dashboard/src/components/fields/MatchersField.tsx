@@ -22,7 +22,7 @@ const KINDS: (EnumOption & { value: MatcherKind; placeholder: string })[] = [
   { value: 'ip', label: 'IP address', placeholder: '192.168.1.30 or 2001:db8::30', help: 'One device by its address.' },
   { value: 'cidr', label: 'CIDR range', placeholder: '192.168.1.0/24', help: 'Every address in the range; the longest matching range wins.' },
   { value: 'clientID', label: 'Client ID', placeholder: 'kids-tablet', help: 'The DoT server name label or DoH path ID the device connects with.' },
-  { value: 'mac', label: 'MAC address', placeholder: 'aa:bb:cc:dd:ee:ff', help: 'Matches only when an inventory integration, such as UniFi, reports the device with this MAC address.' },
+  { value: 'mac', label: 'MAC address', placeholder: 'aa:bb:cc:dd:ee:ff', help: 'Matches only when an inventory integration, such as UniFi, or the built-in DHCP server’s lease of the client’s address supplies this MAC address. On a SQLite cluster a lease MAC counts only on the node whose DHCP server holds the lease.' },
   { value: 'hostname', label: 'Host name', placeholder: 'tablet.home.arpa', help: 'Matches only when a name source knows the device: the built-in DHCP server, an inventory integration or reverse-PTR lookup.' },
   { value: 'nameGlob', label: 'Name pattern', placeholder: 'kids-*', help: 'Matches only when a name source knows the device: the built-in DHCP server, an inventory integration or reverse-PTR lookup.' },
 ];

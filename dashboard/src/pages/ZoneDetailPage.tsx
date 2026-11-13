@@ -1,5 +1,7 @@
 // One zone: its records flattened across record sets, the typed record
-// editor, BIND import/export, NOTIFY and the transfer status.
+// editor, BIND import/export, NOTIFY and the transfer status. Each record
+// shows who it is served to (its kudurru.view, D403): everyone, published
+// only, or one client group.
 import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
@@ -15,7 +17,7 @@ import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { qk, useApi, useCan, useCannotReason } from '../api/context';
-import type { ZoneImportResult, ZoneRecord } from '../api/types';
+import type { ClientGroup, DNSZone, ZoneImportResult, ZoneRecord } from '../api/types';
 import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
 import { TextAreaField, TextField } from '../components/fields/TextField';
 import { FormDialog } from '../components/FormDialog';
@@ -28,6 +30,7 @@ import { ZoneDeleteDialog } from '../components/ZoneDeleteDialog';
 import { ZoneSettingsSection } from '../components/ZoneSettingsSection';
 import { ownership, readOnlyReason } from '../lib/managedBy';
 import { useNavigate } from '../lib/router';
+import { objectHref } from '../lib/policies';
 import { dnsNameToOwner } from '../lib/rr';
 import type { PageProps } from '../routes';
 import { TransferCell } from './ZonesPage';
@@ -38,7 +41,34 @@ const MONO = { fontFamily: 'var(--font-family-code)' };
 
 type RecordRow = ZoneRecord & Record<string, unknown>;
 
-const recordKey = (r: RecordRow) => `${r.recordSet}/${r.dnsName}/${r.recordType}/${r.setIdentifier ?? ''}`;
+const recordKey = (r: RecordRow) => `${r.recordSet}/${r.dnsName}/${r.recordType}/${r.setIdentifier ?? ''}/${r.kudurru?.view ?? ''}`;
+
+/** DNSSEC data in the default records also makes the zone signed for views (D403). */
+const SIGNED_TYPES = new Set(['RRSIG', 'NSEC', 'NSEC3', 'DNSKEY']);
+
+/** Who a record is served to, in words, for the record list and dialogs. */
+export function viewText(view: string | undefined): string {
+  if (!view) return 'every client';
+  if (view === 'public') return 'published only (public)';
+  return `client group ${view}`;
+}
+
+/** The namespace of a "ns/name" record set reference. */
+function recordSetNS(ref: string): string {
+  const i = ref.indexOf('/');
+  return i > 0 ? ref.slice(0, i) : 'default';
+}
+
+function ViewCell({ r }: { r: ZoneRecord }) {
+  const view = r.kudurru?.view;
+  if (!view) return null;
+  if (view === 'public') return <Badge variant="neutral" label="public" />;
+  return (
+    <Link href={objectHref('groups', `${r.namespace ?? recordSetNS(r.recordSet)}/${view}`)}>
+      <Badge variant="blue" label={`view ${view}`} />
+    </Link>
+  );
+}
 
 function ImportDialog({ zone, open, onClose }: { zone: string; open: boolean; onClose: () => void }) {
   const api = useApi();
@@ -167,6 +197,10 @@ function ZoneDetail({ zone }: { zone: string }) {
   const stub = z.data?.type === 'stub';
   const primary = z.data?.type === 'primary';
   const recs = useQuery({ queryKey: qk.records(zone), queryFn: () => api.zones.records(zone), enabled: primary });
+  // Same key as ZoneSettingsSection: the object says whether the zone is signed.
+  const zoneObj = useQuery({ queryKey: [...qk.objects('dnszones'), zone], queryFn: () => api.objects.get<DNSZone>('dnszones', zone), enabled: primary });
+  const groups = useQuery({ queryKey: qk.objects('clientgroups'), queryFn: () => api.objects.list<ClientGroup>('clientgroups'), enabled: primary && can('clientgroups', 'read') });
+  const signed = zoneObj.data?.spec.dnssec?.enabled === true || (recs.data?.items ?? []).some((r) => SIGNED_TYPES.has(r.recordType.toUpperCase()) && !r.kudurru?.view);
   const own = ownership(z.data?.managedBy);
   const zoneEditable = own.editable && z.data?.type === 'primary';
   // Zone and zone-group grants of /auth/me count on this zone (D385).
@@ -186,7 +220,8 @@ function ZoneDetail({ zone }: { zone: string }) {
   };
 
   const del = useMutation({
-    mutationFn: (r: ZoneRecord) => api.zones.deleteRecord(zone, r.dnsName, r.recordType, r.recordSet, r.setIdentifier),
+    // "-" deletes the default data only, so a view of the same name survives.
+    mutationFn: (r: ZoneRecord) => api.zones.deleteRecord(zone, r.dnsName, r.recordType, r.recordSet, r.setIdentifier, r.kudurru?.view || '-'),
     onSuccess: (_x, r) => {
       notify.success(`Deleted ${r.dnsName} ${r.recordType}`);
       invalidate();
@@ -224,6 +259,7 @@ function ZoneDetail({ zone }: { zone: string }) {
           <HStack gap={1} vAlign="center" wrap="wrap">
             <Text type="code" size="sm">{dnsNameToOwner(r.dnsName, zoneName)}</Text>
             {r.kudurru?.disabled ? <Badge variant="warning" label="disabled" /> : null}
+            <ViewCell r={r} />
           </HStack>
           {r.kudurru?.comment ? <Text type="supporting">{r.kudurru.comment}</Text> : null}
         </VStack>
@@ -369,7 +405,7 @@ function ZoneDetail({ zone }: { zone: string }) {
       <FormDialog
         isOpen={editing !== null}
         onClose={() => setEditing(null)}
-        title={editing === null ? '' : editing === 'new' ? `Add a record to ${zoneName}` : `Edit ${editing.dnsName} ${editing.recordType}`}
+        title={editing === null ? '' : editing === 'new' ? `Add a record to ${zoneName}` : `Edit ${editing.dnsName} ${editing.recordType}${editing.kudurru?.view ? ` (${viewText(editing.kudurru.view)})` : ''}`}
         width={720}
       >
         {editing !== null ? (
@@ -377,6 +413,8 @@ function ZoneDetail({ zone }: { zone: string }) {
             zoneName={zoneName}
             initial={editing === 'new' ? undefined : editing}
             defaultRecordSet={`api-${zone}`}
+            groups={groups.data?.items}
+            signed={signed}
             onCancel={() => setEditing(null)}
             onSubmit={async (ep, recordSet) => {
               try {
@@ -397,7 +435,7 @@ function ZoneDetail({ zone }: { zone: string }) {
           if (!open) setConfirmRecord(null);
         }}
         title={confirmRecord ? `Delete ${confirmRecord.dnsName} ${confirmRecord.recordType}?` : 'Delete the record?'}
-        description={confirmRecord ? `Every ${confirmRecord.recordType} value of ${confirmRecord.dnsName} in record set ${confirmRecord.recordSet} is removed.` : ''}
+        description={confirmRecord ? `Every ${confirmRecord.recordType} value of ${confirmRecord.dnsName} served to ${viewText(confirmRecord.kudurru?.view)} in record set ${confirmRecord.recordSet} is removed.` : ''}
         cancelLabel="Keep it"
         actionLabel="Delete record"
         actionVariant="destructive"

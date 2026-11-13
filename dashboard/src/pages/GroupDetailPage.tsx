@@ -313,7 +313,7 @@ function MatchersView({ matchers }: { matchers: ClientMatcher[] }) {
           <HStack gap={1} vAlign="center" wrap="wrap">
             <Text>{kindLabel(kind)}</Text>
             {kind === 'mac' || kind === 'hostname' || kind === 'nameGlob' ? (
-              <Tooltip content={kind === 'mac' ? 'Matches only when an inventory integration, such as UniFi, reports the device with this MAC address.' : 'Matches only when a name source knows the device: the built-in DHCP server, an inventory integration or reverse-PTR lookup.'}>
+              <Tooltip content={kind === 'mac' ? 'Matches only when an inventory integration, such as UniFi, or the built-in DHCP server’s lease of the client’s address supplies this MAC address. On a SQLite cluster a lease MAC counts only on the node whose DHCP server holds the lease.' : 'Matches only when a name source knows the device: the built-in DHCP server, an inventory integration or reverse-PTR lookup.'}>
                 <Badge variant="warning" label="limited" />
               </Tooltip>
             ) : null}

@@ -313,6 +313,15 @@ Rules and limits:
   bypassed either way. The edge passes the client address to kudurru in its
   PROXYv2 header, so kudurru picks the group's view behind it
   (`TestRunServeRemoteEdgeClientGroupViews`, pinned dnsdist).
+- The record API keys an endpoint by name, type, set identifier and view:
+  `POST /zones/{zone}/records` with a `kudurru.view` writes that view next to
+  the default data instead of replacing it, and
+  `DELETE /zones/{zone}/records/{name}/{type}?view=` removes one view only
+  (`-` the default data; without `view`, every view of the name and type).
+  The dashboard's record editor picks the view under "Served to" (every
+  client, published only, or a ClientGroup of the record set's namespace),
+  says what is refused or bypassed for a group view, and lists each record's
+  view.
 
 ## External zones on Kubernetes
 

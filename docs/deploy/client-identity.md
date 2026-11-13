@@ -87,6 +87,15 @@ serves DNS for that request; on Kubernetes it reads the replica's shared
 inventory. DHCP leases are always the answering node's. Pages are cut by
 source and ID; filters are `source`, `kind`, `stale` and `q`.
 
+In the dashboard, **Filtering > Inventory** (also linked from the Clients
+page) shows the same list with these filters, the address states in words,
+and a link to the client page of every address the query log knows. A device
+from an integration links to that Integration: `GET /api/v1/integrations`
+names each incarnation's `inventorySource`, the source ID its devices carry.
+On a member of a SQLite cluster the page says that DHCP leases and lease MACs
+are the answering node's own. Sessions without `inventory.read` see that the
+view is restricted, and the page sends no request for them.
+
 Client IDs are optional, client-selected policy identifiers. They are **not
 passwords or authentication**. Do not use them to grant privileged DNS updates
 or API access. Use one ASCII DNS label of at most 63 characters: letters,

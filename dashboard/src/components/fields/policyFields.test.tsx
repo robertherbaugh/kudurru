@@ -185,7 +185,7 @@ describe('MatchersField', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Matcher 1 CIDR range' }), { target: { value: '192.168.1.0/24' } });
     expect(screen.queryByText(/An address\/prefix such as/)).toBeNull();
     pick(getSelector('Matcher 1 kind'), 'MAC address');
-    expect(screen.getByText(/Matches only when an inventory integration, such as UniFi, reports the device/)).toBeInTheDocument();
+    expect(screen.getByText(/Matches only when an inventory integration, such as UniFi, or the built-in DHCP server’s lease of the client’s address supplies this MAC address/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Paste many' }));
     fireEvent.change(screen.getByRole('textbox', { name: /Paste addresses/ }), { target: { value: '10.0.0.1, 10.1.0.0/16\nphone' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add 3 matchers' }));

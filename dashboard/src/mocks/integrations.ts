@@ -7,6 +7,7 @@
 // exact revision, and the reviewed commands. Tests change the state with
 // mockIntegrations() (license, driver, a stale preview, an uncertain sync).
 import { http, HttpResponse, type JsonBodyType } from 'msw';
+import { OFFICE_SOURCE } from './inventory';
 import type { Integration, IntegrationExecutionResult, IntegrationFieldLimit, IntegrationManifest, IntegrationManifests, IntegrationReview, IntegrationSummary } from '../api/types';
 
 const CLOUDFLARE_SCHEMA = {"type":"object","required":["zones"],"additionalProperties":false,"properties":{"zones":{"type":"array","minItems":1,"maxItems":256,"items":{"type":"object","required":["zone"],"additionalProperties":false,"properties":{"zone":{"type":"string","maxLength":253},"zoneID":{"type":"string","pattern":"^[a-f0-9]{32}$"},"policy":{"type":"string","enum":["sync","upsert-only","create-only"]},"adoptUnowned":{"type":"boolean"},"adoptFrom":{"type":"object","required":["externalDNSOwner"],"additionalProperties":false,"properties":{"externalDNSOwner":{"type":"string","minLength":1,"maxLength":253}}},"defaults":{"type":"object","additionalProperties":false,"properties":{"proxied":{"type":"boolean"},"ttl":{"type":"integer","minimum":1,"maximum":86400},"comment":{"type":"string","maxLength":500}}},"select":{"type":"object","additionalProperties":false,"properties":{"labels":{"type":"object","additionalProperties":{"type":"string"},"maxProperties":64},"types":{"type":"array","maxItems":64,"items":{"type":"string"}},"exclude":{"type":"array","maxItems":256,"items":{"type":"string"}}}},"translate":{"type":"object","maxProperties":64,"additionalProperties":{"type":"string"}}}}}}};
@@ -127,6 +128,8 @@ function summary(o: Integration): IntegrationSummary {
   const base: IntegrationSummary = {
     namespace: ns, name: o.metadata.name, uid: o.metadata.uid ?? '', revision: o.metadata.resourceVersion ?? '', type: o.spec.type, suspended: o.spec.suspend === true,
     deletionPolicy: o.spec.deletionPolicy === 'Delete' ? 'Delete' : 'Retain', terminating, remaining: 0, blocked: 0, uncertain: 0,
+    // The source of the devices it reports in GET /inventory (mocks/inventory.ts).
+    ...(o.spec.type !== 'cloudflare' ? { inventorySource: ns === 'default' && o.metadata.name === 'office' ? OFFICE_SOURCE : `integration-${o.metadata.uid ?? o.metadata.name}` } : {}),
     statusKnown: true, phase: !state.licensed ? 'Paused' : terminating ? 'Terminating' : 'Ready', reason: !state.licensed ? 'LicenseUnavailable' : terminating ? 'CleanupInProgress' : '', leader: true,
     ...(o.status?.lastSyncTime ? { lastSync: o.status.lastSyncTime } : {}),
     ...(terminating && o.metadata.deletionTimestamp ? { deletionRequestedAt: o.metadata.deletionTimestamp, remaining: 3, blocked: 1 } : {}),

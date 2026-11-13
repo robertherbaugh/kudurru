@@ -128,6 +128,8 @@ export interface DNSZoneSpec {
     update?: AccessMode;
   };
   forward?: { upstreamGroup?: string; dnssecValidation?: boolean };
+  /** Online signing (D403: client-group views are not served in a signed zone). */
+  dnssec?: { enabled?: boolean; algorithm?: string };
   fallback?: { upstreamGroup?: string };
   secondary?: { primaries: string[]; tsigKeyRef?: string; transferProtocol?: 'tcp' | 'tls' };
   stub?: { nameservers: string[] };
@@ -1157,6 +1159,24 @@ export type IntegrationPlanConflict = S['IntegrationPlanConflict'];
 export type IntegrationRecord = S['IntegrationRecord'];
 export type IntegrationAction = S['IntegrationAction'];
 export type IntegrationReleaseResult = S['IntegrationReleaseResult'];
+
+// ---------------------------------------------------------------------------
+// Client inventory (GET /inventory, D397): devices from inventory integrations
+// and this node's DHCP leases, whether or not they sent a query.
+
+export type InventoryBody = S['InventoryBody'];
+export type InventoryDevice = S['InventoryDevice'];
+export type InventoryAddress = S['InventoryAddress'];
+export type InventoryAddressState = InventoryAddress['state'];
+/** GET /inventory filters; empty values are not sent. */
+export interface InventoryQuery {
+  source?: string;
+  kind?: '' | 'inventory' | 'dhcp';
+  stale?: '' | 'true' | 'false';
+  q?: string;
+  limit?: number;
+  continue?: string;
+}
 
 /** api/v1alpha1 CredentialReference: a reference to a credential, never its value. */
 export interface CredentialReference {

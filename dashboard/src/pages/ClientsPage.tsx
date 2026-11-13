@@ -184,10 +184,11 @@ export default function ClientsPage() {
     <Page>
       <PageHeader
         title="Clients"
-        description="Every client seen in the last 24 hours, the client group it resolved to, and its query counts."
+        description="Every client seen in the last 24 hours, the client group it resolved to, and its query counts. Inventory lists the devices integrations and DHCP leases report, also those that never queried."
         actions={
           <>
             {inv.data?.scope ? <ScopeNote scope={inv.data} /> : null}
+            {can('inventory', 'read') ? <Button label="Inventory" variant="secondary" href="/inventory" tooltip="Every device the inventory knows, also those that never queried" /> : null}
             <Button
               label={`Add ${selected.size || ''} to group`.replace('  ', ' ')}
               variant="primary"
