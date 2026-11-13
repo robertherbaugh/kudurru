@@ -128,6 +128,9 @@ type Client struct {
 // a JSON body (the empty object when Body is ""), and an If-Match value.
 type probeRequest struct {
 	Query, Body, IfMatch string
+	// ID fills the path's {id} for an operation whose id is a number (the
+	// other parameters are filled by ProbePath).
+	ID string
 }
 
 // probeRequests lets the probe of an operation whose refusal is decided in
@@ -157,7 +160,11 @@ var probeRequests = map[string]probeRequest{
 	"putDHCPSetup": {Body: `{"enabled":false,"scopes":[],"scopeRevisions":{}}`, IfMatch: `"refusal-probe"`},
 	// History reads that need a field, or a closed hour of the last day
 	// (an older hour needs the long-term license feature first).
-	"querySuggestions":     {Query: "field=domain"},
+	"querySuggestions": {Query: "field=domain"},
+	// An action on a cluster-wide query log row that no node has logged:
+	// without a central database it is refused before the row is read,
+	// and with one the row is not found.
+	"queryAction":          {ID: "9007199254740991", Query: "scope=cluster", Body: `{"action":"allow"}`},
 	"rollupEvidence":       {Query: "source=refusal-probe&hour=" + closedHour},
 	"verifyRollupEvidence": {Body: `{"scope":"node","nodes":[],"partial":false,"source_id":"refusal-probe","node":"refusal-probe","hour":` + closedHour + `,"revision":0,"head":0,"digest":"refusal-probe","expires_at":"2000-01-01T00:00:00Z"}`},
 }
@@ -264,7 +271,11 @@ func (c Client) probeOnce(ctx context.Context, op Operation, timeout time.Durati
 		}
 		body = strings.NewReader(raw)
 	}
-	target := c.Base + ProbePath(op.Path)
+	path := op.Path
+	if probe.ID != "" {
+		path = strings.ReplaceAll(path, "{id}", probe.ID)
+	}
+	target := c.Base + ProbePath(path)
 	if probe.Query != "" {
 		target += "?" + probe.Query
 	}

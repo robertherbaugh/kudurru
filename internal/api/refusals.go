@@ -377,6 +377,7 @@ var featureRefusals = map[string]Feature{
 	"vipEventStream":        FeatureVIP,
 	"rollupEvidence":        FeatureCentralHistory,
 	"verifyRollupEvidence":  FeatureCentralHistory,
+	"queryAction":           FeatureCentralHistory,
 	"putDHCPSetup":          FeatureDHCP,
 }
 
