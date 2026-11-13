@@ -334,6 +334,12 @@ server runs. *write-only* keys are never returned by the API.
 | <a id="externalDNS.webhook.namespace"></a>`externalDNS.webhook.namespace` | `string` | `external-dns` | node | **external-dns record namespace.** Namespace the record sets from external-dns are stored in, e.g. external-dns: one DNSRecordSet per DNS name, managed by integration:external-dns.<br>*host-only, restart*<br>Environment: `KUDURRU_EXTERNALDNS__WEBHOOK__NAMESPACE` |
 | <a id="externalDNS.webhook.zoneSelector"></a>`externalDNS.webhook.zoneSelector` | `map` | `{}` | node | **external-dns zone selector.** Labels a primary zone must carry for external-dns to write into it, e.g. external-dns: enabled (a label selector, key: value); empty allows every primary zone.<br>*host-only, restart*<br>Environment: file only. |
 
+## externalZones
+
+| Key | Type | Default | Scope | Description |
+|---|---|---|---|---|
+| <a id="externalZones.enabled"></a>`externalZones.enabled` | `bool` | `false` | node | **External zones enabled.** Fill DNSZones of type external from Kubernetes objects: the elected replica reads Ingresses, Gateway API HTTPRoutes, GRPCRoutes and TLSRoutes, and Services of type LoadBalancer (as each zone's spec.external selects) and maintains one source-owned DNSRecordSet per source and zone, honoring the external-dns hostname, target and ttl annotations. Sources are never changed. Requires store.driver kube and RBAC to read those kinds (the Helm value externalZones.enabled grants it).<br>*host-only, restart*<br>Environment: `KUDURRU_EXTERNALZONES__ENABLED` |
+
 ## auth
 
 | Key | Type | Default | Scope | Description |
