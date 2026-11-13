@@ -85,6 +85,36 @@ func TestAnchorUpdaterIncompleteWireCooldownAndCancellation(t *testing.T) {
 	}
 }
 
+// TestAnchorUpdaterCountsWriterEndDuringQueryAsCanceled ends the writer
+// context while the root query is in flight: the step must count that
+// acquisition as canceled, not as a transport failure or a refusal, which
+// holds only if step classifies it with the writer context it ran under.
+func TestAnchorUpdaterCountsWriterEndDuringQueryAsCanceled(t *testing.T) {
+	seed, _ := anchorWireSignedReply(t)
+	var cancel context.CancelFunc
+	endpoint, reads := anchorWireServer(t, "tcp", func([]byte) []byte {
+		cancel()
+		return nil
+	})
+	s, original, target, host := anchorOperationFixture(t, endpoint.String(), seed.DS)
+	ctx, cancelWriter := context.WithCancel(original)
+	cancel = cancelWriter
+	defer cancelWriter()
+	clock, err := trustanchors.NewSessionClock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg := anchorStatusMetrics(t, s)
+	u := &anchorUpdater{runtime: s, target: target, host: host, clock: clock}
+	step, err := u.step(ctx)
+	if err == nil || !step.attempted || reads.Load() != 1 || ctx.Err() == nil {
+		t.Fatal("the writer end during the query did not end the step", err, step.attempted, reads.Load())
+	}
+	if got := anchorAcquisitionCounts(t, reg); got[anchorAcquisitionCanceled] != 1 || got[anchorAcquisitionApplied]+got[anchorAcquisitionRaced]+got[anchorAcquisitionFailed]+got[anchorAcquisitionRefused] != 0 {
+		t.Fatal("an acquisition whose writer term ended is not counted as canceled", got)
+	}
+}
+
 func TestAnchorUpdaterCompleteReplyAndHostRefusalAreTerminal(t *testing.T) {
 	for _, kind := range []string{"correlation", "proof", "host"} {
 		t.Run(kind, func(t *testing.T) {
