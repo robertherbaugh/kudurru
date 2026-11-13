@@ -82,6 +82,21 @@ describe('AuditPage', () => {
     expect(first.style.width).toBe(`${CHEVRON_COLUMN_WIDTH}px`);
   });
 
+  it('renders the cells without a context menu each, and a row click still expands', async () => {
+    // Every cell carried its own ContextMenu for one "Expand row" action;
+    // with 100 rows they made a page take seconds to render.
+    renderWithApp(<AuditPage />, { route: '/audit' });
+    const table = await screen.findByRole('table', { name: 'Audit entries' });
+    const first = within(table).getAllByRole('row')[1]!;
+    const cell = within(first).getAllByRole('cell')[2]!;
+    fireEvent.contextMenu(cell);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(table.querySelectorAll('template')).toHaveLength(0);
+    fireEvent.click(cell);
+    expect(first).toHaveAttribute('aria-expanded', 'true');
+  });
+
   it('toggles details and navigates rows with the query-table keyboard controls', async () => {
     renderWithApp(<AuditPage />, { route: '/audit' });
     const table = await screen.findByRole('table', { name: 'Audit entries' });
