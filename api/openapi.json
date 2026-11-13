@@ -177,14 +177,19 @@
             "description": "Authenticator (TOTP) enrollment, disabling and recovery, and authenticator codes at login. False on the Kubernetes driver, where the routes answer 503 factor_management_unavailable: use the identity provider's second factor (D387).",
             "type": "boolean"
           },
+          "iamObjectCommands": {
+            "description": "Creating, replacing and deleting ServiceAccounts, IdentityProviders and RoleBindings, and issuing service account tokens. False on the Kubernetes driver, where the ServiceAccount and IdentityProvider commands answer 503 iam_management_unavailable and the RoleBinding commands 503 unavailable: change those objects with kubectl (D294, D396).",
+            "type": "boolean"
+          },
           "localUserCommands": {
-            "description": "Creating local users and resetting their passwords (POST /iam/users, POST /iam/users/{name}/password). False on the Kubernetes driver, where the routes answer 503 user_management_unavailable (D387).",
+            "description": "Creating, changing and deleting local users and resetting their passwords (POST /iam/users, PATCH and DELETE /iam/users/{name}, POST /iam/users/{name}/password). False on the Kubernetes driver, where the routes answer 503 user_management_unavailable (D387, D396).",
             "type": "boolean"
           }
         },
         "required": [
           "factorManagement",
-          "localUserCommands"
+          "localUserCommands",
+          "iamObjectCommands"
         ],
         "type": "object"
       },
@@ -1287,6 +1292,51 @@
         ],
         "type": "object"
       },
+      "ClaimMappings": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "$ref": "#/components/schemas/ClaimRef"
+          },
+          "email": {
+            "$ref": "#/components/schemas/ClaimRef"
+          },
+          "groups": {
+            "$ref": "#/components/schemas/PrefixedClaim"
+          },
+          "username": {
+            "$ref": "#/components/schemas/PrefixedClaim"
+          }
+        },
+        "type": "object"
+      },
+      "ClaimRef": {
+        "additionalProperties": false,
+        "properties": {
+          "claim": {
+            "type": "string"
+          },
+          "expression": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ClaimValidationRule": {
+        "additionalProperties": false,
+        "properties": {
+          "claim": {
+            "type": "string"
+          },
+          "expression": {
+            "type": "string"
+          },
+          "requiredValue": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "ClientItem": {
         "additionalProperties": false,
         "properties": {
@@ -1860,6 +1910,41 @@
         ],
         "type": "object"
       },
+      "CreateServiceAccountTokenRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "Free text shown in the token list.",
+            "maxLength": 4096,
+            "type": "string"
+          },
+          "expiresIn": {
+            "description": "Go duration (720h); empty means auth.tokens.maxLifetime, or never.",
+            "type": "string"
+          },
+          "scopes": {
+            "description": "Narrow the token to these grants in wire form; empty keeps the account's bindings.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "uid": {
+            "description": "Exact immutable UID of the reviewed service account.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid"
+        ],
+        "type": "object"
+      },
       "CreateStoredTSIGKeyBody": {
         "additionalProperties": false,
         "properties": {
@@ -1962,6 +2047,37 @@
           "owner",
           "createdAt",
           "expiresAt"
+        ],
+        "type": "object"
+      },
+      "CredentialReference": {
+        "additionalProperties": false,
+        "properties": {
+          "env": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "secretRef": {
+            "$ref": "#/components/schemas/CredentialSecretRef"
+          }
+        },
+        "type": "object"
+      },
+      "CredentialSecretRef": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "key"
         ],
         "type": "object"
       },
@@ -4720,6 +4836,57 @@
         ],
         "type": "object"
       },
+      "IdentityProviderDesired": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/IdentityProviderMetadata"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/IdentityProviderSpec"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "kind",
+          "metadata",
+          "spec"
+        ],
+        "type": "object"
+      },
+      "IdentityProviderDocument": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ObjectMeta"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/IdentityProviderSpec"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IdentityProviderStatus"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "kind",
+          "metadata",
+          "spec"
+        ],
+        "type": "object"
+      },
       "IdentityProviderInfo": {
         "additionalProperties": false,
         "properties": {
@@ -4767,6 +4934,119 @@
           "redirectURL",
           "source"
         ],
+        "type": "object"
+      },
+      "IdentityProviderMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "annotations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "name": {
+            "description": "The provider id, a DNS label.",
+            "maxLength": 63,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "IdentityProviderSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "allowedDomains": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "audiences": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "claimMappings": {
+            "$ref": "#/components/schemas/ClaimMappings"
+          },
+          "claimValidationRules": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimValidationRule"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "cliClientID": {
+            "type": "string"
+          },
+          "clientID": {
+            "type": "string"
+          },
+          "clientSecretRef": {
+            "$ref": "#/components/schemas/CredentialReference"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "issuer": {
+            "type": "string"
+          },
+          "provisioning": {
+            "$ref": "#/components/schemas/Provisioning"
+          },
+          "redirectURL": {
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "issuer",
+          "clientID",
+          "clientSecretRef"
+        ],
+        "type": "object"
+      },
+      "IdentityProviderStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
         "type": "object"
       },
       "ImportResult": {
@@ -4897,6 +5177,7 @@
           "reachable": {
             "type": "boolean"
           },
+          "result": {},
           "sourceCommitted": {
             "type": "boolean"
           },
@@ -6675,6 +6956,28 @@
         ],
         "type": "object"
       },
+      "ObjectReview": {
+        "additionalProperties": false,
+        "properties": {
+          "resourceVersion": {
+            "description": "Exact resourceVersion from the reviewed read; a conflict requires a fresh read and a deliberate new request.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "uid": {
+            "description": "Exact immutable UID from the reviewed read.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid",
+          "resourceVersion"
+        ],
+        "type": "object"
+      },
       "OwnerReference": {
         "additionalProperties": false,
         "properties": {
@@ -7330,6 +7633,21 @@
         ],
         "type": "object"
       },
+      "PrefixedClaim": {
+        "additionalProperties": false,
+        "properties": {
+          "claim": {
+            "type": "string"
+          },
+          "expression": {
+            "type": "string"
+          },
+          "prefix": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "Processed": {
         "additionalProperties": false,
         "properties": {
@@ -7399,6 +7717,21 @@
           "name",
           "value"
         ],
+        "type": "object"
+      },
+      "Provisioning": {
+        "additionalProperties": false,
+        "properties": {
+          "autoProvision": {
+            "type": "string"
+          },
+          "defaultRole": {
+            "type": "string"
+          },
+          "syncGroups": {
+            "type": "boolean"
+          }
+        },
         "type": "object"
       },
       "PublicationState": {
@@ -8170,6 +8503,32 @@
         ],
         "type": "object"
       },
+      "ReplaceIdentityProviderCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "identityProvider": {
+            "$ref": "#/components/schemas/IdentityProviderDesired"
+          },
+          "resourceVersion": {
+            "description": "Exact resourceVersion from the reviewed read; a conflict requires a fresh read and a deliberate new request.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "uid": {
+            "description": "Exact immutable UID from the reviewed read.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "identityProvider",
+          "uid",
+          "resourceVersion"
+        ],
+        "type": "object"
+      },
       "ReplaceRoleBindingCommand": {
         "additionalProperties": false,
         "properties": {
@@ -8189,6 +8548,32 @@
         },
         "required": [
           "binding",
+          "uid",
+          "resourceVersion"
+        ],
+        "type": "object"
+      },
+      "ReplaceServiceAccountCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "resourceVersion": {
+            "description": "Exact resourceVersion from the reviewed read; a conflict requires a fresh read and a deliberate new request.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "serviceAccount": {
+            "$ref": "#/components/schemas/ServiceAccountDesired"
+          },
+          "uid": {
+            "description": "Exact immutable UID from the reviewed read.",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "serviceAccount",
           "uid",
           "resourceVersion"
         ],
@@ -9218,6 +9603,71 @@
         ],
         "type": "object"
       },
+      "ServiceAccountDesired": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ServiceAccountMetadata"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/ServiceAccountFields"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "kind",
+          "metadata",
+          "spec"
+        ],
+        "type": "object"
+      },
+      "ServiceAccountDocument": {
+        "additionalProperties": false,
+        "properties": {
+          "apiVersion": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ObjectMeta"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/ServiceAccountSpec"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ServiceAccountStatus"
+          }
+        },
+        "required": [
+          "apiVersion",
+          "kind",
+          "metadata",
+          "spec"
+        ],
+        "type": "object"
+      },
+      "ServiceAccountFields": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 2048,
+            "type": "string"
+          },
+          "disabled": {
+            "description": "Refuses every token of the account. Disabling deletes its tokens in the same commit; enabling restores none.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
       "ServiceAccountInfo": {
         "additionalProperties": false,
         "properties": {
@@ -9249,6 +9699,78 @@
           "builtinAdmin",
           "tokens"
         ],
+        "type": "object"
+      },
+      "ServiceAccountMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "annotations": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "name": {
+            "maxLength": 253,
+            "minLength": 1,
+            "type": "string"
+          },
+          "namespace": {
+            "maxLength": 63,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "namespace"
+        ],
+        "type": "object"
+      },
+      "ServiceAccountSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "token": {
+            "$ref": "#/components/schemas/ServiceAccountTokenSpec"
+          }
+        },
+        "type": "object"
+      },
+      "ServiceAccountStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "lastUsed": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tokenID": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ServiceAccountTokenSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "expiresAfter": {
+            "type": "string"
+          },
+          "secretName": {
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "SessionInfo": {
@@ -11311,6 +11833,45 @@
           "items",
           "counts",
           "took_ms"
+        ],
+        "type": "object"
+      },
+      "UpdateLocalUserRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "disabled": {
+            "description": "true disables the account: its sessions and API tokens end in the same commit. false enables it again without restoring them.",
+            "type": "boolean"
+          },
+          "displayName": {
+            "description": "New display name; an empty string clears it.",
+            "maxLength": 256,
+            "type": "string"
+          },
+          "groups": {
+            "description": "The complete new list of local groups (replaces the old list; [] removes every group). A group name has at most 253 bytes and no colon, control character or surrounding space.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "type": "array"
+          },
+          "resourceVersion": {
+            "description": "Exact observed opaque resourceVersion.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "uid": {
+            "description": "Exact immutable UID from the authorized user inventory.",
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "uid",
+          "resourceVersion"
         ],
         "type": "object"
       },
@@ -23091,6 +23652,483 @@
           "scope": "cluster",
           "verb": "read"
         }
+      },
+      "post": {
+        "description": "Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing object or a provider id of the configuration file. spec.clientSecretRef names a credential reference; a secret value is never accepted. The provider is offered for login after its discovery and license admission.",
+        "operationId": "createIdentityProvider",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityProviderDesired"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProviderDocument"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Create an IdentityProvider object only if absent",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-follower": "primary",
+        "x-kudurru-permission": {
+          "resource": "identityproviders",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/iam/identityproviders/{name}": {
+      "delete": {
+        "description": "Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be deleted. The provider's revocation floor commits with the deletion: every session and token that came from it ends, also across restarts and on replicas. No implicit refresh or retry.",
+        "operationId": "deleteIdentityProvider",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObjectReview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Delete an explicitly reviewed API-owned IdentityProvider",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-follower": "primary",
+        "x-kudurru-permission": {
+          "resource": "identityproviders",
+          "scope": "cluster",
+          "verb": "delete"
+        }
+      },
+      "get": {
+        "operationId": "getIdentityProvider",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProviderDocument"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Read an IdentityProvider object and its current UID/resourceVersion",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-permission": {
+          "resource": "identityproviders",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      },
+      "put": {
+        "description": "Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be replaced. A changed spec raises the provider's revocation floor in the same commit: every session and token that came from it ends. No implicit refresh or retry.",
+        "operationId": "replaceIdentityProvider",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceIdentityProviderCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProviderDocument"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Replace an explicitly reviewed API-owned IdentityProvider",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-follower": "primary",
+        "x-kudurru-permission": {
+          "resource": "identityproviders",
+          "scope": "cluster",
+          "verb": "write"
+        }
       }
     },
     "/iam/rolebindings": {
@@ -23764,6 +24802,643 @@
           "scope": "cluster",
           "verb": "read"
         }
+      },
+      "post": {
+        "description": "Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing account. Only public operator metadata and spec.description/spec.disabled are accepted. No token is issued: use POST /iam/serviceaccounts/{namespace}/{name}/tokens.",
+        "operationId": "createServiceAccount",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceAccountDesired"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccountDocument"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Create a ServiceAccount only if absent",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-follower": "primary",
+        "x-kudurru-permission": {
+          "resource": "serviceaccounts",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/iam/serviceaccounts/{namespace}/{name}": {
+      "delete": {
+        "description": "Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts without bootstrap authority may be deleted. The account's revocation floor and the deletion of its tokens commit with the object. No implicit refresh or retry.",
+        "operationId": "deleteServiceAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObjectReview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Delete an explicitly reviewed API-owned ServiceAccount",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-follower": "primary",
+        "x-kudurru-permission": {
+          "resource": "serviceaccounts",
+          "scope": "cluster",
+          "verb": "delete"
+        }
+      },
+      "get": {
+        "operationId": "getServiceAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccountDocument"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Read a ServiceAccount and its current UID/resourceVersion",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-permission": {
+          "resource": "serviceaccounts",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      },
+      "put": {
+        "description": "Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts may be replaced. Disabling raises the account's revocation floor and deletes its tokens atomically; enabling restores none. No implicit refresh or retry.",
+        "operationId": "replaceServiceAccount",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceServiceAccountCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceAccountDocument"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Replace an explicitly reviewed API-owned ServiceAccount",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-follower": "primary",
+        "x-kudurru-permission": {
+          "resource": "serviceaccounts",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/iam/serviceaccounts/{namespace}/{name}/tokens": {
+      "post": {
+        "description": "Complete SQLite runtime only. Needs serviceaccounts.write and tokens.write at cluster scope and the exact account UID. The kdr_ secret appears only in this answer; it is never stored, listed or logged. Refused for a disabled account. List and revoke the token with GET /auth/tokens?all=true and DELETE /auth/tokens/{id}.",
+        "operationId": "createServiceAccountToken",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateServiceAccountTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedToken"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Issue an API token for an exact ServiceAccount (the secret is returned once)",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-follower": "primary",
+        "x-kudurru-permission": {
+          "resource": "serviceaccounts",
+          "scope": "cluster",
+          "verb": "write"
+        }
       }
     },
     "/iam/users": {
@@ -23957,6 +25632,263 @@
           }
         },
         "summary": "Create an API-managed local user requiring a password change",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-follower": "primary",
+        "x-kudurru-permission": {
+          "resource": "users",
+          "scope": "cluster",
+          "verb": "write"
+        }
+      }
+    },
+    "/iam/users/{name}": {
+      "delete": {
+        "description": "Complete SQLite runtime only. Requires exact UID and resourceVersion. Ends the account's sessions and deletes its API tokens in the same commit; a later account with the same name never inherits them. Built-in and non-API-managed accounts are excluded.",
+        "operationId": "deleteLocalUser",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObjectReview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "412": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Precondition Failed"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Delete an exact API-managed local account",
+        "tags": [
+          "iam"
+        ],
+        "x-kudurru-follower": "primary",
+        "x-kudurru-permission": {
+          "resource": "users",
+          "scope": "cluster",
+          "verb": "delete"
+        }
+      },
+      "patch": {
+        "description": "Complete SQLite runtime only. Requires exact UID and resourceVersion. Absent fields are kept. Changing groups or disabling the account ends its sessions and deletes its API tokens in the same commit; enabling restores none. The password, authenticator and password-change requirement are unchanged. Built-in and non-API-managed accounts are excluded. No automatic retry.",
+        "operationId": "updateLocalUser",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateLocalUserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IAMUser"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Change an exact API-managed local account's display name, groups or disabled state",
         "tags": [
           "iam"
         ],

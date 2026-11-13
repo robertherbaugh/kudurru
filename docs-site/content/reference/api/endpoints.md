@@ -179,14 +179,25 @@ them from its own copy.
 | POST | `/api/v1/iam/external-users/{name}/enable` | Enable an external account without restoring credentials | `users.write` (cluster) | refused |
 | POST | `/api/v1/iam/external-users/{name}/logout` | Revoke all credentials of an external account | `users.write` (cluster) | refused |
 | GET | `/api/v1/iam/identityproviders` | List identityproviders | `identityproviders.read` (cluster) | - |
+| POST | `/api/v1/iam/identityproviders` | Create an IdentityProvider object only if absent | `identityproviders.write` (cluster) | refused |
+| GET | `/api/v1/iam/identityproviders/{name}` | Read an IdentityProvider object and its current UID/resourceVersion | `identityproviders.read` (cluster) | - |
+| PUT | `/api/v1/iam/identityproviders/{name}` | Replace an explicitly reviewed API-owned IdentityProvider | `identityproviders.write` (cluster) | refused |
+| DELETE | `/api/v1/iam/identityproviders/{name}` | Delete an explicitly reviewed API-owned IdentityProvider | `identityproviders.delete` (cluster) | refused |
 | GET | `/api/v1/iam/rolebindings` | List rolebindings | `rolebindings.read` (cluster) | - |
 | POST | `/api/v1/iam/rolebindings` | Create a public RoleBinding only if absent | `rolebindings.write` (cluster) | refused |
 | GET | `/api/v1/iam/rolebindings/{namespace}/{name}` | Read a public RoleBinding and its current UID/resourceVersion | `rolebindings.read` (cluster) | - |
 | PUT | `/api/v1/iam/rolebindings/{namespace}/{name}` | Replace an explicitly reviewed public RoleBinding | `rolebindings.write` (cluster) | refused |
 | DELETE | `/api/v1/iam/rolebindings/{namespace}/{name}` | Delete an explicitly reviewed public RoleBinding | `rolebindings.delete` (cluster) | refused |
 | GET | `/api/v1/iam/serviceaccounts` | List serviceaccounts | `serviceaccounts.read` (cluster) | - |
+| POST | `/api/v1/iam/serviceaccounts` | Create a ServiceAccount only if absent | `serviceaccounts.write` (cluster) | refused |
+| GET | `/api/v1/iam/serviceaccounts/{namespace}/{name}` | Read a ServiceAccount and its current UID/resourceVersion | `serviceaccounts.read` (cluster) | - |
+| PUT | `/api/v1/iam/serviceaccounts/{namespace}/{name}` | Replace an explicitly reviewed API-owned ServiceAccount | `serviceaccounts.write` (cluster) | refused |
+| DELETE | `/api/v1/iam/serviceaccounts/{namespace}/{name}` | Delete an explicitly reviewed API-owned ServiceAccount | `serviceaccounts.delete` (cluster) | refused |
+| POST | `/api/v1/iam/serviceaccounts/{namespace}/{name}/tokens` | Issue an API token for an exact ServiceAccount (the secret is returned once) | `serviceaccounts.write` (cluster) | refused |
 | GET | `/api/v1/iam/users` | List users | `users.read` (cluster) | - |
 | POST | `/api/v1/iam/users` | Create an API-managed local user requiring a password change | `users.write` (cluster) | refused |
+| PATCH | `/api/v1/iam/users/{name}` | Change an exact API-managed local account's display name, groups or disabled state | `users.write` (cluster) | refused |
+| DELETE | `/api/v1/iam/users/{name}` | Delete an exact API-managed local account | `users.delete` (cluster) | refused |
 | POST | `/api/v1/iam/users/{name}/password` | Reset an exact API-managed local account's password | `users.write` (cluster) | refused |
 | POST | `/api/v1/iam/users/{name}/totp/recover` | Disable a lost authenticator for an exact account UID | `users.write` (cluster) | refused |
 

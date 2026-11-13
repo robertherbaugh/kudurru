@@ -1120,6 +1120,74 @@ Flags:
       --uid string        required: exact independent account UID
 ```
 
+### kudurru iam identityproviders
+
+Review and manage IdentityProvider objects through the complete SQLite API. Create requires an absent target whose id the node configuration does not define. Replace and delete require the exact UID and resourceVersion from a separately reviewed get. spec.clientSecretRef names a credential reference (a Secret key, an allowlisted file or environment variable); a secret value is never accepted. Changing or deleting a provider ends every session and token that came from it. On the Kubernetes driver the commands answer 503 iam\_management\_unavailable: change the objects with kubectl.
+
+Aliases: `idp`.
+
+#### kudurru iam identityproviders create
+
+Create one absent IdentityProvider.
+
+```text
+kudurru iam identityproviders create [flags]
+```
+
+Flags:
+
+```text
+  -f, --file string   required: one desired IdentityProvider YAML/JSON file or - for stdin
+```
+
+#### kudurru iam identityproviders delete
+
+Delete one reviewed API-owned IdentityProvider.
+
+```text
+kudurru iam identityproviders delete NAME [flags]
+```
+
+Flags:
+
+```text
+      --resource-version string   required: exact reviewed target resourceVersion
+      --uid string                required: exact reviewed target UID
+```
+
+#### kudurru iam identityproviders get
+
+Read an exact IdentityProvider object for review.
+
+```text
+kudurru iam identityproviders get NAME
+```
+
+#### kudurru iam identityproviders list
+
+List configured providers, including configuration-file entries.
+
+```text
+kudurru iam identityproviders list
+```
+
+#### kudurru iam identityproviders replace
+
+Replace one reviewed API-owned IdentityProvider.
+
+```text
+kudurru iam identityproviders replace NAME [flags]
+```
+
+Flags:
+
+```text
+  -f, --file string               required: one desired IdentityProvider YAML/JSON file or -
+                                  for stdin
+      --resource-version string   required: exact reviewed target resourceVersion
+      --uid string                required: exact reviewed target UID
+```
+
 ### kudurru iam migrate
 
 Inspect or perform the offline Kubernetes IAM upgrade. Stop every old and new kudurru process, IAM writer and previous migrator before begin or resume. Install the new CRDs and back up the release namespace first. The commands use Kubernetes credentials directly; they do not connect to the kudurru API.
@@ -1244,6 +1312,168 @@ Flags:
 
 ```text
   -f, --file string               required: one desired RoleBinding YAML/JSON file or - for stdin
+      --resource-version string   required: exact reviewed target resourceVersion
+      --uid string                required: exact reviewed target UID
+```
+
+### kudurru iam serviceaccounts
+
+Review and manage kudurru ServiceAccounts through the complete SQLite API. Create requires an absent target. Replace and delete require the exact UID and resourceVersion from a separately reviewed get. Desired manifests contain apiVersion, kind, metadata (name, namespace, labels, annotations) and spec.description/spec.disabled. Disabling or deleting an account ends its tokens in the same commit. create-token prints the new token once; it cannot be shown again. On the Kubernetes driver the commands answer 503 iam\_management\_unavailable: change the objects with kubectl.
+
+Aliases: `sa`.
+
+#### kudurru iam serviceaccounts create
+
+Create one absent ServiceAccount.
+
+```text
+kudurru iam serviceaccounts create [flags]
+```
+
+Flags:
+
+```text
+  -f, --file string   required: one desired ServiceAccount YAML/JSON file or - for stdin
+```
+
+#### kudurru iam serviceaccounts create-token
+
+Issue an API token for an exact service account and print it once.
+
+```text
+kudurru iam serviceaccounts create-token NAMESPACE NAME [flags]
+```
+
+Flags:
+
+```text
+      --description string   free text shown in the token list
+      --expires-in string    Go duration (720h); default auth.tokens.maxLifetime, or never
+      --scope stringArray    narrow the token to a grant (viewer, zone-admin@zone:NAME);
+                             repeat for more
+      --uid string           required: exact UID of the reviewed service account
+```
+
+#### kudurru iam serviceaccounts delete
+
+Delete one reviewed API-owned ServiceAccount and its tokens.
+
+```text
+kudurru iam serviceaccounts delete NAMESPACE NAME [flags]
+```
+
+Flags:
+
+```text
+      --resource-version string   required: exact reviewed target resourceVersion
+      --uid string                required: exact reviewed target UID
+```
+
+#### kudurru iam serviceaccounts get
+
+Read an exact service account for review.
+
+```text
+kudurru iam serviceaccounts get NAMESPACE NAME
+```
+
+#### kudurru iam serviceaccounts list
+
+List service accounts.
+
+```text
+kudurru iam serviceaccounts list
+```
+
+#### kudurru iam serviceaccounts replace
+
+Replace one reviewed API-owned ServiceAccount.
+
+```text
+kudurru iam serviceaccounts replace NAMESPACE NAME [flags]
+```
+
+Flags:
+
+```text
+  -f, --file string               required: one desired ServiceAccount YAML/JSON file or - for
+                                  stdin
+      --resource-version string   required: exact reviewed target resourceVersion
+      --uid string                required: exact reviewed target UID
+```
+
+### kudurru iam users
+
+Review and manage local accounts through the complete SQLite API. Create makes an ordinary account that must change its password at the first login. Reset, update and delete require the exact UID and resourceVersion from "kudurru iam users list". The built-in administrator and accounts of other managers (configuration, bootstrap) cannot be changed here; use "kudurru admin reset-password" on the node for them. On the Kubernetes driver these commands answer 503 user\_management\_unavailable.
+
+#### kudurru iam users create
+
+Create one absent local account.
+
+```text
+kudurru iam users create NAME [flags]
+```
+
+Flags:
+
+```text
+      --display-name string   display name of the account
+      --password-stdin        read the initial password from stdin instead of a terminal prompt
+```
+
+#### kudurru iam users delete
+
+Delete an exact account and its sessions and tokens.
+
+```text
+kudurru iam users delete NAME [flags]
+```
+
+Flags:
+
+```text
+      --resource-version string   required: exact reviewed target resourceVersion
+      --uid string                required: exact reviewed target UID
+```
+
+#### kudurru iam users list
+
+List local accounts with their UID and resourceVersion.
+
+```text
+kudurru iam users list
+```
+
+#### kudurru iam users reset-password
+
+Reset an exact account's password and end its sessions and tokens.
+
+```text
+kudurru iam users reset-password NAME [flags]
+```
+
+Flags:
+
+```text
+      --password-stdin            read the new password from stdin instead of a terminal prompt
+      --resource-version string   required: exact reviewed target resourceVersion
+      --uid string                required: exact reviewed target UID
+```
+
+#### kudurru iam users update
+
+Change only the fields whose flags are given. --group replaces the complete list of local groups (repeat it, or pass --group= to remove every group). Changing groups or disabling the account ends its sessions and deletes its API tokens in the same commit; enabling it again restores none of them.
+
+```text
+kudurru iam users update NAME [flags]
+```
+
+Flags:
+
+```text
+      --disabled                  --disabled disables the account, --disabled=false enables it
+      --display-name string       new display name (empty clears it)
+      --group stringArray         a local group; repeat for each group, --group= for none
       --resource-version string   required: exact reviewed target resourceVersion
       --uid string                required: exact reviewed target UID
 ```

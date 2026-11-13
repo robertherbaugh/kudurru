@@ -413,6 +413,22 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.ListIdentityProviders(ctx, editors...)
 		return response, true, err
 	}
+	if method == "POST" && len(parts) == 2 && parts[0] == "iam" && parts[1] == "identityproviders" {
+		response, err := c.CreateIdentityProviderWithBody(ctx, contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "DELETE" && len(parts) == 3 && parts[0] == "iam" && parts[1] == "identityproviders" {
+		response, err := c.DeleteIdentityProviderWithBody(ctx, parts[2], contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "GET" && len(parts) == 3 && parts[0] == "iam" && parts[1] == "identityproviders" {
+		response, err := c.GetIdentityProvider(ctx, parts[2], editors...)
+		return response, true, err
+	}
+	if method == "PUT" && len(parts) == 3 && parts[0] == "iam" && parts[1] == "identityproviders" {
+		response, err := c.ReplaceIdentityProviderWithBody(ctx, parts[2], contentType, body, editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 2 && parts[0] == "iam" && parts[1] == "rolebindings" {
 		response, err := c.ListRoleBindings(ctx, editors...)
 		return response, true, err
@@ -437,12 +453,40 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.ListServiceAccounts(ctx, editors...)
 		return response, true, err
 	}
+	if method == "POST" && len(parts) == 2 && parts[0] == "iam" && parts[1] == "serviceaccounts" {
+		response, err := c.CreateServiceAccountWithBody(ctx, contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "DELETE" && len(parts) == 4 && parts[0] == "iam" && parts[1] == "serviceaccounts" {
+		response, err := c.DeleteServiceAccountWithBody(ctx, parts[2], parts[3], contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "GET" && len(parts) == 4 && parts[0] == "iam" && parts[1] == "serviceaccounts" {
+		response, err := c.GetServiceAccount(ctx, parts[2], parts[3], editors...)
+		return response, true, err
+	}
+	if method == "PUT" && len(parts) == 4 && parts[0] == "iam" && parts[1] == "serviceaccounts" {
+		response, err := c.ReplaceServiceAccountWithBody(ctx, parts[2], parts[3], contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 5 && parts[0] == "iam" && parts[1] == "serviceaccounts" && parts[4] == "tokens" {
+		response, err := c.CreateServiceAccountTokenWithBody(ctx, parts[2], parts[3], contentType, body, editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 2 && parts[0] == "iam" && parts[1] == "users" {
 		response, err := c.ListUsers(ctx, editors...)
 		return response, true, err
 	}
 	if method == "POST" && len(parts) == 2 && parts[0] == "iam" && parts[1] == "users" {
 		response, err := c.CreateLocalUserWithBody(ctx, contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "DELETE" && len(parts) == 3 && parts[0] == "iam" && parts[1] == "users" {
+		response, err := c.DeleteLocalUserWithBody(ctx, parts[2], contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "PATCH" && len(parts) == 3 && parts[0] == "iam" && parts[1] == "users" {
+		response, err := c.UpdateLocalUserWithBody(ctx, parts[2], contentType, body, editors...)
 		return response, true, err
 	}
 	if method == "POST" && len(parts) == 4 && parts[0] == "iam" && parts[1] == "users" && parts[3] == "password" {

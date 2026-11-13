@@ -2253,7 +2253,10 @@ type AuthCapabilities struct {
 	// FactorManagement Authenticator (TOTP) enrollment, disabling and recovery, and authenticator codes at login. False on the Kubernetes driver, where the routes answer 503 factor_management_unavailable: use the identity provider's second factor (D387).
 	FactorManagement bool `json:"factorManagement"`
 
-	// LocalUserCommands Creating local users and resetting their passwords (POST /iam/users, POST /iam/users/{name}/password). False on the Kubernetes driver, where the routes answer 503 user_management_unavailable (D387).
+	// IamObjectCommands Creating, replacing and deleting ServiceAccounts, IdentityProviders and RoleBindings, and issuing service account tokens. False on the Kubernetes driver, where the ServiceAccount and IdentityProvider commands answer 503 iam_management_unavailable and the RoleBinding commands 503 unavailable: change those objects with kubectl (D294, D396).
+	IamObjectCommands bool `json:"iamObjectCommands"`
+
+	// LocalUserCommands Creating, changing and deleting local users and resetting their passwords (POST /iam/users, PATCH and DELETE /iam/users/{name}, POST /iam/users/{name}/password). False on the Kubernetes driver, where the routes answer 503 user_management_unavailable (D387, D396).
 	LocalUserCommands bool `json:"localUserCommands"`
 }
 
@@ -2679,6 +2682,27 @@ type CatalogueSourceInfo struct {
 // CatalogueSourceInfoId kudurru: the catalogue document (embedded or blocking.catalogue.url). adguard: the opt-in import of blocking.catalogue.adguardServicesURL.
 type CatalogueSourceInfoId string
 
+// ClaimMappings defines model for ClaimMappings.
+type ClaimMappings struct {
+	DisplayName *ClaimRef      `json:"displayName,omitempty"`
+	Email       *ClaimRef      `json:"email,omitempty"`
+	Groups      *PrefixedClaim `json:"groups,omitempty"`
+	Username    *PrefixedClaim `json:"username,omitempty"`
+}
+
+// ClaimRef defines model for ClaimRef.
+type ClaimRef struct {
+	Claim      *string `json:"claim,omitempty"`
+	Expression *string `json:"expression,omitempty"`
+}
+
+// ClaimValidationRule defines model for ClaimValidationRule.
+type ClaimValidationRule struct {
+	Claim         *string `json:"claim,omitempty"`
+	Expression    *string `json:"expression,omitempty"`
+	RequiredValue *string `json:"requiredValue,omitempty"`
+}
+
 // ClientItem defines model for ClientItem.
 type ClientItem struct {
 	Blocked int64   `json:"blocked"`
@@ -2851,6 +2875,21 @@ type CreateLocalUserRequest struct {
 	Password *string `json:"password,omitempty"`
 }
 
+// CreateServiceAccountTokenRequest defines model for CreateServiceAccountTokenRequest.
+type CreateServiceAccountTokenRequest struct {
+	// Description Free text shown in the token list.
+	Description *string `json:"description,omitempty"`
+
+	// ExpiresIn Go duration (720h); empty means auth.tokens.maxLifetime, or never.
+	ExpiresIn *string `json:"expiresIn,omitempty"`
+
+	// Scopes Narrow the token to these grants in wire form; empty keeps the account's bindings.
+	Scopes *[]string `json:"scopes,omitempty"`
+
+	// Uid Exact immutable UID of the reviewed service account.
+	Uid string `json:"uid"`
+}
+
 // CreateStoredTSIGKeyBody defines model for CreateStoredTSIGKeyBody.
 type CreateStoredTSIGKeyBody struct {
 	Algorithm string  `json:"algorithm"`
@@ -2885,6 +2924,19 @@ type CreatedToken struct {
 
 	// Token The kdr_ secret, shown only in this answer.
 	Token string `json:"token"`
+}
+
+// CredentialReference defines model for CredentialReference.
+type CredentialReference struct {
+	Env       *string              `json:"env,omitempty"`
+	File      *string              `json:"file,omitempty"`
+	SecretRef *CredentialSecretRef `json:"secretRef,omitempty"`
+}
+
+// CredentialSecretRef defines model for CredentialSecretRef.
+type CredentialSecretRef struct {
+	Key  string `json:"key"`
+	Name string `json:"name"`
 }
 
 // DHCPBootProfile defines model for DHCPBootProfile.
@@ -3804,6 +3856,23 @@ type IAMUser struct {
 	Uid string `json:"uid"`
 }
 
+// IdentityProviderDesired defines model for IdentityProviderDesired.
+type IdentityProviderDesired struct {
+	ApiVersion string                   `json:"apiVersion"`
+	Kind       string                   `json:"kind"`
+	Metadata   IdentityProviderMetadata `json:"metadata"`
+	Spec       IdentityProviderSpec     `json:"spec"`
+}
+
+// IdentityProviderDocument defines model for IdentityProviderDocument.
+type IdentityProviderDocument struct {
+	ApiVersion string                  `json:"apiVersion"`
+	Kind       string                  `json:"kind"`
+	Metadata   ObjectMeta              `json:"metadata"`
+	Spec       IdentityProviderSpec    `json:"spec"`
+	Status     *IdentityProviderStatus `json:"status,omitempty"`
+}
+
 // IdentityProviderInfo defines model for IdentityProviderInfo.
 type IdentityProviderInfo struct {
 	CliClientID *string                    `json:"cliClientID,omitempty"`
@@ -3818,6 +3887,36 @@ type IdentityProviderInfo struct {
 
 // IdentityProviderInfoSource defines model for IdentityProviderInfo.Source.
 type IdentityProviderInfoSource string
+
+// IdentityProviderMetadata defines model for IdentityProviderMetadata.
+type IdentityProviderMetadata struct {
+	Annotations *map[string]string `json:"annotations,omitempty"`
+	Labels      *map[string]string `json:"labels,omitempty"`
+
+	// Name The provider id, a DNS label.
+	Name string `json:"name"`
+}
+
+// IdentityProviderSpec defines model for IdentityProviderSpec.
+type IdentityProviderSpec struct {
+	AllowedDomains       *[]string              `json:"allowedDomains,omitempty"`
+	Audiences            *[]string              `json:"audiences,omitempty"`
+	ClaimMappings        *ClaimMappings         `json:"claimMappings,omitempty"`
+	ClaimValidationRules *[]ClaimValidationRule `json:"claimValidationRules,omitempty"`
+	CliClientID          *string                `json:"cliClientID,omitempty"`
+	ClientID             string                 `json:"clientID"`
+	ClientSecretRef      CredentialReference    `json:"clientSecretRef"`
+	DisplayName          *string                `json:"displayName,omitempty"`
+	Issuer               string                 `json:"issuer"`
+	Provisioning         *Provisioning          `json:"provisioning,omitempty"`
+	RedirectURL          *string                `json:"redirectURL,omitempty"`
+	Scopes               *[]string              `json:"scopes,omitempty"`
+}
+
+// IdentityProviderStatus defines model for IdentityProviderStatus.
+type IdentityProviderStatus struct {
+	Conditions *[]Condition `json:"conditions,omitempty"`
+}
 
 // ImportResult defines model for ImportResult.
 type ImportResult struct {
@@ -3858,6 +3957,7 @@ type IntegrationExecutionResult struct {
 	Pending         int64                `json:"pending"`
 	Preview         *IntegrationPreview  `json:"preview,omitempty"`
 	Reachable       *bool                `json:"reachable,omitempty"`
+	Result          interface{}          `json:"result,omitempty"`
 	SourceCommitted bool                 `json:"sourceCommitted"`
 	SourcePublished bool                 `json:"sourcePublished"`
 	Uncertain       bool                 `json:"uncertain"`
@@ -4432,6 +4532,15 @@ type ObjectRef struct {
 	Namespace *string `json:"namespace,omitempty"`
 }
 
+// ObjectReview defines model for ObjectReview.
+type ObjectReview struct {
+	// ResourceVersion Exact resourceVersion from the reviewed read; a conflict requires a fresh read and a deliberate new request.
+	ResourceVersion string `json:"resourceVersion"`
+
+	// Uid Exact immutable UID from the reviewed read.
+	Uid string `json:"uid"`
+}
+
 // OwnerReference defines model for OwnerReference.
 type OwnerReference struct {
 	ApiVersion         string `json:"apiVersion"`
@@ -4686,6 +4795,13 @@ type PolicyUpstreamGroup struct {
 	Name   string `json:"name"`
 }
 
+// PrefixedClaim defines model for PrefixedClaim.
+type PrefixedClaim struct {
+	Claim      *string `json:"claim,omitempty"`
+	Expression *string `json:"expression,omitempty"`
+	Prefix     *string `json:"prefix,omitempty"`
+}
+
 // Processed defines model for Processed.
 type Processed struct {
 	Processed ProcessedItems `json:"processed"`
@@ -4710,6 +4826,13 @@ type ProcessedItems struct {
 type ProviderSpecific struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
+}
+
+// Provisioning defines model for Provisioning.
+type Provisioning struct {
+	AutoProvision *string `json:"autoProvision,omitempty"`
+	DefaultRole   *string `json:"defaultRole,omitempty"`
+	SyncGroups    *bool   `json:"syncGroups,omitempty"`
 }
 
 // PublicationState defines model for PublicationState.
@@ -4975,11 +5098,32 @@ type RefreshBody struct {
 	TookMs float64 `json:"took_ms"`
 }
 
+// ReplaceIdentityProviderCommand defines model for ReplaceIdentityProviderCommand.
+type ReplaceIdentityProviderCommand struct {
+	IdentityProvider IdentityProviderDesired `json:"identityProvider"`
+
+	// ResourceVersion Exact resourceVersion from the reviewed read; a conflict requires a fresh read and a deliberate new request.
+	ResourceVersion string `json:"resourceVersion"`
+
+	// Uid Exact immutable UID from the reviewed read.
+	Uid string `json:"uid"`
+}
+
 // ReplaceRoleBindingCommand defines model for ReplaceRoleBindingCommand.
 type ReplaceRoleBindingCommand struct {
 	Binding         RoleBindingDesired `json:"binding"`
 	ResourceVersion string             `json:"resourceVersion"`
 	Uid             string             `json:"uid"`
+}
+
+// ReplaceServiceAccountCommand defines model for ReplaceServiceAccountCommand.
+type ReplaceServiceAccountCommand struct {
+	// ResourceVersion Exact resourceVersion from the reviewed read; a conflict requires a fresh read and a deliberate new request.
+	ResourceVersion string                `json:"resourceVersion"`
+	ServiceAccount  ServiceAccountDesired `json:"serviceAccount"`
+
+	// Uid Exact immutable UID from the reviewed read.
+	Uid string `json:"uid"`
 }
 
 // ReplaceStoredTSIGKeyBody defines model for ReplaceStoredTSIGKeyBody.
@@ -5291,6 +5435,31 @@ type Selection struct {
 	Settings []string `json:"settings"`
 }
 
+// ServiceAccountDesired defines model for ServiceAccountDesired.
+type ServiceAccountDesired struct {
+	ApiVersion string                 `json:"apiVersion"`
+	Kind       string                 `json:"kind"`
+	Metadata   ServiceAccountMetadata `json:"metadata"`
+	Spec       ServiceAccountFields   `json:"spec"`
+}
+
+// ServiceAccountDocument defines model for ServiceAccountDocument.
+type ServiceAccountDocument struct {
+	ApiVersion string                `json:"apiVersion"`
+	Kind       string                `json:"kind"`
+	Metadata   ObjectMeta            `json:"metadata"`
+	Spec       ServiceAccountSpec    `json:"spec"`
+	Status     *ServiceAccountStatus `json:"status,omitempty"`
+}
+
+// ServiceAccountFields defines model for ServiceAccountFields.
+type ServiceAccountFields struct {
+	Description *string `json:"description,omitempty"`
+
+	// Disabled Refuses every token of the account. Disabling deletes its tokens in the same commit; enabling restores none.
+	Disabled *bool `json:"disabled,omitempty"`
+}
+
 // ServiceAccountInfo defines model for ServiceAccountInfo.
 type ServiceAccountInfo struct {
 	BuiltinAdmin bool    `json:"builtinAdmin"`
@@ -5301,6 +5470,33 @@ type ServiceAccountInfo struct {
 
 	// Tokens Number of API tokens the account owns.
 	Tokens int64 `json:"tokens"`
+}
+
+// ServiceAccountMetadata defines model for ServiceAccountMetadata.
+type ServiceAccountMetadata struct {
+	Annotations *map[string]string `json:"annotations,omitempty"`
+	Labels      *map[string]string `json:"labels,omitempty"`
+	Name        string             `json:"name"`
+	Namespace   string             `json:"namespace"`
+}
+
+// ServiceAccountSpec defines model for ServiceAccountSpec.
+type ServiceAccountSpec struct {
+	Description *string                  `json:"description,omitempty"`
+	Disabled    *bool                    `json:"disabled,omitempty"`
+	Token       *ServiceAccountTokenSpec `json:"token,omitempty"`
+}
+
+// ServiceAccountStatus defines model for ServiceAccountStatus.
+type ServiceAccountStatus struct {
+	LastUsed *time.Time `json:"lastUsed,omitempty"`
+	TokenID  *string    `json:"tokenID,omitempty"`
+}
+
+// ServiceAccountTokenSpec defines model for ServiceAccountTokenSpec.
+type ServiceAccountTokenSpec struct {
+	ExpiresAfter *string `json:"expiresAfter,omitempty"`
+	SecretName   *string `json:"secretName,omitempty"`
 }
 
 // SessionInfo defines model for SessionInfo.
@@ -6012,6 +6208,24 @@ type UnblockRequestList struct {
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
+}
+
+// UpdateLocalUserRequest defines model for UpdateLocalUserRequest.
+type UpdateLocalUserRequest struct {
+	// Disabled true disables the account: its sessions and API tokens end in the same commit. false enables it again without restoring them.
+	Disabled *bool `json:"disabled,omitempty"`
+
+	// DisplayName New display name; an empty string clears it.
+	DisplayName *string `json:"displayName,omitempty"`
+
+	// Groups The complete new list of local groups (replaces the old list; [] removes every group). A group name has at most 253 bytes and no colon, control character or surrounding space.
+	Groups *[]string `json:"groups,omitempty"`
+
+	// ResourceVersion Exact observed opaque resourceVersion.
+	ResourceVersion string `json:"resourceVersion"`
+
+	// Uid Exact immutable UID from the authorized user inventory.
+	Uid string `json:"uid"`
 }
 
 // UpstreamItem defines model for UpstreamItem.
@@ -7091,6 +7305,15 @@ type EnableExternalUserJSONRequestBody = ExternalUserCommand
 // LogoutExternalUserJSONRequestBody defines body for LogoutExternalUser for application/json ContentType.
 type LogoutExternalUserJSONRequestBody = ExternalUserCommand
 
+// CreateIdentityProviderJSONRequestBody defines body for CreateIdentityProvider for application/json ContentType.
+type CreateIdentityProviderJSONRequestBody = IdentityProviderDesired
+
+// DeleteIdentityProviderJSONRequestBody defines body for DeleteIdentityProvider for application/json ContentType.
+type DeleteIdentityProviderJSONRequestBody = ObjectReview
+
+// ReplaceIdentityProviderJSONRequestBody defines body for ReplaceIdentityProvider for application/json ContentType.
+type ReplaceIdentityProviderJSONRequestBody = ReplaceIdentityProviderCommand
+
 // CreateRoleBindingJSONRequestBody defines body for CreateRoleBinding for application/json ContentType.
 type CreateRoleBindingJSONRequestBody = RoleBindingDesired
 
@@ -7100,8 +7323,26 @@ type DeleteRoleBindingJSONRequestBody = RoleBindingReview
 // ReplaceRoleBindingJSONRequestBody defines body for ReplaceRoleBinding for application/json ContentType.
 type ReplaceRoleBindingJSONRequestBody = ReplaceRoleBindingCommand
 
+// CreateServiceAccountJSONRequestBody defines body for CreateServiceAccount for application/json ContentType.
+type CreateServiceAccountJSONRequestBody = ServiceAccountDesired
+
+// DeleteServiceAccountJSONRequestBody defines body for DeleteServiceAccount for application/json ContentType.
+type DeleteServiceAccountJSONRequestBody = ObjectReview
+
+// ReplaceServiceAccountJSONRequestBody defines body for ReplaceServiceAccount for application/json ContentType.
+type ReplaceServiceAccountJSONRequestBody = ReplaceServiceAccountCommand
+
+// CreateServiceAccountTokenJSONRequestBody defines body for CreateServiceAccountToken for application/json ContentType.
+type CreateServiceAccountTokenJSONRequestBody = CreateServiceAccountTokenRequest
+
 // CreateLocalUserJSONRequestBody defines body for CreateLocalUser for application/json ContentType.
 type CreateLocalUserJSONRequestBody = CreateLocalUserRequest
+
+// DeleteLocalUserJSONRequestBody defines body for DeleteLocalUser for application/json ContentType.
+type DeleteLocalUserJSONRequestBody = ObjectReview
+
+// UpdateLocalUserJSONRequestBody defines body for UpdateLocalUser for application/json ContentType.
+type UpdateLocalUserJSONRequestBody = UpdateLocalUserRequest
 
 // ResetLocalUserPasswordJSONRequestBody defines body for ResetLocalUserPassword for application/json ContentType.
 type ResetLocalUserPasswordJSONRequestBody = ResetLocalUserPasswordRequest
@@ -8205,6 +8446,65 @@ type ClientInterface interface {
 	// Corresponds with GET /iam/identityproviders (the `ListIdentityProviders` operationId).
 	ListIdentityProviders(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CreateIdentityProviderWithBody Create an IdentityProvider object only if absent
+	//
+	// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing object or a provider id of the configuration file. spec.clientSecretRef names a credential reference; a secret value is never accepted. The provider is offered for login after its discovery and license admission.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /iam/identityproviders (the `CreateIdentityProvider` operationId).
+	CreateIdentityProviderWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateIdentityProvider Create an IdentityProvider object only if absent
+	//
+	// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing object or a provider id of the configuration file. spec.clientSecretRef names a credential reference; a secret value is never accepted. The provider is offered for login after its discovery and license admission.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /iam/identityproviders (the `CreateIdentityProvider` operationId).
+	CreateIdentityProvider(ctx context.Context, body CreateIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteIdentityProviderWithBody Delete an explicitly reviewed API-owned IdentityProvider
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be deleted. The provider's revocation floor commits with the deletion: every session and token that came from it ends, also across restarts and on replicas. No implicit refresh or retry.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with DELETE /iam/identityproviders/{name} (the `DeleteIdentityProvider` operationId).
+	DeleteIdentityProviderWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteIdentityProvider Delete an explicitly reviewed API-owned IdentityProvider
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be deleted. The provider's revocation floor commits with the deletion: every session and token that came from it ends, also across restarts and on replicas. No implicit refresh or retry.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with DELETE /iam/identityproviders/{name} (the `DeleteIdentityProvider` operationId).
+	DeleteIdentityProvider(ctx context.Context, name string, body DeleteIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetIdentityProvider Read an IdentityProvider object and its current UID/resourceVersion
+	//
+	// Corresponds with GET /iam/identityproviders/{name} (the `GetIdentityProvider` operationId).
+	GetIdentityProvider(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplaceIdentityProviderWithBody Replace an explicitly reviewed API-owned IdentityProvider
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be replaced. A changed spec raises the provider's revocation floor in the same commit: every session and token that came from it ends. No implicit refresh or retry.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /iam/identityproviders/{name} (the `ReplaceIdentityProvider` operationId).
+	ReplaceIdentityProviderWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplaceIdentityProvider Replace an explicitly reviewed API-owned IdentityProvider
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be replaced. A changed spec raises the provider's revocation floor in the same commit: every session and token that came from it ends. No implicit refresh or retry.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /iam/identityproviders/{name} (the `ReplaceIdentityProvider` operationId).
+	ReplaceIdentityProvider(ctx context.Context, name string, body ReplaceIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListRoleBindings List rolebindings
 	//
 	// Corresponds with GET /iam/rolebindings (the `ListRoleBindings` operationId).
@@ -8274,6 +8574,83 @@ type ClientInterface interface {
 	// Corresponds with GET /iam/serviceaccounts (the `ListServiceAccounts` operationId).
 	ListServiceAccounts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// CreateServiceAccountWithBody Create a ServiceAccount only if absent
+	//
+	// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing account. Only public operator metadata and spec.description/spec.disabled are accepted. No token is issued: use POST /iam/serviceaccounts/{namespace}/{name}/tokens.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /iam/serviceaccounts (the `CreateServiceAccount` operationId).
+	CreateServiceAccountWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateServiceAccount Create a ServiceAccount only if absent
+	//
+	// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing account. Only public operator metadata and spec.description/spec.disabled are accepted. No token is issued: use POST /iam/serviceaccounts/{namespace}/{name}/tokens.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /iam/serviceaccounts (the `CreateServiceAccount` operationId).
+	CreateServiceAccount(ctx context.Context, body CreateServiceAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteServiceAccountWithBody Delete an explicitly reviewed API-owned ServiceAccount
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts without bootstrap authority may be deleted. The account's revocation floor and the deletion of its tokens commit with the object. No implicit refresh or retry.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with DELETE /iam/serviceaccounts/{namespace}/{name} (the `DeleteServiceAccount` operationId).
+	DeleteServiceAccountWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteServiceAccount Delete an explicitly reviewed API-owned ServiceAccount
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts without bootstrap authority may be deleted. The account's revocation floor and the deletion of its tokens commit with the object. No implicit refresh or retry.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with DELETE /iam/serviceaccounts/{namespace}/{name} (the `DeleteServiceAccount` operationId).
+	DeleteServiceAccount(ctx context.Context, namespace string, name string, body DeleteServiceAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetServiceAccount Read a ServiceAccount and its current UID/resourceVersion
+	//
+	// Corresponds with GET /iam/serviceaccounts/{namespace}/{name} (the `GetServiceAccount` operationId).
+	GetServiceAccount(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplaceServiceAccountWithBody Replace an explicitly reviewed API-owned ServiceAccount
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts may be replaced. Disabling raises the account's revocation floor and deletes its tokens atomically; enabling restores none. No implicit refresh or retry.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /iam/serviceaccounts/{namespace}/{name} (the `ReplaceServiceAccount` operationId).
+	ReplaceServiceAccountWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplaceServiceAccount Replace an explicitly reviewed API-owned ServiceAccount
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts may be replaced. Disabling raises the account's revocation floor and deletes its tokens atomically; enabling restores none. No implicit refresh or retry.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /iam/serviceaccounts/{namespace}/{name} (the `ReplaceServiceAccount` operationId).
+	ReplaceServiceAccount(ctx context.Context, namespace string, name string, body ReplaceServiceAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateServiceAccountTokenWithBody Issue an API token for an exact ServiceAccount (the secret is returned once)
+	//
+	// Complete SQLite runtime only. Needs serviceaccounts.write and tokens.write at cluster scope and the exact account UID. The kdr_ secret appears only in this answer; it is never stored, listed or logged. Refused for a disabled account. List and revoke the token with GET /auth/tokens?all=true and DELETE /auth/tokens/{id}.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /iam/serviceaccounts/{namespace}/{name}/tokens (the `CreateServiceAccountToken` operationId).
+	CreateServiceAccountTokenWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateServiceAccountToken Issue an API token for an exact ServiceAccount (the secret is returned once)
+	//
+	// Complete SQLite runtime only. Needs serviceaccounts.write and tokens.write at cluster scope and the exact account UID. The kdr_ secret appears only in this answer; it is never stored, listed or logged. Refused for a disabled account. List and revoke the token with GET /auth/tokens?all=true and DELETE /auth/tokens/{id}.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /iam/serviceaccounts/{namespace}/{name}/tokens (the `CreateServiceAccountToken` operationId).
+	CreateServiceAccountToken(ctx context.Context, namespace string, name string, body CreateServiceAccountTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListUsers List users
 	//
 	// Corresponds with GET /iam/users (the `ListUsers` operationId).
@@ -8296,6 +8673,42 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
 	CreateLocalUser(ctx context.Context, body CreateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteLocalUserWithBody Delete an exact API-managed local account
+	//
+	// Complete SQLite runtime only. Requires exact UID and resourceVersion. Ends the account's sessions and deletes its API tokens in the same commit; a later account with the same name never inherits them. Built-in and non-API-managed accounts are excluded.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with DELETE /iam/users/{name} (the `DeleteLocalUser` operationId).
+	DeleteLocalUserWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteLocalUser Delete an exact API-managed local account
+	//
+	// Complete SQLite runtime only. Requires exact UID and resourceVersion. Ends the account's sessions and deletes its API tokens in the same commit; a later account with the same name never inherits them. Built-in and non-API-managed accounts are excluded.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with DELETE /iam/users/{name} (the `DeleteLocalUser` operationId).
+	DeleteLocalUser(ctx context.Context, name string, body DeleteLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateLocalUserWithBody Change an exact API-managed local account's display name, groups or disabled state
+	//
+	// Complete SQLite runtime only. Requires exact UID and resourceVersion. Absent fields are kept. Changing groups or disabling the account ends its sessions and deletes its API tokens in the same commit; enabling restores none. The password, authenticator and password-change requirement are unchanged. Built-in and non-API-managed accounts are excluded. No automatic retry.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /iam/users/{name} (the `UpdateLocalUser` operationId).
+	UpdateLocalUserWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateLocalUser Change an exact API-managed local account's display name, groups or disabled state
+	//
+	// Complete SQLite runtime only. Requires exact UID and resourceVersion. Absent fields are kept. Changing groups or disabling the account ends its sessions and deletes its API tokens in the same commit; enabling restores none. The password, authenticator and password-change requirement are unchanged. Built-in and non-API-managed accounts are excluded. No automatic retry.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /iam/users/{name} (the `UpdateLocalUser` operationId).
+	UpdateLocalUser(ctx context.Context, name string, body UpdateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ResetLocalUserPasswordWithBody Reset an exact API-managed local account's password
 	//
@@ -11409,6 +11822,135 @@ func (c *Client) ListIdentityProviders(ctx context.Context, reqEditors ...Reques
 	return c.Client.Do(req)
 }
 
+// CreateIdentityProviderWithBody Create an IdentityProvider object only if absent
+//
+// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing object or a provider id of the configuration file. spec.clientSecretRef names a credential reference; a secret value is never accepted. The provider is offered for login after its discovery and license admission.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /iam/identityproviders (the `CreateIdentityProvider` operationId).
+func (c *Client) CreateIdentityProviderWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateIdentityProviderRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateIdentityProvider Create an IdentityProvider object only if absent
+//
+// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing object or a provider id of the configuration file. spec.clientSecretRef names a credential reference; a secret value is never accepted. The provider is offered for login after its discovery and license admission.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /iam/identityproviders (the `CreateIdentityProvider` operationId).
+func (c *Client) CreateIdentityProvider(ctx context.Context, body CreateIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateIdentityProviderRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteIdentityProviderWithBody Delete an explicitly reviewed API-owned IdentityProvider
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be deleted. The provider's revocation floor commits with the deletion: every session and token that came from it ends, also across restarts and on replicas. No implicit refresh or retry.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with DELETE /iam/identityproviders/{name} (the `DeleteIdentityProvider` operationId).
+func (c *Client) DeleteIdentityProviderWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteIdentityProviderRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteIdentityProvider Delete an explicitly reviewed API-owned IdentityProvider
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be deleted. The provider's revocation floor commits with the deletion: every session and token that came from it ends, also across restarts and on replicas. No implicit refresh or retry.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with DELETE /iam/identityproviders/{name} (the `DeleteIdentityProvider` operationId).
+func (c *Client) DeleteIdentityProvider(ctx context.Context, name string, body DeleteIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteIdentityProviderRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetIdentityProvider Read an IdentityProvider object and its current UID/resourceVersion
+//
+// Corresponds with GET /iam/identityproviders/{name} (the `GetIdentityProvider` operationId).
+func (c *Client) GetIdentityProvider(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetIdentityProviderRequest(c.Server, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReplaceIdentityProviderWithBody Replace an explicitly reviewed API-owned IdentityProvider
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be replaced. A changed spec raises the provider's revocation floor in the same commit: every session and token that came from it ends. No implicit refresh or retry.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /iam/identityproviders/{name} (the `ReplaceIdentityProvider` operationId).
+func (c *Client) ReplaceIdentityProviderWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceIdentityProviderRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReplaceIdentityProvider Replace an explicitly reviewed API-owned IdentityProvider
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be replaced. A changed spec raises the provider's revocation floor in the same commit: every session and token that came from it ends. No implicit refresh or retry.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /iam/identityproviders/{name} (the `ReplaceIdentityProvider` operationId).
+func (c *Client) ReplaceIdentityProvider(ctx context.Context, name string, body ReplaceIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceIdentityProviderRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListRoleBindings List rolebindings
 //
 // Corresponds with GET /iam/rolebindings (the `ListRoleBindings` operationId).
@@ -11568,6 +12110,173 @@ func (c *Client) ListServiceAccounts(ctx context.Context, reqEditors ...RequestE
 	return c.Client.Do(req)
 }
 
+// CreateServiceAccountWithBody Create a ServiceAccount only if absent
+//
+// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing account. Only public operator metadata and spec.description/spec.disabled are accepted. No token is issued: use POST /iam/serviceaccounts/{namespace}/{name}/tokens.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /iam/serviceaccounts (the `CreateServiceAccount` operationId).
+func (c *Client) CreateServiceAccountWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateServiceAccountRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateServiceAccount Create a ServiceAccount only if absent
+//
+// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing account. Only public operator metadata and spec.description/spec.disabled are accepted. No token is issued: use POST /iam/serviceaccounts/{namespace}/{name}/tokens.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /iam/serviceaccounts (the `CreateServiceAccount` operationId).
+func (c *Client) CreateServiceAccount(ctx context.Context, body CreateServiceAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateServiceAccountRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteServiceAccountWithBody Delete an explicitly reviewed API-owned ServiceAccount
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts without bootstrap authority may be deleted. The account's revocation floor and the deletion of its tokens commit with the object. No implicit refresh or retry.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with DELETE /iam/serviceaccounts/{namespace}/{name} (the `DeleteServiceAccount` operationId).
+func (c *Client) DeleteServiceAccountWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteServiceAccountRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteServiceAccount Delete an explicitly reviewed API-owned ServiceAccount
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts without bootstrap authority may be deleted. The account's revocation floor and the deletion of its tokens commit with the object. No implicit refresh or retry.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with DELETE /iam/serviceaccounts/{namespace}/{name} (the `DeleteServiceAccount` operationId).
+func (c *Client) DeleteServiceAccount(ctx context.Context, namespace string, name string, body DeleteServiceAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteServiceAccountRequest(c.Server, namespace, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetServiceAccount Read a ServiceAccount and its current UID/resourceVersion
+//
+// Corresponds with GET /iam/serviceaccounts/{namespace}/{name} (the `GetServiceAccount` operationId).
+func (c *Client) GetServiceAccount(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetServiceAccountRequest(c.Server, namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReplaceServiceAccountWithBody Replace an explicitly reviewed API-owned ServiceAccount
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts may be replaced. Disabling raises the account's revocation floor and deletes its tokens atomically; enabling restores none. No implicit refresh or retry.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /iam/serviceaccounts/{namespace}/{name} (the `ReplaceServiceAccount` operationId).
+func (c *Client) ReplaceServiceAccountWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceServiceAccountRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ReplaceServiceAccount Replace an explicitly reviewed API-owned ServiceAccount
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts may be replaced. Disabling raises the account's revocation floor and deletes its tokens atomically; enabling restores none. No implicit refresh or retry.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /iam/serviceaccounts/{namespace}/{name} (the `ReplaceServiceAccount` operationId).
+func (c *Client) ReplaceServiceAccount(ctx context.Context, namespace string, name string, body ReplaceServiceAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceServiceAccountRequest(c.Server, namespace, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateServiceAccountTokenWithBody Issue an API token for an exact ServiceAccount (the secret is returned once)
+//
+// Complete SQLite runtime only. Needs serviceaccounts.write and tokens.write at cluster scope and the exact account UID. The kdr_ secret appears only in this answer; it is never stored, listed or logged. Refused for a disabled account. List and revoke the token with GET /auth/tokens?all=true and DELETE /auth/tokens/{id}.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /iam/serviceaccounts/{namespace}/{name}/tokens (the `CreateServiceAccountToken` operationId).
+func (c *Client) CreateServiceAccountTokenWithBody(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateServiceAccountTokenRequestWithBody(c.Server, namespace, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateServiceAccountToken Issue an API token for an exact ServiceAccount (the secret is returned once)
+//
+// Complete SQLite runtime only. Needs serviceaccounts.write and tokens.write at cluster scope and the exact account UID. The kdr_ secret appears only in this answer; it is never stored, listed or logged. Refused for a disabled account. List and revoke the token with GET /auth/tokens?all=true and DELETE /auth/tokens/{id}.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /iam/serviceaccounts/{namespace}/{name}/tokens (the `CreateServiceAccountToken` operationId).
+func (c *Client) CreateServiceAccountToken(ctx context.Context, namespace string, name string, body CreateServiceAccountTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateServiceAccountTokenRequest(c.Server, namespace, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListUsers List users
 //
 // Corresponds with GET /iam/users (the `ListUsers` operationId).
@@ -11611,6 +12320,82 @@ func (c *Client) CreateLocalUserWithBody(ctx context.Context, contentType string
 // Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
 func (c *Client) CreateLocalUser(ctx context.Context, body CreateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewCreateLocalUserRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteLocalUserWithBody Delete an exact API-managed local account
+//
+// Complete SQLite runtime only. Requires exact UID and resourceVersion. Ends the account's sessions and deletes its API tokens in the same commit; a later account with the same name never inherits them. Built-in and non-API-managed accounts are excluded.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with DELETE /iam/users/{name} (the `DeleteLocalUser` operationId).
+func (c *Client) DeleteLocalUserWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteLocalUserRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteLocalUser Delete an exact API-managed local account
+//
+// Complete SQLite runtime only. Requires exact UID and resourceVersion. Ends the account's sessions and deletes its API tokens in the same commit; a later account with the same name never inherits them. Built-in and non-API-managed accounts are excluded.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with DELETE /iam/users/{name} (the `DeleteLocalUser` operationId).
+func (c *Client) DeleteLocalUser(ctx context.Context, name string, body DeleteLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteLocalUserRequest(c.Server, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateLocalUserWithBody Change an exact API-managed local account's display name, groups or disabled state
+//
+// Complete SQLite runtime only. Requires exact UID and resourceVersion. Absent fields are kept. Changing groups or disabling the account ends its sessions and deletes its API tokens in the same commit; enabling restores none. The password, authenticator and password-change requirement are unchanged. Built-in and non-API-managed accounts are excluded. No automatic retry.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /iam/users/{name} (the `UpdateLocalUser` operationId).
+func (c *Client) UpdateLocalUserWithBody(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateLocalUserRequestWithBody(c.Server, name, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateLocalUser Change an exact API-managed local account's display name, groups or disabled state
+//
+// Complete SQLite runtime only. Requires exact UID and resourceVersion. Absent fields are kept. Changing groups or disabling the account ends its sessions and deletes its API tokens in the same commit; enabling restores none. The password, authenticator and password-change requirement are unchanged. Built-in and non-API-managed accounts are excluded. No automatic retry.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /iam/users/{name} (the `UpdateLocalUser` operationId).
+func (c *Client) UpdateLocalUser(ctx context.Context, name string, body UpdateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateLocalUserRequest(c.Server, name, body)
 	if err != nil {
 		return nil, err
 	}
@@ -18540,6 +19325,174 @@ func NewListIdentityProvidersRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewCreateIdentityProviderRequest calls the generic CreateIdentityProvider builder with application/json body
+func NewCreateIdentityProviderRequest(server string, body CreateIdentityProviderJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateIdentityProviderRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateIdentityProviderRequestWithBody constructs an http.Request for the CreateIdentityProvider method, with any body, and a specified content type
+func NewCreateIdentityProviderRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/identityproviders")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteIdentityProviderRequest calls the generic DeleteIdentityProvider builder with application/json body
+func NewDeleteIdentityProviderRequest(server string, name string, body DeleteIdentityProviderJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDeleteIdentityProviderRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewDeleteIdentityProviderRequestWithBody constructs an http.Request for the DeleteIdentityProvider method, with any body, and a specified content type
+func NewDeleteIdentityProviderRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/identityproviders/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetIdentityProviderRequest constructs an http.Request for the GetIdentityProvider method
+func NewGetIdentityProviderRequest(server string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/identityproviders/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReplaceIdentityProviderRequest calls the generic ReplaceIdentityProvider builder with application/json body
+func NewReplaceIdentityProviderRequest(server string, name string, body ReplaceIdentityProviderJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReplaceIdentityProviderRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewReplaceIdentityProviderRequestWithBody constructs an http.Request for the ReplaceIdentityProvider method, with any body, and a specified content type
+func NewReplaceIdentityProviderRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/identityproviders/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListRoleBindingsRequest constructs an http.Request for the ListRoleBindings method
 func NewListRoleBindingsRequest(server string) (*http.Request, error) {
 	var err error
@@ -18783,6 +19736,249 @@ func NewListServiceAccountsRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewCreateServiceAccountRequest calls the generic CreateServiceAccount builder with application/json body
+func NewCreateServiceAccountRequest(server string, body CreateServiceAccountJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateServiceAccountRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewCreateServiceAccountRequestWithBody constructs an http.Request for the CreateServiceAccount method, with any body, and a specified content type
+func NewCreateServiceAccountRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/serviceaccounts")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteServiceAccountRequest calls the generic DeleteServiceAccount builder with application/json body
+func NewDeleteServiceAccountRequest(server string, namespace string, name string, body DeleteServiceAccountJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDeleteServiceAccountRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewDeleteServiceAccountRequestWithBody constructs an http.Request for the DeleteServiceAccount method, with any body, and a specified content type
+func NewDeleteServiceAccountRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/serviceaccounts/%s/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetServiceAccountRequest constructs an http.Request for the GetServiceAccount method
+func NewGetServiceAccountRequest(server string, namespace string, name string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/serviceaccounts/%s/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReplaceServiceAccountRequest calls the generic ReplaceServiceAccount builder with application/json body
+func NewReplaceServiceAccountRequest(server string, namespace string, name string, body ReplaceServiceAccountJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReplaceServiceAccountRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewReplaceServiceAccountRequestWithBody constructs an http.Request for the ReplaceServiceAccount method, with any body, and a specified content type
+func NewReplaceServiceAccountRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/serviceaccounts/%s/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewCreateServiceAccountTokenRequest calls the generic CreateServiceAccountToken builder with application/json body
+func NewCreateServiceAccountTokenRequest(server string, namespace string, name string, body CreateServiceAccountTokenJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateServiceAccountTokenRequestWithBody(server, namespace, name, "application/json", bodyReader)
+}
+
+// NewCreateServiceAccountTokenRequestWithBody constructs an http.Request for the CreateServiceAccountToken method, with any body, and a specified content type
+func NewCreateServiceAccountTokenRequestWithBody(server string, namespace string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "namespace", namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/serviceaccounts/%s/%s/tokens", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListUsersRequest constructs an http.Request for the ListUsers method
 func NewListUsersRequest(server string) (*http.Request, error) {
 	var err error
@@ -18841,6 +20037,100 @@ func NewCreateLocalUserRequestWithBody(server string, contentType string, body i
 	}
 
 	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteLocalUserRequest calls the generic DeleteLocalUser builder with application/json body
+func NewDeleteLocalUserRequest(server string, name string, body DeleteLocalUserJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDeleteLocalUserRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewDeleteLocalUserRequestWithBody constructs an http.Request for the DeleteLocalUser method, with any body, and a specified content type
+func NewDeleteLocalUserRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/users/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUpdateLocalUserRequest calls the generic UpdateLocalUser builder with application/json body
+func NewUpdateLocalUserRequest(server string, name string, body UpdateLocalUserJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateLocalUserRequestWithBody(server, name, "application/json", bodyReader)
+}
+
+// NewUpdateLocalUserRequestWithBody constructs an http.Request for the UpdateLocalUser method, with any body, and a specified content type
+func NewUpdateLocalUserRequestWithBody(server string, name string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "name", name, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/iam/users/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -25600,6 +26890,67 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /iam/identityproviders (the `ListIdentityProviders` operationId).
 	ListIdentityProvidersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListIdentityProvidersResponse, error)
 
+	// CreateIdentityProviderWithBodyWithResponse Create an IdentityProvider object only if absent
+	//
+	// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing object or a provider id of the configuration file. spec.clientSecretRef names a credential reference; a secret value is never accepted. The provider is offered for login after its discovery and license admission.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/identityproviders (the `CreateIdentityProvider` operationId).
+	CreateIdentityProviderWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateIdentityProviderResponse, error)
+
+	// CreateIdentityProviderWithResponse Create an IdentityProvider object only if absent
+	//
+	// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing object or a provider id of the configuration file. spec.clientSecretRef names a credential reference; a secret value is never accepted. The provider is offered for login after its discovery and license admission.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/identityproviders (the `CreateIdentityProvider` operationId).
+	CreateIdentityProviderWithResponse(ctx context.Context, body CreateIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateIdentityProviderResponse, error)
+
+	// DeleteIdentityProviderWithBodyWithResponse Delete an explicitly reviewed API-owned IdentityProvider
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be deleted. The provider's revocation floor commits with the deletion: every session and token that came from it ends, also across restarts and on replicas. No implicit refresh or retry.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /iam/identityproviders/{name} (the `DeleteIdentityProvider` operationId).
+	DeleteIdentityProviderWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteIdentityProviderResponse, error)
+
+	// DeleteIdentityProviderWithResponse Delete an explicitly reviewed API-owned IdentityProvider
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be deleted. The provider's revocation floor commits with the deletion: every session and token that came from it ends, also across restarts and on replicas. No implicit refresh or retry.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /iam/identityproviders/{name} (the `DeleteIdentityProvider` operationId).
+	DeleteIdentityProviderWithResponse(ctx context.Context, name string, body DeleteIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteIdentityProviderResponse, error)
+
+	// GetIdentityProviderWithResponse Read an IdentityProvider object and its current UID/resourceVersion
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /iam/identityproviders/{name} (the `GetIdentityProvider` operationId).
+	GetIdentityProviderWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetIdentityProviderResponse, error)
+
+	// ReplaceIdentityProviderWithBodyWithResponse Replace an explicitly reviewed API-owned IdentityProvider
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be replaced. A changed spec raises the provider's revocation floor in the same commit: every session and token that came from it ends. No implicit refresh or retry.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /iam/identityproviders/{name} (the `ReplaceIdentityProvider` operationId).
+	ReplaceIdentityProviderWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceIdentityProviderResponse, error)
+
+	// ReplaceIdentityProviderWithResponse Replace an explicitly reviewed API-owned IdentityProvider
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be replaced. A changed spec raises the provider's revocation floor in the same commit: every session and token that came from it ends. No implicit refresh or retry.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /iam/identityproviders/{name} (the `ReplaceIdentityProvider` operationId).
+	ReplaceIdentityProviderWithResponse(ctx context.Context, name string, body ReplaceIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceIdentityProviderResponse, error)
+
 	// ListRoleBindingsWithResponse List rolebindings
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -25675,6 +27026,85 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /iam/serviceaccounts (the `ListServiceAccounts` operationId).
 	ListServiceAccountsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListServiceAccountsResponse, error)
 
+	// CreateServiceAccountWithBodyWithResponse Create a ServiceAccount only if absent
+	//
+	// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing account. Only public operator metadata and spec.description/spec.disabled are accepted. No token is issued: use POST /iam/serviceaccounts/{namespace}/{name}/tokens.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/serviceaccounts (the `CreateServiceAccount` operationId).
+	CreateServiceAccountWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateServiceAccountResponse, error)
+
+	// CreateServiceAccountWithResponse Create a ServiceAccount only if absent
+	//
+	// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing account. Only public operator metadata and spec.description/spec.disabled are accepted. No token is issued: use POST /iam/serviceaccounts/{namespace}/{name}/tokens.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/serviceaccounts (the `CreateServiceAccount` operationId).
+	CreateServiceAccountWithResponse(ctx context.Context, body CreateServiceAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServiceAccountResponse, error)
+
+	// DeleteServiceAccountWithBodyWithResponse Delete an explicitly reviewed API-owned ServiceAccount
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts without bootstrap authority may be deleted. The account's revocation floor and the deletion of its tokens commit with the object. No implicit refresh or retry.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /iam/serviceaccounts/{namespace}/{name} (the `DeleteServiceAccount` operationId).
+	DeleteServiceAccountWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteServiceAccountResponse, error)
+
+	// DeleteServiceAccountWithResponse Delete an explicitly reviewed API-owned ServiceAccount
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts without bootstrap authority may be deleted. The account's revocation floor and the deletion of its tokens commit with the object. No implicit refresh or retry.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /iam/serviceaccounts/{namespace}/{name} (the `DeleteServiceAccount` operationId).
+	DeleteServiceAccountWithResponse(ctx context.Context, namespace string, name string, body DeleteServiceAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteServiceAccountResponse, error)
+
+	// GetServiceAccountWithResponse Read a ServiceAccount and its current UID/resourceVersion
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /iam/serviceaccounts/{namespace}/{name} (the `GetServiceAccount` operationId).
+	GetServiceAccountWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetServiceAccountResponse, error)
+
+	// ReplaceServiceAccountWithBodyWithResponse Replace an explicitly reviewed API-owned ServiceAccount
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts may be replaced. Disabling raises the account's revocation floor and deletes its tokens atomically; enabling restores none. No implicit refresh or retry.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /iam/serviceaccounts/{namespace}/{name} (the `ReplaceServiceAccount` operationId).
+	ReplaceServiceAccountWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceServiceAccountResponse, error)
+
+	// ReplaceServiceAccountWithResponse Replace an explicitly reviewed API-owned ServiceAccount
+	//
+	// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts may be replaced. Disabling raises the account's revocation floor and deletes its tokens atomically; enabling restores none. No implicit refresh or retry.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /iam/serviceaccounts/{namespace}/{name} (the `ReplaceServiceAccount` operationId).
+	ReplaceServiceAccountWithResponse(ctx context.Context, namespace string, name string, body ReplaceServiceAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceServiceAccountResponse, error)
+
+	// CreateServiceAccountTokenWithBodyWithResponse Issue an API token for an exact ServiceAccount (the secret is returned once)
+	//
+	// Complete SQLite runtime only. Needs serviceaccounts.write and tokens.write at cluster scope and the exact account UID. The kdr_ secret appears only in this answer; it is never stored, listed or logged. Refused for a disabled account. List and revoke the token with GET /auth/tokens?all=true and DELETE /auth/tokens/{id}.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/serviceaccounts/{namespace}/{name}/tokens (the `CreateServiceAccountToken` operationId).
+	CreateServiceAccountTokenWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateServiceAccountTokenResponse, error)
+
+	// CreateServiceAccountTokenWithResponse Issue an API token for an exact ServiceAccount (the secret is returned once)
+	//
+	// Complete SQLite runtime only. Needs serviceaccounts.write and tokens.write at cluster scope and the exact account UID. The kdr_ secret appears only in this answer; it is never stored, listed or logged. Refused for a disabled account. List and revoke the token with GET /auth/tokens?all=true and DELETE /auth/tokens/{id}.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /iam/serviceaccounts/{namespace}/{name}/tokens (the `CreateServiceAccountToken` operationId).
+	CreateServiceAccountTokenWithResponse(ctx context.Context, namespace string, name string, body CreateServiceAccountTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServiceAccountTokenResponse, error)
+
 	// ListUsersWithResponse List users
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -25699,6 +27129,42 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /iam/users (the `CreateLocalUser` operationId).
 	CreateLocalUserWithResponse(ctx context.Context, body CreateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateLocalUserResponse, error)
+
+	// DeleteLocalUserWithBodyWithResponse Delete an exact API-managed local account
+	//
+	// Complete SQLite runtime only. Requires exact UID and resourceVersion. Ends the account's sessions and deletes its API tokens in the same commit; a later account with the same name never inherits them. Built-in and non-API-managed accounts are excluded.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /iam/users/{name} (the `DeleteLocalUser` operationId).
+	DeleteLocalUserWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteLocalUserResponse, error)
+
+	// DeleteLocalUserWithResponse Delete an exact API-managed local account
+	//
+	// Complete SQLite runtime only. Requires exact UID and resourceVersion. Ends the account's sessions and deletes its API tokens in the same commit; a later account with the same name never inherits them. Built-in and non-API-managed accounts are excluded.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /iam/users/{name} (the `DeleteLocalUser` operationId).
+	DeleteLocalUserWithResponse(ctx context.Context, name string, body DeleteLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteLocalUserResponse, error)
+
+	// UpdateLocalUserWithBodyWithResponse Change an exact API-managed local account's display name, groups or disabled state
+	//
+	// Complete SQLite runtime only. Requires exact UID and resourceVersion. Absent fields are kept. Changing groups or disabling the account ends its sessions and deletes its API tokens in the same commit; enabling restores none. The password, authenticator and password-change requirement are unchanged. Built-in and non-API-managed accounts are excluded. No automatic retry.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /iam/users/{name} (the `UpdateLocalUser` operationId).
+	UpdateLocalUserWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateLocalUserResponse, error)
+
+	// UpdateLocalUserWithResponse Change an exact API-managed local account's display name, groups or disabled state
+	//
+	// Complete SQLite runtime only. Requires exact UID and resourceVersion. Absent fields are kept. Changing groups or disabling the account ends its sessions and deletes its API tokens in the same commit; enabling restores none. The password, authenticator and password-change requirement are unchanged. Built-in and non-API-managed accounts are excluded. No automatic retry.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /iam/users/{name} (the `UpdateLocalUser` operationId).
+	UpdateLocalUserWithResponse(ctx context.Context, name string, body UpdateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateLocalUserResponse, error)
 
 	// ResetLocalUserPasswordWithBodyWithResponse Reset an exact API-managed local account's password
 	//
@@ -35473,6 +36939,387 @@ func (r ListIdentityProvidersResponse) ContentType() string {
 	return ""
 }
 
+type CreateIdentityProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *IdentityProviderDocument
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateIdentityProviderResponse) GetJSON201() *IdentityProviderDocument {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateIdentityProviderResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateIdentityProviderResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateIdentityProviderResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateIdentityProviderResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateIdentityProviderResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateIdentityProviderResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateIdentityProviderResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r CreateIdentityProviderResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateIdentityProviderResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateIdentityProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateIdentityProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateIdentityProviderResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteIdentityProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DeleteIdentityProviderResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteIdentityProviderResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteIdentityProviderResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteIdentityProviderResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteIdentityProviderResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r DeleteIdentityProviderResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r DeleteIdentityProviderResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteIdentityProviderResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r DeleteIdentityProviderResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteIdentityProviderResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteIdentityProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteIdentityProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteIdentityProviderResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetIdentityProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IdentityProviderDocument
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetIdentityProviderResponse) GetJSON200() *IdentityProviderDocument {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetIdentityProviderResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetIdentityProviderResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetIdentityProviderResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetIdentityProviderResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetIdentityProviderResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetIdentityProviderResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetIdentityProviderResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetIdentityProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetIdentityProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetIdentityProviderResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ReplaceIdentityProviderResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IdentityProviderDocument
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ReplaceIdentityProviderResponse) GetJSON200() *IdentityProviderDocument {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ReplaceIdentityProviderResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ReplaceIdentityProviderResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ReplaceIdentityProviderResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ReplaceIdentityProviderResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ReplaceIdentityProviderResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r ReplaceIdentityProviderResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ReplaceIdentityProviderResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ReplaceIdentityProviderResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ReplaceIdentityProviderResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ReplaceIdentityProviderResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReplaceIdentityProviderResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReplaceIdentityProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReplaceIdentityProviderResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListRoleBindingsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -36020,6 +37867,484 @@ func (r ListServiceAccountsResponse) ContentType() string {
 	return ""
 }
 
+type CreateServiceAccountResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ServiceAccountDocument
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateServiceAccountResponse) GetJSON201() *ServiceAccountDocument {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateServiceAccountResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateServiceAccountResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateServiceAccountResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateServiceAccountResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateServiceAccountResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateServiceAccountResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateServiceAccountResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r CreateServiceAccountResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateServiceAccountResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateServiceAccountResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateServiceAccountResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateServiceAccountResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteServiceAccountResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DeleteServiceAccountResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteServiceAccountResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteServiceAccountResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteServiceAccountResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteServiceAccountResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r DeleteServiceAccountResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r DeleteServiceAccountResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteServiceAccountResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r DeleteServiceAccountResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteServiceAccountResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteServiceAccountResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteServiceAccountResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteServiceAccountResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetServiceAccountResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ServiceAccountDocument
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetServiceAccountResponse) GetJSON200() *ServiceAccountDocument {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetServiceAccountResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetServiceAccountResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetServiceAccountResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetServiceAccountResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetServiceAccountResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r GetServiceAccountResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r GetServiceAccountResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetServiceAccountResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetServiceAccountResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetServiceAccountResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ReplaceServiceAccountResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ServiceAccountDocument
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ReplaceServiceAccountResponse) GetJSON200() *ServiceAccountDocument {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ReplaceServiceAccountResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ReplaceServiceAccountResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ReplaceServiceAccountResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ReplaceServiceAccountResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ReplaceServiceAccountResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r ReplaceServiceAccountResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ReplaceServiceAccountResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ReplaceServiceAccountResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ReplaceServiceAccountResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ReplaceServiceAccountResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ReplaceServiceAccountResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReplaceServiceAccountResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ReplaceServiceAccountResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateServiceAccountTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *CreatedToken
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateServiceAccountTokenResponse) GetJSON201() *CreatedToken {
+	return r.JSON201
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r CreateServiceAccountTokenResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r CreateServiceAccountTokenResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r CreateServiceAccountTokenResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r CreateServiceAccountTokenResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r CreateServiceAccountTokenResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r CreateServiceAccountTokenResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r CreateServiceAccountTokenResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r CreateServiceAccountTokenResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateServiceAccountTokenResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateServiceAccountTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateServiceAccountTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateServiceAccountTokenResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type ListUsersResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -36194,6 +38519,200 @@ func (r CreateLocalUserResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r CreateLocalUserResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteLocalUserResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON412 the response for an HTTP 412 `application/json` response
+	JSON412 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DeleteLocalUserResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteLocalUserResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r DeleteLocalUserResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteLocalUserResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteLocalUserResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON412 returns the response for an HTTP 412 `application/json` response
+func (r DeleteLocalUserResponse) GetJSON412() *Error {
+	return r.JSON412
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r DeleteLocalUserResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteLocalUserResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r DeleteLocalUserResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteLocalUserResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteLocalUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteLocalUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteLocalUserResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type UpdateLocalUserResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IAMUser
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateLocalUserResponse) GetJSON200() *IAMUser {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r UpdateLocalUserResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r UpdateLocalUserResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r UpdateLocalUserResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r UpdateLocalUserResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r UpdateLocalUserResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r UpdateLocalUserResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r UpdateLocalUserResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r UpdateLocalUserResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateLocalUserResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateLocalUserResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateLocalUserResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateLocalUserResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -47364,6 +49883,109 @@ func (c *ClientWithResponses) ListIdentityProvidersWithResponse(ctx context.Cont
 	return ParseListIdentityProvidersResponse(rsp)
 }
 
+// CreateIdentityProviderWithBodyWithResponse Create an IdentityProvider object only if absent
+//
+// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing object or a provider id of the configuration file. spec.clientSecretRef names a credential reference; a secret value is never accepted. The provider is offered for login after its discovery and license admission.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/identityproviders (the `CreateIdentityProvider` operationId).
+func (c *ClientWithResponses) CreateIdentityProviderWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateIdentityProviderResponse, error) {
+	rsp, err := c.CreateIdentityProviderWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateIdentityProviderResponse(rsp)
+}
+
+// CreateIdentityProviderWithResponse Create an IdentityProvider object only if absent
+//
+// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing object or a provider id of the configuration file. spec.clientSecretRef names a credential reference; a secret value is never accepted. The provider is offered for login after its discovery and license admission.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/identityproviders (the `CreateIdentityProvider` operationId).
+func (c *ClientWithResponses) CreateIdentityProviderWithResponse(ctx context.Context, body CreateIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateIdentityProviderResponse, error) {
+	rsp, err := c.CreateIdentityProvider(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateIdentityProviderResponse(rsp)
+}
+
+// DeleteIdentityProviderWithBodyWithResponse Delete an explicitly reviewed API-owned IdentityProvider
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be deleted. The provider's revocation floor commits with the deletion: every session and token that came from it ends, also across restarts and on replicas. No implicit refresh or retry.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /iam/identityproviders/{name} (the `DeleteIdentityProvider` operationId).
+func (c *ClientWithResponses) DeleteIdentityProviderWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteIdentityProviderResponse, error) {
+	rsp, err := c.DeleteIdentityProviderWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteIdentityProviderResponse(rsp)
+}
+
+// DeleteIdentityProviderWithResponse Delete an explicitly reviewed API-owned IdentityProvider
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be deleted. The provider's revocation floor commits with the deletion: every session and token that came from it ends, also across restarts and on replicas. No implicit refresh or retry.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /iam/identityproviders/{name} (the `DeleteIdentityProvider` operationId).
+func (c *ClientWithResponses) DeleteIdentityProviderWithResponse(ctx context.Context, name string, body DeleteIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteIdentityProviderResponse, error) {
+	rsp, err := c.DeleteIdentityProvider(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteIdentityProviderResponse(rsp)
+}
+
+// GetIdentityProviderWithResponse Read an IdentityProvider object and its current UID/resourceVersion
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /iam/identityproviders/{name} (the `GetIdentityProvider` operationId).
+func (c *ClientWithResponses) GetIdentityProviderWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetIdentityProviderResponse, error) {
+	rsp, err := c.GetIdentityProvider(ctx, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetIdentityProviderResponse(rsp)
+}
+
+// ReplaceIdentityProviderWithBodyWithResponse Replace an explicitly reviewed API-owned IdentityProvider
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be replaced. A changed spec raises the provider's revocation floor in the same commit: every session and token that came from it ends. No implicit refresh or retry.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /iam/identityproviders/{name} (the `ReplaceIdentityProvider` operationId).
+func (c *ClientWithResponses) ReplaceIdentityProviderWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceIdentityProviderResponse, error) {
+	rsp, err := c.ReplaceIdentityProviderWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceIdentityProviderResponse(rsp)
+}
+
+// ReplaceIdentityProviderWithResponse Replace an explicitly reviewed API-owned IdentityProvider
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned objects may be replaced. A changed spec raises the provider's revocation floor in the same commit: every session and token that came from it ends. No implicit refresh or retry.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /iam/identityproviders/{name} (the `ReplaceIdentityProvider` operationId).
+func (c *ClientWithResponses) ReplaceIdentityProviderWithResponse(ctx context.Context, name string, body ReplaceIdentityProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceIdentityProviderResponse, error) {
+	rsp, err := c.ReplaceIdentityProvider(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceIdentityProviderResponse(rsp)
+}
+
 // ListRoleBindingsWithResponse List rolebindings
 //
 // Returns a wrapper object for the known response body format(s).
@@ -47493,6 +50115,139 @@ func (c *ClientWithResponses) ListServiceAccountsWithResponse(ctx context.Contex
 	return ParseListServiceAccountsResponse(rsp)
 }
 
+// CreateServiceAccountWithBodyWithResponse Create a ServiceAccount only if absent
+//
+// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing account. Only public operator metadata and spec.description/spec.disabled are accepted. No token is issued: use POST /iam/serviceaccounts/{namespace}/{name}/tokens.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/serviceaccounts (the `CreateServiceAccount` operationId).
+func (c *ClientWithResponses) CreateServiceAccountWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateServiceAccountResponse, error) {
+	rsp, err := c.CreateServiceAccountWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateServiceAccountResponse(rsp)
+}
+
+// CreateServiceAccountWithResponse Create a ServiceAccount only if absent
+//
+// Complete SQLite runtime only (503 iam_management_unavailable elsewhere). Creates once; never adopts an existing account. Only public operator metadata and spec.description/spec.disabled are accepted. No token is issued: use POST /iam/serviceaccounts/{namespace}/{name}/tokens.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/serviceaccounts (the `CreateServiceAccount` operationId).
+func (c *ClientWithResponses) CreateServiceAccountWithResponse(ctx context.Context, body CreateServiceAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServiceAccountResponse, error) {
+	rsp, err := c.CreateServiceAccount(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateServiceAccountResponse(rsp)
+}
+
+// DeleteServiceAccountWithBodyWithResponse Delete an explicitly reviewed API-owned ServiceAccount
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts without bootstrap authority may be deleted. The account's revocation floor and the deletion of its tokens commit with the object. No implicit refresh or retry.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /iam/serviceaccounts/{namespace}/{name} (the `DeleteServiceAccount` operationId).
+func (c *ClientWithResponses) DeleteServiceAccountWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteServiceAccountResponse, error) {
+	rsp, err := c.DeleteServiceAccountWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteServiceAccountResponse(rsp)
+}
+
+// DeleteServiceAccountWithResponse Delete an explicitly reviewed API-owned ServiceAccount
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts without bootstrap authority may be deleted. The account's revocation floor and the deletion of its tokens commit with the object. No implicit refresh or retry.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /iam/serviceaccounts/{namespace}/{name} (the `DeleteServiceAccount` operationId).
+func (c *ClientWithResponses) DeleteServiceAccountWithResponse(ctx context.Context, namespace string, name string, body DeleteServiceAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteServiceAccountResponse, error) {
+	rsp, err := c.DeleteServiceAccount(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteServiceAccountResponse(rsp)
+}
+
+// GetServiceAccountWithResponse Read a ServiceAccount and its current UID/resourceVersion
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /iam/serviceaccounts/{namespace}/{name} (the `GetServiceAccount` operationId).
+func (c *ClientWithResponses) GetServiceAccountWithResponse(ctx context.Context, namespace string, name string, reqEditors ...RequestEditorFn) (*GetServiceAccountResponse, error) {
+	rsp, err := c.GetServiceAccount(ctx, namespace, name, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetServiceAccountResponse(rsp)
+}
+
+// ReplaceServiceAccountWithBodyWithResponse Replace an explicitly reviewed API-owned ServiceAccount
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts may be replaced. Disabling raises the account's revocation floor and deletes its tokens atomically; enabling restores none. No implicit refresh or retry.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /iam/serviceaccounts/{namespace}/{name} (the `ReplaceServiceAccount` operationId).
+func (c *ClientWithResponses) ReplaceServiceAccountWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceServiceAccountResponse, error) {
+	rsp, err := c.ReplaceServiceAccountWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceServiceAccountResponse(rsp)
+}
+
+// ReplaceServiceAccountWithResponse Replace an explicitly reviewed API-owned ServiceAccount
+//
+// Complete SQLite runtime only. Requires exact reviewed UID and resourceVersion. Only API-owned accounts may be replaced. Disabling raises the account's revocation floor and deletes its tokens atomically; enabling restores none. No implicit refresh or retry.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /iam/serviceaccounts/{namespace}/{name} (the `ReplaceServiceAccount` operationId).
+func (c *ClientWithResponses) ReplaceServiceAccountWithResponse(ctx context.Context, namespace string, name string, body ReplaceServiceAccountJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceServiceAccountResponse, error) {
+	rsp, err := c.ReplaceServiceAccount(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceServiceAccountResponse(rsp)
+}
+
+// CreateServiceAccountTokenWithBodyWithResponse Issue an API token for an exact ServiceAccount (the secret is returned once)
+//
+// Complete SQLite runtime only. Needs serviceaccounts.write and tokens.write at cluster scope and the exact account UID. The kdr_ secret appears only in this answer; it is never stored, listed or logged. Refused for a disabled account. List and revoke the token with GET /auth/tokens?all=true and DELETE /auth/tokens/{id}.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/serviceaccounts/{namespace}/{name}/tokens (the `CreateServiceAccountToken` operationId).
+func (c *ClientWithResponses) CreateServiceAccountTokenWithBodyWithResponse(ctx context.Context, namespace string, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateServiceAccountTokenResponse, error) {
+	rsp, err := c.CreateServiceAccountTokenWithBody(ctx, namespace, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateServiceAccountTokenResponse(rsp)
+}
+
+// CreateServiceAccountTokenWithResponse Issue an API token for an exact ServiceAccount (the secret is returned once)
+//
+// Complete SQLite runtime only. Needs serviceaccounts.write and tokens.write at cluster scope and the exact account UID. The kdr_ secret appears only in this answer; it is never stored, listed or logged. Refused for a disabled account. List and revoke the token with GET /auth/tokens?all=true and DELETE /auth/tokens/{id}.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /iam/serviceaccounts/{namespace}/{name}/tokens (the `CreateServiceAccountToken` operationId).
+func (c *ClientWithResponses) CreateServiceAccountTokenWithResponse(ctx context.Context, namespace string, name string, body CreateServiceAccountTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateServiceAccountTokenResponse, error) {
+	rsp, err := c.CreateServiceAccountToken(ctx, namespace, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateServiceAccountTokenResponse(rsp)
+}
+
 // ListUsersWithResponse List users
 //
 // Returns a wrapper object for the known response body format(s).
@@ -47534,6 +50289,66 @@ func (c *ClientWithResponses) CreateLocalUserWithResponse(ctx context.Context, b
 		return nil, err
 	}
 	return ParseCreateLocalUserResponse(rsp)
+}
+
+// DeleteLocalUserWithBodyWithResponse Delete an exact API-managed local account
+//
+// Complete SQLite runtime only. Requires exact UID and resourceVersion. Ends the account's sessions and deletes its API tokens in the same commit; a later account with the same name never inherits them. Built-in and non-API-managed accounts are excluded.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /iam/users/{name} (the `DeleteLocalUser` operationId).
+func (c *ClientWithResponses) DeleteLocalUserWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeleteLocalUserResponse, error) {
+	rsp, err := c.DeleteLocalUserWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteLocalUserResponse(rsp)
+}
+
+// DeleteLocalUserWithResponse Delete an exact API-managed local account
+//
+// Complete SQLite runtime only. Requires exact UID and resourceVersion. Ends the account's sessions and deletes its API tokens in the same commit; a later account with the same name never inherits them. Built-in and non-API-managed accounts are excluded.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /iam/users/{name} (the `DeleteLocalUser` operationId).
+func (c *ClientWithResponses) DeleteLocalUserWithResponse(ctx context.Context, name string, body DeleteLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*DeleteLocalUserResponse, error) {
+	rsp, err := c.DeleteLocalUser(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteLocalUserResponse(rsp)
+}
+
+// UpdateLocalUserWithBodyWithResponse Change an exact API-managed local account's display name, groups or disabled state
+//
+// Complete SQLite runtime only. Requires exact UID and resourceVersion. Absent fields are kept. Changing groups or disabling the account ends its sessions and deletes its API tokens in the same commit; enabling restores none. The password, authenticator and password-change requirement are unchanged. Built-in and non-API-managed accounts are excluded. No automatic retry.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /iam/users/{name} (the `UpdateLocalUser` operationId).
+func (c *ClientWithResponses) UpdateLocalUserWithBodyWithResponse(ctx context.Context, name string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateLocalUserResponse, error) {
+	rsp, err := c.UpdateLocalUserWithBody(ctx, name, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateLocalUserResponse(rsp)
+}
+
+// UpdateLocalUserWithResponse Change an exact API-managed local account's display name, groups or disabled state
+//
+// Complete SQLite runtime only. Requires exact UID and resourceVersion. Absent fields are kept. Changing groups or disabling the account ends its sessions and deletes its API tokens in the same commit; enabling restores none. The password, authenticator and password-change requirement are unchanged. Built-in and non-API-managed accounts are excluded. No automatic retry.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /iam/users/{name} (the `UpdateLocalUser` operationId).
+func (c *ClientWithResponses) UpdateLocalUserWithResponse(ctx context.Context, name string, body UpdateLocalUserJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateLocalUserResponse, error) {
+	rsp, err := c.UpdateLocalUser(ctx, name, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateLocalUserResponse(rsp)
 }
 
 // ResetLocalUserPasswordWithBodyWithResponse Reset an exact API-managed local account's password
@@ -56876,6 +59691,330 @@ func ParseListIdentityProvidersResponse(rsp *http.Response) (*ListIdentityProvid
 	return response, nil
 }
 
+// ParseCreateIdentityProviderResponse parses an HTTP response from a CreateIdentityProviderWithResponse call
+func ParseCreateIdentityProviderResponse(rsp *http.Response) (*CreateIdentityProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateIdentityProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest IdentityProviderDocument
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteIdentityProviderResponse parses an HTTP response from a DeleteIdentityProviderWithResponse call
+func ParseDeleteIdentityProviderResponse(rsp *http.Response) (*DeleteIdentityProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteIdentityProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetIdentityProviderResponse parses an HTTP response from a GetIdentityProviderWithResponse call
+func ParseGetIdentityProviderResponse(rsp *http.Response) (*GetIdentityProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetIdentityProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IdentityProviderDocument
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReplaceIdentityProviderResponse parses an HTTP response from a ReplaceIdentityProviderWithResponse call
+func ParseReplaceIdentityProviderResponse(rsp *http.Response) (*ReplaceIdentityProviderResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReplaceIdentityProviderResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IdentityProviderDocument
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListRoleBindingsResponse parses an HTTP response from a ListRoleBindingsWithResponse call
 func ParseListRoleBindingsResponse(rsp *http.Response) (*ListRoleBindingsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -57336,6 +60475,412 @@ func ParseListServiceAccountsResponse(rsp *http.Response) (*ListServiceAccountsR
 	return response, nil
 }
 
+// ParseCreateServiceAccountResponse parses an HTTP response from a CreateServiceAccountWithResponse call
+func ParseCreateServiceAccountResponse(rsp *http.Response) (*CreateServiceAccountResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateServiceAccountResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ServiceAccountDocument
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteServiceAccountResponse parses an HTTP response from a DeleteServiceAccountWithResponse call
+func ParseDeleteServiceAccountResponse(rsp *http.Response) (*DeleteServiceAccountResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteServiceAccountResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetServiceAccountResponse parses an HTTP response from a GetServiceAccountWithResponse call
+func ParseGetServiceAccountResponse(rsp *http.Response) (*GetServiceAccountResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetServiceAccountResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServiceAccountDocument
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReplaceServiceAccountResponse parses an HTTP response from a ReplaceServiceAccountWithResponse call
+func ParseReplaceServiceAccountResponse(rsp *http.Response) (*ReplaceServiceAccountResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReplaceServiceAccountResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServiceAccountDocument
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateServiceAccountTokenResponse parses an HTTP response from a CreateServiceAccountTokenWithResponse call
+func ParseCreateServiceAccountTokenResponse(rsp *http.Response) (*CreateServiceAccountTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateServiceAccountTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest CreatedToken
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListUsersResponse parses an HTTP response from a ListUsersWithResponse call
 func ParseListUsersResponse(rsp *http.Response) (*ListUsersResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -57424,6 +60969,173 @@ func ParseCreateLocalUserResponse(rsp *http.Response) (*CreateLocalUserResponse,
 			return nil, err
 		}
 		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteLocalUserResponse parses an HTTP response from a DeleteLocalUserWithResponse call
+func ParseDeleteLocalUserResponse(rsp *http.Response) (*DeleteLocalUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteLocalUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 412:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON412 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateLocalUserResponse parses an HTTP response from a UpdateLocalUserWithResponse call
+func ParseUpdateLocalUserResponse(rsp *http.Response) (*UpdateLocalUserResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateLocalUserResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IAMUser
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest Error
