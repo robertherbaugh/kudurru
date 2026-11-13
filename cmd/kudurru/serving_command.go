@@ -129,8 +129,16 @@ func (s *servingRuntime) recaptureCommand(ctx context.Context, attempt func(bega
 			return committed, err
 		}
 		if items := requestItemsFrom(ctx); items != nil && items.chain.Anchored() {
-			// A later item is bound to its request's command chain (D378).
-			return false, notDispatchedError{err}
+			// A later item is bound to its request's command chain (D378). An
+			// earlier item of the request committed, so the refusal must not
+			// invite sending the request again (no Retry-After, D405).
+			return false, err
+		}
+		if servinghttp.Dispatched(ctx) {
+			// An earlier command of this request began its transaction body
+			// and may have committed: the request as a whole is not
+			// effect-free (D405).
+			return false, err
 		}
 		if wait == nil {
 			var cancel context.CancelFunc
@@ -147,9 +155,11 @@ func (s *servingRuntime) recaptureCommand(ctx context.Context, attempt func(bega
 }
 
 // notDispatchedError is a current command's serving.ErrPending refusal
-// returned before any of its transaction bodies began (D399): nothing was
-// applied, so the API answer may carry Retry-After. A refusal from inside a
-// body, at commit or after it is returned unwrapped.
+// returned before any transaction body of its request began (D399): nothing
+// was applied, so the API answer may carry Retry-After. A refusal from inside
+// a body, at commit or after it, and a refusal of a later command or item of
+// a request one of whose commands already dispatched, are returned unwrapped
+// (D405).
 type notDispatchedError struct{ err error }
 
 func (e notDispatchedError) Error() string { return e.err.Error() }

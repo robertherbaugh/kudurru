@@ -46,6 +46,20 @@ func MarkDispatched(ctx context.Context) {
 	}
 }
 
+// Dispatched reports whether a command of this request began its
+// transaction body (MarkDispatched). A refusal of a later command of such a
+// request is not effect-free for the request as a whole, so it must not
+// invite the caller to send the request again (D405).
+func Dispatched(ctx context.Context) bool {
+	cell, ok := ctx.Value(leaseKey{}).(*requestCell)
+	if !ok || cell == nil {
+		return false
+	}
+	cell.mu.Lock()
+	defer cell.mu.Unlock()
+	return cell.dispatched
+}
+
 // lockedForRecapture returns the current lease of a request that has not
 // dispatched a command yet.
 func (c *requestCell) lockedForRecapture() (*serving.Lease, bool) {
