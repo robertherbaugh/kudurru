@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"sync"
@@ -115,8 +116,7 @@ func (s *servingRuntime) runAnchorWriterReady(ctx context.Context, target servin
 		if err == nil {
 			err = s.runAnchorUpdaterReady(ctx, target, host, signal)
 		}
-		var terminal *anchorTerminalFailure
-		if !errors.As(err, &terminal) && ctx.Err() != nil && (err == nil || errors.Is(err, ctx.Err())) {
+		if anchorWriterCanceled(ctx, err) {
 			return ctx.Err() // owner cancellation joins; no original input is retained
 		}
 		if err == nil {
@@ -167,4 +167,22 @@ func (s *servingRuntime) anchorFirstStepNotDue(ctx context.Context) bool {
 		next = view.Checkpoint.Wall
 	}
 	return s.anchorWriterNow().Add(anchorEarlyReleaseMargin).Before(next)
+}
+
+// anchorWriterCanceled reports that the updater ended because its writer
+// context ended (shutdown or the end of the writer term), not because of a
+// terminal refusal. database/sql rolls a transaction back when its context
+// is canceled, and the transaction's next statement or commit then reports
+// sql.ErrTxDone instead of the context's error; with the context already
+// ended that is the same cancellation, wrapped as terminal or not, and is
+// not logged as a terminal stop. Any other terminal failure stays terminal.
+func anchorWriterCanceled(ctx context.Context, err error) bool {
+	if ctx.Err() == nil {
+		return false
+	}
+	if errors.Is(err, sql.ErrTxDone) {
+		return true
+	}
+	var terminal *anchorTerminalFailure
+	return !errors.As(err, &terminal) && (err == nil || errors.Is(err, ctx.Err()))
 }
