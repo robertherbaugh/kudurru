@@ -1456,10 +1456,13 @@ exact reviewed UID and resourceVersion, requires the API manager, stages the
 object through `security.Apply`/`security.Delete` (which stage the account or
 provider floor) and deletes the ended tokens. The object audit row commits with
 them. The built-in admin, accounts of other managers and service accounts with
-private bootstrap authority (`PrincipalState`) are refused. A token issued for
-a service account must authenticate from its stored form inside the
-transaction before the answer carries it; only its hash is stored, and no log,
-audit row or error contains the secret. A provider object holds a credential
+private bootstrap authority (`PrincipalState`) are refused by replace, delete
+and token issuance alike (`serviceAccountAdministrable`): a bootstrap-authority
+token would carry admin with no binding to revoke. A token issued for a service
+account expires no later than the caller's own API token, as in
+`POST /auth/tokens`, and within `auth.tokens.maxLifetime`. It must authenticate
+from its stored form inside the transaction before the answer carries it; only
+its hash is stored, and no log, audit row or error contains the secret. A provider object holds a credential
 reference, never a value. After the commit the provider coordinator
 republishes the provider set as for any other source change, and a new
 provider is offered after its discovery and license admission.
@@ -1478,6 +1481,16 @@ sequenceDiagram
     C-->>H: Commit or roll back everything
     H-->>A: Object, 204, or token shown once
 ```
+
+Account and provider floors are permanent, like grant floors: nothing prunes
+them, so each delete and the first disable or group change of a UID adds one
+row to the security section. That section is bounded at
+`servingauth.MaxRows` (4096) rows shared with sessions, TOTP records, external
+identities and browser attempts. At the bound, a command that needs a new floor
+or session fails with `ErrBounds` (`503 unavailable`) and commits nothing; an
+existing account, its tokens and reads are unaffected
+(`TestServingHTTPIAMWritersDeleteAtSecurityCapacity`). Pruning floors of UIDs
+that can no longer authenticate is open work.
 
 All of these operations are `primary` in the follower contract (D368). On
 Kubernetes they refuse as listed above; `GET /iam/serviceaccounts/{namespace}/{name}`

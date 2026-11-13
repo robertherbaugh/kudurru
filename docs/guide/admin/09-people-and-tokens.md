@@ -182,12 +182,23 @@ never show it again: store it in your secret manager at once. List the tokens
 with `kudurru api GET '/auth/tokens?all=true'` and revoke one with
 `kudurru api DELETE /auth/tokens/ID`. Issuing a token needs both
 `serviceaccounts.write` and `tokens.write`; the built-in role Admin has them.
+A token never outlives the API token you issue it with: when you sign in with
+an API token, the new token expires no later than yours, even without
+`--expires-in`. `auth.tokens.maxLifetime` bounds both.
 
 `replace` and `delete` need the exact `--uid` and `--resource-version`.
 Disabling an account (`spec.disabled: true`) or deleting it deletes all of its
-tokens in the same commit, and they stay refused after a restart and on every
-replica. Enabling it again restores none; issue new tokens. The bootstrap
-account and accounts of other managers cannot be changed with these commands.
+tokens in the same commit, and they stay refused after a restart. A replica
+that installs the data, or is promoted, keeps the deletion and the revocation
+record. Enabling it again restores none; issue new tokens. The bootstrap
+account and accounts of other managers cannot be changed, deleted or given a
+token with these commands.
+
+Each delete, and the first disable of an account, keeps a small permanent
+revocation record. Together with active sessions these records share a limit
+of about 4,000 entries per cluster. Prefer disabling a long-lived account to
+creating and deleting one per job: when the limit is reached, deletes and new
+sign-ins answer `503 unavailable` and change nothing.
 
 ### Identity provider objects
 
