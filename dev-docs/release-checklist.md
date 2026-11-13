@@ -264,7 +264,9 @@ On the owner's hardware:
       passes, and on a node with `upstreams.groups.default.mode: recursive`
       `dig +dnssec example.com` has the AD flag, `dig dnssec-failed.org`
       answers SERVFAIL with EDE 6 (`+cd` returns the data) and
-      `kudurru_recursor_outgoing_queries_total{result="timeout"}` stays low.
+      `kudurru_recursor_outgoing_queries_total{result="timeout"}` stays low
+      (`hack/live-recursive-node.sh bin/kudurru` starts such a node on
+      loopback ports with a scratch data directory and checks all four).
       The built-in trust anchors still match IANA's root-anchors.xml:
       `KUDURRU_LIVE_DNS=1 go test -run '^(TestLiveInternet|TestLiveIANATrustAnchors)$' ./internal/recursor`
       runs both (the anchor test fetches the file over HTTPS and compares

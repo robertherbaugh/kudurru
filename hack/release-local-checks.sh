@@ -12,6 +12,7 @@
 #                     daemon and are removed afterwards)
 #   --live            also the live-internet checks (port 53 and HTTPS egress):
 #                     TestLiveInternet, TestLiveIANATrustAnchors, TestLiveRootManagedBootstrap
+#                     and hack/live-recursive-node.sh on the bin/kudurru that make size built
 #   --skip-generated  skip `make check-generated` (minutes; CI runs both halves)
 #
 # Steps: version-check, the version-sync unit tests, hack/release-tag.sh rc,
@@ -33,6 +34,7 @@ cd "$(dirname "$0")/.."
 root=$(pwd)
 
 GORELEASER_VERSION=${GORELEASER_VERSION:-v2.18.3}
+SNAPSHOT_MIN_FREE_GB=${SNAPSHOT_MIN_FREE_GB:-14}
 out="" rc="" full=0 live=0 generated=1
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -137,6 +139,14 @@ snapshot_single() {
 snapshot_full() {
 	command -v syft >/dev/null || { echo "syft is not on PATH (the sboms step needs it)"; return 1; }
 	docker info >/dev/null 2>&1 || { echo "no Docker daemon at ${DOCKER_HOST:-the default socket}"; return 1; }
+	# Four cross-compiled builds, archives, packages and images: a first run
+	# filled a disk that had 8.5 GB free. Refuse instead of filling it.
+	local free
+	free=$(df -Pk . | awk 'NR == 2 {print int($4 / 1048576)}')
+	if [ "$free" -lt "$SNAPSHOT_MIN_FREE_GB" ]; then
+		echo "only $free GB free here; the full snapshot needs about $SNAPSHOT_MIN_FREE_GB GB (SNAPSHOT_MIN_FREE_GB)"
+		return 1
+	fi
 	"$scratch/goreleaser" release --snapshot --clean --skip=publish,sign
 	local status=$?
 	echo "## dist/ (artifacts, without the build directories)"
@@ -157,8 +167,10 @@ snapshot_full() {
 	echo "## hack/volume-check.sh on the snapshot images"
 	echo "(a snapshot uses the plain distroless bases unless KUDURRU_BASE_IMAGE is set;"
 	echo " publish.yml builds images/base first, so a FAIL here on the plain bases is expected)"
-	# shellcheck disable=SC2046 # one argument per image
-	hack/volume-check.sh $(awk '{print $1}' <<<"$images") || true
+	if [ -n "$images" ]; then
+		# shellcheck disable=SC2046 # one argument per image
+		hack/volume-check.sh $(awk '{print $1}' <<<"$images") || true
+	fi
 	# Only the snapshot tags: other users of a shared daemon keep their images.
 	echo "## removing the snapshot images"
 	awk '{print $1}' <<<"$images" | xargs -r docker rmi
@@ -191,6 +203,7 @@ fi
 if [ "$live" = 1 ]; then
 	step live-recursor env KUDURRU_LIVE_DNS=1 go test -count=1 -v -run '^(TestLiveInternet|TestLiveIANATrustAnchors)$' ./internal/recursor
 	step live-managed-root env KUDURRU_LIVE_DNS=1 go test -count=1 -v -run '^TestLiveRootManagedBootstrap$' ./cmd/kudurru
+	step live-recursive-node hack/live-recursive-node.sh bin/kudurru
 fi
 cleanup
 trap - EXIT
