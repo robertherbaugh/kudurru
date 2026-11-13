@@ -43,6 +43,10 @@ func TestLegacyAuthHandlerFallbackAndRefusals(t *testing.T) {
 		if tc.key == "" {
 			continue
 		}
+		// None of these refusals ends by waiting, so none says to retry.
+		if retry := w.Header().Get("Retry-After"); retry != "" {
+			t.Fatalf("%s %s: durable refusal %s carries Retry-After %q", tc.method, tc.path, tc.key, retry)
+		}
 		var envelope struct {
 			Error struct {
 				Key, Message, Hint string

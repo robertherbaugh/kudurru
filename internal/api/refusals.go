@@ -1,6 +1,7 @@
 package api
 
 import (
+	"net/http"
 	"slices"
 	"strconv"
 )
@@ -60,11 +61,19 @@ const (
 	retryAfterNever retryAfterRule = iota
 	retryAfterAlways
 	// retryAfterMay: completion_unknown carries one on the authentication
-	// routes only (docs/deploy/api-contracts.md), and unavailable names
-	// transient states (a provider that is not reachable yet) as well as
-	// durable ones.
+	// routes only (docs/deploy/api-contracts.md).
 	retryAfterMay
 )
+
+// transientUnavailable names the operations whose 503 unavailable may name a
+// state that ends by itself (an identity provider that is not reachable
+// yet), so that the answer may carry Retry-After. Every other unavailable
+// that the inventory declares names a deployment shape or a feature that is
+// off, which waiting does not change, and carries none.
+var transientUnavailable = map[string]bool{
+	"oidcStart":      true,
+	"verifyCLILogin": true,
+}
 
 // capabilitiesDoc is the operator page with the capability matrix and the
 // glossary of refusal keys.
@@ -78,7 +87,7 @@ var refusalKeys = map[string]refusalKey{
 	"501 " + KeyNotImplemented:          {doc: capabilitiesDoc + "#not_implemented"},
 	"503 " + KeyReadOnly:                {doc: capabilitiesDoc + "#read_only"},
 	"503 " + KeyPrimaryRequired:         {doc: capabilitiesDoc + "#primary_required"},
-	"503 " + KeyUnavailable:             {doc: capabilitiesDoc + "#unavailable", retryAfter: retryAfterMay},
+	"503 " + KeyUnavailable:             {doc: capabilitiesDoc + "#unavailable"},
 	"503 completion_unknown":            {doc: capabilitiesDoc + "#completion_unknown", retryAfter: retryAfterMay},
 	"503 committed_output_unavailable":  {doc: capabilitiesDoc + "#committed_output_unavailable"},
 	"503 cluster_fenced":                {doc: capabilitiesDoc + "#cluster_fenced"},
@@ -230,14 +239,14 @@ var operationRefusals = map[string]refusals{
 	"previewMigrationDecommission": {ShapeStatic: KeyReadOnly},
 	"startMigration":               {ShapeStatic: KeyReadOnly},
 	// integrations
-	"checkIntegration":        {},
+	"checkIntegration":        {ShapeKubernetes: KeyUnavailable},
 	"getIntegration":          {ShapeKubernetes: KeyUnavailable},
-	"invokeIntegrationAction": {ShapeStatic: KeyReadOnly},
-	"listIntegrationActions":  {},
-	"listIntegrations":        {},
-	"previewIntegration":      {},
-	"releaseIntegration":      {ShapeStatic: KeyReadOnly},
-	"syncIntegration":         {ShapeStatic: KeyReadOnly},
+	"invokeIntegrationAction": {ShapeStatic: KeyReadOnly, ShapeKubernetes: KeyUnavailable},
+	"listIntegrationActions":  {ShapeKubernetes: KeyUnavailable},
+	"listIntegrations":        {ShapeKubernetes: KeyUnavailable},
+	"previewIntegration":      {ShapeKubernetes: KeyUnavailable},
+	"releaseIntegration":      {ShapeStatic: KeyReadOnly, ShapeKubernetes: KeyUnavailable},
+	"syncIntegration":         {ShapeStatic: KeyReadOnly, ShapeKubernetes: KeyUnavailable},
 	// meta
 	"getBranding": {},
 	"getVersion":  {},
@@ -344,9 +353,13 @@ var featureRefusals = map[string]Feature{
 	"statsSummary":          FeatureQueryLog,
 	"statsTimeseries":       FeatureQueryLog,
 	"getDHCPScopeConfig":    FeatureDHCP,
+	"putDHCPScopeConfig":    FeatureDHCP,
 	"exportDHCPLeases":      FeatureDHCP,
+	"importDHCPLeases":      FeatureDHCP,
 	"listDHCPLeases":        FeatureDHCP,
 	"listDHCPReservations":  FeatureDHCP,
+	"putDHCPReservation":    FeatureDHCP,
+	"deleteDHCPReservation": FeatureDHCP,
 	"vipEventStream":        FeatureVIP,
 }
 
@@ -397,8 +410,12 @@ func RefusalKeyDoc(key string, status int) (string, bool) {
 }
 
 // RefusalRetryAfterAllowed reports whether a 501 or 503 with this key and
-// status may carry Retry-After (allowed) and whether it must (required).
-func RefusalRetryAfterAllowed(key string, status int) (allowed, required bool) {
+// status, answered for the operation, may carry Retry-After (allowed) and
+// whether it must (required).
+func RefusalRetryAfterAllowed(operationID, key string, status int) (allowed, required bool) {
+	if status == http.StatusServiceUnavailable && key == KeyUnavailable && transientUnavailable[operationID] {
+		return true, false
+	}
 	row := refusalKeys[strconv.Itoa(status)+" "+key]
 	return row.retryAfter != retryAfterNever, row.retryAfter == retryAfterAlways
 }
