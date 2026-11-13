@@ -96,7 +96,7 @@ func TestServingHTTPIAMWritersOriginalFinalClockAndCancellation(t *testing.T) {
 				if err != nil {
 					t.Fatal("manifest")
 				}
-				attrs := []rbac.Attributes{iamAttrs("serviceaccounts", "write", "apps", "final-account"), servingHTTPCluster("tokens", "write")}
+				attrs := []rbac.Attributes{iamTarget(servingHTTPCluster("serviceaccounts", "write"), "apps", "final-account"), servingHTTPCluster("tokens", "write")}
 				before := roleBindingImage(t, f.s.opts.Store)
 				called := false
 				f.http.Middleware(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -142,7 +142,7 @@ func TestServingHTTPIAMWritersOriginalFinalClockAndCancellation(t *testing.T) {
 		t.Fatal("original request missing")
 	}
 	called := false
-	err := f.h.iamCommand(released, []rbac.Attributes{iamAttrs("serviceaccounts", "write", "apps", "released")}, func(context.Context, *sqlite.CommandTx, servingauth.Dependencies, auth.Principal, time.Time) error {
+	err := f.h.iamCommand(released, []rbac.Attributes{iamTarget(servingHTTPCluster("serviceaccounts", "write"), "apps", "released")}, func(context.Context, *sqlite.CommandTx, servingauth.Dependencies, auth.Principal, time.Time) error {
 		called = true
 		return nil
 	})

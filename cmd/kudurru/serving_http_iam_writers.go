@@ -140,8 +140,9 @@ func (h *servingHTTP) iamCommand(r *http.Request, attrs []rbac.Attributes, fn fu
 	})
 }
 
-func iamAttrs(resource, verb, namespace, name string) rbac.Attributes {
-	a := servingHTTPCluster(resource, verb)
+// iamTarget narrows a declared permission to one object. The resource and
+// verb stay in the servingHTTPCluster call, which the permission lints read.
+func iamTarget(a rbac.Attributes, namespace, name string) rbac.Attributes {
 	a.Namespace, a.Name = namespace, name
 	return a
 }
@@ -213,7 +214,7 @@ func (h *servingHTTP) updateLocalUser(w http.ResponseWriter, r *http.Request) er
 	}
 	var out api.IAMUser
 	var revoked, self bool
-	err = h.iamCommand(r, []rbac.Attributes{iamAttrs("users", "write", "", name)}, func(ctx context.Context, tx *sqlite.CommandTx, _ servingauth.Dependencies, p auth.Principal, observed time.Time) error {
+	err = h.iamCommand(r, []rbac.Attributes{iamTarget(servingHTTPCluster("users", "write"), "", name)}, func(ctx context.Context, tx *sqlite.CommandTx, _ servingauth.Dependencies, p auth.Principal, observed time.Time) error {
 		u, err := reviewedLocalUser(ctx, tx, name, review)
 		if err != nil {
 			return err
@@ -274,7 +275,7 @@ func (h *servingHTTP) deleteLocalUser(w http.ResponseWriter, r *http.Request) er
 		return servingHTTPInvalid("exact reviewed uid and resourceVersion required")
 	}
 	var self bool
-	err = h.iamCommand(r, []rbac.Attributes{iamAttrs("users", "delete", "", name)}, func(ctx context.Context, tx *sqlite.CommandTx, _ servingauth.Dependencies, p auth.Principal, observed time.Time) error {
+	err = h.iamCommand(r, []rbac.Attributes{iamTarget(servingHTTPCluster("users", "delete"), "", name)}, func(ctx context.Context, tx *sqlite.CommandTx, _ servingauth.Dependencies, p auth.Principal, observed time.Time) error {
 		u, err := reviewedLocalUser(ctx, tx, name, review)
 		if err != nil {
 			return err
@@ -446,11 +447,12 @@ func serviceAccountAdministrable(ctx context.Context, tx *sqlite.CommandTx, sa *
 }
 
 func (h *servingHTTP) mutateServiceAccount(w http.ResponseWriter, r *http.Request) error {
-	verb := "write"
+	// Literal resource/verb pairs, so the permission lints credit both verbs.
+	perm := servingHTTPCluster("serviceaccounts", "write")
 	if r.Method == http.MethodDelete {
-		verb = "delete"
+		perm = servingHTTPCluster("serviceaccounts", "delete")
 	}
-	raw, err := h.iamCommandPreflight(w, r, servingHTTPCluster("serviceaccounts", verb))
+	raw, err := h.iamCommandPreflight(w, r, perm)
 	if err != nil {
 		return err
 	}
@@ -496,7 +498,7 @@ func (h *servingHTTP) mutateServiceAccount(w http.ResponseWriter, r *http.Reques
 		return servingHTTPInvalid("exact reviewed ServiceAccount UID and resourceVersion required")
 	}
 	var out store.Object
-	err = h.iamCommand(r, []rbac.Attributes{iamAttrs("serviceaccounts", verb, key.Namespace, key.Name)}, func(ctx context.Context, tx *sqlite.CommandTx, _ servingauth.Dependencies, _ auth.Principal, observed time.Time) error {
+	err = h.iamCommand(r, []rbac.Attributes{iamTarget(perm, key.Namespace, key.Name)}, func(ctx context.Context, tx *sqlite.CommandTx, _ servingauth.Dependencies, _ auth.Principal, observed time.Time) error {
 		if r.Method == http.MethodPost {
 			var err error
 			out, err = security.Apply(ctx, tx, desired, store.ApplyOptions{Manager: store.ManagerAPI, CreateOnly: true}, observed)
@@ -575,7 +577,7 @@ func (h *servingHTTP) createServiceAccountToken(w http.ResponseWriter, r *http.R
 	scopes := slices.Clone(req.Scopes)
 	slices.Sort(scopes)
 	scopes = slices.Compact(scopes)
-	attrs := []rbac.Attributes{iamAttrs("serviceaccounts", "write", key.Namespace, key.Name), servingHTTPCluster("tokens", "write")}
+	attrs := []rbac.Attributes{iamTarget(servingHTTPCluster("serviceaccounts", "write"), key.Namespace, key.Name), servingHTTPCluster("tokens", "write")}
 	var created *internalv1.APIToken
 	var wire string
 	err = h.iamCommand(r, attrs, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, p auth.Principal, _ time.Time) error {
@@ -739,11 +741,12 @@ func (h *servingHTTP) configProviderID(id string) bool {
 }
 
 func (h *servingHTTP) mutateIdentityProvider(w http.ResponseWriter, r *http.Request) error {
-	verb := "write"
+	// Literal resource/verb pairs, so the permission lints credit both verbs.
+	perm := servingHTTPCluster("identityproviders", "write")
 	if r.Method == http.MethodDelete {
-		verb = "delete"
+		perm = servingHTTPCluster("identityproviders", "delete")
 	}
-	raw, err := h.iamCommandPreflight(w, r, servingHTTPCluster("identityproviders", verb))
+	raw, err := h.iamCommandPreflight(w, r, perm)
 	if err != nil {
 		return err
 	}
@@ -792,7 +795,7 @@ func (h *servingHTTP) mutateIdentityProvider(w http.ResponseWriter, r *http.Requ
 		return servingHTTPInvalid("exact reviewed IdentityProvider UID and resourceVersion required")
 	}
 	var out store.Object
-	err = h.iamCommand(r, []rbac.Attributes{iamAttrs("identityproviders", verb, "", key.Name)}, func(ctx context.Context, tx *sqlite.CommandTx, _ servingauth.Dependencies, _ auth.Principal, observed time.Time) error {
+	err = h.iamCommand(r, []rbac.Attributes{iamTarget(perm, "", key.Name)}, func(ctx context.Context, tx *sqlite.CommandTx, _ servingauth.Dependencies, _ auth.Principal, observed time.Time) error {
 		if r.Method == http.MethodPost {
 			var err error
 			out, err = security.Apply(ctx, tx, desired, store.ApplyOptions{Manager: store.ManagerAPI, CreateOnly: true}, observed)
