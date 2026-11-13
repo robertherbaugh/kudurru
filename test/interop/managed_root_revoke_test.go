@@ -176,6 +176,7 @@ func TestBINDManagedRootRevocation(t *testing.T) {
 			}
 			stopping := time.Now()
 			node.Stop(15 * time.Second)
+			stopped := time.Now()
 			if n := root.acquisitions(); n != want {
 				t.Fatal("unexpected refreshes", n, want)
 			}
@@ -199,8 +200,8 @@ func TestBINDManagedRootRevocation(t *testing.T) {
 				if lo, hi := restarting.Add(republished.refresh(restarting)), stopping.Add(republished.refresh(stopping)); nr.Before(lo) || nr.After(hi.Add(time.Second)) {
 					t.Fatalf("refresh after the revocation %v, want between %v and %v (%s)", nr, lo, hi, republished)
 				}
-				if dueAgain := nr.Add(-ahead); !stopping.Before(dueAgain) {
-					t.Fatalf("the node ran until %v, past %v when its moved clock reached the next refresh: raise refreshWindow", stopping, dueAgain)
+				if dueAgain := nr.Add(-ahead); !stopped.Before(dueAgain) {
+					t.Fatalf("the node ran until %v, past %v when its moved clock reached the next refresh: raise refreshWindow", stopped, dueAgain)
 				}
 			} else if !after.Owner.NextRefresh.Equal(*boot.Owner.NextRefresh) {
 				// The quarantining observation is not authenticated by a
