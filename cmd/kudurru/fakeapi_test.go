@@ -408,7 +408,7 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 			"rules":   map[string]any{"qname": 2, "clientIP": 0, "responseIP": 0, "nxdomain": 2, "nodata": 0, "passthru": 0, "drop": 0, "tcpOnly": 0, "localData": 0},
 			"ignored": []map[string]any{}},
 		{"node": "node-a", "namespace": "home", "list": "kids-rpz", "source": "feed", "origin": "kids.rpz.", "state": "pending", "available": false,
-			"reason": "TransferPending", "message": "Waiting for this node's first complete transfer.", "ignored": []map[string]any{}},
+			"reason": "TransferPending", "message": "Waiting for this node's first complete transfer; until then queries whose policy selects this list answer SERVFAIL on this node.", "ignored": []map[string]any{}},
 	}
 	mux.HandleFunc("GET /api/v1/blocklists/_rpz", func(w http.ResponseWriter, r *http.Request) {
 		items := []map[string]any{}

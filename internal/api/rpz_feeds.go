@@ -144,15 +144,16 @@ func rpzFeed(node string, st rpz.Status) RPZFeed {
 			out.Message += " Last refresh error: " + out.LastError
 		}
 	case hasCopy:
-		// The copy is not expired but cannot be applied: the manager discarded
-		// it (configuration or credential changed during acceptance) or the
-		// clock is before its confirmation. Never report it as expired.
-		out.State, out.Reason, out.Message = "unavailable", "RPZTransfer", "This node holds no usable copy until the next complete transfer; queries whose policy selects this list answer SERVFAIL on this node."
+		// The node holds an unexpired copy it cannot apply: the clock is
+		// before its confirmation. A copy the manager discarded (configuration
+		// or credential changed during acceptance) is reported without copy
+		// fields below. Never report it as expired.
+		out.State, out.Reason, out.Message = "unavailable", "RPZTransfer", "This node holds no usable copy until the next complete transfer: its copy was confirmed after this node's current time; queries whose policy selects this list answer SERVFAIL on this node."
 		if st.Error != "" {
 			out.Message += " Last refresh error: " + out.LastError
 		}
 	case st.Error != "":
-		out.State, out.Reason, out.Message = "unavailable", "RPZTransfer", "No copy has been transferred; queries whose policy selects this list answer SERVFAIL on this node: "+out.LastError
+		out.State, out.Reason, out.Message = "unavailable", "RPZTransfer", "This node holds no copy; queries whose policy selects this list answer SERVFAIL on this node: "+out.LastError
 	default:
 		out.State, out.Reason, out.Message = "pending", "TransferPending", "Waiting for this node's first complete transfer; until then queries whose policy selects this list answer SERVFAIL on this node."
 	}

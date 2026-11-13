@@ -425,3 +425,49 @@ func TestRuntimeFailedAcceptanceRetainsDurableLastGood(t *testing.T) {
 		t.Fatalf("failed candidate destroyed durable last-good: %v", err)
 	}
 }
+
+// A copy discarded because the configuration changed during acceptance takes
+// the status fields that describe it along: no report may show its serial,
+// counts or ignored owners next to "no usable copy" (D391). The node held an
+// earlier copy, which the discard drops too.
+func TestRuntimeDiscardedAcceptanceClearsCopyStatus(t *testing.T) {
+	b := &hookedBlobs{BlobStore: runtimeDB(t)}
+	rx := &testReceiver{serial: 1}
+	fx := newRuntime(t, rx, b, runtimeList())
+	job := runtimeJob(t, fx)
+	entries := map[string]*entry{job.spec.Identity: job.entry}
+	first := fx.m.refresh(t.Context(), job)
+	if first.err != nil {
+		t.Fatal(first.err)
+	}
+	fx.m.complete(t.Context(), entries, first)
+	if job.entry.z == nil || job.entry.status.Serial != 1 || job.entry.status.ConfirmedAt.IsZero() || job.entry.status.Stats.Rules == 0 {
+		t.Fatalf("first copy not accepted: %+v", job.entry.status)
+	}
+	job.z, job.data = job.entry.z, job.entry.data
+	rx.set(2, nil)
+	second := fx.m.refresh(t.Context(), job)
+	if second.err != nil {
+		t.Fatal(second.err)
+	}
+	b.put = func(name string) error {
+		if !strings.HasSuffix(name, "/accepted") {
+			return nil
+		}
+		changed := fx.list.DeepCopy()
+		changed.Spec.Sources[0].RPZ.Primaries = []string{"127.0.0.2:5300"}
+		if _, err := fx.store.Apply(t.Context(), changed, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+			t.Fatal(err)
+		}
+		eventually(t, func() bool { return fx.cache.Snapshot() != job.config })
+		return nil
+	}
+	fx.m.complete(t.Context(), entries, second)
+	st := job.entry.status
+	if job.entry.z != nil || st.Error == "" {
+		t.Fatalf("raced acceptance kept a copy: %+v", st)
+	}
+	if st.Serial != 0 || !st.ConfirmedAt.IsZero() || !st.ExpiresAt.IsZero() || st.Primary != "" || st.Stats != (Stats{}) || st.Rules != (RuleCounts{}) || st.IgnoredReasons() != nil {
+		t.Fatalf("discarded copy still described by the status: %+v", st)
+	}
+}

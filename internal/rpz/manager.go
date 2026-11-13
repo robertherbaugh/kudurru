@@ -492,7 +492,7 @@ func (m *Manager) complete(ctx context.Context, entries map[string]*entry, r tra
 		return
 	}
 	if !m.jobCredentialsMatch(r.job) {
-		e.z, e.data = nil, nil
+		e.dropCopy()
 		e.status.ConfigurationError = "RPZ credentials changed; awaiting fresh data."
 		return
 	}
@@ -536,7 +536,7 @@ func (m *Manager) persistAndAccept(ctx context.Context, e *entry, r transferResu
 		return errors.New("rpz: original configuration changed during persistence")
 	}
 	if !m.jobCredentialsMatch(r.job) {
-		e.z, e.data = nil, nil
+		e.dropCopy()
 		e.status.ConfigurationError = "RPZ credentials changed during persistence."
 		return errors.New("rpz: original credentials changed during persistence")
 	}
@@ -549,7 +549,7 @@ func (m *Manager) persistAndAccept(ctx context.Context, e *entry, r transferResu
 			if err := m.invalidateAcceptance(ctx, e.spec.Identity); err != nil {
 				e.status.Error = "RPZ configuration changed during acceptance; durable invalidation failed."
 			}
-			e.z, e.data = nil, nil
+			e.dropCopy()
 			e.next = time.Time{}
 			return errors.New("rpz: original configuration or credential changed during acceptance")
 		}
@@ -563,6 +563,15 @@ func (m *Manager) persistAndAccept(ctx context.Context, e *entry, r transferResu
 func (m *Manager) credentialsMatch(dz *v1alpha1.DNSZone, expected string) bool {
 	fingerprint, err := m.credential(dz)
 	return err == nil && fingerprint == expected
+}
+
+// dropCopy discards the entry's copy and the status fields that describe it,
+// so no report shows the serial, counts or ignored owners of data the node no
+// longer holds next to "no usable copy" (D391).
+func (e *entry) dropCopy() {
+	e.z, e.data = nil, nil
+	e.status.Serial, e.status.Stats, e.status.Rules, e.status.ignored = 0, Stats{}, RuleCounts{}, nil
+	e.status.Primary, e.status.ConfirmedAt, e.status.ExpiresAt, e.status.Expired = "", time.Time{}, time.Time{}, false
 }
 
 func (e *entry) setDataStatus() {
