@@ -214,6 +214,18 @@ func primaryParentAndChild(t *testing.T, parentFirst bool) {
 		}
 		time.Sleep(300 * time.Millisecond)
 		wait(fmt.Sprint("parent after deletion ", round), "example.")
+		// Recreate the child only once the deleted one has stopped serving.
+		// Otherwise (under the race detector the deletion can take longer
+		// than the 300 ms above) the next round's wait sees the deleted
+		// incarnation still serving, watches it, and reports its retirement
+		// as a gap of the new child.
+		retired := time.Now()
+		for ok, _ := served("child.example."); ok; ok, _ = served("child.example.") {
+			if time.Since(retired) > time.Minute {
+				t.Fatalf("deleted child still served: %+v", d.Status())
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
 	}
 	close(stop)
 	<-sampled
