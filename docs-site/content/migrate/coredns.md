@@ -29,7 +29,9 @@ written from that description and does not use CoreDNS or Caddy code.
   such as `dns://` or `tls://`, separated by spaces or commas, followed by
   `{`. A file with one server block may omit the braces. Keys may be domains,
   `.` or reverse prefixes on an octet (IPv4) or nibble (IPv6) boundary, such
-  as `10.0.0.0/8`.
+  as `10.0.0.0/8`. A block keyed by a classless prefix such as `10.0.0.0/12`
+  is omitted, but still takes part in [routing](#server-block-routing) with
+  the reverse zones CoreDNS expands it to.
 - Each directive starts a line; a trailing `{` opens its option block.
 - `(name) { ... }` defines a snippet, and `import name` expands it in place.
 
@@ -48,7 +50,7 @@ The preview's warnings name this syntax version.
 | `forward` `policy random`, `sequential`, `round_robin` | Strategy `random`, `strict`, `random` (reported) |
 | Inline `hosts` entries (`IP name...`) | Exact-name rewrites in `Policy/default`, with PTR answers unless `no_reverse` (see [server block routing](#server-block-routing)) |
 | `rewrite name [exact] FROM TO [answer auto]` | A CNAME rewrite from FROM to TO in `Policy/default` |
-| `cache [TTL]` with `success`, `denial`, `prefetch`, `serve_stale` in the root block | `cache.maxTTL`, `cache.negativeTTL`, `cache.minTTL`, `cache.maxEntries`, `cache.prefetch.*`, `cache.serveStale.ttl`. TTLs must be 1 to 2,147,483,647 seconds (a minimum TTL may be 0) and capacities 1 to 1,073,741,824; any other value omits the `cache` directive as a unit |
+| `cache [TTL]` with `success`, `denial`, `prefetch`, `serve_stale` in the root block | `cache.maxTTL`, `cache.negativeTTL`, `cache.minTTL`, `cache.maxEntries`, `cache.prefetch.*`, `cache.serveStale.ttl`. TTLs must be 1 to 2,147,483,647 seconds (a minimum TTL may be 0) and capacities 1 to 1,073,741,824; any other value omits the `cache` directive as a unit. `cache.minTTL` is always set: the `success` MINTTL, or the CoreDNS default of 5 seconds, lowered to the maximum TTL when it is larger (CoreDNS lets the TTL win too, and the report says so). A `prefetch` amount above 1,073,741,824 or a duration above 2,147,483,647 seconds omits `prefetch`; a `serve_stale` duration above that omits `serve_stale`, and `serve_stale 0` becomes `cache.serveStale.ttl: 0s`, which turns serving expired answers off |
 | `acl` in the root block: `block type T...`, then `allow net N...`, then a final `block` | `control.blockedQTypes` and `control.allowedNetworks` |
 
 ## What is reported and not converted
@@ -94,6 +96,18 @@ name reaches the same block: hosts entries in an `example.org` block get no PTR
 answers, and the root block's PTR answers for `10.0.0.0/8` are omitted when a
 `10.0.0.0/8` block exists. Each omission is counted in the report, with names
 redacted.
+
+Blocks that are not converted still route. A classless reverse prefix routes
+the zones CoreDNS expands it to, so the root block's PTR answers inside
+`10.0.0.0/12` are omitted. When a block key cannot be read at all (an
+environment placeholder or an unsupported form), the importer cannot tell which
+names that block receives, so no `hosts` or `rewrite` answer is imported from
+any block, and the report counts them.
+
+Routing is per port, as in CoreDNS: a `home.example:5353` block does not shadow
+the root block's `nas.home.example` on port 53, so that answer is imported.
+kudurru answers every listener alike, so the report counts such names and
+names the port where CoreDNS sent them to another block.
 
 Hosts and rewrite answers replace a destination `Policy/default`, including
 its block lists. They are answered locally with the `response.ttl` setting

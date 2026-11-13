@@ -7,9 +7,12 @@ import (
 	"errors"
 	"flag"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/robertherbaugh/kudurru/internal/config"
 )
 
 var updateCoreDNS = flag.Bool("update-coredns", false, "rewrite testdata/coredns.golden.json")
@@ -20,7 +23,50 @@ func corednsPreview(t *testing.T, input string) *Plan {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Every plan a test converts must be admissible: objects pass the CRD
+	// validator kudurru apply and the import use, and the settings load and
+	// validate over the defaults.
+	validatePlan(t, p)
+	validateCoreDNSSettings(t, p)
 	return p
+}
+
+// validateCoreDNSSettings loads the plan's settings over the defaults, and
+// over a destination with the strictest cache.minTTL the schema presets, with
+// the configuration validation every node runs.
+func validateCoreDNSSettings(t *testing.T, p *Plan) {
+	t.Helper()
+	for _, base := range []map[string]any{{}, {"cache": map[string]any{"minTTL": "1h"}}} {
+		doc := map[string]any{}
+		for k, v := range base {
+			doc[k] = v
+		}
+		for k, v := range p.Settings {
+			if cur, ok := doc[k].(map[string]any); ok {
+				merged := map[string]any{}
+				for kk, vv := range cur {
+					merged[kk] = vv
+				}
+				for kk, vv := range v.(map[string]any) {
+					merged[kk] = vv
+				}
+				doc[k] = merged
+				continue
+			}
+			doc[k] = v
+		}
+		raw, err := json.Marshal(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(t.TempDir(), "kudurru.json")
+		if err := os.WriteFile(path, raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := config.Load(path, nil); err != nil {
+			t.Errorf("imported settings fail validation over %v: %v\n%s", base, err, raw)
+		}
+	}
 }
 
 // The fixture covers every converted plugin plus unsupported plugins, file
@@ -404,5 +450,151 @@ func TestCoreDNSOfflineCacheBounds(t *testing.T) {
 	cache := p.Settings["cache"].(map[string]any)
 	if cache["maxEntries"] != 1073741825 || cache["maxTTL"] != "1m0s" || cache["negativeTTL"] != (2147483647*time.Second).String() || cache["minTTL"] != "0s" {
 		t.Fatalf("in-range cache values: %v", cache)
+	}
+}
+
+// In-range cache values whose CoreDNS minimum TTL exceeds the maximum still
+// convert to settings that validate: CoreDNS lets TTL win, so cache.minTTL
+// is lowered to cache.maxTTL with a loss line. cache.minTTL is always
+// emitted, so a destination minTTL cannot exceed the imported maxTTL.
+func TestCoreDNSOfflineCacheMinTTLNeverExceedsMaxTTL(t *testing.T) {
+	for body, want := range map[string][2]string{
+		"cache 3":                             {"3s", "3s"},
+		"cache {\n  success 100 10 3600\n }":  {"10s", "10s"},
+		"cache 30":                            {"5s", "30s"},
+		"cache {\n  success 100 600 3600\n }": {"10m0s", "10m0s"},
+		"cache {\n  success 100 3600 60\n }":  {"1m0s", "1h0m0s"},
+	} {
+		p := corednsPreview(t, ". {\n "+body+"\n}\n")
+		cache, _ := p.Settings["cache"].(map[string]any)
+		if cache["minTTL"] != want[0] || cache["maxTTL"] != want[1] {
+			t.Errorf("%q: cache = %v, want minTTL %s maxTTL %s", body, cache, want[0], want[1])
+		}
+		lowered := strings.Contains(strings.Join(p.Warnings, "\n"), "cache MINTTL above the success TTL becomes cache.minTTL equal to cache.maxTTL")
+		if lowered != (want[0] == want[1]) {
+			t.Errorf("%q: lowered note = %v: %v", body, lowered, p.Warnings)
+		}
+	}
+}
+
+// prefetch and serve_stale values are bounded like the other cache numbers,
+// and serve_stale 0 says what kudurru does with it.
+func TestCoreDNSOfflineCachePrefetchAndServeStaleBounds(t *testing.T) {
+	for _, body := range []string{
+		"cache {\n  prefetch 9223372036854775807 2562047h\n }",
+		"cache {\n  prefetch 1073741825\n }",
+		"cache {\n  prefetch 10 2562047h\n }",
+	} {
+		p := corednsPreview(t, ". {\n "+body+"\n}\n")
+		if _, ok := p.Settings["cache"].(map[string]any)["prefetch"]; ok {
+			t.Errorf("%q: unbounded prefetch emitted: %v", body, p.Settings["cache"])
+		}
+		if !strings.Contains(strings.Join(p.Warnings, "\n"), "cache prefetch with invalid or out-of-range values omitted.") {
+			t.Errorf("%q: loss report lacks the prefetch line: %v", body, p.Warnings)
+		}
+	}
+	p := corednsPreview(t, ". {\n cache {\n  serve_stale 2562047h\n }\n}\n")
+	if _, ok := p.Settings["cache"].(map[string]any)["serveStale"]; ok || !strings.Contains(strings.Join(p.Warnings, "\n"), "cache serve_stale with invalid or out-of-range values omitted.") {
+		t.Errorf("unbounded serve_stale: %v %v", p.Settings["cache"], p.Warnings)
+	}
+	p = corednsPreview(t, ". {\n cache {\n  prefetch 1073741824 596523h\n  serve_stale 0s\n }\n}\n")
+	cache := p.Settings["cache"].(map[string]any)
+	if pf := cache["prefetch"].(map[string]any); pf["threshold"] != 1073741824 || pf["window"] != "596523h0m0s" {
+		t.Errorf("in-range prefetch: %v", pf)
+	}
+	if cache["serveStale"].(map[string]any)["ttl"] != "0s" || !strings.Contains(strings.Join(p.Warnings, "\n"), "cache serve_stale 0 becomes cache.serveStale.ttl 0s, which turns serving expired answers off.") {
+		t.Errorf("serve_stale 0: %v %v", cache, p.Warnings)
+	}
+}
+
+// Blocks the importer does not convert still take part in routing: a
+// classless reverse prefix routes the zones CoreDNS expands it to, and a key
+// that cannot be read at all leaves the routing unknown, so no local answer
+// is imported as if it were served.
+func TestCoreDNSOfflineUnreadableBlocksTakePartInRouting(t *testing.T) {
+	p := corednsPreview(t, `. {
+    hosts {
+        10.1.1.10 nas.lan
+        10.16.0.1 gw.lan
+    }
+    forward . 192.0.2.53
+}
+10.0.0.0/12 {
+    forward . 192.168.1.1
+}
+`)
+	got := rewriteNames(p)
+	if got["10.1.1.10.in-addr.arpa/PTR"] {
+		t.Fatalf("PTR answer shadowed by the classless block was imported: %v", got)
+	}
+	for _, name := range []string{"nas.lan/", "gw.lan/", "1.0.16.10.in-addr.arpa/PTR"} {
+		if !got[name] {
+			t.Errorf("served answer %s missing: %v", name, got)
+		}
+	}
+	report := strings.Join(p.Warnings, "\n")
+	for _, want := range []string{
+		"Server block: classless reverse prefix key; block omitted, and local answers of other blocks for the reverse zones it covers are not imported (value redacted).",
+		"Server block .:53: 1 hosts PTR answers fall inside the more specific server block for 1.10.in-addr.arpa",
+	} {
+		if !strings.Contains(report, want) {
+			t.Errorf("loss report lacks %q:\n%s", want, report)
+		}
+	}
+	// IPv6 classless keys expand on nibble boundaries.
+	if _, zones, ok := classlessKey("2001:db8::/30"); !ok || len(zones) != 4 || zones[0].name != "8.b.d.0.1.0.0.2.ip6.arpa." || zones[3].name != "b.b.d.0.1.0.0.2.ip6.arpa." {
+		t.Fatalf("IPv6 classless expansion: %v %v", zones, ok)
+	}
+
+	for _, key := range []string{"{$LAB_ZONE}", "example.org:99999"} {
+		p = corednsPreview(t, ". {\n hosts {\n  192.0.2.10 nas.home.example\n }\n rewrite name tv.home.example media.home.example\n forward . 192.0.2.53\n}\n"+key+" {\n forward . 192.168.1.1\n}\n")
+		if len(rewriteNames(p)) != 0 {
+			t.Fatalf("%s: local answers imported while a block with unreadable keys may take them: %v", key, rewriteNames(p))
+		}
+		report = strings.Join(p.Warnings, "\n")
+		for _, want := range []string{
+			"Server block .:53: 2 hosts or rewrite names omitted; a server block whose keys cannot be read may receive those queries in CoreDNS (names redacted).",
+			"Server block .:53: 1 hosts PTR answers omitted; a server block whose keys cannot be read may receive those queries in CoreDNS (names redacted).",
+		} {
+			if !strings.Contains(report, want) {
+				t.Errorf("%s: loss report lacks %q:\n%s", key, want, report)
+			}
+		}
+		if strings.Contains(report, "LAB_ZONE") || strings.Contains(report, "99999") {
+			t.Fatalf("unreadable key echoed: %s", report)
+		}
+	}
+}
+
+// CoreDNS routes per port: a block on 5353 does not shadow names of the
+// root block on 53. The names are imported, and the loss line says that
+// kudurru answers them alike on every listener.
+func TestCoreDNSOfflinePortSpecificBlocksDoNotShadow(t *testing.T) {
+	p := corednsPreview(t, `. {
+    hosts {
+        192.168.1.10 nas.home.example
+        no_reverse
+    }
+    forward . 192.0.2.53
+}
+home.example:5353 {
+    forward . 192.168.1.1
+}
+`)
+	if got := rewriteNames(p); !got["nas.home.example/"] {
+		t.Fatalf("name served on port 53 was omitted: %v", got)
+	}
+	report := strings.Join(p.Warnings, "\n")
+	if strings.Contains(report, "fall inside the more specific server block") {
+		t.Fatalf("port 5353 block reported as shadowing port 53:\n%s", report)
+	}
+	want := "Server block .:53: 1 hosts or rewrite names are imported, but on port 5353 CoreDNS sends those queries to another server block; kudurru gives them this block's answer on every listener (names redacted)."
+	if !strings.Contains(report, want) {
+		t.Errorf("loss report lacks %q:\n%s", want, report)
+	}
+	// On the same port the more specific block still shadows.
+	p = corednsPreview(t, ".:5353 {\n hosts {\n  192.168.1.10 nas.home.example\n  no_reverse\n }\n}\nhome.example:5353 {\n forward . 192.168.1.1\n}\n")
+	if got := rewriteNames(p); got["nas.home.example/"] {
+		t.Fatalf("shadowed name on the same port was imported: %v", got)
 	}
 }

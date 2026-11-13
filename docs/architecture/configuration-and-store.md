@@ -109,8 +109,12 @@ conditional routes, inline `hosts` entries and exact `rewrite name` rules to
 `Policy/default` rewrites, and the root block's `cache` and `acl` to the global
 cache and control settings. It first collects every plain DNS server block's
 zones and keeps a local answer, PTR answer or `forward FROM` only when CoreDNS
-would route that name to the defining block (longest matching zone); the rest
-are counted in the loss report. Every other plugin is named in the loss report;
+would route that name to the defining block (longest matching zone on the
+same port); the rest are counted in the loss report. Blocks that are not
+converted take part in that routing: a classless reverse prefix with the zones
+CoreDNS expands it to, and a block whose keys cannot be read makes the routing
+unknown, so no local answer is imported. Every emitted plan is checked in tests
+with the CRD validator and the configuration validation (D392). Every other plugin is named in the loss report;
 directive names that are not documented CoreDNS plugins are counted with the
 name redacted. The resulting `Plan` follows the same selection, size checks and
 tracked apply as the YAML importers.

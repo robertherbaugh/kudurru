@@ -74,23 +74,31 @@ type corednsConverter struct {
 	control     map[string]any
 	rootSeen    bool
 	notes       map[string]bool
-	// owner maps each zone of a convertible plain DNS server block to the
+	// owner maps each zone and port of a plain DNS server block to the
 	// block's index, and current is the index of the block being converted.
-	// CoreDNS routes a query to the block with the longest matching zone.
-	owner   map[string]int
+	// CoreDNS routes a query to the block with the longest matching zone on
+	// the port the query arrived on. Blocks that are not converted take part
+	// too: a classless reverse prefix routes the zones CoreDNS expands it to.
+	owner   map[corednsZone]int
+	ports   []int
 	current int
+	// curPorts are the ports of the block being converted.
+	curPorts []int
+	// opaque counts server blocks whose keys cannot be read (environment
+	// placeholders, unsupported forms): CoreDNS may route any name to them.
+	opaque int
 }
 
 // route returns the zone of the plain DNS server block that CoreDNS sends a
-// query for name to, and whether that block is the one being converted. The
-// zone is "" when no block serves the name.
-func (c *corednsConverter) route(name string) (string, bool) {
+// query for name on port to, and that block's index. The zone is "" and the
+// index -1 when no block serves the name.
+func (c *corednsConverter) route(name string, port int) (string, int) {
 	for n := name; ; {
-		if i, ok := c.owner[n]; ok {
-			return n, i == c.current
+		if i, ok := c.owner[corednsZone{name: n, port: port}]; ok {
+			return n, i
 		}
 		if n == "." {
-			return "", false
+			return "", -1
 		}
 		if dot := strings.IndexByte(n, '.'); dot >= 0 && dot+1 < len(n) {
 			n = n[dot+1:]
@@ -103,18 +111,59 @@ func (c *corednsConverter) route(name string) (string, bool) {
 // unserved counts local answers a block defines for names CoreDNS never
 // sends to that block: shadowed names fall inside a more specific block
 // (named by zone), and other names reach no block or a different one.
+// opaque counts names omitted because a block with unreadable keys may
+// take them; ports counts imported names that another block answers on a
+// different port (named in otherPorts).
 type unserved struct {
-	zones map[string]bool
-	n     int
-	other int
+	zones      map[string]bool
+	n          int
+	other      int
+	opaque     int
+	ports      int
+	otherPorts map[int]bool
+}
+
+// mine reports whether CoreDNS sends a query for name to the block being
+// converted on any of its ports.
+func (c *corednsConverter) mine(name string) bool {
+	for _, port := range c.curPorts {
+		if _, i := c.route(name, port); i == c.current {
+			return true
+		}
+	}
+	return false
 }
 
 // serves reports whether CoreDNS sends queries for name to the block being
 // converted, whose zones are blockZones, and counts the name in u if not.
+// While a block with unreadable keys exists the routing is unknown, so no
+// local answer counts as served.
 func (c *corednsConverter) serves(name string, blockZones []string, u *unserved) bool {
-	z, mine := c.route(name)
-	if mine {
+	if c.opaque > 0 {
+		u.opaque++
+		return false
+	}
+	if c.mine(name) {
+		// kudurru answers every port alike: name a port where another
+		// block takes the query.
+		for _, port := range c.ports {
+			if _, i := c.route(name, port); i >= 0 && i != c.current && !containsInt(c.curPorts, port) {
+				if u.otherPorts == nil {
+					u.otherPorts = map[int]bool{}
+				}
+				u.otherPorts[port] = true
+				u.ports++
+				break
+			}
+		}
 		return true
+	}
+	z := ""
+	for _, port := range c.curPorts {
+		if found, i := c.route(name, port); i >= 0 {
+			z = found
+			break
+		}
 	}
 	if z != "" && within(z, blockZones) {
 		if u.zones == nil {
@@ -124,6 +173,15 @@ func (c *corednsConverter) serves(name string, blockZones []string, u *unserved)
 		u.n++
 	} else {
 		u.other++
+	}
+	return false
+}
+
+func containsInt(list []int, n int) bool {
+	for _, v := range list {
+		if v == n {
+			return true
+		}
 	}
 	return false
 }
@@ -140,22 +198,52 @@ func (c *corednsConverter) reportUnserved(path, what string, u *unserved) {
 	if u.other > 0 {
 		c.p.loss(fmt.Sprintf("%s: %d %s omitted; CoreDNS sends those queries to no server block or to another one.", path, u.other, what))
 	}
+	if u.opaque > 0 {
+		c.p.loss(fmt.Sprintf("%s: %d %s omitted; a server block whose keys cannot be read may receive those queries in CoreDNS (names redacted).", path, u.opaque, what))
+	}
+	if u.ports > 0 {
+		ports := make([]int, 0, len(u.otherPorts))
+		for p := range u.otherPorts {
+			ports = append(ports, p)
+		}
+		sort.Ints(ports)
+		list := make([]string, len(ports))
+		for i, p := range ports {
+			list[i] = strconv.Itoa(p)
+		}
+		c.p.loss(fmt.Sprintf("%s: %d %s are imported, but on port %s CoreDNS sends those queries to another server block; kudurru gives them this block's answer on every listener (names redacted).", path, u.ports, what, strings.Join(list, ", ")))
+	}
 }
 
 // keyZones splits a server block's keys into plain DNS zones and labels of
-// encrypted or gRPC keys. A non-empty reason means the block is omitted.
+// encrypted or gRPC keys. A non-empty reason means the block is omitted;
+// routes then holds the zones CoreDNS still routes to it (the expansion of
+// classless reverse prefixes), and opaque is true when they are unknown.
 func keyZones(blk *cfServerBlock) (zones []corednsZone, encrypted []string, reason string) {
+	zones, encrypted, reason, _, _ = keyRoutes(blk)
+	return zones, encrypted, reason
+}
+
+func keyRoutes(blk *cfServerBlock) (zones []corednsZone, encrypted []string, reason string, routes []corednsZone, opaque bool) {
 	for _, key := range blk.keys {
 		for _, part := range strings.Split(key.text, ",") {
 			if part == "" {
 				continue
 			}
 			if key.placeholder() {
-				return nil, nil, "Server block: key with an environment placeholder; block omitted (value redacted)."
+				return nil, nil, "Server block: key with an environment placeholder; block omitted (value redacted).", nil, true
 			}
 			scheme, z, ok := corednsKey(part)
 			if !ok {
-				return nil, nil, "Server block: unsupported key; block omitted (value redacted)."
+				if scheme, classless, ok := classlessKey(part); ok {
+					if scheme != "dns" {
+						continue
+					}
+					routes = append(routes, classless...)
+					reason = "Server block: classless reverse prefix key; block omitted, and local answers of other blocks for the reverse zones it covers are not imported (value redacted)."
+					continue
+				}
+				return nil, nil, "Server block: unsupported key; block omitted (value redacted).", nil, true
 			}
 			if scheme != "dns" {
 				encrypted = append(encrypted, scheme+"://"+displayZone(z.name)+":"+strconv.Itoa(z.port))
@@ -164,7 +252,77 @@ func keyZones(blk *cfServerBlock) (zones []corednsZone, encrypted []string, reas
 			zones = append(zones, z)
 		}
 	}
-	return zones, encrypted, ""
+	if reason != "" {
+		return nil, nil, reason, append(routes, zones...), false
+	}
+	return zones, encrypted, "", nil, false
+}
+
+// classlessKey reads [scheme://]prefix[:port] for a reverse prefix that is
+// not on an octet (IPv4) or nibble (IPv6) boundary and returns the zones
+// CoreDNS expands it to: every reverse zone of the next boundary inside the
+// prefix.
+func classlessKey(s string) (string, []corednsZone, bool) {
+	scheme := "dns"
+	if i := strings.Index(s, "://"); i >= 0 {
+		scheme, s = strings.ToLower(s[:i]), s[i+3:]
+	}
+	// Reuse the key reader for the scheme and port with a stand-in zone.
+	host, rest := s, ""
+	if i := strings.LastIndex(s, ":"); i >= 0 && strings.Count(s, ":") == 1 {
+		host, rest = s[:i], s[i:]
+	}
+	prefix, err := netip.ParsePrefix(host)
+	if err != nil {
+		return "", nil, false
+	}
+	stand := "."
+	if scheme != "dns" {
+		stand = scheme + "://."
+	}
+	scheme, z, ok := corednsKey(stand + rest)
+	if !ok {
+		return "", nil, false
+	}
+	prefix = prefix.Masked()
+	step := 8
+	if prefix.Addr().Is6() {
+		step = 4
+	}
+	bits := prefix.Bits()
+	next := (bits + step - 1) / step * step
+	if next-bits > 8 {
+		return "", nil, false
+	}
+	var out []corednsZone
+	for i := 0; i < 1<<(next-bits); i++ {
+		sub, ok := subPrefix(prefix, next, i)
+		if !ok {
+			return "", nil, false
+		}
+		name, ok := reverseZone(sub)
+		if !ok {
+			return "", nil, false
+		}
+		out = append(out, corednsZone{name: name, port: z.port})
+	}
+	return scheme, out, true
+}
+
+// subPrefix returns the i-th prefix of length bits inside p.
+func subPrefix(p netip.Prefix, bits, i int) (netip.Prefix, bool) {
+	b := p.Addr().AsSlice()
+	for j := 0; j < bits-p.Bits(); j++ {
+		if i>>(bits-p.Bits()-1-j)&1 == 1 {
+			pos := p.Bits() + j
+			b[pos/8] |= 0x80 >> (pos % 8)
+		}
+	}
+	a, ok := netip.AddrFromSlice(b)
+	if !ok {
+		return netip.Prefix{}, false
+	}
+	return netip.PrefixFrom(a, bits), true
 }
 
 func (c *corednsConverter) note(message string) {
@@ -187,18 +345,23 @@ func (c *corednsConverter) convert(cf *corefile) error {
 	// Collect every plain DNS zone first: whether a block's local answer was
 	// ever served depends on the blocks that follow it too. A zone listed by
 	// two blocks is refused when the second block is converted.
-	c.owner = map[string]int{}
+	c.owner = map[corednsZone]int{}
 	for i, blk := range cf.blocks {
-		zones, _, reason := keyZones(blk)
-		if reason != "" {
+		zones, _, _, routes, opaque := keyRoutes(blk)
+		if opaque {
+			c.opaque++
 			continue
 		}
-		for _, z := range zones {
-			if _, dup := c.owner[z.name]; !dup {
-				c.owner[z.name] = i
+		for _, z := range append(zones, routes...) {
+			if _, dup := c.owner[z]; !dup {
+				c.owner[z] = i
+			}
+			if !containsInt(c.ports, z.port) {
+				c.ports = append(c.ports, z.port)
 			}
 		}
 	}
+	sort.Ints(c.ports)
 	for i, blk := range cf.blocks {
 		if err := c.ctx.Err(); err != nil {
 			return err
@@ -268,7 +431,11 @@ func (c *corednsConverter) block(blk *cfServerBlock) error {
 		c.p.loss(path + ": encrypted or gRPC keys " + strings.Join(encrypted, " ") + " are omitted with their certificates; the plain DNS keys are converted. Configure listeners.dot, listeners.doh or listeners.doq instead.")
 	}
 	names := []string{}
+	c.curPorts = c.curPorts[:0]
 	for _, z := range zones {
+		if !containsInt(c.curPorts, z.port) {
+			c.curPorts = append(c.curPorts, z.port)
+		}
 		if c.served[z.name] {
 			return errors.New("corefile serves the same zone in more than one plain DNS server block; convert one listener at a time")
 		}
@@ -490,7 +657,14 @@ func (c *corednsConverter) forward(path string, zones []string, root bool, d *cf
 	if from == "." {
 		suffixes = append(suffixes, zones...)
 	} else if within(from, zones) {
-		if z, mine := c.route(from); !mine {
+		if !c.mine(from) {
+			z := ""
+			for _, port := range c.curPorts {
+				if found, i := c.route(from, port); i >= 0 {
+					z = found
+					break
+				}
+			}
 			c.p.loss(path + ": forward FROM inside the more specific server block for " + displayZone(z) + " never matches; omitted.")
 			return nil
 		}
@@ -783,6 +957,11 @@ func (c *corednsConverter) cacheDirective(path string, root bool, d *cfDirective
 		return
 	}
 	out := map[string]any{}
+	// CoreDNS keeps a success answer at least MINTTL (5 s by default) but
+	// never past TTL: TTL wins when MINTTL exceeds it. cache.minTTL is
+	// always emitted, so a destination minTTL cannot exceed the imported
+	// maxTTL and fail settings validation.
+	minTTL := 5 * time.Second
 	capacity, explicit := [2]int{9984, 9984}, false
 	for _, opt := range d.block {
 		switch opt.name.text {
@@ -822,32 +1001,32 @@ func (c *corednsConverter) cacheDirective(path string, root bool, d *cfDirective
 				}
 			}
 			if len(nums) > 2 {
-				minTTL, ok := seconds(nums[2], 0)
+				least, ok := seconds(nums[2], 0)
 				if !ok {
 					invalid()
 					return
 				}
 				if opt.name.text == "success" {
-					out["minTTL"] = minTTL.String()
+					minTTL = least
 				} else {
 					c.note("cache denial MINTTL is not converted; kudurru applies cache.minTTL to every answer.")
 				}
 			}
 		case "prefetch":
 			if len(opt.args) < 1 || len(opt.args) > 3 {
-				c.p.loss(path + ": cache prefetch with invalid values omitted.")
+				c.p.loss(path + ": cache prefetch with invalid or out-of-range values omitted.")
 				continue
 			}
 			n, err := strconv.Atoi(opt.args[0].text)
-			if err != nil || n < 1 {
-				c.p.loss(path + ": cache prefetch with invalid values omitted.")
+			if err != nil || n < 1 || n > maxCacheCapacity {
+				c.p.loss(path + ": cache prefetch with invalid or out-of-range values omitted.")
 				continue
 			}
 			window := time.Minute
 			if len(opt.args) > 1 {
 				w, err := time.ParseDuration(opt.args[1].text)
-				if err != nil || w <= 0 {
-					c.p.loss(path + ": cache prefetch with invalid values omitted.")
+				if err != nil || w <= 0 || w > maxCacheSeconds*time.Second {
+					c.p.loss(path + ": cache prefetch with invalid or out-of-range values omitted.")
 					continue
 				}
 				window = w
@@ -860,11 +1039,16 @@ func (c *corednsConverter) cacheDirective(path string, root bool, d *cfDirective
 			stale := time.Hour
 			if len(opt.args) > 0 {
 				s, err := time.ParseDuration(opt.args[0].text)
-				if err != nil || s < 0 {
-					c.p.loss(path + ": cache serve_stale with invalid values omitted.")
+				if err != nil || s < 0 || s > maxCacheSeconds*time.Second {
+					c.p.loss(path + ": cache serve_stale with invalid or out-of-range values omitted.")
 					continue
 				}
 				stale = s
+			}
+			if stale == 0 {
+				// CoreDNS serves no stale answer with a zero duration, and
+				// kudurru reads cache.serveStale.ttl 0 the same way.
+				c.note("cache serve_stale 0 becomes cache.serveStale.ttl 0s, which turns serving expired answers off.")
 			}
 			if len(opt.args) > 1 {
 				c.note("cache serve_stale refresh mode is not converted; kudurru waits up to cache.serveStale.maxWait for a fresh answer.")
@@ -877,7 +1061,11 @@ func (c *corednsConverter) cacheDirective(path string, root bool, d *cfDirective
 	if explicit {
 		out["maxEntries"] = capacity[0] + capacity[1]
 	}
-	out["maxTTL"], out["negativeTTL"] = maxTTL.String(), negTTL.String()
+	if minTTL > maxTTL {
+		c.note(path + ": cache MINTTL above the success TTL becomes cache.minTTL equal to cache.maxTTL; CoreDNS lets TTL win the same way.")
+		minTTL = maxTTL
+	}
+	out["minTTL"], out["maxTTL"], out["negativeTTL"] = minTTL.String(), maxTTL.String(), negTTL.String()
 	c.cache = out
 }
 
