@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -117,7 +119,7 @@ func (s *Store) impersonationRefusal(im *Impersonation, op string, key store.Key
 	if im == nil || !apierrors.IsForbidden(err) {
 		return nil
 	}
-	if impersonateVerbDenied(err) {
+	if impersonateVerbDenied(im, err) {
 		s.log.Error("store/kube: the apiserver refused kudurru the impersonate verb; grant it (auth.kubernetes.mode impersonate) or switch to sar",
 			"op", op, "key", key.String(), "error", statusMessage(err))
 		return fmt.Errorf("%w: %s %s could not be sent as %q", store.ErrImpersonationDenied, op, key, im.User)
@@ -127,31 +129,32 @@ func (s *Store) impersonationRefusal(im *Impersonation, op string, key store.Key
 
 // impersonateVerbDenied reports whether a 403 came from the apiserver's
 // impersonation check of the driver's own identity rather than from the
-// principal's RBAC on the object. The legacy check names the impersonated
-// user, group, service account, UID or extra (core or
-// authentication.k8s.io); constrained impersonation (Kubernetes 1.35 and
-// later) names the object but refuses an impersonate-on: verb. Both read
-// "<driver> cannot impersonate...", which an RBAC refusal of the principal
-// (" cannot patch ...") never does.
-func impersonateVerbDenied(err error) bool {
+// principal's RBAC on the object or an admission webhook. Only the
+// apiserver's own form counts (responsewriters.ForbiddenStatusError):
+// "<resource> ["<name>"] is forbidden: User "<requester>" cannot <verb> ...",
+// where the verb is impersonate (legacy impersonation), impersonate:<mode>
+// or impersonate-on:<mode>:<verb> (constrained impersonation, Kubernetes
+// 1.35 and later), and the requester is not the impersonated user. The
+// requester is a quoted Go string, so a user name containing the phrase
+// cannot end it early; a webhook's message starts with "admission webhook"
+// and never has this form; and an RBAC refusal of the principal names the
+// principal with a verb such as patch.
+func impersonateVerbDenied(im *Impersonation, err error) bool {
 	var status apierrors.APIStatus
 	if !errors.As(err, &status) {
 		return false
 	}
-	st := status.Status()
-	if strings.Contains(st.Message, " cannot impersonate") {
-		return true
-	}
-	d := st.Details
-	if d == nil || (d.Group != "" && d.Group != "authentication.k8s.io") {
+	m := apiserverImpersonateDenial.FindStringSubmatch(status.Status().Message)
+	if m == nil {
 		return false
 	}
-	switch d.Kind {
-	case "users", "groups", "serviceaccounts", "uids", "userextras":
-		return true
-	}
-	return strings.HasPrefix(d.Kind, "userextras/")
+	requester, uerr := strconv.Unquote(m[1])
+	return uerr == nil && (im == nil || requester != im.User)
 }
+
+// apiserverImpersonateDenial matches the start of the apiserver's 403 for a
+// refused impersonate verb; group 1 is the quoted requesting user.
+var apiserverImpersonateDenial = regexp.MustCompile(`^(?:forbidden|[a-z0-9.-]+(?: "(?:[^"\\]|\\.)*")? is forbidden): User ("(?:[^"\\]|\\.)*") cannot impersonate(?:[ :]|-on:)`)
 
 func statusMessage(err error) string {
 	var status apierrors.APIStatus
