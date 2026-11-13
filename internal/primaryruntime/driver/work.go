@@ -368,8 +368,16 @@ func (d *Driver) step(ctx context.Context, w Writer, all roster, name string) er
 			if _, err := d.o.Runtime.Transition(ctx, l, next); err != nil {
 				return err
 			}
-			// The next actual complete read supplies the new source/lifecycle pair.
-			d.advance()
+			// The next actual complete read supplies the new source/lifecycle
+			// pair. Only a zone being created keeps the focus: the refresh
+			// of an active zone repeats whenever its DNSZone changes, and
+			// focusing it would give it up to maxFocus+1 steps for each
+			// step of the rest of the rotation.
+			if l.Spec.Phase == zk.PhaseActive {
+				d.Wake()
+			} else {
+				d.advance()
+			}
 			return nil
 		}
 		if _, err := d.o.Runtime.Activate(ctx, l.Spec.Zone); err != nil {
