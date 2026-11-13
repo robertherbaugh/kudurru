@@ -66,12 +66,6 @@ func Operations(document []byte) ([]Operation, error) {
 			}
 			return -1
 		}
-		if la, lb := probedLate(a), probedLate(b); la != lb {
-			if la {
-				return 1
-			}
-			return -1
-		}
 		return strings.Compare(a.Path+" "+a.Method, b.Path+" "+b.Method)
 	})
 	return out, nil
@@ -82,18 +76,6 @@ func Operations(document []byte) ([]Operation, error) {
 func endsSession(o Operation) bool {
 	return slices.Contains(api.SessionEndingOperations(), o.ID)
 }
-
-// lateProbes are the operations whose probe a SQLite node answers after
-// writing to it: the DHCP setup write records its refused attempt in the
-// audit log. With that probe in path order, an object write probed shortly
-// after it was refused under the race detector, in two of three standalone
-// walks, with the hintless 503 "current writable serving generation
-// unavailable" (the command-path refusal that D399 left open, which this
-// walk does not judge); without it, none of three was. They run after every
-// other probe but the session-ending ones.
-var lateProbes = []string{"putDHCPSetup"}
-
-func probedLate(o Operation) bool { return slices.Contains(lateProbes, o.ID) }
 
 var pathParameter = regexp.MustCompile(`\{[^}]+\}`)
 
@@ -204,9 +186,16 @@ var probeMutations = []string{
 // streaming answer is not read: its status and content type are the
 // observation.
 //
-// A 503 generation_pending is answered before any command runs, so only that
-// answer is observed again, for at most a minute (a node under the race
-// detector can take that long to prepare its first provider generation).
+// A 503 generation_pending is answered before any command runs, so it is
+// observed again, for at most a minute (a node under the race detector can
+// take that long to prepare its first provider generation). So is the
+// command path's 503 unavailable for a writable state that changed while
+// the command was admitted (api.CommandStateChangedMessage): on a SQLite
+// node a commit of the node's own follow-up work, such as the audit row of
+// a refused DHCP setup write, retires the publication that the next probe's
+// command was admitted on. Probe holds that answer to its hint like any
+// other (Problems) when it lasts the minute. No probe here can have changed
+// anything, so sending one again is safe.
 // The walk waits for the end of the pending state with readinessProbe, which
 // no rate limit charges, and only then sends the operation again: provider
 // sign-in admission charges its lane before the serving generation is
@@ -218,7 +207,7 @@ func (c Client) Probe(ctx context.Context, op Operation) (Answer, error) {
 	}
 	deadline := time.Now().Add(time.Minute)
 	pending := func(a Answer) bool {
-		return a.Status == http.StatusServiceUnavailable && a.Key == "generation_pending"
+		return a.Status == http.StatusServiceUnavailable && (a.Key == "generation_pending" || a.Key == api.KeyUnavailable && a.Message == api.CommandStateChangedMessage)
 	}
 	for {
 		answer, err := c.probeOnce(ctx, op, timeout)

@@ -84,6 +84,19 @@ type ErrorBody struct {
 	Objects []ObjectOwner `json:"objects,omitempty"`
 }
 
+// CommandStateChangedMessage and CommandStateChangedHint are the 503
+// unavailable of the complete SQLite runtime's command path when the
+// node's writable serving state changed while a command was admitted:
+// another change committed and the next generation is not published yet,
+// the writer term changed, or a dependency was replaced. The answer carries
+// no Retry-After: on a command that had already committed when its
+// acknowledgment failed, sending it again is a new decision, so the hint
+// says to read the current state first.
+const (
+	CommandStateChangedMessage = "current writable serving generation unavailable"
+	CommandStateChangedHint    = "this node's writable state changed while the command was admitted, for example by another change; read the current state, then send the request again if it is still needed (docs/deploy/capabilities.md#unavailable)"
+)
+
 // ObjectOwner names one object and its manager in ErrorBody.Objects.
 type ObjectOwner struct {
 	Kind      string `json:"kind"`
