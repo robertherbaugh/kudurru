@@ -219,11 +219,34 @@ func awaitInventoryDNS(t *testing.T, cfg *config.Config, source, name string, bl
 // blocked and an allowed answer.
 func awaitInventoryAnswer(t *testing.T, cfg *config.Config, source, name string, blocked bool, answer func(*dns.Msg, bool) bool) {
 	t.Helper()
+	awaitInventoryAnswerBefore(t, cfg, source, name, blocked, answer, time.Time{}, "")
+}
+
+// awaitInventoryDNSBefore is awaitInventoryDNS for an answer that only exists
+// until expires (a short lease's match): once expires passes without the
+// answer, it fails at once with why instead of polling on to the generic
+// 30-second failure.
+func awaitInventoryDNSBefore(t *testing.T, cfg *config.Config, source, name string, blocked bool, expires time.Time, why string) {
+	t.Helper()
+	awaitInventoryAnswerBefore(t, cfg, source, name, blocked, uniFiHostnameAnswer, expires, why)
+}
+
+func awaitInventoryAnswerBefore(t *testing.T, cfg *config.Config, source, name string, blocked bool, answer func(*dns.Msg, bool) bool, expires time.Time, why string) {
+	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
 		a, err := uniFiHostnameExchange(t.Context(), cfg, inventoryEdgeSecret, source, "edge-udp", name, true)
 		if err == nil && answer(a, blocked) {
+			// The server matched at its own request time, before the
+			// expiry, even when the answer arrives just after it.
 			return
+		}
+		if !expires.IsZero() && !time.Now().Before(expires) {
+			code := -1
+			if a != nil {
+				code = a.Rcode
+			}
+			t.Fatalf("%s: UDP query from %s for %s still rcode=%d transport_error=%t at the expiry, want blocked=%t", why, source, name, code, err != nil, blocked)
 		}
 		if time.Now().After(deadline) {
 			code := -1
@@ -350,10 +373,7 @@ func TestRunServeSQLiteInventoryAPIAndLeaseMACs(t *testing.T) {
 	}
 	// The lease MAC selects the mac group over UDP; an unleased address and a
 	// UniFi device whose own MAC is in no group stay unaffected.
-	awaitInventoryDNS(t, cfg, "192.0.2.101", "leased.test.", true)
-	if time.Until(short) <= 0 {
-		t.Fatal("short lease expired before its match was asserted; widen its lifetime")
-	}
+	awaitInventoryDNSBefore(t, cfg, "192.0.2.101", "leased.test.", true, short, "short lease expired before its match was observed; widen its lifetime")
 	awaitInventoryDNS(t, cfg, "192.0.2.100", "leased.test.", true)
 	awaitInventoryDNS(t, cfg, "192.0.2.102", "leased.test.", false)
 	awaitInventoryDNS(t, cfg, "127.0.0.4", "leased.test.", false)
