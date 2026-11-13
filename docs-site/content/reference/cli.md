@@ -2104,6 +2104,84 @@ Flags:
       --out string   write the token to this new file (mode 0600) instead of stdout
 ```
 
+## kudurru tsigkeys
+
+Review and manage stored TSIG keys on complete SQLite and Kubernetes nodes. Requires tsigkeys.read, tsigkeys.write or tsigkeys.delete (admin by default).
+
+The secret is read from --secret-file (a path, or - for stdin), never from an argument. The file holds the standard base64 secret of at most 512 bytes; whitespace and line breaks are ignored. No command prints a secret: the server never returns one, so keep your own copy for the peers that share the key.
+
+Create requires an absent stored name. Replace, reseal and revoke require the exact UID and resourceVersion from a separately reviewed list. File keys are read-only. Each command is sent once. A refused command, a missing response or an uncertain outcome is never retried or refreshed for you: run list and review the fresh metadata before any further action. Exit status 0 with "published: false" (HTTP 202) means the change committed but the node could not confirm its publication in time; it was not rolled back.
+
+### kudurru tsigkeys create
+
+Create one absent stored TSIG key from a secret file.
+
+```text
+kudurru tsigkeys create NAME [flags]
+```
+
+Flags:
+
+```text
+      --algorithm string     required: hmac-sha256 or hmac-sha512
+      --secret-file string   required: file holding the base64 secret, or - for stdin
+```
+
+### kudurru tsigkeys list
+
+List file and stored TSIG key metadata.
+
+```text
+kudurru tsigkeys list
+```
+
+### kudurru tsigkeys replace
+
+Replace the secret of one reviewed stored TSIG key.
+
+```text
+kudurru tsigkeys replace NAME [flags]
+```
+
+Flags:
+
+```text
+      --algorithm string          new algorithm (default: keep the current one)
+      --resource-version string   required: exact reviewed key resourceVersion
+      --secret-file string        required: file holding the base64 secret, or - for stdin
+      --uid string                required: exact reviewed key UID
+```
+
+### kudurru tsigkeys reseal
+
+Re-encrypt one reviewed stored TSIG key under the current encryption key.
+
+```text
+kudurru tsigkeys reseal NAME [flags]
+```
+
+Flags:
+
+```text
+      --resource-version string   required: exact reviewed key resourceVersion
+      --uid string                required: exact reviewed key UID
+```
+
+### kudurru tsigkeys revoke
+
+Revoke one reviewed stored TSIG key.
+
+```text
+kudurru tsigkeys revoke NAME [flags]
+```
+
+Flags:
+
+```text
+      --resource-version string   required: exact reviewed key resourceVersion
+      --uid string                required: exact reviewed key UID
+```
+
 ## kudurru version
 
 Print build information.
