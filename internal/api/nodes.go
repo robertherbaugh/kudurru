@@ -239,12 +239,17 @@ func (s *Server) nodeHealth(ctx context.Context, in *nodeNameInput) (*nodeHealth
 		}
 		out, err := s.opts.InternalClient.Health(peerCtx, p.Address, p.Name)
 		if err != nil {
-			return nil, errUnavailable("%s", peerHealthError(err))
+			return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, peerHealthError(err), peerHealthHint)
 		}
 		return &nodeHealthOutput{Body: &NodeHealth{Node: out.Node, Ready: out.Ready, Health: out.Health}}, nil
 	}
 	return nil, errNotFound("node " + in.Name)
 }
+
+// peerHealthHint explains a peer health read that reached the peer's
+// address and failed: the peer is down, slow, refuses this node's internal
+// credential, or runs a version without the health route.
+const peerHealthHint = "check that the peer is running, reachable on its internal address, shares this node's internal credentials and runs the same kudurru version; or read GET " + BasePath + "/nodes/{name}/health on that node itself"
 
 func peerHealthError(err error) string {
 	var netErr net.Error
