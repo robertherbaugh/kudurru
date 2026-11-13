@@ -34,6 +34,9 @@ type rootMemberHarness struct {
 	sendErr *error
 	command func(id, operation string, payload any) clusterreplica.Command
 	ref     string
+	// client sends every command; its six-second timeout may be raised by a
+	// test whose commands legitimately run longer.
+	client *http.Client
 }
 
 // newRootMemberHarness mounts the production member listener over the actual
@@ -128,7 +131,7 @@ func newRootMemberHarness(t *testing.T) *rootMemberHarness {
 			Subject: clusterreplica.SubjectRef{Kind: principal.Kind, ID: principal.ID, Provider: principal.Provider, CredentialKind: "api-token", CredentialID: reference, IssuedAt: principal.CredentialIssuedAt},
 			Payload: payload}
 	}
-	return &rootMemberHarness{f: f, send: send, sendErr: &sendErr, command: command, ref: reference}
+	return &rootMemberHarness{f: f, send: send, sendErr: &sendErr, command: command, ref: reference, client: client}
 }
 
 func TestRootMemberObjectCommandActualHTTP(t *testing.T) {

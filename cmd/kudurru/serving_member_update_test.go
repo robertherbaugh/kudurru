@@ -295,6 +295,12 @@ func TestRootMemberUpdateKeyIdentityAndRetryActualHTTP(t *testing.T) {
 func TestRootMemberUpdateBurstActualHTTP(t *testing.T) {
 	h, identity := newMemberUpdateHarness(t)
 	f := h.f
+	// A command waits for the primary's publications within its own 20-second
+	// bound (below). The harness client's six seconds gave up first under the
+	// race detector on a shared machine ("Client.Timeout exceeded while
+	// awaiting headers", HA-OPEN5 fix-race02) and reported a command that was
+	// still running as unanswered.
+	h.client.Timeout = 25 * time.Second
 	// command inserts an A record for owner and requires that owner is not
 	// in use, so it answers YXDOMAIN once the record exists.
 	command := func(id, owner string) clusterreplica.Command {
