@@ -1527,8 +1527,9 @@ it never triggers automatic replay. A command whose dial failed (the
 connection was refused or the host was reported unreachable) was never
 dispatched: `Client.Write` reports it as unavailable, not unknown, and a
 forwarding follower answers that the change was not applied (D368). A dial
-that is still pending when the exchange's deadline ends surfaces as the
-context's deadline, not as a dial error, and stays unknown, as does every
+that is still pending when the exchange's deadline ends stays unknown,
+whether the context's deadline or the dialer's own timeout (the same
+exchange timeout) ends it first, as does every
 failure after a connection exists (TLS, a dropped connection, a lost
 response). Generic early refusals carry no current or
 stale authority headers. Actual enrolled HTTP/1 and HTTP/2 tests cover the mount.

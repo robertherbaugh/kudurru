@@ -500,9 +500,13 @@ func (c *Client) Write(ctx context.Context, peer Peer, command Command) (Outcome
 // notDispatched reports a transport failure that happened while dialing the
 // peer, before any connection existed: the request was never written. Every
 // later failure (TLS, a dropped connection, a lost response) may follow the
-// dispatch of a mutation and stays an unknown outcome.
+// dispatch of a mutation and stays an unknown outcome. So does a dial that
+// timed out: the dialer's timeout is the exchange's own timeout, so a dial
+// still pending at the deadline ends either as the dialer's "i/o timeout" or
+// as the client's deadline, whichever timer fires first, and both are
+// reported the same way, as unknown (D368, docs/deploy/sqlite-join.md).
 func notDispatched(err error) bool {
 	var exchange *ExchangeError
 	var op *net.OpError
-	return errors.Is(err, ErrUnavailable) && !errors.As(err, &exchange) && errors.As(err, &op) && op.Op == "dial"
+	return errors.Is(err, ErrUnavailable) && !errors.As(err, &exchange) && errors.As(err, &op) && op.Op == "dial" && !op.Timeout()
 }
