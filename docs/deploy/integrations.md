@@ -44,7 +44,8 @@ written from files, with `kubectl` on Kubernetes, or through the API and CLI
 (see [Writing integrations through the API](#writing-integrations-through-the-api)).
 Optional UniFi writes run on SQLite only (see [UniFi optional writes](#unifi-optional-writes));
 on Kubernetes an Integration that enables one is refused with reason
-`UniFiPushUnsupportedOnKubernetes`. The dashboard's Integrations page remains separate. The external-dns webhook listener is a separate inbound feature.
+`UniFiPushUnsupportedOnKubernetes`. The dashboard's Integrations page manages
+Integrations as well (see [The Integrations page](#the-integrations-page)). The external-dns webhook listener is a separate inbound feature.
 
 ## Deleting an integration
 
@@ -320,6 +321,45 @@ UniFi push fields are refused; SQLite refuses none of them. It also reports whet
 license covers integrations and which reference forms this node resolves; the
 allowlisted file paths and environment names are included only for a caller
 that holds `integrations.secrets`.
+
+## The Integrations page
+
+The dashboard's **System → Integrations** page lists every Integration with
+the host's state of its stored revision (phase, reason, deletion policy, last
+sync, who manages it), and each instance has its own page.
+
+- **New integration** opens a wizard built from `GET
+  /api/v1/integrations/manifests`: the provider types of this build (a type
+  this node does not run, such as a webhook on Kubernetes, is shown with the
+  reason and cannot be chosen), the provider's settings from its
+  configuration schema without the fields this node refuses, and one
+  reference per credential the provider reads. A reference is a file or an
+  environment name the node configuration grants; the page has no field for
+  a credential value. It needs `integrations.write`, `integrations.secrets`
+  to bind a credential, and a license that covers integrations.
+- **Check** proves the endpoint and the credential. For a provider that
+  publishes records, **Preview** shows the planned changes, the records it
+  leaves alone and the plan's digest, and **Publish this plan** applies
+  exactly that plan. When the plan expired or no longer matches (the
+  instance, its zones or the provider changed), the server refuses it and
+  nothing is published: preview again. An inventory provider has **Sync
+  now** instead. When the provider does not acknowledge a sync, the page
+  says the outcome is unknown and does not send it again.
+- **Load actions** lists the actions the provider advertises, with their
+  parameters, and runs one with `integrations.act`.
+- **Configuration** edits the instance in place; a change of a credential
+  reference, or of where bound credentials are sent, needs
+  `integrations.secrets`. An Integration from a file or another manager is
+  read-only.
+- **Delete** removes a `Retain` instance at once. A `Delete` instance stays
+  on its page as terminating, with what is left, what blocks and what is
+  uncertain, until its cleanup finishes; **Release without cleanup** (admin,
+  `integrations.release`) removes it as described above.
+
+On an enrolled follower the configuration and delete controls work (the
+follower forwards them); check, preview, sync, actions and release are
+disabled with the primary named. In static mode nothing that writes is
+offered.
 
 ## Tier-B webhook clients and actions
 

@@ -18,8 +18,10 @@ group observation, the `Delete` cleanup and the administration API, and refuses
 UniFi record publication, UniFi optional writes and webhook instances on their objects (see
 [Kubernetes execution](#kubernetes-execution)). Integrations are written
 through the generic object routes on both stores (see
-[Writing Integrations](#writing-integrations)). Those refusals, and dashboard
-controls, remain parts of the full [v0.2 implementation](../../dev-docs/milestones/v0.2/README.md).
+[Writing Integrations](#writing-integrations)), and the dashboard's
+Integrations page drives the same routes (see
+[Dashboard](#dashboard)). Those refusals remain parts of the full
+[v0.2 implementation](../../dev-docs/milestones/v0.2/README.md).
 
 ## Writing Integrations
 
@@ -63,6 +65,51 @@ echoed, relayed or logged.
 `GET /integrations/manifests` exposes the provider manifests and this
 driver's refusals (`cmd/kudurru/integration_manifests.go`), so a form can
 offer only what the host will run.
+
+### Dashboard
+
+The dashboard's Integrations page (`/integrations`,
+`dashboard/src/pages/IntegrationsPage.tsx` and `IntegrationDetailPage.tsx`)
+holds no list of providers. Its forms come from `GET
+/integrations/manifests`: the provider block's JSON Schema becomes the C1
+shape that `ShapeField` renders (`dashboard/src/lib/integrations.ts`), with
+the manifest's `refused` fields left out and a type the node does not run
+listed but not selectable; each credential key is a reference of a form in
+`credentialSources` (a select of the granted names for a holder of
+`integrations.secrets`), never a value. Writes are the object routes
+(create-only `POST`, `PUT` with `If-Match`, `DELETE` with `If-Match`).
+Every command is bound to the UID and revision of the status on screen; a
+publishing sync sends the digest of the preview the operator reviewed, and
+a refused (409) or uncertain (503 `integration_uncertain`) sync spends that
+preview and is not sent again.
+
+```mermaid
+sequenceDiagram
+    participant UI as Integrations page
+    participant API as /api/v1
+    participant Host as integration host (primary)
+    UI->>API: GET /integrations/manifests
+    UI->>API: POST /objects/integrations (references only)
+    API->>Host: new revision captured
+    UI->>API: GET /integrations/{ns}/{name} (uid, revision)
+    UI->>API: POST .../preview {uid, revision}
+    API->>Host: plan
+    Host-->>UI: operations, conflicts, digest
+    UI->>API: POST .../sync {uid, revision, mode: publish, previewDigest}
+    alt plan still current
+        Host-->>UI: applied, unchanged, pending
+    else expired or stale
+        API-->>UI: 409 (preview again)
+    else not acknowledged
+        API-->>UI: 503 integration_uncertain (never replayed)
+    end
+```
+
+The page gates each control by permission (`integrations.read`, `write`,
+`delete`, `secrets`, `check`, `sync`, `act`, `release`), by the license the
+manifests report, by static mode, and on an enrolled follower by operation:
+Integration writes are forwarded, check, preview, sync, actions and release
+need the primary (`dashboard/src/lib/follower.ts`).
 
 ```mermaid
 flowchart LR
