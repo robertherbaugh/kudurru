@@ -240,13 +240,22 @@ func anchorValidatedWhy(node string) string {
 // What one validated-recursion probe found, worst first: an answer with
 // wrong content (an rcode other than SERVFAIL, or NOERROR that is not the
 // validated key set), SERVFAIL, no answer at all (a network error or
-// timeout), or a validated answer on both transports.
+// timeout), SERVFAIL because the stand-in root itself did not answer the
+// node's resolver, or a validated answer on both transports.
 const (
 	anchorProbeWrong = iota
 	anchorProbeServfail
 	anchorProbeNoAnswer
+	anchorProbeRootUnanswered
 	anchorProbeValidated
 )
+
+// anchorRootUnanswered is the native resolver's extended error text when it
+// asked the authorities of a zone and none answered (recursor errNoAuth): the
+// stand-in root, which runs in the loaded test process, timed out. It is an
+// upstream failure the node reports correctly, not a refusal of its trust;
+// a refused anchor input answers SERVFAIL without it.
+const anchorRootUnanswered = "no name server of the zone answered"
 
 // anchorValidatedProbe asks like anchorValidated and classifies the first
 // answer that was not validated.
@@ -265,14 +274,19 @@ func anchorValidatedProbe(node string) (int, string) {
 		}
 		if answer.Rcode != dns.RcodeSuccess || !answer.AuthenticatedData || len(answer.Answer) != 2 {
 			why := fmt.Sprintf("%s: %s ad=%v answers=%d", network, dns.RcodeToString[answer.Rcode], answer.AuthenticatedData, len(answer.Answer))
+			unanswered := false
 			if opt := answer.IsEdns0(); opt != nil {
 				for _, o := range opt.Option {
 					if ede, ok := o.(*dns.EDNS0_EDE); ok {
 						why += fmt.Sprintf(" ede=%d %q", ede.InfoCode, ede.ExtraText)
+						unanswered = unanswered || strings.Contains(ede.ExtraText, anchorRootUnanswered)
 					}
 				}
 			}
 			if answer.Rcode == dns.RcodeServerFailure && len(answer.Answer) == 0 && !answer.AuthenticatedData {
+				if unanswered {
+					return anchorProbeRootUnanswered, why
+				}
 				return anchorProbeServfail, why
 			}
 			return anchorProbeWrong, why
