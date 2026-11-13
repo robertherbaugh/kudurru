@@ -2,7 +2,7 @@
 // controls with the reason, refusal texts, the Nodes page, the login page and
 // sign-out, and the delayed refetch after a forwarded change.
 import { act, fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react';
-import { QueryClient, QueryClientProvider, useQuery as useQueryHook } from '@tanstack/react-query';
+import { focusManager, QueryClient, QueryClientProvider, useQuery as useQueryHook } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -425,6 +425,42 @@ describe('a session without cluster.read on a follower', () => {
     expect(clusterReads()).toBe(1);
     hook.unmount();
     queryClient.clear();
+  });
+
+  it('sends no further GET /cluster after a 403 when another view mounts or the window regains focus', async () => {
+    const { clusterReads } = asOperatorOnFollower();
+    // The window focus default App.tsx sets, so a refocus is observable here.
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: true } } });
+    queryClient.setQueryData(qk.me, { principal: { name: 'ops' }, permissions: { ...OPERATOR_PERMISSIONS, cluster: ['read'], nodes: ['read'] } });
+    const first = renderHook(() => ({ role: useClusterRole() }), { wrapper: wrapper(queryClient) });
+    await waitFor(() => expect(first.result.current.role.follower).toBe(true));
+    expect(clusterReads()).toBe(1);
+    // A navigation mounts new capability hooks and the Nodes page.
+    const second = renderHook(() => ({ role: useClusterRole(), can: useCan() }), { wrapper: wrapper(queryClient) });
+    const page = renderWithApp(<NodesPage />, { route: '/nodes', client: queryClient });
+    await waitFor(() => expect(second.result.current.role.follower).toBe(true));
+    await act(async () => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(clusterReads()).toBe(1);
+    focusManager.setFocused(undefined);
+    page.unmount();
+    second.unmount();
+    first.unmount();
+    queryClient.clear();
+  });
+
+  it('sends no GET /cluster from the Nodes page without cluster.read', async () => {
+    const { clusterReads } = asOperatorOnFollower();
+    server.use(http.get(`${API}/auth/me`, () => HttpResponse.json({ principal: { kind: 'User', id: 'local:ops', name: 'ops', auth: 'cookie', provider: 'local' }, roles: ['operator'], csrf: 'csrf-mock-token', permissions: { ...OPERATOR_PERMISSIONS, nodes: ['read'] } })));
+    renderWithApp(<NodesPage />, { route: '/nodes' });
+    await screen.findByRole('table', { name: 'Nodes' });
+    const panel = (await screen.findByRole('heading', { name: 'Cluster' })).closest('section') ?? document.body;
+    expect(await within(panel).findByText('Needs cluster.read')).toBeInTheDocument();
+    expect(within(panel).queryByText(/forbidden|may not read/i)).toBeNull();
+    expect(clusterReads()).toBe(0);
   });
 
   it('shows no banner when /auth/status names no role', async () => {

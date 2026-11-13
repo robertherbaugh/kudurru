@@ -1380,8 +1380,10 @@ the public `GET /auth/status`, and the two lists from a build-time copy of the
 `x-kudurru-follower` classification (`DOCUMENT_FORWARDED`, `DOCUMENT_LOCAL`;
 a test keeps them equal to the OpenAPI document, and the dashboard is embedded
 in the binary it describes). Only a session that holds `cluster.read` sends
-`GET /cluster`, because the server audits every refused read as a denial; a
-403 also ends that poll. The role is reread every 30 seconds (from whichever
+`GET /cluster` (the capability hooks, the Nodes page and the upstreams
+panel share one `useClusterInfo` query), because the server audits every
+refused read as a denial; a 403 ends that poll and is not retried when
+another view mounts or the window regains focus. The role is reread every 30 seconds (from whichever
 of the two routes the session reads) and at once when a write answers
 `primary_required`, so an open tab follows a promotion or demotion. The API
 client reports every POST, PUT, PATCH and DELETE that the server answered

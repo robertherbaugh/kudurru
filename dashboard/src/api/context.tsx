@@ -175,14 +175,21 @@ export function usePrimaryOnlyPermission(): (resource: string, verb: string) => 
  * one page follows a promotion or a demotion. */
 export const ROLE_POLL_MS = 30_000;
 
+function refusedRead(query: { state: { error: unknown } }): boolean {
+  return query.state.error instanceof ApiError && query.state.error.status === 403;
+}
+
 /**
- * GET /cluster, shared by the capability hooks. Only a session that holds
- * cluster.read sends it: the server audits every refused read as a denial, so
- * a session without the permission takes the role from the public GET
- * /auth/status instead (useStatusRole). A 403 (a permission withdrawn during
- * the session) also ends the poll.
+ * GET /cluster, for the capability hooks and every page that shows it (use
+ * this, not a useQuery of its own on qk.cluster, so each observer carries the
+ * same guards). Only a session that holds cluster.read sends it: the server
+ * audits every refused read as a denial, so a session without the permission
+ * takes the role from the public GET /auth/status instead (useStatusRole). A
+ * 403 (a permission withdrawn during the session) ends the poll and is not
+ * retried when another view mounts or the window regains focus; the next
+ * /auth/me read then disables the query.
  */
-function useClusterInfo() {
+export function useClusterInfo() {
   const api = useApi();
   const { data: session } = useSession();
   return useQuery({
@@ -190,7 +197,9 @@ function useClusterInfo() {
     queryFn: () => api.cluster.info(),
     enabled: !!session && can(session, 'cluster', 'read'),
     staleTime: 60_000,
-    refetchInterval: (query) => (query.state.error instanceof ApiError && query.state.error.status === 403 ? false : ROLE_POLL_MS),
+    refetchInterval: (query) => (refusedRead(query) ? false : ROLE_POLL_MS),
+    retryOnMount: (query) => !refusedRead(query),
+    refetchOnWindowFocus: (query) => !refusedRead(query),
     retry: false,
   });
 }

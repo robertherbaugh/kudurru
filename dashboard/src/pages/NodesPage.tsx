@@ -21,7 +21,7 @@ import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
-import { qk, useApi } from '../api/context';
+import { useApi, useCan, useClusterInfo } from '../api/context';
 import { useNodes } from '../api/hooks';
 import type { EdgeComponentState, HealthComponent, NodeInfo } from '../api/types';
 import { ClusterMembership } from '../components/cluster/ClusterMembership';
@@ -123,7 +123,9 @@ function EdgeRow({ label, c, off }: { label: string; c: EdgeComponentState | und
 export default function NodesPage() {
   const api = useApi();
   const nodes = useNodes();
-  const cluster = useQuery({ queryKey: qk.cluster, queryFn: () => api.cluster.info() });
+  const can = useCan();
+  // Shared with the capability hooks: no read without cluster.read, none after a 403.
+  const cluster = useClusterInfo();
   const edge = useQuery({ queryKey: ['edge'], queryFn: () => api.cluster.edge(), refetchInterval: 10_000 });
   const [open, setOpen] = useState<string | null>(null);
   const c = cluster.data;
@@ -228,6 +230,11 @@ export default function NodesPage() {
       <Grid columns={{ minWidth: 420, repeat: 'fit' }} gap={4}>
         <Panel title="Cluster" headingId="cluster-title">
           {cluster.error ? <ErrorBanner error={cluster.error} /> : null}
+          {!c && !cluster.error && !can('cluster', 'read') ? (
+            <Text color="secondary" as="p">
+              Needs cluster.read
+            </Text>
+          ) : null}
           {c ? (
             <MetadataList columns="multi">
               <MetadataListItem label="Store">{c.driver}</MetadataListItem>
