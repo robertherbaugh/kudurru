@@ -962,6 +962,11 @@ func sortedBits(set map[int]bool) []int {
 	return out
 }
 
+// MatchesMACs reports whether a ClientGroup mac matcher exists, so that a
+// MAC with no inventory source (a DHCP lease MAC) can select a group.
+// Source-bound private grants never match such a MAC.
+func (ix *Index) MatchesMACs() bool { return ix != nil && len(ix.mac) > 0 }
+
 // Generation returns Input.Generation.
 func (ix *Index) Generation() uint64 { return ix.generation }
 

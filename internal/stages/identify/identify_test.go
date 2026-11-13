@@ -296,3 +296,66 @@ func TestLeaseMACFillsOnlyWithoutInventoryMACs(t *testing.T) {
 		t.Fatalf("expired lease still identified: %+v", c)
 	}
 }
+
+// D397: the lease fill reads the lease snapshots only when the captured index
+// has a ClientGroup mac matcher. A query that no mac matcher can select makes
+// no lease read and no allocation beyond what it made without lease MACs.
+func TestLeaseMACsUnreadWithoutMACMatcher(t *testing.T) {
+	now := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
+	addr := netip.MustParseAddrPort("10.0.20.5:1")
+	inv := inventory.New(func() time.Time { return now })
+	next := func(*pipeline.Request) (*pipeline.Response, error) { return nil, nil }
+	plain := New(policy.Static{Idx: index()}, func() time.Time { return now })
+	plain.CaptureInventory = func(*pipeline.Request) (*inventory.Snapshot, error) { return inv.Snapshot(), nil }
+	leased := New(policy.Static{Idx: index()}, func() time.Time { return now })
+	leased.CaptureInventory = plain.CaptureInventory
+	leases := &leaseMACs{macs: map[netip.Addr]string{addr.Addr(): "02:00:00:00:00:10"}, until: now.Add(time.Hour)}
+	leased.LeaseMACs = leases
+	serve := func(st *Stage) *pipeline.Request {
+		req := &pipeline.Request{Received: now, Client: pipeline.Client{Addr: addr}}
+		if _, err := st.Serve(req, next); err != nil {
+			t.Fatal(err)
+		}
+		return req
+	}
+	if req := serve(leased); leases.calls != 0 || len(req.Client.MACs) != 0 || !slices.Equal(req.Client.GroupIDs, []string{"default/kids"}) {
+		t.Fatalf("lease read without a mac matcher: calls=%d client=%+v", leases.calls, req.Client)
+	}
+	base := testing.AllocsPerRun(200, func() { serve(plain) })
+	with := testing.AllocsPerRun(200, func() { serve(leased) })
+	if with != base || leases.calls != 0 {
+		t.Fatalf("lease MACs cost a query without a mac matcher: allocs %v, want %v; lease reads %d", with, base, leases.calls)
+	}
+}
+
+// BenchmarkServeFreshIdentity identifies a new request per iteration (the
+// cached-identification path of BenchmarkServe skips the identity capture):
+// "none" has no lease source, "unmatched" a lease source and no mac matcher,
+// "matched" a lease source and a mac matcher that the lease MAC selects.
+func BenchmarkServeFreshIdentity(b *testing.B) {
+	now := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
+	addr := netip.MustParseAddrPort("10.0.20.5:1")
+	inv := inventory.New(func() time.Time { return now })
+	next := func(*pipeline.Request) (*pipeline.Response, error) { return nil, nil }
+	macIndex := policy.Build(policy.Input{ClientGroups: []*v1alpha1.ClientGroup{
+		{ObjectMeta: metav1.ObjectMeta{Name: "default"}, Spec: v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{{CIDR: "0.0.0.0/0"}}}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "laptop"}, Spec: v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{{MAC: "02:00:00:00:00:10"}}}},
+	}}, policy.Options{Inventory: true})
+	leases := &leaseMACs{macs: map[netip.Addr]string{addr.Addr(): "02:00:00:00:00:10"}, until: now.Add(time.Hour)}
+	for _, tc := range []struct {
+		name   string
+		ix     *policy.Index
+		leases LeaseMACSource
+	}{{"none", index(), nil}, {"unmatched", index(), leases}, {"matched", macIndex, leases}} {
+		b.Run(tc.name, func(b *testing.B) {
+			st := New(policy.Static{Idx: tc.ix}, func() time.Time { return now })
+			st.CaptureInventory = func(*pipeline.Request) (*inventory.Snapshot, error) { return inv.Snapshot(), nil }
+			st.LeaseMACs = tc.leases
+			b.ReportAllocs()
+			for b.Loop() {
+				req := &pipeline.Request{Received: now, Client: pipeline.Client{Addr: addr}}
+				_, _ = st.Serve(req, next)
+			}
+		})
+	}
+}
