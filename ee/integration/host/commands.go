@@ -149,17 +149,22 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 		}
 	}()
 	if err != nil {
-		h.provisionFailed(j)
+		h.provisionFailed(j, true)
 		return
 	}
 	syncEnabled, interval, err := syncSchedule(provider, instance.definition)
 	if err != nil {
-		h.provisionFailed(j)
+		// A schedule refused as unsupported or invalid follows from the
+		// definition and what the peer declared, not from a passing failure
+		// (a webhook instance without domains against a records-only peer has
+		// no role): set up again, it would be refused again, so it waits for
+		// a change of its object, credential or license as before.
+		h.provisionFailed(j, !errors.Is(err, ErrUnsupported) && !errors.Is(err, ErrInvalid))
 		return
 	}
 	startCtx, err := h.scopedOriginal(ctx, j, originalFrame, ExecutionGuard{Ledger: g, BundleID: instance.BundleID()})
 	if err != nil {
-		h.provisionFailed(j)
+		h.provisionFailed(j, true)
 		return
 	}
 	started := make(chan error, 1)
@@ -167,6 +172,7 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 	go func() { defer close(startDone); started <- provider.Start(startCtx) }()
 	h.mu.Lock()
 	delete(h.provisionFailures, j.key)
+	j.provisionRetry = false
 	h.mu.Unlock()
 	h.setLocal(j, "Running", "Provisioned", Result{}, true)
 	// Start must honor cancellation; Stop quiesces rather than spawning writes.
@@ -304,22 +310,27 @@ func (h *Host) refuse(ctx context.Context, j *job, f frame, g ExecutionGuard, re
 	j.refusalRetryAt = h.opts.Now().Add(refusalBackoff(h.opts.PollInterval, failures))
 }
 
-// refusalBackoff is the wait before the failures-th retry of a refusal
-// publication: one poll interval, doubled per consecutive failure, at most
-// five minutes (or one poll interval, if that is longer).
 // provisionFailed reports a lease whose provider setup failed (Provision,
-// Validate, Check, its declared schedule, or the original scope) and marks
-// the job for replacement once a backoff has passed (D384). Before, such an
-// instance stayed Degraded until its object, credential or license changed,
-// so a provider that was briefly unreachable during setup, or a setup run
-// cut by its bound on a loaded node, never polled again on a quiet node.
-// Setup makes no provider write, so repeating it is safe; consecutive
-// failures of one instance back off like refusals (refusalBackoff).
-func (h *Host) provisionFailed(j *job) {
+// Validate, Check, its declared schedule, or the original scope) and, when
+// retry is set, marks the job for replacement once a backoff has passed
+// (D384). Before, such an instance stayed Degraded until its object,
+// credential or license changed, so a provider that was briefly unreachable
+// during setup, or a setup run cut by its bound on a loaded node, never
+// polled again on a quiet node. Setup makes no provider write, so repeating
+// it is safe; consecutive failures of one instance back off like refusals
+// (refusalBackoff), so a provider that stays unreachable is contacted at
+// most once every five minutes. A definite refusal of the schedule is not
+// retried.
+func (h *Host) provisionFailed(j *job, retry bool) {
 	h.setLocal(j, "Degraded", "ProvisionFailed", Result{}, true)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.jobs[j.key] != j {
+		return
+	}
+	if !retry {
+		delete(h.provisionFailures, j.key)
+		j.provisionRetry = false
 		return
 	}
 	failures := h.provisionFailures[j.key]
@@ -331,6 +342,9 @@ func (h *Host) provisionFailed(j *job) {
 	j.provisionRetryAt = h.opts.Now().Add(refusalBackoff(h.opts.PollInterval, failures))
 }
 
+// refusalBackoff is the wait before the failures-th retry of a refusal
+// publication or a failed setup: one poll interval, doubled per consecutive
+// failure, at most five minutes (or one poll interval, if that is longer).
 func refusalBackoff(poll time.Duration, failures uint32) time.Duration {
 	limit := max(5*time.Minute, poll)
 	delay := poll
