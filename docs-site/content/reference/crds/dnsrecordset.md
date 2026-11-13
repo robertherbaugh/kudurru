@@ -35,7 +35,7 @@ DNSRecordSetSpec defines records added to a zone. App teams own these: the clay 
 | `spec.endpoints[].kudurru.comment` | `string` |  |
 | `spec.endpoints[].kudurru.disabled` | `boolean` | Disabled records are kept but never served. |
 | `spec.endpoints[].kudurru.expiresAt` | `string` | ExpiresAt removes the record from service after this time.<br>Format: `date-time` |
-| `spec.endpoints[].kudurru.view` | `string` | View is "public" (published to sinks, never served) or a ClientGroup name (served only to that group). v0.2. |
+| `spec.endpoints[].kudurru.view` | `string` | View is "public" (published to sinks, never served) or the name of a ClientGroup in the record set's namespace: the endpoint is then served only to that group's clients, replacing the default RRset of the same name and type for them, and is never transferred, exported or published (D403).<br>Pattern: `^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`<br>Length: at most 253 |
 | `spec.endpoints[].labels` | `map[string]string` |  |
 | `spec.endpoints[].providerSpecific` | `[]object` |  |
 | `spec.endpoints[].providerSpecific[].name` | `string` | **Required.** |
