@@ -159,10 +159,31 @@ type knotRoot struct {
 }
 
 func (k *knotRoot) dockerRun(args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(k.t.Context(), 60*time.Second)
+	return k.dockerRunIn(k.t.Context(), args...)
+}
+
+// dockerCleanup runs a docker command from a t.Cleanup function. Go cancels
+// t.Context() before cleanups run, so it uses its own bounded context, as
+// the catalog fixture does.
+func (k *knotRoot) dockerCleanup(args ...string) (string, error) {
+	return k.dockerRunIn(context.Background(), args...)
+}
+
+func (k *knotRoot) dockerRunIn(parent context.Context, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(parent, 60*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, k.docker, append([]string{"-H", k.socket}, args...)...).CombinedOutput() //nolint:gosec // explicit private test daemon and fixed executable
 	return strings.TrimSpace(string(out)), err
+}
+
+// removeServer removes knotd and fails the test if the container is still
+// present afterwards.
+func (k *knotRoot) removeServer() {
+	_, _ = k.dockerCleanup("rm", "-f", k.server)
+	left, err := k.dockerCleanup("ps", "-aq", "--filter", "name=^"+k.server+"$")
+	if err != nil || left != "" {
+		k.t.Errorf("knotd container %s was not removed: %q %v", k.server, left, err)
+	}
 }
 
 func (k *knotRoot) keymgr(zone string, args ...string) string {
@@ -188,12 +209,20 @@ func (k *knotRoot) sha256DS(zone string) string {
 	return ""
 }
 
-func startKnotRoot(t *testing.T, ip netip.Addr) *knotRoot {
+// requireKnot skips unless the process-level Knot DNS qualification is
+// selected. Tests call it before managedRootIP, which fails on hosts without
+// a non-loopback IPv4 address.
+func requireKnot(t *testing.T) {
 	t.Helper()
 	kudurrutest.RequireE2E(t)
 	if os.Getenv("KUDURRU_KNOT") != "1" {
 		t.Skip("set KUDURRU_KNOT=1 and KUDURRU_KNOT_DOCKER_HOST for actual Knot DNS qualification")
 	}
+}
+
+func startKnotRoot(t *testing.T, ip netip.Addr) *knotRoot {
+	t.Helper()
+	requireKnot(t)
 	socket := os.Getenv("KUDURRU_KNOT_DOCKER_HOST")
 	if !strings.HasPrefix(socket, "unix:///") || socket == "unix:///var/run/docker.sock" {
 		t.Fatal("KUDURRU_KNOT_DOCKER_HOST must explicitly select a private Unix Docker socket")
@@ -204,7 +233,7 @@ func startKnotRoot(t *testing.T, ip netip.Addr) *knotRoot {
 	}
 	k := &knotRoot{t: t, docker: docker, socket: socket, dir: t.TempDir(), suffix: strings.ToLower(rand.Text()[:10])}
 	k.server = "kudurru-f28-rfc-knot-" + k.suffix
-	t.Cleanup(func() { _, _ = k.dockerRun("rm", "-f", k.server) })
+	t.Cleanup(k.removeServer)
 	if k.version, err = k.dockerRun("run", "--rm", "--network", "none", "--entrypoint", "knotd", knotImage, "-V"); err != nil || k.version != knotVersion {
 		t.Fatalf("pinned Knot executable: %q %v", k.version, err)
 	}
@@ -262,7 +291,7 @@ zone:
 	}
 	t.Cleanup(func() {
 		if t.Failed() {
-			logs, _ := k.dockerRun("logs", k.server)
+			logs, _ := k.dockerCleanup("logs", k.server)
 			t.Logf("knotd log:\n%s", logs)
 		}
 	})
@@ -282,6 +311,7 @@ zone:
 // Knot-signed child, and makes no new acquisition across a restart. A
 // byte-for-byte relay in front of knotd counts the acquisitions.
 func TestKnotManagedRootBootstrap(t *testing.T) {
+	requireKnot(t)
 	ip := managedRootIP(t)
 	k := startKnotRoot(t, ip)
 	t.Log("authority: " + k.version + "; " + knotImage)
