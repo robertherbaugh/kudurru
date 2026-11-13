@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -536,10 +537,16 @@ func integrationInputsCurrent(ctx context.Context, tx *sqlite.CommandTx, c *inte
 	for _, source := range selected {
 		var zone public.DNSZone
 		var records public.DNSRecordSet
-		if err := tx.Get(ctx, store.KeyOf(source.Zone), &zone); err != nil {
+		// A source deleted after the capture fences the command (409): the
+		// Integration itself still exists, only its captured input is stale.
+		if err := tx.Get(ctx, store.KeyOf(source.Zone), &zone); errors.Is(err, store.ErrNotFound) {
+			return ih.ErrFenced
+		} else if err != nil {
 			return err
 		}
-		if err := tx.Get(ctx, store.KeyOf(source.Records), &records); err != nil {
+		if err := tx.Get(ctx, store.KeyOf(source.Records), &records); errors.Is(err, store.ErrNotFound) {
+			return ih.ErrFenced
+		} else if err != nil {
 			return err
 		}
 		if zone.UID != source.Zone.UID || zone.ResourceVersion != source.Zone.ResourceVersion || records.UID != source.Records.UID || records.ResourceVersion != source.Records.ResourceVersion {

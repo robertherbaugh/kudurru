@@ -228,7 +228,7 @@ func (r *integrationRuntime) IntegrationExecute(ctx context.Context, in api.Inte
 	if in.Command == "sync" || in.Command == "act" {
 		audit = &integrationAuditRow{action: "integration." + in.Command, name: in.Action}
 		if in.Command == "act" {
-			audit.params = "sha256:" + kinds.Digest(in.Review.Params)
+			audit.params = "sha256:" + integrationParamsDigest(in.Review.Params)
 		}
 	}
 	if err == nil {
@@ -250,6 +250,24 @@ func (r *integrationRuntime) IntegrationExecute(ctx context.Context, in api.Inte
 	}
 	out.Completed = true
 	return out, nil
+}
+
+// integrationParamsDigest digests the canonical JSON of action parameters
+// (compact, object keys sorted) so that one request written with other
+// whitespace or key order audits the same digest. Bytes that are not JSON
+// are digested as sent; the provider refuses them before any effect.
+func integrationParamsDigest(raw json.RawMessage) string {
+	var value any
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if decoder.Decode(&value) != nil || decoder.More() {
+		return kinds.Digest(raw)
+	}
+	canonical, err := json.Marshal(value)
+	if err != nil {
+		return kinds.Digest(raw)
+	}
+	return kinds.Digest(canonical)
 }
 
 func integrationPublicPreview(in *ih.Preview) (*api.IntegrationPreview, error) {

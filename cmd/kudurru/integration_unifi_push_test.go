@@ -43,6 +43,9 @@ type unifiPushPeer struct {
 	// dropPost makes the next policy creation take effect and lose its
 	// answer: the connection closes before any response.
 	dropPost bool
+	// failPostAt makes the policy creation with that sequence number (the
+	// value next takes) answer 500 without creating anything.
+	failPostAt int
 }
 
 const (
@@ -127,6 +130,10 @@ func (p *unifiPushPeer) serve(t *testing.T) func(http.ResponseWriter, *http.Requ
 			page(rows)
 		case r.Method == http.MethodPost && path == base+"/dns/policies":
 			p.next++
+			if p.next == p.failPostAt {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
 			id := fmt.Sprintf("44444444-4444-4444-8444-%012d", p.next)
 			body["id"], body["metadata"] = id, map[string]any{"origin": "USER_DEFINED"}
 			p.policies[id] = body
@@ -225,6 +232,40 @@ func unifiPushCall(t *testing.T, f *integrationOperationFixture, router http.Han
 		}
 	}
 	return out
+}
+
+// unifiPushCapturedWithout waits until the host frame an operator command
+// captures (not only the root's latest cut) no longer selects the record set
+// name. The root publishes its cut before the host adopts it as the frame's
+// input, so a review taken in between still checks the deleted record set.
+func unifiPushCapturedWithout(t *testing.T, f *integrationOperationFixture, name string) {
+	t.Helper()
+	owner := integrationOwner(f.s, f.d)
+	awaitServingRuntime(t, f.s, func() bool {
+		var current public.Integration
+		if f.s.opts.Store.Get(t.Context(), store.Key{Kind: "Integration", Namespace: "default", Name: f.d.Name}, &current) != nil {
+			return false
+		}
+		capture, err := f.s.integrations.host.CaptureCommand(t.Context(), owner, current.ResourceVersion)
+		if err != nil {
+			return false
+		}
+		ctx, g, err := capture.Bind(t.Context())
+		if err != nil {
+			return false
+		}
+		resource, err := f.s.integrations.host.RequestResource(ctx, g.Ledger)
+		cut, ok := resource.(*integrationCut)
+		if err != nil || !ok || cut == nil {
+			return false
+		}
+		for _, source := range cut.input.Sources {
+			if source.Records.Name == name {
+				return false
+			}
+		}
+		return true
+	})
 }
 
 func unifiPushRecord(name, typ, target string) *public.DNSRecordSet {
@@ -335,20 +376,8 @@ func TestIntegrationUniFiPushMirrorRecordsReviewed(t *testing.T) {
 	if err := f.s.opts.Store.Delete(t.Context(), store.Key{Kind: "DNSRecordSet", Namespace: "default", Name: "alias"}, store.DeleteOptions{Manager: store.ManagerAPI}); err != nil {
 		t.Fatal(err)
 	}
-	// Review only once the integration root captured the removal.
-	awaitServingRuntime(t, f.s, func() bool {
-		f.s.integrations.mu.RLock()
-		defer f.s.integrations.mu.RUnlock()
-		if f.s.integrations.cut == nil {
-			return false
-		}
-		for _, source := range f.s.integrations.cut.input.Sources {
-			if source.Records.Name == "alias" {
-				return false
-			}
-		}
-		return true
-	})
+	// Review only once the frame a command captures no longer lists it.
+	unifiPushCapturedWithout(t, f, "alias")
 	review = unifiPushReview(t, f, router)
 	removal := unifiPushCall(t, f, router, "/preview", review, http.StatusOK).Preview
 	if len(removal.Operations) != 1 || removal.Operations[0].Action != "delete" {
@@ -438,8 +467,13 @@ func TestIntegrationUniFiPushActionsReviewed(t *testing.T) {
 	if fmt.Sprint(dhcp["dnsServerIpAddressesOverride"]) != "[192.0.2.53 192.0.2.54]" || dhcp["leaseTimeSeconds"] == nil || sent["vlanId"] == nil {
 		t.Fatalf("network body: %v", sent)
 	}
-	if again := plan(act(unifi.ActionDHCPDNSServers, `{"mode":"preview"}`, http.StatusOK)); again.Changes[0].Action != "unchanged" || again.Unchanged != 1 {
+	again := plan(act(unifi.ActionDHCPDNSServers, `{"mode":"preview"}`, http.StatusOK))
+	if again.Changes[0].Action != "unchanged" || again.Unchanged != 1 {
 		t.Fatalf("DHCP not idempotent: %+v", again)
+	}
+	// A repeat apply under the fresh digest sends no PUT.
+	if repeat := plan(act(unifi.ActionDHCPDNSServers, `{"mode":"apply","digest":"`+again.Digest+`"}`, http.StatusOK)); repeat.Applied != 0 || len(peer.written()) != 1 {
+		t.Fatalf("repeat DHCP apply wrote: %+v %v", repeat, peer.written())
 	}
 	// Someone changes the servers back in UniFi: the preview shows it.
 	peer.mu.Lock()
@@ -467,7 +501,7 @@ func TestIntegrationUniFiPushActionsReviewed(t *testing.T) {
 			acts++
 		}
 	}
-	if acts != 6 {
+	if acts != 7 {
 		t.Fatal("actions were not audited with their parameters", acts)
 	}
 	// Without integrations.act no action reaches the controller.
@@ -559,5 +593,89 @@ func TestIntegrationUniFiPushMirrorUncertainCreate(t *testing.T) {
 	}
 	if uncertain != 1 {
 		t.Fatal("uncertain sync was not audited", uncertain)
+	}
+}
+
+// A multi-address record whose second policy creation fails after the first
+// was acknowledged is uncertain, and it does not stay pending forever: once
+// the operator removes the acknowledged policy, so that the site shows the
+// baseline and no acknowledged ID exists, a poll settles the intent without
+// a write and the record returns to review.
+func TestIntegrationUniFiPushMirrorPartialCreate(t *testing.T) {
+	peer := newUniFiPushPeer(t)
+	record := unifiPushRecord("web", "A", "192.0.2.80")
+	record.Spec.Endpoints[0].Targets = append(record.Spec.Endpoints[0].Targets, "192.0.2.81")
+	f, router := unifiPushStart(t, peer, []*public.DNSRecordSet{record}, func(d *public.Integration) {
+		d.Spec.UniFi.Push.MirrorRecords = public.UniFiRecordMirror{Enabled: true, Domains: []string{"example"}, Types: []string{"A"}}
+	})
+	owner := integrationOwner(f.s, f.d)
+	review := unifiPushReview(t, f, router)
+	preview := unifiPushCall(t, f, router, "/preview", review, http.StatusOK).Preview
+	if len(preview.Operations) != 1 || preview.Operations[0].Action != "create" {
+		t.Fatalf("preview: %+v", preview)
+	}
+	peer.mu.Lock()
+	peer.failPostAt = peer.next + 2
+	peer.mu.Unlock()
+	review = unifiPushReview(t, f, router)
+	review.Mode, review.PreviewDigest = "publish", preview.Digest
+	if w := integrationAdminCall(t, router, f, http.MethodPost, "/integrations/default/gateway/sync", review, f.token); w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), `"pending":1`) {
+		t.Fatal("partial create was not uncertain", w.Code, w.Body.String())
+	}
+	if writes := peer.written(); len(writes) != 2 {
+		t.Fatal("partial create", writes)
+	}
+	// While the acknowledged policy exists, polling keeps the intent pending.
+	unifiPushReview(t, f, router)
+	if result, err := f.s.integrations.host.Sync(t.Context(), owner, ""); err != nil || result == nil || result.Pending != 1 {
+		t.Fatal("an acknowledged policy did not keep the intent pending", err, result)
+	}
+	var created []string
+	peer.mu.Lock()
+	for id, policy := range peer.policies {
+		if policy["domain"] == "web.example" {
+			created = append(created, id)
+		}
+	}
+	for _, id := range created {
+		delete(peer.policies, id)
+	}
+	peer.mu.Unlock()
+	if len(created) != 1 {
+		t.Fatal("acknowledged policies", created)
+	}
+	// The site is back at its baseline: the next poll settles without a write.
+	unifiPushReview(t, f, router)
+	if result, err := f.s.integrations.host.Sync(t.Context(), owner, ""); err != nil || result == nil || result.Pending != 0 {
+		t.Fatal("baseline did not settle the partial intent", err, result)
+	}
+	if writes := peer.written(); len(writes) != 2 {
+		t.Fatal("settling wrote", writes)
+	}
+	review = unifiPushReview(t, f, router)
+	again := unifiPushCall(t, f, router, "/preview", review, http.StatusOK).Preview
+	if len(again.Operations) != 1 || again.Operations[0].Action != "create" || len(again.Operations[0].After.Targets) != 2 {
+		t.Fatalf("settled intent did not return to review: %+v", again)
+	}
+	review = unifiPushReview(t, f, router)
+	review.Mode, review.PreviewDigest = "publish", again.Digest
+	if result := unifiPushCall(t, f, router, "/sync", review, http.StatusOK); result.Applied != 1 || len(peer.written()) != 4 {
+		t.Fatal("reviewed retry", result, peer.written())
+	}
+}
+
+// The act audit digest is over canonical parameters: the same request with
+// other whitespace or key order audits the same digest.
+func TestIntegrationParamsDigestCanonical(t *testing.T) {
+	a := integrationParamsDigest(json.RawMessage(`{"mode":"apply","digest":"x"}`))
+	b := integrationParamsDigest(json.RawMessage(" {\n \"digest\" : \"x\", \"mode\":\"apply\"}\n"))
+	if a != b || a != kinds.Digest([]byte(`{"digest":"x","mode":"apply"}`)) {
+		t.Fatal("parameter digest is not canonical", a, b)
+	}
+	if integrationParamsDigest(json.RawMessage(`{"mac":"00:11:22:33:44:55"}`)) == integrationParamsDigest(json.RawMessage(`{"mac":"00:11:22:33:44:56"}`)) {
+		t.Fatal("different parameters share a digest")
+	}
+	if raw := json.RawMessage(`{"a":1} {}`); integrationParamsDigest(raw) != kinds.Digest(raw) {
+		t.Fatal("trailing data was canonicalized")
 	}
 }
