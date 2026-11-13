@@ -193,6 +193,38 @@ var probeMutations = []string{
 // but does not define the answer.
 const commandStateChangedMessage = "current writable serving generation unavailable"
 
+// The follower's 503 unavailable answers for a forwarded write that it did
+// not send (cmd/kudurru serving_member_objects.go). docs/deploy/sqlite-join.md
+// says the first one is the answer to expect when the follower installed
+// newer data while the request ran, and that the write was not applied. At
+// 606a53a8 the follower answers the second one for that same race, when its
+// publication was replaced before it sent the command (the local
+// serving.ErrPending of a superseded read lease reaches objectForwardError
+// as an unsent failure); the primary was reachable throughout. Both say
+// that nothing was sent or applied. The walk's own forwarded probes make
+// the primary commit, so the follower's next pull races its later probes.
+const (
+	followerSourceChangedMessage = "the follower's source changed; review current state before a new decision"
+	followerUnsentMessage        = "the enrolled primary is unavailable; the write was not applied"
+)
+
+// transientAnswers are the 503 answers that the walk sends a probe again
+// after (Probe), because they are a race with the node's own commits and
+// not the shape's answer, each keyed by its key and then its message ("" for
+// any message).
+var transientAnswers = map[string][]string{
+	"generation_pending": {""},
+	api.KeyUnavailable:   {commandStateChangedMessage, followerSourceChangedMessage, followerUnsentMessage},
+}
+
+func transientAnswer(a Answer) bool {
+	if a.Status != http.StatusServiceUnavailable {
+		return false
+	}
+	messages, ok := transientAnswers[a.Key]
+	return ok && (slices.Contains(messages, "") || slices.Contains(messages, a.Message))
+}
+
 // Probe sends one request for an operation, with an empty JSON object (or
 // the body of the operation's probeRequests entry) as the body of a method
 // that may carry one, and the entry's query and If-Match. A successful
@@ -211,8 +243,9 @@ const commandStateChangedMessage = "current writable serving generation unavaila
 // answer is a race with the node's own commits, not the shape's answer, so
 // the walk classifies it as transient without asking the answer for a hint.
 // Probe holds it to the inventory like any other (Problems) when it lasts
-// the minute. No probe here can have changed anything, so sending one again
-// is safe.
+// the minute. So are the follower's answers for a forwarded write that it
+// did not send because its data changed (transientAnswers). No probe here
+// can have changed anything, so sending one again is safe.
 // The walk waits for the end of the pending state with readinessProbe, which
 // no rate limit charges, and only then sends the operation again: provider
 // sign-in admission charges its lane before the serving generation is
@@ -223,9 +256,7 @@ func (c Client) Probe(ctx context.Context, op Operation) (Answer, error) {
 		timeout = 10 * time.Second
 	}
 	deadline := time.Now().Add(time.Minute)
-	pending := func(a Answer) bool {
-		return a.Status == http.StatusServiceUnavailable && (a.Key == "generation_pending" || a.Key == api.KeyUnavailable && a.Message == commandStateChangedMessage)
-	}
+	pending := transientAnswer
 	for {
 		answer, err := c.probeOnce(ctx, op, timeout)
 		if err != nil || !pending(answer) {

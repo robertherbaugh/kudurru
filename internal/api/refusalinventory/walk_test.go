@@ -206,9 +206,10 @@ func TestProbeWaitsForReadinessBeforeResending(t *testing.T) {
 }
 
 // The command path's 503 for a writable state that changed while the command
-// was admitted is a race with the node's own commits, not the shape's
-// answer: the probe is sent again, as for generation_pending. Any other 503
-// unavailable is the observation, sent once.
+// was admitted, and the follower's answers for a forwarded write it did not
+// send because its data changed, are a race with the node's own commits, not
+// the shape's answer: the probe is sent again, as for generation_pending.
+// Any other 503 unavailable is the observation, sent once.
 func TestProbeResendsAfterCommandStateChanged(t *testing.T) {
 	for _, tc := range []struct {
 		message    string
@@ -216,6 +217,8 @@ func TestProbeResendsAfterCommandStateChanged(t *testing.T) {
 		wantStatus int
 	}{
 		{commandStateChangedMessage, 2, http.StatusBadRequest},
+		{followerSourceChangedMessage, 2, http.StatusBadRequest},
+		{followerUnsentMessage, 2, http.StatusBadRequest},
 		{"another refusal", 1, http.StatusServiceUnavailable},
 	} {
 		var sends atomic.Int64
