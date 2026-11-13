@@ -1002,7 +1002,10 @@ admission and marks the rejection as stale (the lease was replaced, the
 keyring is no longer current, or the zone is briefly not admitted or routed
 while its lifecycle is realigned), and the command waits for the next
 publication and captures again. `Apply` that lost every compare-and-swap
-attempt and committed nothing runs again the same way. A retiring or retired
+attempt and committed nothing runs again the same way, and so does a repeated
+command ID whose retained outcome the receipt ledger returned but whose
+publication met a replaced writer publication (nothing is committed twice; the
+next run reads the same receipt). A retiring or retired
 zone is refused at once, since no later publication admits it. A rejection
 for any other reason, and every other answer, is final, a commit whose
 publication failed included; the command ID is the retry identity in the

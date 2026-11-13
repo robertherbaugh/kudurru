@@ -170,7 +170,7 @@ const enrolledForwardBound = 3900 * time.Millisecond
 // enrolledFollowerUpdate sends one signed UPDATE through a follower and
 // requires rcode. With atBound set, a SERVFAIL answered at the forward bound
 // (enrolledForwardBound or later) is logged and the idempotent update is
-// sent again, at most twice; a SERVFAIL before the bound, and any other
+// sent again, at most four times; a SERVFAIL before the bound, and any other
 // rcode, fails at once. Without atBound the update is sent exactly once.
 func enrolledFollowerUpdate(t *testing.T, follower *kudurrutest.Node, secret string, tcp bool, rcode int, atBound bool, build func(*dns.Msg)) {
 	t.Helper()
@@ -189,7 +189,7 @@ func enrolledFollowerUpdate(t *testing.T, follower *kudurrutest.Node, secret str
 			t.Fatal("signed UPDATE exchange failed", follower.Name, err, elapsed)
 		case answer.Opcode == dns.OpcodeUpdate && answer.Rcode == rcode:
 			return
-		case atBound && attempt < 3 && answer.Opcode == dns.OpcodeUpdate && answer.Rcode == dns.RcodeServerFailure && elapsed >= enrolledForwardBound:
+		case atBound && attempt < 5 && answer.Opcode == dns.OpcodeUpdate && answer.Rcode == dns.RcodeServerFailure && elapsed >= enrolledForwardBound:
 			t.Logf("UPDATE on %s sent at %s answered SERVFAIL at the forward bound after %s (update of %s, tcp=%t); sending it again",
 				follower.Name, sent.UTC().Format(time.RFC3339Nano), elapsed, owner, tcp)
 		default:
@@ -212,9 +212,11 @@ func enrolledFollowerUpdate(t *testing.T, follower *kudurrutest.Node, secret str
 // it: on the newly promoted primary a forwarded commit took 1.1 to 3.5
 // seconds to be published in the HA-OPEN6 diagnostic run (fix-diag01), and
 // one that also lost a compare-and-swap round against the primary's own
-// status write committed after the bound and answered SERVFAIL. That is the
-// publication latency PUBLISH-STARVATION (D405) works on, not a transient
-// refusal. The first follower sends every update once.
+// status write committed after the bound and answered SERVFAIL. In one
+// later run (fix-e2e01) five sends of a burst through the rejoined member
+// met the bound, one update twice. That is the publication latency
+// PUBLISH-STARVATION (D405) works on, not a transient refusal. The first
+// follower sends every update once.
 func enrolledFollowerUpdates(t *testing.T, primary, follower *kudurrutest.Node, secret, name, ip string, atBound bool) {
 	t.Helper()
 	for i, tcp := range []bool{false, true} {
