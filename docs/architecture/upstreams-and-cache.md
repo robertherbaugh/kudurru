@@ -355,15 +355,21 @@ The root runtime adopts direct topology under bounded startup preparation and
 retains that exact admission through its lifetime. It mounts one elected updater
 and the complete managed builder only for that admitted owner. Initial provider
 readiness waits before the first anchor capture; it cannot retry a refused anchor
-operation. Before the bootstrap, the first bounded anchor attempt finishes
-before other elected provider/primary services start, so their startup writes
-cannot invalidate that initial capture; the node cannot publish yet, because
-managed mode fails closed. A writer whose committed image already carries an
-accepted managed owner (a restart, a promotion, a resolution) publishes and
-reports ready at once, so it starts those services together with the anchor
-child: a node that reports ready accepts writer commands, and does not refuse
-them 503 for up to the 30-second first step (F28-OPEN6). Their startup writes
-may then race that step, which is the raced capture or update described below.
+operation. Whenever the first anchor step may acquire, the first bounded anchor
+attempt finishes before other elected provider/primary services start, so their
+startup writes cannot invalidate that initial capture or roll back its result.
+That covers the bootstrap (the node cannot publish yet, because managed mode
+fails closed) and a writer whose committed refresh is due, or due within a
+minute, by the updater's wall clock: that reply may be a REVOKE, and a
+revocation denial that an ordinary commit rolls back is terminal for the writer
+term (below). Only a writer whose committed image carries an accepted managed
+owner that is not due (the usual restart, promotion or resolution) starts those
+services together with the anchor child, whose first step then only captures
+and schedules; a startup write that races that capture refuses only the
+capture, and a new one follows (F28-OPEN6). Such a node then accepts writer
+commands without waiting for the anchor step; a due one may still refuse them
+503 for up to its 30-second first step while it already reports ready, because
+readiness does not depend on the writer services.
 Every outcome releases those services; terminal refusal keeps
 only the anchor child parked. Successful preparation cancellation does not expire a published input.
 The pure `internal/trustanchors` state remains distinct from durable acceptance
@@ -506,10 +512,11 @@ repeats. A raced capture acquired nothing; the next capture follows one second
 later and is not backed off (a capture is a local read, and on a fresh node the
 bootstrap it delays is what lets the node publish). An accepted-owner change,
 an uncertain outcome, a committed denial or a lost term stays terminal. Each
-raced update logs a warning ("root anchor update raced an ordinary commit"),
-and each raced capture logs "root anchor capture raced an ordinary commit;
-capturing again", each with the next attempt time and its own consecutive
-count. A revocation denial that
+raced update logs a warning ("root anchor update raced an ordinary commit").
+Raced captures log "root anchor capture raced an ordinary commit; capturing
+again" at the first, second, fourth, eighth and so on consecutive race, so a
+capture that keeps racing logs a bounded number of lines. Both carry the next
+attempt time and their own consecutive count. A revocation denial that
 an ordinary commit rolls back is not retried: the failed denial closes the
 anchor source and fails closed for the writer term, as before (a recorded
 follow-up). Generation broadcasts and
