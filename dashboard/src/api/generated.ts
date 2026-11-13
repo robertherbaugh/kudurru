@@ -1797,6 +1797,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/integrations/manifests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List provider manifests and this node's integration limits
+         * @description Provider types, their configuration schema and credential keys, and what this node's host refuses. Integrations themselves are written as objects: /objects/integrations (integrations.write, integrations.delete; binding or changing spec.credentials also needs integrations.secrets) (D400).
+         */
+        get: operations["listIntegrationManifests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/integrations/{namespace}/{name}": {
         parameters: {
             query?: never;
@@ -1910,6 +1930,23 @@ export interface paths {
         put?: never;
         /** Run a reviewed integration sync */
         post: operations["syncIntegration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/integrations:batchDelete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete several integrations */
+        post: operations["batchDeleteIntegrations"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4366,6 +4403,11 @@ export interface components {
             name: string;
             params: unknown;
         };
+        IntegrationCredentialKey: {
+            name: string;
+            required: boolean;
+            verify?: string;
+        };
         IntegrationExecutionResult: {
             actions?: components["schemas"]["IntegrationAction"][] | null;
             /** Format: int64 */
@@ -4388,6 +4430,31 @@ export interface components {
         };
         IntegrationListOutputBody: {
             items: components["schemas"]["IntegrationSummary"][];
+        };
+        IntegrationManifest: {
+            /** @description RecordSink, ClientSource, Hook, Actions. */
+            capabilities: string[];
+            configField: string;
+            configSchema: unknown;
+            credentials: components["schemas"]["IntegrationCredentialKey"][];
+            displayName: string;
+            docs?: string;
+            ioClass: string;
+            reason?: string;
+            refused: string[];
+            supported: boolean;
+            type: string;
+            version: string;
+        };
+        IntegrationManifests: {
+            allowedEnvironment?: string[] | null;
+            allowedFiles?: string[] | null;
+            credentialSources: string[];
+            /** @enum {string} */
+            driver: "sqlite" | "kube";
+            items: components["schemas"]["IntegrationManifest"][];
+            licensed: boolean;
+            namespace?: string;
         };
         IntegrationPlanConflict: {
             domains: string[];
@@ -17038,6 +17105,108 @@ export interface operations {
             };
         };
     };
+    listIntegrationManifests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IntegrationManifests"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Implemented */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     getIntegration: {
         parameters: {
             query?: never;
@@ -17842,6 +18011,102 @@ export interface operations {
             };
             /** @description Not Implemented */
             501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    batchDeleteIntegrations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BatchDeleteInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Processed"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -19392,7 +19657,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description Lower-case plural kind: dnszones, dnsrecordsets, blocklists, clientgroups, policies. */
+                /** @description Lower-case plural kind: dnszones, dnsrecordsets, blocklists, clientgroups, policies, dhcpscopes, integrations. */
                 kind: string;
             };
             cookie?: never;

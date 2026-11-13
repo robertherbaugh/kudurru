@@ -674,6 +674,24 @@ func (e IdentityProviderInfoSource) Valid() bool {
 	}
 }
 
+// Defines values for IntegrationManifestsDriver.
+const (
+	IntegrationManifestsDriverKube   IntegrationManifestsDriver = "kube"
+	IntegrationManifestsDriverSqlite IntegrationManifestsDriver = "sqlite"
+)
+
+// Valid indicates whether the value is a known member of the IntegrationManifestsDriver enum.
+func (e IntegrationManifestsDriver) Valid() bool {
+	switch e {
+	case IntegrationManifestsDriverKube:
+		return true
+	case IntegrationManifestsDriverSqlite:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IntegrationReviewMode.
 const (
 	IntegrationReviewModeObserve IntegrationReviewMode = "observe"
@@ -3819,6 +3837,13 @@ type IntegrationAction struct {
 	Params interface{} `json:"params"`
 }
 
+// IntegrationCredentialKey defines model for IntegrationCredentialKey.
+type IntegrationCredentialKey struct {
+	Name     string  `json:"name"`
+	Required bool    `json:"required"`
+	Verify   *string `json:"verify,omitempty"`
+}
+
 // IntegrationExecutionResult defines model for IntegrationExecutionResult.
 type IntegrationExecutionResult struct {
 	Actions         *[]IntegrationAction `json:"actions,omitempty"`
@@ -3840,6 +3865,37 @@ type IntegrationExecutionResult struct {
 type IntegrationListOutputBody struct {
 	Items []IntegrationSummary `json:"items"`
 }
+
+// IntegrationManifest defines model for IntegrationManifest.
+type IntegrationManifest struct {
+	// Capabilities RecordSink, ClientSource, Hook, Actions.
+	Capabilities []string                   `json:"capabilities"`
+	ConfigField  string                     `json:"configField"`
+	ConfigSchema interface{}                `json:"configSchema"`
+	Credentials  []IntegrationCredentialKey `json:"credentials"`
+	DisplayName  string                     `json:"displayName"`
+	Docs         *string                    `json:"docs,omitempty"`
+	IoClass      string                     `json:"ioClass"`
+	Reason       *string                    `json:"reason,omitempty"`
+	Refused      []string                   `json:"refused"`
+	Supported    bool                       `json:"supported"`
+	Type         string                     `json:"type"`
+	Version      string                     `json:"version"`
+}
+
+// IntegrationManifests defines model for IntegrationManifests.
+type IntegrationManifests struct {
+	AllowedEnvironment *[]string                  `json:"allowedEnvironment,omitempty"`
+	AllowedFiles       *[]string                  `json:"allowedFiles,omitempty"`
+	CredentialSources  []string                   `json:"credentialSources"`
+	Driver             IntegrationManifestsDriver `json:"driver"`
+	Items              []IntegrationManifest      `json:"items"`
+	Licensed           bool                       `json:"licensed"`
+	Namespace          *string                    `json:"namespace,omitempty"`
+}
+
+// IntegrationManifestsDriver defines model for IntegrationManifests.Driver.
+type IntegrationManifestsDriver string
 
 // IntegrationPlanConflict defines model for IntegrationPlanConflict.
 type IntegrationPlanConflict struct {
@@ -7083,6 +7139,9 @@ type ReleaseIntegrationJSONRequestBody = IntegrationReview
 // SyncIntegrationJSONRequestBody defines body for SyncIntegration for application/json ContentType.
 type SyncIntegrationJSONRequestBody = IntegrationReview
 
+// BatchDeleteIntegrationsJSONRequestBody defines body for BatchDeleteIntegrations for application/json ContentType.
+type BatchDeleteIntegrationsJSONRequestBody = BatchDeleteInputBody
+
 // PatchNodeConfigJSONRequestBody defines body for PatchNodeConfig for application/json ContentType.
 type PatchNodeConfigJSONRequestBody PatchNodeConfigJSONBody
 
@@ -8384,6 +8443,13 @@ type ClientInterface interface {
 	// Corresponds with GET /integrations (the `ListIntegrations` operationId).
 	ListIntegrations(ctx context.Context, params *ListIntegrationsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListIntegrationManifests List provider manifests and this node's integration limits
+	//
+	// Provider types, their configuration schema and credential keys, and what this node's host refuses. Integrations themselves are written as objects: /objects/integrations (integrations.write, integrations.delete; binding or changing spec.credentials also needs integrations.secrets) (D400).
+	//
+	// Corresponds with GET /integrations/manifests (the `ListIntegrationManifests` operationId).
+	ListIntegrationManifests(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetIntegration Read exact integration status
 	//
 	// Corresponds with GET /integrations/{namespace}/{name} (the `GetIntegration` operationId).
@@ -8463,6 +8529,20 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /integrations/{namespace}/{name}/sync (the `SyncIntegration` operationId).
 	SyncIntegration(ctx context.Context, namespace string, name string, body SyncIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BatchDeleteIntegrationsWithBody Delete several integrations
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /integrations:batchDelete (the `BatchDeleteIntegrations` operationId).
+	BatchDeleteIntegrationsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// BatchDeleteIntegrations Delete several integrations
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /integrations:batchDelete (the `BatchDeleteIntegrations` operationId).
+	BatchDeleteIntegrations(ctx context.Context, body BatchDeleteIntegrationsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetLicense License state, node limit and licensed features of this node
 	//
@@ -11897,6 +11977,23 @@ func (c *Client) ListIntegrations(ctx context.Context, params *ListIntegrationsP
 	return c.Client.Do(req)
 }
 
+// ListIntegrationManifests List provider manifests and this node's integration limits
+//
+// Provider types, their configuration schema and credential keys, and what this node's host refuses. Integrations themselves are written as objects: /objects/integrations (integrations.write, integrations.delete; binding or changing spec.credentials also needs integrations.secrets) (D400).
+//
+// Corresponds with GET /integrations/manifests (the `ListIntegrationManifests` operationId).
+func (c *Client) ListIntegrationManifests(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListIntegrationManifestsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetIntegration Read exact integration status
 //
 // Corresponds with GET /integrations/{namespace}/{name} (the `GetIntegration` operationId).
@@ -12087,6 +12184,40 @@ func (c *Client) SyncIntegrationWithBody(ctx context.Context, namespace string, 
 // Corresponds with POST /integrations/{namespace}/{name}/sync (the `SyncIntegration` operationId).
 func (c *Client) SyncIntegration(ctx context.Context, namespace string, name string, body SyncIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSyncIntegrationRequest(c.Server, namespace, name, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BatchDeleteIntegrationsWithBody Delete several integrations
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /integrations:batchDelete (the `BatchDeleteIntegrations` operationId).
+func (c *Client) BatchDeleteIntegrationsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBatchDeleteIntegrationsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// BatchDeleteIntegrations Delete several integrations
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /integrations:batchDelete (the `BatchDeleteIntegrations` operationId).
+func (c *Client) BatchDeleteIntegrations(ctx context.Context, body BatchDeleteIntegrationsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewBatchDeleteIntegrationsRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -19268,6 +19399,33 @@ func NewListIntegrationsRequest(server string, params *ListIntegrationsParams) (
 	return req, nil
 }
 
+// NewListIntegrationManifestsRequest constructs an http.Request for the ListIntegrationManifests method
+func NewListIntegrationManifestsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrations/manifests")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetIntegrationRequest constructs an http.Request for the GetIntegration method
 func NewGetIntegrationRequest(server string, namespace string, name string) (*http.Request, error) {
 	var err error
@@ -19639,6 +19797,46 @@ func NewSyncIntegrationRequestWithBody(server string, namespace string, name str
 	}
 
 	operationPath := fmt.Sprintf("/integrations/%s/%s/sync", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewBatchDeleteIntegrationsRequest calls the generic BatchDeleteIntegrations builder with application/json body
+func NewBatchDeleteIntegrationsRequest(server string, body BatchDeleteIntegrationsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewBatchDeleteIntegrationsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewBatchDeleteIntegrationsRequestWithBody constructs an http.Request for the BatchDeleteIntegrations method, with any body, and a specified content type
+func NewBatchDeleteIntegrationsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/integrations:batchDelete")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -25658,6 +25856,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /integrations (the `ListIntegrations` operationId).
 	ListIntegrationsWithResponse(ctx context.Context, params *ListIntegrationsParams, reqEditors ...RequestEditorFn) (*ListIntegrationsResponse, error)
 
+	// ListIntegrationManifestsWithResponse List provider manifests and this node's integration limits
+	//
+	// Provider types, their configuration schema and credential keys, and what this node's host refuses. Integrations themselves are written as objects: /objects/integrations (integrations.write, integrations.delete; binding or changing spec.credentials also needs integrations.secrets) (D400).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /integrations/manifests (the `ListIntegrationManifests` operationId).
+	ListIntegrationManifestsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListIntegrationManifestsResponse, error)
+
 	// GetIntegrationWithResponse Read exact integration status
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -25741,6 +25948,20 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /integrations/{namespace}/{name}/sync (the `SyncIntegration` operationId).
 	SyncIntegrationWithResponse(ctx context.Context, namespace string, name string, body SyncIntegrationJSONRequestBody, reqEditors ...RequestEditorFn) (*SyncIntegrationResponse, error)
+
+	// BatchDeleteIntegrationsWithBodyWithResponse Delete several integrations
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /integrations:batchDelete (the `BatchDeleteIntegrations` operationId).
+	BatchDeleteIntegrationsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchDeleteIntegrationsResponse, error)
+
+	// BatchDeleteIntegrationsWithResponse Delete several integrations
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /integrations:batchDelete (the `BatchDeleteIntegrations` operationId).
+	BatchDeleteIntegrationsWithResponse(ctx context.Context, body BatchDeleteIntegrationsJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchDeleteIntegrationsResponse, error)
 
 	// GetLicenseWithResponse License state, node limit and licensed features of this node
 	//
@@ -37209,6 +37430,117 @@ func (r ListIntegrationsResponse) ContentType() string {
 	return ""
 }
 
+// ListIntegrationManifestsResponse200Headers the declared response headers of an HTTP 200 response for ListIntegrationManifests
+type ListIntegrationManifestsResponse200Headers struct {
+	CacheControl *string
+}
+
+type ListIntegrationManifestsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *IntegrationManifests
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON413 the response for an HTTP 413 `application/json` response
+	JSON413 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListIntegrationManifestsResponse200Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListIntegrationManifestsResponse) GetJSON200() *IntegrationManifests {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListIntegrationManifestsResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListIntegrationManifestsResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListIntegrationManifestsResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListIntegrationManifestsResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r ListIntegrationManifestsResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON413 returns the response for an HTTP 413 `application/json` response
+func (r ListIntegrationManifestsResponse) GetJSON413() *Error {
+	return r.JSON413
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListIntegrationManifestsResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r ListIntegrationManifestsResponse) GetJSON501() *Error {
+	return r.JSON501
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListIntegrationManifestsResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListIntegrationManifestsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListIntegrationManifestsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListIntegrationManifestsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListIntegrationManifestsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetIntegrationResponse200Headers the declared response headers of an HTTP 200 response for GetIntegration
 type GetIntegrationResponse200Headers struct {
 	CacheControl *string
@@ -38029,6 +38361,103 @@ func (r SyncIntegrationResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r SyncIntegrationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type BatchDeleteIntegrationsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Processed
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r BatchDeleteIntegrationsResponse) GetJSON200() *Processed {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r BatchDeleteIntegrationsResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r BatchDeleteIntegrationsResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r BatchDeleteIntegrationsResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r BatchDeleteIntegrationsResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r BatchDeleteIntegrationsResponse) GetJSON409() *Error {
+	return r.JSON409
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r BatchDeleteIntegrationsResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r BatchDeleteIntegrationsResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r BatchDeleteIntegrationsResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r BatchDeleteIntegrationsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r BatchDeleteIntegrationsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r BatchDeleteIntegrationsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r BatchDeleteIntegrationsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -47389,6 +47818,21 @@ func (c *ClientWithResponses) ListIntegrationsWithResponse(ctx context.Context, 
 	return ParseListIntegrationsResponse(rsp)
 }
 
+// ListIntegrationManifestsWithResponse List provider manifests and this node's integration limits
+//
+// Provider types, their configuration schema and credential keys, and what this node's host refuses. Integrations themselves are written as objects: /objects/integrations (integrations.write, integrations.delete; binding or changing spec.credentials also needs integrations.secrets) (D400).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /integrations/manifests (the `ListIntegrationManifests` operationId).
+func (c *ClientWithResponses) ListIntegrationManifestsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ListIntegrationManifestsResponse, error) {
+	rsp, err := c.ListIntegrationManifests(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListIntegrationManifestsResponse(rsp)
+}
+
 // GetIntegrationWithResponse Read exact integration status
 //
 // Returns a wrapper object for the known response body format(s).
@@ -47543,6 +47987,32 @@ func (c *ClientWithResponses) SyncIntegrationWithResponse(ctx context.Context, n
 		return nil, err
 	}
 	return ParseSyncIntegrationResponse(rsp)
+}
+
+// BatchDeleteIntegrationsWithBodyWithResponse Delete several integrations
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /integrations:batchDelete (the `BatchDeleteIntegrations` operationId).
+func (c *ClientWithResponses) BatchDeleteIntegrationsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*BatchDeleteIntegrationsResponse, error) {
+	rsp, err := c.BatchDeleteIntegrationsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBatchDeleteIntegrationsResponse(rsp)
+}
+
+// BatchDeleteIntegrationsWithResponse Delete several integrations
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /integrations:batchDelete (the `BatchDeleteIntegrations` operationId).
+func (c *ClientWithResponses) BatchDeleteIntegrationsWithResponse(ctx context.Context, body BatchDeleteIntegrationsJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchDeleteIntegrationsResponse, error) {
+	rsp, err := c.BatchDeleteIntegrations(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseBatchDeleteIntegrationsResponse(rsp)
 }
 
 // GetLicenseWithResponse License state, node limit and licensed features of this node
@@ -58069,6 +58539,108 @@ func ParseListIntegrationsResponse(rsp *http.Response) (*ListIntegrationsRespons
 	return response, nil
 }
 
+// ParseListIntegrationManifestsResponse parses an HTTP response from a ListIntegrationManifestsWithResponse call
+func ParseListIntegrationManifestsResponse(rsp *http.Response) (*ListIntegrationManifestsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListIntegrationManifestsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest IntegrationManifests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 413:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON413 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListIntegrationManifestsResponse200Headers
+		if values := rsp.Header.Values("Cache-Control"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Cache-Control", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.CacheControl = &value
+		}
+		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
 // ParseGetIntegrationResponse parses an HTTP response from a GetIntegrationWithResponse call
 func ParseGetIntegrationResponse(rsp *http.Response) (*GetIntegrationResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -58827,6 +59399,88 @@ func ParseSyncIntegrationResponse(rsp *http.Response) (*SyncIntegrationResponse,
 			headers.CacheControl = &value
 		}
 		response.Headers200 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseBatchDeleteIntegrationsResponse parses an HTTP response from a BatchDeleteIntegrationsWithResponse call
+func ParseBatchDeleteIntegrationsResponse(rsp *http.Response) (*BatchDeleteIntegrationsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &BatchDeleteIntegrationsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Processed
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
 	}
 
 	return response, nil

@@ -497,6 +497,10 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.ListIntegrations(ctx, nil, editors...)
 		return response, true, err
 	}
+	if method == "GET" && len(parts) == 2 && parts[0] == "integrations" && parts[1] == "manifests" {
+		response, err := c.ListIntegrationManifests(ctx, editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 3 && parts[0] == "integrations" {
 		response, err := c.GetIntegration(ctx, parts[1], parts[2], editors...)
 		return response, true, err
@@ -523,6 +527,10 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 	}
 	if method == "POST" && len(parts) == 4 && parts[0] == "integrations" && parts[3] == "sync" {
 		response, err := c.SyncIntegrationWithBody(ctx, parts[1], parts[2], contentType, body, editors...)
+		return response, true, err
+	}
+	if method == "POST" && len(parts) == 1 && parts[0] == "integrations:batchDelete" {
+		response, err := c.BatchDeleteIntegrationsWithBody(ctx, contentType, body, editors...)
 		return response, true, err
 	}
 	if method == "GET" && len(parts) == 1 && parts[0] == "license" {

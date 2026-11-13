@@ -4838,6 +4838,25 @@
         ],
         "type": "object"
       },
+      "IntegrationCredentialKey": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "verify": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "required"
+        ],
+        "type": "object"
+      },
       "IntegrationExecutionResult": {
         "additionalProperties": false,
         "properties": {
@@ -4916,6 +4935,123 @@
           }
         },
         "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "IntegrationManifest": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "description": "RecordSink, ClientSource, Hook, Actions.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "configField": {
+            "type": "string"
+          },
+          "configSchema": {},
+          "credentials": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationCredentialKey"
+            },
+            "type": "array"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "docs": {
+            "type": "string"
+          },
+          "ioClass": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "refused": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "supported": {
+            "type": "boolean"
+          },
+          "type": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "displayName",
+          "version",
+          "capabilities",
+          "ioClass",
+          "configField",
+          "configSchema",
+          "credentials",
+          "supported",
+          "refused"
+        ],
+        "type": "object"
+      },
+      "IntegrationManifests": {
+        "additionalProperties": false,
+        "properties": {
+          "allowedEnvironment": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "allowedFiles": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "credentialSources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "driver": {
+            "enum": [
+              "sqlite",
+              "kube"
+            ],
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationManifest"
+            },
+            "type": "array"
+          },
+          "licensed": {
+            "type": "boolean"
+          },
+          "namespace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "driver",
+          "licensed",
+          "credentialSources",
           "items"
         ],
         "type": "object"
@@ -12816,7 +12952,8 @@
             "blocklists",
             "clientgroups",
             "policies",
-            "dhcp"
+            "dhcp",
+            "integrations"
           ],
           "scope": "cluster or per object",
           "verb": "write"
@@ -25343,6 +25480,130 @@
         }
       }
     },
+    "/integrations/manifests": {
+      "get": {
+        "description": "Provider types, their configuration schema and credential keys, and what this node's host refuses. Integrations themselves are written as objects: /objects/integrations (integrations.write, integrations.delete; binding or changing spec.credentials also needs integrations.secrets) (D400).",
+        "operationId": "listIntegrationManifests",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntegrationManifests"
+                }
+              }
+            },
+            "description": "OK",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "501": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Implemented"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List provider manifests and this node's integration limits",
+        "tags": [
+          "integrations"
+        ],
+        "x-kudurru-permission": {
+          "resource": "integrations",
+          "scope": "cluster",
+          "verb": "read"
+        }
+      }
+    },
     "/integrations/{namespace}/{name}": {
       "get": {
         "operationId": "getIntegration",
@@ -26512,6 +26773,123 @@
           "resource": "integrations",
           "scope": "cluster",
           "verb": "sync"
+        }
+      }
+    },
+    "/integrations:batchDelete": {
+      "post": {
+        "operationId": "batchDeleteIntegrations",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchDeleteInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Processed"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Delete several integrations",
+        "tags": [
+          "integrations"
+        ],
+        "x-kudurru-follower": "forwarded",
+        "x-kudurru-permission": {
+          "resource": "integrations",
+          "scope": "cluster",
+          "verb": "delete"
         }
       }
     },
@@ -28483,12 +28861,12 @@
         "operationId": "listObjects",
         "parameters": [
           {
-            "description": "Lower-case plural kind: dnszones, dnsrecordsets, blocklists, clientgroups, policies.",
+            "description": "Lower-case plural kind: dnszones, dnsrecordsets, blocklists, clientgroups, policies, dhcpscopes, integrations.",
             "in": "path",
             "name": "kind",
             "required": true,
             "schema": {
-              "description": "Lower-case plural kind: dnszones, dnsrecordsets, blocklists, clientgroups, policies.",
+              "description": "Lower-case plural kind: dnszones, dnsrecordsets, blocklists, clientgroups, policies, dhcpscopes, integrations.",
               "type": "string"
             }
           },
@@ -28629,7 +29007,8 @@
             "blocklists",
             "clientgroups",
             "policies",
-            "dhcp"
+            "dhcp",
+            "integrations"
           ],
           "scope": "cluster or per object",
           "verb": "read"
@@ -28776,7 +29155,8 @@
             "blocklists",
             "clientgroups",
             "policies",
-            "dhcp"
+            "dhcp",
+            "integrations"
           ],
           "scope": "cluster or per object",
           "verb": "write"
@@ -28926,7 +29306,8 @@
             "blocklists",
             "clientgroups",
             "policies",
-            "dhcp"
+            "dhcp",
+            "integrations"
           ],
           "scope": "cluster or per object",
           "verb": "delete"
@@ -29067,7 +29448,8 @@
             "blocklists",
             "clientgroups",
             "policies",
-            "dhcp"
+            "dhcp",
+            "integrations"
           ],
           "scope": "cluster or per object",
           "verb": "read"
@@ -29273,7 +29655,8 @@
             "blocklists",
             "clientgroups",
             "policies",
-            "dhcp"
+            "dhcp",
+            "integrations"
           ],
           "scope": "cluster or per object",
           "verb": "write"
@@ -29416,7 +29799,8 @@
             "blocklists",
             "clientgroups",
             "policies",
-            "dhcp"
+            "dhcp",
+            "integrations"
           ],
           "scope": "cluster or per object",
           "verb": "delete"
@@ -29549,7 +29933,8 @@
             "blocklists",
             "clientgroups",
             "policies",
-            "dhcp"
+            "dhcp",
+            "integrations"
           ],
           "scope": "cluster or per object",
           "verb": "read"
@@ -29747,7 +30132,8 @@
             "blocklists",
             "clientgroups",
             "policies",
-            "dhcp"
+            "dhcp",
+            "integrations"
           ],
           "scope": "cluster or per object",
           "verb": "write"
