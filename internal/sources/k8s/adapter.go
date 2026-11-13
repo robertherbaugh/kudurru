@@ -61,6 +61,15 @@ const (
 	// maxEndpoints is the DNSRecordSet schema's spec.endpoints bound.
 	maxEndpoints  = 1000
 	defaultResync = 10 * time.Second
+	// defaultMinInterval is the floor between two passes: a burst of
+	// watch events (controllers updating status) coalesces into one
+	// relist per interval, and a pass refused by a concurrent change is
+	// retried after it instead of after the full resync.
+	defaultMinInterval = time.Second
+	// listPageSize keeps one list page well under the 4 MiB response
+	// bound (64 KiB per object on average).
+	listPageSize     = 64
+	maxResponseBytes = 4 << 20
 )
 
 // Options configures the adapter.
@@ -73,12 +82,19 @@ type Options struct {
 	// Resync bounds the wait between reconciliations when no watch event
 	// arrives (default 10 s).
 	Resync time.Duration
+	// MinInterval is the least time between the starts of two passes
+	// (default 1 s, at most Resync).
+	MinInterval time.Duration
 }
 
 // Controller maintains the record sets of external zones.
 type Controller struct {
 	opts   Options
 	client dynamic.Interface
+	// conflicted records that the running pass met a concurrent change
+	// (store.ErrConflict); Run then retries after MinInterval. Only the
+	// Run goroutine touches it.
+	conflicted bool
 }
 
 // New requires the Kubernetes driver's guarded RESTConfig.
@@ -92,6 +108,10 @@ func New(cfg *rest.Config, opts Options) (*Controller, error) {
 	if opts.Resync <= 0 {
 		opts.Resync = defaultResync
 	}
+	if opts.MinInterval <= 0 {
+		opts.MinInterval = defaultMinInterval
+	}
+	opts.MinInterval = min(opts.MinInterval, opts.Resync)
 	config := rest.CopyConfig(cfg)
 	// Bound one list page or watch response before it is decoded.
 	config.Wrap(func(rt http.RoundTripper) http.RoundTripper { return limitTransport{rt} })
@@ -111,15 +131,20 @@ type limitBody struct {
 func (t limitTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	res, err := t.RoundTripper.RoundTrip(req)
 	if err == nil && res != nil && res.Body != nil {
-		res.Body = limitBody{Reader: io.LimitReader(res.Body, 4<<20), Closer: res.Body}
+		res.Body = limitBody{Reader: io.LimitReader(res.Body, maxResponseBytes), Closer: res.Body}
 	}
 	return res, err
 }
 
-// Run reconciles until ctx (the elected term) ends.
+// Run reconciles until ctx (the elected term) ends. Passes start at
+// least MinInterval apart. A pass that met a concurrent change is retried
+// after MinInterval (a fresh pass recomputes everything; nothing refused is
+// replayed); otherwise the next pass waits for a watch event or Resync.
 func (c *Controller) Run(ctx context.Context) error {
 	for ctx.Err() == nil {
+		started := time.Now()
 		rctx, cancel := context.WithTimeout(ctx, reconcileTimeout)
+		c.conflicted = false
 		watched, err := c.reconcile(rctx)
 		cancel()
 		if err != nil {
@@ -128,9 +153,33 @@ func (c *Controller) Run(ctx context.Context) error {
 			}
 			c.opts.Logger.Warn("external zone reconciliation incomplete", "error", err)
 		}
-		c.wait(ctx, watched)
+		if !c.conflicted {
+			c.wait(ctx, watched)
+		}
+		pause(ctx, started.Add(c.opts.MinInterval))
 	}
 	return nil
+}
+
+// pause waits until deadline or until ctx ends.
+func pause(ctx context.Context, deadline time.Time) {
+	d := time.Until(deadline)
+	if d <= 0 {
+		return
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+	case <-t.C:
+	}
+}
+
+// noteConflict records a concurrent change met by the running pass.
+func (c *Controller) noteConflict(err error) {
+	if errors.Is(err, store.ErrConflict) {
+		c.conflicted = true
+	}
 }
 
 // watchFrom is one resource and the list resourceVersion to watch from.
@@ -185,7 +234,7 @@ func (c *Controller) list(ctx context.Context, gvr schema.GroupVersionResource) 
 	var rv, cont string
 	size := 0
 	for {
-		page, err := c.client.Resource(gvr).List(ctx, metav1.ListOptions{Limit: 256, Continue: cont})
+		page, err := c.client.Resource(gvr).List(ctx, metav1.ListOptions{Limit: listPageSize, Continue: cont})
 		if err != nil {
 			return nil, "", err
 		}
@@ -287,6 +336,7 @@ func (c *Controller) reconcile(ctx context.Context) ([]watchFrom, error) {
 	var watched []watchFrom
 	var firstError error
 	keep := func(err error) {
+		c.noteConflict(err)
 		if err != nil && firstError == nil {
 			firstError = err
 		}
@@ -378,10 +428,13 @@ func (c *Controller) reconcileKind(ctx context.Context, k *sourceKind, items []u
 			c.opts.Logger.Warn("external zone source omitted", "kind", k.kind, "namespace", s.namespace, "name", s.name, "error", err)
 			desired = nil
 		}
-		if err := c.apply(ctx, s, desired, bySource[s.uid], zones); err != nil && firstError == nil {
+		if err := c.apply(ctx, s, desired, bySource[s.uid], zones); err != nil {
 			// One refused source cannot starve the others; it is not
 			// replayed here but recomputed on the next pass.
-			firstError = err
+			c.noteConflict(err)
+			if firstError == nil {
+				firstError = err
+			}
 		}
 	}
 	for uid, rows := range bySource {
@@ -396,13 +449,17 @@ func (c *Controller) reconcileKind(ctx context.Context, k *sourceKind, items []u
 				if err == nil {
 					err = store.ErrConflict
 				}
+				c.noteConflict(err)
 				if firstError == nil {
 					firstError = err
 				}
 				continue
 			}
-			if err := c.remove(ctx, rs); err != nil && firstError == nil {
-				firstError = err
+			if err := c.remove(ctx, rs); err != nil {
+				c.noteConflict(err)
+				if firstError == nil {
+					firstError = err
+				}
 			}
 		}
 	}
@@ -575,7 +632,13 @@ func (c *Controller) apply(ctx context.Context, s *source, desired map[string]*v
 	return firstError
 }
 
-// currentZone confirms the zone is unchanged since the list.
+// currentZone confirms that everything the projection read from the zone
+// is unchanged since the list: the same object (UID), the same spec
+// (generation and content), still served (not deleting, not disabled).
+// The zone's status is not compared: the zone controller rewrites it (serial,
+// record count, conditions) after every record set this pass writes, and
+// demanding the listed resourceVersion would refuse the rest of the pass
+// after its first few writes.
 func (c *Controller) currentZone(ctx context.Context, zones []*v1alpha1.DNSZone, name string) error {
 	for _, original := range zones {
 		if original.Name != name {
@@ -585,12 +648,20 @@ func (c *Controller) currentZone(ctx context.Context, zones []*v1alpha1.DNSZone,
 		if err := c.opts.Store.Get(ctx, store.KeyOf(original), &now); err != nil {
 			return err
 		}
-		if now.UID != original.UID || now.ResourceVersion != original.ResourceVersion {
+		if !sameZoneInput(original, &now) {
 			return store.ErrConflict
 		}
 		return nil
 	}
 	return store.ErrConflict
+}
+
+// sameZoneInput reports whether now still has the identity and inputs the
+// projection used from original.
+func sameZoneInput(original, now *v1alpha1.DNSZone) bool {
+	return now.UID == original.UID && now.Generation == original.Generation &&
+		now.DeletionTimestamp == nil && !v1alpha1.IsDisabled(now) &&
+		reflect.DeepEqual(now.Spec, original.Spec)
 }
 
 // remove deletes one derived record set by its observed identity.
