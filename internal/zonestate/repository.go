@@ -3,7 +3,6 @@ package zonestate
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 
@@ -23,58 +22,23 @@ func NewRepository(backend Backend, l Limits) *Repository {
 	return &Repository{backend: backend, limits: l.Defaults()}
 }
 
-// readAttempts bounds how often Read starts again because the head it read
-// was replaced, and its chunks collected, before it resolved them (D405).
-const readAttempts = 16
-
 // Read obtains one consistent head followed by immutable data. A concurrent
 // new head cannot mix generations. The returned value is independently owned.
-// NotFound returns a View with create-only Expected and the current HA term;
-// it means only that the zone has no head, never that a chunk is missing.
-//
-// The head and its chunks are separate reads. A content commit of the same
-// zone in between moves the head and deletes the chunks the old one named
-// (D405), so a missing chunk is checked against the head again: if the head
-// moved, Read starts over with the new one; if it did not, the stored zone is
-// damaged and Read answers ErrInvalid. A head that keeps moving for
-// readAttempts reads answers ErrConflict.
+// NotFound returns a View with create-only Expected and the current HA term.
 func (r *Repository) Read(ctx context.Context, id zonekinds.ZoneID) (*View, error) {
 	if err := validateZone(id); err != nil {
 		return nil, err
 	}
-	for attempt := 1; ; attempt++ {
-		v, head, err := r.read(ctx, id)
-		if err == nil || head == nil || !errors.Is(err, store.ErrNotFound) {
-			return v, err
-		}
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		again, _, againErr := r.backend.Head(ctx, id)
-		switch {
-		case againErr != nil && !errors.Is(againErr, store.ErrNotFound):
-			return nil, againErr
-		case againErr == nil && again != nil && again.ResourceVersion == head.ResourceVersion:
-			return nil, fmt.Errorf("%w: zone head %s/%s names a chunk that is not stored (%s)", ErrInvalid, id.ObjectName, head.ResourceVersion, err.Error())
-		case attempt >= readAttempts:
-			return nil, fmt.Errorf("%w: zone head %s moved during %d reads", ErrConflict, id.ObjectName, attempt)
-		}
-	}
-}
-
-// read is one attempt of Read. It returns the head it read when resolving the
-// head's chunks failed, so that Read can tell a replaced head from a damaged one.
-func (r *Repository) read(ctx context.Context, id zonekinds.ZoneID) (*View, *zonekinds.ZoneState, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	head, term, err := r.backend.Head(ctx, id)
 	v := &View{Head: head, Expected: Expected{Zone: id, Term: term}}
 	if err != nil {
-		return v, nil, err
+		return v, err
 	}
 	if head == nil || head.Spec.Zone != id || head.ResourceVersion == "" {
-		return nil, nil, ErrInvalid
+		return nil, ErrInvalid
 	}
 	a, err := Decode(head, func(d string) (*zonekinds.ZoneChunk, error) {
 		if err := ctx.Err(); err != nil {
@@ -83,14 +47,14 @@ func (r *Repository) read(ctx context.Context, id zonekinds.ZoneID) (*View, *zon
 		return r.backend.Chunk(ctx, d)
 	}, r.limits)
 	if err != nil {
-		return nil, head, err
+		return nil, err
 	}
 	v.Aggregate = a
 	v.Expected.ResourceVersion = head.ResourceVersion
 	v.Expected.CommitSequence = head.Spec.CommitSequence
 	v.Expected.RootDigest = head.Spec.RootDigest
 	v.Expected.AuthEpoch = head.Spec.AuthEpoch
-	return v, nil, nil
+	return v, nil
 }
 
 // Commit validates and stages the entire immutable root before performing

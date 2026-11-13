@@ -82,10 +82,6 @@ type Publisher struct {
 	// awaiting counts HTTP callers that wait for an eligible publication
 	// before they own a lease (AwaitHTTP).
 	awaiting atomic.Int64
-	// wakes counts Wake calls. A preparation notes it before it reads its
-	// candidate; a Wake that arrives later is answered by one more
-	// preparation after this one publishes (D405), never by canceling it.
-	wakes atomic.Uint64
 	// retired names the last publications that swaps replaced, newest
 	// first, each with the moment it stopped being served, for ServedWithin
 	// (D395). A DNS-only (fenced) publication and Close clear it. The
@@ -147,13 +143,8 @@ func New(opts Options) (*Publisher, error) {
 func (p *Publisher) Initialized() <-chan struct{} { return p.initialized }
 
 // Wake asks the preparation loop to recapture node-local dependencies. It is
-// coalesced, nonblocking, and safe before Run starts. It does not cancel a
-// preparation in progress (D405): when that preparation read its candidate
-// before the Wake, one more preparation follows its publication, however many
-// Wakes arrived meanwhile; a preparation that had not read its candidate yet
-// already includes what the Wake announced.
+// coalesced, nonblocking, and safe before Run starts.
 func (p *Publisher) Wake() {
-	p.wakes.Add(1)
 	select {
 	case p.wake <- struct{}{}:
 	default:
@@ -189,8 +180,6 @@ type attemptResult struct {
 	token  sqlite.GenerationToken
 	bundle *Bundle
 	err    error
-	// wakes is the Wake count noted before the candidate was read.
-	wakes uint64
 }
 
 func callPrepare(ctx context.Context, prepare PrepareFunc, candidate Candidate) (result Prepared, err error) {
@@ -203,13 +192,12 @@ func callPrepare(ctx context.Context, prepare PrepareFunc, candidate Candidate) 
 }
 
 func (p *Publisher) prepare(ctx context.Context) attemptResult {
-	wakes := p.wakes.Load()
 	image, token, err := p.opts.Source.ReadServingCandidate(ctx)
 	if err != nil {
-		return attemptResult{err: err, wakes: wakes}
+		return attemptResult{err: err}
 	}
 	if image == nil || !image.Generation().Same(token.Generation()) {
-		return attemptResult{err: ErrComponents, wakes: wakes}
+		return attemptResult{err: ErrComponents}
 	}
 	p.update(token, true, "preparing")
 	prepared, err := callPrepare(ctx, p.opts.Prepare, Candidate{Image: image, Token: token})
@@ -218,28 +206,13 @@ func (p *Publisher) prepare(ctx context.Context) attemptResult {
 	}
 	if err != nil {
 		releasePrepared(prepared)
-		return attemptResult{token: token, err: err, wakes: wakes}
+		return attemptResult{token: token, err: err}
 	}
 	bundle, err := newBundle(token, prepared, p.opts.Required)
 	if err != nil {
 		releasePrepared(prepared)
 	}
-	return attemptResult{token: token, bundle: bundle, err: err, wakes: wakes}
-}
-
-// settleWake decides what the Wakes that arrived while a preparation ran ask
-// for. Wakes counted before it read its candidate are included in it, so their
-// buffered signal is dropped; a later one leaves the signal set, and the loop
-// prepares once more. The signal is drained before the count is compared, so
-// a Wake racing with this call is never lost.
-func (p *Publisher) settleWake(noted uint64) {
-	select {
-	case <-p.wake:
-	default:
-	}
-	if p.wakes.Load() != noted {
-		p.Wake()
-	}
+	return attemptResult{token: token, bundle: bundle, err: err}
 }
 
 func (p *Publisher) publish(ctx context.Context, next *Bundle) error {
@@ -317,9 +290,6 @@ func (p *Publisher) publish(ctx context.Context, next *Bundle) error {
 // Run subscribes before reading, cancels obsolete preparation and publishes only
 // a current complete cut. At most one preparer runs; it must honor cancellation.
 // Owner errors retain the whole last-good bundle and retry exact dependencies.
-// A new generation, authority or dependency cursor makes the preparation in
-// progress obsolete (its publication would be refused); a Wake does not
-// (D405): it is coalesced into at most one more preparation after this one.
 func (p *Publisher) Run(ctx context.Context) error {
 	if !p.started.CompareAndSwap(false, true) {
 		return fmt.Errorf("serving: Run called twice")
@@ -354,6 +324,8 @@ func (p *Publisher) Run(ctx context.Context) error {
 			obsolete = true
 		case <-dependencies:
 			obsolete = true
+		case <-p.wake:
+			obsolete = true
 		case <-ctx.Done():
 			obsolete = true
 		case <-p.stop:
@@ -376,7 +348,6 @@ func (p *Publisher) Run(ctx context.Context) error {
 			r.err = p.publish(work, r.bundle)
 		}
 		cancel()
-		p.settleWake(r.wakes)
 		if errors.Is(r.err, store.ErrClosed) {
 			return r.err
 		}
