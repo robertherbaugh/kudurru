@@ -55,6 +55,35 @@ func source(ctx context.Context, tx *sqlite.CommandTx, l *zk.ZoneLifecycle) (*pu
 	}
 	return &z, nil
 }
+
+// boundarySource is the source check of both zones of a boundary command (a
+// child's parent fence or its release). candidate admits such a command
+// only when it changes nothing in the parent head but that child's system
+// reservation, so it needs both zones' exact lifecycles (checked by the
+// caller) and the same source zones (UID, type and apex), not their latest
+// DNSZone revisions. Requiring the revisions deadlocked a parent/child pair
+// for good (CORE-OPEN4): once either DNSZone had moved on (a status write,
+// an edit) the child could not be fenced, and neither zone could record
+// the new revision first: an Active parent's transition needs every desired
+// child fenced, and the driver fences a child before it refreshes the
+// child's source. The fence's own child transition records the child's
+// revision; the parent's reconcile records the parent's once the child is
+// fenced. A removed source keeps the exact check.
+func boundarySource(ctx context.Context, tx *sqlite.CommandTx, l *zk.ZoneLifecycle) (*public.DNSZone, error) {
+	z, err := source(ctx, tx, l)
+	if !errors.Is(err, pr.ErrConflict) || l.Spec.Source.Removed {
+		return z, err
+	}
+	var current public.DNSZone
+	if err := tx.Get(ctx, store.Key{Kind: "DNSZone", Name: l.Spec.Zone.ObjectName}, &current); err != nil {
+		return nil, err
+	}
+	if string(current.UID) != l.Spec.Zone.UID || current.UID == "" || string(current.UID) != l.Spec.Source.UID || current.Spec.Type != l.Spec.Type || canonical(current.Spec.ZoneName) != l.Spec.Zone.Apex || !current.DeletionTimestamp.IsZero() {
+		return nil, pr.ErrConflict
+	}
+	return &current, nil
+}
+
 func (a *Adapter) decode(ctx context.Context, tx *sqlite.CommandTx, head *zk.ZoneState) (*zonestate.View, error) {
 	aggregate, err := zonestate.Decode(head, func(d string) (*zk.ZoneChunk, error) {
 		var chunk zk.ZoneChunk

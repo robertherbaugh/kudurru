@@ -693,3 +693,112 @@ func TestReconcileFencingConflictRecoversAfterExplicitRootCleanup(t *testing.T) 
 		t.Fatal("recovered parent fence missing", err)
 	}
 }
+
+// A late child is fenced into an active parent whose DNSZone moved on since
+// the parent's last reconcile (a status write or an edit). Before CORE-OPEN4
+// this deadlocked for good on a mounted node: the parent could not refresh
+// its lifecycle source, because an Active transition needs every desired
+// child fenced, and the child could not be fenced, because the boundary
+// command required the parent's recorded source to equal its DNSZone. The
+// boundary command changes only the child's reservation in the parent head,
+// so it now needs the parent's exact lifecycle and source identity, not its
+// latest revision; the parent's own reconcile then refreshes the source.
+func TestLateChildFencesAParentWhoseSourceAdvanced(t *testing.T) {
+	f := setup(t)
+	ctx := f.ctx()
+	parent := f.active("parent", "example.")
+	var z public.DNSZone
+	if err := f.s.Get(ctx, store.Key{Kind: "DNSZone", Name: "parent"}, &z); err != nil {
+		t.Fatal(err)
+	}
+	z.Spec.DefaultTTL = 120
+	if _, err := f.s.Apply(ctx, &z, store.ApplyOptions{Manager: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	child, err := f.a.LifecycleCAS(ctx, nil, f.intent(f.zone("child", "child.example."), parent))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The parent cannot refresh first: its desired child is not fenced yet.
+	if _, err := f.r.Reconcile(ctx, parent.Spec.Zone); !errors.Is(err, pr.ErrConflict) {
+		t.Fatal("parent reconciled with an unfenced desired child:", err)
+	}
+	if _, err := f.r.AdmitAncestor(ctx, parent.Spec.Zone, child.Spec.Zone); err != nil {
+		t.Fatal("late child not fenced into a parent whose source advanced:", err)
+	}
+	if _, err := f.r.Reconcile(ctx, parent.Spec.Zone); err != nil {
+		t.Fatal("parent did not reconcile once its child was fenced:", err)
+	}
+	refreshed, err := f.r.ReadLifecycle(ctx, parent.Spec.Zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.Spec.Source.ResourceVersion != z.ResourceVersion && refreshed.Spec.Source.ResourceVersion == parent.Spec.Source.ResourceVersion {
+		t.Fatal("parent source was not refreshed:", refreshed.Spec.Source)
+	}
+	if _, err := f.r.Reconcile(ctx, child.Spec.Zone); err != nil {
+		t.Fatal("child did not activate:", err)
+	}
+	if l, err := f.r.ReadLifecycle(ctx, child.Spec.Zone); err != nil || l.Spec.Phase != zk.PhaseActive {
+		t.Fatal("child not active:", err, l.Spec.Phase)
+	}
+}
+
+// The same deadlock from the child's side: the child's DNSZone moved on
+// after its lifecycle was created (its own status write, an edit) while the
+// parent's moved on too. The driver fences a child before it refreshes the
+// child's source, so the fence must not need the child's latest revision;
+// its child transition records it (CORE-OPEN4).
+func TestLateChildFencesWhenBothSourcesAdvanced(t *testing.T) {
+	f := setup(t)
+	ctx := f.ctx()
+	parent := f.active("parent", "example.")
+	child, err := f.a.LifecycleCAS(ctx, nil, f.intent(f.zone("child", "child.example."), parent))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var advanced string
+	for _, name := range []string{"parent", "child"} {
+		var z public.DNSZone
+		if err := f.s.Get(ctx, store.Key{Kind: "DNSZone", Name: name}, &z); err != nil {
+			t.Fatal(err)
+		}
+		z.Spec.DefaultTTL = 120
+		saved, err := f.s.Apply(ctx, &z, store.ApplyOptions{Manager: "api"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		advanced = saved.GetResourceVersion()
+	}
+	if _, err := f.r.AdmitAncestor(ctx, parent.Spec.Zone, child.Spec.Zone); err != nil {
+		t.Fatal("late child not fenced when both sources advanced:", err)
+	}
+	fenced, err := f.r.ReadLifecycle(ctx, child.Spec.Zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fenced.Spec.Source.ResourceVersion != advanced {
+		t.Fatalf("the fence did not record the child's current source: %+v, want resourceVersion %s", fenced.Spec.Source, advanced)
+	}
+	if _, err := f.r.Reconcile(ctx, parent.Spec.Zone); err != nil {
+		t.Fatal("parent did not reconcile once its child was fenced:", err)
+	}
+	if _, err := f.r.Reconcile(ctx, child.Spec.Zone); err != nil {
+		t.Fatal("child did not activate:", err)
+	}
+	if l, err := f.r.ReadLifecycle(ctx, child.Spec.Zone); err != nil || l.Spec.Phase != zk.PhaseActive {
+		t.Fatal("child not active:", err, l.Spec.Phase)
+	}
+	// A boundary command still refuses a zone that was replaced.
+	other, err := f.a.LifecycleCAS(ctx, nil, f.intent(f.zone("other", "other.example."), parent))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.s.Delete(ctx, store.Key{Kind: "DNSZone", Name: "other"}, store.DeleteOptions{Manager: "api"}); err != nil {
+		t.Fatal(err)
+	}
+	f.zone("other", "other.example.")
+	if _, err := f.r.AdmitAncestor(ctx, parent.Spec.Zone, other.Spec.Zone); err == nil {
+		t.Fatal("a boundary command fenced a replaced child zone")
+	}
+}

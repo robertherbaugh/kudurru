@@ -591,6 +591,16 @@ including a rejected or deduplicated request, crosses this admission. A child
 stalled by conflicting dynamic parent data retries its unfinished fences after
 an explicit authorized cleanup; it cannot activate without durable witnesses.
 
+A boundary command (a child's fence in its parent head, or its release) changes
+nothing in the parent head but that child's system reservation. It checks both
+zones' exact lifecycles and source identity (UID, type, apex), not their latest
+DNSZone revisions, and the fence's child transition records the child's current
+revision. The parent records its own once the child is fenced. Requiring the
+latest revisions left a parent/child pair SERVFAIL for good when either DNSZone
+moved on (a status write, an edit) just as the child was created: an Active
+parent's source refresh needs every desired child fenced, and the driver fences
+a child before it refreshes the child's source (CORE-OPEN4).
+
 `primaryruntime/currentguard` uses the same immutable current keyring to compile
 reader policy and validate the transaction's actual desired source. UPDATE needs
 the issuer's policy validator from that same pin; an optional additional validator

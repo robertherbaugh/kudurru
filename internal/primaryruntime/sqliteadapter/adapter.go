@@ -259,7 +259,11 @@ func (a *Adapter) Admission(ctx context.Context, c pr.Command) (*zonestate.View,
 				if l.Spec.Zone.ClusterID != tx.Authority().ClusterID {
 					return pr.ErrInvalid
 				}
-				if _, err := source(ctx, tx, l); err != nil {
+				sourceOf := source
+				if c.Parent != nil {
+					sourceOf = boundarySource
+				}
+				if _, err := sourceOf(ctx, tx, l); err != nil {
 					return err
 				}
 			}
@@ -284,7 +288,11 @@ func (a *Adapter) Admission(ctx context.Context, c pr.Command) (*zonestate.View,
 				}
 			}
 			if !update {
-				z, err := source(ctx, tx, target)
+				sourceOf := source
+				if c.Parent != nil {
+					sourceOf = boundarySource
+				}
+				z, err := sourceOf(ctx, tx, target)
 				if err != nil {
 					return err
 				}

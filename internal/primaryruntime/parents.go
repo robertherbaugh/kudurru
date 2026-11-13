@@ -143,6 +143,7 @@ func (r *Runtime) FenceParents(ctx context.Context, id zk.ZoneID) (*zk.ZoneLifec
 			continue
 		}
 		next.Spec.Sequence++
+		next.Spec.Source = r.currentSource(ctx, l)
 		out, err := r.Transition(ctx, l, next)
 		if conflicts(err) {
 			continue
