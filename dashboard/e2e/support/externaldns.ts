@@ -39,6 +39,8 @@ export interface ExternalDNSPeer {
   posts: () => number;
   /** Removes every row behind the instance's back. */
   wipe: () => void;
+  /** While set, POST /records answers 503 and changes nothing (holds a Delete cleanup). */
+  refuseWrites: (on: boolean) => void;
   close: () => Promise<void>;
 }
 
@@ -47,6 +49,7 @@ const key = (e: PeerEndpoint) => `${e.dnsName}/${e.recordType}/${e.setIdentifier
 export async function startExternalDNSPeer(token: string, domains: string[]): Promise<ExternalDNSPeer> {
   const rows = new Map<string, PeerEndpoint>();
   let posts = 0;
+  let refusing = false;
   const srv = http.createServer((req, res) => {
     const reply = (status: number, body?: unknown) => {
       res.writeHead(status, { 'Content-Type': MEDIA, 'Cache-Control': 'no-store' });
@@ -66,6 +69,7 @@ export async function startExternalDNSPeer(token: string, domains: string[]): Pr
       if (req.method === 'GET' && path === '/records') return reply(200, [...rows.values()]);
       if (req.method === 'POST' && path === '/adjustendpoints') return reply(200, text ? (JSON.parse(text) as unknown) : []);
       if (req.method === 'POST' && path === '/records') {
+        if (refusing) return reply(503);
         let ch: Changes;
         try {
           ch = JSON.parse(text) as Changes;
@@ -93,6 +97,9 @@ export async function startExternalDNSPeer(token: string, domains: string[]): Pr
     rows: () => Object.fromEntries([...rows.values()].map((e) => [`${e.dnsName}/${e.recordType}`, [...(e.targets ?? [])]])),
     posts: () => posts,
     wipe: () => rows.clear(),
+    refuseWrites: (on: boolean) => {
+      refusing = on;
+    },
     close: () => new Promise<void>((resolve) => srv.close(() => resolve())),
   };
 }
