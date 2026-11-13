@@ -40,7 +40,8 @@ export function clusterRole(info: ClusterInfo | undefined): ClusterRole {
  * follower; follower.test.ts keeps it equal to the OpenAPI document.
  */
 export const DOCUMENT_FORWARDED: readonly string[] = [
-  'apply', 'batchDeleteBlocklists', 'batchDeleteClientgroups', 'batchDeleteDnsrecordsets', 'batchDeleteDnszones', 'batchDeletePolicies',
+  'apply', 'batchDeleteBlocklists', 'batchDeleteClientgroups', 'batchDeleteDnsrecordsets', 'batchDeleteDnszones', 'batchDeleteIntegrations',
+  'batchDeletePolicies',
   'browserLogout', 'changePassword', 'createBlocklists', 'createClientgroups', 'createObject', 'createPolicies', 'createToken',
   'deleteBlocklists', 'deleteClientgroups', 'deleteClusterObject', 'deleteObject', 'deletePolicies', 'deleteToken', 'deleteZone',
   'deleteZoneRecord', 'importZone', 'login', 'logout', 'patchSettings', 'putBlocklists', 'putClientgroups', 'putClusterObject',
@@ -107,8 +108,10 @@ export const PERMISSION_OPERATIONS: Readonly<Record<string, readonly string[]>> 
   'edgeblocks.write': ['createEdgeBlock', 'revokeEdgeBlock'],
   'integrations.act': ['invokeIntegrationAction'],
   'integrations.check': ['checkIntegration'],
+  'integrations.delete': ['batchDeleteIntegrations', 'deleteClusterObject', 'deleteObject'],
   'integrations.release': ['releaseIntegration'],
   'integrations.sync': ['syncIntegration'],
+  'integrations.write': ['apply', 'createObject', 'putClusterObject', 'putObject'],
   'node.config': ['patchNodeConfig'],
   'policies.delete': ['batchDeletePolicies', 'deleteClusterObject', 'deleteObject', 'deletePolicies'],
   'policies.write': ['apply', 'createObject', 'createPolicies', 'putClusterObject', 'putObject', 'putPolicies'],
