@@ -54,10 +54,42 @@ func (d *Driver) work(ctx context.Context, w Writer, all roster) error {
 		}
 	}
 	now := time.Now()
+	// Zones that are still being created step first, ahead of the fair
+	// rotation and without moving its cursor (D404): the zone whose last
+	// step committed a lifecycle change that needs another (focus), or else
+	// every desired zone without an active lifecycle of its own source that
+	// is not backing off. Otherwise each of a new zone's steps waits behind
+	// a step (a reconcile and a publication wait) of every other zone.
+	focus := d.focus
+	d.focus = ""
+	lead := []string{}
+	if _, found := slices.BinarySearch(names, focus); focus != "" && found {
+		lead = append(lead, focus)
+	} else {
+		focus = ""
+		for _, name := range names {
+			if creating(all.ledgers[name], all.zones[name]) && !now.Before(d.retries[name].at) {
+				lead = append(lead, name)
+			}
+		}
+	}
+	leading := make(map[string]bool, len(lead))
+	order := make([]string, 0, len(names))
+	for _, name := range lead {
+		leading[name] = true
+		order = append(order, name)
+	}
+	for i := range names {
+		if name := names[(start+i)%len(names)]; !leading[name] {
+			order = append(order, name)
+		}
+	}
 	count := 0
-	for i := 0; i < len(names) && count < d.o.MaxWork; i++ {
-		name := names[(start+i)%len(names)]
-		d.after = name
+	for i := 0; i < len(order) && count < d.o.MaxWork; i++ {
+		name := order[i]
+		if i >= len(lead) {
+			d.after = name
+		}
 		previous := d.retries[name]
 		cursor := checkpoint(all.ledgers[name])
 		if z := all.zones[name]; z != nil {
@@ -79,6 +111,7 @@ func (d *Driver) work(ctx context.Context, w Writer, all roster) error {
 		}
 		count++
 		opctx, cancel := context.WithTimeout(ctx, d.o.Timeout)
+		d.advanced = false
 		err := d.step(opctx, w, all, name)
 		cancel()
 		status := ZoneStatus{ObjectName: name, Pending: reason(err)}
@@ -113,6 +146,22 @@ func (d *Driver) work(ctx context.Context, w Writer, all roster) error {
 		if ctx.Err() != nil || !d.current(w) {
 			break
 		}
+		if err == nil && d.advanced {
+			// The step committed a lifecycle change and woke the loop for a
+			// fresh read (the roster in hand is behind it). End this pass
+			// and resume at the same zone, at most maxFocus times in a row.
+			if name != focus {
+				d.focused = 0
+			}
+			if d.focused < maxFocus {
+				d.focused++
+				d.focus = name
+				break
+			}
+		}
+	}
+	if d.focus == "" {
+		d.focused = 0
 	}
 	statuses := make([]ZoneStatus, 0, len(names))
 	for _, name := range names {
@@ -213,7 +262,7 @@ func (d *Driver) step(ctx context.Context, w Writer, all roster, name string) er
 		_, err = d.o.Runtime.Transition(ctx, l, next)
 		if err == nil {
 			d.o.Publication.Wake()
-			d.Wake()
+			d.advance()
 		}
 		return err
 	}
@@ -260,7 +309,7 @@ func (d *Driver) step(ctx context.Context, w Writer, all roster, name string) er
 		if !found {
 			_, err := d.o.Runtime.AdmitAncestor(ctx, ancestor.Spec.Zone, l.Spec.Zone)
 			if err == nil {
-				d.Wake()
+				d.advance()
 			}
 			return err
 		}
@@ -279,7 +328,7 @@ func (d *Driver) step(ctx context.Context, w Writer, all roster, name string) er
 		next.Spec.Source = observed
 		_, err = d.o.Runtime.Transition(ctx, l, next)
 		if err == nil {
-			d.Wake()
+			d.advance()
 		}
 		return err
 	}
@@ -311,7 +360,7 @@ func (d *Driver) step(ctx context.Context, w Writer, all roster, name string) er
 				return err
 			}
 			// The next actual complete read supplies the new source/lifecycle pair.
-			d.Wake()
+			d.advance()
 			return nil
 		}
 		if _, err := d.o.Runtime.Activate(ctx, l.Spec.Zone); err != nil {
@@ -320,6 +369,22 @@ func (d *Driver) step(ctx context.Context, w Writer, all roster, name string) er
 	}
 	return d.publish(ctx, w, l)
 }
+
+// creating reports a desired zone whose own lifecycle is missing, not yet
+// active, or of a replaced source: the steps that create (or replace),
+// fence and activate it.
+func creating(l *zk.ZoneLifecycle, z *public.DNSZone) bool {
+	return z != nil && (l == nil || l.Spec.Phase != zk.PhaseActive || !sameIdentity(l, z))
+}
+
+// advance records that this step committed a lifecycle change that needs
+// another step of the same zone, and wakes the loop for the fresh read that
+// step needs.
+func (d *Driver) advance() {
+	d.advanced = true
+	d.Wake()
+}
+
 func (d *Driver) publish(ctx context.Context, w Writer, l *zk.ZoneLifecycle) error {
 	// Lifecycle may have advanced during this operation. Capture installed memory
 	// only for publication, never use it as a source planner or head authority.

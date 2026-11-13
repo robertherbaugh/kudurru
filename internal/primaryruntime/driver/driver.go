@@ -71,7 +71,22 @@ type Driver struct {
 	retries      map[string]retry
 	acknowledged map[string]pr.Member
 	after        string
+	// focus is the zone whose last step committed a lifecycle change that
+	// needs another step (advanced); the next pass resumes at it instead of
+	// stepping every other zone first. focused counts its consecutive
+	// focused passes, bounded by maxFocus.
+	focus    string
+	focused  int
+	advanced bool
 }
+
+// maxFocus bounds the consecutive passes one zone may take at the head of
+// the queue after each of its steps committed a lifecycle change. A new zone
+// needs at most one such step per primary ancestor plus two (lifecycle
+// creation and the Preparing-to-Fencing CAS) before the step that
+// activates and publishes it, so this covers ordinary nesting; a zone that
+// keeps advancing past it goes back to its place in the fair order.
+const maxFocus = 8
 
 // New validates finite bounds; a missing guard still fails closed in the adapter.
 func New(o Options) (*Driver, error) {

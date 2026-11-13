@@ -829,6 +829,27 @@ head. Diagnostics separate installed state, exact publication acknowledgment and
 active local eligibility. A missing current background guard disables every
 background write, including no-op reconciliation.
 
+The loop steps zones in a fair rotation, but a zone that is still being
+created steps first (D404): a desired zone without an active lifecycle of its
+own source goes ahead of the rotation, without moving its cursor, and a zone
+whose step just committed a lifecycle change that needs another step (its
+creation, a parent fence, the Preparing-to-Fencing CAS) ends the pass, so the
+next pass, on a fresh read, resumes at that zone, at most eight times in a row.
+Before, each of a new zone's three or four steps waited behind a step of every
+other zone, and each such step reconciles that zone and waits for its
+publication, so a new child took up to 12 s to answer on a loaded node without
+the race detector, and longer with more zones. Only the pass already running
+when the zone was created can still come first.
+
+Until a new primary child's first publication, names at and below its apex
+answer SERVFAIL from the child's unavailable coverage (the longer routing
+match), not the parent's data. The parent's answer there would be a negative
+answer that resolvers cache for the parent's negative TTL, which would hide
+the child for minutes after it activates, and a referral would need delegation
+data the parent does not have and would lead back to the same unavailable zone
+on this node. The publication before the one that carries the new `DNSZone`
+still answers the parent's data, as it did before the child existed.
+
 The driver retains its immutable validated planning roster and exact Store token
 for one writer run. Timer and publication hints reuse that roster while its
 authority cursor matches; source or authority changes, explicit Wake and failed
