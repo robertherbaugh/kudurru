@@ -103,7 +103,7 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 	}
 	v := zoneVerdict(cur, view, build)
 	if cur.Spec.Type == v1alpha1.ZoneTypeExternal && !c.opts.ExternalZoneSources {
-		v = withoutSources(v)
+		v = withoutSources(v, c.opts.ExternalZoneSourcesUnsupported)
 	}
 	v.observedGen, v.transitionNow = cur.Generation, now
 	v.apply(&st.Conditions)
@@ -121,11 +121,18 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 	return true, nil
 }
 
-// withoutSources marks an external zone that no source adapter fills.
-func withoutSources(v verdict) verdict {
+// withoutSources marks an external zone that no source adapter fills. A
+// zone that is already Degraded keeps its more specific reason, and the
+// message says both. On a store that cannot run the adapter the message
+// names that, not a setting the store refuses (D384).
+func withoutSources(v verdict, unsupported bool) verdict {
 	msg := "externalZones.enabled is off on this server: no Kubernetes sources are read, so the zone serves only record sets derived earlier and does not follow source changes"
+	if unsupported {
+		msg = "this store does not read Kubernetes sources (external zones are filled only on the Kubernetes store, with externalZones.enabled), so the zone serves only record sets derived earlier and does not follow source changes"
+	}
 	if v.Degraded {
-		msg += "; " + v.DegradedMsg
+		v.DegradedMsg += "; " + msg
+		return v
 	}
 	v.Degraded, v.DegradedRsn, v.DegradedMsg = true, ReasonSourcesNotRead, msg
 	return v

@@ -42,3 +42,21 @@ func TestExternalZoneWithoutSourcesIsDegraded(t *testing.T) {
 		e.stop()
 	}
 }
+
+// On a store that cannot run the source adapter the message does not point
+// at a setting that store refuses, and a zone that is already Degraded for
+// a more specific reason keeps that reason (D384).
+func TestWithoutSourcesNamesTheStoreAndKeepsSpecificReasons(t *testing.T) {
+	off := withoutSources(verdict{}, false)
+	if off.DegradedRsn != ReasonSourcesNotRead || !strings.Contains(off.DegradedMsg, "externalZones.enabled is off") {
+		t.Fatalf("adapter off: %+v", off)
+	}
+	unsupported := withoutSources(verdict{}, true)
+	if unsupported.DegradedRsn != ReasonSourcesNotRead || strings.Contains(unsupported.DegradedMsg, "is off") || !strings.Contains(unsupported.DegradedMsg, "only on the Kubernetes store") {
+		t.Fatalf("store without the adapter: %+v", unsupported)
+	}
+	specific := withoutSources(verdict{Degraded: true, DegradedRsn: v1alpha1.ReasonDuplicated, DegradedMsg: "two record sets claim web"}, false)
+	if !specific.Degraded || specific.DegradedRsn != v1alpha1.ReasonDuplicated || !strings.HasPrefix(specific.DegradedMsg, "two record sets claim web; ") || !strings.Contains(specific.DegradedMsg, "externalZones.enabled is off") {
+		t.Fatalf("specific reason: %+v", specific)
+	}
+}
