@@ -49,12 +49,16 @@ type anchorUpdater struct {
 	offset   uint64
 	retryFor anchorRetrySource
 	retryAt  time.Time
-	// raced counts consecutive attempts refused because an ordinary commit
-	// moved the canonical generation first; it paces their retries.
-	raced   int
-	stopped error
-	// wall reads this node's wall clock for the checkpoint comparison only; nil
-	// means time.Now. Samples, receipts and stored state never use it.
+	// raced counts consecutive acquisitions rolled back because an ordinary
+	// commit moved the canonical generation first; it paces their retries.
+	raced int
+	// captureRaced counts consecutive captures refused the same way before
+	// any acquisition (logged, not paced); a successful capture resets it.
+	captureRaced int
+	stopped      error
+	// wall reads this node's wall clock for its due and checkpoint
+	// comparisons only; nil means time.Now. Samples, receipts and stored
+	// state never use it.
 	wall func() time.Time
 }
 
@@ -97,13 +101,19 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 	now := u.now()
 	if errors.Is(err, replication.ErrCAS) {
 		// An ordinary commit landed between the image read and the capture.
-		// Nothing was acquired; a later step captures the new generation.
+		// Nothing was acquired; a later step captures the new generation one
+		// second later. This pace is deliberately not backed off: a capture
+		// is a local read with no root traffic, and on a fresh node the
+		// bootstrap it delays is what lets the node publish at all (first-boot
+		// status writes race it several times in a row).
 		step.next, step.raced = now.Add(time.Second), true
+		u.captureRaced++
 		return step, nil
 	}
 	if err != nil {
 		return step, err
 	}
+	u.captureRaced = 0
 	if op == nil {
 		step.next = now.Add(time.Minute)
 		return step, nil
@@ -213,7 +223,7 @@ func (s *servingRuntime) runAnchorUpdaterReady(ctx context.Context, target servi
 	if err != nil {
 		return err
 	}
-	u := anchorUpdater{runtime: s, target: target, host: host, clock: clock}
+	u := anchorUpdater{runtime: s, target: target, host: host, clock: clock, wall: s.anchorUpdaterWall}
 	for {
 		// Subscribe before the read. The local anchor notice has a single
 		// publisher consumer; use the Store broadcast so this worker cannot
@@ -232,7 +242,13 @@ func (s *servingRuntime) runAnchorUpdaterReady(ctx context.Context, target servi
 		}
 		if step.raced {
 			state = anchorWorkerRaced
-			slog.Warn("root anchor update raced an ordinary commit; new acquisition scheduled", "next", step.next, "consecutive", u.raced)
+			// A capture-phase race acquired nothing; an update-phase race
+			// discarded one reply. Each logs its own consecutive count.
+			if step.attempted {
+				slog.Warn("root anchor update raced an ordinary commit; new acquisition scheduled", "next", step.next, "consecutive", u.raced)
+			} else {
+				slog.Warn("root anchor capture raced an ordinary commit; capturing again", "next", step.next, "consecutive", u.captureRaced)
+			}
 		}
 		if step.clockWait > 0 {
 			state = anchorWorkerClockWait
