@@ -43,8 +43,11 @@ func licensedInteropBinary(t *testing.T) string {
 }
 
 // refreshWindow is how long the boot must precede the restart that moves the
-// updater's wall clock (see TestBINDManagedRootRevocation).
-const refreshWindow = 45 * time.Second
+// updater's wall clock (see TestBINDManagedRootRevocation). After that
+// restart the rescheduled refresh comes due again refreshWindow minus 10 s
+// later, so startup, readiness, the acquisition wait, one validated answer
+// and Stop share about 110 s, several times what the recorded runs need.
+const refreshWindow = 120 * time.Second
 
 // TestBINDManagedRootRevocation observes a BIND-made RFC 5011 revocation
 // (dnssec-revoke: the REVOKE bit set and the set signed by the revoked key
