@@ -316,8 +316,18 @@ integrations NAME`). The rules are those of every object write:
 integrations manifests`) lists the provider types of this build with their
 configuration schema, credential keys and which are required, and what this
 node's host refuses: on Kubernetes the release namespace is the only one that
-runs, webhook instances are unsupported and `spec.unifi.inventory` and the
-UniFi push fields are refused; SQLite refuses none of them. It also reports whether the
+runs, webhook instances are unsupported and `spec.unifi.inventory`,
+`spec.unifi.push.dhcpDNSServers`, `spec.unifi.push.mirrorRecords.enabled` and
+`spec.unifi.push.clientActions` are refused; SQLite refuses none of them.
+`fieldLimits` gives each such field with its effect: `refused`, with the
+status reason and message the Integration would show, or `inert` for a field
+that is accepted but does nothing because the field it needs is refused
+(`spec.unifi.push.dnsServers` and `networks` on Kubernetes). A
+`deletionPolicy: Delete` UniFi Integration refused on Kubernetes for
+`spec.unifi.inventory`, `dhcpDNSServers` or `clientActions` is still cleaned
+up when it is deleted (its local state is purged, with no request to the
+controller); one refused for `mirrorRecords.enabled` stays Terminating until
+that switch is turned off or its cleanup is released. It also reports whether the
 license covers integrations and which reference forms this node resolves; the
 allowlisted file paths and environment names are included only for a caller
 that holds `integrations.secrets`.
@@ -671,7 +681,14 @@ acknowledged are this Integration's unfinished work, so they are not
 conflicts, but they keep the intent pending. Remove them in UniFi; the next
 poll, finding the site exactly as before and none of those policies left,
 settles the intent without a write, and the record previews as a create
-again. Every failed write, including a definite refusal by the controller, is
+again. An update or delete that stopped part way (one policy of the record
+was changed or removed, and a later write failed) leaves no acknowledged
+policy for the poll to look for. The intent stays pending until the site
+shows either exactly the state before the intent, with the same policy IDs,
+or the state the intent was writing. A removed policy cannot come back with
+its ID, so finish such a change in UniFi instead: make the record's
+remaining policies what the preview showed (or remove them, for a delete),
+and the next poll confirms the intent without a write. Every failed write, including a definite refusal by the controller, is
 reported as `integration_uncertain`; a record the controller keeps refusing
 stops each sync at that record until you exclude it.
 
@@ -701,7 +718,8 @@ send one legacy `cmd/stamgr` `block-sta` or `unblock-sta` command. They are
 never run automatically.
 
 All three actions require `integrations.act`, are audited (actor, action and
-parameter digest), and an unacknowledged write answers `integration_uncertain`
+parameter digest; a client action also names its client in lowercase, for
+example `for client 02:ab:cd:00:00:01`, whatever case was sent), and an unacknowledged write answers `integration_uncertain`
 without a retry.
 
 ## Cloudflare publication
@@ -810,7 +828,11 @@ not repeated. On Kubernetes the
 route permission is checked once per request, not again inside each effect,
 and a reviewed sync or act is logged on the holder rather than written to an
 audit table. List/get status is unknown when no observation matches the
-exact revision. Public previews omit credential references, fingerprints,
+exact revision. The host's own status write is a new revision of the object
+but changes nothing you reviewed: the status follows it, and a command that
+names the revision before one or more such writes (up to eight) still runs.
+Any other change (spec, labels, annotations, finalizers) makes the review
+stale, and the command answers `409`. Public previews omit credential references, fingerprints,
 private provider IDs and ledger receipts.
 
 ## Check an external webhook

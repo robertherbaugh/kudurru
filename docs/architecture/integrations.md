@@ -64,7 +64,18 @@ and JSON-escaped forms, so a value pasted into a reference field is not
 echoed, relayed or logged.
 `GET /integrations/manifests` exposes the provider manifests and this
 driver's refusals (`cmd/kudurru/integration_manifests.go`), so a form can
-offer only what the host will run.
+offer only what the host will run: `refused` lists the fields that refuse an
+instance, and `fieldLimits` gives each refused or inert field with its
+reason and message (D384).
+
+A reviewed command names the Integration's UID and resource version. The
+host's own status write moves that version without changing anything
+reviewed, so the host keeps, per job, the last eight earlier versions that
+differ from its frame only by status (`host.StatusOnly`: same UID,
+generation, spec, labels, annotations, finalizers, owners and deletion) and
+accepts a review of any of them; the command runs on, and every effect is
+fenced by, the current frame. Its local status follows the frame too, so the
+admin API keeps knowing the status of a healthy idle instance (D384).
 
 ### Dashboard
 
