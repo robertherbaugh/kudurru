@@ -7,7 +7,8 @@ catch-all `/0` → default. Inventory supplies MACs and hostnames from memory.
 Expired inventory stops identifying a device, and reassigned IPs never inherit
 an older device's policy. SQLite can populate inventory through the background
 [UniFi integration](integrations.md). The built-in DHCP server fills the MAC of
-a leased address on both store drivers. Private group contributions retain
+a leased address on both store drivers (node-local on a SQLite cluster; see
+below). Private group contributions retain
 their original source and expiry, while manual public matchers keep their
 configured behavior.
 
@@ -34,6 +35,22 @@ not hide a client ID.
 The built-in DHCP server supplies lease names to the hostname matchers and the
 lease MAC to `mac` matchers. A MAC reported by an inventory integration for the
 same address wins over the lease MAC.
+
+Where a lease MAC applies depends on the store driver. On Kubernetes every
+replica watches the cluster's leases, so a lease MAC selects `mac` groups for
+queries answered by any replica. On a SQLite cluster the lease MAC is
+node-local: only queries answered by the node whose DHCP server holds the
+lease get it. The same client querying another node has no MAC there, falls
+through to the CIDR, hostname, client ID or default tier, and can get a
+different policy, including not being blocked by a `mac` group's block list.
+For cluster-wide effect on SQLite, use an inventory integration or `ip` and
+`cidr` matchers.
+
+The block page and unblock requests identify the client by its address only
+(`internal/blockpage/policyfinder.go`): they see no inventory or lease MAC,
+hostname or client ID. For a client whose group a MAC or name selects, the
+policy shown on the block page and the groups recorded on an unblock request
+can differ from those that the DNS answer applied.
 
 ## Client inventory
 

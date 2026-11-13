@@ -311,7 +311,11 @@ When the captured inventory has no MAC for the source address, the identify
 stage fills it from the live bound lease of the built-in DHCP server, read from
 the committed in-memory lease snapshot (D397). Inventory MACs win; colliding
 leases fill nothing; the lease MAC clears the inventory source, so a
-source-bound private grant cannot match it. `GET /inventory` presents the same
+source-bound private grant cannot match it. The lease snapshot is local to the
+process: on Kubernetes every replica watches all leases, while on a SQLite
+cluster only the node serving the scope has them, so another node answers the
+same client without the lease MAC. The block page's `PolicyFinder` identifies
+the client by its address only and does not apply this fill. `GET /inventory` presents the same
 rule: it lists inventory devices and leases with each address's state
 (assigned, expired, ambiguous, superseded or withdrawn) and never reads the
 DNS path.
