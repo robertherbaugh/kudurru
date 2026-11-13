@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"sync/atomic"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -64,6 +65,15 @@ func (k *kubeRPZ) capture(req *pipeline.Request) (*rpz.Selection, error) {
 	var lists []*v1alpha1.BlockList
 	for _, name := range d.Selection.BlockLists() {
 		if list := d.List(name).BlockList(); hasRPZSource(list) {
+			lists = append(lists, list)
+		}
+	}
+	// A referenced list the resolver has not compiled yet is still required
+	// coverage: its feed comes from the manager, not the resolver, so it is
+	// enforced (or fails closed) from the first query instead of being
+	// skipped for the load window after a start (D390).
+	for _, name := range d.PendingBlockLists() {
+		if list := d.List(name).BlockList(); hasRPZSource(list) && !slices.Contains(lists, list) {
 			lists = append(lists, list)
 		}
 	}

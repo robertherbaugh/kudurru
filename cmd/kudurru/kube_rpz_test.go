@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -9,6 +10,8 @@ import (
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
+	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/memory"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
@@ -80,6 +83,28 @@ func TestKubeRPZBindingReuseAndFailClosed(t *testing.T) {
 	}
 	if b := k.binding(); !b.available || b.config != live {
 		t.Fatal("a live configuration snapshot made the feed unavailable")
+	}
+	// A referenced RPZ list the resolver has not compiled yet is still
+	// selected: the policy decision carries it as pending, so the feed is
+	// required from the first query instead of skipped for the load window.
+	ix := policy.Build(policy.Input{
+		ClientGroups: []*public.ClientGroup{{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "all"}, Spec: public.ClientGroupSpec{Clients: []public.ClientMatcher{{CIDR: "0.0.0.0/0"}}}}},
+		Policies:     []*public.Policy{{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "default"}, Spec: public.PolicySpec{ClientGroupRefs: []string{"all"}, BlockListRefs: []string{"feed"}}}},
+		BlockLists:   []*public.BlockList{applied.(*public.BlockList)},
+	}, policy.Options{DefaultNamespace: "default"})
+	if nl := ix.NotLoaded(); len(nl) != 1 {
+		t.Fatalf("the list is compiled; the case proves nothing: %v", nl)
+	}
+	req := &pipeline.Request{Policy: ix.SelectPolicy(pipeline.Client{Addr: netip.MustParseAddrPort("192.0.2.1:53000")}, time.Now())}
+	pending, err := k.capture(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pending.Empty() {
+		t.Fatal("a referenced RPZ list that is not compiled yet was not selected")
+	}
+	if _, available := pending.Summary(time.Now()); available {
+		t.Fatal("a pending list's feed without data was available")
 	}
 	if hasRPZSource(nil) || hasRPZSource(&public.BlockList{Spec: public.BlockListSpec{Sources: []public.ListSource{{URL: "https://lists.invalid/a.txt"}}}}) || !hasRPZSource(list) {
 		t.Fatal("RPZ source prefilter is wrong")

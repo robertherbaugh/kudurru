@@ -393,17 +393,18 @@ sentinel and fails closed (SERVFAIL with EDE "not ready"); a stale or unsynced
 configuration snapshot does the same. Unlike primary zones, where a `local.db`
 snapshot older than `store.kube.snapshot.maxAge` stops only authoritative
 answers, this stops forwarding too for every client whose policy selects an RPZ
-list, unsigned feeds with an unexpired copy included. Like every other list, an RPZ-only list
-reaches the policy only once the list resolver has compiled it: with the default
-`blocking.allowDegraded: true` a just-started node answers while lists load and
-filters only with the lists already loaded, so for that window (measured at
-about 250 ms after a restart) its RPZ feeds are not applied. Set
-`blocking.allowDegraded: false` to keep the node not ready until every
-referenced list, RPZ-only ones included, is in the policy. Readiness only
-steers traffic: the listeners answer during the window either way, and on a
-restart from `local.db` without the apiserver the node was observed ready and
-serving the snapshot about 100 ms before the RPZ list was in the policy, so a
-query sent straight to the pod in that window is not filtered by the feed. Leader changes do not affect feeds: the
+list, unsigned feeds with an unexpired copy included. An RPZ feed does not wait
+for the list resolver: a policy decision carries every referenced BlockList that
+exists but is not compiled yet (`Decision.PendingBlockLists`), and both drivers'
+selectors require those lists' feeds too (D390). A just-started node therefore
+applies a persisted copy, or fails closed, from its first answer, whatever
+`blocking.allowDegraded` says; the downloaded sources of a mixed list still
+apply only once it is compiled. With `blocking.allowDegraded: false` the node
+also stays not ready until every referenced list is in the policy: on a restart
+from `local.db` the zone cache reports ready only once the snapshot built from
+`local.db` is published, not when it switches to it (before the fix, the empty
+unsynced snapshot's index, which references no list, made the node ready about
+100 ms early). Leader changes do not affect feeds: the
 manager is not a leader-only runnable. The shared dnsdist cache eligibility
 above is SQLite-only; on Kubernetes the edge cache is not flushed when a feed
 changes, so an edge-cached answer can outlive a feed update by its TTL.
@@ -413,7 +414,7 @@ flowchart LR
     KManager["rpz.Manager<br/>(every Kubernetes replica)"] --> KSnap["Feed snapshot"]
     Ring["Stored TSIG ring<br/>(startup + hot replacement)"] --> KManager
     Zc["zone cache snapshot"] --> Index["Policy index<br/>(ListInfo keeps the BlockList)"]
-    Index --> Decision["Request policy decision"]
+    Index --> Decision["Request policy decision<br/>(compiled and pending lists)"]
     KSnap --> Bind["kubeRPZ binding<br/>(rebuilt on change only)"]
     Ring --> Bind
     Zc --> Bind

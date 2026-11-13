@@ -355,6 +355,13 @@ func (c *Cache) Ready() (bool, []string) {
 		}
 		return true, c.conditionStrings()
 	case FromSnapshot:
+		// The state changes when local.db is read; the snapshot built from
+		// it is published by the next debounced rebuild. Until then the
+		// served snapshot is the empty unsynced one, whose policy index has
+		// no references to wait for (D390).
+		if snap := c.current.Load(); snap == nil || snap.State != FromSnapshot {
+			return false, append([]string{"waiting for the local.db snapshot to be published"}, c.conditionStrings()...)
+		}
 		if age := time.Since(c.snapWritten); age > c.opts.MaxAge {
 			return false, []string{fmt.Sprintf("serving a local.db snapshot %s old, older than maxAge %s", age.Round(time.Second), c.opts.MaxAge)}
 		}

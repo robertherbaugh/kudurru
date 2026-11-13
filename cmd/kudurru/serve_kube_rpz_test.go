@@ -42,7 +42,10 @@ import (
 // closed, enforcement survives a leader change and an apiserver outage, a
 // restart reuses the unexpired copy and the expired copy fails closed. A
 // restart while the apiserver is unreachable fails the signed feed closed,
-// because its stored key cannot be read.
+// because its stored key cannot be read, and reuses an unsigned feed's copy.
+// From before each restarted process answers, the listed name never resolves
+// NOERROR: a referenced RPZ list is required before the list resolver
+// compiles it, and with blocking.allowDegraded: false readiness waits for it.
 func TestRunServeKubeRPZFeeds(t *testing.T) {
 	control := &envtest.Environment{BinaryAssetsDirectory: mountedKubeTestAssets(t), CRDDirectoryPaths: []string{"../../deploy/kustomize/crd/bases"}, ErrorIfCRDPathMissing: true}
 	control.ControlPlane.GetAPIServer().Configure().Set("advertise-address", "127.0.0.1").Set("endpoint-reconciler-type", "none")
@@ -123,6 +126,7 @@ func TestRunServeKubeRPZFeeds(t *testing.T) {
 		t.Fatal(err)
 	}
 	primary := kubeRPZPrimary(t, dnsserver.TSIGKey{Name: "feed.", Algorithm: dns.HmacSHA256, Secret: secret})
+	openPrimary := kubeRPZOpenPrimary(t)
 	upstream := kubeRPZUpstream(t)
 
 	nodeConfig := func(name string) *config.Config {
@@ -167,7 +171,14 @@ func TestRunServeKubeRPZFeeds(t *testing.T) {
 	feed := &public.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "feed", Namespace: "default"}, Spec: public.BlockListSpec{Mode: "block",
 		Sources: []public.ListSource{{Name: "native", Format: "rpz", RPZ: &public.RPZSource{ZoneName: "policy.test.", Primaries: []string{primary.address}, TSIGKeyRef: "feed."}}}}}
 	pol := &public.Policy{ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: "default"}, Spec: public.PolicySpec{BlockListRefs: []string{"feed"}}}
-	for _, object := range []client.Object{feed, pol} {
+	// An unsigned feed for one client (127.0.0.3) only, so its reuse on an
+	// offline restart is observable while the signed feed fails closed.
+	open := &public.BlockList{ObjectMeta: metav1.ObjectMeta{Name: "open", Namespace: "default"}, Spec: public.BlockListSpec{Mode: "block",
+		Sources: []public.ListSource{{Name: "native", Format: "rpz", RPZ: &public.RPZSource{ZoneName: "open.test.", Primaries: []string{openPrimary.address}}}}}}
+	openGroup := &public.ClientGroup{ObjectMeta: metav1.ObjectMeta{Name: "open", Namespace: "default"}, Spec: public.ClientGroupSpec{Clients: []public.ClientMatcher{{CIDR: "127.0.0.3/32"}}}}
+	openPol := &public.Policy{ObjectMeta: metav1.ObjectMeta{Name: "open", Namespace: "default"}, Spec: public.PolicySpec{ClientGroupRefs: []string{"open"}, BlockListRefs: []string{"open"}}}
+	openClient := net.IPv4(127, 0, 0, 3)
+	for _, object := range []client.Object{feed, pol, open, openGroup, openPol} {
 		if err := admin.Create(t.Context(), object); err != nil {
 			t.Fatal(err)
 		}
@@ -195,6 +206,9 @@ func TestRunServeKubeRPZFeeds(t *testing.T) {
 	stopB := startStaticMount(t, cfgB)
 	await("node B enforces the QNAME trigger", func() bool {
 		return kubeRPZRcode(cfgB, "blocked.rpzlab.net.", "udp", nil) == dns.RcodeNameError
+	})
+	await("node B enforces the unsigned feed", func() bool {
+		return kubeRPZRcode(cfgB, "unsigned.rpzlab.net.", "udp", openClient) == dns.RcodeNameError && kubeRPZRcode(cfgB, "good.rpzlab.net.", "udp", openClient) == dns.RcodeSuccess
 	})
 	if !kubeRPZMetric(cfgB, `kudurru_role_active{role="rpz"} 1`) || kubeRPZMetric(cfgB, `kudurru_leader{role="controller"} 1`) {
 		t.Fatal("the follower does not run its own RPZ feed")
@@ -317,8 +331,11 @@ func TestRunServeKubeRPZFeeds(t *testing.T) {
 	t.Logf("apiserver requests refused while the gate was closed: %d", refused)
 
 	// Restart reuses the unexpired copy while the primary is unavailable.
+	// From before the process starts, no answer for the listed name may be
+	// NOERROR: the RPZ list is required before the resolver compiles it.
 	primary.available.Store(false)
 	stopB()
+	watch := watchKubeRPZRestart(cfgB, "blocked.rpzlab.net.")
 	stopB = startStaticMount(t, cfgB)
 	// The primary refuses every refresh, so only the persisted copy can
 	// answer; a short bound keeps "at once" without a single-shot probe.
@@ -326,6 +343,7 @@ func TestRunServeKubeRPZFeeds(t *testing.T) {
 		return kubeRPZRcode(cfgB, "after.rpzlab.net.", "udp", nil) == dns.RcodeNameError && kubeRPZRcode(cfgB, "after.rpzlab.net.", "tcp", nil) == dns.RcodeNameError
 	})
 	matrix(cfgB)
+	watch.finish(t, "restart with the primary unavailable", false)
 
 	// The expired copy fails closed; no later answer renews it.
 	await("expired feed fails closed", func() bool {
@@ -352,20 +370,28 @@ func TestRunServeKubeRPZFeeds(t *testing.T) {
 	// unsigned feeds are reused without the apiserver.
 	gateClosed.Store(true)
 	cfgB.Store.Kube.StartupTimeout = config.Duration(100 * time.Millisecond)
+	// The unsigned feed's primary is down too, so only the copy persisted in
+	// local.db can answer for it after the restart.
+	if kubeRPZRcode(cfgB, "unsigned.rpzlab.net.", "udp", openClient) != dns.RcodeNameError {
+		t.Fatal("unsigned feed not enforced before the offline restart")
+	}
+	openPrimary.available.Store(false)
 	stopB()
 	if rows := kubeRPZQuerylog(t, cfgB); !kubeRPZLogged(rows, "after.rpzlab.net", "blocked_rpz", "default/feed") || !kubeRPZLogged(rows, "good.rpzlab.net", "servfail_upstream", "default/feed") {
 		t.Fatal("node B query log lacks the RPZ outcomes")
 	}
+	watch = watchKubeRPZRestart(cfgB, "blocked.rpzlab.net.")
 	stopB = startStaticMount(t, cfgB)
 	// Serving the fresh local.db copy, the configuration is authoritative, so
 	// the failure below is the unbound feed, not an unsynced node.
 	await("offline restart serves the local.db snapshot", func() bool {
 		return kubeRPZMetric(cfgB, "kudurru_store_snapshot_serving 1")
 	})
-	// Like every list, the RPZ list reaches the policy only once the list
-	// resolver compiles it from the snapshot; until then the feed is not
-	// selected (the load window, about 100 ms here). Wait for the selection,
-	// then require it to stay closed.
+	// The RPZ list is required from the snapshot's policy before the list
+	// resolver compiles it (D390), so the signed feed fails closed from the
+	// first answer; the bounded wait covers only the unsynced SERVFAIL (no
+	// EDE) before the local.db snapshot is published. The watch proves that
+	// no answer for the listed name was NOERROR in between.
 	offlineClosed := func() bool {
 		for _, network := range []string{"udp", "tcp"} {
 			a := kubeRPZExchange(cfgB, "good.rpzlab.net.", network, nil)
@@ -384,15 +410,101 @@ func TestRunServeKubeRPZFeeds(t *testing.T) {
 			t.Fatal("offline restart answered a signed feed without its stored key", kubeRPZDescribe(kubeRPZExchange(cfgB, "good.rpzlab.net.", "udp", nil)))
 		}
 	}
+	// With blocking.allowDegraded: false, readiness came only once the list
+	// was in the policy: it never fell back to not ready after it was first
+	// reported.
+	watch.finish(t, "offline restart", true)
+	// The unsigned feed is reused from local.db without the apiserver and
+	// without its primary: the stored TSIG keys are not needed to bind it.
+	openBefore := openPrimary.transfers.Load()
+	awaitWithin("offline restart reuses the unsigned feed", 5*time.Second, func() bool {
+		return kubeRPZRcode(cfgB, "unsigned.rpzlab.net.", "udp", openClient) == dns.RcodeNameError && kubeRPZRcode(cfgB, "unsigned.rpzlab.net.", "tcp", openClient) == dns.RcodeNameError
+	})
+	if a := kubeRPZExchange(cfgB, "good.rpzlab.net.", "udp", openClient); a == nil || a.Rcode != dns.RcodeSuccess || len(a.Answer) != 1 {
+		t.Fatal("the unsigned feed's client was failed closed by the signed feed of another policy", kubeRPZDescribe(a))
+	}
+	if openPrimary.transfers.Load() != openBefore {
+		t.Fatal("the unsigned feed was transferred while its primary was down")
+	}
+	openPrimary.available.Store(true)
 	// A restart with the apiserver reachable reads the keys and recovers.
 	gateClosed.Store(false)
 	cfgB.Store.Kube.StartupTimeout = config.Duration(5 * time.Second)
 	stopB()
+	watch = watchKubeRPZRestart(cfgB, "blocked.rpzlab.net.")
 	stopB = startStaticMount(t, cfgB)
 	await("online restart binds the signed feed again", func() bool {
 		return kubeRPZRcode(cfgB, "good.rpzlab.net.", "udp", nil) == dns.RcodeSuccess && kubeRPZRcode(cfgB, "blocked.rpzlab.net.", "tcp", nil) == dns.RcodeNameError
 	})
+	watch.finish(t, "online restart", false)
 	stopB()
+}
+
+// kubeRPZWatch queries one listed name over UDP and reads /healthz/ready in a
+// loop from before a mount starts until finish. It counts NOERROR answers,
+// which a listed name must never get, and readiness that drops after it was
+// first reported.
+type kubeRPZWatch struct {
+	stop, done                        chan struct{}
+	answers, noerror, ready, notReady atomic.Int64
+	firstNoError                      atomic.Pointer[string]
+}
+
+func watchKubeRPZRestart(cfg *config.Config, name string) *kubeRPZWatch {
+	w := &kubeRPZWatch{stop: make(chan struct{}), done: make(chan struct{})}
+	go func() {
+		defer close(w.done)
+		start := time.Now()
+		httpClient := &http.Client{Timeout: 200 * time.Millisecond}
+		dnsClient := &dns.Client{Net: "udp", Timeout: 200 * time.Millisecond}
+		for {
+			select {
+			case <-w.stop:
+				return
+			default:
+			}
+			q := new(dns.Msg)
+			q.SetQuestion(name, dns.TypeA)
+			q.SetEdns0(1232, false)
+			if a, _, err := dnsClient.Exchange(q, cfg.Listeners.DNS[0].Address); err == nil && a != nil {
+				w.answers.Add(1)
+				if a.Rcode == dns.RcodeSuccess {
+					if w.noerror.Add(1) == 1 {
+						first := time.Since(start).String() + " " + kubeRPZDescribe(a)
+						w.firstNoError.Store(&first)
+					}
+				}
+			}
+			if r, err := httpClient.Get("http://" + cfg.Listeners.Ops.Address + "/healthz/ready"); err == nil {
+				_, _ = io.Copy(io.Discard, r.Body)
+				_ = r.Body.Close()
+				switch {
+				case r.StatusCode == http.StatusOK:
+					w.ready.Add(1)
+				case w.ready.Load() > 0:
+					w.notReady.Add(1)
+				}
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+	return w
+}
+
+func (w *kubeRPZWatch) finish(t *testing.T, phase string, steadyReadiness bool) {
+	t.Helper()
+	close(w.stop)
+	<-w.done
+	if w.answers.Load() == 0 {
+		t.Fatal(phase, ": the watch got no DNS answer; it proves nothing")
+	}
+	if n := w.noerror.Load(); n > 0 {
+		t.Fatal(phase, ": the listed name resolved NOERROR ", n, " times of ", w.answers.Load(), "; first at ", *w.firstNoError.Load())
+	}
+	if steadyReadiness && w.notReady.Load() > 0 {
+		t.Fatal(phase, ": the node reported ready, then not ready ", w.notReady.Load(), " times: it was ready before every referenced list was in the policy")
+	}
+	t.Logf("%s: %d answers for the listed name, none NOERROR; %d ready probes", phase, w.answers.Load(), w.ready.Load())
 }
 
 // kubeRPZFeeds reads one BlockList's feeds through the real CLI.
@@ -492,6 +604,61 @@ func kubeRPZPrimary(t *testing.T, key dnsserver.TSIGKey) *kubeRPZFeed {
 		t.Fatal("RPZ primary did not start")
 	}
 	return feed
+}
+
+// kubeRPZOpenPrimary serves the unsigned open.test. over TCP: one QNAME rule
+// for unsigned.rpzlab.net. While unavailable it answers SERVFAIL and counts
+// the query as refused. Expire bounds the copy to 120 s after the last
+// confirmation.
+func kubeRPZOpenPrimary(t *testing.T) *kubeRPZOpenFeed {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	feed := &kubeRPZOpenFeed{address: listener.Addr().String()}
+	feed.available.Store(true)
+	started := make(chan struct{})
+	server := &dns.Server{Listener: listener, NotifyStartedFunc: func() { close(started) },
+		Handler: dns.HandlerFunc(func(w dns.ResponseWriter, query *dns.Msg) {
+			defer func() { _ = w.Close() }()
+			answer := new(dns.Msg)
+			answer.SetReply(query)
+			answer.Authoritative = true
+			if !feed.available.Load() || len(query.Question) != 1 || query.Question[0].Name != "open.test." {
+				feed.refused.Add(1)
+				answer.Rcode = dns.RcodeServerFailure
+				_ = w.WriteMsg(answer)
+				return
+			}
+			soa := &dns.SOA{Hdr: dns.RR_Header{Name: "open.test.", Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 30}, Ns: "ns.open.test.", Mbox: "hostmaster.open.test.", Serial: 1, Refresh: 1, Retry: 1, Expire: 120, Minttl: 5}
+			answer.Answer = []dns.RR{soa}
+			switch query.Question[0].Qtype {
+			case dns.TypeSOA:
+			case dns.TypeAXFR, dns.TypeIXFR:
+				feed.transfers.Add(1)
+				ns, _ := dns.NewRR("open.test. 30 IN NS ns.open.test.")
+				rule, _ := dns.NewRR("unsigned.rpzlab.net.open.test. 30 IN CNAME .")
+				answer.Answer = append(answer.Answer, ns, rule, dns.Copy(soa))
+			default:
+				answer.Rcode = dns.RcodeRefused
+			}
+			_ = w.WriteMsg(answer)
+		})}
+	go func() { _ = server.ActivateAndServe() }()
+	t.Cleanup(func() { _ = server.Shutdown() })
+	select {
+	case <-started:
+	case <-time.After(4 * time.Second):
+		t.Fatal("unsigned RPZ primary did not start")
+	}
+	return feed
+}
+
+type kubeRPZOpenFeed struct {
+	address            string
+	available          atomic.Bool
+	transfers, refused atomic.Int64
 }
 
 // kubeRPZUpstream answers every A query; bad-ip.rpzlab.net resolves to the

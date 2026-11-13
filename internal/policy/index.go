@@ -591,6 +591,10 @@ func (b *builder) compilePolicies(pols []*v1alpha1.Policy, lists *blocking.Snaps
 		for _, ref := range p.Spec.BlockListRefs {
 			if n, ok := b.resolveList(lists, id, p.Namespace, ref, "blockListRefs", v1alpha1.ListMode(blocking.ModeBlock)); ok {
 				cp.block = append(cp.block, n)
+			} else if obj := objectID(p.Namespace, ref); b.byObject[obj] != nil && !b.disabled["BlockList/"+obj] && !slices.Contains(cp.pending, obj) {
+				// Known and enabled but not compiled: resolveList counted it
+				// in NotLoaded.
+				cp.pending = append(cp.pending, obj)
 			}
 		}
 		svcs, unknownCats := EffectiveServices(&p.Spec, b.opts.Services)
@@ -651,7 +655,7 @@ func sortPolicies(ps []*compiledPolicy) {
 func mergePolicies(active []*compiledPolicy, fallback bool, lists *blocking.Snapshot, scope blocking.ExceptionScope, infos map[string]*ListInfo, groups []string) *Decision {
 	top := active[0]
 	d := &Decision{Policy: top.id, Fallback: fallback, AllowOnly: top.spec.AllowOnly, lists: infos}
-	var allow, block []string
+	var allow, block, pending []string
 	var responseOverrides []*responsepolicy.Overrides
 	for _, p := range active {
 		d.Rewrites = append(d.Rewrites, p.rewrites...)
@@ -679,19 +683,30 @@ func mergePolicies(active []*compiledPolicy, fallback bool, lists *blocking.Snap
 		}
 		allow = append(allow, p.allow...)
 		block = append(block, p.block...)
+		for _, obj := range p.pending {
+			if !slices.Contains(pending, obj) {
+				pending = append(pending, obj)
+			}
+		}
 	}
-	refs := slices.DeleteFunc(slices.Concat(allow, block), func(name string) bool {
+	outOfScope := func(name string) bool {
 		info := infos[name]
 		if info == nil || len(info.groups) == 0 {
 			return false
 		}
 		return !slices.ContainsFunc(info.groups, func(group string) bool { return slices.Contains(groups, group) })
-	})
+	}
+	refs := slices.DeleteFunc(slices.Concat(allow, block), outOfScope)
+	if pending = slices.DeleteFunc(pending, outOfScope); len(pending) > 0 {
+		d.pending = pending
+	}
 	d.Response = responsepolicy.MergeOverrides(responseOverrides)
 	// Select keeps the first occurrence of each name and gives every list
 	// the role of its own mode; all names are known, so it cannot fail.
 	d.Selection, _ = lists.Select(refs, blocking.SelectOptions{AllowOnly: d.AllowOnly, ExceptionScope: scope})
-	d.filters = d.AllowOnly || len(refs) > 0 || d.SafeSearchOn()
+	// A pending list keeps the decision filtering so the blocking stage asks
+	// the RPZ selector, which requires the list's feeds before it compiles.
+	d.filters = d.AllowOnly || len(refs) > 0 || len(d.pending) > 0 || d.SafeSearchOn()
 	return d
 }
 

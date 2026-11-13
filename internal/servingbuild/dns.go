@@ -75,6 +75,9 @@ func BindDNS(publisher *serving.Publisher, stages DNSStages, now func() time.Tim
 		var names []string
 		if decision := policy.FromRequest(req); decision != nil && decision.Selection != nil {
 			names = decision.Selection.BlockLists()
+			// A referenced list not compiled yet still requires its feeds;
+			// its canonical name is the object ID (D390).
+			names = append(names, decision.PendingBlockLists()...)
 		}
 		return owner.SelectRPZ(names)
 	})

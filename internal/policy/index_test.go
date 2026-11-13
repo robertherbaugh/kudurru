@@ -541,3 +541,33 @@ func BenchmarkBuild(b *testing.B) {
 		_ = Build(in, Options{})
 	}
 }
+
+// A referenced list that exists but is not compiled yet stays in the decision
+// as pending, with its accepted object, and keeps the decision filtering, so
+// the RPZ selectors can require its feed before the list resolver compiles it
+// (D390). Disabled, missing and compiled references are not pending.
+func TestPendingBlockListsReachTheDecision(t *testing.T) {
+	disabled := blockList(ns, "off", "block")
+	disabled.Annotations = map[string]string{"kudurru.io/enabled": "false"}
+	ix := Build(Input{
+		ClientGroups: []*v1alpha1.ClientGroup{group(ns, "default", v1alpha1.ClientMatcher{CIDR: "0.0.0.0/0"})},
+		Policies: []*v1alpha1.Policy{
+			pol(ns, "default", v1alpha1.PolicySpec{ClientGroupRefs: []string{"default"}, BlockListRefs: []string{"feed", "off", "missing", "feed"}}),
+			pol(ns, "second", v1alpha1.PolicySpec{ClientGroupRefs: []string{"default"}, Priority: -1, BlockListRefs: []string{"feed"}}),
+		},
+		BlockLists: []*v1alpha1.BlockList{blockList(ns, "feed", "block"), disabled},
+	}, Options{})
+	d := ix.SelectPolicy(client("10.0.0.1"), time.Now())
+	if got := d.PendingBlockLists(); !slices.Equal(got, []string{"default/feed"}) {
+		t.Fatalf("PendingBlockLists = %v", got)
+	}
+	if !d.Filters() || d.Selection == nil || len(d.Selection.BlockLists()) != 0 {
+		t.Fatalf("a decision with only a pending list must filter: filters=%v selection=%v", d.Filters(), d.Selection)
+	}
+	if list := d.List("default/feed").BlockList(); list == nil || list.Name != "feed" {
+		t.Fatalf("pending list object = %v", list)
+	}
+	if (*Decision)(nil).PendingBlockLists() != nil {
+		t.Fatal("nil decision has pending lists")
+	}
+}

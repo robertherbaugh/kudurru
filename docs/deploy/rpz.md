@@ -133,14 +133,14 @@ $ kudurru lists rpz threats -o json   # every field
 | `pending` | No copy yet and no failure | SERVFAIL until the first complete transfer (the list is in the policy, the feed is not) |
 | `serving` | An unexpired copy is in use; `lastError` may report a failed refresh | Applied |
 | `expired` | The last copy passed its SOA expire | SERVFAIL |
-| `unavailable` | No usable copy: a transfer, configuration or credential failure (`reason`, `message`), or an unexpired copy the node cannot use (discarded because the configuration or credential changed while it was accepted, or confirmed after the node's current clock time) | SERVFAIL |
+| `unavailable` | No usable copy: a transfer, configuration or credential failure (`reason`, `message`), or an unexpired copy confirmed after the node's current clock time, whose serial and counts stay visible. A copy discarded because the configuration or credential changed while it was accepted is dropped with its serial, counts and ignored owners, so the item shows no copy fields | SERVFAIL |
 
 A feed is pending as soon as the node's configuration lists it, and from then on
 it is required coverage, so clients whose policy selects it get SERVFAIL until
-the first transfer completes. That is different from the short window right
-after a start, before the list resolver has compiled the list: until then the
-list is not in the policy at all and its feeds are not applied (see
-[block lists](../architecture/block-lists.md)). The `/info/messages` diagnosis
+the first transfer completes. A just-started node applies the same rule before
+the list resolver has compiled the list: a referenced list that is not compiled
+yet still selects its feeds, so they are enforced from a persisted copy or fail
+closed from the first answer (see [block lists](../architecture/block-lists.md)). The `/info/messages` diagnosis
 for a pending feed is `info`, not an error, because every new feed starts there;
 a feed whose first transfer fails moves to `unavailable` (an error).
 

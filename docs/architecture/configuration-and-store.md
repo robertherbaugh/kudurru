@@ -732,6 +732,10 @@ copies do not admit saved serving state. RPZ feeds are the exception to
 signed feed fails closed, and a copy older than `maxAge` fails every selected
 feed closed; in both cases clients whose policy selects the feed get SERVFAIL
 for every recursive query ([block lists](block-lists.md#transferred-rpz-foundation)).
+An unsigned feed's unexpired copy is reused. The zone cache reports ready from
+`local.db` only once the snapshot built from it is published, so the policy
+index that readiness checks is the restored one, never the empty unsynced one
+(D390).
 
 Startup reads for the policy namespace, default-object seeding and identity
 caches have bounded deadlines. An apiserver availability failure defers
