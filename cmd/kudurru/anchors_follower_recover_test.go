@@ -14,11 +14,11 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
-// F28-HA-4 (D369), the step that needs no hour-long wait: offline recovery
-// needs the database's own writer term. A follower that installed its
+// F28-HA-4 (D369), one step in process: offline recovery needs the
+// database's own writer term. A follower that installed its
 // primary's quarantined image is refused before any acquisition, and its
 // database (owner, carrier, authority and audit) is unchanged. The full
-// enrolled flow runs in TestSoakEnrolledAnchorsOfflineRecovery.
+// enrolled flow runs in the e2e TestEnrolledManagedAnchorsOfflineRecovery.
 func TestOfflineAnchorRecoverRefusedOnFollowerDatabase(t *testing.T) {
 	primaryPath, lost := offlineAnchorFixture(t)
 	scheme, err := runtimekinds.NewScheme()

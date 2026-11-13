@@ -62,6 +62,14 @@ type anchorUpdater struct {
 	wall func() time.Time
 }
 
+// anchorUpdaterBuildWall replaces the mounted writer updater's wall clock (its
+// due and checkpoint comparisons only) in every runtime of this process. It
+// is nil in every build except one with -tags licensetest, where
+// anchor_updater_wall_licensetest.go may set it for the separate-process
+// tests (D369). A release binary never carries it:
+// TestDefaultBuildHasNoAnchorUpdaterWall.
+var anchorUpdaterBuildWall func() time.Time
+
 type anchorPollStep struct {
 	next             time.Time
 	attempted        bool
@@ -223,7 +231,11 @@ func (s *servingRuntime) runAnchorUpdaterReady(ctx context.Context, target servi
 	if err != nil {
 		return err
 	}
-	u := anchorUpdater{runtime: s, target: target, host: host, clock: clock, wall: s.anchorUpdaterWall}
+	wall := s.anchorUpdaterWall
+	if wall == nil {
+		wall = anchorUpdaterBuildWall // nil except in a -tags licensetest binary
+	}
+	u := anchorUpdater{runtime: s, target: target, host: host, clock: clock, wall: wall}
 	for {
 		// Subscribe before the read. The local anchor notice has a single
 		// publisher consumer; use the Store broadcast so this worker cannot
