@@ -94,7 +94,7 @@ them is fixed by sending the same request again, except `generation_pending`.
 | <a id="cli_login_unavailable"></a>`cli_login_unavailable` | 503 | Kubernetes: a command-line sign-in with an identity provider needs the SQLite runtime. | `kudurru login --token` or `kudurru login --username`, as the hint says. |
 | <a id="provider_logout_unavailable"></a>`provider_logout_unavailable` | 503 | Kubernetes: the continuation of a sign-out at the identity provider. The local session has ended. | End the provider session at the identity provider. |
 | <a id="integration_uncertain"></a>`integration_uncertain` | 503 | An integration command (check, preview, sync, an action) was not acknowledged; it may have had effects, which were not repeated. | Read the integration's status and its actions before a new command. |
-| <a id="not_implemented"></a>`not_implemented` | 501 | The integration provider does not offer this command. | Use a command that the provider's actions list names. |
+| <a id="not_implemented"></a>`not_implemented` | 501 | Either the integration provider does not offer this command, or the server was started without the part of the runtime that the message names ("the response cache is not available on this node"); a complete `kudurru serve` node has every part. | For an integration, use a command that the provider's actions list names. Otherwise send the request to a complete `kudurru serve` node. |
 
 The CLI prints the message and the hint of these answers, and adds its own
 hint for `primary_required`, `completion_unknown`, `cluster_fenced` and
