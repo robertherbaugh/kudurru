@@ -650,9 +650,10 @@ func enrolledAnchorsRefusal(t *testing.T, e *enrolledAnchors, bin string, env []
 		// The protected API serves only under a lease of a published
 		// complete generation (getClusterAnchors: CheckReadLease), and a
 		// retired follower publishes none. Require that this is why it is
-		// closed: the node reports itself not ready.
-		if ready := enrolledOpsStatus(t, follower.Ports.Ops, "/healthz/ready"); ready == http.StatusOK {
-			t.Fatal("follower anchor status route answered 503 while the node reports ready")
+		// closed: the node's own operations listener answers that it is not
+		// ready (503). A listener that does not answer (0) proves nothing.
+		if ready := enrolledOpsStatus(t, follower.Ports.Ops, "/healthz/ready"); ready != http.StatusServiceUnavailable {
+			t.Fatal("follower anchor status route answered 503, but readiness answered", ready, "not 503")
 		}
 		t.Log("refusal step: the retired follower publishes no generation, so its protected HTTP is closed (503); the gauge is its online status surface")
 	default:
@@ -669,7 +670,8 @@ func enrolledAnchorsRefusal(t *testing.T, e *enrolledAnchors, bin string, env []
 }
 
 // enrolledOpsStatus returns the HTTP status of one GET on a node's
-// operations listener, or 0 when it does not answer.
+// operations listener, or 0 when it does not answer. Callers compare it with
+// the exact status they require, so a silent listener fails the check.
 func enrolledOpsStatus(t *testing.T, address, path string) int {
 	t.Helper()
 	client := &http.Client{Timeout: 3 * time.Second}
