@@ -44,7 +44,8 @@ func (h *servingHTTP) register() {
 	for _, p := range []string{"/auth/oidc/{idp}/start", "/auth/oidc/{idp}/callback", "/auth/oidc/{idp}/logout", "/auth/oidc/{idp}/logout/callback"} {
 		h.route("GET", p, func(w http.ResponseWriter, r *http.Request) error {
 			if h.opts.ProviderHandler == nil {
-				return &auth.Error{Status: 503, Key: "unavailable", Message: "captured browser provider login unavailable"}
+				return &auth.Error{Status: 503, Key: "unavailable", Message: "captured browser provider login unavailable",
+					Hint: "GET /api/v1/auth/status lists the identity providers this server offers for browser login; sign in with a password, or try again when the provider is reachable"}
 			}
 			h.opts.ProviderHandler.ServeHTTP(w, r)
 			return nil

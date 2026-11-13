@@ -111,7 +111,8 @@ func (s *Stack) Routes() []Route {
 }
 
 func (s *Stack) handleSessionsUnavailable(w http.ResponseWriter, r *http.Request) {
-	writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "sessions_unavailable", Message: "enrolled session management requires the complete SQLite authentication runtime"})
+	writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "sessions_unavailable", NoRetryAfter: true, Message: "enrolled session management requires the complete SQLite authentication runtime",
+		Hint: "sign out in the browser to end this session; other sessions end at their lifetime"})
 }
 
 // Guard wraps a route's handler with its access rule (auth.Require for
@@ -645,5 +646,6 @@ func (s *Stack) Roles(_ context.Context, p auth.Principal) []string {
 }
 
 func (s *Stack) handleExternalUsersUnavailable(w http.ResponseWriter, r *http.Request) {
-	writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "external_users_unavailable", Message: "external account administration requires the complete SQLite authentication runtime"})
+	writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "external_users_unavailable", NoRetryAfter: true, Message: "external account administration requires the complete SQLite authentication runtime",
+		Hint: "manage these accounts at the identity provider and with RoleBinding objects"})
 }

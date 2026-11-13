@@ -84,7 +84,8 @@ func servingBrowserInvalid() error {
 	return &auth.Error{Status: 401, Key: "login_state_invalid", Message: "browser login expired or was rejected; start again"}
 }
 func servingBrowserUnavailable() error {
-	return &auth.Error{Status: 503, Key: "unavailable", Message: "captured browser provider login unavailable"}
+	return &auth.Error{Status: 503, Key: "unavailable", Message: "captured browser provider login unavailable",
+		Hint: "GET /api/v1/auth/status lists the identity providers this server offers for browser login; sign in with a password, or try again when the provider is reachable"}
 }
 
 func (h *servingHTTP) capturedBrowser(ctx context.Context, id string) (*servingauth.View, *providerresources.Browser, error) {

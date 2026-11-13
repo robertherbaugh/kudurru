@@ -269,7 +269,8 @@ func (s *Server) dhcpScope(name string) (*dhcp.LeaseStore, error) {
 		return store, nil
 	}
 	if s.opts.DHCP == nil {
-		return nil, errUnavailable("DHCPv4 service is not available on this node")
+		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "DHCPv4 service is not available on this node",
+			"set dhcp.enabled and a complete DHCP configuration in this node's file and restart it; see docs/deploy/dhcp.md")
 	}
 	if !slices.Contains(s.opts.DHCP.ScopeNames(), name) {
 		return nil, errNotFound("DHCP scope " + name)

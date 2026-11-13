@@ -125,7 +125,8 @@ func (s *Server) vipEventStream(ctx context.Context, in *vipStreamInput) (*huma.
 		return nil, errInvalid("VIP notification replay is not supported")
 	}
 	if s.opts.VIPEvents == nil {
-		return nil, errUnavailable("local VIP observation is not enabled")
+		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "local VIP observation is not enabled",
+			"this node runs no VRRP virtual address; see docs/deploy/compose-ha.md")
 	}
 	events, release, err := s.opts.VIPEvents.Subscribe(ctx)
 	if err != nil {
