@@ -40,6 +40,7 @@ const (
 	reasonUnsupportedOnKubernetes = "UnsupportedOnKubernetes"
 	reasonRecordsUnsupported      = "RecordPublicationUnsupportedOnKubernetes"
 	reasonNamespaceNotAllowed     = "NamespaceNotAllowed"
+	reasonPushUnsupported         = "UniFiPushUnsupportedOnKubernetes"
 	// reasonSourceConflicted halts every publisher while the controller
 	// reports an admitted record set the zone does not serve as written.
 	reasonSourceConflicted = "SourceConflicted"
@@ -249,6 +250,10 @@ func kubeIntegrationRefusal(namespace string, d *public.Integration) string {
 		return reasonNamespaceNotAllowed
 	case d.Spec.Type == "unifi" && d.Spec.UniFi != nil && d.Spec.UniFi.Inventory != nil:
 		return reasonRecordsUnsupported
+	case d.Spec.Type == "unifi" && d.Spec.UniFi != nil && (d.Spec.UniFi.Push.DHCPDNSServers || d.Spec.UniFi.Push.MirrorRecords.Enabled || d.Spec.UniFi.Push.ClientActions):
+		// UniFi writes are audited reviewed commands of the SQLite root
+		// (D401); the Kubernetes host has no audit table for them.
+		return reasonPushUnsupported
 	case d.Spec.Type != "cloudflare" && d.Spec.Type != "unifi":
 		return reasonUnsupportedOnKubernetes
 	}

@@ -197,6 +197,9 @@ type IntegrationExecutionResult struct {
 	Clients         int                 `json:"clients"`
 	SourceCommitted bool                `json:"sourceCommitted"`
 	SourcePublished bool                `json:"sourcePublished"`
+	// Result is the bounded answer of an acknowledged action, such as a
+	// UniFi dhcp-dns-servers plan with its review digest (D401).
+	Result json.RawMessage `json:"result,omitempty"`
 }
 
 type integrationListInput struct {

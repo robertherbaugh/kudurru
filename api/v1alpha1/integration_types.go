@@ -140,23 +140,65 @@ type UniFiGroups struct {
 	ByNote string `json:"byNote,omitempty"`
 }
 
-// UniFiRecordMirror controls optional record publication to the gateway.
+// UniFiRecordMirror controls optional record publication to the gateway as
+// UniFi DNS policies (D401). Mirroring writes only after an operator applies
+// a reviewed preview; it changes only policies its own ledger proves it
+// created and never modifies another policy.
 type UniFiRecordMirror struct {
 	// +optional
 	Enabled bool `json:"enabled,omitempty"`
+	// Types limits mirrored records; empty mirrors both A and CNAME.
 	// +kubebuilder:validation:MaxItems=2
 	// +kubebuilder:validation:items:Enum=A;CNAME
 	// +listType=set
 	// +optional
 	Types []string `json:"types,omitempty"`
+	// Domains names the zones (and their subdomains) whose records are
+	// mirrored. It is required when mirroring is enabled.
+	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:items:MaxLength=253
+	// +listType=set
+	// +optional
+	Domains []string `json:"domains,omitempty"`
+	// Labels, when set, mirrors only records whose labels match. Zone
+	// publish rules naming this Integration also select records.
+	// +kubebuilder:validation:MaxProperties=64
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+	// Exclude contains exact names or leading *. suffix patterns.
+	// +kubebuilder:validation:MaxItems=256
+	// +kubebuilder:validation:items:MaxLength=253
+	// +optional
+	Exclude []string `json:"exclude,omitempty"`
 }
 
-// UniFiPush defaults every external write to disabled.
+// UniFiPush defaults every external write to disabled. Each write is an
+// explicit, reviewed operator command (D401); polling never writes.
 type UniFiPush struct {
+	// DHCPDNSServers enables the reviewed dhcp-dns-servers action, which
+	// writes DNSServers into the DHCP DNS server override of Networks.
 	// +optional
 	DHCPDNSServers bool `json:"dhcpDNSServers,omitempty"`
+	// DNSServers are the IPv4 addresses (such as the kudurru VIP) DHCP hands
+	// out on Networks. Required when DHCPDNSServers is set.
+	// +kubebuilder:validation:MaxItems=4
+	// +kubebuilder:validation:items:MaxLength=15
+	// +listType=set
+	// +optional
+	DNSServers []string `json:"dnsServers,omitempty"`
+	// Networks names the UniFi networks whose DHCP DNS servers are written.
+	// Required when DHCPDNSServers is set.
+	// +kubebuilder:validation:MaxItems=64
+	// +kubebuilder:validation:items:MaxLength=253
+	// +listType=set
+	// +optional
+	Networks []string `json:"networks,omitempty"`
 	// +optional
 	MirrorRecords UniFiRecordMirror `json:"mirrorRecords,omitempty"`
+	// ClientActions advertises the block-client and unblock-client actions.
+	// They use the legacy controller API and so also require legacy: true.
+	// +optional
+	ClientActions bool `json:"clientActions,omitempty"`
 }
 
 // UniFiIntegration configures inventory polling and explicitly enabled writes.

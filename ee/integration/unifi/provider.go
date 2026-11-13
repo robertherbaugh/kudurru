@@ -51,7 +51,7 @@ func NewWithOptions(options Options) *Provider {
 	return &Provider{options: options, stop: make(chan struct{}), now: time.Now, previous: map[string]Device{}}
 }
 
-// Manifest describes the read-only provider capability and offline schema.
+// Manifest describes the provider capabilities and offline schema.
 func (p *Provider) Manifest() integration.Manifest { return manifest() }
 
 // Provision captures named credentials and ownership without network I/O.
@@ -221,11 +221,8 @@ func validateConfig(c public.UniFiIntegration) error {
 	if c.Legacy && prefix != "/proxy/network/integration" {
 		return host.ErrUnsupported
 	}
-	if c.Push.DHCPDNSServers || c.Push.MirrorRecords.Enabled {
-		return host.ErrUnsupported
-	}
-	if len(c.Push.MirrorRecords.Types) > 0 {
-		return host.ErrUnsupported
+	if err := validatePush(c); err != nil {
+		return err
 	}
 	if c.Site != "" && (len(c.Site) > 253 || strings.TrimSpace(c.Site) != c.Site || strings.ContainsAny(c.Site, "/\\\x00\r\n\t")) {
 		return ErrInvalid

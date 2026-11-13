@@ -18,6 +18,7 @@ import (
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
+	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
@@ -335,6 +336,18 @@ func TestIntegrationManifestsMatchKubernetesRefusals(t *testing.T) {
 			if kubeIntegrationRefusal("kudurru-system", d) == "" || !slices.Contains(item.Refused, "spec.unifi.inventory") {
 				t.Errorf("unifi inventory: refused=%v", item.Refused)
 			}
+			// Each UniFi push is refused on Kubernetes and named (D401).
+			for field, set := range map[string]func(*public.UniFiPush){
+				"spec.unifi.push.dhcpDNSServers": func(p *public.UniFiPush) { p.DHCPDNSServers = true },
+				"spec.unifi.push.mirrorRecords":  func(p *public.UniFiPush) { p.MirrorRecords.Enabled = true },
+				"spec.unifi.push.clientActions":  func(p *public.UniFiPush) { p.ClientActions = true },
+			} {
+				d := base("unifi")
+				set(&d.Spec.UniFi.Push)
+				if kubeIntegrationRefusal("kudurru-system", d) != reasonPushUnsupported || !slices.Contains(item.Refused, field) {
+					t.Errorf("%s: refused=%v reason=%q", field, item.Refused, kubeIntegrationRefusal("kudurru-system", d))
+				}
+			}
 		}
 		if len(item.Credentials) == 0 && item.Type != "webhook" || item.ConfigField != item.Type || !json.Valid(item.ConfigSchema) {
 			t.Errorf("%s manifest: %+v", item.Type, item)
@@ -347,6 +360,25 @@ func TestIntegrationManifestsMatchKubernetesRefusals(t *testing.T) {
 	}
 	if d := base("cloudflare"); kubeIntegrationRefusal("other", d) != reasonNamespaceNotAllowed {
 		t.Error("another namespace is not refused")
+	}
+}
+
+// The SQLite root runs every UniFi push (D401): its manifest refuses no
+// UniFi field and advertises the record sink and actions the adapter serves.
+func TestIntegrationManifestsSQLiteRunsUniFiPush(t *testing.T) {
+	m := integrationManifests("sqlite", "", config.CredentialGrants{}, nil, sqliteIntegrationLimits)
+	found := false
+	for _, item := range m.Items {
+		if item.Type != "unifi" {
+			continue
+		}
+		found = true
+		if !item.Supported || len(item.Refused) != 0 || !slices.Contains(item.Capabilities, "RecordSink") || !slices.Contains(item.Capabilities, "Actions") {
+			t.Fatalf("SQLite UniFi manifest: %+v", item)
+		}
+	}
+	if !found {
+		t.Fatal("unifi manifest missing")
 	}
 }
 
