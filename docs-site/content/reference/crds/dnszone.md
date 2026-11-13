@@ -45,10 +45,10 @@ Validation: stub zones require nameserver configuration (`self.type != 'stub' ||
 | `spec.dnssec.keySecretRef` | `object` | ObjectRef points at another kudurru object. Namespace is omitted for cluster-scoped kinds and for same-namespace references. |
 | `spec.dnssec.keySecretRef.name` | `string` | **Required.**<br>Length: at least 1 |
 | `spec.dnssec.keySecretRef.namespace` | `string` |  |
-| `spec.external` | `object` | ExternalSpec synthesizes records from Kubernetes objects (v0.2). |
-| `spec.external.gateway` | `boolean` |  |
-| `spec.external.ingress` | `boolean` |  |
-| `spec.external.loadBalancerServices` | `boolean` |  |
+| `spec.external` | `object` | ExternalSpec synthesizes records from Kubernetes objects (v0.2, D402). It takes effect only when the server runs with externalZones.enabled on the Kubernetes store driver. The elected replica derives one DNSRecordSet per source object and zone in the source's namespace; the zone's recordSetSelector decides which namespaces and labels may contribute (derived record sets carry the source's labels). Names are placed in the external zone with the longest matching apex. Sources are only read. The external-dns annotations external-dns.kubernetes.io/hostname, /target and /ttl (and their external-dns.alpha.kubernetes.io forms) add names, replace targets and set the TTL. |
+| `spec.external.gateway` | `boolean` | Gateway publishes the hostnames of Gateway API HTTPRoutes, GRPCRoutes and TLSRoutes that a parent Gateway has accepted, at that Gateway's status addresses. A route without hostnames uses its listener's. |
+| `spec.external.ingress` | `boolean` | Ingress publishes networking.k8s.io/v1 Ingress rule and TLS hosts at the addresses in the Ingress status. |
+| `spec.external.loadBalancerServices` | `boolean` | LoadBalancerServices publishes Services of type LoadBalancer that carry a hostname annotation, at their load balancer addresses. |
 | `spec.fallback` | `object` | Fallback enables public resolution for names not defined locally. Omit it to remain authoritative for the entire zone. Generated apex SOA/NS records do not suppress fallback for other types at an unconfigured apex. Zones with fallback do not support zone transfers or NOTIFY. |
 | `spec.fallback.upstreamGroup` | `string` | UpstreamGroup selects a forwarding or recursive group. Empty uses normal resolver routing (client policy, conditional forwarding, then default). |
 | `spec.forward` | `object` | ForwardSpec configures a forward zone. |

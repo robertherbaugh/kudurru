@@ -102,14 +102,33 @@ spec:
                 - enabled
                 type: object
               external:
-                description: ExternalSpec synthesizes records from Kubernetes objects
-                  (v0.2).
+                description: |-
+                  ExternalSpec synthesizes records from Kubernetes objects (v0.2, D402). It
+                  takes effect only when the server runs with externalZones.enabled on the
+                  Kubernetes store driver. The elected replica derives one DNSRecordSet per
+                  source object and zone in the source's namespace; the zone's
+                  recordSetSelector decides which namespaces and labels may contribute
+                  (derived record sets carry the source's labels). Names are placed in the
+                  external zone with the longest matching apex. Sources are only read.
+                  The external-dns annotations external-dns.kubernetes.io/hostname, /target
+                  and /ttl (and their external-dns.alpha.kubernetes.io forms) add names,
+                  replace targets and set the TTL.
                 properties:
                   gateway:
+                    description: |-
+                      Gateway publishes the hostnames of Gateway API HTTPRoutes, GRPCRoutes
+                      and TLSRoutes that a parent Gateway has accepted, at that Gateway's
+                      status addresses. A route without hostnames uses its listener's.
                     type: boolean
                   ingress:
+                    description: |-
+                      Ingress publishes networking.k8s.io/v1 Ingress rule and TLS hosts at
+                      the addresses in the Ingress status.
                     type: boolean
                   loadBalancerServices:
+                    description: |-
+                      LoadBalancerServices publishes Services of type LoadBalancer that
+                      carry a hostname annotation, at their load balancer addresses.
                     type: boolean
                 type: object
               fallback:
