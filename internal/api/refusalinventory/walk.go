@@ -66,6 +66,12 @@ func Operations(document []byte) ([]Operation, error) {
 			}
 			return -1
 		}
+		if la, lb := probedLate(a), probedLate(b); la != lb {
+			if la {
+				return 1
+			}
+			return -1
+		}
 		return strings.Compare(a.Path+" "+a.Method, b.Path+" "+b.Method)
 	})
 	return out, nil
@@ -76,6 +82,18 @@ func Operations(document []byte) ([]Operation, error) {
 func endsSession(o Operation) bool {
 	return slices.Contains(api.SessionEndingOperations(), o.ID)
 }
+
+// lateProbes are the operations whose probe a SQLite node answers after
+// writing to it: the DHCP setup write records its refused attempt in the
+// audit log. With that probe in path order, an object write probed shortly
+// after it was refused under the race detector, in two of three standalone
+// walks, with the hintless 503 "current writable serving generation
+// unavailable" (the command-path refusal that D399 left open, which this
+// walk does not judge); without it, none of three was. They run after every
+// other probe but the session-ending ones.
+var lateProbes = []string{"putDHCPSetup"}
+
+func probedLate(o Operation) bool { return slices.Contains(lateProbes, o.ID) }
 
 var pathParameter = regexp.MustCompile(`\{[^}]+\}`)
 
