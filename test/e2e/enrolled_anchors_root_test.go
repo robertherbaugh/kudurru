@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -43,7 +44,11 @@ type anchorRoot struct {
 	mode     atomic.Int32
 	tcpReads [anchorRootModes]atomic.Int32
 	udpReads atomic.Int32
-	answers  [anchorRootModes][]dns.RR
+	// tcpAt records when each TCP DNSKEY query arrived and from where, for
+	// failure messages only.
+	tcpMu   sync.Mutex
+	tcpAt   []string
+	answers [anchorRootModes][]dns.RR
 }
 
 func anchorRootAddress(t *testing.T) netip.Addr {
@@ -136,6 +141,9 @@ func newAnchorRoot(t *testing.T) *anchorRoot {
 				mode := r.mode.Load()
 				if network == "tcp" {
 					r.tcpReads[mode].Add(1)
+					r.tcpMu.Lock()
+					r.tcpAt = append(r.tcpAt, fmt.Sprintf("%s mode %d from %s rd=%v edns=%v", time.Now().Format("15:04:05.000"), mode, w.RemoteAddr(), q.RecursionDesired, q.IsEdns0() != nil))
+					r.tcpMu.Unlock()
 				} else {
 					r.udpReads.Add(1)
 				}
@@ -178,6 +186,13 @@ func newAnchorRoot(t *testing.T) *anchorRoot {
 
 // TCP returns the number of managed anchor acquisitions answered in mode.
 func (r *anchorRoot) TCP(mode int32) int32 { return r.tcpReads[mode].Load() }
+
+// TCPLog lists every TCP DNSKEY query so far, for failure messages.
+func (r *anchorRoot) TCPLog() string {
+	r.tcpMu.Lock()
+	defer r.tcpMu.Unlock()
+	return strings.Join(r.tcpAt, "; ")
+}
 
 // TotalTCP returns every managed anchor acquisition in all modes.
 func (r *anchorRoot) TotalTCP() int32 {
