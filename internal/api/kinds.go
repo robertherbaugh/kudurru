@@ -25,6 +25,9 @@ var kinds = []kindInfo{
 	{plural: "clientgroups", kind: "ClientGroup", resource: "clientgroups", namespaced: true, newObject: func() store.Object { return &v1alpha1.ClientGroup{} }},
 	{plural: "policies", kind: "Policy", resource: "policies", namespaced: true, newObject: func() store.Object { return &v1alpha1.Policy{} }},
 	{plural: "dhcpscopes", kind: "DHCPScope", resource: "dhcp", newObject: func() store.Object { return &v1alpha1.DHCPScope{} }},
+	// Integration writes also need integrations.secrets to bind or change
+	// spec.credentials, and a new one needs the integrations license (D400).
+	{plural: "integrations", kind: "Integration", resource: "integrations", namespaced: true, newObject: func() store.Object { return &v1alpha1.Integration{} }},
 }
 
 func kindByPlural(plural string) (kindInfo, bool) {

@@ -88,6 +88,7 @@ func TestMemberForwardRouteCoversEveryForwardedRoute(t *testing.T) {
 		"POST /dhcpscopes:batchDelete",
 		"POST /dnsrecordsets:batchDelete",
 		"POST /dnszones:batchDelete",
+		"POST /integrations:batchDelete",
 		"POST /objects/{kind}",
 		"POST /policies",
 		"POST /policies:batchDelete",

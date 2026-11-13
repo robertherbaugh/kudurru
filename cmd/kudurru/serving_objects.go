@@ -90,6 +90,8 @@ func objectCommandResource(key store.Key) string {
 		return "clientgroups"
 	case "Policy":
 		return "policies"
+	case "Integration":
+		return "integrations"
 	default:
 		return ""
 	}
@@ -98,6 +100,12 @@ func objectCommandResource(key store.Key) string {
 func objectCommandAttributes(key store.Key, resource string, attrs []rbac.Attributes) bool {
 	if len(attrs) == 0 || len(attrs) > 2 {
 		return false
+	}
+	if write, secrets, ok := integrationSecretsPair(key, attrs); ok {
+		// A write that binds or changes credentials also checks
+		// integrations.secrets on the same object (D400).
+		return write.Verb == "write" && objectCommandAttributes(key, resource, []rbac.Attributes{write}) &&
+			secrets == (rbac.Attributes{Resource: resource, Verb: "secrets", Scope: rbac.Scope{Kind: rbac.ScopeCluster}, Namespace: key.Namespace, Name: key.Name})
 	}
 	if len(attrs) > 1 && (key.Kind != "DNSRecordSet" || attrs[0].Verb != "write") {
 		return false
@@ -122,4 +130,13 @@ func objectCommandAttributes(key store.Key, resource string, attrs []rbac.Attrib
 		}
 	}
 	return true
+}
+
+// integrationSecretsPair splits the two attributes of an Integration write
+// that binds credentials; ok is false for any other key or count.
+func integrationSecretsPair(key store.Key, attrs []rbac.Attributes) (write, secrets rbac.Attributes, ok bool) {
+	if key.Kind != "Integration" || len(attrs) != 2 {
+		return rbac.Attributes{}, rbac.Attributes{}, false
+	}
+	return attrs[0], attrs[1], true
 }

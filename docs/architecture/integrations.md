@@ -16,8 +16,47 @@ complete-image inventory publication and the `Delete` cleanup job (see
 store mounts the same host for Cloudflare publication, UniFi inventory and
 group observation, the `Delete` cleanup and the administration API, and refuses
 UniFi record publication and webhook instances on their objects (see
-[Kubernetes execution](#kubernetes-execution)). Those, and dashboard controls,
-remain parts of the full [v0.2 implementation](../../dev-docs/milestones/v0.2/README.md).
+[Kubernetes execution](#kubernetes-execution)). Integrations are written
+through the generic object routes on both stores (see
+[Writing Integrations](#writing-integrations)). Those refusals, and dashboard
+controls, remain parts of the full [v0.2 implementation](../../dev-docs/milestones/v0.2/README.md).
+
+## Writing Integrations
+
+An Integration is an object kind of `/api/v1/objects/integrations`,
+`POST /apply` and `POST /integrations:batchDelete` (D400), written by the same
+path as every other object: the API normalizes and sanitizes the document
+(status and server metadata dropped), validates it strictly against the CRD
+schema, and writes it as manager `api` with the stored `resourceVersion` as
+its compare-and-swap. Two checks are specific to the kind, both decided on
+the stored object the write is swapped against:
+
+```mermaid
+flowchart LR
+    Doc["Integration document (references only)"] --> Write["integrations.write"]
+    Write --> Creds{"spec.credentials bound or changed?"}
+    Creds -->|yes| Secrets["integrations.secrets"]
+    Creds -->|no| New
+    Secrets --> New{"new object?"}
+    New -->|yes| License["license covers integrations, else 402"]
+    New -->|no| Apply
+    License --> Apply["CAS apply + audit row (SQLite: one current command)"]
+    Apply --> Host["host captures the new revision"]
+```
+
+On SQLite the whole sequence runs in the root's current command: the
+original raw credential is re-authorized against the attributes the command
+derives from its own read (`integrations.write`, plus `integrations.secrets`
+when credentials change), the license cut is re-checked at commit, and the
+store arms the cleanup finalizer of a `Delete` policy and writes the audit row
+in the same transaction. An enrolled follower forwards the write as the typed
+object member command. On Kubernetes the API reads the object, checks, and
+applies with `ExpectedResourceVersion`; the kube driver's audit spool records
+the write. A refusal never repeats a string of `spec.credentials`, so a value
+pasted into a reference field is not echoed, relayed or logged.
+`GET /integrations/manifests` exposes the provider manifests and this
+driver's refusals (`cmd/kudurru/integration_manifests.go`), so a form can
+offer only what the host will run.
 
 ```mermaid
 flowchart LR

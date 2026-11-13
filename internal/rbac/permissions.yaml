@@ -128,7 +128,7 @@ kubernetes:
 # change that starts using the verb. Built-in roles may already grant a
 # reserved verb; holding it allows nothing until it is used. The v0.2
 # entries are surfaces the v0.2 tracker still requires (design record
-# section 10 lists CRUD /iam/* and /integrations as v0.2); they stay here
+# section 10 lists CRUD /iam/* as v0.2); they stay here
 # until their lane lands or the owner retargets them.
 reserved:
   zones.sign: "v1.0: DNSSEC signing on the leader (design record 13.3, D14)"
@@ -143,8 +143,5 @@ reserved:
   tokens.write: "v1.0: issuing API tokens for another principal"
   identityproviders.write: "v0.2: identity provider administration, CRUD /iam/identityproviders (G12)"
   identityproviders.delete: "v0.2: identity provider administration, CRUD /iam/identityproviders (G12)"
-  integrations.write: "v0.2: Integration create and replace from the API and UI (G21-09)"
-  integrations.delete: "v0.2: Integration delete from the API and UI (G21-09)"
-  integrations.secrets: "v0.2: integration credentials in the administration surface (G21-09)"
   cluster.drain: "v1.0: draining a member from the API (today only kudurru vip drain)"
   edge.write: "v1.0: edge configuration from the API (edge blocks use edgeblocks.*)"

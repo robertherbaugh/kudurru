@@ -25,7 +25,7 @@ type Object = map[string]any
 
 // listObjectsInput are the filters of GET /objects/{kind}.
 type listObjectsInput struct {
-	Kind          string `path:"kind" doc:"Lower-case plural kind: dnszones, dnsrecordsets, blocklists, clientgroups, policies."`
+	Kind          string `path:"kind" doc:"Lower-case plural kind: dnszones, dnsrecordsets, blocklists, clientgroups, policies, dhcpscopes, integrations."`
 	Namespace     string `query:"namespace" doc:"Only objects in this namespace (namespaced kinds)."`
 	LabelSelector string `query:"labelSelector" doc:"Equality selector, e.g. app=web,tier=edge."`
 	Limit         int    `query:"limit" minimum:"0" maximum:"1000" doc:"Page size (default 500)."`

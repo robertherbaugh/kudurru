@@ -18,6 +18,70 @@ type IntegrationAdministration interface {
 	// IntegrationRelease ends the cleanup of one exact terminating
 	// Integration without contacting its provider (D367).
 	IntegrationRelease(context.Context, string, string, IntegrationReview) (*IntegrationReleaseResult, error)
+	// IntegrationManifests describes the provider types this node's host
+	// runs and what it refuses on its driver (D400). It reads no store and
+	// resolves no credential.
+	IntegrationManifests(context.Context) (*IntegrationManifests, error)
+}
+
+// IntegrationManifests is the answer of GET /integrations/manifests: what a
+// form needs to write an Integration this node's host would run (D400).
+type IntegrationManifests struct {
+	// Driver is the store driver of this node: sqlite or kube.
+	Driver string `json:"driver" enum:"sqlite,kube"`
+	// Namespace is the only namespace whose Integrations the host runs, ""
+	// when any namespace runs (SQLite). On Kubernetes it is the release
+	// namespace; an Integration elsewhere is refused on its object.
+	Namespace string `json:"namespace,omitempty"`
+	// Licensed reports whether the license covers integrations now. Without
+	// it a new Integration is refused (402) and existing ones pause.
+	Licensed bool `json:"licensed"`
+	// CredentialSources are the reference forms this node resolves for an
+	// Integration: file and env, each only while this node's
+	// credentials.allowedFiles or credentials.allowedEnvironment names one.
+	// A secretRef is not resolved for Integrations on either driver.
+	CredentialSources []string `json:"credentialSources" nullable:"false"`
+	// AllowedFiles and AllowedEnvironment are this node's credential grants.
+	// They are names, never values, and are present only for a caller that
+	// holds integrations.secrets, the permission that binds them.
+	AllowedFiles       []string `json:"allowedFiles,omitempty"`
+	AllowedEnvironment []string `json:"allowedEnvironment,omitempty"`
+	// Items has one entry per provider type compiled into this build.
+	Items []IntegrationManifest `json:"items" nullable:"false"`
+}
+
+// IntegrationManifest describes one provider type.
+type IntegrationManifest struct {
+	Type         string   `json:"type"`
+	DisplayName  string   `json:"displayName"`
+	Version      string   `json:"version"`
+	Capabilities []string `json:"capabilities" nullable:"false" doc:"RecordSink, ClientSource, Hook, Actions."`
+	IOClass      string   `json:"ioClass"`
+	// ConfigField is the spec field that holds the provider block, for
+	// example cloudflare for spec.cloudflare.
+	ConfigField string `json:"configField"`
+	// ConfigSchema is the JSON Schema of the provider block.
+	ConfigSchema json.RawMessage `json:"configSchema"`
+	// Credentials are the spec.credentials keys the provider reads. Each
+	// value in an Integration is a reference (file or env), never a value.
+	Credentials []IntegrationCredentialKey `json:"credentials" nullable:"false"`
+	Docs        string                     `json:"docs,omitempty"`
+	// Supported is false when this node's host refuses every instance of
+	// the type (a webhook on Kubernetes); Reason is the status reason the
+	// instance would show.
+	Supported bool   `json:"supported"`
+	Reason    string `json:"reason,omitempty"`
+	// Refused lists spec fields that, when set, make the host refuse the
+	// instance on this node (for example spec.unifi.push).
+	Refused []string `json:"refused" nullable:"false"`
+}
+
+// IntegrationCredentialKey is one credential a provider reads.
+type IntegrationCredentialKey struct {
+	Name     string `json:"name"`
+	Required bool   `json:"required"`
+	// Verify names what check calls to prove it, when it is checked.
+	Verify string `json:"verify,omitempty"`
 }
 
 // IntegrationSummary deliberately excludes credential references and private
@@ -181,8 +245,34 @@ type integrationExecutionOutput struct {
 	Body         *IntegrationExecutionResult
 }
 
+type integrationManifestsOutput struct {
+	CacheControl string `header:"Cache-Control"`
+	Body         *IntegrationManifests
+}
+
 func (s *Server) registerIntegrations() {
 	read := perm{resource: "integrations", verb: "read"}
+	manifests := integrationOperation(http.MethodGet, "/integrations/manifests", "listIntegrationManifests", "List provider manifests and this node's integration limits", "integrations")
+	manifests.Description = "Provider types, their configuration schema and credential keys, and what this node's host refuses. " +
+		"Integrations themselves are written as objects: /objects/integrations (integrations.write, integrations.delete; " +
+		"binding or changing spec.credentials also needs integrations.secrets) (D400)."
+	register(s, manifests, read, func(ctx context.Context, _ *struct{}) (*integrationManifestsOutput, error) {
+		if s.opts.Integrations == nil {
+			return nil, errUnavailable("complete integration administration unavailable")
+		}
+		out, err := s.opts.Integrations.IntegrationManifests(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if out == nil {
+			return nil, errUnavailable("integration manifests unavailable")
+		}
+		copied := *out
+		if !s.allowed(ctx, "integrations", "secrets", clusterScope) {
+			copied.AllowedFiles, copied.AllowedEnvironment = nil, nil
+		}
+		return &integrationManifestsOutput{CacheControl: "no-store", Body: &copied}, nil
+	})
 	register(s, integrationOperation(http.MethodGet, "/integrations", "listIntegrations", "List bounded integration status", "integrations"), read, func(ctx context.Context, in *integrationListInput) (*integrationListOutput, error) {
 		if s.opts.Integrations == nil {
 			return nil, errUnavailable("complete integration administration unavailable")

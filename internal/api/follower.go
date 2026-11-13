@@ -74,6 +74,9 @@ var followerOperations = map[string]FollowerClass{
 	"batchDeleteBlocklists":    FollowerForwarded,
 	"batchDeleteClientgroups":  FollowerForwarded,
 	"batchDeletePolicies":      FollowerForwarded,
+	// Integration objects are canonical objects like the rest (D400); their
+	// provider commands below are not.
+	"batchDeleteIntegrations": FollowerForwarded,
 	// Zone convenience commands (zones.command).
 	"upsertZoneRecord": FollowerForwarded,
 	"deleteZoneRecord": FollowerForwarded,
