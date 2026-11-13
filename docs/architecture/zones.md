@@ -649,11 +649,15 @@ own source goes ahead of the rotation, without moving its cursor, and a zone
 whose step just committed a lifecycle change that needs another step (its
 creation, a parent fence, the Preparing-to-Fencing CAS) ends the pass, so the
 next pass, on a fresh read, resumes at that zone, at most eight times in a row.
-Before, each of a new zone's three or four steps waited behind a step of every
-other zone, and each such step reconciles that zone and waits for its
-publication, so a new child took up to 12 s to answer on a loaded node without
-the race detector, and longer with more zones. Only the pass already running
-when the zone was created can still come first.
+Only the rest of the pass already running when the zone was created can still
+come first. Before, each of a new zone's three or four steps waited behind a
+step of every other zone, and each such step reconciles that zone and waits
+for its publication, so the wait grew with the number of zones: on a mounted node with 23 zones, without the race detector, a
+new child under its parent answered 4.8 to 13.2 s (median 9.8 s) after its
+creation before this order and 2.2 to 10.0 s (median 5.1 s) with it. What
+remains is the rest of the pass already running and the child's own steps,
+each a transaction and a publication wait (about 0.5 to 1 s each on a loaded
+runner).
 
 Until a new primary child's first publication, names at and below its apex
 answer SERVFAIL from the child's unavailable coverage (the longer routing
