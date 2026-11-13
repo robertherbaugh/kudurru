@@ -182,7 +182,7 @@ func commandWriteAttributes(k kindInfo, key store.Key, body map[string]any, exis
 		return attrs
 	case "Integration":
 		attrs := []rbac.Attributes{attribute(clusterScope)}
-		if integrationCredentialsChanged(body, existing) {
+		if integrationNeedsSecrets(body, existing) {
 			attrs = append(attrs, integrationSecretsAttributes(key))
 		}
 		return attrs

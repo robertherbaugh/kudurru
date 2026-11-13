@@ -34,7 +34,7 @@ the stored object the write is swapped against:
 ```mermaid
 flowchart LR
     Doc["Integration document (references only)"] --> Write["integrations.write"]
-    Write --> Creds{"spec.credentials bound or changed?"}
+    Write --> Creds{"spec.credentials bound or changed, or type/endpoint/TLS pin of bound credentials changed?"}
     Creds -->|yes| Secrets["integrations.secrets"]
     Creds -->|no| New
     Secrets --> New{"new object?"}
@@ -47,13 +47,19 @@ flowchart LR
 On SQLite the whole sequence runs in the root's current command: the
 original raw credential is re-authorized against the attributes the command
 derives from its own read (`integrations.write`, plus `integrations.secrets`
-when credentials change), the license cut is re-checked at commit, and the
+when credentials change or, while credentials are bound, `spec.type`,
+`spec.unifi.endpoint`, `spec.unifi.tlsFingerprint` or `spec.webhook.endpoint`
+changes), the license cut is re-checked at commit, and the
 store arms the cleanup finalizer of a `Delete` policy and writes the audit row
 in the same transaction. An enrolled follower forwards the write as the typed
 object member command. On Kubernetes the API reads the object, checks, and
 applies with `ExpectedResourceVersion`; the kube driver's audit spool records
-the write. A refusal never repeats a string of `spec.credentials`, so a value
-pasted into a reference field is not echoed, relayed or logged.
+the write. A validation failure that names `spec.credentials` is replaced by
+a fixed message with the field paths only (the validator prints the refused
+value quoted, so substring matching cannot be relied on), and every other
+refusal has each string of `spec.credentials` removed in its raw, Go-quoted
+and JSON-escaped forms, so a value pasted into a reference field is not
+echoed, relayed or logged.
 `GET /integrations/manifests` exposes the provider manifests and this
 driver's refusals (`cmd/kudurru/integration_manifests.go`), so a form can
 offer only what the host will run.

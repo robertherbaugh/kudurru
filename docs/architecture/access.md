@@ -1145,7 +1145,9 @@ reservation names its target release: the IAM administration verbs
 The integration administration verbs are in use (D400): `integrations.write`
 and `integrations.delete` guard Integration writes on the object routes, and
 `integrations.secrets` is checked besides `integrations.write` by a write that
-binds or changes `spec.credentials`, on the object the write is
+binds or changes `spec.credentials`, or that changes `spec.type`,
+`spec.unifi.endpoint`, `spec.unifi.tlsFingerprint` or `spec.webhook.endpoint`
+while credentials are bound, on the object the write is
 compare-and-swapped against (in the SQLite current command, on its own read). The source scan credits a handler
 check only through the known check helpers (`require`, `allowed`,
 `authorize`, `permission`, `zoneRequirement`, `servingHTTPCluster`) and
