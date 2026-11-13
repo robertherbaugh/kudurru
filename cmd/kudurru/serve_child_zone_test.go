@@ -273,8 +273,8 @@ func mountedParentAndChildZones(t *testing.T, cfg *config.Config, call mountedCa
 	// answer 0.5 to 4.1 s after the POST with this test's three zones
 	// (CORE-CHILD-RECONCILE mount02; 0.9 to 2.5 s before the driver
 	// stepped a zone being created ahead of its rotation, mount01, so with
-	// few zones the order hardly matters), and 2.2 to 10.0 s with 20 more
-	// zones on the node (mount03; 4.8 to 13.2 s before). Under the race
+	// few zones the order hardly matters), and 2.5 to 4.9 s with 20 more
+	// zones on the node (mount06; 3.4 to 14.6 s before). Under the race
 	// detector the shared bound above applies.
 	newChildBound := 15 * time.Second
 	if raceEnabled {
