@@ -133,13 +133,20 @@ func testEnrolledConflictResolution(t *testing.T, anchors *enrolledAnchors) {
 	apiC := &staticProcessClient{client: client, base: "http://" + c.Ports.API + api.BasePath, csrf: login.CSRF}
 	objects := zoneObjects(map[string]string{"seed": "192.0.2.42"})
 	apiA.request(t, http.MethodPost, "/objects/dnszones", objects[0], http.StatusCreated, nil)
+	// A new zone's own commits (status, lifecycle) keep landing for
+	// seconds; a command between one of them and the publication that
+	// serves it is refused 503 with no effect (e2e-final-8 of F28-OPEN7).
+	// The one-shot write follows once the source has been quiet.
+	enrolledQuietReview(t, apiA, 2*time.Second)
 	apiA.request(t, http.MethodPost, "/objects/dnsrecordsets", objects[1], http.StatusCreated, nil)
 	enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
 	if anchors != nil {
 		boot := anchors.status(apiA, func(s api.RootAnchorStatus) bool {
 			return s.Owner.Phase == "managed" && s.Updater.State == "running" && s.Updater.Next != nil && s.Updater.Next.After(time.Now().Add(50*time.Minute))
 		})
-		anchors.base, anchors.digest = anchors.root.TCP(anchorRootNormal), boot.Owner.Digest
+		anchors.settleBootstrap(primary)
+		anchors.digest = boot.Owner.Digest
+		anchors.awaitTCP(anchorRootNormal, 0, time.Second, "standalone bootstrap")
 		anchors.awaitValidated(primary, "standalone")
 	}
 	enrollment := func(c *staticProcessClient, ready func(api.ClusterEnrollmentInfo) bool) api.ClusterEnrollmentInfo {

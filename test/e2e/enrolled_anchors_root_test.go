@@ -257,6 +257,12 @@ const (
 // a refused anchor input answers SERVFAIL without it.
 const anchorRootUnanswered = "no name server of the zone answered"
 
+// anchorRootDeadline is the wrapped cause the resolver reports when the
+// root did not answer before its deadline. Only that cause classifies a
+// SERVFAIL as anchorProbeRootUnanswered: the resolver wraps a missing
+// address the same way.
+const anchorRootDeadline = "context deadline exceeded"
+
 // anchorValidatedProbe asks like anchorValidated and classifies the first
 // answer that was not validated.
 func anchorValidatedProbe(node string) (int, string) {
@@ -279,7 +285,7 @@ func anchorValidatedProbe(node string) (int, string) {
 				for _, o := range opt.Option {
 					if ede, ok := o.(*dns.EDNS0_EDE); ok {
 						why += fmt.Sprintf(" ede=%d %q", ede.InfoCode, ede.ExtraText)
-						unanswered = unanswered || strings.Contains(ede.ExtraText, anchorRootUnanswered)
+						unanswered = unanswered || (strings.Contains(ede.ExtraText, anchorRootUnanswered) && strings.HasSuffix(ede.ExtraText, anchorRootDeadline))
 					}
 				}
 			}

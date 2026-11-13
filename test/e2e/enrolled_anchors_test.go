@@ -72,6 +72,32 @@ type enrolledAnchors struct {
 	base     int32  // acquisitions the standalone bootstrap took
 }
 
+// settleBootstrap records the standalone bootstrap's root acquisitions as the
+// baseline of every later count, once the bootstrapped updater has scheduled
+// its next refresh (so it makes no acquisition for an hour). The bootstrap is
+// exactly one applied acquisition: an ordinary startup commit (the login, a
+// zone status) that lands while its reply is in flight makes the updater
+// discard that reply and acquire again (F28-EF-1), and the primary's
+// kudurru_root_anchor_updater_acquisitions_total counts each such race. So
+// the root must have answered exactly 1 + raced acquisitions, every one of
+// them in normal mode, with none failed or refused.
+func (e *enrolledAnchors) settleBootstrap(primary *kudurrutest.Node) {
+	e.t.Helper()
+	counts := map[string]int32{}
+	for _, outcome := range []string{"applied", "raced", "failed", "refused"} {
+		v, ok := scrapeGauge(e.t, primary.Ports.Metrics, "kudurru_root_anchor_updater_acquisitions_total", `outcome="`+outcome+`"`)
+		if !ok {
+			e.t.Fatal("the standalone primary does not export its updater acquisitions", outcome)
+		}
+		counts[outcome] = int32(v)
+	}
+	e.base = e.root.TCP(anchorRootNormal)
+	if counts["applied"] != 1 || counts["failed"] != 0 || counts["refused"] != 0 || e.base != 1+counts["raced"] || e.root.TotalTCP() != e.base {
+		e.t.Fatalf("standalone bootstrap: %d root acquisitions, updater counted %v (at %s: %s)", e.base, counts, time.Now().Format("15:04:05.000"), e.root.TCPLog())
+	}
+	e.t.Logf("standalone bootstrap: %d root acquisitions, %d of them raced", e.base, counts["raced"])
+}
+
 func newEnrolledAnchors(t *testing.T, recovery bool) *enrolledAnchors {
 	return &enrolledAnchors{t: t, root: newAnchorRoot(t), recovery: recovery}
 }
@@ -201,12 +227,14 @@ func (e *enrolledAnchors) awaitValidated(node *kudurrutest.Node, why string) {
 // node has published, every sample must be validated: a SERVFAIL, a wrong
 // answer or no answer at all (a timeout, a closed TCP connection) fails. The
 // only window allowed is the start of the process, before its first
-// publication: its listeners answer SERVFAIL until then (startup gap). A node
-// that is not validated when sampling stops fails as well. A SERVFAIL whose
-// extended error says that the stand-in root did not answer the node's
-// resolver (anchorRootUnanswered: the root, in the loaded test process, timed
-// out) is an upstream failure the node reports correctly; such samples are
-// counted and logged, not failed.
+// publication: its listeners answer SERVFAIL until then (startup gap), for at
+// most anchorStartupGapLimit in all. A node that is not validated when
+// sampling stops fails as well. A SERVFAIL whose extended error says that the
+// stand-in root did not answer the node's resolver before its deadline
+// (anchorRootUnanswered: the root, in the loaded test process, timed out) is
+// an upstream failure the node reports correctly: at most
+// anchorRootUnansweredLimit such samples, never two in a row, are logged
+// instead of failed.
 type validatedSamples struct {
 	samples, dnsOnly int  // judged samples, and those validated while DNS-only
 	failed           bool // a failing sample after the first publication, or not validated at stop
@@ -214,6 +242,16 @@ type validatedSamples struct {
 	startup          []validatedGap // non-validated runs before the first publication
 	unanswered       []string       // samples the stand-in root did not answer in time
 }
+
+// anchorStartupGapLimit bounds how long a node may answer without
+// validation before its first publication (0.8 to 2.0 s in the loaded runs
+// of F28-OPEN7). It is generic startup behavior, not specific to anchors,
+// and stays an open product item; the bound makes a regression there fail.
+const anchorStartupGapLimit = 5 * time.Second
+
+// anchorRootUnansweredLimit bounds the stand-in root timeouts one sampler
+// accepts (one in all the F28-OPEN7 runs; the others had none).
+const anchorRootUnansweredLimit = 2
 
 // validatedGap is a run of judged samples that were not validated, from its
 // first such sample to the next validated one.
@@ -233,8 +271,13 @@ func (g validatedGap) String() string {
 // Startup gaps (before the first publication) are logged.
 func (r validatedSamples) judge(t *testing.T, name string, dnsOnly bool) {
 	t.Helper()
+	var startup time.Duration
 	for _, g := range r.startup {
 		t.Logf("%s: startup answers before its first publication: %s", name, g)
+		startup += g.to.Sub(g.from)
+	}
+	if startup > anchorStartupGapLimit {
+		t.Fatalf("%s answered without validation for %s before its first publication, more than %s", name, startup.Round(time.Millisecond), anchorStartupGapLimit)
 	}
 	for _, u := range r.unanswered {
 		t.Logf("%s: the stand-in root did not answer the node's resolver: %s", name, u)
@@ -264,7 +307,7 @@ func (e *enrolledAnchors) sampleValidated(node *kudurrutest.Node) (stop func() v
 	}
 	go func() {
 		var r validatedSamples
-		answered, served := false, false
+		answered, served, lastUnanswered := false, false, false
 		var gap *validatedGap
 		fail := func(at time.Time, why string) {
 			if !r.failed {
@@ -302,7 +345,7 @@ func (e *enrolledAnchors) sampleValidated(node *kudurrutest.Node) (stop func() v
 					}
 				case kind == anchorProbeWrong:
 					fail(now, why)
-				case kind == anchorProbeRootUnanswered && served:
+				case kind == anchorProbeRootUnanswered && served && !lastUnanswered && len(r.unanswered) < anchorRootUnansweredLimit:
 					r.unanswered = append(r.unanswered, now.Format("15:04:05.000")+" "+why)
 				case served:
 					// After the first publication nothing but a validated
@@ -314,6 +357,7 @@ func (e *enrolledAnchors) sampleValidated(node *kudurrutest.Node) (stop func() v
 					}
 					gap.samples++
 				}
+				lastUnanswered = kind == anchorProbeRootUnanswered
 			}
 			time.Sleep(20 * time.Millisecond)
 		}

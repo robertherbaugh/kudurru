@@ -287,9 +287,18 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 	apiA.csrf = login.CSRF
 	objects := zoneObjects(map[string]string{"seed": "192.0.2.42"})
 	apiA.request(t, http.MethodPost, "/objects/dnszones", objects[0], http.StatusCreated, nil)
+	// A new zone's own commits (status, lifecycle) keep landing for
+	// seconds; a command between one of them and the publication that
+	// serves it is refused 503 with no effect (e2e-final-8 of F28-OPEN7).
+	// The one-shot write follows once the source has been quiet.
+	enrolledQuietReview(t, apiA, 2*time.Second)
 	apiA.request(t, http.MethodPost, "/objects/dnsrecordsets", objects[1], http.StatusCreated, nil)
 	for _, object := range enrolledUpdateZone() {
-		apiA.request(t, http.MethodPost, "/objects/"+map[string]string{"DNSZone": "dnszones", "DNSRecordSet": "dnsrecordsets"}[object.(map[string]any)["kind"].(string)], object, http.StatusCreated, nil)
+		kind := object.(map[string]any)["kind"].(string)
+		apiA.request(t, http.MethodPost, "/objects/"+map[string]string{"DNSZone": "dnszones", "DNSRecordSet": "dnsrecordsets"}[kind], object, http.StatusCreated, nil)
+		if kind == "DNSZone" {
+			enrolledQuietReview(t, apiA, 2*time.Second)
+		}
 	}
 	// The review below names the exact served source, so both zones'
 	// startup status writes must have landed first: activation refuses a
@@ -297,19 +306,13 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 	enrolledZoneObjectSettled(t, apiA, a.Ports.DNS, "dyn-test", "seed.dyn.test.", "192.0.2.100")
 	enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
 	if anchors != nil {
-		// The standalone primary bootstraps managed trust once. An ordinary
-		// commit (the login, the zone status) that lands while the reply is
-		// in flight makes it discard that reply and acquire again (F28-EF-1),
-		// so the bootstrap may take more than one acquisition; every later
-		// count is relative to it.
+		// The standalone primary bootstraps managed trust once; every
+		// later count is relative to it (settleBootstrap).
 		boot := anchors.status(apiA, func(s api.RootAnchorStatus) bool {
 			return s.Owner.Phase == "managed" && s.Updater.State == "running" && s.Updater.Next != nil && s.Updater.Next.After(time.Now().Add(50*time.Minute))
 		})
-		anchors.base = anchors.root.TCP(anchorRootNormal)
+		anchors.settleBootstrap(primary)
 		anchors.digest = boot.Owner.Digest
-		if anchors.base < 1 || anchors.base > 4 {
-			t.Fatal("standalone bootstrap acquisitions", anchors.base)
-		}
 		anchors.awaitTCP(anchorRootNormal, 0, time.Second, "standalone bootstrap")
 		anchors.owner(apiA, "standalone")
 		if boot.Pull != nil || boot.Supervisor.State != "not_running" || boot.Owner.NextRefresh == nil || boot.Owner.NextRefresh.Before(time.Now().Add(50*time.Minute)) {
