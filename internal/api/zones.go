@@ -211,8 +211,12 @@ func (s *Server) listCapturedZones(ctx context.Context) (*zoneListOutput, error)
 	noteZoneGroups(ctx, objects.Zones())
 	items := make([]ZoneSummary, 0, len(objects.Zones()))
 	for _, z := range objects.Zones() {
-		if !st.clusterAllowed && !s.allowed(ctx, "zones", "read", rbac.Scope{Kind: rbac.ScopeZone, Name: z.Name}) {
-			continue
+		if !st.clusterAllowed {
+			if ok, err := s.listAllowed(ctx, "zones", "read", rbac.Scope{Kind: rbac.ScopeZone, Name: z.Name}); err != nil {
+				return nil, err
+			} else if !ok {
+				continue
+			}
 		}
 		summary, err := s.capturedZoneSummary(ctx, z, objects.RecordSetsForZone(z.Name))
 		if err != nil {
@@ -482,8 +486,12 @@ func (s *Server) listZones(ctx context.Context, _ *struct{}) (*zoneListOutput, e
 	noteZoneGroups(ctx, zones)
 	items := make([]ZoneSummary, 0, len(zones))
 	for _, z := range zones {
-		if !st.clusterAllowed && !s.allowed(ctx, "zones", "read", rbac.Scope{Kind: rbac.ScopeZone, Name: z.Name}) {
-			continue
+		if !st.clusterAllowed {
+			if ok, err := s.listAllowed(ctx, "zones", "read", rbac.Scope{Kind: rbac.ScopeZone, Name: z.Name}); err != nil {
+				return nil, err
+			} else if !ok {
+				continue
+			}
 		}
 		items = append(items, s.localZoneSummary(z, counts[z.Name], managed[z.Name]))
 	}

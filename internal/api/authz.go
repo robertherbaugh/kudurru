@@ -236,19 +236,36 @@ func (s *Server) requireGroup(ctx context.Context, resource, verb string, sc rba
 }
 
 // allowed reports whether the principal holds resource.verb at sc,
-// without auditing (list filtering).
+// without auditing. An authorizer error is "not allowed": it serves
+// cluster-scope capability checks only. A list filter, whose zone scopes may
+// need a zone-group read, uses listAllowed, which reports the error.
 func (s *Server) allowed(ctx context.Context, resource, verb string, sc rbac.Scope) bool {
+	ok, err := s.listAllowed(ctx, resource, verb, sc)
+	return ok && err == nil
+}
+
+// listAllowed decides one listed item without auditing a denial (list
+// filtering). An item whose decision cannot be made, because the authorizer
+// or the zone group of its zone cannot be read, fails the whole list with
+// 503 (D385): a list never answers 200 with items silently left out. A
+// credential that ended meanwhile answers 401.
+func (s *Server) listAllowed(ctx context.Context, resource, verb string, sc rbac.Scope) (bool, error) {
 	p, ok := auth.PrincipalFrom(ctx)
 	if !ok {
-		return false
+		return false, errUnauthenticated()
 	}
 	st := stateFrom(ctx)
 	if st.clusterAllowed && st.allowedResource == resource && st.allowedVerb == verb {
-		return true
+		return true, nil
 	}
 	dec, err := s.authorize(ctx, p, resource, verb, sc, "")
-	_, current := auth.PrincipalFrom(ctx)
-	return current && err == nil && dec.Allowed
+	if _, current := auth.PrincipalFrom(ctx); !current {
+		return false, errUnauthenticated()
+	}
+	if err != nil {
+		return false, errUnavailable("authorizer: %v", err)
+	}
+	return dec.Allowed, nil
 }
 
 // auditDenied records a denied attempt (§11.4: denied attempts are audited

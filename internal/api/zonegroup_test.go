@@ -321,6 +321,49 @@ func TestZoneGroupUnreadableZoneIsUnavailable(t *testing.T) {
 	h.do(http.MethodGet, "/api/v1/zones/missing", "grouper", nil).want(http.StatusForbidden)
 }
 
+// TestZoneGroupUnreadableZoneFailsLists: a list item, or a GET /auth/me
+// verb, whose decision needs the group of a zone that cannot be read fails
+// the whole answer with 503 (D385). A list never answers 200 with the
+// items of that zone silently left out, and the permission matrix never
+// reports the outage as a missing permission.
+func TestZoneGroupUnreadableZoneFailsLists(t *testing.T) {
+	hook := &zoneGetHook{}
+	h := newHarness(t, func(o *Options) {
+		hook.Store = o.Store
+		o.Store = hook
+		o.Authorizer = apitest.Authorizer(zoneGroupBindings()...)
+		o.Roles = func(context.Context, auth.Principal) []string { return []string{"zone-admin@zone:example"} }
+	})
+	h.seed("api", groupZone("a", "a.example.", "prod"), groupZone("c", "c.example.", ""), groupZone("example", "example.com.", ""))
+	h.seed("api", recordSetObj("dns", "in-a", "a", ep("www.a.example", "A", "192.0.2.1")), recordSetObj("dns", "in-c", "c", ep("www.c.example", "A", "192.0.2.3")))
+	down := func(zone string) {
+		hook.reset(func(name string, _ int) error {
+			if name == zone {
+				return errors.New("apiserver unavailable")
+			}
+			return nil
+		})
+	}
+	for _, path := range []string{"/api/v1/objects/dnsrecordsets", "/api/v1/objects/dnsrecordsets?namespace=dns"} {
+		down("a")
+		h.do(http.MethodGet, path, "grouper", nil).want(http.StatusServiceUnavailable)
+	}
+	down("example")
+	h.do(http.MethodGet, "/api/v1/auth/me", "zoneadmin", nil).want(http.StatusServiceUnavailable)
+
+	hook.reset(nil)
+	var sets ObjectList
+	h.do(http.MethodGet, "/api/v1/objects/dnsrecordsets", "grouper", nil).want(http.StatusOK).json(&sets)
+	if len(sets.Items) != 1 {
+		t.Fatalf("group member lists %d record sets once the zone is readable, want the one of zone a", len(sets.Items))
+	}
+	var me Me
+	h.do(http.MethodGet, "/api/v1/auth/me", "zoneadmin", nil).want(http.StatusOK).json(&me)
+	if !slices.Contains(me.ScopedPermissions["zone:example"]["records"], "write") {
+		t.Fatalf("zone grant once the zone is readable: scoped=%v", me.ScopedPermissions)
+	}
+}
+
 // TestZoneDeletedDuringPutIsNotRecreated: a zone that an administrator
 // deletes while a zone-group member's or a zone-admin's PUT of it runs is
 // not created again by that PUT, whichever DNSZone read of the PUT the

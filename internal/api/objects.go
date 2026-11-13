@@ -312,8 +312,12 @@ func (s *Server) listObjects(ctx context.Context, in *listObjectsInput) (*object
 			// Decide each listed zone on the object shown (D385).
 			stateFrom(ctx).noteZoneGroup(z.Name, v1alpha1.ZoneGroupOf(z))
 		}
-		if !st.clusterAllowed && !s.allowed(ctx, k.resource, "read", objectScope(k, obj)) {
-			continue
+		if !st.clusterAllowed {
+			if ok, err := s.listAllowed(ctx, k.resource, "read", objectScope(k, obj)); err != nil {
+				return nil, err
+			} else if !ok {
+				continue
+			}
 		}
 		m, err := objectMap(k, obj)
 		if err != nil {

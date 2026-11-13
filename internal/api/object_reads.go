@@ -109,8 +109,12 @@ func (s *Server) listCapturedObjects(ctx context.Context, k kindInfo, in *listOb
 		if z, ok := obj.(*v1alpha1.DNSZone); ok {
 			stateFrom(ctx).noteZoneGroup(z.Name, v1alpha1.ZoneGroupOf(z))
 		}
-		if !stateFrom(ctx).clusterAllowed && !s.allowed(ctx, k.resource, "read", objectScope(k, obj)) {
-			continue
+		if !stateFrom(ctx).clusterAllowed {
+			if ok, err := s.listAllowed(ctx, k.resource, "read", objectScope(k, obj)); err != nil {
+				return nil, err
+			} else if !ok {
+				continue
+			}
 		}
 		key := store.KeyOf(obj)
 		if in.Continue != "" && (key.Namespace < after.NS || key.Namespace == after.NS && key.Name <= after.Name) {

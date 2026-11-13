@@ -291,12 +291,22 @@ func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 		// Every permission route answers 403 password_change_required.
 		return &meOutput{Body: out}, nil
 	}
+	// A verb whose decision cannot be made (the authorizer, or the zone group
+	// of a zone grant's zone, cannot be read) fails the answer with 503
+	// (D385): the matrix never reports an outage as a missing permission.
+	var undecided error
 	matrix := func(sc rbac.Scope) map[string][]string {
 		granted := map[string][]string{}
 		for _, res := range s.perms.ResourceNames() {
 			for _, verb := range s.perms.Resources[res] {
 				dec, err := s.authorize(ctx, p, res, verb, sc, "")
-				if err == nil && dec.Allowed {
+				if err != nil {
+					if undecided == nil {
+						undecided = err
+					}
+					continue
+				}
+				if dec.Allowed {
 					granted[res] = append(granted[res], verb)
 				}
 			}
@@ -319,6 +329,12 @@ func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 			out.ScopedPermissions = map[string]map[string][]string{}
 		}
 		out.ScopedPermissions[key] = matrix(g.Scope)
+	}
+	if _, current := auth.PrincipalFrom(ctx); !current {
+		return nil, errUnauthenticated()
+	}
+	if undecided != nil {
+		return nil, errUnavailable("authorizer: %v", undecided)
 	}
 	return &meOutput{Body: out}, nil
 }
