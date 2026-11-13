@@ -118,3 +118,85 @@ func TestCompilerCommitsClientGroupViews(t *testing.T) {
 		t.Fatalf("changed view %s", got)
 	}
 }
+
+// withDynamic commits base data, then adds one dynamic (RFC 2136) record to
+// the committed aggregate as an UPDATE would, and returns the new head.
+func withDynamic(t *testing.T, c *Compiler, z *public.DNSZone, in *zonestate.DesiredInputs, dynamic string) *zonestate.View {
+	t.Helper()
+	v := compile(t, c, blank(z), in, fixedNow)
+	rr, err := dns.NewRR(dynamic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := zonestate.FromRR(rr, zonestate.Provenance{Key: "key.", CredentialVersion: "v1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := *v.Aggregate
+	a.Records = append(append([]zonestate.Record(nil), a.Records...), r)
+	for i, r := range a.Records {
+		rr, _, _ := dns.UnpackRR(r.Wire, 0)
+		if soa, ok := rr.(*dns.SOA); ok {
+			soa.Serial++
+			a.Records[i], _ = zonestate.FromRR(soa, r.Provenance)
+		}
+	}
+	next := prepareView(t, &a, v.Head)
+	if _, err := BuildCommitted(context.Background(), next); err != nil {
+		t.Fatalf("the dynamic base does not build: %v", err)
+	}
+	return next
+}
+
+// A delegation or DNSSEC data a dynamic update added hides a client-group
+// view just as static data does. The compiler cannot see dynamic records in
+// its builder, so it must refuse such a view endpoint itself: committing the
+// view would make the committed build of the whole zone fail on every pass,
+// and no record set of the zone could commit again (D373, D403).
+func TestCompilerRefusesViewsHiddenByDynamicData(t *testing.T) {
+	for _, tc := range []struct {
+		name, dynamic string
+		view          public.Endpoint
+		outcome       string
+		reason        string
+		views         int
+	}{
+		{"delegation", "sub.example. 60 IN NS ns.other.net.", viewEndpoint("host.sub", "10.0.0.9", "lan"), "duplicated", public.ReasonOccluded, 0},
+		{"delegation at the name", "sub.example. 60 IN NS ns.other.net.", viewEndpoint("sub", "10.0.0.9", "lan"), "duplicated", public.ReasonOccluded, 0},
+		{"dnskey", "key.example. 60 IN DNSKEY 257 3 13 mdsswUyr3DPW132mOi8V9xESWE8jTo0dxCjjnopKl+GqJxpVXckHAeF+KkxLbxILfDLUT0rAK9iUzy1L53eKGQ==", viewEndpoint("nas", "10.0.0.9", "lan"), "withheld", public.ReasonInvalid, 0},
+		{"unrelated dynamic data", "dyn.example. 60 IN A 192.0.2.50", viewEndpoint("nas", "10.0.0.9", "lan"), "served", "", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			z := desiredZone()
+			c := NewCompiler(CompilerOptions{})
+			in := &zonestate.DesiredInputs{Zone: z, RecordSets: []*public.DNSRecordSet{desiredSet("base", endpoint("www", "203.0.113.10"))}, Complete: true}
+			dynamic := withDynamic(t, c, z, in, tc.dynamic)
+			in.RecordSets = append(in.RecordSets, desiredSet("views", tc.view), desiredSet("unrelated", endpoint("other", "192.0.2.77")))
+			result, err := c.Project(context.Background(), dynamic, in, fixedNow.Add(3600e9))
+			if err != nil {
+				t.Fatal(err)
+			}
+			outcomes := map[string]zonestate.SourceDiagnostic{}
+			for _, d := range result.Diagnostics {
+				outcomes[d.SourceID] = d
+			}
+			if o := outcomes["DNSRecordSet/dns/views"]; o.Outcome != tc.outcome || !strings.HasPrefix(o.Reason, tc.reason) {
+				t.Fatalf("view record set %+v, want %s %q", o, tc.outcome, tc.reason)
+			}
+			if o := outcomes["DNSRecordSet/dns/unrelated"]; o.Outcome != "served" {
+				t.Fatalf("unrelated record set %+v", o)
+			}
+			next := prepareView(t, result.Aggregate, dynamic.Head)
+			if len(next.Aggregate.Views) != tc.views {
+				t.Fatalf("committed views %+v, want %d", next.Aggregate.Views, tc.views)
+			}
+			model, err := BuildCommitted(context.Background(), next)
+			if err != nil {
+				t.Fatalf("the committed build of the zone fails: %v", err)
+			}
+			if res := model.Lookup("other.example.", dns.TypeA); res.Kind != zone.Success {
+				t.Fatalf("the unrelated record set did not commit: %v", res.Kind)
+			}
+		})
+	}
+}

@@ -314,6 +314,10 @@ type Builder struct {
 	viewOwners map[viewIdentity]string
 	viewErrs   map[string]field.ErrorList
 	viewServed map[string]bool
+	// viewFence reports why data outside the builder (the dynamic records
+	// of a committed primary) hides view data at an owner name, or ""
+	// (FenceViews).
+	viewFence func(owner string) string
 }
 
 // identity is the duplicate-detection key of an endpoint within a zone:

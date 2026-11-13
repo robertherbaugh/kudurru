@@ -140,6 +140,23 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 	if err != nil {
 		return nil, err
 	}
+	if apex, err := dynamicupdate.CanonicalName(dz.Spec.ZoneName); err == nil && !ownership.Empty() {
+		// The dynamic records join the static projection only after this
+		// compiler (ReplaceStatic), so the builder cannot see a delegation
+		// or DNSSEC data an UPDATE added. Refuse the view endpoints they
+		// hide here, as the builder does for static data: committing them
+		// would fail the committed build of the whole zone (D373, D403).
+		builder.FenceViews(func(owner string) string {
+			cut, signed := ownership.ViewHidden(owner, apex)
+			switch {
+			case signed:
+				return public.ReasonInvalid + ": client-group views are not served in a DNSSEC-signed zone; a dynamic update added DNSSEC records (D403)"
+			case cut != "":
+				return fmt.Sprintf("%s: %s is at or below the delegation at %s, which a dynamic update (RFC 2136) added, and would never be served", public.ReasonOccluded, owner, cut)
+			}
+			return ""
+		})
+	}
 	// The takeover authorization is asked for once, at the first endpoint
 	// that collides with dynamic ownership, or below when none does.
 	takeover, asked := false, false
