@@ -174,7 +174,7 @@ type remotePolicy struct {
 // without any ownership marker (the API has no field for one); every other
 // policy, a forwarded domain included, claims its whole name.
 func (p *Provider) Records(ctx context.Context, d kinds.Destination) (host.RemoteSnapshot, error) {
-	rows, claimed, _, err := p.policies(ctx, d, &pollBudget{})
+	rows, claimed, err := p.resolvedPolicies(ctx, d, &pollBudget{})
 	if err != nil {
 		return host.RemoteSnapshot{}, err
 	}
@@ -196,9 +196,20 @@ func (p *Provider) policies(ctx context.Context, d kinds.Destination, budget *po
 	if d != expected {
 		return nil, nil, siteRow{}, ErrInvalid
 	}
-	site, _, err := p.identity(ctx, budget)
-	if err != nil {
-		return nil, nil, siteRow{}, err
+	// The listing the host plans from resolves the site; the apply's own
+	// rereads use that immutable site ID (a removed site answers 404).
+	p.mu.RLock()
+	cached := p.mirrorSite
+	p.mu.RUnlock()
+	var site siteRow
+	if cached != nil {
+		site = *cached
+	} else {
+		resolved, _, err := p.identity(ctx, budget)
+		if err != nil {
+			return nil, nil, siteRow{}, err
+		}
+		site = resolved
 	}
 	listed, err := list(ctx, p, budget, "/sites/"+site.ID+"/dns/policies", maxPolicies, func(r policyRow) string { return r.ID })
 	if err != nil {
@@ -253,6 +264,22 @@ func (p *Provider) policies(ctx context.Context, d kinds.Destination, budget *po
 	}
 	slices.SortFunc(claimed, func(a, b kinds.RecordKey) int { return strings.Compare(a.Name, b.Name) })
 	return rows, claimed, site, nil
+}
+
+// resolvedPolicies lists the site's policies after resolving the site afresh
+// and remembers it for the applies planned from this listing.
+func (p *Provider) resolvedPolicies(ctx context.Context, d kinds.Destination, budget *pollBudget) ([]remotePolicy, []kinds.RecordKey, error) {
+	p.mu.Lock()
+	p.mirrorSite = nil
+	p.mu.Unlock()
+	rows, claimed, site, err := p.policies(ctx, d, budget)
+	if err != nil {
+		return nil, nil, err
+	}
+	p.mu.Lock()
+	p.mirrorSite = &site
+	p.mu.Unlock()
+	return rows, claimed, nil
 }
 
 // Adjust maps selected records onto what a DNS policy can hold. Records
