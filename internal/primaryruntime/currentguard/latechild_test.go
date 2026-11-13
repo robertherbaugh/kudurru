@@ -94,8 +94,10 @@ func TestActualLateChildFencesWhenBothSourcesAdvanced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fenced.Spec.Source.ResourceVersion != childNow.ResourceVersion {
-		t.Fatalf("the fence did not record the child's current source: %+v", fenced.Spec.Source)
+	// The fence never advances the receipt (D404); the child's own exact
+	// realignment records the current source below.
+	if fenced.Spec.Source != child.Spec.Source || len(fenced.Spec.Parents) != 1 || fenced.Spec.Parents[0].CommitSequence == 0 {
+		t.Fatalf("the fence changed more than the child's obligation: source %+v (receipt %+v), parents %+v", fenced.Spec.Source, child.Spec.Source, fenced.Spec.Parents)
 	}
 	if _, err := f.r.Reconcile(ctx, parent.Spec.Zone); err != nil {
 		t.Fatal("parent did not reconcile once its child was fenced:", err)
@@ -103,8 +105,8 @@ func TestActualLateChildFencesWhenBothSourcesAdvanced(t *testing.T) {
 	if _, err := f.r.Reconcile(ctx, child.Spec.Zone); err != nil {
 		t.Fatal("child did not activate:", err)
 	}
-	if l, err := f.r.ReadLifecycle(ctx, child.Spec.Zone); err != nil || l.Spec.Phase != zk.PhaseActive {
-		t.Fatal("child not active:", err)
+	if l, err := f.r.ReadLifecycle(ctx, child.Spec.Zone); err != nil || l.Spec.Phase != zk.PhaseActive || l.Spec.Source.ResourceVersion != childNow.ResourceVersion {
+		t.Fatalf("child not active on its current source (resourceVersion %s): %v %+v", childNow.ResourceVersion, err, l)
 	}
 }
 
@@ -124,20 +126,21 @@ func TestActualLateChildIsNotFencedIntoAReplacedParent(t *testing.T) {
 	}
 }
 
-// The guard relaxes the revision check for the boundary reasons only, and
-// keeps the source identity check for them: every other reason still needs
-// the recorded revision, and a boundary command still needs the same,
-// undeleted source zone of the same type and apex.
+// The guard relaxes the revision check only for a check the adapter marked
+// Boundary (D404) with a boundary reason, and keeps the source identity
+// check for it: an unmarked check with the same reason, and every other
+// reason, still need the recorded revision, and a boundary check still
+// needs the same, undeleted source zone of the same type and apex.
 func TestActualBackgroundGuardRelaxesOnlyBoundaryRevisions(t *testing.T) {
 	f := newSQLiteFixture(t)
 	parent := f.active("parent", "example.")
 	recorded := parent.DeepCopy()
 	edited := f.advance("parent")
 	policy := f.view(parent).Aggregate.Policy
-	check := func(reason string, source *public.DNSZone, withPolicy bool) error {
+	checkMarked := func(reason string, source *public.DNSZone, withPolicy, boundary bool) error {
 		var err error
 		commandErr := f.s.Command(f.ctx(), f.fence.Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
-			c := sqliteadapter.BackgroundCheck{Lifecycle: recorded.DeepCopy(), Source: source, Reason: reason}
+			c := sqliteadapter.BackgroundCheck{Lifecycle: recorded.DeepCopy(), Source: source, Reason: reason, Boundary: boundary}
 			if withPolicy {
 				p := policy
 				c.Policy = &p
@@ -150,7 +153,13 @@ func TestActualBackgroundGuardRelaxesOnlyBoundaryRevisions(t *testing.T) {
 		}
 		return err
 	}
+	check := func(reason string, source *public.DNSZone, withPolicy bool) error {
+		return checkMarked(reason, source, withPolicy, true)
+	}
 	for _, reason := range []string{"parent-fence", "late-parent-fence", "parent-release"} {
+		if err := checkMarked(reason, edited.DeepCopy(), true, false); !errors.Is(err, pr.ErrConflict) {
+			t.Errorf("%s without the adapter's boundary mark accepted a source past the recorded revision: %v", reason, err)
+		}
 		if err := check(reason, edited.DeepCopy(), true); err != nil {
 			t.Errorf("%s refused a parent whose source only advanced: %v", reason, err)
 		}
@@ -176,10 +185,22 @@ func TestActualBackgroundGuardRelaxesOnlyBoundaryRevisions(t *testing.T) {
 			t.Errorf("%s accepted a deleting source: %v", reason, err)
 		}
 	}
-	if err := check("source-reconcile", edited.DeepCopy(), true); !errors.Is(err, pr.ErrConflict) {
+	if err := checkMarked("source-reconcile", edited.DeepCopy(), true, false); !errors.Is(err, pr.ErrConflict) {
 		t.Error("source-reconcile accepted a source past the recorded revision:", err)
 	}
-	if err := check("lifecycle", edited.DeepCopy(), false); !errors.Is(err, pr.ErrConflict) {
+	if err := check("source-reconcile", edited.DeepCopy(), true); !errors.Is(err, pr.ErrUnavailable) {
+		t.Error("the boundary mark was honored for source-reconcile:", err)
+	}
+	if err := checkMarked("lifecycle", edited.DeepCopy(), false, false); !errors.Is(err, pr.ErrConflict) {
 		t.Error("lifecycle accepted a source past the recorded revision:", err)
+	}
+	if err := check("lifecycle", edited.DeepCopy(), false); err != nil {
+		t.Error("an obligation-only lifecycle check refused the same zone:", err)
+	}
+	deleting := edited.DeepCopy()
+	now := metav1.Now()
+	deleting.DeletionTimestamp = &now
+	if err := check("lifecycle", deleting, false); !errors.Is(err, pr.ErrConflict) {
+		t.Error("an obligation-only lifecycle check accepted a deleting source:", err)
 	}
 }

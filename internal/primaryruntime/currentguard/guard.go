@@ -214,19 +214,22 @@ func (o *Owner) checkBackground(ctx context.Context, tx *sqlite.CommandTx, p Pin
 		if err != nil {
 			return err
 		}
-		// A boundary command (a child's fence in this parent's head, or its
-		// release) changes nothing in the head but that child's system
-		// reservation, and nothing below reads the source's policy for it.
-		// It needs this exact lifecycle and the same undeleted source zone
-		// (checked here and below), not the source's latest revision, as the
-		// adapter's boundarySource does. Requiring the revision deadlocked a
-		// parent whose DNSZone moved on while a child was unfenced: its own
-		// refresh needs every desired child fenced (CORE-OPEN4).
-		exact := token.ResourceVersion == l.Spec.Source.ResourceVersion && token.IntentDigest == l.Spec.Source.IntentDigest
-		if !exact && boundary(c.Reason) && c.Source.DeletionTimestamp.IsZero() {
-			exact = true
+		// A boundary-only transaction (D404, marked by the adapter: a
+		// parent's fence or release of one child, or the child's
+		// obligation-only lifecycle transition) needs the same zone, not
+		// the exact receipt: the receipt may be behind a status or intent
+		// write. The flag is honored only for those reasons and refused for
+		// any other; every other transaction needs the exact receipt.
+		receipt := token.ResourceVersion == l.Spec.Source.ResourceVersion && token.IntentDigest == l.Spec.Source.IntentDigest
+		if c.Boundary {
+			switch c.Reason {
+			case "lifecycle", "parent-fence", "late-parent-fence", "parent-release":
+				receipt = receipt || sqliteadapter.SameBoundaryZone(l, c.Source)
+			default:
+				return pr.ErrUnavailable
+			}
 		}
-		if c.Source.Name != l.Spec.Zone.ObjectName || token.UID != l.Spec.Source.UID || !exact || l.Spec.Source.Removed {
+		if c.Source.Name != l.Spec.Zone.ObjectName || token.UID != l.Spec.Source.UID || !receipt || l.Spec.Source.Removed {
 			return pr.ErrConflict
 		}
 		if !retiring && (string(c.Source.UID) != l.Spec.Zone.UID || c.Source.Spec.Type != l.Spec.Type || c.Source.Spec.ZoneName != l.Spec.Zone.Apex) {
@@ -272,9 +275,4 @@ func (o *Owner) checkBackground(ctx context.Context, tx *sqlite.CommandTx, p Pin
 	default:
 		return pr.ErrUnavailable
 	}
-}
-
-// boundary reports the reasons of a child's boundary command in its parent.
-func boundary(reason string) bool {
-	return reason == "parent-fence" || reason == "late-parent-fence" || reason == "parent-release"
 }

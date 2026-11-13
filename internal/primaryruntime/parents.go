@@ -9,6 +9,7 @@ import (
 	"github.com/miekg/dns"
 	zk "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/dynamicupdate"
+	"github.com/robertherbaugh/kudurru/internal/primaryzone"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/zonestate"
 )
@@ -78,6 +79,12 @@ func (r *Runtime) FenceParents(ctx context.Context, id zk.ZoneID) (*zk.ZoneLifec
 		}
 		if l.Spec.Phase == zk.PhasePreparing {
 			next, _ := nextPhase(l, zk.PhaseFencing)
+			// A phase change is not a boundary transition (D404): it keeps the
+			// exact receipt check, so carry the source observed now, as the
+			// driver's own Preparing-to-Fencing CAS does. A status write or
+			// edit since the Preparing receipt would otherwise refuse it for
+			// good; the transaction rechecks the observation exactly.
+			next.Spec.Source = r.observedSource(ctx, l)
 			l, err = r.Transition(ctx, l, next)
 			if conflicts(err) {
 				continue
@@ -143,7 +150,6 @@ func (r *Runtime) FenceParents(ctx context.Context, id zk.ZoneID) (*zk.ZoneLifec
 			continue
 		}
 		next.Spec.Sequence++
-		next.Spec.Source = r.currentSource(ctx, l)
 		out, err := r.Transition(ctx, l, next)
 		if conflicts(err) {
 			continue
@@ -282,4 +288,28 @@ func (r *Runtime) releaseParent(ctx context.Context, p zk.ParentFence) (*zk.Zone
 		return nil, nil, false, ErrConflict
 	}
 	return parent.DeepCopy(), v, false, nil
+}
+
+// observedSource is the source of l's desired DNSZone now, for a phase
+// transition to record with the exact receipt check (the realignment D404
+// leaves exact). A zone that cannot be read, or that is gone, replaced,
+// retyped or moved, keeps l's recorded source, and the transaction refuses
+// or retires it as before.
+func (r *Runtime) observedSource(ctx context.Context, l *zk.ZoneLifecycle) zk.LifecycleSource {
+	if l.Spec.Source.Removed || r.o.Reader == nil {
+		return l.Spec.Source
+	}
+	in, err := r.o.Reader.ReadDesired(ctx, l.Spec.Zone)
+	if err != nil || in == nil || !in.Complete || in.Zone == nil {
+		return l.Spec.Source
+	}
+	z := in.Zone
+	if z.Name != l.Spec.Zone.ObjectName || string(z.UID) != l.Spec.Zone.UID || z.Spec.Type != l.Spec.Type || canonical(z.Spec.ZoneName) != l.Spec.Zone.Apex {
+		return l.Spec.Source
+	}
+	token, err := primaryzone.SourceToken(z)
+	if err != nil || token.UID != l.Spec.Source.UID {
+		return l.Spec.Source
+	}
+	return zk.LifecycleSource{UID: token.UID, ResourceVersion: token.ResourceVersion, IntentDigest: token.IntentDigest}
 }

@@ -26,6 +26,35 @@ func readLifecycle(ctx context.Context, tx *sqlite.CommandTx, name string) (*zk.
 	return &l, nil
 }
 func source(ctx context.Context, tx *sqlite.CommandTx, l *zk.ZoneLifecycle) (*public.DNSZone, error) {
+	return readSource(ctx, tx, l, false)
+}
+
+// boundarySource is source for a command that changes only a parent/child
+// routing boundary (D404): a parent's system reservation for one child (the
+// parent-fence, late-parent-fence and parent-release admissions, see
+// boundaryCommand; candidate admits them only when nothing else in the
+// parent head changes) or a child's parent obligations (a lifecycle
+// transition that changes nothing but Sequence and Parents, see
+// boundaryTransition). Such a command neither reads nor records the zone's
+// configuration, so it needs the same zone, not the exact receipt: the exact
+// receipt still qualifies, and otherwise the same object name, UID, apex and
+// type, a DNSZone that is not being deleted, and a lifecycle source that is
+// not removed. The receipt's resourceVersion and intent digest may be behind
+// the DNSZone. Every committed-status write advances the resourceVersion,
+// and realigning a receipt is itself a lifecycle CAS that checks the
+// complete membership, which needs exactly this boundary: with the exact
+// check a parent behind its DNSZone could never fence a new child, and a
+// child behind its DNSZone could never be fenced, so both zones stayed
+// unavailable until a restart. A boundary command never advances the
+// receipt; the driver realigns it afterwards with the exact check (the
+// Preparing-to-Fencing CAS, Reconcile, a nonprimary refresh). The production
+// guard applies the same rule when the adapter marks its check
+// BackgroundCheck.Boundary.
+func boundarySource(ctx context.Context, tx *sqlite.CommandTx, l *zk.ZoneLifecycle) (*public.DNSZone, error) {
+	return readSource(ctx, tx, l, true)
+}
+
+func readSource(ctx context.Context, tx *sqlite.CommandTx, l *zk.ZoneLifecycle, boundary bool) (*public.DNSZone, error) {
 	var z public.DNSZone
 	err := tx.Get(ctx, store.Key{Kind: "DNSZone", Name: l.Spec.Zone.ObjectName}, &z)
 	if l.Spec.Source.Removed {
@@ -47,8 +76,13 @@ func source(ctx context.Context, tx *sqlite.CommandTx, l *zk.ZoneLifecycle) (*pu
 	if err != nil {
 		return nil, err
 	}
-	if token.UID != l.Spec.Source.UID || token.ResourceVersion != l.Spec.Source.ResourceVersion || token.IntentDigest != l.Spec.Source.IntentDigest {
+	if token.UID != l.Spec.Source.UID {
 		return nil, pr.ErrConflict
+	}
+	if token.ResourceVersion != l.Spec.Source.ResourceVersion || token.IntentDigest != l.Spec.Source.IntentDigest {
+		if !boundary || !SameBoundaryZone(l, &z) {
+			return nil, pr.ErrConflict
+		}
 	}
 	if l.Spec.Phase != zk.PhaseRetiring && l.Spec.Phase != zk.PhaseRetired && (z.Spec.Type != l.Spec.Type || canonical(z.Spec.ZoneName) != l.Spec.Zone.Apex) {
 		return nil, pr.ErrConflict
@@ -56,32 +90,16 @@ func source(ctx context.Context, tx *sqlite.CommandTx, l *zk.ZoneLifecycle) (*pu
 	return &z, nil
 }
 
-// boundarySource is the source check of both zones of a boundary command (a
-// child's parent fence or its release). candidate admits such a command
-// only when it changes nothing in the parent head but that child's system
-// reservation, so it needs both zones' exact lifecycles (checked by the
-// caller) and the same source zones (UID, type and apex), not their latest
-// DNSZone revisions. Requiring the revisions deadlocked a parent/child pair
-// for good (CORE-OPEN4): once either DNSZone had moved on (a status write,
-// an edit) the child could not be fenced, and neither zone could record
-// the new revision first: an Active parent's transition needs every desired
-// child fenced, and the driver fences a child before it refreshes the
-// child's source. The fence's own child transition records the child's
-// revision; the parent's reconcile records the parent's once the child is
-// fenced. A removed source keeps the exact check.
-func boundarySource(ctx context.Context, tx *sqlite.CommandTx, l *zk.ZoneLifecycle) (*public.DNSZone, error) {
-	z, err := source(ctx, tx, l)
-	if !errors.Is(err, pr.ErrConflict) || l.Spec.Source.Removed {
-		return z, err
-	}
-	var current public.DNSZone
-	if err := tx.Get(ctx, store.Key{Kind: "DNSZone", Name: l.Spec.Zone.ObjectName}, &current); err != nil {
-		return nil, err
-	}
-	if string(current.UID) != l.Spec.Zone.UID || current.UID == "" || string(current.UID) != l.Spec.Source.UID || current.Spec.Type != l.Spec.Type || canonical(current.Spec.ZoneName) != l.Spec.Zone.Apex || !current.DeletionTimestamp.IsZero() {
-		return nil, pr.ErrConflict
-	}
-	return &current, nil
+// SameBoundaryZone reports whether DNSZone z is still lifecycle l's zone for
+// a boundary command whose receipt is behind z (D404): the same object name
+// and UID as the lifecycle and its source, the same type and apex, a
+// DNSZone that is not being deleted, and a source that is not removed. The
+// adapter (boundarySource) and the production guard (BackgroundCheck with
+// Boundary set) apply this one rule.
+func SameBoundaryZone(l *zk.ZoneLifecycle, z *public.DNSZone) bool {
+	return l != nil && z != nil && !l.Spec.Source.Removed && z.UID != "" && z.Name == l.Spec.Zone.ObjectName &&
+		string(z.UID) == l.Spec.Zone.UID && string(z.UID) == l.Spec.Source.UID &&
+		z.Spec.Type == l.Spec.Type && canonical(z.Spec.ZoneName) == l.Spec.Zone.Apex && z.DeletionTimestamp.IsZero()
 }
 
 func (a *Adapter) decode(ctx context.Context, tx *sqlite.CommandTx, head *zk.ZoneState) (*zonestate.View, error) {
