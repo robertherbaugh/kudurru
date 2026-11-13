@@ -93,20 +93,12 @@ func (p *Provider) getPath(ctx context.Context, budget *pollBudget, path string)
 }
 
 // write sends one mutation (D401). It is never retried here or by the
-// transport: a request that may have reached the controller returns an error
-// that refused() does not recognize, and callers record it as uncertain.
+// transport; callers treat every error as an uncertain outcome.
 func (p *Provider) write(ctx context.Context, budget *pollBudget, method, path string, payload []byte) ([]byte, error) {
 	if method != http.MethodPost && method != http.MethodPut && method != http.MethodDelete || len(payload) > 64<<10 {
 		return nil, ErrInvalid
 	}
 	return p.exchange(ctx, budget, method, path, payload)
-}
-
-// refused reports an answer that proves the controller did not apply a
-// mutation: a client error other than a timeout.
-func refused(err error) bool {
-	var response *responseError
-	return errors.As(err, &response) && response.code >= 400 && response.code < 500 && response.code != http.StatusRequestTimeout
 }
 
 func (p *Provider) exchange(ctx context.Context, budget *pollBudget, method, path string, payload []byte) ([]byte, error) {

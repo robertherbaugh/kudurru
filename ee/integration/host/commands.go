@@ -10,6 +10,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/robertherbaugh/kudurru/ee/integration"
+	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
 )
 
 // Check performs a bounded read-only provider check under its active lease.
@@ -380,7 +381,12 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 			}
 			if roles.Reviewed && c.original == nil {
 				// Polling never publishes a reviewed-only provider (D401).
+				// An intent that stays pending is reported, and does not stop
+				// the observation that polling exists for.
 				result, err = h.recoverPending(ctx, j, f, g)
+				if errors.Is(err, ledger.ErrPending) && result != nil && result.Pending > 0 {
+					err = nil
+				}
 			} else {
 				result, err = h.sync(ctx, j, f, g, c.expected)
 			}
