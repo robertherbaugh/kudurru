@@ -30,23 +30,28 @@ Use [Diagnosis](diagnosis.md) for linked configuration problems and [Tools](tool
 On a SQLite node, **Cluster membership** shows this node's enrollment: its
 mode (`standalone`, `primary` or `follower`), the cluster ID and the member
 ID. The button next to the title depends on the mode. Each wizard reads the
-current state when it opens and sends exactly what you confirmed: if you read
-the state again or untick "I reviewed", confirm again before you finish. It
-sends its command once, and you cannot close the dialog until it answers: if the reviewed state changed (`409`) or the answer was lost or
-says that the outcome is unknown, it sends nothing more; close it, check the
-enrollment and decide again. The commands need the `admin` role.
+current state when it opens. It sends exactly what you confirmed. If you read
+the state again or clear "I reviewed", confirm again before you finish.
 
-- **Activate cluster** (a dormant standalone node): review the enrollment,
-  give the member name and the internal address (`host:port` of the internal
-  listener, port 8082 by default) and a reason, then activate. Restart
-  kudurru on that node afterwards; until then followers cannot join.
-- **Invite a member** (the primary): review the enrollment, give the new
-  member's name and internal address, how long the invitation is valid (2, 5
-  or 9 minutes, counted on your computer's clock; the primary accepts at most
-  ten on its own clock) and a reason, then issue it. A `409` refusal means
-  that the primary's state changed, that the name or address is already used
-  or reserved by an earlier member, or that the expiry is too far ahead or
-  already past on the primary's clock; start a new wizard. The next screen shows the
+The wizard sends its command one time. You cannot close the dialog until the
+command answers. In three cases the wizard sends nothing more. The reviewed
+state changed (`409`), the answer is lost, or the answer says that the
+outcome is unknown. Then close the dialog, check the enrollment and decide
+again. The commands need the `admin` role.
+
+- **Activate cluster** (a dormant standalone node): review the enrollment.
+  Give the member name, the internal address and a reason, then activate.
+  The internal address is the `host:port` of the internal listener (port 8082
+  by default). Then restart kudurru on that node. Until then, followers
+  cannot join.
+- **Invite a member** (the primary): review the enrollment. Give the new
+  member's name, its internal address, the validity of the invitation and a
+  reason, then issue it. The validity is 2, 5 or 9 minutes on your
+  computer's clock. The primary accepts at most ten minutes on its own clock.
+  A `409` refusal has one of three causes. The primary's state changed. An
+  earlier member uses or reserves the name or the address. Or the expiry is
+  too far ahead or already past on the primary's clock. Then start a new
+  wizard. The next screen shows the
   invitation once, with the `kudurru cluster join --offline` command and the
   Docker Compose changes for the new node. Copy the invitation over a private
   channel; closing the dialog drops it and it is not shown again. If the join
@@ -57,15 +62,17 @@ enrollment and decide again. The commands need the `admin` role.
   is eligible (its primary unreachable for two pull intervals) and why not.
   Type the node's name and a reason to promote it. Promote one follower only.
 
-**Root trust anchors** shows this node's managed root trust-anchor state
-(`kudurru cluster anchors`): the owner and its keys, the updater and the root
-check, the last pull from the primary, and every state that needs you, with
-a link to what to do. That includes a member that refuses the primary's
-trust-anchor state and a member fenced behind its term. Every member shows
-its own state; open the dashboard of each member. A fenced or conflicted
-member closes its API, so its dashboard shows only that it is fenced (or in
-conflict) and links the procedure; read its `kudurru_root_anchor_*` metrics
-or stop it and run `kudurru anchors status --offline`.
+**Root trust anchors** shows the managed root trust-anchor state of this
+node (`kudurru cluster anchors`). It shows the owner and its keys, the updater
+and the root check, and the last pull from the primary. It also shows every
+state that needs you, with a link to what to do. That includes a member that
+refuses the trust-anchor state of the primary and a member fenced behind its
+term. Every member shows its own state, so open the dashboard of each member.
+
+A fenced or conflicted member closes its API. Its dashboard shows only that
+it is fenced or in conflict, with a link to the procedure. Read its
+`kudurru_root_anchor_*` metrics, or stop it and run
+`kudurru anchors status --offline`.
 
 [Enrolled SQLite cluster](../../deploy/sqlite-cluster.md) describes every step
 with the CLI.

@@ -52,7 +52,7 @@ with its own key, so that column is the same in every row:
 | Local users (`POST /iam/users`, password resets) | Yes | `read_only` | `primary_required` | `user_management_unavailable` |
 | Role bindings through the API (`/iam/rolebindings`, [rolebindings.md](rolebindings.md)) | Yes | `read_only` | `primary_required` | `unavailable`: change the `RoleBinding` objects with `kubectl` |
 | Cluster enrollment, invitations and promotion (`kudurru cluster ...`) | Yes | `unavailable` | Promotion runs on the follower; activation and invitations answer `409 conflict` | `unavailable` |
-| Background integrations ([integrations.md](integrations.md)) | Yes, with a license key | Reads; commands answer `read_only` | Reads; commands answer `primary_required` | `unavailable`: integrations do not run on the Kubernetes store |
+| Background integrations ([integrations.md](integrations.md)) | Yes, with a license key | Reads; commands answer `read_only` | Reads; commands answer `primary_required` | Yes, with a license key, for Cloudflare and UniFi inventory in the release namespace; check, preview, sync and actions run on the replica that holds the Integration's Lease, and another replica answers `503` with `hint.holder` |
 
 Static nodes accept no credential changes through the API. To use the CLI
 against one, start it with a token you generated yourself

@@ -40,10 +40,11 @@ More pages, by task:
 | Rewrite, filter and check forwarded answers (DNS64, rebinding protection) | [response-processing.md](response-processing.md) |
 | Limit client networks and refuse query types | [dns-controls.md](dns-controls.md) |
 | Match clients by MAC address, hostname or client ID | [client-identity.md](client-identity.md) |
-| Run Cloudflare, UniFi and webhook integrations on SQLite | [integrations.md](integrations.md) |
+| Run Cloudflare, UniFi and webhook integrations on SQLite, and Cloudflare and UniFi on Kubernetes | [integrations.md](integrations.md) |
 | Create, replace and delete role bindings; role bindings on Kubernetes | [rolebindings.md](rolebindings.md) |
 | Move the identity data of a Kubernetes installation to v0.2 | [iam-upgrade.md](iam-upgrade.md) |
 | Provide and rotate the VRRP HMAC key files of the keepalived supervisor | [vrrp-keys.md](vrrp-keys.md) |
+| Show your organization's name, logos and accent color (Enterprise) | [custom-branding.md](custom-branding.md) |
 
 Built-in DHCPv4 is disabled by default and runs on Linux with either store:
 SQLite standalone or three-node quorum failover, or the Kubernetes store with

@@ -142,6 +142,10 @@ For Helm, Compose with more than one node, and packages, see the
 node, upgrade one node at a time. Wait until the node is ready before you
 go to the next.
 
+Before you upgrade from version 0.1 to version 0.2, read the
+[upgrade notes for 0.1.x](../../deploy/runbooks.md#upgrading-from-01x). They
+give the order of the steps.
+
 ## Recover a lost admin password
 
 You need access to the host. The command uses a local socket and no
