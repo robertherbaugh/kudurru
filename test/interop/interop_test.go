@@ -24,7 +24,11 @@ import (
 
 var kudurruBin string
 
-func TestMain(m *testing.M) { os.Exit(kudurrutest.MainBuild(m, &kudurruBin)) }
+func TestMain(m *testing.M) {
+	code := kudurrutest.MainBuild(m, &kudurruBin)
+	removeLicensedInterop()
+	os.Exit(code)
+}
 
 const (
 	keyName = "xfr-key"
