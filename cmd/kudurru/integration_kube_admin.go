@@ -180,7 +180,7 @@ func (r *kubeIntegrationRuntime) IntegrationExecute(ctx context.Context, in api.
 	if !ok {
 		return nil, integrationAdminError(store.ErrNotFound)
 	}
-	if string(reviewed.GetUID()) != in.Review.UID || reviewed.GetResourceVersion() != in.Review.Revision {
+	if string(reviewed.GetUID()) != in.Review.UID {
 		return nil, integrationAdminError(ih.ErrFenced)
 	}
 	owner := ih.InstanceID{ClusterID: r.opts.Store.Info().ClusterID, Namespace: in.Namespace, Name: in.Name, UID: in.Review.UID}
@@ -196,6 +196,12 @@ func (r *kubeIntegrationRuntime) IntegrationExecute(ctx context.Context, in api.
 	}
 	if err != nil {
 		return nil, integrationAdminError(err)
+	}
+	// The host accepts a review of an earlier revision that differs from its
+	// frame only by status writes (D384). The cached object must still be
+	// the reviewed revision or that frame's.
+	if rv := reviewed.GetResourceVersion(); rv != in.Review.Revision && rv != capture.Revision() {
+		return nil, integrationAdminError(ih.ErrFenced)
 	}
 	ctx, guard, err := capture.Bind(ctx)
 	if err != nil {

@@ -3,6 +3,7 @@ package host
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"sync/atomic"
 
 	"github.com/robertherbaugh/kudurru/ee/integration"
@@ -23,6 +24,16 @@ type CommandCapture struct {
 }
 
 type commandCaptureKey struct{}
+
+// Revision is the resource version of the frame this capture runs on. It
+// equals the reviewed revision, or is a status-only successor of it (D384).
+// Root compares its own read of the object against either.
+func (c *CommandCapture) Revision() string {
+	if c == nil || c.frame.instance == nil {
+		return ""
+	}
+	return c.frame.instance.definition.ResourceVersion
+}
 
 func (*CommandCapture) String() string { return "private integration command capture" }
 
@@ -45,8 +56,12 @@ func (h *Host) CaptureCommand(ctx context.Context, id InstanceID, revision strin
 		return nil, ErrUnavailable
 	}
 	// A terminating job takes no operator command: what it may still do is
-	// decided by the deletion policy, not by a review (D367).
-	if j.mode != GuardNormal || j.frame.instance.definition.ResourceVersion != revision || j.guard.IntegrationResourceVersion != revision {
+	// decided by the deletion policy, not by a review (D367). A review of an
+	// earlier revision that differs from the frame only by status writes
+	// reviewed the same spec (D384); the command still runs on, and every
+	// effect is still fenced by, the current frame and guard.
+	current := j.frame.instance.definition.ResourceVersion
+	if j.mode != GuardNormal || j.guard.IntegrationResourceVersion != current || revision != current && !slices.Contains(j.statusPredecessors, revision) {
 		return nil, ErrFenced
 	}
 	return &CommandCapture{host: h, job: j, frame: j.frame, guard: ExecutionGuard{Ledger: j.guard, BundleID: j.frame.input.BundleID}, lease: j.leaseCtx, origin: ctx}, nil
