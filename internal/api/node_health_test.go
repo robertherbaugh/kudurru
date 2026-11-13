@@ -119,6 +119,13 @@ func TestNodeHealthDiscoveryAndMissingTransport(t *testing.T) {
 			if got.errKey() != KeyUnavailable || got.m()["error"].(map[string]any)["message"] != tc.want {
 				t.Fatalf("error = %s", got.Body.String())
 			}
+			// A node without the peer transport, or a peer without an
+			// internal address, is a deployment limit: the answer says what
+			// provides the transport (G21-11).
+			hint, _ := got.m()["error"].(map[string]any)["hint"].(string)
+			if transport := tc.name == "no client" || tc.name == "no address"; transport != strings.Contains(hint, "listeners.internal.tokenFile") {
+				t.Fatalf("hint = %q", hint)
+			}
 			// Self health never depends on discovery or peer transport.
 			h.do(http.MethodGet, "/api/v1/nodes/node-a/health", "admin", nil).want(http.StatusOK)
 		})
