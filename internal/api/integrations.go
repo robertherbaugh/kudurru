@@ -135,6 +135,10 @@ type IntegrationSummary struct {
 	Reason              string     `json:"reason"`
 	Leader              bool       `json:"leader"`
 	LastSync            *time.Time `json:"lastSync,omitempty"`
+	// InventorySource is the source ID this incarnation's inventory devices
+	// carry in GET /inventory, so a reader can name the Integration that
+	// reported a device (D397).
+	InventorySource string `json:"inventorySource,omitempty" doc:"Inventory source ID of this incarnation (cluster, namespace, name and UID): the source of the devices it reports in GET /inventory."`
 }
 
 // IntegrationReleaseResult acknowledges a committed release. The object is

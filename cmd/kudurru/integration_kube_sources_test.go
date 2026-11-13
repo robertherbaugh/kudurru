@@ -345,6 +345,7 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 		c := meta.FindStatusCondition(current.Status.Conditions, "Ready")
 		return c != nil && c.Status == metav1.ConditionTrue && c.ObservedGeneration == current.Generation
 	})
+	sources := map[string]string{}
 	for name, cfg := range byName {
 		kubeAwait(t, 30*time.Second, name+" lists the instance as Ready", func() bool {
 			status, body := env.api(t, cfg, http.MethodGet, "/integrations?namespace=default", nil)
@@ -358,6 +359,12 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 		status, body := env.api(t, cfg, http.MethodGet, "/integrations/default/inventory", nil)
 		if status != http.StatusOK || body["uid"] != string(current.UID) || body["type"] != "unifi" {
 			t.Fatal(name, "get", status, body)
+		}
+		// Every replica names the same inventory source for the incarnation.
+		if source, _ := body["inventorySource"].(string); !strings.HasPrefix(source, "integration-") || sources[source] == "" && len(sources) > 0 {
+			t.Fatal(name, "inventorySource", body["inventorySource"], sources)
+		} else {
+			sources[source] = name
 		}
 	}
 	if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "inventory"}, &current); err != nil {

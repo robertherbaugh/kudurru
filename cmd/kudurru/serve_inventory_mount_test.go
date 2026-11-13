@@ -336,6 +336,13 @@ func TestRunServeSQLiteInventoryAPIAndLeaseMACs(t *testing.T) {
 	if body.Node != cfg.Node.Name || body.Generation == 0 {
 		t.Fatalf("inventory envelope: node=%q generation=%d", body.Node, body.Generation)
 	}
+	// The Integration's summary names the source its devices carry, so a
+	// reader (the dashboard inventory view) can link a device to it.
+	var summary api.IntegrationSummary
+	inventoryAwait(t, c, base+"/integrations/default/hostname", 10*time.Second, "integration summary", &summary, func() bool { return summary.UID != "" })
+	if official := inventoryByKey(body)[inventoryOfficialID]; summary.InventorySource == "" || summary.InventorySource != official.Source {
+		t.Fatalf("integration inventorySource %q, device source %q", summary.InventorySource, official.Source)
+	}
 	awaitInventoryDNS(t, cfg, "192.0.2.100", "leased.test.", false)
 
 	expiry := time.Now().Add(time.Hour).Unix()

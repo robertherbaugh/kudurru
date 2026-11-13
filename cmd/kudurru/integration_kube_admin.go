@@ -101,6 +101,7 @@ func (r *kubeIntegrationRuntime) IntegrationGet(_ context.Context, namespace, na
 // and Leader from this replica's host.
 func (r *kubeIntegrationRuntime) kubeIntegrationSummary(d *public.Integration, statuses []ih.InstanceStatus) api.IntegrationSummary {
 	out := api.IntegrationSummary{Namespace: d.Namespace, Name: d.Name, UID: string(d.UID), Revision: d.ResourceVersion, Type: d.Spec.Type, Suspended: d.Spec.Suspend, DeletionPolicy: d.Spec.DeletionPolicy, Phase: "Unknown", Reason: "NoMatchingObservation"}
+	out.InventorySource = ih.SourceID(kinds.Owner{ClusterID: r.opts.Store.Info().ClusterID, Namespace: d.Namespace, Name: d.Name, UID: string(d.UID)})
 	if out.DeletionPolicy == "" {
 		out.DeletionPolicy = public.IntegrationDeletionRetain
 	}

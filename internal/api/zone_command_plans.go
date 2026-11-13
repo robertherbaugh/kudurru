@@ -347,7 +347,7 @@ func (s *Server) commandUpsertZoneRecord(ctx context.Context, in *upsertRecordIn
 		}
 		replaced := false
 		for i, cur := range desired.Spec.Endpoints {
-			if sameOwner(cur.DNSName, ep.DNSName, z.Spec.ZoneName) && strings.EqualFold(cur.RecordType, ep.RecordType) && cur.SetIdentifier == ep.SetIdentifier {
+			if sameEndpoint(cur, ep, z.Spec.ZoneName) {
 				desired.Spec.Endpoints[i], replaced = ep, true
 				break
 			}
@@ -368,7 +368,7 @@ func (s *Server) commandUpsertZoneRecord(ctx context.Context, in *upsertRecordIn
 			}
 			record := recordOf(written, ep)
 			for _, cur := range written.Spec.Endpoints {
-				if sameOwner(cur.DNSName, ep.DNSName, z.Spec.ZoneName) && strings.EqualFold(cur.RecordType, ep.RecordType) && cur.SetIdentifier == ep.SetIdentifier {
+				if sameEndpoint(cur, ep, z.Spec.ZoneName) {
 					record = recordOf(written, cur)
 					break
 				}
@@ -411,7 +411,7 @@ func (s *Server) commandDeleteZoneRecord(ctx context.Context, in *deleteRecordIn
 			desired := old.DeepCopy()
 			keep := desired.Spec.Endpoints[:0]
 			for _, ep := range desired.Spec.Endpoints {
-				if sameOwner(ep.DNSName, in.Name, z.Spec.ZoneName) && strings.EqualFold(ep.RecordType, in.Type) && (in.SetIdentifier == "" || ep.SetIdentifier == in.SetIdentifier) {
+				if sameOwner(ep.DNSName, in.Name, z.Spec.ZoneName) && strings.EqualFold(ep.RecordType, in.Type) && (in.SetIdentifier == "" || ep.SetIdentifier == in.SetIdentifier) && viewSelected(ep, in.View) {
 					continue
 				}
 				keep = append(keep, ep)

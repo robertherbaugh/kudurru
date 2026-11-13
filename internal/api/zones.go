@@ -321,6 +321,7 @@ type deleteRecordInput struct {
 	Type          string `path:"type" doc:"Record type, e.g. A."`
 	RecordSet     string `query:"recordSet" doc:"Only this DNSRecordSet (namespace/name or name)."`
 	SetIdentifier string `query:"setIdentifier"`
+	View          string `query:"view" json:"View,omitempty" maxLength:"253" doc:"Only endpoints of this view: public, a ClientGroup name, or - for the default endpoints without a view (D403). Empty: every view."`
 }
 
 type importInput struct {
@@ -790,6 +791,34 @@ func (s *Server) listZoneRecords(ctx context.Context, in *zonePathInput) (*zoneR
 	return &zoneRecordsOutput{Body: newList(items, "")}, nil
 }
 
+// endpointView is the endpoint's kudurru.view ("" for the default data).
+func endpointView(ep v1alpha1.Endpoint) string {
+	if ep.Kudurru == nil {
+		return ""
+	}
+	return ep.Kudurru.View
+}
+
+// sameEndpoint reports whether a and b are the same endpoint of zone apex
+// for upsertZoneRecord: one owner, type, set identifier and view. A
+// client-group view of a name is a separate RRset from its default data
+// (D403), so writing one never replaces the other.
+func sameEndpoint(a, b v1alpha1.Endpoint, apex string) bool {
+	return sameOwner(a.DNSName, b.DNSName, apex) && strings.EqualFold(a.RecordType, b.RecordType) && a.SetIdentifier == b.SetIdentifier && endpointView(a) == endpointView(b)
+}
+
+// viewSelected reports whether deleteZoneRecord's view filter selects ep:
+// "" every view, "-" the default data, otherwise exactly that view.
+func viewSelected(ep v1alpha1.Endpoint, view string) bool {
+	switch view {
+	case "":
+		return true
+	case "-":
+		return endpointView(ep) == ""
+	}
+	return endpointView(ep) == view
+}
+
 // normName lower-cases a DNS name and drops the trailing dot.
 func normName(n string) string { return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(n)), ".") }
 
@@ -896,7 +925,7 @@ func (s *Server) upsertRecordOnce(ctx context.Context, z *v1alpha1.DNSZone, k ki
 	}
 	replaced := false
 	for i, cur := range rs.Spec.Endpoints {
-		if sameOwner(cur.DNSName, ep.DNSName, z.Spec.ZoneName) && strings.EqualFold(cur.RecordType, ep.RecordType) && cur.SetIdentifier == ep.SetIdentifier {
+		if sameEndpoint(cur, ep, z.Spec.ZoneName) {
 			rs.Spec.Endpoints[i] = ep
 			replaced = true
 			break
@@ -927,7 +956,7 @@ func (s *Server) upsertRecordOnce(ctx context.Context, z *v1alpha1.DNSZone, k ki
 	}
 	out := recordOf(written, ep)
 	for _, cur := range written.Spec.Endpoints {
-		if sameOwner(cur.DNSName, ep.DNSName, z.Spec.ZoneName) && strings.EqualFold(cur.RecordType, ep.RecordType) && cur.SetIdentifier == ep.SetIdentifier {
+		if sameEndpoint(cur, ep, z.Spec.ZoneName) {
 			out = recordOf(written, cur)
 		}
 	}
@@ -985,7 +1014,7 @@ func (s *Server) deleteRecordOnce(ctx context.Context, z *v1alpha1.DNSZone, in *
 		keep := rs.Spec.Endpoints[:0:0]
 		for _, ep := range rs.Spec.Endpoints {
 			if sameOwner(ep.DNSName, in.Name, z.Spec.ZoneName) && strings.EqualFold(ep.RecordType, in.Type) &&
-				(in.SetIdentifier == "" || ep.SetIdentifier == in.SetIdentifier) {
+				(in.SetIdentifier == "" || ep.SetIdentifier == in.SetIdentifier) && viewSelected(ep, in.View) {
 				continue
 			}
 			keep = append(keep, ep)
