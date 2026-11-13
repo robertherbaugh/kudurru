@@ -1321,6 +1321,32 @@ Flags:
       --wait                         wait for final migration results (requires --apply)
 ```
 
+### kudurru import coredns
+
+Convert a single Corefile in CoreDNS 1.12 Corefile syntax (at most 4 MiB) without reading referenced files or fetching network sources. Use --file - for stdin. The default prints a partial conversion and a bounded loss report without contacting kudurru. Review unsupported semantics before --apply, which starts the existing tracked migration with normal validation, ownership and license checks. --wait requires --apply and returns the final result; without it, success means only that the job was accepted. Select objects and settings explicitly to limit application. Destination-derived targets (--use-vips or --update-nameservers) explicitly opt into destination access. No source credentials or file paths enter the plan or migration journal. Snippets defined in the Corefile are expanded; imported files, zone files and hosts files are never read.
+
+```text
+kudurru import coredns --file PATH [flags]
+```
+
+Flags:
+
+```text
+      --apply                        start a tracked background migration of the reviewed
+                                     conversion
+      --dry-run                      preview only (the default)
+  -f, --file string                  source Corefile; - reads stdin (maximum 4 MiB)
+      --nameserver strings           replace imported authority with these DNS names
+      --nameserver-address strings   generate authority from these serving IPs or VIPs
+      --select-object strings        import only these Kind/[namespace/]name objects (repeatable)
+      --select-setting strings       import only these top-level settings sections (repeatable)
+      --skip-settings                leave settings unchanged
+      --update-nameservers           derive authority from the destination context hostname or IP
+      --use-vips                     use discovered destination VIPs (explicit destination API
+                                     access)
+      --wait                         wait for final migration results (requires --apply)
+```
+
 ### kudurru import decommission
 
 Replace apex NS and SOA primary names in zones tracked by this migration, creating A/AAAA records when serving IPs or VIPs are selected. Preview using the destination hostname or IP by default, explicit --nameserver or --nameserver-address values, or --use-vips. Save the JSON output, then apply that reviewed file with --apply --plan-file. The source server is not shut down; update parent delegations and glue separately.

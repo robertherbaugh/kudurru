@@ -9733,7 +9733,8 @@
               "pihole",
               "technitium",
               "adguard",
-              "blocky"
+              "blocky",
+              "coredns"
             ],
             "type": "string"
           },

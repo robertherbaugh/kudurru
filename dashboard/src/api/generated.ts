@@ -5966,7 +5966,7 @@ export interface components {
         };
         SourceInfo: {
             /** @enum {string} */
-            type: "pihole" | "technitium" | "adguard" | "blocky";
+            type: "pihole" | "technitium" | "adguard" | "blocky" | "coredns";
             url?: string;
         };
         Stats: {

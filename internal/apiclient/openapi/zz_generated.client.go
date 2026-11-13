@@ -1269,6 +1269,7 @@ func (e SourceEntriesKind) Valid() bool {
 const (
 	SourceInfoTypeAdguard    SourceInfoType = "adguard"
 	SourceInfoTypeBlocky     SourceInfoType = "blocky"
+	SourceInfoTypeCoredns    SourceInfoType = "coredns"
 	SourceInfoTypePihole     SourceInfoType = "pihole"
 	SourceInfoTypeTechnitium SourceInfoType = "technitium"
 )
@@ -1279,6 +1280,8 @@ func (e SourceInfoType) Valid() bool {
 	case SourceInfoTypeAdguard:
 		return true
 	case SourceInfoTypeBlocky:
+		return true
+	case SourceInfoTypeCoredns:
 		return true
 	case SourceInfoTypePihole:
 		return true
