@@ -269,9 +269,10 @@ func mountedParentAndChildZones(t *testing.T, cfg *config.Config, call mountedCa
 	// come back. Any other answer, or a first answer later than
 	// newChildBound after the POST, fails; without the race detector
 	// silence fails too. Measured without the race detector on a shared
-	// runner at load 13 to 17: SERVFAIL from 0.1 to 1.2 s and the first
-	// answer 0.5 to 4.1 s after the POST with this test's three zones
-	// (CORE-CHILD-RECONCILE mount02; 0.9 to 2.5 s before the driver
+	// runner at load 13 to 20: SERVFAIL from 0.1 to 1.2 s and the first
+	// answer 0.5 to 5.2 s after the POST with this test's three zones
+	// (CORE-CHILD-RECONCILE mount02 and review-mount02; 13.8 to 27.2 s
+	// under the race detector, review-mount03; 0.9 to 2.5 s before the driver
 	// stepped a zone being created ahead of its rotation, mount01, so with
 	// few zones the order hardly matters), and 2.5 to 4.9 s with 20 more
 	// zones on the node (mount06; 3.4 to 14.6 s before). Under the race

@@ -833,16 +833,21 @@ The loop steps zones in a fair rotation, but a zone that is still being
 created steps first (D404): a desired zone without an active lifecycle of its
 own source goes ahead of the rotation, without moving its cursor, and a zone
 whose step just committed a lifecycle change that needs another step (its
-creation, a parent fence, the Preparing-to-Fencing CAS, and for a re-created
-zone the release or retirement of its old incarnation) ends the pass, so the
-next pass, on a fresh read, resumes at that zone, at most eight times in a row.
+creation, a parent fence, the Preparing-to-Fencing CAS, the source refresh of
+a nonprimary zone that is not yet active, and for a re-created zone the
+release or retirement of its old incarnation) ends the pass, so the next pass,
+on a fresh read, resumes at that zone, at most eight times in a row. The
+source refresh of an active nonprimary zone only wakes the loop: it repeats
+whenever that zone's `DNSZone` changes, and the focus would give such a zone
+up to nine steps for each step of the rest of the rotation.
 Only the rest of the pass already running when the zone was created can still
 come first. Before, each of a new zone's three or four steps waited behind a
 step of every other zone, and each such step reconciles that zone and waits
 for its publication, so the wait grew with the number of zones: on a mounted node with 23 zones, without the race detector on
 a shared runner, a new or re-created child under its parent answered 3.4 to
 14.6 s (median 4.5 s) after its creation before this order and 2.5 to 4.9 s
-(median 3.9 s) with it, in alternating runs. What remains is the rest of the
+(median 3.9 s) with it, in alternating runs; with only three zones at load
+13 to 20, 0.5 to 5.2 s. What remains is the rest of the
 pass already running and the child's own four or five steps, each one or more
 transactions, a publication wait and a fresh read (about 0.2 to 1 s each on a
 loaded runner).
