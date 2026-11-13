@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -176,19 +177,23 @@ func TestOriginalResourceSurvivesEquivalentAuthorityRefresh(t *testing.T) {
 }
 
 // A lost budget CAS (another instance reserved first; nothing was written)
-// is followed by a bounded number of fresh reservation attempts, each fenced
-// again; the request runs only once one is written. Other failures, and a
-// change of authority between attempts, end the request with no I/O
-// (D364, D384).
+// is followed by fresh reservation attempts, each fenced again, until one is
+// written or the request's own context ends (OperationTimeout, lease or job);
+// the request runs only once one is written. Other failures, and a change of
+// authority between attempts, end the request with no I/O (D364, D384).
 func TestProviderRequestReservesAgainAfterLostBudgetCAS(t *testing.T) {
 	h, j, _, st, _ := engineFixture(t)
 	p := providerHost{h, j}
 	_, g, _ := h.captured(j)
 	ctx := scoped(context.Background(), j, g)
+	var mu sync.Mutex
 	var writes, lose int
 	repo, err := ledger.New(ledger.Options{Reader: st, Write: func(ctx context.Context, _ ledger.Guard, o store.Object, a store.ApplyOptions) (store.Object, error) {
+		mu.Lock()
 		writes++
-		if writes <= lose {
+		lost := writes <= lose
+		mu.Unlock()
+		if lost {
 			return nil, store.ErrConflict
 		}
 		return st.Apply(ctx, o, a)
@@ -197,28 +202,53 @@ func TestProviderRequestReservesAgainAfterLostBudgetCAS(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.opts.Ledger = repo
+	count := func() int { mu.Lock(); defer mu.Unlock(); return writes }
+	set := func(w, l int) { mu.Lock(); writes, lose = w, l; mu.Unlock() }
 	called := 0
 	request := func(context.Context) error { called++; return nil }
-	lose = budgetAttempts - 1
-	if err := p.Request(ctx, "cloudflare", "all", true, request); err != nil || called != 1 || writes != budgetAttempts {
-		t.Fatal("lost budget CAS was not reserved again", err, called, writes)
+	// Many instances reserving together: a request that loses many rounds in
+	// a row still reserves and runs, with no fixed attempt bound.
+	set(0, 12)
+	if err := p.Request(ctx, "cloudflare", "all", true, request); err != nil || called != 1 || count() != 13 {
+		t.Fatal("lost budget CAS was not reserved again", err, called, count())
 	}
-	writes, lose = 0, budgetAttempts
-	if err := p.Request(ctx, "cloudflare", "all", true, request); !errors.Is(err, store.ErrConflict) || called != 1 || writes != budgetAttempts {
-		t.Fatal("unbounded or unreserved request", err, called, writes)
+	// A CAS that keeps losing ends with the request's own deadline: no
+	// unreserved request, and the growing pause bounds the attempts.
+	h.opts.OperationTimeout = 300 * time.Millisecond
+	set(0, 1<<30)
+	start := time.Now()
+	err = p.Request(ctx, "cloudflare", "all", true, request)
+	took := time.Since(start)
+	if !errors.Is(err, store.ErrConflict) || !errors.Is(err, context.DeadlineExceeded) || called != 1 || count() < 3 || count() > 12 || took < 250*time.Millisecond || took > 5*time.Second {
+		t.Fatal("unbounded or unreserved request", err, called, count(), took)
 	}
 	// A fence failure between attempts ends the request.
-	writes, lose = 0, 1
+	set(0, 1)
 	fenced := 0
 	h.opts.Fence = func(context.Context, ExecutionGuard) error {
-		if writes >= 1 {
+		if count() >= 1 {
 			fenced++
 			return errors.New("lease lost")
 		}
 		return nil
 	}
-	if err := p.Request(ctx, "cloudflare", "all", true, request); !errors.Is(err, ErrFenced) || called != 1 || writes != 1 || fenced == 0 {
-		t.Fatal("re-reservation skipped its fence", err, called, writes)
+	if err := p.Request(ctx, "cloudflare", "all", true, request); !errors.Is(err, ErrFenced) || called != 1 || count() != 1 || fenced == 0 {
+		t.Fatal("re-reservation skipped its fence", err, called, count())
+	}
+	// Canceling the job ends the attempts at once.
+	h.opts.Fence = func(context.Context, ExecutionGuard) error { return nil }
+	h.opts.OperationTimeout = time.Minute
+	set(0, 1<<30)
+	go func() {
+		for count() < 2 {
+			time.Sleep(time.Millisecond)
+		}
+		j.cancel()
+	}()
+	start = time.Now()
+	err = p.Request(ctx, "cloudflare", "all", true, request)
+	if err == nil || called != 1 || time.Since(start) > 5*time.Second {
+		t.Fatal("canceled job kept reserving", err, called, count(), time.Since(start))
 	}
 	page, err := st.List(t.Context(), "IntegrationBudget", store.ListOptions{})
 	if err != nil || len(page.Items) != 1 {

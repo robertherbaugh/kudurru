@@ -127,7 +127,7 @@ Every actual provider request, including a retry or batch fallback, must enter
 the host's request adapter with its original operation context. A cluster-wide
 Cloudflare budget survives token/instance replacement. A reservation that loses
 the budget's compare-and-swap to another instance is attempted again, fenced,
-at most four times in all. Rate limits and temporary
+after a growing pause, until the request's own deadline. Rate limits and temporary
 failures use bounded backoff only when explicitly classified temporary or
 rate-limited. Fencing, refused, permanent and unclassified failures wait for
 changed input or an explicit command; no refused command is automatically replayed. Preview binds all destinations, and sync rejects a changed
@@ -247,11 +247,15 @@ Integration and source checks are reads just before the write, not part of
 it; a multi-row forget can stop part way; and remote provider effects are not
 atomic with any store write, as on SQLite. The shared request budget is one
 Secret written by exact CAS, and a lost CAS writes nothing; the request then
-makes up to three more fresh reservation attempts, each after a pause of 10
-to 50 ms and its own fence (a reservation is commutative and idempotent by its
-ID, D364), and fails if all four lose. Without them two instances starting
-together on two replicas collided on the budget's first write and the loser's
-setup failed, leaving it inert until its object changed. No request is sent
+makes fresh reservation attempts, each after a jittered pause that doubles
+from 10 ms to at most 250 ms and its own fence (a reservation is commutative
+and idempotent by its ID, D364), until one is written or the request's own
+context ends: its operation timeout, or the cancellation of its lease or job.
+Every lost round lets at least one contender through, so any number of
+instances reserving together all settle. Without this, instances starting
+together on two replicas collided on the budget's first write and a loser's
+setup failed, leaving it inert until its object changed; a fixed bound of four
+attempts still left one of four instances inert. No request is sent
 unreserved. The Lease
 proof is holder identity, acquire time and transition count, and the identity
 is the node name: two live processes that share a name (a force-deleted

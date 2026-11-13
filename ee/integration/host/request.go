@@ -127,31 +127,43 @@ func (h *Host) RequestResource(ctx context.Context, expected ledger.Guard) (any,
 	return s.original.input.Resource, nil
 }
 
-// budgetAttempts bounds the fresh reservation attempts of one request.
-const budgetAttempts = 4
+// budgetPauseFirst and budgetPauseMax bound the pause between two fresh
+// reservation attempts of one request: it doubles per lost CAS from the
+// first to the maximum, with jitter in its upper half.
+const (
+	budgetPauseFirst = 10 * time.Millisecond
+	budgetPauseMax   = 250 * time.Millisecond
+)
 
 // reserve makes the request's budget reservation. ReserveBudget writes once
 // by exact CAS and never retries; a lost CAS (store.ErrConflict) means
 // another instance, on this or another replica, reserved first and nothing
 // was written. A reservation is commutative and idempotent by its ID, so the
-// request makes a bounded number of fresh explicit attempts (D364, D384),
-// each after a short jittered pause and its own fence. Any other failure,
+// request makes fresh explicit attempts (D364, D384) until one is written or
+// its own context ends: the request's OperationTimeout, or the cancellation
+// of its lease or job. Each attempt follows a growing jittered pause and its
+// own fence, so every lost round lets at least one contender through and any
+// number of instances that reserve together all settle. Any other failure,
 // including an unknown outcome, is returned at once. No provider request is
 // sent without a reservation.
 func (p providerHost) reserve(ctx context.Context, g ExecutionGuard, c ledger.BudgetCharge) error {
+	pause := budgetPauseFirst
 	for attempt := 1; ; attempt++ {
 		_, err := p.h.opts.Ledger.ReserveBudget(ctx, g.Ledger, c)
-		if err == nil || !errors.Is(err, store.ErrConflict) || attempt == budgetAttempts {
+		if err == nil || !errors.Is(err, store.ErrConflict) {
 			return err
 		}
-		pause := time.Duration(10+kindsDigest(fmt.Sprintf("%s/%d", c.ID, attempt))%40) * time.Millisecond
+		jittered := pause/2 + time.Duration(kindsDigest(fmt.Sprintf("%s/%d", c.ID, attempt))%uint64(pause/2+1))
+		timer := time.NewTimer(jittered)
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(pause):
+			timer.Stop()
+			return errors.Join(err, ctx.Err())
+		case <-timer.C:
 		}
 		if err := p.h.fence(ctx, p.j, g); err != nil {
 			return err
 		}
+		pause = min(2*pause, budgetPauseMax)
 	}
 }
