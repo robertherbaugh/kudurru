@@ -2,8 +2,11 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +21,61 @@ import (
 // pastedValue stands for a credential value an operator pasted into a
 // reference field by mistake. No answer may repeat it.
 const pastedValue = "pasted-credential-value-0123456789"
+
+// echoValues are pasted values the validator prints escaped (a trailing
+// newline from a pasted token or a YAML block scalar, a tab, a quote, a
+// backslash, a control character), or short ones. None may be repeated in
+// any form.
+var echoValues = []string{
+	"trailing-newline-token-0123456789\n",
+	`pa"ss\word-with-quote-0123456789`,
+	"tab\tsecret-0123456789",
+	"ctl\x01secret-0123456789",
+	"abc!5",
+	"geheim-pässwörd-0123456789",
+}
+
+// assertNoEcho fails when any string of the JSON answer body repeats value
+// as sent, as Go quotes it or as JSON escapes it.
+func assertNoEcho(t *testing.T, body, value string) {
+	t.Helper()
+	var decoded any
+	if err := json.Unmarshal([]byte(body), &decoded); err != nil {
+		t.Fatalf("answer is not JSON: %v", err)
+	}
+	quoted := strconv.Quote(value)
+	encoded, _ := json.Marshal(value)
+	forms := []string{value, quoted[1 : len(quoted)-1], string(encoded[1 : len(encoded)-1])}
+	var walk func(any)
+	walk = func(v any) {
+		switch x := v.(type) {
+		case map[string]any:
+			for _, y := range x {
+				walk(y)
+			}
+		case []any:
+			for _, y := range x {
+				walk(y)
+			}
+		case string:
+			for _, f := range forms {
+				if strings.Contains(x, f) {
+					t.Fatalf("answer repeats pasted value %q: %s", value, body)
+				}
+			}
+		}
+	}
+	walk(decoded)
+}
+
+// unifiDoc is a UniFi Integration that presents apiKey to endpoint.
+func unifiDoc(name, endpoint string, suspend bool) map[string]any {
+	return map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "Integration",
+		"metadata": map[string]any{"name": name, "namespace": "default"},
+		"spec": map[string]any{"type": "unifi", "suspend": suspend,
+			"credentials": map[string]any{"apiKey": map[string]any{"env": "UNIFI_KEY"}},
+			"unifi":       map[string]any{"endpoint": endpoint}}}
+}
 
 // integrationWriterAuthorizer holds integrations.write but not
 // integrations.secrets for user "writer", as a Kubernetes ClusterRole that
@@ -90,6 +148,23 @@ func runIntegrationObjectWrites(t *testing.T, h *harness) {
 	// A value is never accepted, and the refusal does not repeat it.
 	noEcho(h.do(http.MethodPut, path, "admin", integrationDoc("edge", map[string]any{"apiToken": map[string]any{"value": pastedValue}}, false)).want(http.StatusBadRequest))
 	noEcho(h.do(http.MethodPut, path, "admin", integrationDoc("edge", map[string]any{"apiToken": map[string]any{"env": pastedValue + "!"}}, false)).want(http.StatusBadRequest))
+	for _, v := range echoValues {
+		doc := integrationDoc("edge", map[string]any{"apiToken": map[string]any{"env": v}}, false)
+		r := h.do(http.MethodPut, path, "admin", doc).want(http.StatusBadRequest)
+		assertNoEcho(t, r.Body.String(), v)
+		if r.errKey() != KeyInvalid || !slices.Contains(r.m()["error"].(map[string]any)["fields"].([]any), any("spec.credentials.apiToken.env")) {
+			t.Fatalf("refusal of %q does not name the field: %s", v, r.Body.String())
+		}
+		r = h.do(http.MethodPost, "/api/v1/apply", "admin", []any{doc}, "Content-Type", "application/json").want(http.StatusOK)
+		assertNoEcho(t, r.Body.String(), v)
+		var applied struct {
+			Items []ApplyResult `json:"items"`
+		}
+		r.json(&applied)
+		if len(applied.Items) != 1 || applied.Items[0].Result != ResultError || applied.Items[0].ErrorKey != KeyInvalid {
+			t.Fatalf("apply of %q: %s", v, r.Body.String())
+		}
+	}
 	if integrationExists(t, h, key) {
 		t.Fatal("an invalid document stored the Integration")
 	}
@@ -135,6 +210,60 @@ func runIntegrationObjectWrites(t *testing.T, h *harness) {
 	h.do(http.MethodDelete, path, "writer", nil, "If-Match", rv).want(http.StatusNoContent)
 	if integrationExists(t, h, key) {
 		t.Fatal("deleted Integration survived")
+	}
+
+	// Moving where a bound credential is presented is a binding change: a
+	// writer without integrations.secrets may suspend the instance but not
+	// point it at another server.
+	h.srv.opts.License = license.Unrestricted()
+	uniPath := "/api/v1/objects/integrations/default/uni"
+	uniKey := store.Key{Kind: "Integration", Namespace: "default", Name: "uni"}
+	rv = h.do(http.MethodPut, uniPath, "admin", unifiDoc("uni", "https://controller.example.com", false)).want(http.StatusCreated).Header().Get("ETag")
+	if r := h.do(http.MethodPut, uniPath, "writer", unifiDoc("uni", "https://attacker.example.net", false), "If-Match", rv).want(http.StatusForbidden); !strings.Contains(r.Body.String(), "secrets") {
+		t.Fatalf("endpoint change without integrations.secrets: %s", r.Body.String())
+	}
+	moved := unifiDoc("uni", "https://controller.example.com", false)
+	moved["spec"].(map[string]any)["unifi"].(map[string]any)["tlsFingerprint"] = strings.Repeat("ab", 32)
+	h.do(http.MethodPut, uniPath, "writer", moved, "If-Match", rv).want(http.StatusForbidden)
+	var unchanged public.Integration
+	if err := h.srv.opts.Store.Get(t.Context(), uniKey, &unchanged); err != nil || unchanged.Spec.UniFi.Endpoint != "https://controller.example.com" || unchanged.Spec.UniFi.TLSFingerprint != "" {
+		t.Fatalf("refused endpoint change was stored: %v %+v", err, unchanged.Spec.UniFi)
+	}
+	rv = h.do(http.MethodPut, uniPath, "writer", unifiDoc("uni", "https://controller.example.com", true), "If-Match", rv).want(http.StatusOK).Header().Get("ETag")
+	rv = h.do(http.MethodPut, uniPath, "admin", unifiDoc("uni", "https://controller2.example.com", true), "If-Match", rv).want(http.StatusOK).Header().Get("ETag")
+	if rv == "" {
+		t.Fatal("endpoint change by a holder of integrations.secrets returned no revision")
+	}
+
+	// POST /apply writes an Integration with the same checks.
+	var applied struct {
+		Items []ApplyResult `json:"items"`
+	}
+	h.do(http.MethodPost, "/api/v1/apply", "writer", []any{integrationDoc("applied", token, false)}, "Content-Type", "application/json").want(http.StatusOK).json(&applied)
+	if len(applied.Items) != 1 || applied.Items[0].Result != ResultError || applied.Items[0].ErrorKey != KeyForbidden {
+		t.Fatalf("apply binding a credential without integrations.secrets: %+v", applied.Items)
+	}
+	h.do(http.MethodPost, "/api/v1/apply", "admin", []any{integrationDoc("applied", token, false)}, "Content-Type", "application/json").want(http.StatusOK).json(&applied)
+	if len(applied.Items) != 1 || applied.Items[0].Result != ResultCreated || applied.Items[0].ResourceVersion == "" {
+		t.Fatalf("apply of an Integration: %+v", applied.Items)
+	}
+	h.do(http.MethodPost, "/api/v1/apply", "writer", []any{integrationDoc("applied", token, true)}, "Content-Type", "application/json").want(http.StatusOK).json(&applied)
+	if len(applied.Items) != 1 || applied.Items[0].Result != ResultUpdated {
+		t.Fatalf("apply suspending an Integration: %+v", applied.Items)
+	}
+
+	// POST /integrations:batchDelete needs integrations.delete and removes
+	// each named Integration.
+	var processed Processed
+	h.do(http.MethodPost, "/api/v1/integrations:batchDelete", "operator", map[string]any{"names": []string{"uni", "applied"}, "namespace": "default"}).want(http.StatusForbidden)
+	h.do(http.MethodPost, "/api/v1/integrations:batchDelete", "writer", map[string]any{"names": []string{"uni", "applied", "missing"}, "namespace": "default"}).want(http.StatusOK).json(&processed)
+	if len(processed.Processed.Success) != 2 || len(processed.Processed.Errors) != 1 || processed.Processed.Errors[0].Item != "default/missing" {
+		t.Fatalf("batch delete: %+v", processed)
+	}
+	for _, name := range []string{"uni", "applied"} {
+		if integrationExists(t, h, store.Key{Kind: "Integration", Namespace: "default", Name: name}) {
+			t.Fatalf("batch-deleted Integration %s survived", name)
+		}
 	}
 }
 
@@ -198,9 +327,76 @@ func TestIntegrationObjectCommandAdmission(t *testing.T) {
 	if _, err := write(integrationDoc("edge", map[string]any{"apiToken": map[string]any{"env": pastedValue + "!"}}, false), ""); err == nil || strings.Contains(err.Error(), pastedValue) {
 		t.Fatalf("command refusal repeats a pasted value: %v", err)
 	}
+	for _, v := range echoValues {
+		_, err := write(integrationDoc("edge", map[string]any{"apiToken": map[string]any{"env": v}}, false), "")
+		if !errors.As(err, &e) || e.Status != http.StatusBadRequest {
+			t.Fatalf("command write of %q: %v", v, err)
+		}
+		raw, _ := json.Marshal(e)
+		assertNoEcho(t, string(raw), v)
+	}
+	// Moving the endpoint of a bound credential is authorized with
+	// integrations.secrets; suspending it is not.
+	uni, err := write(unifiDoc("uni", "https://controller.example.com", false), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	uni, err = write(unifiDoc("uni", "https://controller.example.com", true), uni.obj.GetResourceVersion())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := last(); len(got) != 1 || got[0].Verb != "write" {
+		t.Fatalf("suspend authorized %+v", got)
+	}
+	if _, err := write(unifiDoc("uni", "https://attacker.example.net", true), uni.obj.GetResourceVersion()); err != nil {
+		t.Fatal(err)
+	}
+	if got := last(); len(got) != 2 || got[1].Verb != "secrets" {
+		t.Fatalf("endpoint change authorized %+v", got)
+	}
 	var stored public.Integration
 	if err := st.Get(t.Context(), store.Key{Kind: "Integration", Namespace: "default", Name: "edge"}, &stored); err != nil || stored.Spec.Credentials["apiToken"].Env != "OTHER" {
 		t.Fatalf("command did not commit to SQLite: %v", err)
+	}
+}
+
+func TestIntegrationNeedsSecrets(t *testing.T) {
+	key := map[string]public.CredentialReference{"apiKey": {Env: "K"}}
+	stored := &public.Integration{Spec: public.IntegrationSpec{Type: "unifi", Credentials: key, UniFi: &public.UniFiIntegration{Endpoint: "https://a.example", TLSFingerprint: "ff"}}}
+	hook := &public.Integration{Spec: public.IntegrationSpec{Type: "webhook", Credentials: key, Webhook: &public.WebhookIntegration{Endpoint: "https://h.example"}}}
+	unbound := &public.Integration{Spec: public.IntegrationSpec{Type: "unifi", UniFi: &public.UniFiIntegration{Endpoint: "https://a.example"}}}
+	creds := map[string]any{"apiKey": map[string]any{"env": "K"}}
+	spec := func(typ string, credentials any, provider map[string]any) map[string]any {
+		s := map[string]any{"type": typ, "suspend": true}
+		if credentials != nil {
+			s["credentials"] = credentials
+		}
+		if provider != nil {
+			s[typ] = provider
+		}
+		return map[string]any{"spec": s}
+	}
+	for name, tc := range map[string]struct {
+		body     map[string]any
+		existing store.Object
+		want     bool
+	}{
+		"suspend only":       {spec("unifi", creds, map[string]any{"endpoint": "https://a.example", "tlsFingerprint": "ff", "site": "x"}), stored, false},
+		"endpoint":           {spec("unifi", creds, map[string]any{"endpoint": "https://b.example", "tlsFingerprint": "ff"}), stored, true},
+		"tls pin":            {spec("unifi", creds, map[string]any{"endpoint": "https://a.example"}), stored, true},
+		"type":               {spec("webhook", creds, map[string]any{"endpoint": "https://a.example"}), stored, true},
+		"webhook endpoint":   {spec("webhook", creds, map[string]any{"endpoint": "https://other.example"}), hook, true},
+		"webhook same":       {spec("webhook", creds, map[string]any{"endpoint": "https://h.example"}), hook, false},
+		"endpoint not text":  {spec("unifi", creds, map[string]any{"endpoint": 5, "tlsFingerprint": "ff"}), stored, true},
+		"provider not map":   {map[string]any{"spec": map[string]any{"type": "unifi", "credentials": creds, "unifi": "x"}}, stored, true},
+		"nothing bound":      {spec("unifi", nil, map[string]any{"endpoint": "https://b.example"}), unbound, false},
+		"binding on a move":  {spec("unifi", creds, map[string]any{"endpoint": "https://b.example"}), unbound, true},
+		"create unbound":     {spec("unifi", nil, map[string]any{"endpoint": "https://b.example"}), nil, false},
+		"credential removed": {spec("unifi", nil, map[string]any{"endpoint": "https://a.example", "tlsFingerprint": "ff"}), stored, true},
+	} {
+		if got := integrationNeedsSecrets(tc.body, tc.existing); got != tc.want {
+			t.Errorf("%s: needs secrets=%t, want %t", name, got, tc.want)
+		}
 	}
 }
 

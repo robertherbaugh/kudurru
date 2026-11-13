@@ -276,13 +276,26 @@ integrations NAME`). The rules are those of every object write:
   A write that binds or changes `spec.credentials` (a create with
   credentials, an added, removed or changed reference) also needs
   `integrations.secrets`, because a reference can name any credential this
-  node's allowlist grants. A write that keeps the stored references needs
-  only `integrations.write`. Only the built-in `admin` role holds these
-  verbs; on Kubernetes a ClusterRole can grant them separately.
-- Credentials are references only (`file` or `env`). There is no field for a
-  value; a document that carries one is refused with `400`, and no refusal
-  repeats a string from `spec.credentials`. Reads return the references, never
-  the resolved bytes, and the audit row of the write holds the same document.
+  node's allowlist grants. So does a write that, while credentials are
+  bound, changes where the host presents them: `spec.type`,
+  `spec.unifi.endpoint`, `spec.unifi.tlsFingerprint` or
+  `spec.webhook.endpoint`. A write that keeps the stored references and
+  their destination (suspending, the deletion policy, the resync interval,
+  what an instance publishes) needs only `integrations.write`. Only the
+  built-in `admin` role holds these verbs; on Kubernetes a ClusterRole can
+  grant them separately.
+- Credentials are references only (`file`, `env` or, on Kubernetes,
+  `secretRef`). There is no field for a value; a document that carries one is
+  refused with `400`. A validation failure that names `spec.credentials` is
+  answered with a fixed message and the field paths only, never the refused
+  value, so a pasted token (also with a trailing newline, a quote or a
+  backslash) is not repeated; other refusals have every string of
+  `spec.credentials` removed. Reads return the references, never the
+  resolved bytes, and the audit row of the write holds the same document.
+  A holder of `integrations.read` sees the reference names that Integrations
+  use (file paths, environment variable names); the manifests route only
+  withholds the rest of the node's allowlist from callers without
+  `integrations.secrets`.
 - A new Integration needs a license that covers integrations (`402
   license_required` otherwise). Replacing and deleting one do not, so an
   operator without a license can still suspend an instance, change its
