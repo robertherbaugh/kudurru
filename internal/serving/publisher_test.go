@@ -810,6 +810,71 @@ func TestPublisherServedWithinKeepsRecentlyReplacedPublications(t *testing.T) {
 	}
 }
 
+// TestPublisherServedWithinHasNoGapAtTheSwap holds a lease, as a query in
+// flight does, and asks ServedWithin without pause while swaps replace its
+// publication. The answer must stay true throughout: the replaced
+// publication is either still current or already in the retired record. With
+// the record written after the pointer swap, a reader that looked in between
+// found it in neither place (D395); a reviewer's probe saw that on about one
+// swap in four.
+func TestPublisherServedWithinHasNoGapAtTheSwap(t *testing.T) {
+	s := primary(t)
+	applyPair(t, s, "first")
+	pointers := func(_ context.Context, candidate Candidate) (Prepared, error) {
+		prepared, err := allComponents(candidate)
+		for i := range prepared.Components {
+			view := prepared.Components[i].Value.(fixtureView)
+			prepared.Components[i].Value = &view
+		}
+		return prepared, err
+	}
+	p := runPublisher(t, Options{Source: s, Prepare: pointers})
+	waitStatus(t, p, func(s Status) bool { return s.ProtectedReady })
+	var stop atomic.Bool
+	var refusals, replaced, refusedSwaps atomic.Int64
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for !stop.Load() {
+			lease, err := p.Capture()
+			if err != nil {
+				return
+			}
+			value, _ := lease.Bundle().Component("runtime")
+			refused := false
+			for !stop.Load() {
+				if !p.ServedWithin("runtime", value, time.Hour) {
+					refusals.Add(1)
+					if !refused {
+						refused = true
+						refusedSwaps.Add(1)
+					}
+				}
+				if !p.Serves("runtime", value) {
+					replaced.Add(1)
+					break
+				}
+			}
+			lease.Release()
+		}
+	}()
+	const swaps = 400
+	for i := range swaps {
+		before := p.Status().Served.Publication
+		applyPair(t, s, fmt.Sprint("swap", i))
+		waitStatus(t, p, func(s Status) bool { return s.Served.Publication > before })
+	}
+	stop.Store(true)
+	<-done
+	t.Logf("%d swaps seen by the lease holder, %d with a refusal, %d refusals", replaced.Load(), refusedSwaps.Load(), refusals.Load())
+	if refusals.Load() != 0 {
+		t.Fatalf("ServedWithin refused a leased, just-replaced publication %d times over %d swaps", refusals.Load(), refusedSwaps.Load())
+	}
+	if replaced.Load() < swaps/2 {
+		t.Fatalf("the lease holder saw only %d of %d swaps; the test did not exercise the swap", replaced.Load(), swaps)
+	}
+}
+
 // other returns a distinct pointer to a copy of the value behind v.
 func other(v any) any {
 	cp := *(v.(*fixtureView))

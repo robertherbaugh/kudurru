@@ -248,16 +248,24 @@ func (p *Publisher) publish(ctx context.Context, next *Bundle) error {
 		// its matching complete pointer swap. Store resolves under the same R.
 		p.sequence = sequence
 		next.identity.Publication = sequence
-		previous = p.current.Swap(next)
-		swapped = true
-		if previous != nil && !next.dnsOnly {
+		// Record the publication being replaced BEFORE the swap (D395). A
+		// reader in ServedWithin loads current first, so it then finds the
+		// replaced publication either still current or already retired; with
+		// the record written after the swap, a query in flight that looked in
+		// between found it in neither place and its answer was withheld. Only
+		// publish and Close write current, both under the publication lock, so
+		// this load is what the swap replaces. A fenced successor clears the
+		// record before it is served, so nothing qualifies across the fence.
+		if replaced := p.current.Load(); replaced != nil && !next.dnsOnly {
 			for i := retiredDepth - 1; i > 0; i-- {
 				p.retired[i].Store(p.retired[i-1].Load())
 			}
-			p.retired[0].Store(&retiredBundle{bundle: weak.Make(previous), at: time.Now()})
+			p.retired[0].Store(&retiredBundle{bundle: weak.Make(replaced), at: time.Now()})
 		} else {
 			p.clearRetired()
 		}
+		previous = p.current.Swap(next)
+		swapped = true
 		return nil
 	})
 	p.unlock()
