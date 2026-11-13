@@ -158,6 +158,11 @@ func TestExpectedRefusalInheritance(t *testing.T) {
 	if got, _ := ExpectedRefusal(ShapeKubernetes, "putDHCPSetup", http.MethodPut); got != "" {
 		t.Errorf("putDHCPSetup on Kubernetes with DHCP: %q", got)
 	}
+	for shape, want := range map[RuntimeShape]string{ShapeStandalone: KeyUnavailable, ShapeKubernetes: KeyUnavailable, ShapeStatic: KeyReadOnly, ShapeFollower: KeyPrimaryRequired} {
+		if got, _ := ExpectedRefusal(shape, "queryAction", http.MethodPost, FeatureCentralHistory); got != want {
+			t.Errorf("queryAction on %s without a central database: %q, want %q", shape, got, want)
+		}
+	}
 	if got, _ := ExpectedRefusal(ShapeStandalone, "rollupEvidence", http.MethodGet, FeatureCentralHistory); got != KeyUnavailable {
 		t.Errorf("rollupEvidence without a central database: %q", got)
 	}

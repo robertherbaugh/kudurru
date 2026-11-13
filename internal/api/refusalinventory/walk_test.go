@@ -138,10 +138,10 @@ func TestWalkSequentialAndParallel(t *testing.T) {
 // A probe of an operation with a probeRequests entry sends its query, body
 // and If-Match, so that it passes request validation.
 func TestProbeSendsTheRequestThatReachesTheHandler(t *testing.T) {
-	var query, body, ifMatch string
+	var path, query, body, ifMatch string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
-		query, body, ifMatch = r.URL.RawQuery, string(raw), r.Header.Get("If-Match")
+		path, query, body, ifMatch = r.URL.Path, r.URL.RawQuery, string(raw), r.Header.Get("If-Match")
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
@@ -154,12 +154,16 @@ func TestProbeSendsTheRequestThatReachesTheHandler(t *testing.T) {
 		{Operation{http.MethodPost, "/integrations/{namespace}/{name}/check", "checkIntegration"}, "", integrationReview, ""},
 		{Operation{http.MethodDelete, "/dhcp/scopes/{scope}/reservations/{mac}", "deleteDHCPReservation"}, "", "{}", `"refusal-probe"`},
 		{Operation{http.MethodPost, "/auth/tokens", "createToken"}, "", "{}", ""},
+		{Operation{http.MethodPost, "/queries/{id}/actions", "queryAction"}, "scope=cluster", `{"action":"allow"}`, ""},
 	} {
 		if _, err := c.Probe(t.Context(), tc.op); err != nil {
 			t.Fatal(err)
 		}
 		if query != tc.query || body != tc.body || ifMatch != tc.ifMatch {
 			t.Errorf("%s: query %q body %q If-Match %q", tc.op, query, body, ifMatch)
+		}
+		if tc.op.ID == "queryAction" && path != api.BasePath+"/queries/9007199254740991/actions" {
+			t.Errorf("%s: path %q", tc.op, path)
 		}
 	}
 	if !StoppedAtValidation(Answer{Status: 400, Envelope: true, Key: api.KeyInvalid, Message: "validation failed: body: expected required property uid to be present"}) ||
