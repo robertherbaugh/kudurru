@@ -155,7 +155,14 @@ func TestClusterReadsWithLocalLogDisabled(t *testing.T) {
 	f.h.do("GET", "/api/v1/queries?scope=node&node=node-b", "operator", nil).want(200)
 	f.h.do("GET", "/api/v1/queries", "operator", nil).want(503)
 	f.h.srv.opts.InternalClient = nil
-	f.h.do("GET", "/api/v1/queries?scope=cluster", "operator", nil).want(503)
+	// No node answers: the refusal names the settings each cause needs
+	// (G21-11), for history and for the live tail.
+	for path, want := range map[string]string{"/api/v1/queries?scope=cluster": "querylog.sink: sqlite", "/api/v1/queries/stream?scope=cluster": "listeners.internal.tokenFile"} {
+		got := f.h.do("GET", path, "operator", nil).want(503)
+		if hint, _ := got.m()["error"].(map[string]any)["hint"].(string); got.errKey() != KeyUnavailable || !strings.Contains(hint, want) || !strings.Contains(hint, "scope=node") {
+			t.Fatalf("%s: %s", path, got.Body.String())
+		}
+	}
 }
 
 func TestClusterQueryCursorNodeLimit(t *testing.T) {

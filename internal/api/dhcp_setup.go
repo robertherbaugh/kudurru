@@ -222,8 +222,7 @@ func (s *Server) dhcpPutSetup(ctx context.Context, in *dhcpSetupInput) (*dhcpSet
 	}
 	manager := s.opts.DHCPSetup
 	if manager == nil {
-		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "DHCP setup manager is not available on this node",
-			"set dhcp.enabled and a complete DHCP configuration in this node's file and restart it; see docs/deploy/dhcp.md")
+		return nil, s.dhcpSetupUnavailable()
 	}
 	before, err := manager.Read(ctx)
 	if err != nil {
@@ -267,6 +266,22 @@ func (s *Server) dhcpPutSetup(ctx context.Context, in *dhcpSetupInput) (*dhcpSet
 		return nil, dhcpSetupError(err)
 	}
 	return s.dhcpSetupResponse(after), nil
+}
+
+// dhcpSetupUnavailable is the answer of a setup write on a node without a
+// setup manager. runServe opens one on every Linux node of the SQLite store,
+// whether DHCP is on or off, so only two deployments reach this: a node of
+// the Kubernetes store with DHCP off (with DHCP on, DHCPKube answers), where
+// the release's values turn DHCP on as dhcpGetSetup says, and a SQLite node
+// that is not on Linux, where no setting helps because DHCP runs only on
+// Linux.
+func (s *Server) dhcpSetupUnavailable() *Error {
+	if s.kubeStore() {
+		return newError(http.StatusServiceUnavailable, KeyUnavailable, "DHCP is off in this release",
+			"set dhcp.enabled and dhcp.serverAddress in the Helm values and roll the release out; DHCPScope objects then hold the setup (docs/deploy/dhcp-kubernetes.md)")
+	}
+	return newError(http.StatusServiceUnavailable, KeyUnavailable, "DHCP setup manager is not available on this node",
+		"DHCP and its setup through the API run only on a Linux node of the SQLite store; run this node on Linux to use them (docs/deploy/dhcp.md)")
 }
 
 func dhcpSetupError(err error) error {

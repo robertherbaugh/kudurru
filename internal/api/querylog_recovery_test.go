@@ -117,3 +117,21 @@ func TestRollupRecoveryMountedPostgres(t *testing.T) {
 	missing := newHarness(t, func(o *Options) { o.Now = fc.Now; o.Membership = noHistoryPeers{t} })
 	missing.do("GET", path, "admin", nil).want(503)
 }
+
+// Without a central database, rollup recovery is a deployment limit, not a
+// fault: both routes say which settings provide the evidence and carry no
+// Retry-After, since waiting does not change the answer (G21-11).
+func TestRollupRecoveryWithoutCentralDatabase(t *testing.T) {
+	h := newHarness(t)
+	hour := time.Now().Add(-2*time.Hour).Unix() / 3600 * 3600
+	evidence := sqlitelog.RollupEvidence{SourceID: "source", Node: "node-a", Hour: hour, Digest: "digest", ExpiresAt: time.Now().Add(time.Hour)}
+	for _, got := range []response{
+		h.do("GET", fmt.Sprintf("/api/v1/querylog/rollup-evidence?source=source&hour=%d", hour), "admin", nil).want(503),
+		h.do("POST", "/api/v1/querylog/rollup-evidence/verify", "admin", evidence).want(503),
+	} {
+		hint, _ := got.m()["error"].(map[string]any)["hint"].(string)
+		if got.errKey() != KeyUnavailable || !strings.Contains(hint, "database.dsn") || !strings.Contains(hint, "docs/deploy/postgres.md") || got.Header().Get("Retry-After") != "" {
+			t.Fatalf("recovery without a central database: %s (Retry-After %q)", got.Body.String(), got.Header().Get("Retry-After"))
+		}
+	}
+}

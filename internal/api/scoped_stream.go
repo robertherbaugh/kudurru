@@ -140,7 +140,7 @@ func (s *Server) scopedQueryStream(ctx context.Context, in *streamInput, peers [
 	if available == 0 {
 		cancel()
 		<-s.streams
-		return nil, errUnavailable("live tail unavailable on the requested nodes")
+		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "live tail unavailable on the requested nodes", peerTailHint)
 	}
 	return &huma.StreamResponse{Body: func(hctx huma.Context) {
 		defer func() {

@@ -50,7 +50,10 @@ func (s *Server) recoveryReader(scope, node string) (*sqlitelog.Reader, error) {
 	}
 	r := s.opts.CentralQuerylog
 	if r == nil {
-		return nil, errUnavailable("central rollup recovery unavailable")
+		// A deployment limit, not a fault: recovery evidence exists only in
+		// the central database that this node ships its query log to.
+		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "central rollup recovery unavailable: this node ships no query log to a central database",
+			"rollup recovery evidence is read from the central database: set database.dsn on every node and keep database.querylog.ship on (docs/deploy/postgres.md)")
 	}
 	if node != "" {
 		r = r.ForNode(node)

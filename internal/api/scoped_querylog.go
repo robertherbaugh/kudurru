@@ -181,10 +181,22 @@ func (r *scopedQuerylog) gather(ctx context.Context, q internalapi.QuerylogReque
 		}
 	}
 	if len(successful) == 0 {
-		return nil, scope, errUnavailable("query log unavailable on the requested nodes")
+		return nil, scope, newError(http.StatusServiceUnavailable, KeyUnavailable, "query log unavailable on the requested nodes", peerQuerylogHint)
 	}
 	return successful, scope, nil
 }
+
+// peerQuerylogHint explains a history read that no requested node answered,
+// and peerTailHint a live tail that no requested node opened. This node reads
+// its peers over the internal listener, and a peer's history needs its own
+// SQLite query log, so each cause is a setting or a peer that is down; the
+// server log names each node's error.
+const (
+	peerTransportHint = "this node reaches its peers over the internal listener, which needs KUDURRU_ENCRYPTION_KEY or listeners.internal.tokenFile here and a running peer that announces its internal address"
+	peerQuerylogHint  = "each requested node needs querylog.enabled: true with querylog.sink: sqlite, and " + peerTransportHint + "; ask one node with scope=node, or read cluster history from a central database (docs/deploy/postgres.md)"
+	peerTailHint      = peerTransportHint + "; ask one node with scope=node"
+)
+
 func validShard(out *internalapi.QuerylogResponse, kind, name string) bool {
 	var scope sqlitelog.Scope
 	if out == nil {
