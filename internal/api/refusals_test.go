@@ -62,6 +62,11 @@ func TestRefusalInventoryNamesEveryOperation(t *testing.T) {
 			t.Errorf("featureRefusals names %q, which is no registered operation", id)
 		}
 	}
+	for id := range transientUnavailable {
+		if !registered[id] {
+			t.Errorf("transientUnavailable names %q, which is no registered operation", id)
+		}
+	}
 	if _, declared := ExpectedRefusal(ShapeStandalone, "an operation added later", http.MethodPost); declared {
 		t.Error("an operation without a line counts as declared")
 	}
@@ -135,5 +140,30 @@ func TestExpectedRefusalInheritance(t *testing.T) {
 	}
 	if !slices.Equal(SessionEndingOperations(), []string{"logout", "browserLogout"}) {
 		t.Error("session-ending operations changed:", SessionEndingOperations())
+	}
+}
+
+// A declared unavailable names a durable limit and carries no Retry-After,
+// except for the operations whose provider may become reachable.
+func TestRefusalRetryAfterRules(t *testing.T) {
+	for _, tc := range []struct {
+		id, key           string
+		status            int
+		allowed, required bool
+	}{
+		{"getClusterEnrollment", KeyUnavailable, http.StatusServiceUnavailable, false, false},
+		{"issueClusterJoinToken", KeyUnavailable, http.StatusServiceUnavailable, false, false},
+		{"getClusterPromotion", KeyUnavailable, http.StatusServiceUnavailable, false, false},
+		{"listIntegrations", KeyUnavailable, http.StatusServiceUnavailable, false, false},
+		{"oidcStart", KeyUnavailable, http.StatusServiceUnavailable, true, false},
+		{"verifyCLILogin", KeyUnavailable, http.StatusServiceUnavailable, true, false},
+		{"oidcStart", "sessions_unavailable", http.StatusServiceUnavailable, false, false},
+		{"listSessions", "generation_pending", http.StatusServiceUnavailable, true, true},
+		{"login", "completion_unknown", http.StatusServiceUnavailable, true, false},
+	} {
+		allowed, required := RefusalRetryAfterAllowed(tc.id, tc.key, tc.status)
+		if allowed != tc.allowed || required != tc.required {
+			t.Errorf("%s %d %s: Retry-After allowed=%t required=%t, want %t %t", tc.id, tc.status, tc.key, allowed, required, tc.allowed, tc.required)
+		}
 	}
 }

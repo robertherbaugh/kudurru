@@ -484,13 +484,6 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 	// does not forward with one typed refusal and runs node-local commands
 	// itself (D368).
 	enrolledFollowerContract(t, apiA, apiB, a.Name, b.Name)
-	// Every operation of the served contract, on both roles, answers only
-	// what the refusal inventory declares (G21-11).
-	if !promote {
-		document := enrolledOpenAPI(t, apiA)
-		enrolledRefusalInventory(t, enrolledRefusalSession(t, apiA.base, "audit-e2e-password-1"), api.ShapePrimary, document)  // #nosec G101 -- disposable loopback fixture credential
-		enrolledRefusalInventory(t, enrolledRefusalSession(t, apiB.base, "audit-e2e-password-1"), api.ShapeFollower, document) // #nosec G101 -- disposable loopback fixture credential
-	}
 	// Canonical object writes through the follower commit once on the primary
 	// with its exact public result; the follower serves them after its pull.
 	viaFollower := map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSRecordSet",
@@ -1089,4 +1082,11 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		anchors.awaitValidated(primary, "restarted primary")
 		enrolledAnchorsRevoke(t, anchors, bin, env, apiA, apiB, primary, follower, a, b, stop, checkDNS)
 	}
+	// Every operation of the served contract, on both roles, answers only
+	// what the refusal inventory declares (G21-11). The walk runs last: the
+	// probes that a member accepts (an empty apply, a cache flush, a query-log
+	// purge, an unnamed token) must not change what an earlier step reads.
+	document := enrolledOpenAPI(t, apiA)
+	enrolledRefusalInventory(t, enrolledRefusalSession(t, apiA.base, "audit-e2e-password-1"), api.ShapePrimary, document)  // #nosec G101 -- disposable loopback fixture credential
+	enrolledRefusalInventory(t, enrolledRefusalSession(t, apiB.base, "audit-e2e-password-1"), api.ShapeFollower, document) // #nosec G101 -- disposable loopback fixture credential
 }
