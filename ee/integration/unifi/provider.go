@@ -38,7 +38,10 @@ type Provider struct {
 	stopped                     bool
 	previous                    map[string]Device
 	diagnostics                 Diagnostics
-	now                         func() time.Time
+	// mirrorSite is the site a complete DNS policy listing of this
+	// incarnation resolved; an apply reuses it instead of resolving again.
+	mirrorSite *siteRow
+	now        func() time.Time
 	// Test-only trusted roots/transport, never part of public configuration.
 	transport *http.Transport
 }

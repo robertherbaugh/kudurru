@@ -194,6 +194,14 @@ func unifiPushStart(t *testing.T, peer *unifiPushPeer, records []*public.DNSReco
 	}
 	d := peer.definition("gateway", f.path)
 	configure(d)
+	t.Cleanup(func() {
+		if t.Failed() {
+			t.Log("UniFi writes", peer.written())
+			for _, status := range f.s.integrations.host.Statuses() {
+				t.Logf("integration %s/%s %+v", status.Phase, status.Reason, status.Result)
+			}
+		}
+	})
 	integrationOperationStart(t, f, d)
 	return f, integrationAdminRouter(t, f)
 }
