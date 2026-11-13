@@ -908,6 +908,15 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		anchors.owner(apiB, "follower")
 		anchors.awaitValidated(follower, "restarted follower")
 	}
+	var fencedDocument []byte
+	var fencedSession *staticProcessClient
+	if promote {
+		// The fenced walk below holds the former primary to the contract it
+		// served, with a credential of its own: a fenced member refuses a
+		// sign-in, so both are taken while it is still the primary.
+		fencedDocument = enrolledOpenAPI(t, apiA)
+		fencedSession = enrolledRefusalSession(t, apiA.base, "audit-e2e-password-1") // #nosec G101 -- disposable loopback fixture credential
+	}
 	stop(primary)
 	if !checkDNS(follower, "later", "192.0.2.43", dns.RcodeSuccess) {
 		t.Fatal("stopped primary interrupted retained follower DNS")
@@ -959,6 +968,12 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		relayB.partition(true)
 		primary = kudurrutest.Start(t, bin, a, kudurrutest.Options{Env: env})
 		enrolledFencedClosed(t, apiA, b.Name)
+		// While it stays fenced (the partition keeps it from pulling), a
+		// sign-in is refused with the fenced answer and creates no session,
+		// and every operation of the served contract answers cluster_fenced
+		// to the session made before the promotion (G21-11).
+		enrolledFencedLoginRefused(t, apiA.base, b.Name)
+		enrolledRefusalInventory(t, fencedSession, api.ShapeFenced, fencedDocument)
 		awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)
 		// The fenced former primary cannot apply a signed UPDATE and cannot
 		// reach the new primary: SERVFAIL, never applied (D381).
