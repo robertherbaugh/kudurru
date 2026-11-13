@@ -123,3 +123,13 @@ func TestNegotiatedRolesExecute(t *testing.T) {
 		})
 	}
 }
+
+// Reviewed (D401) qualifies only a publisher role.
+func TestReviewedRoleRequiresPublisher(t *testing.T) {
+	if _, err := providerRoles(&negotiatedProvider{fakePublisher: &fakePublisher{}, roles: Roles{Observer: true, Reviewed: true}}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("reviewed without publisher accepted", err)
+	}
+	if r, err := providerRoles(&negotiatedProvider{fakePublisher: &fakePublisher{}, roles: Roles{Publisher: true, Reviewed: true}}); err != nil || !r.Reviewed {
+		t.Fatal("reviewed publisher refused", err)
+	}
+}
