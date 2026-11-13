@@ -111,6 +111,10 @@ type Options struct {
 	// it is served, but only from record sets derived earlier, and no
 	// source change reaches it.
 	ExternalZoneSources bool
+	// ExternalZoneSourcesUnsupported reports that this store cannot run
+	// that adapter at all (it is not the Kubernetes store), so the
+	// SourcesNotRead message does not point at externalZones.enabled.
+	ExternalZoneSourcesUnsupported bool
 	// ReconcileHook, if set, is called after every reconcile with its
 	// duration and outcome (tracing and measurements).
 	ReconcileHook func(key store.Key, took time.Duration, wroteStatus bool, err error)

@@ -850,15 +850,21 @@ answering an old address.
 1. `kubectl get dnszone <name> -o yaml`: `Degraded` with reason
    `SourcesNotRead` means the server runs without `externalZones.enabled`, so
    nothing reads the sources. Set the Helm value `externalZones.enabled: true`
-   (it also grants the read RBAC) and upgrade.
+   (it also grants the read RBAC) and upgrade. A zone that is Degraded for a
+   more specific reason (for example `Duplicated`) keeps that reason, and its
+   message adds that no sources are read. On the SQLite store the message
+   says that this store does not read Kubernetes sources: the setting cannot
+   be turned on there, and the zone keeps only record sets derived earlier.
 2. The elected replica's log warns `external zone reconciliation incomplete`
    with the refused kind. `forbidden` means the ClusterRole lacks `list` and
    `watch` on that kind (with the kustomize bases, add the rules from
    [the Helm guide](helm.md#external-zones-externalzonesenabled)).
    `object too large` means the kind has more than 4,096 objects or 32 MiB in the
-   cluster (every Service counts, whatever its type), or a single list page
-   of 64 objects exceeds 4 MiB. That kind is skipped on every pass: its record
-   sets are kept but no longer follow their sources. Reduce the number of
+   cluster (every Service counts, whatever its type). A single list page of
+   64 objects over 4 MiB is cut off at 4 MiB instead, and the warning then
+   names a decode error of the list answer (for example `unexpected EOF`).
+   Either way that kind is skipped on every pass: its record sets are kept
+   but no longer follow their sources. Reduce the number of
    objects of that kind or disable the kind in `spec.external` of every zone.
 3. A warning `external zone record set name held by another writer` means a
    record set with the derived name exists and belongs to someone else; it is
