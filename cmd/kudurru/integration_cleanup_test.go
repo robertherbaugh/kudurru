@@ -894,6 +894,22 @@ func TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers(t
 		}
 		return err
 	}
+	// The live instance polls its controller every second until the host
+	// sees the delete; only the cleanup must make no request. The host
+	// starts the terminating job only after the live one has stopped and
+	// joined its provider, and the job's first act is to ask its elector:
+	// the count at that moment is what the cleanup must not change.
+	var polled atomic.Int32
+	polled.Store(-1)
+	elector := options.Elector
+	options.Elector = func(name string) store.Elector {
+		for _, status := range s.integrations.host.Statuses() {
+			if status.Owner == owner && status.Phase == ih.PhaseTerminating {
+				polled.CompareAndSwap(-1, calls.Load())
+			}
+		}
+		return elector(name)
+	}
 	if s.integrations.host, err = ih.New(options); err != nil {
 		t.Fatal(err)
 	}
@@ -906,7 +922,6 @@ func TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers(t
 	if err := deliver(t.Context(), "queued while the instance lived"); err != nil {
 		t.Fatal(err)
 	}
-	polled := calls.Load()
 
 	integrationRequestDelete(t, s, d)
 	s.integrations.host.Wake()
@@ -953,8 +968,8 @@ func TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers(t
 	if late == nil || late.out != (ih.PurgeResult{Deliveries: 1}) {
 		t.Fatalf("the purge of the late row: %+v of %+v", late, purges)
 	}
-	if calls.Load() != polled {
-		t.Fatal("the cleanup of an inbound instance called its provider", calls.Load()-polled)
+	if at := polled.Load(); at < 0 || calls.Load() != at {
+		t.Fatal("the cleanup of an inbound instance called its provider", calls.Load()-at)
 	}
 	for _, kind := range []store.Kind{kinds.KindIntegrationDelivery, kinds.KindIntegrationSourceHead, kinds.KindIntegrationSourceChunk, kinds.KindIntegrationNameAllocation} {
 		if rows := integrationRows(t, s, kind); len(rows) != 0 {

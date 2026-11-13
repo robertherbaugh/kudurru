@@ -95,7 +95,10 @@ func TestActualSQLiteSourceCommandOnceRollbackFinalAndNoop(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			if mode == "deadline" {
-				h.opts.OperationTimeout = 40 * time.Millisecond
+				// The callback waits out the bound inside the transaction; the
+				// bound must outlast the work before it on a loaded machine
+				// (see TestActualSQLiteSourceCommittedPendingSurvivesAckDeadline).
+				h.opts.OperationTimeout = 2 * time.Second
 			}
 			var allowed atomic.Bool
 			allowed.Store(true)
@@ -188,7 +191,13 @@ func TestActualSQLiteSourceCommandOnceRollbackFinalAndNoop(t *testing.T) {
 
 func TestActualSQLiteSourceCommittedPendingSurvivesAckDeadline(t *testing.T) {
 	h, j, s, _ := sourceSQLiteFixture(t)
-	h.opts.OperationTimeout = 40 * time.Millisecond
+	// The bound covers everything up to the SQLite commit as well as the
+	// simulated acknowledgment wait. It must outlast the work before the
+	// commit on a loaded machine: a 40 ms bound failed on hosted CI when it
+	// ran out before the commit, which then rightly committed nothing. The
+	// wait below always runs into the bound, so the asserted outcome is
+	// unchanged.
+	h.opts.OperationTimeout = 2 * time.Second
 	before, err := s.ReadGeneration(t.Context())
 	if err != nil {
 		t.Fatal(err)

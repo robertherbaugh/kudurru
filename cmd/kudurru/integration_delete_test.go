@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"slices"
@@ -517,7 +518,22 @@ func TestIntegrationDeleteForgetsAHistoryOfSeveralStoredPages(t *testing.T) {
 			summary = entry.Reason
 		}
 	}
-	if !strings.Contains(summary, "forgot 1 ledger rows and "+strconv.Itoa(settled+orphans+2)+" operations") {
-		t.Fatalf("cleanup summary: %q", summary)
+	// Every operation of this incarnation is forgotten: the seeded history,
+	// the published record's operation and the cleanup's delete intents.
+	// A run that ends after it began its delete intent but before the
+	// request reached the peer (a failure under load) leaves that intent,
+	// which the next run abandons on its fresh reread and replaces: one more
+	// operation, and still one delete batch at the peer (checked above). A
+	// run begins at most one intent for the one record, so there are
+	// between one and as many intents as runs.
+	var forgotLedger, forgotOperations, runs int
+	if _, err := fmt.Sscanf(summary[strings.Index(summary, "forgot "):], "forgot %d ledger rows and %d operations", &forgotLedger, &forgotOperations); err != nil {
+		t.Fatalf("cleanup summary: %q: %v", summary, err)
+	}
+	if _, err := fmt.Sscanf(summary[strings.LastIndex(summary, " in ")+1:], "in %d runs", &runs); err != nil {
+		t.Fatalf("cleanup summary: %q: %v", summary, err)
+	}
+	if intents := forgotOperations - settled - orphans - 1; forgotLedger != 1 || intents < 1 || intents > runs {
+		t.Fatalf("cleanup summary: %q: %d delete intents in %d runs", summary, intents, runs)
 	}
 }
