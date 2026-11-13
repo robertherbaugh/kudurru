@@ -157,6 +157,9 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 	c.records.Prune(dz, in.RecordSets)
 	selected := zone.ServedRecordSetsCached(dz, in.RecordSets, c.records, now)
 	owners := map[string]string{}
+	// viewOwners maps each client-group view's record identities to the
+	// source that put them there first (D403).
+	viewOwners := map[string]map[string]string{}
 	rawRecords := map[string]zonestate.Record{}
 	static := &zonestate.Aggregate{FormatVersion: zonekinds.FormatVersion, Zone: id, Policy: policy}
 	projections := map[string]string{}
@@ -186,7 +189,7 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 			return nil, err
 		}
 		source := store.KeyOf(rs).String()
-		reasons[source] = "disabled, expired, view-scoped or outside zone"
+		reasons[source] = "disabled, expired, publish-only or outside zone"
 		parsedSet := builder.ParseRecordSet(rs)
 		for i := range rs.Spec.Endpoints {
 			ep := &rs.Spec.Endpoints[i]
@@ -245,6 +248,23 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 				continue
 			}
 			if !zone.Served(ep, now) {
+				if view := zone.GroupView(ep); view != "" && zone.Live(ep, now) {
+					group := zone.ViewGroupID(rs.Namespace, view)
+					if viewOwners[group] == nil {
+						viewOwners[group] = map[string]string{}
+					}
+					for _, rr := range parsed {
+						identity, err := dynamicupdate.Identity(rr)
+						if err != nil {
+							return nil, err
+						}
+						if _, exists := viewOwners[group][identity]; !exists {
+							viewOwners[group][identity] = source
+						}
+					}
+				}
+				// Inactive, publish-only and client-group view endpoints
+				// all reserve their names against dynamic updates.
 				for _, rr := range parsed {
 					name, err := dynamicupdate.CanonicalName(rr.Header().Name)
 					if err != nil {
@@ -311,6 +331,52 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 	})
 	if recordError != nil {
 		return nil, recordError
+	}
+	// Client-group views as the builder finished them: refused view data
+	// (hidden by default data, or in a signed zone) is not committed.
+	model.ViewRRsets(func(group string, set *zone.RRset) bool {
+		if n := len(static.Views); n == 0 || static.Views[n-1].Group != group {
+			static.Views = append(static.Views, zonestate.ViewRecords{Group: group})
+		}
+		view := &static.Views[len(static.Views)-1]
+		for _, rr := range set.RRs {
+			identity, err := dynamicupdate.Identity(rr)
+			if err != nil {
+				recordError = err
+				return false
+			}
+			source := viewOwners[group][identity]
+			if source == "" {
+				recordError = fmt.Errorf("%w: view record without a source", zonestate.ErrInvalid)
+				return false
+			}
+			rec, err := zonestate.FromRR(rr, zonestate.Provenance{SourceID: source})
+			if err != nil {
+				recordError = err
+				return false
+			}
+			view.Records = append(view.Records, rec)
+		}
+		return true
+	})
+	if recordError != nil {
+		return nil, recordError
+	}
+	for _, rs := range selected {
+		source := store.KeyOf(rs).String()
+		if builder.ViewServed(source) {
+			projections[source], reasons[source] = "served", ""
+			continue
+		}
+		if failures := builder.ViewErrors()[source]; len(failures) > 0 && projections[source] != "served" {
+			reason := zone.ErrorReason(failures[0])
+			projections[source] = "duplicated"
+			if reason != public.ReasonDuplicated && reason != public.ReasonOccluded {
+				projections[source] = "withheld"
+				reason = withheldReason(reason, failures[0].Error())
+			}
+			reasons[source] = reason
+		}
 	}
 	if base.Head == nil && in.Zone.Status.Serial != 0 && in.Zone.Status.ContentHash != model.ContentHash() {
 		// Migration cannot reuse a formerly served serial for changed or
@@ -513,7 +579,15 @@ func BuildCommitted(ctx context.Context, v *zonestate.View) (*zone.Zone, error) 
 			apexOverride = true
 		}
 	}
-	return zone.BuildCommittedPrimary(&config, records, v.Head.Spec.Serial, v.Aggregate.Expiry, apexOverride)
+	viewRRs, err := v.Aggregate.ViewRRs()
+	if err != nil {
+		return nil, err
+	}
+	var views []zone.CommittedView
+	for i, view := range v.Aggregate.Views {
+		views = append(views, zone.CommittedView{Group: view.Group, Records: viewRRs[i]})
+	}
+	return zone.BuildCommittedPrimaryWithViews(&config, records, views, v.Head.Spec.Serial, v.Aggregate.Expiry, apexOverride)
 }
 
 // committable refuses the records of endpoint i that the committed aggregate

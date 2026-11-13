@@ -148,10 +148,13 @@ func (o *EdgeCache) project(lease *serving.Lease, now time.Time) (*internalapi.R
 		if err != nil {
 			return nil, err
 		}
-		if authoritativeReason == "zone-client-acl" {
+		if authoritativeReason == "zone-client-acl" || authoritativeReason == "zone-client-view" {
 			// CNAME/fallback and not-yet-applied pool routing can send local
 			// questions through the resolver pool too. The original served
 			// ACL proof must gate BOTH shared caches, not just the final pool.
+			// Client-group views (D403) answer one name differently per
+			// client, and the edge's packet cache keys on the question only,
+			// never on the client's group: both caches are bypassed.
 			available, unavailableReason = false, authoritativeReason
 		}
 	}
@@ -189,15 +192,26 @@ func authoritativeCacheBypass(lease *serving.Lease, now time.Time) (string, erro
 			return "zone-client-acl", nil
 		}
 	}
+	// Client-group views gate both pools (project), so they are checked in
+	// full before any authoritative-only reason can return: in the desired
+	// record sets, and in every served model, whose committed views can
+	// outlive a desired change in this exact publication (D403).
+	for _, records := range objects.Objects.RecordSets() {
+		for i := range records.Spec.Endpoints {
+			if zone.GroupView(&records.Spec.Endpoints[i]) != "" {
+				return "zone-client-view", nil
+			}
+		}
+	}
+	for _, desired := range objects.Objects.Zones() {
+		if model := set.Match(dns.CanonicalName(desired.Spec.ZoneName)); model.HasViews() {
+			return "zone-client-view", nil
+		}
+	}
 	for _, records := range objects.Objects.RecordSets() {
 		for _, endpoint := range records.Spec.Endpoints {
-			if e := endpoint.Kudurru; e != nil {
-				if e.ExpiresAt != nil {
-					return "zone-expiry", nil
-				}
-				if e.View != "" && e.View != "public" {
-					return "zone-client-view", nil
-				}
+			if e := endpoint.Kudurru; e != nil && e.ExpiresAt != nil {
+				return "zone-expiry", nil
 			}
 		}
 	}
@@ -234,6 +248,9 @@ func authoritativeCacheBypass(lease *serving.Lease, now time.Time) (string, erro
 func authoritativeModelBypass(model *zone.Zone) string {
 	if !model.QueryClientIndependent() {
 		return "zone-client-acl"
+	}
+	if model.HasViews() {
+		return "zone-client-view"
 	}
 	signed := model.HasSignatures()
 	// Imported primary signatures are raw data, not the transferred-model

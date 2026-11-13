@@ -181,7 +181,7 @@ func resolverTarget(o resolverObservation, now time.Time, histories map[string]*
 		if !st.Available {
 			mode = "bypass-input-unavailable"
 			switch st.UnavailableReason {
-			case "async-ptr", "dhcp-runtime", "client-scope", "rule-client-scope", "zone-client-acl", "client-acl", "ecs", "rebinding-client-scope", "rate-limit", "managed-anchors":
+			case "async-ptr", "dhcp-runtime", "client-scope", "rule-client-scope", "zone-client-acl", "zone-client-view", "client-acl", "ecs", "rebinding-client-scope", "rate-limit", "managed-anchors":
 				mode = "bypass-" + st.UnavailableReason
 			}
 			continue

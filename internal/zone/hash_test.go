@@ -58,8 +58,10 @@ func TestContentHashIsCanonical(t *testing.T) {
 	if mustBuild(t, dnsZone("example.org."), base[:n-1]...).ContentHash() == without {
 		t.Fatal("the live expiring record must count")
 	}
-	if h != mustBuild(t, dnsZone("example.org."), base[:n-1]...).ContentHash() {
-		t.Fatal("a view-scoped record is not served and must not count")
+	// A client-group view's record is served to its group (D403), so it
+	// counts like any other served record.
+	if h == mustBuild(t, dnsZone("example.org."), base[:n-1]...).ContentHash() {
+		t.Fatal("a client-group view record is served and must count")
 	}
 }
 

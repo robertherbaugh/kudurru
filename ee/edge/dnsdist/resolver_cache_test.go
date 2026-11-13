@@ -23,7 +23,7 @@ func resolverFixture(now time.Time) resolverObservation {
 
 func TestResolverOriginalClientIsolationBypassReasons(t *testing.T) {
 	now := time.Now()
-	for _, reason := range []string{"async-ptr", "dhcp-runtime", "client-scope", "rule-client-scope", "zone-client-acl", "client-acl", "ecs", "rebinding-client-scope", "rate-limit", "untrusted-console-text"} {
+	for _, reason := range []string{"async-ptr", "dhcp-runtime", "client-scope", "rule-client-scope", "zone-client-acl", "zone-client-view", "client-acl", "ecs", "rebinding-client-scope", "rate-limit", "untrusted-console-text"} {
 		o := resolverFixture(now)
 		o.results[0].zones.Resolver.Available = false
 		o.results[0].zones.Resolver.UnavailableReason = reason

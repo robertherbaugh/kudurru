@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"math"
 	"sort"
 
@@ -14,6 +15,7 @@ import (
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	zonekinds "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/dynamicupdate"
+	"github.com/robertherbaugh/kudurru/internal/zone"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -239,6 +241,13 @@ func normalized(a *Aggregate, l Limits) (*Aggregate, string, uint32, error) {
 		_, _ = h.Write(fields[:])
 		_, _ = h.Write([]byte(r.hashKey))
 	}
+	// Client-group views (D403). Only zones with views add to the hash, so
+	// every existing hash is unchanged.
+	views, err := normalizedViews(a, sources, h, l, &wireBytes)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	out.Views = views
 	// Routing changes also change answers and must advance the edge-visible
 	// serial. Preserve existing hashes for configurations without fallback.
 	var routing struct {
@@ -461,4 +470,97 @@ func strictDecode(data []byte, into any) error {
 		return fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
 	return nil
+}
+
+// normalizedViews validates and orders the committed client-group views and
+// folds them into the content hash h. View records are static leaf data
+// under the apex: never SOA, NS, DNAME or DNSSEC records, and never a
+// dynamic update's.
+func normalizedViews(a *Aggregate, sources map[string]bool, h hash.Hash, l Limits, wireBytes *int64) ([]ViewRecords, error) {
+	if len(a.Views) == 0 {
+		return nil, nil
+	}
+	if len(a.Views) > zone.MaxViews {
+		return nil, ErrCapacity
+	}
+	type item struct {
+		record Record
+		key    string
+		ttl    uint32
+	}
+	out := make([]ViewRecords, len(a.Views))
+	groups := map[string]bool{}
+	for i, v := range a.Views {
+		if v.Group == "" || len(v.Group) > 512 || groups[v.Group] || len(v.Records) == 0 {
+			return nil, fmt.Errorf("%w: view group", ErrInvalid)
+		}
+		groups[v.Group] = true
+		items := make([]item, 0, len(v.Records))
+		seen := map[string]bool{}
+		for _, r := range v.Records {
+			if len(r.Wire) > 65535 || len(r.Wire) == 0 {
+				return nil, ErrInvalid
+			}
+			*wireBytes += int64(len(r.Wire))
+			if *wireBytes > l.MaxWireBytes {
+				return nil, ErrCapacity
+			}
+			rr, n, err := dns.UnpackRR(r.Wire, 0)
+			if err != nil || n != len(r.Wire) {
+				return nil, fmt.Errorf("%w: view record framing", ErrInvalid)
+			}
+			if err := dynamicupdate.ValidateData(rr); err != nil {
+				return nil, fmt.Errorf("%w: view RDATA", ErrInvalid)
+			}
+			raw, err := dynamicupdate.Wire(rr)
+			if err != nil || !bytes.Equal(raw, r.Wire) {
+				return nil, fmt.Errorf("%w: uncompressed view record required", ErrInvalid)
+			}
+			name, err := dynamicupdate.CanonicalName(rr.Header().Name)
+			typ := rr.Header().Rrtype
+			if err != nil || !dns.IsSubDomain(a.Zone.Apex, name) || rr.Header().Class != dns.ClassINET || !viewDataType(typ) {
+				return nil, fmt.Errorf("%w: view owner/class/type", ErrInvalid)
+			}
+			p := r.Provenance
+			if p.SourceID == "" || p.SourceID == "system" || !sources[p.SourceID] || p.Key != "" || p.CredentialVersion != "" {
+				return nil, fmt.Errorf("%w: view record ownership", ErrInvalid)
+			}
+			key, err := dynamicupdate.Identity(rr)
+			if err != nil || seen[key] {
+				return nil, fmt.Errorf("%w: duplicate view record", ErrInvalid)
+			}
+			seen[key] = true
+			items = append(items, item{r, key, rr.Header().Ttl})
+		}
+		sort.Slice(items, func(x, y int) bool { return items[x].key < items[y].key })
+		out[i] = ViewRecords{Group: v.Group, Records: make([]Record, len(items))}
+		for j, it := range items {
+			out[i].Records[j] = it.record
+		}
+	}
+	sort.Slice(out, func(x, y int) bool { return out[x].Group < out[y].Group })
+	var fields [8]byte
+	for _, v := range out {
+		_, _ = h.Write([]byte("\x00view\x00" + v.Group + "\x00"))
+		for _, r := range v.Records {
+			rr, _, _ := dns.UnpackRR(r.Wire, 0)
+			key, _ := dynamicupdate.Identity(rr)
+			binary.BigEndian.PutUint32(fields[:4], uint32(len(key))) //nolint:gosec // G115: canonical RR identity is bounded by 65535-byte wire and escaped names.
+			binary.BigEndian.PutUint32(fields[4:], rr.Header().Ttl)
+			_, _ = h.Write(fields[:])
+			_, _ = h.Write([]byte(key))
+		}
+	}
+	return out, nil
+}
+
+// viewDataType reports whether records of type t may be in a view.
+func viewDataType(t uint16) bool {
+	switch t {
+	case 0, 65535, dns.TypeOPT, dns.TypeSOA, dns.TypeNS, dns.TypeDNAME,
+		dns.TypeRRSIG, dns.TypeNSEC, dns.TypeNSEC3, dns.TypeNSEC3PARAM, dns.TypeDNSKEY, dns.TypeDS,
+		dns.TypeCDS, dns.TypeCDNSKEY, dns.TypeSIG, dns.TypeKEY, dns.TypeNXT:
+		return false
+	}
+	return t < dns.TypeTKEY || t > dns.TypeANY
 }

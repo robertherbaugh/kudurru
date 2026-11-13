@@ -113,6 +113,19 @@ type Aggregate struct {
 	// content/serial commit; an overdue uncommitted removal fails closed.
 	Expiry   time.Time `json:"expiry,omitempty"`
 	Receipts []Receipt `json:"receipts,omitempty"`
+	// Views hold the static records of client-group views (D403), one
+	// entry per ClientGroup ID, sorted. They are served only to the group's
+	// clients. Records stays the default data: transfers, the IXFR journal,
+	// RFC 2136 UPDATE state and exports never read Views.
+	Views []ViewRecords `json:"views,omitempty"`
+}
+
+// ViewRecords are the committed records of one client-group view. Every
+// record is static (a source ID provenance); dynamic updates never write a
+// view.
+type ViewRecords struct {
+	Group   string   `json:"group"`
+	Records []Record `json:"records"`
 }
 
 // Expected is the exact head and authority fence a candidate was planned against.
@@ -171,6 +184,22 @@ func (a *Aggregate) RRs() ([]dns.RR, error) {
 			return nil, ErrInvalid
 		}
 		out = append(out, rr)
+	}
+	return out, nil
+}
+
+// ViewRRs decodes the records of every view, in Views order.
+func (a *Aggregate) ViewRRs() ([][]dns.RR, error) {
+	out := make([][]dns.RR, len(a.Views))
+	for i, v := range a.Views {
+		out[i] = make([]dns.RR, 0, len(v.Records))
+		for _, r := range v.Records {
+			rr, n, err := dns.UnpackRR(r.Wire, 0)
+			if err != nil || n != len(r.Wire) {
+				return nil, ErrInvalid
+			}
+			out[i] = append(out[i], rr)
+		}
 	}
 	return out, nil
 }

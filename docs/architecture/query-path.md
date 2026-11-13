@@ -307,7 +307,7 @@ NOTAUTH by the transport, also before the pipeline.
 | 2 | `identify` | Which client groups, which policy? | never answers; attaches `Client.GroupIDs` and the policy decision | none |
 | 3 | `control` | Is the message malformed, the client outside allowed networks, or the query type blocked? | silence for malformed messages; REFUSED with EDNS EDE 18 for global admission rules | `dropped`, `refused_acl` |
 | 4 | `postprocess` | What may this client receive? | captures response settings; on response unwinding, checks rebinding and finalizes AD/CD/DO on a private copy | `blocked_upstream` when rebinding protection refuses the answer; otherwise preserves the answering status |
-| 5 | `authoritative` | Is the name in a local zone? | the zone's answer (AA), REFUSED by the zone ACL, an AXFR/IXFR stream, SERVFAIL while unsynced, a DHCP lease record; for a forward zone it sets the upstream group and passes on | `authoritative`, `refused_acl`, `servfail_unsynced`, `local_record` (DHCP lease records) |
+| 5 | `authoritative` | Is the name in a local zone? | the zone's answer (AA), from the client's group view when the zone has one ([zones](zones.md#client-group-views-split-horizon)), REFUSED by the zone ACL, an AXFR/IXFR stream, SERVFAIL while unsynced, a DHCP lease record; for a forward zone it sets the upstream group and passes on | `authoritative`, `refused_acl`, `servfail_unsynced`, `local_record` (DHCP lease records) |
 | 6 | `blocking` | Is the name blocked for this client? | a block answer, a `$dnsrewrite` answer, a safe-search CNAME, a transferred RPZ action; after the next stages return, it checks CNAME targets and IPs in the answer | `blocked_list`, `blocked_exact`, `blocked_regex`, `blocked_cname`, `blocked_safesearch`, `blocked_rpz`, `local_record` (`$dnsrewrite`) |
 | 7 | `rewrite` | What response does this client need? | configured rewrites, DNS64, AAAA filtering and NXDOMAIN handling; synthesis clears AD and obsolete proofs | `local_record` for configured rewrites; otherwise preserves source status |
 | 8 | `cache` | Is the answer already known? | a cached, stale or prefetching answer | `cached`, `cached_stale`, `prefetch_refresh` |
@@ -548,8 +548,7 @@ a held disabled request, redirect its sink, or replace its privacy transform.
 ## Not built yet
 
 `local` (custom host records, `.local`/`.onion`/RFC 6303 answers) remains
-reserved in `pipeline.Order`; client-group authoritative views remain subsequent
-work. [Response processing](../deploy/response-processing.md) implements
+reserved in `pipeline.Order`. [Response processing](../deploy/response-processing.md) implements
 configured rewrites, DNS64, AAAA filtering, NXDOMAIN handling and rebinding.
 Recursive upstream groups already answer RFC 6303 and special-use names and validate their answers. NSID is not implemented, and
 the `epoch` in the health TXT is always `0`.

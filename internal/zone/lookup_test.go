@@ -278,7 +278,7 @@ func TestLookupDoesNotMutateZone(t *testing.T) {
 		z.Lookup("host.dn2.example.org.", dns.TypeA)
 	}
 	again := mustBuild(t, dnsZone("example.org."), exampleEndpoints()...)
-	if before != again.ContentHash() || contentHash(z) != before {
+	if before != again.ContentHash() || z.servedHash() != before {
 		t.Fatal("lookups changed zone content")
 	}
 	if got := z.Lookup("*.wild.example.org.", dns.TypeA).Answer[0].Header().Name; got != "*.wild.example.org." {

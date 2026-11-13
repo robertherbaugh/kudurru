@@ -40,8 +40,18 @@ func aggregatePreflight(a *Aggregate, l Limits) error {
 			return ErrCapacity
 		}
 	}
+	viewRecords := 0
+	for _, v := range a.Views {
+		viewRecords += len(v.Records)
+		if len(v.Group) > dynamicupdate.MaxIdentityBytes || !charge(int64(len(v.Group))+64) {
+			return fmt.Errorf("%w: view group", ErrCapacity)
+		}
+	}
+	if len(a.Views) > l.MaxRecords || viewRecords > l.MaxRecords || len(a.Records)+viewRecords > l.MaxRecords || !charge(int64(viewRecords)*192) {
+		return ErrCapacity
+	}
 	var wireLeft = l.MaxWireBytes
-	for _, r := range a.Records {
+	record := func(r Record) error {
 		if len(r.Wire) > 65535 || int64(len(r.Wire)) > wireLeft || !charge(int64(len(r.Wire))) {
 			return fmt.Errorf("%w: record wire", ErrCapacity)
 		}
@@ -56,6 +66,19 @@ func aggregatePreflight(a *Aggregate, l Limits) error {
 		}
 		if !charge(int64(len(r.Provenance.Key)) * 4) {
 			return ErrCapacity
+		}
+		return nil
+	}
+	for _, r := range a.Records {
+		if err := record(r); err != nil {
+			return err
+		}
+	}
+	for _, v := range a.Views {
+		for _, r := range v.Records {
+			if err := record(r); err != nil {
+				return err
+			}
 		}
 	}
 	for _, r := range a.Receipts {

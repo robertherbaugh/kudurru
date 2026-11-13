@@ -74,6 +74,11 @@ type Zone struct {
 	stub                 *stubRoute
 	committed            bool
 	committedUnavailable bool
+
+	// views are the client-group variants of a primary zone, sorted by
+	// group (view.go, D403); base links a variant to its default zone.
+	views []clientView
+	base  *Zone
 }
 
 // Name returns the lowercased absolute zone name.
@@ -290,7 +295,7 @@ type Builder struct {
 	merge       bool
 	nsNames     []string
 	// owners maps an endpoint identity to the source that claimed it
-	// first. Endpoints that are not served (disabled, expired, view-scoped)
+	// first. Endpoints that are not served (disabled, expired, publish-only)
 	// still claim their identity, so toggling one never moves ownership
 	// (the controller's rule, dev-docs/milestones/m1/controller.md).
 	owners map[identity]string
@@ -303,17 +308,26 @@ type Builder struct {
 	dnames int
 	// policyErrs are the non-fatal spec.policy errors (PolicyErrors).
 	policyErrs field.ErrorList
+	// views holds the client-group view data by group ID until Build
+	// (view.go, D403); viewErrs and viewServed are Build's outcome.
+	views      map[string]*pendingView
+	viewErrs   map[string]field.ErrorList
+	viewServed map[string]bool
 }
 
 // identity is the duplicate-detection key of an endpoint within a zone:
-// owner, type and the external-dns set identifier. Endpoints with
+// owner, type, the external-dns set identifier and the client-group view
+// (empty for default and publish-only endpoints). Endpoints with
 // different set identifiers are distinct (kudurru has no routing policies,
 // so their records are served as one RRset); the same identity from a
-// later source is Duplicated.
+// later source is Duplicated. A view endpoint and a default endpoint of
+// one name and type are distinct: the view's RRset replaces the default
+// one for the group (D403).
 type identity struct {
 	key   string
 	t     uint16
 	setID string
+	view  string
 }
 
 // NewBuilder validates the DNSZone and returns a Builder for its records.
@@ -464,17 +478,30 @@ func (b *Builder) defaultTTL() uint32 {
 	return DefaultTTL
 }
 
-// Served reports whether an endpoint is served at instant now: disabled
-// records, expired records and records scoped to a view are not. Views are
-// a v0.2 feature; until the rewrite stage can answer per client group an
-// endpoint with any view is withheld rather than leaked to every client
-// ("public" endpoints are never served by design, D29).
+// Served reports whether an endpoint is served in the default view at
+// instant now: disabled records, expired records and records scoped to a
+// view are not. "public" endpoints are never served by design (D29); an
+// endpoint whose view names a ClientGroup is served only to that group,
+// from the zone's view of it (Live, D403).
 func Served(ep *v1alpha1.Endpoint, now time.Time) bool {
 	k := ep.Kudurru
 	if k == nil {
 		return true
 	}
-	if k.Disabled || k.View != "" {
+	if k.View != "" {
+		return false
+	}
+	return Live(ep, now)
+}
+
+// Live reports whether an endpoint is neither disabled nor expired at now,
+// whatever its view.
+func Live(ep *v1alpha1.Endpoint, now time.Time) bool {
+	k := ep.Kudurru
+	if k == nil {
+		return true
+	}
+	if k.Disabled {
 		return false
 	}
 	if k.ExpiresAt != nil && !now.Before(k.ExpiresAt.Time) {
@@ -486,11 +513,18 @@ func Served(ep *v1alpha1.Endpoint, now time.Time) bool {
 // AddRecordSet adds every endpoint of a DNSRecordSet. source identifies the
 // object in Duplicated messages ("namespace/name"); errors carry paths of
 // the form spec.endpoints[i].targets[j].
+//
+// Client-group views refer to ClientGroups by bare name; AddRecordSet uses
+// the name as the group ID. Build passes each record set's namespace.
 func (b *Builder) AddRecordSet(source string, eps []v1alpha1.Endpoint) field.ErrorList {
+	return b.addRecordSet("", source, eps)
+}
+
+func (b *Builder) addRecordSet(namespace, source string, eps []v1alpha1.Endpoint) field.ErrorList {
 	var errs field.ErrorList
 	base := field.NewPath("spec", "endpoints")
 	for i := range eps {
-		errs = append(errs, b.Add(source, base.Index(i), &eps[i])...)
+		errs = append(errs, b.add(namespace, source, base.Index(i), &eps[i])...)
 	}
 	return errs
 }
@@ -498,10 +532,20 @@ func (b *Builder) AddRecordSet(source string, eps []v1alpha1.Endpoint) field.Err
 // Add adds one endpoint. An endpoint is all-or-nothing: when any target
 // fails to parse, or the endpoint conflicts with data already in the zone,
 // none of its records are added and the errors explain why. Disabled,
-// expired and view-scoped endpoints are skipped silently (Served).
+// expired and publish-only endpoints are skipped silently (Served). Live
+// endpoints of a client-group view go to that group's view (D403); the
+// group ID is the bare view name here (see AddRecordSet).
 func (b *Builder) Add(source string, path *field.Path, ep *v1alpha1.Endpoint) field.ErrorList {
+	return b.add("", source, path, ep)
+}
+
+func (b *Builder) add(namespace, source string, path *field.Path, ep *v1alpha1.Endpoint) field.ErrorList {
 	if !b.z.holdsRecords() {
 		return field.ErrorList{field.Forbidden(path, fmt.Sprintf("%s zones hold no records", b.z.typ))}
+	}
+	if GroupView(ep) != "" && Live(ep, b.now) {
+		rrs, errs := ParseEndpoint(b.z.name, b.defaultTTL(), ep, path)
+		return b.addView(namespace, source, path, ep, rrs, errs)
 	}
 	if !Served(ep, b.now) {
 		b.claim(source, ep)
@@ -528,7 +572,7 @@ func (b *Builder) addParsed(source string, path *field.Path, ep *v1alpha1.Endpoi
 			return field.ErrorList{field.Invalid(dnsName, ep.DNSName, "a CNAME cannot be at the zone apex (RFC 1912 §2.4)")}
 		}
 	}
-	id := identity{key, rrtype, ep.SetIdentifier}
+	id := identity{key, rrtype, ep.SetIdentifier, ""}
 	if prev, ok := b.owners[id]; ok && prev != source && !b.merge {
 		return field.ErrorList{&field.Error{
 			Type:     field.ErrorTypeDuplicate,
@@ -689,6 +733,7 @@ func (b *Builder) Build() *Zone {
 	z.access.nsAddrs = append(z.access.nsAddrs, nsAddrs...)
 	z.transfer.nsAddrs = append(z.transfer.nsAddrs, nsAddrs...)
 	z.hash = contentHash(z)
+	b.finishViews()
 	return z
 }
 
@@ -835,7 +880,7 @@ func Build(dz *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet, opts BuildOption
 		src := rs.Namespace + "/" + rs.Name
 		var recordErrs field.ErrorList
 		if opts.Records == nil {
-			recordErrs = b.AddRecordSet(src, rs.Spec.Endpoints)
+			recordErrs = b.addRecordSet(rs.Namespace, src, rs.Spec.Endpoints)
 		} else {
 			parsed := b.ParseRecordSet(rs)
 			for i := range rs.Spec.Endpoints {
@@ -849,5 +894,12 @@ func Build(dz *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet, opts BuildOption
 			out.RecordSets[src] = append(out.RecordSets[src], errs...)
 		}
 	}
-	return b.Build(), out
+	z := b.Build()
+	for src, errs := range b.ViewErrors() {
+		if out.RecordSets == nil {
+			out.RecordSets = map[string]field.ErrorList{}
+		}
+		out.RecordSets[src] = append(out.RecordSets[src], errs...)
+	}
+	return z, out
 }

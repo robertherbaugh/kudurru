@@ -177,7 +177,8 @@ Only absent names fall back. An existing name, an empty non-terminal or a
 wildcard match without the requested type answers NODATA locally. Generated
 apex SOA/NS (and management ANY queries) stay local, but other apex types
 fall back until a record set explicitly defines the apex. Disabled, expired
-and view-withheld records are absent and do not suppress fallback. More
+and publish-only records are absent and do not suppress fallback; a
+client-group view's name suppresses it only for that group's clients. More
 specific zones still win. ACL refusals and stale/unsynced snapshots never
 trigger public fallback; a missing name queried without RD is REFUSED.
 
@@ -204,8 +205,9 @@ matches what is served:
 
 1. Order record sets oldest first (creation time, then namespace, then name).
 2. An endpoint whose name is not under the apex is dropped: `OutsideZone`.
-3. The identity of an endpoint is (name, type, setIdentifier). A later
-   record set that repeats an identity loses that endpoint: `Duplicated`.
+3. The identity of an endpoint is (name, type, setIdentifier), plus the view
+   for an endpoint in a client-group view. A later record set that repeats
+   an identity loses that endpoint: `Duplicated`.
 4. A record set from a namespace the selector does not allow is `NotSelected`;
    one that points at a missing zone is `ZoneNotFound`.
 
@@ -224,6 +226,57 @@ invalidates the parse entry without extending it. The cache retains at most
 zone inputs and evicts least recently used entries. Invalid parses are not
 retained. This cache supplies neither authority nor a publication receipt;
 committed serving models still materialize verified raw records.
+
+## Client-group views (split horizon)
+
+An endpoint's `kudurru.view` is either `public` (published to sinks, never
+served, D29) or the name of a ClientGroup in the record set's namespace
+(D403). A group-view endpoint is served only to clients the identify stage
+placed in that group, on both store drivers:
+
+```yaml
+spec:
+  endpoints:
+    - { dnsName: www.example.com, recordType: A, targets: [203.0.113.10] }
+    - { dnsName: www.example.com, recordType: A, targets: [10.0.0.10], kudurru: { view: lan } }
+    - { dnsName: nas.example.com, recordType: A, targets: [10.0.0.20], kudurru: { view: lan } }
+```
+
+A zone with views is built as its default zone plus one complete variant per
+group. In a variant, a view RRset replaces the default RRset of the same name
+and type; a view CNAME replaces everything at its name, and any view RRset
+replaces a default CNAME at its name. Views never remove a name, so a group
+client sees every default name, while every other client gets the default
+zone's NXDOMAIN or NODATA (with the default SOA) for view-only names. A client
+in several groups with views of one zone gets the view of the group whose
+`namespace/name` sorts first. The authoritative stage picks the variant after
+the zone match and query ACL (`Zone.ForGroups`, no allocation; a zone without
+views returns itself), and CNAME chains that enter the zone from another zone
+use the client's variant there too.
+
+Rules and limits:
+
+- A view holds leaf data only: NS, DNAME, SOA and DNSSEC types are refused, as
+  is a CNAME at the apex. View data at or below a default delegation or below
+  a DNAME is refused as `Occluded`. A zone serves at most 16 views.
+- Views are not served in a DNSSEC-signed zone (`spec.dnssec.enabled`, or
+  default data with RRSIG, NSEC, NSEC3 or DNSKEY records): the view endpoints
+  are reported `Invalid` and the group gets the default data.
+- AXFR, IXFR, the IXFR journal, NOTIFY serials, `GET .../export` and
+  integration sinks (Cloudflare, UniFi) carry the default data only. A
+  secondary never receives group data, and there is no per-key view transfer.
+- RFC 2136 UPDATE reads and writes the default data: prerequisites are
+  evaluated against it, and added records are default records. On SQLite a
+  static view endpoint still reserves its name and type against UPDATE, as
+  disabled and publish-only endpoints do.
+- The content hash covers the views, so a view change advances the serial.
+  On SQLite the committed aggregate keeps views in their own `views` list,
+  apart from the default `records`.
+- Answers from a view are authoritative and final; they never enter the
+  response cache. The edge's packet caches key on the question, not on the
+  client's group, so any group view (desired, or still served by a committed
+  model) makes kudurru report `zone-client-view` for both the authoritative
+  and the resolver pool, and the edge bypasses both caches.
 
 ## External zones on Kubernetes
 
