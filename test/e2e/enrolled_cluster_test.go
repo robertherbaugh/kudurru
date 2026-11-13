@@ -894,6 +894,11 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		})
 	}
 	if anchors != nil {
+		// What the workers last did, for a failing count below.
+		for name, c := range map[string]*staticProcessClient{"primary": apiA, "follower": apiB} {
+			s := anchors.status(c, func(api.RootAnchorStatus) bool { return true })
+			t.Logf("partition check at %s: %s updater %+v supervisor %+v", time.Now().Format("15:04:05.000"), name, s.Updater, s.Supervisor)
+		}
 		anchors.awaitTCP(anchorRootNormal, 1, 0, "partition")
 		anchors.owner(apiB, "follower")
 	}

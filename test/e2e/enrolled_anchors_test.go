@@ -103,11 +103,11 @@ func (e *enrolledAnchors) awaitTCP(mode int32, want int32, settle time.Duration,
 		want += e.base
 	}
 	if !kudurrutest.Eventually(20*time.Second, 20*time.Millisecond, func() bool { return e.root.TCP(mode) >= want }) || e.root.TCP(mode) != want {
-		e.t.Fatalf("%s: %d root acquisitions, want %d", why, e.root.TCP(mode), want)
+		e.t.Fatalf("%s: %d root acquisitions, want %d (at %s: %s)", why, e.root.TCP(mode), want, time.Now().Format("15:04:05.000"), e.root.TCPLog())
 	}
 	time.Sleep(settle)
 	if got := e.root.TCP(mode); got != want {
-		e.t.Fatalf("%s: %d root acquisitions after settling, want %d", why, got, want)
+		e.t.Fatalf("%s: %d root acquisitions after settling, want %d (at %s: %s)", why, got, want, time.Now().Format("15:04:05.000"), e.root.TCPLog())
 	}
 }
 
@@ -150,7 +150,7 @@ func (e *enrolledAnchors) absorbSettings(follower *staticProcessClient, before i
 	if extra < 1 || extra > 2 {
 		e.t.Fatalf("%s: %d deny-only acquisitions", why, extra)
 	}
-	e.t.Logf("%s: %d deny-only acquisitions, settled after %s", why, extra, time.Since(start).Round(time.Millisecond))
+	e.t.Logf("%s: %d deny-only acquisitions, settled after %s (at %s)", why, extra, time.Since(start).Round(time.Millisecond), time.Now().Format("15:04:05.000"))
 	e.base += extra
 }
 

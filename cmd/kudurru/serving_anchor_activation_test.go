@@ -306,7 +306,7 @@ func restartDueAnchorWriter(t *testing.T, replies int) (s *servingRuntime, origi
 // requireWriterServicesHeld requires that, for hold, the restarted writer's
 // other elected services did not start and nothing committed over the
 // generation its due poll captured. The fixture's connection deadline is 4 s.
-func requireWriterServicesHeld(t *testing.T, s *servingRuntime, original context.Context, before replication.Generation, hold time.Duration) {
+func requireWriterServicesHeld(original context.Context, t *testing.T, s *servingRuntime, before replication.Generation, hold time.Duration) {
 	t.Helper()
 	for end := time.Now().Add(hold); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
 		if s.primary.driver.Status().Running {
@@ -330,7 +330,7 @@ func requireWriterServicesHeld(t *testing.T, s *servingRuntime, original context
 // once with no raced retry, then the services start (F28-OPEN6).
 func TestDirectAnchorRestartedWriterDuePollPrecedesWriterServices(t *testing.T) {
 	s, original, before, reads, release := restartDueAnchorWriter(t, 3)
-	requireWriterServicesHeld(t, s, original, before, 1500*time.Millisecond)
+	requireWriterServicesHeld(original, t, s, before, 1500*time.Millisecond)
 	release()
 	awaitServingRuntime(t, s, func() bool {
 		view := s.anchorStatus.snapshot().updater
@@ -352,7 +352,7 @@ func TestDirectAnchorRestartedWriterDuePollPrecedesWriterServices(t *testing.T) 
 // updater and the revocation uncommitted.
 func TestDirectAnchorRestartedWriterDueRevokeCommitsBeforeWriterServices(t *testing.T) {
 	s, original, before, reads, release := restartDueAnchorWriter(t, 2)
-	requireWriterServicesHeld(t, s, original, before, 1500*time.Millisecond)
+	requireWriterServicesHeld(original, t, s, before, 1500*time.Millisecond)
 	release()
 	awaitServingRuntime(t, s, func() bool {
 		if s.anchorWriter.terminalError() != nil {
