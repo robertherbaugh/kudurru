@@ -228,7 +228,7 @@ func newAnchorMetrics(s *servingRuntime) *anchorMetrics {
 		worker:       prometheus.NewDesc("kudurru_root_anchor_worker_state", "Managed root-anchor worker state (1 for the current state): the elected updater or the deny-only supervisor.", []string{"worker", "state"}, nil),
 		refused:      prometheus.NewDesc("kudurru_root_anchor_adoption_refused", "Whether this member refuses the primary's root-anchor state at its last pull, by reason (1 refusing).", []string{"reason"}, nil),
 		admission:    prometheus.NewDesc("kudurru_root_anchor_admission_current", "Whether this process holds managed root-anchor serving admission (0 on a managed node means a restart is needed to publish again).", nil, nil),
-		acquisitions: prometheus.NewDesc("kudurru_root_anchor_updater_acquisitions_total", "Root-anchor acquisitions the elected updater of this process made, by outcome: applied, raced (an ordinary commit landed while the reply was in flight; the reply was discarded and a new acquisition follows), failed (transport) or refused (terminal for the writer term).", []string{"outcome"}, nil),
+		acquisitions: prometheus.NewDesc("kudurru_root_anchor_updater_acquisitions_total", "Root-anchor acquisitions the elected updater of this process made, by outcome: applied, raced (an ordinary commit landed while the reply was in flight; the reply was discarded and a new acquisition follows), failed (transport), refused (terminal for the writer term) or canceled (the writer term or process ended during the query).", []string{"outcome"}, nil),
 	}
 }
 
