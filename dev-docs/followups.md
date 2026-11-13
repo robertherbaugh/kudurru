@@ -19,26 +19,23 @@ panels (`60a3af1`), nested settings help (`d37f4ad`), audit verification API/CLI
 (`3df864c`, `a097836`), and optional webhook authentication (`5fc97d7`).
 The evidence audit preserves their original requirements and limits.
 
-## Store and drivers
-
-| Item | Source | Target |
-|---|---|---|
-| Cold-start cluster identity now requires an independently provisioned host pin for offline admission, with guarded initial online verification; F01 closure and compatibility limits are in the v0.2 audit | hardening report | v0.2 |
-| SQLite attribution/redaction shipped in aa3784c (F02a/b/F38): schema 6 authenticates dedicated request/client/authz fields and redacts new documents before cap/hash. Historical source evidence stays unchanged. Epoch fencing and private-kind registration are implemented separately; final gates remain in the audit | store-sqlite report; D249 | v0.2 |
-| `WatchOptions.ResourceVersion` semantics: replay-as-Added (documented) vs true resume | store-kube spike | v0.2 |
-| conformance: shared "rejects the same inputs" table run against sqlite and kube | validator spike | v0.2 (moved from M2: test-only, both drivers already pass the conformance suite) |
+Closed rows of the release documentation pass (G25-DOCS, November 13, 2026),
+deleted because the [completion plan inventory](milestones/v0.2/completion-plan.md#complete-subrequirement-inventory)
+marks their F rows integrated or implemented; each names its F row and the
+commit or decision the inventory cites ("inventory row" where it cites none):
+cold-start cluster identity (F01, `1bf8586`); SQLite audit attribution and redaction, epoch fencing and internal kinds (F02a, F02b, F38 `aa3784c`; F02c `5079fa7`; F02d, inventory row); watch resume from a resourceVersion (F03, `cf35c627`); the shared rejection table (F04, `d4075f5`); parsed record reuse (F05, `eb20ac7`); per-zone NOTIFY key and source (F06a, F06b, `c80c6f2`, `46d7641`); the `doctor` self-NOTIFY round trip (F08, D261, D331); per-integration Leases (F09a, `7d653e7`); inline object reload and the `Policy/default` fallback (F10a `71c0393`, F10b inventory row); current-hour stats beyond 100,000 names (F16, `8b98f41`); `$important` and `$badfilter` (F17, `292fdb9`); control settings and the extra hostname sources (F18a `50773f9`, F18b `83c1096`, F18c `380f43f`); the replicated blocking toggle (F19a; F19b, D301); dnsmasq import, cache inspect and the cache and strategy limits (F21a, F21b; F21c paired run 42554034011 on `9963dec2`); padding, Alt-Svc, listener limits and DoH path IDs (F22a–F22d); the public catalog data repository (F23, D333); rate-limit exemptions per ClientGroup (F24b, `3234ad4`; F24a `661174c`); RFC 8198 (F27, D296); negative trust anchors (F29a `9d7bd79`, F29b `ddc5f2d`); validation of forwarded answers (F30, `9d7bd79`); DNS cookies (F31, `668203c`); durable node settings (F32, `ffcf20e`, `bd47907`); scoped permissions in `/auth/me` (F34, `b8579a8`; zone groups D385); the direct DNSEndpoint source and the webhook sidecar (F35a D302/D303, F35b D288); object lists from the live snapshot (F36, `92bf51b`); the generated Go client under the CLI (F37, `a106708`); dedicated audit columns (F38, `aa3784c`); remote edge cache invalidation (F39b, D283); host-only edge and VIP keys and VIP audit events (F40a `52ec29d`, F40b `380458f`); ServiceProvider owner and chart annotations (F41a `1c934e7`, `9990ede`; F41b inventory row); per-VRID HMAC references (F42, `376d63d`); console diff-apply and certificate reload (F43a `e60001f`, `88ca477`; F43b `e60001f`; F43c D275); durable binding revocation (F44a `15acbd8`; F44b `c44b67d`, D364); stored OIDC identities and their administration (F45a `4aca7c2`, F45b D289); bounded projected ServiceAccount tokens (F47, `101b614`); `autoProvision: never`, `syncGroups` and RP-initiated logout (F48a `4aca7c2`, F48b `2947b02`, `6f278bf`); ServiceAccount subject overlap (F50, D254); HTTPS-only downloads (F51, `a15480e`); the matched exclusion in dig answers (F52, `8879459`); exact ClientGroup scope of allow and deny lists (F53, `926b2a3`); regex override information and cache invalidation (F54a inventory row; F54b D283); the per-digest entries index (F55, inventory row); self-hosted fonts (F56, `13c0c9e`); the record-delete dialog and query export (F58a, F58b, inventory rows); kubeconfig contexts (F59, D285); the §3.5 verbs: cluster commands (F60b, D345, D347, D354, D355), `integrations` (F60c, D291, D295, D298, D367), zone options (F60d, `c9f14dc`), offline importers (F60a, `32f9e81`, `f01d4db`; CoreDNS D392); browser and device CLI login (F61a `4fddbce`, F61b `b09fc77`); CLI conformance and the §10 contracts (F62a `6938fbb`, F62b `c439532`); `cluster.role: static` (F65, D300); separate querylog and local paths (F66, `b3f6986`, `5048c61`); E2E-2 static SQLite membership (F67, D300, D349); retired-node central reads (F69, `a4e38ce`); central dictionary pruning (F70, `eef61bd`, `b1a29e8`, `a7304d8`); partial-hour rollups of stopped sources (F71, `123148b`, `f8fbb85`); AuditLog diagnostics (F72a, F72b, `e77d025`); the AuditLog verification-key lifecycle (F73, `d3604c1`). Their final release gates (G21–G24) and the
+package verdicts in the [acceptance table](milestones/v0.2/gaps.md#feature-package-acceptance-at-154a779a-november-13-2026)
+still apply; deleting a row closes the follow-up, not the package. Rows whose
+work is not complete stay below with the remaining part restated; none was
+retargeted except F64c, whose remaining metric was already the original v1.0
+subtarget.
 
 ## Zone, controller, objects
 
 | Item | Source | Target |
 |---|---|---|
-| Per-record parsed RR reuse is implemented in `eb20ac7`, with bounded retention, detached copies and identity/TTL/expiry invalidation; composed races and local changed-record benchmarks pass | dev-docs/milestones/m2/xfr.md; F05 | v0.2 (implementation complete; final performance/release qualification remains) |
-| Per-zone NOTIFY signing key and source shipped in the v0.2 review (F06): separate `notifyTSIGKeyRef`, `notifySource`, compatible empty defaults, current-policy/key refusal and primary-zone wizard/settings controls | dev-docs/milestones/m2/xfr.md | v0.2 |
-| Store-backed internal `TSIGKey` kind behind `dnsserver.TSIGKeyring` (encrypted at rest, §4.1); TSIG on DoH/DoQ/DoH3 (signed requests are treated as unsigned there) | dev-docs/milestones/m2/xfr.md | v0.2 (moved from M3 / v0.2: the node-config `tsigKeys` keyring covers v0.1) |
-| `kudurru doctor` self-NOTIFY round trip reporting the egress address (§4.6) | dev-docs/milestones/m2/xfr.md | v0.2 (moved from M4: a diagnostic, NOTIFY itself works) |
+| Stored TSIG keys: SQLite and Kubernetes management with hot reload (D292, D314, D365) and the `kudurru tsigkeys` CLI (D394) are integrated, and TSIG on DoH/DoQ/DoH3 is integrated (F07b, `a6bf8e1`). Open: `kudurru tsigkeys` has not run against a Kubernetes node, and F07a's final gates (G21–G24) | dev-docs/milestones/m2/xfr.md; F07a | v0.2 |
 | DS at a delegation point where parent and child are both local routes to the child; needs a DS special case | zone report | v1.0 (DNSSEC) |
-| Per-integration Leases: one Runner per elector name or an elector per runnable | controller report | v0.2 |
-| objects: reload inline objects without a restart; bootstrap `Policy/default` priority as an explicit fallback (the starter blocklist is seeded through `bootstrap.Options.StarterBlockList`, cmd/kudurru/serve.go:198; `cluster.role` moved to v0.2 with the static membership in fdd6dc5) | objects report | v0.2 (moved from M2/M3: a restart applies inline changes; merged rows) |
 
 ## Active Directory DNS replacement (D222)
 
@@ -60,106 +57,42 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 |---|---|---|
 | DHCPv4 deployment acceptance with the target router/relay hardware and systemd/container packaging ([procedure](../docs/deploy/dhcp-cutover.md)). Disconnected stock-dhcpcd lifecycle, relay and multi-subnet tests pass; production LAN acceptance remains operator-specific | D171–D179 | v0.1.0 deployment acceptance |
 | DHCPv6 protocol coverage and coordinated IPv6 ownership | D176; explicitly excluded by project owner from this DHCPv4 expansion | beyond this DHCPv4 pass |
-| Query-log stats reads over the current hour scan its facts once it has more than 100,000 distinct names (1.8 s at 1M rows at 2,000 q/s): per-domain rollups for shorter buckets, or an HLL sketch per hour for unique domains (dev-docs/milestones/m2/querylog.md) | dev-docs/milestones/m5/measurements-v0.1.md | v0.2 |
 | Query-log summary and client counts can omit newly written previous-hour events when a one-hour window ends in the first minute of an hour; add deterministic boundary coverage and correct rollup initialization or reads | PR #75 local validation; reproduced on `origin/main` with `TestClusterStatsMerge` and a window ending at HH:00:30 | Next query-log correctness pass |
-| Blocking: `$important`/`$badfilter` (considered for v0.1 in the policy package and left to the v0.2 modifier slow path, §7.3; v0.1 counts them unsupported) | blocking spike, policy report | v0.2 |
-| Control configuration shipped in the v0.2 review (F18a): `control.allowedNetworks` and `control.blockedQTypes`, immutable captured rules, validated hot reload and DNS64 dependency admission. Additional hostname sources remain open (F18b/c): reverse PTR cache and UniFi; DHCP lease names are implemented | policy report; docs/deploy/dns-controls.md | v0.2 |
-| Blocking toggle replication: a `blocking.Publisher` writing `kudurru.io/blocking-disabled-until` on the `kudurru-runtime` ConfigMap (kube) or state.db (sqlite), and a watcher calling `Toggle.Apply` (`POST /dns/blocking` toggles the node-local Toggle since dev-docs/milestones/m3/api.md) | policy report | v0.2 (moved from M3: the toggle stays per node in v0.1; the release notes list it) |
-| Blocking: lazy-DFA regex engine for regex-heavy users (pinned official AdGuard black-box CI landed in `f5d5316`; benchgate moved to hack/ in `a2bb3bf`) | blocking spike | v0.2 (remaining engine work; corpus/scale qualification stays in the release gate) |
-| Upstream: `upstreams.importFile` for dnsmasq import; cache inspect over REST (`Set.Status()` is in GET /stats/upstreams and flush in POST /cache/flush since dev-docs/milestones/m3/api.md); cache and strategy benchmarks in `bench/limits.txt` | cache-upstream report | v0.2 (moved from M3: additions, nothing in v0.1 depends on them) |
-| dnsserver: negotiated encrypted RFC 8467 response padding shipped in the v0.2 review (F22c). Native DoH `Alt-Svc` for an active matching HTTP/3 endpoint shipped in the v0.2 review (F22b). Config keys for `Limits.QUICMaxConns`, `MaxTCPQueries` and idle timeouts shipped in the v0.2 review (F22a); DoH path client IDs are implemented (F22d) | dnsserver spike | v0.2 (moved from M2/M3: the limits have code defaults) |
+| Lazy-DFA regex engine integrated (F20d, D293). Open: regex-1000 p99 stays adverse and the original relative benchmark gate exits 1; corpus and scale qualification stays in G23 | blocking spike; F20d | v0.2 |
 | Transfer chunks are budgeted by uncompressed size (69 messages of ~42 KB for 100k records); budget by compressed size for fewer, fuller messages | dev-docs/milestones/m2/xfr.md | later |
-| D60 blocked-services and safe-search catalogue in a separate public data repository: v0.1 embeds a kudurru-authored catalogue (`internal/listdata/catalogue`) that `blocking.catalogue.url` can replace at runtime (D120); move the data to its own repository once the project owner creates it | D120 | v0.2 (the owner creates and publishes the repository) |
-| ratelimit: exemptions per ClientGroup (slip counter landed in `661174c`; `ratelimit.*` reload without a restart landed in dev-docs/milestones/m5/burndown-server.md) | hardening report | v0.2 |
-| Multi-socket DoT implemented; DoQ/DoH3 now use immutable CID-routed Linux groups (D311), with a pinned quic-go migration fix. Actual transport/migration races pass; local DoQ improves and HTTP3 regresses in one sample. Fixed-class performance, configured lint and final release checks remain. | hardening report | v0.2 |
-| Settings hot reload caveats: exclusion-only reloads preserve daily pseudonym identity (F26a closed); privacy mode/method changes retain separate lifecycles; `cache.maxEntries` growth keeps the shard count chosen at start (very large growth means large shards); `blocking.refreshInterval`, `blocking.allowDegraded`, `querylog.enabled/sink`, `auth.*` still need a restart (restartRequired) | dev-docs/milestones/m5/burndown-server.md | v0.2 |
+| Multi-socket DoT (F25a, `eeb68c2`) and CID-routed DoQ/DoH3 (F25b, D311) are integrated. Open: one local sample worsens HTTP3 by 12.54%; fixed-class performance and final release checks (G23) | hardening report; F25b | v0.2 |
+| Settings hot reload: pseudonym identity (F26a), cache shard growth (F26b, `62990dd`), blocking refresh and degraded settings (F26c, `38153fa`), query-log sinks (F26d) and the five auth controls on complete SQLite (F26e, D290) reload without a restart. Open: on Kubernetes and for host inputs the auth controls stay restart-bound (`restartRequired` names them); privacy mode and method changes keep separate lifecycles | dev-docs/milestones/m5/burndown-server.md; F26e | v0.2 |
 
 ## Recursive resolver (D170)
 
 | Item | Source | Target |
 |---|---|---|
-| Aggressive use of DNSSEC-validated NSEC/NSEC3 ranges to answer NXDOMAIN and NODATA from the resolver cache (RFC 8198) | D170 | v0.2 |
-| Automatic root trust-anchor updates (RFC 5011): new anchors come with releases or `upstreams.recursion.trustAnchors` | D170 | v0.2 |
-| Negative trust anchors: a list of zones whose broken DNSSEC is ignored, so an operator can work around a provider's signing outage without turning validation off | D170 | v0.2 |
-| DNSSEC validation of forwarded answers (the `dnssec` stage, §7.1 step 10); only recursive groups validate | D170 | v0.2 |
-| DNS cookies (RFC 7873, RFC 9018) to authoritative servers implemented in `668203c`: bounded peer state, rotation, exact echo checks and budgeted BADCOOKIE/TCP recovery; composed socket/DNSSEC/cache races pass | D170; F31 | v0.2 (implementation complete; final interoperability/release qualification remains) |
+| Automatic root trust-anchor updates (RFC 5011): managed anchors are integrated (D297, D315–D319, D369) and qualified against BIND and Knot authorities (D398). Open: F28-OPEN6 was backed out and F28-OPEN7 is in progress (writer-admission regression, exact acquisition counts, the 10 s SERVFAIL tolerance); see the open rows below | D170; F28 | v0.2 |
 | A local copy of the root zone (RFC 8806) for recursive groups | D170 | later |
-
-## API (dev-docs/milestones/m3/api.md)
-
-| Item | Source | Target |
-|---|---|---|
-| `PATCH /node/config` changes stay in memory (log.level applies at once; nothing persists them, the node file is the operator's): persist node-scope API changes somewhere (a `node.d/` overlay?) or drop the route's write half | dev-docs/milestones/m5/burndown-server.md | v0.2 |
-| `GET /auth/me` permissions are evaluated at cluster scope; zone-scoped grants show only in `roles` | api report | v0.2 |
-| external-dns: read `DNSEndpoint` CRs directly (§5.6) and a `kudurru externaldns-webhook` sidecar subcommand (optional webhook authentication landed in `5fc97d7`) | api report | v0.2 (moved from M4: the webhook provider covers external-dns in v0.1) |
-| Object list routes read the store (an apiserver round trip in kube mode); serve them from the zonecache snapshot when it is live | api report | v0.2 (moved from M4: performance only) |
-| CLI: switch from the hand-written `internal/apiclient` transport to the generated `internal/apiclient/openapi` client and put it under `apiclient.Client` (surface listed in dev-docs/milestones/m3/cli.md) | api report, dev-docs/milestones/m3/cli.md | v0.2 (moved from M3/M4: internal refactor, no user-visible change; merged rows) |
-| Audit: schema 6 stores and authenticates dedicated authz/request/client columns; the historical reason suffix remains compatible without becoming trusted parsed metadata (F38 closed) | api report; D249 | v0.2 |
-## Edge and VIP
-
-| Item | Source | Target |
-|---|---|---|
-| Edge resolver-cache flush for remote edges. Local edges (sidecar, compose) are flushed by `dnsdist.CacheFlusher` wired into serve (blocking toggle changes and every compiled list snapshot). Remote edges (edge Deployment/DaemonSet) need a pull path, e.g. a blocking generation in `internalapi.ZoneList` that the supervisor's zone poll turns into a resolver flush | dev-docs/milestones/m3/edge.md, burndown-edge-release | v0.2 |
-| `edge.*`/`vip.*` settings keys (hostOnly) and serve wiring of `vip.NewKeepalived` (Events → audit `cluster.vip.changed`, event `vip.master_changed`) | dev-docs/milestones/m3/edge.md | v0.2 (the Nodes/Edge page now reads live supervisor status; audit events and settings keys remain) |
-| `vip.ServiceProvider` (kube-vip/MetalLB): Owner from the Service status / announcing node; chart annotations from `Annotations()` | dev-docs/milestones/m3/edge.md | v0.2 (moved from M4: MetalLB and kube-vip announce without it; only Owner reporting waits) |
-| Per-VRID Helm HMAC references shipped in 376d63d (F42/D253), with private staging and exact mapping; shared defaults retained and coordinated restart required (docs/deploy/vrrp-keys.md) | dev-docs/milestones/m3/edge.md | v0.2 |
-| v0.2 console diff-apply (`newServer`/`setDown`/`rmServer`) and `reloadAllCertificates()` instead of restarts, gated on spike (a) (D17) | §3.6, dev-docs/milestones/m3/edge.md | v0.2 |
 
 ## Auth
 
 | Item | Source | Target |
 |---|---|---|
-| Binding revocation times (`rbac.BindingSource`, which stops honoring a sealed session grant once a binding change removed it) live in memory per replica; after a restart only the "a live binding still provides it" rule applies. Persist a revocation epoch (state.db / the runtime ConfigMap) or bump a cluster-wide grants-valid-after on narrowing | dev-docs/milestones/m3/auth.md | v0.2 |
-| OIDC identities have no stored record: no per-user "log out everywhere" or disable, and an OIDC user's personal tokens stay valid until expiry while bindings still provide their frozen grants. Needs the v0.2 user store (with `autoProvision: never`, `syncGroups`) | dev-docs/milestones/m3/auth.md | v0.2 |
-| Login lockouts: Kubernetes password admission shares durable counters (D304); complete SQLite login composes counters and enrollment in one command (D305). TOTP setup/confirm/disable and self-service password changes share counters in D307/D308. SQLite browser/CLI request budgets are shared before initial auth capture (D309); Kubernetes browser admission shares the same bounded document policy in a separate private Secret (D310); enrolled-replica forwarding remains. Browser postcommit publication regression is fixed in D306; its failed runs remain recorded. | dev-docs/milestones/m3/auth.md | v0.2 |
-| Projected ServiceAccount credentials now require an original lifetime of at most ten minutes on JWKS and TokenReview paths, with expiry retained through authorization and cache bounds (F47 closed). Offline deletion is not immediately observable; explicit 600-second audience kudurru projection is required | dev-docs/milestones/m3/auth.md | v0.2 |
-| Complete SQLite identities implement `autoProvision: never` and `syncGroups`; RP-initiated browser logout now uses original enrolled proof and trusted end-session discovery (F48b/D282). Legacy Kubernetes identity migration remains separately tracked | auth spike | v0.2 |
-
-## Security (dev-docs/milestones/m5/security.md)
-
-| Item | Source | Target |
-|---|---|---|
-| ServiceAccount provider overlap is explicitly documented in §8.5 and the Kubernetes token guide (D254/F50): exact namespace/name across both providers, provider-specific lifecycle and narrowing token scopes; provider isolation is not claimed | dev-docs/milestones/m5/security.md | v0.2 |
+| Login lockouts: shared counters on Kubernetes (D304, D310) and complete SQLite (D305–D309); a follower forwards local login (D363), sign-out and own sessions (D368). Open: OIDC, browser and device logins on followers, and F46's final gates | dev-docs/milestones/m3/auth.md; F46 | v0.2 |
 
 ## Security (dev-docs/milestones/m5/security-v0.1-round.md)
 
 | Item | Source | Target |
 |---|---|---|
 | Repository settings for the release pipeline (cannot live in the repository): a branch ruleset refusing `v*` branch names, required review with CODEOWNERS on `release` and `release-candidate` (`.github/CODEOWNERS` for `/.github/` and `hack/release-tag.sh`), deployment branches for a `release` environment | dev-docs/milestones/m5/security-v0.1-round.md | release operations (verify for each release) |
-| Optional `httpsOnly` for `blocking.catalogue.adguardServicesURL` (and BlockList URLs): a plain-http document can be changed in transit | dev-docs/milestones/m5/security-v0.1-round.md | v0.2 |
-
-## Dashboard (dashboard/)
-
-| Item | Source | Target |
-|---|---|---|
-| "Is it allowed?" now consumes original-query disabled-rule evidence (8879459, D255/F52); no second list read or browser regex matching. Evidence is bounded and does not override the final verdict | allowlist stream (D144) | v0.2 |
-| Allowlist/Denylist: a group list applies through the group's policies, so a policy covering several groups applies it to all of them; a query-time group scope in the policy engine would make the scope exact | allowlist stream (D143) | v0.2 |
-| Regex allow/deny entries get no "overrides block list" information and no response-cache flush (there is no single name to look up or flush) | allowlist stream | v0.2 |
-| Entries browser re-parses the whole cached body for every page of a URL source; add a per-digest index if multi-million-line lists are slow (concurrent parses are capped at 4 per node since dev-docs/milestones/m5/security-v0.1-round.md V15) | allowlist stream | v0.2 |
-| Self-hosted Inter/JetBrains Mono shipped in the Kudurru theme (F56), with pinned OFL packages, variable normal/italic Latin faces, local prefix-safe assets and system fallbacks | UX round 3 (D140) | v0.2 |
-| Record delete confirmation as an Astryx AlertDialog; `GET /queries/export` link in the query log | ui report | v0.2 (moved from M4: the API has no `GET /queries/export` route yet) |
-## CLI
-
-| Item | Source | Target |
-|---|---|---|
-| Explicit `--transport kubernetes` now selects a kubeconfig context for generic CRD verbs (F59/D285), preserving default API contexts, Kubernetes RBAC/ownership and bounded original commands; actual envtest acceptance passes | dev-docs/milestones/m3/cli.md | v0.2 (moved from M4: a context is a kudurru API endpoint in v0.1) |
-| Remaining §3.5 verbs: `cluster status\|promote\|join-token`, `integrations …`, zone options now use reviewed `zones options get/set` through existing object PUT (F60d) (`lameduck` landed in dev-docs/milestones/m5/burndown-server.md, `health --vrrp` in e8b36b4; live Pi-hole and Technitium API migrations in D169; offline AdGuard/Blocky subsets in `32f9e81`/`f01d4db`) | dev-docs/milestones/m3/cli.md | v0.2 (merged rows) |
-| Browser (loopback + PKCE) and device-code `kudurru login` (§8.3) | dev-docs/milestones/m3/cli.md | v0.2 |
-| CLI conformance test against the real `internal/api` router instead of the fake in `cmd/kudurru/fakeapi_test.go`; document `ApplyResult.errorKey/hint`, the wrapped settings body and the SSE event name in design-record.md §10 | dev-docs/milestones/m3/cli.md | v0.2 (moved from M3: test-only) |
 
 ## Build, CI, docs
 
 | Item | Source | Target |
 |---|---|---|
-| Bench job on a fixed runner class (also for `BenchmarkUDPSockets` and `BenchmarkPersist200k`) | blocking, store-kube spikes; hardening report | v0.2 (moved from M2: needs a fixed runner class, the owner's call) |
+| Bench job on a fixed runner class: the class-parameterized workflow and collector are implemented and the owner chose Ubicloud 8-core (F63). Open: the paired and fixed-class runs on the final head (G23, D383); earlier paired runs failed cache hit and Set latency | blocking, store-kube spikes; hardening report; F63 | v0.2 |
 
-## Deployment (binary behaviour the chart and compose files need)
+## Deployment (binary behavior the chart and compose files need)
 
 | Item | Source | Target |
 |---|---|---|
-| Metrics the §11.6 dashboard and alerts still lack: `kudurru_dnssec_key_expiry_timestamp_seconds` (v1.0). `snapshotAge`/`leader` in the `/healthz` JSON (§5.2 human probe) shipped in the v0.2 review (F64b). The serial-divergence, edge and VIP panels and alerts shipped in the v0.1 fix round; SQLite fencing metric/panel/alert shipped in the v0.2 review (F64a) | deploy report | v0.2 (moved from M3-M5: each waits for its feature; merged rows) |
-| Settings key `cluster.role: static`: the compose HA read-only mode cannot be expressed until it exists (the chart renders OIDC providers through `auth.oidc.providers`); lands with the `cluster.static` membership of E2E-2 | deploy report | v0.2 (compose HA) |
-| Separate querylog/local directories and additive Helm/Compose volumes shipped (F66), preserving the original data claim; explicit offline migration and mounted restart/volume checks are documented | deploy report; D250 | v0.2 |
+| `kudurru_dnssec_key_expiry_timestamp_seconds` for DNSSEC signing keys (F64c, the original v1.0 subtarget). `snapshotAge`/`leader` in `/healthz` (F64b) and the SQLite fencing metric, panel and alert (F64a) shipped | deploy report; F64c | v1.0 (DNSSEC signing) |
 
 ## Needs the project owner's hardware
 
@@ -177,18 +110,7 @@ Bugs found by the M5 e2e package. E2E-1, E2E-3, E2E-4, E2E-5 and E2E-6 were fixe
 
 | Item | Source | Target |
 |---|---|---|
-| E2E-2: sqlite nodes cannot form a cluster. serve.go hard-codes `cluster.Self` membership for the sqlite driver, so node B cannot be pointed at node A's internal listener for list bodies, and every sqlite node reports itself as leader. The two-node test drives `/internal/status` and `/internal/lists/{digest}` with the derived credentials instead. Needs a `cluster.static` setting (peers, leader) feeding `cluster.Static` | dev-docs/milestones/m5/e2e.md | v0.2 (compose HA) |
-| e2e still missing from §13.1: the 2-VM keepalived failover and the Knot catalog consumer (Docker runner). The first-party AdGuard Home black-box corpus runs against the pinned official executable in CI (`f5d5316`); full corpus/scale qualification remains. Actual outage startup and envtest recovery are covered by cmd/kudurru/serve_offline_test.go and serve_recovery_test.go; kind + Helm with MetalLB runs in hack/kind-e2e.sh | dev-docs/milestones/m5/e2e.md, dev-docs/milestones/m5/features-v0.1.md | v0.2 (Knot and final AdGuard qualification); verify 2-VM failover for each deployment (dev-docs/release-checklist.md §3) |
-
-## Central database and cluster-wide audit (D155-D161)
-
-| Item | Source | Target |
-|---|---|---|
-| Read a retired node's data with `scope=node&node=<other>` from the central database (each reader query needs a node condition); live peers are routed over the internal listener in v0.1 | D161 | v0.2 |
-| Reference-safe bounded central dictionary pruning shipped (F70), with schema-4 constraints, cached-ID locking and durable sweep progress; actual PostgreSQL concurrency/restart tests pass | D160; D248 | v0.2 |
-| Statistics of a node that stops for good inside an hour it has not summarised lose that part hour (its facts are kept); the leader could summarise the facts of sources gone for two hours | D160 | v0.2 |
-| AuditLog CRD availability and bounded namespace batch count diagnostics against the 50,000 recommendation now ship on Diagnosis and in `kudurru doctor` (F72a/b); incomplete scans remain explicit and late CRD availability needs restart to activate shipping | D157 | v0.2 |
-| Decouple AuditLog verification keys from session-key rotation or retain a verification key ring; today current/previous keys must cover all retained sealed batches before another rotation | docs/deploy/runbooks.md, PR #55 | v0.2 |
+| e2e still missing from §13.1: the two-VM keepalived failover, deferred by the owner (D358; see "Needs the project owner's hardware" above). The Knot catalog consumer (F68b, `6aa58ed`) and the AdGuard Home black-box corpus (F68a) are integrated; Knot runs only on a local private Docker daemon (D383) | dev-docs/milestones/m5/e2e.md, dev-docs/milestones/m5/features-v0.1.md | verify 2-VM failover for each deployment (dev-docs/release-checklist.md §3) |
 
 ## License portal (license-server/)
 
