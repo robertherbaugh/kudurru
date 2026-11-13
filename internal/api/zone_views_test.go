@@ -9,6 +9,7 @@ import (
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	"github.com/robertherbaugh/kudurru/internal/zone"
 )
 
 func viewEP(name, typ, view string, targets ...string) v1alpha1.Endpoint {
@@ -107,5 +108,41 @@ func TestZoneRecordWritesKeepViewsApart(t *testing.T) {
 				t.Fatalf("delete without view kept %v", got)
 			}
 		})
+	}
+}
+
+// TestCapturedZoneRecordsListServedViews: on the complete SQLite runtime the
+// record list is the served model, which also lists every served
+// client-group view with its group's name (D403), never the publish-only
+// public endpoint, which is not served.
+func TestCapturedZoneRecordsListServedViews(t *testing.T) {
+	h, f := newZoneReadFixture(t)
+	actual := zoneObj("example", "example.com.")
+	rs := recordSetObj("default", "actual", "example",
+		viewEP("www.example.com", "A", "", "203.0.113.10"),
+		viewEP("www.example.com", "A", "lan", "10.0.0.10"),
+		viewEP("nas.example.com", "A", "lan", "10.0.0.20"),
+		viewEP("www.example.com", "A", "public", "198.51.100.10"))
+	model, errs := zone.Build(actual, []*v1alpha1.DNSRecordSet{rs}, zone.BuildOptions{})
+	if model == nil || !model.HasViews() || !errs.Empty() {
+		t.Fatalf("fixture model with a view did not build: %v", errs)
+	}
+	f.model = model
+	var records List[ZoneRecord]
+	h.do(http.MethodGet, "/api/v1/zones/example/records", "viewer", nil).want(http.StatusOK).json(&records)
+	var got []string
+	for _, row := range records.Items {
+		if row.RecordType != "A" {
+			continue
+		}
+		v := ""
+		if row.Kudurru != nil {
+			v = row.Kudurru.View
+		}
+		got = append(got, v+" "+row.DNSName+"="+strings.Join(row.Targets, ","))
+	}
+	slices.Sort(got)
+	if want := []string{" www.example.com=203.0.113.10", "lan nas.example.com=10.0.0.20", "lan www.example.com=10.0.0.10"}; !slices.Equal(got, want) {
+		t.Fatalf("served rows %q, want %q", got, want)
 	}
 }

@@ -752,10 +752,13 @@ func (s *Server) listZoneRecords(ctx context.Context, in *zonePathInput) (*zoneR
 		}
 		var items []ZoneRecord
 		var invalid bool
-		model.RRsets(func(set *zone.RRset) bool {
+		add := func(set *zone.RRset, view string) bool {
 			row := ZoneRecord{DNSName: strings.TrimSuffix(set.Name, "."), RecordType: set.TypeString(), RecordTTL: int64(set.TTL), Targets: make([]string, 0, len(set.RRs))}
 			if set.Name == "." {
 				row.DNSName = "@"
+			}
+			if view != "" {
+				row.Kudurru = &v1alpha1.EndpointExt{View: view}
 			}
 			for _, rr := range set.RRs {
 				parts := strings.SplitN(rr.String(), "\t", 5)
@@ -769,7 +772,17 @@ func (s *Server) listZoneRecords(ctx context.Context, in *zonePathInput) (*zoneR
 			// Keep unproven references empty; desired objects retain ownership.
 			items = append(items, row)
 			return ctx.Err() == nil
-		})
+		}
+		model.RRsets(func(set *zone.RRset) bool { return add(set, "") })
+		// The served client-group views (D403), each RRset with the name of
+		// its ClientGroup (the group ID is namespace/name; a view names the
+		// group in its record set's namespace).
+		if !invalid && ctx.Err() == nil {
+			model.ViewRRsets(func(group string, set *zone.RRset) bool {
+				_, name, _ := strings.Cut(group, "/")
+				return add(set, name)
+			})
+		}
 		if invalid || ctx.Err() != nil {
 			return nil, errUnavailable("zone contents could not be read")
 		}
