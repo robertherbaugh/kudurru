@@ -528,8 +528,17 @@ tombstoned ones included, and deletes the rest, which also removes chunks an
 earlier version left behind (D405). Before, each content commit left the whole
 previous zone content in the replicated image, which every publication reads
 and validates, so the time to publish grew with every UPDATE. When a head's
-root manifest cannot be read, the sweep deletes nothing. The Kubernetes
-backend does not collect yet: its staging is not transactional.
+root manifest cannot be read, the sweep deletes nothing and logs a warning
+naming that head. The Kubernetes backend does not collect yet: its staging is
+not transactional.
+
+A repository read takes the head and then its chunks in separate store
+reads, so a content commit in between can delete the chunks of the head it
+holds. A missing chunk is therefore checked against the head again: when the
+head moved, the read starts over with the new head (at most 16 times, then a
+conflict); when it did not, the stored zone is damaged and the read answers
+invalid. A read answers "not found" only when the zone has no head, which is
+what the lifecycle callers rely on.
 
 `internal/primaryzone` reads the complete actual desired source set, bounded by
 count, bytes, pages and time. SQLite pages share one transaction; Kubernetes
