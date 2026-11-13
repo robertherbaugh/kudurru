@@ -262,6 +262,34 @@ func TestAbandonRejectsAmbiguousOrStaleProof(t *testing.T) {
 	if _, err := r.Abandon(ctx, g, res, Observation{ObservedAt: testTime.Add(2 * time.Second)}); !errors.Is(err, ErrPending) {
 		t.Fatal("discarded applied partial work", err)
 	}
+	if _, err := r.Abandon(ctx, g, res, Observation{ObservedAt: testTime.Add(2 * time.Second), Gone: []string{"other", ""}}); !errors.Is(err, ErrPending) {
+		t.Fatal("discarded applied work another ID's absence did not undo", err)
+	}
+}
+
+// An acknowledged effect proven gone by the same complete capture (D401) no
+// longer holds the intent: it is released as untouched work is.
+func TestAbandonAcceptsAcknowledgedEffectsProvenGone(t *testing.T) {
+	ctx := context.Background()
+	r := repository(t, memory.New(), nil)
+	g, op := fixture(t)
+	res := begin(t, r, g, op, "")
+	saved, err := r.RecordReceipt(ctx, g, res.Operation, kinds.Receipt{ObservedAt: testTime.Add(time.Second), Targets: []kinds.TargetResult{{Target: "192.0.2.1", ProviderID: "created", Applied: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Operation = saved
+	released, err := r.Abandon(ctx, g, res, Observation{BeforeHash: op.Spec.BeforeHash, ObservedAt: testTime.Add(2 * time.Second), Gone: []string{"created"}})
+	if err != nil || released.Spec.Pending != nil {
+		t.Fatal("an acknowledged effect proven gone still held the intent", released, err)
+	}
+	terminal, err := r.ReadOperation(ctx, op.Spec.OperationID)
+	if err != nil || terminal.Spec.AbandonedAt.IsZero() || len(terminal.Spec.Receipt.Targets) != 1 {
+		t.Fatal("abandoned intent not terminal", err)
+	}
+	if fact := terminal.Spec.Receipt.Targets[0]; fact.Applied || fact.ProviderID != "created" || fact.ErrorClass != ErrorUndone {
+		t.Fatal("undone effect not kept in the history", fact)
+	}
 }
 func TestGuardFencedAtEachWriteAndHistoricalRecovery(t *testing.T) {
 	ctx := context.Background()

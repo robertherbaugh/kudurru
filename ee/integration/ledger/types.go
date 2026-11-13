@@ -109,12 +109,22 @@ type Reservation struct {
 	Operation *kinds.IntegrationOperation
 }
 
+// ErrorUndone is the receipt error class of an acknowledged effect a later
+// complete capture proved gone, recorded when its intent is abandoned.
+const ErrorUndone = "undone"
+
 // Observation is fresh provider evidence for abandoning an untouched intent,
 // or for forgetting a record the provider no longer holds: BeforeHash is the
 // content digest observed for the RRset, empty for absence.
 // Host must verify complete remote content and ownership in the same capture;
 // the repository cannot authenticate remote evidence itself.
+//
+// Gone lists provider IDs the same complete capture shows absent. Abandon
+// accepts an intent with acknowledged (Applied) receipt facts only when every
+// such fact names a provider ID listed here and outside the intent's baseline
+// (D401): every acknowledged effect is then proven undone.
 type Observation struct {
 	BeforeHash string
 	ObservedAt time.Time
+	Gone       []string
 }

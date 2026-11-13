@@ -772,6 +772,16 @@ func (h *Host) recover(ctx context.Context, j *job, g ExecutionGuard, in publica
 		return st.local(ctx, err)
 	}
 	resume, ok := j.provider.(RecoveryPublisher)
+	// A publisher that cannot resume (D401: the reviewed-only UniFi mirror)
+	// would otherwise keep a partially acknowledged intent pending forever. It
+	// is terminalized as well when the complete reread shows exactly the
+	// baseline and no row anywhere carries an ID the provider acknowledged to
+	// this intent: every acknowledged effect is gone, so the intent no longer
+	// changed anything. A fact without a provider ID proves nothing absent.
+	if gone, all := acknowledgedEffectsGone(in.planInput, op); !ok && all && state.homogeneous && state.resumable && hash == op.Spec.BeforeHash && slices.Equal(state.ids, beforeIDs) {
+		_, err := h.opts.Ledger.Abandon(ctx, g.Ledger, res, ledger.Observation{BeforeHash: hash, ObservedAt: h.opts.Now(), Gone: gone})
+		return st.local(ctx, err)
+	}
 	// An intent is resumed only while the captured configuration and
 	// credential still authorize it. Cleanup (D367) relaxes that for a delete
 	// alone: its authority is the instance's proven ownership of the rows
@@ -805,6 +815,33 @@ func (h *Host) recover(ctx context.Context, j *job, g ExecutionGuard, in publica
 		return safeError(ctx, applyErr)
 	}
 	return ledger.ErrPending
+}
+
+// acknowledgedEffectsGone returns the provider IDs of the intent's
+// acknowledged effects and whether every target fact of its receipt is such
+// an effect that no current row carries. A baseline ID is never an
+// acknowledged effect of its own intent.
+func acknowledgedEffectsGone(in plan.Input, op *kinds.IntegrationOperation) ([]string, bool) {
+	if !in.CurrentComplete || op.Spec.Receipt == nil || len(op.Spec.Receipt.Targets) == 0 {
+		return nil, false
+	}
+	present := map[string]bool{}
+	for _, row := range in.Current {
+		for _, id := range row.IDs {
+			present[id] = true
+		}
+	}
+	for _, id := range op.Spec.ProviderIDs {
+		present[id] = true
+	}
+	gone := make([]string, 0, len(op.Spec.Receipt.Targets))
+	for _, t := range op.Spec.Receipt.Targets {
+		if !t.Applied || t.ProviderID == "" || present[t.ProviderID] {
+			return nil, false
+		}
+		gone = append(gone, t.ProviderID)
+	}
+	return gone, true
 }
 
 func recoveryDesired(in plan.Input, op *kinds.IntegrationOperation) bool {
