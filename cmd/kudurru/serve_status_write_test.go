@@ -260,14 +260,13 @@ func TestRunServeSQLitePrimaryAnswersAcrossStatusWrites(t *testing.T) {
 	if seen.answered < 100 {
 		t.Fatalf("probe answered only %d queries", seen.answered)
 	}
-	// A query in flight across a publication swap still gets its answer
-	// within servedSuccessorGrace (D395); before that, such a query got no
-	// answer, and runs saw 2 to 10 across the 24 changes. A query can still
-	// miss the 200 ms client timeout on a loaded machine (the race detector
-	// on shared CPUs). The bound is one per change: more than that means
-	// answers are lost in every window. It is a coarse gate;
-	// TestRunServeSQLiteZonesAnswerAcrossCommits requires every probe to be
-	// answered.
+	// A query can miss the 200 ms client timeout on a loaded machine (the
+	// race detector on shared CPUs): runs logged 0 to 10 such probes across
+	// the 24 changes, before and after D395, and the samples were too small
+	// to say whether D395 changed that rate. The bound is one per change:
+	// more than that means answers are lost in every window. It is a coarse
+	// gate; TestRunServeSQLiteZonesAnswerAcrossCommits, which runs without
+	// the race detector as well, requires every probe to be answered.
 	if seen.silent > changes {
 		t.Fatalf("probe got no answer to %d queries across %d changes (%d answered)", seen.silent, changes, seen.answered)
 	}
