@@ -140,15 +140,10 @@ func (z *zoneGroupClient) call(method, path string, body any) (int, []byte) {
 		}
 		raw, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 		_ = response.Body.Close()
+		// Refused at capture, before the request was read. A command that
+		// another commit superseded after capture is admitted on the new
+		// publication (D399) and is never asked again.
 		pending := response.StatusCode == http.StatusServiceUnavailable && bytes.Contains(raw, []byte("generation_pending"))
-		// The SQLite command path reports the same pending generation as
-		// "current writable serving generation unavailable". Only requests
-		// that are safe to repeat whatever happened (reads, whole-object
-		// PUTs, sign-in) are asked again for it.
-		if response.StatusCode == http.StatusServiceUnavailable && bytes.Contains(raw, []byte("current writable serving generation unavailable")) &&
-			(method != http.MethodPost || path == "/auth/login") {
-			pending = true
-		}
 		if !pending || time.Now().After(deadline) {
 			return response.StatusCode, raw
 		}

@@ -104,16 +104,17 @@ func TestServingObjectCommandResolvesZoneGroupInTransaction(t *testing.T) {
 
 	// The actual router: member writes pass, the label removal denies.
 	srv := servingObjectAPI(t, f, nil)
-	// A request admitted before the newest generation is published is refused
-	// with generation_pending before any effect (the command path words the
-	// same refusal "current writable serving generation unavailable"); these
-	// whole-object PUTs are asked again until they are served.
+	// A request that arrives before the newest generation is published is
+	// refused at capture with generation_pending, before it is read; these
+	// whole-object PUTs are asked again until they are served. A command that
+	// another commit superseded after capture is admitted on the new
+	// publication (D399), so its refusal is not asked again.
 	send := func(path string, body any) *httptest.ResponseRecorder {
 		t.Helper()
 		deadline := time.Now().Add(10 * time.Second)
 		for {
 			w := servingObjectRequest(t, f, srv, http.MethodPut, path, body, "")
-			pending := strings.Contains(w.Body.String(), "generation_pending") || strings.Contains(w.Body.String(), "current writable serving generation unavailable")
+			pending := strings.Contains(w.Body.String(), "generation_pending")
 			if w.Code != http.StatusServiceUnavailable || !pending || time.Now().After(deadline) {
 				return w
 			}
