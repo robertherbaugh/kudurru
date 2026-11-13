@@ -421,17 +421,28 @@ func reviewedServiceAccount(ctx context.Context, tx *sqlite.CommandTx, key store
 	if string(sa.UID) != review.UID || sa.ResourceVersion != review.ResourceVersion || sa.DeletionTimestamp != nil {
 		return nil, store.ErrConflict
 	}
-	if owner := store.ManagedBy(&sa); owner != store.ManagerAPI {
-		return nil, &store.ErrManagedBy{Key: key, Owner: owner}
-	}
-	var state internalv1.PrincipalState
-	switch err := tx.Get(ctx, store.Key{Kind: internalv1.KindPrincipalState, Name: internalv1.PrincipalStateName(serviceAccountOwner(&sa))}, &state); {
-	case err == nil:
-		return nil, servingauth.ErrDenied
-	case !errors.Is(err, store.ErrNotFound):
+	if err := serviceAccountAdministrable(ctx, tx, &sa); err != nil {
 		return nil, err
 	}
 	return &sa, nil
+}
+
+// serviceAccountAdministrable admits only an API-owned account without private
+// bootstrap authority (PrincipalState). Replace, delete and token issuance all
+// apply it, so no API command changes, ends or mints a credential for an
+// account another manager owns or one that carries bootstrap authority.
+func serviceAccountAdministrable(ctx context.Context, tx *sqlite.CommandTx, sa *publicv1.ServiceAccount) error {
+	if owner := store.ManagedBy(sa); owner != store.ManagerAPI {
+		return &store.ErrManagedBy{Key: store.KeyOf(sa), Owner: owner}
+	}
+	var state internalv1.PrincipalState
+	switch err := tx.Get(ctx, store.Key{Kind: internalv1.KindPrincipalState, Name: internalv1.PrincipalStateName(serviceAccountOwner(sa))}, &state); {
+	case err == nil:
+		return servingauth.ErrDenied
+	case !errors.Is(err, store.ErrNotFound):
+		return err
+	}
+	return nil
 }
 
 func (h *servingHTTP) mutateServiceAccount(w http.ResponseWriter, r *http.Request) error {
@@ -567,13 +578,16 @@ func (h *servingHTTP) createServiceAccountToken(w http.ResponseWriter, r *http.R
 	attrs := []rbac.Attributes{iamAttrs("serviceaccounts", "write", key.Namespace, key.Name), servingHTTPCluster("tokens", "write")}
 	var created *internalv1.APIToken
 	var wire string
-	err = h.iamCommand(r, attrs, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, _ auth.Principal, _ time.Time) error {
+	err = h.iamCommand(r, attrs, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, p auth.Principal, _ time.Time) error {
 		var sa publicv1.ServiceAccount
 		if err := tx.Get(ctx, key, &sa); err != nil {
 			return err
 		}
 		if string(sa.UID) != req.UID || sa.DeletionTimestamp != nil {
 			return store.ErrConflict
+		}
+		if err := serviceAccountAdministrable(ctx, tx, &sa); err != nil {
+			return err
 		}
 		if sa.Spec.Disabled {
 			return &auth.Error{Status: http.StatusConflict, Key: "disabled", Message: "the ServiceAccount is disabled; enable it before issuing a token"}
@@ -603,6 +617,23 @@ func (h *servingHTTP) createServiceAccountToken(w http.ResponseWriter, r *http.R
 		var expires time.Time
 		if duration > 0 {
 			expires = now.Add(duration).Truncate(time.Second)
+		}
+		// As in createToken, a token never outlives the API token that
+		// issued it. A session caller is bounded by maxLifetime only.
+		if p.TokenID != "" {
+			var parent internalv1.APIToken
+			if err := tx.Get(ctx, store.Key{Kind: "APIToken", Name: p.TokenID}, &parent); err != nil {
+				return err
+			}
+			if !servingHTTPOwnsToken(p, &parent) {
+				return servingauth.ErrCredentials
+			}
+			if parent.Spec.ExpiresAt != nil && (expires.IsZero() || parent.Spec.ExpiresAt.Time.Before(expires)) {
+				expires = parent.Spec.ExpiresAt.Time
+			}
+		}
+		if !expires.IsZero() && !expires.After(now) {
+			return servingauth.ErrCredentials
 		}
 		var id string
 		wire, id = tokens.Generate()

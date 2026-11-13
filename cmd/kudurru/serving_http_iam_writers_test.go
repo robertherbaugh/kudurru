@@ -113,6 +113,17 @@ func TestServingHTTPIAMServiceAccountsReviewedLifecycle(t *testing.T) {
 	token := issueServiceAccountToken(t, f, created, http.StatusCreated)
 	localUsersFresh(t, f)
 	secretNeverStored(t, f.s.opts.Store, token.Token)
+	// A token never outlives the API token that issued it: without expiresIn
+	// (maxLifetime 0) and with a longer one, the caller's expiry is the bound.
+	for _, life := range []string{"", "48h"} {
+		w := f.call(t, "POST", "/iam/serviceaccounts/apps/ci/tokens", roleBindingBody(t, api.CreateServiceAccountTokenRequest{UID: string(created.UID), ExpiresIn: life}), f.token, nil, "")
+		expectServingHTTPStatus(t, w, http.StatusCreated)
+		var bounded api.CreatedToken
+		if json.Unmarshal(w.Body.Bytes(), &bounded) != nil || bounded.ExpiresAt == nil || !bounded.ExpiresAt.Equal(f.expires) {
+			t.Fatalf("token issued with expiresIn %q outlives its issuer: %v, want %v", life, bounded.ExpiresAt, f.expires)
+		}
+		localUsersFresh(t, f)
+	}
 	expectServingHTTPStatus(t, f.call(t, "GET", "/auth/me", "", token.Token, nil, ""), http.StatusOK)
 	// The account's own token cannot administer IAM.
 	expectServingHTTPStatus(t, f.call(t, "POST", "/iam/serviceaccounts", roleBindingBody(t, serviceAccountManifest("other")), token.Token, nil, ""), http.StatusForbidden)
@@ -229,6 +240,10 @@ func TestServingHTTPIAMServiceAccountsStrictInputOwnershipAndPermission(t *testi
 	before = roleBindingImage(t, f.s.opts.Store)
 	expectServingHTTPStatus(t, f.call(t, "DELETE", "/iam/serviceaccounts/apps/system-owned", roleBindingBody(t, objectReview(&system)), f.token, nil, ""), http.StatusConflict)
 	expectServingHTTPStatus(t, f.call(t, "DELETE", "/iam/serviceaccounts/apps/bootstrap-like", roleBindingBody(t, objectReview(&bootstrap)), f.token, nil, ""), http.StatusForbidden)
+	// No token is minted for them either: a bootstrap-authority token would
+	// carry admin with no binding to revoke.
+	issueServiceAccountToken(t, f, system, http.StatusConflict)
+	issueServiceAccountToken(t, f, bootstrap, http.StatusForbidden)
 	roleBindingUnchanged(t, f.s.opts.Store, before)
 	f.stop()
 	expectServingHTTPStatus(t, f.call(t, "POST", "/iam/serviceaccounts", valid, f.token, nil, ""), http.StatusServiceUnavailable)
