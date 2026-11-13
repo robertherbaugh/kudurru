@@ -54,6 +54,11 @@ const (
 	// mountedSuperseded is the refusal D399 removes: a command captured on a
 	// publication that another commit superseded before dispatch.
 	mountedSuperseded
+	// mountedBoundEnded is the same answer after the command waited its
+	// whole five-second recapture bound (D399) because the node kept
+	// publishing: the publication-starvation limit, not a superseded
+	// command that D399 failed to capture again.
+	mountedBoundEnded
 	// mountedAtCapture is a request refused before it was read, because the
 	// node had not published its newest commit within the capture wait (503
 	// generation_pending). Nothing of it ran; D399 does not change it.
@@ -70,6 +75,12 @@ func classifyMounted(status int, raw []byte, err error, ok ...int) mountedRefusa
 	case err == nil && slices.Contains(ok, status):
 		return mountedAdmitted
 	case status == http.StatusServiceUnavailable && bytes.Contains(raw, []byte("current writable serving generation unavailable")):
+		var answer struct {
+			Took float64 `json:"took_ms"`
+		}
+		if json.Unmarshal(raw, &answer) == nil && answer.Took >= float64(commandRecaptureWait/time.Millisecond) {
+			return mountedBoundEnded
+		}
 		return mountedSuperseded
 	case status == http.StatusServiceUnavailable && bytes.Contains(raw, []byte(`"generation_pending"`)):
 		return mountedAtCapture
@@ -83,7 +94,8 @@ func classifyMounted(status int, raw []byte, err error, ok ...int) mountedRefusa
 // each followed by the node's own zone status work) never refuses a sign-in
 // or a record-set write that it captured because one of those commits
 // published while the command ran (D399): no answer is "current writable
-// serving generation unavailable". Every request is sent once.
+// serving generation unavailable" before its five-second recapture bound
+// ended. Every request is sent once.
 //
 // Before each command the test reads until the node serves a current
 // publication, so the command is captured on one and the background commits
@@ -92,11 +104,14 @@ func classifyMounted(status int, raw []byte, err error, ok ...int) mountedRefusa
 // publication falls behind a stream of commits (each commit cancels the
 // preparation in progress), so a request can be refused at capture
 // (generation_pending) or, for a sign-in, after its session committed
-// ("authentication operation unavailable"). Those are counted and logged;
+// ("authentication operation unavailable"), or, when the node keeps
+// publishing for the whole bound, after five seconds with "current writable
+// serving generation unavailable". Those are counted and logged;
 // they belong to the open publication-starvation limit, not to D399. Any
 // other failure fails the test, and at least one sign-in and one write must
 // be admitted. The writer's own first sign-in is set-up, not a subject: it
-// is sent again only after a refusal before it was read, at most five times.
+// is sent again only after a refusal before it was read or after the whole
+// bound, at most five times.
 func TestRunServeCommandsNotRefusedAsSupersededUnderSteadyUpdates(t *testing.T) {
 	cfg, secret := mountedTestConfig(t)
 	cfg.Auth.IdentityProviders = nil
@@ -190,14 +205,14 @@ func TestRunServeCommandsNotRefusedAsSupersededUnderSteadyUpdates(t *testing.T) 
 			if json.Unmarshal(raw, &info) != nil || info.CSRF == "" {
 				t.Fatalf("writer sign-in: %s", raw)
 			}
-		case mountedAtCapture:
+		case mountedAtCapture, mountedBoundEnded:
 			counts[class]++
 		default:
 			t.Fatalf("writer sign-in: status %d err %v: %s", status, err, raw)
 		}
 	}
 	if info.CSRF == "" {
-		t.Fatal("the writer's sign-in was refused at capture five times")
+		t.Fatal("the writer's sign-in was refused five times")
 	}
 	record := func(what string, i, status int, raw []byte, err error, ok ...int) bool {
 		class := classifyMounted(status, raw, err, ok...)
@@ -229,8 +244,8 @@ func TestRunServeCommandsNotRefusedAsSupersededUnderSteadyUpdates(t *testing.T) 
 	close(done)
 	updates.Wait()
 	mu.Lock()
-	t.Logf("signed UPDATEs sent %d, rcodes %v; of %d sign-ins and %d writes: admitted %d and %d; refused as superseded %d, at capture %d, sign-in unacknowledged %d, other %d",
-		sent.Load(), rcodes, count, count, signIns, writes, counts[mountedSuperseded], counts[mountedAtCapture], counts[mountedUnacknowledged], counts[mountedOther])
+	t.Logf("signed UPDATEs sent %d, rcodes %v; of %d sign-ins and %d writes: admitted %d and %d; refused as superseded %d, after the 5 s bound %d, at capture %d, sign-in unacknowledged %d, other %d",
+		sent.Load(), rcodes, count, count, signIns, writes, counts[mountedSuperseded], counts[mountedBoundEnded], counts[mountedAtCapture], counts[mountedUnacknowledged], counts[mountedOther])
 	mu.Unlock()
 	for _, failure := range failures {
 		t.Error(failure)
