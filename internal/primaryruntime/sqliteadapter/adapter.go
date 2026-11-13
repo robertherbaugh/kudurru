@@ -50,6 +50,12 @@ type BackgroundCheck struct {
 	Source    *public.DNSZone
 	Policy    *zonestate.Policy
 	Reason    string
+	// Boundary marks a transaction that changes only a parent/child routing
+	// boundary (boundarySource): Source is the same zone as the lifecycle,
+	// but its resourceVersion and intent digest may be newer than the
+	// lifecycle receipt (D404). The guard must still check the zone's
+	// identity and that the source is not removed.
+	Boundary bool
 }
 
 // BackgroundPolicy uses only tx reads and the guard's pinned immutable provider.
@@ -142,11 +148,16 @@ func (a *Adapter) LifecycleCAS(ctx context.Context, current, next *zk.ZoneLifecy
 			if err := zk.ValidateLifecycleTransition(actual, rv, next); err != nil {
 				return pr.ErrConflict
 			}
-			z, err := source(ctx, tx, next)
+			boundary := actual != nil && boundaryTransition(actual, next)
+			read := source
+			if boundary {
+				read = boundarySource
+			}
+			z, err := read(ctx, tx, next)
 			if err != nil {
 				return err
 			}
-			if err := check(ctx, tx, BackgroundCheck{Lifecycle: next.DeepCopy(), Source: z, Reason: "lifecycle"}); err != nil {
+			if err := check(ctx, tx, BackgroundCheck{Lifecycle: next.DeepCopy(), Source: z, Reason: "lifecycle", Boundary: boundary}); err != nil {
 				return err
 			}
 			roster, err := a.roster(ctx, tx)
@@ -259,11 +270,7 @@ func (a *Adapter) Admission(ctx context.Context, c pr.Command) (*zonestate.View,
 				if l.Spec.Zone.ClusterID != tx.Authority().ClusterID {
 					return pr.ErrInvalid
 				}
-				sourceOf := source
-				if c.Parent != nil {
-					sourceOf = boundarySource
-				}
-				if _, err := sourceOf(ctx, tx, l); err != nil {
+				if _, err := commandSource(ctx, tx, c, l); err != nil {
 					return err
 				}
 			}
@@ -288,11 +295,7 @@ func (a *Adapter) Admission(ctx context.Context, c pr.Command) (*zonestate.View,
 				}
 			}
 			if !update {
-				sourceOf := source
-				if c.Parent != nil {
-					sourceOf = boundarySource
-				}
-				z, err := sourceOf(ctx, tx, target)
+				z, err := commandSource(ctx, tx, c, target)
 				if err != nil {
 					return err
 				}
@@ -310,7 +313,7 @@ func (a *Adapter) Admission(ctx context.Context, c pr.Command) (*zonestate.View,
 					}
 					policy = &v.Aggregate.Policy
 				}
-				if err := check(ctx, tx, BackgroundCheck{Lifecycle: target.DeepCopy(), Source: z, Policy: policy, Reason: c.Reason}); err != nil {
+				if err := check(ctx, tx, BackgroundCheck{Lifecycle: target.DeepCopy(), Source: z, Policy: policy, Reason: c.Reason, Boundary: boundaryCommand(c)}); err != nil {
 					return err
 				}
 			}
@@ -411,6 +414,38 @@ func (a *Adapter) Admission(ctx context.Context, c pr.Command) (*zonestate.View,
 	}
 	return out, nil
 }
+
+// boundaryTransition reports whether next differs from current only in
+// Sequence and Parents: an obligation recorded or released by a parent's
+// boundary command. ValidateLifecycleTransition still checks the
+// obligations themselves, and membership and witnesses still run.
+func boundaryTransition(current, next *zk.ZoneLifecycle) bool {
+	a, b := current.Spec, next.Spec
+	a.Sequence, b.Sequence = 0, 0
+	a.Parents, b.Parents = nil, nil
+	return reflect.DeepEqual(a, b)
+}
+
+// commandSource reads the source of lifecycle l for admission of command c:
+// exact, except for the boundary commands that change only a parent's
+// reservation for one child (D404, see boundarySource).
+func commandSource(ctx context.Context, tx *sqlite.CommandTx, c pr.Command, l *zk.ZoneLifecycle) (*public.DNSZone, error) {
+	if boundaryCommand(c) {
+		return boundarySource(ctx, tx, l)
+	}
+	return source(ctx, tx, l)
+}
+
+// boundaryCommand reports the admissions that change only a parent's system
+// reservation for one child; candidate enforces that for every one of them.
+func boundaryCommand(c pr.Command) bool {
+	switch c.Reason {
+	case "parent-fence", "late-parent-fence", "parent-release":
+		return c.Parent != nil
+	}
+	return false
+}
+
 func sameLifecycle(a, b *zk.ZoneLifecycle) bool {
 	return a != nil && b != nil && a.Validate() == nil && b.Validate() == nil && a.Name == b.Name && a.UID == b.UID && a.ResourceVersion != "" && a.ResourceVersion == b.ResourceVersion && reflect.DeepEqual(a.Spec, b.Spec)
 }

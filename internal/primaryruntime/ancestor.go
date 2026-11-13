@@ -9,7 +9,6 @@ import (
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	zk "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/dynamicupdate"
-	"github.com/robertherbaugh/kudurru/internal/primaryzone"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/zonestate"
@@ -165,7 +164,6 @@ func (r *Runtime) AdmitAncestor(ctx context.Context, parentID, childID zk.ZoneID
 		obligation.RootDigest = committed.Head.Spec.RootDigest
 		next := child.DeepCopy()
 		next.Spec.Sequence++
-		next.Spec.Source = r.currentSource(ctx, child)
 		found := false
 		for i, p := range next.Spec.Parents {
 			if p.Zone == obligation.Zone {
@@ -263,24 +261,4 @@ func (r *Runtime) Activate(ctx context.Context, id zk.ZoneID) (*zk.ZoneLifecycle
 		return active, err
 	}
 	return active, r.publish(ctx, e)
-}
-
-// currentSource is the source of l's DNSZone now, for a boundary transition
-// to record (CORE-OPEN4): the boundary command does not need the child's
-// latest revision, but the transition must carry it, or the child could
-// never be fenced once its DNSZone moved on (the driver refreshes a
-// child's source only after its fences). A zone that is gone, replaced,
-// retyped or moved keeps l's recorded source, and the transaction refuses
-// it as before.
-func (r *Runtime) currentSource(ctx context.Context, l *zk.ZoneLifecycle) zk.LifecycleSource {
-	var z public.DNSZone
-	if l.Spec.Source.Removed || r.o.Store.Get(ctx, store.Key{Kind: "DNSZone", Name: l.Spec.Zone.ObjectName}, &z) != nil ||
-		string(z.UID) != l.Spec.Zone.UID || z.Spec.Type != l.Spec.Type || canonical(z.Spec.ZoneName) != l.Spec.Zone.Apex {
-		return l.Spec.Source
-	}
-	token, err := primaryzone.SourceToken(&z)
-	if err != nil {
-		return l.Spec.Source
-	}
-	return zk.LifecycleSource{UID: token.UID, ResourceVersion: token.ResourceVersion, IntentDigest: token.IntentDigest}
 }

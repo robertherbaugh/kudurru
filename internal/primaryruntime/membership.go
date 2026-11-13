@@ -104,7 +104,12 @@ func (c Cut) readiness() map[string]bool {
 		ready[apex] = e.member.Phase == zk.PhaseActive
 		for _, p := range e.member.Parents {
 			parent := c.entries[p.Zone.Apex]
-			if parent == nil || parent.member.Phase != zk.PhaseActive || parent.member.Incarnation != p.Incarnation || parent.member.Version.Zone != p.Zone || parent.member.Version.CommitSequence < p.CommitSequence || (parent.member.Version.CommitSequence == p.CommitSequence && parent.member.Version.RootDigest != p.RootDigest) || !hasFence(parent.view, apex) {
+			// A parent still Fencing has committed this child's fence and
+			// the obligation witnesses it: a parent created over an active
+			// child (late parent) is fenced before it activates. The child
+			// keeps its own committed head across that (D404); the parent
+			// itself does not serve until it is Active.
+			if parent == nil || !witnessPhase(parent.member.Phase) || parent.member.Incarnation != p.Incarnation || parent.member.Version.Zone != p.Zone || parent.member.Version.CommitSequence < p.CommitSequence || (parent.member.Version.CommitSequence == p.CommitSequence && parent.member.Version.RootDigest != p.RootDigest) || !hasFence(parent.view, apex) {
 				ready[apex] = false
 			}
 		}
@@ -135,6 +140,10 @@ func (c Cut) readiness() map[string]bool {
 	}
 	return ready
 }
+
+// witnessPhase reports the parent phases whose committed fence satisfies a
+// child's obligation: Active, and Fencing before the parent activates.
+func witnessPhase(phase string) bool { return phase == zk.PhaseActive || phase == zk.PhaseFencing }
 
 // Member returns detached membership diagnostics.
 func (c Cut) Member(apex string) (Member, bool) {

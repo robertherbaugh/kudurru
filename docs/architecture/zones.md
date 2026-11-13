@@ -560,9 +560,11 @@ retired. Every replacement gets a new incarnation and RR authority, including
 primary-to-forward-to-primary changes that retain the public object's UID.
 Child activation requires durable reservations in each primary ancestor. A
 later ancestor remains unavailable until existing children acquire the new
-obligation; retirement preserves conservative coverage until fences can be
-released. The driver admission adapter must recheck the complete current roster
-and exact source read in the same transaction as each transition.
+obligation, and keeps them serving while it is still fencing; retirement
+preserves conservative coverage until fences can be released. The driver
+admission adapter must recheck the complete current roster and exact source
+read in the same transaction as each transition (the boundary commands of
+D404 check the same zone instead of the exact receipt).
 
 ```mermaid
 flowchart LR
@@ -591,18 +593,7 @@ including a rejected or deduplicated request, crosses this admission. A child
 stalled by conflicting dynamic parent data retries its unfinished fences after
 an explicit authorized cleanup; it cannot activate without durable witnesses.
 
-A boundary command (a child's fence in its parent head, or its release) changes
-nothing in the parent head but that child's system reservation. It checks both
-zones' exact lifecycles and source identity (UID, type, apex, not deleting),
-not their latest DNSZone revisions, and the fence's child transition records
-the child's current revision. The SQLite adapter and the production background
-guard (`currentguard`, for the parent-fence, late-parent-fence and
-parent-release reasons) apply the same rule; every other background reason
-still needs the recorded revision. The parent records its own once the child is fenced. Requiring the
-latest revisions left a parent/child pair SERVFAIL for good when either DNSZone
-moved on (a status write, an edit) just as the child was created: an Active
-parent's source refresh needs every desired child fenced, and the driver fences
-a child before it refreshes the child's source (CORE-OPEN4).
+Commands that change only a parent/child boundary follow D404 (below).
 
 `primaryruntime/currentguard` uses the same immutable current keyring to compile
 reader policy and validate the transaction's actual desired source. UPDATE needs
@@ -698,6 +689,45 @@ gap, so UPDATE, NOTIFY, status projection, publication acknowledgment and
 integrations wait for the driver; a deleted, replaced or retyped zone, a head
 that is not active and expiry still serve coverage. A child's own write no
 longer unbinds its parent either.
+
+A primary zone and a primary child zone under it on one node converge in
+either order of creation, and across deletion and re-creation of the child
+(D404). The commands that change only a parent/child boundary (the parent's
+fence or release of one child: the `parent-fence`, `late-parent-fence` and
+`parent-release` admissions, and the child's lifecycle transition that changes
+nothing but `Sequence` and `Parents`) need the same zone, not the exact
+lifecycle receipt: the exact receipt still qualifies, and otherwise the same
+object name, UID, apex and type, a `DNSZone` that is not being deleted and a
+source that is not removed. They never advance the receipt. The SQLite adapter
+decides which commands these are (`boundaryCommand`, `boundaryTransition`),
+reads their sources with `boundarySource`, and marks the production guard's
+check with `BackgroundCheck.Boundary`; `currentguard` applies the same rule
+(`sqliteadapter.SameBoundaryZone`) and refuses the flag for any other reason.
+Before D404 they needed the exact receipt, while realigning a receipt (after
+any committed-status write or edit) is a lifecycle CAS that needs the
+boundary, so a parent or child whose receipt was behind its `DNSZone` could
+never be fenced and both zones stayed unavailable until a restart. Every other
+command, and the realignment itself (the Preparing-to-Fencing CAS, a primary
+`Reconcile`, a nonprimary refresh), still checks the exact receipt. DNS also
+keeps answering across the pair's own transitions: a parent with a desired
+child that is not yet fenced keeps serving its committed head (the child's own
+entry is the longer routing match below its apex) and is not admitted until the
+fence is published, and a child keeps serving while its new parent is still
+fencing.
+
+```mermaid
+sequenceDiagram
+    participant S as Status write
+    participant P as Parent lifecycle
+    participant C as Child lifecycle
+    participant H as Parent head
+    S->>P: DNSZone RV advances, receipt behind
+    Note over P,C: before D404: fence needs exact parent receipt,<br/>receipt realignment needs the fence (stuck)
+    C->>H: late-parent fence (same zone suffices)
+    H-->>C: obligation recorded (Sequence and Parents only)
+    P->>P: receipt realigned (exact, membership now satisfied)
+    Note over P,C: parent served (not admitted) until the fence is published
+```
 
 Nonprimary replacements use persisted lifecycle admission, current source and
 parent witnesses. A source name with an old lifecycle cannot bypass coordination

@@ -747,8 +747,9 @@ func TestLateChildFencesAParentWhoseSourceAdvanced(t *testing.T) {
 // The same deadlock from the child's side: the child's DNSZone moved on
 // after its lifecycle was created (its own status write, an edit) while the
 // parent's moved on too. The driver fences a child before it refreshes the
-// child's source, so the fence must not need the child's latest revision;
-// its child transition records it (CORE-OPEN4).
+// child's source, so the fence must not need the child's latest revision.
+// The fence never advances the receipt (D404): the child's own realignment
+// records the current source with the exact check once it is fenced.
 func TestLateChildFencesWhenBothSourcesAdvanced(t *testing.T) {
 	f := setup(t)
 	ctx := f.ctx()
@@ -777,8 +778,8 @@ func TestLateChildFencesWhenBothSourcesAdvanced(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fenced.Spec.Source.ResourceVersion != advanced {
-		t.Fatalf("the fence did not record the child's current source: %+v, want resourceVersion %s", fenced.Spec.Source, advanced)
+	if fenced.Spec.Source != child.Spec.Source || len(fenced.Spec.Parents) != 1 || fenced.Spec.Parents[0].CommitSequence == 0 {
+		t.Fatalf("the fence changed more than the child's obligation: source %+v (receipt %+v), parents %+v", fenced.Spec.Source, child.Spec.Source, fenced.Spec.Parents)
 	}
 	if _, err := f.r.Reconcile(ctx, parent.Spec.Zone); err != nil {
 		t.Fatal("parent did not reconcile once its child was fenced:", err)
@@ -786,8 +787,8 @@ func TestLateChildFencesWhenBothSourcesAdvanced(t *testing.T) {
 	if _, err := f.r.Reconcile(ctx, child.Spec.Zone); err != nil {
 		t.Fatal("child did not activate:", err)
 	}
-	if l, err := f.r.ReadLifecycle(ctx, child.Spec.Zone); err != nil || l.Spec.Phase != zk.PhaseActive {
-		t.Fatal("child not active:", err, l.Spec.Phase)
+	if l, err := f.r.ReadLifecycle(ctx, child.Spec.Zone); err != nil || l.Spec.Phase != zk.PhaseActive || l.Spec.Source.ResourceVersion != advanced {
+		t.Fatalf("child not active on its current source (resourceVersion %s): %v %+v", advanced, err, l)
 	}
 	// A boundary command still refuses a zone that was replaced.
 	other, err := f.a.LifecycleCAS(ctx, nil, f.intent(f.zone("other", "other.example."), parent))

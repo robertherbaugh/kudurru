@@ -310,9 +310,15 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 	for apex := range c.ready {
 		c.ready[apex] = c.ready[apex] && rosterReady[apex] && current[apex]
 	}
-	// A desired late child of any type is already a routing boundary. An
-	// admitted parent cannot serve before the child's exact incarnation and
-	// witness are present in this same candidate (including before child head).
+	// A desired late child of any type is already a routing boundary. A
+	// parent is not admitted before the child's exact incarnation and
+	// witness are present in this same candidate (including before child
+	// head): UPDATE, NOTIFY, status and publication acknowledgment wait for
+	// the driver to fence the child. DNS keeps answering the parent's
+	// committed head across that (D404): the child's own entry (its
+	// lifecycle, or the desired-only coverage) is the longer routing match
+	// for every name at or below its apex, so the parent answers only the
+	// names it answered before the child was created.
 	for _, child := range roster.zones {
 		apex := canonical(child.Spec.ZoneName)
 		for _, ancestor := range imageAncestors(apex) {
@@ -331,7 +337,7 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 				}
 			}
 			if !bound {
-				c.ready[ancestor] = false
+				retained[ancestor] = true
 			}
 		}
 	}
@@ -346,7 +352,10 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 	for _, apex := range apices {
 		deadline := entries[apex].expiry
 		for _, parent := range entries[apex].member.Parents {
-			if !c.ready[parent.Zone.Apex] {
+			// readiness already checked each obligation against its parent's
+			// committed fence. A parent still Fencing is never ready itself,
+			// and does not take its child out of service (D404).
+			if !c.ready[parent.Zone.Apex] && !imageFencingParent(entries[parent.Zone.Apex], parent) {
 				c.ready[apex] = false
 			}
 			if expiry := deadlines[parent.Zone.Apex]; !expiry.IsZero() && (deadline.IsZero() || expiry.Before(deadline)) {
@@ -362,6 +371,12 @@ func prepareImageRoster(ctx context.Context, base replication.Generation, roster
 	}
 	imageStatusDeadlines(status)
 	return &PreparedImage{base: base, cut: c, versions: versions, desired: desired, admissionDeadlines: deadlines, coordinated: coordinated, durable: durable, sourceCurrent: sourceCurrent, status: status, retained: retained}, nil
+}
+
+// imageFencingParent reports whether e is the exact parent incarnation of
+// obligation p and is still Fencing.
+func imageFencingParent(e *entry, p zk.ParentFence) bool {
+	return e != nil && e.member.Phase == zk.PhaseFencing && e.member.Incarnation == p.Incarnation && e.member.Version.Zone == p.Zone
 }
 
 func imageAncestors(apex string) []string {
