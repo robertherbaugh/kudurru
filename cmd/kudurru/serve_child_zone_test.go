@@ -256,6 +256,84 @@ func mountedParentAndChildZones(t *testing.T, cfg *config.Config, call mountedCa
 		watched[name] = address
 		mu.Unlock()
 	}
+	// awaitNewChild creates the child under its serving parent and waits for
+	// its first answer like awaitAnswer, sampling every 10 ms from the
+	// child's POST (D404). Until the first publication that carries the new
+	// DNSZone the parent answers what it answered before (its NXDOMAIN);
+	// from then until the child's first publication the names under the new
+	// apex answer SERVFAIL (the child's unavailable coverage, the longer
+	// routing match); then the child answers (possibly its own negative
+	// answer before its records are in its head). Once the child was seen
+	// (a SERVFAIL or an answer of the child), the parent's negative answer,
+	// which a resolver would cache for the parent's negative TTL, must not
+	// come back. Any other answer, or a first answer later than
+	// newChildBound after the POST, fails; without the race detector
+	// silence fails too. Measured without the race detector on a shared
+	// runner at load 13 to 17: SERVFAIL from 0.1 to 1.2 s and the first
+	// answer 0.5 to 4.1 s after the POST (CORE-CHILD-RECONCILE mount02),
+	// against up to 12 s before the driver stepped a zone being created
+	// ahead of its rotation (CORE-CHILD-ZONE mount01, mount02). Under the
+	// race detector the shared bound above applies.
+	newChildBound := 15 * time.Second
+	if raceEnabled {
+		newChildBound = bound
+	}
+	var slowestChild time.Duration
+	negativeFrom := func(m *dns.Msg) string {
+		for _, rr := range m.Ns {
+			if soa, ok := rr.(*dns.SOA); ok {
+				return dns.CanonicalName(soa.Hdr.Name)
+			}
+		}
+		return ""
+	}
+	awaitNewChild := func() {
+		t.Helper()
+		started := time.Now()
+		createChild()
+		client := &dns.Client{Timeout: 500 * time.Millisecond}
+		servfail, seen := time.Duration(0), false
+		for {
+			q := new(dns.Msg)
+			q.SetQuestion(childName, dns.TypeA)
+			m, _, err := client.Exchange(q, address)
+			elapsed := time.Since(started)
+			switch {
+			case err != nil || m == nil:
+				if !raceEnabled {
+					t.Fatalf("new child silent %s after its POST: %v", elapsed.Round(time.Millisecond), err)
+				}
+			case m.Rcode == dns.RcodeSuccess && len(m.Answer) > 0:
+				if a, ok := m.Answer[0].(*dns.A); len(m.Answer) != 1 || !ok || a.A.String() != childAddress || !m.Authoritative {
+					t.Fatalf("new child answered %v %s after its POST", m.Answer, elapsed.Round(time.Millisecond))
+				}
+				if offlineHTTPStatus(cfg.Listeners.Ops.Address, "/healthz/ready") != http.StatusOK {
+					break
+				}
+				slowestChild = max(slowestChild, elapsed)
+				t.Logf("new child: SERVFAIL from %s, first answer %s after its POST", servfail.Round(time.Millisecond), elapsed.Round(time.Millisecond))
+				mu.Lock()
+				watched[childName] = childAddress
+				mu.Unlock()
+				return
+			case m.Rcode == dns.RcodeServerFailure:
+				if servfail == 0 {
+					servfail = elapsed
+				}
+				seen = true
+			case (m.Rcode == dns.RcodeNameError || m.Rcode == dns.RcodeSuccess) && negativeFrom(m) == "child.family.example.":
+				seen = true // the child's own negative answer before its records
+			case (m.Rcode == dns.RcodeNameError || m.Rcode == dns.RcodeSuccess) && negativeFrom(m) == "family.example." && !seen:
+				// The publication before the child's DNSZone: the parent's data.
+			default:
+				t.Fatalf("new child answered %s (negative from %q, %d answers) %s after its POST (child seen %v, SERVFAIL from %s)", dns.RcodeToString[m.Rcode], negativeFrom(m), len(m.Answer), elapsed.Round(time.Millisecond), seen, servfail.Round(time.Millisecond))
+			}
+			if elapsed > newChildBound {
+				t.Fatalf("new child did not answer within %s of its POST (SERVFAIL from %s)", newChildBound, servfail.Round(time.Millisecond))
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
 	writes := 0
 	settle := func() { writes++; time.Sleep(1500 * time.Millisecond) }
 	nameservers := func(object, ns string) {
@@ -273,8 +351,7 @@ func mountedParentAndChildZones(t *testing.T, cfg *config.Config, call mountedCa
 		createParent()
 		awaitAnswer(parentName, parentAddress)
 		set("create child")
-		createChild()
-		awaitAnswer(childName, childAddress)
+		awaitNewChild()
 	} else {
 		set("create child")
 		createChild()
@@ -295,8 +372,7 @@ func mountedParentAndChildZones(t *testing.T, cfg *config.Config, call mountedCa
 		call(http.MethodDelete, "/objects/dnszones/family-child", nil, http.StatusNoContent, nil)
 		settle()
 		set("create child again")
-		createChild()
-		awaitAnswer(childName, childAddress)
+		awaitNewChild()
 		settle()
 	}
 	close(stop)
@@ -304,7 +380,7 @@ func mountedParentAndChildZones(t *testing.T, cfg *config.Config, call mountedCa
 
 	mu.Lock()
 	defer mu.Unlock()
-	t.Logf("%d writes; %d probes of the parent name, %d of the child name; %d without a correct answer %v", writes, probes[parentName], probes[childName], len(failures), kinds)
+	t.Logf("%d writes; %d probes of the parent name, %d of the child name; %d without a correct answer %v; slowest new child under its parent %s", writes, probes[parentName], probes[childName], len(failures), kinds, slowestChild.Round(time.Millisecond))
 	if probes[parentName] < 1000 || probes[childName] < 1000 {
 		t.Fatalf("too few probes: %v", probes)
 	}
