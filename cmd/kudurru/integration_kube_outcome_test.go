@@ -37,7 +37,7 @@ import (
 func TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup(t *testing.T) {
 	env := newKubeIntegrationEnv(t)
 	ctx := t.Context()
-	server, _, _ := kubeUniFiController(t, "127.0.0.9")
+	server, controllerCalls, _ := kubeUniFiController(t, "127.0.0.9")
 	credential := kubeTestCredential(t)
 	meta0 := func(name string) metav1.ObjectMeta { return metav1.ObjectMeta{Name: name, Namespace: "default"} }
 	if err := env.admin.Create(ctx, &public.ClientGroup{ObjectMeta: meta0("devices"), Spec: public.ClientGroupSpec{Sources: &public.ClientGroupSources{IntegrationRef: &public.ObjectRef{Name: "inventory"}}}}); err != nil {
@@ -164,6 +164,64 @@ func TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup(t *testing.T) {
 		t.Fatal("a refused viewer sync committed")
 	}
 
+	// The host's own status write keeps a review current (D384): once the
+	// host has read its write back, a check reviewed one status write
+	// earlier runs; a label change makes every earlier review stale.
+	summary := func() (string, bool) {
+		t.Helper()
+		status, body := env.api(t, cfg, http.MethodGet, "/integrations/default/inventory", nil)
+		revision, _ := body["revision"].(string)
+		known, _ := body["statusKnown"].(bool)
+		return revision, status == http.StatusOK && known
+	}
+	var reviewedRevision string
+	kubeAwait(t, 30*time.Second, "the summary knows the status of the stored revision", func() bool {
+		read()
+		revision, known := summary()
+		reviewedRevision = revision
+		return known && revision == current.ResourceVersion
+	})
+	if status, body := sync(env.token); status != http.StatusOK {
+		t.Fatal("observe sync", status, body)
+	}
+	// check sends a reviewed check at revision. A status write that lands
+	// during the call is the window docs/deploy/integrations.md names; only
+	// then is the check sent again, once the host has read the write back.
+	check := func(revision string) (int, map[string]any) {
+		t.Helper()
+		for attempt := 0; ; attempt++ {
+			kubeAwait(t, 30*time.Second, "the host reads the stored revision back", func() bool {
+				read()
+				r, known := summary()
+				return known && r == current.ResourceVersion
+			})
+			stored := current.ResourceVersion
+			status, body := env.api(t, cfg, http.MethodPost, "/integrations/default/inventory/check", map[string]any{"uid": string(current.UID), "revision": revision})
+			read()
+			if status != http.StatusConflict || current.ResourceVersion == stored || attempt == 5 {
+				return status, body
+			}
+		}
+	}
+	read()
+	if current.ResourceVersion == reviewedRevision {
+		t.Fatal("the sync wrote no status")
+	}
+	if status, body := check(reviewedRevision); status != http.StatusOK || body["reachable"] != true {
+		t.Fatalf("check reviewed before the host's status write at %s: %d %v", current.ResourceVersion, status, body)
+	}
+	read()
+	statusRevision := current.ResourceVersion
+	current.Labels = map[string]string{"team": "dns"}
+	if err := env.admin.Update(ctx, &current); err != nil {
+		t.Fatal(err)
+	}
+	for _, revision := range []string{reviewedRevision, statusRevision} {
+		if status, body := check(revision); status != http.StatusConflict {
+			t.Fatalf("check reviewed before a label change at %s: %d %v", revision, status, body)
+		}
+	}
+
 	// A head write that reached the API server but whose answer was lost
 	// is resolved by one read of the head: committed, exactly once.
 	heads := carriers(kinds.KindIntegrationSourceHead)
@@ -245,4 +303,66 @@ func TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup(t *testing.T) {
 	if chunks := carriers(kinds.KindIntegrationSourceChunk); len(chunks) != 0 {
 		t.Fatal("the purge left source chunks", len(chunks))
 	}
+
+	// Armed, then refused for a UniFi push this root does not run (D384).
+	// clientActions makes no instance a publisher: deleting it purges its
+	// carriers and removes it with no controller request. The record mirror
+	// does: that cleanup needs the provider, so the object stays Terminating
+	// until the switch is off.
+	armedThenRefused := func(push func(*public.UniFiPush)) {
+		t.Helper()
+		again := &public.Integration{ObjectMeta: meta0("inventory"), Spec: *inventory.Spec.DeepCopy()}
+		if err := env.admin.Create(ctx, again); err != nil {
+			t.Fatal(err)
+		}
+		kubeAwait(t, 90*time.Second, "the recreated instance commits a head and is Ready", func() bool {
+			if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "inventory"}, &current); err != nil {
+				return false
+			}
+			c := meta.FindStatusCondition(current.Status.Conditions, "Ready")
+			return current.UID == again.UID && store.HasFinalizer(&current, store.IntegrationCleanupFinalizer) && sequence() >= 1 && c != nil && c.Status == metav1.ConditionTrue && c.ObservedGeneration == current.Generation
+		})
+		push(&current.Spec.UniFi.Push)
+		if err := env.admin.Update(ctx, &current); err != nil {
+			t.Fatal(err)
+		}
+		kubeAwait(t, 60*time.Second, "the instance reports its push refusal", func() bool {
+			read()
+			c := meta.FindStatusCondition(current.Status.Conditions, "Ready")
+			return c != nil && c.Reason == reasonPushUnsupported && c.ObservedGeneration == current.Generation && c.Message == kubeRefusalMessage(reasonPushUnsupported, "")
+		})
+		if !store.HasFinalizer(&current, store.IntegrationCleanupFinalizer) || len(carriers(kinds.KindIntegrationSourceHead)) != 1 {
+			t.Fatal("the refused instance lost its finalizer or its head")
+		}
+	}
+	gone := func() bool {
+		err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "inventory"}, &public.Integration{})
+		return err != nil && strings.Contains(err.Error(), "not found") && len(carriers(kinds.KindIntegrationSourceHead)) == 0
+	}
+	armedThenRefused(func(p *public.UniFiPush) { p.ClientActions = true })
+	requests := controllerCalls.Load()
+	if err := env.admin.Delete(ctx, &current); err != nil {
+		t.Fatal(err)
+	}
+	kubeAwait(t, 60*time.Second, "the instance refused for clientActions purges its source and is removed", gone)
+	if got := controllerCalls.Load(); got != requests {
+		t.Fatal("the cleanup of a refused non-publisher reached the controller", got-requests)
+	}
+
+	armedThenRefused(func(p *public.UniFiPush) {
+		p.MirrorRecords.Enabled, p.MirrorRecords.Domains = true, []string{"example"}
+	})
+	if err := env.admin.Delete(ctx, &current); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Second)
+	read()
+	if current.DeletionTimestamp.IsZero() || !store.HasFinalizer(&current, store.IntegrationCleanupFinalizer) || len(carriers(kinds.KindIntegrationSourceHead)) != 1 {
+		t.Fatal("the cleanup of a refused record mirror ran without its provider")
+	}
+	current.Spec.UniFi.Push.MirrorRecords.Enabled = false
+	if err := env.admin.Update(ctx, &current); err != nil {
+		t.Fatal(err)
+	}
+	kubeAwait(t, 60*time.Second, "the instance whose mirror was turned off purges its source and is removed", gone)
 }
