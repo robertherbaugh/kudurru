@@ -44,15 +44,15 @@ var (
 	// refused before its exchange with the primary began (for example when
 	// the follower's source changed before the forward acquired it): no byte
 	// of it left this node. It is never sent on the wire.
-	ErrNotSent = errors.New("replica: command not sent")
-	ErrProtocol       = errors.New("replica: invalid protocol")
-	ErrLoop           = errors.New("replica: forwarding loop")
-	ErrRedirect       = errors.New("replica: redirect rejected")
-	ErrUntrusted      = errors.New("replica: untrusted TLS peer")
-	ErrDedupConflict  = errors.New("replica: command ID reused with different content")
-	ErrExpired        = errors.New("replica: command expired")
-	ErrSensitive      = errors.New("replica: sensitive result requires owner sealing")
-	ErrIneligible     = errors.New("replica: promotion ineligible")
+	ErrNotSent       = errors.New("replica: command not sent")
+	ErrProtocol      = errors.New("replica: invalid protocol")
+	ErrLoop          = errors.New("replica: forwarding loop")
+	ErrRedirect      = errors.New("replica: redirect rejected")
+	ErrUntrusted     = errors.New("replica: untrusted TLS peer")
+	ErrDedupConflict = errors.New("replica: command ID reused with different content")
+	ErrExpired       = errors.New("replica: command expired")
+	ErrSensitive     = errors.New("replica: sensitive result requires owner sealing")
+	ErrIneligible    = errors.New("replica: promotion ineligible")
 )
 
 // Peer comes from enrollment, not discovery or an arbitrary public URL.
