@@ -54,17 +54,26 @@ changes; [sqlite-join.md](sqlite-join.md#commands-through-a-follower)
 describes both cases. `POST /{kind}:batchDelete` follows the same rule for
 its names and reports them under `processed.success` and `processed.errors`.
 
-A request whose first document finds that another commit (often the node's
-own status or lifecycle work, or a signed UPDATE) published while it ran
-waits for that publication and is admitted on it, once, without being
-applied twice. Only when the node keeps publishing for five seconds, or when
-the request's credential, session, roles or the node's authority changed in
-the meantime, is the request refused before its first document: with `503
-generation_pending`, or with every item reporting `unavailable` ("current
-writable serving generation unavailable", `Retry-After: 1`). Nothing was
-applied, and the same request may be sent again. Of two large requests sent
-at the same time one may still end this way, so send them one after
-another. An item reached after the request's five-minute lifetime
+A request can be refused before its first document in two ways. Nothing was
+applied in either case, and the same request may be sent again:
+
+- `503 generation_pending` (`Retry-After: 1`): the node had not finished
+  publishing its newest commit when the request arrived, so the request was
+  not read. This still happens on a ready node that commits steadily (its
+  own status and lifecycle work, signed UPDATEs); clients send the request
+  again.
+- every item reporting `unavailable` ("current writable serving generation
+  unavailable", `Retry-After: 1`): the request was read, and another commit
+  published while it ran. Such a request now waits for that publication and
+  is admitted on it, once (D399); it is refused this way only when the node
+  kept publishing for five seconds, or when the request's credential,
+  session, roles, the cluster settings or the node's authority changed in
+  the meantime.
+
+`Retry-After: 1` on `unavailable` means that no part of the command ran; a
+refusal from inside a command or after its commit carries no `Retry-After`.
+Of two large requests sent at the same time one may still end this way, so
+send them one after another. An item reached after the request's five-minute lifetime
 reports `unavailable` ("the request's lifetime ended before this item was
 reached; it was not applied"). Give the client a timeout of five minutes for
 large requests; `kudurru apply` and `kudurru restore` do so unless

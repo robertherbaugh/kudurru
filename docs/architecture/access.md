@@ -234,7 +234,19 @@ flowchart TD
 - The wait is bounded by five seconds (the same bound as a later import
   step's wait for its cut) or the request's deadline, whichever ends first.
   When it ends the answer is the same effect-free `503 unavailable`, now with
-  `Retry-After: 1`.
+  `Retry-After: 1`. Only a refusal returned before any transaction body of
+  the command began carries `Retry-After`; a refusal from inside a body, at
+  commit or after it does not.
+- This covers a request that was read. A request that arrives while the
+  node has not published its newest commit is still refused at capture,
+  before it is read, with `503 generation_pending` (the middleware's capture
+  wait); D399 does not change that, and under a steady stream of commits
+  the publisher can fall behind (each new generation and each wake cancels
+  the preparation in progress), which is an open limit.
+- An integration operation's first no-op command holds the integration
+  host's lease barrier and its runtime lock, so it is marked
+  `WithoutRecapture` and keeps the immediate refusal rather than waiting
+  under those locks.
 - Only a request none of whose commands has dispatched yet captures again:
   after its own first commit a request is held to its publication exactly as
   before (its later items follow the D378 chain).
@@ -266,12 +278,14 @@ flowchart TD
   (mode, member, term and incarnation), not to a publication, so the
   primary's own commits do not refuse it. Cluster promotion is bound to the
   exact installed generation the operator reviewed and is not recaptured.
-- A signed RFC 2136 UPDATE is not recaptured. Its publication is the DNS
-  transport's capture: the keyring that verified its signature and the
-  output that signs and sends the answer come from it, so a new capture
-  would admit the same wire message a second time. Its pre-dispatch refusal
-  is an effect-free SERVFAIL, which RFC 2136 clients send again with a fresh
-  TSIG time, and a server-side wait would overlap their own retransmission.
+- A signed RFC 2136 UPDATE is not recaptured; this is a decline, not a
+  fix. Its publication is the DNS transport's capture: the keyring that
+  verified its signature and the output that signs and sends the answer
+  come from it, so a new capture would have to verify and admit the same
+  wire message on a second keyring. Its pre-dispatch refusal stays an
+  effect-free SERVFAIL (`Handler.resolve`), and the withheld acknowledgment
+  (D313) is unchanged. Whether a given UPDATE client sends a SERVFAIL again
+  is the client's policy and was not measured here.
 
 ## Browser response completion (D306)
 
