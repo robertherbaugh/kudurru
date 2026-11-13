@@ -728,6 +728,51 @@ func (e IntegrationSummaryDeletionPolicy) Valid() bool {
 	}
 }
 
+// Defines values for InventoryAddressState.
+const (
+	InventoryAddressStateAmbiguous  InventoryAddressState = "ambiguous"
+	InventoryAddressStateAssigned   InventoryAddressState = "assigned"
+	InventoryAddressStateExpired    InventoryAddressState = "expired"
+	InventoryAddressStateSuperseded InventoryAddressState = "superseded"
+	InventoryAddressStateWithdrawn  InventoryAddressState = "withdrawn"
+)
+
+// Valid indicates whether the value is a known member of the InventoryAddressState enum.
+func (e InventoryAddressState) Valid() bool {
+	switch e {
+	case InventoryAddressStateAmbiguous:
+		return true
+	case InventoryAddressStateAssigned:
+		return true
+	case InventoryAddressStateExpired:
+		return true
+	case InventoryAddressStateSuperseded:
+		return true
+	case InventoryAddressStateWithdrawn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryDeviceKind.
+const (
+	InventoryDeviceKindDhcp      InventoryDeviceKind = "dhcp"
+	InventoryDeviceKindInventory InventoryDeviceKind = "inventory"
+)
+
+// Valid indicates whether the value is a known member of the InventoryDeviceKind enum.
+func (e InventoryDeviceKind) Valid() bool {
+	switch e {
+	case InventoryDeviceKindDhcp:
+		return true
+	case InventoryDeviceKindInventory:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for MigrationRequestSource.
 const (
 	MigrationRequestSourcePihole     MigrationRequestSource = "pihole"
@@ -1880,6 +1925,48 @@ func (e AddDomainsParamsKind) Valid() bool {
 	case AddDomainsParamsKindExact:
 		return true
 	case AddDomainsParamsKindRegex:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListInventoryParamsKind.
+const (
+	ListInventoryParamsKindDhcp      ListInventoryParamsKind = "dhcp"
+	ListInventoryParamsKindEmpty     ListInventoryParamsKind = ""
+	ListInventoryParamsKindInventory ListInventoryParamsKind = "inventory"
+)
+
+// Valid indicates whether the value is a known member of the ListInventoryParamsKind enum.
+func (e ListInventoryParamsKind) Valid() bool {
+	switch e {
+	case ListInventoryParamsKindDhcp:
+		return true
+	case ListInventoryParamsKindEmpty:
+		return true
+	case ListInventoryParamsKindInventory:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListInventoryParamsStale.
+const (
+	ListInventoryParamsStaleEmpty ListInventoryParamsStale = ""
+	ListInventoryParamsStaleFalse ListInventoryParamsStale = "false"
+	ListInventoryParamsStaleTrue  ListInventoryParamsStale = "true"
+)
+
+// Valid indicates whether the value is a known member of the ListInventoryParamsStale enum.
+func (e ListInventoryParamsStale) Valid() bool {
+	switch e {
+	case ListInventoryParamsStaleEmpty:
+		return true
+	case ListInventoryParamsStaleFalse:
+		return true
+	case ListInventoryParamsStaleTrue:
 		return true
 	default:
 		return false
@@ -4077,6 +4164,70 @@ type IntegrationSummary struct {
 
 // IntegrationSummaryDeletionPolicy defines model for IntegrationSummary.DeletionPolicy.
 type IntegrationSummaryDeletionPolicy string
+
+// InventoryAddress defines model for InventoryAddress.
+type InventoryAddress struct {
+	Ip string `json:"ip"`
+
+	// OwnerId Device ID of the claim that owns a superseded address.
+	OwnerId *string `json:"ownerId,omitempty"`
+
+	// OwnerSource Source of the claim that owns a superseded address.
+	OwnerSource *string `json:"ownerSource,omitempty"`
+
+	// State assigned: queries from this address get this device's identity. expired: the observation passed expiresAt. ambiguous: an equally new claim of another device collides (or, for DHCP, another scope leases the address to a different MAC), so neither identifies. superseded: ownerSource/ownerId holds a newer claim; for a DHCP lease, an inventory device with MACs owns the address and its MACs win. withdrawn: the device's own source later removed the claim.
+	State InventoryAddressState `json:"state"`
+}
+
+// InventoryAddressState assigned: queries from this address get this device's identity. expired: the observation passed expiresAt. ambiguous: an equally new claim of another device collides (or, for DHCP, another scope leases the address to a different MAC), so neither identifies. superseded: ownerSource/ownerId holds a newer claim; for a DHCP lease, an inventory device with MACs owns the address and its MACs win. withdrawn: the device's own source later removed the claim.
+type InventoryAddressState string
+
+// InventoryBody defines model for InventoryBody.
+type InventoryBody struct {
+	// Continue Opaque keyset token for the next page; empty on the last page.
+	Continue *string `json:"continue,omitempty"`
+
+	// Generation Generation of the inventory snapshot read (0: empty).
+	Generation int64             `json:"generation"`
+	Items      []InventoryDevice `json:"items"`
+
+	// Node The node that answered; DHCP leases are this node's.
+	Node string `json:"node"`
+
+	// ReadAt Time used to decide staleness and address states.
+	ReadAt time.Time `json:"readAt"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
+// InventoryDevice defines model for InventoryDevice.
+type InventoryDevice struct {
+	Addresses []InventoryAddress `json:"addresses"`
+
+	// ExpiresAt Absolute end of the observation or lease; failed polls never extend it.
+	ExpiresAt time.Time `json:"expiresAt"`
+	Hostname  *string   `json:"hostname,omitempty"`
+
+	// Id Device ID within the source; the leased address for DHCP.
+	Id   string              `json:"id"`
+	Kind InventoryDeviceKind `json:"kind"`
+	Macs []string            `json:"macs"`
+	Name *string             `json:"name,omitempty"`
+
+	// ObservedAt When the source actually saw the device; absent for DHCP leases.
+	ObservedAt *time.Time `json:"observedAt,omitempty"`
+
+	// Source Inventory source ID (integration-<digest> for an integration), or dhcp/<scope> for a lease of this node.
+	Source string `json:"source"`
+
+	// Stale The observation or lease has expired; the device no longer identifies queries.
+	Stale bool     `json:"stale"`
+	Tags  []string `json:"tags"`
+}
+
+// InventoryDeviceKind defines model for InventoryDevice.Kind.
+type InventoryDeviceKind string
 
 // LatencySummary defines model for LatencySummary.
 type LatencySummary struct {
@@ -6758,6 +6909,33 @@ type ListIntegrationActionsParams struct {
 	Revision string `form:"revision" json:"revision"`
 }
 
+// ListInventoryParams defines parameters for ListInventory.
+type ListInventoryParams struct {
+	// Source Only devices of this exact source.
+	Source *string `form:"source,omitempty" json:"source,omitempty"`
+
+	// Kind Only inventory-source devices or only DHCP leases.
+	Kind *ListInventoryParamsKind `form:"kind,omitempty" json:"kind,omitempty"`
+
+	// Stale Only stale (true) or only live (false) devices.
+	Stale *ListInventoryParamsStale `form:"stale,omitempty" json:"stale,omitempty"`
+
+	// Q Case-insensitive substring of the ID, name, hostname, a MAC or an address.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Page size (default 500).
+	Limit *int64 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Continue Token from the previous page.
+	Continue *string `form:"continue,omitempty" json:"continue,omitempty"`
+}
+
+// ListInventoryParamsKind defines parameters for ListInventory.
+type ListInventoryParamsKind string
+
+// ListInventoryParamsStale defines parameters for ListInventory.
+type ListInventoryParamsStale string
+
 // PatchNodeConfigJSONBody defines parameters for PatchNodeConfig.
 type PatchNodeConfigJSONBody map[string]interface{}
 
@@ -8959,6 +9137,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with POST /integrations:batchDelete (the `BatchDeleteIntegrations` operationId).
 	BatchDeleteIntegrations(ctx context.Context, body BatchDeleteIntegrationsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListInventory Devices known to the inventory, including ones that never queried
+	//
+	// Inventory devices from integration sources and this node's DHCP leases, with MACs, names, tags, staleness and the ownership state of every address (D196, D397). Unlike GET /clients it does not depend on DNS traffic. Pages are cut by (source, id); each page reads the current snapshot.
+	//
+	// Corresponds with GET /inventory (the `ListInventory` operationId).
+	ListInventory(ctx context.Context, params *ListInventoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetLicense License state, node limit and licensed features of this node
 	//
@@ -13006,6 +13191,23 @@ func (c *Client) BatchDeleteIntegrationsWithBody(ctx context.Context, contentTyp
 // Corresponds with POST /integrations:batchDelete (the `BatchDeleteIntegrations` operationId).
 func (c *Client) BatchDeleteIntegrations(ctx context.Context, body BatchDeleteIntegrationsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewBatchDeleteIntegrationsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListInventory Devices known to the inventory, including ones that never queried
+//
+// Inventory devices from integration sources and this node's DHCP leases, with MACs, names, tags, staleness and the ownership state of every address (D196, D397). Unlike GET /clients it does not depend on DNS traffic. Pages are cut by (source, id); each page reads the current snapshot.
+//
+// Corresponds with GET /inventory (the `ListInventory` operationId).
+func (c *Client) ListInventory(ctx context.Context, params *ListInventoryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListInventoryRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -21149,6 +21351,120 @@ func NewBatchDeleteIntegrationsRequestWithBody(server string, contentType string
 	return req, nil
 }
 
+// NewListInventoryRequest constructs an http.Request for the ListInventory method
+func NewListInventoryRequest(server string, params *ListInventoryParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/inventory")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Source != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "source", *params.Source, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Kind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "kind", *params.Kind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Stale != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "stale", *params.Stale, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Q != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "q", *params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int64"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Continue != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "continue", *params.Continue, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetLicenseRequest constructs an http.Request for the GetLicense method
 func NewGetLicenseRequest(server string) (*http.Request, error) {
 	var err error
@@ -27431,6 +27747,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with POST /integrations:batchDelete (the `BatchDeleteIntegrations` operationId).
 	BatchDeleteIntegrationsWithResponse(ctx context.Context, body BatchDeleteIntegrationsJSONRequestBody, reqEditors ...RequestEditorFn) (*BatchDeleteIntegrationsResponse, error)
+
+	// ListInventoryWithResponse Devices known to the inventory, including ones that never queried
+	//
+	// Inventory devices from integration sources and this node's DHCP leases, with MACs, names, tags, staleness and the ownership state of every address (D196, D397). Unlike GET /clients it does not depend on DNS traffic. Pages are cut by (source, id); each page reads the current snapshot.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /inventory (the `ListInventory` operationId).
+	ListInventoryWithResponse(ctx context.Context, params *ListInventoryParams, reqEditors ...RequestEditorFn) (*ListInventoryResponse, error)
 
 	// GetLicenseWithResponse License state, node limit and licensed features of this node
 	//
@@ -40986,6 +41311,96 @@ func (r BatchDeleteIntegrationsResponse) ContentType() string {
 	return ""
 }
 
+type ListInventoryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *InventoryBody
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *Error
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *Error
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
+	// JSON422 the response for an HTTP 422 `application/json` response
+	JSON422 *Error
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *Error
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *Error
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListInventoryResponse) GetJSON200() *InventoryBody {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r ListInventoryResponse) GetJSON400() *Error {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r ListInventoryResponse) GetJSON401() *Error {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r ListInventoryResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r ListInventoryResponse) GetJSON404() *Error {
+	return r.JSON404
+}
+
+// GetJSON422 returns the response for an HTTP 422 `application/json` response
+func (r ListInventoryResponse) GetJSON422() *Error {
+	return r.JSON422
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r ListInventoryResponse) GetJSON500() *Error {
+	return r.JSON500
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r ListInventoryResponse) GetJSON503() *Error {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r ListInventoryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListInventoryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListInventoryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListInventoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 type GetLicenseResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -50831,6 +51246,21 @@ func (c *ClientWithResponses) BatchDeleteIntegrationsWithResponse(ctx context.Co
 		return nil, err
 	}
 	return ParseBatchDeleteIntegrationsResponse(rsp)
+}
+
+// ListInventoryWithResponse Devices known to the inventory, including ones that never queried
+//
+// Inventory devices from integration sources and this node's DHCP leases, with MACs, names, tags, staleness and the ownership state of every address (D196, D397). Unlike GET /clients it does not depend on DNS traffic. Pages are cut by (source, id); each page reads the current snapshot.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /inventory (the `ListInventory` operationId).
+func (c *ClientWithResponses) ListInventoryWithResponse(ctx context.Context, params *ListInventoryParams, reqEditors ...RequestEditorFn) (*ListInventoryResponse, error) {
+	rsp, err := c.ListInventory(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListInventoryResponse(rsp)
 }
 
 // GetLicenseWithResponse License state, node limit and licensed features of this node
@@ -63174,6 +63604,81 @@ func ParseBatchDeleteIntegrationsResponse(rsp *http.Response) (*BatchDeleteInteg
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListInventoryResponse parses an HTTP response from a ListInventoryWithResponse call
+func ParseListInventoryResponse(rsp *http.Response) (*ListInventoryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListInventoryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest InventoryBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
 		var dest Error

@@ -78,6 +78,7 @@ rules:
       - dnsrecordsets
       - dnszones
       - edgeblocks
+      - inventories
       - policies
       - settings
       - stats
@@ -121,6 +122,7 @@ rules:
     resources:
       - dhcpscopes
       - dnszones
+      - inventories
       - querylogs
       - settings
       - stats

@@ -577,6 +577,10 @@ func (c *Client) Dispatch(ctx context.Context, method, path, contentType string,
 		response, err := c.BatchDeleteIntegrationsWithBody(ctx, contentType, body, editors...)
 		return response, true, err
 	}
+	if method == "GET" && len(parts) == 1 && parts[0] == "inventory" {
+		response, err := c.ListInventory(ctx, nil, editors...)
+		return response, true, err
+	}
 	if method == "GET" && len(parts) == 1 && parts[0] == "license" {
 		response, err := c.GetLicense(ctx, editors...)
 		return response, true, err

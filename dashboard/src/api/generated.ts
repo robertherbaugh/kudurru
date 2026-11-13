@@ -2055,6 +2055,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Devices known to the inventory, including ones that never queried
+         * @description Inventory devices from integration sources and this node's DHCP leases, with MACs, names, tags, staleness and the ownership state of every address (D196, D397). Unlike GET /clients it does not depend on DNS traffic. Pages are cut by (source, id); each page reads the current snapshot.
+         */
+        get: operations["listInventory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/license": {
         parameters: {
             query?: never;
@@ -4703,6 +4723,65 @@ export interface components {
             uid: string;
             /** Format: int64 */
             uncertain: number;
+        };
+        InventoryAddress: {
+            ip: string;
+            /** @description Device ID of the claim that owns a superseded address. */
+            ownerId?: string;
+            /** @description Source of the claim that owns a superseded address. */
+            ownerSource?: string;
+            /**
+             * @description assigned: queries from this address get this device's identity. expired: the observation passed expiresAt. ambiguous: an equally new claim of another device collides (or, for DHCP, another scope leases the address to a different MAC), so neither identifies. superseded: ownerSource/ownerId holds a newer claim; for a DHCP lease, an inventory device with MACs owns the address and its MACs win. withdrawn: the device's own source later removed the claim.
+             * @enum {string}
+             */
+            state: "assigned" | "expired" | "ambiguous" | "superseded" | "withdrawn";
+        };
+        InventoryBody: {
+            /** @description Opaque keyset token for the next page; empty on the last page. */
+            continue?: string;
+            /**
+             * Format: int64
+             * @description Generation of the inventory snapshot read (0: empty).
+             */
+            generation: number;
+            items: components["schemas"]["InventoryDevice"][];
+            /** @description The node that answered; DHCP leases are this node's. */
+            node: string;
+            /**
+             * Format: date-time
+             * @description Time used to decide staleness and address states.
+             */
+            readAt: string;
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
+        };
+        InventoryDevice: {
+            addresses: components["schemas"]["InventoryAddress"][];
+            /**
+             * Format: date-time
+             * @description Absolute end of the observation or lease; failed polls never extend it.
+             */
+            expiresAt: string;
+            hostname?: string;
+            /** @description Device ID within the source; the leased address for DHCP. */
+            id: string;
+            /** @enum {string} */
+            kind: "inventory" | "dhcp";
+            macs: string[];
+            name?: string;
+            /**
+             * Format: date-time
+             * @description When the source actually saw the device; absent for DHCP leases.
+             */
+            observedAt?: string;
+            /** @description Inventory source ID (integration-<digest> for an integration), or dhcp/<scope> for a lease of this node. */
+            source: string;
+            /** @description The observation or lease has expired; the device no longer identifies queries. */
+            stale: boolean;
+            tags: string[];
         };
         LatencySummary: {
             /** Format: double */
@@ -19425,6 +19504,102 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listInventory: {
+        parameters: {
+            query?: {
+                /** @description Only devices of this exact source. */
+                source?: string;
+                /** @description Only inventory-source devices or only DHCP leases. */
+                kind?: "inventory" | "dhcp" | "";
+                /** @description Only stale (true) or only live (false) devices. */
+                stale?: "true" | "false" | "";
+                /** @description Case-insensitive substring of the ID, name, hostname, a MAC or an address. */
+                q?: string;
+                /** @description Page size (default 500). */
+                limit?: number;
+                /** @description Token from the previous page. */
+                continue?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

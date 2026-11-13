@@ -5477,6 +5477,150 @@
         ],
         "type": "object"
       },
+      "InventoryAddress": {
+        "additionalProperties": false,
+        "properties": {
+          "ip": {
+            "type": "string"
+          },
+          "ownerId": {
+            "description": "Device ID of the claim that owns a superseded address.",
+            "type": "string"
+          },
+          "ownerSource": {
+            "description": "Source of the claim that owns a superseded address.",
+            "type": "string"
+          },
+          "state": {
+            "description": "assigned: queries from this address get this device's identity. expired: the observation passed expiresAt. ambiguous: an equally new claim of another device collides (or, for DHCP, another scope leases the address to a different MAC), so neither identifies. superseded: ownerSource/ownerId holds a newer claim; for a DHCP lease, an inventory device with MACs owns the address and its MACs win. withdrawn: the device's own source later removed the claim.",
+            "enum": [
+              "assigned",
+              "expired",
+              "ambiguous",
+              "superseded",
+              "withdrawn"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "ip",
+          "state"
+        ],
+        "type": "object"
+      },
+      "InventoryBody": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Opaque keyset token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "generation": {
+            "description": "Generation of the inventory snapshot read (0: empty).",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InventoryDevice"
+            },
+            "type": "array"
+          },
+          "node": {
+            "description": "The node that answered; DHCP leases are this node's.",
+            "type": "string"
+          },
+          "readAt": {
+            "description": "Time used to decide staleness and address states.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "node",
+          "generation",
+          "readAt",
+          "items",
+          "took_ms"
+        ],
+        "type": "object"
+      },
+      "InventoryDevice": {
+        "additionalProperties": false,
+        "properties": {
+          "addresses": {
+            "items": {
+              "$ref": "#/components/schemas/InventoryAddress"
+            },
+            "type": "array"
+          },
+          "expiresAt": {
+            "description": "Absolute end of the observation or lease; failed polls never extend it.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "id": {
+            "description": "Device ID within the source; the leased address for DHCP.",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "inventory",
+              "dhcp"
+            ],
+            "type": "string"
+          },
+          "macs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "type": "string"
+          },
+          "observedAt": {
+            "description": "When the source actually saw the device; absent for DHCP leases.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "source": {
+            "description": "Inventory source ID (integration-\u003cdigest\u003e for an integration), or dhcp/\u003cscope\u003e for a lease of this node.",
+            "type": "string"
+          },
+          "stale": {
+            "description": "The observation or lease has expired; the device no longer identifies queries.",
+            "type": "boolean"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "source",
+          "kind",
+          "id",
+          "macs",
+          "tags",
+          "addresses",
+          "expiresAt",
+          "stale"
+        ],
+        "type": "object"
+      },
       "LatencySummary": {
         "additionalProperties": false,
         "properties": {
@@ -28571,6 +28715,181 @@
           "resource": "integrations",
           "scope": "cluster",
           "verb": "delete"
+        }
+      }
+    },
+    "/inventory": {
+      "get": {
+        "description": "Inventory devices from integration sources and this node's DHCP leases, with MACs, names, tags, staleness and the ownership state of every address (D196, D397). Unlike GET /clients it does not depend on DNS traffic. Pages are cut by (source, id); each page reads the current snapshot.",
+        "operationId": "listInventory",
+        "parameters": [
+          {
+            "description": "Only devices of this exact source.",
+            "explode": false,
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "description": "Only devices of this exact source.",
+              "maxLength": 300,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only inventory-source devices or only DHCP leases.",
+            "explode": false,
+            "in": "query",
+            "name": "kind",
+            "schema": {
+              "description": "Only inventory-source devices or only DHCP leases.",
+              "enum": [
+                "inventory",
+                "dhcp",
+                ""
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only stale (true) or only live (false) devices.",
+            "explode": false,
+            "in": "query",
+            "name": "stale",
+            "schema": {
+              "description": "Only stale (true) or only live (false) devices.",
+              "enum": [
+                "true",
+                "false",
+                ""
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Case-insensitive substring of the ID, name, hostname, a MAC or an address.",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "Case-insensitive substring of the ID, name, hostname, a MAC or an address.",
+              "maxLength": 253,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Page size (default 500).",
+            "explode": false,
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "description": "Page size (default 500).",
+              "format": "int64",
+              "maximum": 5000,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Token from the previous page.",
+            "explode": false,
+            "in": "query",
+            "name": "continue",
+            "schema": {
+              "description": "Token from the previous page.",
+              "maxLength": 1024,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Devices known to the inventory, including ones that never queried",
+        "tags": [
+          "clients"
+        ],
+        "x-kudurru-permission": {
+          "resource": "inventory",
+          "scope": "cluster",
+          "verb": "read"
         }
       }
     },

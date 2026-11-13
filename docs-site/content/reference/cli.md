@@ -1865,6 +1865,32 @@ Flags:
       --run-timeout duration           Whole run deadline, at most 5m (default 1m0s)
 ```
 
+## kudurru inventory
+
+List the client inventory: devices reported by inventory sources (UniFi, webhook integrations) and the bound DHCP leases of the answering node, whether or not they have sent a DNS query. Each address shows its state: assigned (identifies queries), expired, ambiguous (a colliding claim), superseded (a newer claim, or an inventory MAC that wins over a lease) or withdrawn. Requires inventory.read.
+
+```text
+kudurru inventory [flags]
+```
+
+Examples:
+
+```sh
+kudurru inventory
+kudurru inventory --kind dhcp --stale false
+kudurru inventory --search 02:00:5e -o json
+```
+
+Flags:
+
+```text
+      --kind string     inventory or dhcp
+      --limit int       stop after this many devices (0: all)
+      --search string   case-insensitive substring of the ID, name, hostname, a MAC or an address
+      --source string   only devices of this exact source (integration-<digest> or dhcp/<scope>)
+      --stale string    true: only stale devices; false: only live ones
+```
+
 ## kudurru lameduck
 
 Put the local kudurru into lameduck through the ops listener (POST /lameduck, loopback only) and wait for the duration, if one is given, so the edge's health checks (dnsdist must-resolve on health.kudurru.internal., every second) and the Kubernetes endpoints take the node out before it stops. Queries that still arrive are answered. --cancel leaves lameduck.

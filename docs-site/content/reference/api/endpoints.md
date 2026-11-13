@@ -92,6 +92,12 @@ them from its own copy.
 | DELETE | `/api/v1/clientgroups/{namespace}/{name}` | Delete a ClientGroup | `clientgroups.delete` (cluster) | forwarded |
 | POST | `/api/v1/clientgroups:batchDelete` | Delete several clientgroups | `clientgroups.delete` (cluster) | forwarded |
 
+## clients
+
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/inventory` | Devices known to the inventory, including ones that never queried | `inventory.read` (cluster) | - |
+
 ## cluster
 
 | Method | Path | Summary | Permission | On a follower |
