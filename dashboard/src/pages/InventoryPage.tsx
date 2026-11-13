@@ -111,10 +111,9 @@ export default function InventoryPage() {
 
   const cluster = useClusterInfo();
   const role = useClusterRole();
-  const nodeLocal = sqliteClusterMember(cluster.data, role);
-
   const pages = devices.data?.pages ?? [];
   const first = pages[0];
+  const nodeLocal = sqliteClusterMember(cluster.data, role, first?.nodeLocalLeases);
   const rows: Row[] = pages.flatMap((p) => p.items).map((d) => ({ ...d, key: `${d.source}\u0000${d.id}` }));
 
   const sourceOptions = useMemo(() => {

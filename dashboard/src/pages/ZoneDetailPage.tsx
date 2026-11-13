@@ -41,16 +41,18 @@ const MONO = { fontFamily: 'var(--font-family-code)' };
 
 type RecordRow = ZoneRecord & Record<string, unknown>;
 
-const recordKey = (r: RecordRow) => `${r.recordSet}/${r.dnsName}/${r.recordType}/${r.setIdentifier ?? ''}/${r.kudurru?.view ?? ''}`;
+// A served view row has no record set; its group namespace keeps the views
+// of one name in two namespaces apart.
+const recordKey = (r: RecordRow) => `${r.recordSet}/${r.namespace ?? ''}/${r.dnsName}/${r.recordType}/${r.setIdentifier ?? ''}/${r.kudurru?.view ?? ''}`;
 
 /** DNSSEC data in the default records also makes the zone signed for views (D403). */
 const SIGNED_TYPES = new Set(['RRSIG', 'NSEC', 'NSEC3', 'DNSKEY']);
 
-/** Who a record is served to, in words, for the record list and dialogs. */
-export function viewText(view: string | undefined): string {
+/** Who a record is served to, in words, for the record list and dialogs ("ns/name" outside the default namespace). */
+export function viewText(view: string | undefined, namespace = 'default'): string {
   if (!view) return 'every client';
   if (view === 'public') return 'published only (public)';
-  return `client group ${view}`;
+  return `client group ${namespace === 'default' ? view : `${namespace}/${view}`}`;
 }
 
 /** The namespace of a "ns/name" record set reference. */
@@ -59,13 +61,28 @@ function recordSetNS(ref: string): string {
   return i > 0 ? ref.slice(0, i) : 'default';
 }
 
+/** The namespace a row's view resolves in: the served row's group namespace, else its record set's. */
+export function rowNamespace(r: ZoneRecord): string {
+  return r.namespace || recordSetNS(r.recordSet);
+}
+
+/**
+ * Whether the record list is the served zone (the complete SQLite runtime):
+ * its rows never name a record set (internal/api ZoneRecord.RecordSet), while
+ * a desired row always does, and a served zone always lists its SOA.
+ */
+export function listsServed(items: readonly ZoneRecord[]): boolean {
+  return items.length > 0 && items.every((r) => !r.recordSet);
+}
+
 function ViewCell({ r }: { r: ZoneRecord }) {
   const view = r.kudurru?.view;
   if (!view) return null;
   if (view === 'public') return <Badge variant="neutral" label="public" />;
+  const ns = rowNamespace(r);
   return (
-    <Link href={objectHref('groups', `${r.namespace ?? recordSetNS(r.recordSet)}/${view}`)}>
-      <Badge variant="blue" label={`view ${view}`} />
+    <Link href={objectHref('groups', `${ns}/${view}`)}>
+      <Badge variant="blue" label={`view ${ns === 'default' ? view : `${ns}/${view}`}`} />
     </Link>
   );
 }
@@ -200,6 +217,7 @@ function ZoneDetail({ zone }: { zone: string }) {
   // Same key as ZoneSettingsSection: the object says whether the zone is signed.
   const zoneObj = useQuery({ queryKey: [...qk.objects('dnszones'), zone], queryFn: () => api.objects.get<DNSZone>('dnszones', zone), enabled: primary });
   const groups = useQuery({ queryKey: qk.objects('clientgroups'), queryFn: () => api.objects.list<ClientGroup>('clientgroups'), enabled: primary && can('clientgroups', 'read') });
+  const served = listsServed(recs.data?.items ?? []);
   const signed = zoneObj.data?.spec.dnssec?.enabled === true || (recs.data?.items ?? []).some((r) => SIGNED_TYPES.has(r.recordType.toUpperCase()) && !r.kudurru?.view);
   const own = ownership(z.data?.managedBy);
   const zoneEditable = own.editable && z.data?.type === 'primary';
@@ -221,7 +239,10 @@ function ZoneDetail({ zone }: { zone: string }) {
 
   const del = useMutation({
     // "-" deletes the default data only, so a view of the same name survives.
-    mutationFn: (r: ZoneRecord) => api.zones.deleteRecord(zone, r.dnsName, r.recordType, r.recordSet, r.setIdentifier, r.kudurru?.view || '-'),
+    // A served view row names no record set: its group namespace keeps the
+    // delete to the record sets that view belongs to.
+    mutationFn: (r: ZoneRecord) =>
+      api.zones.deleteRecord(zone, r.dnsName, r.recordType, r.recordSet, r.setIdentifier, r.kudurru?.view || '-', !r.recordSet && r.kudurru?.view && r.namespace ? r.namespace : undefined),
     onSuccess: (_x, r) => {
       notify.success(`Deleted ${r.dnsName} ${r.recordType}`);
       invalidate();
@@ -388,6 +409,13 @@ function ZoneDetail({ zone }: { zone: string }) {
       {primary ? <TextField label="Filter records" isLabelHidden startIcon="search" placeholder="Filter by name, type or value" value={filter} onChange={setFilter} hasClear /> : null}
       {primary && recs.error ? <ErrorBanner error={recs.error} /> : null}
       {primary && recs.isLoading ? <Loading /> : null}
+      {primary && served ? (
+        <Banner
+          status="info"
+          title="This list shows what this node serves"
+          description="Rows come from the zone this node answers from, so they name no record set, and a record saved as Published only (public) or a client-group view the server refuses (a signed zone, more than 16 views, or default data of another namespace) is stored but not listed. Deleting a row removes that name and type from every record set of the zone, or for a client-group view from every record set of its group’s namespace."
+        />
+      ) : null}
       {primary && recs.data ? (
         <Card>
           <Table<RecordRow>
@@ -405,7 +433,7 @@ function ZoneDetail({ zone }: { zone: string }) {
       <FormDialog
         isOpen={editing !== null}
         onClose={() => setEditing(null)}
-        title={editing === null ? '' : editing === 'new' ? `Add a record to ${zoneName}` : `Edit ${editing.dnsName} ${editing.recordType}${editing.kudurru?.view ? ` (${viewText(editing.kudurru.view)})` : ''}`}
+        title={editing === null ? '' : editing === 'new' ? `Add a record to ${zoneName}` : `Edit ${editing.dnsName} ${editing.recordType}${editing.kudurru?.view ? ` (${viewText(editing.kudurru.view, rowNamespace(editing))})` : ''}`}
         width={720}
       >
         {editing !== null ? (
@@ -415,6 +443,7 @@ function ZoneDetail({ zone }: { zone: string }) {
             defaultRecordSet={`api-${zone}`}
             groups={groups.data?.items}
             signed={signed}
+            listsServed={served}
             onCancel={() => setEditing(null)}
             onSubmit={async (ep, recordSet) => {
               try {
@@ -422,7 +451,7 @@ function ZoneDetail({ zone }: { zone: string }) {
               } catch (err) {
                 throw new Error(errorText(err), { cause: err });
               }
-              notify.success(`Saved ${ep.dnsName} ${ep.recordType}`);
+              notify.success(served && ep.kudurru?.view === 'public' ? `Saved ${ep.dnsName} ${ep.recordType}; a public record is not listed on this server` : `Saved ${ep.dnsName} ${ep.recordType}`);
               setEditing(null);
               invalidate();
             }}
@@ -435,7 +464,7 @@ function ZoneDetail({ zone }: { zone: string }) {
           if (!open) setConfirmRecord(null);
         }}
         title={confirmRecord ? `Delete ${confirmRecord.dnsName} ${confirmRecord.recordType}?` : 'Delete the record?'}
-        description={confirmRecord ? `Every ${confirmRecord.recordType} value of ${confirmRecord.dnsName} served to ${viewText(confirmRecord.kudurru?.view)} ${confirmRecord.recordSet ? `in record set ${confirmRecord.recordSet}` : 'in every record set of the zone'} is removed.` : ''}
+        description={confirmRecord ? `Every ${confirmRecord.recordType} value of ${confirmRecord.dnsName} served to ${viewText(confirmRecord.kudurru?.view, rowNamespace(confirmRecord))} ${confirmRecord.recordSet ? `in record set ${confirmRecord.recordSet}` : confirmRecord.kudurru?.view && confirmRecord.namespace ? `in every record set of namespace ${confirmRecord.namespace}` : 'in every record set of the zone'} is removed.` : ''}
         cancelLabel="Keep it"
         actionLabel="Delete record"
         actionVariant="destructive"

@@ -143,8 +143,12 @@ test('a client-group view is added beside the default data, listed and deleted a
     await settle(page);
     const records = main(page).getByRole('table', { name: `Records of ${apex}`, exact: true });
     await expect(records).toContainText('203.0.113.10');
+    // The SQLite runtime lists the served zone and says what that leaves out.
+    await expect(main(page)).toContainText('This list shows what this node serves');
     await main(page).getByRole('button', { name: 'Add record' }).click();
     const dialog = page.getByRole('dialog');
+    await choose(selector(dialog, 'Served to'), 'Published only (public)');
+    await expect(dialog).toContainText('A public record is stored but not listed here');
     await dialog.getByRole('textbox', { name: /^Name/ }).first().fill('www');
     await dialog.getByRole('textbox', { name: /IPv4 address/ }).fill('10.0.0.10');
     await choose(selector(dialog, 'Served to'), `Client group ${group}`);
@@ -166,10 +170,12 @@ test('a client-group view is added beside the default data, listed and deleted a
     await expect(records.getByRole('row').filter({ hasText: '203.0.113.10' })).toHaveCount(1);
     const both = (await api.get<{ items: ZoneRecord[] }>(`/zones/${name}/records`)).body.items.filter((r) => r.recordType === 'A');
     expect(both.map((r) => `${r.kudurru?.view ?? ''}=${r.targets.join(',')}`).sort()).toEqual(['=203.0.113.10', `${group}=10.0.0.10`]);
+    // A served view row names its ClientGroup's namespace (no record set).
+    expect(both.find((r) => r.kudurru?.view)).toMatchObject({ recordSet: '', namespace: 'default' });
 
     await viewRow.getByRole('button', { name: 'Delete' }).click();
     const confirm = page.getByRole('alertdialog');
-    await expect(confirm).toContainText(`served to client group ${group}`);
+    await expect(confirm).toContainText(`served to client group ${group} in every record set of namespace default`);
     await confirm.getByRole('button', { name: 'Delete record' }).click();
     await expect.poll(async () => {
       await page.reload();

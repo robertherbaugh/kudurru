@@ -15,6 +15,8 @@ export interface InventoryMock {
   /** 503: "the serving inventory is unavailable". */
   unavailable: boolean;
   node: string;
+  /** nodeLocalLeases: the answering node is one member of a SQLite cluster (the mock cluster is). */
+  nodeLocalLeases: boolean;
   devices: InventoryDevice[];
   /** Query strings of every GET, newest last. */
   requests: URLSearchParams[];
@@ -26,6 +28,7 @@ function fixture(now = Date.now()): InventoryMock {
     unmounted: false,
     unavailable: false,
     node: 'kudurru-0',
+    nodeLocalLeases: true,
     requests: [],
     devices: [
       { source: 'dhcp/lan', kind: 'dhcp', id: '192.168.1.50', hostname: 'printer', macs: ['aa:bb:cc:00:00:50'], tags: [], addresses: [{ ip: '192.168.1.50', state: 'assigned' }], expiresAt: at(3_600_000), stale: false },
@@ -90,7 +93,7 @@ export function inventoryHandlers(guard: Guard) {
       const items = match.slice(start, start + limit);
       const last = items.at(-1);
       const more = start + limit < match.length && last;
-      const body: InventoryBody = { node: state.node, generation: 7, readAt: new Date().toISOString(), items, took_ms: 0.4, ...(more ? { continue: `${last.source}\u0000${last.id}` } : {}) };
+      const body: InventoryBody = { node: state.node, nodeLocalLeases: state.nodeLocalLeases, generation: 7, readAt: new Date().toISOString(), items, took_ms: 0.4, ...(more ? { continue: `${last.source}\u0000${last.id}` } : {}) };
       return HttpResponse.json(body);
     }),
   ];

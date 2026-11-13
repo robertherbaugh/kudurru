@@ -1,17 +1,19 @@
 // Client-group record views in the record editor and the record list (D403).
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 import type { ClientGroup, ZoneRecord } from '../api/types';
 import { mockDB } from '../mocks/handlers';
 import { getSelector, optionLabels, pick } from '../test/controls';
-import { renderWithApp } from '../test/utils';
-import ZoneDetailPage from '../pages/ZoneDetailPage';
-import { isGroupView, RecordEditor, recordSetFor, viewError, viewName, viewOptions } from './RecordEditor';
+import { server } from '../test/setup';
+import { API, renderWithApp } from '../test/utils';
+import ZoneDetailPage, { listsServed } from '../pages/ZoneDetailPage';
+import { isGroupView, RecordEditor, recordSetFor, remapView, viewError, viewName, viewNamespaceError, viewOptions } from './RecordEditor';
 
 const group = (name: string, namespace = 'default'): ClientGroup => ({ apiVersion: 'kudurru.io/v1alpha1', kind: 'ClientGroup', metadata: { name, namespace }, spec: {} });
 const GROUPS = [group('kids'), group('lan'), group('lab', 'apps')];
 
-function setup(props: { initial?: ZoneRecord; signed?: boolean } = {}) {
+function setup(props: { initial?: ZoneRecord; signed?: boolean; listsServed?: boolean } = {}) {
   const onSubmit = vi.fn<(ep: unknown, rs: string) => Promise<void>>().mockResolvedValue(undefined);
   renderWithApp(<RecordEditor zoneName="example.internal." defaultRecordSet="api-example-internal" groups={GROUPS} onSubmit={onSubmit} onCancel={vi.fn()} {...props} />, { user: null });
   return onSubmit;
@@ -50,6 +52,40 @@ describe('record editor views', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add record' }));
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     expect(onSubmit).toHaveBeenLastCalledWith(expect.objectContaining({ kudurru: { view: 'public' } }), 'api-example-internal');
+  });
+
+  it('says on a server that lists what it serves that a public record is stored but not listed', () => {
+    setup({ listsServed: true });
+    pick(getSelector('Served to'), 'Published only (public)');
+    expect(screen.getByText('A public record is stored but not listed here')).toBeInTheDocument();
+    pick(getSelector('Served to'), 'Client group kids');
+    expect(screen.queryByText('A public record is stored but not listed here')).not.toBeInTheDocument();
+    expect(screen.getByText(/a view it refuses is stored but does not appear in the record list/)).toBeInTheDocument();
+  });
+
+  it('says nothing of unlisted public records where the list is the desired data', () => {
+    setup();
+    pick(getSelector('Served to'), 'Published only (public)');
+    expect(screen.queryByText('A public record is stored but not listed here')).not.toBeInTheDocument();
+  });
+
+  it('keeps the chosen group when the record set gains its namespace, and refuses another namespace', async () => {
+    const onSubmit = setup();
+    fireEvent.change(field(/^Name/), { target: { value: 'www' } });
+    fireEvent.change(field(/IPv4 address/), { target: { value: '10.0.0.10' } });
+    pick(getSelector('Served to'), 'Client group apps/lab');
+    // Another namespace: the save is refused instead of storing view "lab" in default.
+    fireEvent.change(field(/^Record set/), { target: { value: 'default/api-x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add record' }));
+    expect((await screen.findAllByText(/Client group apps\/lab is in namespace apps, but record set default\/api-x is in default/)).length).toBeGreaterThan(0);
+    expect(onSubmit).not.toHaveBeenCalled();
+    // The group's own namespace: the picker keeps naming the listed group.
+    fireEvent.change(field(/^Record set/), { target: { value: 'apps/api-x' } });
+    expect(getSelector('Served to')).toHaveTextContent('Client group apps/lab');
+    expect(optionLabels(getSelector('Served to'))).toEqual(['Every client (default)', 'Published only (public)', 'Client group apps/lab']);
+    fireEvent.click(screen.getByRole('button', { name: 'Add record' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ kudurru: { view: 'lab' } }), 'apps/api-x');
   });
 
   it('refuses the types a view cannot hold before sending', async () => {
@@ -91,6 +127,18 @@ describe('record editor views', () => {
     expect(viewError('kids', 'DNSKEY', 'www')).toMatch(/leaf data/);
     expect(viewError('public', 'NS', 'www')).toBeUndefined();
     expect(viewError('kids', 'A', 'www')).toBeUndefined();
+    expect(remapView('apps/lab', 'api-x', 'apps/api-x')).toBe('lab');
+    expect(remapView('apps/lab', 'api-x', 'default/api-x')).toBe('apps/lab');
+    expect(remapView('lab', 'apps/api-x', 'api-x')).toBe('apps/lab');
+    expect(remapView('lab', 'apps/api-x', 'apps/other')).toBe('lab');
+    expect(remapView('public', 'api-x', 'apps/api-x')).toBe('public');
+    expect(viewNamespaceError('apps/lab', 'default/api-x')).toMatch(/namespace apps/);
+    expect(viewNamespaceError('apps/lab', 'apps/api-x')).toBeUndefined();
+    expect(viewNamespaceError('apps/lab', 'api-x')).toBeUndefined();
+    expect(viewNamespaceError('lab', 'default/api-x')).toBeUndefined();
+    expect(listsServed([])).toBe(false);
+    expect(listsServed([{ recordSet: '', dnsName: '@', recordType: 'SOA', targets: [] }])).toBe(true);
+    expect(listsServed([{ recordSet: 'default/a', dnsName: 'www', recordType: 'A', targets: [] }])).toBe(false);
   });
 });
 
@@ -118,6 +166,35 @@ describe('record list views', () => {
     const rs = mockDB().recordSets.find((r) => r.metadata.name === 'api-example-internal')!;
     // The default data of the same name and type survives.
     expect(rs.spec.endpoints.some((e) => e.dnsName === first.dnsName && e.recordType === first.recordType && !e.kudurru?.view)).toBe(true);
+  });
+
+  it('on a served list, keeps views of one name in two namespaces apart and deletes one namespace’s only', async () => {
+    const soa: ZoneRecord = { recordSet: '', dnsName: '@', recordType: 'SOA', targets: ['ns1.example.internal. hostmaster.example.internal. 1 3600 600 86400 300'] };
+    const nas = (namespace: string, target: string): ZoneRecord => ({ recordSet: '', namespace, dnsName: 'nas.example.internal', recordType: 'A', targets: [target], kudurru: { view: 'lan' } });
+    server.use(http.get(`${API}/zones/:zone/records`, () => HttpResponse.json({ items: [soa, nas('default', '10.0.0.20'), nas('kids', '10.9.0.20')], took_ms: 1 })));
+    const deletes: URLSearchParams[] = [];
+    server.use(
+      http.delete(`${API}/zones/:zone/records/:name/:type`, ({ request }) => {
+        deletes.push(new URL(request.url).searchParams);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderWithApp(<ZoneDetailPage params={{ zone: 'example-internal' }} />, { route: '/zones/example-internal' });
+    expect(await screen.findByText('This list shows what this node serves')).toBeInTheDocument();
+    const own = await screen.findByText('view lan');
+    const kids = screen.getByText('view kids/lan');
+    expect(own.closest('a')).toHaveAttribute('href', '/groups/default/lan');
+    expect(kids.closest('a')).toHaveAttribute('href', '/groups/kids/lan');
+    const del = within(kids.closest('tr')!).getByRole('button', { name: 'Delete' });
+    await waitFor(() => expect(del).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(del);
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent('served to client group kids/lan in every record set of namespace kids');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete record' }));
+    await waitFor(() => expect(deletes).toHaveLength(1));
+    expect(deletes[0]!.get('view')).toBe('lan');
+    expect(deletes[0]!.get('namespace')).toBe('kids');
+    expect(deletes[0]!.get('recordSet')).toBeNull();
   });
 
   it('adds a view next to the default data instead of replacing it', async () => {

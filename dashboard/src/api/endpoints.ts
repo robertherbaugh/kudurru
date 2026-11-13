@@ -232,9 +232,12 @@ export function endpoints(c: ApiClient) {
       records: (zone: string) => c.get<ListEnvelope<ZoneRecord>>(`/zones/${enc(zone)}/records`),
       upsertRecord: (zone: string, ep: Endpoint, recordSet?: string) =>
         c.post<ZoneRecord>(`/zones/${enc(zone)}/records`, ep, recordSet ? { recordSet } : undefined),
-      /** `view` narrows the delete to one view (D403): a ClientGroup name, public, or "-" for the default data. */
-      deleteRecord: (zone: string, name: string, type: string, recordSet?: string, setIdentifier?: string, view?: string) =>
-        c.delete(`/zones/${enc(zone)}/records/${enc(name)}/${enc(type)}`, { recordSet, setIdentifier, view }),
+      /**
+       * `view` narrows the delete to one view (D403): a ClientGroup name, public, or "-" for the default data.
+       * `namespace` narrows it to record sets of one namespace (a served view row's group namespace).
+       */
+      deleteRecord: (zone: string, name: string, type: string, recordSet?: string, setIdentifier?: string, view?: string, namespace?: string) =>
+        c.delete(`/zones/${enc(zone)}/records/${enc(name)}/${enc(type)}`, { recordSet, setIdentifier, view, namespace }),
       /** Imports a BIND file; `origin` creates the zone when it does not exist yet. */
       importBind: (zone: string, text: string, origin?: string) =>
         c.request<ZoneImportResult>('POST', `/zones/${enc(zone)}/import`, {

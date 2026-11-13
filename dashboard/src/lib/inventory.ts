@@ -57,11 +57,14 @@ export function integrationsBySource(summaries: Iterable<IntegrationSummary>): M
 
 /**
  * Whether the answering node is one member of a SQLite cluster, where DHCP
- * lease MACs and lease devices are node-local (D397): GET /cluster says so
- * (SQLite with more than one node, or a primary or follower role), or, for a
- * session without cluster.read, the public status names a follower.
+ * lease MACs and lease devices are node-local (D397): GET /inventory says so
+ * itself (nodeLocalLeases, readable with inventory.read alone, so an operator
+ * or auditor on a primary learns it too), GET /cluster says so (SQLite with
+ * more than one node, or a primary or follower role), or the public status
+ * names a follower.
  */
-export function sqliteClusterMember(info: ClusterInfo | undefined, role: ClusterRole): boolean {
+export function sqliteClusterMember(info: ClusterInfo | undefined, role: ClusterRole, nodeLocalLeases?: boolean): boolean {
+  if (nodeLocalLeases) return true;
   if (info) return info.driver === 'sqlite' && (info.nodes > 1 || info.role === 'primary' || info.role === 'follower');
   return role.follower;
 }

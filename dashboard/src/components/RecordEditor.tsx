@@ -36,6 +36,12 @@ export interface RecordEditorProps {
   groups?: ClientGroup[] | undefined;
   /** The zone is DNSSEC-signed (spec.dnssec.enabled or signed records): group views are not served. */
   signed?: boolean | undefined;
+  /**
+   * The record list shows what this node serves (the complete SQLite
+   * runtime): a public record, or a group view the server refuses, is
+   * stored but never listed, so the editor says so before saving.
+   */
+  listsServed?: boolean | undefined;
 }
 
 /** "Served to" for the default data (no kudurru.view). */
@@ -87,6 +93,38 @@ export function recordSetFor(recordSet: string, value: string): string {
   const i = value.indexOf('/');
   if (i < 0 || recordSetNamespace(recordSet) !== undefined) return recordSet;
   return `${value.slice(0, i)}/${recordSet}`;
+}
+
+/** The namespace of a "Served to" value: "ns/name" names it, a bare group name is the record set's (undefined when that is bare too). */
+function viewNamespace(value: string, recordSet: string): string | undefined {
+  const i = value.indexOf('/');
+  return i >= 0 ? value.slice(0, i) : recordSetNamespace(recordSet);
+}
+
+/**
+ * The "Served to" value after the record set changes from `from` to `to`, so
+ * the view keeps naming the same ClientGroup: a group chosen while the record
+ * set was bare ("ns/name") becomes its bare name once the record set names
+ * that namespace, and a bare group name gains its namespace when the record
+ * set loses it. A group of another namespace than the new record set's is
+ * kept as it is; validation refuses it (viewNamespaceError).
+ */
+export function remapView(value: string, from: string, to: string): string {
+  if (!isGroupView(value)) return value;
+  const gns = viewNamespace(value, from);
+  if (gns === undefined) return value;
+  const ns = recordSetNamespace(to);
+  if (ns === undefined) return `${gns}/${viewName(value)}`;
+  return ns === gns ? viewName(value) : value;
+}
+
+/** Why the view's ClientGroup cannot serve this record set (another namespace), or undefined. */
+export function viewNamespaceError(value: string, recordSet: string): string | undefined {
+  if (!isGroupView(value) || !value.includes('/')) return undefined;
+  const gns = value.slice(0, value.indexOf('/'));
+  const ns = recordSetNamespace(recordSet);
+  if (ns === undefined || ns === gns) return undefined;
+  return `Client group ${value} is in namespace ${gns}, but record set ${recordSet} is in ${ns}: a view names a group of its record set’s namespace. Choose a group of ${ns}, or a record set in ${gns}.`;
 }
 
 /** Whether the value names a client group (not the default data or public). */
@@ -167,7 +205,7 @@ export function hasErrors(e: EditorErrors): boolean {
   return !!e.owner || !!e.ttl || !!e.view || e.targets.some((t) => Object.keys(t).length > 0);
 }
 
-export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, onCancel, groups = [], signed = false }: RecordEditorProps) {
+export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, onCancel, groups = [], signed = false, listsServed = false }: RecordEditorProps) {
   const [owner, setOwner] = useState(initial ? dnsNameToOwner(initial.dnsName, zoneName) : '');
   const [ttl, setTTL] = useState(initial?.recordTTL !== undefined ? String(initial.recordTTL) : '');
   const [draft, setDraft] = useState<Draft>(() => draftFrom(initial));
@@ -187,7 +225,7 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
   const submit = async () => {
     const e = validateRecord(zoneName, owner, ttl, draft);
     const composed = draft.targets.map((t) => compose(draft.type, t));
-    const ve = viewError(view, composed[0]?.recordType ?? draft.type, owner);
+    const ve = viewError(view, composed[0]?.recordType ?? draft.type, owner) ?? viewNamespaceError(view, recordSet.trim() || defaultRecordSet);
     if (ve) e.view = ve;
     setErrors(e);
     if (hasErrors(e)) return;
@@ -295,7 +333,16 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
 
       <Grid columns={FORM_GRID} gap={3} align="start">
         <TextField label="Comment" value={comment} onChange={setComment} isOptional />
-        <TextField label="Record set" help="The DNSRecordSet object this record is stored in" value={recordSet} onChange={setRecordSet} isReadOnly={!!initial} />
+        <TextField
+          label="Record set"
+          help="The DNSRecordSet object this record is stored in"
+          value={recordSet}
+          onChange={(v) => {
+            setView((cur) => remapView(cur, recordSet, v));
+            setRecordSet(v);
+          }}
+          isReadOnly={!!initial}
+        />
       </Grid>
       <SelectField
         label="Served to"
@@ -314,8 +361,16 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
             (signed ? 'Views are not served in a DNSSEC-signed zone: the server refuses the endpoint as Invalid and the group gets the default data. ' : 'Views are not served if the zone is DNSSEC-signed (the endpoint is refused as Invalid). ') +
             'Zone transfers (AXFR, IXFR, NOTIFY), the BIND export, RFC 2136 UPDATE and integration sinks carry the default data only, so a secondary never receives the view. ' +
             'While any client-group view exists the dnsdist edge bypasses its authoritative and resolver packet caches (zone-client-view), because those caches cannot tell groups apart. ' +
-            'A zone serves at most 16 views, and a view may only replace default data of its own namespace.'
+            'A zone serves at most 16 views, and a view may only replace default data of its own namespace.' +
+            (listsServed ? ' This server lists only the records it serves, so a view it refuses is stored but does not appear in the record list.' : '')
           }
+        />
+      ) : null}
+      {view === VIEW_PUBLIC && listsServed ? (
+        <Banner
+          status="warning"
+          title="A public record is stored but not listed here"
+          description="This server lists the records it serves, and a public record is never served: once saved it is published to integration sinks but does not appear in the record list, so this page cannot edit or delete it. The DNSRecordSet download under Tools shows it, and the records API removes it (DELETE /zones/{zone}/records/{name}/{type}?view=public)."
         />
       ) : null}
       <SwitchField label="Disabled" help="Keep the record but stop serving it" value={disabled} onChange={setDisabled} />

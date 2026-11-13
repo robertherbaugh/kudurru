@@ -112,7 +112,17 @@ describe('InventoryPage', () => {
     expect(await screen.findByText(/come from node kudurru-0 only/)).toBeInTheDocument();
   });
 
+  it('shows the caveat to an auditor on a cluster primary, who cannot read GET /cluster (as an operator)', async () => {
+    // permissions.yaml gives cluster.read to admin only (the mock viewer's
+    // matrix has it), so GET /cluster answers 403 here as on the real server.
+    server.use(http.get(`${API}/cluster`, () => HttpResponse.json({ error: { key: 'forbidden', message: 'You may not read cluster' }, took_ms: 1 }, { status: 403 })));
+    renderWithApp(<InventoryPage />, { route: '/inventory', user: 'auditor' });
+    expect(await screen.findByText('DHCP leases are this node’s own')).toBeInTheDocument();
+    expect(screen.queryByText(/DHCP leases are those of node/)).not.toBeInTheDocument();
+  });
+
   it('shows no cluster caveat on a single node, only whose leases they are', async () => {
+    mockInventory().nodeLocalLeases = false;
     server.use(http.get(`${API}/cluster`, () => HttpResponse.json({ driver: 'kube', epoch: 1, nodes: 1, node: 'kudurru-0', readOnly: false, primaryRequired: false, took_ms: 1 })));
     renderWithApp(<InventoryPage />, { route: '/inventory' });
     expect(await screen.findByText('DHCP leases are those of node kudurru-0.')).toBeInTheDocument();
@@ -155,7 +165,7 @@ describe('inventory helpers', () => {
     expect(sourceRef('integration-gone', by, href)).toEqual({ label: 'integration-gone' });
   });
 
-  it('decides the node-local caveat from GET /cluster, else from the follower status', () => {
+  it('decides the node-local caveat from GET /inventory, GET /cluster or the follower status', () => {
     const base = { epoch: 1, node: 'a', readOnly: false, primaryRequired: false, took_ms: 0 };
     expect(sqliteClusterMember({ ...base, driver: 'sqlite', nodes: 2 }, NO_ROLE)).toBe(true);
     expect(sqliteClusterMember({ ...base, driver: 'sqlite', nodes: 1, role: 'primary' }, NO_ROLE)).toBe(true);
@@ -163,6 +173,9 @@ describe('inventory helpers', () => {
     expect(sqliteClusterMember({ ...base, driver: 'kube', nodes: 3 }, NO_ROLE)).toBe(false);
     expect(sqliteClusterMember(undefined, { ...NO_ROLE, follower: true })).toBe(true);
     expect(sqliteClusterMember(undefined, NO_ROLE)).toBe(false);
+    // GET /inventory's own nodeLocalLeases needs no cluster.read.
+    expect(sqliteClusterMember(undefined, NO_ROLE, true)).toBe(true);
+    expect(sqliteClusterMember({ ...base, driver: 'kube', nodes: 1 }, NO_ROLE, false)).toBe(false);
   });
 
   it('tells the two 503 answers apart and ignores every other error', () => {

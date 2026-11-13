@@ -1050,13 +1050,14 @@ export const handlers = [
     const zone = String(params.zone);
     const q = new URL(request.url).searchParams;
     const rsName = q.get('recordSet');
+    const onlyNS = q.get('namespace');
     const setID = q.get('setIdentifier');
     // internal/api zones.go viewSelected: "" every view, "-" the default data.
     const view = q.get('view') ?? '';
     const inView = (x: Endpoint) => view === '' || (view === '-' ? !x.kudurru?.view : x.kudurru?.view === view);
     let found = false;
     for (const rs of db.recordSets) {
-      if (rs.spec.zoneRef.name !== zone || (rsName && rs.metadata.name !== rsName)) continue;
+      if (rs.spec.zoneRef.name !== zone || (rsName && rs.metadata.name !== rsName) || (onlyNS && (rs.metadata.namespace ?? 'default') !== onlyNS)) continue;
       const before = rs.spec.endpoints.length;
       const keep = rs.spec.endpoints.filter((x) => !(x.dnsName === params.name && x.recordType === params.type && (!setID || x.setIdentifier === setID) && inView(x)));
       if (keep.length !== before) {
