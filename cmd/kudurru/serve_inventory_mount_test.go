@@ -338,7 +338,9 @@ func TestRunServeSQLiteInventoryAPIAndLeaseMACs(t *testing.T) {
 	awaitInventoryDNS(t, cfg, "192.0.2.100", "leased.test.", false)
 
 	expiry := time.Now().Add(time.Hour).Unix()
-	short := time.Now().Add(6 * time.Second)
+	// The short lease lives long enough for the import and its own match to
+	// be observed first even on a loaded machine.
+	short := time.Now().Add(20 * time.Second)
 	leases := fmt.Sprintf("%d %s 192.0.2.100 laptop *\n%d %s 192.0.2.101 brief *\n", expiry, inventoryLeasedMAC, short.Unix(), inventoryShortMAC)
 	var imported api.DHCPImportResult
 	controlMountedRequest(t, c, base, http.MethodPost, "/node/dhcp/v4/scopes/lan/import", session.CSRF, api.DHCPImportRequest{Format: "dnsmasq", Data: leases}, http.StatusOK, &imported)
@@ -347,8 +349,11 @@ func TestRunServeSQLiteInventoryAPIAndLeaseMACs(t *testing.T) {
 	}
 	// The lease MAC selects the mac group over UDP; an unleased address and a
 	// UniFi device whose own MAC is in no group stay unaffected.
-	awaitInventoryDNS(t, cfg, "192.0.2.100", "leased.test.", true)
 	awaitInventoryDNS(t, cfg, "192.0.2.101", "leased.test.", true)
+	if time.Until(short) <= 0 {
+		t.Fatal("short lease expired before its match was asserted; widen its lifetime")
+	}
+	awaitInventoryDNS(t, cfg, "192.0.2.100", "leased.test.", true)
 	awaitInventoryDNS(t, cfg, "192.0.2.102", "leased.test.", false)
 	awaitInventoryDNS(t, cfg, "127.0.0.4", "leased.test.", false)
 	inventoryAwait(t, c, base+"/inventory?kind=dhcp", 10*time.Second, "DHCP leases listed", &body, func() bool {
