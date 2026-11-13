@@ -197,6 +197,11 @@ func (p *primaryRuntime) captureUpdate(req *pipeline.Request, apex string) (pr.V
 	if !found || member.Zone.Apex != apex || member.Type != public.ZoneTypePrimary {
 		return reject(dns.RcodeNotAuth)
 	}
+	if member.Phase == zk.PhaseRetiring || member.Phase == zk.PhaseRetired {
+		// A lifecycle never returns from retirement: no later publication
+		// admits this zone, so even a forwarded UPDATE is answered at once.
+		return reject(dns.RcodeServerFailure)
+	}
 	if member.Phase != zk.PhaseActive || member.Incarnation == 0 || member.Version.CommitSequence == 0 || !owner.Primary().Admitted(apex, now) {
 		return stale()
 	}
