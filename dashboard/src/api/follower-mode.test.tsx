@@ -13,13 +13,19 @@ import { ApiProvider, FOLLOWER_SYNC_MS, qk, ROLE_POLL_MS, useApiContext, useCan,
 import type { ClusterInfo } from './types';
 import { ErrorBanner, errorText } from '../components/Feedback';
 import { FollowerBanner } from '../components/FollowerBanner';
-import { AuthenticatorPanel } from '../components/access/Authenticators';
+import { AuthenticatorPanel, RecoverAuthenticatorButton } from '../components/access/Authenticators';
+import { ExternalUsersPanel } from '../components/access/ExternalUsers';
+import { MigrationHistory } from '../components/wizards/MigrationHistory';
+import { MigrationImport } from '../components/wizards/MigrationWizard';
 import { PolicyWizardDialog } from '../components/wizards/PolicyWizard';
 import { mockDB } from '../mocks/handlers';
 import { getSelector, pick } from '../test/controls';
 import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
 import AllowlistPage from '../pages/AllowlistPage';
+import ClientDetailPage from '../pages/ClientDetailPage';
+import MigrationRunPage from '../pages/MigrationRunPage';
+import QueryLogPage from '../pages/QueryLogPage';
 import ListDetailPage from '../pages/ListDetailPage';
 import ListsPage from '../pages/ListsPage';
 import { LoginPage } from '../pages/LoginPage';
@@ -543,6 +549,100 @@ describe('gated surfaces on a follower', () => {
     pick(getSelector('Default block response', r), 'NXDOMAIN');
     fireEvent.click(within(r).getByRole('button', { name: 'Save' }));
     expect(await within(r).findByTestId('setting-error')).toHaveTextContent('Reload to check what is in effect before you try again.');
+  });
+});
+
+// The surfaces that gate one operation (usePrimaryOnly) or one permission
+// (useCan / usePrimaryOnlyPermission) themselves: each is mounted on a
+// follower, shows the control disabled with the primary named, and keeps it
+// enabled on a standalone node.
+describe('more gated surfaces on a follower', () => {
+  const PRIMARY_ONLY = /Runs only on the primary, kudurru-0/;
+
+  /** Waits until the control is disabled for the follower and names the primary. */
+  async function primaryOnly(el: HTMLElement) {
+    await waitFor(() => {
+      expect(el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('disabled'), 'disabled').toBe(true);
+      expect(el).toHaveAccessibleDescription(PRIMARY_ONLY);
+    });
+  }
+
+  it('disables Allow and Deny on the query log rows', async () => {
+    asFollower();
+    renderWithApp(<QueryLogPage />, { route: '/queries' });
+    await screen.findByTestId('log-totals');
+    const [allow] = await screen.findAllByRole('button', { name: 'Allow' });
+    const [deny] = await screen.findAllByRole('button', { name: 'Deny' });
+    await primaryOnly(allow!);
+    await primaryOnly(deny!);
+  });
+
+  it('keeps Allow on the query log rows on a standalone node', async () => {
+    renderWithApp(<QueryLogPage />, { route: '/queries?status_class=blocked' });
+    const [allow] = await screen.findAllByRole('button', { name: 'Allow' });
+    await waitFor(() => expect(allow).not.toHaveAttribute('aria-disabled', 'true'));
+    expect(allow).toHaveAccessibleDescription(/to the allow list/);
+  });
+
+  it('disables the quick and row Allow and Deny of a client', async () => {
+    asFollower();
+    renderWithApp(<ClientDetailPage params={{ key: '192.168.1.10' }} />, { route: '/clients/192.168.1.10' });
+    const domain = await screen.findByRole('textbox', { name: /^Domain/ });
+    const quick = within(domain.closest('form')!);
+    fireEvent.change(domain, { target: { value: 'ads.example.com' } });
+    await primaryOnly(quick.getByRole('button', { name: 'Allow' }));
+    await primaryOnly(quick.getByRole('button', { name: 'Deny' }));
+    const recent = within(await screen.findByRole('region', { name: /Recent queries/ }));
+    const rowActions = await recent.findAllByRole('button', { name: /^(Allow|Deny)$/ });
+    for (const btn of rowActions) await primaryOnly(btn);
+  });
+
+  it('keeps the source entries of a list read-only, with the reason on each switch', async () => {
+    asFollower();
+    renderWithApp(<ListDetailPage params={{ ns: 'default', name: 'starter' }} />, { route: '/lists/default/starter' });
+    fireEvent.click(await screen.findByRole('button', { name: /Browse the 2,852 inline entries of embedded/ }));
+    const browser = await screen.findByTestId('entries-browser');
+    await within(browser).findByText('Showing 1–25 of 2,852');
+    const [sw] = within(browser).getAllByRole('switch', { name: / enabled$/ });
+    await primaryOnly(sw!);
+    // Nothing to add or select: the inline additions are the same command.
+    expect(within(browser).queryByRole('textbox', { name: /^Add entries/ })).toBeNull();
+    expect(within(browser).queryByRole('checkbox')).toBeNull();
+  });
+
+  it('disables the migration import, tracking and decommission with the primary named', async () => {
+    asFollower();
+    const run = { id: 'migration-test', revision: '7', data: { source: 'technitium', sourceURL: 'https://source.test', actor: 'admin', startedAt: '2026-10-18T00:00:00Z', finishedAt: '2026-10-18T00:01:00Z', status: 'completed', items: [{ kind: 'DNSZone', name: 'home', result: 'created' }], warnings: [], zones: [{ name: 'home', zoneName: 'home.test.', nameservers: ['old.test.'], primary: 'old.test.', resourceVersion: '8', originalNameservers: ['old.test.'], originalPrimary: 'old.test.' }], cutovers: [] } };
+    server.use(
+      http.get(`${API}/imports/runs`, () => HttpResponse.json({ items: [run] })),
+      http.get(`${API}/imports/runs/migration-test`, () => HttpResponse.json(run)),
+    );
+    const importer = renderWithApp(<MigrationImport />, { route: '/tools' });
+    await primaryOnly(await screen.findByRole('button', { name: 'Import from DNS server' }));
+    importer.unmount();
+    const history = renderWithApp(<MigrationHistory />, { route: '/tools' });
+    await primaryOnly(await screen.findByRole('button', { name: 'Track previous imports' }));
+    history.unmount();
+    renderWithApp(<MigrationRunPage params={{ id: run.id }} />, { route: `/tools/migrations/${run.id}` });
+    await primaryOnly(await screen.findByRole('button', { name: 'Decommission source nameservers' }));
+  });
+
+  it('disables the external account commands and the authenticator recovery', async () => {
+    asFollower();
+    const row = { name: 'a'.repeat(64), uid: 'b'.repeat(32), revision: 'c'.repeat(64), provider: 'corp', providerUID: 'provider-one', origin: 'config', issuer: 'https://identity.example', subject: 'independent-subject', username: 'corp:alice', displayName: 'Alice', email: 'alice@example.test', groups: ['corp:dns'], disabled: false, createdAt: '2026-10-01T00:00:00Z' };
+    server.use(http.get(`${API}/iam/external-users`, () => HttpResponse.json({ items: [row], took_ms: 1 })));
+    const panel = renderWithApp(<ExternalUsersPanel />);
+    await screen.findByRole('table', { name: 'External accounts' });
+    await primaryOnly(screen.getByRole('button', { name: 'Disable account' }));
+    await primaryOnly(screen.getByRole('button', { name: 'Log out everywhere' }));
+    panel.unmount();
+
+    renderWithApp(<RecoverAuthenticatorButton user={{ name: 'viewer', uid: 'uid-selected', disabled: false, builtinAdmin: false, mustChangePassword: false }} />);
+    const recover = await screen.findByRole('button', { name: 'Recover authenticator for viewer' });
+    await waitFor(() => expect(recover.getAttribute('aria-disabled') === 'true' || recover.hasAttribute('disabled')).toBe(true));
+    fireEvent.focus(recover);
+    fireEvent.mouseEnter(recover);
+    expect(await screen.findByText(PRIMARY_ONLY)).toBeInTheDocument();
   });
 });
 
