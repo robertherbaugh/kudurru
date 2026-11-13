@@ -167,7 +167,7 @@ func baseName(raw string, d Device, network *Network) (string, error) {
 
 // NameRequests returns sorted stable IDs/base labels for root's durable allocator.
 func NameRequests(in TranslationInput) ([]NameRequest, error) {
-	prepared, _, err := prepare(in)
+	prepared, _, _, err := prepare(in)
 	if err != nil {
 		return nil, err
 	}

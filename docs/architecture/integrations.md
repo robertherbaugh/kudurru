@@ -937,7 +937,11 @@ poll intervals, floored to a whole second at acquisition so durable endpoint
 evidence retains exactly the same expiry. Failed polls retain that original deadline; complete omission
 withdraws an address immediately. Restart and replicas retain finite original
 evidence without renewal; only a new successful poll creates new authority. Ambiguous
-address claims never fall back to an older owner. Queries read only the immutable
+address claims never fall back to an older owner. Two clients of one poll that
+claim an address with equal observation times keep it out of forward and reverse
+records, names and groups, but reach the inventory as a tied claim, so
+`GET /inventory` lists the address as ambiguous on both and no older claim of
+another source can win it (D397). Queries read only the immutable
 published inventory, including after the controller becomes unavailable.
 
 When DNS inventory is enabled, the host lends the provider a copy of its original

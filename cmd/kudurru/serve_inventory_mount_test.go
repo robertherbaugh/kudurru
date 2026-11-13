@@ -244,7 +244,8 @@ func awaitInventoryAnswer(t *testing.T, cfg *config.Config, source, name string,
 // that never queried (and are absent from GET /clients), and DHCP leases with
 // their MACs; a lease imported through the API makes a ClientGroup mac
 // matcher select the group over UDP; an expired lease stops matching;
-// colliding UniFi claims identify nobody; an expired source is flagged stale.
+// colliding UniFi claims are listed as ambiguous; an expired source is
+// flagged stale.
 func TestRunServeSQLiteInventoryAPIAndLeaseMACs(t *testing.T) {
 	useLoopbackDHCP(t)
 	controller := newUniFiHostnameController(t, "unifi-inventory-key")
@@ -375,16 +376,16 @@ func TestRunServeSQLiteInventoryAPIAndLeaseMACs(t *testing.T) {
 		return seen["192.0.2.100"] && seen["127.0.0.4"] && !seen["127.0.0.2"] && !seen["127.0.0.3"]
 	})
 
-	// Two UniFi clients claim 127.0.0.2 in one poll. The UniFi source
-	// withholds a colliding address from both devices, so both stay listed
-	// without it and neither identifies 127.0.0.2; the official device keeps
-	// its own address. (Equal-time claims from different sources reach the
-	// inventory and are listed as ambiguous; the unit tests cover that.)
+	// Two UniFi clients claim 127.0.0.2 in one poll with the same
+	// observation time. The UniFi source passes the collision to the
+	// inventory as a tied claim, so both devices list 127.0.0.2 as ambiguous
+	// and neither identifies it; the official device keeps its own address.
 	controller.phase.Store(uniFiConflict)
-	inventoryAwait(t, c, base+"/inventory?kind=inventory", 45*time.Second, "colliding claims withheld", &body, func() bool {
+	inventoryAwait(t, c, base+"/inventory?kind=inventory", 45*time.Second, "colliding claims flagged", &body, func() bool {
 		got := inventoryByKey(body)
 		phone, tablet, official := got[inventoryPhoneID], got[inventoryTabletID], got[inventoryOfficialID]
-		return len(got) == 3 && phone.ID != "" && tablet.ID != "" && len(phone.Addresses) == 0 && len(tablet.Addresses) == 0 &&
+		return len(got) == 3 && len(phone.Addresses) == 1 && len(tablet.Addresses) == 1 &&
+			inventoryAddressState(phone, "127.0.0.2") == "ambiguous" && inventoryAddressState(tablet, "127.0.0.2") == "ambiguous" &&
 			inventoryAddressState(official, "127.0.0.4") == "assigned"
 	})
 

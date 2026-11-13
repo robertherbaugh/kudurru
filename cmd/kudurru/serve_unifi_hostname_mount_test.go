@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -356,15 +357,21 @@ func runServeUniFiHostnamePolicyLifecycle(t *testing.T, fullLifecycle bool) {
 		}
 		for {
 			doc := uniFiHostnameDocument(t, cfg)
-			present, renamed, phone := 0, 0, false
+			// tied counts the clients that claim 127.0.0.2: the conflict
+			// phase reaches the durable source as one tied claim per
+			// colliding client (D397), with no record published for it.
+			present, renamed, phone, tied := 0, 0, false, 0
 			for _, client := range doc.Snapshot.Clients {
 				present += len(client.IPs)
+				if slices.Contains(client.IPs, netip.MustParseAddr("127.0.0.2")) {
+					tied++
+				}
 				phone = phone || len(client.IPs) > 0 && strings.EqualFold(strings.TrimSuffix(client.Hostname, "."), "phone.unifi.lan")
 				if len(client.IPs) > 0 && client.Hostname == "safe.other.lan" {
 					renamed++
 				}
 			}
-			if next == uniFiConflict && present == 1 || next == uniFiOmitted && present == 0 || next == uniFiNames && present == 3 && phone || next == uniFiRenamed && present == 3 && renamed == 2 {
+			if next == uniFiConflict && present == 3 && tied == 2 || next == uniFiOmitted && present == 0 || next == uniFiNames && present == 3 && phone || next == uniFiRenamed && present == 3 && renamed == 2 {
 				return
 			}
 			if time.Now().After(until) {

@@ -15,42 +15,49 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func prepare(in TranslationInput) (TranslationInput, Diagnostics, error) {
+// prepare validates and normalizes one observation. Its observation keeps only
+// the addresses each client owns outright, which is what DNS records, groups
+// and names are built from. contested returns, per client ID, the addresses
+// that client claimed in an equal-time tie with another client of the same
+// poll (D397): Translate passes them to the inventory as tied claims, so the
+// inventory identifies nobody at the address and lists it as ambiguous on
+// each claimant instead of silently dropping it.
+func prepare(in TranslationInput) (_ TranslationInput, _ Diagnostics, contested map[string][]netip.Addr, _ error) {
 	diag := Diagnostics{}
 	if err := validateConfig(in.Config); err != nil {
-		return in, diag, err
+		return in, diag, nil, err
 	}
 	o := in.Observation
 	if in.Owner.Validate() != nil || !o.Complete || !validUUID(o.SiteID) || o.ObservedAt.IsZero() {
-		return in, diag, ErrInvalid
+		return in, diag, nil, ErrInvalid
 	}
 	if len(o.Clients) > maxClients || len(o.Networks) > maxNetworks {
-		return in, diag, ErrCapacity
+		return in, diag, nil, ErrCapacity
 	}
 	encoded, err := json.Marshal(o)
 	if err != nil || len(encoded) > maxSnapshot {
-		return in, diag, ErrCapacity
+		return in, diag, nil, ErrCapacity
 	}
 	if in.Config.Inventory != nil {
 		z := in.Zone
 		if z == nil || z.Name != in.Config.Inventory.ZoneRef.Name || z.Namespace != "" || z.UID == "" || z.ResourceVersion == "" || z.Spec.Type != public.ZoneTypePrimary || public.IsDisabled(z) || !z.DeletionTimestamp.IsZero() {
-			return in, diag, ErrInvalid
+			return in, diag, nil, ErrInvalid
 		}
 		if !dnsName(z.Spec.ZoneName) || dns.CanonicalName(z.Spec.ZoneName) == "." {
-			return in, diag, ErrInvalid
+			return in, diag, nil, ErrInvalid
 		}
 	}
 	o.Networks = slices.Clone(o.Networks)
 	seen := map[string]bool{}
 	for i, n := range o.Networks {
 		if !validUUID(n.ID) || seen[n.ID] || n.Name == "" || len(n.Name) > 253 || n.VLAN < 1 || n.VLAN > 4009 || len(n.Prefixes) > 64 || n.Domain != "" && !dnsName(n.Domain) {
-			return in, diag, ErrInvalid
+			return in, diag, nil, ErrInvalid
 		}
 		seen[n.ID] = true
 		n.Prefixes = slices.Clone(n.Prefixes)
 		for j, prefix := range n.Prefixes {
 			if !prefix.IsValid() || prefix.Bits() <= 0 || prefix.Addr().Zone() != "" || prefix.Addr().Is4In6() {
-				return in, diag, ErrInvalid
+				return in, diag, nil, ErrInvalid
 			}
 			n.Prefixes[j] = prefix.Masked()
 		}
@@ -58,13 +65,13 @@ func prepare(in TranslationInput) (TranslationInput, Diagnostics, error) {
 	}
 	for name := range in.Config.Groups.ByNetwork {
 		if networkCount(name, o.Networks) != 1 {
-			return in, diag, ErrInvalid
+			return in, diag, nil, ErrInvalid
 		}
 	}
 	if in.Config.Inventory != nil {
 		for _, name := range in.Config.Inventory.IncludeNetworks {
 			if networkCount(name, o.Networks) != 1 {
-				return in, diag, ErrInvalid
+				return in, diag, nil, ErrInvalid
 			}
 		}
 	}
@@ -78,23 +85,23 @@ func prepare(in TranslationInput) (TranslationInput, Diagnostics, error) {
 	o.Clients = slices.Clone(o.Clients)
 	for i, d := range o.Clients {
 		if d.ID == "" || len(d.ID) > 256 || seen[d.ID] || len(d.IPs) > 16 || len(d.Name) > 253 || len(d.Alias) > 253 || len(d.Hostname) > 253 || len(d.LocalDNSName) > 253 || len(d.Note) > 4096 || d.ObservedAt.IsZero() || d.ObservedAt.After(o.ObservedAt) || o.ObservedAt.Sub(d.ObservedAt) > 24*time.Hour || !d.ExpiresAt.After(d.ObservedAt) || d.ExpiresAt.Sub(d.ObservedAt) > 24*time.Hour {
-			return in, diag, ErrInvalid
+			return in, diag, nil, ErrInvalid
 		}
 		seen[d.ID] = true
 		if d.MAC != "" {
 			mac, err := normalizeMAC(d.MAC)
 			if err != nil {
-				return in, diag, err
+				return in, diag, nil, err
 			}
 			d.MAC = mac
 		}
 		if d.Hostname != "" && !dnsName(d.Hostname) || d.LocalDNSName != "" && !dnsName(d.LocalDNSName) {
-			return in, diag, ErrInvalid
+			return in, diag, nil, ErrInvalid
 		}
 		d.IPs = slices.Clone(d.IPs)
 		for j, ip := range d.IPs {
 			if !ip.IsValid() || ip.Zone() != "" || ip.IsUnspecified() || ip.IsMulticast() {
-				return in, diag, ErrInvalid
+				return in, diag, nil, ErrInvalid
 			}
 			ip = ip.Unmap()
 			d.IPs[j] = ip
@@ -119,27 +126,40 @@ func prepare(in TranslationInput) (TranslationInput, Diagnostics, error) {
 		ips := []netip.Addr{}
 		for _, ip := range d.IPs {
 			c := claims[ip]
-			if !c.ambiguous && c.id == d.ID && o.ObservedAt.Before(d.ExpiresAt) {
+			if c.ambiguous {
+				// Every tie participant, even an expired one, keeps the
+				// contested claim, so no other claimant can win the address.
+				if d.ObservedAt.Equal(c.at) {
+					if contested == nil {
+						contested = map[string][]netip.Addr{}
+					}
+					contested[d.ID] = append(contested[d.ID], ip)
+				}
+				continue
+			}
+			if c.id == d.ID && o.ObservedAt.Before(d.ExpiresAt) {
 				ips = append(ips, ip)
 			}
 		}
 		o.Clients[i].IPs = ips
 	}
 	in.Observation = o
-	return in, diag, nil
+	return in, diag, contested, nil
 }
 
 // Translate is pure: inputs and allocations remain immutable; no clock, store,
 // resolver, allocation or network callback is invoked.
 func Translate(in TranslationInput) (host.SourceSnapshot, Diagnostics, error) {
-	in, diag, err := prepare(in)
+	in, diag, contested, err := prepare(in)
 	if err != nil {
 		return host.SourceSnapshot{}, diag, err
 	}
 	source := host.SourceID(in.Owner)
 	out := host.SourceSnapshot{Complete: true}
 	for _, d := range in.Observation.Clients {
-		client := inventory.Client{ID: d.ID, Source: source, Name: d.Name, Hostname: d.Hostname, IPs: slices.Clone(d.IPs), ObservedAt: d.ObservedAt, ExpiresAt: d.ExpiresAt}
+		ips := slices.Concat(d.IPs, contested[d.ID])
+		slices.SortFunc(ips, func(a, b netip.Addr) int { return a.Compare(b) })
+		client := inventory.Client{ID: d.ID, Source: source, Name: d.Name, Hostname: d.Hostname, IPs: ips, ObservedAt: d.ObservedAt, ExpiresAt: d.ExpiresAt}
 		if d.Alias != "" {
 			client.Name = d.Alias
 		}

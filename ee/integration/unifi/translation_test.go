@@ -173,6 +173,83 @@ func TestAssignmentWinnerExpiryAndAmbiguityNeverFallBack(t *testing.T) {
 	}
 }
 
+// D397: a same-poll equal-time collision reaches the inventory as a tied
+// claim, so each claimant lists the address as ambiguous (also an expired
+// claimant) and nobody identifies it, while DNS records, names and groups
+// still leave the contested address out and an older other-source claim
+// cannot win it.
+func TestSamePollCollisionIsListedAmbiguous(t *testing.T) {
+	in := translationFixture()
+	in.Config.Groups = public.UniFiGroups{ByNetwork: map[string]string{"LAN": "home"}}
+	at := in.Observation.ObservedAt
+	contested := netip.MustParseAddr("192.0.2.3")
+	own := netip.MustParseAddr("192.0.2.9")
+	first := in.Observation.Clients[0]
+	first.IPs = []netip.Addr{contested, own}
+	second := first
+	second.ID, second.MAC, second.IPs = siteID+"/02:00:00:00:00:02", "02:00:00:00:00:02", []netip.Addr{contested}
+	expired := first
+	expired.ID, expired.MAC, expired.IPs = siteID+"/02:00:00:00:00:03", "02:00:00:00:00:03", []netip.Addr{contested}
+	expired.ObservedAt, expired.ExpiresAt = at.Add(-time.Minute), at
+	tieExpired := expired
+	tieExpired.ID, tieExpired.MAC, tieExpired.IPs = siteID+"/02:00:00:00:00:04", "02:00:00:00:00:04", []netip.Addr{netip.MustParseAddr("192.0.2.4")}
+	live := first
+	live.ID, live.MAC, live.IPs = siteID+"/02:00:00:00:00:05", "02:00:00:00:00:05", []netip.Addr{netip.MustParseAddr("192.0.2.4")}
+	live.ObservedAt = at.Add(-time.Minute)
+	in.Observation.Clients = []Device{first, second, expired, tieExpired, live}
+	in.Allocations = map[string]string{first.ID: "laptop", second.ID: "laptop-2", expired.ID: "laptop-3", tieExpired.ID: "laptop-4", live.ID: "laptop-5"}
+	out, diag, err := Translate(in)
+	if err != nil || diag.AmbiguousIPs != 2 {
+		t.Fatal(diag, err)
+	}
+	published := false
+	for _, rr := range out.Desired.RecordSets {
+		for _, e := range rr.Spec.Endpoints {
+			if slices.Contains(e.Targets, "192.0.2.3") || slices.Contains(e.Targets, "192.0.2.4") {
+				t.Fatal("contested address published", e)
+			}
+			published = published || slices.Contains(e.Targets, own.String())
+		}
+	}
+	if !published {
+		t.Fatal("uncontested address not published", out.Desired.RecordSets)
+	}
+	h := inventory.New(func() time.Time { return at })
+	if err := h.Replace("other", 1, []inventory.Client{{ID: "older", IPs: []netip.Addr{contested}, ObservedAt: at.Add(-2 * time.Minute), ExpiresAt: at.Add(time.Hour)}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Replace(out.Clients[0].Source, 1, out.Clients); err != nil {
+		t.Fatal(err)
+	}
+	snap := h.Snapshot()
+	for _, ip := range []netip.Addr{contested, netip.MustParseAddr("192.0.2.4")} {
+		if got := snap.Lookup(ip, at); got != nil {
+			t.Fatal("contested address identified", ip, got)
+		}
+	}
+	if got := snap.Lookup(own, at); got == nil || got.ID != first.ID {
+		t.Fatal("uncontested address lost", got)
+	}
+	states := map[string]map[netip.Addr]inventory.AddressState{}
+	for _, d := range snap.Devices(at) {
+		states[d.ID] = map[netip.Addr]inventory.AddressState{}
+		for _, a := range d.Addresses {
+			states[d.ID][a.IP] = a.State
+		}
+	}
+	want := map[string]map[netip.Addr]inventory.AddressState{
+		first.ID:      {contested: inventory.AddressAmbiguous, own: inventory.AddressAssigned},
+		second.ID:     {contested: inventory.AddressAmbiguous},
+		expired.ID:    {},
+		tieExpired.ID: {netip.MustParseAddr("192.0.2.4"): inventory.AddressAmbiguous},
+		live.ID:       {netip.MustParseAddr("192.0.2.4"): inventory.AddressAmbiguous},
+		"older":       {contested: inventory.AddressAmbiguous},
+	}
+	if fmt.Sprint(states) != fmt.Sprint(want) {
+		t.Fatalf("address states:\n got %v\nwant %v", states, want)
+	}
+}
+
 func TestNetworkSelectionAndGroupCapability(t *testing.T) {
 	in := translationFixture()
 	in.Config.Groups.ByNetwork = map[string]string{"LAN": "home"}
