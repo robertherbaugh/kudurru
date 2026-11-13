@@ -31,7 +31,8 @@ type RPZFeed struct {
 	Origin    string `json:"origin" doc:"Policy-zone origin as configured."`
 	// State: pending (no copy yet, no failure), serving (an unexpired copy is
 	// available), expired (the last copy reached its SOA expire), unavailable
-	// (no usable copy: configuration, credential or transfer failure).
+	// (no usable copy: configuration, credential or transfer failure, or an
+	// unexpired copy that was discarded or confirmed after the node's clock).
 	// Queries whose policy selects a feed that is not serving answer SERVFAIL.
 	State     string `json:"state" enum:"pending,serving,expired,unavailable"`
 	Available bool   `json:"available" doc:"Whether DNS on this node can apply the feed now."`
@@ -137,15 +138,23 @@ func rpzFeed(node string, st rpz.Status) RPZFeed {
 		if st.Error != "" {
 			out.Reason, out.Message = "RPZTransfer", "The last refresh failed; this node keeps applying the copy until it expires: "+out.LastError
 		}
-	case hasCopy:
+	case hasCopy && st.Expired:
 		out.State, out.Reason, out.Message = "expired", "RPZExpired", "The last copy has expired; queries whose policy selects this list answer SERVFAIL on this node."
+		if st.Error != "" {
+			out.Message += " Last refresh error: " + out.LastError
+		}
+	case hasCopy:
+		// The copy is not expired but cannot be applied: the manager discarded
+		// it (configuration or credential changed during acceptance) or the
+		// clock is before its confirmation. Never report it as expired.
+		out.State, out.Reason, out.Message = "unavailable", "RPZTransfer", "This node holds no usable copy until the next complete transfer; queries whose policy selects this list answer SERVFAIL on this node."
 		if st.Error != "" {
 			out.Message += " Last refresh error: " + out.LastError
 		}
 	case st.Error != "":
 		out.State, out.Reason, out.Message = "unavailable", "RPZTransfer", "No copy has been transferred; queries whose policy selects this list answer SERVFAIL on this node: "+out.LastError
 	default:
-		out.State, out.Reason, out.Message = "pending", "TransferPending", "Waiting for this node's first complete transfer."
+		out.State, out.Reason, out.Message = "pending", "TransferPending", "Waiting for this node's first complete transfer; until then queries whose policy selects this list answer SERVFAIL on this node."
 	}
 	return out
 }

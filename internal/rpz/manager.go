@@ -77,6 +77,11 @@ type Status struct {
 	Available          bool      `json:"available"`
 	ConfigurationError string    `json:"configurationError,omitempty"`
 	Error              string    `json:"error,omitempty"`
+	// Expired reports, at the same observation time as Available, that the
+	// copy's absolute expiry has passed. A copy that is unavailable but not
+	// expired was discarded (configuration or credential changed during
+	// acceptance) or the clock is before its confirmation (D391).
+	Expired bool `json:"expired,omitempty"`
 	// Rules counts the accepted copy's owners by trigger and action (D391).
 	Rules RuleCounts `json:"rules"`
 	// ignored is the accepted copy's immutable accounting; the pointer keeps
@@ -253,6 +258,7 @@ func (m *Manager) statuses(config *zonecache.Snapshot, lists []*v1alpha1.BlockLi
 				}
 			}
 			st.Available = st.ConfigurationError == "" && runtime.Lookup(spec.Identity).AvailableAt(now)
+			st.Expired = !st.ExpiresAt.IsZero() && !now.Before(st.ExpiresAt)
 			out = append(out, st)
 		}
 	}

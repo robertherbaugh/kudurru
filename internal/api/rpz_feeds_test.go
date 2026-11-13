@@ -162,7 +162,7 @@ func TestRPZFeedRoutesOverRealTransfer(t *testing.T) {
 		}
 		return items[0]
 	}
-	messages := func() []DiagnosisMessage {
+	read := func() []DiagnosisMessage {
 		t.Helper()
 		var out List[DiagnosisMessage]
 		h.do(http.MethodGet, "/api/v1/info/messages", "viewer", nil).want(http.StatusOK).json(&out)
@@ -174,10 +174,39 @@ func TestRPZFeedRoutesOverRealTransfer(t *testing.T) {
 		}
 		return rpzOnly
 	}
-	has := func(ms []DiagnosisMessage, severity, reason, object, text string) bool {
-		for _, m := range ms {
-			if m.Severity == severity && m.Reason == reason && m.Object == object && strings.Contains(m.Message, text) && m.Node == "node-a" {
-				return true
+	// messages reads the plain path, then the path SQLite nodes mount
+	// (InfoMessageReads set, so /info/messages and kudurru doctor reach the
+	// feed diagnoses through infoOperationalMessages), and returns both.
+	// Callers require each diagnosis on both paths (see has).
+	messages := func() [2][]DiagnosisMessage {
+		t.Helper()
+		plain := read()
+		h.srv.opts.InfoMessageReads = infoReadFunc(func(context.Context, time.Time, func(string, string, string, string, string, string) error) error {
+			return nil
+		})
+		defer func() { h.srv.opts.InfoMessageReads = nil }()
+		return [2][]DiagnosisMessage{plain, read()}
+	}
+	has := func(paths [2][]DiagnosisMessage, severity, reason, object, text string) bool {
+		for _, ms := range paths {
+			found := false
+			for _, m := range ms {
+				if m.Severity == severity && m.Reason == reason && m.Object == object && strings.Contains(m.Message, text) && m.Node == "node-a" {
+					found = true
+				}
+			}
+			if !found {
+				return false
+			}
+		}
+		return true
+	}
+	hasAny := func(paths [2][]DiagnosisMessage, severity, object string) bool {
+		for _, ms := range paths {
+			for _, m := range ms {
+				if m.Severity == severity && m.Object == object {
+					return true
+				}
 			}
 		}
 		return false
@@ -197,7 +226,7 @@ func TestRPZFeedRoutesOverRealTransfer(t *testing.T) {
 	if f := one("feed"); f.State != "pending" || f.Available || f.Reason != "TransferPending" || f.Serial != nil || f.Counts != nil || f.Rules != nil || f.ExpiresAt != nil || f.Ignored == nil {
 		t.Fatalf("pending feed = %+v", f)
 	}
-	if !has(messages(), "info", "TransferPending", "BlockList/default/feed", "policy.test.") {
+	if !has(messages(), "info", "TransferPending", "BlockList/default/feed", "SERVFAIL") {
 		t.Fatal("pending feed has no info diagnosis")
 	}
 	h.do(http.MethodGet, "/api/v1/blocklists/default/absent/rpz", "viewer", nil).want(http.StatusNotFound)
@@ -206,6 +235,8 @@ func TestRPZFeedRoutesOverRealTransfer(t *testing.T) {
 	}
 	h.do(http.MethodGet, "/api/v1/blocklists/_rpz", "zoneadmin", nil).want(http.StatusForbidden)
 	h.do(http.MethodGet, "/api/v1/blocklists/default/feed/rpz", "zoneadmin", nil).want(http.StatusForbidden)
+	h.do(http.MethodGet, "/api/v1/blocklists/_rpz", "", nil).want(http.StatusUnauthorized)
+	h.do(http.MethodGet, "/api/v1/blocklists/default/feed/rpz", "", nil).want(http.StatusUnauthorized)
 
 	runCtx, stopRun := context.WithCancel(t.Context())
 	done := make(chan struct{})
@@ -250,7 +281,7 @@ func TestRPZFeedRoutesOverRealTransfer(t *testing.T) {
 	if !has(ms, "info", "RPZRulesIgnored", "BlockList/default/feed", "1 unsupported and 1 invalid") ||
 		!has(ms, "error", "RPZTransfer", "BlockList/default/unreachable", "policy.test.") ||
 		!has(ms, "error", "ConfigurationUnavailable", "BlockList/default/unkeyed", "policy.test.") ||
-		has(ms, "error", "", "BlockList/default/feed", "") {
+		hasAny(ms, "error", "BlockList/default/feed") {
 		t.Fatalf("diagnoses = %+v", ms)
 	}
 
@@ -275,6 +306,18 @@ func TestRPZFeedRoutesOverRealTransfer(t *testing.T) {
 	if !has(messages(), "error", "RPZExpired", "BlockList/default/feed", "SERVFAIL") {
 		t.Fatal("expired feed has no error diagnosis")
 	}
+
+	// A clock stepped back before the last confirmation leaves the copy
+	// unusable but not expired: it is unavailable, never "expired" with an
+	// expiry still in the future. The copy fields stay visible.
+	clock.add(-(600 + 61 + 1) * time.Second)
+	if f := one("feed"); f.State != "unavailable" || f.Available || f.Reason != "RPZTransfer" || f.Serial == nil || f.Counts == nil ||
+		f.ExpiresAt == nil || !f.ExpiresAt.After(clock.Now()) || !strings.Contains(f.Message, "SERVFAIL") || strings.Contains(f.Message, "expired") {
+		t.Fatalf("unusable unexpired feed = %+v", f)
+	}
+	if !has(messages(), "error", "RPZTransfer", "BlockList/default/feed", "no usable copy") {
+		t.Fatal("unusable unexpired feed has no error diagnosis")
+	}
 	if primary.transfers.Load() == 0 {
 		t.Fatal("no real transfer happened")
 	}
@@ -294,4 +337,24 @@ func unusedTCPAddress(t *testing.T) string {
 	}
 	defer func() { _ = l.Close() }()
 	return l.Addr().String()
+}
+
+type rpzFeedSourceFunc func(namespace, name string) ([]rpz.Status, error)
+
+func (f rpzFeedSourceFunc) Statuses() []rpz.Status { return nil }
+func (f rpzFeedSourceFunc) ListStatuses(namespace, name string) ([]rpz.Status, error) {
+	return f(namespace, name)
+}
+
+// TestRPZFeedRouteBeforeConfiguration answers 503 while the node has no
+// configuration snapshot, so a missing list is not reported as absent.
+func TestRPZFeedRouteBeforeConfiguration(t *testing.T) {
+	h := newHarness(t)
+	h.srv.opts.RPZ = rpzFeedSourceFunc(func(string, string) ([]rpz.Status, error) { return nil, rpz.ErrConfigurationUnavailable })
+	h.do(http.MethodGet, "/api/v1/blocklists/default/feed/rpz", "viewer", nil).want(http.StatusServiceUnavailable)
+	var out List[RPZFeed]
+	h.do(http.MethodGet, "/api/v1/blocklists/_rpz", "viewer", nil).want(http.StatusOK).json(&out)
+	if out.Items == nil || len(out.Items) != 0 {
+		t.Fatalf("feeds before configuration = %+v", out.Items)
+	}
 }
