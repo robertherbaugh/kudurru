@@ -6,7 +6,7 @@ import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../../api/client';
-import { qk, useApi, useApiContext, useCan, useClusterRole, usePrimaryOnlyPermission, useSession, useStaticMode } from '../../api/context';
+import { qk, useApi, useApiContext, useAuthCapabilities, useCan, useClusterRole, usePrimaryOnlyPermission, useSession, useStaticMode } from '../../api/context';
 import type { IamUser, Me } from '../../api/types';
 import { isLocalUser } from '../AccountMenu';
 import { FormDialog } from '../FormDialog';
@@ -120,8 +120,10 @@ export function AuthenticatorPanel() {
   const { data: me } = useSession();
   const readOnly = useStaticMode();
   const role = useClusterRole();
+  const { factorManagement } = useAuthCapabilities();
   return <Panel title="Authenticator" headingId="authenticator-title">
-    {readOnly ? <Banner status="info" title="Credentials are read-only in static mode" description="Provision account credentials on each host before enabling static mode." />
+    {!factorManagement ? <Banner status="info" title="Authenticators are not offered on this server" description="This driver has no authenticator (TOTP) enrollment, removal or recovery. Use your identity provider’s second factor." />
+      : readOnly ? <Banner status="info" title="Credentials are read-only in static mode" description="Provision account credentials on each host before enabling static mode." />
       : role.follower ? <Banner status="info" title="Authenticator changes run only on the primary" description={`This node is a follower and does not forward authenticator setup or removal. Sign in on ${role.primary ?? 'the primary'} to set up or remove your authenticator.`} />
       : eligible(me) ? <LocalAuthenticator key={sessionKey(me)} me={me} /> : <Text>Authenticator management requires a local account cookie session with a completed password change.</Text>}
   </Panel>;
@@ -226,8 +228,9 @@ function Disable({ onClose, onDiscard }: { onClose: () => void; onDiscard: (mess
   </FormDialog>;
 }
 export function RecoverAuthenticatorButton({ user }: { user: IamUser }) {
-  const can = useCan(); const primaryOnly = usePrimaryOnlyPermission(); const { data: me } = useSession();
+  const can = useCan(); const primaryOnly = usePrimaryOnlyPermission(); const { data: me } = useSession(); const { factorManagement } = useAuthCapabilities();
   const [selected, setSelected] = useState<{ name: string; uid: string; session: string } | null>(null); const [notice, setNotice] = useState('');
+  if (!factorManagement) return null;
   const allowed = cookieSession(me) && can('users', 'write') && !!user.uid;
   return <VStack gap={1}>
     <Tooltip content={!can('users', 'write') ? (primaryOnly('users', 'write') ?? 'Needs users.write at cluster scope') : !user.uid ? 'Refresh the inventory to obtain the account UID' : 'Remove the selected account’s authenticator and revoke its browser sessions'}>

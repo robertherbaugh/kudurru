@@ -98,3 +98,13 @@ export function notifySourceError(value: string): string | null {
     return error;
   }
 }
+
+/** The DNSZone label that puts a zone in a zone group (D385, v1alpha1.ZoneGroupLabel). */
+export const ZONE_GROUP_LABEL = 'kudurru.io/zonegroup';
+
+/** Why a zone-group name is not a valid label value, or null (internal/store/validator). */
+export function zoneGroupError(v: string): string | null {
+  if (!v) return 'Enter a zone group';
+  if (v.length > 63) return 'At most 63 characters';
+  return /^[A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?$/.test(v) ? null : 'Letters, digits, "-", "_" or ".", starting and ending with a letter or digit';
+}

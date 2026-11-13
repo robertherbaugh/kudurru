@@ -21,16 +21,19 @@ import { canAnyScope, qk, useApi, useCan, useSession, useStaticMode } from '../a
 import { useFeature } from '../api/hooks';
 import type { ApiToken, CreatedToken, IamIdentityProvider, IamRoleBinding, IamServiceAccount, IamUser, RbacScope } from '../api/types';
 import { AuthenticatorPanel, RecoverAuthenticatorButton } from '../components/access/Authenticators';
+import { NewRoleBindingButton } from '../components/access/RoleBindingForm';
 import { SessionsPanel } from '../components/access/Sessions';
 import { ChangePasswordButton, principalName } from '../components/AccountMenu';
 import { ErrorBanner, useNotify } from '../components/Feedback';
 import { DurationField, durationPresets } from '../components/fields/DurationField';
-import { EnumSelect, type EnumOption } from '../components/fields/EnumSelect';
+import { EnumSelect } from '../components/fields/EnumSelect';
 import { ObjectRefPicker } from '../components/fields/ObjectRefPicker';
 import { TextField } from '../components/fields/TextField';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { formatDateTime, formatRelative } from '../lib/format';
+import { ROLES, SCOPE_KINDS, scopeString } from '../lib/rbac';
 import { useNavigate, useSearchParams } from '../lib/router';
+import { zoneGroupError } from '../lib/zones';
 
 /** A relative time with the exact instant in its tooltip. */
 function Relative({ at }: { at: string }) {
@@ -74,25 +77,7 @@ function Me() {
 /** Token lifetimes offered; "" asks for the server maximum (auth.tokens.maxLifetime). */
 const TOKEN_LIFETIMES = durationPresets(['24h', '168h', '720h', '2160h', '8760h']);
 
-/** The roles of internal/rbac (the rbac.bindings role enum of the settings schema). */
-export const ROLES: EnumOption[] = [
-  { value: 'viewer', label: 'Viewer', help: 'Read zones, records, lists, policies, stats and settings.' },
-  { value: 'auditor', label: 'Auditor', help: 'Viewer plus the query log and the audit log.' },
-  { value: 'operator', label: 'Operator', help: 'Manage records, lists, policies, groups, clients and blocking; flush the cache.' },
-  { value: 'zone-admin', label: 'Zone admin', help: 'Manage zones and their records, transfers and signing.' },
-  { value: 'admin', label: 'Admin', help: 'Everything.' },
-];
-
-const SCOPE_KINDS: EnumOption[] = [
-  { value: 'cluster', label: 'Everything', help: 'The role applies to every object.' },
-  { value: 'zone', label: 'One zone', help: 'The role applies to one zone and its records.' },
-];
-
-/** The scope string of a token restricted to a role: "viewer" or "zone-admin@zone:home-arpa". */
-export function scopeString(role: string, kind: string, name: string): string {
-  if (!role) return '';
-  return kind === 'zone' && name.trim() ? `${role}@zone:${name.trim()}` : role;
-}
+export { ROLES, scopeString };
 
 /** Scopes typed as "viewer, zone-admin@zone:home-example-com". */
 export function parseScopes(s: string): string[] {
@@ -217,13 +202,16 @@ function Tokens() {
           <TextField label="Description" value={description} onChange={setDescription} placeholder="ci-deploy" />
           <DurationField label="Expires in" value={expires} onChange={setExpires} presets={TOKEN_LIFETIMES} emptyLabel="Server maximum" />
           <EnumSelect label="Limit to role" value={role} options={ROLES} onChange={setRole} emptyLabel="All my roles" />
-          {role ? <EnumSelect label="For" value={scopeKind} options={SCOPE_KINDS} onChange={setScopeKind} /> : null}
+          {role ? <EnumSelect label="For" value={scopeKind} options={SCOPE_KINDS} onChange={(k) => { setScopeKind(k); setScopeZone(''); }} /> : null}
           {role && scopeKind === 'zone' ? (
             <ObjectRefPicker kind="dnszones" label="Zone" value={scopeZone ? [scopeZone] : []} onChange={(v) => setScopeZone(v[0] ?? '')} />
           ) : null}
+          {role && scopeKind === 'zonegroup' ? (
+            <TextField label="Zone group" value={scopeZone} onChange={setScopeZone} mono placeholder="prod" error={scopeZone ? (zoneGroupError(scopeZone) ?? undefined) : undefined} />
+          ) : null}
         </HStack>
         <HStack gap={2}>
-          <Button type="submit" label="Create token" variant="primary" isDisabled={!allowed || !description.trim()} isLoading={create.isPending} />
+          <Button type="submit" label="Create token" variant="primary" isDisabled={!allowed || !description.trim() || (!!role && scopeKind === 'zonegroup' && !!zoneGroupError(scopeZone))} isLoading={create.isPending} />
         </HStack>
       </VStack>
       {created ? (
@@ -253,10 +241,11 @@ function Tokens() {
   );
 }
 
-/** "cluster" or "zone home-arpa". */
+/** "cluster", "zone home-arpa" or "zone group prod". */
 export function scopeText(s: RbacScope | undefined): string {
   if (!s || !s.kind || s.kind === 'cluster') return 'cluster';
-  return s.name ? `${s.kind} ${s.name}` : s.kind;
+  const kind = s.kind === 'zonegroup' ? 'zone group' : s.kind;
+  return s.name ? `${kind} ${s.name}` : kind;
 }
 
 function bindingName(b: IamRoleBinding): string {
@@ -401,7 +390,7 @@ function Iam() {
       <Banner
         status="info"
         title="Identity management"
-        description="Users are managed with `kudurru admin` on the host. Administrators with cluster users.write can recover a selected user’s authenticator here. Service accounts, role bindings and identity providers are declared in kudurru.yaml or as objects (objects.d or Kubernetes)."
+        description="Users are managed with `kudurru admin` on the host. Administrators with cluster users.write can recover a selected user’s authenticator here. Role bindings can be created here on the SQLite driver; service accounts, identity providers and the other role bindings are declared in kudurru.yaml or as objects (objects.d or Kubernetes)."
       />
       <Panel title="Local users" headingId="iam-users">
         {users.error ? <ErrorBanner error={users.error} /> : null}
@@ -427,7 +416,7 @@ function Iam() {
           empty('service accounts', sas.isLoading)
         )}
       </Panel>
-      <Panel title="Role bindings" headingId="iam-rb">
+      <Panel title="Role bindings" headingId="iam-rb" actions={<NewRoleBindingButton />}>
         {rbs.error ? <ErrorBanner error={rbs.error} /> : null}
         {!rbac.allowed && rbs.data?.items.length ? (
           <Banner

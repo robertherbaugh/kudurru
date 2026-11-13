@@ -72,6 +72,7 @@ const baseColumns: TableColumn<Row>[] = [
           </Text>
         </Link>
         {z.fallback ? <Text type="supporting">Public fallback</Text> : null}
+        {z.zoneGroup ? <Text type="supporting">Zone group {z.zoneGroup}</Text> : null}
       </VStack>
     ),
   },
@@ -127,13 +128,13 @@ export default function ZonesPage() {
           size="sm"
           variant="ghost"
           aria-label={`Delete zone ${z.zoneName}`}
-          isDisabled={!!z.deleteRefusal || !can('zones', 'delete')}
+          isDisabled={!!z.deleteRefusal || !can('zones', 'delete', { zone: z.name, zoneGroup: z.zoneGroup })}
           tooltip={
             z.deleteRefusal === 'default_zone'
               ? 'The root zone routes every other name; edit its settings on its page'
               : z.deleteRefusal === 'managed_by'
                 ? 'The zone or some of its records are managed elsewhere'
-                : !can('zones', 'delete')
+                : !can('zones', 'delete', { zone: z.name, zoneGroup: z.zoneGroup })
                   ? 'Needs zones.delete'
                   : undefined
           }

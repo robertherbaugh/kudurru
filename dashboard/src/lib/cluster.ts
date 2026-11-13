@@ -250,3 +250,23 @@ export function anchorAdvice(s: RootAnchorStatus): AnchorAdvice[] {
   }
   return out;
 }
+
+const REFUSED_SINGLE = new Set([...REFUSED_BEFORE_HANDLER, 'unavailable', 'not_implemented', 'user_management_unavailable', 'factor_management_unavailable']);
+
+/**
+ * Whether the answer to a single create or revoke command (an edge block, a
+ * role binding) leaves its outcome unknown: no answer at all, a 500 or 502/504,
+ * or a 503 that is not one of the refusals the server gives before any
+ * effect. A 4xx (including 409 exists or 404 gone) is a refusal. After an
+ * unknown outcome the dashboard sends nothing again: it rereads and the
+ * operator decides.
+ */
+export function outcomeUnknown(err: unknown): boolean {
+  if (!(err instanceof ApiError) || err.status === 0) return true;
+  if (err.status < 500 || err.status === 501) return false;
+  // A dispatched store write answers 503 unavailable with
+  // {dispatched: true, outcome: unknown|committed} (cmd/kudurru kube_edge_blocks.go).
+  const hint: unknown = err.hint;
+  if (hint && typeof hint === 'object' && ('dispatched' in hint || 'outcome' in hint)) return true;
+  return !(err.status === 503 && REFUSED_SINGLE.has(err.key));
+}

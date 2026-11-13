@@ -169,7 +169,9 @@ function ZoneDetail({ zone }: { zone: string }) {
   const recs = useQuery({ queryKey: qk.records(zone), queryFn: () => api.zones.records(zone), enabled: primary });
   const own = ownership(z.data?.managedBy);
   const zoneEditable = own.editable && z.data?.type === 'primary';
-  const canWrite = can('records', 'write');
+  // Zone and zone-group grants of /auth/me count on this zone (D385).
+  const on = { zone: z.data?.name ?? zone, zoneGroup: z.data?.zoneGroup };
+  const canWrite = can('records', 'write', on);
 
   const rows = useMemo(() => {
     const all = recs.data?.items ?? [];
@@ -273,7 +275,7 @@ function ZoneDetail({ zone }: { zone: string }) {
               label="Delete"
               size="sm"
               variant="ghost"
-              isDisabled={!editable || !can('records', 'delete')}
+              isDisabled={!editable || !can('records', 'delete', on)}
               onClick={() => setConfirmRecord(r)}
             />
           </HStack>
@@ -301,6 +303,7 @@ function ZoneDetail({ zone }: { zone: string }) {
                   {z.data.ready ? <Badge variant="success" label="Ready" /> : <Badge variant="error" label="Not ready" />}
                 </>
               )}
+              {z.data.zoneGroup ? <Text size="sm">zone group {z.data.zoneGroup}</Text> : null}
               <ManagedBadge owner={z.data.managedBy} />
             </>
           ) : null
@@ -312,19 +315,19 @@ function ZoneDetail({ zone }: { zone: string }) {
                 <Button label="Add record" variant="primary" isDisabled={!zoneEditable || !canWrite} onClick={() => setEditing('new')} />
                 <Button label="Import BIND" variant="secondary" isDisabled={!zoneEditable || !canWrite} onClick={() => setImporting(true)} />
                 <Button label="Export" variant="secondary" onClick={() => setExporting(true)} />
-                <Button label="Send NOTIFY" variant="ghost" isDisabled={!can('zones', 'transfer')} tooltip={cannot('zones', 'transfer')} isLoading={notifyM.isPending} onClick={() => notifyM.mutate()} />
+                <Button label="Send NOTIFY" variant="ghost" isDisabled={!can('zones', 'transfer', on)} tooltip={cannot('zones', 'transfer', on)} isLoading={notifyM.isPending} onClick={() => notifyM.mutate()} />
               </>
             ) : null}
             <Button
               label="Delete zone"
               variant="destructive"
-              isDisabled={!z.data || !!z.data.deleteRefusal || !can('zones', 'delete')}
+              isDisabled={!z.data || !!z.data.deleteRefusal || !can('zones', 'delete', on)}
               tooltip={
                 z.data?.deleteRefusal === 'default_zone'
                   ? 'The root zone routes every other name; edit its settings instead'
                   : z.data?.deleteRefusal === 'managed_by'
                     ? 'The zone or some of its records are managed elsewhere'
-                    : !can('zones', 'delete')
+                    : !can('zones', 'delete', on)
                       ? 'Needs zones.delete'
                       : undefined
               }

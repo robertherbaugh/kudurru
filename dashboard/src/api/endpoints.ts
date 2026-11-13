@@ -52,6 +52,12 @@ import type {
   QueriesPage,
   QueryFilter,
   QuerylogStatus,
+  QuerylogSinks,
+  EdgeBlock,
+  EdgeBlockList,
+  EdgeBlockRequest,
+  RoleBindingDesired,
+  RoleBindingDocument,
   RecentBlocked,
   SettingKey,
   SettingsBody,
@@ -263,6 +269,8 @@ export function endpoints(c: ApiClient) {
       exportURL: (s: ScopeParams, f: QueryFilter) => c.url('/queries/export', { ...scopeQuery(s), ...(f as Query), limit: 1000 }),
       purge: (before?: string) => c.delete<PurgeResult>('/querylog', before ? { before } : undefined),
       status: () => c.get<QuerylogStatus>('/querylog/status'),
+      /** The answering node's additional sinks; never a credential, URL or error text. */
+      sinks: () => c.get<QuerylogSinks>('/querylog/sinks'),
     },
 
     settings: {
@@ -284,6 +292,10 @@ export function endpoints(c: ApiClient) {
       health: (name: string) => c.get<NodeHealth>(`/nodes/${enc(name)}/health`),
       info: () => c.get<ClusterInfo>('/cluster'),
       edge: () => c.get<EdgeInfo>('/edge'),
+      // Operator edge blocks (D388): one request per command, never repeated.
+      edgeBlocks: () => c.get<EdgeBlockList>('/edge/blocks'),
+      createEdgeBlock: (req: EdgeBlockRequest) => c.post<EdgeBlock>('/edge/blocks', req),
+      revokeEdgeBlock: (id: string) => c.delete<EdgeBlock>(`/edge/blocks/${enc(id)}`),
       // Enrolled SQLite membership (docs/deploy/sqlite-cluster.md). Each
       // command is one request that the dashboard never repeats; the signal
       // ends a request the server's 30-second bound did not answer.
@@ -307,6 +319,8 @@ export function endpoints(c: ApiClient) {
       administerExternalUser: (name: string, action: 'disable' | 'enable' | 'logout', reviewed: ExternalUserCommand, signal?: AbortSignal) => c.request<void>('POST', `/iam/external-users/${enc(name)}/${action}`, { body: reviewed, signal }),
       serviceAccounts: () => c.get<IamList<IamServiceAccount>>('/iam/serviceaccounts'),
       roleBindings: () => c.get<IamList<IamRoleBinding>>('/iam/rolebindings'),
+      /** Creates once (409 when the name exists); complete SQLite runtime only. */
+      createRoleBinding: (binding: RoleBindingDesired) => c.post<RoleBindingDocument>('/iam/rolebindings', binding),
       identityProviders: () => c.get<IamList<IamIdentityProvider>>('/iam/identityproviders'),
     },
 

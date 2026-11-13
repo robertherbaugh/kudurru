@@ -5,7 +5,8 @@
 // health components of this node on demand (GET /nodes/{name}/health).
 // On the SQLite driver (GET /cluster role) also this node's enrollment with
 // the activation, invitation and promotion wizards, and its managed root
-// trust-anchor state (GET /cluster/enrollment, /cluster/anchors).
+// trust-anchor state (GET /cluster/enrollment, /cluster/anchors). The
+// additional query-log sinks of this node (GET /querylog/sinks).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
@@ -26,6 +27,7 @@ import type { EdgeComponentState, HealthComponent, NodeInfo } from '../api/types
 import { ClusterMembership } from '../components/cluster/ClusterMembership';
 import { RootAnchors } from '../components/cluster/RootAnchors';
 import { ErrorBanner, Loading } from '../components/Feedback';
+import { QuerylogSinksPanel } from '../components/QuerylogSinks';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { formatRelative } from '../lib/format';
 import { readiness } from '../lib/nodes';
@@ -313,6 +315,7 @@ export default function NodesPage() {
           <RootAnchors />
         </Grid>
       ) : null}
+      <QuerylogSinksPanel />
     </Page>
   );
 }

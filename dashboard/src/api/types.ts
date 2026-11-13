@@ -392,6 +392,8 @@ export interface AuthStatus {
   role?: string;
   /** The primary, set together with role. */
   primary?: string;
+  /** What account commands this driver offers (D387); absent on older servers, where both count as offered. */
+  capabilities?: S['AuthCapabilities'];
 }
 
 /** Who owns a token (api/internalkinds TokenOwner). */
@@ -668,6 +670,16 @@ export interface QuerylogStatus {
   subscribers: number;
 }
 
+/** GET /querylog/sinks: the additional query-log sinks of the answering node (D371, D372). */
+export type QuerylogSinks = S['QuerylogSinksBody'];
+export type QuerylogSink = S['QuerylogSink'];
+
+// Operator edge blocks (D388) ------------------------------------------------
+
+export type EdgeBlock = S['EdgeBlock'];
+export type EdgeBlockList = S['EdgeBlockList'];
+export type EdgeBlockRequest = S['EdgeBlockRequest'];
+
 // ---------------------------------------------------------------------------
 // Settings and nodes
 
@@ -825,6 +837,11 @@ export interface RbacSubject {
   name: string;
   namespace?: string;
 }
+
+/** POST /iam/rolebindings: a public RoleBinding manifest without server metadata. */
+export type RoleBindingDesired = S['RoleBindingDesired'];
+/** The RoleBinding as stored, with its UID and resourceVersion. */
+export type RoleBindingDocument = S['RoleBindingDocument'];
 
 /** A role binding from the config file (source "config") or a RoleBinding object (stack RoleBindingInfo). */
 export interface IamRoleBinding {

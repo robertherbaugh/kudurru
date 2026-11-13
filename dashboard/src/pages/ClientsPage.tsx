@@ -2,7 +2,9 @@
 // top-clients ranking, keyed by IP or client ID), with the client group
 // the identify stage resolved them to; a client opens its page. Selected
 // clients can be added to a group in one step (a PUT of the ClientGroup
-// with the new matchers, each with a display name and comment).
+// with the new matchers, each with a display name and comment). An address
+// can be blocked at every dnsdist edge until an expiry, and the active edge
+// blocks are listed under the inventory with Revoke (D388).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
@@ -20,12 +22,14 @@ import type { ClientGroup, ClientItem } from '../api/types';
 import { matcherFor } from '../components/fields/MatchersField';
 import { SelectField } from '../components/fields/SelectField';
 import { TextField } from '../components/fields/TextField';
+import { EdgeBlockButton, EdgeBlocksPanel } from '../components/EdgeBlocks';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { FormDialog } from '../components/FormDialog';
 import { Page, PageHeader } from '../components/layout/Page';
 import { ScopeNote } from '../components/ScopeSelector';
 import { formatExact, formatRelative } from '../lib/format';
 import { objectOwnership } from '../lib/managedBy';
+import { ipError } from '../lib/objectSchemas';
 import { clientHref, objectHref } from '../lib/policies';
 import { useSearchParams } from '../lib/router';
 
@@ -167,6 +171,13 @@ export default function ClientsPage() {
         </Link>
       ),
     },
+    {
+      key: 'actions',
+      header: <VisuallyHidden>Actions</VisuallyHidden>,
+      width: pixel(140),
+      // Edges see client addresses only; a client ID cannot be blocked there.
+      renderCell: (c) => (c.key && ipError(c.key) === null ? <EdgeBlockButton address={c.key} name={c.name} /> : null),
+    },
   ];
 
   return (
@@ -205,6 +216,7 @@ export default function ClientsPage() {
           />
         </Card>
       ) : null}
+      <EdgeBlocksPanel />
       <FormDialog
         isOpen={assigning}
         onClose={() => setAssigning(false)}

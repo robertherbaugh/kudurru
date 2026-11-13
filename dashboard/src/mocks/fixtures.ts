@@ -23,7 +23,7 @@ import type {
 } from '../api/types';
 import schemaJSON from './data/settings-schema.json';
 import { pick, pickSkewed, rng } from './rand';
-import type { LicenseInfo, UnblockRequest } from '../api/types';
+import type { EdgeBlock, LicenseInfo, QuerylogSink, RoleBindingDesired, UnblockRequest } from '../api/types';
 
 const NS = 'default';
 const API = 'kudurru.io/v1alpha1' as const;
@@ -75,6 +75,15 @@ export interface MockDB {
   unblock: UnblockRequest[];
   /** GET /license (nodesInUse follows `nodes`); the default is a personal key with every feature. */
   license: LicenseInfo;
+  /** Active operator edge blocks (GET /edge/blocks, D388) and the revision of the set. */
+  edgeBlocks: EdgeBlock[];
+  edgeBlockRevision: number;
+  /** GET /querylog/sinks of the answering node (D371). */
+  querylogSinks: QuerylogSink[];
+  /** RoleBindings created through POST /iam/rolebindings. */
+  createdRoleBindings: RoleBindingDesired[];
+  /** GET /auth/status capabilities (D387); the complete SQLite runtime offers both. */
+  authCapabilities: { factorManagement: boolean; localUserCommands: boolean };
 }
 
 /** Every licensed feature (internal/license Features). */
@@ -796,6 +805,17 @@ export function createDB(now = FIXED_NOW): MockDB {
     nextQueryID: 100_501,
     rv: 100,
     unblock: buildUnblockRequests(now),
+    edgeBlocks: [
+      { id: '3f9a1c0d7e2b4a65', prefix: '203.0.113.0/24', createdAt: new Date(now - 600_000).toISOString(), until: new Date(now + 3_000_000).toISOString(), createdBy: 'User:admin', reason: 'scanner' },
+    ],
+    edgeBlockRevision: 4,
+    querylogSinks: [
+      { name: 'clickhouse-main', type: 'clickhouse', raw: false, queued: 12, queue_size: 10_000, sent: 482_113, dropped: 0, errors: 0, last_success: new Date(now - 4_000).toISOString() },
+      { name: 'loki', type: 'loki', raw: false, queued: 10_000, queue_size: 10_000, sent: 3_200, dropped: 1_877, errors: 41, last_success: new Date(now - 900_000).toISOString() },
+      { name: 'collector', type: 'dnstap', raw: true, queued: 0, queue_size: 10_000, sent: 0, dropped: 0, errors: 3 },
+    ],
+    createdRoleBindings: [],
+    authCapabilities: { factorManagement: true, localUserCommands: true },
     license: {
       state: 'active',
       plan: 'personal',

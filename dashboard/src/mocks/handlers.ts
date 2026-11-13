@@ -53,7 +53,7 @@ import { entryError, sourceName } from '../lib/lists';
 import { derivePolicyState } from '../lib/policies';
 import { rng } from './rand';
 import { dhcpHandlers, resetDHCP } from './dhcp';
-import type { UnblockAllow, UnblockApproval, UnblockDenial, UnblockRequest } from '../api/types';
+import type { RoleBindingDesired, UnblockAllow, UnblockApproval, UnblockDenial, UnblockRequest } from '../api/types';
 import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntryPatch, ListEntriesPatch } from '../api/types';
 
 const BRAND_FIELDS = ['name', 'logoLight', 'logoDark', 'favicon', 'accentColor'] as const;
@@ -133,7 +133,7 @@ export const RESOURCE_VERBS: Record<string, string[]> = {
   policies: ['read', 'write', 'delete'],
   clientgroups: ['read', 'write', 'delete'],
   clients: ['read', 'write'],
-  querylog: ['read', 'export', 'purge'],
+  querylog: ['read', 'export', 'purge', 'raw'],
   stats: ['read'],
   cache: ['read', 'flush'],
   blocking: ['read', 'toggle'],
@@ -150,6 +150,7 @@ export const RESOURCE_VERBS: Record<string, string[]> = {
   integrations: ['read', 'write', 'delete', 'sync', 'check', 'secrets', 'act'],
   cluster: ['read', 'join', 'promote', 'drain'],
   edge: ['read', 'write'],
+  edgeblocks: ['read', 'write'],
   audit: ['read', 'export'],
   unblockrequests: ['read', 'decide', 'delete'],
 };
@@ -419,6 +420,7 @@ function zoneSummary(z: DNSZone): ZoneSummary {
     ...(ready?.reason ? { reason: ready.reason } : {}),
     ...(ready?.message ? { message: ready.message } : {}),
     managedBy: z.metadata.annotations?.[MANAGED] ?? '',
+    ...(z.metadata.labels?.['kudurru.io/zonegroup'] ? { zoneGroup: z.metadata.labels['kudurru.io/zonegroup'] } : {}),
     ...(z.metadata.resourceVersion ? { resourceVersion: z.metadata.resourceVersion } : {}),
     ...(z.spec.forward?.upstreamGroup ? { upstreamGroup: z.spec.forward.upstreamGroup } : {}),
     ...(z.spec.fallback ? { fallback: z.spec.fallback } : {}),
@@ -760,6 +762,7 @@ export const handlers = [
       providers: [{ id: 'dex', displayName: 'Dex (corporate SSO)' }, { id: 'github', displayName: 'GitHub' }],
       hasDefaultCredentials: db.users.some((u) => u.username === 'admin' && u.password === 'admin'),
       session: { idleTimeout: '30m0s', lifetime: '12h0m0s' },
+      capabilities: { ...db.authCapabilities },
     }),
   ),
   http.post(`${B}/auth/login`, async ({ request }) => {
@@ -1641,6 +1644,52 @@ export const handlers = [
     guard(request, 'edge', 'read') ??
     ok({ edge: { enabled: true, state: 'running' }, vip: { enabled: true, state: 'MASTER' }, backends: [{ name: 'kudurru-0', address: '192.168.1.2:53', up: true }, { name: 'kudurru-1', address: '192.168.1.3:53', up: true }], node: 'kudurru-0' }),
   ),
+  // Operator edge blocks (internal/api edge_blocks.go, D388).
+  http.get(`${B}/edge/blocks`, ({ request }) =>
+    guard(request, 'edgeblocks', 'read') ??
+    ok({ items: structuredClone(db.edgeBlocks), revision: String(db.edgeBlockRevision), maxBlocks: 256, minSeconds: 60, maxSeconds: 604_800, minIPv4Bits: 16, minIPv6Bits: 32 }),
+  ),
+  http.post(`${B}/edge/blocks`, async ({ request }) => {
+    const g = guard(request, 'edgeblocks', 'write');
+    if (g) return g;
+    const body = (await request.json()) as { prefix?: string; seconds?: number; until?: string; reason?: string };
+    const prefix = (body.prefix ?? '').trim();
+    const [addr = '', bits] = prefix.split('/');
+    const v6 = addr.includes(':');
+    if (!/^[0-9a-fA-F.:]+$/.test(addr)) return fail(400, 'invalid', 'prefix: not an address or CIDR prefix');
+    if (bits !== undefined && Number(bits) < (v6 ? 32 : 16)) return fail(400, 'invalid', `prefix: ${v6 ? 'IPv6 /32' : 'IPv4 /16'} or longer`);
+    if ((body.seconds === undefined) === (body.until === undefined)) return fail(400, 'invalid', 'give seconds or until, not both');
+    if (body.seconds !== undefined && (body.seconds < 60 || body.seconds > 604_800)) return fail(400, 'invalid', 'seconds must be between 60 and 604800');
+    const canonical = bits === undefined ? `${addr}/${v6 ? 128 : 32}` : prefix;
+    if (db.edgeBlocks.some((b) => b.prefix === canonical)) return fail(409, 'conflict', `an active block covers ${canonical}`, 'revoke the existing or an expiring block first');
+    const until = body.until ?? new Date(db.now + (body.seconds ?? 0) * 1000).toISOString();
+    const block = { id: `e${db.edgeBlockRevision.toString(16).padStart(15, '0')}`.replace('e', 'a'), prefix: canonical, createdAt: new Date(db.now).toISOString(), until, createdBy: `User:${db.session?.user.username ?? ''}`, ...(body.reason ? { reason: body.reason } : {}) };
+    db.edgeBlocks.push(block);
+    db.edgeBlockRevision++;
+    return HttpResponse.json(block, { status: 201 });
+  }),
+  http.delete(`${B}/edge/blocks/:id`, ({ request, params }) => {
+    const g = guard(request, 'edgeblocks', 'write');
+    if (g) return g;
+    const i = db.edgeBlocks.findIndex((b) => b.id === params.id);
+    if (i < 0) return fail(404, 'not_found', 'active edge block not found');
+    const [gone] = db.edgeBlocks.splice(i, 1);
+    db.edgeBlockRevision++;
+    return ok({ ...gone });
+  }),
+  http.get(`${B}/querylog/sinks`, ({ request }) => guard(request, 'querylog', 'read') ?? ok({ node: 'kudurru-0', sinks: structuredClone(db.querylogSinks) })),
+  http.post(`${B}/iam/rolebindings`, async ({ request }) => {
+    const g = guard(request, 'rolebindings', 'write');
+    if (g) return g;
+    const body = (await request.json()) as RoleBindingDesired;
+    if (body.apiVersion !== 'kudurru.io/v1alpha1' || body.kind !== 'RoleBinding') return fail(400, 'invalid', 'apiVersion and kind must name a kudurru.io/v1alpha1 RoleBinding');
+    const { name, namespace } = body.metadata;
+    if (db.createdRoleBindings.some((b) => b.metadata.name === name && b.metadata.namespace === namespace)) return fail(409, 'conflict', `RoleBinding ${namespace}/${name} already exists`);
+    const scope = body.spec.scope;
+    if (scope?.kind === 'zonegroup' && !/^[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$/.test(scope.name ?? '')) return fail(400, 'invalid', 'spec.scope.name: not a valid label value');
+    db.createdRoleBindings.push(structuredClone(body));
+    return HttpResponse.json({ apiVersion: body.apiVersion, kind: body.kind, metadata: { name, namespace, uid: `rb-${name}`, resourceVersion: '1' }, spec: body.spec }, { status: 201 });
+  }),
   http.get(`${B}/info/messages`, ({ request }) => guard(request, 'settings', 'read') ?? ok({ items: db.messages })),
   http.get(`${B}/version`, () => ok({ version: 'v0.1.0-rc.1', commit: '3e52e5a', date: '2026-10-10T18:00:00Z', go: 'go1.27.2', platform: 'linux/amd64', node: 'kudurru-0', api: 'v1' })),
 
@@ -1669,6 +1718,7 @@ export const handlers = [
         { source: 'object', namespace: 'default', name: 'viewers', role: 'viewer', scope: { kind: 'cluster' }, subjects: [{ kind: 'Group', name: 'everyone' }], managedBy: 'file:objects.d/rbac.yaml' },
         { source: 'object', namespace: 'default', name: 'home-admin', role: 'zone-admin', scope: { kind: 'zone', name: 'home-arpa' }, subjects: [{ kind: 'User', name: 'robert@example.com' }] },
         { source: 'object', namespace: 'kudurru', name: 'external-dns', role: 'integration:external-dns', scope: { kind: 'cluster' }, subjects: [{ kind: 'ServiceAccount', namespace: 'kudurru', name: 'external-dns' }] },
+        ...db.createdRoleBindings.map((b) => ({ source: 'object', namespace: b.metadata.namespace, name: b.metadata.name, role: b.spec.role, scope: b.spec.scope ?? { kind: 'cluster' }, subjects: b.spec.subjects, managedBy: 'api' })),
       ],
       identityproviders: [
         { id: 'dex', displayName: 'Dex (corporate SSO)', issuer: 'https://dex.example.com', clientID: 'kudurru', scopes: ['openid', 'email', 'groups'], redirectURL: 'https://kudurru.example.com/api/v1/auth/oidc/dex/callback', source: 'config' },

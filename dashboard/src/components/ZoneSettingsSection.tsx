@@ -12,7 +12,7 @@ import { ApiError } from '../api/client';
 import { qk, useApi, useCan } from '../api/context';
 import type { DNSZone } from '../api/types';
 import { readOnlyReason, type Ownership } from '../lib/managedBy';
-import { QUERY_ACCESS, SOA_DEFAULTS } from '../lib/zones';
+import { QUERY_ACCESS, SOA_DEFAULTS, ZONE_GROUP_LABEL } from '../lib/zones';
 import { EditableSection } from './EditableSection';
 import { secondsLabel } from './fields/DurationField';
 import { applyDraft, draftFromZone, ForwardFields, primaryError, PrimaryFields, secondaryError, SecondaryFields, stubError, StubFields, type Draft } from './wizards/ZoneWizard';
@@ -34,7 +34,7 @@ export function ZoneSettingsSection({ zone, own }: ZoneSettingsSectionProps) {
   const z = obj.data;
   if (!z || (z.spec.type !== 'primary' && z.spec.type !== 'forward' && z.spec.type !== 'secondary' && z.spec.type !== 'stub')) return null;
   const value = draftFromZone(z.spec);
-  const roReason = !own.editable ? readOnlyReason(own) : !can('zones', 'write') ? 'Needs zones.write' : undefined;
+  const roReason = !own.editable ? readOnlyReason(own) : !can('zones', 'write', { zone, zoneGroup: z.metadata.labels?.[ZONE_GROUP_LABEL] }) ? 'Needs zones.write' : undefined;
 
   const save = async (d: Draft) => {
     try {

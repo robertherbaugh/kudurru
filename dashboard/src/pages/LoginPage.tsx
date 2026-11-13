@@ -36,6 +36,8 @@ export function LoginPage() {
   const oidcError = loc.search.get('error');
   const signOutNotice = useSignOutNotice();
   const follower = status.data?.role === 'follower';
+  // D387: a driver without authenticator management takes no code at login.
+  const codes = status.data?.capabilities?.factorManagement !== false;
 
   const localEnabled = status.data ? status.data.localLogin && status.data.localLoginMode !== 'disabled' : true;
   const providers = status.data?.providers ?? [];
@@ -118,14 +120,16 @@ export function LoginPage() {
                 autoComplete="current-password"
                 isRequired
               />
-              <TextField
-                label="Authenticator code"
-                value={totpCode}
-                onChange={setTotpCode}
-                autoComplete="one-time-code"
-                isOptional
-                help="Enter the six-digit code if you have enabled an authenticator."
-              />
+              {codes ? (
+                <TextField
+                  label="Authenticator code"
+                  value={totpCode}
+                  onChange={setTotpCode}
+                  autoComplete="one-time-code"
+                  isOptional
+                  help="Enter the six-digit code if you have enabled an authenticator."
+                />
+              ) : null}
               {/* An error Banner is role="alert": announced, and what the e2e looks for. */}
               {error ? <Banner status="error" title={error} /> : null}
               <Button type="submit" label="Sign in" variant="primary" isLoading={busy} width="100%" />

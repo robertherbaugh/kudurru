@@ -4,7 +4,7 @@
 // default group), which policy decides for it right now and why (priority,
 // schedule, enabled, the fallback policy), its recent queries with per-row
 // allow/deny, and typed shortcuts: add it to a group, allow or deny a
-// domain.
+// domain, and block the address at every dnsdist edge until an expiry (D388).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -23,6 +23,7 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import { qk, useApi, useCan, usePrimaryOnly, useScopeParams } from '../api/context';
 import type { ClientGroup, QueryRow } from '../api/types';
 import { writeSummary } from '../components/domains/DomainEntryDialogs';
+import { EdgeBlockButton } from '../components/EdgeBlocks';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { matcherFor } from '../components/fields/MatchersField';
 import { ObjectRefPicker } from '../components/fields/ObjectRefPicker';
@@ -32,7 +33,7 @@ import { QueryLogTable } from '../components/QueryLogTable';
 import { ScopeNote } from '../components/ScopeSelector';
 import { formatDateTime, formatExact, formatPercent, formatRelative } from '../lib/format';
 import { objectOwnership } from '../lib/managedBy';
-import { listEntryError } from '../lib/objectSchemas';
+import { ipError, listEntryError } from '../lib/objectSchemas';
 import { identifyClient, objectHref, refOfObject, scheduleSummary, selectPolicy, shortRef, splitRef, TIER_TEXT, type Selection } from '../lib/policies';
 import { useDeriveContext } from '../lib/usePolicyData';
 import type { PageProps } from '../routes';
@@ -123,7 +124,12 @@ export default function ClientDetailPage({ params }: PageProps) {
       <PageHeader
         title={display ?? key}
         back={{ href: '/clients', label: 'Clients' }}
-        actions={clients.data?.scope ? <ScopeNote scope={clients.data} /> : null}
+        actions={
+          <>
+            {clients.data?.scope ? <ScopeNote scope={clients.data} /> : null}
+            {key && ipError(key) === null ? <EdgeBlockButton address={key} name={display} size="md" variant="secondary" /> : null}
+          </>
+        }
         meta={
           <>
             {display ? <Code size="inherit">{key}</Code> : null}

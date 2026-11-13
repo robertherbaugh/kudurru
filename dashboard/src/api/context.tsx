@@ -122,20 +122,21 @@ export function useSession() {
   return q;
 }
 
-/** Whether the session may perform verb on resource (cluster scope). On a
+/** Whether the session may perform verb on resource, at cluster scope or,
+ * with `on`, on that zone (a zone or zone-group grant of /auth/me counts). On a
  * static host and on an enrolled follower it also says whether this node
  * carries the change out (a follower refuses a permission whose every
  * operation needs the primary); the API independently decides each request. */
-export function useCan(): (resource: string, verb: string) => boolean {
+export function useCan(): (resource: string, verb: string, on?: ObjectScope) => boolean {
   const { data } = useSession();
   const readOnly = useStaticMode();
   const role = useClusterRole();
   return useCallback(
-    (resource: string, verb: string) => {
+    (resource: string, verb: string, on?: ObjectScope) => {
       if (!data) return false;
       if (readOnly && STATIC_VERBS.includes(verb)) return false;
       if (permissionNeedsPrimary(role, resource, verb)) return false;
-      return can(data, resource, verb);
+      return can(data, resource, verb, on);
     },
     [data, readOnly, role],
   );
@@ -147,13 +148,13 @@ const STATIC_VERBS = ['write', 'delete', 'decide', 'import', 'sync', 'act'];
  * Why useCan refuses resource.verb, for a disabled control's tooltip:
  * undefined when it is allowed.
  */
-export function useCannotReason(): (resource: string, verb: string) => string | undefined {
+export function useCannotReason(): (resource: string, verb: string, on?: ObjectScope) => string | undefined {
   const { data } = useSession();
   const readOnly = useStaticMode();
   const role = useClusterRole();
   return useCallback(
-    (resource: string, verb: string) => {
-      if (!data || !can(data, resource, verb)) return `Needs ${resource}.${verb}`;
+    (resource: string, verb: string, on?: ObjectScope) => {
+      if (!data || !can(data, resource, verb, on)) return on?.zone ? `Needs ${resource}.${verb} on zone ${on.zone}` : `Needs ${resource}.${verb}`;
       if (readOnly && STATIC_VERBS.includes(verb)) return 'Read-only in static mode';
       if (permissionNeedsPrimary(role, resource, verb)) return primaryOnlyReason(role.primary);
       return undefined;
@@ -270,19 +271,46 @@ export function usePrimaryOnly(): (operationId: string) => string | undefined {
   return useCallback((operationId: string) => (needsPrimary(role, operationId) ? primaryOnlyReason(role.primary) : undefined), [role]);
 }
 
-export function can(me: Me, resource: string, verb: string): boolean {
-  const verbs = me.permissions[resource] ?? me.permissions['*'];
+/** The zone an action targets, for scoped grants: the zone's object name
+ * and its zone group (GET /zones zoneGroup, the kudurru.io/zonegroup label). */
+export interface ObjectScope {
+  zone?: string | undefined;
+  zoneGroup?: string | undefined;
+}
+
+function grants(perms: Record<string, string[]> | undefined, resource: string, verb: string): boolean {
+  const verbs = perms?.[resource] ?? perms?.['*'];
   return !!verbs && (verbs.includes(verb) || verbs.includes('*'));
+}
+
+/** Whether me holds verb on resource at cluster scope or, with `on`, through
+ * a grant at `zone:<zone>` or `zonegroup:<group>` (D385: a zone-group grant
+ * covers every zone labeled with the group and their record sets). The
+ * server decides each request; this only keeps the controls honest. */
+export function can(me: Me, resource: string, verb: string, on?: ObjectScope): boolean {
+  if (grants(me.permissions, resource, verb)) return true;
+  if (!on) return false;
+  const scoped = me.scopedPermissions ?? {};
+  if (on.zone && grants(scoped[`zone:${on.zone}`], resource, verb)) return true;
+  return !!on.zoneGroup && grants(scoped[`zonegroup:${on.zoneGroup}`], resource, verb);
 }
 
 /** Whether me holds verb on resource at cluster scope or at any of its scopes
  * (own tokens: a zone-admin holds tokens.own at its zone only). */
 export function canAnyScope(me: Me, resource: string, verb: string): boolean {
   if (can(me, resource, verb)) return true;
-  return Object.values(me.scopedPermissions ?? {}).some((perms) => {
-    const verbs = perms[resource] ?? perms['*'];
-    return !!verbs && (verbs.includes(verb) || verbs.includes('*'));
-  });
+  return Object.values(me.scopedPermissions ?? {}).some((perms) => grants(perms, resource, verb));
+}
+
+/** GET /auth/status capabilities (D387): whether this driver offers
+ * authenticator (TOTP) management and the local-user commands. Until the
+ * answer arrives, and from a server that does not report them, both count
+ * as offered and the server decides. */
+export function useAuthCapabilities(): { factorManagement: boolean; localUserCommands: boolean } {
+  const api = useApi();
+  const q = useQuery<AuthStatus>({ queryKey: qk.authStatus, queryFn: () => api.auth.status(), staleTime: 60_000, retry: false });
+  const caps = q.data?.capabilities;
+  return { factorManagement: caps?.factorManagement !== false, localUserCommands: caps?.localUserCommands !== false };
 }
 
 /**
