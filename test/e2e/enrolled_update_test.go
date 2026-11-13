@@ -104,12 +104,12 @@ func enrolledEventuallyUpdate(t *testing.T, node *kudurrutest.Node, secret strin
 }
 
 // enrolledEventuallyRcode sends an idempotent signed UPDATE until it is
-// answered rcode. SERVFAIL is retried and logged: an enrolled follower answers
-// it, sending nothing, when its source changes under the request (it installed
-// the primary's next commit, often an asynchronous status write), and the
-// primary answers it when a republication replaced the lease the UPDATE
-// captured (D381); an RFC 2136 client sends the update again. Any other rcode
-// than the wanted one fails at once.
+// answered rcode. SERVFAIL is retried and logged, as an RFC 2136 client sends
+// the update again: a native UPDATE to the primary still gets it right after
+// a commit, before anything is applied. A forwarded UPDATE waits for the
+// current publication on both nodes instead (D381); one whose exchange is
+// lost still answers SERVFAIL. Any other rcode than the wanted one fails at
+// once.
 func enrolledEventuallyRcode(t *testing.T, node *kudurrutest.Node, secret string, tcp bool, rcode int, build func(*dns.Msg)) {
 	t.Helper()
 	var owner string
@@ -188,66 +188,72 @@ func enrolledFollowerUpdates(t *testing.T, primary, follower *kudurrutest.Node, 
 	// nothing the primary then serves.
 	marker := name + "-after.dyn.test."
 	enrolledEventuallyRcode(t, follower, secret, false, dns.RcodeSuccess, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(marker, ip)}) })
-	// The absence is waited for and every differing answer is logged: a UDP
-	// query resolved from a generation that a republication replaced gets no
-	// answer (see refused-fenced in the promote test). An applied record would
-	// answer NOERROR and never converge.
 	for _, node := range []*kudurrutest.Node{primary, follower} {
 		enrolledAwaitDyn(t, node, marker, ip, dns.RcodeSuccess)
-		for _, absent := range []struct {
-			owner string
-			qtype uint16
-		}{{prereq, dns.TypeA}, {ungranted, dns.TypeTXT}} {
-			if !kudurrutest.Eventually(20*time.Second, 50*time.Millisecond, func() bool {
-				for _, tcp := range []bool{false, true} {
-					answer, err := exchange(node.Ports.DNS, absent.owner, absent.qtype, tcp)
-					switch {
-					case err != nil:
-						t.Logf("%s on %s (tcp=%t) at %s: %v", absent.owner, node.Name, tcp, time.Now().Format(time.RFC3339Nano), err)
-						return false
-					case answer.Rcode != dns.RcodeNameError || len(answer.Answer) != 0 || !answer.Authoritative:
-						t.Logf("%s on %s (tcp=%t): rcode=%s aa=%t answers=%d", absent.owner, node.Name, tcp, dns.RcodeToString[answer.Rcode], answer.Authoritative, len(answer.Answer))
-						return false
-					}
-				}
-				return true
-			}) {
-				t.Fatal("a refused forwarded UPDATE was applied", node.Name, absent.owner)
-			}
-		}
+		enrolledAbsent(t, node, prereq, dns.TypeA)
+		enrolledAbsent(t, node, ungranted, dns.TypeTXT)
 	}
 	enrolledFollowerBurst(t, primary, follower, secret, name, ip)
 }
 
 // enrolledFollowerBurst sends committing UPDATEs to the follower back to
 // back, as a DHCP server does, without waiting for the follower to install
-// each commit. Every answer is NOERROR or SERVFAIL (a forward refused before
-// sending because the follower's source changed under the request); the
-// count of each is logged so the ledger can record what this sequence shows.
-// Every NOERROR is served by both nodes.
+// each commit. Every one must answer NOERROR at once and be served by both
+// nodes (D381). Each commit is followed by the primary's publication and its
+// own status write, so the next forwarded command often reached the primary
+// while its served publication was being replaced; the primary then refused
+// it with SERVFAIL in its writer check before any admission, and most of a
+// burst failed. The primary now waits for its current publication within the
+// command's four-second bound and captures again only when the writer check
+// was all that refused the update.
 func enrolledFollowerBurst(t *testing.T, primary, follower *kudurrutest.Node, secret, name, ip string) {
 	t.Helper()
 	const burst = 8
-	var applied, failed []string
+	var owners []string
+	started := time.Now()
 	for i := range burst {
 		owner := fmt.Sprintf("%s-burst%d.dyn.test.", name, i)
+		sent := time.Now()
 		answer, err := enrolledSendUpdate(t, follower.Ports.DNS, secret, false, func(m *dns.Msg) { m.Insert([]dns.RR{enrolledUpdateA(owner, ip)}) })
 		switch {
 		case err != nil:
 			t.Fatal("burst UPDATE exchange failed", follower.Name, owner, err)
-		case answer.Rcode == dns.RcodeSuccess:
-			applied = append(applied, owner)
-		case answer.Rcode == dns.RcodeServerFailure:
-			failed = append(failed, owner)
-			t.Logf("burst UPDATE on %s at %s: SERVFAIL (%s)", follower.Name, time.Now().Format(time.RFC3339Nano), owner)
-		default:
-			t.Fatalf("burst UPDATE on %s answered %s (%s)", follower.Name, dns.RcodeToString[answer.Rcode], owner)
+		case answer.Rcode != dns.RcodeSuccess:
+			t.Fatalf("burst UPDATE %d of %d on %s answered %s after %s, want NOERROR (%s)", i+1, burst, follower.Name, dns.RcodeToString[answer.Rcode], time.Since(sent), owner)
 		}
+		owners = append(owners, owner)
 	}
-	t.Logf("burst of %d UPDATEs on %s: %d NOERROR, %d SERVFAIL", burst, follower.Name, len(applied), len(failed))
-	for _, owner := range applied {
+	t.Logf("burst of %d UPDATEs on %s: all NOERROR in %s", burst, follower.Name, time.Since(started))
+	for _, owner := range owners {
 		enrolledAwaitDyn(t, primary, owner, ip, dns.RcodeSuccess)
 		enrolledAwaitDyn(t, follower, owner, ip, dns.RcodeSuccess)
+	}
+}
+
+// enrolledAbsent requires that node answers owner with an authoritative
+// NXDOMAIN over UDP and over TCP. Every query must be answered: an ordinary
+// answer is bound to the publication it was resolved from and is still sent
+// across a publication swap (D378, D395), so a commit or republication right
+// before cannot withhold it, and an unanswered query fails at once. An answer
+// that differs is logged and asked again for at most two seconds, the bound
+// for a zone that is briefly not served; an applied record answers NOERROR
+// and never converges.
+func enrolledAbsent(t *testing.T, node *kudurrutest.Node, owner string, qtype uint16) {
+	t.Helper()
+	if !kudurrutest.Eventually(2*time.Second, 50*time.Millisecond, func() bool {
+		for _, tcp := range []bool{false, true} {
+			answer, err := exchange(node.Ports.DNS, owner, qtype, tcp)
+			switch {
+			case err != nil:
+				t.Fatalf("%s on %s (tcp=%t) was not answered at %s: %v", owner, node.Name, tcp, time.Now().Format(time.RFC3339Nano), err)
+			case answer.Rcode != dns.RcodeNameError || len(answer.Answer) != 0 || !answer.Authoritative:
+				t.Logf("%s on %s (tcp=%t) at %s: rcode=%s aa=%t answers=%d", owner, node.Name, tcp, time.Now().Format(time.RFC3339Nano), dns.RcodeToString[answer.Rcode], answer.Authoritative, len(answer.Answer))
+				return false
+			}
+		}
+		return true
+	}) {
+		t.Fatal("a refused write was applied", node.Name, owner)
 	}
 }
 
