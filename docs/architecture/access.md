@@ -1137,13 +1137,16 @@ A lint runs both ways (D393). Every route declares a permission that
 verb is checked by a mounted route or a handler, or is listed under
 `reserved:` in `permissions.yaml` with the release that is to use it
 (`TestPermissionVerbsAreUsedOrReserved`). Reserved verbs (for example
-`zones.sign`, `groups.*`, `integrations.write`) can appear in roles but
-allow nothing yet. Each reservation names its target release: the IAM
-administration verbs (`groups.*`, `users.delete`, `serviceaccounts.write`,
+`zones.sign`, `groups.*`) can appear in roles but allow nothing yet. Each
+reservation names its target release: the IAM administration verbs
+(`groups.*`, `users.delete`, `serviceaccounts.write`,
 `serviceaccounts.delete`, `identityproviders.write`,
-`identityproviders.delete`) and the integration administration verbs
-(`integrations.write`, `integrations.delete`, `integrations.secrets`) are
-still v0.2 surfaces; the rest are v1.0. The source scan credits a handler
+`identityproviders.delete`) are still v0.2 surfaces; the rest are v1.0.
+The integration administration verbs are in use (D400): `integrations.write`
+and `integrations.delete` guard Integration writes on the object routes, and
+`integrations.secrets` is checked besides `integrations.write` by a write that
+binds or changes `spec.credentials`, on the object the write is
+compare-and-swapped against (in the SQLite current command, on its own read). The source scan credits a handler
 check only through the known check helpers (`require`, `allowed`,
 `authorize`, `permission`, `zoneRequirement`, `servingHTTPCluster`) and
 permission literal types (`perm`, `rbac.Attributes`, the auth stack

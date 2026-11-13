@@ -48,30 +48,41 @@ func (s *Server) commandWriteObject(ctx context.Context, req writeRequest, manag
 // by the local current command and a follower-forwarded primary command.
 func (s *Server) writeCommandBody(req writeRequest, manager string, u *unstructured.Unstructured, key store.Key, result *writeResult) func(context.Context, *sqlite.CommandTx, ObjectAuthorize) error {
 	return func(ctx context.Context, tx *sqlite.CommandTx, authorize ObjectAuthorize) error {
-		if tx == nil || authorize == nil {
-			return errUnavailable("current object command unavailable")
-		}
-		existing := req.kind.newObject()
-		if err := tx.Get(ctx, key, existing); errors.Is(err, store.ErrNotFound) {
-			existing = nil
-		} else if err != nil {
-			return err
-		}
-		if err := authorize(ctx, commandWriteAttributes(req.kind, key, u.Object, existing)); err != nil {
-			return err
-		}
-		prepared, err := s.prepareCommandWrite(ctx, req, manager, u, key, existing)
-		if err != nil {
-			return err
-		}
-		if existing == nil && req.kind.kind == "Policy" {
-			if err := s.commandPolicyLimit(ctx, tx, key); err != nil {
-				return err
-			}
-		}
-		*result, err = prepared.apply(ctx, tx)
+		return redactIntegrationEcho(req.kind, u.Object, s.writeCommand(ctx, tx, authorize, req, manager, u, key, result))
+	}
+}
+
+// writeCommand runs one canonical write inside the current command: exact
+// read, authorization of the current scopes, admission and apply.
+func (s *Server) writeCommand(ctx context.Context, tx *sqlite.CommandTx, authorize ObjectAuthorize, req writeRequest, manager string, u *unstructured.Unstructured, key store.Key, result *writeResult) error {
+	if tx == nil || authorize == nil {
+		return errUnavailable("current object command unavailable")
+	}
+	existing := req.kind.newObject()
+	if err := tx.Get(ctx, key, existing); errors.Is(err, store.ErrNotFound) {
+		existing = nil
+	} else if err != nil {
 		return err
 	}
+	if err := authorize(ctx, commandWriteAttributes(req.kind, key, u.Object, existing)); err != nil {
+		return err
+	}
+	prepared, err := s.prepareCommandWrite(ctx, req, manager, u, key, existing)
+	if err != nil {
+		return err
+	}
+	if existing == nil && req.kind.kind == "Policy" {
+		if err := s.commandPolicyLimit(ctx, tx, key); err != nil {
+			return err
+		}
+	}
+	if existing == nil && integrationKind(req.kind) {
+		if err := s.commandIntegrationLicense(tx); err != nil {
+			return err
+		}
+	}
+	*result, err = prepared.apply(ctx, tx)
+	return err
 }
 
 // preparedCommandWrite separates validated same-tx preparation from staging so
@@ -167,6 +178,12 @@ func commandWriteAttributes(k kindInfo, key store.Key, body map[string]any, exis
 			if oldScope := objectScope(k, existing); oldScope != scope {
 				attrs = append(attrs, attribute(oldScope))
 			}
+		}
+		return attrs
+	case "Integration":
+		attrs := []rbac.Attributes{attribute(clusterScope)}
+		if integrationCredentialsChanged(body, existing) {
+			attrs = append(attrs, integrationSecretsAttributes(key))
 		}
 		return attrs
 	default:

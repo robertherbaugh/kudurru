@@ -39,14 +39,19 @@ record sets in zones you publish, or narrow the zones' record set selectors.
 Native Kubernetes Secret references
 are not resolved by either host: mount the Secret as a file and allowlist its
 path under `credentials.allowedFiles`. Both deletion policies are supported on both stores; see
-[Deleting an integration](#deleting-an-integration). Optional UniFi
-mutations and remaining management UI work remain separate. The external-dns webhook listener is a separate inbound feature.
+[Deleting an integration](#deleting-an-integration). Integrations can be
+written from files, with `kubectl` on Kubernetes, or through the API and CLI
+(see [Writing integrations through the API](#writing-integrations-through-the-api)).
+Optional UniFi mutations and the dashboard's Integrations page remain separate. The external-dns webhook listener is a separate inbound feature.
 
 ## Deleting an integration
 
 `spec.deletionPolicy` decides what happens to what an Integration published
-when its object is deleted. On SQLite an Integration is declared in the
-objects directory, so removing its document is the delete request.
+when its object is deleted. An Integration declared in the objects directory
+is deleted by removing its document; one written through the API is deleted
+with `DELETE /api/v1/objects/integrations/{namespace}/{name}` (or `kudurru
+delete integrations NAME`), which answers `204` even while a `Delete` policy
+keeps the object terminating.
 
 With `Retain`, the default, the object is removed at once. Its records stay
 at the provider, and the private ledger rows that describe them stay in the
@@ -257,6 +262,49 @@ SQLite writer at durable effects and final commit. Losing authority refuses the
 operation; it does not grant permission to replay a refused mutation. External
 provider effects cannot be atomic with the local receipt transaction: uncertain
 outcomes remain pending for ownership-aware recovery.
+
+## Writing integrations through the API
+
+Integrations are objects of the generic object routes (D400), on both drivers:
+`GET`, `PUT` and `DELETE /api/v1/objects/integrations/{namespace}/{name}`,
+`POST /api/v1/objects/integrations`, `POST /api/v1/apply` and
+`POST /api/v1/integrations:batchDelete`. The CLI uses the same routes
+(`kudurru get integrations`, `kudurru apply -f`, `kudurru delete
+integrations NAME`). The rules are those of every object write:
+
+- `integrations.write` creates and replaces, `integrations.delete` deletes.
+  A write that binds or changes `spec.credentials` (a create with
+  credentials, an added, removed or changed reference) also needs
+  `integrations.secrets`, because a reference can name any credential this
+  node's allowlist grants. A write that keeps the stored references needs
+  only `integrations.write`. Only the built-in `admin` role holds these
+  verbs; on Kubernetes a ClusterRole can grant them separately.
+- Credentials are references only (`file` or `env`). There is no field for a
+  value; a document that carries one is refused with `400`, and no refusal
+  repeats a string from `spec.credentials`. Reads return the references, never
+  the resolved bytes, and the audit row of the write holds the same document.
+- A new Integration needs a license that covers integrations (`402
+  license_required` otherwise). Replacing and deleting one do not, so an
+  operator without a license can still suspend an instance, change its
+  deletion policy or remove it.
+- `If-Match` binds the stored `resourceVersion` exactly (`412` otherwise), and
+  an Integration that a file or another manager owns answers `409 managed_by`.
+  On SQLite the write runs in the current command: the original credential is
+  re-authorized against the object the command reads, and the object, its
+  reserved finalizer (with `deletionPolicy: Delete`) and its audit row commit
+  together. An enrolled follower forwards these writes to its primary like any
+  object write; the provider commands (`check`, `preview`, `sync`, actions,
+  `release`) stay primary-only.
+
+`GET /api/v1/integrations/manifests` (`integrations.read`, `kudurru
+integrations manifests`) lists the provider types of this build with their
+configuration schema, credential keys and which are required, and what this
+node's host refuses: on Kubernetes the release namespace is the only one that
+runs, webhook instances are unsupported and `spec.unifi.inventory` is refused;
+UniFi push fields are refused on both drivers. It also reports whether the
+license covers integrations and which reference forms this node resolves; the
+allowlisted file paths and environment names are included only for a caller
+that holds `integrations.secrets`.
 
 ## Tier-B webhook clients and actions
 

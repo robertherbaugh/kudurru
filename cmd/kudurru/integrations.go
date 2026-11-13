@@ -49,6 +49,40 @@ func newIntegrationsCmd(o *cliOpts) *cobra.Command {
 		})
 	}}
 	group.AddCommand(list)
+	manifests := &cobra.Command{Use: "manifests", Short: "List provider types and what this node's integration host refuses", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		c, _, err := o.client()
+		if err != nil {
+			return err
+		}
+		raw, err := c.IntegrationCall(cmd.Context(), http.MethodGet, "/integrations/manifests", nil, nil)
+		if err != nil {
+			return err
+		}
+		return o.render(cmd, raw, func(bool) (*cli.Table, error) {
+			var body api.IntegrationManifests
+			if err := json.Unmarshal(raw, &body); err != nil {
+				return nil, err
+			}
+			table := &cli.Table{Headers: []string{"TYPE", "NAME", "CAPABILITIES", "CREDENTIALS", "SUPPORTED", "REFUSED"}}
+			for _, item := range body.Items {
+				var credentials []string
+				for _, k := range item.Credentials {
+					name := k.Name
+					if k.Required {
+						name += " (required)"
+					}
+					credentials = append(credentials, name)
+				}
+				supported := "yes"
+				if !item.Supported {
+					supported = "no: " + item.Reason
+				}
+				table.Add(item.Type, item.DisplayName, strings.Join(item.Capabilities, ","), dashIfEmpty(strings.Join(credentials, ", ")), supported, dashIfEmpty(strings.Join(item.Refused, ", ")))
+			}
+			return table, nil
+		})
+	}}
+	group.AddCommand(manifests)
 	group.AddCommand(newIntegrationWebhookCmd())
 	for _, command := range []string{"get", "check", "preview", "sync", "actions", "act", "release"} {
 		var review api.IntegrationReview
@@ -141,4 +175,11 @@ func integrationCommandHelp(command string) string {
 	default:
 		return "Invoke one advertised action without retry"
 	}
+}
+
+func dashIfEmpty(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }

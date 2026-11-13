@@ -42,7 +42,11 @@ var secretParams = map[string]bool{
 func exportObjects(cmd *cobra.Command, c *apiclient.Client, opts exportOptions) ([]map[string]any, map[string]int, error) {
 	kinds := opts.kinds
 	if len(kinds) == 0 {
-		kinds = cli.Kinds
+		for _, k := range cli.Kinds {
+			if !k.NoBackup {
+				kinds = append(kinds, k)
+			}
+		}
 	}
 	var out []map[string]any
 	counts := map[string]int{}

@@ -511,6 +511,8 @@ func publicObjectFor(kind store.Kind) store.Object {
 		return &public.ClientGroup{}
 	case "Policy":
 		return &public.Policy{}
+	case "Integration":
+		return &public.Integration{}
 	}
 	return nil
 }

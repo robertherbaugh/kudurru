@@ -144,7 +144,8 @@ func sanitizeDocument(u *unstructured.Unstructured) {
 // "unchanged" and not written. Objects managed by another writer answer
 // 409 managed_by with the owner as hint; first-boot defaults (manager
 // "bootstrap") are taken over.
-func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult, error) {
+func (s *Server) writeObject(ctx context.Context, req writeRequest) (result writeResult, err error) {
+	defer func() { err = redactIntegrationEcho(req.kind, req.body, err) }()
 	if err := s.readOnly(); err != nil {
 		return writeResult{}, err
 	}
@@ -202,6 +203,11 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult
 			// leave the zone in its group. The write takes the zone over as
 			// a whole-object PUT, as for a bootstrap default.
 			force = true
+		}
+	}
+	if integrationKind(k) {
+		if err := s.checkIntegrationWrite(ctx, key, u.Object, existing); err != nil {
+			return writeResult{}, err
 		}
 	}
 

@@ -36,6 +36,8 @@ type SecretKey struct {
 	Path string `json:"path"`
 	// Verify describes how Check validates it (e.g. "cloudflare:tokens/verify").
 	Verify string `json:"verify,omitempty"`
+	// Required mirrors the Integration CRD rule that the type needs it.
+	Required bool `json:"required,omitempty"`
 }
 
 // Manifest describes an integration type. ConfigSchema also becomes the
