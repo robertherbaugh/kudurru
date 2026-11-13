@@ -101,11 +101,9 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 	j.leaseCtx = ctx
 	h.mu.Unlock()
 	defer func() { h.mu.Lock(); j.active = false; j.provider = nil; h.mu.Unlock() }()
-	if h.opts.Refuse != nil {
-		if reason := h.opts.Refuse(instance.Definition()); reason != "" {
-			h.refuse(ctx, j, originalFrame, ExecutionGuard{Ledger: g, BundleID: instance.BundleID()}, reason)
-			return
-		}
+	if reason := j.refusal; reason != "" {
+		h.refuse(ctx, j, originalFrame, ExecutionGuard{Ledger: g, BundleID: instance.BundleID()}, reason)
+		return
 	}
 	provider, err := h.opts.Factory(instance.definition.Spec.Type)
 	if err != nil || provider == nil {
@@ -268,9 +266,13 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 
 // refuse reports a root refusal of an elected instance (Options.Refuse) and
 // publishes it through the fenced Status callback. No provider exists. A
-// refusal that could not be published marks the job, so the next capture
-// replaces it and a new term publishes again (at most once per poll interval)
-// instead of leaving the instance silently inert.
+// refusal that could not be published marks the job with a retry time, so
+// the first capture at or after it replaces the job and a new term publishes
+// again instead of leaving the instance silently inert. Consecutive failures
+// of one instance back off exponentially from one poll interval
+// (refusalBackoff), and nothing wakes the host early: a status write that
+// keeps failing (RBAC, an admission webhook, validation) costs at most one
+// Lease term, one capture and one write per backoff step.
 func (h *Host) refuse(ctx context.Context, j *job, f frame, g ExecutionGuard, reason string) {
 	h.setLocal(j, "Degraded", reason, Result{}, true)
 	statusCtx, cancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
@@ -279,12 +281,34 @@ func (h *Host) refuse(ctx context.Context, j *job, f frame, g ExecutionGuard, re
 	if err == nil {
 		err = h.publishStatus(scoped, j, g)
 	}
-	if err != nil {
-		h.mu.Lock()
-		j.refusalUnpublished = true
-		h.mu.Unlock()
-		h.Wake()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.jobs[j.key] != j {
+		return
 	}
+	if err == nil {
+		delete(h.refusalFailures, j.key)
+		return
+	}
+	failures := h.refusalFailures[j.key]
+	if failures < 32 {
+		failures++
+	}
+	h.refusalFailures[j.key] = failures
+	j.refusalUnpublished = true
+	j.refusalRetryAt = h.opts.Now().Add(refusalBackoff(h.opts.PollInterval, failures))
+}
+
+// refusalBackoff is the wait before the failures-th retry of a refusal
+// publication: one poll interval, doubled per consecutive failure, at most
+// five minutes (or one poll interval, if that is longer).
+func refusalBackoff(poll time.Duration, failures uint32) time.Duration {
+	limit := max(5*time.Minute, poll)
+	delay := poll
+	for i := uint32(1); i < failures && delay < limit; i++ {
+		delay *= 2
+	}
+	return min(delay, limit)
 }
 
 func (h *Host) execute(ctx context.Context, j *job, c command) answer {

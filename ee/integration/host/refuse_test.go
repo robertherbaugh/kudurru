@@ -189,3 +189,137 @@ func TestRefusedUnarmedDeleteInstanceReportsRefusal(t *testing.T) {
 		t.Fatal("a refused or unarmed instance constructed a provider")
 	}
 }
+
+// A refusal whose status write keeps failing (RBAC, an admission webhook,
+// validation) is retried with backoff from one poll interval, never in a hot
+// loop: every retry is a Lease term, a capture and a status write.
+func TestRefusedInstanceStatusFailureBacksOff(t *testing.T) {
+	st := memory.New()
+	in := captureInput(t, webhook("sink"))
+	r, err := ledger.New(ledger.Options{Reader: st, Write: func(ctx context.Context, _ ledger.Guard, o store.Object, a store.ApplyOptions) (store.Object, error) {
+		return st.Apply(ctx, o, a)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const poll = 20 * time.Millisecond
+	var factories, attempts, captures atomic.Int32
+	h, err := New(Options{Capture: func(context.Context) (Input, error) { captures.Add(1); return in, nil }, Factory: func(string) (integration.Integration, error) {
+		factories.Add(1)
+		return &fakePublisher{start: func(ctx context.Context) error { <-ctx.Done(); return nil }}, nil
+	}, Elector: st.Elector, Fence: func(context.Context, ExecutionGuard) error { return nil }, Ledger: r, Reader: st, Allowed: func() bool { return true },
+		Refuse: func(*public.Integration) string { return "UnsupportedOnKubernetes" },
+		Status: func(context.Context, ExecutionGuard, InstanceStatus) error {
+			attempts.Add(1)
+			return errors.New("admission webhook denied the request")
+		}, PollInterval: poll, OperationTimeout: time.Second, StopTimeout: time.Second, MaxConcurrent: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- h.Run(ctx) }()
+	const window = 1500 * time.Millisecond
+	time.Sleep(window)
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	// Backoff 20, 40, 80, 160, 320, 640 ms: at most seven attempts fit in
+	// the window (the first is immediate); without backoff there are
+	// thousands. A ticker tick may arrive just before a retry is due, so
+	// fewer is fine, but the refusal must be retried at all.
+	got, captured := attempts.Load(), captures.Load()
+	t.Logf("status attempts %d, captures %d in %v", got, captured, window)
+	if got < 3 || got > 7 {
+		t.Fatalf("refusal status attempts %d in %v, want 3 to 7 (backoff from one poll interval)", got, window)
+	}
+	// One capture per tick plus the replacement's wake per attempt.
+	if limit := int32(window/poll) + 2*got + 2; captured > limit {
+		t.Fatalf("captures %d in %v, want at most %d", captured, window, limit)
+	}
+	if factories.Load() != 0 {
+		t.Fatal("a refused instance constructed a provider")
+	}
+	h.mu.RLock()
+	failures := h.refusalFailures[instanceKey(InstanceID{Namespace: "dns", Name: "sink"})]
+	h.mu.RUnlock()
+	if failures != uint32(got) {
+		t.Fatalf("consecutive failures %d, attempts %d", failures, got)
+	}
+}
+
+func TestRefusalBackoffBounds(t *testing.T) {
+	for _, tc := range []struct {
+		poll     time.Duration
+		failures uint32
+		want     time.Duration
+	}{
+		{2 * time.Second, 1, 2 * time.Second},
+		{2 * time.Second, 2, 4 * time.Second},
+		{2 * time.Second, 8, 256 * time.Second},
+		{2 * time.Second, 9, 5 * time.Minute},
+		{2 * time.Second, 32, 5 * time.Minute},
+		{10 * time.Minute, 3, 10 * time.Minute},
+	} {
+		if got := refusalBackoff(tc.poll, tc.failures); got != tc.want {
+			t.Errorf("refusalBackoff(%v, %d) = %v, want %v", tc.poll, tc.failures, got, tc.want)
+		}
+	}
+}
+
+// A refusal that depends on the capture (D384: a reported source conflict)
+// is asked after every capture: a running job whose instance becomes refused
+// is replaced, its provider stopped, and the refusal published; once the
+// refusal clears, a new job constructs a provider again.
+func TestCaptureDependentRefusalReplacesJob(t *testing.T) {
+	st := memory.New()
+	in := captureInput(t, webhook("sink"))
+	r, err := ledger.New(ledger.Options{Reader: st, Write: func(ctx context.Context, _ ledger.Guard, o store.Object, a store.ApplyOptions) (store.Object, error) {
+		return st.Apply(ctx, o, a)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var refused atomic.Bool
+	var factories, running, published atomic.Int32
+	h, err := New(Options{Capture: func(context.Context) (Input, error) { return in, nil }, Factory: func(string) (integration.Integration, error) {
+		factories.Add(1)
+		return &fakePublisher{start: func(ctx context.Context) error { running.Add(1); <-ctx.Done(); running.Add(-1); return nil }}, nil
+	}, Elector: st.Elector, Fence: func(context.Context, ExecutionGuard) error { return nil }, Ledger: r, Reader: st, Allowed: func() bool { return true },
+		Refuse: func(*public.Integration) string {
+			if refused.Load() {
+				return "SourceConflicted"
+			}
+			return ""
+		},
+		Status: func(_ context.Context, _ ExecutionGuard, s InstanceStatus) error {
+			if s.Reason == "SourceConflicted" {
+				published.Add(1)
+			}
+			return nil
+		}, PollInterval: 5 * time.Millisecond, OperationTimeout: time.Second, StopTimeout: time.Second, MaxConcurrent: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- h.Run(ctx) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	waitFor(t, func() bool { return running.Load() == 1 })
+	refused.Store(true)
+	waitFor(t, func() bool { return running.Load() == 0 && published.Load() == 1 })
+	if n := factories.Load(); n != 1 {
+		t.Fatal("a refused job constructed a provider", n)
+	}
+	refused.Store(false)
+	waitFor(t, func() bool { return running.Load() == 1 && factories.Load() == 2 })
+	if published.Load() != 1 {
+		t.Fatal("the refusal was published again", published.Load())
+	}
+}

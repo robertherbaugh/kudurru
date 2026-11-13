@@ -188,6 +188,9 @@ type Options struct {
 	// constructed; the job reports the reason as Degraded and publishes it
 	// once through Status under its lease, so an operator sees the refusal on
 	// the object instead of an inert instance. "" means the instance may run.
+	// The host asks right after each capture and keeps the answer with the
+	// job's frame; a job whose answer changes is replaced, so a reason may
+	// depend on the capture (D384: a reported source conflict).
 	Refuse func(*public.Integration) string
 	// Purge and Finalize end a terminating instance (D367); set both or
 	// neither. Without them a terminating instance is only paused, as before.
@@ -225,10 +228,13 @@ type Host struct {
 	incarnation string
 	// forgetBatch is how many operations a cleanup run reads to forget them
 	// together with their ledger rows (D367).
-	forgetBatch     int
-	mu              sync.RWMutex
-	jobs            map[string]*job
-	statuses        map[string]InstanceStatus
+	forgetBatch int
+	mu          sync.RWMutex
+	jobs        map[string]*job
+	statuses    map[string]InstanceStatus
+	// refusalFailures counts consecutive failed refusal publications per
+	// instance name, across the jobs that replace each other, for backoff.
+	refusalFailures map[string]uint32
 	wake            chan struct{}
 	slots           chan struct{}
 	running         atomic.Bool
@@ -254,9 +260,14 @@ type job struct {
 	leaseCtx     context.Context
 	active       bool
 	provider     integration.Integration
-	// refusalUnpublished is set when a root refusal (Options.Refuse) could
-	// not be published; the next capture replaces the job so it is retried.
+	// refusal is root's refusal (Options.Refuse) of the frame's instance,
+	// asked when the frame was captured; "" means the instance may run.
+	refusal string
+	// refusalUnpublished is set when a root refusal could not be published;
+	// the first capture at or after refusalRetryAt replaces the job, so a new
+	// term publishes it again with exponential backoff (refusalBackoff).
 	refusalUnpublished bool
+	refusalRetryAt     time.Time
 }
 type command struct {
 	ctx                    context.Context
@@ -329,5 +340,5 @@ func New(o Options) (*Host, error) {
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return nil, ErrInvalid
 	}
-	return &Host{incarnation: hex.EncodeToString(nonce[:]), opts: o, forgetBatch: 4096, jobs: map[string]*job{}, statuses: map[string]InstanceStatus{}, wake: make(chan struct{}, 1), slots: make(chan struct{}, o.MaxConcurrent)}, nil
+	return &Host{incarnation: hex.EncodeToString(nonce[:]), opts: o, forgetBatch: 4096, jobs: map[string]*job{}, statuses: map[string]InstanceStatus{}, refusalFailures: map[string]uint32{}, wake: make(chan struct{}, 1), slots: make(chan struct{}, o.MaxConcurrent)}, nil
 }

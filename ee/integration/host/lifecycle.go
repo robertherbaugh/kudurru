@@ -121,7 +121,7 @@ func (h *Host) refresh(ctx context.Context) {
 		}
 		// A job is its instance in one mode. A delete request, a release and
 		// the end of either replace the job like any other change of authority.
-		if !exists || !sameInstance(j.frame.instance, i) || !next.run || next.mode != j.mode {
+		if !exists || !sameInstance(j.frame.instance, i) || !next.run || next.mode != j.mode || j.mode == GuardNormal && h.refusalOf(i) != j.refusal {
 			j.cancel()
 			// Never replace a name while an old provider may still be quiescing.
 			select {
@@ -137,12 +137,13 @@ func (h *Host) refresh(ctx context.Context) {
 				nextDigest = digest
 			}
 			changed := j.sourceDigest != nextDigest
-			if !j.active && (changed || j.frame.input.BundleID != i.BundleID() || j.refusalUnpublished) {
+			if !j.active && (changed || j.frame.input.BundleID != i.BundleID() || j.refusalUnpublished && !h.opts.Now().Before(j.refusalRetryAt)) {
 				// A setup refusal releases its callback, not the elector's Run.
 				// Changed authority must join that old election before a new
 				// lifecycle can start; unchanged refused work is never replayed.
 				// A root refusal whose status write failed is the exception: it
-				// makes no provider call, and a new term only reports it again.
+				// makes no provider call, and a new term only reports it again,
+				// once its backoff has passed (refuse).
 				j.cancel()
 				continue
 			}
@@ -186,6 +187,11 @@ func (h *Host) refresh(ctx context.Context) {
 			delete(h.statuses, key)
 		}
 	}
+	for key := range h.refusalFailures {
+		if _, ok := desired[key]; !ok {
+			delete(h.refusalFailures, key)
+		}
+	}
 	for key, i := range desired {
 		if _, exists := h.jobs[key]; exists {
 			continue
@@ -202,7 +208,7 @@ func (h *Host) refresh(ctx context.Context) {
 		}
 		nextInput := input
 		nextInput.BundleID = i.BundleID()
-		j := &job{key: key, mode: next.mode, frame: frame{i, nextInput}, sourceDigest: digest, ctx: jobCtx, cancel: cancel, done: make(chan struct{}), commands: make(chan command, 8), reconcile: make(chan struct{}, 1)}
+		j := &job{key: key, mode: next.mode, refusal: h.refusalOf(i), frame: frame{i, nextInput}, sourceDigest: digest, ctx: jobCtx, cancel: cancel, done: make(chan struct{}), commands: make(chan command, 8), reconcile: make(chan struct{}, 1)}
 		h.jobs[key] = j
 		phase := "Waiting"
 		if next.mode != GuardNormal {
@@ -211,6 +217,15 @@ func (h *Host) refresh(ctx context.Context) {
 		h.statuses[key] = InstanceStatus{Owner: i.owner, Revision: i.definition.ResourceVersion, Phase: phase, Reason: "Election", CredentialFingerprints: i.CredentialFingerprints()}
 		go h.elect(j)
 	}
+}
+
+// refusalOf is root's refusal of a captured instance (Options.Refuse), asked
+// with the capture it belongs to.
+func (h *Host) refusalOf(i *Instance) string {
+	if h.opts.Refuse == nil {
+		return ""
+	}
+	return h.opts.Refuse(i.definition)
 }
 
 // disposition is what the host does with one captured instance: run a job in
@@ -257,7 +272,7 @@ func (h *Host) disposition(i *Instance) disposition {
 		reason = "LicenseUnavailable"
 	case d.Spec.Suspend:
 		reason = "Suspended"
-	case h.opts.Finalize != nil && store.ReservedFinalizerUnarmed(d) && (h.opts.Refuse == nil || h.opts.Refuse(d) == ""):
+	case h.opts.Finalize != nil && store.ReservedFinalizerUnarmed(d) && h.refusalOf(i) == "":
 		// The policy promises cleanup, but the object does not carry the
 		// finalizer that keeps the promise through a delete. Root refuses
 		// every effect of such an instance; say why instead of failing setup.
