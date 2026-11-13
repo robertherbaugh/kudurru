@@ -202,12 +202,17 @@ func (e *enrolledAnchors) awaitValidated(node *kudurrutest.Node, why string) {
 // answer or no answer at all (a timeout, a closed TCP connection) fails. The
 // only window allowed is the start of the process, before its first
 // publication: its listeners answer SERVFAIL until then (startup gap). A node
-// that is not validated when sampling stops fails as well.
+// that is not validated when sampling stops fails as well. A SERVFAIL whose
+// extended error says that the stand-in root did not answer the node's
+// resolver (anchorRootUnanswered: the root, in the loaded test process, timed
+// out) is an upstream failure the node reports correctly; such samples are
+// counted and logged, not failed.
 type validatedSamples struct {
 	samples, dnsOnly int  // judged samples, and those validated while DNS-only
 	failed           bool // a failing sample after the first publication, or not validated at stop
 	why              string
 	startup          []validatedGap // non-validated runs before the first publication
+	unanswered       []string       // samples the stand-in root did not answer in time
 }
 
 // validatedGap is a run of judged samples that were not validated, from its
@@ -231,10 +236,13 @@ func (r validatedSamples) judge(t *testing.T, name string, dnsOnly bool) {
 	for _, g := range r.startup {
 		t.Logf("%s: startup answers before its first publication: %s", name, g)
 	}
+	for _, u := range r.unanswered {
+		t.Logf("%s: the stand-in root did not answer the node's resolver: %s", name, u)
+	}
 	if r.failed || r.samples == 0 || (dnsOnly && r.dnsOnly == 0) {
 		t.Fatalf("%s did not answer validated recursion: %d samples, %d validated while DNS-only, failed %v (%s)", name, r.samples, r.dnsOnly, r.failed, r.why)
 	}
-	t.Logf("%s: %d judged samples, all validated after its first publication, %d while DNS-only", name, r.samples, r.dnsOnly)
+	t.Logf("%s: %d judged samples, all validated after its first publication except %d the stand-in root did not answer, %d while DNS-only", name, r.samples, len(r.unanswered), r.dnsOnly)
 }
 
 func (e *enrolledAnchors) sampleValidated(node *kudurrutest.Node) (stop func() validatedSamples) {
@@ -294,6 +302,8 @@ func (e *enrolledAnchors) sampleValidated(node *kudurrutest.Node) (stop func() v
 					}
 				case kind == anchorProbeWrong:
 					fail(now, why)
+				case kind == anchorProbeRootUnanswered && served:
+					r.unanswered = append(r.unanswered, now.Format("15:04:05.000")+" "+why)
 				case served:
 					// After the first publication nothing but a validated
 					// answer is acceptable, no answer included.
