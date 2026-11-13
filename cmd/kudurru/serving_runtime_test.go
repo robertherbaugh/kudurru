@@ -82,6 +82,10 @@ func newServingRuntimeFixtureProviders(t *testing.T, identityProvider bool) *ser
 		t.Fatal(err)
 	}
 	static := providerStaticFixture(t)
+	// A private data directory, set before the runtime is built: the member
+	// listener and activation read the member identity there, and a running
+	// runtime's host configuration must not be written (joinPrimaryOn).
+	static.Config.Node.DataDir = t.TempDir()
 	if identityProvider {
 		static.Config.Auth.IdentityProviders = []map[string]any{{"id": "corp", "issuer": "https://issuer.example", "clientID": "browser", "clientSecretFile": filepath.Join(t.TempDir(), "absent-secret")}}
 	}
