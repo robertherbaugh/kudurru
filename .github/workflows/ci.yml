@@ -109,6 +109,7 @@ jobs:
         run: |
           python3 -m unittest discover -s hack -p test_go_test.py
           python3 -B -m unittest discover -s hack -p 'test_bench_*.py'
+          python3 -B -m unittest discover -s hack -p test_sync_version.py
           make test TEST_PKGS="$(hack/go-test-shard.sh "$SHARD" 2 | tr '\n' ' ')"
       # Only what this run used: go marks a cache entry used by touching it
       # (when it is over an hour old), so the cache does not grow forever.
@@ -489,11 +490,8 @@ jobs:
           key: deploy-${{ runner.os }}-${{ hashFiles('Makefile') }}
       - name: Render matrix, kustomize overlays, kubeconform
         run: make helm-check
-      # hack/sync-version.py: its unit tests, then the script on this tree.
-      # The go job runs the same tests through deploy.TestVersionSyncScript,
-      # without a line of its own in the log; this step shows their result.
-      - name: Version synchronization unit tests
-        run: python3 -B -m unittest discover -s hack -p test_sync_version.py
+      # hack/sync-version.py on this tree; its unit tests run in the go job's
+      # Test step with the other hack/ tests.
       - name: Release version references are current
         run: make version-check
       # TestChartUpgradeV01FixtureMatchesTag compares testdata/v0.1.0/chart
