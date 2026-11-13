@@ -190,3 +190,44 @@ func TestPerInstanceAuthorityDigestDoesNotChangeOtherGuard(t *testing.T) {
 		t.Fatal("invalid authority digest admitted", err)
 	}
 }
+
+// An instance root refuses outright (Input.WithoutCredentials, D384) has its
+// references left unresolved: no secret, no fingerprint, and no credential
+// error, so its refusal, not CredentialsUnavailable, is what it reports.
+func TestCaptureWithoutCredentialsLeavesReferencesUnresolved(t *testing.T) {
+	refused, accepted := cloudflare("refused"), cloudflare("accepted")
+	refused.UID, accepted.UID = "uid-refused", "uid-accepted"
+	in := captureInput(t, refused, accepted)
+	reads := 0
+	r, err := credentials.New(credentials.Options{Environment: []string{"TEST_TOKEN"}, FingerprintKey: []byte(strings.Repeat("k", 32)), Getenv: func(name string) (string, bool) { reads++; return "private-token-A", name == "TEST_TOKEN" }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	in.Credentials = r
+	in.WithoutCredentials = func(d *public.Integration) bool { return d.Name == "refused" }
+	instances, err := CaptureInstances(context.Background(), in)
+	if err != nil || len(instances) != 2 {
+		t.Fatal(instances, err)
+	}
+	for _, i := range instances {
+		switch i.Definition().Name {
+		case "refused":
+			if len(i.CredentialFingerprints()) != 0 || i.credentialError || len(i.secrets) != 0 {
+				t.Fatalf("a credentialless instance resolved its reference: fingerprints=%d error=%v", len(i.CredentialFingerprints()), i.credentialError)
+			}
+		case "accepted":
+			if len(i.CredentialFingerprints()) != 1 || i.credentialError {
+				t.Fatal("the accepted instance lost its credential")
+			}
+		}
+	}
+	if reads != 1 {
+		t.Fatal("credential reads", reads)
+	}
+	// Without the predicate the same capture resolves both.
+	in.WithoutCredentials = nil
+	instances, err = CaptureInstances(context.Background(), in)
+	if err != nil || len(instances[0].CredentialFingerprints()) != 1 || len(instances[1].CredentialFingerprints()) != 1 {
+		t.Fatal("control capture", err)
+	}
+}

@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -102,7 +104,10 @@ func (p *fenceTestProvider) Stop(context.Context) error { return nil }
 // is written. The changes: the Lease rewritten to another holder while the
 // term context is still live; the Integration deleted and re-created under
 // the same name; its spec changed; only its resourceVersion changed; a
-// captured record set's spec changed; the captured license expired. A
+// captured record set's spec changed; a captured record set reported
+// Duplicated by the controller (status only); the captured license expired.
+// The license line of check itself is driven directly with a lapsed
+// original cut while the latest capture is current. A
 // controller status write on a captured record set, which changes no
 // published input, does not fence. An unchanged control passes every step.
 func TestKubeIntegrationFenceRefusesChangedAuthority(t *testing.T) {
@@ -150,6 +155,7 @@ func TestKubeIntegrationFenceRefusesChangedAuthority(t *testing.T) {
 	type harness struct {
 		name    string
 		store   *kube.Store
+		root    *kubeIntegrationRuntime
 		cache   *fenceTestCache
 		start   fenceTestStart
 		advance func(time.Duration)
@@ -231,7 +237,7 @@ func TestKubeIntegrationFenceRefusesChangedAuthority(t *testing.T) {
 			}
 		}()
 		t.Cleanup(func() { cancel(); wg.Wait() })
-		h := &harness{name: name, store: st, cache: cache, advance: func(d time.Duration) { offset.Add(int64(d)) }, objects: objects}
+		h := &harness{name: name, store: st, root: r, cache: cache, advance: func(d time.Duration) { offset.Add(int64(d)) }, objects: objects}
 		select {
 		case h.start = <-started:
 		case <-time.After(60 * time.Second):
@@ -399,13 +405,61 @@ func TestKubeIntegrationFenceRefusesChangedAuthority(t *testing.T) {
 		h.advance(24*time.Hour + license.Grace + time.Minute)
 		refused(t, h)
 	})
+	// The identity of a source leaves its status out, so a conflict the
+	// controller reports after the capture is read from the live snapshot
+	// by check: the next effect is fenced, before any new capture.
+	t.Run("source-conflict-reported", func(t *testing.T) {
+		h := setup(t, "conflict")
+		var rs public.DNSRecordSet
+		if err := admin.Get(t.Context(), client.ObjectKey{Namespace: "default", Name: "fence-conflict"}, &rs); err != nil {
+			t.Fatal(err)
+		}
+		rs.Status.ObservedGeneration = rs.Generation
+		meta.SetStatusCondition(&rs.Status.Conditions, metav1.Condition{Type: public.ConditionDegraded, Status: metav1.ConditionTrue, Reason: public.ReasonDuplicated, Message: "test", ObservedGeneration: rs.Generation})
+		if err := admin.Status().Update(t.Context(), &rs); err != nil {
+			t.Fatal(err)
+		}
+		h.cache.publish(t, h.objects())
+		refused(t, h)
+	})
+	// The license line of check itself: with the latest capture current, a
+	// request whose original cut's license is no longer current is fenced
+	// by that line alone. Every earlier step passes, as the control shows.
+	t.Run("license-line-in-check", func(t *testing.T) {
+		h := setup(t, "cutlicense")
+		h.root.mu.RLock()
+		c := h.root.cut
+		h.root.mu.RUnlock()
+		var owner ih.InstanceID
+		var revision string
+		for o, i := range c.instances {
+			owner, revision = o, i.Definition().ResourceVersion
+		}
+		capture, err := h.root.host.CaptureCommand(t.Context(), owner, revision)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, g, err := capture.Bind(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := h.root.check(t.Context(), h.start.ctx, g, c, false); err != nil {
+			t.Fatal("the control check was refused:", err)
+		}
+		lapsed := *c
+		lapsed.license = license.Cut{}
+		if err := h.root.check(t.Context(), h.start.ctx, g, &lapsed, false); !errors.Is(err, ih.ErrFenced) {
+			t.Fatal("an original cut whose license is not current passed check:", err)
+		}
+	})
 }
 
-// Kubernetes source selection refuses, like SQLite's duplicated projection,
-// while the controller reports for an admitted record set's current
-// generation that the zone drops or rejects part of it. A stale report (an
-// older generation), a healthy one and a status-only change do not block, and
-// a status write does not change a source's identity (D384).
+// Kubernetes source selection names, like SQLite's duplicated projection
+// refusal, every admitted record set for whose current generation the
+// controller reports that the zone drops or rejects part of it; the capture
+// then refuses every publisher (SourceConflicted). A stale report (an older
+// generation), a healthy one and a status-only change do not block, and a
+// status write does not change a source's identity (D384).
 func TestKubeIntegrationSourcesHonorReportedConflicts(t *testing.T) {
 	z := &public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "home", UID: "z", ResourceVersion: "1"}, Spec: public.DNSZoneSpec{Type: public.ZoneTypePrimary, ZoneName: "example.", Nameservers: []string{"ns.example."}}}
 	record := func(name string, generation int64, conditions ...metav1.Condition) *public.DNSRecordSet {
@@ -416,7 +470,7 @@ func TestKubeIntegrationSourcesHonorReportedConflicts(t *testing.T) {
 	occluded := metav1.Condition{Type: public.ConditionReady, Status: metav1.ConditionFalse, Reason: public.ReasonOccluded, ObservedGeneration: 2}
 	staleDuplicated := duplicated
 	staleDuplicated.ObservedGeneration = 1
-	sources := func(records ...*public.DNSRecordSet) ([]plan.Source, error) {
+	sources := func(records ...*public.DNSRecordSet) ([]plan.Source, []string, error) {
 		objects := []store.Object{z}
 		for _, r := range records {
 			objects = append(objects, r)
@@ -428,21 +482,26 @@ func TestKubeIntegrationSourcesHonorReportedConflicts(t *testing.T) {
 		return kubeIntegrationSources(snap.Objects)
 	}
 	for name, tc := range map[string]struct {
-		records []*public.DNSRecordSet
-		want    int
-		err     error
+		records    []*public.DNSRecordSet
+		want       int
+		conflicted []string
 	}{
 		"healthy":              {[]*public.DNSRecordSet{record("a", 2, serving)}, 1, nil},
 		"not reported yet":     {[]*public.DNSRecordSet{record("a", 2)}, 1, nil},
-		"duplicated":           {[]*public.DNSRecordSet{record("a", 2, serving), record("b", 2, serving, duplicated)}, 0, ih.ErrUnavailable},
-		"occluded":             {[]*public.DNSRecordSet{record("a", 2, occluded)}, 0, ih.ErrUnavailable},
+		"duplicated":           {[]*public.DNSRecordSet{record("a", 2, serving), record("b", 2, serving, duplicated)}, 1, []string{"default/b (Duplicated)"}},
+		"occluded":             {[]*public.DNSRecordSet{record("a", 2, occluded)}, 0, []string{"default/a (Occluded)"}},
 		"stale report":         {[]*public.DNSRecordSet{record("a", 2, staleDuplicated)}, 1, nil},
 		"duplicate unreported": {[]*public.DNSRecordSet{record("a", 2), record("b", 2)}, 2, nil},
 	} {
-		got, err := sources(tc.records...)
-		if !errors.Is(err, tc.err) || len(got) != tc.want {
-			t.Errorf("%s: %d sources, %v; want %d, %v", name, len(got), err, tc.want, tc.err)
+		got, conflicted, err := sources(tc.records...)
+		if err != nil || len(got) != tc.want || !slices.Equal(conflicted, tc.conflicted) {
+			t.Errorf("%s: %d sources, conflicted %v, %v; want %d, %v", name, len(got), conflicted, err, tc.want, tc.conflicted)
 		}
+	}
+	// The message names at most five record sets and counts the rest.
+	many := []string{"n/1 (Invalid)", "n/2 (Invalid)", "n/3 (Invalid)", "n/4 (Invalid)", "n/5 (Invalid)", "n/6 (Invalid)", "n/7 (Invalid)"}
+	if m := kubeConflictMessage(many); !strings.Contains(m, "n/5 (Invalid) and 2 more") || strings.Contains(m, "n/6") {
+		t.Error("conflict message", m)
 	}
 	healthy := record("a", 2, serving)
 	written := healthy.DeepCopy()

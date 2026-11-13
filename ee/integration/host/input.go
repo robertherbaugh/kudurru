@@ -50,6 +50,12 @@ type Input struct {
 	// authority dependencies. Root must still validate original object versions
 	// at effects; equal authority never permits replacing held request inputs.
 	AuthorityDigests map[InstanceID]string
+	// WithoutCredentials, when set, names the instances root refuses outright
+	// (D384): their credential references are not resolved, they carry no
+	// credential fingerprints, and a missing credential does not pause them,
+	// so their refusal is still reported. Root must not resolve their
+	// references into Credentials either.
+	WithoutCredentials func(*public.Integration) bool `json:"-"`
 	// Resource is a root-owned immutable resource captured with these objects.
 	// It is retained by original request frames, never serialized or acquired.
 	Resource any `json:"-"`
@@ -123,12 +129,16 @@ func CaptureInstances(ctx context.Context, in Input) ([]*Instance, error) {
 			i.bundleID = kinds.Digest([]byte(in.BundleID + "/" + digest))
 		}
 		names := slices.Sorted(maps.Keys(d.Spec.Credentials))
-		if d.Spec.Type == "cloudflare" && d.Spec.Credentials["apiToken"] == (public.CredentialReference{}) || d.Spec.Type == "unifi" && d.Spec.Credentials["apiKey"] == (public.CredentialReference{}) {
+		credentialless := in.WithoutCredentials != nil && in.WithoutCredentials(d)
+		if !credentialless && (d.Spec.Type == "cloudflare" && d.Spec.Credentials["apiToken"] == (public.CredentialReference{}) || d.Spec.Type == "unifi" && d.Spec.Credentials["apiKey"] == (public.CredentialReference{})) {
 			i.credentialError = true
 		}
 		for _, name := range names {
 			if name == "" || len(name) > 128 || strings.ContainsAny(name, "\x00\r\n\t ") {
 				return nil, ErrInvalid
+			}
+			if credentialless {
+				continue
 			}
 			if in.Credentials == nil {
 				i.credentialError = true

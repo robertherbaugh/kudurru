@@ -249,7 +249,7 @@ func (r *kubeIntegrationRuntime) armCleanup(ctx context.Context) {
 	licensed := lc.Current() && lc.Status().Allows(license.FeatureIntegrations)
 	for _, obj := range snap.Objects.List("Integration") {
 		d, ok := obj.(*public.Integration)
-		if !ok || !d.DeletionTimestamp.IsZero() || r.refusal(d) != "" {
+		if !ok || !d.DeletionTimestamp.IsZero() || kubeIntegrationRefusal(r.opts.Namespace, d) != "" {
 			continue
 		}
 		has := store.HasFinalizer(d, store.IntegrationCleanupFinalizer)

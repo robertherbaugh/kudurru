@@ -6,7 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,6 +40,9 @@ const (
 	reasonUnsupportedOnKubernetes = "UnsupportedOnKubernetes"
 	reasonRecordsUnsupported      = "RecordPublicationUnsupportedOnKubernetes"
 	reasonNamespaceNotAllowed     = "NamespaceNotAllowed"
+	// reasonSourceConflicted halts every publisher while the controller
+	// reports an admitted record set the zone does not serve as written.
+	reasonSourceConflicted = "SourceConflicted"
 )
 
 // kubeIntegrationCache is the part of the replica's zonecache the root
@@ -102,6 +107,10 @@ type kubeIntegrationCut struct {
 	license   license.Cut
 	instances map[kinds.Owner]*ih.Instance
 	sources   []plan.Source
+	// conflict, when set, says which admitted record sets the controller
+	// reports duplicated, occluded or invalid; every publisher of this cut is
+	// refused with reasonSourceConflicted and the message (D384).
+	conflict string
 }
 
 type kubeIntegrationRequestKey struct{}
@@ -171,33 +180,67 @@ func (r *kubeIntegrationRuntime) Run(ctx context.Context) error {
 	return err
 }
 
-// refusal names what does not run on Kubernetes. An Integration outside the
-// release namespace never runs with the node's credential allowlist (see
-// kubeIntegrationOptions.Namespace). Webhook (Tier-B) instances need the
-// hook event producer, which reads SQLite's change feed. A UniFi instance
-// with spec.unifi.inventory publishes source-owned DNS records and reverse
-// zones, which this store does not certify yet; UniFi inventory and group
-// observation without it runs (F09b-K4).
+// refusal names what does not run on Kubernetes, for the latest capture
+// (ih.Options.Refuse; the host asks right after each capture). An
+// Integration outside the release namespace never runs with the node's
+// credential allowlist (see kubeIntegrationOptions.Namespace). Webhook
+// (Tier-B) instances need the hook event producer, which reads SQLite's
+// change feed. A UniFi instance with spec.unifi.inventory publishes
+// source-owned DNS records and reverse zones, which this store does not
+// certify yet; UniFi inventory and group observation without it runs
+// (F09b-K4). A publisher is refused while its capture holds a reported
+// source conflict (kubeIntegrationCut.conflict).
 func (r *kubeIntegrationRuntime) refusal(d *public.Integration) string {
-	return kubeIntegrationRefusal(r.opts.Namespace, d)
+	r.mu.RLock()
+	c := r.cut
+	r.mu.RUnlock()
+	return r.refusalIn(c, d)
 }
 
-// refusedFor reports whether root's refusal of d fences an effect under
-// mode. A release needs no provider and is never refused. A cleanup is
-// admitted for one refusal only: a UniFi instance that was armed for Delete
-// and later gained spec.unifi.inventory. It is not a publisher, so its
-// cleanup is the local purge of its source carriers and the finalizer
+// refusalIn is refusal for the capture c: the static refusal of the object,
+// or, for a live publisher, the conflict c reports.
+func (r *kubeIntegrationRuntime) refusalIn(c *kubeIntegrationCut, d *public.Integration) string {
+	if reason := kubeIntegrationRefusal(r.opts.Namespace, d); reason != "" {
+		return reason
+	}
+	if c != nil && c.conflict != "" && integrationPublishes(d) && d.DeletionTimestamp.IsZero() {
+		return reasonSourceConflicted
+	}
+	return ""
+}
+
+// refusedFor reports whether root's refusal of d in the capture c fences an
+// effect under mode. A release needs no provider and is never refused. A
+// cleanup is admitted for one refusal only: a UniFi instance that was armed
+// for Delete and later gained spec.unifi.inventory. It is not a publisher,
+// so its cleanup is the local purge of its source carriers and the finalizer
 // removal, with no provider request; refusing it would leave the object
-// Terminating with its carriers in place.
-func (r *kubeIntegrationRuntime) refusedFor(mode ih.GuardMode, d *public.Integration) bool {
-	reason := r.refusal(d)
+// Terminating with its carriers in place. A source conflict never refuses a
+// terminating publisher: its cleanup reads only its ledger.
+func (r *kubeIntegrationRuntime) refusedFor(c *kubeIntegrationCut, mode ih.GuardMode, d *public.Integration) bool {
+	reason := r.refusalIn(c, d)
 	switch {
 	case reason == "", mode == ih.GuardRelease:
 		return false
-	case mode == ih.GuardCleanup && reason == reasonRecordsUnsupported && !integrationPublishes(d) && !d.DeletionTimestamp.IsZero():
+	case mode == ih.GuardCleanup && kubeRefusalAdmitsCleanup(reason, d):
 		return false
 	}
 	return true
+}
+
+func kubeRefusalAdmitsCleanup(reason string, d *public.Integration) bool {
+	return reason == reasonRecordsUnsupported && !integrationPublishes(d) && !d.DeletionTimestamp.IsZero()
+}
+
+// kubeIntegrationCredentialless reports whether d is refused outright on
+// this store, whatever the capture: it never runs a provider, so its
+// credential references are not resolved and no fingerprint of the node's
+// allowlisted credentials is written to its status (D384). The cleanup
+// refusedFor admits makes no provider request either, but it keeps its
+// references, as before.
+func kubeIntegrationCredentialless(namespace string, d *public.Integration) bool {
+	reason := kubeIntegrationRefusal(namespace, d)
+	return reason != "" && !kubeRefusalAdmitsCleanup(reason, d)
 }
 
 func kubeIntegrationRefusal(namespace string, d *public.Integration) string {
@@ -243,9 +286,12 @@ func (r *kubeIntegrationRuntime) capture(ctx context.Context) (ih.Input, error) 
 	if !lc.Current() {
 		return ih.Input{}, ih.ErrFenced
 	}
+	// A refused Integration's references are never resolved: the allowlist
+	// is not lent to it, not even as a fingerprint on its status.
+	credentialless := func(d *public.Integration) bool { return kubeIntegrationCredentialless(r.opts.Namespace, d) }
 	var refs []public.CredentialReference
 	for _, obj := range snap.Objects.List("Integration") {
-		if d, ok := obj.(*public.Integration); ok {
+		if d, ok := obj.(*public.Integration); ok && !credentialless(d) {
 			for _, ref := range d.Spec.Credentials {
 				refs = append(refs, ref)
 			}
@@ -262,7 +308,7 @@ func (r *kubeIntegrationRuntime) capture(ctx context.Context) (ih.Input, error) 
 	if err != nil {
 		return ih.Input{}, err
 	}
-	in := ih.Input{Objects: snap.Objects, Credentials: resolver, Term: kubeIntegrationTerm(clusterID), BundleID: "preparing", Complete: true}
+	in := ih.Input{Objects: snap.Objects, Credentials: resolver, Term: kubeIntegrationTerm(clusterID), BundleID: "preparing", Complete: true, WithoutCredentials: credentialless}
 	instances, err := ih.CaptureInstances(ctx, in)
 	if err != nil {
 		return ih.Input{}, err
@@ -275,12 +321,21 @@ func (r *kubeIntegrationRuntime) capture(ctx context.Context) (ih.Input, error) 
 	needsSources := false
 	for _, i := range instances {
 		d := i.Definition()
-		needsSources = needsSources || r.refusal(d) == "" && integrationPublishes(d) && !d.Spec.Suspend && d.DeletionTimestamp.IsZero()
+		needsSources = needsSources || kubeIntegrationRefusal(r.opts.Namespace, d) == "" && integrationPublishes(d) && !d.Spec.Suspend && d.DeletionTimestamp.IsZero()
 	}
+	next := &kubeIntegrationCut{license: lc, instances: map[kinds.Owner]*ih.Instance{}}
 	if needsSources {
-		in.Sources, err = kubeIntegrationSources(snap.Objects)
+		var conflicted []string
+		in.Sources, conflicted, err = kubeIntegrationSources(snap.Objects)
 		if err != nil {
 			return ih.Input{}, err
+		}
+		if len(conflicted) > 0 {
+			// Every publisher reads the whole selection, so none publishes a
+			// selection without the conflicted record sets: under policy sync
+			// that would delete their remote records. Observers still run.
+			next.conflict = kubeConflictMessage(conflicted)
+			in.Sources = nil
 		}
 	}
 	in.ReconcileDigests = map[ih.InstanceID]string{}
@@ -291,9 +346,10 @@ func (r *kubeIntegrationRuntime) capture(ctx context.Context) (ih.Input, error) 
 		switch {
 		case !d.DeletionTimestamp.IsZero():
 			in.ReconcileDigests[i.Owner()] = kinds.Digest([]byte("terminating"))
-		case r.refusal(d) != "":
+		case r.refusalIn(next, d) != "":
 			// A refused instance has no inputs: source changes neither wake
-			// nor replace it, only a change of its own object does.
+			// nor replace it, only a change of its own object does (or, for
+			// a conflict, a change of what is conflicted, through Conflict).
 			in.ReconcileDigests[i.Owner()] = kinds.Digest([]byte("refused"))
 		case integrationPublishes(d):
 			// Sources by identity, not by resourceVersion: the controller's
@@ -318,11 +374,16 @@ func (r *kubeIntegrationRuntime) capture(ctx context.Context) (ih.Input, error) 
 		definition.Status = public.IntegrationStatus{}
 		definition.ResourceVersion = ""
 		definition.ManagedFields = nil
+		conflict := ""
+		if r.refusalIn(next, d) == reasonSourceConflicted {
+			conflict = next.conflict
+		}
 		raw, err := json.Marshal(struct {
 			Definition   *public.Integration
 			Fingerprints map[string]string
 			Dependencies []any
-		}{definition, i.CredentialFingerprints(), dependencies})
+			Conflict     string `json:",omitempty"`
+		}{definition, i.CredentialFingerprints(), dependencies, conflict})
 		if err != nil {
 			return ih.Input{}, ih.ErrInvalid
 		}
@@ -331,7 +392,7 @@ func (r *kubeIntegrationRuntime) capture(ctx context.Context) (ih.Input, error) 
 	if !lc.Current() {
 		return ih.Input{}, ih.ErrFenced
 	}
-	next := &kubeIntegrationCut{license: lc, instances: map[kinds.Owner]*ih.Instance{}, sources: in.Sources}
+	next.sources = in.Sources
 	in.Resource = next
 	next.input = in
 	instances, err = ih.CaptureInstances(ctx, in)
@@ -352,12 +413,14 @@ func (r *kubeIntegrationRuntime) capture(ctx context.Context) (ih.Input, error) 
 // ones each enabled primary zone admits. On Kubernetes the zonecache serves
 // these objects directly; there is no committed primary head to wait for.
 // Like the SQLite capture, which refuses a source whose projection is
-// duplicated, the selection is unavailable while the controller reports, for
+// duplicated, the selection is not used while the controller reports, for
 // an admitted record set's current generation, an endpoint the zone does not
-// serve as written (duplicated, occluded or invalid). A conflict the
-// controller has not reported yet is not seen (D384).
-func kubeIntegrationSources(objects zonecache.ObjectSet) ([]plan.Source, error) {
-	var out []plan.Source
+// serve as written (duplicated, occluded or invalid): conflicted names them
+// ("namespace/name (Reason)"), and the capture refuses every publisher with
+// reasonSourceConflicted. A conflict the controller has not reported yet is
+// not seen; one it reports after a capture fences the next effect (check)
+// and refuses publishers from the next capture on (D384).
+func kubeIntegrationSources(objects zonecache.ObjectSet) (out []plan.Source, conflicted []string, err error) {
 	for _, record := range objects.RecordSets() {
 		z, ok := objects.Zone(record.Spec.ZoneRef.Name)
 		if !ok || public.IsDisabled(z) || !z.DeletionTimestamp.IsZero() || public.IsDisabled(record) || !record.DeletionTimestamp.IsZero() || z.Spec.Type != public.ZoneTypePrimary {
@@ -365,30 +428,45 @@ func kubeIntegrationSources(objects zonecache.ObjectSet) ([]plan.Source, error) 
 		}
 		selector, err := zone.NewRecordSetSelector(z)
 		if err != nil {
-			return nil, ih.ErrInvalid
+			return nil, nil, ih.ErrInvalid
 		}
 		if selector.Admits(record) {
-			if kubeRecordSetConflicted(record) {
-				return nil, ih.ErrUnavailable
+			if reason := kubeRecordSetConflict(record); reason != "" {
+				conflicted = append(conflicted, record.Namespace+"/"+record.Name+" ("+reason+")")
+				continue
 			}
 			out = append(out, plan.Source{Zone: z.DeepCopy(), Records: record.DeepCopy()})
 		}
 	}
-	return out, nil
+	return out, conflicted, nil
+}
+
+// kubeConflictMessage is the status message of a publisher refused for a
+// source conflict; it names at most five record sets.
+func kubeConflictMessage(conflicted []string) string {
+	const shown = 5
+	names := strings.Join(conflicted[:min(len(conflicted), shown)], ", ")
+	if len(conflicted) > shown {
+		names += fmt.Sprintf(" and %d more", len(conflicted)-shown)
+	}
+	return "Publication is halted for every publisher: the zone does not serve these admitted DNSRecordSets as written: " + names + ". Fix or remove them; publication resumes on its own."
 }
 
 // kubeRecordSetConflicted reports whether the controller's conditions for the
 // record set's current generation say the zone drops or rejects some of it.
-func kubeRecordSetConflicted(r *public.DNSRecordSet) bool {
+func kubeRecordSetConflicted(r *public.DNSRecordSet) bool { return kubeRecordSetConflict(r) != "" }
+
+// kubeRecordSetConflict is the reason of that report, or "".
+func kubeRecordSetConflict(r *public.DNSRecordSet) string {
 	for _, c := range r.Status.Conditions {
 		if c.ObservedGeneration != r.Generation || c.Reason != public.ReasonDuplicated && c.Reason != public.ReasonOccluded && c.Reason != public.ReasonInvalid {
 			continue
 		}
 		if c.Type == public.ConditionReady && c.Status == metav1.ConditionFalse || c.Type == public.ConditionDegraded && c.Status == metav1.ConditionTrue {
-			return true
+			return c.Reason
 		}
 	}
-	return false
+	return ""
 }
 
 // kubeSourceIdentity digests what a publisher reads from a source object:
@@ -433,7 +511,7 @@ func (r *kubeIntegrationRuntime) current(g ih.ExecutionGuard) (*kubeIntegrationC
 		return nil, ih.ErrFenced
 	}
 	i := c.instances[g.Ledger.Owner]
-	if i == nil || i.BundleID() != g.BundleID || !integrationGuardAdmits(i.Definition(), g) || r.refusedFor(g.Mode, i.Definition()) {
+	if i == nil || i.BundleID() != g.BundleID || !integrationGuardAdmits(i.Definition(), g) || r.refusedFor(c, g.Mode, i.Definition()) {
 		return nil, ih.ErrFenced
 	}
 	expected, err := i.Guard(g.Ledger.LeaseID)
@@ -494,7 +572,7 @@ func (r *kubeIntegrationRuntime) check(ctx, lease context.Context, g ih.Executio
 		return ih.ErrFenced
 	}
 	if refusal {
-		if !kubeRefusalAdmits(&stored, g) || r.refusal(&stored) == "" {
+		if !kubeRefusalAdmits(&stored, g) || r.refusalIn(original, &stored) == "" {
 			return ih.ErrFenced
 		}
 		return nil
@@ -502,7 +580,7 @@ func (r *kubeIntegrationRuntime) check(ctx, lease context.Context, g ih.Executio
 	if !integrationGuardAdmits(&stored, g) {
 		return ih.ErrFenced
 	}
-	if r.refusedFor(g.Mode, &stored) {
+	if r.refusedFor(original, g.Mode, &stored) {
 		return ih.ErrFenced
 	}
 	// A terminating publisher deletes only what its ledger proves owned; its
@@ -521,6 +599,12 @@ func (r *kubeIntegrationRuntime) check(ctx, lease context.Context, g ih.Executio
 			if zone, records := kubeSourceIdentity(z), kubeSourceIdentity(rs); zone == "" || records == "" || zone != kubeSourceIdentity(source.Zone) || records != kubeSourceIdentity(source.Records) {
 				return ih.ErrFenced
 			}
+			// The identity leaves status out, so a conflict the controller
+			// reported after the capture is read here, from the live
+			// snapshot: the next effect is fenced, not only the next capture.
+			if typed, ok := rs.(*public.DNSRecordSet); !ok || kubeRecordSetConflicted(typed) {
+				return ih.ErrFenced
+			}
 		}
 	}
 	return nil
@@ -534,7 +618,7 @@ func (r *kubeIntegrationRuntime) currentRefused(g ih.ExecutionGuard) error {
 		return ih.ErrFenced
 	}
 	i := c.instances[g.Ledger.Owner]
-	if i == nil || i.BundleID() != g.BundleID || !kubeRefusalAdmits(i.Definition(), g) || r.refusal(i.Definition()) == "" {
+	if i == nil || i.BundleID() != g.BundleID || !kubeRefusalAdmits(i.Definition(), g) || r.refusalIn(c, i.Definition()) == "" {
 		return ih.ErrFenced
 	}
 	expected, err := i.Guard(g.Ledger.LeaseID)
@@ -561,7 +645,7 @@ func (r *kubeIntegrationRuntime) fence(ctx context.Context, g ih.ExecutionGuard)
 	// A refused instance never has a provider (Options.Refuse), so the only
 	// effect it is fenced for is its refusal status; a release, or the
 	// cleanup refusedFor admits, is fenced as any other run of its mode.
-	refusal := r.refusedFor(g.Mode, cut.instances[g.Ledger.Owner].Definition())
+	refusal := r.refusedFor(cut, g.Mode, cut.instances[g.Ledger.Owner].Definition())
 	return r.check(ctx, lease, g, cut, refusal)
 }
 
@@ -635,8 +719,8 @@ func (r *kubeIntegrationRuntime) status(ctx context.Context, g ih.ExecutionGuard
 		return ih.ErrFenced
 	}
 	refused := ""
-	if d := cut.instances[g.Ledger.Owner].Definition(); r.refusedFor(g.Mode, d) {
-		refused = r.refusal(d)
+	if d := cut.instances[g.Ledger.Owner].Definition(); r.refusedFor(cut, g.Mode, d) {
+		refused = r.refusalIn(cut, d)
 	}
 	if refused != "" && status.Reason != refused {
 		return ih.ErrFenced
@@ -653,6 +737,8 @@ func (r *kubeIntegrationRuntime) status(ctx context.Context, g ih.ExecutionGuard
 				message = "UniFi DNS record publication (spec.unifi.inventory) does not run on the Kubernetes store yet; remove it to run inventory and groups."
 			case reasonNamespaceNotAllowed:
 				message = "On the Kubernetes store only Integrations in kudurru's release namespace run; create it in " + r.opts.Namespace + "."
+			case reasonSourceConflicted:
+				message = cut.conflict
 			}
 			if c := meta.FindStatusCondition(d.Status.Conditions, "Ready"); c != nil {
 				c.Message = message
