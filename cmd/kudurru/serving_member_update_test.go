@@ -89,32 +89,58 @@ func TestRootMemberUpdateCommandActualHTTP(t *testing.T) {
 	}
 }
 
-// memberUpdateHead returns the committed sequence of the example. zone head
-// in the store's current image.
-func memberUpdateHead(t *testing.T, s *servingRuntime) uint64 {
+// memberUpdateHead returns the head of the example. zone of the current
+// DNSZone home in the store's current image. The head's CommitSequence also
+// advances on a head commit that changes no data (its root digest binds
+// expiry, configuration and receipts too, and a NOTIFY rearm is one), so a
+// test that asks whether an UPDATE committed compares the content hash and
+// the serial, which only a data commit changes (internal/zonestate/codec.go
+// Prepare). The previous CommitSequence comparison failed now and then with
+// "a repeated command ID committed a second time 2 3" while the repeat
+// answered the retained NOERROR, which a second run cannot answer.
+func memberUpdateHead(t *testing.T, s *servingRuntime) zk.ZoneStateSpec {
 	t.Helper()
 	image, err := s.opts.Store.ReadGeneration(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
+	var heads []zk.ZoneStateSpec
+	uid := ""
 	for _, raw := range image.Payload.Objects {
-		var header metav1.TypeMeta
+		var header struct {
+			metav1.TypeMeta   `json:",inline"`
+			metav1.ObjectMeta `json:"metadata"`
+		}
 		if json.Unmarshal(raw, &header) != nil {
 			t.Fatal("undecodable object kind")
 		}
-		if header.Kind != zk.KindZoneState {
-			continue
-		}
-		var head zk.ZoneState
-		if json.Unmarshal(raw, &head) != nil {
-			t.Fatal("undecodable zone head")
-		}
-		if head.Spec.Zone.Apex == "example." {
-			return head.Spec.CommitSequence
+		switch header.Kind {
+		case "DNSZone":
+			if header.Name == "home" {
+				uid = string(header.UID)
+			}
+		case zk.KindZoneState:
+			var head zk.ZoneState
+			if json.Unmarshal(raw, &head) != nil {
+				t.Fatal("undecodable zone head")
+			}
+			if head.Spec.Zone.Apex == "example." {
+				heads = append(heads, head.Spec)
+			}
 		}
 	}
-	t.Fatal("example. has no zone head")
-	return 0
+	for _, head := range heads {
+		if uid != "" && head.Zone.UID == uid {
+			return head
+		}
+	}
+	t.Fatal("the DNSZone home has no zone head", uid, len(heads))
+	return zk.ZoneStateSpec{}
+}
+
+// memberUpdateSameData reports whether two heads hold the same zone data.
+func memberUpdateSameData(a, b zk.ZoneStateSpec) bool {
+	return a.ContentHash == b.ContentHash && a.Serial == b.Serial
 }
 
 // newMemberUpdateHarness creates the served primary zone example. through
@@ -216,7 +242,7 @@ func TestRootMemberUpdateKeyIdentityAndRetryActualHTTP(t *testing.T) {
 			t.Fatalf("%s: forwarded UPDATE answered %s, want REFUSED", name, dns.RcodeToString[rcode])
 		}
 	}
-	if after := memberUpdateHead(t, f.s); after != before {
+	if after := memberUpdateHead(t, f.s); !memberUpdateSameData(after, before) {
 		t.Fatal("a forwarded UPDATE with a foreign key identity changed the zone", before, after)
 	}
 
@@ -224,7 +250,7 @@ func TestRootMemberUpdateKeyIdentityAndRetryActualHTTP(t *testing.T) {
 	if rcode := answer(command("expired", exact, wire(insert("expired.example.")), time.Now().Add(-time.Second))); rcode != dns.RcodeServerFailure {
 		t.Fatalf("an expired forwarded UPDATE answered %s, want SERVFAIL", dns.RcodeToString[rcode])
 	}
-	if after := memberUpdateHead(t, f.s); after != before {
+	if after := memberUpdateHead(t, f.s); !memberUpdateSameData(after, before) {
 		t.Fatal("an expired forwarded UPDATE changed the zone", before, after)
 	}
 
@@ -240,8 +266,8 @@ func TestRootMemberUpdateKeyIdentityAndRetryActualHTTP(t *testing.T) {
 		t.Fatalf("forwarded UPDATE with the exact key identity answered %s, want NOERROR", dns.RcodeToString[rcode])
 	}
 	committed := memberUpdateHead(t, f.s)
-	if committed != before+1 {
-		t.Fatal("an accepted forwarded UPDATE did not commit exactly once", before, committed)
+	if memberUpdateSameData(committed, before) || committed.CommitSequence <= before.CommitSequence {
+		t.Fatal("an accepted forwarded UPDATE did not commit", before, committed)
 	}
 	repeat := first
 	repeat.IssuedAt = time.Now().UTC()
@@ -249,13 +275,13 @@ func TestRootMemberUpdateKeyIdentityAndRetryActualHTTP(t *testing.T) {
 	if rcode := answer(repeat); rcode != dns.RcodeSuccess {
 		t.Fatalf("a repeated command ID answered %s, want the retained NOERROR", dns.RcodeToString[rcode])
 	}
-	if after := memberUpdateHead(t, f.s); after != committed {
+	if after := memberUpdateHead(t, f.s); !memberUpdateSameData(after, committed) {
 		t.Fatal("a repeated command ID committed a second time", committed, after)
 	}
 	if rcode := answer(command("dedup-again", exact, once, later)); rcode != dns.RcodeYXDomain {
 		t.Fatalf("a new command ID for a used name answered %s, want YXDOMAIN", dns.RcodeToString[rcode])
 	}
-	if after := memberUpdateHead(t, f.s); after != committed {
+	if after := memberUpdateHead(t, f.s); !memberUpdateSameData(after, committed) {
 		t.Fatal("a failed prerequisite changed the zone", committed, after)
 	}
 }
