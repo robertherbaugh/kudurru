@@ -1418,17 +1418,70 @@ the chart's aggregated `<release>-admin` ClusterRole.
 The Kubernetes driver does not offer authenticator (TOTP) management or the
 local-user commands. Kubernetes accounts use their identity provider's second
 factor. `GET /auth/status` reports this in `capabilities` before a client
-tries (`factorManagement` and `localUserCommands`, both `false` on Kubernetes
-and `true` on the complete SQLite runtime), and the routes answer:
+tries (`factorManagement`, `localUserCommands` and `iamObjectCommands`, all
+`false` on Kubernetes and `true` on the complete SQLite runtime), and the
+routes answer (each without `Retry-After`, with a hint):
 
 | Route | Answer on Kubernetes |
 | --- | --- |
 | `GET /auth/totp`, `POST /auth/totp/{setup,confirm,disable}`, `POST /iam/users/{name}/totp/recover` | `503 factor_management_unavailable` |
-| `POST /iam/users`, `POST /iam/users/{name}/password` | `503 user_management_unavailable` |
+| `POST /iam/users`, `POST /iam/users/{name}/password`, `PATCH` and `DELETE /iam/users/{name}` | `503 user_management_unavailable` |
+| `POST /iam/serviceaccounts`, `PUT`/`DELETE /iam/serviceaccounts/{namespace}/{name}`, `POST .../{name}/tokens`, `POST /iam/identityproviders`, `PUT`/`DELETE /iam/identityproviders/{name}` | `503 iam_management_unavailable` (D396) |
 | `POST /auth/login` with `totpCode` | `503 factor_unavailable` |
 
 Password change for the signed-in local user (`POST /auth/password`) and the
 `kudurru admin` socket commands (`reset-password`, `create-token`) still work.
+
+### IAM writers (D396)
+
+The complete SQLite runtime adds reviewed writers for the remaining IAM
+objects, built like the RoleBinding commands (D294):
+
+| Operation | Permission | Review | Effect in the same commit |
+| --- | --- | --- | --- |
+| `PATCH /iam/users/{name}` | `users.write` | uid, resourceVersion | display name, groups, disabled; a group or disabled change raises the account floor and deletes the account's tokens |
+| `DELETE /iam/users/{name}` | `users.delete` | uid, resourceVersion | account floor, token deletion |
+| `POST /iam/serviceaccounts` | `serviceaccounts.write` | absent target | create only |
+| `PUT /iam/serviceaccounts/{namespace}/{name}` | `serviceaccounts.write` | uid, resourceVersion | description, disabled; disabling raises the floor and deletes the tokens |
+| `DELETE /iam/serviceaccounts/{namespace}/{name}` | `serviceaccounts.delete` | uid, resourceVersion | account floor, token deletion |
+| `POST /iam/serviceaccounts/{namespace}/{name}/tokens` | `serviceaccounts.write` and `tokens.write` | uid | one token; its secret only in the answer |
+| `POST /iam/identityproviders` | `identityproviders.write` | absent target, id not in the configuration file | create only |
+| `PUT`/`DELETE /iam/identityproviders/{name}` | `identityproviders.write`/`.delete` | uid, resourceVersion | provider floor for a changed spec or a deletion |
+
+Each command checks the declared permission and cookie CSRF against the
+request's original view before the body is read, decodes the body strictly
+(no duplicate or unknown keys), and then runs one current command that
+verifies the original raw credential again for every attribute, compares the
+exact reviewed UID and resourceVersion, requires the API manager, stages the
+object through `security.Apply`/`security.Delete` (which stage the account or
+provider floor) and deletes the ended tokens. The object audit row commits with
+them. The built-in admin, accounts of other managers and service accounts with
+private bootstrap authority (`PrincipalState`) are refused. A token issued for
+a service account must authenticate from its stored form inside the
+transaction before the answer carries it; only its hash is stored, and no log,
+audit row or error contains the secret. A provider object holds a credential
+reference, never a value. After the commit the provider coordinator
+republishes the provider set as for any other source change, and a new
+provider is offered after its discovery and license admission.
+
+```mermaid
+sequenceDiagram
+    participant A as Administrator
+    participant H as API route
+    participant C as Current SQLite command
+    A->>H: Read exact UID and resourceVersion
+    A->>H: Reviewed command
+    H->>H: Permission, CSRF, strict body (follower: 503 primary_required)
+    H->>C: Original raw proof, review, desired state
+    C->>C: Reauthorize, compare review and manager
+    C->>C: Stage object + floor + token deletion + audit
+    C-->>H: Commit or roll back everything
+    H-->>A: Object, 204, or token shown once
+```
+
+All of these operations are `primary` in the follower contract (D368). On
+Kubernetes they refuse as listed above; `GET /iam/serviceaccounts/{namespace}/{name}`
+and `GET /iam/identityproviders/{name}` read the object there too.
 
 ## Node to node (`:8082`)
 

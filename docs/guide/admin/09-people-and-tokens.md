@@ -72,7 +72,7 @@ Figure 1 shows the page.
 ## Give a role to a person
 
 The dashboard shows role bindings and identity providers but does not
-change them. You set them in files, in objects or with the command line.
+change them yet. You set them in files, in objects or with the command line.
 
 A role binding gives a role to users, groups or service accounts. Add
 bindings in `kudurru.yaml`:
@@ -120,18 +120,100 @@ After you set up a provider, the sign-in page shows one button for it.
 The account `admin` is a local account. kudurru makes it at the first
 start. The dashboard shows local users on the tab **Identity**.
 
-The v0.2 SQLite API also accepts `POST /api/v1/iam/users` for an ordinary
-API-managed account. An administrator supplies `name`, optional `displayName`
-and `password`. The user must change that password on first sign-in. Creation
-does not assign a role or enroll an authenticator.
+On a node with SQLite storage, `kudurru iam users` makes and changes ordinary
+local accounts through the API (D396):
 
-To reset one of these accounts, send `POST /api/v1/iam/users/{name}/password`
-with its exact `uid` and `resourceVersion` from the user inventory, plus
-`newPassword`. A 409 requires a fresh inventory read before a deliberate new
-request. Reset signs out the account and revokes its local personal tokens. It
-preserves its authenticator and disabled state, and requires another password
-change. Reset does not recover a lost authenticator. Built-in and file-managed
-accounts are excluded; Kubernetes returns 503 for these two API commands.
+```sh
+kudurru iam users create alice --display-name "Alice"   # asks for the first password
+kudurru iam users list                                  # shows uid and resourceVersion
+kudurru iam users update alice --uid UID --resource-version RV --group operators
+kudurru iam users update alice --uid UID --resource-version RV --disabled
+kudurru iam users reset-password alice --uid UID --resource-version RV
+kudurru iam users delete alice --uid UID --resource-version RV
+```
+
+A new account must change its password at the first sign-in. Creation does not
+assign a role or enroll an authenticator; a role binding with a `User` or
+`Group` subject does that. Every change needs the exact `uid` and
+`resourceVersion` from `kudurru iam users list`. A conflict means that the
+account changed: read it again and decide again. The command never retries.
+
+- `update` changes only the fields you give. `--group` replaces the whole list
+  of local groups (repeat it; `--group=` removes all). A local group name has
+  no colon, so it cannot look like a group of an identity provider.
+- Changing the groups, disabling the account and deleting it end its sessions
+  and delete its API tokens in the same commit. Enabling it again restores
+  none of them. A display-name change ends nothing.
+- `reset-password` signs out the account and revokes its local personal
+  tokens. It keeps the authenticator and the disabled state, and requires
+  another password change. It does not recover a lost authenticator.
+- A later account with the same name never inherits the sessions or tokens of
+  a deleted one.
+
+The built-in admin and accounts of the configuration file are excluded: use
+`kudurru admin reset-password` on the node for them. On the Kubernetes driver
+these commands answer `503 user_management_unavailable`. The API routes are
+`POST /api/v1/iam/users`, `PATCH` and `DELETE /api/v1/iam/users/{name}` and
+`POST /api/v1/iam/users/{name}/password`.
+
+### Service accounts
+
+A kudurru service account is an account for a program. It has no password;
+it signs in with API tokens. Give it a role with a role binding whose subject
+is `{kind: ServiceAccount, name: NAME, namespace: NAMESPACE}`.
+
+On a node with SQLite storage, `kudurru iam serviceaccounts` (short `sa`)
+manages them:
+
+```sh
+cat > robot.yaml <<'YAML'
+apiVersion: kudurru.io/v1alpha1
+kind: ServiceAccount
+metadata: {name: backup-robot, namespace: apps}
+spec: {description: Nightly backup}
+YAML
+kudurru iam sa create -f robot.yaml
+kudurru iam sa get apps backup-robot -o yaml          # uid and resourceVersion
+kudurru iam sa create-token apps backup-robot --uid UID --expires-in 720h
+```
+
+`create-token` prints the token once. kudurru keeps only its hash, so it can
+never show it again: store it in your secret manager at once. List the tokens
+with `kudurru api GET '/auth/tokens?all=true'` and revoke one with
+`kudurru api DELETE /auth/tokens/ID`. Issuing a token needs both
+`serviceaccounts.write` and `tokens.write`; the built-in role Admin has them.
+
+`replace` and `delete` need the exact `--uid` and `--resource-version`.
+Disabling an account (`spec.disabled: true`) or deleting it deletes all of its
+tokens in the same commit, and they stay refused after a restart and on every
+replica. Enabling it again restores none; issue new tokens. The bootstrap
+account and accounts of other managers cannot be changed with these commands.
+
+### Identity provider objects
+
+Besides the entries in `kudurru.yaml`, an identity provider can be an
+`IdentityProvider` object. On a node with SQLite storage,
+`kudurru iam identityproviders` (short `idp`) creates, replaces and deletes
+them with the same review rules as role bindings:
+
+```sh
+kudurru iam idp create -f partner.yaml
+kudurru iam idp get partner -o yaml
+kudurru iam idp delete partner --uid UID --resource-version RV
+```
+
+`spec.clientSecretRef` names where the client secret is: an environment
+variable or a file that `credentials.allowedEnvironment` or
+`credentials.allowedFiles` allows, or a Secret key on Kubernetes. The object
+never holds the secret itself, and kudurru never returns or logs it. An id that
+`kudurru.yaml` already defines cannot be created. The provider shows on the
+sign-in page after its discovery succeeds and the license allows single
+sign-on. Changing or deleting a provider ends every session and token that
+came from it.
+
+On the Kubernetes driver the service account and provider commands answer
+`503 iam_management_unavailable`: create and change the objects with `kubectl`
+or your GitOps tool. `get` and `list` work on both drivers.
 
 To turn off the local sign-in when all your people use single sign-on, set
 `auth.localLogin` to `disabled`. The value `admins-only` allows the built-in
