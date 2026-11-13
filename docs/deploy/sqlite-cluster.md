@@ -287,14 +287,13 @@ once in the dashboard works the same way, with a result for each name.
   someone else: the request does not detect them. Run the command again: it
   reports the documents that are already applied as `unchanged` and applies
   the rest.
-- A request that arrives while the node is still publishing its newest
-  commit is refused before it is read with `503 generation_pending`. A
-  request whose first document finds that the node published other work
+- A request whose first document finds that the node published other work
   while it ran (its own status writes, a signed UPDATE) is admitted on that
-  newer publication, once; only when the node keeps publishing for five
-  seconds, or the caller's credential or roles changed meanwhile, does every
-  document report `unavailable` ("current writable serving generation
-  unavailable"). Nothing was applied in either case. Send the
+  newer publication, once. Only when the node keeps publishing for five
+  seconds, or the caller's credential or roles changed meanwhile, is it
+  refused as a whole before its first document: it answers `503
+  generation_pending`, or every document reports `unavailable` ("current
+  writable serving generation unavailable"). Nothing was applied. Send the
   same request again. Two such requests at the same time usually end this
   way for one of them; the dashboard therefore sends one request per
   namespace one after another.

@@ -21,8 +21,7 @@ MAX_BATCH_NAMES = 100
 # Command tests whose strict timing assertion is compiled in only without the
 # race detector (cmd/kudurru/norace_test.go). Each must be in the inventory.
 NORACE_TESTS = ("TestRunServeSQLiteLongApplyKeepsServingDNSAndReads",
-                "TestRunServeSQLiteZonesAnswerAcrossCommits",
-                "TestRunServeCommandsNotRefusedAsSupersededUnderSteadyUpdates")
+                "TestRunServeSQLiteZonesAnswerAcrossCommits")
 
 
 def inventory(output, package):
