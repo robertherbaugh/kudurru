@@ -37,11 +37,12 @@ import (
 // passed, a probe sent after that never gets an older address again.
 //
 // The child is created right after its parent, while the parent's own
-// follow-up commits change its DNSZone. Before CORE-OPEN4 that could leave
-// the pair SERVFAIL for good ("zone awaiting committed publication"): the
-// child's fence required both zones' recorded sources to be the latest,
-// and neither could record a newer one before the child was fenced
-// (TestLateChildFencesAParentWhoseSourceAdvanced in sqliteadapter).
+// follow-up commits change its DNSZone. Before D404 that could leave the
+// pair SERVFAIL for good ("zone awaiting committed publication"): the
+// child's fence required both zones' exact lifecycle receipts, and neither
+// could realign its receipt before the child was fenced
+// (TestLateChildFencesAParentWhoseSourceAdvanced in sqliteadapter,
+// ancestry_receipt_test.go in the driver).
 //
 // Before D395 (QUAL-OPEN3 fix-measure03, CORE-COMMIT-GAP measure01) a write
 // of a zone's own DNSZone answered that zone SERVFAIL for up to about 0.3 s:
@@ -160,8 +161,12 @@ func TestRunServeSQLiteZonesAnswerAcrossCommits(t *testing.T) {
 	call(http.MethodPost, "/objects/dnszones", primary, http.StatusCreated, nil)
 	records := &public.DNSRecordSet{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "DNSRecordSet"}, ObjectMeta: metav1.ObjectMeta{Name: "gap-primary", Namespace: "default"}, Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: "gap-primary"}, Endpoints: []public.Endpoint{{DNSName: primaryName, RecordType: "A", Targets: []string{"192.0.2.81"}, RecordTTL: 300}}}}
 	call(http.MethodPost, "/objects/dnsrecordsets", records, http.StatusCreated, nil)
-	// A primary child of the probed primary: its own writes must not take
-	// the parent out of service, nor the parent's writes the child.
+	// A primary child of the probed primary, created with it: its own
+	// writes must not take the parent out of service, nor the parent's
+	// writes the child. Before D404 this pair could leave one of them
+	// SERVFAIL for good (CORE-COMMIT-GAP fix-13, fix-15);
+	// TestRunServeSQLitePrimaryParentAndChildZones covers creation in both
+	// orders and deletion.
 	child := &public.DNSZone{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "DNSZone"}, ObjectMeta: metav1.ObjectMeta{Name: "gap-child"}, Spec: public.DNSZoneSpec{ZoneName: "child.private.example.", Type: public.ZoneTypePrimary, Policy: public.ZonePolicy{QueryAccess: public.AccessAllow}}}
 	call(http.MethodPost, "/objects/dnszones", child, http.StatusCreated, nil)
 	childRecords := &public.DNSRecordSet{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "DNSRecordSet"}, ObjectMeta: metav1.ObjectMeta{Name: "gap-child", Namespace: "default"}, Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: "gap-child"}, Endpoints: []public.Endpoint{{DNSName: childName, RecordType: "A", Targets: []string{"192.0.2.90"}, RecordTTL: 300}}}}
