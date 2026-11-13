@@ -219,16 +219,10 @@ func dormantAnchorGate(owner accepted.Snapshot) (*retirement.Gate, error) {
 }
 
 // anchorSQL records the actual SQL boundary. Neither an error nor ErrTxDone is
-// evidence of rollback, with one exception: ctx is the context the
-// transaction was begun with, and when it has ended before any commit was
-// attempted, database/sql itself rolled the transaction back (or discarded
-// its connection), and SQLite makes nothing durable without a COMMIT, so
-// the ErrTxDone of the final Rollback confirms that nothing committed.
-// Commit errors remain unknown even if cleanup succeeds. All classification
-// and the matching Gate resolution occur under the same R.
+// evidence of rollback. Commit errors remain unknown even if cleanup succeeds.
+// All classification and the matching Gate resolution occur under the same R.
 type anchorSQL struct {
 	tx        *sql.Tx
-	ctx       context.Context
 	attempted bool
 	committed bool
 	unchanged bool
@@ -252,12 +246,6 @@ func (a *anchorSQL) finish(result *error) {
 		return
 	}
 	err := a.tx.Rollback()
-	if err != nil && !a.attempted && errors.Is(err, sql.ErrTxDone) && a.ctx != nil && a.ctx.Err() != nil {
-		// A pull canceled or timed out in the middle of an install ended
-		// here, and every later install was refused as "anchor lifecycle
-		// unavailable" until the process restarted (HA-OPEN6).
-		err = nil
-	}
 	if a.attempted || err != nil {
 		a.outcome = AnchorUnknown
 		if err != nil {

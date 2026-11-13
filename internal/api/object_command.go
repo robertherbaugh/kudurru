@@ -29,19 +29,8 @@ type ObjectItems func(context.Context) context.Context
 
 // objectItems returns the context for the items of a multi-item request.
 func (s *Server) objectItems(ctx context.Context) context.Context {
-	ctx = context.WithValue(ctx, objectItemsKey{}, true)
 	if s.opts.ObjectCommand == nil || s.opts.ObjectItems == nil {
 		return ctx
 	}
 	return s.opts.ObjectItems(ctx)
-}
-
-type objectItemsKey struct{}
-
-// InObjectItems reports whether ctx is that of one item of a multi-item
-// request (POST /apply, POST /{kind}:batchDelete). A follower's ObjectForward
-// uses it to say what to do with the items it could not forward (D375).
-func InObjectItems(ctx context.Context) bool {
-	in, _ := ctx.Value(objectItemsKey{}).(bool)
-	return in
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -584,37 +583,6 @@ func TestAnchorAcquisitionOutcomeSeparatesCancellation(t *testing.T) {
 	} {
 		if got := anchorAcquisitionOutcome(tc.ctx, anchorCompletion{}, tc.err); got != tc.want {
 			t.Errorf("%s: outcome %q, want %q", tc.name, got, tc.want)
-		}
-	}
-}
-
-// A transaction that database/sql rolled back because the writer context
-// was canceled reports sql.ErrTxDone; at shutdown that is the cancellation,
-// not a terminal stop (it was logged as "root anchor updater stopped for
-// this writer term: sql: transaction has already been committed or rolled
-// back"). With the context still live, every failure keeps its meaning.
-func TestAnchorWriterCanceledOnlyAfterTheContextEnded(t *testing.T) {
-	live := t.Context()
-	ended, cancel := context.WithCancel(t.Context())
-	cancel()
-	txDone := fmt.Errorf("anchor capture: %w", sql.ErrTxDone)
-	for _, c := range []struct {
-		name string
-		ctx  context.Context
-		err  error
-		want bool
-	}{
-		{"canceled, no error", ended, nil, true},
-		{"canceled, context error", ended, context.Canceled, true},
-		{"canceled, rolled-back transaction", ended, txDone, true},
-		{"canceled, rolled-back transaction wrapped as terminal", ended, &anchorTerminalFailure{err: txDone}, true},
-		{"canceled, terminal refusal", ended, &anchorTerminalFailure{err: errAnchorPolicy}, false},
-		{"canceled, other failure", ended, errAnchorPolicy, false},
-		{"live, rolled-back transaction", live, txDone, false},
-		{"live, context error", live, context.Canceled, false},
-	} {
-		if got := anchorWriterCanceled(c.ctx, c.err); got != c.want {
-			t.Errorf("%s: anchorWriterCanceled = %t, want %t", c.name, got, c.want)
 		}
 	}
 }

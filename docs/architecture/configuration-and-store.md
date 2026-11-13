@@ -1314,20 +1314,13 @@ accepts or authorizes is a retained `401` or `403`, with the same dedup guard
 as `auth.logout`. After a commit the follower pulls once and answers after its
 own view serves the result: it seals the new cookie, or waits (at most five
 seconds) until its view carries the new password hash, authenticates the new
-token, or no longer lists the revoked one. A token caller's password change is
-answered for the original principal with `mustChangePassword` cleared, as the
-primary's own route answers from the postcommit account, whether or not the
-calling token still authenticates (`revokeTokens` ends it, and so would its
-expiry or another caller's revocation during the wait); when the view does not
-carry the new hash within those five seconds, the same answer comes from the
-next complete view, waiting up to five more seconds while the follower is still
-preparing one; only when none is complete by then (or the route's bound ends
-first) is the change answered `503 committed_output_unavailable`. A cookie caller's change whose session the follower cannot seal
-is answered `503 committed_output_unavailable` (the password changed; sign in
-with the new one), and the message names the cause: the route's bound ran out,
-the cookie settings changed before the session could be issued, or another
-refusal of the seal. Every such refusal comes before the cookie and the answer
-are written. A committed change is never answered `unavailable`, which means that
+token, or no longer lists the revoked one. A token caller's password change
+that the view does not carry within those five seconds is answered from the
+latest view for the original account, as the primary's own route answers from
+the postcommit account; a cookie caller's change whose session the follower
+cannot seal within the route's bound is answered `503
+committed_output_unavailable` (the password changed; sign in with the new
+one). A committed change is never answered `unavailable`, which means that
 nothing was sent. Every one of these routes gets the 30-second bound before
 body read. A mutation without a typed command is
 refused on a follower, as described under
@@ -1527,9 +1520,8 @@ it never triggers automatic replay. A command whose dial failed (the
 connection was refused or the host was reported unreachable) was never
 dispatched: `Client.Write` reports it as unavailable, not unknown, and a
 forwarding follower answers that the change was not applied (D368). A dial
-that is still pending when the exchange's deadline ends stays unknown,
-whether the context's deadline or the dialer's own timeout (the same
-exchange timeout) ends it first, as does every
+that is still pending when the exchange's deadline ends surfaces as the
+context's deadline, not as a dial error, and stays unknown, as does every
 failure after a connection exists (TLS, a dropped connection, a lost
 response). Generic early refusals carry no current or
 stale authority headers. Actual enrolled HTTP/1 and HTTP/2 tests cover the mount.

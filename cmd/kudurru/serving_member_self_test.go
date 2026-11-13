@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net/http"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -119,41 +118,6 @@ func harnessAuditRows(t *testing.T, h *rootMemberHarness, key store.Key, id, met
 		}
 	}
 	return attributed, all
-}
-
-// forwardedAuditRows returns the primary's audit rows for key that a
-// forwarded member command wrote: those attributed to the member write path.
-// A refused or replayed command writes none.
-func forwardedAuditRows(t *testing.T, primary *sqlite.Store, key store.Key) []sqlite.AuditEntry {
-	t.Helper()
-	entries, err := primary.ReadAudit(t.Context(), sqlite.AuditQuery{Kind: key.Kind, Name: key.Name, Limit: 1000})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var rows []sqlite.AuditEntry
-	for _, entry := range entries {
-		if entry.RequestPath == clusterreplica.PathWrite {
-			rows = append(rows, entry)
-		}
-	}
-	return rows
-}
-
-// requireForwardedAudit checks that rows are count rows of one forwarded
-// command (one request ID), each attributed to actor with the method, a
-// non-empty authorization and a success result, and returns its request ID.
-func requireForwardedAudit(t *testing.T, rows []sqlite.AuditEntry, count int, actor, method string) string {
-	t.Helper()
-	if len(rows) != count {
-		t.Fatalf("forwarded command left %d audit rows on the primary, want %d: %+v", len(rows), count, rows)
-	}
-	id := rows[0].RequestID
-	for _, row := range rows {
-		if id == "" || row.RequestID != id || row.Actor != actor || row.RequestMethod != method || row.Authz == "" || row.Result != sqlite.AuditSuccess {
-			t.Fatalf("forwarded audit row is not attributed to one %s command of %s: %+v", method, actor, row)
-		}
-	}
-	return id
 }
 
 func harnessImageContains(t *testing.T, h *rootMemberHarness, secrets ...string) bool {
@@ -445,14 +409,9 @@ func TestRootMemberForwardPasswordAndTokensActualHTTP(t *testing.T) {
 	if answer := f.request(t, browser.client, http.MethodGet, "/zones", "", nil); answer.status != http.StatusForbidden {
 		t.Fatalf("a must-change session reached a route: %d %s", answer.status, answer.raw)
 	}
-	// A wrong current password is the primary's refusal, relayed. It leaves
-	// no audit row on the primary.
-	userKey := store.Key{Kind: "LocalUser", Name: "root-command"}
+	// A wrong current password is the primary's refusal, relayed.
 	if answer := f.request(t, browser.client, http.MethodPost, "/auth/password", "", api.PasswordChangeRequest{CurrentPassword: "not-the-password-1", NewPassword: second}, "X-Kudurru-CSRF", browser.csrf); answer.status != http.StatusUnauthorized {
 		t.Fatalf("wrong current password through the follower: %d %s", answer.status, answer.raw)
-	}
-	if rows := forwardedAuditRows(t, primaryStore, userKey); len(rows) != 0 {
-		t.Fatalf("a refused forwarded password change left audit rows on the primary: %+v", rows)
 	}
 	answer := f.request(t, browser.client, http.MethodPost, "/auth/password", "", api.PasswordChangeRequest{CurrentPassword: first, NewPassword: second}, "X-Kudurru-CSRF", browser.csrf)
 	var info api.SessionInfo
@@ -466,9 +425,6 @@ func TestRootMemberForwardPasswordAndTokensActualHTTP(t *testing.T) {
 	if verified, err := users.NewHasher(1).Verify(t.Context(), user.Spec.PasswordHash, second); err != nil || !verified {
 		t.Fatal("the primary does not store the new password", err)
 	}
-	// The change and its passwordChangedAt status are audited on the primary
-	// for the caller, under the follower's one member command.
-	passwordCommand := requireForwardedAudit(t, forwardedAuditRows(t, primaryStore, userKey), 2, "User:root-command", http.MethodPost)
 	// The new cookie works on the follower at once; the old one does not.
 	if answer := f.request(t, browser.client, http.MethodGet, "/zones", "", nil); answer.status != http.StatusOK {
 		t.Fatalf("the new cookie on the follower: %d %s", answer.status, answer.raw)
@@ -490,11 +446,6 @@ func TestRootMemberForwardPasswordAndTokensActualHTTP(t *testing.T) {
 	var stored internalv1.APIToken
 	if err := primaryStore.Get(t.Context(), store.Key{Kind: "APIToken", Name: minted.ID}, &stored); err != nil || stored.Spec.SecretHash != tokens.Hash(minted.Token) {
 		t.Fatal("the primary did not store the token", err)
-	}
-	tokenKey := store.Key{Kind: "APIToken", Name: minted.ID}
-	createCommand := requireForwardedAudit(t, forwardedAuditRows(t, primaryStore, tokenKey), 1, "User:root-command", http.MethodPost)
-	if createCommand == passwordCommand {
-		t.Fatal("two forwarded commands share one audit request ID")
 	}
 	// The follower refuses a request that it can check itself; the primary
 	// refuses a scope wider than the caller's token (admin only), and the
@@ -522,22 +473,6 @@ func TestRootMemberForwardPasswordAndTokensActualHTTP(t *testing.T) {
 	}
 	if err := primaryStore.Get(t.Context(), store.Key{Kind: "APIToken", Name: minted.ID}, &stored); !errors.Is(err, store.ErrNotFound) {
 		t.Fatal("the primary still stores the revoked token", err)
-	}
-	// The revocation adds one row of its own command; the refused revocation
-	// of an unknown token left none.
-	rows := forwardedAuditRows(t, primaryStore, tokenKey)
-	var revoked []sqlite.AuditEntry
-	for _, row := range rows {
-		if row.RequestID != createCommand {
-			revoked = append(revoked, row)
-		}
-	}
-	if len(rows) != 2 {
-		t.Fatalf("token create and revoke left %d audit rows on the primary, want 2: %+v", len(rows), rows)
-	}
-	requireForwardedAudit(t, revoked, 1, "User:root-command", http.MethodDelete)
-	if rows := forwardedAuditRows(t, primaryStore, store.Key{Kind: "APIToken", Name: "nosuchtoken0"}); len(rows) != 0 {
-		t.Fatalf("a refused forwarded revocation left audit rows on the primary: %+v", rows)
 	}
 	if answer := f.request(t, nil, http.MethodGet, "/auth/me", minted.Token, nil); answer.status != http.StatusUnauthorized {
 		t.Fatalf("the revoked token on the follower: %d %s", answer.status, answer.raw)
@@ -692,8 +627,7 @@ func TestRootMemberForwardCookiePasswordUnservedActualHTTP(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&refused); err != nil {
 		t.Fatal(err)
 	}
-	if response.StatusCode != http.StatusServiceUnavailable || refused.Body.Key != "committed_output_unavailable" ||
-		!strings.Contains(refused.Body.Message, "could not install the new session in time") {
+	if response.StatusCode != http.StatusServiceUnavailable || refused.Body.Key != "committed_output_unavailable" {
 		t.Fatalf("an unserved committed cookie change: %d %+v", response.StatusCode, refused.Body)
 	}
 	if !primaryPasswordIs(t, f, second) {

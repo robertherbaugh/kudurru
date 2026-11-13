@@ -138,7 +138,7 @@ func (s *Store) captureJoin(ctx context.Context, invitation joinBinding, local m
 	if err != nil {
 		return nil, err
 	}
-	boundary := anchorSQL{tx: tx, ctx: ctx}
+	boundary := anchorSQL{tx: tx}
 	defer func() {
 		boundary.finish(&result)
 		if boundary.outcome == AnchorUnknown {

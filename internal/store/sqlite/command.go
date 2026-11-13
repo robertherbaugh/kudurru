@@ -83,7 +83,7 @@ func (s *Store) command(ctx context.Context, expected replication.Term, fn func(
 		}
 		return err
 	}
-	sqlBoundary := anchorSQL{tx: tx, ctx: ctx}
+	sqlBoundary := anchorSQL{tx: tx}
 	var t *CommandTx
 	succeeded := false
 	defer func() {

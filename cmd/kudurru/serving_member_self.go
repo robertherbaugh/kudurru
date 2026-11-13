@@ -22,7 +22,6 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
-	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingauth"
 	"github.com/robertherbaugh/kudurru/internal/servinghttp"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -289,41 +288,22 @@ func (h *servingHTTP) forwardPassword(w http.ResponseWriter, r *http.Request, or
 		h.pullMemberSelf(ctx)
 		deadline, _ := ctx.Deadline()
 		if err := h.sealEnrollmentWithin(w, r, enrollment, time.Until(deadline)); err != nil {
-			// Every refusal of sealEnrollmentWithin comes before the cookie and
-			// the answer are written (servingHTTPJSON reports no write error),
-			// so this is the whole answer. It names why the session is missing.
-			return true, memberPasswordUnserved(memberSessionUnserved(err))
+			return true, memberPasswordUnserved("this follower could not install the new session in time")
 		}
 		return true, nil
 	}
-	return true, h.answerForwardedPassword(w, r, original, hash)
-}
-
-// memberSessionUnserved names why a follower could not issue the session of a
-// committed cookie caller's password change.
-func memberSessionUnserved(err error) string {
-	switch {
-	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, context.Canceled):
-		return "this follower could not install the new session in time"
-	case errors.Is(err, serving.ErrSuperseded):
-		return "this follower's cookie settings changed before it could issue the new session"
-	default:
-		return "this follower could not issue the new session"
-	}
+	return true, h.answerForwardedPassword(w, r, original, raw, hash)
 }
 
 // answerForwardedPassword answers a token caller's password change that
 // committed on the primary. It pulls once and waits, within
 // memberSelfAnswerWait, until this node's view carries the new hash, and
-// answers from that view. The answer is for the original principal with
-// mustChangePassword cleared, exactly as the primary's own route answers from
-// the postcommit account, whether or not the calling token still
-// authenticates: revokeTokens ends it, and so would its expiry or another
-// caller's revocation during the wait. At the bound it answers the same from
-// the latest view: the change committed, so the answer is never
-// `unavailable`.
-func (h *servingHTTP) answerForwardedPassword(w http.ResponseWriter, r *http.Request, original auth.Principal, hash string) error {
+// answers from that view. At the bound it answers from the latest view for the
+// original account, as the primary's own route answers from the postcommit
+// account: the change committed, so the answer is never `unavailable`.
+func (h *servingHTTP) answerForwardedPassword(w http.ResponseWriter, r *http.Request, original auth.Principal, raw servingauth.Credential, hash string) error {
 	ctx := r.Context()
+	now := h.opts.Runtime.opts.Now
 	// The account no longer has to change its password. Password change does
 	// not broaden the calling token's scopes.
 	changed := original
@@ -334,41 +314,25 @@ func (h *servingHTTP) answerForwardedPassword(w http.ResponseWriter, r *http.Req
 		if !viewCarriesPassword(v, original.AccountUID, hash) {
 			return false
 		}
-		var err error
-		out, err = h.sessionInfo(v, changed, nil)
+		p, err := v.Authenticate(ctx, raw, now())
+		if err != nil {
+			// The change revoked the calling token too (revokeTokens).
+			// Answer for the account as the primary's own route does.
+			p = changed
+		}
+		out, err = h.sessionInfo(v, p, nil)
 		answered = err == nil
 		return answered
 	})
 	if !answered {
-		// Any complete view answers for the account now. Under load the
-		// follower can still be preparing a publication at the bound; a single
-		// capture then found none and answered committed_output_unavailable
-		// for a committed change, so wait for the one being prepared, within
-		// another memberSelfAnswerWait and the request's own deadline.
-		wait, cancel := context.WithTimeout(ctx, memberSelfAnswerWait)
-		defer cancel()
-		for !answered {
-			ready := h.opts.Runtime.publisher.Subscribe()
-			lease, err := h.opts.Runtime.publisher.CaptureHTTP(wait)
-			if err == nil {
-				value, ok := lease.Bundle().Component("auth")
-				if v, typed := value.(*servingauth.View); ok && typed {
-					var infoErr error
-					out, infoErr = h.sessionInfo(v, changed, nil)
-					answered = infoErr == nil
-				}
-				lease.Release()
-				break
+		if lease, err := h.opts.Runtime.publisher.CaptureHTTP(ctx); err == nil {
+			value, ok := lease.Bundle().Component("auth")
+			if v, typed := value.(*servingauth.View); ok && typed {
+				var infoErr error
+				out, infoErr = h.sessionInfo(v, changed, nil)
+				answered = infoErr == nil
 			}
-			if !errors.Is(err, serving.ErrPending) {
-				break
-			}
-			select {
-			case <-wait.Done():
-			case <-ready:
-				continue
-			}
-			break
+			lease.Release()
 		}
 	}
 	if !answered {

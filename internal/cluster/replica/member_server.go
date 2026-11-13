@@ -126,59 +126,39 @@ func (s *MemberServer) serve(w http.ResponseWriter, r *http.Request) {
 		s.authority(w, r.WithContext(ctx))
 		return
 	}
-	original := r
-	for attempt := 1; ; attempt++ {
-		request, err := s.opts.Store.CaptureMemberRequest(ctx, original.Header.Get(HeaderCluster), original.Header.Get(HeaderMember), original.TLS)
-		if err != nil {
-			writeProblem(w, ErrUnauthorized)
-			return
-		}
-		peerCtx, cancelPeer := context.WithDeadline(ctx, request.Deadline())
-		defer cancelPeer() // at most memberImageAttempts
-		if peerCtx.Err() != nil || controller.SetReadDeadline(request.Deadline()) != nil || controller.SetWriteDeadline(request.Deadline()) != nil {
-			writeProblem(w, ErrUnavailable)
-			return
-		}
-		r = original.WithContext(peerCtx)
-		if r.URL.Path != PathImage {
-			s.write(w, r, request)
-			return
-		}
-		// An image is a read: nothing is dispatched. When a commit on this
-		// node replaced the authority between the image's read cut and its
-		// emission, nothing was written yet, so the read captures the member
-		// request again and reads the current image, a bounded number of
-		// times. Every attempt is admitted and checked in full. A pull right
-		// that coincides with an ordinary commit (a zone status write right after a create, a burst of UPDATEs)
-		// was otherwise refused with a 503 that carries no authenticated
-		// metadata, which the follower reports as "unauthorized peer".
-		if !s.image(w, r, request, attempt < memberImageAttempts) {
-			return
-		}
+	request, err := s.opts.Store.CaptureMemberRequest(ctx, r.Header.Get(HeaderCluster), r.Header.Get(HeaderMember), r.TLS)
+	if err != nil {
+		writeProblem(w, ErrUnauthorized)
+		return
+	}
+	ctx, cancelPeer := context.WithDeadline(ctx, request.Deadline())
+	defer cancelPeer()
+	if ctx.Err() != nil || controller.SetReadDeadline(request.Deadline()) != nil || controller.SetWriteDeadline(request.Deadline()) != nil {
+		writeProblem(w, ErrUnavailable)
+		return
+	}
+	r = r.WithContext(ctx)
+	if r.URL.Path == PathImage {
+		s.image(w, r, request)
+	} else {
+		s.write(w, r, request)
 	}
 }
 
-// memberImageAttempts bounds how often one image request reads again after a
-// commit superseded the image it read before emission.
-const memberImageAttempts = 3
-
-// image answers one image read. With again set, it writes nothing and
-// reports superseded when a commit replaced the authority between the read
-// and the emission, so the caller may read again.
-func (s *MemberServer) image(w http.ResponseWriter, r *http.Request, request *sqlite.MemberRequest, again bool) (superseded bool) {
+func (s *MemberServer) image(w http.ResponseWriter, r *http.Request, request *sqlite.MemberRequest) {
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
 		w.WriteHeader(http.StatusMethodNotAllowed)
-		return false
+		return
 	}
 	if r.ContentLength != 0 || len(r.TransferEncoding) != 0 {
 		writeProblem(w, ErrProtocol)
-		return false
+		return
 	}
 	image, err := request.ReadImage()
 	if err != nil {
 		writeProblem(w, ErrUnavailable)
-		return false
+		return
 	}
 	etag := image.Generation().ETag()
 	status := http.StatusOK
@@ -189,7 +169,7 @@ func (s *MemberServer) image(w http.ResponseWriter, r *http.Request, request *sq
 		body, err = json.Marshal(image)
 		if err != nil || int64(len(body)) > s.opts.MaxImageBytes {
 			writeProblem(w, replication.ErrTooLarge)
-			return false
+			return
 		}
 	}
 	started := false
@@ -197,12 +177,8 @@ func (s *MemberServer) image(w http.ResponseWriter, r *http.Request, request *sq
 		if started {
 			panic(http.ErrAbortHandler)
 		}
-		if again && errors.Is(err, replication.ErrCAS) && r.Context().Err() == nil {
-			return true
-		}
 		writeProblem(w, ErrUnavailable)
 	}
-	return false
 }
 
 func (s *MemberServer) write(w http.ResponseWriter, r *http.Request, request *sqlite.MemberRequest) {
