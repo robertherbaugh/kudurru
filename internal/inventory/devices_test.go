@@ -76,6 +76,9 @@ func TestDevicesExplainStalenessAndAddressOwnership(t *testing.T) {
 	}
 	got = read(now)
 	want("b/newer", false, AddressWithdrawn)
+	got = read(now.Add(2 * time.Hour))
+	want("b/newer", true, AddressExpired)
+	got = read(now)
 	got["b/newer"].IPs[0] = netip.Addr{}
 	if read(now)["b/newer"].IPs[0] != ip("192.0.2.4") {
 		t.Fatal("device copy aliases the snapshot")

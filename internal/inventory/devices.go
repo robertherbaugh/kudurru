@@ -24,7 +24,8 @@ const (
 	// newer removal) owns the address.
 	AddressSuperseded AddressState = "superseded"
 	// AddressWithdrawn: this device's own source later removed or re-dated
-	// the claim; the address is not restored from the older observation.
+	// the claim before the observation expired; the address is not restored
+	// from the older observation.
 	AddressWithdrawn AddressState = "withdrawn"
 )
 
@@ -78,7 +79,13 @@ func (s *Snapshot) address(c *Client, ip netip.Addr, at time.Time) Address {
 		// be an ambiguous tie that also lost its watermark; treat it as one.
 		a.State = AddressAmbiguous
 	case p.source == c.Source && p.id == c.ID:
+		// The device still owns the claim but it is not live: past the
+		// observation's expiry that is expiry (a restored image keeps such a
+		// claim as a non-live watermark); before it, the source withdrew it.
 		a.State = AddressWithdrawn
+		if !at.Before(c.ExpiresAt) {
+			a.State = AddressExpired
+		}
 	default:
 		a.State, a.OwnerSource, a.OwnerID = AddressSuperseded, p.source, p.id
 	}
