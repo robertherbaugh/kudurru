@@ -155,7 +155,7 @@ func TestRootMemberFollowerRefusesUnforwardedMutations(t *testing.T) {
 			}
 		}
 	}
-	if len(refused) != 49 || len(admitted) != 48 {
+	if len(refused) != 58 || len(admitted) != 48 {
 		t.Fatalf("mounted follower API has %d refused and %d admitted mutations", len(refused), len(admitted))
 	}
 	for _, op := range refused {
