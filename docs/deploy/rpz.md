@@ -155,8 +155,15 @@ every state but `serving` (pending included), the reason and message the node's
 diagnosis gives, the next transfer attempt, the serial, primary, confirmation
 and expiry, the last error, the compiled rules by trigger and action, and a
 table of ignored reasons with their counts and example owners. It names the
-node that answered and is read again every 30 seconds. The **Lists** page shows
-the worst feed state of each block list with feeds under its health. In static
+node that answered and is read again every 30 seconds, every few seconds while
+the node's configuration lacks the list yet or a feed is not serving, and at
+once after a list or source change. When a feed answers SERVFAIL on this node,
+the page header shows an **RPZ <state> on this node** badge beside the list's
+shared health badge, which comes from the BlockList status and does not know
+any node's feed. A list whose only fetched sources are feeds shows "per node"
+for its last refresh and no refresh interval: feeds follow their SOA timers.
+The **Lists** page shows the worst feed state of each block list with feeds
+under its health. In static
 mode, and without `blocklists.write`, the section is read-only like the rest of
 the page; on an enrolled follower it shows the follower's own copy, and source
 changes are forwarded to the primary like every other list change.

@@ -1,8 +1,11 @@
 // Real browser workflow (D391): create a block list with an RPZ feed in the
-// wizard, watch this node transfer it from a stub primary (e2e/support/rpz.ts),
-// read its state, serial, rules and ignored owners on the list page, then
-// stop the primary and see the copy expire with the SERVFAIL warning, on the
-// list page and on the Lists page, while DNS answers SERVFAIL.
+// wizard while its stub primary (e2e/support/rpz.ts) still refuses, see the
+// feed pending with the SERVFAIL warning, let the primary answer and watch
+// this node transfer it, read its state, serial, rules and ignored owners on
+// the list page, then stop the primary and see the copy expire with the
+// SERVFAIL warning, on the list page and on the Lists page, while DNS answers
+// SERVFAIL. The page is never reloaded: every state arrives through the feed
+// section's own polling.
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, env, main, settle, test } from './fixtures';
@@ -15,14 +18,14 @@ import type { RPZFeedList } from '../src/api/types';
 // yet, and the list page's feed read answers 404 until it does.
 test.use({ allowConsole: /status of 404 .*\/rpz\b/ });
 
-test('an RPZ feed is created in the wizard, transferred, shown and expires on this node', async ({ page }) => {
-  test.setTimeout(120_000);
+test('an RPZ feed is created in the wizard, pending, transferred, shown and expires on this node', async ({ page }) => {
+  test.setTimeout(180_000);
   const id = suffix();
   const name = `e2e-rpz-${id}`;
   const zone = `rpz-${id}.test.`;
   const blocked = `blocked-${id}.example`;
   const client = `198.51.100.${10 + Math.floor(Math.random() * 200)}`;
-  const primary = await startRPZPrimary(zone, { serial: 7, expire: 8, blocked: [blocked] });
+  const primary = await startRPZPrimary(zone, { serial: 7, expire: 8, blocked: [blocked], held: true });
   const api = await adminApi(page);
   const screenshotDir = path.join(REPO_DIR, '.context');
   fs.mkdirSync(screenshotDir, { recursive: true });
@@ -50,16 +53,28 @@ test('an RPZ feed is created in the wizard, transferred, shown and expires on th
     await expect(page).toHaveURL((url) => url.pathname === `/lists/default/${name}`);
     await api.put(`/objects/policies/default/${name}`, object('Policy', name, { clientGroupRefs: [name], blockListRefs: [name], priority: 500 }));
 
-    await expect.poll(feedState, { timeout: 30_000, intervals: [250, 500, 1000] }).toBe('serving');
+    const region = main(page).getByRole('region', { name: 'RPZ feeds on this node' });
+    const feed = region.locator('[data-state]').first();
+    const header = main(page).getByTestId('rpz-header-state');
+
+    // The primary still refuses: no first copy, so the feed is pending and
+    // this node answers SERVFAIL for the list.
+    await expect(feed).toHaveAttribute('data-state', 'pending', { timeout: 30_000 });
+    await expect(feed.getByRole('alert')).toContainText('Pending: clients get SERVFAIL');
+    await expect(feed.getByRole('alert')).toContainText('Until its first complete transfer');
+    await expect(header).toHaveText('RPZ pending on this node');
+    await expect(main(page).getByText('per node (see RPZ feeds)')).toBeVisible();
+    await expect.poll(async () => (await dig(blocked)).rcode, { timeout: 20_000, intervals: [250, 500, 1000] }).toBe('SERVFAIL');
+    expect(primary.transfers()).toBe(0);
+    await page.screenshot({ path: path.join(screenshotDir, 'rpz-ui-pending.png'), fullPage: true });
+
+    primary.serve();
+    await expect(feed).toHaveAttribute('data-state', 'serving', { timeout: 30_000 });
+    expect(await feedState()).toBe('serving');
     await expect.poll(async () => (await dig(blocked)).status_class, { timeout: 20_000, intervals: [250, 500, 1000] }).toBe('blocked');
     expect(primary.transfers()).toBeGreaterThan(0);
-
-    await page.reload();
-    await settle(page);
-    const region = main(page).getByRole('region', { name: 'RPZ feeds on this node' });
     await expect(region).toContainText(`node ${env('KUDURRU_E2E_NODE')}`);
-    const feed = region.locator('[data-state]').first();
-    await expect(feed).toHaveAttribute('data-state', 'serving');
+    await expect(header).toHaveCount(0);
     await expect(feed).toContainText(primary.address);
     await expect(feed).toContainText(/Serial\s*7(?!\d)/);
     await expect(feed.getByTestId('rpz-rules')).toContainText(/QNAME\s*1(?!\d)/);
@@ -69,12 +84,13 @@ test('an RPZ feed is created in the wizard, transferred, shown and expires on th
     await page.screenshot({ path: path.join(screenshotDir, 'rpz-ui-serving.png'), fullPage: true });
 
     // The primary stops answering: the copy expires 8 s after its last confirmation.
+    // A serving feed is reread every 30 s; once it is expired, every few seconds.
     primary.fail();
-    await expect.poll(feedState, { timeout: 40_000, intervals: [500, 1000] }).toBe('expired');
+    await expect(feed).toHaveAttribute('data-state', 'expired', { timeout: 60_000 });
+    expect(await feedState()).toBe('expired');
     await expect.poll(async () => (await dig(blocked)).rcode, { timeout: 20_000, intervals: [250, 500, 1000] }).toBe('SERVFAIL');
-    await page.reload();
-    await settle(page);
-    await expect(feed).toHaveAttribute('data-state', 'expired');
+    await expect(header).toHaveText('RPZ expired on this node');
+    await expect(main(page).getByTestId('rpz-status')).toContainText('clients whose policy uses this list get SERVFAIL');
     await expect(feed.getByRole('alert')).toContainText('Expired: clients get SERVFAIL');
     await expect(feed.getByRole('alert')).toContainText('RPZExpired');
     await expect(feed).toContainText(/Last serial\s*7(?!\d)/);

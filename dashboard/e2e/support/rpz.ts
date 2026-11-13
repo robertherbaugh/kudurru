@@ -3,6 +3,9 @@
 // BlockList RPZ source transfers without leaving the host. `fail()` makes
 // every later query answer SERVFAIL, which lets the node's copy expire on
 // the zone's own SOA timers (refresh and retry 1 s, expire `expire` s).
+// With `held`, the primary accepts queries but answers none until
+// `serve()`, so the node's first transfer attempt stays in flight and its
+// feed stays pending (no copy, no error) until the test lets it finish.
 import net from 'node:net';
 
 const TYPE = { NS: 2, CNAME: 5, SOA: 6, IXFR: 251, AXFR: 252 } as const;
@@ -55,6 +58,8 @@ export interface RPZPrimary {
   transfers: () => number;
   /** From now on every query answers SERVFAIL. */
   fail: () => void;
+  /** Answers the queries `held` kept back, and every later one. */
+  serve: () => void;
   close: () => Promise<void>;
 }
 
@@ -63,9 +68,11 @@ export interface RPZPrimary {
  * NXDOMAIN) and one NSDNAME trigger, which kudurru ignores and counts as
  * resolver-ns-provenance.
  */
-export async function startRPZPrimary(zone: string, opts: { serial: number; expire: number; blocked: string[] }): Promise<RPZPrimary> {
+export async function startRPZPrimary(zone: string, opts: { serial: number; expire: number; blocked: string[]; held?: boolean }): Promise<RPZPrimary> {
   const origin = zone.toLowerCase().replace(/\.?$/, '.');
   let failing = false;
+  let held = !!opts.held;
+  const flushes = new Set<() => void>();
   let transfers = 0;
   const records = [
     rr(origin, TYPE.NS, encodeName(`ns.${origin}`)),
@@ -95,9 +102,8 @@ export async function startRPZPrimary(zone: string, opts: { serial: number; expi
     sock.on('close', () => sockets.delete(sock));
     sock.on('error', () => sock.destroy());
     let buf = Buffer.alloc(0);
-    sock.on('data', (chunk) => {
-      buf = Buffer.concat([buf, chunk]);
-      while (buf.length >= 2) {
+    const drain = () => {
+      while (!held && buf.length >= 2) {
         const len = buf.readUInt16BE(0);
         if (buf.length < 2 + len) break;
         const out = answer(buf.subarray(2, 2 + len));
@@ -106,6 +112,12 @@ export async function startRPZPrimary(zone: string, opts: { serial: number; expi
         prefix.writeUInt16BE(out.length, 0);
         sock.write(Buffer.concat([prefix, out]));
       }
+    };
+    flushes.add(drain);
+    sock.on('close', () => flushes.delete(drain));
+    sock.on('data', (chunk) => {
+      buf = Buffer.concat([buf, chunk]);
+      drain();
     });
   });
   await new Promise<void>((resolve, reject) => {
@@ -119,6 +131,10 @@ export async function startRPZPrimary(zone: string, opts: { serial: number; expi
     transfers: () => transfers,
     fail: () => {
       failing = true;
+    },
+    serve: () => {
+      held = false;
+      for (const drain of flushes) drain();
     },
     close: () =>
       new Promise<void>((resolve) => {

@@ -438,7 +438,8 @@ time. None of these reads touch the DNS path; they can disagree briefly with
 the serving snapshot a dig explanation reports, and they converge within one
 publication. The dashboard reads the same routes: a list page with an RPZ
 source shows an "RPZ feeds on this node" section from the per-list route
-(polled every 30 s), and the Lists page reads `GET /blocklists/_rpz` once a
+(polled every 30 s, every 3 s while the node lacks the list or a feed is not
+serving, and again after every list or source change), and the Lists page reads `GET /blocklists/_rpz` once a
 block list has an enabled feed and shows the worst feed state under the list's
 health. Both say which node answered and render only the fields that node
 sends. Operator guide: [docs/deploy/rpz.md](../deploy/rpz.md).
