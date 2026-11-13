@@ -28,11 +28,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# The node's structured log lines only: the first-boot banner on stderr holds
-# a generated admin password.
+# The node's structured log lines and its exit error only: the first-boot
+# banner on stderr holds a generated admin password.
 logs() {
-	echo "## serve.log (JSON lines, last 40)"
-	grep '^{' "$dir/serve.log" | tail -40
+	echo "## serve.log (JSON lines and the error line, last 40)"
+	grep -E '^(\{|error: )' "$dir/serve.log" | tail -40
 }
 
 port() { python3 -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'; }
@@ -52,11 +52,8 @@ listeners:
   internal: { address: "127.0.0.1:$internal" }
 upstreams:
   groups:
-    # strategy is unused by a recursive group, but at f1cf1cac a first boot
-    # on SQLite without it fails: the runtime owner write sends strategy ""
-    # and the Kudurru CRD's enum refuses it (G24-LOCAL evidence,
-    # 07-recursive-group-doc-config.log).
-    default: { mode: recursive, timeout: 4s, strategy: parallel_best }
+    # The documented form (docs/guide/admin/07-zones-and-upstreams.md).
+    default: { mode: recursive, timeout: 4s }
 log:
   level: info
 EOF
@@ -65,14 +62,20 @@ EOF
 KUDURRU_ADMIN_PASSWORD=$(python3 -I -c 'import secrets; print(secrets.token_urlsafe(24))') \
 	"$bin" --config "$dir/kudurru.yaml" serve >"$dir/serve.log" 2>&1 &
 pid=$!
+# The ops listener's readiness route (internal/health); 60 s at most.
+ready=0
 for _ in $(seq 1 120); do
-	if curl -sf "http://127.0.0.1:$ops/readyz" >/dev/null 2>&1; then break; fi
+	if curl -sf "http://127.0.0.1:$ops/healthz/ready" >/dev/null 2>&1; then ready=1; break; fi
 	kill -0 "$pid" 2>/dev/null || { logs; echo "the node exited" >&2; exit 1; }
 	sleep 0.5
 done
+[ "$ready" = 1 ] || { logs; echo "the node was not ready after 60 s (/healthz/ready)" >&2; exit 1; }
+echo "ready: /healthz/ready answered 200"
 
 fail=0
-q() { dig +time=5 +tries=2 -p "$dns" @127.0.0.1 "$@"; }
+# A dig that gets no answer fails its checks (and prints the node log)
+# instead of ending the script under set -e.
+q() { dig +time=5 +tries=2 -p "$dns" @127.0.0.1 "$@" || true; }
 check() { if eval "$2"; then echo "ok   $1"; else echo "FAIL $1"; fail=1; fi; }
 
 out=$(q +dnssec example.com A)
