@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -35,6 +36,8 @@ import (
 // taken over nor served, record sets written outside the adapter are not
 // served, partitioning the elected writer moves the writes to the other
 // replica without duplicates, and deleting the sources withdraws every name.
+// An RFC 2136 UPDATE into the zone is refused with NOTAUTH and writes
+// nothing, and 40 Ingresses created at once converge within 15 s.
 func TestRunServeExternalZonesFromKubernetesSources(t *testing.T) {
 	control := &envtest.Environment{BinaryAssetsDirectory: mountedKubeTestAssets(t), CRDDirectoryPaths: []string{"../../deploy/kustomize/crd/bases", "../../internal/sources/k8s/testdata"}, ErrorIfCRDPathMissing: true}
 	control.ControlPlane.GetAPIServer().Configure().Set("advertise-address", "127.0.0.1").Set("endpoint-reconciler-type", "none")
@@ -271,6 +274,16 @@ func TestRunServeExternalZonesFromKubernetesSources(t *testing.T) {
 		t.Fatal("a second replica changed leadership or duplicated record sets", got, holder())
 	}
 	assertForeignUntouched()
+	// With the adapter mounted the zone does not report SourcesNotRead.
+	var extZone public.DNSZone
+	if err := admin.Get(ctx, client.ObjectKey{Name: "ext"}, &extZone); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range extZone.Status.Conditions {
+		if c.Reason == public.ReasonSourcesNotRead {
+			t.Fatal("the zone reports no adapter although one runs:", c.Message)
+		}
+	}
 	// Sources stay read-only: no finalizer, annotation or status of ours.
 	var seen networkingv1.Ingress
 	if err := admin.Get(ctx, client.ObjectKeyFromObject(web), &seen); err != nil {
@@ -329,4 +342,68 @@ func TestRunServeExternalZonesFromKubernetesSources(t *testing.T) {
 	if err := admin.Get(ctx, client.ObjectKeyFromObject(manual), &kept); err != nil {
 		t.Fatal("the adapter removed a record set it does not own:", err)
 	}
+
+	// An RFC 2136 UPDATE into the external zone is refused on both replicas
+	// (NOTAUTH: no primary zone has that apex) and writes nothing.
+	allRecordSets := func() int {
+		var records public.DNSRecordSetList
+		if err := admin.List(ctx, &records); err != nil {
+			t.Fatal(err)
+		}
+		return len(records.Items)
+	}
+	before := allRecordSets()
+	for _, cfg := range []*config.Config{cfgA, cfgB} {
+		upd := new(dns.Msg)
+		upd.SetUpdate("ext.example.")
+		rr, err := dns.NewRR("upd.ext.example. 60 IN A 192.0.2.99")
+		if err != nil {
+			t.Fatal(err)
+		}
+		upd.Insert([]dns.RR{rr})
+		r, _, err := (&dns.Client{Net: "tcp", Timeout: 2 * time.Second}).ExchangeContext(ctx, upd, cfg.Listeners.DNS[0].Address)
+		if err != nil || r.Rcode != dns.RcodeNotAuth {
+			t.Fatalf("UPDATE into the external zone on %s: %v %v", cfg.Node.Name, r, err)
+		}
+	}
+	time.Sleep(time.Second)
+	if got, _ := answer(cfgA, "udp", "upd.ext.example."); got != "" {
+		t.Fatal("a refused UPDATE is served on A:", got)
+	}
+	if got, _ := answer(cfgB, "tcp", "upd.ext.example."); got != "" {
+		t.Fatal("a refused UPDATE is served on B:", got)
+	}
+	if after := allRecordSets(); after != before {
+		t.Fatalf("a refused UPDATE changed the record sets: %d -> %d", before, after)
+	}
+
+	// Many sources created at once converge within a few passes: the zone
+	// controller's status writes (a serial per written record set) do not
+	// refuse the rest of a pass.
+	const bulk = 40
+	bulkWant := map[string]string{}
+	bulkGone := map[string]string{}
+	var bulkSources []*networkingv1.Ingress
+	for i := range bulk {
+		in := ingress(fmt.Sprintf("bulk-%d", i), fmt.Sprintf("bulk-%d.ext.example", i))
+		if err := admin.Create(ctx, in); err != nil {
+			t.Fatal(err)
+		}
+		setIngressAddress(in, fmt.Sprintf("192.0.2.%d", 100+i))
+		bulkSources = append(bulkSources, in)
+		bulkWant[fmt.Sprintf("bulk-%d.ext.example.", i)] = fmt.Sprintf("192.0.2.%d", 100+i)
+		bulkGone[fmt.Sprintf("bulk-%d.ext.example.", i)] = ""
+	}
+	created := time.Now()
+	await(15*time.Second, "40 new Ingresses served on both replicas", func() bool { return serves(cfgA, bulkWant) && serves(cfgB, bulkWant) })
+	t.Logf("%d Ingresses converged on both replicas in %s", bulk, time.Since(created).Round(100*time.Millisecond))
+	if got := derived(); len(got) != 1 || len(got["ingress"]) != bulk {
+		t.Fatal("bulk sources derived record sets", len(got["ingress"]))
+	}
+	for _, in := range bulkSources {
+		if err := admin.Delete(ctx, in); err != nil {
+			t.Fatal(err)
+		}
+	}
+	await(15*time.Second, "the bulk sources are withdrawn", func() bool { return serves(cfgA, bulkGone) && serves(cfgB, bulkGone) })
 }
