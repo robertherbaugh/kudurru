@@ -2,8 +2,6 @@ package driver
 
 import (
 	"context"
-	"hash"
-	"hash/fnv"
 	"math"
 	"reflect"
 	"slices"
@@ -55,14 +53,24 @@ func (d *Driver) work(ctx context.Context, w Writer, all roster) error {
 			start = i + 1
 		}
 	}
-	below := descendantCursors(all, names)
 	now := time.Now()
 	count := 0
 	for i := 0; i < len(names) && count < d.o.MaxWork; i++ {
 		name := names[(start+i)%len(names)]
 		d.after = name
 		previous := d.retries[name]
-		cursor := retryCursor(all, below, name)
+		cursor := checkpoint(all.ledgers[name])
+		if z := all.zones[name]; z != nil {
+			cursor += z.ResourceVersion + ":" + string(z.UID)
+		}
+		if z := all.zones[name]; z != nil {
+			for _, apex := range ancestorNames(dns.CanonicalName(z.Spec.ZoneName)) {
+				if parent := all.byApex[apex]; parent != nil && parent.Spec.Type == public.ZoneTypePrimary {
+					cursor += parent.ResourceVersion + ":" + string(parent.UID) + ":" + checkpoint(all.ledgers[parent.Name])
+				}
+			}
+		}
+
 		if cursor != previous.cursor {
 			previous = retry{}
 		}
@@ -128,70 +136,6 @@ func (d *Driver) work(ctx context.Context, w Writer, all roster) error {
 	d.status.Zones = statuses
 	d.mu.Unlock()
 	return nil
-}
-
-// retryCursor is the scheduling cursor of one zone: a change resets its
-// retry backoff. It covers the zone's own source and lifecycle, every primary
-// parent's, and (through below) every descendant's.
-func retryCursor(all roster, below map[string]hash.Hash64, name string) string {
-	cursor := checkpoint(all.ledgers[name])
-	if z := all.zones[name]; z != nil {
-		cursor += z.ResourceVersion + ":" + string(z.UID)
-	}
-	if h := below[name]; h != nil {
-		cursor += ":" + strconv.FormatUint(h.Sum64(), 16)
-	}
-	if z := all.zones[name]; z != nil {
-		for _, apex := range ancestorNames(dns.CanonicalName(z.Spec.ZoneName)) {
-			if parent := all.byApex[apex]; parent != nil && parent.Spec.Type == public.ZoneTypePrimary {
-				cursor += parent.ResourceVersion + ":" + string(parent.UID) + ":" + checkpoint(all.ledgers[parent.Name])
-			}
-		}
-	}
-	return cursor
-}
-
-// descendantCursors digests, per primary parent object, the source and
-// lifecycle checkpoints of every zone below its apex (desired or historical).
-// A parent's retry cursor includes it, as a child's cursor already includes
-// its parents: a parent backing off after a refusal (for example a boundary
-// that was still moving) is retried as soon as a child's fence, activation,
-// retirement or release commits, instead of only when its own exponential
-// backoff (up to 32 s) expires (D404). The digest only resets backoff; it
-// never supplies source data. One pass over names, bounded by MaxZones and
-// the label count of each apex.
-func descendantCursors(all roster, names []string) map[string]hash.Hash64 {
-	out := map[string]hash.Hash64{}
-	for _, name := range names {
-		apex := ""
-		l, z := all.ledgers[name], all.zones[name]
-		if z != nil {
-			apex = dns.CanonicalName(z.Spec.ZoneName)
-		} else if l != nil {
-			apex = l.Spec.Zone.Apex
-		}
-		if apex == "" {
-			continue
-		}
-		entry := name + ":" + checkpoint(l)
-		if z != nil {
-			entry += ":" + z.ResourceVersion + ":" + string(z.UID)
-		}
-		for _, ancestor := range ancestorNames(apex) {
-			parent := all.byApex[ancestor]
-			if parent == nil || parent.Spec.Type != public.ZoneTypePrimary {
-				continue
-			}
-			h := out[parent.Name]
-			if h == nil {
-				h = fnv.New64a()
-				out[parent.Name] = h
-			}
-			_, _ = h.Write([]byte(entry))
-			_, _ = h.Write([]byte{0})
-		}
-	}
-	return out
 }
 
 func (d *Driver) parents(all roster, l *zk.ZoneLifecycle) ([]zk.ParentFence, error) {
