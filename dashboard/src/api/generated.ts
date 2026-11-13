@@ -4627,6 +4627,14 @@ export interface components {
             /** Format: int64 */
             unchanged: number;
         };
+        IntegrationFieldLimit: {
+            /** @enum {string} */
+            effect: "refused" | "inert";
+            field: string;
+            message: string;
+            reason?: string;
+            requires?: string;
+        };
         IntegrationListOutputBody: {
             items: components["schemas"]["IntegrationSummary"][];
         };
@@ -4638,6 +4646,7 @@ export interface components {
             credentials: components["schemas"]["IntegrationCredentialKey"][];
             displayName: string;
             docs?: string;
+            fieldLimits: components["schemas"]["IntegrationFieldLimit"][];
             ioClass: string;
             reason?: string;
             refused: string[];

@@ -5089,6 +5089,36 @@
         ],
         "type": "object"
       },
+      "IntegrationFieldLimit": {
+        "additionalProperties": false,
+        "properties": {
+          "effect": {
+            "enum": [
+              "refused",
+              "inert"
+            ],
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "requires": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "effect",
+          "message"
+        ],
+        "type": "object"
+      },
       "IntegrationListOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -5130,6 +5160,12 @@
           "docs": {
             "type": "string"
           },
+          "fieldLimits": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationFieldLimit"
+            },
+            "type": "array"
+          },
           "ioClass": {
             "type": "string"
           },
@@ -5162,7 +5198,8 @@
           "configSchema",
           "credentials",
           "supported",
-          "refused"
+          "refused",
+          "fieldLimits"
         ],
         "type": "object"
       },
