@@ -46,9 +46,17 @@ func joinPrimaryLifetimeFixture(t *testing.T, lifetime time.Duration) (*servingR
 // joinPrimaryOn activates enrollment on an existing writable runtime, serves
 // its member listener and returns the invitation issuer. Tests that need a
 // particular primary (for example one with managed root anchors) use it.
+//
+// The member identity is created in the runtime's data directory. A running
+// runtime reads its host configuration on every preparation, so a runtime that
+// already runs must have been built with that directory set (as
+// anchorOperationFixtureTopology does); only a runtime that has not started yet
+// gets a fresh one here.
 func joinPrimaryOn(t *testing.T, p *servingRuntime, lifetime time.Duration) (*internalapi.Credentials, func(string) enrollment.Invitation) {
 	t.Helper()
-	p.opts.Config.Node.DataDir = t.TempDir()
+	if p.opts.Config.Node.DataDir == "" {
+		p.opts.Config.Node.DataDir = t.TempDir()
+	}
 	i, err := memberidentity.Create(filepath.Join(p.opts.Config.Node.DataDir, memberIdentityFile), p.opts.Store.Authority().MemberID)
 	if err != nil {
 		t.Fatal(err)
