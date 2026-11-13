@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"runtime"
 	"slices"
 	"strconv"
 )
@@ -380,11 +381,17 @@ var featureRefusals = map[string]Feature{
 }
 
 // featureRefusalShapes limits a line of featureRefusals to the shapes that
-// answer it. A SQLite node on Linux opens its DHCP setup manager whether DHCP
-// is on or off, so only a Kubernetes node with DHCP off refuses a setup write.
+// answer it on a Linux host. A SQLite node on Linux opens its DHCP setup
+// manager whether DHCP is on or off (cmd/kudurru prepareDHCPWithListener),
+// so there only a Kubernetes node with DHCP off refuses a setup write. On
+// any other host no node opens the manager, and every shape refuses it.
 var featureRefusalShapes = map[string][]RuntimeShape{
 	"putDHCPSetup": {ShapeKubernetes},
 }
+
+// hostOS is the operating system that the inventory's expectations follow
+// (featureRefusalShapes). Tests set it to hold another host's answers.
+var hostOS = runtime.GOOS
 
 // sessionEndingOperations end the session that a probe used.
 var sessionEndingOperations = []string{"logout", "browserLogout"}
@@ -420,7 +427,7 @@ func ExpectedRefusal(shape RuntimeShape, operationID, method string, off ...Feat
 		key = ""
 	}
 	if feature, ok := featureRefusals[operationID]; key == "" && ok && slices.Contains(off, feature) {
-		if shapes, limited := featureRefusalShapes[operationID]; !limited || slices.Contains(shapes, shape) {
+		if shapes, limited := featureRefusalShapes[operationID]; !limited || hostOS != "linux" || slices.Contains(shapes, shape) {
 			key = KeyUnavailable
 		}
 	}

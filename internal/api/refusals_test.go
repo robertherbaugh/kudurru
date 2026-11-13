@@ -140,11 +140,19 @@ func TestExpectedRefusalInheritance(t *testing.T) {
 			t.Errorf("listQueries on %s without DHCP: %q", shape, got)
 		}
 	}
-	// A line of featureRefusalShapes limits the feature's refusal: only a
-	// Kubernetes node without DHCP refuses a DHCP setup write.
-	for shape, want := range map[RuntimeShape]string{ShapeKubernetes: KeyUnavailable, ShapeStandalone: "", ShapeFollower: "", ShapeStatic: KeyReadOnly} {
-		if got, _ := ExpectedRefusal(shape, "putDHCPSetup", http.MethodPut, FeatureDHCP); got != want {
-			t.Errorf("putDHCPSetup on %s without DHCP: %q, want %q", shape, got, want)
+	// A line of featureRefusalShapes limits the feature's refusal on a Linux
+	// host: only a Kubernetes node without DHCP refuses a DHCP setup write.
+	// On another host no SQLite node opens the setup manager either.
+	defer func(os string) { hostOS = os }(hostOS)
+	for os, wants := range map[string]map[RuntimeShape]string{
+		"linux":  {ShapeKubernetes: KeyUnavailable, ShapeStandalone: "", ShapeFollower: "", ShapeStatic: KeyReadOnly},
+		"darwin": {ShapeKubernetes: KeyUnavailable, ShapeStandalone: KeyUnavailable, ShapePrimary: KeyUnavailable, ShapeFollower: KeyUnavailable, ShapeStatic: KeyReadOnly},
+	} {
+		hostOS = os
+		for shape, want := range wants {
+			if got, _ := ExpectedRefusal(shape, "putDHCPSetup", http.MethodPut, FeatureDHCP); got != want {
+				t.Errorf("putDHCPSetup on %s (%s host) without DHCP: %q, want %q", shape, os, got, want)
+			}
 		}
 	}
 	if got, _ := ExpectedRefusal(ShapeKubernetes, "putDHCPSetup", http.MethodPut); got != "" {
