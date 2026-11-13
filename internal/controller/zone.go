@@ -124,7 +124,7 @@ func zoneVerdict(z *v1alpha1.DNSZone, view *zoneView, build *zoneBuild) verdict 
 	switch {
 	case view.SelectorErr != nil:
 		v = verdict{ReadyReason: v1alpha1.ReasonInvalid, ReadyMessage: "spec.recordSetSelector: " + view.SelectorErr.Error()}
-	case z.Spec.Type != v1alpha1.ZoneTypePrimary && z.Spec.Type != v1alpha1.ZoneTypeForward:
+	case z.Spec.Type != v1alpha1.ZoneTypePrimary && z.Spec.Type != v1alpha1.ZoneTypeForward && z.Spec.Type != v1alpha1.ZoneTypeExternal:
 		v = verdict{ReadyReason: ReasonUnsupported, ReadyMessage: fmt.Sprintf("zone type %q is not served by this version", z.Spec.Type)}
 	case build.ZoneErr != nil:
 		v = verdict{ReadyReason: v1alpha1.ReasonInvalid, ReadyMessage: "the zone is not served: " + build.ZoneErr.Error()}

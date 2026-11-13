@@ -157,6 +157,9 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (result writ
 		return s.commandWriteObject(ctx, req, manager, u, key)
 	}
 	k := req.kind
+	if err := s.refuseExternalZoneRecords(ctx, k, u); err != nil {
+		return writeResult{}, err
+	}
 
 	existing := k.newObject()
 	if err := s.opts.Store.Get(ctx, key, existing); errors.Is(err, store.ErrNotFound) {
@@ -271,6 +274,33 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (result writ
 		res = ResultCreated
 	}
 	return writeResult{obj: written, result: res, key: key}, nil
+}
+
+// refuseExternalZoneRecords refuses a DNSRecordSet document for an external
+// zone (D402). Such a zone serves only the record sets the Kubernetes source
+// adapter derives from Ingresses, routes and Services; the zone model would
+// leave an API-written one out, so the write is refused instead of stored
+// and silently ignored.
+func (s *Server) refuseExternalZoneRecords(ctx context.Context, k kindInfo, u *unstructured.Unstructured) error {
+	if k.kind != "DNSRecordSet" {
+		return nil
+	}
+	name, _ := nestedString(u.Object, "spec", "zoneRef", "name")
+	if name == "" {
+		return nil
+	}
+	var z v1alpha1.DNSZone
+	if err := s.opts.Store.Get(ctx, store.Key{Kind: "DNSZone", Name: name}, &z); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil
+		}
+		return storeError(err)
+	}
+	if z.Spec.Type == v1alpha1.ZoneTypeExternal {
+		return errConflict(fmt.Sprintf("DNSZone %s is an external zone: its records come from Kubernetes Ingresses, Gateway API routes and LoadBalancer Services", name),
+			"change the source object (or its external-dns annotations) instead")
+	}
+	return nil
 }
 
 // normalizeWrite builds the sanitized canonical document and key of one write.

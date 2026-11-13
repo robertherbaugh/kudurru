@@ -82,6 +82,13 @@ func (z *Zone) Name() string { return z.name }
 // Type returns the zone type.
 func (z *Zone) Type() v1alpha1.ZoneType { return z.typ }
 
+// holdsRecords reports whether the zone is built from record sets: primary
+// zones and external zones (whose record sets the Kubernetes source adapter
+// maintains, D402).
+func (z *Zone) holdsRecords() bool {
+	return z.typ == v1alpha1.ZoneTypePrimary || z.typ == v1alpha1.ZoneTypeExternal
+}
+
 // Serial returns the served SOA serial: status.serial for primary zones,
 // the external primary's serial for secondary zones.
 func (z *Zone) Serial() uint32 { return z.serial }
@@ -312,10 +319,13 @@ type identity struct {
 // NewBuilder validates the DNSZone and returns a Builder for its records.
 // The errors are field paths into the DNSZone (spec.zoneName,
 // spec.policy.queryACL[2], ...); when there are any the zone cannot be
-// built and the Builder is nil. Zone types other than primary and forward
-// are rejected here. Secondary and stub zones are built from transferred or
-// discovered data by BuildSecondary and BuildStub instead; external, catalog
-// and secondaryCatalog zones are not served.
+// built and the Builder is nil. Zone types other than primary, external and
+// forward are rejected here. Secondary and stub zones are built from
+// transferred or discovered data by BuildSecondary and BuildStub instead;
+// catalog and secondaryCatalog zones are not served. An external zone is
+// built like a primary zone from the record sets the Kubernetes source
+// adapter maintains for it (ServedRecordSets selects them, D402); only the
+// Kubernetes driver serves it.
 //
 // Errors in the transfer and notify parts of spec.policy do not stop the
 // zone from being served; they fail closed instead (transfers denied, a
@@ -332,10 +342,10 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 		errs = append(errs, field.Invalid(specPath.Child("zoneName"), spec.ZoneName, "must be a domain name"))
 	}
 	switch spec.Type {
-	case v1alpha1.ZoneTypePrimary, v1alpha1.ZoneTypeForward:
+	case v1alpha1.ZoneTypePrimary, v1alpha1.ZoneTypeExternal, v1alpha1.ZoneTypeForward:
 	default:
 		errs = append(errs, field.NotSupported(specPath.Child("type"), spec.Type,
-			[]v1alpha1.ZoneType{v1alpha1.ZoneTypePrimary, v1alpha1.ZoneTypeForward}))
+			[]v1alpha1.ZoneType{v1alpha1.ZoneTypePrimary, v1alpha1.ZoneTypeExternal, v1alpha1.ZoneTypeForward}))
 	}
 	if spec.Fallback != nil && spec.Type != v1alpha1.ZoneTypePrimary {
 		errs = append(errs, field.Forbidden(specPath.Child("fallback"), "fallback is only supported for primary zones"))
@@ -490,7 +500,7 @@ func (b *Builder) AddRecordSet(source string, eps []v1alpha1.Endpoint) field.Err
 // none of its records are added and the errors explain why. Disabled,
 // expired and view-scoped endpoints are skipped silently (Served).
 func (b *Builder) Add(source string, path *field.Path, ep *v1alpha1.Endpoint) field.ErrorList {
-	if b.z.typ != v1alpha1.ZoneTypePrimary {
+	if !b.z.holdsRecords() {
 		return field.ErrorList{field.Forbidden(path, fmt.Sprintf("%s zones hold no records", b.z.typ))}
 	}
 	if !Served(ep, b.now) {
@@ -609,7 +619,7 @@ func (b *Builder) insertName(key, owner string) *node {
 // the content hash. The Builder must not be used afterwards.
 func (b *Builder) Build() *Zone {
 	z := b.z
-	if z.typ != v1alpha1.ZoneTypePrimary {
+	if !z.holdsRecords() {
 		z.hash = hashForward(z)
 		return z
 	}

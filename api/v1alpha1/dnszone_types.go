@@ -8,15 +8,17 @@ import (
 // +kubebuilder:validation:Enum=primary;forward;secondary;stub;external;catalog;secondaryCatalog
 type ZoneType string
 
-// Zone types. Primary, forward, secondary and stub zones are served. The
-// schema also accepts external, catalog and secondaryCatalog, but no zone is
-// built for them: the controller reports Ready=False with reason Unsupported.
+// Zone types. Primary, forward, secondary and stub zones are served. External
+// zones are served by the Kubernetes store driver only, from the Kubernetes
+// objects spec.external selects (D402); the SQLite driver refuses them. The
+// schema also accepts catalog and secondaryCatalog, but no zone is built for
+// them: the controller reports Ready=False with reason Unsupported.
 const (
 	ZoneTypePrimary          ZoneType = "primary"
 	ZoneTypeForward          ZoneType = "forward"
 	ZoneTypeSecondary        ZoneType = "secondary"        // served since v0.2
 	ZoneTypeStub             ZoneType = "stub"             // served since v0.2
-	ZoneTypeExternal         ZoneType = "external"         // not served
+	ZoneTypeExternal         ZoneType = "external"         // served on Kubernetes since v0.2
 	ZoneTypeCatalog          ZoneType = "catalog"          // not served; planned for v1.0
 	ZoneTypeSecondaryCatalog ZoneType = "secondaryCatalog" // not served; planned for v1.0
 )
@@ -196,12 +198,28 @@ type StubSpec struct {
 	Nameservers []string `json:"nameservers"`
 }
 
-// ExternalSpec synthesizes records from Kubernetes objects (v0.2).
+// ExternalSpec synthesizes records from Kubernetes objects (v0.2, D402). It
+// takes effect only when the server runs with externalZones.enabled on the
+// Kubernetes store driver. The elected replica derives one DNSRecordSet per
+// source object and zone in the source's namespace; the zone's
+// recordSetSelector decides which namespaces and labels may contribute
+// (derived record sets carry the source's labels). Names are placed in the
+// external zone with the longest matching apex. Sources are only read.
+// The external-dns annotations external-dns.kubernetes.io/hostname, /target
+// and /ttl (and their external-dns.alpha.kubernetes.io forms) add names,
+// replace targets and set the TTL.
 type ExternalSpec struct {
+	// Ingress publishes networking.k8s.io/v1 Ingress rule and TLS hosts at
+	// the addresses in the Ingress status.
 	// +optional
 	Ingress bool `json:"ingress,omitempty"`
+	// Gateway publishes the hostnames of Gateway API HTTPRoutes, GRPCRoutes
+	// and TLSRoutes that a parent Gateway has accepted, at that Gateway's
+	// status addresses. A route without hostnames uses its listener's.
 	// +optional
 	Gateway bool `json:"gateway,omitempty"`
+	// LoadBalancerServices publishes Services of type LoadBalancer that
+	// carry a hostname annotation, at their load balancer addresses.
 	// +optional
 	LoadBalancerServices bool `json:"loadBalancerServices,omitempty"`
 }

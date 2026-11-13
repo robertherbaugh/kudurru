@@ -88,7 +88,8 @@ func (s *RecordSetSelector) Admits(rs *v1alpha1.DNSRecordSet) bool {
 // out entirely, as the apiserver would have rejected it; Build then
 // decides endpoint by endpoint (OutsideZone, Duplicated, CNAME and DNAME
 // conflicts). sets is not modified. A recordSetSelector that does not
-// compile admits nothing.
+// compile admits nothing. An external zone additionally admits only the
+// record sets the Kubernetes source adapter maintains (ExternalSourceOwned).
 func ServedRecordSets(dz *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet) []*v1alpha1.DNSRecordSet {
 	return ServedRecordSetsCached(dz, sets, nil, time.Time{})
 }
@@ -104,7 +105,7 @@ func ServedRecordSetsCached(dz *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet,
 	}
 	out := make([]*v1alpha1.DNSRecordSet, 0, len(sets))
 	for _, rs := range sets {
-		if sel.Admits(rs) && cache.RecordSetValid(dz, rs, now) {
+		if sel.Admits(rs) && externalSelected(dz, rs) && cache.RecordSetValid(dz, rs, now) {
 			out = append(out, rs)
 		}
 	}

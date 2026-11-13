@@ -11,8 +11,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
 
-// Served returns the authoritative zones (primary and secondary; forward
-// zones only route queries) this node serves from c, sorted by name, or
+// Served returns the authoritative zones (primary, secondary and external;
+// forward zones only route queries) this node serves from c, sorted by name, or
 // nil while the cache is unsynced. Edge supervisors poll it through GET
 // /internal/zones and the zone metrics read it.
 func Served(c *zonecache.Cache, copies ...*secondary.Manager) []*zone.Zone {
@@ -40,7 +40,7 @@ func Served(c *zonecache.Cache, copies ...*secondary.Manager) []*zone.Zone {
 			}
 		}
 		switch z.Type() {
-		case v1alpha1.ZoneTypePrimary, v1alpha1.ZoneTypeSecondary:
+		case v1alpha1.ZoneTypePrimary, v1alpha1.ZoneTypeSecondary, v1alpha1.ZoneTypeExternal:
 			out = append(out, z)
 		}
 	}
