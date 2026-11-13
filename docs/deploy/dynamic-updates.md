@@ -215,10 +215,23 @@ replaced waits for it, within the four seconds of the forward, instead of
 failing: the follower selects the zone and checks the key again on its new
 publication, and the primary checks again on its own. Nothing has been sent
 or applied at that point, so this is not a retry of the update. A burst sent
-through a follower is therefore answered `NOERROR` for every update that the
-primary accepts. An update sent to the primary directly does not wait: right
-after a commit it can still be answered `SERVFAIL` without being applied, and
-the client's retry is safe.
+through a follower no longer fails because of these publications. An update
+through a follower can still be answered `SERVFAIL` when:
+
+- it could not be sent, or was not answered, within the four seconds of the
+  forward (a publication that takes longer, on a loaded node, counts here);
+- the follower cannot reach the primary, or the primary does not accept the
+  follower as a member at that moment;
+- the primary committed the update but could not publish the commit (the
+  update is applied; check it before a change that is not idempotent);
+- the zone is retiring on the primary.
+
+In every case the follower sends the update at most once. An insert or
+delete of a whole RRset is idempotent, so a client's retry of it is safe; for
+any other change, check the record first when the answer may follow a
+commit. An update sent to the primary directly does not wait: right after a
+commit it can still be answered `SERVFAIL` without being applied, and the
+client's retry is safe.
 
 Static twins do not replicate: an update changes only the node that received
 it.
