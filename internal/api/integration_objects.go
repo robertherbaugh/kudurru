@@ -236,37 +236,68 @@ func integrationCredentialForms(body map[string]any) []string {
 		seen[form] = true
 		out = append(out, form)
 	}
-	var walk func(any)
-	walk = func(v any) {
+	forms := func(t string) {
+		if t == "" {
+			return
+		}
+		goQuoted := strconv.Quote(t)
+		add(goQuoted, true)
+		add(goQuoted[1:len(goQuoted)-1], false)
+		if encoded, err := json.Marshal(t); err == nil {
+			add(string(encoded), true)
+			add(string(encoded[1:len(encoded)-1]), false)
+		}
+		add(t, false)
+	}
+	// A map key is as likely a pasted secret as a value, unless it is a
+	// name the schema defines: a credential name a provider reads (depth
+	// 0) or a field of a reference (deeper). Any other key is matched like
+	// a value, so a refusal drops the field paths that contain it (D384).
+	var walk func(any, int)
+	walk = func(v any, depth int) {
 		switch t := v.(type) {
 		case map[string]any:
-			for _, x := range t {
-				walk(x)
+			for k, x := range t {
+				if depth == 0 && !integrationCredentialNames[k] || depth > 0 && !integrationReferenceFields[k] {
+					forms(k)
+				}
+				walk(x, depth+1)
 			}
 		case []any:
 			for _, x := range t {
-				walk(x)
+				walk(x, depth+1)
 			}
 		case string:
-			if t == "" {
-				return
-			}
-			goQuoted := strconv.Quote(t)
-			add(goQuoted, true)
-			add(goQuoted[1:len(goQuoted)-1], false)
-			if encoded, err := json.Marshal(t); err == nil {
-				add(string(encoded), true)
-				add(string(encoded[1:len(encoded)-1]), false)
-			}
-			add(t, false)
+			forms(t)
 		}
 	}
-	walk(spec["credentials"])
+	walk(spec["credentials"], 0)
 	// Longest first, so that a form is replaced before a shorter one it
 	// contains.
 	slices.SortStableFunc(out, func(a, b string) int { return len(b) - len(a) })
 	return out
 }
+
+// integrationCredentialNames are the spec.credentials names the providers
+// of this build read (their manifests' SecretKeys). A refusal may name them;
+// cmd/kudurru's TestIntegrationCredentialNamesMatchProviders keeps the list
+// in step with the providers.
+var integrationCredentialNames = map[string]bool{"apiToken": true, "apiKey": true, "bearerToken": true, "ca": true, "clientCertificate": true, "clientKey": true, "hmacKey": true}
+
+// IntegrationCredentialNames returns the names integrationCredentialNames
+// holds, sorted, for that test.
+func IntegrationCredentialNames() []string {
+	out := make([]string, 0, len(integrationCredentialNames))
+	for k := range integrationCredentialNames {
+		out = append(out, k)
+	}
+	slices.Sort(out)
+	return out
+}
+
+// integrationReferenceFields are the field names of a credential reference
+// and of its secretRef.
+var integrationReferenceFields = map[string]bool{"file": true, "env": true, "secretRef": true, "name": true, "key": true}
 
 // integrationEchoMinimum is the shortest unquoted form that is matched.
 const integrationEchoMinimum = 4
