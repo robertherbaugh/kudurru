@@ -958,6 +958,13 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		// keeps answering DNS from its last valid data.
 		relayB.partition(true)
 		primary = kudurrutest.Start(t, bin, a, kudurrutest.Options{Env: env})
+		var sampled func() validatedSamples
+		if anchors != nil {
+			// The old primary holds valid trust from its first answer: it is
+			// fenced until it installs the successor, then follows. Sample
+			// it across that transition, from the start of its process.
+			sampled = anchors.sampleValidated(primary)
+		}
 		enrolledFencedClosed(t, apiA, b.Name)
 		awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)
 		// The fenced former primary cannot apply a signed UPDATE and cannot
@@ -969,13 +976,12 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 			anchors.awaitTCP(anchorRootNormal, 3, 0, "fenced restart")
 		}
 		relayB.partition(false)
-		var sampled func() (int, bool)
-		if anchors != nil {
-			// The old primary holds valid trust from its first answer: it is
-			// fenced until it installs the successor, then follows. Sample
-			// it across that transition.
-			sampled = anchors.sampleValidated(primary)
+		ready, readyCancel := context.WithTimeout(t.Context(), 60*time.Second)
+		if err := primary.WaitReady(ready); err != nil {
+			readyCancel()
+			t.Fatal("restarted old primary never became ready", err)
 		}
+		readyCancel()
 		// Only production scheduled peer observations/pulls may fence and install.
 		// No test calls ObserveAuthority, installs an image, or retries a mutation.
 		enrolledProcessRead(t, apiA, "/cluster/enrollment", func(body []byte) bool {
@@ -1070,8 +1076,12 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 			if rejoined.Supervisor.State != "running" || rejoined.Updater.State != "not_running" || rejoined.Pull == nil || rejoined.Pull.Result != "installed" || rejoined.Pull.Refusal != "" {
 				t.Fatalf("rejoined member status: %+v", rejoined)
 			}
-			if samples, failed := sampled(); failed || samples == 0 {
-				t.Fatalf("restarted old primary did not answer validated recursion across fenced and follower: %d samples, failed %v", samples, failed)
+			// Every answer from its first validated one on was validated,
+			// and some of them were taken while it was DNS-only (fenced).
+			if got := sampled(); got.failed || got.samples == 0 || got.dnsOnly == 0 {
+				t.Fatalf("restarted old primary did not answer validated recursion across fenced and follower: %+v", got)
+			} else {
+				t.Logf("restarted old primary: %d validated samples, %d while DNS-only", got.samples, got.dnsOnly)
 			}
 			time.Sleep(2 * time.Second)
 			if n := anchors.root.TCP(anchorRootNormal) - anchors.base; n != 4 || anchors.root.TotalTCP() != n+anchors.base {

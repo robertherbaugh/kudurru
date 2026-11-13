@@ -3,12 +3,15 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -43,33 +46,34 @@ func TestEnrolledManagedAnchorsPromoteAndRejoin(t *testing.T) {
 // F28-HA-4 (D369): offline recovery inside an enrolled cluster. It extends
 // the partition variant: the follower has retired its output on a signed
 // REVOKE of the sole key; the primary's updater observes the same REVOKE at
-// its scheduled refresh, at least the one-hour RFC 5011 minimum after the
-// bootstrap (production timers, D297), and both nodes lose every trusted key.
-// The test therefore runs for more than an hour and only with
-// KUDURRU_ANCHOR_SOAK=1.
+// its scheduled refresh and both nodes lose every trusted key; the stopped
+// primary is recovered offline with exactly one root acquisition; the
+// follower adopts the recovered image through its scheduled pulls; both hold
+// the same tombstones and recovery record.
 //
-// It is named outside TestEnrolledManagedAnchors* on purpose: those run in
-// the default e2e suite with no skips. The step that needs no wait (recover
-// on a follower database is refused before any acquisition, with no
-// mutation) also runs by default as TestOfflineAnchorRecoverRefusedOnFollowerDatabase.
-func TestSoakEnrolledAnchorsOfflineRecovery(t *testing.T) {
+// The committed refresh is at least the one-hour RFC 5011 minimum after the
+// bootstrap (D297). In the default suite the primary is restarted with
+// KUDURRU_TEST_ANCHOR_UPDATER_AHEAD, a seam compiled only into the
+// -tags licensetest fixture binary that moves that one process's updater
+// wall clock past the committed refresh (its due and checkpoint comparisons
+// only; samples and stored state keep the real clock). With
+// KUDURRU_ANCHOR_SOAK=1 the test instead waits for the real refresh with
+// production timers, for more than an hour.
+func TestEnrolledManagedAnchorsOfflineRecovery(t *testing.T) {
 	kudurrutest.RequireE2E(t)
-	if os.Getenv("KUDURRU_ANCHOR_SOAK") != "1" {
-		t.Skip("set KUDURRU_ANCHOR_SOAK=1: waits for the primary's one-hour RFC 5011 refresh")
-	}
 	testEnrolledProcessesWith(t, false, newEnrolledAnchors(t, true))
 }
 
 type enrolledAnchors struct {
-	t      *testing.T
-	root   *anchorRoot
-	soak   bool
-	digest string // the bootstrapped owner every member must keep
-	base   int32  // acquisitions the standalone bootstrap took
+	t        *testing.T
+	root     *anchorRoot
+	recovery bool   // run the offline recovery (F28-HA-4) after the REVOKE
+	digest   string // the bootstrapped owner every member must keep
+	base     int32  // acquisitions the standalone bootstrap took
 }
 
-func newEnrolledAnchors(t *testing.T, soak bool) *enrolledAnchors {
-	return &enrolledAnchors{t: t, root: newAnchorRoot(t), soak: soak}
+func newEnrolledAnchors(t *testing.T, recovery bool) *enrolledAnchors {
+	return &enrolledAnchors{t: t, root: newAnchorRoot(t), recovery: recovery}
 }
 
 // configure adds managed anchors to a node's configuration.
@@ -139,37 +143,67 @@ func (e *enrolledAnchors) awaitValidated(node *kudurrutest.Node, why string) {
 }
 
 // sampleValidated queries node for validated recursion over UDP and TCP until
-// the returned stop is called, and reports how many samples it took and the
-// first one that was not validated. It covers a role transition (a restarted
-// old primary that is fenced until it installs the successor) from the
-// node's first answer.
-func (e *enrolledAnchors) sampleValidated(node *kudurrutest.Node) (stop func() (samples int, failed bool)) {
-	done, result := make(chan struct{}), make(chan [2]int, 1)
+// the returned stop is called. It starts with the node's process, before it
+// is ready: answers before the first validated one are startup and are not
+// judged; from the first validated answer on, every sample must be
+// validated. Each sample also reads the node's readiness, so the result
+// says how many validated samples were taken while the node served a
+// DNS-only bundle (fenced or conflicted). It covers a role transition (a
+// restarted old primary that is fenced until it installs the successor)
+// from the node's first answer.
+type validatedSamples struct {
+	samples, dnsOnly int  // judged samples, and those taken while DNS-only
+	failed           bool // a judged sample was not validated
+}
+
+func (e *enrolledAnchors) sampleValidated(node *kudurrutest.Node) (stop func() validatedSamples) {
+	done, result := make(chan struct{}), make(chan validatedSamples, 1)
 	halt := sync.OnceFunc(func() { close(done) })
 	e.t.Cleanup(halt)
+	client := &http.Client{Timeout: 2 * time.Second}
+	dnsOnly := func() bool {
+		response, err := client.Get("http://" + node.Ports.Ops + "/healthz/ready")
+		if err != nil {
+			return false
+		}
+		defer func() { _ = response.Body.Close() }()
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 4<<10))
+		return strings.Contains(string(body), "dns_only")
+	}
 	go func() {
-		samples, failed := 0, 0
+		var r validatedSamples
+		started, first, why := false, 0, ""
 		for {
 			select {
 			case <-done:
-				result <- [2]int{samples, failed}
+				if first != 0 {
+					e.t.Logf("%s: sample %d of %d was not validated: %s", node.Name, first, r.samples, why)
+				}
+				result <- r
 				return
 			default:
 			}
-			samples++
-			if !anchorValidated(node.Ports.DNS) && failed == 0 {
-				failed = samples
+			only := dnsOnly()
+			failure := anchorValidatedWhy(node.Ports.DNS)
+			ok := failure == ""
+			if ok && !started {
+				started = true
+			}
+			if started {
+				r.samples++
+				if only && ok {
+					r.dnsOnly++
+				}
+				if !ok && first == 0 {
+					first, r.failed, why = r.samples, true, fmt.Sprintf("%s (DNS-only %v, at %s)", failure, only, time.Now().Format("15:04:05.000"))
+				}
 			}
 			time.Sleep(20 * time.Millisecond)
 		}
 	}()
-	return func() (int, bool) {
+	return func() validatedSamples {
 		halt()
-		r := <-result
-		if r[1] != 0 {
-			e.t.Logf("%s: sample %d of %d was not validated", node.Name, r[1], r[0])
-		}
-		return r[0], r[1] != 0
+		return <-result
 	}
 }
 
@@ -226,7 +260,7 @@ func decodeField[T any](t *testing.T, out map[string]json.RawMessage, field stri
 }
 
 // enrolledAnchorsRevoke ends the partition variant (F28-HA-3 step 5) and,
-// with soak, runs the offline recovery (F28-HA-4). The primary a and the
+// with recovery, runs the offline recovery (F28-HA-4). The primary a and the
 // follower b are both serving when it starts.
 func enrolledAnchorsRevoke(t *testing.T, e *enrolledAnchors, bin string, env []string, apiA, apiB *staticProcessClient, primary, follower *kudurrutest.Node,
 	a, b kudurrutest.NodeSpec, stop func(*kudurrutest.Node), checkDNS func(*kudurrutest.Node, string, string, int) bool) {
@@ -273,12 +307,13 @@ func enrolledAnchorsRevoke(t *testing.T, e *enrolledAnchors, bin string, env []s
 	if !anchorServfail(follower.Ports.DNS, "later.e2e.test.") {
 		t.Fatal("restarted retired follower served")
 	}
-	if !e.soak {
+	if !e.recovery {
+		enrolledAnchorsRefusal(t, e, bin, env, apiA, apiB, primary, follower, a, stop)
 		stop(follower)
 		again, _, _ := status(b)
 		for _, field := range []string{"owner", "local", "version"} {
 			if string(again[field]) != string(retired[field]) {
-				t.Fatal("the repeated deny-only check changed the retired follower", field)
+				t.Fatal("the repeated deny-only check or the refused pull changed the retired follower", field)
 			}
 		}
 		return
@@ -291,9 +326,25 @@ func enrolledAnchorsRevoke(t *testing.T, e *enrolledAnchors, bin string, env []s
 	if boot.Owner.NextRefresh == nil {
 		t.Fatal("primary has no committed refresh")
 	}
-	wait := time.Until(*boot.Owner.NextRefresh) + 5*time.Minute
-	t.Logf("waiting %s for the primary's scheduled RFC 5011 refresh at %s", wait.Round(time.Second), boot.Owner.NextRefresh.Format(time.RFC3339))
 	followerChecks := e.root.TCP(anchorRootRevoked)
+	wait := 2 * time.Minute
+	if os.Getenv("KUDURRU_ANCHOR_SOAK") == "1" {
+		wait = time.Until(*boot.Owner.NextRefresh) + 5*time.Minute
+		t.Logf("waiting %s for the primary's scheduled RFC 5011 refresh at %s", wait.Round(time.Second), boot.Owner.NextRefresh.Format(time.RFC3339))
+	} else {
+		// Restart the primary with its updater's wall clock just past the
+		// committed refresh (and less than the one-hour minimum ahead, so the
+		// refresh it commits is not due again in this process).
+		ahead := time.Until(*boot.Owner.NextRefresh) + 30*time.Second
+		if ahead >= time.Hour {
+			t.Fatal("committed refresh too far ahead for the wall seam", ahead)
+		}
+		stop(primary)
+		if e.root.TCP(anchorRootRevoked) != followerChecks {
+			t.Fatal("the primary acquired before its refresh was due")
+		}
+		primary = kudurrutest.Start(t, bin, a, kudurrutest.Options{Env: append(slices.Clone(env), "KUDURRU_TEST_ANCHOR_UPDATER_AHEAD="+ahead.String())})
+	}
 	if !kudurrutest.Eventually(wait, time.Second, func() bool { return e.root.TCP(anchorRootRevoked) > followerChecks }) {
 		t.Fatal("primary never made its scheduled refresh")
 	}
@@ -346,9 +397,9 @@ func enrolledAnchorsRevoke(t *testing.T, e *enrolledAnchors, bin string, env []s
 	e.awaitTCP(anchorRootRecovered, 2, time.Second, "quarantined follower's own check")
 	primary = kudurrutest.StartReady(t, bin, a, kudurrutest.Options{Env: env})
 	e.awaitValidated(primary, "recovered primary")
-	// The hour-long wait outlived the session. Sign in again from a fresh
-	// cookie jar, without the expired session's cookie or CSRF token, and
-	// let both clients use it.
+	// The soak's hour-long wait outlives the session, and the primary
+	// restarted. Sign in again from a fresh cookie jar, without the old
+	// session's cookie or CSRF token, and let both clients use it.
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -404,4 +455,122 @@ func enrolledAnchorsRevoke(t *testing.T, e *enrolledAnchors, bin string, env []s
 		return s.Supervisor.State == "running" && s.Owner.Digest == recovered.Owner.Digest
 	})
 	e.awaitValidated(follower, "restarted follower after recovery")
+}
+
+// enrolledAnchorsRefusal drives one real store refusal through the running
+// follower's production pull path (follower.Puller, Coordinator.Pull and the
+// status board's ObservePull) into GET /cluster/anchors and the
+// kudurru_root_anchor_adoption_refused gauge of its metrics listener. The
+// follower has denied the sole key on a REVOKE that the primary has not seen:
+// the root answers normally again, and the primary is restarted with its
+// updater due (the licensetest wall seam), so its scheduled refresh commits a
+// new owner that still trusts the key. The follower's scheduled pull of that
+// image is refused (carried_revocation) and installs nothing.
+func enrolledAnchorsRefusal(t *testing.T, e *enrolledAnchors, bin string, env []string, apiA, apiB *staticProcessClient, primary, follower *kudurrutest.Node,
+	a kudurrutest.NodeSpec, stop func(*kudurrutest.Node)) {
+	t.Helper()
+	refused := func() float64 {
+		v, _ := scrapeGauge(t, follower.Ports.Metrics, "kudurru_root_anchor_adoption_refused", `reason="carried_revocation"`)
+		return v
+	}
+	if got := refused(); got != 0 {
+		t.Fatal("follower refuses before the primary's owner moved", got)
+	}
+	boot := e.owner(apiA, "primary")
+	if boot.Owner.NextRefresh == nil {
+		t.Fatal("primary has no committed refresh")
+	}
+	ahead := time.Until(*boot.Owner.NextRefresh) + 30*time.Second
+	if ahead >= time.Hour {
+		t.Fatal("committed refresh too far ahead for the wall seam", ahead)
+	}
+	e.root.Set(anchorRootNormal)
+	stop(primary)
+	polls := e.root.TCP(anchorRootNormal)
+	// Its cleanup stops the restarted primary; the caller ends here.
+	kudurrutest.StartReady(t, bin, a, kudurrutest.Options{Env: append(slices.Clone(env), "KUDURRU_TEST_ANCHOR_UPDATER_AHEAD="+ahead.String())})
+	if !kudurrutest.Eventually(30*time.Second, 20*time.Millisecond, func() bool { return e.root.TCP(anchorRootNormal) > polls }) {
+		t.Fatal("restarted primary did not make its due refresh")
+	}
+	t.Log("refusal step: the restarted primary made its due refresh")
+	moved := e.status(apiA, func(s api.RootAnchorStatus) bool {
+		return s.Authority.Mode == "primary" && s.Owner.Digest != boot.Owner.Digest && s.Owner.NextRefresh != nil && s.Owner.NextRefresh.After(*boot.Owner.NextRefresh)
+	})
+	if len(moved.Owner.Keys) != 1 || moved.Owner.Keys[0].Status != "Valid" || moved.Updater.State != "running" {
+		t.Fatalf("primary refresh did not commit an owner that still trusts the key: %+v %+v", moved.Owner, moved.Updater)
+	}
+	t.Log("refusal step: the primary committed a new owner that still trusts the key")
+	// The follower's scheduled pull of that image is refused by its store.
+	if !kudurrutest.Eventually(30*time.Second, 100*time.Millisecond, func() bool { return refused() == 1 }) {
+		t.Fatal("follower metrics never reported the refused adoption", refused())
+	}
+	if v, ok := scrapeGauge(t, follower.Ports.Metrics, "kudurru_root_anchor_adoption_refused", `reason="policy"`); ok && v != 0 {
+		t.Fatal("refusal exported under another reason")
+	}
+	t.Log("refusal step: the follower's metrics report the refusal")
+	// The route reports the same refusal when the follower's protected HTTP
+	// is open. A retired follower may keep it closed (503), which is why the
+	// gauge exists; then the route is checked only for that closure.
+	var routeStatus int
+	var status api.RootAnchorStatus
+	kudurrutest.Eventually(5*time.Second, 100*time.Millisecond, func() bool {
+		response, err := apiB.client.Get(apiB.base + "/cluster/anchors")
+		if err != nil {
+			return false
+		}
+		defer func() { _ = response.Body.Close() }()
+		routeStatus = response.StatusCode
+		body, err := io.ReadAll(io.LimitReader(response.Body, 128<<10))
+		status = api.RootAnchorStatus{}
+		return err == nil && routeStatus == http.StatusOK && json.Unmarshal(body, &status) == nil && status.Pull != nil && status.Pull.Result == "refused"
+	})
+	switch routeStatus {
+	case http.StatusOK:
+		if status.Pull == nil || status.Pull.Result != "refused" || status.Pull.Refusal != "carried_revocation" || status.Owner.Digest != e.digest || status.Local == nil || !status.Local.Retired {
+			t.Fatalf("follower status does not name the refusal or changed its owner: %+v %+v %+v", status.Pull, status.Owner, status.Local)
+		}
+		t.Log("refusal step: the follower's route reports the refusal")
+	case http.StatusServiceUnavailable:
+		t.Log("refusal step: the retired follower's protected HTTP is closed (503); the gauge is its status surface")
+	default:
+		t.Fatal("follower anchor status route answered", routeStatus)
+	}
+	// The primary's refresh is not due again in this process.
+	time.Sleep(2 * time.Second)
+	if got := e.root.TCP(anchorRootNormal); got != polls+1 {
+		t.Fatal("primary refreshed more than once", got-polls)
+	}
+	if !anchorServfail(follower.Ports.DNS, "later.e2e.test.") {
+		t.Fatal("refusing retired follower served")
+	}
+}
+
+// scrapeGauge reads one sample of name whose label set contains match from a
+// node's metrics listener, and reports whether it was present.
+func scrapeGauge(t *testing.T, address, name, match string) (float64, bool) {
+	t.Helper()
+	client := &http.Client{Timeout: 3 * time.Second}
+	response, err := client.Get("http://" + address + "/metrics")
+	if err != nil {
+		return 0, false
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(response.Body, 4<<20))
+	if err != nil || response.StatusCode != http.StatusOK {
+		return 0, false
+	}
+	for _, line := range strings.Split(string(body), "\n") {
+		if !strings.HasPrefix(line, name+"{") || !strings.Contains(line, match) {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		v, err := strconv.ParseFloat(fields[len(fields)-1], 64)
+		if err == nil {
+			return v, true
+		}
+	}
+	return 0, false
 }
