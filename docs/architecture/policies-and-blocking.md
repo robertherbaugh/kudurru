@@ -67,7 +67,8 @@ flowchart TD
 
 The MAC, hostname and client-ID tiers match only when something supplies that
 identity for the client: the captured inventory (MAC addresses and names),
-DHCP lease names, the optional reverse-PTR lookup, or an opt-in encrypted
+DHCP lease names and, when the inventory has no MAC for the address, the lease
+MAC, the optional reverse-PTR lookup, or an opt-in encrypted
 transport client ID. [Captured client identity](#captured-client-identity)
 describes each source. Without one, a client is matched by exact IP, by CIDR,
 or falls through to the catch-all.
@@ -306,13 +307,22 @@ Expired or removed claims do not expose an older device at a reassigned IP.
 Failures retain the previous batch only until its existing expiry. The holder
 is shared by integrations; queries never call a provider or perform PTR lookups.
 
+When the captured inventory has no MAC for the source address, the identify
+stage fills it from the live bound lease of the built-in DHCP server, read from
+the committed in-memory lease snapshot (D397). Inventory MACs win; colliding
+leases fill nothing; the lease MAC clears the inventory source, so a
+source-bound private grant cannot match it. `GET /inventory` presents the same
+rule: it lists inventory devices and leases with each address's state
+(assigned, expired, ambiguous, superseded or withdrawn) and never reads the
+DNS path.
+
 ```mermaid
 flowchart LR
     provider["Inventory producer"] --> batch["Validate complete source batch"]
     batch --> snapshot["Immutable IP ownership snapshot"]
     transport["Address and optional client ID"] --> identify["Capture inventory once"]
     snapshot --> identify
-    dhcp["Current local DHCP names"] --> identify
+    dhcp["Current local DHCP names<br/>and lease MACs"] --> identify
     ptr["Bounded asynchronous PTR cache"] -. "only if no inventory/DHCP name" .-> identify
     identify --> tiers["D86 matching tiers"]
     tiers --> policy["Client policy"]

@@ -99,7 +99,7 @@ A matcher has a kind and a value.
 | **IP address** | `192.168.1.30` | One device |
 | **CIDR range** | `192.168.1.0/24` | Each address in the range |
 | **Client ID** | `kids-tablet` | A device that sends this ID on an encrypted DNS connection |
-| **MAC address** | `aa:bb:cc:dd:ee:ff` | A device that an inventory source reports with this address |
+| **MAC address** | `aa:bb:cc:dd:ee:ff` | A device that an inventory source reports with this address, or that has a lease from the kudurru DHCP server |
 
 To add a client that you already see, click **Add** next to the client in
 the list **Seen in the last 24 hours**. To add many values, click **Paste
@@ -115,8 +115,10 @@ match only when kudurru gets that identity from a source:
   device can send the ID of another device.
 - **MAC address:** A DNS query does not contain a MAC address. kudurru gets
   the MAC address of a device from an inventory source, for example a UniFi
-  integration. Without such a source for the device, the matcher matches
-  nothing.
+  integration, or from the device's current lease when the kudurru DHCP
+  server gave it its address. Without such a source for the device, the
+  matcher matches nothing. `kudurru inventory` lists the devices and MAC
+  addresses that kudurru knows.
 
 Not every installation has these sources. Read [Client identity and transport
 IDs](../../deploy/client-identity.md) before you use these kinds.

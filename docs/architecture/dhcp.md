@@ -32,6 +32,7 @@ flowchart LR
     response --> client
     db -->|"Publish committed state"| snapshot["Immutable bound-lease snapshot"]
     snapshot --> dns["Authoritative local-record hook<br/>A/PTR and policy hostnames"]
+    snapshot --> identity["Identify stage MAC fill<br/>and GET /inventory"]
     leases -->|"Packet handler/storage failure"| dropped["ERROR log; drop packet<br/>DNS stays available"]
     dropped -->|"Next packet or retry"| service
     service -->|"Unexpected runtime socket failure"| fatal["Fatal runnable error"]
@@ -337,6 +338,24 @@ live name. Matching current identities preserve rank and expiry lower bounds.
 HA snapshots preserve exact ranks; replicated claims use an epoch, the global
 Raft index and a per-command ordinal, retaining standalone owners adopted at
 bootstrap. None of this adds storage access to DNS queries.
+
+## Lease MACs and the inventory
+
+The same committed snapshot also holds the identity of every bound lease:
+address, MAC, client hostname and expiry, whether or not the scope registers
+DNS and whether or not the lease has a usable name (D397). On Kubernetes the
+replica's working copies are filled from `DHCPLease` objects, so every replica
+holds the same leases. The identify stage asks this snapshot for the live
+lease of the query's source address. When the captured inventory supplied no
+MAC for that address, the lease MAC fills it and `ClientGroup` `mac` matchers
+apply. MACs reported by an inventory source win over a lease MAC for the same
+address. Two scopes that lease one address to different MACs fill nothing.
+Source-bound private inventory grants never match a lease MAC. The read
+checks expiry with the request time and touches no SQLite, store or leader.
+
+`GET /api/v1/inventory` (permission `inventory.read`) lists these leases as
+devices with source `dhcp/<scope>` next to the inventory-source devices; see
+[client identity](../deploy/client-identity.md#client-inventory).
 
 Client names and MAC addresses remain unauthenticated. A client can claim an
 unused name or impersonate a reserved MAC. Use reservations for stable naming,

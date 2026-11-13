@@ -6,9 +6,10 @@ exact IP → MAC → longest nonzero CIDR → hostname → name glob → client 
 catch-all `/0` → default. Inventory supplies MACs and hostnames from memory.
 Expired inventory stops identifying a device, and reassigned IPs never inherit
 an older device's policy. SQLite can populate inventory through the background
-[UniFi integration](integrations.md); its management UI and Kubernetes execution
-remain separate work. Private group contributions retain their original source
-and expiry, while manual public matchers keep their configured behavior.
+[UniFi integration](integrations.md). The built-in DHCP server fills the MAC of
+a leased address on both store drivers. Private group contributions retain
+their original source and expiry, while manual public matchers keep their
+configured behavior.
 
 ## Where each identity comes from
 
@@ -18,7 +19,7 @@ A matcher matches only when kudurru has that identity for the query:
 |---|---|---|
 | `ip`, `cidr` | The source address of the query, or the address in an authenticated PROXYv2 header from a trusted edge | Nothing more |
 | `clientID` | The server name of a DoT or DoQ connection, or the path of a DoH or DoH3 request | The listener settings on this page |
-| `mac` | An inventory integration that reports the device with its addresses | A running integration: [integrations.md](integrations.md) says on which deployments integrations run |
+| `mac` | An inventory integration that reports the device with its addresses, or a live lease of the built-in DHCP server on this node | A running integration ([integrations.md](integrations.md) says on which deployments integrations run), or the DHCP server leasing the address |
 | `hostname`, `nameGlob` | An inventory integration and the lease names of the built-in DHCP server ([dhcp-dns.md](dhcp-dns.md)); when neither has a name for the address, the optional reverse-PTR lookup ([`clientNames.reversePTR`](../../docs-site/content/reference/configuration.md#clientNames.reversePTR.enabled)) | One of these sources for the device |
 
 Inventory, DHCP and reverse-PTR data are looked up by the source address of
@@ -30,7 +31,44 @@ tier wins (`IdentifyAt` in `internal/policy/index.go`), and the client ID
 tier comes after those. A catch-all `0.0.0.0/0` or `::/0` CIDR is the
 exception: it comes after the client ID, so a group for every address does
 not hide a client ID.
-The built-in DHCP server supplies names to these matchers, not MAC addresses.
+The built-in DHCP server supplies lease names to the hostname matchers and the
+lease MAC to `mac` matchers. A MAC reported by an inventory integration for the
+same address wins over the lease MAC.
+
+## Client inventory
+
+`GET /api/v1/inventory` and `kudurru inventory` list every device the
+inventory knows, whether or not it has sent a DNS query: the devices reported
+by inventory integrations and the bound DHCP leases of the answering node.
+`GET /api/v1/clients` is a different view built from the query log, so it
+lists only clients that queried. Reading the inventory needs `inventory.read`
+(roles auditor, operator and admin; the viewer role does not include it,
+because the inventory holds MAC addresses and device names, as with
+`dhcpleases.read`).
+
+Each device shows its source (`integration-<digest>` for an integration,
+`dhcp/<scope>` for a lease), MACs, names, tags, observation and expiry times,
+`stale` once its observation or lease has expired, and the state of each
+address:
+
+| State | Meaning |
+|---|---|
+| `assigned` | Queries from the address get this device's identity |
+| `expired` | The device holds the newest claim, but the observation expired; queries get no identity from it |
+| `ambiguous` | Another device claims the address with an equally new observation (or another DHCP scope leases it to a different MAC); neither identifies queries |
+| `superseded` | `ownerSource`/`ownerId` holds a newer claim; for a lease, an inventory device's MACs win over the lease MAC |
+| `withdrawn` | The device's own source later removed the claim; the older observation is not restored |
+
+```sh
+kudurru inventory
+kudurru inventory --kind dhcp --stale false
+kudurru inventory --search 02:00:5e -o json
+```
+
+On the complete SQLite runtime the API reads the same inventory snapshot that
+serves DNS for that request; on Kubernetes it reads the replica's shared
+inventory. DHCP leases are always the answering node's. Pages are cut by
+source and ID; filters are `source`, `kind`, `stale` and `q`.
 
 Client IDs are optional, client-selected policy identifiers. They are **not
 passwords or authentication**. Do not use them to grant privileged DNS updates
