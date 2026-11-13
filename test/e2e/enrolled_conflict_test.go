@@ -293,11 +293,10 @@ func testEnrolledConflictResolution(t *testing.T, anchors *enrolledAnchors) {
 	phase("written")
 	// Sample B and C continuously from here, before the heal, until they
 	// serve conflicted: members holding valid trust answer validated
-	// recursion through the heal, the conflict detection and the conflict,
-	// never a wrong answer. Short SERVFAIL gaps around the write and the
-	// conflict detection are the open F28-HA-3 defect (F28-OPEN6 ledger):
-	// judge bounds and logs them. (The window across a member's own
-	// promotion commit is not sampled here.)
+	// recursion through the heal, the conflict detection (its authority is
+	// persisted while DNS keeps the served publication, D369) and the
+	// conflict: every sample is validated. (A member's own promotion commit
+	// is sampled in the promote variant of the two-node test.)
 	var sampledB, sampledC func() validatedSamples
 	if anchors != nil {
 		sampledB, sampledC = anchors.sampleValidated(nodeB), anchors.sampleValidated(nodeC)
