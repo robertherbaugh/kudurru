@@ -162,7 +162,7 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 	step.attempted = true
 	u.offset++ // endpoint rotation, never an owner/receipt identity
 	step.completion, err = op.run()
-	u.runtime.anchorStatus.countAcquisition(anchorAcquisitionOutcome(step.completion, err))
+	u.runtime.anchorStatus.countAcquisition(anchorAcquisitionOutcome(ctx, step.completion, err))
 	if err == nil {
 		switch step.completion.Update.Outcome() {
 		case sqlite.AnchorCommitted, sqlite.AnchorUnchanged:
@@ -210,8 +210,10 @@ func (u *anchorUpdater) step(ctx context.Context) (step anchorPollStep, err erro
 }
 
 // anchorAcquisitionOutcome classifies one acquisition the way step acts on
-// it, for kudurru_root_anchor_updater_acquisitions_total.
-func anchorAcquisitionOutcome(completion anchorCompletion, err error) string {
+// it, for kudurru_root_anchor_updater_acquisitions_total. An error while the
+// writer context (ctx) has ended is "canceled", not a refusal: the updater
+// ends with its term, it does not stop on the reply (F28-OPEN7 review).
+func anchorAcquisitionOutcome(ctx context.Context, completion anchorCompletion, err error) string {
 	var acquisition *anchorAcquisitionFailure
 	switch {
 	case err == nil && (completion.Update.Outcome() == sqlite.AnchorCommitted || completion.Update.Outcome() == sqlite.AnchorUnchanged):
@@ -220,6 +222,8 @@ func anchorAcquisitionOutcome(completion anchorCompletion, err error) string {
 		return anchorAcquisitionRefused
 	case anchorUpdateRaced(completion, err):
 		return anchorAcquisitionRaced
+	case ctx.Err() != nil:
+		return anchorAcquisitionCanceled
 	case errors.As(err, &acquisition):
 		return anchorAcquisitionFailed
 	default:
