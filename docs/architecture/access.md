@@ -1189,21 +1189,34 @@ flowchart LR
 - Putting a zone into a group, moving it, or taking it out is access
   control: a DNSZone write that changes the label needs `zones.write` at
   cluster scope, on both drivers. Creating a zone already needs it. On
-  Kubernetes the rule is decided again on the read the write is
-  compare-and-swapped against (its resourceVersion), so a label removed
-  while a group member's PUT is in flight cannot be put back by that PUT.
-- On Kubernetes an API write that changes the label takes the zone over as a
+  Kubernetes both rules are decided again on the read the write is
+  compare-and-swapped against (its resourceVersion): a label removed while a
+  group member's PUT is in flight cannot be put back by that PUT, and a zone
+  an administrator deletes while a group member's or zone admin's PUT is in
+  flight is not created again by it (that read finds no zone, so the PUT is
+  a create and needs cluster scope; a delete after that read fails the
+  compare-and-swap with 409). A SQLite command reads and authorizes in one
+  transaction, so it has no such window.
+- On Kubernetes every API write that changes the label (adds it, changes it
+  or removes it, all by a cluster-scope writer) takes the zone over as a
   whole-object PUT (the forced takeover used for bootstrap defaults): other
-  field managers' ownership (kubectl, a GitOps tool) moves to `api`, and
-  fields the document omits are removed. Without it, server-side apply would
-  keep a label kubectl also owns and the removal would answer 200 with the
-  zone still in its group. The answer is checked: a written zone whose label
-  is still not the requested one answers 409 instead of 200. A GitOps tool
-  that applies the label again puts the zone back; change it at its source.
+  field managers' ownership (kubectl, a GitOps tool) moves to `api`, and every
+  field the document omits is removed, not only the label. This applies when
+  the zone's `kudurru.io/managed-by` is empty, `api` or `bootstrap`; a zone
+  managed by another writer answers 409 `managed_by` first. Without it,
+  server-side apply would keep a label kubectl also owns and the removal
+  would answer 200 with the zone still in its group. The answer is checked:
+  a written zone whose label is still not the requested one answers 409
+  instead of 200. A GitOps tool that applies the label again puts the zone
+  back; change it at its source.
 - The group is resolved only when the decision without it is a denial
   (`Scope.Admits` only adds coverage), at most once per zone per request,
   and lists decide each zone on the listed object. A zone that cannot be
-  read answers 503 (authorizer unavailable), not a denial.
+  read answers 503 (authorizer unavailable), not a denial, also in lists
+  and `GET /auth/me`: a record set list that needs the group of an
+  unreadable zone, or a permission matrix with a verb that cannot be
+  decided, fails as a whole with 503 instead of answering 200 with the items
+  or verbs left out.
 - Lists (`GET /zones`, `GET /objects/dnszones`, `GET /objects/dnsrecordsets`)
   filter per item through the same rule. `GET /zones` reports each zone's
   `zoneGroup`; `GET /auth/me` reports `scopedPermissions["zonegroup:<group>"]`.
@@ -1295,7 +1308,11 @@ same way. When kudurru's own identity lacks the `impersonate` verb (on
 Kubernetes 1.35 and later the apiserver's constrained impersonation reports
 it as `impersonate-on:` on the object), the write is `503 unavailable` and
 the server logs the apiserver's message; the API answer does not name
-kudurru's ServiceAccount. Server-side apply needs `create` and `patch` (plus
+kudurru's ServiceAccount. Only a 403 in the apiserver's own form counts as
+that refusal: `... forbidden: User "<requester>" cannot impersonate...`,
+where the quoted requester is not the impersonated user. A principal whose
+name contains that phrase, or a webhook message that uses it, stays a
+`403 forbidden`. Server-side apply needs `create` and `patch` (plus
 `delete` for deletes) on the resource, and a forced write's managed-fields
 takeover needs `patch`. A multi-object API operation (a zone
 with its record sets) can be refused part way, like any other Kubernetes
