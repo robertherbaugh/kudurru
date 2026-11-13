@@ -137,7 +137,7 @@ what is left.
 | `LicenseUnavailable` | The license does not allow integrations. | Install a valid license, or release. |
 | `Suspended` | `spec.suspend` is set. | Clear it, or release. |
 | `CredentialsUnavailable` | The credential reference does not resolve. | Restore the file or variable, or release. |
-| `ProvisionFailed`, `ProviderFailed`, `RateLimited`, `BudgetExhausted` | The provider or the request budget refused, or a provider request did not answer within the run's 30-second bound; retried with backoff. | Usually nothing. |
+| `ProvisionFailed`, `ProviderFailed`, `RateLimited`, `BudgetExhausted` | The provider or the request budget refused, or a provider request did not answer within the run's 30-second bound; retried with backoff (a failed setup from one poll interval up to five minutes, so a provider that stays unreachable is contacted about every five minutes). A setup whose peer offers no role the instance can take (below) is not retried until the object, credential or license changes. | Usually nothing. |
 | `SnapshotIncomplete` | A zone could not be read completely, so nothing was decided. | Usually nothing. |
 | `RecordsConflict` | A record of the instance shares its name or record set with a record of another owner. | Remove or move the other record, or release. |
 | `OwnershipUnproven` | A row carries the instance's marker without ledger evidence, or a record the ledger lists still exists without the marker. | Decide what the row is; delete it or release. |
@@ -829,8 +829,13 @@ route permission is checked once per request, not again inside each effect,
 and a reviewed sync or act is logged on the holder rather than written to an
 audit table. List/get status is unknown when no observation matches the
 exact revision. The host's own status write is a new revision of the object
-but changes nothing you reviewed: the status follows it, and a command that
-names the revision before one or more such writes (up to eight) still runs.
+but changes nothing you reviewed: the status follows it, and once the host
+has read that write back (its next capture, at most one capture interval
+later, two seconds by default), a command that names the revision before one or more such writes (up
+to eight) still runs. In the short window between the write and that capture,
+a command at either the old or the new revision can still answer `409`, and so
+can one that names a revision the host never captured (two status writes
+inside one capture); reread the Integration and send it once more.
 Any other change (spec, labels, annotations, finalizers) makes the review
 stale, and the command answers `409`. Public previews omit credential references, fingerprints,
 private provider IDs and ledger receipts.
