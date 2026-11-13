@@ -367,7 +367,7 @@ export function endpoints(c: ApiClient) {
       serviceAccounts: () => c.get<IamList<IamServiceAccount>>('/iam/serviceaccounts'),
       roleBindings: () => c.get<IamList<IamRoleBinding>>('/iam/rolebindings'),
       /** Creates once (409 when the name exists); complete SQLite runtime only. */
-      createRoleBinding: (binding: RoleBindingDesired) => c.post<RoleBindingDocument>('/iam/rolebindings', binding),
+      createRoleBinding: (binding: RoleBindingDesired, signal?: AbortSignal) => c.request<RoleBindingDocument>('POST', '/iam/rolebindings', { body: binding, signal }),
       identityProviders: () => c.get<IamList<IamIdentityProvider>>('/iam/identityproviders'),
       // Reviewed IAM writers (D294, D396): complete SQLite runtime only, one
       // request per command that the dashboard never repeats. Replace and

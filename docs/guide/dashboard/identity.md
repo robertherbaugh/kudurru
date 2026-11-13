@@ -32,9 +32,12 @@ sends a change twice:
   the same way when the cluster reached its limit of revocation records (see
   below); then nothing changed.
 
-Objects of `kudurru.yaml` or `objects.d` show their actions disabled with the
-reason: change them where they are declared. Change the built-in `admin` with
-`kudurru admin` on the host.
+Identity providers and role bindings declared in `kudurru.yaml` or
+`objects.d` show their actions disabled with the reason: change them where they
+are declared. A service account or a local account managed elsewhere keeps its
+actions enabled on the row; its dialog says **Managed elsewhere** when it opens,
+or the server refuses the change, and nothing is changed. Change the built-in
+`admin` with `kudurru admin` on the host.
 
 ## Local users
 
@@ -101,7 +104,9 @@ Only an administrator with cluster-wide `zones.write` can move a zone into or ou
 
 A name that already exists is refused. **Edit…** changes the role, the scope
 or the subject of a binding that was created through the API. Change a binding
-with more than one subject with `kudurru iam rolebindings replace`.
+with more than one subject, or with a scope kind the form does not offer, with
+`kudurru iam rolebindings replace`. An edit keeps the binding's labels and
+annotations.
 **Delete…** removes it, and its subjects lose what it granted at once.
 
 People with a zone or zone-group binding see the actions of their zones

@@ -16,9 +16,10 @@ export type IamCommandState = 'idle' | 'pending' | 'refused' | 'unknown';
  * One reviewed IAM command. `run` sends at most one request at a time, and
  * none after an unknown outcome or (unless retryAfterRefusal) a refusal. Closing the dialog (unmount) aborts a
  * request in flight; its outcome is then unknown and the list is read again.
- * The IAM lists are invalidated after every answer.
+ * The IAM lists are invalidated after every answer. isUnknown classifies an
+ * error (default iamOutcomeUnknown); pass a module-level function.
  */
-export function useIamCommand(what: string, { retryAfterRefusal = false }: { retryAfterRefusal?: boolean } = {}) {
+export function useIamCommand(what: string, { retryAfterRefusal = false, isUnknown = iamOutcomeUnknown }: { retryAfterRefusal?: boolean; isUnknown?: (err: unknown) => boolean } = {}) {
   const qc = useQueryClient();
   const [state, setState] = useState<IamCommandState>('idle');
   const [error, setError] = useState<unknown>();
@@ -48,7 +49,7 @@ export function useIamCommand(what: string, { retryAfterRefusal = false }: { ret
       } catch (err) {
         if (alive.current) {
           setError(err);
-          setState(iamOutcomeUnknown(err) ? 'unknown' : 'refused');
+          setState(isUnknown(err) ? 'unknown' : 'refused');
         }
         return { ok: false };
       } finally {
@@ -56,7 +57,7 @@ export function useIamCommand(what: string, { retryAfterRefusal = false }: { ret
         void qc.invalidateQueries({ queryKey: ['iam'] });
       }
     },
-    [qc, state, retryAfterRefusal],
+    [qc, state, retryAfterRefusal, isUnknown],
   );
   const outcome = state === 'refused' || state === 'unknown' ? <IamOutcome error={error} unknown={state === 'unknown'} what={what} /> : null;
   // A reviewed command is bound to one read: after a refusal it is not sent

@@ -9,23 +9,28 @@
 // RoleBindings with kubectl). An unknown outcome is never sent again: the
 // SQLite runtime answers an unclassified failure, including an attempted
 // commit, with a bare 503 unavailable, so only the missing-runtime 503 counts
-// as a refusal (roleBindingOutcomeUnknown).
+// as a refusal (roleBindingUnknown). Create, edit and delete all run through
+// useIamCommand: one request at a time, aborted when the dialog closes, and a
+// reviewed edit or delete is locked after a refusal. An edit keeps the stored
+// labels and operator annotations (never the managed-by annotation), and a
+// binding whose scope kind the form does not offer (clientgroup, reserved) is
+// not edited here: the form would otherwise send it back as cluster-wide.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { HStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
 import { qk, useApi } from '../../api/context';
 import type { IamRoleBinding, RoleBindingDesired, RoleBindingDocument } from '../../api/types';
 import { roleBindingOutcomeUnknown } from '../../lib/cluster';
-import { managerOf } from '../../lib/iam';
+import { iamOutcomeUnknown, managerOf, operatorAnnotations } from '../../lib/iam';
 import { ROLES, SCOPE_KINDS, type ScopeKind } from '../../lib/rbac';
 import { zoneGroupError } from '../../lib/zones';
 import { EnumSelect, type EnumOption } from '../fields/EnumSelect';
 import { ObjectRefPicker } from '../fields/ObjectRefPicker';
 import { TextField } from '../fields/TextField';
-import { ErrorBanner, errorText, useNotify } from '../Feedback';
+import { ErrorBanner, useNotify } from '../Feedback';
 import { FormDialog } from '../FormDialog';
 import { useIamCommand, useIamObjectReason, useReviewRead } from './iamCommand';
 
@@ -59,13 +64,34 @@ export interface RoleBindingDraft {
   subjectNamespace: string;
 }
 
-/** The manifest POST /iam/rolebindings takes for a draft. */
-export function roleBindingManifest(d: RoleBindingDraft): RoleBindingDesired {
+/**
+ * Unknown for a role binding command: a refusal when either the IAM rules or
+ * the RoleBinding route's missing-runtime 503 says nothing ran.
+ */
+function roleBindingUnknown(err: unknown): boolean {
+  return iamOutcomeUnknown(err) && roleBindingOutcomeUnknown(err);
+}
+
+/** Whether the form can edit a stored scope kind: an absent scope is cluster-wide. */
+export function editableScope(kind: string | undefined): boolean {
+  return !kind || kind === 'cluster' || kind === 'zone' || kind === 'zonegroup';
+}
+
+const UNSUPPORTED_SCOPE = 'This form edits cluster, zone and zone group scopes: use kudurru iam rolebindings replace';
+
+/**
+ * The manifest POST /iam/rolebindings (or a replace) takes for a draft. A
+ * replace is a complete desired document, so it carries the reviewed
+ * object's labels and operator annotations, never the managed-by annotation.
+ */
+export function roleBindingManifest(d: RoleBindingDraft, review?: RoleBindingDocument): RoleBindingDesired {
   const scoped = d.scopeKind !== 'cluster';
+  const labels = review?.metadata.labels;
+  const annotations = review ? operatorAnnotations(review.metadata) : undefined;
   return {
     apiVersion: 'kudurru.io/v1alpha1',
     kind: 'RoleBinding',
-    metadata: { name: d.name.trim(), namespace: d.namespace.trim() },
+    metadata: { name: d.name.trim(), namespace: d.namespace.trim(), ...(labels && Object.keys(labels).length ? { labels } : {}), ...(annotations ? { annotations } : {}) },
     spec: {
       role: d.role,
       scope: scoped ? { kind: d.scopeKind, name: d.scopeName.trim() } : { kind: 'cluster' },
@@ -104,7 +130,7 @@ export function NewRoleBindingButton() {
   );
 }
 
-/** The draft of a stored binding with one subject (the form edits one). */
+/** The draft of a stored binding with one subject (the form edits one) and a scope editableScope accepts. */
 export function draftOfBinding(doc: RoleBindingDocument): RoleBindingDraft {
   const subject = doc.spec.subjects?.[0];
   const kind = doc.spec.scope?.kind;
@@ -127,7 +153,7 @@ export function RoleBindingActions({ binding }: { binding: IamRoleBinding }) {
   if (binding.source !== 'object' || !binding.namespace) return null;
   const row = binding.managedBy && binding.managedBy !== 'api' ? `Managed by ${binding.managedBy}: change it there` : undefined;
   const subjects = binding.subjects?.length ?? 0;
-  const edit = row ?? (subjects > 1 ? `It has ${subjects} subjects and this form edits one: use kudurru iam rolebindings replace` : undefined) ?? reason('rolebindings', 'write');
+  const edit = row ?? (subjects > 1 ? `It has ${subjects} subjects and this form edits one: use kudurru iam rolebindings replace` : undefined) ?? (editableScope(binding.scope?.kind) ? undefined : UNSUPPORTED_SCOPE) ?? reason('rolebindings', 'write');
   const del = row ?? reason('rolebindings', 'delete');
   const label = `${binding.namespace}/${binding.name}`;
   return (
@@ -148,7 +174,9 @@ function ReviewedBindingDialog({ namespace, name, action, onClose }: { namespace
   const review = useReviewRead((signal) => api.iam.roleBinding(namespace, name, signal));
   const title = action === 'edit' ? `Edit role binding ${namespace}/${name}` : `Delete role binding ${namespace}/${name}?`;
   const doc = review.data;
-  if (!doc || managerOf(doc.metadata) !== 'api' || (action === 'edit' && (doc.spec.subjects?.length ?? 0) > 1)) {
+  const multi = action === 'edit' && (doc?.spec.subjects?.length ?? 0) > 1;
+  const scopeOff = action === 'edit' && !!doc && !editableScope(doc.spec.scope?.kind);
+  if (!doc || managerOf(doc.metadata) !== 'api' || multi || scopeOff) {
     return (
       <FormDialog isOpen onClose={onClose} title={title} width={520} footer={<Button label="Close" variant="ghost" onClick={onClose} />}>
         {review.error ? (
@@ -157,8 +185,10 @@ function ReviewedBindingDialog({ namespace, name, action, onClose }: { namespace
           <Text>Reading the role binding…</Text>
         ) : managerOf(doc.metadata) !== 'api' ? (
           <Banner status="info" title="Managed elsewhere" description={`This binding belongs to ${managerOf(doc.metadata) || 'no API manager'}. Change it where it is declared.`} />
-        ) : (
+        ) : multi ? (
           <Banner status="info" title="More than one subject" description="This form edits a binding with one subject. Use kudurru iam rolebindings replace for this one." />
+        ) : (
+          <Banner status="info" title="Scope this form does not edit" description={`Its scope kind is ${doc.spec.scope?.kind ?? ''}. ${UNSUPPORTED_SCOPE}. Nothing was changed.`} />
         )}
       </FormDialog>
     );
@@ -169,7 +199,7 @@ function ReviewedBindingDialog({ namespace, name, action, onClose }: { namespace
 function DeleteBindingDialog({ doc, title, onClose }: { doc: RoleBindingDocument; title: string; onClose: () => void }) {
   const api = useApi();
   const notify = useNotify();
-  const cmd = useIamCommand('role binding');
+  const cmd = useIamCommand('role binding', { isUnknown: roleBindingUnknown });
   const submit = async () => {
     const r = await cmd.run((signal) => api.iam.deleteRoleBinding(doc.metadata.namespace ?? '', doc.metadata.name ?? '', { uid: doc.metadata.uid ?? '', resourceVersion: doc.metadata.resourceVersion ?? '' }, signal));
     if (r.ok) {
@@ -201,38 +231,31 @@ function DeleteBindingDialog({ doc, title, onClose }: { doc: RoleBindingDocument
 
 function RoleBindingDialog({ onClose, review }: { onClose: () => void; review?: RoleBindingDocument }) {
   const api = useApi();
-  const qc = useQueryClient();
   const notify = useNotify();
-  const [d, setD] = useState<RoleBindingDraft>(review ? draftOfBinding(review) : EMPTY);
+  const [initial] = useState<RoleBindingDraft>(() => (review ? draftOfBinding(review) : EMPTY));
+  const [d, setD] = useState<RoleBindingDraft>(initial);
   const [touched, setTouched] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<unknown>();
-  const [unknown, setUnknown] = useState(false);
-  const inFlight = useRef(false);
+  // A create may be sent again after a refusal once the draft changed; a
+  // reviewed edit is bound to its read and locked after one.
+  const cmd = useIamCommand('role binding', { retryAfterRefusal: !review, isUnknown: roleBindingUnknown });
   const zones = useQuery({ queryKey: qk.zones, queryFn: () => api.zones.list() });
   const groups = useMemo(() => [...new Set((zones.data?.items ?? []).map((z) => z.zoneGroup).filter((g): g is string => !!g))].sort(), [zones.data]);
   const errors = draftErrors(d);
+  const changed = !review || JSON.stringify(d) !== JSON.stringify(initial);
   const shown = (k: keyof RoleBindingDraft) => (touched ? errors[k] : undefined);
   const update = (patch: Partial<RoleBindingDraft>) => setD((prev) => ({ ...prev, ...patch }));
   const submit = async () => {
     setTouched(true);
-    if (Object.keys(errors).length || inFlight.current || unknown) return;
-    inFlight.current = true;
-    setPending(true);
-    setError(undefined);
-    try {
-      const doc = review
-        ? await api.iam.replaceRoleBinding(d.namespace.trim(), d.name.trim(), { uid: review.metadata.uid ?? '', resourceVersion: review.metadata.resourceVersion ?? '', binding: roleBindingManifest(d) })
-        : await api.iam.createRoleBinding(roleBindingManifest(d));
-      notify.success(`${review ? 'Updated' : 'Created'} role binding ${doc.metadata.namespace ?? d.namespace}/${doc.metadata.name ?? d.name}`);
+    if (Object.keys(errors).length || !changed) return;
+    const binding = roleBindingManifest(d, review);
+    const r = await cmd.run((signal) =>
+      review
+        ? api.iam.replaceRoleBinding(d.namespace.trim(), d.name.trim(), { uid: review.metadata.uid ?? '', resourceVersion: review.metadata.resourceVersion ?? '', binding }, signal)
+        : api.iam.createRoleBinding(binding, signal),
+    );
+    if (r.ok) {
+      notify.success(`${review ? 'Updated' : 'Created'} role binding ${r.value.metadata.namespace ?? d.namespace}/${r.value.metadata.name ?? d.name}`);
       onClose();
-    } catch (err) {
-      setError(err);
-      if (roleBindingOutcomeUnknown(err)) setUnknown(true);
-    } finally {
-      inFlight.current = false;
-      setPending(false);
-      void qc.invalidateQueries({ queryKey: ['iam', 'rb'] });
     }
   };
   const groupHelp = groups.length ? `Zone groups in use: ${groups.join(', ')}. A group with no zones yet grants nothing until a zone carries its label.` : 'No zone carries a kudurru.io/zonegroup label yet; the binding grants nothing until one does.';
@@ -245,8 +268,8 @@ function RoleBindingDialog({ onClose, review }: { onClose: () => void; review?: 
       onSubmit={() => void submit()}
       footer={
         <>
-          <Button label={unknown ? 'Close' : 'Cancel'} variant="ghost" onClick={onClose} />
-          <Button type="submit" label={review ? 'Save changes' : 'Create'} variant="primary" isLoading={pending} isDisabled={unknown} />
+          <Button label={cmd.locked ? 'Close' : 'Cancel'} variant="ghost" onClick={onClose} />
+          <Button type="submit" label={review ? 'Save changes' : 'Create'} variant="primary" isLoading={cmd.pending} isDisabled={cmd.locked || !changed} />
         </>
       }
     >
@@ -264,13 +287,7 @@ function RoleBindingDialog({ onClose, review }: { onClose: () => void; review?: 
           Moving a zone into or out of a group (its label) needs zones.write at cluster scope, so a zone admin of the group cannot hand zones to another group.
         </Text>
       ) : null}
-      {error !== undefined ? (
-        unknown ? (
-          <Banner status="warning" title="Outcome unknown" description={`The dashboard cannot tell whether the binding was ${review ? 'changed' : 'created'} and does not send it again. Close this dialog and check the role bindings list. The server said: ${errorText(error)}`} />
-        ) : (
-          <ErrorBanner error={error} />
-        )
-      ) : null}
+      {cmd.outcome}
     </FormDialog>
   );
 }

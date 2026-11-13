@@ -402,6 +402,69 @@ describe('role bindings', () => {
     await closed();
     expect(calls('DELETE', '/iam/rolebindings/default/home-admin')).toHaveLength(1);
   });
+
+  it('keeps the stored labels and operator annotations on an edit, never the manager', async () => {
+    const home = mockIAM().roleBindings.find((b) => b.metadata.name === 'home-admin')!;
+    home.metadata.labels = { team: 'dns' };
+    home.metadata.annotations = { ...home.metadata.annotations, 'example.com/ticket': 'OPS-12' };
+    identity();
+    await press('Edit default/home-admin');
+    const d = await reviewed();
+    const save = within(d).getByRole('button', { name: 'Save changes' });
+    expect(off(save)).toBe(true);
+    fireEvent.change(within(d).getByLabelText(/^User name/), { target: { value: 'alice' } });
+    fireEvent.click(save);
+    await closed();
+    const put = calls('PUT', '/iam/rolebindings/default/home-admin')[0]?.body as { binding: { metadata: unknown } };
+    expect(put.binding.metadata).toEqual({ namespace: 'default', name: 'home-admin', labels: { team: 'dns' }, annotations: { 'example.com/ticket': 'OPS-12' } });
+  });
+
+  it('does not edit a binding whose scope kind the form does not know', async () => {
+    mockIAM().roleBindings.push({
+      apiVersion: 'kudurru.io/v1alpha1', kind: 'RoleBinding',
+      metadata: { namespace: 'default', name: 'kids', uid: 'rb-default-kids', resourceVersion: '9', annotations: { 'kudurru.io/managed-by': 'api' } },
+      spec: { role: 'admin', scope: { kind: 'clientgroup', name: 'kids' }, subjects: [{ kind: 'User', name: 'parent' }] },
+    });
+    identity();
+    const table = await screen.findByRole('table', { name: 'Role bindings' });
+    await waitFor(() => expect(off(within(table).getByRole('button', { name: 'Delete default/kids' }))).toBe(false));
+    expect(off(within(table).getByRole('button', { name: 'Edit default/kids' }))).toBe(true);
+    // The list said zone, the reviewed read says clientgroup: the dialog refuses.
+    const home = mockIAM().roleBindings.find((b) => b.metadata.name === 'home-admin')!;
+    await waitFor(() => expect(off(within(table).getByRole('button', { name: 'Edit default/home-admin' }))).toBe(false));
+    home.spec.scope = { kind: 'clientgroup', name: 'kids' };
+    fireEvent.click(within(table).getByRole('button', { name: 'Edit default/home-admin' }));
+    const d = await reviewed();
+    expect(within(d).getByText('Scope this form does not edit')).toBeInTheDocument();
+    expect(within(d).queryByRole('button', { name: 'Save changes' })).toBeNull();
+    expect(calls('PUT', '/iam/rolebindings/default/home-admin')).toHaveLength(0);
+  });
+
+  it('locks an edit after a refusal and after an unknown outcome, each sent once', async () => {
+    const puts = count('PUT', '/iam/rolebindings/default/home-admin');
+    identity();
+    mockIAM().failNext = { status: 409, key: 'conflict', message: 'resourceVersion changed' };
+    await press('Edit default/home-admin');
+    let d = await reviewed();
+    fireEvent.change(within(d).getByLabelText(/^User name/), { target: { value: 'alice' } });
+    fireEvent.click(within(d).getByRole('button', { name: 'Save changes' }));
+    expect(await within(d).findByText(/changed or already exists since you reviewed it/)).toBeInTheDocument();
+    expect(off(within(d).getByRole('button', { name: 'Save changes' }))).toBe(true);
+    fireEvent.submit(within(d).getByRole('button', { name: 'Save changes' }).closest('form')!);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(puts()).toBe(1);
+    fireEvent.click(within(d).getAllByRole('button', { name: 'Close' }).at(-1)!);
+    await closed();
+    mockIAM().failNext = { status: 503, key: 'unavailable', message: 'authentication operation unavailable' };
+    await press('Edit default/home-admin');
+    d = await reviewed();
+    fireEvent.change(within(d).getByLabelText(/^User name/), { target: { value: 'alice' } });
+    fireEvent.click(within(d).getByRole('button', { name: 'Save changes' }));
+    expect(await within(d).findByText('Outcome unknown')).toBeInTheDocument();
+    fireEvent.submit(within(d).getByRole('button', { name: 'Save changes' }).closest('form')!);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(puts()).toBe(2);
+  });
 });
 
 describe('refusals', () => {
