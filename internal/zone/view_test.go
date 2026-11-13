@@ -340,3 +340,136 @@ func TestClientGroupViewsThroughRecordCache(t *testing.T) {
 		}
 	}
 }
+
+// A view may replace default data of its own namespace only. Another
+// namespace that repeats a name as a default endpoint is Duplicated; it
+// must not get the same effect for the clients of a ClientGroup it defines
+// by putting the data in a view (D403). A view-only name in another
+// namespace's zone is not an override and is served.
+func TestClientGroupViewsCannotOverrideAnotherNamespace(t *testing.T) {
+	z, errs := Build(dnsZone("example.org."), []*v1alpha1.DNSRecordSet{
+		recordSet("tenant-a", "site", ep("www.example.org", "A", "203.0.113.10"), ep("alias.example.org", "CNAME", "www.example.org"), ep("mail.example.org", "MX", "10 mx.example.org")),
+		recordSet("tenant-a", "own", inView(ep("www.example.org", "A", "10.0.0.10"), "lan")),
+		recordSet("tenant-b", "dup", ep("www.example.org", "A", "198.51.100.66")),
+		recordSet("tenant-b", "hijack",
+			inView(ep("www.example.org", "A", "198.51.100.66"), "everyone"),
+			inView(ep("alias.example.org", "A", "198.51.100.67"), "everyone"),
+			inView(ep("mail.example.org", "CNAME", "evil.example.net"), "everyone"),
+			inView(ep("mail.example.org", "TXT", "unrelated type"), "other"),
+			inView(ep("own.example.org", "A", "198.51.100.68"), "everyone"),
+		),
+	}, BuildOptions{Now: testNow})
+	if list := errs.RecordSets["tenant-b/dup"]; len(list) != 1 || ErrorReason(list[0]) != v1alpha1.ReasonDuplicated {
+		t.Fatalf("default duplicate: %v", list)
+	}
+	list := errs.RecordSets["tenant-b/hijack"]
+	if len(list) != 3 {
+		t.Fatalf("cross-namespace view overrides: %v, want three Duplicated", list)
+	}
+	for _, err := range list {
+		if ErrorReason(err) != v1alpha1.ReasonDuplicated || !strings.Contains(err.Error(), "tenant-a/site") {
+			t.Fatalf("cross-namespace view override: %v", err)
+		}
+	}
+	if errs := errs.RecordSets["tenant-a/own"]; len(errs) != 0 {
+		t.Fatalf("a view of the owner's namespace is refused: %v", errs)
+	}
+	everyone := z.ForGroups([]string{"tenant-b/everyone"})
+	for name, want := range map[string][]string{
+		"www.example.org.":   {"203.0.113.10"},
+		"alias.example.org.": {"CNAME www.example.org.", "203.0.113.10"},
+		"own.example.org.":   {"198.51.100.68"},
+	} {
+		if got := addrs(everyone.Lookup(name, dns.TypeA)); !slices.Equal(got, want) {
+			t.Errorf("tenant-b/everyone %s = %v, want %v", name, got, want)
+		}
+	}
+	if res := everyone.Lookup("mail.example.org.", dns.TypeMX); res.Kind != Success || len(res.Answer) != 1 || res.Answer[0].Header().Rrtype != dns.TypeMX {
+		t.Errorf("tenant-b/everyone mail MX = %v %v", res.Kind, res.Answer)
+	}
+	if res := z.ForGroups([]string{"tenant-b/other"}).Lookup("mail.example.org.", dns.TypeTXT); res.Kind != Success {
+		t.Errorf("a view RRset of a type no default endpoint holds is served: %v", res.Kind)
+	}
+	if got := addrs(z.ForGroups([]string{"tenant-a/lan"}).Lookup("www.example.org.", dns.TypeA)); !slices.Equal(got, []string{"10.0.0.10"}) {
+		t.Errorf("tenant-a/lan www = %v", got)
+	}
+}
+
+// Views of one name in two namespaces refer to two ClientGroups: neither is
+// a duplicate of the other, and each group gets its own namespace's data.
+func TestClientGroupViewsSameNameInTwoNamespaces(t *testing.T) {
+	z, errs := Build(dnsZone("example.org."), []*v1alpha1.DNSRecordSet{
+		recordSet("dns", "a", inView(ep("www.example.org", "A", "10.0.0.1"), "lan")),
+		recordSet("apps", "b", inView(ep("www.example.org", "A", "10.1.0.1"), "lan")),
+	}, BuildOptions{Now: testNow})
+	if len(errs.RecordSets) != 0 {
+		t.Fatalf("errors %v", errs.RecordSets)
+	}
+	if got := z.ViewGroups(); !slices.Equal(got, []string{"apps/lan", "dns/lan"}) {
+		t.Fatalf("groups %v", got)
+	}
+	for group, want := range map[string]string{"dns/lan": "10.0.0.1", "apps/lan": "10.1.0.1"} {
+		if got := addrs(z.ForGroups([]string{group}).Lookup("www.example.org.", dns.TypeA)); !slices.Equal(got, []string{want}) {
+			t.Errorf("%s www = %v, want %s", group, got, want)
+		}
+	}
+	// One identity twice in one group is still Duplicated, naming the group.
+	_, errs = Build(dnsZone("example.org."), []*v1alpha1.DNSRecordSet{
+		recordSet("dns", "a", inView(ep("www.example.org", "A", "10.0.0.1"), "lan")),
+		recordSet("dns", "b", inView(ep("www.example.org", "A", "10.0.0.2"), "lan")),
+	}, BuildOptions{Now: testNow})
+	if list := errs.RecordSets["dns/b"]; len(list) != 1 || ErrorReason(list[0]) != v1alpha1.ReasonDuplicated || !strings.Contains(list[0].Error(), "view dns/lan") {
+		t.Fatalf("duplicate in one group: %v", list)
+	}
+}
+
+// A view name, and every empty non-terminal it creates, exists in the
+// group's variant, so a default wildcard no longer synthesizes an answer
+// there for the group: standard wildcard semantics (RFC 4592 §2.2.2),
+// recorded in D403. Names away from the view's names keep the wildcard.
+func TestClientGroupViewNamesSuppressDefaultWildcard(t *testing.T) {
+	z, errs := Build(dnsZone("example.org."), []*v1alpha1.DNSRecordSet{recordSet("dns", "a",
+		ep("*.example.org", "A", "203.0.113.1"),
+		inView(ep("a.b.example.org", "A", "10.0.0.1"), "lan"),
+		inView(ep("only.example.org", "TXT", "x"), "lan"),
+	)}, BuildOptions{Now: testNow})
+	if len(errs.RecordSets) != 0 {
+		t.Fatalf("errors %v", errs.RecordSets)
+	}
+	lan := z.ForGroups([]string{"dns/lan"})
+	for _, tc := range []struct {
+		name     string
+		def, grp Kind
+	}{
+		{"x.b.example.org.", Success, NXDomain},
+		{"b.example.org.", Success, NoData},
+		{"only.example.org.", Success, NoData},
+		{"other.example.org.", Success, Success},
+		{"a.b.example.org.", Success, Success},
+	} {
+		if got := z.Lookup(tc.name, dns.TypeA).Kind; got != tc.def {
+			t.Errorf("default %s = %v, want %v", tc.name, got, tc.def)
+		}
+		if got := lan.Lookup(tc.name, dns.TypeA).Kind; got != tc.grp {
+			t.Errorf("lan %s = %v, want %v", tc.name, got, tc.grp)
+		}
+	}
+}
+
+// The view budget is per zone and shared by every record set feeding it, in
+// build order: once MaxViews groups have views, a later record set's view
+// of another group is refused even in another namespace (a known limit,
+// D403).
+func TestClientGroupViewBudgetIsPerZone(t *testing.T) {
+	var eps []v1alpha1.Endpoint
+	for i := range MaxViews {
+		eps = append(eps, inView(ep("h.example.org", "A", "10.0.0.1"), "g"+strings.Repeat("x", i)))
+	}
+	z, errs := Build(dnsZone("example.org."), []*v1alpha1.DNSRecordSet{
+		recordSet("a-tenant", "many", eps...),
+		recordSet("b-tenant", "one", inView(ep("www.example.org", "A", "10.1.0.1"), "lan")),
+	}, BuildOptions{Now: testNow})
+	if list := errs.RecordSets["b-tenant/one"]; len(list) != 1 || !strings.Contains(list[0].Error(), "at most") || len(z.ViewGroups()) != MaxViews {
+		t.Fatalf("shared view budget: %v %v", list, z.ViewGroups())
+	}
+}

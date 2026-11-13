@@ -22,9 +22,17 @@ import (
 // default data with the group's RRsets laid over it. A view RRset replaces
 // the default RRset of the same owner and type; a view CNAME replaces every
 // default RRset at its owner, and any view RRset replaces a default CNAME at
-// its owner. Views never remove a name, so a group client sees every
-// default name, and a client outside the group never sees a view-only name:
-// it gets the default zone's NXDOMAIN or NODATA with the default SOA.
+// its owner. Views never remove a default name, and a client outside the
+// group never sees a view-only name: it gets the default zone's NXDOMAIN or
+// NODATA with the default SOA. A view name, and each empty non-terminal it
+// creates, exists in the group's variant, so a default wildcard does not
+// synthesize answers at those names for the group (RFC 4592 §2.2.2).
+//
+// A view replaces only default data its own namespace claimed: a view
+// RRset that would replace another namespace's default RRset is refused as
+// Duplicated, as a default endpoint repeating it would be. The view budget
+// (MaxViews) is per zone and shared, in build order, by every record set
+// feeding the zone.
 //
 // The default zone is what is transferred (AXFR/IXFR), exported, compared by
 // RFC 2136 UPDATE prerequisites and published to sinks. Group data never
@@ -205,6 +213,7 @@ type viewEntry struct {
 	source string
 	path   *field.Path
 	value  string
+	t      uint16
 }
 
 // pendingView is one group's data while a zone is being built.
@@ -252,16 +261,16 @@ func (b *Builder) addView(namespace, source string, path *field.Path, ep *v1alph
 	if key == b.z.key && rrtype == dns.TypeCNAME {
 		return field.ErrorList{field.Invalid(dnsName, ep.DNSName, "a CNAME cannot be at the zone apex (RFC 1912 §2.4)")}
 	}
-	id := viewIdentity{identity{key, rrtype, ep.SetIdentifier}, view}
+	group := ViewGroupID(namespace, view)
+	id := viewIdentity{identity{key, rrtype, ep.SetIdentifier}, group}
 	if prev, ok := b.viewOwners[id]; ok && prev != source && !b.merge {
 		return field.ErrorList{&field.Error{
 			Type:     field.ErrorTypeDuplicate,
 			Field:    dnsName.String(),
 			BadValue: ep.DNSName,
-			Detail:   fmt.Sprintf("%s: %s %s in view %s is already defined by %s", v1alpha1.ReasonDuplicated, owner, typeString(rrtype), view, prev),
+			Detail:   fmt.Sprintf("%s: %s %s in view %s is already defined by %s", v1alpha1.ReasonDuplicated, owner, typeString(rrtype), group, prev),
 		}}
 	}
-	group := ViewGroupID(namespace, view)
 	p := b.views[group]
 	if p == nil {
 		if len(b.views) >= MaxViews {
@@ -295,7 +304,7 @@ func (b *Builder) addView(namespace, source string, path *field.Path, ep *v1alph
 		rr.Header().Name = owner
 		set.add(rr)
 	}
-	n.entries = append(n.entries, viewEntry{source: source, path: dnsName, value: ep.DNSName})
+	n.entries = append(n.entries, viewEntry{source: source, path: dnsName, value: ep.DNSName, t: rrtype})
 	if rrtype == dns.TypeCNAME && len(set.RRs) > 1 {
 		set.RRs = set.RRs[:1]
 		set.TTL = set.RRs[0].Header().Ttl
@@ -326,14 +335,18 @@ func (b *Builder) finishViews() {
 	if len(b.views) == 0 {
 		return
 	}
+	refuseEntry := func(e viewEntry, why string) {
+		if b.viewErrs == nil {
+			b.viewErrs = map[string]field.ErrorList{}
+		}
+		b.viewErrs[e.source] = append(b.viewErrs[e.source], field.Invalid(e.path, e.value, why))
+	}
 	refuse := func(n *viewName, why string) {
 		for _, e := range n.entries {
-			if b.viewErrs == nil {
-				b.viewErrs = map[string]field.ErrorList{}
-			}
-			b.viewErrs[e.source] = append(b.viewErrs[e.source], field.Invalid(e.path, e.value, why))
+			refuseEntry(e, why)
 		}
 	}
+	owners := b.viewDefaultOwners()
 	groups := make([]string, 0, len(b.views))
 	for g := range b.views {
 		groups = append(groups, g)
@@ -359,7 +372,7 @@ func (b *Builder) finishViews() {
 				refuse(n, v1alpha1.ReasonInvalid+": client-group views are not served in a DNSSEC-signed zone (D403)")
 			case why != "":
 				refuse(n, why)
-			default:
+			case b.ownSets(n, owners[n.key], refuseEntry):
 				kept = append(kept, n)
 			}
 		}
@@ -368,6 +381,9 @@ func (b *Builder) finishViews() {
 		}
 		for _, n := range kept {
 			for _, e := range n.entries {
+				if n.get(e.t) == nil {
+					continue // refused by ownSets
+				}
 				if b.viewServed == nil {
 					b.viewServed = map[string]bool{}
 				}
@@ -377,6 +393,95 @@ func (b *Builder) finishViews() {
 		views = append(views, b.z.buildView(g, kept))
 	}
 	b.z.setViews(views)
+}
+
+// defaultOwner is a source that claimed default data of one type at a name.
+type defaultOwner struct {
+	t      uint16
+	source string
+}
+
+// viewDefaultOwners returns, for every owner name the views use, the
+// sources that claimed default data there (served or not, as Duplicated
+// counts them), sorted by source and type. It scans the default identities
+// once, and only when the zone has views.
+func (b *Builder) viewDefaultOwners() map[string][]defaultOwner {
+	keys := map[string]bool{}
+	for _, p := range b.views {
+		for k := range p.names {
+			keys[k] = true
+		}
+	}
+	out := map[string][]defaultOwner{}
+	for id, source := range b.owners {
+		if keys[id.key] {
+			out[id.key] = append(out[id.key], defaultOwner{id.t, source})
+		}
+	}
+	for _, list := range out {
+		slices.SortFunc(list, func(x, y defaultOwner) int {
+			if c := strings.Compare(x.source, y.source); c != 0 {
+				return c
+			}
+			return int(x.t) - int(y.t)
+		})
+	}
+	return out
+}
+
+// sourceScope is the namespace part of a source: everything before its
+// last "/" ("namespace/name" in Build, "DNSRecordSet/namespace/name" in the
+// committed primary compiler).
+func sourceScope(source string) string {
+	if i := strings.LastIndexByte(source, '/'); i >= 0 {
+		return source[:i]
+	}
+	return ""
+}
+
+// ownSets drops from n every view RRset that would replace default data
+// another namespace claimed, refusing its endpoints as Duplicated, and
+// reports whether any RRset is left. A view RRset replaces the default
+// RRset of its type, and a CNAME on either side replaces everything at the
+// name (buildView). Ownership of served names is per namespace: a view may
+// replace default data of its own namespace, never another's, because the
+// record set and the ClientGroup that would override it are both written in
+// the overriding namespace (D403).
+func (b *Builder) ownSets(n *viewName, owners []defaultOwner, refuse func(viewEntry, string)) bool {
+	if len(owners) == 0 {
+		return true
+	}
+	kept := n.sets[:0]
+	for _, s := range n.sets {
+		var foreign *defaultOwner
+		for _, e := range n.entries {
+			if e.t != s.Type {
+				continue
+			}
+			for i := range owners {
+				o := &owners[i]
+				if (o.t == s.Type || s.Type == dns.TypeCNAME || o.t == dns.TypeCNAME) && sourceScope(o.source) != sourceScope(e.source) {
+					foreign = o
+					break
+				}
+			}
+			if foreign != nil {
+				break
+			}
+		}
+		if foreign == nil {
+			kept = append(kept, s)
+			continue
+		}
+		why := fmt.Sprintf("%s: %s %s is already defined by %s; a client-group view replaces only default data of its own namespace (D403)", v1alpha1.ReasonDuplicated, n.name, typeString(foreign.t), foreign.source)
+		for _, e := range n.entries {
+			if e.t == s.Type {
+				refuse(e, why)
+			}
+		}
+	}
+	n.sets = kept
+	return len(kept) > 0
 }
 
 // FenceViews makes Build refuse view data that records the builder does

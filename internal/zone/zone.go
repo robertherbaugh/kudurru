@@ -334,10 +334,12 @@ type identity struct {
 	setID string
 }
 
-// viewIdentity is the identity of an endpoint in a client-group view.
+// viewIdentity is the identity of an endpoint in a client-group view. The
+// group is the ClientGroup ID (ViewGroupID): views of the same name in two
+// namespaces refer to two ClientGroups and never share a variant.
 type viewIdentity struct {
 	identity
-	view string
+	group string
 }
 
 // NewBuilder validates the DNSZone and returns a Builder for its records.
@@ -558,7 +560,7 @@ func (b *Builder) add(namespace, source string, path *field.Path, ep *v1alpha1.E
 		return b.addView(namespace, source, path, ep, rrs, errs)
 	}
 	if !Served(ep, b.now) {
-		b.claim(source, ep)
+		b.claim(namespace, source, ep)
 		return nil
 	}
 	rrs, errs := ParseEndpoint(b.z.name, b.defaultTTL(), ep, path)
