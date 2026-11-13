@@ -13,6 +13,8 @@ import { getSelector, pick } from '../../test/controls';
 import { server } from '../../test/setup';
 import { API, renderWithApp } from '../../test/utils';
 import { feedStateView, rpzDraftError, worstFeed } from '../../lib/rpz';
+import { ApiError } from '../../api/client';
+import { RPZ_POLL_MS, RPZ_SETTLING_POLL_MS, rpzSettling } from './RPZFeeds';
 import ListDetailPage from '../../pages/ListDetailPage';
 import ListsPage from '../../pages/ListsPage';
 import { ListWizardDialog } from '../wizards/ListWizard';
@@ -164,6 +166,72 @@ describe('RPZ feeds on the list page', () => {
     expect(await screen.findByText("This node's configuration does not include the list yet")).toBeInTheDocument();
   });
 
+  it('explains a node that has no configuration yet (503)', async () => {
+    seed([]);
+    server.use(http.get(`${API}/blocklists/default/threats/rpz`, () => HttpResponse.json({ error: { key: 'unavailable', message: 'no configuration snapshot yet' } }, { status: 503 })));
+    renderThreats();
+    const region = await screen.findByRole('region', { name: 'RPZ feeds on this node' });
+    expect(await within(region).findByText('This node has no configuration yet')).toBeInTheDocument();
+    expect(within(region).getByText(/has not loaded its first configuration snapshot/)).toBeInTheDocument();
+  });
+
+  it('reads again within seconds while the node lacks the list, and shows the feed once it has it', async () => {
+    seed([serving()]);
+    let reads = 0;
+    server.use(
+      http.get(`${API}/blocklists/default/threats/rpz`, () => {
+        reads++;
+        if (reads === 1) return HttpResponse.json({ error: { key: 'not_found', message: 'blocklist not found' } }, { status: 404 });
+        return HttpResponse.json({ items: [serving()] });
+      }),
+    );
+    renderThreats();
+    expect(await screen.findByText("This node's configuration does not include the list yet")).toBeInTheDocument();
+    // No reload: the settling poll (not the 30 s one) brings the feed in.
+    const feed = await screen.findByTestId('rpz-feed-vendor', {}, { timeout: RPZ_SETTLING_POLL_MS + 3_000 });
+    expect(feed).toHaveAttribute('data-state', 'serving');
+    expect(screen.queryByText("This node's configuration does not include the list yet")).not.toBeInTheDocument();
+  });
+
+  it('reads the feed state again after a source change', async () => {
+    seed([serving()]);
+    let reads = 0;
+    server.use(
+      http.get(`${API}/blocklists/default/threats/rpz`, () => {
+        reads++;
+        return HttpResponse.json({ items: [serving()] });
+      }),
+    );
+    renderThreats();
+    await feedSection();
+    expect(reads).toBe(1);
+    fireEvent.click(screen.getByRole('switch', { name: 'Source vendor enabled' }));
+    // Serving polls every 30 s, so only the invalidation explains a second read now.
+    await waitFor(() => expect(reads).toBeGreaterThan(1), { timeout: 3_000 });
+  });
+
+  it('flags a SERVFAIL feed next to the shared health and words fetch times per node', async () => {
+    const list = threats();
+    list.status = { ...list.status, conditions: [{ type: 'Ready', status: 'True', reason: 'Serving', message: '1 sources' }] };
+    seed([serving({ state: 'expired', available: false, reason: 'RPZExpired', expiresAt: ISO(-60_000) })], list);
+    renderThreats();
+    await feedSection();
+    expect(await screen.findByTestId('rpz-header-state')).toHaveTextContent('RPZ expired on this node');
+    expect(screen.getByTestId('rpz-status')).toHaveTextContent('RPZ feed vendor is expired on node kudurru-0: clients whose policy uses this list get SERVFAIL from it.');
+    expect(screen.getByText('per node (see RPZ feeds)')).toBeInTheDocument();
+    expect(screen.queryByText('not yet')).not.toBeInTheDocument();
+    expect(screen.getByText("not used: RPZ feeds follow their zone's SOA timers")).toBeInTheDocument();
+    expect(screen.queryByText('24h (default)')).not.toBeInTheDocument();
+  });
+
+  it('adds no feed flag while every feed serves', async () => {
+    seed([serving()]);
+    renderThreats();
+    await feedSection();
+    expect(screen.queryByTestId('rpz-header-state')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('rpz-status')).not.toBeInTheDocument();
+  });
+
   it('shows an RPZ source opened in the entries browser as a feed without entries', async () => {
     seed([serving()]);
     renderWithApp(<ListDetailPage params={{ ns: 'default', name: 'threats' }} />, { route: '/lists/default/threats?source=vendor' });
@@ -238,6 +306,13 @@ describe('RPZ feeds on the Lists page', () => {
     expect(states.map((s) => s.textContent).sort()).toEqual(['RPZ pending', 'RPZ serving']);
   });
 
+  it('words the update time of an RPZ-only list per node', async () => {
+    seed([serving()]);
+    renderWithApp(<ListsPage />, { route: '/lists' });
+    const row = (await screen.findByRole('link', { name: 'threats' })).closest('tr') as HTMLElement;
+    expect(within(row).getByText('per node')).toBeInTheDocument();
+  });
+
   it('says the feed state is unknown on a node without a feed manager', async () => {
     seed(false);
     renderWithApp(<ListsPage />, { route: '/lists' });
@@ -286,6 +361,15 @@ describe('RPZ helpers', () => {
     expect(feedStateView({ state: 'resyncing' })).toEqual({ label: 'resyncing', tone: 'neutral', servfail: true });
     expect(feedStateView({ state: 'resyncing', available: true }).servfail).toBe(false);
     expect(feedStateView({})).toMatchObject({ label: 'unknown', servfail: true });
+  });
+
+  it('polls fast only while the read settles', () => {
+    expect(rpzSettling(undefined, new ApiError(404, 'not_found', 'x'))).toBe(true);
+    expect(rpzSettling(undefined, new ApiError(503, 'unavailable', 'x'))).toBe(true);
+    expect(rpzSettling(undefined, new ApiError(501, 'not_implemented', 'x'))).toBe(false);
+    expect(rpzSettling({ items: [serving()] }, null)).toBe(false);
+    expect(rpzSettling({ items: [serving(), { state: 'pending' }] }, null)).toBe(true);
+    expect(RPZ_SETTLING_POLL_MS).toBeLessThan(RPZ_POLL_MS);
   });
 
   it('picks the feed that most needs attention', () => {

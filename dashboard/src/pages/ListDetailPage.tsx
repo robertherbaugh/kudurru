@@ -28,7 +28,7 @@ import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedba
 import { FormDialog } from '../components/FormDialog';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { EntriesBrowser } from '../components/lists/EntriesBrowser';
-import { RPZFeedsPanel } from '../components/lists/RPZFeeds';
+import { RPZ_KEY, RPZFeedsPanel, servfailFeed, useRPZFeeds } from '../components/lists/RPZFeeds';
 import { SourceDialog } from '../components/lists/SourceDialog';
 import { SourcesTable } from '../components/lists/SourcesTable';
 import { ManagedBadge } from '../components/ManagedBadge';
@@ -41,7 +41,8 @@ import { durationError } from '../lib/objectSchemas';
 import { useNavigate, useSearchParams } from '../lib/router';
 import { isIPv4, isIPv6 } from '../lib/rr';
 import type { PageProps } from '../routes';
-import { inlineOnly, STATUS_POLL_MS } from './ListsPage';
+import { feedStateView } from '../lib/rpz';
+import { feedsOnly, inlineOnly, STATUS_POLL_MS } from './ListsPage';
 
 export const REFRESH_PRESETS = [
   { value: '1h', label: 'Every hour' },
@@ -94,13 +95,19 @@ export default function ListDetailPage({ params }: PageProps) {
     refetchInterval: polling > 0 ? 2_000 : false,
   });
   const policies = useQuery({ queryKey: qk.objects('policies'), queryFn: () => api.objects.list<Policy>('policies') });
+  const hasFeeds = !!q.data && q.data.spec.mode !== 'allow' && q.data.spec.sources.some(isRPZSource);
+  // The same read as the feed section (one request): the header says when this node's feed fails clients.
+  const feedRead = useRPZFeeds(ns, name, hasFeeds);
+  const failingFeed = hasFeeds ? servfailFeed(feedRead.data?.items ?? undefined) : undefined;
 
   const [sourceDialog, setSourceDialog] = useState<{ index: number | null; key: number } | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [deletingList, setDeletingList] = useState(false);
   const [yaml, setYaml] = useState(false);
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: qk.objects('blocklists') });
+  // A list or source change also changes which feeds this node transfers, so
+  // the feed reads (this list's and the Lists page's) are repeated too.
+  const invalidate = () => Promise.all([qc.invalidateQueries({ queryKey: qk.objects('blocklists') }), qc.invalidateQueries({ queryKey: RPZ_KEY })]);
 
   /** Whole-object PUT with If-Match; the answer replaces the cached list. */
   const save = async (next: BlockList): Promise<BlockList> => {
@@ -195,7 +202,9 @@ export default function ListDetailPage({ params }: PageProps) {
   const taken = (except: number | null) => sources.flatMap((s, i) => (i === except ? [] : [sourceName(i, s)]));
   const editingIndex = sourceDialog?.index ?? null;
   const ready = st?.conditions?.find((c) => c.type === 'Ready');
-  const hasFeeds = list.spec.mode !== 'allow' && sources.some(isRPZSource);
+  const failingText = failingFeed
+    ? `RPZ feed ${failingFeed.source ?? failingFeed.origin ?? 'of this list'} is ${feedStateView(failingFeed).label} on ${failingFeed.node ? `node ${failingFeed.node}` : 'this node'}: clients whose policy uses this list get SERVFAIL from it`
+    : undefined;
   const browsingFeed = browseIndex >= 0 && !!sources[browseIndex] && isRPZSource(sources[browseIndex]);
 
   const saveSource = async (src: ListSource) => {
@@ -234,6 +243,12 @@ export default function ListDetailPage({ params }: PageProps) {
             <Tooltip content={health.detail} isEnabled={!!health.detail} hasHoverIndication={false}>
               <Badge variant={health.tone === 'neutral' ? 'neutral' : health.tone} label={health.label} />
             </Tooltip>
+            {failingFeed && failingText ? (
+              // The health badge is the shared BlockList status; feed state is this node's own.
+              <Tooltip content={`${failingText}. The other badge is the list's shared status.`} hasHoverIndication={false}>
+                <Badge variant={feedStateView(failingFeed).tone === 'warning' ? 'warning' : 'error'} label={`RPZ ${feedStateView(failingFeed).label} on this node`} data-testid="rpz-header-state" />
+              </Tooltip>
+            ) : null}
             <ManagedBadge owner={list.metadata.annotations?.[MANAGED_BY]} />
           </>
         }
@@ -277,21 +292,36 @@ export default function ListDetailPage({ params }: PageProps) {
               <time dateTime={st.lastFetched} title={formatDateTime(st.lastFetched)}>
                 {formatRelative(st.lastFetched)}
               </time>
+            ) : feedsOnly(sources) ? (
+              <Text color="secondary">per node (see RPZ feeds)</Text>
             ) : inlineOnly(sources) ? (
               <Text color="secondary">inline, nothing to fetch</Text>
             ) : (
               <Text color="secondary">not yet</Text>
             )}
           </MetadataListItem>
-          <MetadataListItem label="Refresh interval">{list.spec.refreshInterval ?? <Text color="secondary">24h (default)</Text>}</MetadataListItem>
-          <MetadataListItem label="Status">
-            {ready ? (
-              <Text maxLines={3} wordBreak="break-word">
-                {readyText(ready)}
-              </Text>
+          <MetadataListItem label="Refresh interval">
+            {feedsOnly(sources) ? (
+              <Text color="secondary">not used: RPZ feeds follow their zone's SOA timers</Text>
             ) : (
-              <Text color="secondary">pending</Text>
+              (list.spec.refreshInterval ?? <Text color="secondary">24h (default)</Text>)
             )}
+          </MetadataListItem>
+          <MetadataListItem label="Status">
+            <VStack gap={0.5}>
+              {ready ? (
+                <Text maxLines={3} wordBreak="break-word">
+                  {readyText(ready)}
+                </Text>
+              ) : (
+                <Text color="secondary">pending</Text>
+              )}
+              {failingText ? (
+                <Text wordBreak="break-word" data-testid="rpz-status">
+                  {failingText}.
+                </Text>
+              ) : null}
+            </VStack>
           </MetadataListItem>
           <MetadataListItem label="Used by">
             {usedBy.length

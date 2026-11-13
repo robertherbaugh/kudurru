@@ -17,17 +17,51 @@ import { Text } from '@astryxdesign/core/Text';
 import { useQuery } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { useApi } from '../../api/context';
-import type { RPZFeed, RPZIgnoredReason } from '../../api/types';
+import type { RPZFeed, RPZFeedList, RPZIgnoredReason } from '../../api/types';
 import { formatDateTime, formatExact, formatRelative } from '../../lib/format';
-import { feedStateView, ignoredReasonText, servfailText } from '../../lib/rpz';
+import { feedStateView, ignoredReasonText, servfailText, worstFeed } from '../../lib/rpz';
 import { ErrorBanner } from '../Feedback';
 import { Panel } from '../layout/Page';
 
-/** How often the panel rereads the node's feed state (like the secondary runtime). */
+/** How often a read whose feeds all serve is repeated (like the secondary runtime). */
 export const RPZ_POLL_MS = 30_000;
+/**
+ * How often a read is repeated while it is settling: the node's configuration
+ * lacks the list yet (404) or has none (503), or a feed is not serving. A new
+ * or changed feed then shows its first transfer within seconds instead of
+ * after the next 30 s read.
+ */
+export const RPZ_SETTLING_POLL_MS = 3_000;
+
+/** The prefix of every RPZ feed read (one list's and the Lists page's), for invalidation after a list change. */
+export const RPZ_KEY = ['rpz'] as const;
 
 export function rpzFeedsKey(namespace: string, name: string) {
-  return ['rpz', namespace, name] as const;
+  return [...RPZ_KEY, namespace, name] as const;
+}
+
+/** Whether a feed read is settling: 404 or 503, or a feed that is not serving. */
+export function rpzSettling(data: RPZFeedList | undefined, error: unknown): boolean {
+  if (error instanceof ApiError && (error.status === 404 || error.status === 503)) return true;
+  if (error) return false;
+  return (data?.items ?? []).some((f) => f.state !== 'serving');
+}
+
+/** The refetchInterval of a feed read: fast while it settles, else every 30 s. */
+export function rpzPollInterval(query: { state: { data: RPZFeedList | undefined; error: unknown } }): number {
+  return rpzSettling(query.state.data, query.state.error) ? RPZ_SETTLING_POLL_MS : RPZ_POLL_MS;
+}
+
+/** This node's feeds of one list (shared by the feed section and the list header). */
+export function useRPZFeeds(namespace: string, name: string, enabled = true) {
+  const api = useApi();
+  return useQuery({ queryKey: rpzFeedsKey(namespace, name), queryFn: () => api.lists.rpz(namespace, name), refetchInterval: rpzPollInterval, retry: false, enabled });
+}
+
+/** The worst feed of a list on this node when clients get SERVFAIL from it, else undefined. */
+export function servfailFeed(feeds: RPZFeed[] | undefined): RPZFeed | undefined {
+  const worst = worstFeed(feeds ?? []);
+  return worst && feedStateView(worst).servfail ? worst : undefined;
 }
 
 /** A timestamp with its relative form; '–' when the node sent none. */
@@ -54,8 +88,7 @@ function readProblem(error: unknown): { title: string; description: string } | n
 }
 
 export function RPZFeedsPanel({ namespace, name, listEnabled }: { namespace: string; name: string; listEnabled: boolean }) {
-  const api = useApi();
-  const q = useQuery({ queryKey: rpzFeedsKey(namespace, name), queryFn: () => api.lists.rpz(namespace, name), refetchInterval: RPZ_POLL_MS, retry: false });
+  const q = useRPZFeeds(namespace, name);
   const feeds = q.data?.items ?? [];
   const node = feeds.find((f) => f.node)?.node;
   const problem = readProblem(q.error);
@@ -65,7 +98,7 @@ export function RPZFeedsPanel({ namespace, name, listEnabled }: { namespace: str
       title="RPZ feeds on this node"
       headingId="list-rpz"
       data-testid="rpz-feeds"
-      description={`Every node transfers its own copy of each feed, so this is ${node ? `node ${node}` : 'the answering node'}'s state; another node can differ. Queried again every 30 seconds.`}
+      description={`Every node transfers its own copy of each feed, so this is ${node ? `node ${node}` : 'the answering node'}'s state; another node can differ. Queried again every 30 seconds, every few seconds while a feed is not serving.`}
     >
       {q.isPending ? (
         <Text type="supporting">Reading this node's feed state…</Text>

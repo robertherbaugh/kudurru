@@ -28,7 +28,7 @@ import { formatExact, formatRelative } from '../lib/format';
 import { listHealth } from '../lib/listHealth';
 import { isRPZSource, listPath, sourceEnabled, sourceName, sourcesSummary } from '../lib/lists';
 import { feedStateView, feedsOf, hasEnabledFeed, worstFeed } from '../lib/rpz';
-import { RPZ_POLL_MS } from '../components/lists/RPZFeeds';
+import { RPZ_KEY, rpzPollInterval } from '../components/lists/RPZFeeds';
 import { SCHEMAS } from '../lib/objectSchemas';
 
 function ListSearch() {
@@ -81,6 +81,11 @@ function ListSearch() {
 /** Whether every source is inline, so there is nothing to fetch and no "last fetched" (an RPZ feed is transferred, not inline). */
 export function inlineOnly(sources: ListSource[] | undefined): boolean {
   return !!sources?.length && sources.every((s) => !s.url && !s.configMapRef && !isRPZSource(s));
+}
+
+/** Whether every fetched source is an RPZ feed: each node transfers those itself, so the list has no shared "last fetched". */
+export function feedsOnly(sources: ListSource[] | undefined): boolean {
+  return !!sources?.some(isRPZSource) && sources.every((s) => isRPZSource(s) || (!s.url && !s.configMapRef));
 }
 
 /** How long the page polls list status after a create or refresh. */
@@ -148,7 +153,11 @@ export default function ListsPage() {
   // The leader compiles a new or refreshed list in the background; poll its
   // status for a short while so Entries and Updated fill in without a reload.
   const [polling, setPolling] = useState(0);
-  const pollStatus = () => setPolling((n) => n + 1);
+  const pollStatus = () => {
+    setPolling((n) => n + 1);
+    // A created or changed list changes which feeds this node reports.
+    void qc.invalidateQueries({ queryKey: RPZ_KEY });
+  };
   useEffect(() => {
     if (!polling) return undefined;
     const t = window.setTimeout(() => setPolling(0), STATUS_POLL_MS);
@@ -163,7 +172,7 @@ export default function ListsPage() {
   // This node's feed state, read only while a block list has an enabled feed.
   const lists = useQuery({ queryKey: qk.objects('blocklists'), queryFn: () => api.objects.list<BlockList>('blocklists'), enabled: false });
   const anyFeed = (lists.data?.items ?? []).some((l) => l.spec.mode !== 'allow' && hasEnabledFeed(l));
-  const feeds = useQuery({ queryKey: ['rpz', 'all'], queryFn: () => api.lists.rpzFeeds(), enabled: anyFeed && can('blocklists', 'read'), refetchInterval: RPZ_POLL_MS, retry: false });
+  const feeds = useQuery({ queryKey: ['rpz', 'all'], queryFn: () => api.lists.rpzFeeds(), enabled: anyFeed && can('blocklists', 'read'), refetchInterval: rpzPollInterval, retry: false });
   const feedsUnknown = feeds.error ? (feeds.error instanceof ApiError && feeds.error.status === 501 ? 'This node runs no RPZ feed manager' : `Could not read this node's feed state: ${errorText(feeds.error)}`) : undefined;
   const refresh = useMutation({
     mutationFn: (l: BlockList) => api.lists.refresh(l.metadata.namespace ?? 'default', l.metadata.name),
@@ -241,6 +250,10 @@ export default function ListsPage() {
               <time dateTime={l.status.lastFetched} title={l.status.lastFetched}>
                 {formatRelative(l.status.lastFetched)}
               </time>
+            ) : feedsOnly(l.spec.sources) ? (
+              <Tooltip content="Every node transfers RPZ feeds itself on the zone's SOA timers; the list page shows this node's last confirmation" hasHoverIndication={false}>
+                <Text color="secondary">per node</Text>
+              </Tooltip>
             ) : inlineOnly(l.spec.sources) ? (
               <Tooltip content="Inline entries are compiled from the object; there is nothing to fetch" hasHoverIndication={false}>
                 <Text color="secondary">inline</Text>
