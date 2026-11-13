@@ -160,7 +160,7 @@ func TestNodeHealthPeerFailuresRedacted(t *testing.T) {
 				o.Membership = staticMembership{peers: []cluster.Peer{{Name: "node-b", Address: strings.TrimPrefix(peer.URL, "https://")}}}
 			})
 			got := h.do(http.MethodGet, "/api/v1/nodes/node-b/health", "admin", nil).want(http.StatusServiceUnavailable)
-			if got.errKey() != KeyUnavailable || got.m()["error"].(map[string]any)["message"] != tc.want || strings.Contains(got.Body.String(), "private") || strings.Contains(got.Body.String(), "127.0.0.1") {
+			if got.errKey() != KeyUnavailable || got.m()["error"].(map[string]any)["message"] != tc.want || got.m()["error"].(map[string]any)["hint"] != peerHealthHint || strings.Contains(got.Body.String(), "private") || strings.Contains(got.Body.String(), "127.0.0.1") {
 				t.Fatalf("error = %s", got.Body.String())
 			}
 		})
@@ -181,7 +181,7 @@ func TestNodeHealthUnreachable(t *testing.T) {
 		o.Membership = staticMembership{peers: []cluster.Peer{{Name: "node-b", Address: addr}}}
 	})
 	got := h.do(http.MethodGet, "/api/v1/nodes/node-b/health", "admin", nil).want(http.StatusServiceUnavailable)
-	if got.m()["error"].(map[string]any)["message"] != "peer health: connection refused" {
+	if got.m()["error"].(map[string]any)["message"] != "peer health: connection refused" || got.m()["error"].(map[string]any)["hint"] != peerHealthHint {
 		t.Fatalf("unreachable peer = %s", got.Body.String())
 	}
 }

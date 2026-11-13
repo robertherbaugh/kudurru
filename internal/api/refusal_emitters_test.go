@@ -88,7 +88,6 @@ var hintlessRefusals = map[string]int{
 	"nodes.go infoOperationalMessages: node health diagnosis exceeds bounds":                                                                               1,
 	"nodes.go infoOperationalMessages: object loader diagnosis exceeds bounds":                                                                             1,
 	"nodes.go listNodes: membership: %v":                                                                                                                   1,
-	"nodes.go nodeHealth: %s":                                                                                                                              1,
 	"nodes.go nodeHealth: node health: membership unavailable":                                                                                             1,
 	"nodes.go nodeHealth: node health: unavailable":                                                                                                        1,
 	"nodes.go nodeHealth: peer health: unavailable":                                                                                                        1,
