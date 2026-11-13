@@ -5,7 +5,6 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"path/filepath"
 	"slices"
@@ -441,8 +440,23 @@ func integrationSeedOperations(t *testing.T, s *servingRuntime, template *kinds.
 // record (which leave with its ledger row), intents of a record that never
 // got a ledger row (forgotten as leftovers, page by page), and the history
 // of a previous incarnation of the same name, which stays byte for byte.
+//
+// Every changing SQLite command reads the whole stored image back before it
+// commits, and so does every capture of the host. With 1,000 operation rows
+// under the race detector on a loaded machine a command took 2 to 2.8
+// seconds and a capture 6 to 10 seconds; a cleanup run makes about a dozen
+// commands (a budget charge per provider request, the intent, the receipt,
+// the confirmation), so it reached the host's 30-second bound after its
+// delete intent and before the delete request was confirmed, and a capture
+// past its 10-second bound dropped the job.
+// That is a property of the store's size under the race detector, not of
+// the paging this test is about, so the host gets bounds that a run of this
+// history fits in, and the summary is exact again: one run reaches the peer
+// with one delete intent.
 func TestIntegrationDeleteForgetsAHistoryOfSeveralStoredPages(t *testing.T) {
-	f := newIntegrationDeleteFixture(t, nil)
+	f := newIntegrationDeleteFixtureWith(t, func(o *servingRuntimeOptions) {
+		o.IntegrationBounds = integrationBounds{Capture: time.Minute, Operation: 2 * time.Minute}
+	}, nil)
 	rows := integrationRows(t, f.s, kinds.KindIntegrationOperation)
 	if len(rows) != 1 {
 		t.Fatalf("operations of the published record: %d", len(rows))
@@ -519,21 +533,8 @@ func TestIntegrationDeleteForgetsAHistoryOfSeveralStoredPages(t *testing.T) {
 		}
 	}
 	// Every operation of this incarnation is forgotten: the seeded history,
-	// the published record's operation and the cleanup's delete intents.
-	// A run that ends after it began its delete intent but before the
-	// request reached the peer (a failure under load) leaves that intent,
-	// which the next run abandons on its fresh reread and replaces: one more
-	// operation, and still one delete batch at the peer (checked above). A
-	// run begins at most one intent for the one record, so there are
-	// between one and as many intents as runs.
-	var forgotLedger, forgotOperations, runs int
-	if _, err := fmt.Sscanf(summary[strings.Index(summary, "forgot "):], "forgot %d ledger rows and %d operations", &forgotLedger, &forgotOperations); err != nil {
-		t.Fatalf("cleanup summary: %q: %v", summary, err)
-	}
-	if _, err := fmt.Sscanf(summary[strings.LastIndex(summary, " in ")+1:], "in %d runs", &runs); err != nil {
-		t.Fatalf("cleanup summary: %q: %v", summary, err)
-	}
-	if intents := forgotOperations - settled - orphans - 1; forgotLedger != 1 || intents < 1 || intents > runs {
-		t.Fatalf("cleanup summary: %q: %d delete intents in %d runs", summary, intents, runs)
+	// the published record's operation and the one delete intent.
+	if !strings.Contains(summary, "forgot 1 ledger rows and "+strconv.Itoa(settled+orphans+2)+" operations") {
+		t.Fatalf("cleanup summary: %q", summary)
 	}
 }
