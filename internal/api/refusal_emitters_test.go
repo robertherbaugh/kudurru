@@ -31,7 +31,9 @@ import (
 // (so a second hintless answer that reuses a listed message in the same
 // function fails too), and for an entry that no longer exists.
 var hintlessRefusals = map[string]int{
+	"authroutes.go me: authorizer: %v":                                                                                                                     1,
 	"authz.go authorizeMW: authorizer: %v":                                                                                                                 1,
+	"authz.go listAllowed: authorizer: %v":                                                                                                                 1,
 	"authz.go requireGroup: authorizer: %v":                                                                                                                1,
 	"blocking_command.go setBlockingCommand: canonical blocking command result unavailable":                                                                1,
 	"blocking_command.go setBlockingCommand: canonical blocking command unavailable":                                                                       1,
@@ -69,6 +71,7 @@ var hintlessRefusals = map[string]int{
 	"integration_objects.go commandIntegrationLicense: current integration license expired":                                                                1,
 	"integration_objects.go commandIntegrationLicense: current integration license unavailable":                                                            1,
 	"integrations.go registerIntegrations: integration manifests unavailable":                                                                              1,
+	"inventory.go listInventory: the serving inventory is unavailable":                                                                                     1,
 	"lists.go refreshList: refresh: %v":                                                                                                                    1,
 	"lists.go searchLists: original compiled lists unavailable":                                                                                            1,
 	"migration_command.go Apply: current migration plan unavailable":                                                                                       1,

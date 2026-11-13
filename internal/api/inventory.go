@@ -83,7 +83,8 @@ func (s *Server) registerInventory() {
 
 func (s *Server) listInventory(ctx context.Context, in *inventoryInput) (*inventoryOutput, error) {
 	if s.opts.InventoryReads == nil {
-		return nil, errUnavailable("the client inventory is not mounted on this server")
+		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "the client inventory is not mounted on this server",
+			"a complete kudurru serve node mounts it; send the request to such a node, or read clients seen in DNS traffic with GET /api/v1/clients")
 	}
 	snap, err := s.opts.InventoryReads(ctx)
 	if err != nil || ctx.Err() != nil {
