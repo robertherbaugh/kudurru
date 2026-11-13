@@ -100,17 +100,18 @@ func startZoneChangeNode(t *testing.T, configure func(*config.Config)) *zoneChan
 }
 
 // request sends one API request of the test's own setup and writes and
-// reports any answer other than want. A 503 generation_pending is a refusal
-// before the request was read (the node had not published its newest commit
-// within the capture wait; still common under the race detector, D405), so
-// the request is asked again. Nothing else is: a 503 "current writable
-// serving generation unavailable" of an object write is always effect-free
-// (an object command has no step after its commit that can refuse;
-// TestServingObjectWriteUnavailableIsEffectFree), and since D399 a ready node
-// no longer answers it to a command that another commit superseded, so it
-// fails the request here instead of being treated as an unknown outcome.
-// What the tests assert is DNS, never these requests. It is safe to call
-// from any goroutine.
+// reports any answer other than want. It asks again only after a 503 with
+// Retry-After, which the API sends only when no part of the request ran: a
+// refusal at capture (generation_pending, before the request was read) or a
+// command refused before dispatch after its five-second recapture bound
+// (D399), both still produced under the race detector on a loaded machine
+// (D405). A 503 "current writable serving generation unavailable" of an
+// object write is effect-free with or without Retry-After (an object command
+// has no step after its commit that can refuse;
+// TestServingObjectWriteUnavailableIsEffectFree), so it is never treated as
+// an unknown outcome and a later 409 is never counted as created. What the
+// tests assert is DNS, never these requests. It is safe to call from any
+// goroutine.
 func (n *zoneChangeNode) request(method, path string, body any, want int, out any) error {
 	var encoded []byte
 	if body != nil {
@@ -145,8 +146,8 @@ func (n *zoneChangeNode) request(method, path string, body any, want int, out an
 			}
 			return nil
 		}
-		pending := response.StatusCode == http.StatusServiceUnavailable && bytes.Contains(raw, []byte(`"generation_pending"`))
-		if !pending || time.Now().After(deadline) {
+		again := response.StatusCode == http.StatusServiceUnavailable && response.Header.Get("Retry-After") != ""
+		if !again || time.Now().After(deadline) {
 			return fmt.Errorf("control %s %s: status=%d want=%d: %s", method, path, response.StatusCode, want, raw)
 		}
 		n.pending.Add(1)
@@ -291,7 +292,7 @@ func TestRunServeSQLiteZoneChangesApplyFromTheirPublication(t *testing.T) {
 	change("tighten", "/objects/dnszones/change-primary", primary, primaryName, "192.0.2.81", "REFUSED")
 	change("loosen", "/objects/dnszones/change-primary", primary, primaryName, "REFUSED", "192.0.2.81")
 	if p := n.pending.Load(); p > 0 {
-		t.Logf("%d setup requests asked again after generation_pending", p)
+		t.Logf("%d setup requests asked again after a 503 with Retry-After", p)
 	}
 }
 
