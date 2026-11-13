@@ -102,6 +102,9 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 		st.ContentHash = build.Hash
 	}
 	v := zoneVerdict(cur, view, build)
+	if cur.Spec.Type == v1alpha1.ZoneTypeExternal && !c.opts.ExternalZoneSources {
+		v = withoutSources(v)
+	}
 	v.observedGen, v.transitionNow = cur.Generation, now
 	v.apply(&st.Conditions)
 
@@ -116,6 +119,16 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 			fmt.Sprintf("serial %d -> %d: content changed (%d records, contentHash %.12s)", cur.Status.Serial, st.Serial, st.RecordCount, st.ContentHash))
 	}
 	return true, nil
+}
+
+// withoutSources marks an external zone that no source adapter fills.
+func withoutSources(v verdict) verdict {
+	msg := "externalZones.enabled is off on this server: no Kubernetes sources are read, so the zone serves only record sets derived earlier and does not follow source changes"
+	if v.Degraded {
+		msg += "; " + v.DegradedMsg
+	}
+	v.Degraded, v.DegradedRsn, v.DegradedMsg = true, ReasonSourcesNotRead, msg
+	return v
 }
 
 // zoneVerdict derives a zone's conditions from its view and build.

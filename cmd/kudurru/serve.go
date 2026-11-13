@@ -1535,7 +1535,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 
 	// Controller: leader-only reconcilers (status, serials, Events).
-	ctrlOpts := controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe()}
+	ctrlOpts := controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe(), ExternalZoneSources: externalZones != nil}
 	if complete != nil {
 		// complete.status also reports the endpoints left out for dynamic
 		// ownership on their record sets (committedDynamicOwnership).
