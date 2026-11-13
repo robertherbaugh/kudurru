@@ -294,6 +294,7 @@ func TestAnchorUpdaterRacedCommitAcquiresAgain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	reg := anchorStatusMetrics(t, s)
 	u := &anchorUpdater{runtime: s, target: target, host: host, clock: clock}
 	before := anchorOperationOwner(ctx, t, s).Version()
 	started := time.Now()
@@ -307,6 +308,9 @@ func TestAnchorUpdaterRacedCommitAcquiresAgain(t *testing.T) {
 	if anchorOperationOwner(ctx, t, s).Version() != before {
 		t.Fatal("raced bootstrap changed accepted history")
 	}
+	if got := anchorAcquisitionCounts(t, reg); got[anchorAcquisitionRaced] != 1 || got[anchorAcquisitionApplied]+got[anchorAcquisitionFailed]+got[anchorAcquisitionRefused] != 0 {
+		t.Fatal("the raced acquisition is not counted as raced", got)
+	}
 	held, err := u.step(ctx)
 	if err != nil || held.attempted || held.raced || reads.Load() != 1 {
 		t.Fatal("raced bootstrap retried before its pace", err, reads.Load())
@@ -315,6 +319,10 @@ func TestAnchorUpdaterRacedCommitAcquiresAgain(t *testing.T) {
 	again, err := u.step(ctx)
 	if err != nil || !again.attempted || again.raced || again.completion.Update.Outcome() != sqlite.AnchorCommitted || reads.Load() != 2 || u.raced != 0 {
 		t.Fatal("updater did not bootstrap with one new acquisition after the race", err, again.completion.Update.Outcome(), reads.Load())
+	}
+	// Every root query is accounted for: one raced, one applied.
+	if got := anchorAcquisitionCounts(t, reg); got[anchorAcquisitionRaced] != 1 || got[anchorAcquisitionApplied] != 1 || got[anchorAcquisitionFailed]+got[anchorAcquisitionRefused] != 0 {
+		t.Fatal("the bootstrap acquisitions are not counted by outcome", got)
 	}
 	owner := anchorOperationOwner(ctx, t, s)
 	if owner.Version() == before {

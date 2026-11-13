@@ -44,6 +44,33 @@ func anchorStatusGauge(t *testing.T, reg *prometheus.Registry, name string, labe
 	return 0
 }
 
+// anchorAcquisitionCounts reads kudurru_root_anchor_updater_acquisitions_total
+// by outcome; every outcome must be exported.
+func anchorAcquisitionCounts(t *testing.T, reg *prometheus.Registry) map[string]float64 {
+	t.Helper()
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := map[string]float64{}
+	for _, family := range families {
+		if family.GetName() != "kudurru_root_anchor_updater_acquisitions_total" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			for _, pair := range metric.GetLabel() {
+				if pair.GetName() == "outcome" {
+					counts[pair.GetValue()] = metric.GetCounter().GetValue()
+				}
+			}
+		}
+	}
+	if len(counts) != len(anchorAcquisitionOutcomes) {
+		t.Fatal("updater acquisition outcomes not exported", counts)
+	}
+	return counts
+}
+
 func anchorStatusMetrics(t *testing.T, s *servingRuntime) *prometheus.Registry {
 	t.Helper()
 	reg := prometheus.NewRegistry()
@@ -91,6 +118,10 @@ func TestAnchorStatusShowsTerminalUpdater(t *testing.T) {
 	if got := anchorStatusGauge(t, reg, "kudurru_root_anchor_worker_state", map[string]string{"worker": "updater", "state": anchorWorkerStopped}); got != 1 {
 		cancel()
 		t.Fatal("terminal updater is not exported", got)
+	}
+	if got := anchorAcquisitionCounts(t, reg); got[anchorAcquisitionRefused] != 1 || got[anchorAcquisitionApplied]+got[anchorAcquisitionRaced]+got[anchorAcquisitionFailed] != 0 {
+		cancel()
+		t.Fatal("the terminal acquisition is not counted as refused", got)
 	}
 	cancel()
 	select {

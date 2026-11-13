@@ -33,6 +33,21 @@ const (
 
 var anchorWorkerStates = []string{anchorWorkerNotRunning, anchorWorkerRunning, anchorWorkerClockWait, anchorWorkerRetry, anchorWorkerRaced, anchorWorkerWaitingImage, anchorWorkerRetired, anchorWorkerStopped}
 
+// Outcomes of one elected updater acquisition, the label set of
+// kudurru_root_anchor_updater_acquisitions_total: applied (the reply was
+// committed or found unchanged), raced (an ordinary commit moved the
+// canonical generation while the reply was in flight, so the reply was
+// discarded and a new acquisition follows), failed (transport; a new
+// acquisition is scheduled) and refused (a terminal refusal for the term).
+const (
+	anchorAcquisitionApplied = "applied"
+	anchorAcquisitionRaced   = "raced"
+	anchorAcquisitionFailed  = "failed"
+	anchorAcquisitionRefused = "refused"
+)
+
+var anchorAcquisitionOutcomes = []string{anchorAcquisitionApplied, anchorAcquisitionRaced, anchorAcquisitionFailed, anchorAcquisitionRefused}
+
 // Pull results (api.RootAnchorPull.Result).
 const (
 	anchorPullInstalled   = "installed"
@@ -69,6 +84,9 @@ type anchorStatusBoard struct {
 	updater    anchorWorkerView
 	supervisor anchorWorkerView
 	pull       anchorPullView
+	// acquisitions counts this process's elected updater acquisitions (root
+	// queries), by outcome, across every writer term.
+	acquisitions map[string]uint64
 }
 
 func (b *anchorStatusBoard) clock() time.Time {
@@ -104,6 +122,19 @@ func (b *anchorStatusBoard) setSupervisor(state string, next time.Time, err erro
 	if b != nil {
 		b.set(&b.supervisor, state, next, err)
 	}
+}
+
+// countAcquisition records the outcome of one updater acquisition.
+func (b *anchorStatusBoard) countAcquisition(outcome string) {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.acquisitions == nil {
+		b.acquisitions = make(map[string]uint64, len(anchorAcquisitionOutcomes))
+	}
+	b.acquisitions[outcome]++
 }
 
 // observePull records one coordinator pull result. A refusal of the primary's
@@ -143,12 +174,16 @@ func (b *anchorStatusBoard) observePull(err error) {
 type anchorStatusSnapshot struct {
 	updater, supervisor anchorWorkerView
 	pull                anchorPullView
+	acquisitions        map[string]uint64
 }
 
 func (b *anchorStatusBoard) snapshot() anchorStatusSnapshot {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := anchorStatusSnapshot{updater: b.updater, supervisor: b.supervisor, pull: b.pull}
+	out := anchorStatusSnapshot{updater: b.updater, supervisor: b.supervisor, pull: b.pull, acquisitions: make(map[string]uint64, len(b.acquisitions))}
+	for outcome, n := range b.acquisitions {
+		out.acquisitions[outcome] = n
+	}
 	if out.pull.refusal != nil {
 		copied := *out.pull.refusal
 		copied.Keys = slices.Clone(copied.Keys)
@@ -173,20 +208,23 @@ func (v anchorWorkerView) api() api.RootAnchorWorker {
 	return api.RootAnchorWorker{State: state, Since: timePointer(v.since), Next: timePointer(v.next), Error: v.err, LastError: v.lastError}
 }
 
-// anchorMetrics exports the board as kudurru_root_anchor_* gauges. Collect
-// reads memory only: no store read, lock wait or network I/O.
+// anchorMetrics exports the board as kudurru_root_anchor_* gauges and the
+// updater's acquisition counter. Collect reads memory only: no store read,
+// lock wait or network I/O.
 type anchorMetrics struct {
-	runtime   *servingRuntime
-	worker    *prometheus.Desc
-	refused   *prometheus.Desc
-	admission *prometheus.Desc
+	runtime      *servingRuntime
+	worker       *prometheus.Desc
+	refused      *prometheus.Desc
+	admission    *prometheus.Desc
+	acquisitions *prometheus.Desc
 }
 
 func newAnchorMetrics(s *servingRuntime) *anchorMetrics {
 	return &anchorMetrics{runtime: s,
-		worker:    prometheus.NewDesc("kudurru_root_anchor_worker_state", "Managed root-anchor worker state (1 for the current state): the elected updater or the deny-only supervisor.", []string{"worker", "state"}, nil),
-		refused:   prometheus.NewDesc("kudurru_root_anchor_adoption_refused", "Whether this member refuses the primary's root-anchor state at its last pull, by reason (1 refusing).", []string{"reason"}, nil),
-		admission: prometheus.NewDesc("kudurru_root_anchor_admission_current", "Whether this process holds managed root-anchor serving admission (0 on a managed node means a restart is needed to publish again).", nil, nil),
+		worker:       prometheus.NewDesc("kudurru_root_anchor_worker_state", "Managed root-anchor worker state (1 for the current state): the elected updater or the deny-only supervisor.", []string{"worker", "state"}, nil),
+		refused:      prometheus.NewDesc("kudurru_root_anchor_adoption_refused", "Whether this member refuses the primary's root-anchor state at its last pull, by reason (1 refusing).", []string{"reason"}, nil),
+		admission:    prometheus.NewDesc("kudurru_root_anchor_admission_current", "Whether this process holds managed root-anchor serving admission (0 on a managed node means a restart is needed to publish again).", nil, nil),
+		acquisitions: prometheus.NewDesc("kudurru_root_anchor_updater_acquisitions_total", "Root-anchor acquisitions the elected updater of this process made, by outcome: applied, raced (an ordinary commit landed while the reply was in flight; the reply was discarded and a new acquisition follows), failed (transport) or refused (terminal for the writer term).", []string{"outcome"}, nil),
 	}
 }
 
@@ -194,6 +232,7 @@ func (m *anchorMetrics) Describe(ch chan<- *prometheus.Desc) {
 	ch <- m.worker
 	ch <- m.refused
 	ch <- m.admission
+	ch <- m.acquisitions
 }
 
 func (m *anchorMetrics) Collect(ch chan<- prometheus.Metric) {
@@ -231,6 +270,9 @@ func (m *anchorMetrics) Collect(ch chan<- prometheus.Metric) {
 		admitted = 1
 	}
 	ch <- prometheus.MustNewConstMetric(m.admission, prometheus.GaugeValue, admitted)
+	for _, outcome := range anchorAcquisitionOutcomes {
+		ch <- prometheus.MustNewConstMetric(m.acquisitions, prometheus.CounterValue, float64(snap.acquisitions[outcome]), outcome)
+	}
 }
 
 // anchorCurrentRefusal is the recorded refusal of the primary's owner while
