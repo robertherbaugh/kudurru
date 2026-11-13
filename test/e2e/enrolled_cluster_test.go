@@ -469,17 +469,9 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 	// Cluster settings and sign-out are forwarded too (D368): the settings
 	// change converges on both nodes, and the session that the follower
 	// created ends on both.
-	var beforeSettings int32
-	if anchors != nil {
-		beforeSettings = anchors.root.TCP(anchorRootNormal)
-	}
-	enrolledForwardedSettings(t, apiA, apiB, b.Name, "33s", "34s")
-	if anchors != nil {
-		// The deny-only cadence is bound to the cluster settings identity
-		// (anchorRetrySource): a settings change makes the follower check the
-		// root again at once, one acquisition per coalesced change.
-		anchors.absorbSettings(apiB, beforeSettings, "forwarded settings change")
-	}
+	// With managed anchors each change makes the follower check the root
+	// once (settingsChange).
+	enrolledForwardedSettings(t, apiA, apiB, b.Name, "33s", "34s", anchors.settingsChange(apiB, "forwarded settings change"))
 	enrolledForwardedSignOut(t, fresh, freshJar, apiB.base, apiA.base)
 	// The own password and personal tokens are forwarded too: a must-change
 	// user changes the password through the follower, and `kudurru login
@@ -921,6 +913,12 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		t.Fatal("stopped primary interrupted validated recursion on the follower")
 	}
 	if promote {
+		var sampledPromotion func() validatedSamples
+		if anchors != nil {
+			// The follower holds valid trust across its own promotion commit
+			// and the writer start that follows it: sample it throughout.
+			sampledPromotion = anchors.sampleValidated(follower)
+		}
 		var review api.ClusterPromotionInfo
 		enrolledProcessRead(t, apiB, "/cluster/promotion", func(body []byte) bool {
 			return json.Unmarshal(body, &review) == nil && review.Eligible
@@ -955,6 +953,7 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 			}
 			anchors.awaitTCP(anchorRootNormal, 2, 2*time.Second, "promotion")
 			anchors.awaitValidated(follower, "promoted primary")
+			sampledPromotion().judge(t, "follower across its own promotion", false)
 		}
 		// The former primary restarts while it cannot reach the new primary's
 		// internal listener. The new primary's scheduled announcement still
@@ -1005,20 +1004,15 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		enrolledPrimaryRequired(t, apiA, b.Name, http.MethodPost, "/allowlist", map[string]any{"domain": "rejoined-allow.e2e.test"})
 		// The rejoined former primary forwards a settings patch to the new
 		// primary, which commits it; both nodes then serve the change.
-		var beforeSettings int32
 		if anchors != nil {
 			// Installing the successor is a role change (fenced to
 			// follower): the fenced child is joined and the follower child
 			// checks the root once at its start.
 			anchors.awaitTCP(anchorRootNormal, 4, time.Second, "rejoin as follower")
-			beforeSettings = anchors.root.TCP(anchorRootNormal)
 		}
-		enrolledForwardedSettings(t, apiB, apiA, a.Name, "46s", "47s")
-		if anchors != nil {
-			// A changed settings identity ends the follower's cooldown, so
-			// the rejoined member checks the root again (D369).
-			anchors.absorbSettings(apiA, beforeSettings, "settings change through the rejoined member")
-		}
+		// A changed settings identity ends the follower's cooldown, so the
+		// rejoined member checks the root once per change (D369).
+		enrolledForwardedSettings(t, apiB, apiA, a.Name, "46s", "47s", anchors.settingsChange(apiA, "settings change through the rejoined member"))
 		// The new primary applies a signed UPDATE itself, and the rejoined
 		// former primary now forwards one to it.
 		// Right after the forwarded settings patch the new primary republishes,
@@ -1070,7 +1064,7 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 			// The old primary was fenced and installed the successor: the
 			// same owner and no refusal. Since the promotion it checked the
 			// root once per supervised role it passed through (fenced, then
-			// follower: one child each) and once per coalesced settings
+			// follower: one child each) and once per settings
 			// change (absorbed into the baseline above). Nothing else
 			// acquires: the new primary's updater waits for the committed
 			// refresh and each child's normal check holds the one-hour
@@ -1081,9 +1075,9 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 			if rejoined.Supervisor.State != "running" || rejoined.Updater.State != "not_running" || rejoined.Pull == nil || rejoined.Pull.Result != "installed" || rejoined.Pull.Refusal != "" {
 				t.Fatalf("rejoined member status: %+v", rejoined)
 			}
-			// From its first answer on, no answer was wrong, any SERVFAIL gap
-			// was bounded, and some validated answers were taken while it was
-			// DNS-only (fenced).
+			// From its first publication on, every answer was validated,
+			// across the fence and the install of the successor, and some
+			// were taken while it was DNS-only (fenced).
 			sampled().judge(t, "restarted old primary", true)
 			time.Sleep(2 * time.Second)
 			if n := anchors.root.TCP(anchorRootNormal) - anchors.base; n != 4 || anchors.root.TotalTCP() != n+anchors.base {

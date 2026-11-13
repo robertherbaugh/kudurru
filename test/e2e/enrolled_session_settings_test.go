@@ -19,13 +19,26 @@ import (
 // Two changes are sent back to back, as the dashboard's Settings page saves one
 // key per request: the follower answers the first only once it serves it, so
 // the second is made against the follower's own change and commits too.
-func enrolledForwardedSettings(t *testing.T, primary, follower *staticProcessClient, followerName, previous, ttl string) {
+//
+// around, when not nil, wraps the sending of each of the two patches: it gets
+// the patch's value and a send function, and the next patch is sent only
+// after it returns. The managed-anchor variant counts the follower's root
+// check for each settings change there.
+func enrolledForwardedSettings(t *testing.T, primary, follower *staticProcessClient, followerName, previous, ttl string, around func(value string, send func())) {
 	t.Helper()
 	for _, value := range []string{previous, ttl} {
-		var body api.SettingsBody
-		follower.request(t, http.MethodPatch, "/settings", map[string]any{"blocking": map[string]any{"blockTTL": value}}, http.StatusOK, &body)
-		if body.Node != followerName || !slices.Equal(body.Changed, []string{"blocking.blockTTL"}) || body.Persisted == nil || !*body.Persisted {
-			t.Fatalf("settings patch through the follower did not answer with the primary's committed result: %+v", body)
+		send := func() {
+			t.Helper()
+			var body api.SettingsBody
+			follower.request(t, http.MethodPatch, "/settings", map[string]any{"blocking": map[string]any{"blockTTL": value}}, http.StatusOK, &body)
+			if body.Node != followerName || !slices.Equal(body.Changed, []string{"blocking.blockTTL"}) || body.Persisted == nil || !*body.Persisted {
+				t.Fatalf("settings patch through the follower did not answer with the primary's committed result: %+v", body)
+			}
+		}
+		if around == nil {
+			send()
+		} else {
+			around(value, send)
 		}
 	}
 	has := func(raw []byte) bool { return strings.Contains(string(raw), `"`+ttl+`"`) }

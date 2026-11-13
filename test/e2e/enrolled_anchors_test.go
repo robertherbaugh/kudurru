@@ -111,19 +111,36 @@ func (e *enrolledAnchors) awaitTCP(mode int32, want int32, settle time.Duration,
 	}
 }
 
-// absorbSettings requires the one or two deny-only acquisitions that a
-// settings change (two patches) causes on the one running follower and adds
-// them to the baseline. The follower checks once per installed settings
-// identity; whether the two patches arrive as one install or two, and how
-// long a capture keeps racing the installs that follow, varies. So it waits
+// settingsChange returns the hook for enrolledForwardedSettings that counts
+// the deny-only check one settings change causes on the follower (nil without
+// managed anchors). The deny-only cadence is bound to the cluster settings
+// identity (anchorRetrySource): each installed change ends the follower's
+// cooldown, so it checks the root once more. The follower answers a forwarded
+// patch only once it serves it, and the next patch is sent only after this
+// check has settled, so the two patches can no longer share the follower's
+// one-second wake coalescing: each is exactly one acquisition.
+func (e *enrolledAnchors) settingsChange(follower *staticProcessClient, why string) func(string, func()) {
+	if e == nil {
+		return nil
+	}
+	return func(value string, send func()) {
+		before := e.root.TCP(anchorRootNormal)
+		send()
+		e.absorbSettings(follower, before, why+" "+value)
+	}
+}
+
+// absorbSettings requires exactly one deny-only acquisition since before (the
+// count read before the change was sent) for one settings change on the one
+// running follower and adds it to the baseline. It waits
 // until the follower's supervisor has settled (running, next check at the
-// minimum refresh, no raced capture) and the count has not moved for five
-// seconds, rather than for a fixed time: a second acquisition after a fixed
-// three seconds was counted at the partition check instead.
+// minimum refresh) and the count has not moved for five seconds, longer than
+// the coalescing window and the follower's five-second pull, so a second check
+// for the same change would be counted here, not at a later check.
 func (e *enrolledAnchors) absorbSettings(follower *staticProcessClient, before int32, why string) {
 	e.t.Helper()
 	if !kudurrutest.Eventually(10*time.Second, 20*time.Millisecond, func() bool { return e.root.TCP(anchorRootNormal) > before }) {
-		e.t.Fatalf("%s: no deny-only acquisition", why)
+		e.t.Fatalf("%s: no deny-only acquisition (at %s: %s)", why, time.Now().Format("15:04:05.000"), e.root.TCPLog())
 	}
 	const quiet = 5 * time.Second
 	start := time.Now()
@@ -146,12 +163,11 @@ func (e *enrolledAnchors) absorbSettings(follower *staticProcessClient, before i
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	extra := e.root.TCP(anchorRootNormal) - before
-	if extra < 1 || extra > 2 {
-		e.t.Fatalf("%s: %d deny-only acquisitions", why, extra)
+	if extra := e.root.TCP(anchorRootNormal) - before; extra != 1 {
+		e.t.Fatalf("%s: %d deny-only acquisitions, want 1 (at %s: %s)", why, extra, time.Now().Format("15:04:05.000"), e.root.TCPLog())
 	}
-	e.t.Logf("%s: %d deny-only acquisitions, settled after %s (at %s)", why, extra, time.Since(start).Round(time.Millisecond), time.Now().Format("15:04:05.000"))
-	e.base += extra
+	e.t.Logf("%s: 1 deny-only acquisition, settled after %s (at %s)", why, time.Since(start).Round(time.Millisecond), time.Now().Format("15:04:05.000"))
+	e.base++
 }
 
 // awaitValidated waits until a node answers validated recursion, then
@@ -173,71 +189,52 @@ func (e *enrolledAnchors) awaitValidated(node *kudurrutest.Node, why string) {
 // sampleValidated queries node for validated recursion over UDP and TCP every
 // 20 ms until the returned stop is called. It starts with the node's process,
 // before it is ready, and judges every sample from the node's first DNS
-// answer of any kind on. Each sample also reads the node's readiness, so the
-// result says how many samples were taken while the node served a DNS-only
-// bundle (fenced or conflicted). It covers a role transition (a restarted old
-// primary that is fenced until it installs the successor) from the node's
-// first answer.
+// answer of any kind on. Before each probe it reads the node's readiness, so
+// the result says whether the node had published anything yet (ready, or
+// serving a DNS-only bundle while fenced or conflicted) and how many samples
+// were validated while DNS-only.
 //
-// A wrong answer (an rcode other than SERVFAIL, or NOERROR that is not the
-// validated key set) is a failure. So is a node that was not answering
-// validated when sampling stopped. SERVFAIL and missing answers between
-// validated ones are collected as gaps, with their length and the first
-// answer of each: a member holding valid trust answers SERVFAIL for a moment
-// at some authority transitions, which is the open F28-HA-3 defect recorded
-// in the F28-OPEN6 ledger. The caller bounds the longest gap
-// (anchorTransitionGap) and logs every gap, so that defect stays visible
-// without turning the default suite red, and a persistent SERVFAIL (a lost
-// zone or lost trust) still fails.
+// A member that holds valid trust answers validated recursion at every
+// authority transition (D369): across its own promotion, a fence or conflict
+// observation (the write is persisted while DNS keeps the served publication,
+// Store.DNSServingAuthority) and the fenced-to-follower install. So once the
+// node has published, every sample must be validated: a SERVFAIL, a wrong
+// answer or no answer at all (a timeout, a closed TCP connection) fails. The
+// only window allowed is the start of the process, before its first
+// publication: its listeners answer SERVFAIL until then (startup gap). A node
+// that is not validated when sampling stops fails as well.
 type validatedSamples struct {
 	samples, dnsOnly int  // judged samples, and those validated while DNS-only
-	failed           bool // a wrong answer, or not validated when sampling stopped
+	failed           bool // a failing sample after the first publication, or not validated at stop
 	why              string
-	gaps             []validatedGap
+	startup          []validatedGap // non-validated runs before the first publication
 }
 
 // validatedGap is a run of judged samples that were not validated, from its
 // first such sample to the next validated one.
 type validatedGap struct {
-	from, to   time.Time
-	samples    int
-	startup    bool // before the node's first validated answer
-	first      string
-	dnsOnlyAny bool
+	from, to time.Time
+	samples  int
+	first    string
 }
 
 func (g validatedGap) String() string {
-	return fmt.Sprintf("%s +%s (%d samples, startup %v, DNS-only %v): %s", g.from.Format("15:04:05.000"), g.to.Sub(g.from).Round(time.Millisecond), g.samples, g.startup, g.dnsOnlyAny, g.first)
+	return fmt.Sprintf("%s +%s (%d samples): %s", g.from.Format("15:04:05.000"), g.to.Sub(g.from).Round(time.Millisecond), g.samples, g.first)
 }
 
-// anchorTransitionGap bounds one SERVFAIL gap of a member that holds valid
-// trust (F28-HA-3, open): the gaps seen at authority transitions lasted at
-// most about two seconds; a lost zone or lost trust lasts until the end.
-const anchorTransitionGap = 10 * time.Second
-
-// longest is the longest gap.
-func (r validatedSamples) longest() time.Duration {
-	var d time.Duration
-	for _, g := range r.gaps {
-		d = max(d, g.to.Sub(g.from))
-	}
-	return d
-}
-
-// judge fails t unless the samples were judged, none was wrong, the node was
-// validated when sampling stopped, the longest gap is within
-// anchorTransitionGap and, with dnsOnly, some validated samples were taken
-// while the node was DNS-only. Every gap is logged as the open F28-HA-3
-// observation.
+// judge fails t unless samples were judged, none failed after the node's
+// first publication, the node was validated when sampling stopped and, with
+// dnsOnly, some validated samples were taken while the node was DNS-only.
+// Startup gaps (before the first publication) are logged.
 func (r validatedSamples) judge(t *testing.T, name string, dnsOnly bool) {
 	t.Helper()
-	for _, g := range r.gaps {
-		t.Logf("OPEN F28-HA-3 %s: validated recursion gap %s", name, g)
+	for _, g := range r.startup {
+		t.Logf("%s: startup answers before its first publication: %s", name, g)
 	}
-	if r.failed || r.samples == 0 || (dnsOnly && r.dnsOnly == 0) || r.longest() > anchorTransitionGap {
-		t.Fatalf("%s did not answer validated recursion: %d samples, %d validated while DNS-only, failed %v (%s), longest gap %s", name, r.samples, r.dnsOnly, r.failed, r.why, r.longest())
+	if r.failed || r.samples == 0 || (dnsOnly && r.dnsOnly == 0) {
+		t.Fatalf("%s did not answer validated recursion: %d samples, %d validated while DNS-only, failed %v (%s)", name, r.samples, r.dnsOnly, r.failed, r.why)
 	}
-	t.Logf("%s: %d judged samples, %d validated while DNS-only, %d gaps, longest %s", name, r.samples, r.dnsOnly, len(r.gaps), r.longest())
+	t.Logf("%s: %d judged samples, all validated after its first publication, %d while DNS-only", name, r.samples, r.dnsOnly)
 }
 
 func (e *enrolledAnchors) sampleValidated(node *kudurrutest.Node) (stop func() validatedSamples) {
@@ -245,35 +242,39 @@ func (e *enrolledAnchors) sampleValidated(node *kudurrutest.Node) (stop func() v
 	halt := sync.OnceFunc(func() { close(done) })
 	e.t.Cleanup(halt)
 	client := &http.Client{Timeout: 2 * time.Second}
-	dnsOnly := func() bool {
+	// published reports whether the node serves a publication (ready, or
+	// DNS-only), and dnsOnly whether that publication is DNS-only.
+	readiness := func() (published, dnsOnly bool) {
 		response, err := client.Get("http://" + node.Ports.Ops + "/healthz/ready")
 		if err != nil {
-			return false
+			return false, false
 		}
 		defer func() { _ = response.Body.Close() }()
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 4<<10))
-		return strings.Contains(string(body), "dns_only")
+		dnsOnly = strings.Contains(string(body), "dns_only")
+		return response.StatusCode == http.StatusOK || dnsOnly, dnsOnly
 	}
 	go func() {
 		var r validatedSamples
-		answered, validated := false, false
+		answered, served := false, false
 		var gap *validatedGap
+		fail := func(at time.Time, why string) {
+			if !r.failed {
+				r.failed, r.why = true, fmt.Sprintf("sample %d at %s: %s", r.samples, at.Format("15:04:05.000"), why)
+			}
+		}
 		for {
 			select {
 			case <-done:
 				if gap != nil {
-					r.failed = true
-					if r.why == "" {
-						r.why = "not validated when sampling stopped: " + gap.first
-					}
-					gap.to = time.Now()
-					r.gaps = append(r.gaps, *gap)
+					fail(time.Now(), "not validated when sampling stopped: "+gap.first)
 				}
 				result <- r
 				return
 			default:
 			}
-			only := dnsOnly()
+			published, only := readiness()
+			served = served || published
 			kind, why := anchorValidatedProbe(node.Ports.DNS)
 			now := time.Now()
 			if kind != anchorProbeNoAnswer {
@@ -281,27 +282,27 @@ func (e *enrolledAnchors) sampleValidated(node *kudurrutest.Node) (stop func() v
 			}
 			if answered {
 				r.samples++
-				switch kind {
-				case anchorProbeValidated:
-					validated = true
+				switch {
+				case kind == anchorProbeValidated:
 					if only {
 						r.dnsOnly++
 					}
 					if gap != nil {
 						gap.to = now
-						r.gaps = append(r.gaps, *gap)
+						r.startup = append(r.startup, *gap)
 						gap = nil
 					}
-				case anchorProbeWrong:
-					if !r.failed {
-						r.failed, r.why = true, fmt.Sprintf("sample %d at %s: %s (DNS-only %v)", r.samples, now.Format("15:04:05.000"), why, only)
-					}
+				case kind == anchorProbeWrong:
+					fail(now, why)
+				case served:
+					// After the first publication nothing but a validated
+					// answer is acceptable, no answer included.
+					fail(now, fmt.Sprintf("%s (DNS-only %v)", why, only))
 				default:
 					if gap == nil {
-						gap = &validatedGap{from: now, startup: !validated, first: why}
+						gap = &validatedGap{from: now, first: why}
 					}
 					gap.samples++
-					gap.dnsOnlyAny = gap.dnsOnlyAny || only
 				}
 			}
 			time.Sleep(20 * time.Millisecond)
@@ -505,14 +506,17 @@ func enrolledAnchorsRevoke(t *testing.T, e *enrolledAnchors, bin string, env []s
 	e.awaitValidated(primary, "recovered primary")
 	// The soak's hour-long wait outlives the session, and the primary
 	// restarted. Sign in again from a fresh cookie jar, without the old
-	// session's cookie or CSRF token, and let both clients use it.
+	// session's cookie or CSRF token, and let both clients use it. The
+	// request timeout is the 35 seconds the follower login of the shared
+	// flow uses: the first sign-in on a just restarted process under -race
+	// on a loaded machine took more than five seconds (e2e01).
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	transport := &http.Transport{}
 	t.Cleanup(transport.CloseIdleConnections)
-	fresh := &http.Client{Jar: jar, Transport: transport, Timeout: 5 * time.Second,
+	fresh := &http.Client{Jar: jar, Transport: transport, Timeout: 35 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	apiA.client, apiB.client, apiA.csrf, apiB.csrf = fresh, fresh, "", ""
 	var login api.SessionInfo
