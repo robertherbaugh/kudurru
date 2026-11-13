@@ -162,7 +162,14 @@ func Build(in Input) (*Plan, error) {
 				owned = owned && evidence[k][id]
 			}
 		}
-		unowned := row.Owner.ClusterID == "" && row.Owner.IntegrationUID == "" && row.Owner.ExternalDNSOwner == ""
+		if row.Owner.Unmarked {
+			// A markerless provider row is proven by the ledger alone (D401).
+			owned = row.Owner.ClusterID == "" && row.Owner.IntegrationUID == "" && row.Owner.ExternalDNSOwner == ""
+			for _, id := range row.IDs {
+				owned = owned && evidence[k][id]
+			}
+		}
+		unowned := row.Owner.ClusterID == "" && row.Owner.IntegrationUID == "" && row.Owner.ExternalDNSOwner == "" && !row.Owner.Unmarked
 		adoptable := !owned && (unowned && in.AdoptUnowned || row.Owner.ClusterID == "" && row.Owner.IntegrationUID == "" && in.AdoptExternalDNSOwner != "" && row.Owner.ExternalDNSOwner == in.AdoptExternalDNSOwner)
 		proven := true
 		for _, id := range row.IDs {

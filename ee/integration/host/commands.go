@@ -378,7 +378,12 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 			if c.original != nil && c.expected == "" {
 				return answer{err: ErrStalePreview}
 			}
-			result, err = h.sync(ctx, j, f, g, c.expected)
+			if roles.Reviewed && c.original == nil {
+				// Polling never publishes a reviewed-only provider (D401).
+				result, err = h.recoverPending(ctx, j, f, g)
+			} else {
+				result, err = h.sync(ctx, j, f, g, c.expected)
+			}
 			if err == nil && observer {
 				var observation *Result
 				observation, err = h.observe(ctx, j, g)
@@ -452,6 +457,16 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 		}
 		result, err := actions.Invoke(ctx, c.action, c.params)
 		if err != nil {
+			// A provider may refuse before any effect: a reviewed plan that
+			// changed (ErrStalePreview) or one it cannot apply (ErrUnsupported)
+			// (D401). Every other failure stays an opaque provider error.
+			if ctx.Err() == nil {
+				for _, refusal := range []error{ErrStalePreview, ErrUnsupported} {
+					if errors.Is(err, refusal) {
+						return answer{err: refusal}
+					}
+				}
+			}
 			return answer{err: safeError(ctx, err)}
 		}
 		if len(result) > 64<<10 || !json.Valid(result) {

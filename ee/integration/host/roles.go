@@ -6,8 +6,13 @@ import "github.com/robertherbaugh/kudurru/ee/integration"
 // records, observe a source, receive events. A provider whose Go type serves
 // every capability of its protocol, while the peer it negotiated with offers
 // only some of them, reports the negotiated subset.
+//
+// Reviewed, valid only with Publisher, makes every publication an explicit
+// operator command (D401): a periodic or reconcile sync applies no plan, it
+// only settles a pending intent from a fresh complete reread, and new
+// operations run only from a reviewed sync bound to a preview digest.
 type Roles struct {
-	Publisher, Observer, Hook bool
+	Publisher, Observer, Hook, Reviewed bool
 }
 
 // RoleProvider is optional. The host consults it only after a successful
@@ -34,7 +39,7 @@ func providerRoles(p integration.Integration) (Roles, error) {
 	if err != nil {
 		return Roles{}, err
 	}
-	if r.Publisher && !publisher || r.Observer && !observer || r.Hook && !hook {
+	if r.Publisher && !publisher || r.Observer && !observer || r.Hook && !hook || r.Reviewed && !r.Publisher {
 		return Roles{}, ErrInvalid
 	}
 	return r, nil

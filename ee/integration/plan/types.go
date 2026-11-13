@@ -32,7 +32,16 @@ const (
 )
 
 // RemoteOwner preserves authoritative provider ownership markers.
-type RemoteOwner struct{ ClusterID, IntegrationUID, ExternalDNSOwner string }
+//
+// Unmarked is set by a provider whose rows cannot carry any marker (UniFi DNS
+// policies, D401). Such a row is this owner's exactly when the confirmed
+// ledger baseline of its RRset lists every one of its provider IDs; any other
+// unmarked row is foreign and never adoptable. It is omitted from encodings
+// when false, so digests of marked providers are unchanged.
+type RemoteOwner struct {
+	ClusterID, IntegrationUID, ExternalDNSOwner string
+	Unmarked                                    bool `json:",omitempty"`
+}
 
 // RemoteRecord preserves each provider row's IDs and observed version even
 // when several rows represent one RRset. Unknown ownership means unowned.

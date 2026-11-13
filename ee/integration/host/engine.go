@@ -210,6 +210,17 @@ func pendingRows(in plan.Input, op *kinds.IntegrationOperation) (pendingState, e
 	for _, version := range op.Spec.RemoteVersions {
 		versions[version] = true
 	}
+	// A markerless row (D401) is this intent's only when its IDs are the
+	// intent's ledger-proven baseline or a creation the provider acknowledged
+	// to this intent's own receipt. Nothing else proves it.
+	acknowledged := map[string]bool{}
+	if op.Spec.Receipt != nil {
+		for _, t := range op.Spec.Receipt.Targets {
+			if t.Applied && t.ProviderID != "" {
+				acknowledged[t.ProviderID] = true
+			}
+		}
+	}
 	for _, row := range in.Current {
 		n, err := plan.Normalize(row.Endpoint)
 		if err != nil {
@@ -219,6 +230,12 @@ func pendingRows(in plan.Input, op *kinds.IntegrationOperation) (pendingState, e
 			continue
 		}
 		own := row.Owner.ClusterID == in.Owner.ClusterID && row.Owner.IntegrationUID == in.Owner.UID && row.Owner.ExternalDNSOwner == ""
+		if row.Owner.Unmarked {
+			own = row.Owner == (plan.RemoteOwner{Unmarked: true}) && len(row.IDs) > 0
+			for _, id := range row.IDs {
+				own = own && (beforeIDs[id] || acknowledged[id])
+			}
+		}
 		adoptable := explicitAdoption(in, row.Owner)
 		// Preserve same-name foreign protection even when a sibling is also pending.
 		if !own && !adoptable {
@@ -264,7 +281,7 @@ func pendingRows(in plan.Input, op *kinds.IntegrationOperation) (pendingState, e
 	return state, nil
 }
 func explicitAdoption(in plan.Input, owner plan.RemoteOwner) bool {
-	if owner.ClusterID != "" || owner.IntegrationUID != "" {
+	if owner.ClusterID != "" || owner.IntegrationUID != "" || owner.Unmarked {
 		return false
 	}
 	return owner.ExternalDNSOwner == "" && in.AdoptUnowned || in.AdoptExternalDNSOwner != "" && owner.ExternalDNSOwner == in.AdoptExternalDNSOwner
@@ -498,7 +515,51 @@ func (h *Host) preview(ctx context.Context, j *job, f frame, g ExecutionGuard) (
 	}
 	return buildPreview(inputs)
 }
+
+// recoverPending is the unreviewed sync of a reviewed-only publisher (D401).
+// It reads the provider only when a ledger row of a destination is pending,
+// settles such intents exactly as sync does, and never builds or applies a
+// new plan.
+func (h *Host) recoverPending(ctx context.Context, j *job, f frame, g ExecutionGuard) (*Result, error) {
+	publisher, ok := j.provider.(Publisher)
+	if !ok {
+		return nil, ErrUnsupported
+	}
+	pubs, err := publisher.Destinations(ctx)
+	if err != nil {
+		return nil, safeError(ctx, err)
+	}
+	if len(pubs) > 256 {
+		return nil, ErrCapacity
+	}
+	pending := false
+	for _, pub := range pubs {
+		if pub.Destination.Validate() != nil {
+			return nil, ErrInvalid
+		}
+		ledgers, err := h.ledgers(ctx, f.instance.owner, pub.Destination)
+		if err != nil {
+			return nil, err
+		}
+		for _, l := range ledgers {
+			pending = pending || l.Spec.Pending != nil
+		}
+	}
+	if !pending {
+		return &Result{}, nil
+	}
+	return h.settleAndApply(ctx, j, f, g, "", true)
+}
+
+// sync settles pending intents and applies the complete plan when it still
+// has the expected digest (any digest when empty).
 func (h *Host) sync(ctx context.Context, j *job, f frame, g ExecutionGuard, expected string) (*Result, error) {
+	return h.settleAndApply(ctx, j, f, g, expected, false)
+}
+
+// settleAndApply is sync; with recoverOnly it stops after settling pending
+// intents and applies no plan.
+func (h *Host) settleAndApply(ctx context.Context, j *job, f frame, g ExecutionGuard, expected string, recoverOnly bool) (*Result, error) {
 	inputs, err := h.publications(ctx, j, f, g)
 	if err != nil {
 		return nil, err
@@ -518,6 +579,9 @@ func (h *Host) sync(ctx context.Context, j *job, f frame, g ExecutionGuard, expe
 				}
 			}
 		}
+	}
+	if recoverOnly {
+		return result, nil
 	}
 	// Recovery changed ledger CAS tokens; rebuild complete observations.
 	hadRecovery := false
