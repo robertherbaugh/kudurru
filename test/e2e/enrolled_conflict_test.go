@@ -175,12 +175,9 @@ func testEnrolledConflictResolution(t *testing.T, anchors *enrolledAnchors) {
 	stop(primary)
 	primary = kudurrutest.StartReady(t, bin, a, kudurrutest.Options{Env: env})
 	if anchors != nil {
-		// Wait until the restarted managed primary's updater has made its
-		// first step, which releases the other writer services, before the
-		// one-shot invitations. A join-token sent about 200 ms after the
-		// restart was refused with "current writable serving generation
-		// unavailable" (nothing committed) and is never replayed.
-		anchors.owner(apiA, "primary", func(s api.RootAnchorStatus) bool { return s.Updater.State == "running" && s.Updater.Next != nil })
+		// No wait for the updater's first step: a managed primary that
+		// reports ready accepts writer commands at once (F28-OPEN6), so the
+		// one-shot invitations below follow the restart directly.
 		anchors.awaitValidated(primary, "restarted primary")
 		enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
 	}
@@ -282,17 +279,6 @@ func testEnrolledConflictResolution(t *testing.T, anchors *enrolledAnchors) {
 	promotedB, promotedC := promote(apiB, b), promote(apiC, c)
 	if promotedB.Term.Same(promotedC.Term) || promotedB.Term.Epoch != promotedC.Term.Epoch {
 		t.Fatal("fixture did not produce two equal-epoch promotions")
-	}
-	if anchors != nil {
-		// As after the managed primary's restart above: a promoted managed
-		// writer refuses writer commands with 503 (nothing committed) until
-		// its updater's first step. Wait for that step before the one-shot
-		// writes (seen under load in the separate-process run).
-		for _, c := range []*staticProcessClient{apiB, apiC} {
-			anchors.status(c, func(s api.RootAnchorStatus) bool {
-				return s.Authority.Mode == "primary" && s.Updater.State == "running" && s.Updater.Next != nil
-			})
-		}
 	}
 	apiB.request(t, http.MethodPost, "/objects/dnsrecordsets", recordSetBody("bonly", "192.0.2.50"), http.StatusCreated, nil)
 	apiC.request(t, http.MethodPost, "/objects/dnsrecordsets", recordSetBody("conly", "192.0.2.51"), http.StatusCreated, nil)
@@ -445,13 +431,6 @@ func testEnrolledConflictResolution(t *testing.T, anchors *enrolledAnchors) {
 	}
 	nodeB = kudurrutest.StartReady(t, bin, b, kudurrutest.Options{Env: env})
 	enrollment(apiB, func(info api.ClusterEnrollmentInfo) bool { return info.Mode == "primary" })
-	if anchors != nil {
-		// The resolved managed primary also refuses writer commands until its
-		// updater's first step (see the promotions above).
-		anchors.status(apiB, func(s api.RootAnchorStatus) bool {
-			return s.Authority.Mode == "primary" && s.Updater.State == "running" && s.Updater.Next != nil
-		})
-	}
 	apiB.request(t, http.MethodPost, "/objects/dnsrecordsets", recordSetBody("afterresolve", "192.0.2.52"), http.StatusCreated, nil)
 
 	// C adopts B's branch only through scheduled exchanges and its own pull.

@@ -254,3 +254,109 @@ func TestDirectAnchorEnrolledFollowerWaitsWithoutInitializing(t *testing.T) {
 		t.Fatal("waiting direct startup changed original follower authority")
 	}
 }
+
+// A node that already holds accepted managed trust publishes it and reports
+// ready, so a restarted (or promoted) writer whose first anchor step is a due
+// poll must not hold the other elected services behind that root round trip:
+// writer commands would be refused 503 while the node reports ready
+// (F28-OPEN6). The poll stays in flight here while the primary driver, which
+// admits writer commands, must already run. Before any bootstrap the node
+// cannot publish, and TestDirectAnchorActualWriterBootstrapAndCompletePublication
+// keeps that first attempt ahead of the services.
+func TestDirectAnchorRestartedWriterDuePollDoesNotHoldWriterServices(t *testing.T) {
+	var wall anchorAheadWall
+	requested, release := make(chan struct{}), make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	endpoint, seeds, reads := anchorOperationServer(t, 4, func(n int) {
+		if n == 2 {
+			wall.ahead.Store(0) // later steps read the real schedule again
+			close(requested)
+			<-release
+		}
+	})
+	s, original := directAnchorRuntime(t, endpoint, seeds)
+	s.anchorUpdaterWall = wall.now
+	stop := startDirectAnchorWriter(original, t, s)
+	awaitServingRuntime(t, s, func() bool { return s.publisher.Status().ProtectedReady && s.primary.driver.Status().Running })
+	if reads.Load() != 1 {
+		t.Fatal("fixture did not bootstrap once", reads.Load())
+	}
+	stop()
+	state, err := anchorOperationOwner(original, t, s).State()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wall.ahead.Store(int64(time.Until(state.Inspect().Schedule.NextRefresh) + time.Second))
+	startDirectAnchorWriter(original, t, s)
+	select {
+	case <-requested:
+	case <-time.After(3 * time.Second):
+		t.Fatal("restarted writer did not poll the root")
+	}
+	// The fixture's connection deadline is 4 s; decide well before it, so an
+	// acquisition failure cannot be what releases the services.
+	deadline := time.Now().Add(2 * time.Second)
+	for !s.primary.driver.Status().Running {
+		if time.Now().After(deadline) {
+			t.Fatal("writer services waited for an in-flight poll of already accepted managed trust")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	for !s.publisher.Status().ProtectedReady {
+		if time.Now().After(deadline) {
+			t.Fatalf("node did not publish its accepted managed trust during the poll: %+v", s.publisher.Status())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	unblock()
+	awaitServingRuntime(t, s, func() bool {
+		view := s.anchorStatus.snapshot().updater
+		return view.state == anchorWorkerRunning && view.next.After(time.Now().Add(30*time.Minute))
+	})
+	if s.anchorWriter.terminalError() != nil {
+		t.Fatal("released poll stopped the updater", s.anchorWriter.terminalError())
+	}
+	if n := reads.Load(); n < 2 || n > 3 {
+		t.Fatal("released poll was not one acquisition (or one paced retry after a startup write)", n)
+	}
+}
+
+// The same holds when the restarted (or promoted) writer's first step is not
+// due: the services do not wait for its capture either (F28-OPEN6). The
+// capture is held here right after its image read.
+func TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture(t *testing.T) {
+	endpoint, seeds, reads := anchorOperationServer(t, 3, nil)
+	s, original := directAnchorRuntime(t, endpoint, seeds)
+	stop := startDirectAnchorWriter(original, t, s)
+	awaitServingRuntime(t, s, func() bool { return s.publisher.Status().ProtectedReady && s.primary.driver.Status().Running })
+	stop()
+	if reads.Load() != 1 {
+		t.Fatal("fixture did not bootstrap once", reads.Load())
+	}
+	held, release := make(chan struct{}), make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	var once sync.Once
+	s.anchorCaptureRead = func() {
+		once.Do(func() {
+			close(held)
+			<-release
+		})
+	}
+	startDirectAnchorWriter(original, t, s)
+	select {
+	case <-held:
+	case <-time.After(3 * time.Second):
+		t.Fatal("restarted writer did not capture")
+	}
+	awaitServingRuntime(t, s, func() bool { return s.publisher.Status().ProtectedReady && s.primary.driver.Status().Running })
+	unblock()
+	awaitServingRuntime(t, s, func() bool {
+		view := s.anchorStatus.snapshot().updater
+		return view.state == anchorWorkerRunning && view.next.After(time.Now().Add(30*time.Minute))
+	})
+	if s.anchorWriter.terminalError() != nil || reads.Load() != 1 {
+		t.Fatal("restarted writer stopped or acquired the root again", s.anchorWriter.terminalError(), reads.Load())
+	}
+}
