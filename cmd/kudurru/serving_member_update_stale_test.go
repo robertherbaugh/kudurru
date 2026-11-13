@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"sync/atomic"
@@ -92,29 +91,17 @@ func memberUpdateFollowerDNS(t *testing.T, s *servingRuntime) *primaryNetworkFix
 }
 
 // memberUpdatePull installs the primary's current image on the follower and
-// waits until the follower serves it. A pull that meets a commit on the
-// primary between the image's read and its emission reads again on the
-// primary (MemberServer.serve), so it is not refused; the "unauthorized peer"
-// retry this helper had is gone. One refusal is still read again, and only
-// that one: an install refused with sqlite.ErrAnchorUnavailable ("anchor
-// lifecycle unavailable", in 2 of 4 burst runs of HA-OPEN6 race04 and race05,
-// right after the burst canceled its background pull, possibly in the middle
-// of an install). Its cause in the anchor install lane was not identified in
-// HA-OPEN6 and is recorded as open; the burst no longer cancels a pull.
+// waits until the follower serves it. The pull is one attempt: a pull that
+// meets a commit on the primary between the image's read and its emission
+// reads again on the primary (MemberServer.serve), so it is not refused, and
+// a pull after a canceled one is not refused either
+// (TestRootMemberPullAfterACanceledPullIsServed).
 func memberUpdatePull(t *testing.T, f *memberForwardHTTPFixture) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
-	for attempt := 1; ; attempt++ {
-		err := f.puller.Pull(ctx)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, sqlite.ErrAnchorUnavailable) || attempt == 10 {
-			t.Fatal("follower pull", err)
-		}
-		t.Logf("follower pull attempt %d: %v", attempt, err)
-		time.Sleep(100 * time.Millisecond)
+	if err := f.puller.Pull(ctx); err != nil {
+		t.Fatal("follower pull", err)
 	}
 	awaitServingRuntime(t, f.follower, func() bool {
 		status := f.follower.publisher.Status()
@@ -142,6 +129,45 @@ func TestRootMemberPullRightAfterACommitIsServed(t *testing.T) {
 			t.Fatalf("pull %d right after a commit on the primary: %v", i+1, err)
 		}
 	}
+}
+
+// A pull canceled at any point, including in the middle of an install, does
+// not refuse the follower's next pull: production cancels a pull on its
+// timeout and at shutdown. HA-OPEN6 saw "store/sqlite: anchor lifecycle
+// unavailable" on the next pull after the burst test canceled its pull loop
+// (race04, race05). Each round commits on the primary, cancels a pull after
+// a growing delay, then requires one more single pull to succeed.
+func TestRootMemberPullAfterACanceledPullIsServed(t *testing.T) {
+	f := newMemberForwardHTTPFixture(t, true)
+	canceled, completed := 0, 0
+	for i := range 16 {
+		name := fmt.Sprintf("canceled%d", i)
+		memberUpdateApplyOnPrimary(t, f, &public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: name}, Spec: public.DNSZoneSpec{ZoneName: name + ".test.", Type: public.ZoneTypePrimary, Nameservers: []string{"ns." + name + ".test."},
+			Policy: public.ZonePolicy{Notify: public.NotifyNone}}})
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		// From at once to 1.8 s, past a whole pull under the race detector,
+		// so that some cancellations land in the install itself.
+		delay := time.Duration(i) * 120 * time.Millisecond
+		timer := time.AfterFunc(delay, cancel)
+		if err := f.puller.Pull(ctx); err != nil {
+			canceled++
+			t.Logf("round %d: pull canceled after %s: %v", i+1, delay, err)
+		} else {
+			completed++
+		}
+		timer.Stop()
+		cancel()
+		next, stop := context.WithTimeout(t.Context(), 10*time.Second)
+		err := f.puller.Pull(next)
+		stop()
+		if err != nil {
+			t.Fatalf("round %d: pull right after a canceled pull: %v", i+1, err)
+		}
+	}
+	if canceled == 0 {
+		t.Fatal("no pull was canceled; the test proved nothing")
+	}
+	t.Logf("%d of 16 pulls canceled, %d completed before their cancellation", canceled, completed)
 }
 
 // memberUpdateApplyOnPrimary commits one object on the primary as fixture
@@ -301,18 +327,20 @@ func TestRootMemberFollowerUpdateAcrossInstallWaitsForItsPublication(t *testing.
 // signed, never with a SERVFAIL that a second identical send would not get,
 // and each is committed once (D381). The held-UPDATE test above replaces the
 // bound because the fixture's own hold is charged to it; this one keeps it.
-// The one SERVFAIL accepted is the documented one at the bound itself (not
-// sent, or not answered, within four seconds): on a loaded machine under the
-// race detector a publication can take longer than that. It is logged and
-// its outcome is left unknown; a SERVFAIL before the bound fails the test.
+// At most one SERVFAIL is accepted, and only the documented one at the
+// bound itself (not sent, or not answered, within four seconds): on a loaded
+// machine under the race detector a publication can take longer than that.
+// It is logged and its outcome is left unknown; a SERVFAIL before the bound,
+// or a second one at it, fails the test. Once PUBLISH-STARVATION (D405)
+// lands, that one tolerance should go too.
 func TestRootMemberFollowerUpdateBurstWithinTheProductionBound(t *testing.T) {
 	f, dnsf := memberUpdateFollowerZone(t, 0)
 	if f.follower.memberForwardUpdateBound != 0 {
 		t.Fatal("the follower's forward bound was replaced")
 	}
-	// The pulls are stopped between two pulls, never canceled in the middle
-	// of an install: a canceled install can leave the next one refused with
-	// "anchor lifecycle unavailable" (see memberUpdatePull).
+	// The pulls are stopped between two pulls, so that the pull count is
+	// exact; a pull canceled in the middle of an install is
+	// TestRootMemberPullAfterACanceledPullIsServed's.
 	var stopping atomic.Bool
 	stop := func() { stopping.Store(true) }
 	pulled := make(chan int, 1)
@@ -333,6 +361,7 @@ func TestRootMemberFollowerUpdateBurstWithinTheProductionBound(t *testing.T) {
 	}()
 	const burst = 6
 	committed := map[string]bool{}
+	atBound := 0
 	for i := range burst {
 		name := fmt.Sprintf("burst%d.example.", i)
 		sent := time.Now()
@@ -349,7 +378,8 @@ func TestRootMemberFollowerUpdateBurstWithinTheProductionBound(t *testing.T) {
 			t.Fatalf("burst UPDATE %d of %d answer was not signed", i+1, burst)
 		case rcode == dns.RcodeSuccess:
 			committed[name] = true
-		case rcode == dns.RcodeServerFailure && elapsed >= memberForwardUpdateTimeout-50*time.Millisecond:
+		case rcode == dns.RcodeServerFailure && elapsed >= memberForwardUpdateTimeout-50*time.Millisecond && atBound == 0:
+			atBound++
 			t.Logf("burst UPDATE %d of %d answered SERVFAIL at the forward bound after %s (outcome unknown)", i+1, burst, elapsed)
 		default:
 			stop()
@@ -362,8 +392,8 @@ func TestRootMemberFollowerUpdateBurstWithinTheProductionBound(t *testing.T) {
 	}
 	stop()
 	t.Logf("burst of %d forwarded UPDATEs: %d NOERROR, %d follower pulls in between", burst, len(committed), <-pulled)
-	if len(committed) == 0 {
-		t.Fatal("no burst UPDATE was answered within the forward bound")
+	if len(committed) < burst-1 {
+		t.Fatalf("only %d of %d burst UPDATEs committed", len(committed), burst)
 	}
 	memberUpdatePull(t, f)
 	for i := range burst {
