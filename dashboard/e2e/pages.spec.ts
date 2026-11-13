@@ -16,6 +16,7 @@ const NAV = [
   ['/denylist', 'Denylist'],
   ['/groups', 'Groups'],
   ['/clients', 'Clients'],
+  ['/inventory', 'Inventory'],
   ['/policies', 'Policies'],
   ['/zones', 'Zones'],
   ['/dhcp', 'Scopes'],

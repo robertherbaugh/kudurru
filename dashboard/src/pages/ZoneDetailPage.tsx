@@ -435,7 +435,7 @@ function ZoneDetail({ zone }: { zone: string }) {
           if (!open) setConfirmRecord(null);
         }}
         title={confirmRecord ? `Delete ${confirmRecord.dnsName} ${confirmRecord.recordType}?` : 'Delete the record?'}
-        description={confirmRecord ? `Every ${confirmRecord.recordType} value of ${confirmRecord.dnsName} served to ${viewText(confirmRecord.kudurru?.view)} in record set ${confirmRecord.recordSet} is removed.` : ''}
+        description={confirmRecord ? `Every ${confirmRecord.recordType} value of ${confirmRecord.dnsName} served to ${viewText(confirmRecord.kudurru?.view)} ${confirmRecord.recordSet ? `in record set ${confirmRecord.recordSet}` : 'in every record set of the zone'} is removed.` : ''}
         cancelLabel="Keep it"
         actionLabel="Delete record"
         actionVariant="destructive"
