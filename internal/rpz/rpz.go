@@ -104,6 +104,10 @@ type Zone struct {
 	addresses   map[netip.Prefix]*rule
 	stats       Stats
 	diagnostics []Diagnostic
+	// reasons counts every ignored owner per reason; ruleCounts every
+	// compiled owner by trigger and action (D391 diagnostics).
+	reasons     map[string]int
+	ruleCounts  RuleCounts
 	confirmedAt time.Time
 }
 

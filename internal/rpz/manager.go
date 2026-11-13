@@ -77,6 +77,24 @@ type Status struct {
 	Available          bool      `json:"available"`
 	ConfigurationError string    `json:"configurationError,omitempty"`
 	Error              string    `json:"error,omitempty"`
+	// Rules counts the accepted copy's owners by trigger and action (D391).
+	Rules RuleCounts `json:"rules"`
+	// ignored is the accepted copy's immutable accounting; the pointer keeps
+	// Status comparable for snapshot deduplication. See IgnoredReasons.
+	ignored *[]IgnoredReason
+}
+
+// IgnoredReasons returns a private copy of the accepted copy's complete per-reason
+// accounting of ignored policy owners; nil before a copy exists (D391).
+func (s Status) IgnoredReasons() []IgnoredReason {
+	if s.ignored == nil {
+		return nil
+	}
+	out := slices.Clone(*s.ignored)
+	for i := range out {
+		out[i].Examples = slices.Clone(out[i].Examples)
+	}
+	return out
 }
 
 // Snapshot is immutable. Capture it once together with the policy/configuration
@@ -188,10 +206,30 @@ func (m *Manager) Statuses() []Status {
 	if config == nil {
 		return nil
 	}
+	return m.statuses(config, config.Objects.BlockLists())
+}
+
+// ListStatuses reports the enabled feeds of one BlockList from a single
+// configuration snapshot (D391). The list must be in that snapshot; a list
+// without enabled RPZ sources answers an empty result.
+func (m *Manager) ListStatuses(namespace, name string) ([]Status, error) {
+	config := m.opts.Cache.Snapshot()
+	if config == nil {
+		return nil, ErrConfigurationUnavailable
+	}
+	for _, list := range config.Objects.BlockLists() {
+		if list != nil && list.Namespace == namespace && list.Name == name {
+			return m.statuses(config, []*v1alpha1.BlockList{list}), nil
+		}
+	}
+	return nil, ErrListNotConfigured
+}
+
+func (m *Manager) statuses(config *zonecache.Snapshot, lists []*v1alpha1.BlockList) []Status {
 	var out []Status
 	runtime := m.Snapshot()
 	now := m.opts.Now()
-	for _, list := range config.Objects.BlockLists() {
+	for _, list := range lists {
 		for i := range list.Spec.Sources {
 			if !configured(list, i) {
 				continue
@@ -523,6 +561,8 @@ func (m *Manager) credentialsMatch(dz *v1alpha1.DNSZone, expected string) bool {
 
 func (e *entry) setDataStatus() {
 	e.status.Serial, e.status.Stats = e.z.soa.Serial, e.z.stats
+	ignored := e.z.Ignored()
+	e.status.Rules, e.status.ignored = e.z.Rules(), &ignored
 	e.status.Primary, e.status.ConfirmedAt, e.status.ExpiresAt = e.data.Primary, e.data.ConfirmedAt, e.data.ExpiresAt
 }
 

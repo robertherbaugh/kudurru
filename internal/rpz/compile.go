@@ -150,6 +150,7 @@ func Compile(spec Spec, records []dns.RR) (*Zone, error) {
 		}
 		z.rules = append(z.rules, r)
 		z.stats.Rules++
+		z.ruleCounts.add(r.entry)
 	}
 	for _, seen := range excluded {
 		if !seen {
@@ -293,6 +294,10 @@ func (z *Zone) diagnose(owner, reason string, unsupported bool) {
 	} else {
 		z.stats.Invalid++
 	}
+	if z.reasons == nil {
+		z.reasons = map[string]int{}
+	}
+	z.reasons[reason]++
 	if len(z.diagnostics) < MaxDiagnostics {
 		z.diagnostics = append(z.diagnostics, Diagnostic{Owner: owner, Reason: reason, Unsupported: unsupported})
 	}
