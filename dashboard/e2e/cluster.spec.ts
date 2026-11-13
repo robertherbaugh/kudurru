@@ -64,6 +64,13 @@ test('activates a primary, shows an invitation exactly once and the invitation j
     await page.goto('/nodes');
     await expect(membership.getByText(/This node is the primary/)).toBeVisible({ timeout: 20_000 });
 
+    // The root trust anchors panel renders this real node's GET /cluster/anchors answer.
+    const anchors = page.getByRole('region', { name: 'Root trust anchors' });
+    await expect(anchors.getByText('Anchor mode')).toBeVisible();
+    await expect(anchors.getByText('Authority')).toBeVisible();
+    await expect(anchors.getByText('No trust-anchor state needs you on this node.').or(anchors.getByRole('list', { name: 'Trust-anchor states that need you' }))).toBeVisible();
+    await expect(anchors.getByRole('alert')).toHaveCount(0);
+
     // Invite: review, new member, issue.
     const target = { name: 'e2e-cluster-b', address: `127.0.0.1:${await freePort()}` };
     await membership.getByRole('button', { name: 'Invite a member' }).click();
