@@ -18,18 +18,6 @@ func (s *servingRuntime) currentAuthCommandOutput(ctx context.Context, request *
 	if s == nil || ctx == nil || request == nil || fn == nil || emit == nil {
 		return false, serving.ErrComponents
 	}
-	// Refused before the command was entered only because another commit
-	// superseded the request's publication: capture again and dispatch once
-	// (D399). The output request is single-use, so entering the transaction
-	// callback already counts as dispatch here.
-	return s.recaptureCommand(ctx, func(began *bool) (bool, error) {
-		return s.currentAuthCommandOutputOnce(ctx, request, began, fn, emit)
-	})
-}
-
-// currentAuthCommandOutputOnce is one dispatch attempt of
-// currentAuthCommandOutput.
-func (s *servingRuntime) currentAuthCommandOutputOnce(ctx context.Context, request *sqlite.CommandOutputRequest, began *bool, fn func(context.Context, *sqlite.CommandTx, servingauth.Dependencies) error, emit func(context.Context) error) (bool, error) {
 	status := s.primary.driver.Status()
 	if !status.Running {
 		if err := s.primaryRequired(ctx); err != nil {
@@ -56,16 +44,10 @@ func (s *servingRuntime) currentAuthCommandOutputOnce(ctx context.Context, reque
 		}
 		return servinghttp.CheckWriter(ctx, s.publisher, target)
 	}
-	if hooks := s.commandHooks.Load(); hooks != nil && hooks.beforeCheck != nil {
-		hooks.beforeCheck(ctx)
-	}
 	if err := check(ctx); err != nil {
 		return false, err
 	}
 	committed, err := s.providers.WithCommandOutput(ctx, target, request, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
-		*began = true
-		servinghttp.MarkDispatched(ctx)
-		s.dispatchHook(ctx)
 		if err := check(ctx); err != nil {
 			return err
 		}

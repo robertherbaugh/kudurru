@@ -18,7 +18,7 @@ func CloneLease(ctx context.Context) (*serving.Lease, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	original, _ := requestLease(ctx)
+	original, _ := ctx.Value(leaseKey{}).(*serving.Lease)
 	lease, err := original.Clone()
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func SourceToken(ctx context.Context) (sqlite.GenerationToken, error) {
 	if err := ctx.Err(); err != nil {
 		return sqlite.GenerationToken{}, err
 	}
-	original, _ := requestLease(ctx)
+	original, _ := ctx.Value(leaseKey{}).(*serving.Lease)
 	token, err := original.SourceToken()
 	if err != nil {
 		return sqlite.GenerationToken{}, err
@@ -67,7 +67,7 @@ func SourceRole(ctx context.Context) (replication.Mode, string, error) {
 	if ctx == nil {
 		return "", "", serving.ErrReleased
 	}
-	original, _ := requestLease(ctx)
+	original, _ := ctx.Value(leaseKey{}).(*serving.Lease)
 	token, err := original.SourceToken()
 	if err != nil {
 		return "", "", err

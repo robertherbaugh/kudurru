@@ -126,10 +126,7 @@ func (r *integrationRuntime) beginOperation(ctx context.Context, owner ih.Instan
 		}
 		// This first no-op retains the ordinary latest HTTP publication check.
 		// It is never repeated after the operation's own budget/source writes.
-		// It holds the host's lease barrier and r.mu, so a superseded
-		// publication refuses it at once instead of waiting for a newer one
-		// (D399 does not apply here).
-		return r.s.currentAuthCommand(servinghttp.WithoutRecapture(ctx), func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
+		return r.s.currentAuthCommand(ctx, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 			if err := op.check(ctx); err != nil {
 				return err
 			}

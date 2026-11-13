@@ -48,11 +48,7 @@ func servingHTTPAuthError(err error) *auth.Error {
 	}
 	var e *api.Error
 	if errors.As(currentCommandAPIError(err), &e) {
-		out := &auth.Error{Status: e.Status, Key: e.Body.Key, Message: e.Body.Message, Hint: e.Body.Hint}
-		if e.GetHeaders().Get("Retry-After") != "" {
-			out.RetryAfter = time.Second // a pre-dispatch refusal (D399)
-		}
-		return out
+		return &auth.Error{Status: e.Status, Key: e.Body.Key, Message: e.Body.Message, Hint: e.Body.Hint}
 	}
 	if errors.Is(err, store.ErrNotFound) {
 		return servingHTTPMissing()

@@ -172,10 +172,7 @@ func (h *servingHTTP) issueClusterJoinToken(w http.ResponseWriter, r *http.Reque
 	var invitation enrollment.Invitation
 	var lifetime *servingauth.CredentialLifetime
 	started := false
-	// The reviewed source digest above is compared only here, so a command
-	// refused before dispatch may capture again only on the same source
-	// generation (D399).
-	committed, err := s.currentAuthCommandOutput(servinghttp.WithExactSource(r.Context()), request, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
+	committed, err := s.currentAuthCommandOutput(r.Context(), request, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 		principal, decision, bound, err := servingauth.ReauthorizeCurrentForOutput(ctx, tx, deps, proof, servingHTTPCluster("cluster", "join"), s.opts.Now)
 		if err != nil {
 			return err
