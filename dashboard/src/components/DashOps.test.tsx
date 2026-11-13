@@ -18,7 +18,7 @@ import ZonesPage from '../pages/ZonesPage';
 import { getSelector, pick } from '../test/controls';
 import { server } from '../test/setup';
 import { API, renderWithApp } from '../test/utils';
-import { outcomeUnknown } from '../lib/cluster';
+import { outcomeUnknown, roleBindingOutcomeUnknown } from '../lib/cluster';
 import { ApiError } from '../api/client';
 import { roleBindingManifest } from './access/RoleBindingForm';
 import { AuthenticatorPanel, RecoverAuthenticatorButton } from './access/Authenticators';
@@ -130,6 +130,45 @@ describe('operator edge blocks', () => {
     expect(outcomeUnknown(new ApiError(0, 'network', 'unreachable'))).toBe(true);
   });
 
+  it('locks the block dialog after a dispatched write whose outcome the Kubernetes driver cannot tell', async () => {
+    let n = 0;
+    server.use(http.post(`${API}/edge/blocks`, () => {
+      n++;
+      return HttpResponse.json({ error: { key: 'unavailable', message: 'cluster edge block state unavailable', hint: { dispatched: true, outcome: 'unknown' } } }, { status: 503 });
+    }));
+    renderWithApp(<ClientsPage />, { route: '/clients' });
+    const block = await screen.findByRole('button', { name: 'Block nas at the edge' });
+    await waitFor(() => expect(off(block)).toBe(false));
+    fireEvent.click(block);
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Block' }));
+    expect(await within(dialog).findByText('Outcome unknown')).toBeInTheDocument();
+    expect(off(within(dialog).getByRole('button', { name: 'Block' }))).toBe(true);
+    fireEvent.submit(within(dialog).getByRole('button', { name: 'Block' }).closest('form')!);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(n).toBe(1);
+  });
+
+  it('sends a revoke that fails with a 500 once and then stays locked', async () => {
+    let n = 0;
+    server.use(http.delete(`${API}/edge/blocks/:id`, () => {
+      n++;
+      return HttpResponse.json({ error: { key: 'internal', message: 'internal error' } }, { status: 500 });
+    }));
+    renderWithApp(<ClientsPage />, { route: '/clients' });
+    const table = await screen.findByRole('table', { name: 'Active edge blocks' });
+    const revoke = await within(table).findByRole('button', { name: 'Revoke the edge block of 203.0.113.0/24' });
+    await waitFor(() => expect(off(revoke)).toBe(false));
+    fireEvent.click(revoke);
+    const confirm = await screen.findByRole('dialog');
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Revoke' }));
+    expect(await within(confirm).findByText('Outcome unknown')).toBeInTheDocument();
+    expect(off(within(confirm).getByRole('button', { name: 'Revoke' }))).toBe(true);
+    fireEvent.submit(within(confirm).getByRole('button', { name: 'Revoke' }).closest('form')!);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(n).toBe(1);
+  });
+
   it('disables the actions without edgeblocks.write and hides the list without edgeblocks.read', async () => {
     const reads = record('GET', '/edge/blocks');
     meAs({ clients: ['read'], clientgroups: ['read'], querylog: ['read'], stats: ['read'] });
@@ -194,6 +233,12 @@ describe('query-log sink status', () => {
   });
 });
 
+/** Leaves example-internal with only API-managed records so its deletion turns on permissions alone. */
+function deletableExampleInternal() {
+  const db = mockDB();
+  db.recordSets = db.recordSets.filter((rs) => rs.metadata.name !== 'external-dns-ingress');
+}
+
 describe('zone-group scope', () => {
   it('counts zone and zone-group grants on that zone only', () => {
     const me: Me = { principal: { kind: 'User', id: 'u', name: 'u', groups: [] }, roles: ['zone-admin@zonegroup:prod'], permissions: { zones: ['read'] }, scopedPermissions: { 'zonegroup:prod': { records: ['read', 'write'] }, 'zone:lab': { zones: ['*'] } } };
@@ -212,18 +257,51 @@ describe('zone-group scope', () => {
     const view = renderWithApp(<ZoneDetailPage params={{ zone: 'example-internal' }} />, { route: '/zones/example-internal' });
     expect(await screen.findByText('zone group prod')).toBeInTheDocument();
     await waitFor(() => expect(off(screen.getByRole('button', { name: 'Add record' }))).toBe(false));
+    expect(off(screen.getByRole('button', { name: 'Import BIND' }))).toBe(false);
+    expect(off(screen.getByRole('button', { name: 'Send NOTIFY' }))).toBe(false);
+    // The group grants no zones.delete: the zone page keeps Delete zone off
+    // (example-internal also carries external-dns records here; the next test
+    // proves the grant alone).
+    expect(off(screen.getByRole('button', { name: 'Delete zone' }))).toBe(true);
+    const settings = await screen.findByTestId('section-zone-settings');
+    await waitFor(() => expect(off(within(settings).getByRole('button', { name: 'Edit Zone settings' }))).toBe(false));
     view.unmount();
     zone.metadata.labels = {};
     renderWithApp(<ZoneDetailPage params={{ zone: 'example-internal' }} />, { route: '/zones/example-internal' });
     const add = await screen.findByRole('button', { name: 'Add record' });
     await waitFor(() => expect(screen.getByText('example.internal.', { exact: false })).toBeInTheDocument());
     expect(off(add)).toBe(true);
+    expect(off(screen.getByRole('button', { name: 'Import BIND' }))).toBe(true);
+    expect(off(screen.getByRole('button', { name: 'Send NOTIFY' }))).toBe(true);
+    const ro = await screen.findByTestId('section-zone-settings');
+    expect(off(within(ro).getByRole('button', { name: 'Edit Zone settings' }))).toBe(true);
   });
 
-  it('shows each zone’s group on the Zones page', async () => {
-    mockDB().zones.find((z) => z.metadata.name === 'example-internal')!.metadata.labels = { 'kudurru.io/zonegroup': 'prod' };
-    renderWithApp(<ZonesPage />, { route: '/zones' });
+  it('enables Delete zone where a zone-group grant holds zones.delete', async () => {
+    deletableExampleInternal();
+    const zone = mockDB().zones.find((z) => z.metadata.name === 'example-internal')!;
+    zone.metadata.labels = { 'kudurru.io/zonegroup': 'prod' };
+    meAs({ zones: ['read'], records: ['read'] }, { 'zonegroup:prod': { zones: ['read', 'delete'] } }, ['zone-admin@zonegroup:prod']);
+    renderWithApp(<ZoneDetailPage params={{ zone: 'example-internal' }} />, { route: '/zones/example-internal' });
+    expect(await screen.findByText('zone group prod')).toBeInTheDocument();
+    await waitFor(() => expect(off(screen.getByRole('button', { name: 'Delete zone' }))).toBe(false));
+    expect(off(screen.getByRole('button', { name: 'Add record' }))).toBe(true);
+  });
+
+  it('shows each zone’s group on the Zones page and enables Delete only for member zones', async () => {
+    deletableExampleInternal();
+    const zone = mockDB().zones.find((z) => z.metadata.name === 'example-internal')!;
+    zone.metadata.labels = { 'kudurru.io/zonegroup': 'prod' };
+    meAs({ zones: ['read'] }, { 'zonegroup:prod': { zones: ['read', 'delete'] } }, ['zone-admin@zonegroup:prod']);
+    const view = renderWithApp(<ZonesPage />, { route: '/zones' });
     expect(await screen.findByText('Zone group prod')).toBeInTheDocument();
+    await waitFor(() => expect(off(screen.getByRole('button', { name: 'Delete zone example.internal.' }))).toBe(false));
+    view.unmount();
+    // The same zone in another group: the grant no longer reaches it.
+    zone.metadata.labels = { 'kudurru.io/zonegroup': 'dev' };
+    renderWithApp(<ZonesPage />, { route: '/zones' });
+    expect(await screen.findByText('Zone group dev')).toBeInTheDocument();
+    expect(off(screen.getByRole('button', { name: 'Delete zone example.internal.' }))).toBe(true);
   });
 
   it('creates a role binding scoped to a zone group', async () => {
@@ -266,6 +344,53 @@ describe('zone-group scope', () => {
     expect(roleBindingManifest({ name: 'all', namespace: 'default', role: 'viewer', scopeKind: 'cluster', scopeName: '', subjectKind: 'ServiceAccount', subjectName: 'grafana', subjectNamespace: 'mon' }).spec).toEqual({
       role: 'viewer', scope: { kind: 'cluster' }, subjects: [{ kind: 'ServiceAccount', name: 'grafana', namespace: 'mon' }],
     });
+  });
+
+  /** Opens the dialog, fills a valid zone-group binding and presses Create once. */
+  async function createProdAdmins(): Promise<HTMLElement> {
+    renderWithApp(<AccessPage />, { route: '/access?tab=iam' });
+    const open = await screen.findByRole('button', { name: 'New role binding' });
+    await waitFor(() => expect(off(open)).toBe(false));
+    fireEvent.click(open);
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/^Name(?!space)/), { target: { value: 'prod-admins' } });
+    fireEvent.change(within(dialog).getByLabelText(/^Zone group/), { target: { value: 'prod' } });
+    fireEvent.change(within(dialog).getByLabelText(/^User name/), { target: { value: 'alice' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
+    return dialog;
+  }
+
+  it('sends a role binding once and locks when the SQLite server cannot tell whether it committed', async () => {
+    let n = 0;
+    // servingHTTPAuthError's catch-all: any unclassified error, including a
+    // commit that was attempted and whose outcome is unknown.
+    server.use(http.post(`${API}/iam/rolebindings`, () => {
+      n++;
+      return HttpResponse.json({ error: { key: 'unavailable', message: 'authentication operation unavailable' } }, { status: 503 });
+    }));
+    const dialog = await createProdAdmins();
+    expect(await within(dialog).findByText('Outcome unknown')).toBeInTheDocument();
+    expect(off(within(dialog).getByRole('button', { name: 'Create' }))).toBe(true);
+    fireEvent.submit(within(dialog).getByRole('button', { name: 'Create' }).closest('form')!);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(n).toBe(1);
+  });
+
+  it('treats a role binding the runtime refuses before any effect as an ordinary error', async () => {
+    let n = 0;
+    server.use(http.post(`${API}/iam/rolebindings`, () => {
+      n++;
+      return HttpResponse.json({ error: { key: 'unavailable', message: 'public RoleBinding command unavailable', hint: 'requires the complete SQLite runtime' } }, { status: 503 });
+    }));
+    const dialog = await createProdAdmins();
+    expect(await within(dialog).findByText(/public RoleBinding command unavailable/)).toBeInTheDocument();
+    expect(within(dialog).queryByText('Outcome unknown')).toBeNull();
+    expect(off(within(dialog).getByRole('button', { name: 'Create' }))).toBe(false);
+    expect(n).toBe(1);
+    expect(roleBindingOutcomeUnknown(new ApiError(503, 'primary_required', 'follower'))).toBe(false);
+    expect(roleBindingOutcomeUnknown(new ApiError(409, 'conflict', 'exists'))).toBe(false);
+    expect(roleBindingOutcomeUnknown(new ApiError(503, 'unavailable', 'current writable serving generation unavailable'))).toBe(true);
+    expect(roleBindingOutcomeUnknown(new ApiError(500, 'internal', 'internal error'))).toBe(true);
   });
 
   it('runs role binding writes only on the primary', async () => {

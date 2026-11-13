@@ -5,7 +5,10 @@
 // record sets (D385). The command needs rolebindings.write at cluster scope
 // and runs only on the primary of an enrolled SQLite cluster and on the
 // complete SQLite runtime (other drivers answer 503; Kubernetes manages
-// RoleBindings with kubectl). An unknown outcome is never sent again.
+// RoleBindings with kubectl). An unknown outcome is never sent again: the
+// SQLite runtime answers an unclassified failure, including an attempted
+// commit, with a bare 503 unavailable, so only the missing-runtime 503 counts
+// as a refusal (roleBindingOutcomeUnknown).
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Text } from '@astryxdesign/core/Text';
@@ -13,7 +16,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useRef, useState } from 'react';
 import { qk, useApi, useCan, useCannotReason } from '../../api/context';
 import type { RoleBindingDesired } from '../../api/types';
-import { outcomeUnknown } from '../../lib/cluster';
+import { roleBindingOutcomeUnknown } from '../../lib/cluster';
 import { ROLES, SCOPE_KINDS, type ScopeKind } from '../../lib/rbac';
 import { zoneGroupError } from '../../lib/zones';
 import { EnumSelect, type EnumOption } from '../fields/EnumSelect';
@@ -126,7 +129,7 @@ function RoleBindingDialog({ onClose }: { onClose: () => void }) {
       onClose();
     } catch (err) {
       setError(err);
-      if (outcomeUnknown(err)) setUnknown(true);
+      if (roleBindingOutcomeUnknown(err)) setUnknown(true);
     } finally {
       inFlight.current = false;
       setPending(false);

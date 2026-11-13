@@ -270,3 +270,23 @@ export function outcomeUnknown(err: unknown): boolean {
   if (hint && typeof hint === 'object' && ('dispatched' in hint || 'outcome' in hint)) return true;
   return !(err.status === 503 && REFUSED_SINGLE.has(err.key));
 }
+
+/** The hint of the only 503 unavailable that POST /iam/rolebindings gives before
+ * it runs anything: a runtime without the SQLite RoleBinding command
+ * (internal/api/rolebindings.go). */
+const ROLE_BINDING_RUNTIME_MISSING = 'requires the complete SQLite runtime';
+
+/**
+ * outcomeUnknown for POST /iam/rolebindings. On the SQLite runtime that route
+ * answers every error it does not classify, including a commit that was
+ * attempted and failed, with the catch-all 503 unavailable
+ * (servingHTTPAuthError in cmd/kudurru), so a 503 unavailable counts as a
+ * refusal only with the missing-runtime hint; any other one leaves the
+ * outcome unknown and the dialog sends nothing again.
+ */
+export function roleBindingOutcomeUnknown(err: unknown): boolean {
+  if (err instanceof ApiError && err.status === 503 && err.key === 'unavailable') {
+    return err.hint !== ROLE_BINDING_RUNTIME_MISSING;
+  }
+  return outcomeUnknown(err);
+}
