@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	"github.com/robertherbaugh/kudurru/internal/trustanchors"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 )
 
@@ -255,27 +257,24 @@ func TestDirectAnchorEnrolledFollowerWaitsWithoutInitializing(t *testing.T) {
 	}
 }
 
-// A node that already holds accepted managed trust publishes it and reports
-// ready, so a restarted (or promoted) writer whose first anchor step is a due
-// poll must not hold the other elected services behind that root round trip:
-// writer commands would be refused 503 while the node reports ready
-// (F28-OPEN6). The poll stays in flight here while the primary driver, which
-// admits writer commands, must already run. Before any bootstrap the node
-// cannot publish, and TestDirectAnchorActualWriterBootstrapAndCompletePublication
-// keeps that first attempt ahead of the services.
-func TestDirectAnchorRestartedWriterDuePollDoesNotHoldWriterServices(t *testing.T) {
+// restartDueAnchorWriter bootstraps a direct managed writer once, stops it,
+// moves its updater wall clock just past the committed refresh and starts it
+// again; the root holds the restarted writer's due poll (reply 2) until the
+// returned release runs. It returns the canonical generation before the
+// restart and the root's read count.
+func restartDueAnchorWriter(t *testing.T, replies int) (s *servingRuntime, original context.Context, before replication.Generation, reads *atomic.Int32, release func()) {
+	t.Helper()
 	var wall anchorAheadWall
-	requested, release := make(chan struct{}), make(chan struct{})
-	unblock := sync.OnceFunc(func() { close(release) })
-	defer unblock()
-	endpoint, seeds, reads := anchorOperationServer(t, 4, func(n int) {
+	requested, held := make(chan struct{}), make(chan struct{})
+	release = sync.OnceFunc(func() { close(held) })
+	endpoint, seeds, reads := anchorOperationServer(t, replies, func(n int) {
 		if n == 2 {
 			wall.ahead.Store(0) // later steps read the real schedule again
 			close(requested)
-			<-release
+			<-held
 		}
 	})
-	s, original := directAnchorRuntime(t, endpoint, seeds)
+	s, original = directAnchorRuntime(t, endpoint, seeds)
 	s.anchorUpdaterWall = wall.now
 	stop := startDirectAnchorWriter(original, t, s)
 	awaitServingRuntime(t, s, func() bool { return s.publisher.Status().ProtectedReady && s.primary.driver.Status().Running })
@@ -288,38 +287,91 @@ func TestDirectAnchorRestartedWriterDuePollDoesNotHoldWriterServices(t *testing.
 		t.Fatal(err)
 	}
 	wall.ahead.Store(int64(time.Until(state.Inspect().Schedule.NextRefresh) + time.Second))
+	image, err := s.opts.Store.ReadGeneration(original)
+	if err != nil {
+		t.Fatal(err)
+	}
 	startDirectAnchorWriter(original, t, s)
+	// Cleanups run last-registered first: release the held reply before the
+	// writer is stopped and the root fixture joins its handler.
+	t.Cleanup(release)
 	select {
 	case <-requested:
 	case <-time.After(3 * time.Second):
 		t.Fatal("restarted writer did not poll the root")
 	}
-	// The fixture's connection deadline is 4 s; decide well before it, so an
-	// acquisition failure cannot be what releases the services.
-	deadline := time.Now().Add(2 * time.Second)
-	for !s.primary.driver.Status().Running {
-		if time.Now().After(deadline) {
-			t.Fatal("writer services waited for an in-flight poll of already accepted managed trust")
+	return s, original, image.Generation(), reads, release
+}
+
+// requireWriterServicesHeld requires that, for hold, the restarted writer's
+// other elected services did not start and nothing committed over the
+// generation its due poll captured. The fixture's connection deadline is 4 s.
+func requireWriterServicesHeld(t *testing.T, s *servingRuntime, original context.Context, before replication.Generation, hold time.Duration) {
+	t.Helper()
+	for end := time.Now().Add(hold); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+		if s.primary.driver.Status().Running {
+			t.Fatal("writer services started while a due root poll was in flight")
 		}
-		time.Sleep(5 * time.Millisecond)
 	}
-	for !s.publisher.Status().ProtectedReady {
-		if time.Now().After(deadline) {
-			t.Fatalf("node did not publish its accepted managed trust during the poll: %+v", s.publisher.Status())
-		}
-		time.Sleep(5 * time.Millisecond)
+	image, err := s.opts.Store.ReadGeneration(original)
+	if err != nil {
+		t.Fatal(err)
 	}
-	unblock()
+	if !image.Generation().Same(before) {
+		t.Fatal("a startup write committed while a due root poll was in flight")
+	}
+}
+
+// A restarted (or promoted) managed writer whose committed refresh is due
+// keeps its first step ahead of the other elected services, as before the
+// bootstrap: the reply may be a REVOKE, and a revocation denial that a
+// startup write rolls back is terminal for the writer term
+// (TestAnchorUpdaterRacedRevokeDenialStaysTerminal). The poll commits exactly
+// once with no raced retry, then the services start (F28-OPEN6).
+func TestDirectAnchorRestartedWriterDuePollPrecedesWriterServices(t *testing.T) {
+	s, original, before, reads, release := restartDueAnchorWriter(t, 3)
+	requireWriterServicesHeld(t, s, original, before, 1500*time.Millisecond)
+	release()
 	awaitServingRuntime(t, s, func() bool {
 		view := s.anchorStatus.snapshot().updater
-		return view.state == anchorWorkerRunning && view.next.After(time.Now().Add(30*time.Minute))
+		return s.primary.driver.Status().Running && view.state == anchorWorkerRunning && view.next.After(time.Now().Add(30*time.Minute))
 	})
 	if s.anchorWriter.terminalError() != nil {
 		t.Fatal("released poll stopped the updater", s.anchorWriter.terminalError())
 	}
-	if n := reads.Load(); n < 2 || n > 3 {
-		t.Fatal("released poll was not one acquisition (or one paced retry after a startup write)", n)
+	if n := reads.Load(); n != 2 {
+		t.Fatal("due poll was not exactly one acquisition", n)
 	}
+}
+
+// The reviewer's case for F28-OPEN6: the restarted writer's due poll observes
+// a REVOKE of the sole key while it is held. No startup write may race it,
+// so the revocation commits (the key is Revoked, the owner moved) and the
+// updater is not terminal; then the writer services start. With the startup
+// gate released before a due first step, this ended 3 of 3 with a terminal
+// updater and the revocation uncommitted.
+func TestDirectAnchorRestartedWriterDueRevokeCommitsBeforeWriterServices(t *testing.T) {
+	s, original, before, reads, release := restartDueAnchorWriter(t, 2)
+	requireWriterServicesHeld(t, s, original, before, 1500*time.Millisecond)
+	release()
+	awaitServingRuntime(t, s, func() bool {
+		if s.anchorWriter.terminalError() != nil {
+			return true
+		}
+		state, err := anchorOperationOwner(original, t, s).State()
+		if err != nil {
+			return false
+		}
+		keys := state.Inspect().Keys
+		return len(keys) == 1 && keys[0].Status == trustanchors.Revoked
+	})
+	if err := s.anchorWriter.terminalError(); err != nil {
+		t.Fatal("the restarted writer's REVOKE was not committed; the updater stopped", err)
+	}
+	if n := reads.Load(); n != 2 {
+		t.Fatal("REVOKE poll was not exactly one acquisition", n)
+	}
+	awaitServingRuntime(t, s, func() bool { return s.primary.driver.Status().Running })
 }
 
 // The same holds when the restarted (or promoted) writer's first step is not
