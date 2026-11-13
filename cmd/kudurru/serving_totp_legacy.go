@@ -18,7 +18,8 @@ func registerUnavailableTOTP(mux *http.ServeMux) {
 		{http.MethodPost, "/iam/users/{name}/totp/recover"},
 	} {
 		mux.HandleFunc(route.method+" "+api.BasePath+route.path, func(w http.ResponseWriter, r *http.Request) {
-			auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "factor_management_unavailable", Message: "factor management requires the complete current-command runtime"})
+			auth.WriteError(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "factor_management_unavailable", NoRetryAfter: true, Message: "factor management requires the complete current-command runtime",
+				Hint: "authenticator codes need the SQLite store; sign in with a password, an identity provider with its own second factor, or an API token"})
 		})
 	}
 }

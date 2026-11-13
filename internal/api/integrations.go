@@ -306,7 +306,7 @@ func (s *Server) registerIntegrations() {
 	})
 	register(s, integrationOperation(http.MethodGet, "/integrations", "listIntegrations", "List bounded integration status", "integrations"), read, func(ctx context.Context, in *integrationListInput) (*integrationListOutput, error) {
 		if s.opts.Integrations == nil {
-			return nil, errUnavailable("complete integration administration unavailable")
+			return nil, errIntegrationsUnavailable()
 		}
 		items, err := s.opts.Integrations.IntegrationList(ctx, in.Namespace)
 		if err != nil {
@@ -319,7 +319,7 @@ func (s *Server) registerIntegrations() {
 	base := "/integrations/{namespace}/{name}"
 	register(s, integrationOperation(http.MethodGet, base, "getIntegration", "Read exact integration status", "integrations"), read, func(ctx context.Context, in *IntegrationPath) (*integrationGetOutput, error) {
 		if s.opts.Integrations == nil {
-			return nil, errUnavailable("complete integration administration unavailable")
+			return nil, errIntegrationsUnavailable()
 		}
 		value, err := s.opts.Integrations.IntegrationGet(ctx, in.Namespace, in.Name)
 		if err != nil {
@@ -349,7 +349,7 @@ func (s *Server) registerIntegrations() {
 	op.MaxBodyBytes = 4096
 	register(s, op, perm{resource: "integrations", verb: "release"}, func(ctx context.Context, in *integrationReleaseInput) (*integrationReleaseOutput, error) {
 		if s.opts.Integrations == nil {
-			return nil, errUnavailable("complete integration administration unavailable")
+			return nil, errIntegrationsUnavailable()
 		}
 		result, err := s.opts.Integrations.IntegrationRelease(ctx, in.Namespace, in.Name, in.Body)
 		if err != nil {
@@ -359,9 +359,16 @@ func (s *Server) registerIntegrations() {
 	})
 }
 
+// errIntegrationsUnavailable refuses integration administration on a server
+// without the complete SQLite integration runtime (the Kubernetes driver).
+func errIntegrationsUnavailable() *Error {
+	return newError(http.StatusServiceUnavailable, KeyUnavailable, "complete integration administration unavailable",
+		"integrations run only on the SQLite store; see docs/deploy/integrations.md")
+}
+
 func (s *Server) executeIntegration(ctx context.Context, in IntegrationExecution) (*integrationExecutionOutput, error) {
 	if s.opts.Integrations == nil {
-		return nil, errUnavailable("complete integration administration unavailable")
+		return nil, errIntegrationsUnavailable()
 	}
 	result, err := s.opts.Integrations.IntegrationExecute(ctx, in)
 	if err != nil {
