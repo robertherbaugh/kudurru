@@ -25,14 +25,16 @@ import (
 )
 
 // A mounted node keeps answering its zones across canonical commits (D395).
-// Two direct UDP probes, one for a name of a primary zone and one for a
-// name of a forward zone, are sent every 5 ms for the whole run while the
-// test writes unrelated objects (a BlockList created and deleted), the
-// forward zone's query ACL, the primary zone's query ACL and the primary
-// zone's record set. Every probe must get an answer: no SERVFAIL and no
-// silence. The primary name must answer one of the addresses its record
-// set has had (the old or the new committed data), and after each write
-// the latest one.
+// Three direct UDP probes, one for a name of a primary zone, one for a name
+// of a primary child zone under it and one for a name of a forward zone,
+// are sent every 5 ms for the whole run while the test writes unrelated
+// objects (a BlockList created and deleted), the forward zone's query ACL,
+// the primary zone's query ACL and name servers, the child zone's query ACL
+// and the primary zone's record set. Every probe must get an answer: no
+// SERVFAIL and no silence. The primary name must answer one of the
+// addresses its record set has had (the old or the new committed data);
+// once a new address has been seen published and servedSuccessorGrace has
+// passed, a probe sent after that never gets an older address again.
 //
 // Before D395 (QUAL-OPEN3 fix-measure03, CORE-COMMIT-GAP measure01) a write
 // of a zone's own DNSZone answered that zone SERVFAIL for up to about 0.3 s:
@@ -146,14 +148,21 @@ func TestRunServeSQLiteZonesAnswerAcrossCommits(t *testing.T) {
 		}
 	}
 
-	const primaryName, forwardName = "probe.private.example.", "probe.forward.example."
+	const primaryName, childName, forwardName = "probe.private.example.", "probe.child.private.example.", "probe.forward.example."
 	primary := &public.DNSZone{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "DNSZone"}, ObjectMeta: metav1.ObjectMeta{Name: "gap-primary"}, Spec: public.DNSZoneSpec{ZoneName: "private.example.", Type: public.ZoneTypePrimary, Policy: public.ZonePolicy{QueryAccess: public.AccessAllow}}}
 	call(http.MethodPost, "/objects/dnszones", primary, http.StatusCreated, nil)
 	records := &public.DNSRecordSet{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "DNSRecordSet"}, ObjectMeta: metav1.ObjectMeta{Name: "gap-primary", Namespace: "default"}, Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: "gap-primary"}, Endpoints: []public.Endpoint{{DNSName: primaryName, RecordType: "A", Targets: []string{"192.0.2.81"}, RecordTTL: 300}}}}
 	call(http.MethodPost, "/objects/dnsrecordsets", records, http.StatusCreated, nil)
+	// A primary child of the probed primary: its own writes must not take
+	// the parent out of service, nor the parent's writes the child.
+	child := &public.DNSZone{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "DNSZone"}, ObjectMeta: metav1.ObjectMeta{Name: "gap-child"}, Spec: public.DNSZoneSpec{ZoneName: "child.private.example.", Type: public.ZoneTypePrimary, Policy: public.ZonePolicy{QueryAccess: public.AccessAllow}}}
+	call(http.MethodPost, "/objects/dnszones", child, http.StatusCreated, nil)
+	childRecords := &public.DNSRecordSet{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "DNSRecordSet"}, ObjectMeta: metav1.ObjectMeta{Name: "gap-child", Namespace: "default"}, Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: "gap-child"}, Endpoints: []public.Endpoint{{DNSName: childName, RecordType: "A", Targets: []string{"192.0.2.90"}, RecordTTL: 300}}}}
+	call(http.MethodPost, "/objects/dnsrecordsets", childRecords, http.StatusCreated, nil)
 	forward := &public.DNSZone{TypeMeta: metav1.TypeMeta{APIVersion: public.GroupVersion.String(), Kind: "DNSZone"}, ObjectMeta: metav1.ObjectMeta{Name: "gap-forward"}, Spec: public.DNSZoneSpec{ZoneName: "forward.example.", Type: public.ZoneTypeForward, Forward: &public.ForwardSpec{UpstreamGroup: "default"}, Policy: public.ZonePolicy{QueryAccess: public.AccessAllow}}}
 	call(http.MethodPost, "/objects/dnszones", forward, http.StatusCreated, nil)
 	awaitMountedDNS(t, cfg, primaryName, "192.0.2.81")
+	awaitMountedDNS(t, cfg, childName, "192.0.2.90")
 	// A forwarded answer is not authoritative, so awaitMountedDNS does not
 	// apply to it.
 	for deadline := time.Now().Add(time.Minute); ; {
@@ -172,11 +181,16 @@ func TestRunServeSQLiteZonesAnswerAcrossCommits(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	var (
-		mu        sync.Mutex
-		committed = []string{"192.0.2.81"}
-		probes    = map[string]int{}
-		failures  []string
-		kinds     = map[string]int{}
+		mu sync.Mutex
+		// committed lists every address the primary name's record set has
+		// had, oldest first; superseded[i] is when committed[i+1] was seen
+		// published, after which committed[i] may only answer a probe sent
+		// within servedSuccessorGrace.
+		committed  = []string{"192.0.2.81"}
+		superseded []time.Time
+		probes     = map[string]int{}
+		failures   []string
+		kinds      = map[string]int{}
 	)
 	address := cfg.Listeners.DNS[0].Address
 	probe := func(name string) {
@@ -200,8 +214,14 @@ func TestRunServeSQLiteZonesAnswerAcrossCommits(t *testing.T) {
 				got = "not an A record"
 			case name == forwardName && a.A.String() != "192.0.2.80":
 				got = "forwarded " + a.A.String()
+			case name == childName && a.A.String() != "192.0.2.90":
+				got = "child " + a.A.String()
 			case name == primaryName && !slices.Contains(committed, a.A.String()):
 				got = "uncommitted " + a.A.String()
+			case name == primaryName:
+				if i := slices.Index(committed, a.A.String()); i < len(superseded) && sent.After(superseded[i].Add(servedSuccessorGrace)) {
+					got = fmt.Sprintf("superseded %s (replaced at %s)", a.A.String(), superseded[i].Format("15:04:05.000"))
+				}
 			}
 		}
 		if got != "" {
@@ -214,7 +234,7 @@ func TestRunServeSQLiteZonesAnswerAcrossCommits(t *testing.T) {
 	}
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
-	for _, name := range []string{primaryName, forwardName} {
+	for _, name := range []string{primaryName, childName, forwardName} {
 		wg.Go(func() {
 			tick := time.NewTicker(5 * time.Millisecond)
 			defer tick.Stop()
@@ -245,6 +265,19 @@ func TestRunServeSQLiteZonesAnswerAcrossCommits(t *testing.T) {
 		call(http.MethodGet, "/objects/dnszones/gap-primary", nil, http.StatusOK, primary)
 		primary.Spec.Policy = public.ZonePolicy{QueryAccess: public.AccessAllow}
 		write(http.MethodPut, "/objects/dnszones/gap-primary", primary, http.StatusOK)
+		// A name-server change rewrites the zone's apex: the parent keeps
+		// answering its committed head until the driver commits the new one.
+		call(http.MethodGet, "/objects/dnszones/gap-primary", nil, http.StatusOK, primary)
+		primary.Spec.Nameservers = []string{fmt.Sprintf("ns%d.example.net.", r)}
+		write(http.MethodPut, "/objects/dnszones/gap-primary", primary, http.StatusOK)
+
+		// The child's own writes, while the parent and the child are probed.
+		call(http.MethodGet, "/objects/dnszones/gap-child", nil, http.StatusOK, child)
+		child.Spec.Policy = public.ZonePolicy{QueryAccess: public.AccessUseNetworkACL, QueryACL: []string{"127.0.0.0/8"}}
+		write(http.MethodPut, "/objects/dnszones/gap-child", child, http.StatusOK)
+		call(http.MethodGet, "/objects/dnszones/gap-child", nil, http.StatusOK, child)
+		child.Spec.Policy = public.ZonePolicy{QueryAccess: public.AccessAllow}
+		write(http.MethodPut, "/objects/dnszones/gap-child", child, http.StatusOK)
 
 		next := fmt.Sprintf("192.0.2.%d", 100+r)
 		mu.Lock()
@@ -254,6 +287,11 @@ func TestRunServeSQLiteZonesAnswerAcrossCommits(t *testing.T) {
 		records.Spec.Endpoints[0].Targets = []string{next}
 		write(http.MethodPut, "/objects/dnsrecordsets/default/gap-primary", records, http.StatusOK)
 		awaitMountedDNS(t, cfg, primaryName, next)
+		mu.Lock()
+		for len(superseded) < len(committed)-1 {
+			superseded = append(superseded, time.Now())
+		}
+		mu.Unlock()
 
 		call(http.MethodGet, "/objects/dnszones/gap-forward", nil, http.StatusOK, forward)
 		forward.Spec.Policy = public.ZonePolicy{QueryAccess: public.AccessUseNetworkACL, QueryACL: []string{"127.0.0.0/8"}}
@@ -271,8 +309,8 @@ func TestRunServeSQLiteZonesAnswerAcrossCommits(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	t.Logf("%d writes (%d setup requests asked again after 503); %d probes of the primary name, %d of the forward name; %d without a correct answer %v", writes, pending, probes[primaryName], probes[forwardName], len(failures), kinds)
-	if probes[primaryName] < 1000 || probes[forwardName] < 1000 {
+	t.Logf("%d writes (%d setup requests asked again after 503); %d probes of the primary name, %d of the child name, %d of the forward name; %d without a correct answer %v", writes, pending, probes[primaryName], probes[childName], probes[forwardName], len(failures), kinds)
+	if probes[primaryName] < 1000 || probes[childName] < 1000 || probes[forwardName] < 1000 {
 		t.Fatalf("too few probes: %v", probes)
 	}
 	// A SERVFAIL or a wrong answer is never a matter of timing. Under the
@@ -281,7 +319,7 @@ func TestRunServeSQLiteZonesAnswerAcrossCommits(t *testing.T) {
 	// probes are bounded by one per commit; `make test` (hack/go-test.py,
 	// NORACE_TESTS) runs this test a second time without the race detector,
 	// where every probe must be answered.
-	silent := kinds[primaryName+" no response"] + kinds[forwardName+" no response"]
+	silent := kinds[primaryName+" no response"] + kinds[childName+" no response"] + kinds[forwardName+" no response"]
 	if raceEnabled && silent == len(failures) && silent <= writes {
 		return
 	}
