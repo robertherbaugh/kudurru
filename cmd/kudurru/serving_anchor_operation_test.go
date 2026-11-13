@@ -44,6 +44,9 @@ func anchorOperationFixtureTopology(t *testing.T, endpoint string, seeds []strin
 		t.Fatal(err)
 	}
 	cfg.Auth.IdentityProviders = nil
+	// Set before the runtime starts: its preparations read the host
+	// configuration, and joinPrimaryOn keeps a directory that is already set.
+	cfg.Node.DataDir = t.TempDir()
 	if topology != "" {
 		cfg.Upstreams.Recursion.ManagedTopology = topology
 	}
