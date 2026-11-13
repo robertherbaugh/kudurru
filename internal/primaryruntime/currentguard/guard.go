@@ -214,7 +214,19 @@ func (o *Owner) checkBackground(ctx context.Context, tx *sqlite.CommandTx, p Pin
 		if err != nil {
 			return err
 		}
-		if c.Source.Name != l.Spec.Zone.ObjectName || token.UID != l.Spec.Source.UID || token.ResourceVersion != l.Spec.Source.ResourceVersion || token.IntentDigest != l.Spec.Source.IntentDigest || l.Spec.Source.Removed {
+		// A boundary command (a child's fence in this parent's head, or its
+		// release) changes nothing in the head but that child's system
+		// reservation, and nothing below reads the source's policy for it.
+		// It needs this exact lifecycle and the same undeleted source zone
+		// (checked here and below), not the source's latest revision, as the
+		// adapter's boundarySource does. Requiring the revision deadlocked a
+		// parent whose DNSZone moved on while a child was unfenced: its own
+		// refresh needs every desired child fenced (CORE-OPEN4).
+		exact := token.ResourceVersion == l.Spec.Source.ResourceVersion && token.IntentDigest == l.Spec.Source.IntentDigest
+		if !exact && boundary(c.Reason) && c.Source.DeletionTimestamp.IsZero() {
+			exact = true
+		}
+		if c.Source.Name != l.Spec.Zone.ObjectName || token.UID != l.Spec.Source.UID || !exact || l.Spec.Source.Removed {
 			return pr.ErrConflict
 		}
 		if !retiring && (string(c.Source.UID) != l.Spec.Zone.UID || c.Source.Spec.Type != l.Spec.Type || c.Source.Spec.ZoneName != l.Spec.Zone.Apex) {
@@ -260,4 +272,9 @@ func (o *Owner) checkBackground(ctx context.Context, tx *sqlite.CommandTx, p Pin
 	default:
 		return pr.ErrUnavailable
 	}
+}
+
+// boundary reports the reasons of a child's boundary command in its parent.
+func boundary(reason string) bool {
+	return reason == "parent-fence" || reason == "late-parent-fence" || reason == "parent-release"
 }
