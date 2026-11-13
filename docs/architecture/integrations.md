@@ -89,7 +89,10 @@ The dashboard's Integrations page (`/integrations`,
 holds no list of providers. Its forms come from `GET
 /integrations/manifests`: the provider block's JSON Schema becomes the C1
 shape that `ShapeField` renders (`dashboard/src/lib/integrations.ts`), with
-the manifest's `refused` fields left out and a type the node does not run
+the manifest's `fieldLimits` applied (a `refused` field is left out and
+listed with the status reason and message the manifest gives; an `inert`
+field is left out when the field it `requires` is not offered, and is
+otherwise offered with its message) and a type the node does not run
 listed but not selectable; each credential key is a reference of a form in
 `credentialSources` (a select of the granted names for a holder of
 `integrations.secrets`), never a value. Writes are the object routes
@@ -114,10 +117,15 @@ by `integrations.test.ts`: the publish rule (`PUBLISH_RULES`, the server's
 `integrationPublishes`: a Cloudflare block, a webhook with domains, a UniFi
 block with `push.mirrorRecords.enabled`), the destination fields, the
 conditions between UniFi push fields that `validatePush` checks
-(`FIELD_CONDITIONS`), and the reason a refused field is refused. On
-Kubernetes the UniFi push switches are refused, so the push block is not
-offered (its DHCP parameters mean nothing without their switch) and the
-form names `UniFiPushUnsupportedOnKubernetes`.
+(`FIELD_CONDITIONS`). Which field a node refuses and why is the
+manifest's, not the dashboard's: on Kubernetes the manifest refuses
+`spec.unifi.inventory` and the three UniFi write switches and lists the
+DHCP and record-mirror settings as inert, so the push block is not offered
+and the form names `RecordPublicationUnsupportedOnKubernetes` and
+`UniFiPushUnsupportedOnKubernetes` with the manifest's messages. On SQLite
+the list falls back to the object's written Ready condition while the host
+has not yet captured its own status write (`statusKnown: false` for at
+most one capture interval).
 
 ```mermaid
 sequenceDiagram

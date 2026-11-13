@@ -15,8 +15,8 @@ import {
   DELETION_POLICY_OPTIONS,
   humanize,
   isDestinationField,
+  notOfferedFields,
   providerShape,
-  refusedFields,
   type CredentialDraft,
   type CredentialForm,
   type IntegrationDraft,
@@ -39,6 +39,7 @@ export interface SettingsFieldsProps {
 /** The provider block and the shared fields of an instance. */
 export function SettingsFields({ manifest, draft, onChange, isDisabled, destinationLockReason }: SettingsFieldsProps) {
   const shape = providerShape(manifest);
+  const notOffered = notOfferedFields(manifest);
   const config = (draft.config && typeof draft.config === 'object' ? draft.config : {}) as Record<string, unknown>;
   return (
     <VStack gap={4}>
@@ -63,11 +64,11 @@ export function SettingsFields({ manifest, draft, onChange, isDisabled, destinat
         ) : (
           <Text type="supporting">This provider has no settings of its own.</Text>
         )}
-        {manifest.refused.length ? (
+        {notOffered.length ? (
           <VStack gap={1} data-testid="refused-fields">
-            {refusedFields(manifest).map((g) => (
-              <Text key={g.reason} type="supporting" display="block">
-                Not offered on this node: {g.fields.join(', ')}. {g.text}
+            {notOffered.map((g) => (
+              <Text key={`${g.effect} ${g.reason} ${g.message}`} type="supporting" display="block">
+                {g.effect === 'refused' ? 'Not offered on this node (refused)' : 'Not offered on this node (no effect here)'}: {g.fields.join(', ')}. {g.message}
                 {g.reason ? ` (${g.reason})` : ''}
               </Text>
             ))}

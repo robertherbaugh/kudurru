@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { Integration, IntegrationManifest } from '../api/types';
+import type { Integration, IntegrationFieldLimit, IntegrationManifest } from '../api/types';
 import {
   buildIntegration,
   commandErrorText,
@@ -15,14 +15,15 @@ import {
   humanize,
   needsSecrets,
   newDraft,
+  notOfferedFields,
   providerShape,
   PUBLISH_RULES,
   publishes,
-  refusedFields,
   schemaError,
   type JSONSchema,
 } from './integrations';
 import { ApiError } from '../api/client';
+import { formatError } from '../components/fields/formats';
 import { mockManifests } from '../mocks/integrations';
 import { emptyDraft } from './shapes';
 import type { UiShape } from './settingsMeta';
@@ -36,7 +37,7 @@ function goSchema(provider: string): JSONSchema {
 }
 
 function manifest(type: string, over: Partial<IntegrationManifest> = {}): IntegrationManifest {
-  return { type, displayName: type, version: '1', capabilities: [], ioClass: 'local_polling', configField: type, configSchema: goSchema(type), credentials: [], supported: true, refused: [], ...over };
+  return { type, displayName: type, version: '1', capabilities: [], ioClass: 'local_polling', configField: type, configSchema: goSchema(type), credentials: [], supported: true, refused: [], fieldLimits: [], ...over };
 }
 
 const fieldNames = (m: IntegrationManifest) => (providerShape(m).fields ?? []).map((f) => f.name);
@@ -52,7 +53,12 @@ describe('manifest-driven provider shapes', () => {
     expect(zones?.items?.fields?.find((f) => f.name === 'translate')?.type).toBe('map');
 
     // SQLite runs every UniFi write (D401): the push block is offered whole.
-    const unifiSQLite = manifest('unifi', { refused: mockManifests('sqlite').find((x) => x.type === 'unifi')?.refused ?? ['?'] });
+    const limitsOf = (driver: 'sqlite' | 'kube') => {
+      const m = mockManifests(driver).find((x) => x.type === 'unifi');
+      return { refused: m?.refused ?? ['?'], fieldLimits: m?.fieldLimits ?? [] };
+    };
+    const unifiSQLite = manifest('unifi', limitsOf('sqlite'));
+    expect(notOfferedFields(unifiSQLite)).toEqual([]);
     expect(fieldNames(unifiSQLite)).toEqual(['endpoint', 'tlsFingerprint', 'site', 'poll', 'legacy', 'inventory', 'groups', 'push']);
     const push = providerShape(unifiSQLite).fields?.find((f) => f.name === 'push');
     expect(push?.type).toBe('object');
@@ -61,21 +67,63 @@ describe('manifest-driven provider shapes', () => {
     expect((push?.fields ?? []).map((f) => [f.name, f.type])).toEqual([['dhcpDNSServers', 'bool'], ['dnsServers', 'string[]'], ['networks', 'string[]'], ['clientActions', 'bool'], ['mirrorRecords', 'object']]);
     expect(pushField('dnsServers')?.items?.format).toBe('ipv4');
     expect(pushField('dnsServers')?.label).toBe('DNS servers');
+    // The schema's description is the field's help.
+    expect(pushField('dnsServers')?.help).toMatch(/canonical dotted form.*0\.0\.0\.0, loopback, multicast and 255\.255\.255\.255/);
     const mirror = pushField('mirrorRecords');
     expect((mirror?.fields ?? []).map((f) => [f.name, f.type])).toEqual([['enabled', 'bool'], ['types', 'string[]'], ['domains', 'string[]'], ['labels', 'map'], ['exclude', 'string[]']]);
     expect(mirror?.fields?.find((f) => f.name === 'types')?.items?.enum?.map((o) => o.value)).toEqual(['A', 'CNAME']);
-    // Kubernetes refuses inventory publication and every UniFi write; the
-    // DHCP parameters mean nothing without their switch, so no push field is left.
-    const unifiKube = manifest('unifi', { refused: mockManifests('kube').find((x) => x.type === 'unifi')?.refused ?? [] });
+    // Kubernetes refuses inventory publication and the three UniFi write
+    // switches; the manifest names the settings only those switches use as
+    // inert and requiring them, so no push field is left.
+    const unifiKube = manifest('unifi', limitsOf('kube'));
     expect(fieldNames(unifiKube)).toEqual(['endpoint', 'tlsFingerprint', 'site', 'poll', 'legacy', 'groups']);
-    expect(refusedFields(unifiKube)).toEqual([
-      { reason: 'RecordPublicationUnsupportedOnKubernetes', text: expect.stringMatching(/Record publication/), fields: ['spec.unifi.inventory'] },
-      { reason: 'UniFiPushUnsupportedOnKubernetes', text: expect.stringMatching(/SQLite only/), fields: ['spec.unifi.push.dhcpDNSServers', 'spec.unifi.push.mirrorRecords', 'spec.unifi.push.clientActions'] },
+    expect(notOfferedFields(unifiKube)).toEqual([
+      { effect: 'refused', reason: 'RecordPublicationUnsupportedOnKubernetes', message: expect.stringMatching(/^UniFi DNS record publication \(spec\.unifi\.inventory\)/), fields: ['spec.unifi.inventory'] },
+      { effect: 'refused', reason: 'UniFiPushUnsupportedOnKubernetes', message: expect.stringMatching(/run only on the SQLite store/), fields: ['spec.unifi.push.dhcpDNSServers', 'spec.unifi.push.mirrorRecords.enabled', 'spec.unifi.push.clientActions'] },
+      { effect: 'inert', reason: '', message: expect.stringMatching(/^Used only by spec\.unifi\.push\.dhcpDNSServers/), fields: ['spec.unifi.push.dnsServers', 'spec.unifi.push.networks'] },
+      { effect: 'inert', reason: '', message: expect.stringMatching(/^Used only by spec\.unifi\.push\.mirrorRecords\.enabled/), fields: ['spec.unifi.push.mirrorRecords.types', 'spec.unifi.push.mirrorRecords.domains', 'spec.unifi.push.mirrorRecords.labels', 'spec.unifi.push.mirrorRecords.exclude'] },
     ]);
     expect(providerShape(unifiKube).fields?.find((f) => f.name === 'poll')?.type).toBe('duration');
     expect(providerShape(unifiKube).fields?.find((f) => f.name === 'endpoint')?.format).toBe('url');
 
     expect(fieldNames(manifest('webhook'))).toEqual(['endpoint', 'timeout', 'domains', 'policy']);
+  });
+
+  it('offers or hides each field as the manifest\'s field limits say', () => {
+    const push = (m: IntegrationManifest) => providerShape(m).fields?.find((f) => f.name === 'push');
+    // Only the mirror switch is refused: its settings require it and go too,
+    // the DHCP and client switches and their settings stay.
+    const mirrorOff = manifest('unifi', {
+      refused: ['spec.unifi.push.mirrorRecords.enabled'],
+      fieldLimits: [
+        { field: 'spec.unifi.push.mirrorRecords.enabled', effect: 'refused', reason: 'R', message: 'Refused here.' },
+        { field: 'spec.unifi.push.mirrorRecords.domains', effect: 'inert', requires: 'spec.unifi.push.mirrorRecords.enabled', message: 'Needs the mirror.' },
+        // An inert field whose required field is offered is offered, with its message.
+        { field: 'spec.unifi.push.networks', effect: 'inert', requires: 'spec.unifi.push.dhcpDNSServers', message: 'Only with DHCP DNS servers.' },
+      ],
+    });
+    const p = push(mirrorOff);
+    expect((p?.fields ?? []).map((f) => f.name)).toEqual(['dhcpDNSServers', 'dnsServers', 'networks', 'clientActions', 'mirrorRecords']);
+    expect((p?.fields?.find((f) => f.name === 'mirrorRecords')?.fields ?? []).map((f) => f.name)).toEqual(['types', 'labels', 'exclude']);
+    expect(p?.fields?.find((f) => f.name === 'networks')?.help).toBe('Only with DHCP DNS servers.');
+    expect(notOfferedFields(mirrorOff)).toEqual([
+      { effect: 'refused', reason: 'R', message: 'Refused here.', fields: ['spec.unifi.push.mirrorRecords.enabled'] },
+      { effect: 'inert', reason: '', message: 'Needs the mirror.', fields: ['spec.unifi.push.mirrorRecords.domains'] },
+    ]);
+    // An inert field that requires an inert field left out is left out too.
+    const chained = manifest('unifi', {
+      refused: ['spec.unifi.push.dhcpDNSServers'],
+      fieldLimits: [
+        { field: 'spec.unifi.push.dhcpDNSServers', effect: 'refused', reason: 'R', message: 'Refused here.' },
+        { field: 'spec.unifi.push.networks', effect: 'inert', requires: 'spec.unifi.push.dnsServers', message: 'Needs the servers.' },
+        { field: 'spec.unifi.push.dnsServers', effect: 'inert', requires: 'spec.unifi.push.dhcpDNSServers', message: 'Needs DHCP.' },
+      ],
+    });
+    expect((push(chained)?.fields ?? []).map((f) => f.name)).toEqual(['clientActions', 'mirrorRecords']);
+    // A refused path without a limit (an older server) is still left out.
+    const bare = manifest('unifi', { refused: ['spec.unifi.inventory'] });
+    expect(fieldNames(bare)).not.toContain('inventory');
+    expect(notOfferedFields(bare)).toEqual([{ effect: 'refused', reason: '', message: 'This node refuses an instance that sets it.', fields: ['spec.unifi.inventory'] }]);
   });
 
   it('validates a block against its schema', () => {
@@ -91,10 +139,26 @@ describe('manifest-driven provider shapes', () => {
     const base = { endpoint: 'https://unifi.lan' };
     expect(schemaError(unifi, { ...base, push: { dnsServers: ['192.0.2.53', '192.0.2.54'] } }, '')).toBeNull();
     expect(schemaError(unifi, { ...base, push: { dnsServers: ['2001:db8::53'] } }, '')).toBe('Push DNS servers #1: Not an IPv4 address');
+    expect(schemaError(unifi, { ...base, push: { dnsServers: ['192.0.2.053'] } }, '')).toBe('Push DNS servers #1: Not an IPv4 address');
     expect(schemaError(unifi, { ...base, push: { dnsServers: ['192.0.2.1', '192.0.2.2', '192.0.2.3', '192.0.2.4', '192.0.2.5'] } }, '')).toMatch(/at most 4 entries/);
     expect(schemaError(unifi, { ...base, push: { networks: ['LAN', 'LAN'] } }, '')).toMatch(/Push Networks: lists an entry twice/);
     expect(schemaError(unifi, { ...base, push: { mirrorRecords: { types: ['AAAA'] } } }, '')).toMatch(/one of A, CNAME/);
     expect(schemaError(unifi, { ...base, push: { mirrorRecords: { enabled: true, domains: ['example.com'], labels: { mirror: 'unifi' } } } }, '')).toBeNull();
+  });
+
+  it('refuses exactly the DNS server forms the Go schema pattern refuses', () => {
+    const items = goSchema('unifi').properties?.push?.properties?.dnsServers?.items ?? {};
+    expect(items.format).toBe('ipv4');
+    const pattern = new RegExp(items.pattern ?? '(?!)');
+    // The forms ee/integration/unifi TestManifestDNSServerPatternMatchesValidation tries, and the addresses it refuses beyond the form.
+    const forms = ['192.0.2.53', '10.0.0.1', '255.255.255.254', '1.2.3.4', '192.0.2.053', '01.2.3.4', '1.2.3', '1.2.3.4.5', '256.1.1.1', '::1', ' 1.2.3.4', '1.2.3.4\n', '1.02.3.4', '0.0.0.0', '127.0.0.1', '224.0.0.1', '255.255.255.255'];
+    for (const v of forms) {
+      // The check of the built block agrees with the pattern exactly.
+      expect(schemaError(items, v, 'x') === null, v).toBe(pattern.test(v));
+      // A list row is trimmed before it is sent (lib/shapes fromDraft), so
+      // its inline check (format ipv4) agrees with the pattern on what is sent.
+      expect(formatError('ipv4', v) === null, v).toBe(pattern.test(v.trim()));
+    }
   });
 
   it('checks the conditions between push fields that the provider checks', () => {
@@ -178,26 +242,55 @@ describe('manifest-driven provider shapes', () => {
       const caps = /Capabilities: \[\]integration\.Capability\{([^}]*)\}/.exec(goSource(`ee/integration/${m.type}/manifest.go`))?.[1] ?? '';
       expect(m.capabilities, m.type).toEqual([...caps.matchAll(/integration\.Cap(\w+)/g)].map((x) => x[1]));
     }
-    // cmd/kudurru integration_manifests.go, per driver.
+    // cmd/kudurru integration_manifests.go, per driver: the field limits as
+    // the Go code writes them, with each reason constant and message resolved.
     const src = goSource('cmd/kudurru/integration_manifests.go');
+    const kubeSrc = goSource('cmd/kudurru/integration_kube.go');
     expect(src).toMatch(/sqliteIntegrationLimits = integrationDriverLimits\{\}/);
-    const kube = /kubeIntegrationLimits\s*=\s*integrationDriverLimits\{([\s\S]*?)\n\t\}/.exec(src)?.[1] ?? '';
-    const pairs = (field: string) => /map\[string\](?:\[\])?string\{(.*)\}/.exec(kube.split('\n').find((l) => l.trim().startsWith(`${field}:`)) ?? '')?.[1] ?? '';
-    const refused: Record<string, string[]> = Object.fromEntries([...pairs('refused').matchAll(/"(\w+)": \{([^}]*)\}/g)].map((x) => [x[1] ?? '', [...(x[2] ?? '').matchAll(/"([^"]+)"/g)].map((y) => y[1] ?? '')]));
-    const unsupported: Record<string, string> = Object.fromEntries([...pairs('unsupported').matchAll(/"(\w+)": (\w+)/g)].map((x) => [x[1] ?? '', x[2] ?? '']));
-    expect(Object.keys(refused)).toEqual(['unifi']);
-    expect(unsupported).toEqual({ webhook: 'reasonUnsupportedOnKubernetes' });
+    const kube = /kubeIntegrationLimits\s*=\s*integrationDriverLimits\{([\s\S]*?)\n\t\}\n\)/.exec(src)?.[1] ?? '';
+    const constant = (name: string) => {
+      const v = new RegExp(`\\b${name}\\s*=\\s*("(?:[^"\\\\]|\\\\.)*")`).exec(src + kubeSrc)?.[1];
+      if (!v) throw new Error(`no constant ${name}`);
+      return JSON.parse(v) as string;
+    };
+    const refusalMessage = (reason: string) => {
+      const v = new RegExp(`case ${reason}:\\n\\t\\treturn ("(?:[^"\\\\]|\\\\.)*")`).exec(kubeSrc)?.[1];
+      if (!v) throw new Error(`no message for ${reason}`);
+      return JSON.parse(v) as string;
+    };
+    const message = (expr: string) => {
+      const call = /^kubeRefusalMessage\((\w+), ""\)$/.exec(expr);
+      if (call) return refusalMessage(call[1] ?? '');
+      return expr.startsWith('"') ? (JSON.parse(expr) as string) : constant(expr);
+    };
+    const fields = /fields: map\[string\]\[\]api\.IntegrationFieldLimit\{"(\w+)": \{([\s\S]*?)\n\t\t\}\}/.exec(kube);
+    expect(fields?.[1]).toBe('unifi');
+    const goLimits = [...(fields?.[2] ?? '').matchAll(/^\t+\{(.*)\},$/gm)].map((line): IntegrationFieldLimit => {
+      const body = line[1] ?? '';
+      const str = (k: string) => new RegExp(`${k}: "([^"]*)"`).exec(body)?.[1];
+      const reason = /Reason: (\w+)/.exec(body)?.[1];
+      const requires = str('Requires');
+      const effect = str('Effect');
+      expect(effect === 'refused' || effect === 'inert', body).toBe(true);
+      return { field: str('Field') ?? '', effect: effect === 'inert' ? 'inert' : 'refused', ...(reason ? { reason: constant(reason) } : {}), ...(requires ? { requires } : {}), message: message(/Message: (.*)$/.exec(body)?.[1] ?? '') };
+    });
+    expect(goLimits).toHaveLength(10);
+    const unsupported: Record<string, string> = Object.fromEntries([...(/unsupported: map\[string\]string\{(.*)\}/.exec(kube)?.[1] ?? '').matchAll(/"(\w+)": (\w+)/g)].map((x) => [x[1] ?? '', constant(x[2] ?? '')]));
+    expect(unsupported).toEqual({ webhook: 'UnsupportedOnKubernetes' });
     for (const m of mockManifests('kube')) {
-      expect(m.refused, m.type).toEqual(refused[m.type] ?? []);
+      const limits = m.type === 'unifi' ? goLimits : [];
+      expect(m.fieldLimits, m.type).toEqual(limits);
+      // refused keeps its shape: the fields whose limit refuses.
+      expect(m.refused, m.type).toEqual(limits.filter((l) => l.effect === 'refused').map((l) => l.field));
       expect(m.supported, m.type).toBe(!unsupported[m.type]);
+      expect(m.reason, m.type).toBe(unsupported[m.type]);
     }
     for (const m of mockManifests('sqlite')) {
       expect(m.refused, m.type).toEqual([]);
+      expect(m.fieldLimits, m.type).toEqual([]);
       expect(m.supported, m.type).toBe(true);
     }
-    // The reasons the form names for the refused fields are the host's.
-    const kubeSrc = goSource('cmd/kudurru/integration_kube.go');
-    expect(kubeSrc).toMatch(/reasonPushUnsupported\s+= "UniFiPushUnsupportedOnKubernetes"/);
+    // The refused switches are the ones the host refuses for those reasons.
     expect(kubeSrc).toMatch(/d\.Spec\.UniFi\.Inventory != nil:\n\t\treturn reasonRecordsUnsupported/);
     expect(kubeSrc).toMatch(/\(d\.Spec\.UniFi\.Push\.DHCPDNSServers \|\| d\.Spec\.UniFi\.Push\.MirrorRecords\.Enabled \|\| d\.Spec\.UniFi\.Push\.ClientActions\):[^\n]*\n(?:\t\t\/\/[^\n]*\n)*\t\treturn reasonPushUnsupported/);
   });

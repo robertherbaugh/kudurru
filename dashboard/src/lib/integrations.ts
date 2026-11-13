@@ -2,16 +2,18 @@
 // instance is derived from its provider's manifest (GET
 // /integrations/manifests), never from a list of providers in the
 // dashboard. The provider block's JSON Schema becomes a C1 shape that
-// ShapeField renders; the fields this node's host refuses (manifest
-// `refused`) are left out, so the form never offers them. Credentials are
-// references (a file path or an environment name) of the forms the node
-// resolves; there is no field for a value. What a schema cannot say is
-// kept here by provider block and compared with the Go code by
-// lib/integrations.test.ts: the publish rule (PUBLISH_RULES), the
-// destination fields, the conditions between fields (FIELD_CONDITIONS) and
-// why a refused field is refused.
+// ShapeField renders. The manifest's fieldLimits (D384) say per field what
+// this node's host does differently: a refused field is left out, so the
+// form never offers it, and its reason and message are shown; an inert
+// field is left out when the field it requires is not offered, and otherwise
+// offered with its message. Credentials are references (a file path or an
+// environment name) of the forms the node resolves; there is no field for a
+// value. What a manifest cannot say is kept here by provider block and
+// compared with the Go code by lib/integrations.test.ts: the publish rule
+// (PUBLISH_RULES), the destination fields and the conditions between fields
+// (FIELD_CONDITIONS).
 import { ApiError } from '../api/client';
-import type { CredentialReference, Integration, IntegrationManifest, IntegrationManifests, IntegrationSpec, IntegrationSummary, SettingFormat } from '../api/types';
+import type { CredentialReference, Integration, IntegrationFieldLimit, IntegrationManifest, IntegrationManifests, IntegrationSpec, IntegrationSummary, SettingFormat } from '../api/types';
 import { FORMAT_EXAMPLES, formatError } from '../components/fields/formats';
 import { fromDraft, shapeError, toDraft } from './shapes';
 import type { UiShape } from './settingsMeta';
@@ -48,7 +50,7 @@ export const CAPABILITY_LABELS: Record<string, string> = {
 export const REASON_TEXT: Record<string, string> = {
   UnsupportedOnKubernetes: 'This provider does not run on Kubernetes.',
   RecordPublicationUnsupportedOnKubernetes: 'Record publication from this provider does not run on Kubernetes.',
-  UniFiPushUnsupportedOnKubernetes: 'UniFi writes (spec.unifi.push) run on SQLite only: on Kubernetes an Integration that enables one is refused.',
+  UniFiPushUnsupportedOnKubernetes: 'UniFi writes (spec.unifi.push dhcpDNSServers, mirrorRecords.enabled and clientActions) run on SQLite only: on Kubernetes an Integration that turns one on is refused.',
   NamespaceNotAllowed: 'Only Integrations in the release namespace run on Kubernetes.',
   LicenseUnavailable: 'The license does not cover integrations.',
   Suspended: 'Suspended (spec.suspend).',
@@ -88,16 +90,19 @@ function helpOf(s: JSONSchema): string | undefined {
   if (s.pattern?.startsWith('^https://')) parts.push('An https:// URL.');
   if (s.pattern && /^\^sha256:/.test(s.pattern)) parts.push('sha256: followed by 64 hex digits.');
   if (s.pattern === '^[a-f0-9]{32}$') parts.push('32 lower-case hex digits.');
+  if (s.pattern && s.format === 'ipv4') parts.push('An IPv4 address in canonical dotted form, without leading zeros.');
   return parts.length ? parts.join(' ') : undefined;
 }
 
 /**
  * The C1 shape of a JSON Schema node, or null when the node (at `path`)
- * is refused by this node's host or cannot be edited structurally.
+ * is not offered on this node (`hidden`) or cannot be edited structurally.
+ * `notes` adds a sentence to the help of a field by path (an inert field's
+ * message).
  */
-export function schemaShape(s: JSONSchema, path: string, refused: ReadonlySet<string>): UiShape | null {
-  if (refused.has(path)) return null;
-  const help = helpOf(s);
+export function schemaShape(s: JSONSchema, path: string, hidden: ReadonlySet<string>, notes: ReadonlyMap<string, string> = new Map()): UiShape | null {
+  if (hidden.has(path)) return null;
+  const help = [helpOf(s), notes.get(path)].filter(Boolean).join(' ') || undefined;
   switch (typeOf(s)) {
     case 'boolean':
       return { type: 'bool', help };
@@ -118,7 +123,7 @@ export function schemaShape(s: JSONSchema, path: string, refused: ReadonlySet<st
         const format = formatOf(items);
         return { type: 'string[]', items: { type: 'string', ...(items.enum?.length ? { enum: items.enum.map((v) => ({ value: String(v), label: String(v) })) } : {}), ...(format ? { format } : {}) }, help };
       }
-      const item = schemaShape(items, `${path}[]`, refused);
+      const item = schemaShape(items, `${path}[]`, hidden, notes);
       return item ? { type: 'list', items: item, help } : null;
     }
     case 'object': {
@@ -126,7 +131,7 @@ export function schemaShape(s: JSONSchema, path: string, refused: ReadonlySet<st
         const required = new Set(s.required ?? []);
         const fields: NonNullable<UiShape['fields']> = [];
         for (const [name, child] of Object.entries(s.properties)) {
-          const shape = schemaShape(child, `${path}.${name}`, refused);
+          const shape = schemaShape(child, `${path}.${name}`, hidden, notes);
           if (!shape) continue;
           // An optional choice starts unset: the provider's default applies.
           if (!required.has(name) && shape.type === 'string' && shape.enum?.length) shape.enum = [{ value: '', label: 'Provider default' }, ...shape.enum];
@@ -135,7 +140,7 @@ export function schemaShape(s: JSONSchema, path: string, refused: ReadonlySet<st
         return fields.length ? { type: 'object', fields, help } : null;
       }
       if (s.additionalProperties && typeof s.additionalProperties === 'object') {
-        const values = schemaShape(s.additionalProperties, `${path}.*`, refused);
+        const values = schemaShape(s.additionalProperties, `${path}.*`, hidden, notes);
         return values ? { type: 'map', keys: { type: 'string' }, values, help, keyLabel: 'Key' } : null;
       }
       return null;
@@ -161,52 +166,79 @@ export function configSchema(m: IntegrationManifest): JSONSchema {
  * Conditions between fields of a provider block that its JSON Schema
  * cannot state; the provider checks them (ee/integration/unifi
  * validatePush, D401) and refuses the instance. When `when` is on, every
- * `needs` field must be set. With `only`, the `needs` fields mean nothing
- * without `when`, so they are not offered where the node refuses `when`.
- * lib/integrations.test.ts keeps them in step with the Go checks.
+ * `needs` field must be set. lib/integrations.test.ts keeps them in step
+ * with the Go checks. Which fields a node does not run is the manifest's
+ * (fieldLimits), not this list's.
  */
-export const FIELD_CONDITIONS: readonly { when: string; needs: readonly string[]; only?: boolean; message: string }[] = [
-  { when: 'spec.unifi.push.dhcpDNSServers', needs: ['spec.unifi.push.dnsServers', 'spec.unifi.push.networks'], only: true, message: 'Push: DHCP DNS servers needs at least one DNS server and one network' },
+export const FIELD_CONDITIONS: readonly { when: string; needs: readonly string[]; message: string }[] = [
+  { when: 'spec.unifi.push.dhcpDNSServers', needs: ['spec.unifi.push.dnsServers', 'spec.unifi.push.networks'], message: 'Push: DHCP DNS servers needs at least one DNS server and one network' },
   { when: 'spec.unifi.push.clientActions', needs: ['spec.unifi.legacy'], message: 'Push: Client actions needs Legacy (block and unblock use the legacy controller API)' },
   { when: 'spec.unifi.push.mirrorRecords.enabled', needs: ['spec.unifi.push.mirrorRecords.domains'], message: 'Push: Mirror records needs at least one domain' },
 ];
 
-/** The fields this node does not offer: the refused ones and those that mean nothing without a refused one. */
+/**
+ * The fields this node does not offer: every refused one (manifest
+ * fieldLimits, and `refused` for a field without a limit), and every inert
+ * one whose required field is not offered either.
+ */
 function hiddenFields(m: IntegrationManifest): Set<string> {
-  const refused = new Set(m.refused);
-  const hidden = new Set(refused);
-  for (const c of FIELD_CONDITIONS) if (c.only && refused.has(c.when)) for (const n of c.needs) hidden.add(n);
+  const limits = m.fieldLimits ?? [];
+  const hidden = new Set([...m.refused, ...limits.filter((l) => l.effect === 'refused').map((l) => l.field)]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const l of limits) {
+      if (l.effect === 'inert' && l.requires && hidden.has(l.requires) && !hidden.has(l.field)) {
+        hidden.add(l.field);
+        grew = true;
+      }
+    }
+  }
   return hidden;
 }
 
-/** The shape of a provider's block (spec.<configField>) on this node: refused fields left out. */
+/** The messages of the inert fields this node still offers, by path: shown as their help. */
+function inertNotes(m: IntegrationManifest, hidden: ReadonlySet<string>): Map<string, string> {
+  return new Map((m.fieldLimits ?? []).filter((l) => l.effect === 'inert' && !hidden.has(l.field)).map((l) => [l.field, l.message]));
+}
+
+/** The shape of a provider's block (spec.<configField>) on this node: fields it does not offer left out. */
 export function providerShape(m: IntegrationManifest): UiShape {
-  const shape = schemaShape(configSchema(m), `spec.${m.configField}`, hiddenFields(m));
+  const hidden = hiddenFields(m);
+  const shape = schemaShape(configSchema(m), `spec.${m.configField}`, hidden, inertNotes(m, hidden));
   return shape?.type === 'object' ? shape : { type: 'object', fields: [] };
 }
 
-/**
- * Why this node does not offer the refused fields of a manifest: the
- * manifest lists the paths, the reasons are the status reasons the host
- * gives an instance that sets one (cmd/kudurru kubeIntegrationRefusal).
- */
-const REFUSED_FIELD_REASONS: readonly { prefix: string; reason: string }[] = [
-  { prefix: 'spec.unifi.inventory', reason: 'RecordPublicationUnsupportedOnKubernetes' },
-  { prefix: 'spec.unifi.push.', reason: 'UniFiPushUnsupportedOnKubernetes' },
-];
+/** A group of fields this node does not offer, with the manifest's explanation. */
+export interface NotOfferedGroup {
+  effect: IntegrationFieldLimit['effect'];
+  /** The status reason of a refused group ('' for an inert one or when the manifest names none). */
+  reason: string;
+  message: string;
+  fields: string[];
+}
 
-/** The refused fields of a manifest grouped by the reason the host gives (reason '' when unknown). */
-export function refusedFields(m: IntegrationManifest): { reason: string; text: string; fields: string[] }[] {
-  const out: { reason: string; text: string; fields: string[] }[] = [];
-  for (const f of m.refused) {
-    const reason = REFUSED_FIELD_REASONS.find((r) => f === r.prefix || f.startsWith(r.prefix))?.reason ?? '';
-    let group = out.find((g) => g.reason === reason);
+/**
+ * The fields of a manifest this node does not offer, grouped by effect,
+ * reason and message as the manifest gives them: the refused fields with
+ * the status reason and message an instance that sets one shows, then the
+ * inert fields left out because what they require is refused.
+ */
+export function notOfferedFields(m: IntegrationManifest): NotOfferedGroup[] {
+  const hidden = hiddenFields(m);
+  const out: NotOfferedGroup[] = [];
+  const add = (effect: NotOfferedGroup['effect'], reason: string, message: string, field: string) => {
+    let group = out.find((g) => g.effect === effect && g.reason === reason && g.message === message);
     if (!group) {
-      group = { reason, text: REASON_TEXT[reason] ?? 'This node refuses an instance that sets them.', fields: [] };
+      group = { effect, reason, message, fields: [] };
       out.push(group);
     }
-    group.fields.push(f);
-  }
+    if (!group.fields.includes(field)) group.fields.push(field);
+  };
+  const limits = m.fieldLimits ?? [];
+  for (const l of limits) if (l.effect === 'refused') add('refused', l.reason ?? '', l.message, l.field);
+  // A refused field the manifest gives no limit for (an older server).
+  for (const f of m.refused) if (!limits.some((l) => l.effect === 'refused' && l.field === f)) add('refused', '', 'This node refuses an instance that sets it.', f);
+  for (const l of limits) if (l.effect === 'inert' && hidden.has(l.field)) add('inert', '', l.message, l.field);
   return out;
 }
 
@@ -241,6 +273,10 @@ export function schemaError(s: JSONSchema, v: unknown, where: string): string | 
       if (s.enum?.length && !s.enum.includes(v)) return at(`one of ${s.enum.join(', ')}`);
       if (s.minLength !== undefined && v.length < s.minLength) return at(`at least ${s.minLength} characters`);
       if (s.maxLength !== undefined && v.length > s.maxLength) return at(`at most ${s.maxLength} characters`);
+      // The format first: it names what the value is not (an IPv4 address);
+      // the pattern then refuses what the format check lets through.
+      const fe = formatError(formatOf(s), v);
+      if (fe) return at(fe);
       if (s.pattern) {
         let re: RegExp | null;
         try {
@@ -250,8 +286,7 @@ export function schemaError(s: JSONSchema, v: unknown, where: string): string | 
         }
         if (re && !re.test(v)) return at(helpOf(s) ?? `must match ${s.pattern}`);
       }
-      const fe = formatError(formatOf(s), v);
-      return fe ? at(fe) : null;
+      return null;
     }
     case 'integer':
     case 'number': {
