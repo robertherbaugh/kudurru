@@ -119,7 +119,10 @@ func (h *servingHTTP) login(w http.ResponseWriter, r *http.Request) error {
 	}
 	var enrollment security.Enrollment
 	var refused error
-	original, cancel := context.WithTimeout(r.Context(), loginlimit.Lifetime)
+	// The sign-in proves its password in the command and reads nothing of
+	// its first capture there except the settings, which a recapture requires
+	// to be unchanged: it may capture again before dispatch (D399).
+	original, cancel := context.WithTimeout(servinghttp.WithRecapture(r.Context()), loginlimit.Lifetime)
 	defer cancel()
 	err = h.opts.Runtime.currentAuthCommand(original, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 		var err error
@@ -354,7 +357,9 @@ func (h *servingHTTP) logout(w http.ResponseWriter, r *http.Request) error {
 		w.WriteHeader(204)
 		return nil
 	}
-	if err := h.commitLogout(r); err != nil {
+	// A sign-out verifies its credential again in the command and revokes
+	// only its own session: it may capture again before dispatch (D399).
+	if err := h.commitLogout(r.WithContext(servinghttp.WithRecapture(r.Context()))); err != nil {
 		return err
 	}
 	if err := h.clearLogoutCookies(w, r); err != nil {

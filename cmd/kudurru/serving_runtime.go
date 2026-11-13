@@ -122,6 +122,10 @@ type servingRuntime struct {
 	// afterMigrationCut runs after a later migration step captures its cut
 	// and before the step's command; tests only.
 	afterMigrationCut func(ctx context.Context, index int)
+
+	// commandHooks observe current commands' dispatch attempts and
+	// pre-dispatch recaptures (D399); tests only. Nil runs none.
+	commandHooks atomic.Pointer[commandHooks]
 }
 
 func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *servingRuntime, err error) {
