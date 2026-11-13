@@ -218,7 +218,7 @@ still show the previous state.
 | Answer of a follower | Meaning | What to do |
 |---|---|---|
 | `503 unavailable` | The change was not made: the follower does not pass this kind of change on, or its data changed while the request ran ("the follower's source changed"). | Make the change on the primary. |
-| `503 completion_unknown` | The follower did not receive the primary's answer and cannot say whether the change was made. This is also the answer while the follower cannot reach the primary. | Read the object, on the primary when you can, before you decide anything else. |
+| `503 completion_unknown` | The follower did not receive the primary's answer, or received it but could not relay it because its own data changed meanwhile, and cannot say whether the change was made. This is also the answer while the follower cannot reach the primary. | Read the object, on the primary when you can, before you decide anything else. |
 
 `kudurru apply` and `kudurru restore` send all their documents in one
 request and report a result for each document. Deleting several objects at
@@ -278,7 +278,8 @@ once in the dashboard works the same way, with a result for each name.
   changes. That happens at the follower's next pull after the primary has
   received the first document, at most five seconds later by default. The
   follower refuses every later document with `unavailable` ("the follower's
-  source changed"), and the documents before stay applied. A file of a few
+  source changed"; the message names the primary to send the rest to), and
+  the documents before stay applied. A file of a few
   documents usually fits between two pulls. A longer file does not, and
   repeating the command through the follower does not help: the follower
   passes the documents that are already applied on again, and the primary
@@ -287,8 +288,8 @@ once in the dashboard works the same way, with a result for each name.
 
 Send a file of many documents, and every restore, to the primary.
 
-RFC 2136 updates are not passed on: send them to the primary
-([dynamic-updates.md](dynamic-updates.md#enrolled-sqlite-cluster)).
+A follower passes signed RFC 2136 updates on to the primary and returns its
+answer ([dynamic-updates.md](dynamic-updates.md#enrolled-sqlite-cluster)).
 
 ## 5. Promote a follower
 
