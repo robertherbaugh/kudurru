@@ -18,6 +18,7 @@ import (
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
+	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -28,11 +29,15 @@ import (
 // integrationObjectRouter mounts the API as serve does on the complete
 // SQLite runtime: object commands, captured object reads, the integration
 // host's administration and the node's license.
-func integrationObjectRouter(t *testing.T, f *integrationOperationFixture) http.Handler {
+func integrationObjectRouter(t *testing.T, f *integrationOperationFixture, mods ...func(*api.Options)) http.Handler {
 	t.Helper()
-	srv, err := api.New(api.Options{Store: f.s.opts.Store, Validator: f.s.opts.Validator, Config: f.s.opts.Config, CanonicalSettings: f.s,
+	opts := api.Options{Store: f.s.opts.Store, Validator: f.s.opts.Validator, Config: f.s.opts.Config, CanonicalSettings: f.s,
 		Integrations: f.s.integrations, ObjectCommand: f.s.ObjectCommand, ObjectItems: f.s.ObjectItems, ObjectReads: servingbuild.NewObjectReads(),
-		License: f.s.opts.License, Authenticate: f.adapter.Middleware, Authorizer: f.adapter, Logger: slog.New(slog.DiscardHandler)})
+		License: f.s.opts.License, Authenticate: f.adapter.Middleware, Authorizer: f.adapter, Logger: slog.New(slog.DiscardHandler)}
+	for _, mod := range mods {
+		mod(&opts)
+	}
+	srv, err := api.New(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,6 +216,65 @@ func TestIntegrationAdminObjectWritesOnCompleteSQLite(t *testing.T) {
 	w = integrationObjectCall(t, router, http.MethodPut, "/objects/integrations/default/filed", filed, f.token)
 	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "managed_by") {
 		t.Fatalf("file-managed Integration replace: %d %s", w.Code, w.Body)
+	}
+
+	// Without a license that covers integrations, the command refuses a new
+	// Integration with 402 and stores nothing.
+	unlicensed, err := license.New(license.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	noLicense := integrationObjectRouter(t, f, func(o *api.Options) { o.License = unlicensed })
+	refused := integrationDefinition("unlicensed", f.path)
+	refused.TypeMeta = definition.TypeMeta
+	if w := integrationObjectCall(t, noLicense, http.MethodPost, "/objects/integrations", refused, f.token); w.Code != http.StatusPaymentRequired || !strings.Contains(w.Body.String(), api.KeyLicense) {
+		t.Fatalf("unlicensed create: %d %s", w.Code, w.Body)
+	}
+	if err := f.s.opts.Store.Get(t.Context(), store.KeyOf(refused), &public.Integration{}); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("refused create was stored: %v", err)
+	}
+
+	// deletionPolicy Delete: the command arms the cleanup finalizer in the
+	// write's transaction.
+	cleanup := integrationDefinition("cleanup", f.path)
+	cleanup.TypeMeta = definition.TypeMeta
+	cleanup.Spec.Suspend = true
+	cleanup.Spec.DeletionPolicy = public.IntegrationDeletionDelete
+	if w := integrationObjectCall(t, router, http.MethodPut, "/objects/integrations/default/cleanup", cleanup, f.token); w.Code != http.StatusCreated {
+		t.Fatalf("create with deletionPolicy Delete: %d %s", w.Code, w.Body)
+	}
+	var armed public.Integration
+	if err := f.s.opts.Store.Get(t.Context(), store.KeyOf(cleanup), &armed); err != nil || !slices.Contains(armed.Finalizers, store.IntegrationCleanupFinalizer) {
+		t.Fatalf("cleanup finalizer not armed: %v %v", err, armed.Finalizers)
+	}
+	integrationAwaitPublished(t, f)
+
+	// POST /apply and POST /integrations:batchDelete take the same command.
+	applied := integrationDefinition("applied", f.path)
+	applied.TypeMeta = definition.TypeMeta
+	applied.Spec.Suspend = true
+	var results struct {
+		Items []api.ApplyResult `json:"items"`
+	}
+	w = integrationObjectCall(t, router, http.MethodPost, "/apply", []any{applied}, operator)
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &results) != nil || len(results.Items) != 1 || results.Items[0].ErrorKey != api.KeyForbidden {
+		t.Fatalf("operator apply: %d %s", w.Code, w.Body)
+	}
+	w = integrationObjectCall(t, router, http.MethodPost, "/apply", []any{applied}, f.token)
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &results) != nil || len(results.Items) != 1 || results.Items[0].Result != api.ResultCreated {
+		t.Fatalf("apply: %d %s", w.Code, w.Body)
+	}
+	if err := f.s.opts.Store.Get(t.Context(), store.KeyOf(applied), &public.Integration{}); err != nil {
+		t.Fatalf("applied Integration: %v", err)
+	}
+	integrationAwaitPublished(t, f)
+	var processed api.Processed
+	w = integrationObjectCall(t, router, http.MethodPost, "/integrations:batchDelete", map[string]any{"names": []string{"applied", "missing"}, "namespace": "default"}, f.token)
+	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &processed) != nil || len(processed.Processed.Success) != 1 || len(processed.Processed.Errors) != 1 {
+		t.Fatalf("batch delete: %d %s", w.Code, w.Body)
+	}
+	if err := f.s.opts.Store.Get(t.Context(), store.KeyOf(applied), &public.Integration{}); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("batch-deleted Integration: %v", err)
 	}
 }
 

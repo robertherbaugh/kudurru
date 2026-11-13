@@ -43,6 +43,8 @@ type fakeAPI struct {
 	streamConn int
 	lastIDs    []string
 	messages   []map[string]any
+	// manifests is the answer of GET /integrations/manifests (404 when nil).
+	manifests any
 }
 
 const (
@@ -284,6 +286,16 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 		f.deleteObject(w, r, r.PathValue("ns"), r.PathValue("name"))
 	})
 	mux.HandleFunc("POST /api/v1/apply", f.apply)
+	mux.HandleFunc("GET /api/v1/integrations/manifests", func(w http.ResponseWriter, _ *http.Request) {
+		f.mu.Lock()
+		m := f.manifests
+		f.mu.Unlock()
+		if m == nil {
+			f.writeErr(w, 404, "not_found", "integration manifests not found", "")
+			return
+		}
+		f.writeJSON(w, 200, m)
+	})
 
 	mux.HandleFunc("GET /api/v1/zones", func(w http.ResponseWriter, _ *http.Request) {
 		f.mu.Lock()
@@ -674,7 +686,7 @@ func (f *fakeAPI) apply(w http.ResponseWriter, r *http.Request) {
 		f.writeErr(w, 400, "invalid", "body: "+err.Error(), "")
 		return
 	}
-	plural := map[string]string{"DNSZone": "dnszones", "DNSRecordSet": "dnsrecordsets", "BlockList": "blocklists", "ClientGroup": "clientgroups", "Policy": "policies"}
+	plural := map[string]string{"DNSZone": "dnszones", "DNSRecordSet": "dnsrecordsets", "BlockList": "blocklists", "ClientGroup": "clientgroups", "Policy": "policies", "Integration": "integrations"}
 	var results []map[string]any
 	f.mu.Lock()
 	for _, d := range docs {
