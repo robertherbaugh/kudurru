@@ -26,6 +26,29 @@ func readLifecycle(ctx context.Context, tx *sqlite.CommandTx, name string) (*zk.
 	return &l, nil
 }
 func source(ctx context.Context, tx *sqlite.CommandTx, l *zk.ZoneLifecycle) (*public.DNSZone, error) {
+	return readSource(ctx, tx, l, false)
+}
+
+// boundarySource is source for a command that changes only a parent/child
+// routing boundary: a parent's system reservation for one child (the
+// parent-fence, late-parent-fence and parent-release admissions) or a
+// child's parent obligations (a lifecycle transition that changes nothing
+// but Sequence and Parents). Such a command neither reads nor records the
+// zone's configuration, so it needs the same zone, not the exact receipt:
+// the same object name, UID, apex and type, and a source that is not
+// removed. The receipt's resourceVersion and intent digest may be behind
+// the DNSZone (D404). Every committed-status write advances the
+// resourceVersion, and realigning a receipt is itself a lifecycle CAS that
+// checks the complete membership, which needs exactly this boundary: with
+// the exact check a parent behind its DNSZone could never fence a new
+// child, and a child behind its DNSZone could never be fenced, so both
+// zones stayed unavailable until a restart. The receipt is not advanced
+// here; the driver still realigns it with the exact check afterwards.
+func boundarySource(ctx context.Context, tx *sqlite.CommandTx, l *zk.ZoneLifecycle) (*public.DNSZone, error) {
+	return readSource(ctx, tx, l, true)
+}
+
+func readSource(ctx context.Context, tx *sqlite.CommandTx, l *zk.ZoneLifecycle, boundary bool) (*public.DNSZone, error) {
 	var z public.DNSZone
 	err := tx.Get(ctx, store.Key{Kind: "DNSZone", Name: l.Spec.Zone.ObjectName}, &z)
 	if l.Spec.Source.Removed {
@@ -47,7 +70,10 @@ func source(ctx context.Context, tx *sqlite.CommandTx, l *zk.ZoneLifecycle) (*pu
 	if err != nil {
 		return nil, err
 	}
-	if token.UID != l.Spec.Source.UID || token.ResourceVersion != l.Spec.Source.ResourceVersion || token.IntentDigest != l.Spec.Source.IntentDigest {
+	if token.UID != l.Spec.Source.UID || (!boundary && (token.ResourceVersion != l.Spec.Source.ResourceVersion || token.IntentDigest != l.Spec.Source.IntentDigest)) {
+		return nil, pr.ErrConflict
+	}
+	if boundary && (string(z.UID) != l.Spec.Zone.UID || z.Name != l.Spec.Zone.ObjectName) {
 		return nil, pr.ErrConflict
 	}
 	if l.Spec.Phase != zk.PhaseRetiring && l.Spec.Phase != zk.PhaseRetired && (z.Spec.Type != l.Spec.Type || canonical(z.Spec.ZoneName) != l.Spec.Zone.Apex) {

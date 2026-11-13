@@ -214,7 +214,19 @@ func (o *Owner) checkBackground(ctx context.Context, tx *sqlite.CommandTx, p Pin
 		if err != nil {
 			return err
 		}
-		if c.Source.Name != l.Spec.Zone.ObjectName || token.UID != l.Spec.Source.UID || token.ResourceVersion != l.Spec.Source.ResourceVersion || token.IntentDigest != l.Spec.Source.IntentDigest || l.Spec.Source.Removed {
+		// A boundary-only transaction (D404) needs the same zone, not the
+		// exact receipt: the receipt may be behind a status or intent write.
+		// Every other transaction needs the exact receipt.
+		receipt := token.ResourceVersion == l.Spec.Source.ResourceVersion && token.IntentDigest == l.Spec.Source.IntentDigest
+		if c.Boundary {
+			switch c.Reason {
+			case "lifecycle", "parent-fence", "late-parent-fence", "parent-release":
+				receipt = true
+			default:
+				return pr.ErrUnavailable
+			}
+		}
+		if c.Source.Name != l.Spec.Zone.ObjectName || token.UID != l.Spec.Source.UID || !receipt || l.Spec.Source.Removed {
 			return pr.ErrConflict
 		}
 		if !retiring && (string(c.Source.UID) != l.Spec.Zone.UID || c.Source.Spec.Type != l.Spec.Type || c.Source.Spec.ZoneName != l.Spec.Zone.Apex) {

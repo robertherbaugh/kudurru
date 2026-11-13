@@ -560,8 +560,8 @@ retired. Every replacement gets a new incarnation and RR authority, including
 primary-to-forward-to-primary changes that retain the public object's UID.
 Child activation requires durable reservations in each primary ancestor. A
 later ancestor remains unavailable until existing children acquire the new
-obligation; retirement preserves conservative coverage until fences can be
-released. The driver admission adapter must recheck the complete current roster
+obligation, and keeps them serving while it is still fencing; retirement
+preserves conservative coverage until fences can be released. The driver admission adapter must recheck the complete current roster
 and exact source read in the same transaction as each transition.
 
 ```mermaid
@@ -685,6 +685,37 @@ gap, so UPDATE, NOTIFY, status projection, publication acknowledgment and
 integrations wait for the driver; a deleted, replaced or retyped zone, a head
 that is not active and expiry still serve coverage. A child's own write no
 longer unbinds its parent either.
+
+A primary zone and a primary child zone under it on one node converge in
+either order of creation, and across deletion and re-creation of the child
+(D404). The commands that change only a parent/child boundary (the parent's
+fence or release of one child, and the child's lifecycle transition that
+records or releases that obligation) need the same zone, not the exact
+lifecycle receipt: the same name, UID, apex and type and a source that is not
+removed. Before D404 they needed the exact receipt, while realigning a
+receipt (after any committed-status write) is a lifecycle CAS that needs the
+boundary, so a parent or child whose receipt was behind its `DNSZone` could
+never be fenced and both zones stayed unavailable until a restart. Every other
+command, and the realignment itself, still checks the exact receipt. DNS also
+keeps answering across the pair's own transitions: a parent with a desired
+child that is not yet fenced keeps serving its committed head (the child's own
+entry is the longer routing match below its apex) and is not admitted until the
+fence is published, and a child keeps serving while its new parent is still
+fencing.
+
+```mermaid
+sequenceDiagram
+    participant S as Status write
+    participant P as Parent lifecycle
+    participant C as Child lifecycle
+    participant H as Parent head
+    S->>P: DNSZone RV advances, receipt behind
+    Note over P,C: before D404: fence needs exact parent receipt,<br/>receipt realignment needs the fence (stuck)
+    C->>H: late-parent fence (same zone suffices)
+    H-->>C: obligation recorded (Sequence and Parents only)
+    P->>P: receipt realigned (exact, membership now satisfied)
+    Note over P,C: parent served (not admitted) until the fence is published
+```
 
 Nonprimary replacements use persisted lifecycle admission, current source and
 parent witnesses. A source name with an old lifecycle cannot bypass coordination

@@ -454,7 +454,17 @@ func TestImageLateDesiredChildBeforeLifecycleBlocksParent(t *testing.T) {
 	h.zone("new-child", "child.example.")
 	opts := imageTestOptions(t, h)
 	p := prepareTestImage(t, readTestImage(t, h), opts)
-	assertImageCoverage(t, p, "example.", opts.Now)
+	// The parent is not admitted until the driver has fenced the child
+	// (UPDATE, NOTIFY, status and publication acknowledgment wait), but DNS
+	// keeps answering its committed head for every name outside the child
+	// (D404). The child's desired-only coverage is the longer match below
+	// its apex.
+	if p.Admitted("example.", opts.Now) || !p.Serves("example.", opts.Now) {
+		t.Fatal("late desired child admitted its unfenced parent or stopped it serving")
+	}
+	if model := p.Cut(opts.Now).Match("x.example."); model == nil || model.Name() != "example." || !model.AvailableAt(opts.Now) {
+		t.Fatal("late desired child took its parent's committed head out of service", model)
+	}
 	assertImageCoverage(t, p, "child.example.", opts.Now)
 	m, _ := p.Cut(opts.Now).Member("child.example.")
 	if m.Incarnation != 0 || m.Version != (zonestate.Version{}) || m.Published {
@@ -1035,5 +1045,61 @@ func TestImageReadinessStatusWriteKeepsCommittedAuthority(t *testing.T) {
 	}
 	if model := nsChange.Cut(time.Now()).Match("x.example."); !nsChange.Serves("example.", time.Now()) || model == nil || !model.AvailableAt(time.Now()) {
 		t.Fatal("NS address status change stopped answering the committed head", model)
+	}
+}
+
+// A parent created over an active child fences the child (AdmitAncestor)
+// while it is still Fencing, and activates afterwards. The child keeps
+// serving and stays admitted across that: the obligation is witnessed by
+// the parent's committed fence, and the child's own head did not change.
+// The parent does not serve before it is Active, nor while the child's
+// exact incarnation is not bound (D404).
+func TestImageLateParentFencingKeepsChildServing(t *testing.T) {
+	h := newHarness(t, "sqlite")
+	ctx := context.Background()
+	child := h.begin(h.zone("child", "child.example."))
+	if _, err := h.r.Reconcile(ctx, child.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	opts := imageTestOptions(t, h)
+	if p := prepareTestImage(t, readTestImage(t, h), opts); !p.Admitted("child.example.", opts.Now) {
+		t.Fatal("baseline child not admitted")
+	}
+	parent := h.begin(h.zone("parent", "example."))
+	// Desired, unfenced parent: the child is not yet bound to it.
+	p := prepareTestImage(t, readTestImage(t, h), opts)
+	if !p.Admitted("child.example.", opts.Now) || p.Serves("example.", opts.Now) {
+		t.Fatal("desired late parent changed child admission or served early")
+	}
+	if _, err := h.r.Prepare(ctx, parent.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	parent, err := h.r.ReadLifecycle(ctx, parent.Spec.Zone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parent.Spec.Phase != zk.PhaseFencing {
+		t.Fatal("fixture parent not fencing", parent.Spec.Phase)
+	}
+	if _, err := h.r.AdmitAncestor(ctx, parent.Spec.Zone, child.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	p = prepareTestImage(t, readTestImage(t, h), opts)
+	m, _ := p.Cut(opts.Now).Member("child.example.")
+	if len(m.Parents) != 1 || m.Parents[0].CommitSequence == 0 {
+		t.Fatal("fixture did not witness the fencing parent", m.Parents)
+	}
+	if !p.Serves("child.example.", opts.Now) || !p.Admitted("child.example.", opts.Now) || p.Serves("example.", opts.Now) {
+		t.Fatal("fencing parent took its child out of service or served early")
+	}
+	if model := p.Cut(opts.Now).Match("x.child.example."); model == nil || model.Name() != "child.example." || !model.AvailableAt(opts.Now) {
+		t.Fatal("child head not answered under a fencing parent", model)
+	}
+	if _, err := h.r.Activate(ctx, parent.Spec.Zone); err != nil {
+		t.Fatal(err)
+	}
+	p = prepareTestImage(t, readTestImage(t, h), opts)
+	if !p.Admitted("child.example.", opts.Now) || !p.Admitted("example.", opts.Now) {
+		t.Fatal("activated pair not admitted")
 	}
 }
