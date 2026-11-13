@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"crypto"
+	"fmt"
 	"net"
 	"net/netip"
 	"sync"
@@ -15,7 +16,7 @@ import (
 
 // Root modes of anchorRoot. Each mode answers the root DNSKEY set with
 // signatures made when the root starts, valid for four hours, which covers
-// the one-hour minimum refresh of the soak.
+// the one-hour minimum refresh of the opt-in real-timer recovery run.
 const (
 	// anchorRootNormal: key A, signed by A.
 	anchorRootNormal int32 = iota
@@ -210,6 +211,13 @@ func anchorNodeConfig(cfg map[string]any, r *anchorRoot) {
 // with the AD bit and the key with its signature: validated from the
 // node's accepted managed trust.
 func anchorValidated(node string) bool {
+	return anchorValidatedWhy(node) == ""
+}
+
+// anchorValidatedWhy is anchorValidated that names the first answer that was
+// not validated (network, rcode, AD bit, answer count and any extended DNS
+// error), or returns "" when both were.
+func anchorValidatedWhy(node string) string {
 	for _, network := range []string{"udp", "tcp"} {
 		q := new(dns.Msg)
 		q.SetQuestion(".", dns.TypeDNSKEY)
@@ -219,11 +227,22 @@ func anchorValidated(node string) bool {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		answer, _, err := c.ExchangeContext(ctx, q, node)
 		cancel()
-		if err != nil || answer.Rcode != dns.RcodeSuccess || !answer.AuthenticatedData || len(answer.Answer) != 2 {
-			return false
+		if err != nil {
+			return network + ": " + err.Error()
+		}
+		if answer.Rcode != dns.RcodeSuccess || !answer.AuthenticatedData || len(answer.Answer) != 2 {
+			why := fmt.Sprintf("%s: %s ad=%v answers=%d", network, dns.RcodeToString[answer.Rcode], answer.AuthenticatedData, len(answer.Answer))
+			if opt := answer.IsEdns0(); opt != nil {
+				for _, o := range opt.Option {
+					if ede, ok := o.(*dns.EDNS0_EDE); ok {
+						why += fmt.Sprintf(" ede=%d %q", ede.InfoCode, ede.ExtraText)
+					}
+				}
+			}
+			return why
 		}
 	}
-	return true
+	return ""
 }
 
 // anchorServfail reports that one node answers SERVFAIL over UDP and TCP to

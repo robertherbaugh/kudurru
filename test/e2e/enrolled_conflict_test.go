@@ -276,7 +276,12 @@ func testEnrolledConflictResolution(t *testing.T, anchors *enrolledAnchors) {
 		enrollment(c, func(info api.ClusterEnrollmentInfo) bool { return info.Mode == "primary" })
 		return receipt
 	}
-	promotedB, promotedC := promote(apiB, b), promote(apiC, c)
+	phase := func(what string) { t.Logf("phase %s at %s", what, time.Now().Format("15:04:05.000")) }
+	phase("promote B")
+	promotedB := promote(apiB, b)
+	phase("promote C")
+	promotedC := promote(apiC, c)
+	phase("promoted")
 	if promotedB.Term.Same(promotedC.Term) || promotedB.Term.Epoch != promotedC.Term.Epoch {
 		t.Fatal("fixture did not produce two equal-epoch promotions")
 	}
@@ -285,6 +290,17 @@ func testEnrolledConflictResolution(t *testing.T, anchors *enrolledAnchors) {
 	awaitDNS(nodeB, "bonly", "192.0.2.50", dns.RcodeSuccess)
 	awaitDNS(nodeC, "conly", "192.0.2.51", dns.RcodeSuccess)
 
+	phase("written")
+	// Sample B and C continuously from here, before the heal, until they
+	// serve conflicted: members holding valid trust answer validated
+	// recursion through the heal, the conflict detection and the conflict,
+	// with no gap. (A recursive answer in flight across a member's own
+	// promotion commit was seen answering SERVFAIL; that window is recorded
+	// as open in F28-OPEN6 and not sampled here.)
+	var sampledB, sampledC func() validatedSamples
+	if anchors != nil {
+		sampledB, sampledC = anchors.sampleValidated(nodeB), anchors.sampleValidated(nodeC)
+	}
 	// Heal. Only scheduled authenticated peer exchanges may detect the conflict.
 	relayB.partition(false)
 	relayC.partition(false)
@@ -329,6 +345,13 @@ func testEnrolledConflictResolution(t *testing.T, anchors *enrolledAnchors) {
 		// validated recursion included (D369).
 		anchors.awaitValidated(nodeB, "conflicted B")
 		anchors.awaitValidated(nodeC, "conflicted C")
+		for name, sampled := range map[string]func() validatedSamples{"B": sampledB, "C": sampledC} {
+			if got := sampled(); got.failed || got.samples == 0 || got.dnsOnly == 0 {
+				t.Fatalf("member %s did not answer validated recursion from the heal through conflict: %+v", name, got)
+			} else {
+				t.Logf("member %s: %d validated samples, %d while DNS-only", name, got.samples, got.dnsOnly)
+			}
+		}
 	}
 	cli := func(args ...string) ([]byte, error) {
 		ctx, cancel := context.WithTimeout(t.Context(), 35*time.Second)
