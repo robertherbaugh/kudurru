@@ -90,7 +90,16 @@ validation checks draft-only problems (half-typed numbers, durations, map
 keys) on the draft and required fields on the built value against the
 schema, so a required field of an optional object (Cloudflare
 `adoptFrom.externalDNSOwner`, UniFi `inventory.zoneRef`) is required only
-when that object is set.
+when that object is set. What a schema cannot state is kept by provider
+block in `dashboard/src/lib/integrations.ts` and compared with the Go code
+by `integrations.test.ts`: the publish rule (`PUBLISH_RULES`, the server's
+`integrationPublishes`: a Cloudflare block, a webhook with domains, a UniFi
+block with `push.mirrorRecords.enabled`), the destination fields, the
+conditions between UniFi push fields that `validatePush` checks
+(`FIELD_CONDITIONS`), and the reason a refused field is refused. On
+Kubernetes the UniFi push switches are refused, so the push block is not
+offered (its DHCP parameters mean nothing without their switch) and the
+form names `UniFiPushUnsupportedOnKubernetes`.
 
 ```mermaid
 sequenceDiagram

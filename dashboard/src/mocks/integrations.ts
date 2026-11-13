@@ -10,14 +10,18 @@ import { http, HttpResponse, type JsonBodyType } from 'msw';
 import type { Integration, IntegrationExecutionResult, IntegrationManifest, IntegrationManifests, IntegrationReview, IntegrationSummary } from '../api/types';
 
 const CLOUDFLARE_SCHEMA = {"type":"object","required":["zones"],"additionalProperties":false,"properties":{"zones":{"type":"array","minItems":1,"maxItems":256,"items":{"type":"object","required":["zone"],"additionalProperties":false,"properties":{"zone":{"type":"string","maxLength":253},"zoneID":{"type":"string","pattern":"^[a-f0-9]{32}$"},"policy":{"type":"string","enum":["sync","upsert-only","create-only"]},"adoptUnowned":{"type":"boolean"},"adoptFrom":{"type":"object","required":["externalDNSOwner"],"additionalProperties":false,"properties":{"externalDNSOwner":{"type":"string","minLength":1,"maxLength":253}}},"defaults":{"type":"object","additionalProperties":false,"properties":{"proxied":{"type":"boolean"},"ttl":{"type":"integer","minimum":1,"maximum":86400},"comment":{"type":"string","maxLength":500}}},"select":{"type":"object","additionalProperties":false,"properties":{"labels":{"type":"object","additionalProperties":{"type":"string"},"maxProperties":64},"types":{"type":"array","maxItems":64,"items":{"type":"string"}},"exclude":{"type":"array","maxItems":256,"items":{"type":"string"}}}},"translate":{"type":"object","maxProperties":64,"additionalProperties":{"type":"string"}}}}}}};
-const UNIFI_SCHEMA = {"type":"object","required":["endpoint"],"additionalProperties":false,"properties":{"endpoint":{"type":"string","maxLength":2048,"pattern":"^https://[^/]+.*$"},"tlsFingerprint":{"type":"string","pattern":"^sha256:[a-fA-F0-9]{64}$"},"site":{"type":"string","minLength":1,"maxLength":253},"poll":{"type":"string"},"legacy":{"type":"boolean"},"inventory":{"type":"object","required":["zoneRef"],"additionalProperties":false,"properties":{"zoneRef":{"type":"object","required":["name"],"additionalProperties":false,"properties":{"name":{"type":"string"},"namespace":{"type":"string"}}},"reverseZones":{"type":"string","enum":["auto","disabled"]},"nameTemplate":{"type":"string","maxLength":500},"ttl":{"type":"integer","minimum":1,"maximum":86400},"includeNetworks":{"type":"array","maxItems":256,"items":{"type":"string"},"uniqueItems":true}}},"groups":{"type":"object","additionalProperties":false,"properties":{"byNetwork":{"type":"object","maxProperties":256,"additionalProperties":{"type":"string"}},"byNote":{"type":"string","maxLength":128}}},"push":{"type":"object","additionalProperties":false,"properties":{"dhcpDNSServers":{"type":"boolean"},"mirrorRecords":{"type":"object","additionalProperties":false,"properties":{"enabled":{"type":"boolean"},"types":{"type":"array","items":{"type":"string","enum":["A","CNAME"]},"maxItems":2}}}}}}};
+const UNIFI_SCHEMA = {"type":"object","required":["endpoint"],"additionalProperties":false,"properties":{"endpoint":{"type":"string","maxLength":2048,"pattern":"^https://[^/]+.*$"},"tlsFingerprint":{"type":"string","pattern":"^sha256:[a-fA-F0-9]{64}$"},"site":{"type":"string","minLength":1,"maxLength":253},"poll":{"type":"string"},"legacy":{"type":"boolean"},"inventory":{"type":"object","required":["zoneRef"],"additionalProperties":false,"properties":{"zoneRef":{"type":"object","required":["name"],"additionalProperties":false,"properties":{"name":{"type":"string"},"namespace":{"type":"string"}}},"reverseZones":{"type":"string","enum":["auto","disabled"]},"nameTemplate":{"type":"string","maxLength":500},"ttl":{"type":"integer","minimum":1,"maximum":86400},"includeNetworks":{"type":"array","maxItems":256,"items":{"type":"string"},"uniqueItems":true}}},"groups":{"type":"object","additionalProperties":false,"properties":{"byNetwork":{"type":"object","maxProperties":256,"additionalProperties":{"type":"string"}},"byNote":{"type":"string","maxLength":128}}},"push":{"type":"object","additionalProperties":false,"properties":{"dhcpDNSServers":{"type":"boolean"},"dnsServers":{"type":"array","maxItems":4,"uniqueItems":true,"items":{"type":"string","format":"ipv4"}},"networks":{"type":"array","maxItems":64,"uniqueItems":true,"items":{"type":"string","minLength":1,"maxLength":253}},"clientActions":{"type":"boolean"},"mirrorRecords":{"type":"object","additionalProperties":false,"properties":{"enabled":{"type":"boolean"},"types":{"type":"array","items":{"type":"string","enum":["A","CNAME"]},"maxItems":2,"uniqueItems":true},"domains":{"type":"array","maxItems":64,"uniqueItems":true,"items":{"type":"string","maxLength":253}},"labels":{"type":"object","maxProperties":64,"additionalProperties":{"type":"string"}},"exclude":{"type":"array","maxItems":256,"items":{"type":"string","maxLength":253}}}}}}}};
 const WEBHOOK_SCHEMA = {"type":"object","required":["endpoint"],"additionalProperties":false,"properties":{"endpoint":{"type":"string","maxLength":2048},"timeout":{"type":"string"},"domains":{"type":"array","maxItems":256,"items":{"type":"string","maxLength":253}},"policy":{"type":"string","enum":["sync","upsert-only","create-only"]}}};
 
+// cmd/kudurru integration_manifests.go: the SQLite root refuses nothing
+// (it runs every UniFi write, D401); the Kubernetes root refuses UniFi
+// inventory publication and every UniFi write, and every webhook.
+const KUBE_UNIFI_REFUSED = ['spec.unifi.inventory', 'spec.unifi.push.dhcpDNSServers', 'spec.unifi.push.mirrorRecords', 'spec.unifi.push.clientActions'];
+
 function manifests(driver: 'sqlite' | 'kube'): IntegrationManifest[] {
-  const push = ['spec.unifi.push.dhcpDNSServers', 'spec.unifi.push.mirrorRecords'];
   return [
     { type: 'cloudflare', displayName: 'Cloudflare', version: '1', capabilities: ['RecordSink'], ioClass: 'cloud_polling', configField: 'cloudflare', configSchema: CLOUDFLARE_SCHEMA, credentials: [{ name: 'apiToken', required: true, verify: 'user/tokens/verify' }], supported: true, refused: [] },
-    { type: 'unifi', displayName: 'UniFi Network', version: '1', capabilities: ['ClientSource'], ioClass: 'local_polling', configField: 'unifi', configSchema: UNIFI_SCHEMA, credentials: [{ name: 'apiKey', required: true, verify: 'integration/v1/info' }], supported: true, refused: driver === 'kube' ? ['spec.unifi.inventory', ...push] : push },
+    { type: 'unifi', displayName: 'UniFi Network', version: '1', capabilities: ['ClientSource', 'RecordSink', 'Actions'], ioClass: 'local_polling', configField: 'unifi', configSchema: UNIFI_SCHEMA, credentials: [{ name: 'apiKey', required: true, verify: 'integration/v1/info' }], supported: true, refused: driver === 'kube' ? [...KUBE_UNIFI_REFUSED] : [] },
     {
       type: 'webhook', displayName: 'Webhook', version: '1', capabilities: ['Actions', 'ClientSource', 'Hook', 'RecordSink'], ioClass: 'local_polling', configField: 'webhook', configSchema: WEBHOOK_SCHEMA,
       credentials: ['bearerToken', 'ca', 'clientCertificate', 'clientKey', 'hmacKey'].map((name) => ({ name, required: false })),
@@ -105,8 +109,20 @@ function summary(o: Integration): IntegrationSummary {
   return { ...base, ...state.status[keyOf(ns, o.metadata.name)] };
 }
 
+/** cmd/kudurru integrationPublishes. */
 function publishes(o: Integration): boolean {
+  if (o.spec.type === 'unifi') return (o.spec.unifi as { push?: { mirrorRecords?: { enabled?: boolean } } } | undefined)?.push?.mirrorRecords?.enabled === true;
   return o.spec.type === 'cloudflare' || (o.spec.type === 'webhook' && Array.isArray((o.spec.webhook as { domains?: unknown[] } | undefined)?.domains) && ((o.spec.webhook as { domains: unknown[] }).domains.length > 0));
+}
+
+/** The actions a UniFi instance advertises (ee/integration/unifi actions.go): only the writes its spec enables. */
+function unifiActions(o: Integration) {
+  const u = (o.spec.unifi ?? {}) as { legacy?: boolean; push?: { dhcpDNSServers?: boolean; clientActions?: boolean } };
+  const mac = { type: 'object', required: ['mac'], additionalProperties: false, properties: { mac: { type: 'string', maxLength: 17, pattern: '^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$' } } };
+  return [
+    ...(u.push?.dhcpDNSServers ? [{ name: 'dhcp-dns-servers', params: { type: 'object', required: ['mode'], additionalProperties: false, properties: { mode: { type: 'string', enum: ['preview', 'apply'] }, digest: { type: 'string', pattern: '^[a-f0-9]{64}$' } } } }] : []),
+    ...(u.push?.clientActions && u.legacy ? [{ name: 'block-client', params: mac }, { name: 'unblock-client', params: mac }] : []),
+  ];
 }
 
 function hasValue(spec: Integration['spec']): boolean {
@@ -169,6 +185,16 @@ export function integrationHandlers(guard: Guard, allowed: Allowed) {
       if (!publishes(o)) return fail(501, 'not_implemented', 'integration capability is not implemented');
       const digest = (++n).toString(16).padStart(64, 'a');
       state.digests[keyOf(ns, name)] = digest;
+      if (o.spec.type === 'unifi') {
+        // The record mirror: DNS policies of the site, one per address.
+        return HttpResponse.json(result({
+          preview: {
+            digest, unchanged: 1,
+            operations: [{ domains: ['example.com'], name: 'nas.example.com', type: 'A', action: 'create', policy: 'sync', after: { name: 'nas.example.com', type: 'A', ttl: 300, targets: ['192.0.2.20'] } }],
+            conflicts: [{ domains: ['example.com'], name: 'printer.example.com', type: 'A', reason: 'a DNS policy this Integration did not create' }],
+          },
+        }));
+      }
       return HttpResponse.json(result({
         preview: {
           digest, unchanged: 2,
@@ -194,7 +220,9 @@ export function integrationHandlers(guard: Guard, allowed: Allowed) {
         state.uncertainNextSync = false;
         return fail(503, 'integration_uncertain', 'integration operation was not acknowledged; effects may have occurred and were not replayed', result({ completed: false, uncertain: true, applied: 1, pending: 1 }));
       }
-      return HttpResponse.json(result(publishes(o) ? { applied: 1, unchanged: 2, conflicts: 1 } : { clients: 23, sourceCommitted: true, sourcePublished: true }));
+      // A publisher that also observes (UniFi with the record mirror) reports both.
+      const observed = { clients: 23, sourceCommitted: true, sourcePublished: true };
+      return HttpResponse.json(result(publishes(o) ? { applied: 1, unchanged: 2, conflicts: 1, ...(o.spec.type === 'unifi' ? observed : {}) } : observed));
     }),
     http.get(`${B}/integrations/:ns/:name/actions`, ({ request, params }) => {
       const g = guard(request, 'integrations', 'read') ?? host();
@@ -203,6 +231,7 @@ export function integrationHandlers(guard: Guard, allowed: Allowed) {
       if (!o) return fail(404, 'not_found', 'integration not found');
       const u = new URL(request.url);
       if (u.searchParams.get('uid') !== o.metadata.uid || u.searchParams.get('revision') !== o.metadata.resourceVersion) return fail(409, 'conflict', 'original integration review or authority changed');
+      if (o.spec.type === 'unifi') return HttpResponse.json(result({ actions: unifiActions(o) }));
       return HttpResponse.json(result({ actions: [{ name: 'refresh', params: { type: 'object', properties: { full: { type: 'boolean' } } } }] }));
     }),
     http.post(`${B}/integrations/:ns/:name/actions/:action`, async ({ request, params }) => {

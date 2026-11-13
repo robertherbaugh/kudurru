@@ -5,9 +5,14 @@
 // ShapeField renders; the fields this node's host refuses (manifest
 // `refused`) are left out, so the form never offers them. Credentials are
 // references (a file path or an environment name) of the forms the node
-// resolves; there is no field for a value.
+// resolves; there is no field for a value. What a schema cannot say is
+// kept here by provider block and compared with the Go code by
+// lib/integrations.test.ts: the publish rule (PUBLISH_RULES), the
+// destination fields, the conditions between fields (FIELD_CONDITIONS) and
+// why a refused field is refused.
 import { ApiError } from '../api/client';
-import type { CredentialReference, Integration, IntegrationManifest, IntegrationManifests, IntegrationSpec, IntegrationSummary } from '../api/types';
+import type { CredentialReference, Integration, IntegrationManifest, IntegrationManifests, IntegrationSpec, IntegrationSummary, SettingFormat } from '../api/types';
+import { FORMAT_EXAMPLES, formatError } from '../components/fields/formats';
 import { fromDraft, shapeError, toDraft } from './shapes';
 import type { UiShape } from './settingsMeta';
 
@@ -20,6 +25,7 @@ export interface JSONSchema {
   items?: JSONSchema;
   enum?: unknown[];
   pattern?: string;
+  format?: string;
   minimum?: number;
   maximum?: number;
   minLength?: number;
@@ -42,6 +48,7 @@ export const CAPABILITY_LABELS: Record<string, string> = {
 export const REASON_TEXT: Record<string, string> = {
   UnsupportedOnKubernetes: 'This provider does not run on Kubernetes.',
   RecordPublicationUnsupportedOnKubernetes: 'Record publication from this provider does not run on Kubernetes.',
+  UniFiPushUnsupportedOnKubernetes: 'UniFi writes (spec.unifi.push) run on SQLite only: on Kubernetes an Integration that enables one is refused.',
   NamespaceNotAllowed: 'Only Integrations in the release namespace run on Kubernetes.',
   LicenseUnavailable: 'The license does not cover integrations.',
   Suspended: 'Suspended (spec.suspend).',
@@ -65,6 +72,11 @@ export function humanize(name: string): string {
 
 function typeOf(s: JSONSchema): string | undefined {
   return Array.isArray(s.type) ? s.type.find((t) => t !== 'null') : s.type;
+}
+
+/** A JSON Schema string format the field controls check (ipv4, ...), or undefined. */
+function formatOf(s: JSONSchema): SettingFormat | undefined {
+  return s.format && s.format in FORMAT_EXAMPLES ? (s.format as SettingFormat) : undefined;
 }
 
 /** Provider strings that are Go durations (metav1.Duration), by field name. */
@@ -97,12 +109,14 @@ export function schemaShape(s: JSONSchema, path: string, refused: ReadonlySet<st
       if (s.enum?.length) return { type: 'string', enum: s.enum.map((v) => ({ value: String(v), label: String(v) })), help };
       if (DURATION_NAMES.test(name)) return { type: 'duration', help };
       if (s.pattern?.startsWith('^https://')) return { type: 'string', format: 'url', help };
-      return { type: 'string', help };
+      const format = formatOf(s);
+      return { type: 'string', ...(format ? { format } : {}), help };
     }
     case 'array': {
       const items = s.items ?? {};
       if (typeOf(items) === 'string') {
-        return { type: 'string[]', items: { type: 'string', ...(items.enum?.length ? { enum: items.enum.map((v) => ({ value: String(v), label: String(v) })) } : {}) }, help };
+        const format = formatOf(items);
+        return { type: 'string[]', items: { type: 'string', ...(items.enum?.length ? { enum: items.enum.map((v) => ({ value: String(v), label: String(v) })) } : {}), ...(format ? { format } : {}) }, help };
       }
       const item = schemaShape(items, `${path}[]`, refused);
       return item ? { type: 'list', items: item, help } : null;
@@ -143,10 +157,75 @@ export function configSchema(m: IntegrationManifest): JSONSchema {
   return (s ?? {});
 }
 
+/**
+ * Conditions between fields of a provider block that its JSON Schema
+ * cannot state; the provider checks them (ee/integration/unifi
+ * validatePush, D401) and refuses the instance. When `when` is on, every
+ * `needs` field must be set. With `only`, the `needs` fields mean nothing
+ * without `when`, so they are not offered where the node refuses `when`.
+ * lib/integrations.test.ts keeps them in step with the Go checks.
+ */
+export const FIELD_CONDITIONS: readonly { when: string; needs: readonly string[]; only?: boolean; message: string }[] = [
+  { when: 'spec.unifi.push.dhcpDNSServers', needs: ['spec.unifi.push.dnsServers', 'spec.unifi.push.networks'], only: true, message: 'Push: DHCP DNS servers needs at least one DNS server and one network' },
+  { when: 'spec.unifi.push.clientActions', needs: ['spec.unifi.legacy'], message: 'Push: Client actions needs Legacy (block and unblock use the legacy controller API)' },
+  { when: 'spec.unifi.push.mirrorRecords.enabled', needs: ['spec.unifi.push.mirrorRecords.domains'], message: 'Push: Mirror records needs at least one domain' },
+];
+
+/** The fields this node does not offer: the refused ones and those that mean nothing without a refused one. */
+function hiddenFields(m: IntegrationManifest): Set<string> {
+  const refused = new Set(m.refused);
+  const hidden = new Set(refused);
+  for (const c of FIELD_CONDITIONS) if (c.only && refused.has(c.when)) for (const n of c.needs) hidden.add(n);
+  return hidden;
+}
+
 /** The shape of a provider's block (spec.<configField>) on this node: refused fields left out. */
 export function providerShape(m: IntegrationManifest): UiShape {
-  const shape = schemaShape(configSchema(m), `spec.${m.configField}`, new Set(m.refused));
+  const shape = schemaShape(configSchema(m), `spec.${m.configField}`, hiddenFields(m));
   return shape?.type === 'object' ? shape : { type: 'object', fields: [] };
+}
+
+/**
+ * Why this node does not offer the refused fields of a manifest: the
+ * manifest lists the paths, the reasons are the status reasons the host
+ * gives an instance that sets one (cmd/kudurru kubeIntegrationRefusal).
+ */
+const REFUSED_FIELD_REASONS: readonly { prefix: string; reason: string }[] = [
+  { prefix: 'spec.unifi.inventory', reason: 'RecordPublicationUnsupportedOnKubernetes' },
+  { prefix: 'spec.unifi.push.', reason: 'UniFiPushUnsupportedOnKubernetes' },
+];
+
+/** The refused fields of a manifest grouped by the reason the host gives (reason '' when unknown). */
+export function refusedFields(m: IntegrationManifest): { reason: string; text: string; fields: string[] }[] {
+  const out: { reason: string; text: string; fields: string[] }[] = [];
+  for (const f of m.refused) {
+    const reason = REFUSED_FIELD_REASONS.find((r) => f === r.prefix || f.startsWith(r.prefix))?.reason ?? '';
+    let group = out.find((g) => g.reason === reason);
+    if (!group) {
+      group = { reason, text: REASON_TEXT[reason] ?? 'This node refuses an instance that sets them.', fields: [] };
+      out.push(group);
+    }
+    group.fields.push(f);
+  }
+  return out;
+}
+
+function valueAt(v: unknown, path: readonly string[]): unknown {
+  let x = v;
+  for (const p of path) x = x && typeof x === 'object' && !Array.isArray(x) ? (x as Record<string, unknown>)[p] : undefined;
+  return x;
+}
+
+/** The first FIELD_CONDITIONS problem of a built provider block, or null. */
+function conditionError(m: IntegrationManifest, block: Record<string, unknown>): string | null {
+  const prefix = `spec.${m.configField}.`;
+  const rel = (p: string) => p.slice(prefix.length).split('.');
+  const set = (x: unknown) => x !== undefined && x !== null && x !== false && x !== '' && !(Array.isArray(x) && x.length === 0);
+  for (const c of FIELD_CONDITIONS) {
+    if (!c.when.startsWith(prefix) || valueAt(block, rel(c.when)) !== true) continue;
+    if (c.needs.some((n) => !set(valueAt(block, rel(n))))) return c.message;
+  }
+  return null;
 }
 
 /**
@@ -171,7 +250,8 @@ export function schemaError(s: JSONSchema, v: unknown, where: string): string | 
         }
         if (re && !re.test(v)) return at(helpOf(s) ?? `must match ${s.pattern}`);
       }
-      return null;
+      const fe = formatError(formatOf(s), v);
+      return fe ? at(fe) : null;
     }
     case 'integer':
     case 'number': {
@@ -360,7 +440,8 @@ function withoutRequired(s: UiShape): UiShape {
  * object out.
  */
 export function configError(m: IntegrationManifest, d: IntegrationDraft): string | null {
-  return shapeError(withoutRequired(providerShape(m)), d.config) ?? schemaError(configSchema(m), configValue(m, d), '');
+  const value = configValue(m, d);
+  return shapeError(withoutRequired(providerShape(m)), d.config) ?? schemaError(configSchema(m), value, '') ?? conditionError(m, value);
 }
 
 /** The first problem of a draft's credentials, or null. */
@@ -431,16 +512,27 @@ export function isDestinationField(m: IntegrationManifest, field: string): boole
 }
 
 /**
+ * cmd/kudurru integrationPublishes, by provider block: a Cloudflare block
+ * always, a webhook that names domains, a UniFi instance that mirrors
+ * records as DNS policies (a reviewed-only publisher, D401).
+ * lib/integrations.test.ts compares it with the Go rule.
+ */
+export const PUBLISH_RULES: Readonly<Record<string, (block: Record<string, unknown>) => boolean>> = {
+  cloudflare: () => true,
+  webhook: (b) => Array.isArray(b.domains) && b.domains.length > 0,
+  unifi: (b) => valueAt(b, ['push', 'mirrorRecords', 'enabled']) === true,
+};
+
+/**
  * Whether a sync of this instance publishes records, so it must be bound
  * to a reviewed preview digest (mode publish); otherwise it observes (mode
- * observe, no digest). A record sink publishes once its block names a
- * destination: a non-empty top-level list (zones, domains).
+ * observe, no digest). The server's rule, by provider block (PUBLISH_RULES).
  */
 export function publishes(m: IntegrationManifest | undefined, spec: IntegrationSpec | undefined): boolean {
-  if (!m || !spec || !m.capabilities.includes('RecordSink')) return false;
+  if (!m || !spec) return false;
   const block = spec[m.configField];
-  if (!block || typeof block !== 'object') return false;
-  return Object.values(block as Record<string, unknown>).some((v) => Array.isArray(v) && v.length > 0);
+  if (!block || typeof block !== 'object' || Array.isArray(block)) return false;
+  return PUBLISH_RULES[m.configField]?.(block as Record<string, unknown>) ?? false;
 }
 
 /** The manifest of a type, when this build has one. */

@@ -24,6 +24,7 @@ import {
   describeRef,
   integrationHref,
   newDraft,
+  publishes,
   unsupportedReason,
   type IntegrationDraft,
 } from '../../lib/integrations';
@@ -206,6 +207,11 @@ function IntegrationWizard({ manifests, onClose }: IntegrationWizardProps) {
               </ReviewRow>
               <ReviewRow label="When deleted" step="settings" what="deletion policy">
                 {draft.deletionPolicy}
+              </ReviewRow>
+              <ReviewRow label="Sync" step="settings" what="settings">
+                {publishes(manifest, doc.spec)
+                  ? 'Publishes records: every sync is a reviewed Preview, then Publish this plan by its digest.'
+                  : 'Observes the provider: a sync publishes no records.'}
               </ReviewRow>
             </MetadataList>
             <CodeBlock code={toYAML(doc)} language="yaml" title="Integration" width="100%" maxHeight="20rem" />

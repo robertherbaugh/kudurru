@@ -143,8 +143,62 @@ describe('IntegrationsPage', () => {
     expect(await screen.findByRole('textbox', { name: /^Namespace/ })).toHaveValue('kudurru');
     const fields = screen.getByTestId('provider-fields');
     expect(within(fields).queryByRole('group', { name: /Inventory/ })).toBeNull();
+    // Every UniFi write is refused there, so no push field is offered, with the reason.
     expect(within(fields).queryByRole('group', { name: /Push/ })).toBeNull();
-    expect(within(fields).getByTestId('refused-fields')).toHaveTextContent('spec.unifi.inventory');
+    expect(within(fields).queryByRole('switch', { name: /DHCP DNS servers|Client actions/ })).toBeNull();
+    const refused = within(fields).getByTestId('refused-fields');
+    expect(refused).toHaveTextContent('spec.unifi.inventory');
+    expect(refused).toHaveTextContent(/spec\.unifi\.push\.dhcpDNSServers, spec\.unifi\.push\.mirrorRecords, spec\.unifi\.push\.clientActions\. UniFi writes \(spec\.unifi\.push\) run on SQLite only.*\(UniFiPushUnsupportedOnKubernetes\)/);
+  });
+
+  it('creates a UniFi instance with a push block from the manifest and reviews it as a publisher', async () => {
+    renderWithApp(<IntegrationsPage />, { route: '/integrations?new=1' });
+    fireEvent.click(await screen.findByRole('radio', { name: /UniFi/ }));
+    next();
+    // The first Name is the instance's (the inventory zone reference has one too).
+    fireEvent.change((await screen.findAllByRole('textbox', { name: /^Name(?!space)/ }))[0]!, { target: { value: 'gateway' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /^Endpoint/ }), { target: { value: 'https://controller.example.com' } });
+    const push = within(screen.getByTestId('provider-fields')).getByRole('group', { name: /^Push/ });
+    // DHCP DNS servers: an IPv4 list checked inline, and the parameters the switch needs.
+    fireEvent.click(within(push).getByRole('switch', { name: /DHCP DNS servers/ }));
+    next();
+    expect(await screen.findByText(/DHCP DNS servers needs at least one DNS server and one network/)).toBeInTheDocument();
+    const servers = within(push).getByRole('group', { name: /^DNS servers/ });
+    fireEvent.click(within(servers).getByRole('button', { name: 'Add' }));
+    const server1 = within(servers).getByRole('textbox', { name: 'DNS servers 1' });
+    expect(server1).toHaveAttribute('placeholder', 'e.g. 192.0.2.10');
+    fireEvent.change(server1, { target: { value: '2001:db8::53' } });
+    expect(await within(servers).findByText(/Not an IPv4 address/)).toBeInTheDocument();
+    next();
+    expect(await screen.findByText(/2001:db8::53: Not an IPv4 address/)).toBeInTheDocument();
+    fireEvent.change(server1, { target: { value: '192.0.2.53' } });
+    const networks = within(push).getByRole('group', { name: /^Networks/ });
+    fireEvent.click(within(networks).getByRole('button', { name: 'Add' }));
+    fireEvent.change(within(networks).getByRole('textbox', { name: 'Networks 1' }), { target: { value: 'LAN' } });
+    // The record mirror: a nested object whose domains its switch needs.
+    const mirror = within(push).getByRole('group', { name: /^Mirror records/ });
+    fireEvent.click(within(mirror).getByRole('switch', { name: /Enabled/ }));
+    next();
+    expect(await screen.findByText(/Mirror records needs at least one domain/)).toBeInTheDocument();
+    const domains = within(mirror).getByRole('group', { name: /^Domains/ });
+    fireEvent.click(within(domains).getByRole('button', { name: 'Add' }));
+    fireEvent.change(within(domains).getByRole('textbox', { name: 'Domains 1' }), { target: { value: 'example.com' } });
+    next();
+    // Credentials, then the review names it a reviewed publisher.
+    pick(await waitFor(() => getSelector(/^API key reference/)), 'File on the node');
+    pick(await waitFor(() => getSelector(/^API key file/)), '/run/secrets/unifi-key');
+    next();
+    const review = await screen.findByTestId('integration-review');
+    expect(review).toHaveTextContent('Publishes records: every sync is a reviewed Preview, then Publish this plan by its digest.');
+    fireEvent.click(screen.getByRole('button', { name: 'Create integration' }));
+    await waitFor(() => expect(window.location.pathname).toBe('/integrations/default/gateway'));
+    const created = mockIntegrations().objects.find((o) => o.metadata.name === 'gateway') as Integration;
+    expect(created.spec).toEqual({
+      type: 'unifi',
+      unifi: { endpoint: 'https://controller.example.com', push: { dhcpDNSServers: true, dnsServers: ['192.0.2.53'], networks: ['LAN'], mirrorRecords: { enabled: true, domains: ['example.com'] } } },
+      credentials: { apiKey: { file: '/run/secrets/unifi-key' } },
+      deletionPolicy: 'Retain',
+    });
   });
 });
 
@@ -234,6 +288,44 @@ describe('IntegrationDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
     await screen.findByTestId('integration-preview');
     expect(screen.queryByTestId('preview-superseded')).toBeNull();
+  });
+
+  it('previews and publishes a UniFi record mirror by its digest, then lists its write actions', async () => {
+    mockIntegrations().objects.push({
+      apiVersion: 'kudurru.io/v1alpha1', kind: 'Integration',
+      metadata: { name: 'gateway', namespace: 'default', uid: 'uid-gateway', resourceVersion: '31', annotations: { 'kudurru.io/managed-by': 'api' } },
+      spec: { type: 'unifi', credentials: { apiKey: { file: '/run/secrets/unifi-key' } }, unifi: { endpoint: 'https://controller.example.com', legacy: true, push: { dhcpDNSServers: true, dnsServers: ['192.0.2.53'], networks: ['LAN'], clientActions: true, mirrorRecords: { enabled: true, domains: ['example.com'] } } } },
+    });
+    const synced = bodies('/sync');
+    detail('gateway');
+    // A reviewed-only publisher: no Sync now, and Publish waits for a preview.
+    const publish = await screen.findByRole('button', { name: 'Publish this plan' });
+    expect(screen.queryByRole('button', { name: 'Sync now' })).toBeNull();
+    const previewButton = screen.getByRole('button', { name: 'Preview' });
+    await waitFor(() => expect(previewButton).not.toHaveAttribute('aria-disabled', 'true'));
+    expect(publish).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(previewButton);
+    const plan = await screen.findByTestId('integration-preview');
+    const digest = '1'.padStart(64, 'a');
+    expect(plan).toHaveTextContent(digest);
+    expect(within(plan).getByRole('table', { name: 'Planned changes' })).toHaveTextContent('nas.example.com A');
+    expect(plan).toHaveTextContent('printer.example.com A: a DNS policy this Integration did not create');
+    fireEvent.click(screen.getByRole('button', { name: 'Publish this plan' }));
+    expect(await screen.findByText('Sync completed')).toBeInTheDocument();
+    expect(synced).toEqual([{ uid: 'uid-gateway', revision: '31', mode: 'publish', previewDigest: digest }]);
+    expect(screen.getByRole('button', { name: 'Publish this plan' })).toHaveAttribute('aria-disabled', 'true');
+    // The configuration form shows the stored push block.
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Configuration' }));
+    const push = within(screen.getByTestId('provider-fields')).getByRole('group', { name: /^Push/ });
+    expect(within(push).getByRole('switch', { name: /DHCP DNS servers/ })).toBeChecked();
+    expect(within(push).getByRole('textbox', { name: 'DNS servers 1' })).toHaveValue('192.0.2.53');
+    // The writes the spec enables are the actions it advertises.
+    const load = screen.getByRole('button', { name: 'Load actions' });
+    await waitFor(() => expect(load).not.toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(load);
+    expect(await screen.findByRole('button', { name: 'Run dhcp-dns-servers' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run block-client' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run unblock-client' })).toBeInTheDocument();
   });
 
   it('saves a UniFi instance that sets no inventory zone (real schema)', async () => {

@@ -16,6 +16,7 @@ import {
   humanize,
   isDestinationField,
   providerShape,
+  refusedFields,
   type CredentialDraft,
   type CredentialForm,
   type IntegrationDraft,
@@ -63,9 +64,14 @@ export function SettingsFields({ manifest, draft, onChange, isDisabled, destinat
           <Text type="supporting">This provider has no settings of its own.</Text>
         )}
         {manifest.refused.length ? (
-          <Text type="supporting" data-testid="refused-fields">
-            Not offered on this node, because its host refuses them: {manifest.refused.join(', ')}.
-          </Text>
+          <VStack gap={1} data-testid="refused-fields">
+            {refusedFields(manifest).map((g) => (
+              <Text key={g.reason} type="supporting" display="block">
+                Not offered on this node: {g.fields.join(', ')}. {g.text}
+                {g.reason ? ` (${g.reason})` : ''}
+              </Text>
+            ))}
+          </VStack>
         ) : null}
       </FieldGroup>
       <Grid columns={{ minWidth: 220, repeat: 'fit' }} gap={3} align="start">

@@ -336,12 +336,17 @@ sync, who manages it), and each instance has its own page.
   group of settings, such as a Cloudflare zone's `adoptFrom` or the UniFi
   `inventory`, is left out unless one of its fields is set, and only then
   are its required fields required), and one
-  reference per credential the provider reads. A reference is a file or an
+  reference per credential the provider reads. The UniFi `push` block is
+  offered on SQLite with the checks the provider makes (DHCP DNS servers
+  needs IPv4 `dnsServers` and `networks`, client actions need `legacy`, the
+  record mirror needs `domains`); on Kubernetes it is not offered, and the
+  form says why (`UniFiPushUnsupportedOnKubernetes`). A reference is a file or an
   environment name the node configuration grants; the page has no field for
   a credential value. It needs `integrations.write`, `integrations.secrets`
   to bind a credential, and a license that covers integrations.
 - **Check** proves the endpoint and the credential. For a provider that
-  publishes records, **Preview** shows the planned changes, the records it
+  publishes records (Cloudflare, a webhook with domains, UniFi with
+  `push.mirrorRecords.enabled`), **Preview** shows the planned changes, the records it
   leaves alone and the plan's digest, and **Publish this plan** applies
   exactly that plan. When the plan expired or no longer matches (the
   instance, its zones or the provider changed), the server refuses it and
