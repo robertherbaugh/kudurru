@@ -93,7 +93,9 @@ and a link to the client page of every address the query log knows. A device
 from an integration links to that Integration: `GET /api/v1/integrations`
 names each incarnation's `inventorySource`, the source ID its devices carry.
 On a member of a SQLite cluster the page says that DHCP leases and lease MACs
-are the answering node's own. Sessions without `inventory.read` see that the
+are the answering node's own: `GET /api/v1/inventory` answers
+`nodeLocalLeases: true` there, so operators and auditors, who cannot read
+`GET /api/v1/cluster`, get the caveat too. Sessions without `inventory.read` see that the
 view is restricted, and the page sends no request for them.
 
 Client IDs are optional, client-selected policy identifiers. They are **not

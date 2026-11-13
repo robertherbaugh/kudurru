@@ -278,6 +278,10 @@ type ZoneRecord struct {
 	SetIdentifier string                `json:"setIdentifier,omitempty"`
 	Labels        map[string]string     `json:"labels,omitempty"`
 	Kudurru       *v1alpha1.EndpointExt `json:"kudurru,omitempty"`
+	// Namespace is the namespace of the ClientGroup a served client-group
+	// view row is answered to (D403). Such a row has no proven RecordSet, and
+	// its view resolves in this namespace: DELETE ?view=&namespace= removes it.
+	Namespace string `json:"namespace,omitempty" doc:"On a served client-group view row (complete runtime): the namespace of the view's ClientGroup."`
 }
 
 type zonePathInput struct {
@@ -322,6 +326,7 @@ type deleteRecordInput struct {
 	RecordSet     string `query:"recordSet" doc:"Only this DNSRecordSet (namespace/name or name)."`
 	SetIdentifier string `query:"setIdentifier"`
 	View          string `query:"view" json:"View,omitempty" maxLength:"253" doc:"Only endpoints of this view: public, a ClientGroup name, or - for the default endpoints without a view (D403). Empty: every view."`
+	Namespace     string `query:"namespace" json:"Namespace,omitempty" maxLength:"253" doc:"Only record sets of this namespace (a view names the ClientGroup of its record set's namespace). Empty: every namespace."`
 }
 
 type importInput struct {
@@ -752,8 +757,8 @@ func (s *Server) listZoneRecords(ctx context.Context, in *zonePathInput) (*zoneR
 		}
 		var items []ZoneRecord
 		var invalid bool
-		add := func(set *zone.RRset, view string) bool {
-			row := ZoneRecord{DNSName: strings.TrimSuffix(set.Name, "."), RecordType: set.TypeString(), RecordTTL: int64(set.TTL), Targets: make([]string, 0, len(set.RRs))}
+		add := func(set *zone.RRset, namespace, view string) bool {
+			row := ZoneRecord{DNSName: strings.TrimSuffix(set.Name, "."), RecordType: set.TypeString(), RecordTTL: int64(set.TTL), Targets: make([]string, 0, len(set.RRs)), Namespace: namespace}
 			if set.Name == "." {
 				row.DNSName = "@"
 			}
@@ -773,14 +778,18 @@ func (s *Server) listZoneRecords(ctx context.Context, in *zonePathInput) (*zoneR
 			items = append(items, row)
 			return ctx.Err() == nil
 		}
-		model.RRsets(func(set *zone.RRset) bool { return add(set, "") })
-		// The served client-group views (D403), each RRset with the name of
-		// its ClientGroup (the group ID is namespace/name; a view names the
-		// group in its record set's namespace).
+		model.RRsets(func(set *zone.RRset) bool { return add(set, "", "") })
+		// The served client-group views (D403), each RRset with the name and
+		// namespace of its ClientGroup (the group ID is namespace/name; a
+		// view names the group in its record set's namespace). Groups of one
+		// name in two namespaces stay two rows.
 		if !invalid && ctx.Err() == nil {
 			model.ViewRRsets(func(group string, set *zone.RRset) bool {
-				_, name, _ := strings.Cut(group, "/")
-				return add(set, name)
+				namespace, name, found := strings.Cut(group, "/")
+				if !found {
+					namespace, name = "", group
+				}
+				return add(set, namespace, name)
 			})
 		}
 		if invalid || ctx.Err() != nil {
@@ -1021,7 +1030,7 @@ func (s *Server) deleteRecordOnce(ctx context.Context, z *v1alpha1.DNSZone, in *
 	k, _ := kindByPlural("dnsrecordsets")
 	found := false
 	for _, rs := range sets {
-		if onlyName != "" && (rs.Namespace != onlyNS || rs.Name != onlyName) {
+		if onlyName != "" && (rs.Namespace != onlyNS || rs.Name != onlyName) || in.Namespace != "" && rs.Namespace != in.Namespace {
 			continue
 		}
 		keep := rs.Spec.Endpoints[:0:0]

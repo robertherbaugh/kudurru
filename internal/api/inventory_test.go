@@ -10,6 +10,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dhcp"
 	"github.com/robertherbaugh/kudurru/internal/dhcpdns"
 	"github.com/robertherbaugh/kudurru/internal/inventory"
+	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
 type inventoryTestLeases []dhcpdns.Lease
@@ -122,4 +124,43 @@ func TestInventoryListsDevicesLeasesAndConflicts(t *testing.T) {
 
 	unmounted := newHarness(t)
 	unmounted.do("GET", BasePath+"/inventory", "admin", nil).want(503)
+}
+
+// infoStore answers Info with a fixed driver and replication role.
+type infoStore struct {
+	store.Store
+	info store.Info
+}
+
+func (s infoStore) Info() store.Info { return s.info }
+
+// D397: GET /inventory says whether the answering node is one member of a
+// SQLite cluster (its DHCP leases are its own), so an operator or auditor,
+// who cannot read GET /cluster, still gets the node-local caveat on a
+// primary. A standalone node and other drivers answer false.
+func TestInventorySaysWhenLeasesAreNodeLocal(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		info store.Info
+		want bool
+	}{
+		{"memory", store.Info{Driver: "memory"}, false},
+		{"sqlite standalone", store.Info{Driver: sqlite.DriverName, Role: "standalone"}, false},
+		{"sqlite primary", store.Info{Driver: sqlite.DriverName, Role: "primary"}, true},
+		{"sqlite follower", store.Info{Driver: sqlite.DriverName, Role: "follower"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, func(o *Options) {
+				o.Store = infoStore{Store: o.Store, info: tc.info}
+				o.InventoryReads = func(context.Context) (*inventory.Snapshot, error) { return nil, nil }
+			})
+			for _, role := range []string{"auditor", "operator"} {
+				var body InventoryBody
+				h.do("GET", BasePath+"/inventory", role, nil).want(200).json(&body)
+				if body.NodeLocalLeases != tc.want {
+					t.Fatalf("%s: nodeLocalLeases %v, want %v", role, body.NodeLocalLeases, tc.want)
+				}
+			}
+		})
+	}
 }

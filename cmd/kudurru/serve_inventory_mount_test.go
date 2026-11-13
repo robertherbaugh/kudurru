@@ -333,8 +333,10 @@ func TestRunServeSQLiteInventoryAPIAndLeaseMACs(t *testing.T) {
 		d, ok := inventoryByKey(body)[inventoryOfficialID]
 		return ok && len(inventoryByKey(body)) == 3 && inventoryAddressState(d, "127.0.0.4") == "assigned" && !d.Stale && d.Kind == api.InventoryKindSource && len(d.MACs) == 1 && d.ObservedAt != nil
 	})
-	if body.Node != cfg.Node.Name || body.Generation == 0 {
-		t.Fatalf("inventory envelope: node=%q generation=%d", body.Node, body.Generation)
+	// A single standalone SQLite node is not a cluster member: its leases
+	// are not node-local in the D397 sense.
+	if body.Node != cfg.Node.Name || body.Generation == 0 || body.NodeLocalLeases {
+		t.Fatalf("inventory envelope: node=%q generation=%d nodeLocalLeases=%v", body.Node, body.Generation, body.NodeLocalLeases)
 	}
 	// The Integration's summary names the source its devices carry, so a
 	// reader (the dashboard inventory view) can link a device to it.

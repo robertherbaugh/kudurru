@@ -405,7 +405,7 @@ func (s *Server) commandDeleteZoneRecord(ctx context.Context, in *deleteRecordIn
 		}
 		var mutations []zoneCommandMutation
 		for _, old := range sets {
-			if onlyName != "" && (old.Namespace != onlyNS || old.Name != onlyName) {
+			if onlyName != "" && (old.Namespace != onlyNS || old.Name != onlyName) || in.Namespace != "" && old.Namespace != in.Namespace {
 				continue
 			}
 			desired := old.DeepCopy()

@@ -10,6 +10,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/dhcpdns"
 	"github.com/robertherbaugh/kudurru/internal/inventory"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
 // InventoryReadSource returns the inventory snapshot that serves DNS for this
@@ -61,6 +62,10 @@ type InventoryBody struct {
 	Node       string    `json:"node" doc:"The node that answered; DHCP leases are this node's."`
 	Generation uint64    `json:"generation" doc:"Generation of the inventory snapshot read (0: empty)."`
 	ReadAt     time.Time `json:"readAt" doc:"Time used to decide staleness and address states."`
+	// NodeLocalLeases lets a session without cluster.read (operator,
+	// auditor) learn what GET /cluster would tell it: this node is one member
+	// of a SQLite cluster, so its DHCP leases are its own (D397).
+	NodeLocalLeases bool `json:"nodeLocalLeases" doc:"True when the answering node is one member of a SQLite cluster: lease devices and lease MACs are this node's own, and a lease MAC selects mac matchers only for queries this node answers (D397)."`
 }
 
 type inventoryOutput struct{ Body *InventoryBody }
@@ -117,7 +122,22 @@ func (s *Server) listInventory(ctx context.Context, in *inventoryInput) (*invent
 		}
 		out = append(out, d)
 	}
-	return &inventoryOutput{Body: &InventoryBody{List: *newList(out, cont), Node: s.opts.NodeName, Generation: snap.Generation(), ReadAt: at}}, nil
+	return &inventoryOutput{Body: &InventoryBody{List: *newList(out, cont), Node: s.opts.NodeName, Generation: snap.Generation(), ReadAt: at, NodeLocalLeases: s.sqliteClusterMember(ctx)}}, nil
+}
+
+// sqliteClusterMember reports whether this node is one member of a SQLite
+// cluster, as GET /cluster shows it: the SQLite driver with more than one
+// peer, or a primary or follower replication role.
+func (s *Server) sqliteClusterMember(ctx context.Context) bool {
+	info := s.opts.Store.Info()
+	if info.Driver != sqlite.DriverName {
+		return false
+	}
+	if info.Role == "primary" || info.Role == "follower" || s.clusterRole(ctx).Follower {
+		return true
+	}
+	peers, err := s.opts.Membership.Peers(ctx)
+	return err == nil && len(peers) > 1
 }
 
 func inventoryMatch(d InventoryDevice, in *inventoryInput, q string) bool {

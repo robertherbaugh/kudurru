@@ -111,10 +111,57 @@ func TestZoneRecordWritesKeepViewsApart(t *testing.T) {
 	}
 }
 
+// TestZoneRecordDeleteViewInOneNamespace: DELETE ?view=&namespace= removes
+// the view of record sets in that namespace only (a view names the
+// ClientGroup of its record set's namespace, D403), on the direct store path
+// and on the SQLite command path. A served view row has no record set, so
+// this is how the dashboard deletes the kids/lan view and keeps default/lan.
+func TestZoneRecordDeleteViewInOneNamespace(t *testing.T) {
+	for _, mode := range []string{"store", "command"} {
+		t.Run(mode, func(t *testing.T) {
+			var h *harness
+			var objects store.Store
+			if mode == "store" {
+				h = newHarness(t)
+				h.seed(store.ManagerAPI, zoneObj("example", "example.com."))
+				objects = h.srv.opts.Store
+			} else {
+				var st *sqlite.Store
+				h, st = zoneCommandHarness(t, nil)
+				zoneSeed(t, st, store.ManagerAPI, zoneObj("example", "example.com."))
+				objects = st
+			}
+			views := func(ns string) []string {
+				var rs v1alpha1.DNSRecordSet
+				if err := objects.Get(t.Context(), store.Key{Kind: "DNSRecordSet", Namespace: ns, Name: "api-example"}, &rs); err != nil {
+					return nil
+				}
+				var out []string
+				for _, e := range rs.Spec.Endpoints {
+					out = append(out, endpointView(e)+"="+strings.Join(e.Targets, ","))
+				}
+				slices.Sort(out)
+				return out
+			}
+			h.do(http.MethodPost, "/api/v1/zones/example/records?recordSet=default/api-example", "operator", viewEP("www", "A", "lan", "10.0.0.10")).want(http.StatusCreated)
+			h.do(http.MethodPost, "/api/v1/zones/example/records?recordSet=kids/api-example", "operator", viewEP("www", "A", "lan", "10.9.0.10")).want(http.StatusCreated)
+			h.do(http.MethodDelete, "/api/v1/zones/example/records/www/A?view=lan&namespace=kids", "operator", nil).want(http.StatusNoContent)
+			if got := views("kids"); len(got) != 0 {
+				t.Fatalf("kids/lan survived: %v", got)
+			}
+			if got := views("default"); !slices.Equal(got, []string{"lan=10.0.0.10"}) {
+				t.Fatalf("the delete of kids/lan touched default/lan: %v", got)
+			}
+			h.do(http.MethodDelete, "/api/v1/zones/example/records/www/A?view=lan&namespace=kids", "operator", nil).want(http.StatusNotFound)
+		})
+	}
+}
+
 // TestCapturedZoneRecordsListServedViews: on the complete SQLite runtime the
 // record list is the served model, which also lists every served
-// client-group view with its group's name (D403), never the publish-only
-// public endpoint, which is not served.
+// client-group view with its group's name and namespace (D403), never the
+// publish-only public endpoint, which is not served. Views of one name in two
+// namespaces are two rows.
 func TestCapturedZoneRecordsListServedViews(t *testing.T) {
 	h, f := newZoneReadFixture(t)
 	actual := zoneObj("example", "example.com.")
@@ -123,7 +170,8 @@ func TestCapturedZoneRecordsListServedViews(t *testing.T) {
 		viewEP("www.example.com", "A", "lan", "10.0.0.10"),
 		viewEP("nas.example.com", "A", "lan", "10.0.0.20"),
 		viewEP("www.example.com", "A", "public", "198.51.100.10"))
-	model, errs := zone.Build(actual, []*v1alpha1.DNSRecordSet{rs}, zone.BuildOptions{})
+	kids := recordSetObj("kids", "actual", "example", viewEP("nas.example.com", "A", "lan", "10.9.0.20"))
+	model, errs := zone.Build(actual, []*v1alpha1.DNSRecordSet{rs, kids}, zone.BuildOptions{})
 	if model == nil || !model.HasViews() || !errs.Empty() {
 		t.Fatalf("fixture model with a view did not build: %v", errs)
 	}
@@ -137,12 +185,14 @@ func TestCapturedZoneRecordsListServedViews(t *testing.T) {
 		}
 		v := ""
 		if row.Kudurru != nil {
-			v = row.Kudurru.View
+			v = row.Namespace + "/" + row.Kudurru.View
+		} else if row.Namespace != "" {
+			t.Fatalf("default row %+v names a namespace", row)
 		}
 		got = append(got, v+" "+row.DNSName+"="+strings.Join(row.Targets, ","))
 	}
 	slices.Sort(got)
-	if want := []string{" www.example.com=203.0.113.10", "lan nas.example.com=10.0.0.20", "lan www.example.com=10.0.0.10"}; !slices.Equal(got, want) {
+	if want := []string{" www.example.com=203.0.113.10", "default/lan nas.example.com=10.0.0.20", "default/lan www.example.com=10.0.0.10", "kids/lan nas.example.com=10.9.0.20"}; !slices.Equal(got, want) {
 		t.Fatalf("served rows %q, want %q", got, want)
 	}
 }

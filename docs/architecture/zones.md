@@ -321,7 +321,13 @@ Rules and limits:
   The dashboard's record editor picks the view under "Served to" (every
   client, published only, or a ClientGroup of the record set's namespace),
   says what is refused or bypassed for a group view, and lists each record's
-  view.
+  view. `?namespace=` narrows a delete to the record sets of one namespace.
+- On the complete SQLite runtime the record list is the served zone, not the
+  desired record sets: its rows name no record set, a served view row carries
+  its ClientGroup's `namespace` (so `kids/lan` and `default/lan` stay two
+  rows, and the dashboard deletes one with `?view=lan&namespace=kids`), and a
+  `public` endpoint or a view the build refuses is stored but not listed. The
+  dashboard says so above the list and in the editor before such a save.
 
 ## External zones on Kubernetes
 
