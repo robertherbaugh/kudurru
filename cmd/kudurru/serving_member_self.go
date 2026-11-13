@@ -340,14 +340,35 @@ func (h *servingHTTP) answerForwardedPassword(w http.ResponseWriter, r *http.Req
 		return answered
 	})
 	if !answered {
-		if lease, err := h.opts.Runtime.publisher.CaptureHTTP(ctx); err == nil {
-			value, ok := lease.Bundle().Component("auth")
-			if v, typed := value.(*servingauth.View); ok && typed {
-				var infoErr error
-				out, infoErr = h.sessionInfo(v, changed, nil)
-				answered = infoErr == nil
+		// Any complete view answers for the account now. Under load the
+		// follower can still be preparing a publication at the bound; a single
+		// capture then found none and answered committed_output_unavailable
+		// for a committed change, so wait for the one being prepared, within
+		// another memberSelfAnswerWait and the request's own deadline.
+		wait, cancel := context.WithTimeout(ctx, memberSelfAnswerWait)
+		defer cancel()
+		for !answered {
+			ready := h.opts.Runtime.publisher.Subscribe()
+			lease, err := h.opts.Runtime.publisher.CaptureHTTP(wait)
+			if err == nil {
+				value, ok := lease.Bundle().Component("auth")
+				if v, typed := value.(*servingauth.View); ok && typed {
+					var infoErr error
+					out, infoErr = h.sessionInfo(v, changed, nil)
+					answered = infoErr == nil
+				}
+				lease.Release()
+				break
 			}
-			lease.Release()
+			if !errors.Is(err, serving.ErrPending) {
+				break
+			}
+			select {
+			case <-wait.Done():
+			case <-ready:
+				continue
+			}
+			break
 		}
 	}
 	if !answered {

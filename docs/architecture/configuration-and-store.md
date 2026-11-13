@@ -1320,7 +1320,9 @@ primary's own route answers from the postcommit account, whether or not the
 calling token still authenticates (`revokeTokens` ends it, and so would its
 expiry or another caller's revocation during the wait); when the view does not
 carry the new hash within those five seconds, the same answer comes from the
-latest view. A cookie caller's change whose session the follower cannot seal
+next complete view, waiting up to five more seconds while the follower is still
+preparing one; only when none is complete by then (or the route's bound ends
+first) is the change answered `503 committed_output_unavailable`. A cookie caller's change whose session the follower cannot seal
 is answered `503 committed_output_unavailable` (the password changed; sign in
 with the new one), and the message names the cause: the route's bound ran out,
 the cookie settings changed before the session could be issued, or another
