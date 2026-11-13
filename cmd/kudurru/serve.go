@@ -706,6 +706,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
+	reg.MustRegister(rpz.NewCollector(feeds))
 	if sql == nil {
 		kubeFeeds, err = newKubeRPZ(zc, feeds, kubeTSIG.keys)
 		if err != nil {
@@ -1454,7 +1455,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
 		ResponseCache: rc, CacheFlushCommand: cacheFlushCommand, CacheInspect: newCacheInspector(cs, fwd, dnsQueryCapture), Chain: chain, DNSQueryCapture: dnsQueryCapture, DNSQueryOutput: dnsQueryOutput,
 		Config: cfg, Reload: reload, NodeConfigCommand: nodeConfigCommand, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: apiMembership,
-		InternalClient: internalClient, License: lic, Secondaries: secondaries, Stubs: stubs,
+		InternalClient: internalClient, License: lic, Secondaries: secondaries, Stubs: stubs, RPZ: feeds,
 		Lists: listResolver, Notifier: manualNotify,
 		Refresher:  listRefresher(apiMembership, fetcher),
 		ListBodies: listBodies{cache: lists},

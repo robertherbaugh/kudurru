@@ -27,6 +27,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
@@ -265,6 +266,20 @@ func TestRunServeKubeRPZFeeds(t *testing.T) {
 		a := kubeRPZExchange(cfgA, "good.rpzlab.net.", "udp", nil)
 		return a != nil && a.Rcode == dns.RcodeServerFailure && kubeRPZEDE(a, "RPZ missing.test. unavailable")
 	})
+	// The feed state reaches the API, the CLI and /metrics on Kubernetes
+	// (D391): node A serves the updated feed and reports the missing one.
+	cliA := mountedCLIAs(t, cfgA, "rpz-a", "offline-test-password-1")
+	await("node A reports the missing feed", func() bool {
+		missing := kubeRPZFeeds(t, cliA, "missing")
+		return len(missing) == 1 && missing[0].State == "unavailable" && missing[0].Reason == "RPZTransfer" && missing[0].LastError != ""
+	})
+	if served := kubeRPZFeeds(t, cliA, "feed"); len(served) != 1 || served[0].State != "serving" || served[0].Node != "rpz-a" || served[0].Serial == nil || *served[0].Serial != 2 ||
+		served[0].Counts == nil || served[0].Counts.Rules != 5 || served[0].Rules == nil || served[0].Rules.ClientIP != 1 || served[0].Rules.ResponseIP != 1 || served[0].Rules.TCPOnly != 1 {
+		t.Fatalf("node A feed = %+v", served)
+	}
+	if !kubeRPZMetric(cfgA, `kudurru_rpz_feed_available{list="default/missing",source="native"} 0`) || !kubeRPZMetric(cfgA, `kudurru_rpz_feed_serial{list="default/feed",source="native"} 2`) {
+		t.Fatal("node A feed metrics missing")
+	}
 	setRefs("feed")
 	await("deselected feed no longer required", func() bool {
 		return kubeRPZRcode(cfgA, "good.rpzlab.net.", "udp", nil) == dns.RcodeSuccess && kubeRPZRcode(cfgB, "good.rpzlab.net.", "udp", nil) == dns.RcodeSuccess
@@ -320,6 +335,11 @@ func TestRunServeKubeRPZFeeds(t *testing.T) {
 	if rc := kubeRPZRcode(cfgB, "blocked.rpzlab.net.", "tcp", nil); rc != dns.RcodeServerFailure {
 		t.Fatal("expired feed answered from its rules", dns.RcodeToString[rc])
 	}
+	cliB := mountedCLIAs(t, cfgB, "rpz-b", "offline-test-password-1")
+	if expired := kubeRPZFeeds(t, cliB, "feed"); len(expired) != 1 || expired[0].State != "expired" || expired[0].Available || expired[0].Node != "rpz-b" ||
+		expired[0].Serial == nil || *expired[0].Serial != 3 || expired[0].LastError == "" {
+		t.Fatalf("node B expired feed = %+v", expired)
+	}
 	// A fresh transfer recovers.
 	primary.available.Store(true)
 	await("fresh transfer recovers", func() bool {
@@ -373,6 +393,20 @@ func TestRunServeKubeRPZFeeds(t *testing.T) {
 		return kubeRPZRcode(cfgB, "good.rpzlab.net.", "udp", nil) == dns.RcodeSuccess && kubeRPZRcode(cfgB, "blocked.rpzlab.net.", "tcp", nil) == dns.RcodeNameError
 	})
 	stopB()
+}
+
+// kubeRPZFeeds reads one BlockList's feeds through the real CLI.
+func kubeRPZFeeds(t *testing.T, cli *harness, list string) []api.RPZFeed {
+	t.Helper()
+	out, stderr, err := cli.run("lists", "rpz", list, "-o", "json")
+	if err != nil {
+		t.Fatalf("lists rpz %s: %v\n%s", list, err, stderr)
+	}
+	var items []api.RPZFeed
+	if err := json.Unmarshal([]byte(out), &items); err != nil {
+		t.Fatalf("decode %q: %v", out, err)
+	}
+	return items
 }
 
 type kubeRPZFeed struct {

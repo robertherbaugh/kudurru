@@ -376,6 +376,50 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 			{"list": "home/kids-extra", "mode": "block", "rule": "ads.example.net"},
 		}})
 	})
+	// RPZ feeds of the answering node (D391): a serving feed with ignored
+	// rules and a failed refresh, an expired one, and one never transferred.
+	rpzFeeds := []map[string]any{
+		{"node": "node-a", "namespace": "default", "list": "threats", "source": "vendor", "origin": "rpz.vendor.example.", "state": "serving", "available": true,
+			"reason": "RPZTransfer", "message": "The last refresh failed; this node keeps applying the copy until it expires: dial tcp 192.0.2.53:53: connection refused",
+			"serial": 2026101107, "primary": "192.0.2.53:53", "lastConfirmedAt": "2026-10-11T11:50:00Z", "expiresAt": "2026-10-11T13:50:00Z", "nextAttemptAt": "2026-10-11T12:01:00Z",
+			"lastError": "dial tcp 192.0.2.53:53: connection refused",
+			"counts":    map[string]any{"records": 1204, "rules": 1197, "invalid": 1, "unsupported": 3, "excluded": 0, "ignoredRecords": 3, "staleExcludes": 0},
+			"rules":     map[string]any{"qname": 1190, "clientIP": 2, "responseIP": 5, "nxdomain": 1100, "nodata": 90, "passthru": 2, "drop": 5, "tcpOnly": 0, "localData": 0},
+			"ignored": []map[string]any{
+				{"reason": "invalid-address-trigger", "unsupported": false, "count": 1, "examples": []string{"999.rpz-ip.rpz.vendor.example."}},
+				{"reason": "resolver-ns-provenance", "unsupported": true, "count": 3, "examples": []string{"ns.bad.example.rpz-nsdname.rpz.vendor.example."}},
+			}},
+		{"node": "node-a", "namespace": "default", "list": "threats", "source": "rpz-1", "origin": "local.rpz.", "state": "expired", "available": false,
+			"reason": "RPZExpired", "message": "The last copy has expired; queries whose policy selects this list answer SERVFAIL on this node.",
+			"serial": 12, "primary": "192.0.2.54:53", "lastConfirmedAt": "2026-10-10T09:00:00Z", "expiresAt": "2026-10-11T09:00:00Z",
+			"counts":  map[string]any{"records": 4, "rules": 2, "invalid": 0, "unsupported": 0, "excluded": 0, "ignoredRecords": 2, "staleExcludes": 0},
+			"rules":   map[string]any{"qname": 2, "clientIP": 0, "responseIP": 0, "nxdomain": 2, "nodata": 0, "passthru": 0, "drop": 0, "tcpOnly": 0, "localData": 0},
+			"ignored": []map[string]any{}},
+		{"node": "node-a", "namespace": "home", "list": "kids-rpz", "source": "feed", "origin": "kids.rpz.", "state": "pending", "available": false,
+			"reason": "TransferPending", "message": "Waiting for this node's first complete transfer.", "ignored": []map[string]any{}},
+	}
+	mux.HandleFunc("GET /api/v1/blocklists/_rpz", func(w http.ResponseWriter, r *http.Request) {
+		items := []map[string]any{}
+		for _, feed := range rpzFeeds {
+			if ns := r.URL.Query().Get("namespace"); ns == "" || feed["namespace"] == ns {
+				items = append(items, feed)
+			}
+		}
+		f.writeJSON(w, 200, map[string]any{"items": items})
+	})
+	mux.HandleFunc("GET /api/v1/blocklists/{ns}/{name}/rpz", func(w http.ResponseWriter, r *http.Request) {
+		items := []map[string]any{}
+		for _, feed := range rpzFeeds {
+			if feed["namespace"] == r.PathValue("ns") && feed["list"] == r.PathValue("name") {
+				items = append(items, feed)
+			}
+		}
+		if len(items) == 0 {
+			f.writeErr(w, 404, "not_found", "blocklist not found", "")
+			return
+		}
+		f.writeJSON(w, 200, map[string]any{"items": items})
+	})
 	mux.HandleFunc("POST /api/v1/domains/{verb}/{kind}", func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Domains []string }
 		_ = json.NewDecoder(r.Body).Decode(&req)

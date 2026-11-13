@@ -61,6 +61,12 @@ func startMountedServe(t *testing.T, cfg *config.Config) func() {
 // administrator password, as an operator does.
 func mountedCLI(t *testing.T, cfg *config.Config, name string) *harness {
 	t.Helper()
+	return mountedCLIAs(t, cfg, name, "mounted-test-password-1")
+}
+
+// mountedCLIAs is mountedCLI with the node's administrator password.
+func mountedCLIAs(t *testing.T, cfg *config.Config, name, password string) *harness {
+	t.Helper()
 	cli := &harness{t: t, cfgPath: filepath.Join(t.TempDir(), "cli.yaml"), env: map[string]string{}, keyring: &memKeyring{}}
 	deadline := time.Now().Add(20 * time.Second)
 	for {
@@ -68,7 +74,7 @@ func mountedCLI(t *testing.T, cfg *config.Config, name string) *harness {
 		// held to the publication it began on. A sign-in that meets the node's
 		// follow-up work on the request before it is refused; the next attempt
 		// is a new sign-in, never a replay.
-		cli.stdin = "mounted-test-password-1\n"
+		cli.stdin = password + "\n"
 		_, stderr, err := cli.run("login", "--server", "http://"+cfg.Listeners.API.Address, "--username", "admin", "--password-stdin", "--name", name)
 		if err == nil {
 			break

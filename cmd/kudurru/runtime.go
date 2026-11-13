@@ -101,7 +101,7 @@ func newListsCmd(o *cliOpts) *cobra.Command {
 			})
 		},
 	}
-	cmd.AddCommand(list, refresh, search, newDomainsCmd(o, "allow"), newDomainsCmd(o, "deny"))
+	cmd.AddCommand(list, refresh, search, newListsRPZCmd(o), newDomainsCmd(o, "allow"), newDomainsCmd(o, "deny"))
 	return cmd
 }
 
