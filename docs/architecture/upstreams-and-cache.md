@@ -542,7 +542,10 @@ can invalidate an in-flight operation's exact incarnation, but cannot rescue tha
 refused operation. A completed normal operation may be followed by a new captured
 source; an unchanged owner/settings identity retains its existing cooldown, and a
 changed one (a cluster settings change, for example) makes the follower check the
-root again at once. A capture or readiness classification refused only because an
+root again at once. The settings identity is the `Kudurru/default` UID and
+resourceVersion, so a status-only write such as the blocking switch also changes
+it: each such write costs one root TCP check per running deny-only member, paced
+only by the one-second wake coalescing. A capture or readiness classification refused only because an
 ordinary install replaced the installed cut between its read and its final check
 acquired nothing: it waits one second and captures the new cut, and like a clock
 wait it may then adopt the newer incarnation if no acquisition has started (D369).
