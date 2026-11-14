@@ -102,9 +102,16 @@ type VerifiedUpdate struct {
 type UpdateOutcome struct {
 	Rcode                              int
 	Committed, Published, Deduplicated bool
-	Version                            zonestate.Version
-	Serial                             uint32
-	Err                                error
+	// PublishFailed reports that the answer is SERVFAIL only because the
+	// zone's publication failed after the update was decided: its commit,
+	// the retained outcome of a deduplicated retry identity, or the recovery
+	// publication of an earlier commit (then nothing of this request was
+	// committed). Running the same retry identity again cannot commit twice:
+	// it reads the retained outcome from the receipt ledger (D381).
+	PublishFailed bool
+	Version       zonestate.Version
+	Serial        uint32
+	Err           error
 }
 
 // NotifyAdapter is root's bounded sender using frozen model policy and current

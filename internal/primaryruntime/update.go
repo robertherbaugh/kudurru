@@ -225,23 +225,24 @@ func (r *Runtime) Apply(ctx context.Context, request VerifiedUpdate) UpdateOutco
 }
 func (r *Runtime) publishUpdate(ctx context.Context, l *zk.ZoneLifecycle, v *zonestate.View) UpdateOutcome {
 	out := UpdateOutcome{Rcode: dns.RcodeServerFailure, Committed: true, Version: version(v), Serial: v.Head.Spec.Serial}
+	failed := func(err error) UpdateOutcome {
+		out.PublishFailed = true
+		out.Err = err
+		return out
+	}
 	e, err := r.build(ctx, l, v, nil)
 	if err != nil {
-		out.Err = err
-		return out
+		return failed(err)
 	}
 	if err := r.install(e); err != nil {
-		out.Err = err
-		return out
+		return failed(err)
 	}
 	if err := r.publish(ctx, e); err != nil {
-		out.Err = err
-		return out
+		return failed(err)
 	}
 	member, ok := r.Capture(r.o.Now()).Member(l.Spec.Zone.Apex)
 	if !ok || !member.Published || member.Version != version(v) {
-		out.Err = ErrUnavailable
-		return out
+		return failed(ErrUnavailable)
 	}
 	out.Rcode = dns.RcodeSuccess
 	out.Published = true
