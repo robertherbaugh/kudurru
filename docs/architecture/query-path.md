@@ -556,7 +556,9 @@ the `epoch` in the health TXT is always `0`.
 ## DHCP lease records
 
 Identification samples DHCP hostnames alongside the captured provider inventory,
-and fills the lease MAC when that inventory has no MAC for the address (D397).
+and fills the lease MAC when that inventory has no MAC for the address and the
+captured policy index has a `ClientGroup` `mac` matcher (D397); without such a
+matcher the query reads no lease snapshot.
 Alias and dependency queries retain those original names; a new client query
 observes current lease names.
 
