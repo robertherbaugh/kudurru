@@ -261,7 +261,9 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 	for i, cfg := range []map[string]any{acfg, bcfg} {
 		cfg["tsigKeys"] = updateKeys
 		cfg["querylog"] = map[string]any{"enabled": false}
-		cfg["log"] = map[string]any{"level": "error", "format": "text"}
+		// Warnings name the stage and cause of every forwarded UPDATE that
+		// answered SERVFAIL; the node logs are printed when the test fails.
+		cfg["log"] = map[string]any{"level": "warn", "format": "text"}
 		cfg["auth"].(map[string]any)["session"] = map[string]any{"secure": "never"}
 		anchors.configure(cfg)
 		kudurrutest.WriteConfig(t, []kudurrutest.NodeSpec{a, b}[i].Config, cfg)
@@ -638,13 +640,13 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		awaitDNS(primary, name, "", dns.RcodeNameError)
 		awaitDNS(follower, name, "", dns.RcodeNameError)
 	}
-	// A file that does not fit between two of the follower's pulls is cut
-	// through the follower (D375, docs/deploy/sqlite-cluster.md): the pull that
-	// installs the request's first documents changes the follower's source, and
-	// every later document is refused with unavailable ("the follower's source
-	// changed"), is not applied and is not sent again. The documents before
-	// stay committed. The file grows until one is cut: a short one may fit
-	// between two pulls (five seconds by default).
+	// One file of 200 documents through the follower is applied completely
+	// (D375). The follower forwards each document as its own member command
+	// on the source its request captured; its own scheduled pull used to
+	// install the request's earlier documents, change that source and cut
+	// every later document (in HA-OPEN6's runs a 40-document file was
+	// applied completely 5 of 18 times, a 160-document file never). The
+	// request now holds the follower's scheduled pull while it runs.
 	followerApply := func(documents []any) (api.List[api.ApplyResult], time.Duration) {
 		t.Helper()
 		data, err := json.Marshal(documents)
@@ -673,125 +675,63 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		}
 		return applied, time.Since(began)
 	}
-	cut := false
-	for round, size := range []int{40, 160, 640} {
-		enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
-		awaitDNS(follower, "seed", "192.0.2.42", dns.RcodeSuccess)
-		var file []any
-		var names []string
-		for i := range size {
-			name := fmt.Sprintf("cut-%d-%03d", round, i)
-			file = append(file, recordDoc(name, fmt.Sprintf("198.51.100.%d", i%250+1)))
-			names = append(names, name)
-		}
-		applied, took := followerApply(file)
-		if len(applied.Items) != size {
-			t.Fatalf("apply of %d documents through the follower answered %d results", size, len(applied.Items))
-		}
-		committed := 0
-		for committed < size && applied.Items[committed].Result == api.ResultCreated {
-			committed++
-		}
-		t.Logf("apply of %d documents through the follower took %s: %d created before the first refusal", size, took, committed)
-		for i, item := range applied.Items[:committed] {
-			if item.ErrorKey != "" || item.Error != "" || item.ResourceVersion == "" {
-				t.Fatalf("document %d before the cut was not answered as committed: %+v", i, item)
-			}
-		}
-		if committed == size {
-			continue
-		}
-		cut = true
-		// The document at the cut may have been in flight when the pull
-		// landed, so its outcome may be unknown. Every later one was refused
-		// before it was sent.
-		if boundary := applied.Items[committed]; boundary.Result != api.ResultError || boundary.ResourceVersion != "" ||
-			boundary.ErrorKey != api.KeyUnavailable && boundary.ErrorKey != "completion_unknown" {
-			t.Fatalf("the first document after the committed ones is not an explicit failure: %+v", boundary)
-		}
-		for i := committed + 1; i < size; i++ {
-			item := applied.Items[i]
-			if item.Result != api.ResultError || item.ErrorKey != api.KeyUnavailable || item.ResourceVersion != "" || !strings.Contains(item.Error, "the follower's source changed") {
-				t.Fatalf("document %d of %d after the cut at %d was not refused as documented: %+v", i, size, committed, item)
-			}
-		}
-		if committed > 0 {
-			last := committed - 1
-			awaitDNS(primary, names[last], fmt.Sprintf("198.51.100.%d", last%250+1), dns.RcodeSuccess)
-			awaitDNS(follower, names[last], fmt.Sprintf("198.51.100.%d", last%250+1), dns.RcodeSuccess)
-		}
-		// Every refused document was neither applied nor replayed. Both nodes
-		// list exactly the committed documents of this file (the one at the
-		// cut only if its outcome is unknown and it did land), and answer
-		// NXDOMAIN for every refused one. The check runs again after more
-		// than one further pull of the follower, so a document that was
-		// sent again later would show up there.
-		enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
-		awaitDNS(follower, "seed", "192.0.2.42", dns.RcodeSuccess)
-		boundaryUnknown := applied.Items[committed].ErrorKey == "completion_unknown"
-		refusedNotApplied := func(pass string) {
-			t.Helper()
-			for _, c := range []struct {
-				name   string
-				client *staticProcessClient
-			}{{"primary", apiA}, {"follower", apiB}} {
-				// The request helper reads at most 128 KiB of a body, and the
-				// 640-document round alone lists far more than that, so the
-				// record sets are read in small pages.
-				present := map[string]bool{}
-				for page, cont := 0, ""; ; page++ {
-					if page > 100 {
-						t.Fatalf("%s: listing the record sets did not end after %d pages", c.name, page)
-					}
-					var listed api.List[struct {
-						Metadata struct {
-							Name string `json:"name"`
-						} `json:"metadata"`
-					}]
-					path := "/objects/dnsrecordsets?limit=50"
-					if cont != "" {
-						path += "&continue=" + url.QueryEscape(cont)
-					}
-					c.client.request(t, http.MethodGet, path, nil, http.StatusOK, &listed)
-					for _, item := range listed.Items {
-						present[item.Metadata.Name] = true
-					}
-					if listed.Continue == "" {
-						break
-					}
-					cont = listed.Continue
-				}
-				for i, name := range names {
-					switch {
-					case i < committed && !present[name]:
-						t.Fatalf("%s %s: committed document %d of %d before the cut is missing", pass, c.name, i, size)
-					case i == committed && present[name] && !boundaryUnknown:
-						t.Fatalf("%s %s: document %d at the cut was refused as unavailable but applied", pass, c.name, i)
-					case i > committed && present[name]:
-						t.Fatalf("%s %s: document %d of %d, refused after the cut at %d, was applied", pass, c.name, i, size, committed)
-					}
-				}
-			}
-			for i := committed; i < size; i++ {
-				if i == committed && boundaryUnknown {
-					continue
-				}
-				for _, node := range []*kudurrutest.Node{primary, follower} {
-					if !checkDNS(node, names[i], "", dns.RcodeNameError) {
-						t.Fatalf("%s: document %d, refused after the cut at %d, is answered on %s", pass, i, committed, node.Name)
-					}
-				}
-			}
-		}
-		refusedNotApplied("after the request")
-		time.Sleep(6 * time.Second) // more than one follower pull (five seconds by default)
-		enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
-		refusedNotApplied("after another pull")
-		t.Logf("all %d refused documents of %d were checked on both nodes, twice", size-committed, size)
-		break
+	const followerDocuments = 200
+	enrolledZoneSettled(t, apiA, a.Ports.DNS, "seed", "192.0.2.42")
+	awaitDNS(follower, "seed", "192.0.2.42", dns.RcodeSuccess)
+	var file []any
+	var names []string
+	for i := range followerDocuments {
+		name := fmt.Sprintf("held-%03d", i)
+		file = append(file, recordDoc(name, fmt.Sprintf("198.51.100.%d", i%250+1)))
+		names = append(names, name)
 	}
-	if !cut {
-		t.Fatal("no apply through the follower outlasted one of its pulls, so the documented cut was never observed")
+	applied, took := followerApply(file)
+	if len(applied.Items) != followerDocuments {
+		t.Fatalf("apply of %d documents through the follower answered %d results", followerDocuments, len(applied.Items))
+	}
+	for i, item := range applied.Items {
+		if item.Result != api.ResultCreated || item.ErrorKey != "" || item.Error != "" || item.ResourceVersion == "" {
+			t.Fatalf("apply of %d documents through the follower (%s): document %d was not created: %+v", followerDocuments, took, i, item)
+		}
+	}
+	t.Logf("apply of %d documents through the follower: all created in %s", followerDocuments, took)
+	last := followerDocuments - 1
+	awaitDNS(primary, names[last], fmt.Sprintf("198.51.100.%d", last%250+1), dns.RcodeSuccess)
+	awaitDNS(follower, names[last], fmt.Sprintf("198.51.100.%d", last%250+1), dns.RcodeSuccess)
+	for _, c := range []struct {
+		name   string
+		client *staticProcessClient
+	}{{"primary", apiA}, {"follower", apiB}} {
+		// The request helper reads at most 128 KiB of a body, so the record
+		// sets are read in small pages.
+		present := map[string]bool{}
+		for page, cont := 0, ""; ; page++ {
+			if page > 100 {
+				t.Fatalf("%s: listing the record sets did not end after %d pages", c.name, page)
+			}
+			var listed api.List[struct {
+				Metadata struct {
+					Name string `json:"name"`
+				} `json:"metadata"`
+			}]
+			path := "/objects/dnsrecordsets?limit=50"
+			if cont != "" {
+				path += "&continue=" + url.QueryEscape(cont)
+			}
+			c.client.request(t, http.MethodGet, path, nil, http.StatusOK, &listed)
+			for _, item := range listed.Items {
+				present[item.Metadata.Name] = true
+			}
+			if listed.Continue == "" {
+				break
+			}
+			cont = listed.Continue
+		}
+		for i, name := range names {
+			if !present[name] {
+				t.Fatalf("%s: document %d of %d applied through the follower is missing", c.name, i, followerDocuments)
+			}
+		}
 	}
 	// A second session through the follower, signed out while partitioned.
 	partitionedJar, err := cookiejar.New(nil)
