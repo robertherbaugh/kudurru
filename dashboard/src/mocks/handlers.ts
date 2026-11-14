@@ -1011,7 +1011,7 @@ export const handlers = [
     const g = guard(request, 'records', 'read');
     if (g) return g;
     if (!db.zones.some((z) => z.metadata.name === params.zone)) return fail(404, 'not_found', `zone ${String(params.zone)} not found`);
-    return ok({ items: recordsOf(String(params.zone)) });
+    return ok({ items: recordsOf(String(params.zone)), source: 'desired' });
   }),
   http.post(`${B}/zones/:zone/records`, async ({ request, params }) => {
     const g = guard(request, 'records', 'write');

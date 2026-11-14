@@ -297,8 +297,25 @@ type zoneDetailOutput struct {
 	Body *ZoneDetail
 }
 
+// Sources of GET /zones/{zone}/records (ZoneRecordList.Source).
+const (
+	// RecordSourceDesired: the endpoints of the zone's DNSRecordSets.
+	RecordSourceDesired = "desired"
+	// RecordSourceServed: the RRsets this node serves (the complete SQLite
+	// runtime), each naming a record set only when one desired endpoint
+	// proves it (servedOwners).
+	RecordSourceServed = "served"
+)
+
+// ZoneRecordList is GET /zones/{zone}/records: the rows and which list they
+// are, so a client does not infer it from the rows.
+type ZoneRecordList struct {
+	List[ZoneRecord]
+	Source string `json:"source" enum:"desired,served" doc:"desired: the endpoints of the zone's DNSRecordSets, each naming its record set. served: the RRsets this node answers from (the complete SQLite runtime): a publish-only (public) endpoint, a disabled or expired one and one the build refused are not listed, and a row names a record set only when exactly one live desired endpoint of the request's captured objects has its name, type and view."`
+}
+
 type zoneRecordsOutput struct {
-	Body *List[ZoneRecord]
+	Body *ZoneRecordList
 }
 
 type upsertRecordInput struct {
@@ -745,6 +762,10 @@ func recordOf(rs *v1alpha1.DNSRecordSet, ep v1alpha1.Endpoint) ZoneRecord {
 
 func (s *Server) listZoneRecords(ctx context.Context, in *zonePathInput) (*zoneRecordsOutput, error) {
 	if s.opts.ZoneReads != nil {
+		objects, err := s.opts.ZoneReads.ZoneObjects(ctx)
+		if err != nil {
+			return nil, capturedZoneError(err)
+		}
 		model, err := s.opts.ZoneReads.ReadZone(ctx, in.Zone)
 		if err != nil {
 			return nil, capturedZoneError(err)
@@ -752,6 +773,7 @@ func (s *Server) listZoneRecords(ctx context.Context, in *zonePathInput) (*zoneR
 		if model == nil || !model.RoutingAvailableAt(s.opts.Now()) {
 			return nil, errUnavailable("zone contents are unavailable")
 		}
+		owners := newServedOwners(objects.RecordSetsForZone(in.Zone), model.Name(), s.opts.Now())
 		if model.SOA() == nil {
 			return nil, errConflict("zone has no complete record image", "inspect its routing configuration")
 		}
@@ -773,8 +795,11 @@ func (s *Server) listZoneRecords(ctx context.Context, in *zonePathInput) (*zoneR
 				}
 				row.Targets = append(row.Targets, parts[4])
 			}
-			// An actual RR is not proof of its desired mutable RecordSet owner.
-			// Keep unproven references empty; desired objects retain ownership.
+			// An actual RR alone is not proof of its desired mutable RecordSet
+			// owner: the row names one only when exactly one live desired
+			// endpoint of the captured objects has its identity, so Edit and
+			// Delete reach that record set and keep its comment and labels.
+			owners.attach(&row, namespace, view)
 			items = append(items, row)
 			return ctx.Err() == nil
 		}
@@ -795,7 +820,7 @@ func (s *Server) listZoneRecords(ctx context.Context, in *zonePathInput) (*zoneR
 		if invalid || ctx.Err() != nil {
 			return nil, errUnavailable("zone contents could not be read")
 		}
-		return &zoneRecordsOutput{Body: newList(items, "")}, nil
+		return &zoneRecordsOutput{Body: &ZoneRecordList{List: *newList(items, ""), Source: RecordSourceServed}}, nil
 	}
 	if _, err := s.zoneObject(ctx, in.Zone); err != nil {
 		return nil, err
@@ -810,7 +835,62 @@ func (s *Server) listZoneRecords(ctx context.Context, in *zonePathInput) (*zoneR
 			items = append(items, recordOf(rs, ep))
 		}
 	}
-	return &zoneRecordsOutput{Body: newList(items, "")}, nil
+	return &zoneRecordsOutput{Body: &ZoneRecordList{List: *newList(items, ""), Source: RecordSourceDesired}}, nil
+}
+
+// servedOwners finds the desired endpoint behind a served row. A served
+// RRset is the endpoint of that owner, type and view when exactly one live
+// endpoint of the request's captured record sets has them: the builder
+// refuses a second one as Duplicated (without merge), and a view of a group
+// is only read from its namespace's record sets. Zero candidates (system or
+// dynamic data) or several (set identifiers, mergeStrategy: union) prove
+// nothing and leave the row without a record set.
+type servedOwners struct {
+	apex  string
+	byKey map[string][]servedOwner
+}
+
+type servedOwner struct {
+	rs *v1alpha1.DNSRecordSet
+	ep v1alpha1.Endpoint
+}
+
+func servedOwnerKey(owner, rrtype, namespace, view string) string {
+	return owner + "\x00" + strings.ToUpper(rrtype) + "\x00" + namespace + "\x00" + view
+}
+
+func newServedOwners(sets []*v1alpha1.DNSRecordSet, apex string, now time.Time) servedOwners {
+	out := servedOwners{apex: apex, byKey: map[string][]servedOwner{}}
+	for _, rs := range sets {
+		for _, ep := range rs.Spec.Endpoints {
+			view := endpointView(ep)
+			if view == zone.ViewPublic || !zone.Live(&ep, now) {
+				continue
+			}
+			namespace := ""
+			if view != "" {
+				namespace = rs.Namespace
+			}
+			key := servedOwnerKey(absName(ep.DNSName, apex), ep.RecordType, namespace, view)
+			out.byKey[key] = append(out.byKey[key], servedOwner{rs: rs, ep: ep})
+		}
+	}
+	return out
+}
+
+// attach names the row's desired record set and endpoint metadata when one
+// endpoint proves it. namespace and view are the row's view group ("" for
+// the default data).
+func (o servedOwners) attach(row *ZoneRecord, namespace, view string) {
+	found := o.byKey[servedOwnerKey(absName(row.DNSName, o.apex), row.RecordType, namespace, view)]
+	if len(found) != 1 {
+		return
+	}
+	desired := recordOf(found[0].rs, found[0].ep)
+	row.RecordSet, row.ManagedBy, row.SetIdentifier, row.Labels = desired.RecordSet, desired.ManagedBy, desired.SetIdentifier, desired.Labels
+	if desired.Kudurru != nil {
+		row.Kudurru = desired.Kudurru.DeepCopy()
+	}
 }
 
 // endpointView is the endpoint's kudurru.view ("" for the default data).

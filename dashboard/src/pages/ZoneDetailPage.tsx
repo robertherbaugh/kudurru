@@ -17,7 +17,7 @@ import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { qk, useApi, useCan, useCannotReason } from '../api/context';
-import type { ClientGroup, DNSZone, ZoneImportResult, ZoneRecord } from '../api/types';
+import type { ClientGroup, DNSZone, ZoneImportResult, ZoneRecord, ZoneRecordList } from '../api/types';
 import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
 import { TextAreaField, TextField } from '../components/fields/TextField';
 import { FormDialog } from '../components/FormDialog';
@@ -66,13 +66,20 @@ export function rowNamespace(r: ZoneRecord): string {
   return r.namespace || recordSetNS(r.recordSet);
 }
 
+/** Whether the record list is the served zone (the complete SQLite runtime), as the API says. */
+export function listsServed(list: Pick<ZoneRecordList, 'source'> | undefined): boolean {
+  return list?.source === 'served';
+}
+
 /**
- * Whether the record list is the served zone (the complete SQLite runtime):
- * its rows never name a record set (internal/api ZoneRecord.RecordSet), while
- * a desired row always does, and a served zone always lists its SOA.
+ * Why Edit is withheld on a row: a served row names a record set only when
+ * one desired endpoint proves it, and the editor replaces an endpoint inside
+ * one record set, so writing anywhere else would add a second, conflicting
+ * endpoint instead of changing this one.
  */
-export function listsServed(items: readonly ZoneRecord[]): boolean {
-  return items.length > 0 && items.every((r) => !r.recordSet);
+export function unprovenRecordReason(r: ZoneRecord): string | undefined {
+  if (r.recordSet) return undefined;
+  return 'No single record set holds this served record (system or dynamic data, or one stored in several record sets), so it cannot be edited here. Delete still removes it.';
 }
 
 function ViewCell({ r }: { r: ZoneRecord }) {
@@ -217,7 +224,7 @@ function ZoneDetail({ zone }: { zone: string }) {
   // Same key as ZoneSettingsSection: the object says whether the zone is signed.
   const zoneObj = useQuery({ queryKey: [...qk.objects('dnszones'), zone], queryFn: () => api.objects.get<DNSZone>('dnszones', zone), enabled: primary });
   const groups = useQuery({ queryKey: qk.objects('clientgroups'), queryFn: () => api.objects.list<ClientGroup>('clientgroups'), enabled: primary && can('clientgroups', 'read') });
-  const served = listsServed(recs.data?.items ?? []);
+  const served = listsServed(recs.data);
   const signed = zoneObj.data?.spec.dnssec?.enabled === true || (recs.data?.items ?? []).some((r) => SIGNED_TYPES.has(r.recordType.toUpperCase()) && !r.kudurru?.view);
   const own = ownership(z.data?.managedBy);
   const zoneEditable = own.editable && z.data?.type === 'primary';
@@ -325,9 +332,10 @@ function ZoneDetail({ zone }: { zone: string }) {
       width: pixel(176),
       renderCell: (r) => {
         const editable = zoneEditable && ownership(r.managedBy).editable && canWrite;
+        const unproven = served ? unprovenRecordReason(r) : undefined;
         return (
           <HStack gap={0.5}>
-            <Button label="Edit" size="sm" variant="ghost" isDisabled={!editable} onClick={() => setEditing(r)} />
+            <Button label="Edit" size="sm" variant="ghost" isDisabled={!editable || !!unproven} tooltip={editable ? unproven : undefined} onClick={() => setEditing(r)} />
             <Button
               label="Delete"
               size="sm"
@@ -413,7 +421,7 @@ function ZoneDetail({ zone }: { zone: string }) {
         <Banner
           status="info"
           title="This list shows what this node serves"
-          description="Rows come from the zone this node answers from, so they name no record set, and a record saved as Published only (public) or a client-group view the server refuses (a signed zone, more than 16 views, or default data of another namespace) is stored but not listed. Deleting a row removes that name and type from every record set of the zone, or for a client-group view from every record set of its group’s namespace."
+          description="Rows come from the zone this node answers from. A row names its record set when exactly one stored record has its name, type and view; a row that names none (system or dynamic data, or a record stored in several record sets) cannot be edited here, and deleting it removes that name and type from every record set of the zone, or for a client-group view from every record set of its group’s namespace. A record saved as Published only (public), a disabled or expired one, and a client-group view the server refuses (a signed zone, more than 16 views, or default data of another namespace) are stored but not listed."
         />
       ) : null}
       {primary && recs.data ? (

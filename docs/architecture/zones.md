@@ -323,11 +323,20 @@ Rules and limits:
   says what is refused or bypassed for a group view, and lists each record's
   view. `?namespace=` narrows a delete to the record sets of one namespace.
 - On the complete SQLite runtime the record list is the served zone, not the
-  desired record sets: its rows name no record set, a served view row carries
-  its ClientGroup's `namespace` (so `kids/lan` and `default/lan` stay two
-  rows, and the dashboard deletes one with `?view=lan&namespace=kids`), and a
-  `public` endpoint or a view the build refuses is stored but not listed. The
-  dashboard says so above the list and in the editor before such a save.
+  desired record sets, and the list says so (`source: served`; `desired`
+  elsewhere), so a client does not infer it from the rows. A served view row
+  carries its ClientGroup's `namespace` (so `kids/lan` and `default/lan` stay
+  two rows). A served row names its record set, manager, set identifier,
+  comment and labels only when exactly one live desired endpoint of the
+  request's captured objects has its name, type and view (a view only from
+  its group's namespace); system data, dynamic (UPDATE, DHCP) data and an
+  endpoint held by several record sets name none. The dashboard edits a row
+  in the record set it names, withholds Edit from a row that names none
+  (writing elsewhere would add a second, Duplicated endpoint), and deletes
+  such a row with `?view=lan&namespace=kids` (a view) or from every record
+  set of the zone (default data). A `public` endpoint, a disabled or expired
+  one, or a view the build refuses is stored but not listed. The dashboard
+  says so above the list and in the editor before such a save.
 
 ## External zones on Kubernetes
 
