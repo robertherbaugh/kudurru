@@ -274,8 +274,19 @@ func TestAuthenticatorChainMatrix(t *testing.T) {
 		if r := e.do(http.MethodGet, "/api/v1/iam/users", nil, withCookie(alice)); r.code != 403 {
 			t.Fatalf("alice IAM: %d", r.code)
 		}
-		if r := e.do(http.MethodGet, "/api/v1/iam/users", nil, withCookie(cookie)); r.code != 200 || len(r.body["items"].([]any)) != 2 {
+		r = e.do(http.MethodGet, "/api/v1/iam/users", nil, withCookie(cookie))
+		if r.code != 200 || len(r.body["items"].([]any)) != 2 {
 			t.Fatalf("admin IAM users: %d %s", r.code, r.raw)
+		}
+		// The list names each account's manager, so a client can tell the
+		// bootstrap's admin and a system-created account from an API one.
+		managers := map[string]string{}
+		for _, item := range r.body["items"].([]any) {
+			u := item.(map[string]any)
+			managers[u["name"].(string)], _ = u["managedBy"].(string)
+		}
+		if !strings.HasPrefix(managers["admin"], store.ManagerBootstrap+":") || managers["alice"] != store.ManagerSystem {
+			t.Fatalf("IAM user managers %v", managers)
 		}
 		// Someone else's token is reported missing.
 		tokID, _ := tr.body["id"].(string)
@@ -498,6 +509,13 @@ func TestGeneratedAdminAndBootstrapToken(t *testing.T) {
 	r := e.do(http.MethodGet, "/api/v1/iam/serviceaccounts", nil, bearer(wire))
 	if r.code != 200 || !strings.Contains(r.raw, `"name":"bootstrap"`) {
 		t.Fatalf("bootstrap token: %d %s", r.code, r.raw)
+	}
+	// The bootstrap account names its manager (the system), so a client
+	// disables what the reviewed commands would refuse with 409 managed_by.
+	for _, item := range r.body["items"].([]any) {
+		if sa := item.(map[string]any); sa["name"] == "bootstrap" && sa["managedBy"] != store.ManagerSystem {
+			t.Fatalf("bootstrap account manager: %s", r.raw)
+		}
 	}
 	if r := e.do(http.MethodGet, "/api/v1/iam/rolebindings", nil, bearer(wire)); r.code != 200 || !strings.Contains(r.raw, `"source":"config"`) {
 		t.Fatalf("rolebindings: %d %s", r.code, r.raw)
