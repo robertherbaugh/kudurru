@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 )
 
 func TestConvenienceGolden(t *testing.T) {
@@ -135,6 +137,51 @@ func TestRecordsAddRemove(t *testing.T) {
 	}
 	if _, _, err := h.run("records", "rm", "home-example-com", "missing.home.example.com", "A"); err == nil || !strings.Contains(err.Error(), "not_found") {
 		t.Fatalf("rm missing: %v", err)
+	}
+}
+
+// TestRecordsViews: --view on add stores kudurru.view (D403) and on rm
+// limits the removal to one view; an explicit -n narrows rm to that
+// namespace's record sets, and without -n rm still spans every namespace.
+func TestRecordsViews(t *testing.T) {
+	h := loggedIn(t)
+	out := h.mustRun("records", "add", "home-example-com", "nas.home.example.com", "A", "10.9.0.20", "--view", "lan", "-n", "kids", "--comment", "kids NAS")
+	if out != "nas.home.example.com A set in zone home-example-com (record set api-home-example-com, served to client group lan)\n" {
+		t.Fatalf("add --view output %q", out)
+	}
+	if len(h.api.requested("POST /api/v1/zones/home-example-com/records?namespace=kids")) != 1 {
+		t.Fatalf("add --view query: %v", h.api.requested("POST"))
+	}
+	var ep v1alpha1.Endpoint
+	if err := json.Unmarshal(h.api.lastBody("POST", "/api/v1/zones/home-example-com/records"), &ep); err != nil {
+		t.Fatal(err)
+	}
+	if ep.Kudurru == nil || ep.Kudurru.View != "lan" || ep.Kudurru.Comment != "kids NAS" {
+		t.Fatalf("add --view body %+v", ep)
+	}
+	if out := h.mustRun("records", "add", "home-example-com", "www.home.example.com", "A", "198.51.100.10", "--view", "public"); !strings.Contains(out, "published only (view public)") {
+		t.Fatalf("add --view public output %q", out)
+	}
+	var public v1alpha1.Endpoint
+	if err := json.Unmarshal(h.api.lastBody("POST", "/api/v1/zones/home-example-com/records"), &public); err != nil || public.Kudurru == nil || public.Kudurru.View != "public" || public.Kudurru.Comment != "" {
+		t.Fatalf("add --view public body %+v %v", public, err)
+	}
+	if _, _, err := h.run("records", "add", "home-example-com", "www.home.example.com", "A", "192.0.2.1", "--view", "-"); err == nil || !strings.Contains(err.Error(), "leave --view out") {
+		t.Fatalf("add --view -: %v", err)
+	}
+	h.mustRun("records", "rm", "home-example-com", "nas.home.example.com", "A", "--view", "lan", "-n", "kids")
+	if len(h.api.requested("DELETE /api/v1/zones/home-example-com/records/nas.home.example.com/A?namespace=kids&view=lan")) != 1 {
+		t.Fatalf("rm --view -n query: %v", h.api.requested("DELETE"))
+	}
+	h.mustRun("records", "rm", "home-example-com", "nas.home.example.com", "A", "--view", "-")
+	if len(h.api.requested("DELETE /api/v1/zones/home-example-com/records/nas.home.example.com/A?view=-")) != 1 {
+		t.Fatalf("rm --view - query: %v", h.api.requested("DELETE"))
+	}
+	if got := recordViewText(recordItem{Namespace: "kids", Kudurru: &v1alpha1.EndpointExt{View: "lan"}}); got != "kids/lan" {
+		t.Fatalf("view text %q", got)
+	}
+	if got := recordViewText(recordItem{RecordSet: "default/api-x", Kudurru: &v1alpha1.EndpointExt{View: "lan"}}); got != "lan" {
+		t.Fatalf("view text %q", got)
 	}
 }
 

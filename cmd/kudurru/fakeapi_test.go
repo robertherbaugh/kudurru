@@ -112,6 +112,7 @@ func (f *fakeAPI) seed() {
 		{"recordSet": "web", "namespace": "default", "dnsName": "www.home.example.com", "recordType": "A", "targets": []string{"192.168.1.10"}, "recordTTL": 300},
 		{"recordSet": "web", "namespace": "default", "dnsName": "home.example.com", "recordType": "MX", "targets": []string{"10 mail.home.example.com."}},
 		{"recordSet": "api-home-example-com", "dnsName": "nas.home.example.com", "recordType": "A", "targets": []string{"192.168.1.20", "192.168.1.21"}, "recordTTL": 60, "kudurru": map[string]any{"comment": "the NAS", "disabled": true}},
+		{"recordSet": "kids/kids-views", "namespace": "kids", "dnsName": "nas.home.example.com", "recordType": "A", "targets": []string{"10.9.0.20"}, "recordTTL": 60, "kudurru": map[string]any{"view": "lan"}},
 	}
 	base := time.Date(2026, 10, 11, 11, 59, 0, 0, time.UTC)
 	for i := 1; i <= 5; i++ {
