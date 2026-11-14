@@ -1,4 +1,5 @@
-NAME                   TYPE   TTL   TARGETS                     RECORDSET              SET-ID   DISABLED   COMMENT
-www.home.example.com   A      300   192.168.1.10                web                    -        false      -
-home.example.com       MX     -     10 mail.home.example.com.   web                    -        false      -
-nas.home.example.com   A      60    192.168.1.20,192.168.1.21   api-home-example-com   -        true       the NAS
+NAME                   TYPE   TTL   TARGETS                     RECORDSET              SET-ID   VIEW       DISABLED   COMMENT
+www.home.example.com   A      300   192.168.1.10                web                    -        -          false      -
+home.example.com       MX     -     10 mail.home.example.com.   web                    -        -          false      -
+nas.home.example.com   A      60    192.168.1.20,192.168.1.21   api-home-example-com   -        -          true       the NAS
+nas.home.example.com   A      60    10.9.0.20                   kids/kids-views        -        kids/lan   false      -

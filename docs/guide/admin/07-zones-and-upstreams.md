@@ -552,6 +552,8 @@ Click **Delete** to remove a group that is not in use.
 | List the records of a zone | `kudurru records list <zone>` |
 | Add a record | `kudurru records add <zone> nas.home.arpa A 192.168.1.10 --ttl 300` |
 | Remove a record | `kudurru records rm <zone> <name> <type>` |
+| Serve a record to one client group only | `kudurru records add <zone> nas.home.arpa A 10.9.0.20 --view lan -n kids` |
+| Remove one view of a record | `kudurru records rm <zone> nas.home.arpa A --view lan -n kids` (`--view -`: the default data only) |
 | Import a zone file | `kudurru zones import <zone> -f <file>` |
 | Export a zone | `kudurru zones export <zone>` |
 | Send NOTIFY | `kudurru zones notify <zone>` |
