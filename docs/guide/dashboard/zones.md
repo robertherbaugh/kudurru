@@ -27,6 +27,13 @@ Use **Add target** in the editor for another value in the same record.
 Secondary, forward and stub zone records come from elsewhere and are read-only.
 For a managed zone, edit its file or Kubernetes resource.
 
+When the banner says the list shows what this node serves, **Edit** saves a
+row into the record set that stores it, which the row names, including a
+client-group view of another namespace. A row that no single record set stores
+(the SOA and apex NS, names from dynamic updates or DHCP, or a record stored in
+several record sets) has **Edit** disabled with the reason; **Delete** still
+removes it.
+
 ## Import or export a zone
 
 1. Click **Export** to inspect the current BIND zone file.
