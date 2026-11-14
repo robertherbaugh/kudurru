@@ -209,6 +209,18 @@ describe('local users', () => {
     expect(patches()).toBe(2);
   });
 
+  it('disables the commands of an account of the configuration file with the reason', async () => {
+    mockDB().users.push({ username: 'filed', password: 'filed-password', name: 'filed', roles: [], managedBy: 'file:kudurru.yaml' });
+    const patches = count('PATCH', '/iam/users/filed');
+    identity();
+    const table = await screen.findByRole('table', { name: 'Local users' });
+    await waitFor(() => expect(off(within(table).getByRole('button', { name: 'Edit viewer' }))).toBe(false));
+    for (const name of ['Edit filed', 'Disable filed', 'Reset password of filed', 'Delete filed']) expect(off(within(table).getByRole('button', { name }))).toBe(true);
+    fireEvent.mouseEnter(within(table).getByRole('button', { name: 'Disable filed' }));
+    expect(await screen.findAllByText('Declared in kudurru.yaml: change it there, or with kudurru admin on the host')).not.toHaveLength(0);
+    expect(patches()).toBe(0);
+  });
+
   it('keeps the built-in admin out of the commands', async () => {
     identity();
     const table = await screen.findByRole('table', { name: 'Local users' });
@@ -283,22 +295,82 @@ describe('service accounts', () => {
     await waitFor(() => expect(off(within(table).getByRole('button', { name: 'New token for default/grafana' }))).toBe(true));
   });
 
-  it('refuses an account of another manager before sending, and deletes an API account by its reviewed read', async () => {
+  it('disables the commands of an account of another manager with the reason, and deletes an API account by its reviewed read', async () => {
     const mutations = count('PUT', /\/iam\/serviceaccounts\//);
     identity();
-    await press('Edit kudurru/external-dns');
-    let d = await reviewed();
-    expect(within(d).getByText('Managed elsewhere')).toBeInTheDocument();
-    expect(within(d).getByText(/file:objects.d\/external-dns.yaml/)).toBeInTheDocument();
-    fireEvent.click(within(d).getAllByRole('button', { name: 'Close' }).at(-1)!);
-    await closed();
+    const table = await screen.findByRole('table', { name: 'Service accounts' });
+    await waitFor(() => expect(off(within(table).getByRole('button', { name: 'Edit default/grafana' }))).toBe(false));
+    // The list names the manager, so the row says why before any dialog.
+    for (const name of ['Edit kudurru/external-dns', 'New token for kudurru/external-dns', 'Delete kudurru/external-dns']) expect(off(within(table).getByRole('button', { name }))).toBe(true);
+    fireEvent.mouseEnter(within(table).getByRole('button', { name: 'Edit kudurru/external-dns' }));
+    expect(await screen.findAllByText('Declared in objects.d/external-dns.yaml: change it there, or with kudurru admin on the host')).not.toHaveLength(0);
+    // Its tokens can still be listed.
+    expect(off(within(table).getByRole('button', { name: 'Tokens of kudurru/external-dns' }))).toBe(false);
     expect(mutations()).toBe(0);
     await press('Delete default/grafana');
-    d = await reviewed();
+    const d = await reviewed();
     expect(await within(d).findByText(/tokens stay refused after a restart/)).toBeInTheDocument();
     fireEvent.click(within(d).getByRole('button', { name: 'Delete service account' }));
     await closed();
     expect(calls('DELETE', '/iam/serviceaccounts/default/grafana').map((c) => c.body)).toEqual([{ uid: 'sa-default-grafana', resourceVersion: '11' }]);
+  });
+
+  it('lists the account’s tokens only and revokes one once per decision', async () => {
+    mockDB().tokens.push(
+      { id: 'g1', description: 'grafana reader', owner: { kind: 'ServiceAccount', name: 'grafana', namespace: 'default' }, createdAt: '2026-11-01T00:00:00Z', expiresAt: null, scopes: ['viewer'] },
+      { id: 'g2', owner: { kind: 'ServiceAccount', name: 'grafana', namespace: 'default' }, createdAt: '2026-11-02T00:00:00Z', expiresAt: '2027-11-02T00:00:00Z' },
+      { id: 'x1', description: 'other namespace', owner: { kind: 'ServiceAccount', name: 'grafana', namespace: 'apps' }, createdAt: '2026-11-01T00:00:00Z', expiresAt: null },
+    );
+    const lists = count('GET', '/auth/tokens');
+    const deletes = count('DELETE', /\/auth\/tokens\//);
+    identity();
+    await press('Tokens of default/grafana');
+    const d = await dialog();
+    const table = await within(d).findByRole('table', { name: 'Tokens of default/grafana' });
+    expect(within(table).getByText('grafana reader')).toBeInTheDocument();
+    expect(within(table).getByText('kdr_g2_…')).toBeInTheDocument();
+    // Not another namespace's account of the same name, and not a user's token.
+    expect(within(d).queryByText('other namespace')).toBeNull();
+    expect(within(d).queryByText(/kdr_x1_/)).toBeNull();
+    expect(lists()).toBeGreaterThan(0);
+    fireEvent.click(within(table).getByRole('button', { name: 'Revoke grafana reader' }));
+    expect(within(d).getByText('Revoke token grafana reader?')).toBeInTheDocument();
+    fireEvent.click(within(d).getByRole('button', { name: 'Revoke token' }));
+    await waitFor(() => expect(mockDB().tokens.some((t) => t.id === 'g1')).toBe(false));
+    expect(deletes()).toBe(1);
+    await waitFor(() => expect(within(d).queryByText('grafana reader')).toBeNull());
+    expect(mockDB().tokens.some((t) => t.id === 'g2')).toBe(true);
+  });
+
+  it('locks token revocation after an unknown outcome without the revocation-record sentence', async () => {
+    mockDB().tokens.push({ id: 'g1', description: 'grafana reader', owner: { kind: 'ServiceAccount', name: 'grafana', namespace: 'default' }, createdAt: '2026-11-01T00:00:00Z', expiresAt: null });
+    let sent = 0;
+    server.use(
+      http.delete(`${API}/auth/tokens/:id`, () => {
+        sent++;
+        return HttpResponse.json({ error: { key: 'unavailable', message: 'authentication operation unavailable' } }, { status: 503 });
+      }),
+    );
+    identity();
+    await press('Tokens of default/grafana');
+    const d = await dialog();
+    fireEvent.click(await within(d).findByRole('button', { name: 'Revoke grafana reader' }));
+    fireEvent.click(within(d).getByRole('button', { name: 'Revoke token' }));
+    expect(await within(d).findByText('Outcome unknown')).toBeInTheDocument();
+    expect(within(d).queryByText(/limit of revocation records/)).toBeNull();
+    expect(off(within(d).getByRole('button', { name: 'Revoke grafana reader' }))).toBe(true);
+    expect(within(d).queryByRole('button', { name: 'Revoke token' })).toBeNull();
+    expect(sent).toBe(1);
+  });
+
+  it('needs tokens.read to list an account’s tokens and tokens.delete to revoke one', async () => {
+    meAs({ users: ['read'], serviceaccounts: ['read'], rolebindings: ['read'], identityproviders: ['read'] });
+    identity();
+    const table = await screen.findByRole('table', { name: 'Service accounts' });
+    const tokens = await within(table).findByRole('button', { name: 'Tokens of default/grafana' });
+    await waitFor(() => expect(off(tokens)).toBe(true));
+    fireEvent.mouseEnter(tokens);
+    expect(await screen.findAllByText('Needs tokens.read')).not.toHaveLength(0);
   });
 
   it('needs tokens.write as well as serviceaccounts.write to issue a token', async () => {
@@ -461,6 +533,8 @@ describe('role bindings', () => {
     fireEvent.change(within(d).getByLabelText(/^User name/), { target: { value: 'alice' } });
     fireEvent.click(within(d).getByRole('button', { name: 'Save changes' }));
     expect(await within(d).findByText('Outcome unknown')).toBeInTheDocument();
+    // A role binding keeps no revocation record, so the limit is not named.
+    expect(within(d).queryByText(/limit of revocation records/)).toBeNull();
     fireEvent.submit(within(d).getByRole('button', { name: 'Save changes' }).closest('form')!);
     await new Promise((r) => setTimeout(r, 30));
     expect(puts()).toBe(2);

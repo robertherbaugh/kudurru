@@ -38,9 +38,29 @@ export function iamRefusalText(err: unknown, what: string): string | undefined {
   return undefined;
 }
 
-/** The unknown-outcome sentence, with the security-record limit that answers the same way. */
-export function iamUnknownText(what: string): string {
-  return `The dashboard cannot tell whether the ${what} committed and does not send it again. Close this dialog and read the list again before deciding. If the cluster has reached its limit of revocation records, the server answers the same way and nothing changed.`;
+/**
+ * The unknown-outcome sentence. With floor (accounts and identity
+ * providers) it adds the security-record limit that answers the same way;
+ * role bindings and token revocations keep no revocation record, so they
+ * leave it out.
+ */
+export function iamUnknownText(what: string, floor = true): string {
+  const base = `The dashboard cannot tell whether the ${what} committed and does not send it again. Close this dialog and read the list again before deciding.`;
+  return floor ? `${base} If the cluster has reached its limit of revocation records, the server answers the same way and nothing changed.` : base;
+}
+
+/**
+ * Why the reviewed account commands refuse a listed account of another
+ * manager (409 managed_by), or undefined for an API-managed one. An absent
+ * managedBy (a server that does not report it) leaves the decision to the
+ * server.
+ */
+export function accountManagerReason(managedBy: string | undefined): string | undefined {
+  const m = (managedBy ?? '').trim();
+  if (!m || m === 'api') return undefined;
+  if (m.startsWith('file:')) return `Declared in ${m.slice('file:'.length)}: change it there, or with kudurru admin on the host`;
+  if (m === 'bootstrap' || m.startsWith('bootstrap:')) return 'Created by the bootstrap: change it with kudurru admin on the host';
+  return `Managed by ${m}: change it where it is declared, or with kudurru admin on the host`;
 }
 
 /**

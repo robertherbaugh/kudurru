@@ -101,6 +101,7 @@ function iamUser(u: MockUser, now: number) {
     disabled: !!u.disabled,
     mustChangePassword: !!u.mustChangePassword,
     groups: u.groups ?? (u.roles.includes('admin') ? ['kudurru-admins'] : []),
+    managedBy: u.username === 'admin' ? 'bootstrap:admin' : (u.managedBy ?? 'api'),
     ...(u.lastLoginAt !== null ? { lastLoginAt: u.lastLoginAt ?? new Date(now - 3_600_000).toISOString() } : {}),
   };
 }
@@ -172,6 +173,7 @@ export function iamHandlers(guard: Guard, getDB: () => MockDB) {
         items: state.serviceAccounts.map((s) => ({
           namespace: s.metadata.namespace, name: s.metadata.name, ...(s.spec.description ? { description: s.spec.description } : {}),
           disabled: !!s.spec.disabled, builtinAdmin: false, tokens: saTokens(s.metadata.namespace ?? '', s.metadata.name ?? ''),
+          ...(s.metadata.annotations?.[MANAGED] ? { managedBy: s.metadata.annotations[MANAGED] } : {}),
         })),
         took_ms: 1,
       }),

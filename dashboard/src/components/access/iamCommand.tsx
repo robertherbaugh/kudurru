@@ -17,9 +17,14 @@ export type IamCommandState = 'idle' | 'pending' | 'refused' | 'unknown';
  * none after an unknown outcome or (unless retryAfterRefusal) a refusal. Closing the dialog (unmount) aborts a
  * request in flight; its outcome is then unknown and the list is read again.
  * The IAM lists are invalidated after every answer. isUnknown classifies an
- * error (default iamOutcomeUnknown); pass a module-level function.
+ * error (default iamOutcomeUnknown); pass a module-level function. floor:
+ * false leaves the revocation-record limit out of the unknown-outcome text
+ * (role bindings and token revocations keep no such record).
  */
-export function useIamCommand(what: string, { retryAfterRefusal = false, isUnknown = iamOutcomeUnknown }: { retryAfterRefusal?: boolean; isUnknown?: (err: unknown) => boolean } = {}) {
+export function useIamCommand(
+  what: string,
+  { retryAfterRefusal = false, isUnknown = iamOutcomeUnknown, floor = true }: { retryAfterRefusal?: boolean; isUnknown?: (err: unknown) => boolean; floor?: boolean } = {},
+) {
   const qc = useQueryClient();
   const [state, setState] = useState<IamCommandState>('idle');
   const [error, setError] = useState<unknown>();
@@ -59,7 +64,7 @@ export function useIamCommand(what: string, { retryAfterRefusal = false, isUnkno
     },
     [qc, state, retryAfterRefusal, isUnknown],
   );
-  const outcome = state === 'refused' || state === 'unknown' ? <IamOutcome error={error} unknown={state === 'unknown'} what={what} /> : null;
+  const outcome = state === 'refused' || state === 'unknown' ? <IamOutcome error={error} unknown={state === 'unknown'} what={what} floor={floor} /> : null;
   // A reviewed command is bound to one read: after a refusal it is not sent
   // again (close, read the list again, decide again). A create may be sent
   // again after a refusal (409 exists, 400 invalid) once the draft changed.
@@ -67,8 +72,8 @@ export function useIamCommand(what: string, { retryAfterRefusal = false, isUnkno
   return { run, state, pending: state === 'pending', locked, outcome };
 }
 
-function IamOutcome({ error, unknown, what }: { error: unknown; unknown: boolean; what: string }) {
-  if (unknown) return <Banner status="warning" title="Outcome unknown" description={`${iamUnknownText(what)} The server said: ${errorText(error)}`} data-testid="iam-outcome" />;
+function IamOutcome({ error, unknown, what, floor }: { error: unknown; unknown: boolean; what: string; floor: boolean }) {
+  if (unknown) return <Banner status="warning" title="Outcome unknown" description={`${iamUnknownText(what, floor)} The server said: ${errorText(error)}`} data-testid="iam-outcome" />;
   const text = iamRefusalText(error, what);
   return text ? <Banner status="error" title="Refused" description={text} data-testid="iam-outcome" /> : <ErrorBanner error={error} />;
 }

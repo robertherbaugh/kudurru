@@ -28,16 +28,24 @@ sends a change twice:
 - **Refused**: the object changed, was deleted or belongs to another manager
   since you read it. Close the dialog, let the list reload and decide again.
 - **Outcome unknown**: the server could not say whether the change was made.
-  Close the dialog and read the list before you act again. The server answers
-  the same way when the cluster reached its limit of revocation records (see
-  below); then nothing changed.
+  Close the dialog and read the list before you act again. For accounts and
+  identity providers the server answers the same way when the cluster reached
+  its limit of revocation records (see below); then nothing changed.
 
-Identity providers and role bindings declared in `kudurru.yaml` or
-`objects.d` show their actions disabled with the reason: change them where they
-are declared. A service account or a local account managed elsewhere keeps its
-actions enabled on the row; its dialog says **Managed elsewhere** when it opens,
-or the server refuses the change, and nothing is changed. Change the built-in
-`admin` with `kudurru admin` on the host.
+The lists name who manages each entry, and the rows follow it:
+
+- A local account or a service account of another manager (the configuration
+  file, `objects.d`, the bootstrap or the system) shows its change actions
+  disabled with the reason. A service account's **Tokens…** stays available.
+- A role binding of another manager shows its actions disabled with the
+  reason. A role binding of `kudurru.yaml` (`rbac.bindings`) shows no actions.
+- An identity provider of `kudurru.yaml` shows its actions disabled with the
+  reason. An IdentityProvider object of another manager keeps its actions on
+  the row: its dialog says **Managed elsewhere** when it opens, or the server
+  refuses the change, and nothing is changed.
+
+Change these where they are declared, and the built-in `admin` with
+`kudurru admin` on the host.
 
 ## Local users
 
@@ -67,6 +75,10 @@ or the server refuses the change, and nothing is changed. Change the built-in
   lifetime and an optional role limit. It needs `serviceaccounts.write` and
   `tokens.write`. The token never outlives the API token you are signed in
   with, and stays within `auth.tokens.maxLifetime`.
+- **Tokens…** lists the account's tokens (description, role limit, expiry and
+  last use; never the secret) and revokes one after you confirm it. It needs
+  `tokens.read`, and revoking needs `tokens.delete`. A revoked token is refused
+  from the next request on and cannot be restored.
 - **Delete…** deletes the account and all of its tokens.
 
 CAUTION: The dialog shows the new token once. Copy it into the program's

@@ -160,7 +160,9 @@ export function endpoints(c: ApiClient) {
       createToken: (req: CreateTokenRequest) => c.post<CreatedToken>('/auth/tokens', req),
       /** Answers the refreshed session (a new CSRF token); every other session of the user is revoked. */
       changePassword: (req: PasswordChangeRequest) => c.post<Me | undefined>('/auth/password', req),
-      deleteToken: (id: string) => c.delete(`/auth/tokens/${enc(id)}`),
+      deleteToken: (id: string, signal?: AbortSignal) => c.request<void>('DELETE', `/auth/tokens/${enc(id)}`, { signal }),
+      /** GET /auth/tokens?all=true: every owner's tokens (tokens.read). */
+      allTokens: (signal?: AbortSignal) => c.request<ListEnvelope<ApiToken>>('GET', '/auth/tokens', { query: { all: true }, signal }),
     },
 
     objects: {
