@@ -1,0 +1,570 @@
+{
+ "key": "packages-g05-g15-remaining",
+ "item": "Feature-package gates G05-G15 (V2-ZONE, V2-UPDATE, V2-DNS, V2-RPZ, V2-INTEGRATIONS, V2-IDENTITY, V2-HA, V2-IAM, V2-OBS, V2-EDGE, V2-OPS)",
+ "summary": "All eleven gates are still formally open (dev-docs/milestones/v0.2/completion-plan.md:217), and the \"Remaining feature packages\" table (dev-docs/milestones/v0.2/gaps.md:79-89) is stale in both directions; this map comes from reading code only, no tests were run. Three packages have every required scope element implemented and mounted on both drivers and need only qualification or one small addition: V2-ZONE (cmd/kudurru/serve.go:652, 662, 683, 758, 975, 1525-1526), V2-DNS (internal/config/schema.go:265-275; internal/servingbuild/dns.go:84; internal/blocking/modifier.go:133-209) and V2-UPDATE (serve.go:909 Kubernetes, serve.go:1105 SQLite), where only follower routing of UPDATE is missing. V2-OBS is the largest real gap: there is no dnstap, OpenTelemetry, TRACEPARENT, ClickHouse or Loki code at all (OTel is only an indirect dependency, go.mod:128-134; the sink enum is sqlite|slog, internal/config/schema.go:420; the collector has one queue feeding one sink, internal/querylog/async.go:19-21 and 309-336; TraceID/Traceparent at internal/querylog/querylog.go:68,86 are never set), while README.md:107 advertises \"dnstap and tracing\" for v0.2.0. V2-INTEGRATIONS is SQLite-only and partial: the host mounts only on the complete SQLite runtime (serve.go:1084, 1125), UniFi push is refused (ee/integration/unifi/provider.go:224-229), Tier-B records/hooks are refused (ee/integration/webhook/lifecycle.go:188), `type: external` zones are rejected by the builder (internal/zone/zone.go:332-336) with ExternalSpec unused, ClientGroup record views are withheld (internal/zone/zone.go:465), and there is no manifest API, Integration write API or dashboard page (dashboard/src/routes.tsx:89-124). V2-RPZ is mounted only on SQLite (serve.go:669-680, 1457; internal/servingbuild/dns.go:70), so on Kubernetes an RPZ BlockList source compiles to an empty list and is never evaluated, and the feed status (internal/rpz/manager.go:179, 224) reaches no API, CLI or UI. V2-IAM lacks impersonation (internal/config/auth.go:89-90; internal/auth/stack/stack.go:234), an effective zonegroup scope (internal/rbac/rbac.go:40-45; nothing produces a zonegroup attribute), ServiceAccount and IdentityProvider writers (internal/api/authroutes.go:139-141 are list-only) and any write UI beyond tokens, sessions, authenticators and external users. V2-EDGE lacks only dynblock push (ee/edge/topology.go:214-215 is static rate rules), V2-IDENTITY lacks edge client-ID propagation (TLV 0xE1 is consumed at internal/dnsserver/proxyproto/policy.go:389 but never rendered under ee/edge) and an inventory API/UI, V2-HA lacks the dashboard join wizard and forwarding for settings and IAM (completion-plan.md:1828, 1860), and V2-OPS lacks only the CoreDNS Corefile importer. None of the gaps needs hardware, credentials or a product decision from the owner.",
+ "alreadyDone": [
+  "G05 V2-ZONE, all scope elements mounted on both drivers: secondary manager (cmd/kudurru/serve.go:652), stub manager (serve.go:662), inbound NOTIFY receiver (serve.go:683) and replica fan-out (serve.go:758-760, runnables 1525-1526); Kubernetes serves them through zoneview.Source (serve.go:975). Covered by internal/secondary tests (TestManagerRefreshRetryExpiryAndRecovery, TestManagerSerialArithmeticAndInvalidData, TestManagerRestartNeverRenewsExpiry, TestManagerReplicasTransferIndependently, TestIXFRUpdatesAndFallback, TestTransferClientTSIGRejections, TestTransferTLSVerification) and real BIND interop: test/interop/secondary_transfer_test.go:93 (TSIG rejection at :181), secondary_transport_v2_test.go:60 (IXFR, serial wrap, AXFR fallback) and :195 (verified TLS), secondary_serving_test.go:41 (expiry and offline restart), secondary_notify_test.go:26 (fan-out to independent secondaries). UI: dashboard/e2e/secondary.spec.ts and stub.spec.ts. Stub discovery behavior is specified at api/v1alpha1/dnszone_types.go:166-178.",
+  "G06 V2-UPDATE, the 'Kubernetes barriers' in gaps.md:80 are gone: Kubernetes handler at serve.go:909 (cmd/kudurru/kube_update.go, D366), SQLite handler at serve.go:1105 (cmd/kudurru/primary_runtime.go:102-139). Tests: cmd/kudurru/serve_kube_update_test.go:32 (prerequisites, grants, ownership, 12+16 concurrent updates, restart), serve_mount_test.go:40 (TestRunServeSQLiteCompletePrimaryUpdateRestart), serve_tsig_native_mount_test.go:35, internal/dynamicupdate/plan_test.go:89 and :205. A follower cannot mint a writable UPDATE proof (cmd/kudurru/primary_proof_test.go:72-76), which is the fenced-writer half of README.md:401.",
+  "G07 V2-DNS, all scope elements mounted: DNS64, AAAA filtering, NXDOMAIN override, bogus-NXDOMAIN and rebinding protection (internal/config/schema.go:265-275; internal/responsepolicy/dns64.go, response.go, rewrites.go; mounted at serve.go:918-919 and internal/servingbuild/dns.go:84); modifier list $important/$badfilter/$dnstype/$client/$ctag/$denyallow/$dnsrewrite (internal/blocking/modifier.go:133-209). Tests: internal/responsepolicy/response_test.go:44-201, rewrites_test.go:9, test/interop/response_test.go:14, test/interop/dnssec_test.go:18, test/e2e/modifiers_test.go:14, internal/blocking/blackbox_test.go:24 (official AdGuard Home comparator, `make test-adguard`).",
+  "G08 V2-RPZ on SQLite only: AXFR/IXFR-fed RPZ BlockList source (api/v1alpha1/blocklist_types.go:107-147), manager mounted at serve.go:669-680 and run at serve.go:1457, per-query capture at internal/servingbuild/dns.go:70, `blocked_rpz` produced at internal/stages/blocking/rpz.go:167 and named at internal/pipeline/status.go:59. Tests: internal/stages/blocking/rpz_test.go:78-686, internal/servingbuild/policy_reads_test.go:432 (signed feed rotation and expiry on real SQLite), cmd/kudurru/serve_tsig_background_mount_test.go, internal/api/runtime_test.go:145-155 (dig explanation shows status, list and rule). docs/architecture/block-lists.md:348-351 still says the adapter is not wired and docs/architecture/query-path.md:436 still lists blocked_rpz as reserved; both are out of date.",
+  "G09 V2-INTEGRATIONS on SQLite only: host, ledger and plan engine mounted (cmd/kudurru/serving_runtime.go:256; cmd/kudurru/integration_runtime.go:72-77; serve.go:1125); Cloudflare sink with `view: public` selection and isolation (tests TestSelectOriginalPublicAndExpiry, TestAdjustmentOverridesTranslationAndPublicViewIsolation, TestSDKPreviewApplyPreservesUnchangedIDsAndReceipts, TestOwnershipAndAdoption under ee/integration/plan and ee/integration/cloudflare); UniFi read inventory (ee/integration/unifi/manifest.go:10); Tier-B clients and actions (ee/integration/webhook/manifest.go:12-22); conformance CLI (cmd/kudurru/integrations_conformance.go:15); list/get/check/preview/sync/actions API (internal/api/integrations.go:152-188) and CLI (cmd/kudurru/integrations.go:18). The gaps.md:83 items 'production source transactions and durable allocations' and 'conformance CLI' are done. On Kubernetes only the read-only DNSEndpoint source exists (D303, TestRunServeDirectDNSEndpointLeaseLossAndPartition).",
+  "G10 V2-IDENTITY native path: MAC/hostname/ClientID identification (internal/stages/identify/identify.go:116-141; internal/policy/index.go:976, 1014), DoT/DoQ SNI IDs (internal/dnsserver/dns.go:338, doq.go:255), DoH path IDs (internal/dnsserver/doh.go:44), authenticated PROXYv2 client-ID TLV intake (internal/dnsserver/proxyproto/policy.go:381-398), hostname sources DHCP (serve.go:921-922), reverse PTR (F18b) and UniFi (F18c). Test: internal/dnsserver/identity_test.go:36 (TestTransportClientIDsMakeEquivalentPolicyDecisions) and :39.",
+  "G11 V2-HA, the gaps.md:85 items 'join tokens/CLI' and 'multi-process partition/rejoin acceptance' are done: API internal/api/cluster_enrollment.go:70-72 and cluster_promotion.go:54-55; CLI cluster status/enrollment/activate/join-token/join/join-reconcile/promotion/promote/resolution/resolve (cmd/kudurru/cluster.go:14-20, cluster_enrollment.go:12-65, cluster_join.go:33-65, cluster_promotion.go:15-32, cluster_resolve.go:55-83); static membership (D300); replicated blocking toggle on SQLite (cmd/kudurru/serving_member_command.go:21) and Kubernetes (serve.go:1445-1448, D301); typed forwarding for objects, zone commands, blocking and local login (cmd/kudurru/serving_member_objects.go:29-30, serving_member_zones.go:22, serving_member_login.go:29). Tests: test/e2e/enrolled_cluster_test.go:197 and :201, enrolled_conflict_test.go:79, static_cluster_test.go:117, internal/store/sqlite/replication_test.go:417 (wrong cluster, stale and future schema).",
+  "G12 V2-IAM, the gaps.md:86 statements 'CLI supports local password/token login, not browser/device login' and 'remaining ... provisioning/group synchronization, RP logout' are outdated: CLI PKCE and device login exist (cmd/kudurru/login_oidc.go, login_device.go; internal/api/authcli.go:30-32); RP-initiated logout (internal/api/authroutes.go:106-108); provisioning and group sync (api/v1alpha1/iam_types.go:193; internal/servingauth/external.go:182; external_cookie.go:55-58). Also present: Kudurru, IdentityProvider, RoleBinding and ServiceAccount CRDs (deploy/helm/kudurru-crds/templates/kudurru.io_kudurrus.yaml, _identityproviders.yaml, _rolebindings.yaml, _serviceaccounts.yaml), CEL claims (internal/auth/oidccore/cel.go), TOTP (authroutes.go:113-116, 137), session listing and revocation (authroutes.go:111-112; dashboard/src/components/access/Sessions.tsx), RoleBinding CRUD API/CLI on SQLite (internal/api/rolebindings.go:105-117; cmd/kudurru/rolebindings.go:55-95), external-user administration (internal/api/external_users.go:37-49). External sessions re-evaluate current provider policy, grants and floors on every request over stored login evidence (internal/servingauth/external_cookie.go:22-60, D212); there is no periodic contact with the IdP.",
+  "G13 V2-OBS, only the follow-up half is done: remote node health (F33), central node reads, dictionary pruning and stopped-source rollups (F69-F71), AuditLog diagnosis and key lifecycle (F72-F73), Grafana panels (F74), audit verify API/CLI (F75), query export (F58b), per-stage drop counter kudurru_querylog_dropped_total{stage,sink} (internal/querylog/metrics.go:38-41), central raw retention (internal/config/schema.go:432), hot reload of querylog.enabled and querylog.sink (F26d).",
+  "G14 V2-EDGE, everything in gaps.md:88 except dynblock push is done: console diff-apply (ee/edge/dnsdist/membership.go:69-181), reloadAllCertificates() without restart (ee/edge/dnsdist/certificates.go:289-346), remote-edge cache invalidation (internal/cluster/internalapi/edge_bypass.go; ee/edge/dnsdist/managed_cache.go; D283), host-only edge.*/vip.* settings (internal/config/supervisors.go; cmd/kudurru/supervisor_config.go:49-51), VIP events to audit/SSE (internal/api/vip_events.go:117), provider ownership (ee/edge/vip/service_observation.go). Live tests: ee/edge/dnsdist/console_live_test.go:211, managed_cache_live_test.go:99.",
+  "G15 V2-OPS, the gaps.md:89 'Remaining' list (route adoption, direct kubeconfig context, generated client adoption, CLI conformance, node-setting persistence/help) is done per completion-plan.md:143 (F32), :150 (F37), :179 (F57), :182 (F59), :189 (F62a). Importers present: Pi-hole and Technitium live (cmd/kudurru/import.go:21-32; internal/importers/pihole.go, technitium.go), AdGuard and Blocky offline with loss reports (cmd/kudurru/import_offline.go:22; internal/importers/adguard.go, blocky.go, offline.go). Zone option writes, export and notify: cmd/kudurru/zone_options.go:104-121, zones.go:316 and :352. Enterprise branding: internal/api/branding.go:26, internal/config/schema.go:260-264, ee/branding/blockpage.go; tests cmd/kudurru/serving_branding_test.go:61-712, internal/api/branding_test.go:16-101, dashboard/e2e/branding.spec.ts:57."
+ ],
+ "remaining": [
+  {
+   "id": "OBS-1",
+   "title": "Per-sink bounded queues (sink fan-out host) and sink configuration",
+   "kind": "implementation",
+   "detail": "The collector has one queue and one destination sink (internal/querylog/async.go:19-21, 44-49, 309-336); querylog.sink is a single enum sqlite|slog (internal/config/schema.go:420) and cmd/kudurru/querylog_runtime.go:62 builds one Async. Add a fan-out host behind the existing querylog.Sink interface (internal/querylog/querylog.go:190-198): after the privacy transform, the primary SQLite/slog path and the live tail stay as they are, and each additional sink gets its own bounded queue, goroutine, batch/flush policy, bounded retry and drop/error counters labeled by sink. Add a `querylog.sinks.*` settings tree with hot reload following the F26d captured-destination model. This is the prerequisite for dnstap, ClickHouse and Loki.",
+   "acceptance": "README.md:384 (independent bounded sink queues; a slow exporter cannot stall DNS, local SQLite persistence or live tails; retries/drops bounded per sink; drop/error metrics) and README.md:355-361. Tests: a blocked or failing extra sink while UDP queries keep answering, SQLite rows keep committing and the tail keeps publishing; per-sink queue overflow counted under kudurru_querylog_dropped_total{stage=\"sink\",sink}; reload adds/removes a sink without replaying events; extend internal/querylog/querylog_test.go (TestAsyncQueueOverflow, TestAsyncCountsSinkFailures) and lifecycle_test.go, plus one mounted runServe test.",
+   "files": [
+    "internal/querylog/async.go",
+    "internal/querylog/querylog.go",
+    "internal/querylog/metrics.go",
+    "cmd/kudurru/querylog_runtime.go",
+    "cmd/kudurru/reload.go",
+    "internal/config/schema.go",
+    "docs/architecture/observability.md"
+   ],
+   "size": "L",
+   "dependsOn": []
+  },
+  {
+   "id": "OBS-2",
+   "title": "dnstap emit with the audited raw-override privacy contract",
+   "kind": "implementation",
+   "detail": "Absent: no dnstap code, dependency or setting exists (grep finds only research docs; dev-docs/design-record.md:70 and :1353-1355 describe the plan). Add a dnstap sink (Frame Streams over unix/tcp/tls) emitting CLIENT_QUERY/RESPONSE, FORWARDER_QUERY/RESPONSE and AUTH_* messages with identity, version and extra. Query events carry no wire buffers today (internal/stages/log/log.go:39-163), so retain query/response wire only while a raw sink is registered. Default output follows the configured privacy mode; `raw: true` is an explicit admin-only setting that writes an audit entry and defines behavior for hidden names/clients and querylog.exclude.* (README.md:359-361).",
+   "acceptance": "README.md:384 (dnstap emit; explicit privacy/raw-override contract) and README.md:359-361. Tests: decode emitted frames with a real frame-stream reader over unix and TCP; privacy mode hides client/name unless raw is set; enabling raw produces an audit event and is refused without the admin permission; excluded clients/domains are never emitted; reconnect and bounded drops when the collector socket stalls; fuzz the encoder under test/fuzz.",
+   "files": [
+    "internal/querylog/sinks/dnstap (new)",
+    "internal/stages/log/log.go",
+    "internal/pipeline",
+    "internal/config/schema.go",
+    "cmd/kudurru/querylog_runtime.go",
+    "go.mod",
+    "docs/architecture/observability.md"
+   ],
+   "size": "L",
+   "dependsOn": [
+    "OBS-1"
+   ]
+  },
+  {
+   "id": "OBS-3",
+   "title": "dnstap listen (ingest from dnsdist/Unbound) with duplicate and loop protection",
+   "kind": "implementation",
+   "detail": "Absent. Add a bounded frame-stream listener (unix/tcp/tls, host-only setting) that converts received CLIENT_*/FORWARDER_* frames into query events for the local log. Mark ingested events with their origin so they are never re-emitted by the node's own dnstap sink, and drop frames that describe queries this node already logged (dnsdist in front of kudurru forwards the same query) using the edge identity plus query id/time, so one client query is one row.",
+   "acceptance": "README.md:384 (dnstap listen; prevent duplicate logging/loops from dnstap input). Tests: frames from a real dnsdist edge in the existing live harness (ee/edge/dnsdist/console_live_test.go pattern, KUDURRU_F43_LIVE=1) produce exactly one row per client query; a listener fed by its own emitter does not loop; malformed or oversized frames are bounded and counted; a slow reader never blocks the sender or DNS.",
+   "files": [
+    "internal/querylog/sinks/dnstap (new)",
+    "cmd/kudurru/serve.go",
+    "internal/config/schema.go",
+    "ee/edge/dnsdist/render_yaml.go",
+    "ee/edge/dnsdist/render_lua.go"
+   ],
+   "size": "L",
+   "dependsOn": [
+    "OBS-1",
+    "OBS-2"
+   ]
+  },
+  {
+   "id": "OBS-4",
+   "title": "OpenTelemetry tracing and dnsdist EDNS TRACEPARENT handling",
+   "kind": "implementation",
+   "detail": "Absent: OTel modules are only indirect (go.mod:128-134); nothing parses EDNS option 65500; Event.TraceID and Flags.Traceparent (internal/querylog/querylog.go:68, 86) and the trace_id columns (internal/querylog/sqlitelog/schema.go:205; internal/central/pgquerylog/shipper.go:276) are never populated. Implement per dev-docs/design-record.md:820, :828, :1363: accept TRACEPARENT only from authenticated edge peers (same trust as the PROXYv2 secret, D45/D56), strip it from the client view, open a server span with child spans per stage and upstream attempt, re-add the option only for upstreams flagged for propagation, export over OTLP with a parent-based ratio sampler, stamp TraceID on the query event and add exemplars to the latency histogram. Optionally render dnsdist tracing in ee/edge. Record the sampling rule (head ratio plus what is always kept) as a decision, as README.md:357-359 asks.",
+   "acceptance": "README.md:384 (OTel tracing, dnsdist TRACEPARENT handling, trace links/exemplars). Tests: a query with TRACEPARENT from a trusted peer yields a span tree in an in-memory exporter and a trace_id in querylog.db and the API (internal/api/stats.go:803); the same option from an untrusted client is ignored and stripped; the option never reaches a public upstream; exporter outage or slowness does not delay answers; binary size stays under the D138 budget (`make size`).",
+   "files": [
+    "internal/stages/postprocess/postprocess.go",
+    "internal/stages/log/log.go",
+    "internal/stages/upstream",
+    "internal/dnsserver/proxyproto/policy.go",
+    "internal/tracing (new)",
+    "internal/config/schema.go",
+    "cmd/kudurru/serve.go",
+    "ee/edge/dnsdist/render_yaml.go",
+    "go.mod"
+   ],
+   "size": "L",
+   "dependsOn": []
+  },
+  {
+   "id": "OBS-5",
+   "title": "ClickHouse and Loki sinks",
+   "kind": "implementation",
+   "detail": "Absent. Add two HTTP batch sinks on the OBS-1 host with the standard library client (no heavy SDK): ClickHouse `INSERT ... FORMAT JSONEachRow` with a documented table DDL, and Loki `/loki/api/v1/push` with low-cardinality labels and client/domain/trace_id as structured metadata. Credentials come from files or Secrets and are never logged. Record the decision README.md:356-357 asks for (direct sinks versus the DNS-collector path through dnstap).",
+   "acceptance": "README.md:384 (ClickHouse/Loki sinks; bounded retries/drops per sink). Tests: local HTTP doubles verify payload shape, batching, auth header, 5xx bounded retry and 4xx drop with counters; privacy transform is applied before enqueue; optional Docker-gated runs against real ClickHouse and Loki images in the style of `make test-postgres`.",
+   "files": [
+    "internal/querylog/sinks/clickhouse (new)",
+    "internal/querylog/sinks/loki (new)",
+    "internal/config/schema.go",
+    "cmd/kudurru/querylog_runtime.go",
+    "docs/deploy"
+   ],
+   "size": "M",
+   "dependsOn": [
+    "OBS-1"
+   ]
+  },
+  {
+   "id": "EDGE-1",
+   "title": "dnsdist dynblock push (operator-initiated edge block)",
+   "kind": "implementation",
+   "detail": "Absent. Only static rate-triggered dynBlockRulesGroup rendering exists (ee/edge/topology.go:214-229, 366-376; ee/edge/dnsdist/render_lua.go:150-153; render_yaml.go:282). There is no API route, console statement, CLI or UI for 'block this client at the edge for N minutes' (dev-docs/design-record.md:207). Add a permissioned, audited API command that stores a bounded set of client prefix + expiry entries, have each edge supervisor pull it over the authenticated internal channel it already uses for cache grants (D283 pattern) and apply it through the console (D275), with restart convergence as the fallback and expiry enforced on the edge. Add a Clients-page action and a CLI verb.",
+   "acceptance": "README.md:385 (dynblock push; retain restart convergence and the Lua fallback) and followup-audit.md:311. Tests: live dnsdist run (extend ee/edge/dnsdist/console_live_test.go, KUDURRU_F43_LIVE=1) where a pushed block drops that client's queries on both renderers, expires on time, survives an edge restart until expiry and is removed on revoke; API permission, audit and bound tests; golden render tests unchanged when no blocks exist.",
+   "files": [
+    "ee/edge/dnsdist/supervisor.go",
+    "ee/edge/dnsdist/console.go",
+    "internal/cluster/internalapi",
+    "internal/api/edge.go",
+    "cmd/kudurru/edge.go",
+    "dashboard/src/pages/ClientDetailPage.tsx",
+    "internal/rbac"
+   ],
+   "size": "M",
+   "dependsOn": []
+  },
+  {
+   "id": "ID-1",
+   "title": "Client-ID propagation through the dnsdist edge (DoT SNI and DoH path)",
+   "kind": "implementation",
+   "detail": "The backend accepts an authenticated PROXYv2 client-ID TLV (TLVTypeClientID 0xE1, internal/dnsserver/proxyproto/header.go:88-90; policy.go:381-398), but the edge renderers only emit the secret TLV 0xE0 (ee/edge/dnsdist/render_yaml.go:319-322; render_lua.go:131-132). Clients that reach kudurru through dnsdist DoT/DoH therefore never match clientID matchers. Render rules that derive the ID from the TLS server name under the configured client-ID domain and from the DoH path, normalize it the same way as internal/clientid/clientid.go:35-50, and append TLV 0xE1; add the matching edge settings.",
+   "acceptance": "README.md:381 (DoT SNI and DoH path IDs; equivalent policy decisions across transports) and gaps.md:84 (edge rendering; equivalent decisions across native and edge transports). Tests: golden render cases; a live dnsdist test where the same client ID over native DoT/DoH and over edge DoT/DoH selects the same ClientGroup and policy; a forged TLV without the secret is still dropped (existing behavior); extend internal/dnsserver/identity_test.go:36.",
+   "files": [
+    "ee/edge/dnsdist/render_yaml.go",
+    "ee/edge/dnsdist/render_lua.go",
+    "ee/edge/topology.go",
+    "ee/edge/options.go",
+    "cmd/kudurru/edge.go",
+    "internal/config/supervisors.go",
+    "ee/edge/dnsdist/testdata"
+   ],
+   "size": "M",
+   "dependsOn": []
+  },
+  {
+   "id": "ID-2",
+   "title": "Inventory API and dashboard view, with MAC fill from built-in DHCP",
+   "kind": "implementation",
+   "detail": "The inventory exists only as an internal holder read by the identify stage (cmd/kudurru/serve.go:517, 921; internal/inventory/inventory.go:122). No API exposes it: GET /clients is built from the query log (internal/api/stats.go:236) and the dashboard has no inventory view (dashboard/src/routes.tsx:89-124; GroupDetailPage.tsx:316 still says MAC matching arrives in v0.2). The only producers are the UniFi and webhook integrations on SQLite; DHCP leases supply names (serve.go:922) but not MACs, so MAC matchers never match on Kubernetes or without an integration. Add a read API for inventory devices (including devices with no recent DNS traffic, source, MACs, names, tags, staleness, ambiguous assignments), feed DHCP lease MACs into the inventory on both drivers, and add the dashboard view.",
+   "acceptance": "README.md:381 (identity refresh, stale inventory, CIDR ties per D86) and README.md:404-405 (inventory includes devices with no recent DNS traffic, separate from /clients). Tests: API over real SQLite with a UniFi TLS double (extend the F18c mounted tests) showing a device that never queried; a DHCP lease makes a `mac` matcher select the group over UDP on SQLite and on Kubernetes (envtest); stale and colliding entries are flagged; dashboard unit tests and one Playwright spec.",
+   "files": [
+    "internal/api/stats.go",
+    "internal/api/routes.go",
+    "internal/inventory/inventory.go",
+    "internal/dhcpdns",
+    "cmd/kudurru/serve.go",
+    "internal/servingbuild/inventory.go",
+    "dashboard/src/pages/ClientsPage.tsx",
+    "dashboard/src/routes.tsx",
+    "dashboard/src/api/endpoints.ts"
+   ],
+   "size": "L",
+   "dependsOn": []
+  },
+  {
+   "id": "INT-1",
+   "title": "Mount the integration host on the Kubernetes driver (F09b)",
+   "kind": "implementation",
+   "detail": "On Kubernetes the server logs 'background integration execution is unavailable for the Kubernetes store' (cmd/kudurru/serve.go:1084) and api.Options.Integrations stays nil, so every /integrations route answers unavailable (internal/api/integrations.go:153-155, 193-195). The runtime is written against sqlite.CommandTx (cmd/kudurru/integration_runtime.go:385-440). The tracker keeps this open as F09b (completion-plan.md:95; gaps.md:857-859): Kubernetes needs a source/admission root and Delete needs a cleanup/finalizer protocol. Follow D303 and D366: per-instance Lease election (F09a), one source-owned head object per integration written by exact-resourceVersion CAS, UID-owned native children, explicit eventual convergence, and a finalizer on Integration for provider cleanup.",
+   "acceptance": "README.md:380 (per-instance failover; foreign/unowned records protected; idempotent retries) and completion-plan.md:95. Tests: envtest two-replica runServe with a UniFi TLS double and a Cloudflare HTTP double: preview equals apply, lease loss moves one instance without duplicate writes, partitioned replica keeps serving, Integration delete removes owned records and nothing foreign; follow cmd/kudurru TestRunServeDirectDNSEndpointLeaseLossAndPartition.",
+   "files": [
+    "cmd/kudurru/integration_runtime.go",
+    "cmd/kudurru/integration_source.go",
+    "cmd/kudurru/integration_admin.go",
+    "cmd/kudurru/serve.go",
+    "internal/store/kube",
+    "ee/integration/host",
+    "ee/integration/ledger",
+    "deploy/helm/kudurru/templates"
+   ],
+   "size": "XL",
+   "dependsOn": []
+  },
+  {
+   "id": "INT-2",
+   "title": "UniFi optional push and actions",
+   "kind": "implementation",
+   "detail": "The spec fields exist (api/v1alpha1/integration_types.go:144-160) but any enabled push is refused (ee/integration/unifi/provider.go:224-229) and the manifest advertises only ClientSource (ee/integration/unifi/manifest.go:10). Implement the three planned writes from dev-docs/design-record.md:1089 and :1108: DHCP DNS servers on networks, mirroring selected A/CNAME records into UniFi DNS policies, and block/unblock client actions, all disabled by default and executed as reviewed operations (D291: exact UID/revision, original caller, one attempt, explicit uncertain outcome).",
+   "acceptance": "README.md:380 (UniFi polling handles stale clients, MAC/IP changes, reverse records, VLAN groups, and optional writes disabled by default). Tests: a TLS double of the official Integration API verifies no write is ever sent with defaults; each write is previewed, applied once, idempotent on repeat and reports drift; foreign DNS policies are never modified; actions require integrations.act and are audited.",
+   "files": [
+    "ee/integration/unifi/provider.go",
+    "ee/integration/unifi/manifest.go",
+    "ee/integration/unifi/official.go",
+    "ee/integration/unifi/transport.go",
+    "ee/integration/host/actions.go",
+    "cmd/kudurru/integration_operation.go"
+   ],
+   "size": "L",
+   "dependsOn": []
+  },
+  {
+   "id": "INT-3",
+   "title": "Tier-B webhook records and hooks",
+   "kind": "implementation",
+   "detail": "The mounted webhook provider supports only clients and actions; a peer that advertises records, or hooks without delivery enabled, is refused (ee/integration/webhook/lifecycle.go:187-190; manifest.go:9-16) and D298 records remote record ownership and event production as separate work. Implement the RecordSink side (records/adjustendpoints with ownership markers, plan/preview/apply through the existing ledger) and signed event delivery (X-Kudurru-Signature HMAC, delivery id, bounded retry, dead-letter after 24 h, Degraded on 4xx) per dev-docs/design-record.md:996.",
+   "acceptance": "README.md:380 (test webhook negotiation/auth/retries and per-instance failover) and completion-plan.md:185 (F60c: hooks/record ownership remain). Tests: local TLS peer for negotiation with each capability set, bearer and mTLS auth, record preview equals apply, foreign records untouched, hook retry/backoff/dead-letter bounds, restart mid-delivery without duplicates; run the conformance CLI against the same peer.",
+   "files": [
+    "ee/integration/webhook/lifecycle.go",
+    "ee/integration/webhook/manifest.go",
+    "ee/integration/webhook/protocol.go",
+    "ee/integration/webhook/transport.go",
+    "ee/integration/host/events.go",
+    "ee/integration/ledger/delivery.go",
+    "cmd/kudurru/integration_runtime.go"
+   ],
+   "size": "L",
+   "dependsOn": []
+  },
+  {
+   "id": "INT-4",
+   "title": "Kubernetes external zones from Ingress, Gateway routes and LoadBalancer Services",
+   "kind": "implementation",
+   "detail": "Absent. ZoneTypeExternal and ExternalSpec exist in the schema (api/v1alpha1/dnszone_types.go:17, 180-188) but the builder rejects every type except primary and forward (internal/zone/zone.go:332-336), nothing reads Spec.External, and no informer for Ingress, Gateway API routes or Services exists. Implement per dev-docs/design-record.md:476 with the D303 pattern: an opt-in elected Kubernetes adapter with stripped informers that maintains UID-owned native DNSRecordSet children for the external zone (honoring external-dns hostname/target/ttl annotations), removes stale children, and leaves sources read-only. Make the builder serve an external zone from those children and refuse API/file/UPDATE writes into it. Add RBAC rules to the chart only when enabled.",
+   "acceptance": "README.md:380 (Ingress/Gateway/LoadBalancer sources synthesize owned records and remove stale data). Tests: envtest with Ingress, HTTPRoute and LoadBalancer Service objects: records appear in DNS over UDP/TCP, change with the source, disappear on delete, a foreign record set with the same name is not taken over, lease loss moves the writer without duplicates; chart RBAC rendering test.",
+   "files": [
+    "internal/zone/zone.go",
+    "internal/zoneview/zoneview.go",
+    "internal/servingzones",
+    "ee/integration/externaldns",
+    "internal/sources/k8s (new)",
+    "cmd/kudurru/serve.go",
+    "deploy/helm/kudurru/templates",
+    "ee/rbac/rbacgen"
+   ],
+   "size": "L",
+   "dependsOn": []
+  },
+  {
+   "id": "INT-5",
+   "title": "Integration administration API (manifests, Integration writes) and dashboard Integrations page",
+   "kind": "implementation",
+   "detail": "The API offers list/get/check/preview/sync/actions only (internal/api/integrations.go:152-188). There is no manifests endpoint (integration.Types() at ee/integration/integration.go:212 is not exposed), the Integration kind is not writable through the API (internal/api/kinds.go:22-27 lists six kinds), and the dashboard has no Integrations page or endpoints (dashboard/src/routes.tsx:89-124; dashboard/src/api/endpoints.ts has no integration calls). Add a manifests read, reviewed create/replace/delete for Integration with secret references only, and a page with manifest-driven forms (schema-rendered like the existing ShapeField), conditions, check/sync, the Cloudflare preview plan with digest-bound apply, the inventory view and zone/record publication conditions (api/v1alpha1/dnszone_types.go:270-302; dnsrecordset_types.go:60-76).",
+   "acceptance": "README.md:403-405 (manifest-driven forms, check/sync/preview, inventory, zone/record publication conditions) and dev-docs/design-record.md:1159. Tests: real-router API tests for manifest reads and guarded writes (UID/revision, permission, license, no secret echo); dashboard unit tests per form and a Playwright spec that creates an integration against a local double, previews and syncs; follow dev-docs/milestones/m3/ui.md and dashboard/AGENTS.md.",
+   "files": [
+    "internal/api/integrations.go",
+    "internal/api/kinds.go",
+    "cmd/kudurru/integration_admin.go",
+    "dashboard/src/pages/IntegrationsPage.tsx (new)",
+    "dashboard/src/routes.tsx",
+    "dashboard/src/api/endpoints.ts",
+    "dashboard/src/api/types.ts",
+    "api/openapi.json"
+   ],
+   "size": "L",
+   "dependsOn": []
+  },
+  {
+   "id": "INT-6",
+   "title": "ClientGroup-scoped record views",
+   "kind": "implementation",
+   "detail": "The endpoint field documents `view` as \"public\" or a ClientGroup name served only to that group, v0.2 (api/v1alpha1/dnsrecordset_types.go:24-27), but Served() withholds every endpoint that has any view (internal/zone/zone.go:454-466), so only the publish-only `public` half of split horizon works. Implement group-scoped answers in the authoritative path using the client's captured group membership, with per-view RRsets, correct negative answers for other clients, AXFR/export behavior defined, and cache isolation at the edge (D283 client-independent rule). If the team instead decides group views are not part of v0.2, record that as a decision and reject unknown view values at admission rather than silently withholding.",
+   "acceptance": "README.md:380 (Cloudflare split-horizon sink and views; views do not leak public-only records internally). Tests: two ClientGroups get different answers for one name over UDP/TCP and through the edge with no cross-client cache leak; `view: public` is still never served; transfers and export follow the recorded rule; extend test/e2e/modifiers_test.go:14 style isolation tests.",
+   "files": [
+    "internal/zone/zone.go",
+    "internal/stages/authoritative/authoritative.go",
+    "internal/zoneview",
+    "internal/servingbuild/edge_cache.go",
+    "api/v1alpha1/dnsrecordset_types.go"
+   ],
+   "size": "M",
+   "dependsOn": []
+  },
+  {
+   "id": "IAM-1",
+   "title": "Opt-in Kubernetes impersonation mode",
+   "kind": "implementation",
+   "detail": "Absent. `auth.kubernetes.mode: impersonate` is rejected in validation (internal/config/auth.go:89-90, 'planned for v0.2') and by the stack (internal/auth/stack/stack.go:234); the schema lets the value through only for the message (internal/config/schema.go:619-622). Implement per D55: SAR stays the default; in impersonate mode Kubernetes-store writes run with Impersonate-User/Group headers for the authenticated principal, the chart grants the impersonate verb only when the mode is set, and the documentation states the cluster-admin-equivalent risk.",
+   "acceptance": "README.md:383 (opt-in Kubernetes impersonation; SAR remains the default). Tests: envtest where a principal with and without Kubernetes RBAC on kudurru.io resources gets allow/deny through kudurru in impersonate mode, the API-server audit user is the principal, default mode is unchanged, and Helm renders the extra ClusterRole rule only when enabled (deploy/chart_test.go).",
+   "files": [
+    "internal/config/auth.go",
+    "internal/config/schema.go",
+    "internal/auth/stack/stack.go",
+    "internal/auth/k8s",
+    "ee/rbac/sar.go",
+    "internal/store/kube",
+    "deploy/helm/kudurru/templates",
+    "docs/architecture/access.md"
+   ],
+   "size": "M",
+   "dependsOn": []
+  },
+  {
+   "id": "IAM-2",
+   "title": "Effective zonegroup scope",
+   "kind": "implementation",
+   "detail": "RoleBinding accepts scope kind zonegroup (api/v1alpha1/iam_types.go:68-69; iam_validation.go:108) and the view treats such grants as known (internal/servingauth/view.go:337), but Scope.Covers needs an exact kind and name match (internal/rbac/rbac.go:40-45) and every authorization site builds only cluster or zone attributes (internal/api/authz.go:45; objects.go:352, 418; write.go:78-80; zones.go:209, 651), so a zonegroup binding grants nothing. Define the group as a zone label (design-record.md:941 `zonegroup:<label>`), resolve a zone's groups from the captured publication at authorization time, make zonegroup bindings cover member zones and their record sets, filter zone lists, and report them in /auth/me (F34).",
+   "acceptance": "README.md:383 (complete ... the planned zonegroup scope; scoped permissions). Tests: table tests in internal/rbac; real-router tests where a zonegroup-bound user can read and write only member zones on SQLite and Kubernetes, loses access when the label is removed, and frozen session grants are intersected correctly (internal/auth/rbac_contract_test.go); dashboard scope picker test.",
+   "files": [
+    "internal/rbac/rbac.go",
+    "internal/api/authz.go",
+    "internal/api/objects.go",
+    "internal/api/zones.go",
+    "internal/api/write.go",
+    "cmd/kudurru/serving_objects.go",
+    "cmd/kudurru/serving_zone_commands.go",
+    "internal/config/schema.go"
+   ],
+   "size": "M",
+   "dependsOn": []
+  },
+  {
+   "id": "IAM-3",
+   "title": "IAM writers for ServiceAccounts, IdentityProviders and local user lifecycle, plus the write UI",
+   "kind": "implementation",
+   "detail": "Planned as CRUD for users, serviceaccounts, rolebindings and identityproviders through the API (dev-docs/design-record.md:1209, 1501). Present: local user create and password reset (internal/api/authroutes.go:131-136), RoleBinding CRUD on SQLite (rolebindings.go:105-117). Missing: ServiceAccount and IdentityProvider writes (authroutes.go:139-141 are list-only), local user disable/delete/group edits, and the dashboard Access page reads users, service accounts, role bindings and identity providers without any create or edit action (dashboard/src/pages/AccessPage.tsx:388-391). Add the writers on the complete SQLite runtime following D294 (create-only-if-absent, exact UID/resourceVersion replace/delete, revocation floors and audit in one command), then the UI forms for all four kinds.",
+   "acceptance": "README.md:383 (IAM write API/UI; credential redaction; current-grant checks and revocation across restarts) and gaps.md:86 (remaining administrative writers). Tests: real TLS/router/restart/replica races per writer as in D294; secrets never returned after creation; deleting a ServiceAccount or IdentityProvider revokes its tokens/sessions durably; dashboard unit tests and Playwright specs next to dashboard/e2e/access-sessions.spec.ts.",
+   "files": [
+    "internal/api/authroutes.go",
+    "internal/api/authusers.go",
+    "internal/api/rolebindings.go",
+    "cmd/kudurru/serving_http_iam.go",
+    "cmd/kudurru/serving_http_users.go",
+    "internal/auth/security",
+    "dashboard/src/pages/AccessPage.tsx",
+    "dashboard/src/components/access",
+    "dashboard/src/api/endpoints.ts"
+   ],
+   "size": "L",
+   "dependsOn": []
+  },
+  {
+   "id": "IAM-4",
+   "title": "TOTP and local-user commands on the Kubernetes driver: implement or record an explicit refusal",
+   "kind": "implementation",
+   "detail": "On Kubernetes the factor routes answer 503 factor_management_unavailable and local-user commands answer 503 user_management_unavailable (cmd/kudurru/serve.go:1085-1088; serving_totp_legacy.go:12-23; serving_users_legacy.go:12-19). README.md:383 lists TOTP without a driver qualifier (only sessions are qualified as Docker), and no decision records the Kubernetes position, unlike RoleBinding writes (completion-plan.md:1918-1919, D364). Either store sealed TOTP seeds and replay floors in the existing private Secrets with resourceVersion CAS (the D304/D364 approach) or record a decision that Kubernetes accounts use the IdP's second factor, document it, and make the dashboard hide the controls from a capability flag.",
+   "acceptance": "README.md:383 (TOTP replay protection; revocation across restarts) and gaps.md:86 (validate for every supported route). Tests if implemented: two-replica envtest where one code cannot enroll two sessions, restart keeps the floor, recovery revokes sessions. If refused by decision: API contract test for the 503 keys, capability exposed in /auth/status, UI test, design-record entry.",
+   "files": [
+    "cmd/kudurru/serving_totp_legacy.go",
+    "cmd/kudurru/serving_users_legacy.go",
+    "internal/auth/stack",
+    "internal/auth/totp",
+    "internal/store/kube",
+    "dashboard/src/components/access/Authenticators.tsx",
+    "dev-docs/design-record.md"
+   ],
+   "size": "M",
+   "dependsOn": []
+  },
+  {
+   "id": "HA-1",
+   "title": "Dashboard cluster page with join wizard",
+   "kind": "implementation",
+   "detail": "The API and CLI for enrollment review, activation, join-token issuance and promotion exist (internal/api/cluster_enrollment.go:70-72; cluster_promotion.go:54-55), but the dashboard calls only GET /cluster and GET /edge (dashboard/src/api/endpoints.ts:273-277) and the Nodes page only shows leader and read-only badges (dashboard/src/pages/NodesPage.tsx:172, 202). Add the wizard from dev-docs/design-record.md:1159: review enrollment, activate a standalone primary, issue a one-time invitation shown once, emit the Compose snippet and the `kudurru cluster join` command for the new node, and a guarded promotion review for followers.",
+   "acceptance": "README.md:382 (join tokens/wizard and cluster CLI; read-only/fenced status explicit). Tests: dashboard unit tests for each step including refusal states; a Playwright spec against a real SQLite server that activates, issues a token and shows it exactly once; no token value in logs or query cache; follow dev-docs/milestones/m3/ui.md wizard rules.",
+   "files": [
+    "dashboard/src/pages/NodesPage.tsx",
+    "dashboard/src/components/wizards",
+    "dashboard/src/api/endpoints.ts",
+    "dashboard/src/api/types.ts",
+    "dashboard/e2e"
+   ],
+   "size": "M",
+   "dependsOn": []
+  },
+  {
+   "id": "HA-2",
+   "title": "Follower forwarding for the remaining write domains",
+   "kind": "implementation",
+   "detail": "Typed member commands exist for blocking, object writes/deletes, zone commands and local login (cmd/kudurru/serving_member_command.go:21; serving_member_objects.go:29-30; serving_member_zones.go:22; serving_member_login.go:29). The tracker states settings, other IAM administration, integrations, OIDC/browser/device logins and remaining typed domains still require the primary (completion-plan.md:1828, 1860; F60b at :184; F46 at :166). Add typed forwarding with the D362 contract (30-second bound, early credential admission, one command, retained refusals, 503 completion_unknown, no retry) for settings, allow/deny domain commands, unblock decisions, TSIG keys, tokens/password/TOTP and RoleBindings, or return one explicit, documented primary-required error for domains deliberately left primary-only.",
+   "acceptance": "README.md:382 (write forwarding; forwarding failures are explicit). Tests: extend the real two-process test test/e2e/enrolled_cluster_test.go:197 (70.8 s in prior evidence) with one forwarded write per new domain converging on both nodes, a write during partition answering 503 and never replayed, and root member tests over mTLS like TestRootMemberObjectCommandActualHTTP.",
+   "files": [
+    "cmd/kudurru/serving_member_forward.go",
+    "cmd/kudurru/serving_member_command.go",
+    "cmd/kudurru/serving_settings_api.go",
+    "cmd/kudurru/serving_domain_commands.go",
+    "cmd/kudurru/serving_unblock_commands.go",
+    "cmd/kudurru/serving_tsig.go",
+    "internal/api/object_forward.go",
+    "test/e2e/enrolled_cluster_test.go"
+   ],
+   "size": "L",
+   "dependsOn": []
+  },
+  {
+   "id": "UPD-1",
+   "title": "RFC 2136 UPDATE primary routing from enrolled followers",
+   "kind": "implementation",
+   "detail": "On an SQLite follower the UPDATE handler answers SERVFAIL when the local driver is not the ready writer (cmd/kudurru/primary_runtime.go:110-116); nothing forwards the request. README.md:400-401 requires primary routing once follower mode exists. Add a typed member command carrying the TSIG-verified update (the follower verifies the signature and admits the key early, the primary re-verifies grants and applies atomically, the follower signs the response), with the D362 failure contract; while the primary is unreachable answer a defined refusal and never replay.",
+   "acceptance": "README.md:377 (prerequisite failure applies nothing; durable; managed ownership; serial and NOTIFY) and README.md:400-401. Tests: two-process enrolled test sending a signed UPDATE to the follower: committed on the primary, visible on both, signed response; prerequisite failure and ungranted type relayed without a write; partition gives the defined rcode and no later apply; a fenced former primary refuses.",
+   "files": [
+    "cmd/kudurru/primary_runtime.go",
+    "cmd/kudurru/serving_member_command.go",
+    "cmd/kudurru/serving_member_forward.go",
+    "internal/primaryruntime/network/update.go",
+    "test/e2e/enrolled_cluster_test.go"
+   ],
+   "size": "M",
+   "dependsOn": []
+  },
+  {
+   "id": "RPZ-1",
+   "title": "Mount RPZ feeds on the Kubernetes driver",
+   "kind": "implementation",
+   "detail": "rpz.New runs only when the store is SQLite (cmd/kudurru/serve.go:669-680) and the stage receives its RPZ capture only from the SQLite serving build (internal/servingbuild/dns.go:70). On Kubernetes the blocking stage skips RPZ because opts.RPZ is nil (internal/stages/blocking/blocking.go:308), while the CRD accepts rpz sources and an RPZ-only list compiles as a valid empty list (internal/blocking/api.go:33-37; list.go:88-100). The feed is therefore silently unenforced, although the CRD text promises that missing or expired data fails closed (api/v1alpha1/blocklist_types.go:144-147). Mount the manager on Kubernetes with the stored TSIG source (D314/D365), bind selections in the legacy policy path, and keep required-unavailable feeds fail-closed.",
+   "acceptance": "README.md:379 (RPZ import as a BlockList source; live blocked_rpz; refresh/expiry) on both store drivers. Tests: envtest runServe with a BIND or in-process RPZ primary: QNAME/CLIENT-IP/RESPONSE-IP actions enforced over UDP/TCP, blocked_rpz in the query log, feed update applied, expiry and unavailable feed return the fail-closed answer, restart reuses the unexpired copy; mirror cmd/kudurru/serve_tsig_background_mount_test.go.",
+   "files": [
+    "cmd/kudurru/serve.go",
+    "internal/rpz/manager.go",
+    "internal/stages/blocking/rpz.go",
+    "internal/stages/blocking/blocking.go",
+    "internal/policy",
+    "cmd/kudurru/tsig_kube_startup.go"
+   ],
+   "size": "L",
+   "dependsOn": []
+  },
+  {
+   "id": "RPZ-2",
+   "title": "RPZ feed diagnostics (API/CLI), dashboard support and operator documentation",
+   "kind": "implementation",
+   "detail": "Secondary and stub status reach the zone and node APIs (internal/api/zones.go:113, 124; nodes.go:316, 333), but rpz.Manager.Statuses()/StatusFor (internal/rpz/manager.go:60, 179, 224) have no caller outside the package: only a rule count and ready flag leak through policy reads (internal/servingbuild/policy_reads.go:80-92). The dashboard has no RPZ string outside generated types. Expose per-node feed status on the list and diagnosis APIs (origin, serial, refreshed/expires, last error, supported and unsupported rule counts with reasons from internal/rpz/compile.go:292-297), add a CLI view, let the list wizard and list detail page create and show RPZ sources, and write a deploy guide stating supported triggers/actions and precedence.",
+   "acceptance": "README.md:379 (define supported triggers/actions, precedence, unsupported-rule accounting; verify feed updates and explanation output) and gaps.md:82 (remaining public diagnostics/UI). Tests: API tests over a real acquired feed for each status field and for unavailable/expired states; CLI golden output; dashboard unit tests and a Playwright spec in the style of dashboard/e2e/secondary.spec.ts.",
+   "files": [
+    "internal/api/lists.go",
+    "internal/api/nodes.go",
+    "internal/api/api.go",
+    "cmd/kudurru/serving_diagnostics.go",
+    "cmd/kudurru/objects.go",
+    "dashboard/src/pages/ListDetailPage.tsx",
+    "dashboard/src/components/lists",
+    "docs/deploy",
+    "docs/architecture/block-lists.md"
+   ],
+   "size": "M",
+   "dependsOn": []
+  },
+  {
+   "id": "OPS-1",
+   "title": "CoreDNS Corefile offline importer",
+   "kind": "implementation",
+   "detail": "Absent: no Corefile code or CLI source exists (internal/importers has adguard, blocky, pihole, technitium only; cmd/kudurru/import.go:21-32 and import_offline.go:22). Add `kudurru import coredns --file Corefile` on the shared offline plan machinery (internal/importers/offline.go): parse server blocks, convert the supported plugins (forward, hosts, file/auto zone references, rewrite, cache, acl where they map) into deterministic applicable YAML, name every unsupported plugin and directive in the loss report, state the supported Corefile syntax version, and omit secrets by default; applying stays a separate step.",
+   "acceptance": "README.md:386 (importers for blocky, CoreDNS Corefile, Technitium, Pi-hole, AdGuard; preview names unsupported semantics) and README.md:407-410 (deterministic YAML offline, supported versions/Corefile plugins, conversion losses, no secrets). Tests: fixture Corefiles under internal/importers/testdata with golden plans and loss reports, determinism check, no file or network access for referenced paths, CLI test through the real router like the AdGuard/Blocky tests, CLI reference drift regenerated.",
+   "files": [
+    "internal/importers/coredns.go (new)",
+    "internal/importers/offline.go",
+    "internal/importers/testdata",
+    "cmd/kudurru/import_offline.go",
+    "cmd/kudurru/zones.go",
+    "docs-site/content/reference"
+   ],
+   "size": "M",
+   "dependsOn": []
+  },
+  {
+   "id": "ZONE-Q1",
+   "title": "Knot DNS as primary for inbound secondary transfer interop",
+   "kind": "qualification",
+   "detail": "Every behavior named in the acceptance row is proven against real BIND (test/interop/secondary_transfer_test.go:93, secondary_transport_v2_test.go:60 and :195, secondary_serving_test.go:41). Knot is only exercised in the opposite direction, as a consumer of kudurru (test/interop/knot_catalog_test.go:375; gaps.md:5597-5606). Under the strict reading of 'BIND/Knot interop', add a Knot-primary case to the existing pinned Knot 3.6.2 container harness.",
+   "acceptance": "README.md:376 (BIND/Knot interop verifies initial AXFR, IXFR with AXFR fallback, TSIG rejection, TLS verification, and expiry) and completion-plan.md:223 (G23, no skipped comparator credited). Test: new test/interop case run by hack/test-knot-catalog.sh with KUDURRU_KNOT=1 and KUDURRU_KNOT_DOCKER_HOST, covering AXFR, IXFR after a Knot zone change, journal-less fallback, wrong/unknown TSIG key, XoT with certificate verification, and expiry after the primary stops; prior Knot run took 31.9 s.",
+   "files": [
+    "test/interop/knot_catalog_test.go",
+    "test/interop/secondary_transport_v2_test.go",
+    "hack/test-knot-catalog.sh"
+   ],
+   "size": "M",
+   "dependsOn": []
+  },
+  {
+   "id": "DNS-Q1",
+   "title": "Final-head qualification for V2-DNS and the already complete packages",
+   "kind": "qualification",
+   "detail": "V2-DNS scope is complete, but its row names black-box AdGuard conformance and matcher benchmarks as gates, and the tracker keeps F20d and F63 open for the final source (completion-plan.md:119, 191) and F28 RFC 5011 open for fleet mixed-version, empty edge-follower install and RFC interoperability (completion-plan.md:138). Rerun on the final head: `make test-adguard`, the paired fixed-runner benchmark workflow (last pass was on 9963dec2, completion-plan.md:1365-1385), BIND interop, the dnsdist live suites and the multi-process HA suites, and record results per package before closing G05, G06, G07, G11 and G14.",
+   "acceptance": "README.md:378 (black-box AdGuard conformance and matcher benchmarks remain gates; policy isolation on cache hits and after configuration changes) and completion-plan.md:217, 222-223. Evidence: comparator pass against pinned AdGuard Home v0.107.79, paired Ubicloud run passing blocking/zone/cache/strategy scopes on the release commit, `make interop` with no skips, KUDURRU_F43_LIVE dnsdist runs, test/e2e enrolled and static cluster runs.",
+   "files": [
+    "hack/test-adguard.sh",
+    "hack/benchgate",
+    "bench",
+    "dev-docs/milestones/v0.2/completion-plan.md",
+    "dev-docs/milestones/v0.2/gaps.md"
+   ],
+   "size": "M",
+   "dependsOn": [
+    "UPD-1",
+    "EDGE-1",
+    "HA-2"
+   ]
+  },
+  {
+   "id": "DOC-1",
+   "title": "Bring tracker and architecture pages in line with the code",
+   "kind": "docs",
+   "detail": "Stale statements found: gaps.md:79-89 (lists Kubernetes UPDATE barriers, join tokens/CLI, partition/rejoin, CLI browser/device login, RP logout, group sync, console diff-apply, cert reload, direct kubeconfig and generated client as remaining); docs/architecture/block-lists.md:348-351 ('The adapter is not yet wired into the server'); docs/architecture/query-path.md:436 (blocked_rpz listed as reserved, not produced); README.md:107 (v0.2.0 row advertises dnstap and tracing, which do not exist yet); internal/config/schema.go:162 and dashboard/src/pages/GroupDetailPage.tsx:316 (text says zone groups and MAC inventory 'arrive in v0.2'); api/v1alpha1/dnszone_types.go:14-17 and internal/zone/zone.go:314-316 comments. Rewrite the package table from this map, record the per-driver support matrix (RPZ, integrations, TOTP, RoleBinding API, sessions) in docs/architecture, and note that external sessions re-evaluate policy per request without contacting the IdP (D212).",
+   "acceptance": "CLAUDE.md (keep docs/architecture in step with the code) and completion-plan.md:225 (G25: keep plan, audit closures, gap ledger, changelog and PR consistent). Checks: `make docs-gen`, TestReferenceDrift and TestCLIReferenceDrift pass; docs link check; each of the listed lines corrected or the feature landed.",
+   "files": [
+    "dev-docs/milestones/v0.2/gaps.md",
+    "dev-docs/milestones/v0.2/completion-plan.md",
+    "docs/architecture/block-lists.md",
+    "docs/architecture/query-path.md",
+    "docs/architecture/integrations.md",
+    "docs/architecture/access.md",
+    "README.md",
+    "CHANGELOG.md"
+   ],
+   "size": "S",
+   "dependsOn": []
+  }
+ ],
+ "recommendation": "Implement the full original scope; nothing here needs the owner. Hardware-bound items are already deferred (D353, D358), provider behavior is proven against local TLS doubles as in D291/D298, and every open design point is one an engineer can settle and record. Only dropping a required element from v0.2.0 would need the owner, because the tracker forbids retargeting (followup-audit.md:314).\n\nOrder of work:\n1. Fix the places where the schema accepts something the server silently ignores. These are correctness problems, not missing breadth: RPZ on Kubernetes (RPZ-1), the inert zonegroup scope (IAM-2), ClientGroup record views (INT-6), and the docs that contradict the code (DOC-1).\n2. Run independent lanes in parallel, each with its own files:\n   - Observability: OBS-1 first, then OBS-2, OBS-3 and OBS-5; OBS-4 is independent.\n   - Edge and identity: EDGE-1, ID-1.\n   - Kubernetes sources: INT-4, then INT-1.\n   - Providers: INT-2, INT-3.\n   - IAM: IAM-1, IAM-3, IAM-4.\n   - HA: HA-2, UPD-1.\n   - Small standalone: OPS-1, ZONE-Q1.\n3. Do the dashboard work last as one lane (INT-5, ID-2 view, RPZ-2 UI, HA-1, IAM-3 UI), because all of it touches routes.tsx, endpoints.ts and the generated client.\n4. Finish with DNS-Q1 on the final head.\n\nPrecedents to follow:\n- D303 (elected read-only source with UID-owned native children) and D366 (single-object CAS, explicit eventual convergence) for INT-4 and INT-1.\n- D283 (edges pull authenticated grants) and D275 (console under YAML, restart convergence as fallback) for EDGE-1.\n- D45/D56 (secret-authenticated PROXYv2 TLVs) and D86 (matcher precedence) for ID-1 and ID-2.\n- D291 and D298 (reviewed single-attempt operations, explicit uncertain outcomes) for INT-2, INT-3 and INT-5.\n- D294 and D364 for the IAM writers and the Kubernetes position; D304 for Kubernetes shared state in private Secrets (IAM-4); D55 for impersonation; D212 for external identities.\n- D362 for all new follower forwarding, including UPDATE.\n- D260 and D138 (dependency isolation, binary budget) when choosing dnstap and OTLP libraries.\n\nDesign points to record as new decisions: direct ClickHouse/Loki sinks versus the DNS-collector path, the trace sampling rule, the raw dnstap override semantics (all asked for at README.md:355-361), the follower UPDATE rcode during partition, and the TOTP position on Kubernetes.",
+ "sharedSeams": [
+  "cmd/kudurru/serve.go (nearly every package mounts here: sinks, RPZ, integrations, external-zone adapter, tracing)",
+  "internal/config/schema.go plus generated dashboard/src/mocks/data/settings-schema.json and docs-site/content/reference (every new setting)",
+  "internal/api/api.go (Options), internal/api/routes.go, internal/api/kinds.go",
+  "api/openapi.json, api/openapi-3.0.json, internal/apiclient/openapi/zz_generated.client.go, dashboard/src/api/generated.ts (regenerated by every API change; land one regeneration per merge)",
+  "dashboard/src/routes.tsx, dashboard/src/api/endpoints.ts, dashboard/src/api/types.ts, dashboard/src/mocks/handlers.ts",
+  "dashboard/dist/index.html (embedded build; already modified in the working tree)",
+  "api/v1alpha1/*.go, api/v1alpha1/zz_generated.deepcopy.go, deploy/helm/kudurru-crds/templates/*.yaml, deploy/kustomize/crd/bases/*.yaml",
+  "deploy/helm/kudurru/templates (RBAC rules for impersonation and external-zone informers), ee/rbac/rbacgen",
+  "internal/rbac/rbac.go and the permissions table (new resources and verbs: edge blocks, inventory, integrations write, zonegroup)",
+  "internal/querylog/async.go and cmd/kudurru/querylog_runtime.go (all OBS work)",
+  "internal/stages/log/log.go and internal/stages/postprocess/postprocess.go (dnstap wire retention and tracing both touch the query path)",
+  "ee/edge/dnsdist/render_yaml.go, render_lua.go and ee/edge/dnsdist/testdata goldens (EDGE-1, ID-1, OBS-3, OBS-4)",
+  "cmd/kudurru/serving_member_command.go and serving_member_forward.go (HA-2 and UPD-1)",
+  "cmd/kudurru/integration_runtime.go and integration_admin.go (INT-1, INT-2, INT-3, INT-5)",
+  "internal/zone/zone.go (INT-4 and INT-6)",
+  "cmd/kudurru/main.go and the CLI reference checked by TestCLIReferenceDrift",
+  "go.mod and go.sum (dnstap, OTel SDK/exporters)",
+  "dev-docs/design-record.md section 16, dev-docs/milestones/v0.2/completion-plan.md, gaps.md, CHANGELOG.md"
+ ],
+ "testInfra": "No tests were run for this map (read-only); durations below come from recorded evidence.\n\n- Go suites: `make test` (python3 hack/go-test.py with race, Makefile:84-85); focused runs as `go test -race -count=1 -run <Name> <pkg>`.\n- Kubernetes driver: `make envtest` once (assets under bin/k8s or KUBEBUILDER_ASSETS), then `go test -race -count=1 -run 'TestRunServeKube|TestRunServeDirectDNSEndpoint' ./cmd/kudurru/`. Recorded: TestRunServeKubeStoredTSIGManagementHotRotation 18.2 s, TestRunServeDirectDNSEndpointLeaseLossAndPartition 26.1 s, TestRunServeKubeDynamicUpdateAtomicityAndOwnership passed four times (completion-plan.md:1881, 1937, 2006).\n- Multi-process HA: `CGO_ENABLED=1 KUDURRU_E2E=1 go test -v -run 'TestEnrolledCluster|TestEnrolledProcessConflictResolution|TestStaticClusterProcesses' ./test/e2e/`. The partition scenario took 70.8 s and the login variant 62.8 s (completion-plan.md:1804, 1850).\n- BIND interop: `make interop` (KUDURRU_E2E=1, needs named; KUDURRU_NAMED selects the binary); 29 entries in 47.3 s (gaps.md:5520).\n- Knot: `hack/test-knot-catalog.sh` (KUDURRU_KNOT=1, KUDURRU_KNOT_DOCKER_HOST, KUDURRU_KNOT_LOG_DIR; pinned Knot 3.6.2); 31.9 s (gaps.md:5599-5601).\n- AdGuard comparator: `make test-adguard` (hack/test-adguard.sh, KUDURRU_ADGUARD_BINARY, pinned v0.107.79).\n- dnsdist live: `KUDURRU_F43_LIVE=1 KUDURRU_F43_WORKDIR=<dir> go test -run 'TestConsoleLiveSupervisor|TestManagedCacheLivePinnedTransition' ./ee/edge/dnsdist/` (KUDURRU_F43_RENDERER=lua for the Lua path); goldens with `make edge-check`.\n- Integrations: `go test -race -count=1 ./ee/integration/...` (71 provider entries) and the mounted TLS/router CLI selection in ./cmd/kudurru (87.6 s, gaps.md:2293-2296).\n- Query log and central: `go test -race ./internal/querylog/...`; `make test-postgres` (KUDURRU_TEST_POSTGRES_DSN, KUDURRU_REQUIRE_POSTGRES=1) for central paths.\n- Dashboard: `make dashboard-test` (880 tests, 165 s with two workers, gaps.md:829-831), `make dashboard-lint`, `make dashboard-e2e` (Playwright against a binary built with -tags=licensetest; specs in dashboard/e2e, e.g. secondary.spec.ts, stub.spec.ts, access-sessions.spec.ts, branding.spec.ts).\n- Contracts and drift: `make openapi client-go generate manifests docs-gen` then `make check-generated`; TestForwardedShapes, TestCLIReferenceDrift (cmd/kudurru), TestReferenceDrift (hack/docsgen); chart tests in deploy/ (`go test ./deploy/`), `make helm-check`.\n- Deployment: `make kind-e2e`, `make compose-e2e`; binary budget `make size`.\n- Performance gate: manual paired fixed-runner workflow on ubicloud-standard-8-ubuntu-2404 with hack/benchgate (last pass on 9963dec2).",
+ "risks": [
+  "Volume: 23 implementation packages remain, one XL (INT-1) and ten L (seven of them outside observability); V2-OBS alone is four L packages plus one M with no existing code.",
+  "RPZ on Kubernetes is silently unenforced today while the CRD text promises fail-closed behavior; this was established by code reading (serve.go:669-680, blocking.go:308) and not by a test run.",
+  "Binary size and dead-code elimination: adding the OTel SDK, an OTLP exporter and dnstap/protobuf can trip the size budget and the TestNoTemplateExecution guard; D260 removed an SDK for exactly this reason. Prefer OTLP/HTTP and hand-written wire structs where small.",
+  "Query-path rules: tracing, dnstap wire retention and group-scoped views all touch the hot path; ee/ code may not be imported from internal/dnsserver, internal/pipeline or internal/stages (ee/README.md), and no store or leader dependency is allowed there (README.md:363-366). Performance gates F20d/F63 are already tight.",
+  "Kubernetes has no multi-object transaction; INT-1 and INT-4 must accept eventual convergence as D303 and D366 did, and the tracker has called the atomic source root an unsolved prerequisite since F09b was opened.",
+  "Impersonation makes a compromised kudurru cluster-admin equivalent (D55); it must stay opt-in with chart RBAC rendered only when enabled.",
+  "Accepting TRACEPARENT or a client-ID TLV from untrusted peers enables spoofing; both must ride the existing secret-authenticated edge trust.",
+  "Raw dnstap bypasses the irreversible ingest-time privacy modes; the override needs the audited admin contract before any raw sink ships.",
+  "Generated contracts (OpenAPI, both clients, CRDs, settings schema, CLI reference) are touched by most packages; parallel lanes will conflict unless regeneration is serialized.",
+  "UniFi push, Cloudflare and Tier-B webhook can only be qualified against local doubles; no live provider evidence will exist, as the ledger already states for D291.",
+  "README.md:107 publicly lists dnstap and tracing for v0.2.0; if V2-OBS slips, that line is a false claim.",
+  "Dashboard work is concentrated in routes.tsx/endpoints.ts and must follow dashboard/AGENTS.md and dev-docs/milestones/m3/ui.md; five new UI surfaces are needed (integrations, inventory, RPZ, cluster wizard, IAM writers).",
+  "Re-evaluation of external sessions never contacts the IdP (D212 semantics); a reader expecting the originally planned hourly IdP refresh (design-record.md:1502) may consider that element partial unless the docs say so."
+ ],
+ "designOptions": [
+  {
+   "name": "Full original scope, staged (recommended)",
+   "description": "Implement every remaining package above in the order given in the recommendation: silent no-ops first, then parallel backend lanes, then one dashboard lane, then final-head qualification.",
+   "pros": "Closes G05-G15 against the README rows as written; no owner decision needed; fixes the fail-open and inert-schema cases early; lanes are largely file-disjoint.",
+   "cons": "Large: one XL and ten L packages; heavy churn in serve.go and generated contracts; performance and binary-size gates must be re-run after observability lands."
+  },
+  {
+   "name": "Close by explicit refusal for breadth items",
+   "description": "Implement only the correctness fixes and small items (RPZ-1, IAM-2, INT-6 admission, EDGE-1, ID-1, OPS-1, UPD-1, DOC-1), and for V2-OBS exporters, external zones, UniFi push, Tier-B records/hooks, impersonation and the new UI pages add admission refusals and documentation that move them to a later release.",
+   "pros": "Much smaller; removes every silent no-op; release content becomes honest quickly.",
+   "cons": "Retargets required v0.2 scope, which the tracker forbids without the owner (followup-audit.md:314); G09, G12 and G13 would close only by an owner scope change; README.md:107 must be rewritten."
+  },
+  {
+   "name": "SQLite-first, Kubernetes parity later",
+   "description": "Finish every feature on the complete SQLite runtime (where integrations, RPZ, TOTP and IAM writers already live) and record explicit per-driver refusals on Kubernetes for integrations host, RPZ feeds, TOTP and IAM writers.",
+   "pros": "Avoids the hardest design problem (INT-1 atomic source on Kubernetes) and reuses the mature CommandTx path; RoleBinding writes already follow this split (D364).",
+   "cons": "Leaves RPZ and integrations unavailable on a supported driver, which the package rows do not allow for RPZ (README.md:379) and failover (README.md:380); external zones are Kubernetes-only by nature, so INT-4 cannot be deferred this way."
+  }
+ ]
+}

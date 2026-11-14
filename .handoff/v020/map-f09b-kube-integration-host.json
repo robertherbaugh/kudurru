@@ -1,0 +1,257 @@
+{
+ "key": "f09b-kube-integration-host",
+ "item": "F09b: production integration-host wiring and failover on the Kubernetes driver",
+ "summary": "The integration host is mounted only on SQLite: newServingRuntime builds integrationRuntime (/home/vercel-sandbox/kudurru/cmd/kudurru/serving_runtime.go:256), which wires ih.New with Capture/Elector/Fence/Ledger/Reader/Allowed/Factory/ValidateSource/BeforeObserve/CommitSource/Status (cmd/kudurru/integration_runtime.go:58-83) and runs in the serving lifetime (cmd/kudurru/serving_lifecycle.go:79). That adapter is bound to SQLite-only primitives: a replication image plus ServingAuthority (integration_runtime.go:86-96), the elected sqlite.WriterToken (351, 392, 511-518), Store.Command with tx.RequireCommitCheck (423-437), in-transaction UID/resourceVersion checks of the Integration and selected sources (444-471), and one transaction that stages allocations, source-owned DNSRecordSets/DNSZones, source chunks, the head CAS and the global inventory (cmd/kudurru/integration_source.go:113-187), followed by a wait on publisher receipts (345-367). On Kubernetes nothing is mounted: serve.go logs \"background integration execution is unavailable for the Kubernetes store; atomic source publication is required\" (cmd/kudurru/serve.go:1083-1084), integrationAdmin stays nil (1059, assigned only at 1125), and every /api/v1/integrations route answers 503 \"complete integration administration unavailable\" (internal/api/integrations.go:153-154, 166-167, 193-194). An Integration CR is still admitted by the installed CRD (internal/store/kube/integration_test.go:13) and is then silently inert: no election, no provider, no status, and no controller condition (only a comment at internal/controller/refs.go:77-79). The Kubernetes driver already supplies most building blocks: all integration private kinds as Secret carriers with create-only and exact-resourceVersion CAS (internal/store/kube/internal.go:335-427; api/runtimekinds/register.go:33-40; envtest in internal/store/kube/runtime_kinds_test.go:22-75), UID+RV guarded deletes (internal.go:429-461), consistent reads (crud.go:61-62), per-name Lease electors (elector.go:109-129) and an in-driver \"immutable chunks then one head CAS\" precedent (zonestate.go:54-151). The host, ledger, inbound codec and providers import no sqlite package and are callback-driven (ee/integration/host/types.go:132-159), and the ledger is already a single-object optimistic CAS protocol (ee/integration/ledger/repository.go:59, 73, 112-116). What is missing is a Kubernetes root adapter, a replica-side consumer of committed source heads (inventory and MAC grants), an administration adapter, qualification and docs; the tracker row is completion-plan.md:94 and gaps.md:858-859. Cloudflare outbound, UniFi inbound and the Tier-B webhook client are all affected; external-dns (webhook at serve.go:1383-1396 and the DNSEndpoint source at 1398-1418) is not.",
+ "alreadyDone": [
+  "Private integration carriers on Kubernetes: IntegrationLedger/Operation/Budget/Delivery/SourceHead/SourceChunk/NameAllocation are registered as internal kinds on both drivers (/home/vercel-sandbox/kudurru/api/runtimekinds/register.go:33-40, cmd/kudurru/store_kinds.go:8-15, cmd/kudurru/serve.go:205-207) and stored as Secrets with create-only and exact resourceVersion preconditions (internal/store/kube/internal.go:355-427). Envtest TestEnvtestRuntimeKindsPrivateCarriersAndSafeExport creates a budget, source chunk, source head and name allocation and proves create-only replay conflicts (internal/store/kube/runtime_kinds_test.go:46-75).",
+  "Per-integration election works on Kubernetes without new code: the host asks Elector(electionKey(id)) per instance (ee/integration/host/lifecycle.go:204) and tolerates asynchronous OnStarted callbacks from Kubernetes electors (lifecycle.go:209-245); kube.Store.Elector returns one Lease elector per name (internal/store/kube/elector.go:109-129). This is the F09a mechanism (completion-plan.md:93).",
+  "The source format is already 'immutable content-addressed chunks plus one head pointer' sized for Secret carriers: MaxSourceChunkBytes = 180<<10 'leaves room for base64 and carrier metadata' (api/integrationkinds/v1alpha1/source.go:23), IntegrationSourceHead is 'the private whole-source commit/publication pointer' (source.go:95), and commitSource already writes chunks create-only and the head with ExpectedResourceVersion/CreateOnly (cmd/kudurru/integration_source.go:157-165).",
+  "Outbound (Cloudflare) needs no multi-object atomicity: every ledger, operation and budget mutation is one object written with CreateOnly or ExpectedResourceVersion (ee/integration/ledger/repository.go:59, 73; budget.go:90), and Begin explicitly handles another node winning the create (repository.go:112-116). A pending intent on a ledger row forces fresh-reread recovery by any other writer (repository.go:104-109; ee/integration/host/engine.go:363-374).",
+  "Host, ledger, inbound codec and providers are store-agnostic: no sqlite import under ee/integration (grep clean); only ee/integration/inbound/image.go and host/input.go reference replication types. All SQLite coupling is in cmd/kudurru/integration_*.go.",
+  "Chart RBAC already covers the needed verbs: integrations and integrations/status, dnszones/dnsrecordsets create/patch/delete (deploy/helm/kudurru/templates/rbac.yaml:13-18), leases get/create/update and namespaced secrets CRUD (rbac.yaml:76-82).",
+  "Native Secret credential references have a seam: credentials.Options.Secret (internal/credentials/resolver.go:47); the CRD reference type exists (api/v1alpha1/integration_types.go:5-31). SQLite deliberately leaves it unset (docs/architecture/integrations.md:34-35).",
+  "policy.Build already accepts source MAC grants (internal/policy/index.go:130, 429-439) and identify already has an inventory holder on Kubernetes (cmd/kudurru/serve.go:517, 921); only the Kubernetes feed is missing.",
+  "API routes, permissions and CLI are driver-neutral: perm{resource: integrations, verb} is enforced at registration (internal/api/integrations.go:151-189) and the CLI uses generated dispatch (cmd/kudurru/integrations.go:28, 100). Only the IntegrationAdministration implementation is SQLite-specific (cmd/kudurru/integration_admin.go:287).",
+  "A two-replica Kubernetes harness with a per-replica API partition gate exists and passes (cmd/kudurru/externaldns_crd_failover_test.go:36-98, 100; completion-plan.md:1863-1884).",
+  "external-dns on Kubernetes is complete and independent of the host: webhook listener on any driver (cmd/kudurru/serve.go:1383-1396), direct DNSEndpoint source with UID-owned children (serve.go:1398-1418; D302/D303; completion-plan.md:146)."
+ ],
+ "remaining": [
+  {
+   "id": "F09b-K0",
+   "title": "Record the Kubernetes integration root decision (new D-number) and retire the 'disabled pending atomic admission' statements",
+   "kind": "docs",
+   "detail": "Write one decision-log row that fixes the design before code: the per-Integration IntegrationSourceHead exact-resourceVersion CAS is the single atomic source root; immutable chunks and create-only allocations are pre-staged; source-owned DNS children are native objects written with UID/RV CAS and certified by evidence in the head; every replica derives inventory and MAC grants from committed heads; outbound uses the existing per-object ledger CAS; Lease ownership is re-verified by a linearizable read before each effect. State the residuals listed in the recommendation. This supersedes the earlier position that Kubernetes 'cannot use sequential per-object writes as a substitute' (docs/architecture/integrations.md:35-37, 157-160) and must be worded so it does not fall under D239's rejected alternative 'Sequential Kubernetes writes pretending to be atomic' (dev-docs/design-record.md:1839). Also amend the ledger.Write contract comment, which today requires guard checks 'in the same commit boundary' (ee/integration/ledger/types.go:44-46), to describe the Kubernetes form.",
+   "acceptance": "completion-plan.md:43-49 requires the parent to maintain design/contracts/evidence and 'No refused mutation replay'; G25 (completion-plan.md:224) requires plan, audit, gap ledger and changelog to stay consistent. Proof: decision row present in dev-docs/design-record.md section 16 with decision, rationale and rejected alternatives; docs drift check passes.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/dev-docs/design-record.md",
+    "/home/vercel-sandbox/kudurru/ee/integration/ledger/types.go",
+    "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/gaps.md"
+   ],
+   "size": "S",
+   "dependsOn": []
+  },
+  {
+   "id": "F09b-K1",
+   "title": "Kubernetes integration source backend: stage immutable chunks, commit the head by exact CAS, read complete sources",
+   "kind": "implementation",
+   "detail": "Add internal/store/kube/integration_source.go modeled on zoneStateBackend (internal/store/kube/zonestate.go:54-151): Stage(chunk) creates an Immutable Secret and treats AlreadyExists with identical bytes as success; Commit(expectedRV, head) rechecks every referenced chunk is durably present, then performs exactly one Create or one Update with the expected resourceVersion and never retries; ReadSource(owner) returns head plus chunks or an error (never an empty result for an undecodable carrier); bounded list of heads and name allocations; guarded chunk and child deletion by exact UID+RV (D302). Give IntegrationSourceHead/Chunk/NameAllocation (and the ledger kinds) strict bounded decoding by implementing PrivateCarrierLimit, which today only TSIGKey has (api/tsigkinds/v1alpha1/types.go:107-109; internal/store/kube/internal.go:128, 175-190), so listInternal fails closed instead of skipping (internal.go:286-300). Split ee/integration/inbound/image.go DecodeImage (image.go:43) so a carrier-list entry point can validate heads/chunks/allocations without a replication.Image.",
+   "acceptance": "gaps.md:858-859 ('Kubernetes needs a true atomic source/admission root'); followup-audit.md:587 ('atomic ownership/inventory'). Tests (envtest, internal/store/kube): head CAS lost to a concurrent writer returns conflict and writes nothing; missing chunk refuses commit; immutable chunk replay with different bytes refuses; two concurrent committers from the same previous RV yield exactly one winner and sequence n+1; undecodable head is an error on Get and List; guarded delete never removes a successor UID; extend TestEnvtestRuntimeKindsPrivateCarriersAndSafeExport to create Ledger, Operation and Delivery carriers (currently only listed, runtime_kinds_test.go:38-42).",
+   "files": [
+    "/home/vercel-sandbox/kudurru/internal/store/kube/integration_source.go",
+    "/home/vercel-sandbox/kudurru/internal/store/kube/internal.go",
+    "/home/vercel-sandbox/kudurru/api/integrationkinds/v1alpha1/source.go",
+    "/home/vercel-sandbox/kudurru/api/integrationkinds/v1alpha1/types.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/inbound/image.go",
+    "/home/vercel-sandbox/kudurru/internal/store/kube/runtime_kinds_test.go"
+   ],
+   "size": "M",
+   "dependsOn": [
+    "F09b-K0"
+   ]
+  },
+  {
+   "id": "F09b-K2",
+   "title": "Linearizable Lease term verification on the Kubernetes elector",
+   "kind": "implementation",
+   "detail": "LeaseElector exposes only local belief (IsLeader, Leader; internal/store/kube/elector.go:133-141) and store.Elector has no verification method (internal/store/store.go:240-246). Add an optional capability (for example store.TermVerifier with VerifyTerm(ctx) error, or a value on the term context) implemented by LeaseElector: one live GET of the Lease that must still show this identity and the acquisition recorded when the term started. The Kubernetes Fence callback calls it immediately before each provider request and each store write. It is a rejection check only: it never refreshes or extends a term. Document the bound: an effect dispatched after a successful verification may still land after lease loss.",
+   "acceptance": "followup-audit.md:587 ('original elected writer ... proof'); followup-audit.md:82 ('prove independent-instance lease loss/replacement'). Tests: unit test with a fake LeasesGetter (holder changed, acquisition changed, API error, canceled context all refuse); envtest two electors where the first is partitioned, the second acquires, and the first's VerifyTerm fails before its term context is canceled.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/internal/store/kube/elector.go",
+    "/home/vercel-sandbox/kudurru/internal/store/store.go",
+    "/home/vercel-sandbox/kudurru/internal/store/kube/elector_test.go"
+   ],
+   "size": "S",
+   "dependsOn": [
+    "F09b-K0"
+   ]
+  },
+  {
+   "id": "F09b-K3",
+   "title": "Kubernetes integration root adapter and serve mount (covers Cloudflare outbound and all provider setup)",
+   "kind": "implementation",
+   "detail": "New cmd/kudurru/integration_kube.go replacing the warning at serve.go:1083-1084 and registering host.Run as an always-on runnable next to kubeBlocking (serve.go:1445-1449). Capture: build ih.Input from the zonecache snapshot (Integration is in DefaultKinds, internal/zonecache/cache.go:138-165), with Sources = record sets admitted by zone.NewRecordSetSelector for enabled primary zones, a constant Term {ClusterID from kubeStore.Info(), Epoch 1, fixed PrimaryID/PromotionID} because ledger.Guard and CaptureInstances require a valid Term (ee/integration/ledger/types.go:37-41; host/input.go:76), a license.Cut, and a credentials resolver with files/env plus native Secret lookup through the guarded REST config; per-instance Authority/Reconcile digests as in integration_runtime.go:223-263. Capture runs every 2 s by default (host/types.go:242-244), so Secret credentials must be snapshotted or cached rather than fetched per capture. Fence: host lease, VerifyTerm (K2), live Get of the Integration comparing UID, resourceVersion, suspend and deletion (as integration_runtime.go:358-369), license current. ledger.Write: the same guard checks, then one kubeStore.Apply with the caller's CreateOnly/ExpectedResourceVersion, never Force, never a retry with a fresh RV. Reader: kubeStore (Get and paginated List of private kinds). Status: UpdateStatus on the Integration by the lease holder (reuse stageIntegrationStatus logic, integration_runtime.go:540-557). Keep the deletionPolicy Delete refusal (integration_runtime.go:292-296) and the unlicensed refusal. Decide and record bounded re-reservation for the shared request budget: ReserveBudget does 'exact CAS once' (ledger/budget.go:26-28) and on Kubernetes two instances on different replicas contend on one Secret; a reservation is idempotent by ID, so a bounded re-read and re-reserve before any request is safe (D364 precedent). Factory identical to SQLite (integration_runtime.go:67-80).",
+   "acceptance": "followup-audit.md:82 and :587; README.md:380 ('Cloudflare preview matches apply, foreign/unowned records are protected ... retries are idempotent'). Tests (mounted envtest, cmd/kudurru): Cloudflare local TLS peer (reuse integrationCloudflareTLS, integration_admin_cloudflare_test.go:44) publishes through real ledger/operation/budget Secrets with exactly one mutation; stale preview refuses before effects; changed source record set, suspended or re-created Integration, expired license and deletionPolicy Delete all refuse before provider work; restart resumes a pending intent through fresh-reread recovery; two Cloudflare instances on two replicas share the budget without unfenced requests; credential Secret rotation cancels and joins the old provider.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_kube.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serve.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_runtime.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/ledger/budget.go",
+    "/home/vercel-sandbox/kudurru/internal/credentials/resolver.go"
+   ],
+   "size": "L",
+   "dependsOn": [
+    "F09b-K0",
+    "F09b-K2"
+   ]
+  },
+  {
+   "id": "F09b-K4",
+   "title": "Inbound source commit on Kubernetes (UniFi and Tier-B observations)",
+   "kind": "implementation",
+   "detail": "Kubernetes CommitSource/ValidateSource/BeforeObserve for the host's preferred source mode (ee/integration/host/types.go:142-148). Order follows the codec, which requires UID/RV/IntentDigest evidence for every desired object inside the document (ee/integration/inbound/codec.go:159-164, 232-242, 279-281): (1) admit targets and group grants by live reads (as admitDesired, integration_source.go:203-267); (2) create new IntegrationNameAllocations create-only; an orphan from a failed pass stays reserved and is reused, which the model already allows ('Allocations include permanent reservations not used by a current observation', inbound/image.go:31); (3) write source-owned children with create-only or exact-RV update, refusing foreign or re-created UIDs (as stageDesired, integration_source.go:276-296), collecting evidence; (4) stage chunks; (5) inside host.WithSource, call the final check and perform the single head CAS; (6) after commit, delete previous chunks and omitted children by exact UID+RV. Only step 5 may run inside WithSource because it holds the host read lock for the whole callback (ee/integration/host/source_scope.go:149-150). Inventory-only and group-only observations (Tier-B: Desired nil, ee/integration/webhook/inventory.go:61; UniFi without spec.unifi.inventory) have no children, so the head CAS is their entire commit. For UniFi DNS records, repack the provider's per-client record sets (one DNSRecordSet per client and per client/IP, ee/integration/unifi/inventory.go:209-241, up to 10,000) into a fixed number of integration-owned DNSRecordSets per (integration, zone) keyed by owner-name hash, because DNSRecordSet allows at most 1,000 endpoints (api/v1alpha1/dnsrecordset_types.go:56) and an operation is bounded to 2 minutes (host/types.go:254); exceed the bound with ErrCapacity. Generated reverse DNSZones are plain cluster-scoped objects on Kubernetes (ee/integration/unifi/reverse.go:63-66). Result reporting: Committed after the head CAS, Published when this replica's consumer (K5) has installed that root.",
+   "acceptance": "gaps.md:844-850 lists the SQLite behaviors to match (source-owned desired objects, permanent allocations, head/chunks, original UID/RV, ownership, target/group grants, final license check); README.md:380 ('UniFi polling handles stale clients, MAC/IP changes, reverse records, VLAN groups'). Tests (mounted envtest with the UniFi HTTPS double, integration_runtime_test.go:185-234): first observation creates allocations, packed children, chunks and head; omission withdraws records but keeps allocations; a foreign object at a child name refuses and leaves the head unchanged; a head CAS lost after children were written leaves the previous head, and the next pass converges with no duplicate allocation; Integration re-created with a new UID cannot adopt old children; zone selector that does not admit the child refuses; license expiring between staging and the head CAS leaves the head unchanged.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_kube_source.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_source.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/inbound/image.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/unifi/inventory.go"
+   ],
+   "size": "L",
+   "dependsOn": [
+    "F09b-K1",
+    "F09b-K3"
+   ]
+  },
+  {
+   "id": "F09b-K5",
+   "title": "Replica-side source runtime: inventory and MAC grants from committed heads on every replica",
+   "kind": "implementation",
+   "detail": "Only the lease holder observes the provider, but every replica answers DNS, so each replica must consume the committed root. Add an always-on runnable (pattern: kubeBlockingRuntime, cmd/kudurru/kube_blocking.go:22-60; D301/D365) that watches IntegrationSourceHead carriers (internal kinds are watchable, internal/store/kube/internal.go:550) with a periodic bounded relist and a wake after the node's own commit. For each head it reads the complete chunk set, decodes with inbound.DecodeSource, and applies the same eligibility rule as SQLite's prepareIntegrationImage minus primary receipts (cmd/kudurru/integration_image.go:100-161): the current Integration has the same UID, is not suspended or deleting, its spec digest equals head.ConfigDigest, every target zone and every evidenced child exists in this replica's zonecache snapshot with the same UID and IntentDigest and is source-owned. Eligible sources feed the existing holder (serve.go:517, 921) and produce policy.MACGrants with the original exclusive expiry (integration_image.go:204-245). Ineligible or unreadable sources contribute nothing; a failed read keeps the last installed state only until each observation's original absolute expiry. The zonecache policy builder has no grants input today (internal/policy/view.go:35-49); add an external-input hook like Cache.SetLists (internal/zonecache/cache.go:284-290) and pass grants into policy.Build. Decide and record how global arbitration is derived: SQLite persists watermarks in one versioned state (internal/inventory/state.go:23-48); on Kubernetes rebuild the holder deterministically from the current eligible heads in a canonical order so all replicas agree, and state that cross-source removal tombstones are not durable there.",
+   "acceptance": "followup-audit.md:117 (F18c: 'prove hostname/nameGlob decisions, stale removal, collisions and native/edge equivalence'); README.md:381 ('Test identity refresh, stale inventory, CIDR ties, and equivalent policy decisions across transports'); README.md:363-365 ('no store or leader dependency on the query path, last-good snapshots during outages'). Tests: two replicas, the non-holder identifies a client by MAC/hostname after the holder commits; suspending or editing the Integration closes grants on both replicas without a new commit; a head whose evidence does not match the snapshot grants nothing; API-server outage keeps answers until original expiry and never renews; restart rebuilds the same inventory from heads; manual ClientGroup members are untouched.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_kube_sources.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_image.go",
+    "/home/vercel-sandbox/kudurru/internal/zonecache/cache.go",
+    "/home/vercel-sandbox/kudurru/internal/zonecache/objectset.go",
+    "/home/vercel-sandbox/kudurru/internal/policy/view.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serve.go"
+   ],
+   "size": "L",
+   "dependsOn": [
+    "F09b-K1"
+   ]
+  },
+  {
+   "id": "F09b-K6",
+   "title": "Kubernetes IntegrationAdministration adapter for the reviewed API and CLI",
+   "kind": "implementation",
+   "detail": "Implement api.IntegrationAdministration (internal/api/integrations.go:14-18) for Kubernetes and assign it where serve.go:1059 is nil today. List/Get: Integration objects from the zonecache snapshot, with phase taken from the durable object status written by the lease holder so every replica answers the same, and StatusKnown only when status.observedGeneration matches. Execute (check, preview, sync, actions, act): host.CaptureCommand with the exact reviewed UID and revision (ee/integration/host/command_capture.go:34-51), which only succeeds on the replica holding that instance's Lease; on another replica either return an explicit unavailable error naming the holder or forward once over the internal listener using the existing pod resolver (cmd/kudurru/servewire.go:71-90). Authorization is the route permission already enforced by the standard Kubernetes auth stack; the SQLite-only original-proof reauthorization (cmd/kudurru/integration_operation.go:44-133) does not exist on this driver and the docs must say so. Reuse integrationAdminError, integrationPublicPreview and integrationProjectionSafe (integration_admin.go:25-46, 221-285). Until this lands the honest interim is a status condition on the CR, since today the object is silently inert.",
+   "acceptance": "completion-plan.md:185 (F60c: 'remaining driver/restart and final contract gates remain'); README.md:403-404 ('V2-INTEGRATIONS must expose manifest-driven forms, check/sync/preview, inventory, and zone/record publication conditions'); completion-plan.md:220 (G21). Tests: real router plus generated CLI against a mounted Kubernetes runServe: list/get, check, preview, sync publish with digest, sync observe, stale revision 409, viewer without integrations.sync refused, request to the non-holder replica behaves as documented, uncertain outcome is reported and not replayed.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_kube_admin.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_admin.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serve.go",
+    "/home/vercel-sandbox/kudurru/internal/api/integrations.go"
+   ],
+   "size": "M",
+   "dependsOn": [
+    "F09b-K3"
+   ]
+  },
+  {
+   "id": "F09b-K7",
+   "title": "Two-replica Kubernetes failover and partition qualification for all three providers",
+   "kind": "qualification",
+   "detail": "Evidence-only package on the final source, written to a new .context/kube-integration-<date>/ directory. Reuse the partition gate harness (cmd/kudurru/externaldns_crd_failover_test.go:36-98) with two mounted runServe replicas. Scenarios: holder partitioned from the API server, the other replica acquires that instance's Lease without test intervention and alone commits; the partitioned replica makes no provider request and no store write after its verification fails and keeps answering from last-good data; after healing it converges and never commits a stale observation (head sequence strictly increasing, one head per Integration UID); independent replacement of one instance does not disturb another (the SQLite counterpart is TestIntegrationRuntimeIndependentReplacementJoinsOldProvider, integration_failover_test.go:68); process restart; Tier-B negotiation/auth/observation (peer from integration_webhook_mount_test.go:40); Cloudflare pending-intent recovery across a holder change. Then default-race runs of ee/integration/..., internal/store/kube, internal/policy, internal/zonecache and the root Kubernetes selection, plus scoped lint.",
+   "acceptance": "followup-audit.md:82 ('prove independent-instance lease loss/replacement; G09, G22'); README.md:380 ('Test webhook negotiation/auth/retries and per-instance failover'); completion-plan.md:221 (G22: 'cold start, restart, promotion, partition and rejoin'). Proof: named mounted tests passing at least three consecutive default-race runs with no skips, logs and JSON retained, earlier failed runs retained as the tracker does elsewhere (completion-plan.md:1876-1882).",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_kube_failover_test.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_kube_test.go"
+   ],
+   "size": "L",
+   "dependsOn": [
+    "F09b-K3",
+    "F09b-K4",
+    "F09b-K5",
+    "F09b-K6"
+   ]
+  },
+  {
+   "id": "F09b-K8",
+   "title": "Architecture, operator and tracker documentation for Kubernetes integrations",
+   "kind": "docs",
+   "detail": "Replace the statements that Kubernetes execution is disabled or unsupported: docs/architecture/integrations.md:13-16, 33-37, 155-160, 453-454, 497-498 and 502-505; docs/deploy/integrations.md:190 and 219-221; CHANGELOG.md:388-391. Add a Kubernetes flow diagram and a plain statement of what is and is not atomic, per-replica convergence, the Lease verification bound, native Secret credential references, the holder-only command behavior, capacity bounds and the etcd write profile. Update completion-plan.md:94 and add a dated evidence section; close gaps.md:858-859 for the Kubernetes half; update followup-audit.md:82. American English throughout (CLAUDE.md).",
+   "acceptance": "CLAUDE.md: 'keep its pages and diagrams in step with the code when you change a flow it shows'; completion-plan.md:224 (G25). Proof: docs drift/generation checks used for D303 (completion-plan.md:146 mentions 'docs drift and Helm rendering pass') pass.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/docs/architecture/integrations.md",
+    "/home/vercel-sandbox/kudurru/docs/deploy/integrations.md",
+    "/home/vercel-sandbox/kudurru/CHANGELOG.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/completion-plan.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/gaps.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/followup-audit.md"
+   ],
+   "size": "S",
+   "dependsOn": [
+    "F09b-K7"
+   ]
+  },
+  {
+   "id": "F09b-DEL",
+   "title": "deletionPolicy Delete cleanup/finalizer protocol (cross-driver half of the F09b row, not Kubernetes-specific)",
+   "kind": "implementation",
+   "detail": "Listed for completeness because the inventory row couples it with Kubernetes (completion-plan.md:94; gaps.md:859). Today a configured Delete instance is refused before provider work on SQLite (cmd/kudurru/integration_runtime.go:292-296; docs/architecture/integrations.md:155-157). The Kubernetes mount does not depend on it: K3 keeps the same refusal, so both drivers stay at parity with Retain as the supported policy. If the protocol is built, the Kubernetes form is a finalizer on the Integration CR held by the lease holder while it removes only ledger-proven owned remote records and exact-UID source-owned children, then deletes the head, chunks and ledger rows; allocations stay permanent. This should be mapped and sized under its own item.",
+   "acceptance": "gaps.md:859 ('Delete needs a cleanup/finalizer protocol'); followup-audit.md:587 ('finish Delete/Kubernetes dependencies'); api/v1alpha1/integration_types.go:232-235 ('DeletionPolicy applies only to records proven owned by this instance'). Tests: existing TestIntegrationRuntimeRefusesDeleteAndUnlicensedExecution (cmd/kudurru/integration_runtime_test.go:345) must have a Kubernetes twin either proving refusal or proving cleanup.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_runtime.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/host/lifecycle.go"
+   ],
+   "size": "L",
+   "dependsOn": []
+  }
+ ],
+ "designOptions": [
+  {
+   "name": "A. Head-as-root with certified native children (recommended)",
+   "description": "One IntegrationSourceHead per Integration UID is the only commit point, written by create-only or exact-resourceVersion CAS after immutable chunks, create-only name allocations and UID/RV-guarded source-owned DNS objects have been staged. The head document carries the complete observation plus UID/RV/IntentDigest evidence for every child, target zone and allocation, and its ConfigDigest/CredentialDigest/Owner UID. Every replica reads committed heads and grants inventory and MAC-group effects only when the current Integration and the evidenced children match. UniFi record sets are repacked into a fixed number of integration-owned DNSRecordSets per (integration, zone). Outbound keeps the existing per-object ledger CAS. Lease ownership is re-verified by a linearizable read before each effect.",
+   "pros": "No codec or CRD format change: the existing document already requires evidence-before-head ordering (ee/integration/inbound/codec.go:232-242, 279-281) and the head CAS already exists in commitSource (cmd/kudurru/integration_source.go:162-165). Mirrors the in-driver zonestate backend (internal/store/kube/zonestate.go:54-151) and D366/D303/D301/D365. Inventory-only and group-only sources (all of Tier-B, UniFi without DNS publication) are atomic with no caveat. A stale-configuration commit is harmless because eligibility is re-evaluated against the head's own ConfigDigest on every replica. Children stay visible to the existing status/serial controllers and kubectl.",
+   "cons": "The set of DNS children is not atomic with the head: records converge object by object within a pass, and a crash mid-pass leaves mixed generations until the next pass, during which that source's inventory/group enrichment is closed. Publication is per replica. Requires a new replica-side runtime and a zonecache/policy hook. Needs a Kubernetes-only repacking of UniFi record sets."
+  },
+  {
+   "name": "B. Strict root-gated serving",
+   "description": "Same root as A, but source-owned children are inert staged intents until certified: children get content-addressed immutable names, and zone building, status/serial calculation and the RFC 2136 planner all filter out source-owned record sets that the eligible head does not list.",
+   "pros": "DNS records, inventory and grants all switch together per replica when the head is observed; nothing partial is ever served. Closest to the earlier handoff wording that public CRs should be 'desired intents whose effective admission is bound by that root' (.context/f09-integration-host-result.md, 'Minimal Kubernetes follow-on design').",
+   "cons": "Cross-cutting change to every consumer of zone.ServedRecordSets (internal/zoneview/zoneview.go:76, internal/controller/zoneview.go:154 and 195, internal/api/zones.go:1121, cmd/kudurru/kube_update.go:172), plus garbage collection with a grace period for slow replicas. SQLite does not gate DNS records on source admission either (admission.Ready only closes inventory/group enrichment, cmd/kudurru/integration_image.go:114-188), so this exceeds parity. Much larger blast radius late in the release."
+  },
+  {
+   "name": "C. Port the complete SQLite runtime to Kubernetes",
+   "description": "Mount the publisher, provider coordinator and primary lifecycle on the Kubernetes zone-state backend so sources are published through committed zone heads with receipts, as on SQLite.",
+   "pros": "Identical semantics and tests on both drivers; receipt-qualified publication.",
+   "cons": "Changes the Kubernetes serving model. Already rejected for RFC 2136 in D366 ('Mounting the SQLite lifecycle runtime on Kubernetes (changes the serving model)', dev-docs/design-record.md:2045) and described as 'substantially larger' in gaps.md:7273-7275. Not a v0.2-sized package."
+  },
+  {
+   "name": "D. Per-client CRs written sequentially with no root",
+   "description": "Run the SQLite staging loop against the Kubernetes Store interface as is: one Apply per client record set, then chunks and head, treating the sequence as the commit.",
+   "pros": "Least new code.",
+   "cons": "Explicitly rejected by D239 ('Sequential Kubernetes writes pretending to be atomic', dev-docs/design-record.md:1839) and docs/architecture/integrations.md:35-37. Up to 10,000 or more writes per pass cannot finish inside the 2-minute operation bound (ee/integration/host/types.go:254), and no replica other than the holder would get inventory."
+  },
+  {
+   "name": "E. Do not advertise integrations on Kubernetes in v0.2",
+   "description": "Keep the host unmounted, add a status condition and admission/docs refusal for Integration objects on the Kubernetes driver.",
+   "pros": "Smallest change; removes the silent no-op.",
+   "cons": "Leaves F09b, F18c and F60c open on an advertised driver and contradicts the tracker text that Kubernetes is 'explicit F09b work' (gaps.md:858-859) and the handoff note that it is 'the minimal next v0.2 package, not a deferral out of the release'. It would be a scope change, which is the only part of this item that would need the owner."
+  }
+ ],
+ "recommendation": "Take option A, delivered in two tranches, and record it as one new decision before coding (K0). No part of this item needs the owner: there is no hardware or credential dependency (SQLite acceptance used local TLS peers and 'does not claim contact with production provider infrastructure', docs/architecture/integrations.md:496-497), and the design choices below can be made and logged by the engineer. The only owner-level lever would be descoping (option E), which I do not propose.\n\nWhy this is the smallest honest design: the atomic root already exists in the data model. The source codec is content-addressed chunks plus a head pointer sized for Secret carriers, the document must contain evidence for every desired object, and the Kubernetes driver already has the same stage-then-single-CAS pattern for zone state. So the work is an adapter, a replica-side consumer and an administration adapter, not a new storage model.\n\nTranche 1 (K0, K1, K2, K3, K5, K6): Cloudflare outbound, Tier-B inventory and actions, UniFi inventory and VLAN/note groups. In this tranche the head CAS is the entire inbound commit, so the source root is atomic with no caveat. Tranche 2 (K4 record publication): UniFi forward/PTR records and generated reverse zones as certified native children. K7 and K8 close it.\n\nWhat is atomic: (1) the head commit: one complete observation (clients, private MAC-group contributions, allocation evidence, child and target evidence, config and credential digests) replaces the previous one by exact-resourceVersion CAS, sequence n to n+1, and a lost CAS changes nothing in the root; (2) on each replica, the swap of that source's inventory and MAC grants, which happens only when the head's evidence matches the replica's snapshot; (3) name-allocation exclusivity (create-only per scope and label); (4) each individual child, ledger, operation and budget write.\n\nWhat is not atomic, to be stated in the decision and docs: (1) the set of DNS children relative to each other and to the head; (2) publication across replicas, which converge independently, so 'published' means installed on the committing replica; (3) fencing: the Lease is verified by a linearizable read immediately before each effect, and one already-dispatched write or provider request may still land after loss; every store write is still a CAS, so it is either a serializable predecessor or a conflict; (4) guard versus write: Integration and source versions are compared by live reads just before the CAS rather than in the same commit, compensated by the self-certifying head digests checked at consumption and by the ledger's pending-intent recovery; (5) global inventory arbitration is derived per replica from committed heads, without SQLite's durable cross-source removal watermarks; (6) remote provider effects, exactly as on SQLite (docs/architecture/integrations.md:91-92).\n\nPrecedents followed: D366 (one owned object as the atomic unit, exact-version CAS, a lost CAS writes nothing; rejected 'leases as locks'), D302/D303 (UID-owned native children, source and destination checks before writes, original delete identity, and the explicit statement that separate objects are not one transaction; rejected a serving-only overlay invisible to serial calculation), D301 (confirmed commit versus unknown completion; every replica reconciles by bounded reads), D365 (whole-source reread on a timer and after own commands; one node's receipt is not cluster-wide publication), D364 (bounded retry only for a commutative CAS, applied here to the shared request budget), D239 (no pretended atomicity, Delete is never silently Retain, no replay of fenced failures), D284 (future polls continue after a fenced poll) and D291 (reviewed UID/revision/preview-digest operations).\n\nProvider impact: Cloudflare needs only K2, K3 and K6 and no source root. Tier-B needs K1, K3, K5, K6. UniFi inventory and groups need K1, K3, K5, K6; UniFi DNS records additionally need K4. external-dns is unaffected.",
+ "sharedSeams": [
+  "/home/vercel-sandbox/kudurru/cmd/kudurru/serve.go (every Kubernetes feature edits the sql == nil / kubeStore branches around lines 1053-1195 and the runnable list at 1445-1575)",
+  "/home/vercel-sandbox/kudurru/internal/store/kube/elector.go and /home/vercel-sandbox/kudurru/internal/store/store.go (Elector interface)",
+  "/home/vercel-sandbox/kudurru/internal/store/kube/internal.go (private carrier decode/list behavior shared with IAM, TSIG and zone kinds)",
+  "/home/vercel-sandbox/kudurru/internal/zonecache/cache.go and objectset.go (external-input hook next to SetLists)",
+  "/home/vercel-sandbox/kudurru/internal/policy/view.go and index.go (MAC grants into the Kubernetes policy view)",
+  "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_runtime.go, integration_source.go, integration_image.go, integration_admin.go (shared helpers to extract; SQLite behavior and its qualified tests must not change)",
+  "/home/vercel-sandbox/kudurru/ee/integration/inbound/image.go and /home/vercel-sandbox/kudurru/ee/integration/ledger/types.go, budget.go",
+  "/home/vercel-sandbox/kudurru/api/integrationkinds/v1alpha1/source.go and types.go (strict carrier limits; part of replication manifests on SQLite)",
+  "/home/vercel-sandbox/kudurru/internal/api/integrations.go and the generated OpenAPI/CLI contracts if error responses change",
+  "/home/vercel-sandbox/kudurru/docs/architecture/integrations.md, /home/vercel-sandbox/kudurru/docs/deploy/integrations.md, /home/vercel-sandbox/kudurru/CHANGELOG.md",
+  "/home/vercel-sandbox/kudurru/dev-docs/design-record.md (next D-number), /home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/completion-plan.md, gaps.md, followup-audit.md (appended by every parallel item)",
+  "/home/vercel-sandbox/kudurru/deploy/helm/kudurru/templates/rbac.yaml (only if a new verb is needed; current verbs appear sufficient)"
+ ],
+ "testInfra": "I ran no tests (read-only task); commands and durations below come from retained evidence.\n\nEnvtest assets are present at /home/vercel-sandbox/kudurru/bin/k8s/1.37.0-linux-amd64; mounted tests locate them through mountedKubeTestAssets (cmd/kudurru/auditlog_test.go:119-141), which honors KUBEBUILDER_ASSETS and otherwise skips; `make envtest` downloads them (Makefile:90-94). A skip must not be credited.\n\nHarnesses to extend:\n- Two-replica Kubernetes partition harness: cmd/kudurru/externaldns_crd_failover_test.go (partitionGate at 36-98). `go test -race -count=1 -run '^TestRunServeDirectDNSEndpointLeaseLossAndPartition$' ./cmd/kudurru` passed in 26.1 s test time, 27.3 s package (.context/externaldns-failover-20261109/race03.log). Note the recorded pitfall: offlineServeConfig sets the process-global KUBECONFIG, so start each replica before building the next configuration (completion-plan.md:1878-1882).\n- Single-node mounted Kubernetes pattern: cmd/kudurru/serve_kube_update_test.go:32; 11.6 s test, 34.8 s package (.context/kube-update-20261110/race06.log).\n- SQLite integration fixtures to reuse as provider peers: UniFi HTTPS controller (cmd/kudurru/integration_runtime_test.go:185-234), Cloudflare local TLS peer (integration_admin_cloudflare_test.go:44), Tier-B peer (integration_webhook_mount_test.go:40), failover cases (integration_failover_test.go:68, 145, 259, 318). `go test -race -json -count=1 -timeout=5m -run '^TestIntegration' ./cmd/kudurru` took 221.8 s wall, exit 0 (.context/integration-failover-20261108/integration-race.json).\n- Driver tests: internal/store/kube/runtime_kinds_test.go, create_only_test.go, delete_original_test.go, elector_test.go; the whole package under default race with envtest took 72.5 s (.context/kube-update-20261110/lib-race01.json).\n- Libraries: `GOMAXPROCS=2 go test -race -p 2 ./internal/credentials ./internal/policy ./internal/stages/identify ./ee/integration/host ./ee/integration/plan ./ee/integration/unifi ./ee/integration/cloudflare -count=1` (host 6.5 s, UniFi 7.4 s, Cloudflare 9.7 s; .context/f09-integration-host-result.md).\n- Root Kubernetes selection under default race (Update, Kube, Kubernetes, Primary, TSIG, Notify): 430.7 s for cmd/kudurru, 173 passes (.context/kube-update-20261110/root-race01.json; gaps.md:7314-7315).\n- Scoped lint as used for F09b: `GOMAXPROCS=2 go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run --allow-serial-runners --concurrency 2 ./cmd/kudurru/... ./ee/integration/... ./internal/store/kube/... ./internal/policy/... ./internal/zonecache/...`.\n\nEvidence convention: a new gitignored directory .context/kube-integration-<date>/ with per-run logs and JSON, failed runs retained.",
+ "risks": [
+  "Wording and review risk: D239 rejected 'Sequential Kubernetes writes pretending to be atomic' and the architecture page says per-object CAS plus a Lease is insufficient (docs/architecture/integrations.md:157-159). A reviewer may insist on strict root-gated serving (option B), which roughly doubles the scope. Landing K0 first is the mitigation.",
+  "host.WithSource holds the host read lock for the whole commit callback (ee/integration/host/source_scope.go:149-150). Putting network writes other than the single head CAS inside it would stall host refresh and every other instance.",
+  "etcd write volume: chunk names include the sequence (api/integrationkinds/v1alpha1/source.go:141-147), so every poll rewrites all chunks; UniFi polls every minute by default (ee/integration/host/observation_schedule.go:47-51) and a source may be up to 128 chunks of 180 KiB. Large sites need a Kubernetes-specific bound or coalescing, and envtest will not reveal etcd pressure.",
+  "Capture runs every 2 s (ee/integration/host/types.go:242-244); resolving native Secret credentials on each capture would add constant API load unless snapshotted or cached, and caching must still detect rotation.",
+  "Shared request budget contention: ReserveBudget performs one CAS attempt (ee/integration/ledger/budget.go:26-28) and fenced or unclassified failures are not retried automatically (gaps.md:841-842). Without a recorded bounded re-reservation, two instances on different replicas can starve each other.",
+  "Residual dual-writer window after lease loss is bounded to already-dispatched effects, not zero. For Cloudflare there is no remote compare-and-swap (docs/architecture/integrations.md:177-178); safety rests on the ledger's single pending intent per record and fresh-reread recovery.",
+  "Inventory arbitration differs from SQLite: watermarks are history-dependent (internal/inventory/inventory.go:158-186) and durable only on SQLite. With more than one inventory source claiming the same IP, replicas or restarts could disagree unless the Kubernetes holder is rebuilt deterministically from heads.",
+  "Mid-pass state for UniFi DNS records: after children are updated but before the head commits, the old head's evidence no longer matches, so that source's inventory and group grants close until the next successful commit. A persistently failing head CAS would keep enrichment closed while DNS records keep changing.",
+  "Reviewed commands only work on the replica holding that instance's Lease (ee/integration/host/command_capture.go:44-46). Behind a Service this looks like intermittent 503s unless forwarding or a clear holder hint is implemented.",
+  "Kubernetes has no original-proof reauthorization inside each effect (cmd/kudurru/integration_operation.go:113-126 is SQLite-only); the route permission is checked once per request. This is a real difference that must be documented, not hidden.",
+  "Integration status writes change the object's resourceVersion and trigger zonecache rebuilds, since Integration is a watched kind (internal/zonecache/cache.go:138-165). The capture must exclude its own status from authority digests, as SQLite does (cmd/kudurru/integration_runtime.go:223-263), or it will fence itself.",
+  "Capacity mismatch: DNSRecordSet allows 1,000 endpoints (api/v1alpha1/dnsrecordset_types.go:56) while a source may carry 10,000 record sets (api/integrationkinds/v1alpha1/source.go:26). The packing layout must be fixed up front; changing bucket count later moves records between objects.",
+  "cmd/kudurru/serve.go is the busiest shared file on this branch; parallel work on other Kubernetes items will conflict there and in the tracker documents.",
+  "Inventory data (client names, IPs, MACs) will live in Secrets in the release namespace; anyone with Secret read there can see it. This matches other private carriers but should be stated in the operator guide.",
+  "I did not run any test or build, so every 'works today' statement about the Kubernetes driver rests on reading code and retained evidence, not on a fresh run."
+ ]
+}

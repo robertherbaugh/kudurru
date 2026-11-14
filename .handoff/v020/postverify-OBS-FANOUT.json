@@ -1,0 +1,91 @@
+{
+ "findings": [
+  {
+   "severity": "minor",
+   "file": "/home/vercel-sandbox/kudurru/.context/wt/obs/internal/querylog/sinkhost.go",
+   "issue": "On the legacy reload path (Kubernetes and file-reloaded nodes), changing any field of a sink entry silently loses events that are in flight at the swap. Async.Enqueue loads the collector's destination and then queues; when the reload adopts the successor and releases the predecessor in between, the event is offered to the retired old instance, where offer() returns without counting, and never reaches the new instance of the same name. This contradicts docs/architecture/observability.md (\"Every drop is counted in kudurru_querylog_dropped_total{stage=\\\"sink\\\",sink=\\\"<name>\\\"}\") and docs/deploy/query-log-sinks.md (\"the old one finishes what it holds, the new one starts with new queries\"). An unchanged entry is not affected (same worker in both sets), nor is the complete SQLite runtime (references are released only after the last lease).",
+   "evidence": "Probes run with go test -race -overlay, worktree untouched. Deterministic (review-probe03.log, 2 of 2 runs): \"3 events were recorded locally, sink x (both instances) wrote 2 and counted 0 dropped\". Through the real Async.Enqueue with 400 reloads of a changed entry (review-probe02.log): \"accepted by the collector 94833; sink x (all instances) wrote 94787; ... dropped 0 ...; delivered nowhere 46\" and, second run, 70 of 115964 with dropped 0."
+  },
+  {
+   "severity": "minor",
+   "file": "/home/vercel-sandbox/kudurru/.context/wt/obs/cmd/kudurru/serve_mount_test.go",
+   "issue": "The existing mounted test TestRunServeSQLiteCompletePrimaryUpdateRestart, which the implementer's report lists as passing in its root selection (one run), failed intermittently on the lane tree: 3 failures in 25 runs. I could not attribute it to this package: the same test passed 16 of 16 on the base sources and 16 of 16 on the lane tree when the two were run back to back, and the failing assertion is in primary-zone availability (authoritative stage, RoutingAvailableAt / committed-unavailable model after the test's own PATCH /settings), code this package does not touch. It is unresolved rather than cleared: I could not reproduce the triggering condition on base.",
+   "evidence": "review-root-race02.log: \"serve_mount_test.go:119: mounted built-in query lost committed authority: {Name:dynamic.example. ... Rcode:SERVFAIL Status:servfail_unsynced ... Upstream:secondary:unavailable:example. ...}\" / \"--- FAIL: TestRunServeSQLiteCompletePrimaryUpdateRestart (7.25s)\". review-root-race03.log (-count=8, test alone): 6 PASS, 2 FAIL with the same message (once for http.example., once for dynamic.example.). review-baseline01.log: base sources via overlay 8/8 PASS, then lane 8/8 PASS in the same lock hold. review-baseline02.log, 8 busy loops: base 8/8 PASS (about 32 s each), lane 8/8 PASS. A third comparison under disk sync load was withdrawn after about 30 minutes waiting for the machine lock (review-baseline03.log; nothing ran). Fisher exact for 3/25 against 0/16 is about 0.2, so the difference is not evidence of a regression."
+  },
+  {
+   "severity": "minor",
+   "file": "/home/vercel-sandbox/kudurru/.context/wt/obs/internal/servingbuild/semantic.go",
+   "issue": "No test fails when a candidate that is prepared but never published keeps its sink references. semanticOwners.release() is the only place that returns them when Builder.Prepare fails after PrepareLogging (catalog mismatch, stale dependency, zone preparation error, canceled context). If that line regressed, a sink removed from the settings would keep its goroutine, connection and metric series for the rest of the process on the complete SQLite runtime. The line is correct by inspection; the proof is missing. internal/servingbuild has no test that sets PrepareLogging.",
+   "evidence": "Mutation through go test -overlay with `s.logging.Release()` removed (review-mutation01.log): \"--- PASS: TestQuerylogRuntimeSinksLegacyReload (3.33s)\", \"--- PASS: TestRunServeQuerylogSinksStalledFailingAndReload (15.89s)\", exit=0. grep finds no reference to PrepareLogging or the \"logging\" component in any _test.go file under internal/servingbuild, internal/serving or cmd/kudurru."
+  },
+  {
+   "severity": "minor",
+   "file": "/home/vercel-sandbox/kudurru/.context/wt/obs/cmd/kudurru/querylog_runtime.go",
+   "issue": "The only sink type this package ships, slog, is never run through its production factory by any test. All three runtime and mounted tests replace querylogSinkFactories with doubles (useExportDoubles), and TestQuerylogSinkTypesHaveFactories only constructs the sink. The documented output (one info-level line per query carrying a sink attribute) is asserted nowhere, so a wrong logger, level or attribute in the factory would pass every test.",
+   "evidence": "cmd/kudurru/querylog_sinks_test.go: useExportDoubles overrides the factory map for TestQuerylogRuntimeSinksLegacyReload and both mounted tests. I confirmed the behavior itself with a probe that copies the factory body (review-probe01.log): {\"level\":\"INFO\",\"msg\":\"query\",\"sink\":\"log-lines\",\"log\":\"query\",\"client\":\"192.0.2.9\",...,\"name\":\"line.example.\",...}."
+  },
+  {
+   "severity": "minor",
+   "file": "/home/vercel-sandbox/kudurru/.context/wt/obs/cmd/kudurru/querylog_runtime.go",
+   "issue": "At shutdown, querylogRuntime.close returns the additional sinks' deadline error even when the collector drained and querylog.db closed cleanly, and serve.go:797 then logs \"query log flush incomplete\" with the collector's drop count. An operator reads that as local query-log loss when only an exporter failed to drain. A sink that is inside a write at shutdown (stalled or unreachable destination) also holds the process for the rest of the 5 s close bound, because the write is canceled only when that context ends; before this change close returned as soon as the database was flushed.",
+   "evidence": "close(): `if sinkErr := <-sinks; err == nil { err = sinkErr }`; SinkHost.Close returns ctx.Err() when a worker has not finished. TestQuerylogRuntimeSinksLegacyReload asserts exactly this: r.close(ctx) returns context.DeadlineExceeded while the database is already closed. serve.go:795-799 uses a 5 s context and logs logger.Warn(\"query log flush incomplete\", \"err\", err, \"dropped\", qlLogs.async.Dropped())."
+  }
+ ],
+ "fix": {
+  "summary": "All five findings are resolved on `wip/v020/obs` (HEAD `7c4e1779`, clean worktree). Findings 1, 3, 4 and 5 are fixed with tests that fail without the fix; finding 2 is not caused by this package and reproduces on the base sources.\n\nThe earlier fixer's three commits were sound, with one exception: its runtime-level test for finding 1 (`TestQuerylogRuntimeChangedSinkEntryCountsQueriesInFlight`) passed with and without the fix. Its primary sink was the SQLite writer, which under the race detector kept the collector queue full, so no query was ever caught in flight (12000 accepted, 0 dropped in every run). I added an exact test that fails 3 of 3 runs without the fix, and gave the load test a primary sink the collector can keep up with. I also corrected two code comments that still listed only two drop causes.\n\n**Finding 2 (`TestRunServeSQLiteCompletePrimaryUpdateRestart`)** is a timing race in the existing test against base behavior:\n- **Mechanism:** the primary status writer runs 250 ms after a publication. Its write bumps the DNSZone resourceVersion, and the publication carrying it serves the zone as unavailable until the primary driver realigns. The HTTP adapter waits up to 2 s for that publication, then answers from it.\n- **Reproduction on base (`33ee04bc`):** with one 450 ms sleep before the test's built-in queries, the base sources fail 3 of 12 runs with the reviewer's exact message. The lane head fails 2 of 8 with the same sleep.\n- **Controls:** without the sleep base passes 10 of 10; with a 1000 ms sleep base and head pass 12 of 12 each.\n- This package touches none of that code, and I changed neither the test nor the status writer.\n\nDecision for the integrator: whether that test should wait for the status write to settle, and whether a primary zone answering SERVFAIL for about half a second after a status write is acceptable. I observed this only in race-detector builds of the mounted test.\n\nOn the final tree: the seven sink tests pass twice under race, the wider query-log selection passes, scoped lint reports zero issues, and vet, gofmt, `TestReferenceDrift` and `TestCLIReferenceDrift` are clean. No generated artifact changed, so there is no new `chore(gen)` commit; `907a3000` now sits before the five fix commits. No forbidden file was touched and no dependency added.\n\n`ledger.md` is rewritten to the final behavior with all `fix-*` evidence; `changelog.md` and `decision.md` (D371) already matched and are unchanged. Everything is in `/home/vercel-sandbox/kudurru/.context/v020-final-20261110/`: outputs under `out/OBS-FANOUT/`, logs under `evidence/OBS-FANOUT/fix-*.log`, and the overlay-only probe sources in `fix-probe-source.log`.\n\nNot run: the full `./cmd/kudurru` suite, `test/e2e`, `TestOpenAPIDrift` and `TestAggregatedRolesDrift` (the fixes change no route, DTO or permission). Shared disk is down to about 7.8 GB free.",
+  "addressed": [
+   {
+    "finding": "1 [minor] sinkhost.go: on the legacy reload path a query in flight at a sink-entry change is offered to the retired instance, reaches no sink and is not counted",
+    "action": "Fixed in d60a3d4e (earlier fixer), verified and completed by me. An offer to a retired sink is now counted as dropped for the name (reason \"sink replaced\") while a route still references that name; it is never handed to the new sink; a removed name counts nothing and its series stay gone. Both docs pages and D371 say so. Host-seam tests fail before the fix (fix-before01). The earlier runtime-level test did not: it passed on the unfixed host with 0 dropped of 12000 (fix-before02). In e1c8d88f I added TestQuerylogRuntimeQueryInFlightAtSinkChangeIsCounted, which fails 3 of 3 without the fix (fix-before03) and passes on the fixed tree, and switched the load test to a primary sink the collector keeps up with (it now catches 0 to 7 queries per run and failed 1 of 3 runs without the fix). 7c4e1779 corrects the DropStageSink and SinkStatus.Dropped comments. A mutation removing the still-referenced guard fails the host test (fix-mutation03)."
+   },
+   {
+    "finding": "2 [minor] serve_mount_test.go: existing TestRunServeSQLiteCompletePrimaryUpdateRestart failed 3 of 25 runs on the lane tree; attribution unresolved",
+    "action": "Attributed to the base sources; no code change in this package. The status writer runs 250 ms after a publication, its write bumps the DNSZone resourceVersion, and the publication carrying it serves the primary zone as unavailable until the driver realigns; the HTTP adapter waits up to 2 s and answers from that publication. Reproduced on a binary built from 33ee04bc via overlay: with one 450 ms sleep before the built-in queries, base fails 3 of 12 with the reviewer's exact message (TookMS 371, 214, 222; fix-flake04) and head fails 2 of 8 (fix-flake05). Controls: base without the sleep passes 10 of 10; base and head with 1000 ms pass 12 of 12 each. Probe timelines are in fix-flake-probe01 to 04, sources in fix-probe-source.log. I did not change the test or the status writer; whether the test should wait, and whether the SERVFAIL window is a product defect, is left to the integrator and recorded in the ledger."
+   },
+   {
+    "finding": "3 [minor] servingbuild/semantic.go: no test fails when a prepared but unpublished candidate keeps its sink references",
+    "action": "Fixed in 7071dac5 (earlier fixer), verified by me. TestCandidateReturnsItsQueryLogSinkReferences refuses a candidate after and inside semantic preparation and requires the host to forget the sink; an accepted candidate holds it until the logging component's release hook runs, and the sink is never opened. Removing the release line fails all three cases (fix-mutation01); removing the release hook fails the accepted case (fix-mutation02). Passes on the final tree (fix-lib-race02)."
+   },
+   {
+    "finding": "4 [minor] querylog_runtime.go: the shipped slog sink type never runs through its production factory in any test",
+    "action": "Fixed in 7071dac5 (earlier fixer), verified by me. TestQuerylogRuntimeSlogSinkWritesQueryLines uses the real factories and a JSON logger under hide_domains: exactly one info-level query line per query with sink=log-lines, the name hidden, both rows in querylog.db, clean close. With the sink attribute removed from the factory it fails 2 of 2 (fix-before02); it passes on the final tree (fix-root-race05)."
+   },
+   {
+    "finding": "5 [minor] querylog_runtime.go: at shutdown close returns the sinks' deadline error and serve logs \"query log flush incomplete\" although only an exporter failed to drain; a stalled sink holds the process for the rest of the 5 s bound",
+    "action": "Fixed in 164eaf2c (earlier fixer), verified by me. close now returns only the collector and database outcome; SinkHost.Close returns a SinkDrainError listing undrained sinks, and the runtime logs one \"additional query-log sink did not drain\" warning per sink with queued and dropped counts. Both docs pages and the changelog state that a stalled destination can add up to five seconds to shutdown. The changed assertion in TestQuerylogRuntimeSinksLegacyReload (close must return nil, exactly one warning for the stalled sink with 100 queued and 200 dropped) is the behavior the finding asked for, not a loosened guard; it fails against the old close 2 of 2 (fix-before02) and passes on the final tree."
+   },
+   {
+    "finding": "Ledger wording: a sink is \"reopened with backoff while the destination is down\"",
+    "action": "The earlier fixer corrected the architecture page in 7071dac5; I corrected the same sentence in ledger.md. The host retries the first open until it succeeds and never reopens afterwards. I did not have the text of the reviewer's nit (finding 6), so this is my best match for it."
+   }
+  ],
+  "rebutted": [],
+  "commits": [
+   {
+    "sha": "d60a3d4ed4213faf90778305e1a29e96efa0982d",
+    "subject": "fix(querylog): count a query that reaches a replaced sink",
+    "generated": false
+   },
+   {
+    "sha": "164eaf2c09581c0c4bc223e109deac52e26fbd11",
+    "subject": "fix(querylog): report undrained sinks apart from the local flush",
+    "generated": false
+   },
+   {
+    "sha": "7071dac5182ac0334bc2578e79e4aa1e9f486b1f",
+    "subject": "test(querylog): run the slog factory and refused candidates",
+    "generated": false
+   },
+   {
+    "sha": "e1c8d88f8d3d0f314bc19186b03daf2df7ae8517",
+    "subject": "test(querylog): prove the in-flight drop on the reload subscriber",
+    "generated": false
+   },
+   {
+    "sha": "7c4e1779cf095382a6d646a83a46bcf5ee7bd43a",
+    "subject": "docs(querylog): name every cause of a per-sink drop in comments",
+    "generated": false
+   }
+  ]
+ }
+}

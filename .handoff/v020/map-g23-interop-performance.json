@@ -1,0 +1,219 @@
+{
+ "key": "g23-interop-performance",
+ "item": "Gate G23 \"Interoperability and performance\" (real BIND/Knot/AdGuard/dnsdist results, bounded memory/queues, performance budgets) plus F63 (fixed-class benchmark job), F20d and F21c performance gates. Windows results are owner-deferred (D353) and not mapped as work.",
+ "summary": "Read-only mapping at HEAD 33ee04bc (PR #54); nothing was dispatched, labeled or edited (only read-only gh API calls and file reads). G23 is still open in the tracker (/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/completion-plan.md:222; closure rule /home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/gaps.md:112). The benchmark machinery is complete: /home/vercel-sandbox/kudurru/.github/workflows/benchmarks.yml (runner label ubicloud-standard-8-ubuntu-2404 at :29, :63, :101; modes candidate/reference/paired at :5-9; label triggers at :25, :61, :99), collectors /home/vercel-sandbox/kudurru/hack/bench-release.py, bench-paired.py and bench-reference.py, the gate /home/vercel-sandbox/kudurru/hack/benchgate and seven limit files under /home/vercel-sandbox/kudurru/bench/. The latest paired run 42554034011 on 9963dec2 passed all three same-VM comparisons and all seven absolute gates (completion-plan.md:1365-1383), but HEAD is 28 commits later; in the benchmarked packages the only change since is two nosemgrep comment lines in /home/vercel-sandbox/kudurru/internal/cache/cache.go (commit 31a8b02a), so the required final-head rerun carries little code risk. The real performance risk is the runner pool: both runs with passing blocking/zone and upstream comparisons were on Ryzen 9 7950X3D VMs, and every EPYC 9454P paired run failed (42518988512, 42530394856, 42545184734), including with byte-identical blocking/zone/upstream code, so the outcome depends on which VM is drawn. Hosted CI on 33ee04bc (ci run 42736964083, e2e job 129568646370) ran unskipped and passed eight BIND 9.18.39 tests in test/interop, TestAggressiveBIND, TestDexEndToEnd and TestAdGuardBlackBox against AdGuard Home v0.107.79; compose run 42736963783 passed DNS through real dnsdist, and edge run 42736964064 passed dnsdist 2.1.3 and keepalived 2.4.3 config checks. The same hosted log shows silent skips for TestKnotCatalogConsumer, TestCentralAuditTwoNodes, TestCentralQuerylogTwoNodes and TestKubeAuditAcrossReplicas; in addition five BIND tests in internal packages, five dnsdist live tests (plus the F18c dnsdist legs) and the installed-Chrome CLI login test are never run unskipped by any workflow. Knot was last run unskipped at 86a3ff91 on November 8 (gaps.md:5597-5606) and the dnsdist live tests at November 2-8 commits, all through a private dockerd that is currently down; its exact start command is recorded and the retained data root still holds the needed images. gh 2.100.0 is authenticated as the repository owner and the label-toggle trigger is proven by PR event history; workflow_dispatch is untested (benchmarks.yml is not on main, though the workflow is registered as id 411398082). I found no item that needs the owner: Windows is deferred by D353 and two-VM keepalived by D358.",
+ "alreadyDone": [
+  "F63 fixed-class job exists and has run seven times: /home/vercel-sandbox/kudurru/.github/workflows/benchmarks.yml:21-58 (candidate), :59-96 (paired), :97-134 (reference); five fresh processes per suite, eight suites including UDP sockets and Persist200k (/home/vercel-sandbox/kudurru/hack/bench-release.py:21-34), GOMAXPROCS=6 (benchmarks.yml:46). The F63 inventory row (completion-plan.md:191) is stale: it still cites run 42522360297 failing cache hit/Set as the latest result and omits the later pass.",
+  "F21c limits are calibrated, committed and enforced: /home/vercel-sandbox/kudurru/bench/cache-limits.txt and upstream-limits.txt, pinned by the collector (bench-release.py:36-39 LIMIT_FILES, applied at :214-221). Requirement was 'Add calibrated limits/baselines on chosen fixed class and run them' (/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/followup-audit.md:126). Run 42554034011 passes both scopes (completion-plan.md:122, :1365-1374).",
+  "F20d lazy-DFA engine is implemented: bounded lazy subset DFA with NFA fallback at /home/vercel-sandbox/kudurru/internal/blocking/matcher/automaton.go:127 and the 128 MiB program budget at /home/vercel-sandbox/kudurru/internal/blocking/matcher/program_budget.go:7 (D293). The 'regex1000 p99 18276ns remains adverse' text in completion-plan.md:119 is superseded: in the reviewed vectors BenchmarkLatency/regex-1000/miss p99 is 871 ns candidate versus 8,376 ns reference on Ryzen (run 42554034011) and 1,389 versus 11,390 ns on EPYC (run 42545184734), about ten times better than the reference on both CPUs (.context/hosted-release-9963dec2-20261109/paired-reviewed-vectors.csv and .context/hosted-release-73d4b057-20261109/paired-reviewed-vectors.csv).",
+  "Exact-list miss p50 regression (160 versus 90 ns in run 42518988512, completion-plan.md:647-648) is superseded for that metric: BenchmarkLatency/exact-1M/miss p50 is 60 versus 60 ns on Ryzen at 9963dec2 and 80 versus 100 ns (better than reference) on EPYC at 73d4b057.",
+  "Cache hit/Set latency failures (hit 191.1 versus 158.2 ns, Set 313.3 versus 258.1 ns in run 42522360297; parallel hit 173.6 ns against the 156.48 limit in run 42545184734) are superseded on Ryzen after D348: at 9963dec2 hit is 105.7 versus 110.8 ns, Set 191.3 versus 206.6 ns and parallel hit 30.09 versus 28.87 ns. Not yet re-measured on an EPYC VM.",
+  "F20c benchgate lives in /home/vercel-sandbox/kudurru/hack/benchgate and is called from /home/vercel-sandbox/kudurru/Makefile:259 and :265.",
+  "F20b/F68a AdGuard comparator is a mandatory hosted step with a checksum-pinned official binary: /home/vercel-sandbox/kudurru/.github/workflows/ci.yml:326-327 runs make test-adguard; /home/vercel-sandbox/kudurru/hack/test-adguard.sh:7-33 pins v0.107.79 by SHA-256. Hosted result on 33ee04bc: 'AdGuard Home, version v0.107.79' and '--- PASS: TestAdGuardBlackBox' (ci run 42736964083, job 129568646370).",
+  "BIND interoperability in test/interop runs unskipped in hosted CI on the current head: ci.yml:300-318 installs bind9 and sets KUDURRU_NAMED; the hosted log on 33ee04bc shows PASS for TestBINDDNSSECValidation, TestBINDSecondary, TestBINDNotifyFansOutToIndependentSecondaries, TestBINDSecondaryThroughListeners, TestBINDInboundSecondaryTransfer, TestBINDSecondaryIXFR, TestBINDSecondaryVerifiedTLS and TestBINDUpstream on BIND 9.18.39. These cover every V2-ZONE interop point (AXFR, IXFR with AXFR fallback, TSIG rejection, TLS verification, expiry) in /home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/README.md:376.",
+  "TestAggressiveBIND (F27) runs in hosted CI with KUDURRU_RECURSOR_BIND=1 (ci.yml:319-323) and fails rather than skips when tools are missing (/home/vercel-sandbox/kudurru/internal/recursor/aggressive_bind_test.go:135-143); hosted result on 33ee04bc: ok internal/recursor 1.230s.",
+  "Dex OIDC end to end runs unskipped in hosted CI: /home/vercel-sandbox/kudurru/Makefile:191-209 builds pinned dex v2.46.0 from a checksum-verified tarball; ci.yml:324-325; hosted result on 33ee04bc: '--- PASS: TestDexEndToEnd (1.72s)'.",
+  "PostgreSQL central-database tests cannot skip in hosted CI: service postgres:17-alpine pinned by digest with KUDURRU_REQUIRE_POSTGRES=1 (ci.yml:63-75) and a 16/18 matrix job (ci.yml:170-199); the helper turns a missing server into a failure (/home/vercel-sandbox/kudurru/internal/central/centraltest/centraltest.go:32-39). Both passed on 33ee04bc.",
+  "Real dnsdist and keepalived programs are exercised in hosted CI on 33ee04bc: compose run 42736963783 logs 'single-edge: DNS through dnsdist over UDP, TCP, DoT and DoH' and 'compose e2e passed'; edge run 42736964064 runs dnsdist 2.1.3 --check-config and Keepalived v2.4.3 -t on the golden files (/home/vercel-sandbox/kudurru/Makefile:438-462). These are deployment and config checks, not the F43/F39b/F28 live console and cache acceptance.",
+  "Chrome through Playwright runs in the hosted dashboard-e2e job (ci.yml:243-286), which passed on 33ee04bc.",
+  "Private Docker daemon recovery is fully documented: the identical argv is recorded three times (.context/f28-parent-edge-bypass-20261107/docker-daemon-start.json, .context/integrated-qualification-20261108/docker-start.json, .context/initial-join-20261109/docker-start.json): sudo -n dockerd --host=unix:///tmp/kudurru-lab-docker.sock --data-root=/tmp/kudurru-lab-docker-data --exec-root=/tmp/kudurru-lab-docker-exec --pidfile=/tmp/kudurru-lab-docker.pid --storage-driver=overlay2 --bridge=none --iptables=false --ip-forward=false --ip-masq=false. The retained data root (3.6 GB) still lists the Knot image and its Alpine base by the pinned digests, postgres 17 by the CI digest, and the dnsdist lab image ID 89c7f196 (tagged kudurru-dnsdist:vip-fix-b8fd96f) in /tmp/kudurru-lab-docker-data/image/overlay2/repositories.json. sudo -n works on this machine; the socket and pid file are currently absent."
+ ],
+ "remaining": [
+  {
+   "id": "G23-R1",
+   "title": "Paired fixed-class benchmark on the final head",
+   "kind": "qualification",
+   "detail": "The only passing paired run (42554034011) measured 9963dec2; HEAD is 33ee04bc, 28 commits later, and more commits will land before release. Re-run the paired mode on the final code head and review the artifact. Trigger that is proven here: remove and re-add the release-benchmark-paired label on PR #54 (the PR currently carries all three benchmark labels, and the 'labeled' event fires only on add; PR event history shows unlabeled/labeled at 2026-11-09T03:00:57Z/03:01:04Z producing run 42554034011). The paired job alone is enough: it records the reference 0cc9565e (20 commands, 3 gates), the candidate (40 commands, 7 absolute gates covering blocking-zone, cache, upstream, udp, dot, quic, persist) and three strict comparisons (/home/vercel-sandbox/kudurru/hack/bench-paired.py:82-105). workflow_dispatch with mode=paired exists (benchmarks.yml:3-9, :60) but has never been used; benchmarks.yml is absent from origin/main, so treat dispatch as a fallback only. This must be the last code-affecting step: any later non-docs commit invalidates it. The recorder hardcodes release_qualified=false (bench-release.py:189, bench-paired.py:61), so acceptance is read from exit codes and the reviewed summary, not that field.",
+   "acceptance": "Tracker: completion-plan.md:222 (G23 'fixed-class bounds'), :191 (F63 'current-source and final gates stay open'), :122 (F21c 'later-source/final qualification remains open'), :119 (F20d 'final-source five-process/fixed-class gates remain open'), :1379-1381 (the 9963dec2 pass does not cover later source); followup-audit.md:240 and :126. Proof: the run concludes success; result.json has measurement_complete=true, exit_code=0, reference_exit=0, candidate_exit=0, comparison_eligible=true and comparisons blocking-zone/cache/upstream all 0; plan.json candidate equals the final SHA and reference equals 0cc9565e; 60 native and 13 gate/comparison receipts exit 0 with group_reaped=true; reference 45 cases/219 keys/1,095 values and candidate 136 cases/592 keys/2,960 values; one CPU string on both sides. Independent review by adapting .context/hosted-release-9963dec2-20261109/review-paired.py (run id and head are hardcoded at its lines 3, 8 and 10).",
+   "files": [
+    "/home/vercel-sandbox/kudurru/.github/workflows/benchmarks.yml",
+    "/home/vercel-sandbox/kudurru/hack/bench-paired.py",
+    "/home/vercel-sandbox/kudurru/hack/bench-release.py",
+    "/home/vercel-sandbox/kudurru/hack/bench-reference.py",
+    "/home/vercel-sandbox/kudurru/hack/benchgate/gate.go",
+    "/home/vercel-sandbox/kudurru/bench/limits.txt",
+    "/home/vercel-sandbox/kudurru/bench/cache-limits.txt",
+    "/home/vercel-sandbox/kudurru/bench/upstream-limits.txt"
+   ],
+   "size": "S",
+   "dependsOn": [
+    "G23-R3",
+    "G23-R4"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G23-R2",
+   "title": "Local unskipped comparator pass on the final head (Knot, dnsdist live, internal BIND, installed Chrome)",
+   "kind": "qualification",
+   "detail": "These comparators have no hosted execution, so their only credit is a local unskipped run, and the recorded ones predate the final head. (1) Knot: TestKnotCatalogConsumer (/home/vercel-sandbox/kudurru/test/interop/knot_catalog_test.go:375) needs KUDURRU_E2E=1, KUDURRU_KNOT=1 and a private socket in KUDURRU_KNOT_DOCKER_HOST, refuses /var/run/docker.sock and requires the images cznic/knot@sha256:174b0fcb... and alpine@sha256:be265606... to be present already (:73-94, pins at :31-33); last unskipped at 86a3ff91, nine pass entries in 31.9 s under race. (2) dnsdist 2.1.3 live: TestConsoleLiveSupervisor (/home/vercel-sandbox/kudurru/ee/edge/dnsdist/console_live_test.go:211, KUDURRU_F43_LIVE/KUDURRU_F43_WORKDIR, optional KUDURRU_F43_RENDERER=lua and KUDURRU_F43_CHILD_USER as root), TestManagedCacheLivePinnedTransition (/home/vercel-sandbox/kudurru/ee/edge/dnsdist/managed_cache_live_test.go:99, KUDURRU_F28_EDGE_LIVE/KUDURRU_F28_EDGE_WORKDIR), TestRunServeRemoteEdgeRegexAndLateFill and TestRunServeRemoteEdgeAuthoritativeCacheACL (/home/vercel-sandbox/kudurru/cmd/kudurru/serve_remote_cache_mount_test.go:57-71, KUDURRU_F39_LIVE/KUDURRU_F39_WORKDIR), TestRunServeManagedEdgePinnedDaemonRestart (/home/vercel-sandbox/kudurru/cmd/kudurru/serve_anchor_edge_live_test.go:33, KUDURRU_ANCHOR_EDGE_LIVE/KUDURRU_ANCHOR_EDGE_WORKDIR absolute), and the dnsdist legs of TestRunServeUniFiHostnamePolicyLifecycle, which are dropped without even a t.Skip when KUDURRU_F18C_DNSDIST is unset (/home/vercel-sandbox/kudurru/cmd/kudurru/serve_unifi_edge_test.go:26-28, /home/vercel-sandbox/kudurru/cmd/kudurru/serve_unifi_hostname_mount_test.go:290-297). All use the hardcoded socket unix:///tmp/kudurru-lab-docker.sock and local image ID sha256:89c7f196.... (3) BIND tests outside test/interop: TestBINDRPZRuntimeTransfersRefreshRestart, TestBINDRPZFallbackAndAuthentication, TestBINDRPZPolicyReference (/home/vercel-sandbox/kudurru/internal/rpz/bind_test.go:254, :340, :388; need KUDURRU_E2E=1 at :100), TestBINDSignedSecondaryThroughListeners (/home/vercel-sandbox/kudurru/internal/stages/authoritative/secondary_signed_bind_test.go:32) and TestBINDStubThroughListenersAndDurableOfflineReferral (/home/vercel-sandbox/kudurru/internal/zoneview/stub_test.go:148); local BIND is 9.18.50. (4) TestCLIOIDCBrowserInstalledChromeActualTLS (/home/vercel-sandbox/kudurru/cmd/kudurru/login_oidc_chrome_test.go:20-25) with the two env vars earlier sessions used. Start the private dockerd first with the recorded argv, verify the four image identities, run with -v or -json so skips are visible, and store receipts under a new .context/g23-final-<date>/ directory.",
+   "acceptance": "Tracker: gaps.md:112 ('Record real BIND/Knot/AdGuard/dnsdist ... results where required ... fixture-only evidence is labeled as such'); completion-plan.md:222 ('no skipped comparator credited'); followup-audit.md:320 ('tests with optional external-program skips require unskipped results'); F68b row completion-plan.md:199; V2-EDGE 'through a real edge' at /home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/README.md:385; V2-RPZ at README.md:379. Proof per test on the final SHA: go test -json or -v output with zero skip and zero fail entries for the named tests. Reference counts and durations from prior evidence: Knot 9 pass entries; BIND RPZ race 23 entries; test/interop 29 entries with only the Knot skip when KUDURRU_KNOT is unset; F43 about 45 s per renderer; F39 about 33 s and 66-75 s; anchor edge 24 s ordinary; F18c lifecycle 108-140 s.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/test/interop/knot_catalog_test.go",
+    "/home/vercel-sandbox/kudurru/hack/test-knot-catalog.sh",
+    "/home/vercel-sandbox/kudurru/ee/edge/dnsdist/console_live_test.go",
+    "/home/vercel-sandbox/kudurru/ee/edge/dnsdist/managed_cache_live_test.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serve_remote_cache_mount_test.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serve_anchor_edge_live_test.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serve_unifi_edge_test.go",
+    "/home/vercel-sandbox/kudurru/internal/rpz/bind_test.go",
+    "/home/vercel-sandbox/kudurru/internal/stages/authoritative/secondary_signed_bind_test.go",
+    "/home/vercel-sandbox/kudurru/internal/zoneview/stub_test.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/login_oidc_chrome_test.go"
+   ],
+   "size": "M",
+   "dependsOn": [
+    "G23-R3",
+    "G23-R4"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G23-R3",
+   "title": "Hosted CI silently skips five BIND tests in internal packages",
+   "kind": "implementation",
+   "detail": "The hosted e2e job installs BIND but runs only make e2e (./test/e2e ./test/interop, /home/vercel-sandbox/kudurru/Makefile:220-221) plus TestAggressiveBIND. The go job runs every package but sets only the PostgreSQL variables (ci.yml:73-75) and installs no BIND, and /home/vercel-sandbox/kudurru/hack/go-test.py:47 adds only CGO_ENABLED. So the three RPZ tests always skip there (RequireE2E at /home/vercel-sandbox/kudurru/internal/rpz/bind_test.go:100), and TestBINDSignedSecondaryThroughListeners and TestBINDStubThroughListenersAndDurableOfflineReferral skip on 'named unavailable' (secondary_signed_bind_test.go:308-311, :247-250; stub_test.go:259-262). The go job runs without -v, so the skips leave no trace in the log. The two non-RPZ skips are inferred from the workflow (the e2e job has to apt-install bind9, ci.yml:300-309), not read from a log line. Fix: add one step to the e2e job after 'Install BIND 9', for example KUDURRU_E2E=1 go test -race -count=1 -v -run '^TestBIND' ./internal/rpz ./internal/stages/authoritative ./internal/zoneview. Optional hardening following the KUDURRU_REQUIRE_POSTGRES precedent (centraltest.go:36-38): a require variable that turns the named/dnssec-tool/dex/AdGuard skips (/home/vercel-sandbox/kudurru/test/interop/named_test.go:42, /home/vercel-sandbox/kudurru/test/interop/dnssec_test.go:119, /home/vercel-sandbox/kudurru/ee/oidc/dex_test.go:52, /home/vercel-sandbox/kudurru/internal/blocking/blackbox_test.go:26) into failures in that job.",
+   "acceptance": "Tracker: completion-plan.md:222; followup-audit.md:320; V2-RPZ and V2-ZONE acceptance at README.md:379 and :376. Proof: the hosted e2e job log on the final head shows '--- PASS' for TestBINDRPZRuntimeTransfersRefreshRestart, TestBINDRPZFallbackAndAuthentication, TestBINDRPZPolicyReference, TestBINDSignedSecondaryThroughListeners and TestBINDStubThroughListenersAndDurableOfflineReferral with no SKIP line for any of them.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/.github/workflows/ci.yml",
+    "/home/vercel-sandbox/kudurru/Makefile"
+   ],
+   "size": "S",
+   "dependsOn": [],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G23-R4",
+   "title": "Three two-node e2e tests (PostgreSQL central audit/query log, Kubernetes audit) never run in any hosted job",
+   "kind": "implementation",
+   "detail": "TestCentralAuditTwoNodes (/home/vercel-sandbox/kudurru/test/e2e/centralaudit_test.go:25-27) and TestCentralQuerylogTwoNodes (/home/vercel-sandbox/kudurru/test/e2e/centralquerylog_test.go:22-24) need KUDURRU_E2E and a PostgreSQL DSN; TestKubeAuditAcrossReplicas (/home/vercel-sandbox/kudurru/test/e2e/kubeaudit_test.go:35-44) needs KUDURRU_E2E and envtest binaries. The e2e job has KUDURRU_E2E but no PostgreSQL service and no envtest; the go job has both but no KUDURRU_E2E. The hosted e2e log on 33ee04bc shows '--- SKIP' for all three, as do the retained hosted logs from November 8 and 9, and I found no unskipped local run in .context. Fix: give the e2e job the same postgres service block and env as the go job (ci.yml:65-75) and a make envtest step (ci.yml:94-102). Related coverage exists in the kind workflow (real PostgreSQL in a cluster, /home/vercel-sandbox/kudurru/hack/kind-e2e.sh:375-533), so this is a skipped-test gap rather than a missing feature.",
+   "acceptance": "Tracker: completion-plan.md:222 ('no skipped comparator credited'); F69-F71 rows at completion-plan.md:201-203 claim actual PostgreSQL results. Proof: the hosted e2e job log on the final head shows '--- PASS' for TestCentralAuditTwoNodes, TestCentralQuerylogTwoNodes and TestKubeAuditAcrossReplicas. Local proof before pushing: pinned postgres container on the private daemon with --network host, then KUDURRU_E2E=1 KUDURRU_TEST_POSTGRES_DSN=<dsn> KUDURRU_REQUIRE_POSTGRES=1 go test -race -count=1 -timeout 20m -v -run '^(TestCentralAuditTwoNodes|TestCentralQuerylogTwoNodes|TestKubeAuditAcrossReplicas)$' ./test/e2e (envtest binaries are already at /home/vercel-sandbox/kudurru/bin/k8s/1.37.0-linux-amd64).",
+   "files": [
+    "/home/vercel-sandbox/kudurru/.github/workflows/ci.yml"
+   ],
+   "size": "S",
+   "dependsOn": [],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G23-R5",
+   "title": "Knot and dnsdist live acceptance are tied to one machine's private Docker state",
+   "kind": "implementation",
+   "detail": "The hosted log on 33ee04bc shows '--- SKIP: TestKnotCatalogConsumer'. The Knot fixture is pinned by registry digest, so it is reproducible anywhere a private daemon exists. The dnsdist live tests are not: they hardcode image ID sha256:89c7f196a871779f5df5da3d7057488f3a4f4ce192f21b37a1fa230b7fd5930e (console_live_test.go:38, serve_remote_cache_mount_test.go:86, serve_unifi_edge_test.go:29), which is the locally built kudurru-dnsdist:vip-fix-b8fd96f in /tmp/kudurru-lab-docker-data, not the upstream digest pinned in /home/vercel-sandbox/kudurru/images/dnsdist/Dockerfile:36 (powerdns/dnsdist-21:2.1.3@sha256:c70ae736...). If the /tmp data root is lost the tests cannot run until the constant is changed, because a rebuild will not reproduce the ID. Minimum for v0.2.0: record in the decision log and /home/vercel-sandbox/kudurru/dev-docs/followups.md that Knot and the dnsdist live suites are local-only evidence, and label them so in the tracker. Better: point the three constants at the upstream digest (the tests only use --entrypoint dnsdist) and add hosted jobs that start a private dockerd, pull the pinned digests and run hack/test-knot-catalog.sh and the live suites.",
+   "acceptance": "Tracker: gaps.md:112 ('fixture-only evidence is labeled as such'); F68b row completion-plan.md:199; F43a/F43b/F39b rows completion-plan.md:159-160 and :153; /home/vercel-sandbox/kudurru/dev-docs/release-checklist.md:244-251. Proof for the minimum: a decision-log row and tracker text naming each local-only suite, its last unskipped SHA and its image identity. Proof for the full fix: hosted job logs on the final head with '--- PASS: TestKnotCatalogConsumer' and PASS for the five dnsdist live tests, using only registry-digest images.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/ee/edge/dnsdist/console_live_test.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serve_remote_cache_mount_test.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serve_unifi_edge_test.go",
+    "/home/vercel-sandbox/kudurru/ee/edge/dnsdist/testdata/console-client.py",
+    "/home/vercel-sandbox/kudurru/test/interop/knot_catalog_test.go",
+    "/home/vercel-sandbox/kudurru/.github/workflows/edge.yml",
+    "/home/vercel-sandbox/kudurru/dev-docs/design-record.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/followups.md"
+   ],
+   "size": "M",
+   "dependsOn": [],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G23-R6",
+   "title": "EPYC-class adverse findings were never superseded on an EPYC VM; record how the gate treats the mixed runner pool",
+   "kind": "qualification",
+   "detail": "Paired outcomes by CPU: EPYC 9454P runs 42518988512 (92d5c9ee), 42530394856 (b2d197d8, reference itself failed its upstream limits) and 42545184734 (73d4b057) all failed; Ryzen 9 7950X3D run 42522360297 (91cb21bb) passed blocking-zone and upstream but failed cache hit/Set, and 42554034011 (9963dec2) passed everything. Run 42545184734 on EPYC failed seven blocking/zone comparisons (for example stevenblack/miss p50 80 to 150 ns, suffix-1M/miss +30.4%, Lookup100k/cname p99 +52.8%), ten upstream comparisons (fast/strict +48.5%) and cache parallel hit (.context/hosted-release-73d4b057-20261109/paired-reviewed-summary.json). git diff shows no change in internal/blocking, internal/zone or internal/upstream between 73d4b057 and 9963dec2, and none between 92d5c9ee (EPYC, all 60 strategy metrics passed) and 73d4b057 (EPYC, strategies failed). My reading, which is an inference from those identical-code runs and not a measured cause: the blocking/zone and upstream failures are host noise on the EPYC VMs, which the sequential design (all reference samples, then all candidate samples, bench-paired.py:82-86) cannot cancel. Only the cache parallel-hit regression had a code cause, fixed by D348 (b176922a), and that fix has not been measured on EPYC. Work: write a decision-log entry that states the closure rule for the final run (one paired run on the final head; what happens if it draws an EPYC VM and fails) before triggering it, so the result is not interpreted after the fact. If it fails on EPYC, diagnose with the reviewed vectors before changing anything; do not raise limits or recalibrate from a failing candidate (bench/README.md closing paragraph, D335).",
+   "acceptance": "Tracker: followup-audit.md:240 (F63 'stable class/noise policy ... measured baselines/artifacts and regression gate'); completion-plan.md:1376-1378 ('cross-run gains cannot be attributed entirely to the cache change' and earlier failures preserved); completion-plan.md:119 (F20d historical FAIL text). Proof: a decision-log row recorded before the final run; the final run's CPU model recorded next to its outcome; if the run is on EPYC, the reviewed vectors for BenchmarkGet/hit-parallel, BenchmarkStrategies/fast/strict, BenchmarkLatency/stevenblack/miss and BenchmarkLookup100k/cname p99 quoted against the 73d4b057 values.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/dev-docs/design-record.md",
+    "/home/vercel-sandbox/kudurru/hack/bench-paired.py",
+    "/home/vercel-sandbox/kudurru/hack/test_bench_paired.py",
+    "/home/vercel-sandbox/kudurru/bench/README.md"
+   ],
+   "size": "M",
+   "dependsOn": [
+    "G23-R1"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G23-R7",
+   "title": "Bring tracker rows, bench README and evidence sections in line with actual results",
+   "kind": "docs",
+   "detail": "Stale or missing text: the F63 row (completion-plan.md:191) stops at run 42522360297 and omits runs 42530394856, 42545184734 and the passing 42554034011; the F20d row (completion-plan.md:119) still says regex1000 p99 'remains adverse' although hosted vectors show a tenfold improvement over the reference; /home/vercel-sandbox/kudurru/bench/README.md mentions no run after 42522360297 and still says cache hit/Set fail; the G23 gate row (completion-plan.md:222) has no per-comparator status. After R1-R6, add one dated evidence section, mirrored in completion-plan.md, gaps.md and followup-audit.md as earlier sections are (for example completion-plan.md:1365, gaps.md:6661, followup-audit.md:3512), with a table per comparator: program and version, test names, where it ran (hosted run and job id, or local), final SHA, pass/skip counts, and an explicit 'local-only' or 'not credited' label for anything skipped in hosted CI. Record Windows as deferred under D353 and keepalived two-VM under D358 without implying a pass. Update the PR description to match (G25).",
+   "acceptance": "Tracker: G25 at completion-plan.md:224 ('Keep this plan, audit closures, gap ledger, changelog and PR consistent with exact commits/results'); gaps.md:112 ('fixture-only evidence is labeled as such'). Proof: the F20d, F21c and F63 rows and the G23 row cite the final run id and SHA; bench/README.md lists all seven recorded runs with outcome and CPU; the docs workflow passes.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/completion-plan.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/gaps.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/followup-audit.md",
+    "/home/vercel-sandbox/kudurru/bench/README.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/design-record.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/release-checklist.md"
+   ],
+   "size": "S",
+   "dependsOn": [
+    "G23-R1",
+    "G23-R2",
+    "G23-R6"
+   ],
+   "ownerQuestion": ""
+  }
+ ],
+ "recommendation": "Take the hybrid route: close the cheap hosted gaps first, then do one final-head pass, and keep Knot and the dnsdist live suites as explicitly labeled local evidence for v0.2.0.\n\nOrder of work:\n1. Land G23-R3 and G23-R4 as additions to the existing hosted e2e job. This follows D118 (E2E is opt-in but real, CI runs it with bind9 from apt) and the D158 fail-instead-of-skip precedent (KUDURRU_REQUIRE_POSTGRES). Both change HEAD, so they go before the benchmark.\n2. Record the decision for G23-R5 (local-only labeling now, hosted jobs as a follow-up) and for G23-R6 (closure rule for the mixed EPYC/Ryzen pool) in the decision log, using the next free number after D366. Both are engineer-level choices; neither needs the owner. The runner class itself is already settled (completion-plan.md:360-366).\n3. When every other v0.2.0 item has landed and CI is green on the final code SHA, run the final pass:\n   a. Freeze and check: SHA=$(git rev-parse HEAD); gh pr view 54 --json headRefOid -q .headRefOid must equal it; gh run list --commit \"$SHA\" must show ci, edge, compose, kind and security successful.\n   b. Hosted comparator census from the e2e job log: gh run view <ci-run> --job <e2e-job> --log | grep -aE -- '--- (PASS|SKIP|FAIL): Test[A-Za-z0-9_]+ \\(|BIND 9\\.|AdGuard Home, version'. On 33ee04bc this printed eight BIND PASS lines, Dex PASS, AdGuard PASS and four SKIP lines (Knot and the three e2e tests in G23-R4).\n   c. Paired benchmark: gh pr edit 54 --remove-label release-benchmark-paired, then gh pr edit 54 --add-label release-benchmark-paired. Add no other label while it is pending (workflow-level concurrency group at benchmarks.yml:18-20). Find it with gh run list --workflow benchmarks.yml -L 3 --json databaseId,event,headSha,status,conclusion; wait with gh run watch <id> --exit-status (about 23 minutes on run 42554034011); fetch with gh run download <id> -n \"release-paired-$SHA-<id>\" -D .context/hosted-release-<sha8>-<date>/paired-artifact; review with an adapted copy of .context/hosted-release-9963dec2-20261109/review-paired.py. Fallback only if labels stop working: gh workflow run benchmarks.yml --ref robertherbaugh/v020-features-review -f mode=paired (untested).\n   d. Local comparators (G23-R2): start the private dockerd with the recorded argv, confirm the four image identities, then run the commands listed under testInfra with -v or -json.\n4. Write the evidence section and row updates (G23-R7) as a docs-only commit after the measured SHA, the same convention used for 9963dec2.\n\nFollow D335 and the bench README throughout: never retry, replace or reselect a failed sample, never raise a limit or recalibrate from a failing candidate. Keep D353 (Windows) and D358 (two-VM keepalived) recorded as deferred, not passed.",
+ "designOptions": [
+  {
+   "name": "Comparators A: local-only final pass",
+   "description": "Run Knot, the dnsdist live suites, the internal BIND tests and the installed-Chrome test on this machine at the final SHA and record them as local unskipped evidence; make no CI changes.",
+   "pros": "No workflow churn late in the release; images are already retained; about one hour of work.",
+   "cons": "Evidence lives in gitignored .context and depends on a /tmp Docker data root; reviewers cannot reproduce it; hosted CI keeps skipping silently on every later commit."
+  },
+  {
+   "name": "Comparators B: move everything to hosted CI",
+   "description": "Add hosted steps or jobs for the internal BIND tests, the PostgreSQL/envtest e2e tests, Knot (private dockerd plus pulled digests) and the dnsdist live suites (constants re-pinned to the upstream dnsdist digest).",
+   "pros": "Every head, including the final one, gets unskipped comparator results with public logs; removes the single-machine dependency.",
+   "cons": "The dnsdist live fixtures were only ever run on this sandbox (host networking, UID 953 drop as root, hardcoded socket); porting them risks new hosted flakes right before release and touches ci.yml and edge.yml, which other items also edit."
+  },
+  {
+   "name": "Comparators C: hybrid (recommended)",
+   "description": "Hosted additions for the internal BIND tests and the PostgreSQL/envtest e2e tests now (small additions to the existing e2e job); Knot and dnsdist live stay local for v0.2.0 with an explicit decision-log entry, tracker labels and a followups entry to move them to hosted CI.",
+   "pros": "Fixes the skips that cost almost nothing to fix; keeps risky fixture ports out of the release path; satisfies the 'labeled as such' rule in gaps.md:112.",
+   "cons": "Knot and dnsdist live credit still rests on one machine's retained Docker state for this release."
+  },
+  {
+   "name": "Benchmark A: run the existing paired job once on the final head",
+   "description": "Toggle the release-benchmark-paired label and accept the outcome under the unchanged thresholds, with the closure rule written down beforehand.",
+   "pros": "Same method as the accepted 9963dec2 run; no harness change; 23 minutes.",
+   "cons": "Roughly even odds of drawing an EPYC VM, where every paired run so far has failed, in part with identical code; a failure becomes a retained failed measurement that needs a recorded follow-up."
+  },
+  {
+   "name": "Benchmark B: interleave reference and candidate samples before the final run",
+   "description": "Change bench-paired.py to alternate reference and candidate processes per suite instead of running all reference samples and then all candidate samples, update hack/test_bench_paired.py, record the change in the decision log, then run on the final head.",
+   "pros": "Cancels slow host drift, which is the likely cause of the EPYC upstream and miss-path failures; thresholds, limits, workloads and the reference commit stay unchanged.",
+   "cons": "Changes the measurement control just before the deciding run, which can read as moving the goalposts; the reference collector assumes a full separate recording, so this is a real refactor with control-test changes; earlier runs are no longer methodologically identical."
+  }
+ ],
+ "sharedSeams": [
+  "/home/vercel-sandbox/kudurru/.github/workflows/ci.yml (e2e job additions; other items also add jobs and must add them to the ci-ok needs list at line 476)",
+  "/home/vercel-sandbox/kudurru/.github/workflows/edge.yml and /home/vercel-sandbox/kudurru/.github/workflows/benchmarks.yml",
+  "/home/vercel-sandbox/kudurru/Makefile (e2e, interop, test-postgres, edge-check targets)",
+  "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/completion-plan.md (inventory rows F20d, F21c, F63, gate row G23, appended evidence sections)",
+  "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/gaps.md and /home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/followup-audit.md (mirrored evidence sections appended at the end)",
+  "/home/vercel-sandbox/kudurru/dev-docs/design-record.md (decision log; next number after D366 will be contended)",
+  "/home/vercel-sandbox/kudurru/dev-docs/followups.md and /home/vercel-sandbox/kudurru/dev-docs/release-checklist.md",
+  "/home/vercel-sandbox/kudurru/bench/README.md",
+  "PR #54 labels and description (the label toggle is shared state; any label added by another worker starts a benchmarks workflow run in the same concurrency group)",
+  "The private Docker daemon at unix:///tmp/kudurru-lab-docker.sock and its data root /tmp/kudurru-lab-docker-data (shared by Knot, dnsdist, PostgreSQL, VIP-lab and Samba fixtures of other items)",
+  "Any non-docs commit by any other item after the paired run invalidates the final-head measurement, so G23-R1 and G23-R2 must be sequenced last"
+ ],
+ "testInfra": "Hosted (durations from run 42736964083 on 33ee04bc and run 42554034011):\n- ci e2e job, about 9 minutes: make e2e with KUDURRU_NAMED=/usr/sbin/named (test/e2e 403 s, test/interop 177 s); KUDURRU_RECURSOR_BIND=1 GOMAXPROCS=2 go test -race -p 2 ./internal/recursor -run '^TestAggressiveBIND$' -count=1 -timeout=90s; make test-auth-e2e; make test-adguard (ci.yml:315-327).\n- ci go shards: 45 minutes and 12 minutes; postgres 16/18 matrix about 4 minutes; edge, compose and kind workflows run on every PR push.\n- Paired benchmark, about 23 minutes: gh pr edit 54 --remove-label release-benchmark-paired && gh pr edit 54 --add-label release-benchmark-paired; artifact name release-paired-<sha>-<run-id>, retained 30 days.\n\nLocal preconditions:\n- Start the daemon detached with output to a private 0600 log: sudo -n dockerd --host=unix:///tmp/kudurru-lab-docker.sock --data-root=/tmp/kudurru-lab-docker-data --exec-root=/tmp/kudurru-lab-docker-exec --pidfile=/tmp/kudurru-lab-docker.pid --storage-driver=overlay2 --bridge=none --iptables=false --ip-forward=false --ip-masq=false\n- Verify: docker -H unix:///tmp/kudurru-lab-docker.sock image inspect --format '{{.Id}}' sha256:89c7f196a871779f5df5da3d7057488f3a4f4ce192f21b37a1fa230b7fd5930e cznic/knot@sha256:174b0fcb24c6c3bc5065c9d1ce46b588eec607a5f32bc40ff0cda60150f00bd9 alpine@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24; docker -H unix:///tmp/kudurru-lab-docker.sock ps -a should list no containers.\n- Installed locally: BIND 9.18.50 with dnssec-keygen/dnssec-signzone and dig, Google Chrome 156, node, envtest 1.37.0 under /home/vercel-sandbox/kudurru/bin/k8s, Go 1.27.3; 8 CPUs, 19 GB free disk. Earlier sessions used GOMAXPROCS=2 and go test -p 2, and env -u GORACE for race runs.\n\nLocal commands (run from /home/vercel-sandbox/kudurru; W is an absolute scratch directory under .context/g23-final-<date>/):\n- Knot: KUDURRU_KNOT_LOG_DIR=$W/knot-private hack/test-knot-catalog.sh -race -json -timeout=5m (9 pass entries, 31.9 s at 86a3ff91).\n- BIND, test/interop: KUDURRU_NAMED=/usr/sbin/named make interop (29 entries in 47.3 s under race with only the Knot skip).\n- BIND, internal: KUDURRU_E2E=1 GOMAXPROCS=2 go test -race -p 2 -count=1 -v -run '^TestBIND' ./internal/rpz ./internal/stages/authoritative ./internal/zoneview (RPZ 23 entries in 2.5 s previously); KUDURRU_RECURSOR_BIND=1 GOMAXPROCS=2 go test -race -p 2 ./internal/recursor -run '^TestAggressiveBIND$' -count=1 -timeout=90s -v.\n- dnsdist F43: env -u GORACE GOMAXPROCS=2 KUDURRU_F43_LIVE=1 KUDURRU_F43_WORKDIR=$W/f43 go test -race -p 2 -count=1 -timeout=5m -v -run '^TestConsoleLiveSupervisor$' ./ee/edge/dnsdist, then again with KUDURRU_F43_RENDERER=lua (45.28 s and 44.50 s recorded; the UID 953 variant needs KUDURRU_F43_CHILD_USER and a root test process, console_live_test.go:240-243).\n- dnsdist F28 edge: KUDURRU_F28_EDGE_LIVE=1 KUDURRU_F28_EDGE_WORKDIR=$W/f28 go test -race -p 2 -count=1 -timeout=5m -v -run '^TestManagedCacheLivePinnedTransition$' ./ee/edge/dnsdist.\n- dnsdist F39b: KUDURRU_F39_LIVE=1 KUDURRU_F39_WORKDIR=$W/f39 go test -race -p 2 -count=1 -timeout=6m -v -run '^TestRunServeRemoteEdge(RegexAndLateFill|AuthoritativeCacheACL)$' ./cmd/kudurru (33.3 s and 66-75 s recorded).\n- dnsdist anchor edge: env KUDURRU_ANCHOR_EDGE_LIVE=1 KUDURRU_ANCHOR_EDGE_WORKDIR=$W/anchor go test -race -count=1 -timeout=6m -v -run '^TestRunServeManagedEdgePinnedDaemonRestart$' ./cmd/kudurru (23.8 s without race; 167 s for the wider composed race selection).\n- dnsdist F18c: KUDURRU_F18C_DNSDIST=1 GOMAXPROCS=2 go test -p 2 -race -count=1 -v -timeout=180s ./cmd/kudurru -run '^TestRunServeUniFiHostnamePolicyLifecycle$' (108-140 s).\n- Installed Chrome: KUDURRU_TEST_PLAYWRIGHT_MODULE=/home/vercel-sandbox/kudurru/dashboard/node_modules/playwright KUDURRU_TEST_CHROME=/usr/bin/google-chrome go test -race -count=1 -v -run '^TestCLIOIDCBrowserInstalledChromeActualTLS$' ./cmd/kudurru.\n- PostgreSQL e2e: start postgres@sha256:b0f9560a... on the private daemon with --network host and a free port (pattern in .context/f71-parent-postgres.py; make test-postgres will not work there because the daemon has no bridge network and the Makefile uses the unpinned tag and -p 55432:5432), then the go test command in G23-R4.\n- AdGuard: make test-adguard (downloads the checksum-pinned binary; hosted already covers it).\n\nBenchmark control tests: python3 -B -m unittest discover -s hack -p 'test_bench_*.py' (also run in the hosted go job, ci.yml:108). Validating a retained report offline: go run ./hack/benchgate -baseline <reference report> -limits bench/<scope>-limits.txt -threshold 20 -samples 5 -procs 6 -strict-cpu <candidate report>.",
+ "risks": [
+  "Runner pool lottery: the paired run passed blocking/zone and upstream only on Ryzen 9 7950X3D VMs and failed on every EPYC 9454P VM (three runs), twice with unchanged code in the failing packages. A single final-head run may fail for reasons unrelated to the release, and the project's own rules forbid retrying or replacing a failed sample.",
+  "Cache parallel-hit after D348 has never been measured on EPYC; the only evidence is a local diagnostic (237.7 to 164.8 ns, completion-plan.md:1265-1267) and the Ryzen pass.",
+  "The dnsdist live suites depend on a locally built image ID inside /tmp/kudurru-lab-docker-data; a VM rebuild or /tmp cleanup removes the only copy and the tests then fail until their constants are changed.",
+  "Label trigger subtleties: the 'labeled' event fires only on add, so the label must be removed first; a re-run of an old workflow run re-measures the old head SHA from the event payload, not the new head; any label added to PR #54 by someone else starts another run in the same concurrency group and can displace a pending one.",
+  "workflow_dispatch is unproven: benchmarks.yml is not on main and all seven runs were label-triggered; the gh token shows no scope header, so actions:write cannot be confirmed without dispatching.",
+  "The final-head requirement is fragile: one more non-docs commit after the paired run or the local comparator pass voids them. hack/ci-changes.sh treats docs-only commits as non-code, which is the only safe follow-up.",
+  "Hosted go shards run without -v, so skipped comparators are invisible in their logs; the claim that the two non-RPZ internal BIND tests skip there rests on the workflow not installing BIND in that job, not on a log line.",
+  "The working tree has a modified /home/vercel-sandbox/kudurru/dashboard/dist/index.html. The collector refuses a dirty checkout (bench-release.py:171-172) if anyone runs it locally, and the Knot test hard-links a binary built from the working tree.",
+  "Local comparator runs share 8 CPUs and one Docker daemon with other work; the F18c held-CNAME test and the anchor/edge tests have 5-second and similar deadlines that have failed under load before (completion-plan.md:113).",
+  "Local BIND is 9.18.50 while hosted is 9.18.39; results from the two are not the same program build and should be recorded with their versions.",
+  "Opt-in scale checks tied to G23 in the audit (TestDomainHourMillion, TestDomainHourMillionCentral, TestMeasureKube, TestMeasureAXFR100k behind KUDURRU_MEASURE) are never run in hosted CI and were last run at their integration commits; I did not map their final-head status in detail."
+ ]
+}

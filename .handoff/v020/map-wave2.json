@@ -1,0 +1,145 @@
+{
+ "key": "wave2",
+ "item": "Follow-up work after all lanes were merged into PR 54 at 68a709e2",
+ "summary": "On 2026-11-11 the owner had every work lane merged into the PR branch (head 68a709e2), including packages whose verification was incomplete. Every lane worktree now starts from that head. Open findings of the merged packages are saved per package in $SHARED/followups/<PKG>-open.json (keys impl, review, fix, verify and sometimes review2/verify2: read `remaining`, `findings`, `unresolved`, `newProblems`, `rebutted`). Hosted CI run 43045349810 on 68a709e2 failed two jobs; logs are $SHARED/evidence/INTEGRATE-2/hosted-68a709e2-130608116935.log (go test 1/2) and hosted-68a709e2-130608117068.log (helm). Local pre-push logs of the merged tree are in $SHARED/evidence/INTEGRATE-2/.",
+ "alreadyDone": [
+  "All lanes are merged; the earlier out/<PKG>/ drafts (decision.md, ledger.md, changelog.md) are in $SHARED/out/."
+ ],
+ "remaining": [
+  {
+   "id": "CI-RED",
+   "title": "Make hosted CI pass on the merged head: the chart upgrade test cannot find the v0.1.0 tag in CI, and a serving fixture test fails with `providerresources: owner closed`",
+   "kind": "implementation",
+   "detail": "(1) helm job: `TestChartUpgradeFromV01` (deploy/upgrade_test.go:94) fails with `git archive v0.1.0 (fetch the tag): exit status 128` because the hosted checkout has no tags. Decide the durable fix: commit the small v0.1.0 fixtures the test needs (preferred when they are small: no network and no tag dependence, as the SQLite golden files already do), or fetch the tag in the workflow step and make the test fail with a clear message; check every other new test that shells out to `git archive v0.1.0` or builds the old binary (test/e2e upgrade tests, internal/testutil/kudurrutest/previous.go) and every hosted job that runs them. (2) go test 1/2: `TestServingBlockingWriterCanceledAfterCommitBeforeObservation` subtests helper and blocking fail at cmd/kudurru/serving_runtime_test.go:140 with `providerresources: owner closed`. The merged commit `test(serving): stop fixture runtimes after their writers` (from the unfinished flake lane; see `git log --oneline -- cmd/kudurru/serving_fixture_teardown_test.go cmd/kudurru/serving_runtime_test.go`) changed fixture teardown order and was never reviewed: find whether it causes this, by mechanism, and fix the fixture or the product. (3) Then run the complete hosted-equivalent locally: `python3 hack/go-test.py ./...` is too long for one run here, so replay each of the 7 cmd/kudurru batches of the failing shard (batch lists are printed in the hosted log as `Command batch N/7: ...`) pinned to 4 CPUs, plus `go test ./deploy/...` as the helm job runs it, and fix every failure that is deterministic. Record intermittent ones with their messages for the next packages.",
+   "acceptance": "Both hosted failures reproduced locally or explained by mechanism, fixed, and the replayed batches plus the helm job's test command pass; no test skipped or loosened.",
+   "files": [
+    "deploy/upgrade_test.go",
+    ".github/workflows/ci.yml",
+    "cmd/kudurru/serving_runtime_test.go",
+    "cmd/kudurru/serving_fixture_teardown_test.go"
+   ],
+   "size": "M"
+  },
+  {
+   "id": "CORE-APPLY-OPEN",
+   "title": "Finish the multi-document apply fix: open verification findings, and a long apply must not starve DNS answers and other callers' reads",
+   "kind": "implementation",
+   "detail": "Read $SHARED/followups/CORE-APPLY-MULTI-open.json (review findings, the fixer's partial report, and the verifier's unresolved and new problems under verify or verify2) and $SHARED/out/CORE-APPLY-MULTI/. Resolve every open item. In addition the merged test TestRunServeSQLiteLongApplyKeepsServingDNSAndReads logged, on an idle machine: `apply of 120 documents took 1m29s: 11 correct DNS answers, longest time without one 1m20s, 2 reads ok, 41 reads failed` ($SHARED/evidence/INTEGRATE-2/rerun-two.log; in the composed run it failed with 0 reads ok, cmd.log). A node that stops answering DNS for its own zones and refuses other callers' reads for over a minute during one apply or restore violates the rule that DNS keeps answering from last-good data. Find why (the request's command chain holding the publication gate, generation_pending for readers, the authoritative output guard refusing answers computed on retired generations) and fix it so that DNS answers and captured reads continue throughout a long multi-item request, each item still being admitted under the rule recorded as D378. Tighten the test to require it.",
+   "acceptance": "Every open finding resolved or rebutted with evidence; during a 120-document apply on SQLite DNS for existing names is answered continuously (no gap above one second) and a second caller's reads succeed; the multi-item rule tests and the current-command selections still pass.",
+   "files": [
+    "cmd/kudurru/serving_items.go",
+    "cmd/kudurru/serving_command.go",
+    "cmd/kudurru/serve_apply_multi_mount_test.go",
+    "internal/auth/providercoordinator/",
+    "internal/serving/"
+   ],
+   "size": "L"
+  },
+  {
+   "id": "QUAL-UPGRADE-OPEN",
+   "title": "Close the open findings of the SQLite and Kubernetes upgrade packages",
+   "kind": "implementation",
+   "detail": "Read $SHARED/followups/QUAL-SQLITE-UPGRADE-2-open.json (its reviewer REJECTED the package: 3 major; the fixer was partial; the verifier left 1 unresolved and 2 new problems), $SHARED/followups/QUAL-SQLITE-UPGRADE-verify.json, $SHARED/followups/QUAL-KUBE-UPGRADE-open.json and the out/ drafts of the three packages. Resolve every open item: the class of record-set endpoints and update grants the serving image refuses must never stop a zone or a node (fix the class, with a table enumerating every rejection the zone builder and the primary runtime can produce); a list source that has not finished its first download must never block publication; the built-binary upgrade tests must be stable (in the composed pre-push run TestRunServeSQLiteUpgradeWithLegacyPlaceholders failed with `temp.test. served = false after 30s` after `served while a list URL is silent`, $SHARED/evidence/INTEGRATE-2/cmd.log, and passed alone); the D373 row, changelog and ledger drafts must state only what runs show.",
+   "acceptance": "All listed findings resolved with tests that fail before the fix; the upgrade tests pass 20 consecutive runs pinned to 4 CPUs.",
+   "files": [
+    "internal/primaryzone/",
+    "internal/listfetcher/",
+    "internal/store/sqlite/admission.go",
+    "cmd/kudurru/serve_upgrade_test.go",
+    "test/e2e/upgrade_test.go"
+   ],
+   "size": "L"
+  },
+  {
+   "id": "DOCS-RECONCILE",
+   "title": "Make the operator and migration docs true of the merged code",
+   "kind": "docs",
+   "detail": "Read $SHARED/followups/DOCS-VERSION-open.json and DOCS-OPS-open.json (unresolved and new problems of their verifiers). The pages still warn about defects the merged code fixes or changes: a multi-document apply applying one document per run (fixed by the multi-item rule), an unserved zone type or an undownloaded list URL stopping a SQLite node (zones are now refused at write; a never-downloaded source is served empty), and the two cluster pages contradict each other about repeating an apply through a follower. Verify each statement against the code at this head by running the built binary, then correct it. Also fix: the incomplete 'Check four things' list in docs/deploy/dynamic-updates.md, the `--select-object` advice in offline-config.md, the 'minutes apart' backoff wording, `prepare_failed` versus `preparing`, and the catch-all CIDR versus client-ID statements. Add the operator page G21-13 from $SHARED/map-g21-route-and-contract-sweep.json (what works on which deployment shape, and the error-key glossary), using the merged follower contract table in internal/api/follower.go. The commit `docs(enterprise): list background integrations as shipped on SQLite` disagrees with website/src/content.ts; website/ must not be edited (it needs the owner's authorization), so reword the docs page so that it is true and does not contradict the website.",
+   "acceptance": "Every corrected statement cites the command or code path that proves it in ledger.md; docs site build and link check pass.",
+   "files": [
+    "docs/deploy/",
+    "docs-site/content/migrate/",
+    "docs/guide/"
+   ],
+   "size": "M"
+  },
+  {
+   "id": "LEDGER-SPLICE",
+   "title": "Write the decision log, tracker ledgers and changelog for everything merged in this completion pass",
+   "kind": "docs",
+   "detail": "For THIS package only, the files of AGENT-BRIEF section 3 are yours to edit: dev-docs/design-record.md, dev-docs/milestones/v0.2/completion-plan.md, gaps.md, followup-audit.md, dev-docs/followups.md and CHANGELOG.md (not the root README.md). Sources: every $SHARED/out/<PKG>/{decision.md,ledger.md,changelog.md}, the journal-derived state in $SHARED/followups/*.json, $SHARED/PLAN.md (decision numbers: D367 Delete lifecycle, D368 follower contract, D369 managed anchors under enrolled HA, D370 managed anchors refusals and mixed versions, D371 query-log sinks, D372 dnstap raw override, D373 G22 scope, D374-D376 the three HA-FIX rows in order, D377 retained SERVFAIL across a commit, D378 multi-item requests) and `git log 33ee04bc..HEAD`. Where several packages wrote the same decision number, the latest complete row wins. Append the rows to the decision log; append one evidence section per package to completion-plan.md and mirror it in gaps.md and followup-audit.md as earlier sections are mirrored; update the inventory rows (F07a, F09b, F12a, F28, F46, F60b, F60c, F63 and the others touched) and the gate table; fold the changelog bullets into `[0.2.0]` under Added/Changed/Fixed, without duplicates. Be exact about state: say for each package whether its review findings were verified as resolved, and list every open finding as open. Record these facts too: hosted CI 42954844334 on de0d249a and 43045349810 on 68a709e2 failed (with the tests named in $SHARED/PLAN.md), the owner excluded both Cloudflare Workers Builds checks from this work on 2026-11-11, and the owner had all lanes merged on 2026-11-11 before verification was complete. Do not claim any gate closed.",
+   "acceptance": "Every merged package has its decision row (where assigned), evidence section in the three ledgers and changelog bullets; no statement claims more than the journals and logs show; docs drift tests pass.",
+   "files": [
+    "dev-docs/design-record.md",
+    "dev-docs/milestones/v0.2/completion-plan.md",
+    "dev-docs/milestones/v0.2/gaps.md",
+    "dev-docs/milestones/v0.2/followup-audit.md",
+    "CHANGELOG.md"
+   ],
+   "size": "L"
+  },
+  {
+   "id": "OBS-OPEN",
+   "title": "Close the open items of the three merged observability packages",
+   "kind": "implementation",
+   "detail": "Read $SHARED/followups/OBS-FANOUT-postverify.json (two nits), OBS-HTTP-SINKS-unverified.json (its fix was never verified: verify it adversarially yourself and fix what you find) and OBS-DNSTAP-EMIT-open.json (one new problem from its verifier, plus the implementer's remaining list).",
+   "acceptance": "Each item resolved with a test or rebutted with evidence.",
+   "files": [
+    "internal/querylog/",
+    "cmd/kudurru/querylog_runtime.go"
+   ],
+   "size": "M"
+  },
+  {
+   "id": "HA-OPEN",
+   "title": "Close the open items of the merged follower packages",
+   "kind": "implementation",
+   "detail": "Read $SHARED/followups/HA-REFUSAL-unverified.json (fix was partial and never verified: verify it adversarially and fix what you find, including the four weakened guards its reviewer listed) and HA-AUTH-SETTINGS-open.json.",
+   "acceptance": "Each item resolved with a test or rebutted with evidence; the two-process enrolled tests pass.",
+   "files": [
+    "internal/api/follower.go",
+    "cmd/kudurru/serving_follower.go",
+    "cmd/kudurru/serving_member_logout.go"
+   ],
+   "size": "M"
+  },
+  {
+   "id": "INT-OPEN",
+   "title": "Close the open items of the merged Delete lifecycle packages",
+   "kind": "implementation",
+   "detail": "Read $SHARED/followups/INT-DEL-C-open.json (two new problems from its verifier and the implementer's remaining list) and INT-DEL-B-verify.json (confirm each of its five problems is resolved in the merged code).",
+   "acceptance": "Each item resolved with a test or rebutted with evidence; the mounted Delete acceptance passes.",
+   "files": [
+    "ee/integration/host/cleanup.go",
+    "cmd/kudurru/integration_runtime.go"
+   ],
+   "size": "M"
+  },
+  {
+   "id": "CI-RED-2",
+   "title": "Root-cause the five tests that failed hosted CI on 7648c479 and establish whether this completion pass introduced or worsened them",
+   "kind": "implementation",
+   "detail": "Hosted ci run 43150328589 on 7648c479 failed go test 1/2 and e2e. Logs: $SHARED/evidence/INTEGRATE-5/hosted-7648c479-*.log (the e2e job is hosted-7648c479-130958089016.log). Failures: (1) TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled, serve_anchor_activation_test.go:56 `control POST /auth/login: status=503 want=200`; (2) TestRunServeDirectAnchorsFencedAndConflictRestart, serve_anchor_fenced_test.go:54, the same 503 on login; (3) TestRunServeSQLiteReversePTRPolicy, serve_client_names_mount_test.go:150 `expired identity did not reacquire`; (4) TestSupervisorLifecycle (ee/edge/dnsdist) `supervisor_test.go:205: timed out waiting for promoted backends` (another lane, FLAKE-PRIMARY-UNAVAILABLE in wip/v020/flake, owns this test: only record what you see, do not fix it here); (5) e2e TestEnrolledClusterProcessesPromoteAndRejoin, enrolled_cluster_test.go:203 `static process POST /cluster/activate: status 409 want 200, error conflict` after 4.5 s. The previous head ee76c04b failed only TestSupervisorLifecycle in its one hosted run (43138800781), and only 16 lines of production code in two unrelated files changed between the two heads (`git diff --stat ee76c04b..7648c479 -- . ':!*_test.go' ':!*.md'`), so these are probably intermittent on ee76c04b too. Tests 1 and 5 also failed in hosted runs before this pass (.context/hosted-6c86f581-20261109/ci-attempt1-failed.log, .context/hosted-ffd18d41-20261109/42568583609-attempt1-failed.log) but with different messages (then `managed anchor exchange phase=0 protocol=udp`), so do not assume they are the same failure. This pass merged large changes to the publication wait and the DNS output guard (commits `fix(dns): answer local data from the served publication`, `feat(apply): let a long request publish for waiting reads`, the adaptive HTTP capture wait), to cluster activation and enrollment tests, and to identity sources. For each of failures 1, 2, 3 and 5: measure the failure rate on the current head and on the read-only base control /home/vercel-sandbox/kudurru/.context/wt/base-33ee04bc with the identical command, pinning and count (taskset -c 0-3, race, at least 40 runs each, through the heavy wrapper, from a script file, one at a time); find the mechanism (which component answers 503 to a sign-in right after start and why the test's wait does not cover it; why activation answers 409 conflict on a fresh primary; why the expired identity is not reacquired); decide whether a real node or operator can hit it; fix the product if so, or the test's ordering if it races its own fixture. No retries that hide a refusal, no loosened assertions. Say plainly, with the numbers, whether this pass introduced it, worsened it, or it predates the pass.",
+   "acceptance": "For each of the four: mechanism stated, a deterministic reproduction that fails before the fix, and 100 consecutive passing runs under race pinned to 4 CPUs after it (logs kept); base-versus-head rates recorded.",
+   "files": [
+    "cmd/kudurru/serve_anchor_activation_test.go",
+    "cmd/kudurru/serve_anchor_fenced_test.go",
+    "cmd/kudurru/serve_client_names_mount_test.go",
+    "test/e2e/enrolled_cluster_test.go",
+    "internal/serving/publisher.go",
+    "internal/servinghttp/"
+   ],
+   "size": "L"
+  }
+ ],
+ "designOptions": [],
+ "recommendation": "Fix what is open in merged code before adding features.",
+ "sharedSeams": [
+  "cmd/kudurru/serve.go",
+  "generated contracts"
+ ],
+ "testInfra": "As in AGENT-BRIEF.md section 5.",
+ "risks": [
+  "The merged tree contains unverified changes; treat neighboring code with suspicion and report anything wrong even outside your package."
+ ]
+}

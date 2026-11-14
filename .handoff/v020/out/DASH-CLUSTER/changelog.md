@@ -1,0 +1,8 @@
+### Added
+
+- Dashboard: the Nodes page of a SQLite node has a **Cluster membership** panel with three reviewed wizards: **Activate cluster** (a dormant standalone node becomes the first primary), **Invite a member** (the primary issues a one-time invitation for one name and internal address, shown exactly once with the `kudurru cluster join --offline` command and the Docker Compose changes for the new node) and **Review promotion** (a follower's eligibility, then a promotion confirmed by typing the node name). Each wizard sends exactly the review the operator confirmed (reading again or unticking requires a new confirmation, also when the stepper jumps to the last step), cannot be closed while its command is in flight, and sends its command once and never repeats it after a changed review or an unknown outcome. An invitation is valid for 2, 5 or 9 minutes, a minute below the primary's ten-minute maximum, and a 409 refusal names its possible causes (a changed primary, a member name or address already used, the primary's clock).
+- Dashboard: a **Root trust anchors** panel on the Nodes page shows this node's managed root trust-anchor state (`GET /cluster/anchors`) and, for each state that needs an operator (a refused adoption of the primary's state, a member fenced behind its term, quarantine, a retired or terminal member, a stopped updater), the documented action with a link to it.
+
+### Changed
+
+- Dashboard: a fenced member (`503 cluster_fenced`) and a member in a promotion conflict (`503 cluster_conflict`) are named in error banners and on the sign-in page, with a link to the procedure that ends the state.

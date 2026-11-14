@@ -1,0 +1,35 @@
+{
+ "summary": "Wave 3 integrator packages.",
+ "remaining": [
+  {
+   "id": "LEDGER-SPLICE-2",
+   "title": "Write the decision log, tracker ledgers and changelog for everything merged since the first splice",
+   "kind": "docs",
+   "detail": "For THIS package only, the files of AGENT-BRIEF section 3 are yours to edit: dev-docs/design-record.md, dev-docs/milestones/v0.2/completion-plan.md, gaps.md, followup-audit.md, dev-docs/followups.md and CHANGELOG.md (not the root README.md, not dashboard/dist/index.html). The first splice (map-wave2.json, LEDGER-SPLICE) wrote rows D367-D378 and their ledger sections at commit 68a709e2; read how it did it (git log --grep ledger, and the last sections of completion-plan.md) and continue in the same form. Sources: every $SHARED/out/<PKG>/{decision*.md,ledger.md,changelog.md,followups.md} whose package is merged (check with git log 68a709e2..HEAD), the verify results in $SHARED/followups/*.json (wave3-open.json holds every verify result of this wave by package), $SHARED/PLAN.md (the integrator's log: hosted CI results, what was merged with open findings, lessons) and git log. Decision numbers assigned in this wave: D379 webhook hooks, D380 webhook record ownership, D381 follower UPDATE routing and self-service forwarding, D382 dnstap listen and tracing, D383 interop crediting (QUAL-INTEROP row plus clause 5 from QUAL-OPEN3), D384 Kubernetes integration root (latest complete row among F09B-KUBE-ROOT, F09B-KUBE-SOURCES, F09B-OPEN), D385 zone groups, D386 Kubernetes impersonation, D387 TOTP and local-user position on Kubernetes, D388 operator edge blocks, D389 edge client IDs, D390 RPZ on Kubernetes, D391 RPZ diagnostics, D392 CoreDNS importer, D393 permission reconciliation, D394 tsigkeys CLI; plus changed complete rows for D369, D370, D372, D373, D378 where a later package wrote one (the latest complete row wins and REPLACES the row in the log). Decisions D395-D403 belong to packages that are still running: write their rows only if the package is merged at your head and its out/ directory has the row; otherwise leave them out and list them as pending in your result. Where a package wrote no decision row although a number was assigned, write the row from its ledger and code and say so. Append one evidence section per merged package to completion-plan.md and mirror it in gaps.md and followup-audit.md as earlier sections are mirrored; update the inventory rows and the gate table; move the changelog bullets into `[0.2.0]` under Added/Changed/Fixed without duplicates, and merge the `[Unreleased]` bullets that belong to 0.2.0 into it so there is one section; add the known issues the packages drafted (for example the dnsdist edge losing QUIC requests whose FIN arrives alone). Add the follow-up rows the packages drafted to dev-docs/followups.md. Be exact about state: for each package say whether its review findings were verified as resolved and list every unresolved or new finding from wave3-open.json as open, in plain words. Record these facts as well: hosted CI failed on 291c55a5, ecd633b1, f6afe7d6, b9b66cba and b6e09f9d with the tests PLAN.md names, mostly sign-in or cluster activation answering 503 `unavailable` right after a node reports ready (being fixed as D399, not merged at your head unless you see it); the machine hit its usage limit on 2026-11-12 and lanes were resumed on 2026-11-13; two of eight enrolled e2e tests failed locally at 71ac05f0 on forwarded UPDATE SERVFAILs. Do not claim any gate closed, do not mark the release ready, and do not change any code or test.",
+   "acceptance": "Every package merged since 68a709e2 has its decision row (where assigned), evidence section in the three ledgers, changelog bullets and follow-up rows; no statement claims more than the journals and logs show; `go test ./hack/docsgen` drift tests and the docs link check the repository has pass; American English.",
+   "files": [
+    "dev-docs/design-record.md",
+    "dev-docs/milestones/v0.2/completion-plan.md",
+    "dev-docs/milestones/v0.2/gaps.md",
+    "dev-docs/milestones/v0.2/followup-audit.md",
+    "dev-docs/followups.md",
+    "CHANGELOG.md"
+   ],
+   "size": "L"
+  },
+  {
+   "id": "RPZ-OPEN",
+   "title": "Close what verification left open in the two RPZ packages and the CoreDNS importer",
+   "kind": "implementation",
+   "detail": "Read $SHARED/followups/wave3-open.json, keys verify:RPZ-KUBE, verify:RPZ-DIAG and verify:OPS-COREDNS. Resolve: (1) fail-open with blocking.allowDegraded: false on an offline restart on Kubernetes: the node was ready and serving the local snapshot about 100 ms before the RPZ list was in the policy, and a blocked name resolved NOERROR in that window, although the block-list page promised that allowDegraded: false keeps the node not ready until every referenced list is in the policy; commit `docs(rpz): note the load window on an offline restart` only documented the gap. Fix the product (readiness and DNS admission must wait for the list when allowDegraded is false), make the test assert no NOERROR for the blocked name at any time, and restore the docs promise. (2) the user-facing claim that unsigned feeds are reused on an offline restart has no test: add the mounted test or correct the text. (3) the RPZ diagnostics API reports serial, counts and ignored reasons of a copy the manager discarded next to `This node holds no usable copy`: make the report consistent; update the fake API text and golden file that still carry the old pending message. (4) CoreDNS importer: in-range cache values that produce settings failing config validation with no loss line (`cache 3`; `cache { success 100 10 3600 }`): emit valid settings or a loss line, and validate every emitted document with the same validator `kudurru apply` uses, as a test over all fixtures; blocks whose keys the importer cannot read must still take part in routing so shadowed names are not imported as if they were served; a port-specific block must not shadow names on another port, or the loss line must say exactly what is true; say what happens to unbounded prefetch and serve_stale values.",
+   "acceptance": "Each item fixed with a test that fails first, or rebutted with evidence; drift tests pass.",
+   "files": [
+    "cmd/kudurru/kube_rpz.go",
+    "internal/rpz",
+    "internal/importers/coredns.go",
+    "docs/guide/block-lists.md"
+   ],
+   "size": "M"
+  }
+ ]
+}

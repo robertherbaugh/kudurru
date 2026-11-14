@@ -1,0 +1,362 @@
+{
+ "key": "f60c-hooks-remote-ownership",
+ "item": "F60c: `integrations` CLI and Tier-B webhook integration (hooks/event production, remote record ownership, remaining driver/restart, final contract gates)",
+ "summary": "Paths are relative to /home/vercel-sandbox/kudurru; nothing was run (read-only), so defects below come from code reading. (1) Designed protocol (dev-docs/design-record.md:993-996): `GET /` negotiates `application/kudurru.integration+json;version=1` and returns filters, capabilities (records|clients|hooks|actions) and a manifest; records use the external-dns routes, clients use `/clients` and `/networks`, hooks use `POST /events` with `X-Kudurru-Signature`/`X-Kudurru-Delivery` (2xx ack, 5xx retry, dead letter after 24 h, 4xx drop and Degraded), actions use `/actions`. (2) The reviewed API/CLI and the standalone conformance command are implemented and in the current generated contracts (cmd/kudurru/integrations.go:17-119, cmd/kudurru/integrations_conformance.go:11-44, internal/api/integrations.go:150-193; api/openapi.json has 190 operationIds including all seven). (3) The runtime provider is mounted on SQLite only, for clients and actions (cmd/kudurru/integration_runtime.go:76-77; ee/integration/webhook/manifest.go:12-31). (4) \"Public negotiation refuses hooks/records\" is ee/integration/webhook/lifecycle.go:187-190 (a peer advertising records always gets ErrUnsupported; hooks are refused unless the private flag and an hmacKey are present) plus lifecycle.go:85-87 (configured `domains` or a non-sync `policy` refuse); plain external-dns negotiation maps to capabilities=[\"records\"] (protocol.go:55-60), so every stock external-dns webhook provider is refused today. (5) The \"private delivery prerequisite\" is the unexposed `newProvider()` path (lifecycle.go:48-51) whose HandleDelivery signs the stored event with a separate hmacKey (lifecycle.go:304-330), the host's durable at-least-once lane (ee/integration/host/events.go:21-179, drained every 2 s under the instance lease at commands.go:166-171 and 209-214) and CAS rows (ee/integration/ledger/delivery.go:41-91); no production code calls `Host.Deliver`, so no event is ever produced, and there is no generic event bus (the SSE streams are the query tail and a VIP hub with no replay, internal/api/vip_events.go:33-40). (6) Remote record ownership is unimplemented: the webhook provider has no `host.Publisher` methods (only Cloudflare does, ee/integration/cloudflare/records.go:278 and apply.go:492), although the transport already allows the record routes (transport.go:259-267) and the spec already has `domains`/`policy` (api/v1alpha1/integration_types.go:199-206). (7) On Kubernetes nothing executes: cmd/kudurru/serve.go:1083-1084 logs that background integration execution is unavailable and every route answers 503 (internal/api/integrations.go:153-155). (8) The unmounted delivery lane has defects that matter once hooks are enabled: a per-attempt timeout or budget refusal dead-letters on the first failure (events.go:163-166 with retry.go:35-39; transport.go:170 and 250-252; no ErrBudget mapping, unlike cloudflare/transport.go:111 and unifi/transport.go:167), terminal rows are never pruned while each drain lists all rows up to a hard 100,000 cap (events.go:70-108), and a dead letter never raises Degraded (events.go:137-179). (9) No runServe/CLI restart, follower or failover test uses a `type: webhook` Integration (only cmd/kudurru/integration_webhook_mount_test.go references the type). (10) Nothing here needs hardware, credentials or an owner decision; a first-party external-dns server in the repo can act as an independent local TLS peer for the record tests.",
+ "alreadyDone": [
+  "The `integrations` CLI family and its API, which dev-docs/milestones/v0.2/followup-audit.md:229 still lists as Missing ('API/current admission plus status/preview/actions CLI, exact plan ownership and license/error paths'), are implemented on SQLite: cmd/kudurru/integrations.go:17-119, cmd/kudurru/integration_admin.go:76-219, internal/api/integrations.go:150-193; tests cmd/kudurru/integrations_test.go:12-57, cmd/kudurru/integration_admin_test.go:52-120, cmd/kudurru/integration_admin_cloudflare_test.go:179; license and Delete refusal at cmd/kudurru/integration_runtime_test.go:345.",
+  "Merged contracts for the current surface: all seven operation IDs (listIntegrations, getIntegration, checkIntegration, previewIntegration, syncIntegration, listIntegrationActions, invokeIntegrationAction) are in api/openapi.json and api/openapi-3.0.json (190 operationIds each, last regenerated in 1a78bb92), internal/apiclient/openapi/zz_generated.client.go and dashboard/src/api/generated.ts; docs-site/content/reference/cli.md documents the commands. The tracker row still says 'Merged 180-operation contracts pass ... final contract gates remain' (dev-docs/milestones/v0.2/completion-plan.md:185).",
+  "The conformance CLI already probes all four capabilities, including records read/adjust/apply and a signed event delivery: internal/integrationconformance/run.go:132-205; tests internal/integrationconformance/run_test.go:68 (first-party external-dns server over TLS) and :122 (Tier-B event bytes, HMAC, delivery header).",
+  "A durable at-least-once delivery lane exists although the tracker lists hooks as open: stable delivery ID, 256 pending cap, 24 h deadline, exponential backoff with Retry-After, dead letter (ee/integration/host/events.go:21-179, ee/integration/host/retry.go:35-55), exact-version rows (ee/integration/ledger/delivery.go:41-91; kind at api/integrationkinds/v1alpha1/types.go:144-159), drain on every poll tick under the instance lease (ee/integration/host/commands.go:166-171, 209-214), HMAC-SHA256 signing with a separate key (ee/integration/webhook/lifecycle.go:304-330). Tests: ee/integration/host/events_test.go:26 and :74, ee/integration/webhook/lifecycle_test.go:139, ee/integration/ledger/delivery_test.go:16.",
+  "Wire prerequisites for record publication exist: the transport allowlist includes GET/POST /records and POST /adjustendpoints (ee/integration/webhook/transport.go:259-267); external-dns media negotiation with a validated domain filter (ee/integration/webhook/protocol.go:55-60, 160-180; protocol_test.go:63); spec fields `domains` and `policy` (api/v1alpha1/integration_types.go:199-206); the strong Publisher/Recovery seam, planner and ledger used by Cloudflare (ee/integration/host/types.go:60-75, ee/integration/host/engine.go:355-563).",
+  "Per-instance failover mechanics on SQLite: one elector per instance (ee/integration/host/lifecycle.go:40-42, 196-246) and root tests cmd/kudurru/integration_failover_test.go:68, :145, :259, :318; evidence .context/integration-failover-20261108/integration-race.json (exit 0, 221.8 s). These use provider doubles, not a webhook peer.",
+  "Negotiation and auth parts of the README acceptance (dev-docs/milestones/v0.2/README.md:380): bearer and mTLS, redirects, status classes, cancellation and deadlines (ee/integration/webhook/transport_test.go:79-359), exact advertisement identity and strict JSON (ee/integration/webhook/protocol_test.go:23-148), mounted TLS/router clients and actions (cmd/kudurru/integration_webhook_mount_test.go:187, :230, :286; final race exit 0 in 51.7 s, .context/tierb-mount-qualification/root-owned-fixture-race.json).",
+  "Kubernetes building blocks already exist: private kinds are carried as Secrets (internal/store/kube/kube.go:111-117, api/runtimekinds/register.go:30-40, cmd/kudurru/serve.go:179), a per-name Lease elector (internal/store/kube/elector.go:109) and SecretRef credential resolution (internal/credentials/resolver.go:117-129). The recorded blocker, atomic source admission (cmd/kudurru/serve.go:1084, docs/deploy/integrations.md:11-13), concerns sources that write desired DNS/ClientGroup objects; webhook actions, hooks and record publication each write one object at a time.",
+  "The Kubernetes refusal is explicit and tested: 503 from every integration route when the capability is nil (internal/api/integrations.go:153-155 and the same check in executeIntegration), CLI transport refusal at cmd/kudurru/integrations_test.go:44-57."
+ ],
+ "remaining": [
+  {
+   "id": "F60c-H1",
+   "title": "Harden the durable delivery lane before exposing hooks",
+   "kind": "implementation",
+   "detail": "Four gaps in the unmounted lane. (1) Failure classification: `deliver` treats any error that is not a `*host.Failure` as permanent (ee/integration/host/events.go:163-166, retry.go:35-39). The webhook transport returns context.DeadlineExceeded when its own per-attempt timeout fires (transport.go:170, 250-252) and passes ledger.ErrBudget through unmapped (transport.go:176-256; compare cloudflare/transport.go:110-112 and unifi/transport.go:167-168). Effect: one slow peer response or an exhausted budget dead-letters an event on its first attempt, and the same unmapped ErrBudget stops periodic inventory polling for the lease (commands.go:219-237). Fix in the transport: attempt timeout while the caller context is still live becomes FailureTemporary; ErrBudget becomes FailureRateLimited (5 min). In host.deliver, local refusals (ErrFenced, ErrUnavailable, caller cancellation) must return without saving a terminal state. Write a failing test for each first. (2) Budget isolation: every webhook instance charges provider `webhook`, account `all` (transport.go:176) against 1,000 requests per 300 s (host/request.go:77); use the instance UID as the account so one peer cannot starve the others. (3) Retention: nothing deletes IntegrationDelivery rows, each drain and each queue lists every row of every owner, and listing fails with ErrCapacity above 100,000 rows (events.go:70-108). Add an exact-version ledger delete for terminal rows past deadline plus a margin and for rows whose Integration UID no longer exists, bounded per tick. (4) Status: a dead letter must set Degraded (reason such as EventDeadLettered) and publish status; `deliver` never calls setLocal.",
+   "acceptance": "dev-docs/design-record.md:996 ('5xx retries with backoff + dead-letter after 24 h, 4xx drops and raises Degraded') and :1029 ('at-least-once; host retries + dead-letter'); dev-docs/milestones/v0.2/README.md:380 ('retries'). Tests: ee/integration/host/events_test.go cases for timeout, budget and fence classification, pruning and the row cap; ee/integration/webhook/lifecycle_test.go case with a peer that holds its response past `timeout` and succeeds on the next host call with the same ID, body and signature; ee/integration/ledger/delivery_test.go case for delete with a stale version.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/ee/integration/host/events.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/host/retry.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/host/commands.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/ledger/delivery.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/webhook/transport.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/host/events_test.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/webhook/lifecycle_test.go"
+   ],
+   "size": "M",
+   "dependsOn": [],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "F60c-H2",
+   "title": "Root event production from the store change feed with a durable per-instance cursor",
+   "kind": "implementation",
+   "detail": "No code calls Host.Deliver (only its definition at ee/integration/host/events.go:23-29). Source: use the store's durable, resumable change feed, not audit or SSE. SQLite keeps a `changes` table and Watch resumes from a resourceVersion (internal/store/sqlite/sqlite.go:12-14, 38-40; watch.go:159-164); the Kubernetes driver has watch resume too (internal/store/kube/watch_resume.go). Topics derivable on the instance leader from public objects: record.changed (DNSRecordSet events), zone.changed (DNSZone status serial/contentHash, api/v1alpha1/dnszone_types.go:287-298), blocking.toggled (Kudurru status.blocking, api/v1alpha1/kudurru_types.go:17-25), integration.error (Integration Ready condition, cmd/kudurru/integration_runtime.go:546-551), cluster.leader_changed (term, internal/store/replication/types.go:175), client.seen/left (durable inventory owner, cmd/kudurru/integration_image.go:34). Defer with a recorded decision and a followups entry: query.blocked (per-node query path, needs sampling and the privacy rules) and vip.master_changed (node-local hub without replay, internal/api/vip_events.go:33-40, not reachable from the instance leader without member forwarding). Cursor: a new private kind (one object per hook instance: resourceVersion per watched kind plus term/lineage), registered in api/integrationkinds/v1alpha1 (types.go:29, register.go:12-16). Delivery ID = sha256(owner UID, topic, subject UID, version); before queueing, skip when ReadDelivery finds the ID (ledger/delivery.go:13-25), because QueueDelivery rejects the same ID with a different timestamp (delivery.go:54-62). Run production inside the instance job loop (host/commands.go:185-239) through a host option that asks root for a pure mapping from feed events to bounded, sanitized payloads, so every write uses the existing fenced ledger writer (cmd/kudurru/integration_runtime.go:473-487). Bounds: payload 64 KiB (types.go:24), 256 pending (events.go:60), a per-tick emission cap, and coalescing to the newest version per subject (the 2 s tick is the debounce of design-record.md:1041). After feed compaction or a lineage reset, emit one zone.changed per zone and advance, never one event per object. Delivery is unordered across retries, so each payload carries a monotone version (serial or resourceVersion). Payload keys lowercase; the secret scan at events.go:35 stays.",
+   "acceptance": "dev-docs/milestones/v0.2/completion-plan.md:185 ('hooks/record ownership ... remain'); dev-docs/milestones/v0.2/gaps.md:2759-2761 ('Automatic root hook-event production'), :2876-2878; dev-docs/design-record.md:1041 (event list, debounce) and :1905 (D298: automatic event production is separate work). Tests: host-level fake source proving a crash between queue and cursor save yields one row with the same ID; mounted cmd test with the real SQLite writer and a TLS peer (apply a record set, expect exactly one signed POST /events with the expected topic and version); serving runtime restart with a change committed while stopped (delivered once after restart); pending-cap and compaction paths.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_events.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_runtime.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/host/events.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/host/commands.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/host/types.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/ledger/delivery.go",
+    "/home/vercel-sandbox/kudurru/api/integrationkinds/v1alpha1/types.go",
+    "/home/vercel-sandbox/kudurru/api/integrationkinds/v1alpha1/validate.go",
+    "/home/vercel-sandbox/kudurru/api/integrationkinds/v1alpha1/register.go"
+   ],
+   "size": "L",
+   "dependsOn": [
+    "F60c-H1"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "F60c-H3",
+   "title": "Enable hooks in the registered constructor and freeze the event wire format",
+   "kind": "implementation",
+   "detail": "`New()` sets deliveryAllowed=false (ee/integration/webhook/manifest.go:12-16), the registered manifest omits CapHook and the hmacKey secret key (manifest.go:18-31) and Check refuses (lifecycle.go:187-190). Remove the flag, advertise Hook and hmacKey, keep the rule that a hooks-advertising peer without an hmacKey refuses, and make Topics() return exactly the topics root produces (lifecycle.go:291-300 lists nine today). Freeze JSON before first public use: integration.Event, Client and Network have no JSON tags (ee/integration/integration.go:111-143), so the signed event body is {\"Topic\",\"Time\",\"Payload\"} (lifecycle.go:316); choose lowercase tags now (the conformance decoder is case-insensitive, internal/integrationconformance/validate.go:119-122). Align HMAC key bounds: provider 32 B to 16 KiB (lifecycle.go:112), conformance flag text says 32 to 4096 bytes (cmd/kudurru/integrations_conformance.go:39).",
+   "acceptance": "dev-docs/design-record.md:996 (event route and headers); dev-docs/milestones/v0.2/gaps.md:2850-2853 (public negotiation refuses hooks/records). Tests: update ee/integration/webhook/manifest_test.go:18-65; lifecycle test asserting exact body bytes and signature; conformance `--event-file` run using the provider's own body shape.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/ee/integration/webhook/manifest.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/webhook/lifecycle.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/integration.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/webhook/manifest_test.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integrations_conformance.go"
+   ],
+   "size": "S",
+   "dependsOn": [
+    "F60c-H1",
+    "F60c-H2"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "F60c-H4",
+   "title": "Hook qualification: mounted TLS peer, retries, restart and per-instance failover",
+   "kind": "qualification",
+   "detail": "Mounted tests in cmd/kudurru following the fixture at cmd/kudurru/integration_webhook_mount_test.go:31-186: 503 then 2xx keeps the same delivery ID, body and signature and observes backoff; 4xx dead-letters and sets Degraded; a peer down for 24 h (injected clock) expires the row; hmacKey rotation replaces the instance and pending rows are signed with the new key; budget exhaustion is retried, not dropped; replica promotion (pattern cmd/kudurru/integration_failover_test.go:145-257) lets the successor drain rows from the installed image with no duplicate after an acknowledgment.",
+   "acceptance": "dev-docs/milestones/v0.2/README.md:380 ('Test webhook negotiation/auth/retries and per-instance failover'); G22 at dev-docs/milestones/v0.2/completion-plan.md:221 (restart, promotion). Evidence format as in .context/tierb-mount-qualification/ (frozen source hashes, raw JSON, failures kept).",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_webhook_mount_test.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_failover_test.go"
+   ],
+   "size": "M",
+   "dependsOn": [
+    "F60c-H3"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "F60c-R1",
+   "title": "Host capability roles for providers whose capabilities are negotiated",
+   "kind": "implementation",
+   "detail": "The host chooses behavior by Go type assertion (ee/integration/host/commands.go:167, 228-229, 299-317; engine.go:23), and syncSchedule returns ErrInvalid when one type is both an ObservationScheduler and a Publisher (ee/integration/host/observation_schedule.go:22-29). The webhook provider is one Go type whose peer may be inventory-only, publisher-only, both or neither. Add an optional interface consulted after Check (for example Roles() returning publisher/observer/hook flags) in syncSchedule and execute; Cloudflare and UniFi keep the type-assertion default.",
+   "acceptance": "dev-docs/milestones/v0.2/gaps.md:2742-2748 (capability-aware scheduling precedent: actions-only peers must not poll or publish empty observations). Tests: matrix in ee/integration/host/observation_schedule_test.go; Cloudflare and UniFi suites unchanged.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/ee/integration/host/observation_schedule.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/host/commands.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/host/engine.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/webhook/schedule.go"
+   ],
+   "size": "S",
+   "dependsOn": [],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "F60c-R2",
+   "title": "Webhook Publisher: ownership through a kudurru TXT registry and reread-verified receipts",
+   "kind": "implementation",
+   "detail": "Implement Destinations, Records, Adjust, Apply and Recover (host.Publisher and RecoveryPublisher, ee/integration/host/types.go:60-75) in a new ee/integration/webhook/records.go. 'Remote record ownership' means the planner needs, for every remote row, an owner, stable IDs and a version (ee/integration/plan/types.go:34-44; IDs are mandatory at host/engine.go:161-168), and Apply must return a receipt that only a verified observation can mark complete (api/integrationkinds/v1alpha1/types.go:82-99). The external-dns list and HTTP 204 give none of that (gaps.md:2633-2636). Design: one destination per instance (provider `webhook`, account = digest of the endpoint, zone `*`); Domains = spec.webhook.domains (required, each inside the negotiated filter, protocol.go:160-180); policy from the spec. Ownership marker: a companion TXT row per managed RRset under a child label (for example `_kudurru-<type>.<name>`, wildcard label replaced) with value `heritage=kudurru,kudurru/owner=<digest of cluster ID and Integration UID>`. Records(): require a complete list (no pagination markers, transport.go:243-247), hide own registry rows, set the owner (own marker, external-dns heritage through the parser now in ee/integration/cloudflare/ownership.go:40-111 moved to a shared package, any other kudurru marker is foreign, none is unowned), synthesize one stable ID per target and a content-digest version. Apply(): reread and require the intent's Before state, send one Changes with the data and registry rows, treat 204 as wire evidence only, reread, and return Complete only when the data RRset hash equals AfterHash and the registry row names this owner; otherwise return a partial receipt with per-target facts so the ledger stays pending and engine.recover (engine.go:476-563) decides on the next sync. Raise the JSON element bound for /records (maxItems 4096, protocol.go:21 and 249-253) to the planner bound. Remove the refusals at lifecycle.go:85-87 and :188 for records. Only Retain is supported; Delete stays refused at cmd/kudurru/integration_runtime.go:292-296 (F09b).",
+   "acceptance": "dev-docs/milestones/v0.2/gaps.md:2633-2636 and :2691-2692 ('strong record ownership/partial receipts remain open'); dev-docs/design-record.md:1905 (D298: a wire acknowledgment is never a committed publication) and :1082 (unowned never modified, foreign-owned is a Conflict); README.md:380 ('foreign/unowned records are protected ... retries are idempotent'). Package tests with local TLS peers: the first-party externaldns.Server over a memory store as an independent peer (pattern internal/integrationconformance/run_test.go:68-116); a scripted peer for partial apply (data created, registry row dropped), 204 without effect, foreign marker, external-dns heritage adoption, a foreign change between reread and POST, a pagination header and an over-bound list.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/ee/integration/webhook/records.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/webhook/lifecycle.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/webhook/protocol.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/webhook/manifest.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/cloudflare/ownership.go"
+   ],
+   "size": "L",
+   "dependsOn": [
+    "F60c-R1"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "F60c-R3",
+   "title": "Root mount for webhook publication (sources, fences, reviewed sync mode)",
+   "kind": "implementation",
+   "detail": "Root treats only Cloudflare as a publisher: source preparation (cmd/kudurru/integration_runtime.go:162-165), the in-transaction source fence (integration_runtime.go:453-456) and the manual sync mode check (cmd/kudurru/integration_admin.go:171-174). Generalize each to 'the instance has a publication' (a webhook with domains). The preview/sync API and CLI already carry the digest review (cmd/kudurru/integrations.go:63-65), so no new route is needed.",
+   "acceptance": "dev-docs/milestones/v0.2/followup-audit.md:229 ('exact plan ownership'); dev-docs/design-record.md:1894 (D291: preview digest bound to one original proof; uncertain outcomes explicit). Mounted cmd test with real SQLite, router and a TLS peer: preview, then sync with the digest writes data and registry rows at the peer; a stale preview answers 409 with no POST; applied-but-unreadable answers 503 integration_uncertain with Pending=1 and no replay; the next sync recovers by reread.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_runtime.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_admin.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_webhook_mount_test.go"
+   ],
+   "size": "M",
+   "dependsOn": [
+    "F60c-R2"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "F60c-R4",
+   "title": "Record ownership qualification, including restart and failover",
+   "kind": "qualification",
+   "detail": "Restart with a pending operation recovers by reread (pattern ee/integration/host/engine_pending_recovery_test.go); promotion during an apply does not replay and recovers from the reread; unowned and foreign rows stay untouched under `sync`; removing a source record deletes the data and registry rows only when owned; a kudurru-to-kudurru run where a webhook Integration on one runtime publishes into another runtime's external-dns listener (design-record.md:599).",
+   "acceptance": "dev-docs/milestones/v0.2/README.md:380; dev-docs/milestones/v0.2/gaps.md:83 (G09: preview/apply equivalence, foreign-record protection, bounded retries, per-instance failover); G22 at completion-plan.md:221.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_webhook_mount_test.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_failover_test.go",
+    "/home/vercel-sandbox/kudurru/ee/integration/host/engine_pending_recovery_test.go"
+   ],
+   "size": "M",
+   "dependsOn": [
+    "F60c-R3"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "F60c-C1",
+   "title": "Conformance CLI read-back probe for ownership prerequisites",
+   "kind": "implementation",
+   "detail": "Add a read probe (for example `--expect-endpoints-file`, checks named records_contain/records_absent) so a provider author can verify read-your-writes and TXT support after an explicit `--changes-file` run. No automatic cleanup or retry, which D295 rejects (dev-docs/design-record.md:1900); reports stay sanitized (internal/integrationconformance/run.go:14-28).",
+   "acceptance": "dev-docs/design-record.md:993 ('client side + `kudurru integrations webhook conformance` v0.2'). Tests: additions to internal/integrationconformance/run_test.go against externaldns.Server; CLI flag test beside cmd/kudurru/integrations_conformance_test.go:15.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/internal/integrationconformance/run.go",
+    "/home/vercel-sandbox/kudurru/internal/integrationconformance/transport.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integrations_conformance.go"
+   ],
+   "size": "S",
+   "dependsOn": [
+    "F60c-R2"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "F60c-Q1",
+   "title": "SQLite restart, follower and failover qualification of the existing clients/actions mount",
+   "kind": "qualification",
+   "detail": "No test starts runServe with a `type: webhook` object; the mount evidence note says the cases are 'not full CLI runServe/restart/follower tests' (.context/tierb-mount-source-ready.md). Needed: runServe with a file or inline webhook Integration and a TLS peer; CLI list/get/check/actions/act through the real listener; a process restart keeps the accepted inventory only until the original LastSeen plus three minutes and renegotiates; a follower does not poll, serves the replicated inventory and refuses integration routes with a clear error; after promotion the new leader negotiates and polls.",
+   "acceptance": "dev-docs/milestones/v0.2/completion-plan.md:185 ('remaining driver/restart'); dev-docs/milestones/v0.2/gaps.md:2311-2313 and :2876-2878; G22 at completion-plan.md:221.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_webhook_mount_test.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_failover_test.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integrations_test.go"
+   ],
+   "size": "M",
+   "dependsOn": [],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "F60c-K1",
+   "title": "Kubernetes execution of webhook integrations and the integration API",
+   "kind": "implementation",
+   "detail": "The integration runtime is built on the SQLite serving runtime (cmd/kudurru/integration_runtime.go:39-83 uses sqlite.CommandTx, writer tokens and replication images), so on Kubernetes the capability is nil (cmd/kudurru/serve.go:1083-1084, :1125). Needed: a Kubernetes root adapter supplying the host options (capture from store lists, SecretRef credentials, Lease elector, a fence of lease context plus Integration UID/resourceVersion plus license, ledger writes as create-only or exact-version single-object writes on the Secret carrier), an inventory carrier for clients (content-addressed chunks, then one head write), and an administration capability for the seven routes. This is the Kubernetes half of F09b; webhook actions, hooks and records need only single-object writes. Follow D303 and D364-D366: state the eventual convergence, claim no cross-object atomicity.",
+   "acceptance": "dev-docs/milestones/v0.2/completion-plan.md:94 (F09b), :185, :221 (G22 supported drivers); dev-docs/design-record.md:101 (per-instance Lease) and :306 (Integration CRD in v0.2). Tests: envtest with two runServe processes as used for D366, plus a TLS webhook peer: lease handoff, one action attempt, delivery rows drained by the successor, restart.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serve.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_runtime.go",
+    "/home/vercel-sandbox/kudurru/internal/store/kube/internal.go",
+    "/home/vercel-sandbox/kudurru/internal/store/kube/elector.go"
+   ],
+   "size": "XL",
+   "dependsOn": [
+    "F09b"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "F60c-A1",
+   "title": "Audit entries for reviewed integration sync and act",
+   "kind": "implementation",
+   "detail": "No RecordAudit call exists in cmd/kudurru/integration_*.go, while other reviewed commands record one in the same transaction (cmd/kudurru/serving_http_join_token.go:196, cmd/kudurru/serving_tsig.go:129). Add `integrations.sync` and `integrations.act` entries (actor, instance, action name, completed or uncertain) in the final transaction of integrationOperation.finish (cmd/kudurru/integration_operation.go:190-219). Confirm the absence with a test first.",
+   "acceptance": "dev-docs/design-record.md:1359 (one audit event per mutating API/CLI/integration action); G21 at dev-docs/milestones/v0.2/completion-plan.md:220. Test: mounted act and sync cases assert one audit row each, including the uncertain 503 case.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_operation.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_admin.go"
+   ],
+   "size": "S",
+   "dependsOn": [],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "F60c-D1",
+   "title": "Documentation: provider protocol reference, operator guide, architecture page, decision log",
+   "kind": "docs",
+   "detail": "No published page gives the Tier-B wire contract (`X-Kudurru-Signature` and the kudurru media type appear nowhere under docs/). Write a provider-author reference (negotiation, JSON shapes, headers, retry and dead-letter rules, unordered at-least-once delivery, the TXT registry and the read-your-writes requirement). Update docs/deploy/integrations.md:11-17 and :47-78 and docs/architecture/integrations.md:500-542 with its diagram (CLAUDE.md requires diagrams to track the code). Record the decisions after D366 (event production, record ownership, Kubernetes execution), the two deferred topics in dev-docs/followups.md, and update completion-plan.md:185, gaps.md, followup-audit.md:229 and CHANGELOG.md.",
+   "acceptance": "G25 at dev-docs/milestones/v0.2/completion-plan.md:224; dev-docs/milestones/v0.2/README.md:372-374 (each package ships its documentation). Check: Hugo docs build and docs drift checks pass.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/docs/deploy/integrations.md",
+    "/home/vercel-sandbox/kudurru/docs/architecture/integrations.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/design-record.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/followups.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/completion-plan.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/gaps.md",
+    "/home/vercel-sandbox/kudurru/CHANGELOG.md"
+   ],
+   "size": "M",
+   "dependsOn": [
+    "F60c-H3",
+    "F60c-R3"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "F60c-G1",
+   "title": "Final contract gates on the final head",
+   "kind": "qualification",
+   "detail": "The current surface is already generated (190 operations). After the items above, regenerate CRDs and schemas (the manifest gains Hook and hmacKey; any new status fields), OpenAPI 3.1/3.0, the Go client and dispatch, dashboard types and the API/CLI references, then rerun the scoped contract and CLI suites and hosted CI on the pushed head.",
+   "acceptance": "dev-docs/milestones/v0.2/completion-plan.md:185 ('final contract gates remain'), :216 (G04), :220 (G21); dev-docs/milestones/v0.2/gaps.md:2301-2303 ('final merged generation remains required'). Checks: `GOMAXPROCS=2 make generate docs-gen`, check-generated, dashboard typecheck, the admin and conformance race commands listed under testInfra.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/api/openapi.json",
+    "/home/vercel-sandbox/kudurru/api/openapi-3.0.json",
+    "/home/vercel-sandbox/kudurru/internal/apiclient/openapi/zz_generated.client.go",
+    "/home/vercel-sandbox/kudurru/dashboard/src/api/generated.ts",
+    "/home/vercel-sandbox/kudurru/docs-site/content/reference/cli.md"
+   ],
+   "size": "S",
+   "dependsOn": [
+    "F60c-H3",
+    "F60c-R3",
+    "F60c-C1",
+    "F60c-A1"
+   ],
+   "ownerQuestion": ""
+  }
+ ],
+ "designOptions": [
+  {
+   "name": "Hooks A (recommended): store change feed plus a durable per-instance cursor",
+   "description": "Derive events on the instance leader from the store's resumable change feed for DNSRecordSet, DNSZone, Kudurru and Integration objects, plus the durable inventory owner and the term. Keep one cursor object per hook instance. Use deterministic delivery IDs and run production inside the fenced instance job loop.",
+   "pros": "Survives restart and failover without loss or baseline storm. Driver-neutral (SQLite `changes` table and Kubernetes watch resume). Reuses the existing queue, signing and retry lane. O(1) cursor. Testable at host level with fakes.",
+   "cons": "Adds one private kind, which changes the replication kind manifest (internal/store/replication/codec.go:265). Needs a defined fallback after feed compaction or a lineage reset. query.blocked and vip.master_changed are not derivable this way and must be deferred."
+  },
+  {
+   "name": "Hooks B: delivery rows as the cursor (no new kind)",
+   "description": "Compute a deterministic ID per subject and version on every capture and queue it when no row with that ID exists; keep the newest row per subject as the level marker.",
+   "pros": "No new kind. Simple idempotency.",
+   "cons": "The first run emits an event for every existing object. One retained row per subject lives in every replication image. The current row listing is linear in all rows every 2 s (ee/integration/host/events.go:70-108). Unsuitable for record-set cardinality."
+  },
+  {
+   "name": "Hooks C: in-memory diff of consecutive captures",
+   "description": "Diff the previous and current integration cut in memory and call Host.Deliver for changes.",
+   "pros": "Smallest code. No schema change.",
+   "cons": "Changes committed across a restart or failover are silently lost, so 'restart durability' covers only already-queued events. Does not meet the at-least-once intent of dev-docs/design-record.md:1029."
+  },
+  {
+   "name": "Hooks D: transactional outbox in every command",
+   "description": "Write delivery rows in the same SQLite transaction as each source change.",
+   "pros": "Strongest guarantee; exact ordering at the source.",
+   "cons": "Touches every write path (API, file reload, RFC 2136, inbound sources, importers). No Kubernetes equivalent. Far larger than the remaining scope."
+  },
+  {
+   "name": "Records A (recommended): kudurru TXT registry with reread-verified receipts",
+   "description": "Mark ownership with a companion TXT row carrying a kudurru heritage value. Derive stable IDs and versions from content. Mark a receipt complete only after a full reread shows the intended RRset and its marker.",
+   "pros": "Works with both media types, so existing external-dns webhook providers can be sinks, as dev-docs/research/integrations.md:888-889 intends. Mirrors how external-dns itself owns records over webhook providers. Reuses the planner's owner and adoption model and the heritage parser.",
+   "cons": "Two rows per RRset. Name mapping for apex and wildcard. Peers that reject TXT or underscore labels cannot be used. The protocol has no conditional write, so a window remains between the reread and the POST. Three requests per operation against the request budget."
+  },
+  {
+   "name": "Records B: negotiated ownership extension",
+   "description": "Under the kudurru media type, require record-capable peers to return stable row IDs and versions and to round-trip an owner label; keep plain external-dns peers refused.",
+   "pros": "No TXT rows. Exact IDs and versions. Less mapping code.",
+   "cons": "No existing provider implements it, so record publication would work only with purpose-built peers. Peer atomicity claims still need reread verification."
+  },
+  {
+   "name": "Kubernetes: dedicated root adapter with single-object writes (with F09b)",
+   "description": "Give the host a Kubernetes adapter (Lease elector, SecretRef credentials, exact-version writes on the Secret carrier, head-plus-chunks inventory carrier) and state eventual convergence.",
+   "pros": "Follows D303 and D364-D366. Webhook actions, hooks and records need nothing more than single-object writes. Unblocks the integration API on Kubernetes.",
+   "cons": "Largest item. Shares design with the UniFi desired-object problem in F09b. Needs envtest two-node qualification."
+  }
+ ],
+ "recommendation": "Take Hooks A and Records A, in this order: H1 and R1 first (small, independent, and H1 fixes defects that would lose events), then the hooks track (H2, H3, H4) and the records track (R2, R3, R4) in parallel, then C1 and A1, then Q1, D1 and G1. K1 goes with the F09b Kubernetes work.\n\nHow the answers to the mapping questions shape the design:\n- **Event source:** the store change feed, because it is the only existing mechanism that is durable, resumable and present on both drivers. The audit table is durable but license-gated for reads and carries diffs; the SSE streams are volatile fan-out.\n- **Guarantees:** at-least-once with a stable delivery ID; unordered across retries, with a monotone version in each payload; debounced by the 2 s host tick; 24 h dead letter; Degraded on a dead letter.\n- **Signing:** as already implemented, HMAC-SHA256 over the exact stored body with a separate named key.\n- **Budgets:** one request charge per attempt, moved to a per-instance account.\n- **Topics for v0.2:** record.changed, zone.changed, blocking.toggled, integration.error, cluster.leader_changed, client.seen and client.left. Record the deferral of query.blocked and vip.master_changed, and advertise only what is produced. This follows the earlier stance not to expose an inert hook provider (.context/tierb-runtime-mount-next.md).\n- **Record ownership:** the TXT registry keeps the roadmap promise that existing external-dns providers work as sinks, and D298's rule that a wire acknowledgment is never a committed publication is met by reread-verified receipts.\n\nPrecedents followed:\n- D298: captured transport, immutable negotiation, no wire acknowledgment as publication.\n- D295: conformance without retry or cleanup.\n- D291: digest-reviewed sync, explicit uncertain outcomes.\n- dev-docs/design-record.md:1082: unowned records never modified, foreign-owned is a Conflict.\n- D303 and D364-D366: single-object resourceVersion writes and stated eventual convergence on Kubernetes.\n\nEach new choice is an engineering decision to record after D366 (event production, record ownership, Kubernetes execution). None needs the owner. The one thing that would is cutting hooks, records or Kubernetes execution from v0.2.0, because dev-docs/design-record.md:993 and :1509 name the Tier-B client in the v0.2 scope.",
+ "sharedSeams": [
+  "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_runtime.go",
+  "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_admin.go",
+  "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_operation.go",
+  "/home/vercel-sandbox/kudurru/cmd/kudurru/serve.go",
+  "/home/vercel-sandbox/kudurru/cmd/kudurru/serving_lifecycle.go",
+  "/home/vercel-sandbox/kudurru/ee/integration/host/commands.go",
+  "/home/vercel-sandbox/kudurru/ee/integration/host/events.go",
+  "/home/vercel-sandbox/kudurru/ee/integration/host/observation_schedule.go",
+  "/home/vercel-sandbox/kudurru/ee/integration/host/types.go",
+  "/home/vercel-sandbox/kudurru/ee/integration/integration.go",
+  "/home/vercel-sandbox/kudurru/ee/integration/cloudflare/ownership.go",
+  "/home/vercel-sandbox/kudurru/api/integrationkinds/v1alpha1/types.go",
+  "/home/vercel-sandbox/kudurru/api/integrationkinds/v1alpha1/register.go",
+  "/home/vercel-sandbox/kudurru/api/runtimekinds/register.go",
+  "/home/vercel-sandbox/kudurru/api/v1alpha1/integration_types.go",
+  "/home/vercel-sandbox/kudurru/api/openapi.json",
+  "/home/vercel-sandbox/kudurru/api/openapi-3.0.json",
+  "/home/vercel-sandbox/kudurru/internal/apiclient/openapi/zz_generated.client.go",
+  "/home/vercel-sandbox/kudurru/dashboard/src/api/generated.ts",
+  "/home/vercel-sandbox/kudurru/docs-site/content/reference/cli.md",
+  "/home/vercel-sandbox/kudurru/docs/architecture/integrations.md",
+  "/home/vercel-sandbox/kudurru/docs/deploy/integrations.md",
+  "/home/vercel-sandbox/kudurru/dev-docs/design-record.md",
+  "/home/vercel-sandbox/kudurru/dev-docs/followups.md",
+  "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/completion-plan.md",
+  "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/gaps.md",
+  "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/followup-audit.md",
+  "/home/vercel-sandbox/kudurru/CHANGELOG.md"
+ ],
+ "testInfra": "Existing harnesses to extend, with commands and durations from prior evidence (shared VM, GOMAXPROCS=2 and -p 2 were used; receipts record frozen source hashes and keep failed runs):\n\n- Provider package (local httptest TLS and mTLS peers): `go test -race -json -p 2 ./ee/integration/webhook -count=1 -timeout=120s`. Exit 0, 6.6 s wall, 71 entries (.context/tierb-mount-qualification/provider-full-race-20261106.json).\n- Host plus provider: `go test -race -p 2 ./ee/integration/host ./ee/integration/webhook -count=1 -timeout=120s -json`. Exit 0, 17.5 s wall, 258/67 entries (.context/tierb-scheduling-qualification/race.json; gaps.md:2747).\n- Mounted SQLite/TLS/router: `go test -race -json -p 2 ./cmd/kudurru -run '^TestIntegrationWebhookMounted.*$' -count=1 -timeout=120s`. Final exit 0, 51.7 s wall, 7 entries (.context/tierb-mount-qualification/root-owned-fixture-race.json); fixture at cmd/kudurru/integration_webhook_mount_test.go:31-186.\n- All root integration tests, including replica promotion: `go test -race -json -count=1 -timeout=5m -run '^TestIntegration' ./cmd/kudurru`. Exit 0, 221.8 s wall (.context/integration-failover-20261108/integration-race.json).\n- Admin API/CLI: `GOMAXPROCS=2 go test -p 2 -race ./internal/api ./internal/apiclient ./ee/integration/host ./cmd/kudurru -run 'TestIntegrationAdmin|TestIntegrationCLI|TestIntegrationCall|TestAdvertisedAction|TestRoutePermissionLint' -count=1 -timeout=180s`. API 1.852 s, client 1.064 s, host 1.084 s, cmd 87.628 s (.context/f60c-admin-qualification-result.md; gaps.md:2293-2294).\n- Conformance CLI: `GOMAXPROCS=2 go test -p 2 -race ./internal/integrationconformance ./cmd/kudurru -run '^(TestConformance|TestIntegrationConformance)' -count=1 -timeout=180s`. 29 entries, 2.962 s and 1.217 s package time, 45.8 s total (.context/f60c-webhook-conformance-result.md). The first-party external-dns server peer is built at internal/integrationconformance/run_test.go:68-84 and can be reused for the Publisher tests.\n- Host event and recovery patterns: ee/integration/host/events_test.go:26-112 and ee/integration/host/engine_pending_recovery_test.go.\n- Kubernetes: envtest binaries come from `make envtest` (Makefile:91-94) or KUBEBUILDER_ASSETS; tests skip when they are missing (cmd/kudurru/auditlog_test.go:121-129), so check that no skip is credited. The two-runServe pattern is the D366 test `TestRunServeKubeDynamicUpdateAtomicityAndOwnership` (evidence .context/kube-update-20261110/).\n- Lint: scoped golangci-lint v2.15.0 with `--allow-serial-runners --concurrency 2`; about 31 s for the conformance scope.\n- Generation: `GOMAXPROCS=2 make generate docs-gen`, then the check-generated target.\n- Full cmd package: about 1,690 s; `make test` splits its 467 top-level names into five batches (gaps.md:2895-2902).",
+ "risks": [
+  "The H1 and A1 findings come from reading code; no test was run under the read-only constraint. Confirm each with a failing test before changing production code.",
+  "Store revision churn: each delivered event costs about three SQLite transactions (queue, budget, save). Earlier mount work saw repeated budget charges continually advance the source and a `generation_pending` refusal (dev-docs/milestones/v0.2/gaps.md:2866-2870). High event rates could raise 409/503 on reviewed operator commands and increase replication traffic; per-tick caps and coalescing are required.",
+  "A new private kind for the cursor changes the replication kind manifest, which must match exactly between nodes (internal/store/replication/codec.go:265). It has to land before v0.2.0 ships and be covered by the G22 mixed-version tests.",
+  "Watch resourceVersions can reset on replica replacement (internal/store/sqlite/sqlite.go:26-28) and the feed is compacted. A stale cursor must degrade to one zone.changed per zone, never one event per object.",
+  "TXT registry limits: peers that reject TXT or underscore labels, apex and wildcard name mapping, non-atomic Changes, and an unavoidable window between the verification reread and the POST because the protocol has no conditional write. Document these; do not claim atomicity.",
+  "Request budget: record publication needs about three requests per operation against 1,000 per 300 s (ee/integration/host/request.go:77). A first publication of a large zone takes tens of minutes unless the webhook budget is revisited.",
+  "Privacy: client.seen and client.left payloads carry client names and addresses, so the hide and redaction settings must apply to event payloads. query.blocked is deferred partly for this reason.",
+  "Wire freeze: changing the JSON tags of Event, Client or Network after release breaks peers. Only test fixtures depend on the current capitalized keys, so the change is free now.",
+  "DeletionPolicy Delete stays refused (cmd/kudurru/integration_runtime.go:292-296, F09b). With Retain, deleting a webhook Integration leaves remote records and registry rows behind; this must be documented.",
+  "Kubernetes execution depends on the F09b design and is the largest item. If it slips, the Tier-B client ships SQLite-only, which contradicts dev-docs/design-record.md:101 and :306 and would need an explicit scope decision.",
+  "Adjacent gaps outside F60c that touch the same files: the designed `kudurru_integration_*` metrics (dev-docs/design-record.md:1250) are not implemented in ee/integration/host, and the dashboard has no integrations page (dev-docs/milestones/v0.2/gaps.md:83 lists the administration UI)."
+ ]
+}

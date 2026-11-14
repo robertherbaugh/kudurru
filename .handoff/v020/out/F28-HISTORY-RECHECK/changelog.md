@@ -1,0 +1,14 @@
+### Changed
+
+- Managed root anchors (RFC 5011, `anchorMode: managed`) on enrolled SQLite clusters: "A member returns with different trust-anchor state" in `docs/deploy/sqlite-join.md` now covers every state in which a member stays fenced or answers `SERVFAIL`. It says how to recognize a member that refuses the primary's data with `kudurru cluster resolution --offline` and `kudurru anchors status --offline`, and what ends each case: the primary's next root-anchor check, managed trust anchors started on the primary from the same seeds, a restart, or a replacement receiver. In none of them does a member trust a revoked root key again or fall back to the shipped anchors (D369).
+
+### Fixed
+
+- Enrolled SQLite clusters: a member that was fenced by a newer primary but never took that primary's data can now be kept when that primary and every member that followed it are lost for good. `kudurru cluster resolution --offline` reports it as `"reason":"fenced_behind_term"`, and `kudurru cluster resolve --offline --abandon-term <epoch>` makes it the primary of a new term on its own data, with an audit event that names the abandoned term. Before, such a member could be neither promoted nor resolved, so a cluster whose only survivors were in this state had no way to get a primary back. With managed root anchors this matters most for a member that refuses the primary's trust-anchor state; it keeps every root-key revocation it holds (D369).
+- Documentation: the instruction to replace a member that cannot follow the primary's trust-anchor state now says that the replacement needs a new node name and a new internal address. `cluster join-token` refuses an invitation for the name or the address of an existing member, and this release has no command that removes a member, so the instruction as first written ("a new invitation and a new data directory") could not be carried out for the same name or address.
+
+### Known limitations (for the `[0.2.0]` notes, if the release lists them)
+
+- Managed root anchors: when the primary can never record a root-key revocation that one member saw (the root has stopped publishing the revoked key, or the primary never held the key), that member never follows the primary again. It keeps answering DNS from its own last-good data, and the way out is to replace it. The replacement holds the cluster's trust-anchor state, which in the first case still trusts that key. No command records a revocation on the primary by operator decision.
+- Managed root anchors: a member whose own root check saw a key revocation that the root no longer publishes answers `SERVFAIL` for good, also as the primary, and while it is the primary no member's trust anchors are updated. Promote a member that serves and replace it.
+- Enrolled SQLite clusters: a member cannot be removed. A replaced member stays listed, keeps its name and internal address reserved, and counts toward the limit of 64 active members.

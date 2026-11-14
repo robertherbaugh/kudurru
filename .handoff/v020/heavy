@@ -1,0 +1,13 @@
+#!/bin/bash
+# Four machine-wide slots for heavy builds and test runs (8 cores, 16 GB).
+# Many heavy jobs are long but mostly wait on timers, so two slots left the
+# machine idle while lanes queued for over half an hour. Slot 1 is the original
+# lock file, so runs queued with earlier wrappers still count against it.
+exec 6>>/tmp/kudurru-v020-heavy.lock 7>>/tmp/kudurru-v020-heavy.lock.2 8>>/tmp/kudurru-v020-heavy.lock.3 9>>/tmp/kudurru-v020-heavy.lock.4
+while true; do
+  if flock -n 6; then exec 7>&- 8>&- 9>&-; exec "$@"; fi
+  if flock -n 7; then exec 6>&- 8>&- 9>&-; exec "$@"; fi
+  if flock -n 8; then exec 6>&- 7>&- 9>&-; exec "$@"; fi
+  if flock -n 9; then exec 6>&- 7>&- 8>&-; exec "$@"; fi
+  sleep 3
+done
