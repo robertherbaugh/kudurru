@@ -491,6 +491,36 @@ describe('role bindings', () => {
     expect(put.binding.metadata).toEqual({ namespace: 'default', name: 'home-admin', labels: { team: 'dns' }, annotations: { 'example.com/ticket': 'OPS-12' } });
   });
 
+  it('edits a binding with several subjects, keeping their order, and adds and removes one', async () => {
+    mockIAM().roleBindings.push({
+      apiVersion: 'kudurru.io/v1alpha1', kind: 'RoleBinding',
+      metadata: { namespace: 'default', name: 'ops', uid: 'rb-default-ops', resourceVersion: '9', annotations: { 'kudurru.io/managed-by': 'api' } },
+      spec: { role: 'viewer', scope: { kind: 'cluster' }, subjects: [{ kind: 'User', name: 'alice' }, { kind: 'Group', name: 'ops' }, { kind: 'ServiceAccount', name: 'grafana', namespace: 'mon' }] },
+    });
+    identity();
+    await press('Edit default/ops');
+    const d = await reviewed();
+    expect(within(d).getByLabelText(/^User name(?! \d)/)).toHaveValue('alice');
+    expect(within(d).getByLabelText(/^Group name 2/)).toHaveValue('ops');
+    expect(within(d).getByLabelText(/^Service account name 3/)).toHaveValue('grafana');
+    expect(within(d).getByLabelText(/^Service account namespace 3/)).toHaveValue('mon');
+    fireEvent.click(within(d).getByRole('button', { name: 'Remove subject 2' }));
+    fireEvent.click(within(d).getByRole('button', { name: 'Add subject' }));
+    // A duplicate is refused before sending.
+    fireEvent.change(within(d).getByLabelText(/^User name 3/), { target: { value: 'alice' } });
+    fireEvent.click(within(d).getByRole('button', { name: 'Save changes' }));
+    expect(await within(d).findByText('This subject is listed twice')).toBeInTheDocument();
+    expect(calls('PUT', '/iam/rolebindings/default/ops')).toHaveLength(0);
+    fireEvent.change(within(d).getByLabelText(/^User name 3/), { target: { value: 'bob' } });
+    fireEvent.click(within(d).getByRole('button', { name: 'Save changes' }));
+    await closed();
+    const put = calls('PUT', '/iam/rolebindings/default/ops');
+    expect(put).toHaveLength(1);
+    expect((put[0]!.body as { binding: { spec: unknown } }).binding.spec).toEqual({
+      role: 'viewer', scope: { kind: 'cluster' }, subjects: [{ kind: 'User', name: 'alice' }, { kind: 'ServiceAccount', name: 'grafana', namespace: 'mon' }, { kind: 'User', name: 'bob' }],
+    });
+  });
+
   it('does not edit a binding whose scope kind the form does not know', async () => {
     mockIAM().roleBindings.push({
       apiVersion: 'kudurru.io/v1alpha1', kind: 'RoleBinding',

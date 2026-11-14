@@ -14,10 +14,14 @@
 // reviewed edit or delete is locked after a refusal. An edit keeps the stored
 // labels and operator annotations (never the managed-by annotation), and a
 // binding whose scope kind the form does not offer (clientgroup, reserved) is
-// not edited here: the form would otherwise send it back as cluster-wide.
+// not edited here: the form would otherwise send it back as cluster-wide. A
+// binding holds up to 256 subjects (RoleBindingSpec); the form edits every
+// one of them, in their stored order.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { HStack } from '@astryxdesign/core/Stack';
+import { Card } from '@astryxdesign/core/Card';
+import { FieldStatus } from '@astryxdesign/core/FieldStatus';
+import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
@@ -53,16 +57,29 @@ function nameError(v: string): string | null {
   return v.length <= 253 && DNS_SUBDOMAIN.test(v) ? null : 'Lower-case letters, digits, "-" and ".", starting and ending with a letter or digit';
 }
 
+/** One subject of a draft; namespace is used for a ServiceAccount only. */
+export interface SubjectDraft {
+  kind: string;
+  name: string;
+  namespace: string;
+}
+
 export interface RoleBindingDraft {
   name: string;
   namespace: string;
   role: string;
   scopeKind: ScopeKind;
   scopeName: string;
-  subjectKind: string;
-  subjectName: string;
-  subjectNamespace: string;
+  subjects: SubjectDraft[];
 }
+
+/** RoleBindingSpec.subjects MaxItems. */
+export const MAX_SUBJECTS = 256;
+
+const NEW_SUBJECT: SubjectDraft = { kind: 'User', name: '', namespace: 'default' };
+
+/** The identity of a subject, for duplicates. */
+const subjectKey = (s: SubjectDraft) => `${s.kind}/${s.kind === 'ServiceAccount' ? s.namespace.trim() : ''}/${s.name.trim()}`;
 
 /**
  * Unknown for a role binding command: a refusal when either the IAM rules or
@@ -95,15 +112,18 @@ export function roleBindingManifest(d: RoleBindingDraft, review?: RoleBindingDoc
     spec: {
       role: d.role,
       scope: scoped ? { kind: d.scopeKind, name: d.scopeName.trim() } : { kind: 'cluster' },
-      subjects: [{ kind: d.subjectKind, name: d.subjectName.trim(), ...(d.subjectKind === 'ServiceAccount' ? { namespace: d.subjectNamespace.trim() } : {}) }],
+      subjects: d.subjects.map((x) => ({ kind: x.kind, name: x.name.trim(), ...(x.kind === 'ServiceAccount' ? { namespace: x.namespace.trim() } : {}) })),
     },
   };
 }
 
-/** The first problem of a draft by field, empty when it can be sent. */
-export function draftErrors(d: RoleBindingDraft): Partial<Record<keyof RoleBindingDraft, string>> {
-  const out: Partial<Record<keyof RoleBindingDraft, string>> = {};
-  const set = (k: keyof RoleBindingDraft, e: string | null) => {
+export type SubjectErrors = Partial<Record<'name' | 'namespace', string>>;
+export type DraftErrors = Partial<Record<Exclude<keyof RoleBindingDraft, 'subjects'>, string>> & { subjects?: SubjectErrors[]; subjectCount?: string };
+
+/** The first problem of a draft by field (and by subject), empty when it can be sent. */
+export function draftErrors(d: RoleBindingDraft): DraftErrors {
+  const out: DraftErrors = {};
+  const set = (k: Exclude<keyof RoleBindingDraft, 'subjects'>, e: string | null) => {
     if (e) out[k] = e;
   };
   set('name', nameError(d.name.trim()));
@@ -111,12 +131,27 @@ export function draftErrors(d: RoleBindingDraft): Partial<Record<keyof RoleBindi
   set('role', d.role ? null : 'Pick a role');
   if (d.scopeKind === 'zone') set('scopeName', d.scopeName ? null : 'Pick a zone');
   if (d.scopeKind === 'zonegroup') set('scopeName', zoneGroupError(d.scopeName.trim()));
-  set('subjectName', d.subjectName.trim() ? null : 'Enter a name');
-  if (d.subjectKind === 'ServiceAccount') set('subjectNamespace', labelError(d.subjectNamespace.trim(), 'namespace'));
+  if (d.subjects.length === 0) out.subjectCount = 'Add at least one subject';
+  if (d.subjects.length > MAX_SUBJECTS) out.subjectCount = `At most ${MAX_SUBJECTS} subjects`;
+  const seen = new Set<string>();
+  const subjects = d.subjects.map((x) => {
+    const e: SubjectErrors = {};
+    const name = x.name.trim();
+    if (!name) e.name = 'Enter a name';
+    else if (name.length > 253) e.name = 'At most 253 characters';
+    else if (seen.has(subjectKey(x))) e.name = 'This subject is listed twice';
+    seen.add(subjectKey(x));
+    if (x.kind === 'ServiceAccount') {
+      const ns = labelError(x.namespace.trim(), 'namespace');
+      if (ns) e.namespace = ns;
+    }
+    return e;
+  });
+  if (subjects.some((e) => Object.keys(e).length)) out.subjects = subjects;
   return out;
 }
 
-const EMPTY: RoleBindingDraft = { name: '', namespace: 'default', role: 'zone-admin', scopeKind: 'zonegroup', scopeName: '', subjectKind: 'User', subjectName: '', subjectNamespace: 'default' };
+const EMPTY: RoleBindingDraft = { name: '', namespace: 'default', role: 'zone-admin', scopeKind: 'zonegroup', scopeName: '', subjects: [NEW_SUBJECT] };
 
 /** "New role binding", disabled with the reason when the session or node cannot create one. */
 export function NewRoleBindingButton() {
@@ -130,19 +165,17 @@ export function NewRoleBindingButton() {
   );
 }
 
-/** The draft of a stored binding with one subject (the form edits one) and a scope editableScope accepts. */
+/** The draft of a stored binding, every subject in its stored order, with a scope editableScope accepts. */
 export function draftOfBinding(doc: RoleBindingDocument): RoleBindingDraft {
-  const subject = doc.spec.subjects?.[0];
   const kind = doc.spec.scope?.kind;
+  const subjects = (doc.spec.subjects ?? []).map((x) => ({ kind: x.kind, name: x.name, namespace: x.namespace ?? 'default' }));
   return {
     name: doc.metadata.name ?? '',
     namespace: doc.metadata.namespace ?? '',
     role: doc.spec.role,
     scopeKind: (kind === 'zone' || kind === 'zonegroup' ? kind : 'cluster'),
     scopeName: doc.spec.scope?.name ?? '',
-    subjectKind: subject?.kind ?? 'User',
-    subjectName: subject?.name ?? '',
-    subjectNamespace: subject?.namespace ?? 'default',
+    subjects: subjects.length ? subjects : [NEW_SUBJECT],
   };
 }
 
@@ -152,8 +185,7 @@ export function RoleBindingActions({ binding }: { binding: IamRoleBinding }) {
   const [action, setAction] = useState<'edit' | 'delete' | null>(null);
   if (binding.source !== 'object' || !binding.namespace) return null;
   const row = binding.managedBy && binding.managedBy !== 'api' ? `Managed by ${binding.managedBy}: change it there` : undefined;
-  const subjects = binding.subjects?.length ?? 0;
-  const edit = row ?? (subjects > 1 ? `It has ${subjects} subjects and this form edits one: use kudurru iam rolebindings replace` : undefined) ?? (editableScope(binding.scope?.kind) ? undefined : UNSUPPORTED_SCOPE) ?? reason('rolebindings', 'write');
+  const edit = row ?? (editableScope(binding.scope?.kind) ? undefined : UNSUPPORTED_SCOPE) ?? reason('rolebindings', 'write');
   const del = row ?? reason('rolebindings', 'delete');
   const label = `${binding.namespace}/${binding.name}`;
   return (
@@ -174,9 +206,8 @@ function ReviewedBindingDialog({ namespace, name, action, onClose }: { namespace
   const review = useReviewRead((signal) => api.iam.roleBinding(namespace, name, signal));
   const title = action === 'edit' ? `Edit role binding ${namespace}/${name}` : `Delete role binding ${namespace}/${name}?`;
   const doc = review.data;
-  const multi = action === 'edit' && (doc?.spec.subjects?.length ?? 0) > 1;
   const scopeOff = action === 'edit' && !!doc && !editableScope(doc.spec.scope?.kind);
-  if (!doc || managerOf(doc.metadata) !== 'api' || multi || scopeOff) {
+  if (!doc || managerOf(doc.metadata) !== 'api' || scopeOff) {
     return (
       <FormDialog isOpen onClose={onClose} title={title} width={520} footer={<Button label="Close" variant="ghost" onClick={onClose} />}>
         {review.error ? (
@@ -185,8 +216,6 @@ function ReviewedBindingDialog({ namespace, name, action, onClose }: { namespace
           <Text>Reading the role binding…</Text>
         ) : managerOf(doc.metadata) !== 'api' ? (
           <Banner status="info" title="Managed elsewhere" description={`This binding belongs to ${managerOf(doc.metadata) || 'no API manager'}. Change it where it is declared.`} />
-        ) : multi ? (
-          <Banner status="info" title="More than one subject" description="This form edits a binding with one subject. Use kudurru iam rolebindings replace for this one." />
         ) : (
           <Banner status="info" title="Scope this form does not edit" description={`Its scope kind is ${doc.spec.scope?.kind ?? ''}. ${UNSUPPORTED_SCOPE}. Nothing was changed.`} />
         )}
@@ -242,8 +271,10 @@ function RoleBindingDialog({ onClose, review }: { onClose: () => void; review?: 
   const groups = useMemo(() => [...new Set((zones.data?.items ?? []).map((z) => z.zoneGroup).filter((g): g is string => !!g))].sort(), [zones.data]);
   const errors = draftErrors(d);
   const changed = !review || JSON.stringify(d) !== JSON.stringify(initial);
-  const shown = (k: keyof RoleBindingDraft) => (touched ? errors[k] : undefined);
+  const shown = (k: Exclude<keyof RoleBindingDraft, 'subjects'>) => (touched ? errors[k] : undefined);
   const update = (patch: Partial<RoleBindingDraft>) => setD((prev) => ({ ...prev, ...patch }));
+  const updateSubject = (i: number, patch: Partial<SubjectDraft>) => setD((prev) => ({ ...prev, subjects: prev.subjects.map((x, j) => (j === i ? { ...x, ...patch } : x)) }));
+  const subjectError = (i: number, k: keyof SubjectErrors) => (touched ? errors.subjects?.[i]?.[k] : undefined);
   const submit = async () => {
     setTouched(true);
     if (Object.keys(errors).length || !changed) return;
@@ -279,9 +310,39 @@ function RoleBindingDialog({ onClose, review }: { onClose: () => void; review?: 
       <EnumSelect label="Scope" value={d.scopeKind} options={SCOPE_KINDS} onChange={(v) => update({ scopeKind: v as ScopeKind, scopeName: '' })} />
       {d.scopeKind === 'zone' ? <ObjectRefPicker kind="dnszones" label="Zone" value={d.scopeName ? [d.scopeName] : []} onChange={(v) => update({ scopeName: v[0] ?? '' })} {...(shown('scopeName') ? { error: shown('scopeName') } : {})} /> : null}
       {d.scopeKind === 'zonegroup' ? <TextField label="Zone group" value={d.scopeName} onChange={(v) => update({ scopeName: v })} mono isRequired placeholder="prod" help={groupHelp} error={shown('scopeName')} /> : null}
-      <EnumSelect label="Subject" value={d.subjectKind} options={SUBJECT_KINDS} onChange={(v) => update({ subjectKind: v })} />
-      <TextField label={d.subjectKind === 'Group' ? 'Group name' : d.subjectKind === 'ServiceAccount' ? 'Service account name' : 'User name'} value={d.subjectName} onChange={(v) => update({ subjectName: v })} mono isRequired error={shown('subjectName')} />
-      {d.subjectKind === 'ServiceAccount' ? <TextField label="Service account namespace" value={d.subjectNamespace} onChange={(v) => update({ subjectNamespace: v })} mono isRequired error={shown('subjectNamespace')} /> : null}
+      {d.subjects.map((x, i) => {
+        // The first subject keeps the plain labels; later ones are numbered.
+        const n = i === 0 ? '' : ` ${i + 1}`;
+        const fields = (
+          <>
+            <EnumSelect label={`Subject${n}`} value={x.kind} options={SUBJECT_KINDS} onChange={(v) => updateSubject(i, { kind: v })} />
+            <TextField label={`${x.kind === 'Group' ? 'Group name' : x.kind === 'ServiceAccount' ? 'Service account name' : 'User name'}${n}`} value={x.name} onChange={(v) => updateSubject(i, { name: v })} mono isRequired error={subjectError(i, 'name')} />
+            {x.kind === 'ServiceAccount' ? <TextField label={`Service account namespace${n}`} value={x.namespace} onChange={(v) => updateSubject(i, { namespace: v })} mono isRequired error={subjectError(i, 'namespace')} /> : null}
+          </>
+        );
+        if (d.subjects.length === 1) return <VStack key={i} gap={3}>{fields}</VStack>;
+        return (
+          <Card key={i} padding={3} role="group" aria-label={`Subject ${i + 1}`}>
+            <VStack gap={2}>
+              {fields}
+              <HStack gap={2}>
+                <Button label={`Remove subject ${i + 1}`} size="sm" variant="ghost" onClick={() => setD((prev) => ({ ...prev, subjects: prev.subjects.filter((_, j) => j !== i) }))} />
+              </HStack>
+            </VStack>
+          </Card>
+        );
+      })}
+      <HStack gap={2}>
+        <Button
+          label="Add subject"
+          size="sm"
+          variant="secondary"
+          isDisabled={d.subjects.length >= MAX_SUBJECTS}
+          tooltip={d.subjects.length >= MAX_SUBJECTS ? `A role binding holds at most ${MAX_SUBJECTS} subjects` : undefined}
+          onClick={() => setD((prev) => ({ ...prev, subjects: [...prev.subjects, NEW_SUBJECT] }))}
+        />
+      </HStack>
+      {touched && errors.subjectCount ? <FieldStatus type="error" variant="detached" message={errors.subjectCount} /> : null}
       {d.scopeKind === 'zonegroup' ? (
         <Text type="supporting" as="p">
           Moving a zone into or out of a group (its label) needs zones.write at cluster scope, so a zone admin of the group cannot hand zones to another group.

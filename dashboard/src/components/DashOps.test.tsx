@@ -341,7 +341,7 @@ describe('zone-group scope', () => {
     expect(await within(dialog).findByText('Zone', { selector: 'label, label *' })).toBeInTheDocument();
     pick(getSelector('Scope', dialog), 'Everything');
     expect(within(dialog).queryByLabelText(/^Zone group/)).toBeNull();
-    expect(roleBindingManifest({ name: 'all', namespace: 'default', role: 'viewer', scopeKind: 'cluster', scopeName: '', subjectKind: 'ServiceAccount', subjectName: 'grafana', subjectNamespace: 'mon' }).spec).toEqual({
+    expect(roleBindingManifest({ name: 'all', namespace: 'default', role: 'viewer', scopeKind: 'cluster', scopeName: '', subjects: [{ kind: 'ServiceAccount', name: 'grafana', namespace: 'mon' }] }).spec).toEqual({
       role: 'viewer', scope: { kind: 'cluster' }, subjects: [{ kind: 'ServiceAccount', name: 'grafana', namespace: 'mon' }],
     });
   });

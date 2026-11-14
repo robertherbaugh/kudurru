@@ -112,11 +112,13 @@ Only an administrator with cluster-wide `zones.write` can move a zone into or ou
 2. Enter a name and a namespace, and pick the role.
 3. Pick the scope: **Everything**, **One zone** or **A zone group**.
 4. Pick the zone, or type the group. The form lists the groups your zones use.
-5. Pick the subject kind, type its name and click **Create**.
+5. Pick the subject kind and type its name. **Add subject** adds another
+   (up to 256); **Remove subject** takes one out. Click **Create**.
 
-A name that already exists is refused. **Edit…** changes the role, the scope
-or the subject of a binding that was created through the API. Change a binding
-with more than one subject, or with a scope kind the form does not offer, with
+A name that already exists is refused, and so is a subject listed twice.
+**Edit…** changes the role, the scope or the subjects of a binding that was
+created through the API, every subject in its stored order. Change a binding
+with a scope kind the form does not offer with
 `kudurru iam rolebindings replace`. An edit keeps the binding's labels and
 annotations.
 **Delete…** removes it, and its subjects lose what it granted at once.
