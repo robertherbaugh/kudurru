@@ -1248,9 +1248,13 @@ it is not forwarded. An apply or batch delete sends one command for each
 document or name inside that single request and reports one result for each
 item. Every item captures the request's
 original source again, so an item is refused, not applied and not replayed once
-the lifetime has ended or the follower has installed a newer image (typically
-its next pull, which carries the request's earlier items); the refusal names
-which. A request that began on a follower stays a forward after its context has
+the lifetime has ended or the follower has installed a newer image; the
+refusal names which. A forwarded request holds the follower's scheduled pull
+from before it captures its source until it ends (`holdMemberPulls`,
+`Coordinator.HoldPulls`, D375): the scheduled pull used to install the
+request's own earlier items and cut the rest. The scheduled pull waits for the
+holders at most `MaxPullHold` (the 30-second lifetime); an explicit pull after
+another forwarded sign-in, sign-out or settings change does not wait. A request that began on a follower stays a forward after its context has
 ended: `ObjectForward` and `ZoneForward` answer that refusal themselves and
 never hand the item to the node's local command, whose credential check would
 report an expired session. A `zones.command` runs the primary's own zone route

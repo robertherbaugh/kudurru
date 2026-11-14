@@ -1064,7 +1064,11 @@ follower sends one version-1
 `dns.update` member command with the exact request minus its TSIG record, the
 key name, algorithm and secret-derived credential version, the transport and
 the signature deadline. The exchange is bounded by four seconds, the DNS
-request and the signature deadline.
+request and the signature deadline. The command ID is derived from the exact
+signed request (`memberUpdateCommandID`: the key identity, the transport and
+the whole message with its TSIG record), so a client that sends the same
+signed message again, to this follower or another one, reaches the primary
+with the same retry identity.
 
 The primary admits the key again against its own keyring: the name, algorithm
 and credential version must all match. It then runs the same protocol adapter
@@ -1085,15 +1089,19 @@ admission and marks the rejection as stale (the lease was replaced, the
 keyring is no longer current, or the zone is briefly not admitted or routed
 while its lifecycle is realigned), and the command waits for the next
 publication and captures again. `Apply` that lost every compare-and-swap
-attempt and committed nothing runs again the same way, and so does a repeated
-command ID whose retained outcome the receipt ledger returned but whose
-publication met a replaced writer publication (nothing is committed twice; the
-next run reads the same receipt). A retiring or retired
+attempt and committed nothing runs again the same way, and so does an
+attempt whose only failure was the zone's publication (`UpdateOutcome.PublishFailed`:
+the publication of its own commit, of a retained outcome the receipt ledger
+returned, or the recovery publication of an earlier commit). Nothing is
+committed twice: once an attempt committed, the next run finds the receipt and
+answers its retained NOERROR, and only that answer may follow; any other later
+answer becomes SERVFAIL (`memberUpdateRerun`, `memberUpdateRetained`). A
+repeated command ID whose admission refused is final. A retiring or retired
 zone is refused at once, since no later publication admits it. A rejection
-for any other reason, and every other answer, is final, a commit whose
-publication failed included; the command ID is the retry identity in the
-zone's receipt ledger, so no attempt applies twice. A cause that does not
-clear ends at the command's bound with nothing applied. Before this,
+for any other reason, and every other answer, is final. A cause that does not
+clear ends at the command's bound with SERVFAIL: nothing is applied unless an
+attempt committed, and then the same signed message sent again reads that
+attempt's receipt. Before this,
 most of a burst of back-to-back updates through a follower answered SERVFAIL.
 A native UPDATE sent to the primary still answers SERVFAIL in that window,
 before anything is applied. The primary
@@ -1115,13 +1123,17 @@ sequenceDiagram
     C->>F: TSIG-signed UPDATE
     F->>F: Zone in own cut, verify TSIG, admit key
     Note over F: Source changed under the request, nothing sent yet: wait for own current publication, check again
-    F->>P: dns.update member command (no TSIG record)
+    F->>P: dns.update member command (no TSIG record, command ID from the signed message)
     P->>P: Wait for current writer publication, capture (again if only the lease was replaced)
     P->>P: Admit key identity, grants, prerequisites
     P->>P: Atomic commit, publish (retry ID = command ID)
+    Note over P: Publication failed: wait for the next one, run again, answer the receipt's NOERROR
     P-->>F: rcode inside command output scope
     F-->>C: Same rcode, signed
-    Note over F,P: Not sent or lost: SERVFAIL, never retried
+    Note over F,P: Not sent or lost: SERVFAIL, never retried by the nodes
+    C->>F: Same signed message again
+    F->>P: Same command ID
+    P-->>F: Retained NOERROR if the first one committed
 ```
 
 Kubernetes does not use this committed history: it serves UPDATE

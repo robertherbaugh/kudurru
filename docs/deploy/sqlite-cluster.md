@@ -302,20 +302,17 @@ once in the dashboard works the same way, with a result for each name.
   `--request-timeout` and it ends first, the command reports a failed
   request while the node goes on applying until it notices; read the
   objects before you decide anything else.
-- Through a follower, a request applies documents until the follower's data
-  changes. That happens at the follower's next pull after the primary has
-  received the first document, at most five seconds later by default. The
-  follower refuses every later document with `unavailable` ("the follower's
-  source changed"; the message names the primary to send the rest to), and
-  the documents before stay applied. A file of a few
-  documents usually fits between two pulls. A longer file does not, and
-  repeating the command through the follower does not reliably finish it:
-  the follower passes the documents that are already applied on again, and
-  the primary records each of them, so the follower's data changes again at
-  its next pull. In two test runs with 200 new record sets, the first run
-  through a follower applied 15 and 116 of them, and four repeats through
-  the follower added 107 and 0 more; the same file sent to the primary
-  then applied the rest in one run.
+- Through a follower, each document is passed on to the primary as its own
+  exchange inside the one 30-second request, and the follower holds its
+  scheduled pull until the request ends, so its data does not change under
+  the request. A file of a few hundred documents is applied completely (in
+  the release's process tests, 200 record sets in every run). The request is
+  still cut, with `unavailable` ("the follower's source changed"; the message
+  names the primary to send the rest to) for every later document and the
+  documents before staying applied, when the follower installs newer data
+  anyway: after a sign-in, sign-out or settings change through the same
+  follower, or once the held pull has waited 30 seconds. A document reached
+  after the 30 seconds reports `unavailable` too.
 
 Send a file of many documents, and every restore, to the primary.
 
