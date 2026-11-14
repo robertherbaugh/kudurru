@@ -127,6 +127,12 @@ func TestServingCommandRecaptureSignInSupersededBeforeDispatch(t *testing.T) {
 		t.Fatal("control sign-in did not create one session")
 	}
 	awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
+	// The sign-in's audit row is its LocalUser status write (lastLoginAt),
+	// stored at second resolution: a sign-in in the same second as the
+	// control changes nothing and writes no row. The runtime clock runs a
+	// second ahead from here, so the recaptured sign-in's lastLoginAt is
+	// always a later second than the control's and must write its row.
+	f.clock.Set(func() time.Time { return time.Now().Add(time.Second) })
 	before = lastAuditID(t, f.s)
 	probe := supersedeCommand(t, f.s, otherCommit(f.s, "signin-concurrent"))
 	second, info := f.login(t)
@@ -135,10 +141,8 @@ func TestServingCommandRecaptureSignInSupersededBeforeDispatch(t *testing.T) {
 	if info.Principal.Name == "" || sessionCount(t, f, second) != 2 {
 		t.Fatal("recaptured sign-in did not create exactly one more session")
 	}
-	// The concurrent commit's row and at most the sign-in's own rows; nothing
-	// twice. The sign-in's row is its LocalUser status write (lastLoginAt),
-	// which is stored at second resolution: a sign-in in the same second as
-	// the control sign-in changes nothing and writes no row.
+	// The concurrent commit's row and exactly the sign-in's own rows; nothing
+	// missing and nothing twice.
 	policies, signIn := 0, 0
 	for _, row := range auditRows(t, f.s, sqlite.AuditQuery{AfterID: before}) {
 		switch row.Key.Kind {
@@ -150,8 +154,8 @@ func TestServingCommandRecaptureSignInSupersededBeforeDispatch(t *testing.T) {
 			t.Errorf("unexpected audit row after a recaptured sign-in: %s %s", row.Action, row.Key)
 		}
 	}
-	if policies != 1 || signIn > control {
-		t.Fatalf("audit rows after a recaptured sign-in: %d of the concurrent commit (want 1) and %d of the sign-in (want at most %d)", policies, signIn, control)
+	if control == 0 || policies != 1 || signIn != control {
+		t.Fatalf("audit rows after a recaptured sign-in: %d of the concurrent commit (want 1) and %d of the sign-in (want the control's %d, at least one)", policies, signIn, control)
 	}
 	var policy public.Policy
 	if err := f.s.opts.Store.Get(t.Context(), store.Key{Kind: "Policy", Namespace: "default", Name: "signin-concurrent"}, &policy); err != nil {
