@@ -4520,6 +4520,8 @@ export interface components {
             groups?: string[] | null;
             /** Format: date-time */
             lastLoginAt?: string;
+            /** @description The account's single writer (kudurru.io/managed-by): api for an account the API created, which the reviewed commands change; bootstrap:..., system or file:... for the built-in admin and accounts of the configuration file, which they refuse with 409 managed_by. */
+            managedBy?: string;
             mustChangePassword: boolean;
             name: string;
             /** Format: date-time */
@@ -4955,16 +4957,6 @@ export interface components {
             /** @description Opaque keyset token for the next page; empty on the last page. */
             continue?: string;
             items: components["schemas"]["SettingKey"][];
-            /**
-             * Format: double
-             * @description Server-side duration of the request in milliseconds.
-             */
-            took_ms: number;
-        };
-        ListZoneRecord: {
-            /** @description Opaque keyset token for the next page; empty on the last page. */
-            continue?: string;
-            items: components["schemas"]["ZoneRecord"][];
             /**
              * Format: double
              * @description Server-side duration of the request in milliseconds.
@@ -6096,6 +6088,8 @@ export interface components {
             builtinAdmin: boolean;
             description?: string;
             disabled: boolean;
+            /** @description The service account's single writer (kudurru.io/managed-by): api for one the API manages, which the reviewed commands change; another manager is refused with 409 managed_by. */
+            managedBy?: string;
             name: string;
             namespace: string;
             /**
@@ -6959,6 +6953,21 @@ export interface components {
             recordType: string;
             setIdentifier?: string;
             targets: string[] | null;
+        };
+        ZoneRecordList: {
+            /** @description Opaque keyset token for the next page; empty on the last page. */
+            continue?: string;
+            items: components["schemas"]["ZoneRecord"][];
+            /**
+             * @description desired: the endpoints of the zone's DNSRecordSets, each naming its record set. served: the RRsets this node answers from (the complete SQLite runtime): a publish-only (public) endpoint, a disabled or expired one and one the build refused are not listed, and a row names a record set only when exactly one live desired endpoint of the request's captured objects has its name, type and view.
+             * @enum {string}
+             */
+            source: "desired" | "served";
+            /**
+             * Format: double
+             * @description Server-side duration of the request in milliseconds.
+             */
+            took_ms: number;
         };
         ZoneSummary: {
             /** @enum {string} */
@@ -26392,7 +26401,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ListZoneRecord"];
+                    "application/json": components["schemas"]["ZoneRecordList"];
                 };
             };
             /** @description Bad Request */
