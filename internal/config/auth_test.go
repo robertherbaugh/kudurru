@@ -74,7 +74,7 @@ func TestAuthValidation(t *testing.T) {
 		{"auth: { session: { secure: maybe } }", "auth.session.secure"},
 		{"auth: { session: { idleTimeout: 10s } }", "auth.session.idleTimeout"},
 		{"auth: { session: { idleTimeout: 2h, lifetime: 1h } }", "auth.session.lifetime"},
-		{"auth: { kubernetes: { mode: impersonate } }", "impersonate is planned for v0.2"},
+		{"auth: { kubernetes: { mode: impersonate } }", "impersonate requires store.driver: kube"},
 		{"auth: { kubernetes: { mode: magic } }", "auth.kubernetes.mode"},
 		{"auth: { identityProviders: [ { issuer: x } ] }", "identityProviders[0].id"},
 		{"auth: { identityProviders: [ { id: a }, { id: a } ] }", "defined twice"},
@@ -85,5 +85,26 @@ func TestAuthValidation(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: err = %v, want %q", tc.yaml, err, tc.want)
 		}
+	}
+}
+
+// D386: impersonate is an opt-in of the kube driver; sar stays the default.
+func TestAuthKubernetesImpersonateMode(t *testing.T) {
+	cfg, err := Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Auth.Kubernetes.Mode != KubernetesModeSAR {
+		t.Fatalf("default auth.kubernetes.mode = %q, want sar", cfg.Auth.Kubernetes.Mode)
+	}
+	cfg, err = loadYAML(t, "store: { driver: kube }\nauth: { kubernetes: { mode: impersonate } }")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Auth.Kubernetes.Mode != KubernetesModeImpersonate {
+		t.Fatalf("auth.kubernetes.mode = %q, want impersonate", cfg.Auth.Kubernetes.Mode)
+	}
+	if _, err := loadYAML(t, "store: { driver: sqlite }\nauth: { kubernetes: { mode: impersonate } }"); err == nil || !strings.Contains(err.Error(), "requires store.driver: kube") {
+		t.Fatalf("impersonate with the sqlite driver: err = %v", err)
 	}
 }

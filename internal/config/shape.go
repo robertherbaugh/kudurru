@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // The typed-control metadata of a key (ux-plan contract C1): closed sets,
@@ -39,6 +40,8 @@ const (
 	FormatIP   Format = "ip"
 	FormatIPv4 Format = "ipv4"
 	FormatIPv6 Format = "ipv6"
+	// FormatIPPort is a numeric IP address with an optional nonzero port.
+	FormatIPPort Format = "ipport"
 	// FormatCIDR is a CIDR prefix or a single address (10.0.0.0/8,
 	// 192.0.2.1).
 	FormatCIDR Format = "cidr"
@@ -52,6 +55,8 @@ const (
 	// optional "name=" prefix.
 	FormatUpstream Format = "upstream"
 	FormatEmail    Format = "email"
+	// FormatDateTime is an absolute RFC3339 timestamp with a time zone.
+	FormatDateTime Format = "date-time"
 )
 
 // Ref names the kind of object a value refers to.
@@ -70,6 +75,8 @@ const (
 // the keys and values of a map (Keys, Values) or the members of an object
 // (Fields). A Key carries the same constraints for its own value.
 type Shape struct {
+	// Help describes this nested value for operators; it does not affect validation.
+	Help string
 	Type Type
 	// Enum is the closed set of a string value.
 	Enum []Option
@@ -488,6 +495,13 @@ func checkFormat(f Format, v string) string {
 		if a, err := netip.ParseAddr(v); err != nil || a.Zone() != "" {
 			return "is not an IP address"
 		}
+	case FormatIPPort:
+		if a, err := netip.ParseAddr(v); err == nil && a.Zone() == "" {
+			return ""
+		}
+		if a, err := netip.ParseAddrPort(v); err != nil || a.Addr().Zone() != "" || a.Port() == 0 {
+			return "is not a numeric IP address with an optional nonzero port"
+		}
 	case FormatIPv4:
 		if a, err := netip.ParseAddr(v); err != nil || !a.Is4() {
 			return "is not an IPv4 address"
@@ -519,6 +533,10 @@ func checkFormat(f Format, v string) string {
 	case FormatEmail:
 		if a, err := mail.ParseAddress(v); err != nil || a.Address != v {
 			return "is not an email address"
+		}
+	case FormatDateTime:
+		if _, err := time.Parse(time.RFC3339, v); err != nil {
+			return "is not an absolute RFC3339 timestamp"
 		}
 	}
 	return ""

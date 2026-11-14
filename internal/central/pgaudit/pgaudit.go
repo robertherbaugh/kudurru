@@ -96,7 +96,7 @@ func (t *Target) append(ctx context.Context, src audit.Source, evs []audit.Event
 				continue
 			}
 			seq++
-			c := canonical(ev, src.Node())
+			c := canonical(audit.PrepareDocuments(ev), src.Node())
 			if stub != "" {
 				c.Before, c.After, c.Request, c.Reason = nil, nil, audit.Request{}, stub
 			}

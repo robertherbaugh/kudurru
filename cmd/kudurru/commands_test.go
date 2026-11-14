@@ -20,6 +20,9 @@ func TestConvenienceGolden(t *testing.T) {
 		{"records-list-wide", []string{"records", "list", "home-example-com", "-o", "wide"}},
 		{"lists-list", []string{"lists", "list", "-A"}},
 		{"lists-search", []string{"lists", "search", "ads.example.net"}},
+		{"lists-rpz", []string{"lists", "rpz"}},
+		{"lists-rpz-all-wide", []string{"lists", "rpz", "-A", "-o", "wide"}},
+		{"lists-rpz-name", []string{"lists", "rpz", "threats"}},
 		{"query-forwarded", []string{"query", "www.example.com"}},
 		{"query-blocked", []string{"query", "ads.example.net", "a", "--client", "192.168.1.23"}},
 		{"stats-summary", []string{"stats", "summary"}},
@@ -37,6 +40,15 @@ func TestConvenienceGolden(t *testing.T) {
 		t.Run(tc.golden, func(t *testing.T) {
 			golden(t, h, tc.golden, h.mustRunT(t, tc.args...))
 		})
+	}
+	if got := h.api.requested("GET /api/v1/blocklists/_rpz"); len(got) != 2 || !strings.HasSuffix(got[0], "?namespace=default") || strings.Contains(got[1], "namespace") {
+		t.Fatalf("RPZ feed requests %v", got)
+	}
+	if _, _, err := h.run("lists", "rpz", "threats", "-A"); err == nil || !strings.Contains(err.Error(), "--all-namespaces cannot be combined with a list name") {
+		t.Fatalf("lists rpz <name> -A: %v", err)
+	}
+	if got := h.api.requested("GET /api/v1/blocklists/default/threats/rpz"); len(got) != 1 {
+		t.Fatalf("list RPZ feed requests %v", got)
 	}
 	if got := h.api.requested("GET /api/v1/audit"); len(got) != 2 || !strings.Contains(got[0], "since=2026-10-10T12%3A00%3A00Z") {
 		t.Fatalf("audit requests %v", got)

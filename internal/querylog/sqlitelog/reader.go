@@ -35,6 +35,7 @@ const (
 
 // snapshot is a consistent copy of the writer state a read needs.
 type snapshot struct {
+	scope    Scope // exact central metadata captured in this read snapshot
 	now      time.Time
 	hourDone int64 // the _1h rollups are readable for hours < hourDone
 	dayDone  int64 // the _1d rollups are readable for days < dayDone
@@ -45,10 +46,10 @@ type snapshot struct {
 	hours       map[int64]*hourAcc
 }
 
-// read runs fn in a read transaction with a snapshot of the pending
-// accumulators. A rollup flush between the snapshot and the transaction
-// would count the flushed minutes twice, so the read is retried when the
-// flush sequence moved (at most twice; flushes happen once a minute).
+// read pins a WAL snapshot while holding the writer lock, alongside copying
+// the pending accumulators. Acquiring the reader connection first keeps pool
+// waits outside the writer lock. Later writes/flushes cannot mix newer SQL
+// facts or domain-index entries with an older pending-accumulator snapshot.
 func (r *Reader) read(ctx context.Context, withHours bool, fn func(tx *rtx, s *snapshot) error) error {
 	if r.c != nil {
 		return r.c.read(ctx, fn)
@@ -56,52 +57,63 @@ func (r *Reader) read(ctx context.Context, withHours bool, fn func(tx *rtx, s *s
 	w := r.w
 	w.readers.Add(1)
 	defer w.readers.Add(-1)
-	for attempt := 0; ; attempt++ {
+	tx, err := w.r.BeginTx(ctx, nil)
+	if err != nil {
 		w.mu.Lock()
-		if w.closed {
-			w.mu.Unlock()
+		closed := w.closed
+		w.mu.Unlock()
+		if closed {
 			return ErrClosed
 		}
-		seq := w.flushSeq.Load()
-		hourDone, dayDone := w.readableProgress()
-		s := &snapshot{now: w.clock.Now(), hourDone: hourDone, dayDone: dayDone, pendingFrom: w.hourDone, minutes: make(map[int64]*minuteAcc, len(w.acc.minutes))}
-		for ts, m := range w.acc.minutes {
-			c := newMinuteAcc()
-			c.merge(m)
-			s.minutes[ts] = c
-		}
-		if withHours {
-			s.hours = make(map[int64]*hourAcc, len(w.acc.hours))
-			for ts, h := range w.acc.hours {
-				c := newHourAcc()
-				c.merge(h)
-				s.hours[ts] = c
-			}
-		}
+		return fmt.Errorf("sqlitelog: begin read: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	w.mu.Lock()
+	if w.closed {
 		w.mu.Unlock()
-
-		tx, err := w.r.BeginTx(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("sqlitelog: begin read: %w", err)
-		}
-		err = fn(&rtx{tx: tx, d: r.d}, s)
-		_ = tx.Rollback()
-		if err != nil {
-			return err
-		}
-		if w.flushSeq.Load() == seq || attempt >= 2 {
-			return nil
+		return ErrClosed
+	}
+	// BeginTx is deferred in SQLite: a real table read establishes its WAL
+	// end mark. SELECT 1 alone would not pin the database snapshot.
+	var version string
+	if err := tx.QueryRowContext(ctx, `SELECT value FROM meta WHERE key=?`, metaSchemaVersion).Scan(&version); err != nil {
+		w.mu.Unlock()
+		return fmt.Errorf("sqlitelog: pin read snapshot: %w", err)
+	}
+	hourDone, dayDone := w.readableProgress()
+	s := &snapshot{now: w.clock.Now(), hourDone: hourDone, dayDone: dayDone, pendingFrom: w.hourDone, minutes: make(map[int64]*minuteAcc, len(w.acc.minutes))}
+	for ts, m := range w.acc.minutes {
+		c := newMinuteAcc()
+		c.merge(m)
+		s.minutes[ts] = c
+	}
+	if withHours {
+		s.hours = make(map[int64]*hourAcc, len(w.acc.hours))
+		for ts, h := range w.acc.hours {
+			c := newHourAcc()
+			c.merge(h)
+			s.hours[ts] = c
 		}
 	}
+	w.mu.Unlock()
+	return fn(&rtx{tx: tx, d: r.d}, s)
 }
 
-func (r *Reader) scope(start time.Time) Scope {
-	if r.c != nil {
-		return r.c.scope(start)
+// readScoped returns metadata from the same snapshot as the answer. Sharing a
+// central reader between concurrent requests never shares mutable result state.
+func (r *Reader) readScoped(ctx context.Context, withHours bool, start time.Time, fn func(*rtx, *snapshot) error) (Scope, error) {
+	var scope Scope
+	err := r.read(ctx, withHours, func(tx *rtx, s *snapshot) error {
+		scope = s.scope
+		if r.c == nil {
+			scope = Scope{Scope: ScopeNode, Nodes: []NodeResult{{Name: r.w.opts.Node, OK: true}}}
+		}
+		return fn(tx, s)
+	})
+	for i := range scope.Nodes {
+		scope.Nodes[i].TookMS = float64(time.Since(start).Microseconds()) / 1000
 	}
-	return Scope{Scope: ScopeNode, Nodes: []NodeResult{{
-		Name: r.w.opts.Node, OK: true, TookMS: float64(time.Since(start).Microseconds()) / 1000,
-	}}}
+	return scope, err
 }
 
 // window applies the defaults: the last 24 hours ending now.
@@ -228,8 +240,8 @@ func (r *Reader) baseSeries(ctx context.Context, tx *rtx, s *snapshot, from, unt
 		var parts []string
 		var args []any
 		for _, sg := range segs {
-			parts = append(parts, `SELECT `+bucketExpr(step, false)+` AS bk, `+strings.Join(baseCols, ",")+` FROM `+sg.t.table+` WHERE ts>=? AND ts<?`)
 			args = append(args, sg.from, sg.until)
+			parts = append(parts, `SELECT `+bucketExpr(step, false)+` AS bk, `+strings.Join(baseCols, ",")+` FROM `+sg.t.table+` WHERE ts>=? AND ts<?`+tx.nodeWhere("", &args))
 		}
 		q := `SELECT bk, ` + sumCols(baseCols) + ` FROM (` + strings.Join(parts, " UNION ALL ") + `) AS u GROUP BY bk` //nolint:gosec // identifiers and expressions are package constants; values are bound parameters
 		rows, err := tx.QueryContext(ctx, q, args...)
@@ -277,25 +289,11 @@ type keyedSource struct {
 	// pending contributions
 	minute func(m *minuteAcc, emit func(k, a, b int64))
 	hour   func(h *hourAcc, emit func(k, a, b int64))
-	// hourFull reports a pending hour whose contribution is not kept in
-	// memory (hourAcc.full); its segment is read from the fact table.
-	hourFull func(h *hourAcc) bool
+	// domainFacts uses the exact retained-fact domain/hour index.
+	domainFacts bool
 }
 
 type keyedRow struct{ bk, k, a, b int64 }
-
-// anyFull reports whether a pending hour in [from, until) is full for src.
-func anyFull(src keyedSource, hours map[int64]*hourAcc, from, until int64) bool {
-	if src.hourFull == nil {
-		return false
-	}
-	for h, acc := range hours {
-		if h >= from && h < until && src.hourFull(acc) {
-			return true
-		}
-	}
-	return false
-}
 
 // keyed aggregates a dimension over the window: one SQL statement over the
 // tier segments plus the pending accumulators (passed as JSON), grouped by
@@ -311,7 +309,11 @@ func (r *Reader) keyed(ctx context.Context, tx *rtx, s *snapshot, src keyedSourc
 	nowS := s.now.Unix()
 	for _, sg := range segs {
 		if sg.t.facts {
-			if src.hour != nil && s.hours != nil && sg.from >= s.pendingFrom && sg.from%3600 == 0 && sg.until >= nowS && !anyFull(src, s.hours, sg.from, sg.until) {
+			if src.domainFacts && (step <= 0 || step%3600 == 0) {
+				parts = append(parts, domainFactParts(tx, sg, step, &args)...)
+				continue
+			}
+			if src.hour != nil && s.hours != nil && sg.from >= s.pendingFrom && sg.from%3600 == 0 && sg.until >= nowS {
 				for h, acc := range s.hours {
 					if h >= sg.from && h < sg.until {
 						src.hour(acc, func(k, a, b int64) { pending.add(bucketOf(h, step), k, a, b) })
@@ -323,12 +325,12 @@ func (r *Reader) keyed(ctx context.Context, tx *rtx, s *snapshot, src keyedSourc
 			if src.fWhere != "" {
 				where = " AND " + src.fWhere
 			}
-			parts = append(parts, `SELECT `+bucketExpr(step, true)+` AS bk, `+src.fKey+` AS k, `+src.fA+` AS a, `+src.fB+` AS b FROM query WHERE ts>=? AND ts<?`+where)
 			args = append(args, sg.from*1e6, sg.until*1e6)
+			parts = append(parts, `SELECT `+bucketExpr(step, true)+` AS bk, `+src.fKey+` AS k, `+src.fA+` AS a, `+src.fB+` AS b FROM query WHERE ts>=? AND ts<?`+where+tx.nodeWhere("", &args))
 			continue
 		}
-		parts = append(parts, `SELECT `+bucketExpr(step, false)+` AS bk, `+src.key+` AS k, `+src.a+` AS a, `+src.b+` AS b FROM `+sg.t.table+` WHERE ts>=? AND ts<?`)
 		args = append(args, sg.from, sg.until)
+		parts = append(parts, `SELECT `+bucketExpr(step, false)+` AS bk, `+src.key+` AS k, `+src.a+` AS a, `+src.b+` AS b FROM `+sg.t.table+` WHERE ts>=? AND ts<?`+tx.nodeWhere("", &args))
 	}
 	if src.minute != nil {
 		for ts, m := range s.minutes {
@@ -469,12 +471,7 @@ func (r *Reader) domainSource(s *snapshot) keyedSource {
 		},
 		key: "domain", a: "total", b: "blocked",
 		fKey: "domain", fA: "1", fB: "CASE WHEN status BETWEEN 16 AND 23 THEN 1 ELSE 0 END",
-		hour: func(h *hourAcc, emit func(k, a, b int64)) {
-			for d, v := range h.domains {
-				emit(d, v[0], v[1])
-			}
-		},
-		hourFull: func(h *hourAcc) bool { return h.full },
+		domainFacts: true,
 	}
 }
 

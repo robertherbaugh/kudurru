@@ -1,0 +1,3 @@
+SOURCE             ID             NAME             MACS                ADDRESSES                                           STALE   EXPIRES                TAGS    OBSERVED
+dhcp/lan           192.168.1.40   printer          02:00:5e:00:00:40   192.168.1.40(assigned)                              false   2026-10-11T18:00:00Z   -       -
+integration-0f3a   tv             Living room TV   02:00:5e:00:00:41   192.168.1.41(superseded by integration-0f3a/tv-2)   true    2026-10-11T11:30:00Z   media   2026-10-11T11:00:00Z

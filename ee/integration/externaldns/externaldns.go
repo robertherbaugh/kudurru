@@ -72,7 +72,7 @@ const IntegrationName = "external-dns"
 // Manager is the store manager of every record set the webhook writes.
 var Manager = store.ManagerIntegration(IntegrationName)
 
-// LabelDNSName records the DNS name a record set holds (sanitised for a
+// LabelDNSName records the DNS name a record set holds (sanitized for a
 // label value when needed); the record set name may be a hash.
 const LabelDNSName = "externaldns.kudurru.io/name"
 
@@ -127,6 +127,8 @@ type Options struct {
 	ZoneSelector map[string]string
 	// Address is the listener address of Run (externalDNS.webhook.listen).
 	Address string
+	// TokenFile optionally requires a shared bearer credential, loaded once by New.
+	TokenFile string
 	// Registerer receives the kudurru_externaldns_* metrics; nil skips.
 	Registerer prometheus.Registerer
 	Logger     *slog.Logger
@@ -135,19 +137,20 @@ type Options struct {
 // OptionsFrom maps the externalDNS.webhook settings onto Options; the
 // caller adds Store, Validator, Cache, Registerer and Logger.
 func OptionsFrom(c config.ExternalDNSWebhook) Options {
-	return Options{Namespace: c.Namespace, ZoneSelector: c.ZoneSelector, Address: c.Listen}
+	return Options{Namespace: c.Namespace, ZoneSelector: c.ZoneSelector, Address: c.Listen, TokenFile: c.TokenFile}
 }
 
 // Server is the webhook provider. It is an http.Handler.
 type Server struct {
-	opts Options
-	log  *slog.Logger
-	mux  *http.ServeMux
+	opts  Options
+	log   *slog.Logger
+	mux   *http.ServeMux
+	token *webhookToken
 
 	requests *prometheus.CounterVec
 	changes  *prometheus.CounterVec
 
-	// mu serialises ApplyChanges in this process; replicas are kept
+	// mu serializes ApplyChanges in this process; replicas are kept
 	// consistent by the store's optimistic concurrency.
 	mu sync.Mutex
 }
@@ -160,13 +163,18 @@ func New(opts Options) (*Server, error) {
 	if opts.Namespace == "" {
 		return nil, errors.New("externaldns: Namespace is required")
 	}
+	token, err := loadWebhookToken(opts.TokenFile)
+	if err != nil {
+		return nil, err
+	}
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
 	s := &Server{
-		opts: opts,
-		log:  opts.Logger.With("component", "externaldns"),
-		mux:  http.NewServeMux(),
+		opts:  opts,
+		log:   opts.Logger.With("component", "externaldns"),
+		mux:   http.NewServeMux(),
+		token: token,
 		requests: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kudurru_externaldns_requests_total", Help: "external-dns webhook requests by route and status code.",
 		}, []string{"route", "code"}),
@@ -185,7 +193,16 @@ func New(opts Options) (*Server, error) {
 }
 
 // ServeHTTP implements http.Handler.
-func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) { s.mux.ServeHTTP(w, r) }
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if s.token != nil && !s.token.accepts(r.Header) {
+		w.Header().Set("WWW-Authenticate", `Bearer realm="kudurru-externaldns"`)
+		w.Header().Set("Cache-Control", "no-store")
+		s.requests.WithLabelValues("auth", strconv.Itoa(http.StatusUnauthorized)).Inc()
+		httpError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	s.mux.ServeHTTP(w, r)
+}
 
 // Run serves on Options.Address until ctx ends.
 func (s *Server) Run(ctx context.Context) error {
@@ -207,7 +224,7 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(ln) }()
 	s.log.Info("external-dns webhook listening", "address", ln.Addr().String(), "namespace", s.opts.Namespace)
-	if ap, err := netip.ParseAddrPort(ln.Addr().String()); err == nil && !ap.Addr().Unmap().IsLoopback() {
+	if ap, err := netip.ParseAddrPort(ln.Addr().String()); err == nil && !ap.Addr().Unmap().IsLoopback() && s.token == nil {
 		s.log.Warn("the external-dns webhook has no authentication and listens beyond loopback: restrict who reaches it (NetworkPolicy, firewall)",
 			"address", ln.Addr().String())
 	}

@@ -1,0 +1,421 @@
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"net/netip"
+	"slices"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/robertherbaugh/kudurru/api/runtimekinds"
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/api"
+	"github.com/robertherbaugh/kudurru/internal/auth/providercoordinator"
+	"github.com/robertherbaugh/kudurru/internal/auth/providerhost"
+	"github.com/robertherbaugh/kudurru/internal/auth/providerregistry"
+	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
+	"github.com/robertherbaugh/kudurru/internal/auth/security"
+	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
+	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
+	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/license"
+	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
+	"github.com/robertherbaugh/kudurru/internal/listfetcher"
+	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
+	"github.com/robertherbaugh/kudurru/internal/primaryruntime/currentguard"
+	"github.com/robertherbaugh/kudurru/internal/querylog"
+	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
+	"github.com/robertherbaugh/kudurru/internal/serving"
+	"github.com/robertherbaugh/kudurru/internal/servingauth"
+	"github.com/robertherbaugh/kudurru/internal/servingbuild"
+	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	"github.com/robertherbaugh/kudurru/internal/store/validator"
+	"github.com/robertherbaugh/kudurru/internal/tsigkeys"
+	"github.com/robertherbaugh/kudurru/internal/upstream"
+)
+
+// servingRuntimeOptions borrows already constructed local infrastructure. Host
+// configuration is detached once; canonical singleton settings come from each
+// complete candidate. Secret/trust loading finishes before any owner is pinned.
+type servingRuntimeOptions struct {
+	Store          *sqlite.Store
+	Config         *config.Config
+	Validator      *validator.Validator
+	License        *license.Manager
+	AuthKeys       *authKeyOwner
+	Keyrings       *servingbuild.KeyringOwner
+	Catalog        *catalogue.Holder
+	Transferred    *servingbuild.TransferredRuntime
+	Lists          *listfetcher.DiskCache
+	Namespace      string
+	Upstreams      upstream.Options
+	Now            func() time.Time
+	Logging        *querylogRuntime
+	TSIG           *tsigRuntime
+	InternalClient *internalapi.Client
+	// AnchorWall replaces this node's wall clock in the mounted follower
+	// poller's checkpoint comparison only (D369). Nil means time.Now; only tests
+	// set it. Samples, receipts and stored state never use it.
+	AnchorWall func() time.Time
+	// AnchorReadyHook runs before each supervisor readiness classification;
+	// a non-nil error is that classification's result. Nil in production;
+	// only tests set it.
+	AnchorReadyHook func(context.Context) error
+	// Registerer receives the kudurru_root_anchor_* metrics once; nil leaves
+	// them unregistered (tests).
+	Registerer prometheus.Registerer
+	// IntegrationBounds replaces the integration host's capture and
+	// operation bounds where nonzero. Zero in production, which keeps the
+	// host's defaults (10 and 30 seconds); only tests set it.
+	IntegrationBounds integrationBounds
+}
+
+// integrationBounds is a test override of the integration host's bounds.
+type integrationBounds struct {
+	Capture, Operation time.Duration
+}
+
+// servingRuntime owns the complete publisher and provider/primary workers.
+// Manager acquisition, the store, license loader and key owners remain borrowed.
+// The root joins RunWriter before stopping public serving and calling Close.
+type servingRuntime struct {
+	opts          servingRuntimeOptions
+	schema        *servingbuild.Schema
+	member        *clusterreplica.Coordinator
+	memberForward *clusterreplica.EnrolledForwarder
+	publisher     *serving.Publisher
+	providers     *providercoordinator.Coordinator
+	host          *providerhost.Owner
+	resources     *providerresources.Owner
+	primary       *primaryRuntime
+	anchorPin     currentguard.PinFunc
+	anchors       *rootAnchorOwner
+	anchorWriter  anchorWriterControl
+	anchorStatus  anchorStatusBoard
+	status        *servingbuild.PrimaryStatus
+	integrations  *integrationRuntime
+	catalog       *servingbuild.CatalogRuntime
+	local         []providerregistry.DesiredConfig
+	life          context.Context
+	cancel        context.CancelFunc
+	lifecycle     chan struct{}
+	mu            sync.Mutex
+	workers       sync.WaitGroup
+	running       bool
+	writing       bool
+	closing       bool
+
+	// objectAPI is the public API server whose object command bodies execute
+	// follower-forwarded object mutations on this primary. Nil refuses them.
+	objectAPI atomic.Pointer[api.Server]
+
+	// itemPace replaces defaultItemPace for multi-item requests; tests only.
+	itemPace *itemPace
+	// memberPullInterval replaces the scheduled pull's default interval of an
+	// enrolled member; tests only. Zero keeps the default.
+	memberPullInterval time.Duration
+	// memberForwardUpdateBound replaces memberForwardUpdateTimeout, the
+	// bound of a follower's forwarded UPDATE; tests only. Zero keeps the
+	// default.
+	memberForwardUpdateBound time.Duration
+	// memberSelfPull replaces the explicit pull that a follower makes after a
+	// forwarded self-service command commits; tests only. Nil pulls through
+	// member.
+	memberSelfPull func(context.Context) error
+
+	// afterMigrationCut runs after a later migration step captures its cut
+	// and before the step's command; tests only.
+	afterMigrationCut func(ctx context.Context, index int)
+
+	// anchorUpdaterWall replaces the mounted writer updater's wall clock (its
+	// due and checkpoint comparisons only); nil means time.Now. Tests only.
+	anchorUpdaterWall func() time.Time
+
+	// memberRelay runs when a follower received the primary's answer to a
+	// forwarded HTTP command, before it checks its own source again and
+	// relays the answer; tests only. Nil does nothing.
+	memberRelay func(context.Context)
+
+	// anchorCaptureRead runs right after a root anchor operation read its
+	// image, before it checks that image is still current; tests only. Nil
+	// does nothing.
+	anchorCaptureRead func()
+}
+
+func newServingRuntime(ctx context.Context, o servingRuntimeOptions) (_ *servingRuntime, err error) {
+	if ctx == nil || o.Store == nil || o.Config == nil || o.Validator == nil || o.License == nil || o.AuthKeys == nil || o.Keyrings == nil || o.Catalog == nil || o.Transferred == nil || o.Lists == nil {
+		return nil, serving.ErrComponents
+	}
+	if o.TSIG != nil && (o.TSIG.store != o.Store || o.TSIG.encryption != o.AuthKeys || o.TSIG.rings != o.Keyrings) {
+		return nil, serving.ErrComponents
+	}
+	if o.Now == nil {
+		o.Now = time.Now
+	}
+	input, err := loadProviderStatic(ctx, providerStaticOptions{Config: o.Config, Keys: o.AuthKeys, Namespace: o.Namespace})
+	if err != nil {
+		return nil, err
+	}
+	prepared, err := providerhost.PrepareStatic(ctx, input)
+	if err != nil {
+		input.Release()
+		return nil, err
+	}
+	defer prepared.Release()
+	// Parse into a fresh value so neither caller edits nor nested maps can change
+	// a held serving dependency. loadProviderStatic bounded provider input first.
+	raw, err := json.Marshal(o.Config)
+	if err != nil {
+		return nil, serving.ErrDependency
+	}
+	var host config.Config
+	if err = json.Unmarshal(raw, &host); err != nil {
+		return nil, serving.ErrDependency
+	}
+	host.EnvLocked, host.Source = slices.Clone(o.Config.EnvLocked), o.Config.Source
+	o.Config = &host
+	s := &servingRuntime{opts: o, local: input.LocalProviders, lifecycle: make(chan struct{}, 1)}
+	s.lifecycle <- struct{}{}
+	s.life, s.cancel = context.WithCancel(context.Background())
+	defer func() {
+		if err != nil {
+			_ = s.Close(context.Background())
+		}
+	}()
+	s.anchors, err = newRootAnchorOwner(ctx, o.Store, &host)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.admitAnchors(ctx); err != nil {
+		return nil, err
+	}
+	if o.Registerer != nil {
+		if err := o.Registerer.Register(newAnchorMetrics(s)); err != nil {
+			return nil, err
+		}
+	}
+	scheme, err := runtimekinds.NewScheme()
+	if err != nil {
+		return nil, err
+	}
+	schema, err := servingbuild.NewSchema(scheme, o.Validator, runtimeowners.ValidateEntry, runtimeowners.ValidateImage)
+	if err != nil {
+		return nil, err
+	}
+	s.schema = schema
+	authSchema := servingauth.Schema{Scheme: scheme, Kinds: schema.PrimaryImageOptions(ctx, o.Store.Info().ClusterID).Validation.Kinds, SchemaVersion: store.SchemaVersion}
+	s.resources, err = providerresources.New(providerresources.Options{Now: o.Now})
+	if err != nil {
+		return nil, err
+	}
+	s.catalog, err = servingbuild.NewCatalogRuntime(o.Catalog, host.Blocking.Catalogue)
+	if err != nil {
+		return nil, err
+	}
+	capture, err := providerDependencyCapture(s.captureHost, func(ctx context.Context, image *replication.Image) (providercoordinator.Capture, error) {
+		return s.providers.Capture(ctx, image)
+	})
+	if err != nil {
+		return nil, err
+	}
+	capture, err = s.catalog.CaptureDependencies(capture)
+	if err != nil {
+		return nil, err
+	}
+	capture, err = o.Transferred.CaptureDependencies(capture)
+	if err != nil {
+		return nil, err
+	}
+	var anchorStore *sqlite.Store
+	if s.anchors.admission.current() {
+		anchorStore = o.Store
+	}
+	builder, err := servingbuild.New(servingbuild.Options{Schema: schema, Lists: o.Lists, Namespace: o.Namespace, Capture: capture, Authority: o.Store.ServingAuthority, AnchorStore: anchorStore, Now: o.Now, Upstreams: o.Upstreams, PrepareLogging: func(ctx context.Context, cfg config.Querylog) (*querylog.Captured, error) {
+		if o.Logging == nil {
+			return &querylog.Captured{}, nil
+		}
+		previous := o.Logging.current.Load()
+		if s.publisher != nil {
+			if lease, err := s.publisher.Capture(); err == nil {
+				defer lease.Release()
+				if value, ok := lease.Bundle().Component("logging"); ok {
+					previous, _ = value.(*querylog.Captured)
+				}
+			}
+		}
+		return o.Logging.prepare(ctx, cfg, previous)
+	}, PrepareIntegrations: func(ctx context.Context, image *replication.Image, primary *primaryruntime.PreparedImage, at time.Time) (*servingbuild.InventoryOwner, []*public.ClientGroup, error) {
+		return prepareIntegrationImage(ctx, image, primary, schema, at)
+	}})
+	if err != nil {
+		return nil, err
+	}
+	// Wrap inside-out; actual acquisition is publication -> providers -> host
+	// (license/auth keys) -> TSIG -> catalog -> managers -> SQLite.
+	source, err := o.Transferred.GuardSource(o.Store)
+	if err != nil {
+		return nil, err
+	}
+	source, err = s.catalog.GuardSource(source)
+	if err != nil {
+		return nil, err
+	}
+	source, err = o.Keyrings.GuardSource(source)
+	if err != nil {
+		return nil, err
+	}
+	source, err = servingbuild.GuardProviderSource(source, servingbuild.ProviderSourceOptions{Resources: s.resources, PinHost: func(ctx context.Context, fn func() error) error { return s.host.PinHost(ctx, fn) }, Now: o.Now})
+	if err != nil {
+		return nil, err
+	}
+	s.publisher, err = serving.New(serving.Options{Source: source, Prepare: func(ctx context.Context, candidate serving.Candidate) (serving.Prepared, error) {
+		return s.anchors.prepare(ctx, candidate, builder)
+	}, Required: append(serving.CompleteManifest(), recursiveRootComponent), PreparationTimeout: 30 * time.Second, DependencyChanges: func() <-chan struct{} { return s.providers.Changes() },
+		Report: (&servingFailureLog{}).report})
+	if err != nil {
+		return nil, err
+	}
+	// A list source compiled empty because this node holds no body for it
+	// yet prepares again once the body is stored (listfetcher.AwaitBody,
+	// D373). Wake is buffered and never blocks.
+	o.Lists.OnAwaitedBody(s.publisher.Wake)
+	publisher := s.publisher
+	s.anchors.served = func(seal *recursiveRootSeal) bool {
+		return publisher.ServedWithin(recursiveRootComponent, seal, servedSuccessorGrace)
+	}
+	s.host, err = providerhost.New(providerhost.Options{Store: o.Store, Publisher: s.publisher, Resources: s.resources, License: o.License, Schema: authSchema, Static: prepared, Now: o.Now, PinAuthKeys: o.AuthKeys.withCurrent, Withdraw: func(ctx context.Context, tx *sqlite.CommandTx, at time.Time) error {
+		return security.AcceptProviderAuthorities(ctx, tx, []providerregistry.DesiredAuthority{}, at)
+	}})
+	if err != nil {
+		return nil, err
+	}
+	s.providers, err = providercoordinator.New(providercoordinator.Options{Store: o.Store, Publisher: s.publisher, Resources: s.resources, Schema: authSchema, Host: s.host.Host, HostChanges: s.host.Changes, PinHost: s.pinProviderHost, Admit: s.host.CheckAdmission, Now: o.Now})
+	if err != nil {
+		return nil, err
+	}
+	pin, err := servingbuild.NewPrimaryPin(servingbuild.PrimaryPinOptions{Publisher: s.publisher, Resources: s.resources, PinHostCurrent: s.host.PinHostCurrent, Keyrings: o.Keyrings, Catalog: s.catalog, Transferred: o.Transferred, Now: o.Now})
+	if err != nil {
+		return nil, err
+	}
+	s.anchorPin = pin
+	var notifySource netip.Addr
+	if host.Notify.Source != "" {
+		notifySource, err = netip.ParseAddr(host.Notify.Source)
+		if err != nil {
+			return nil, err
+		}
+	}
+	s.primary, err = newPrimaryRuntime(s.life, primaryRuntimeOptions{Store: o.Store, Publisher: s.publisher, Schema: schema, Pin: pin, NotifySource: notifySource})
+	if err != nil {
+		return nil, err
+	}
+	// An enrolled follower forwards a signed UPDATE to its primary (D381).
+	// The hook reads memberForward, which root installs before any listener runs.
+	s.primary.follower = s.forwardUpdate
+	s.status, err = servingbuild.NewPrimaryStatus(servingbuild.PrimaryStatusOptions{Store: o.Store, Publisher: s.publisher, Pin: pin, Now: o.Now})
+	if err != nil {
+		return nil, err
+	}
+	s.integrations, err = newIntegrationRuntime(s, schema, pin)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *servingRuntime) captureHost(ctx context.Context, image *replication.Image) (servingbuild.Dependencies, error) {
+	registry, err := providerregistry.Decode(image.Payload.Security, image.Term.ClusterID)
+	if err != nil {
+		return servingbuild.Dependencies{}, err
+	}
+	var host providercoordinator.HostCapture
+	err = s.resources.WithCurrent(ctx, func(_ *providerresources.Pinned) error {
+		return s.host.PinHost(ctx, func() error { var e error; host, e = s.host.Host(ctx, registry); return e })
+	})
+	if err != nil {
+		if host.Release != nil {
+			host.Release()
+		}
+		return servingbuild.Dependencies{}, err
+	}
+	keys := s.opts.Keyrings.Capture()
+	encryptionCurrent := func() bool { return true }
+	var management *servingbuild.TSIGManagement
+	if prepared := keys.Prepared(); prepared != nil {
+		cut := s.opts.AuthKeys.owner.Capture()
+		if !cut.Current() || cut.Value() == nil || prepared.Matches(ctx, image) != nil {
+			if host.Release != nil {
+				host.Release()
+			}
+			return servingbuild.Dependencies{}, serving.ErrDependency
+		}
+		sealer, err := tsigkeys.NewSealer(cut.Value().current, cut.Value().previous)
+		if err != nil || prepared.EncryptionIdentity() != sealer.Identity() {
+			if host.Release != nil {
+				host.Release()
+			}
+			return servingbuild.Dependencies{}, serving.ErrDependency
+		}
+		encryptionCurrent = cut.Current
+		management, err = servingbuild.NewTSIGManagement(prepared, sealer, func() bool { return s.life.Err() == nil && host.Current() && cut.Current() })
+		if err != nil {
+			if host.Release != nil {
+				host.Release()
+			}
+			return servingbuild.Dependencies{}, err
+		}
+	} else if s.opts.TSIG != nil {
+		if host.Release != nil {
+			host.Release()
+		}
+		return servingbuild.Dependencies{}, serving.ErrDependency
+	}
+	id := sha256.Sum256([]byte("serving-host/v1/" + host.Identity + "/" + keys.Identity()))
+	// DNS answers are computed from the keyring and this root's lifetime
+	// only; the provider host and its license cut serve HTTP authentication
+	// and TSIG management (D378).
+	dnsCurrent := func() bool { return s.life.Err() == nil && keys.Current() }
+	return servingbuild.Dependencies{Identity: hex.EncodeToString(id[:]), Host: s.opts.Config, Auth: host.Auth, Keys: keys.Keys(), KeyringIdentity: keys.Identity(), TSIG: management, Current: func() bool { return s.life.Err() == nil && host.Current() && keys.Current() && encryptionCurrent() }, DNSCurrent: dnsCurrent, Release: host.Release}, nil
+}
+
+// Close cancels both root lifetimes and joins before retiring owned resources.
+// Held bundles retain their own immutable references after this returns.
+func (s *servingRuntime) Close(ctx context.Context) error {
+	if s == nil || ctx == nil {
+		return serving.ErrComponents
+	}
+	s.mu.Lock()
+	s.closing = true
+	s.cancel()
+	s.mu.Unlock()
+	done := make(chan struct{})
+	go func() { s.workers.Wait(); close(done) }()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+	}
+	s.opts.Lists.OnAwaitedBody(nil)
+	if s.publisher != nil {
+		s.publisher.Close()
+	}
+	var err error
+	if s.host != nil {
+		err = s.host.Close(ctx)
+	}
+	if s.providers != nil {
+		err = errors.Join(err, s.providers.Close(ctx))
+	} else if s.resources != nil {
+		err = errors.Join(err, s.resources.Close())
+	}
+	return err
+}

@@ -1,0 +1,3 @@
+NAME      SOURCE   ORIGIN                STATE     SERIAL       RULES   IGNORED   EXPIRES   NODE
+threats   vendor   rpz.vendor.example.   serving   2026101107   1197    4         in 110m   node-a
+threats   rpz-1    local.rpz.            expired   12 (last)    2       0         3h ago    node-a

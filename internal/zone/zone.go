@@ -29,20 +29,23 @@ const (
 // need no locks. Changes produce a new Zone that is swapped in through a
 // Snapshot.
 type Zone struct {
-	name          string // lowercased absolute origin
-	key           string
-	typ           v1alpha1.ZoneType
-	serial        uint32
-	upstream      string // forward zones
-	fallback      bool
-	fallbackGroup string
-	apexOverride  bool // apex has user records, beyond generated SOA/NS
-	access        accessPolicy
-	transfer      accessPolicy
+	name             string // lowercased absolute origin
+	key              string
+	typ              v1alpha1.ZoneType
+	serial           uint32
+	upstream         string // forward zones
+	fallback         bool
+	fallbackGroup    string
+	apexOverride     bool // apex has user records, beyond generated SOA/NS
+	access           accessPolicy
+	transfer         accessPolicy
+	dnssecValidation *bool // nullable forward-zone override
 	// transferKeys are the canonical names of spec.policy.transferTSIGKeyRefs.
 	transferKeys []string
 	notify       v1alpha1.NotifyMode
 	notifyTo     []netip.AddrPort
+	notifyKey    string
+	notifySource netip.Addr
 
 	tree tree
 	// index maps every key in tree to its node. The tree gives canonical
@@ -51,7 +54,7 @@ type Zone struct {
 	// ~17-level pointer chase through a 100k-name tree (dev-docs/milestones/m1/zone.md).
 	index  map[string]*node
 	apex   *node
-	soa    *dns.SOA // served SOA (status.serial)
+	soa    *dns.SOA // served SOA (external primary's serial for secondaries)
 	negSOA *dns.SOA // SOA for negative answers: TTL = min(TTL, minimum)
 	negNs  []dns.RR // authority section of negative answers: {negSOA}
 
@@ -64,15 +67,35 @@ type Zone struct {
 	records    int
 	nextExpiry time.Time
 	generation int64
+	// secondaryIdentity binds transferred data to its configuration object.
+	secondaryIdentity    string
+	hasSignatures        bool
+	secondaryProofs      *SecondaryProofs
+	stub                 *stubRoute
+	committed            bool
+	committedUnavailable bool
+
+	// views are the client-group variants of a primary zone, sorted by
+	// group (view.go, D403); base links a variant to its default zone.
+	views []clientView
+	base  *Zone
 }
 
 // Name returns the lowercased absolute zone name.
 func (z *Zone) Name() string { return z.name }
 
-// Type returns the zone type (primary or forward in v0.1).
+// Type returns the zone type.
 func (z *Zone) Type() v1alpha1.ZoneType { return z.typ }
 
-// Serial returns the SOA serial served for the zone (status.serial).
+// holdsRecords reports whether the zone is built from record sets: primary
+// zones and external zones (whose record sets the Kubernetes source adapter
+// maintains, D402).
+func (z *Zone) holdsRecords() bool {
+	return z.typ == v1alpha1.ZoneTypePrimary || z.typ == v1alpha1.ZoneTypeExternal
+}
+
+// Serial returns the served SOA serial: status.serial for primary zones,
+// the external primary's serial for secondary zones.
 func (z *Zone) Serial() uint32 { return z.serial }
 
 // Generation returns metadata.generation of the DNSZone the zone was built
@@ -90,10 +113,20 @@ func (z *Zone) HasFallback() bool { return z.fallback }
 // normal resolver routing.
 func (z *Zone) FallbackGroup() string { return z.fallbackGroup }
 
+// DNSSECValidation returns a private nullable forward-zone validation override.
+func (z *Zone) DNSSECValidation() *bool {
+	if z.dnssecValidation == nil {
+		return nil
+	}
+	value := *z.dnssecValidation
+	return &value
+}
+
 // ContentHash returns the canonical content hash ("sha256:<hex>") the
 // controller compares with status.contentHash to decide on a serial bump.
-// It covers every served RR including the SOA fields, except the serial,
-// and the fallback routing settings.
+// Primary hashes cover served RRs except the SOA serial and include fallback
+// routing settings. Secondary hashes cover raw uncompressed RRs,
+// including the external serial.
 func (z *Zone) ContentHash() string { return z.hash }
 
 // RecordCount returns the number of served RRs excluding the SOA.
@@ -105,10 +138,19 @@ func (z *Zone) Names() int { return z.tree.count }
 
 // NextExpiry returns the earliest expiresAt among the records that were
 // still live at build time, or the zero time. The zone cache rebuilds the
-// zone at that instant so expired records leave service on time.
+// zone at that instant so expired records leave service on time. For a
+// secondary with data it returns the transferred zone's expiry.
 func (z *Zone) NextExpiry() time.Time { return z.nextExpiry }
 
-// SOA returns a copy of the zone's SOA record, or nil for forward zones.
+// CommittedAvailableAt checks the durable primary deadline. Other models are
+// unaffected. AvailableAt's owner must delegate here before its type check.
+func (z *Zone) CommittedAvailableAt(now time.Time) bool {
+	return !z.committed || (!z.committedUnavailable && z.soa != nil &&
+		(z.nextExpiry.IsZero() || now.Before(z.nextExpiry)))
+}
+
+// SOA returns a copy of the zone's SOA record, or nil for forward zones and
+// secondary placeholders.
 func (z *Zone) SOA() *dns.SOA {
 	if z.soa == nil {
 		return nil
@@ -126,15 +168,24 @@ func (z *Zone) Contains(name string) bool {
 // address (dev-docs/design-record.md §7.1 step 6).
 func (z *Zone) QueryAllowed(client netip.Addr) bool { return z.access.allowed(client) }
 
+// QueryClientIndependent proves the compiled original query policy is uniform.
+// Desired settings cannot replace this proof for a frozen committed primary.
+func (z *Zone) QueryClientIndependent() bool {
+	return z != nil && len(z.access.acl) == 0 &&
+		(z.access.mode == v1alpha1.AccessAllow || z.access.mode == v1alpha1.AccessDeny)
+}
+
 // TransferAllowed applies spec.policy.zoneTransfer, transferACL and
 // transferTSIGKeyRefs to a transfer request (AXFR or IXFR out). The access
 // mode decides on the client address exactly as queryAccess does (an empty
 // mode is deny); when transferTSIGKeyRefs is non-empty the request must
 // also have been signed with one of those keys. tsigKey is the verified
 // key name ("" for an unsigned request), compared case-insensitively.
-// Forward zones and primary zones with fallback are never transferable.
+// Available secondary zones are transferable; forward zones, primary zones
+// with fallback, and secondary placeholders or expired data are not.
 func (z *Zone) TransferAllowed(client netip.Addr, tsigKey string) bool {
-	if z.typ != v1alpha1.ZoneTypePrimary || z.fallback || !z.transfer.allowed(client) {
+	if (z.typ != v1alpha1.ZoneTypePrimary && z.typ != v1alpha1.ZoneTypeSecondary) ||
+		z.fallback || !z.AvailableAt(time.Now()) || !z.transfer.allowed(client) {
 		return false
 	}
 	if len(z.transferKeys) == 0 {
@@ -153,6 +204,22 @@ func (z *Zone) NotifyMode() v1alpha1.NotifyMode { return z.notify }
 // NotifyTargets returns spec.policy.notifyTargets as addresses with the
 // port defaulted to 53.
 func (z *Zone) NotifyTargets() []netip.AddrPort { return slices.Clone(z.notifyTo) }
+
+// NotifyKey returns the explicit NOTIFY key, or the first transfer key for
+// compatibility. Empty means unsigned only when neither selects a key.
+func (z *Zone) NotifyKey() string {
+	if z.notifyKey != "" {
+		return z.notifyKey
+	}
+	if len(z.transferKeys) != 0 {
+		return z.transferKeys[0]
+	}
+	return ""
+}
+
+// NotifySource returns the zone's explicit source. An invalid address means
+// inherit the host's notify.source, then system selection when that is unset.
+func (z *Zone) NotifySource() netip.Addr { return z.notifySource }
 
 // NameServer is one apex NS host and the in-zone addresses (glue) the zone
 // itself publishes for it.
@@ -205,6 +272,8 @@ func (z *Zone) RRsets(fn func(*RRset) bool) {
 
 // BuildOptions tune Build.
 type BuildOptions struct {
+	// Records optionally reuses per-object parsing; it never caches serving decisions.
+	Records *RecordCache
 	// Now is the instant expiresAt is compared with; zero means time.Now().
 	Now time.Time
 	// MergeUnion merges endpoints of the same name and type from different
@@ -218,13 +287,15 @@ type BuildOptions struct {
 // namespace/name) so that "Duplicated on the later object" is
 // deterministic.
 type Builder struct {
-	z       *Zone
-	spec    v1alpha1.DNSZoneSpec
-	now     time.Time
-	merge   bool
-	nsNames []string
+	records     *RecordCache
+	recordScope parseScope
+	z           *Zone
+	spec        v1alpha1.DNSZoneSpec
+	now         time.Time
+	merge       bool
+	nsNames     []string
 	// owners maps an endpoint identity to the source that claimed it
-	// first. Endpoints that are not served (disabled, expired, view-scoped)
+	// first. Endpoints that are not served (disabled, expired, publish-only)
 	// still claim their identity, so toggling one never moves ownership
 	// (the controller's rule, dev-docs/milestones/m1/controller.md).
 	owners map[identity]string
@@ -237,24 +308,50 @@ type Builder struct {
 	dnames int
 	// policyErrs are the non-fatal spec.policy errors (PolicyErrors).
 	policyErrs field.ErrorList
+	// views holds the client-group view data by group ID until Build
+	// (view.go, D403); viewErrs and viewServed are Build's outcome.
+	views      map[string]*pendingView
+	viewOwners map[viewIdentity]string
+	viewErrs   map[string]field.ErrorList
+	viewServed map[string]bool
+	// viewFence reports why data outside the builder (the dynamic records
+	// of a committed primary) hides view data at an owner name, or ""
+	// (FenceViews).
+	viewFence func(owner string) string
 }
 
 // identity is the duplicate-detection key of an endpoint within a zone:
 // owner, type and the external-dns set identifier. Endpoints with
 // different set identifiers are distinct (kudurru has no routing policies,
 // so their records are served as one RRset); the same identity from a
-// later source is Duplicated.
+// later source is Duplicated. Client-group view endpoints have their own
+// identities (viewIdentity), distinct from the default endpoint of one
+// name and type: the view's RRset replaces the default one for the group
+// (D403).
 type identity struct {
 	key   string
 	t     uint16
 	setID string
 }
 
+// viewIdentity is the identity of an endpoint in a client-group view. The
+// group is the ClientGroup ID (ViewGroupID): views of the same name in two
+// namespaces refer to two ClientGroups and never share a variant.
+type viewIdentity struct {
+	identity
+	group string
+}
+
 // NewBuilder validates the DNSZone and returns a Builder for its records.
 // The errors are field paths into the DNSZone (spec.zoneName,
 // spec.policy.queryACL[2], ...); when there are any the zone cannot be
-// built and the Builder is nil. Zone types other than primary and forward
-// are rejected until their release (secondary, stub and external in v0.2).
+// built and the Builder is nil. Zone types other than primary, external and
+// forward are rejected here. Secondary and stub zones are built from
+// transferred or discovered data by BuildSecondary and BuildStub instead;
+// catalog and secondaryCatalog zones are not served. An external zone is
+// built like a primary zone from the record sets the Kubernetes source
+// adapter maintains for it (ServedRecordSets selects them, D402); only the
+// Kubernetes driver serves it.
 //
 // Errors in the transfer and notify parts of spec.policy do not stop the
 // zone from being served; they fail closed instead (transfers denied, a
@@ -271,10 +368,10 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 		errs = append(errs, field.Invalid(specPath.Child("zoneName"), spec.ZoneName, "must be a domain name"))
 	}
 	switch spec.Type {
-	case v1alpha1.ZoneTypePrimary, v1alpha1.ZoneTypeForward:
+	case v1alpha1.ZoneTypePrimary, v1alpha1.ZoneTypeExternal, v1alpha1.ZoneTypeForward:
 	default:
 		errs = append(errs, field.NotSupported(specPath.Child("type"), spec.Type,
-			[]v1alpha1.ZoneType{v1alpha1.ZoneTypePrimary, v1alpha1.ZoneTypeForward}))
+			[]v1alpha1.ZoneType{v1alpha1.ZoneTypePrimary, v1alpha1.ZoneTypeExternal, v1alpha1.ZoneTypeForward}))
 	}
 	if spec.Fallback != nil && spec.Type != v1alpha1.ZoneTypePrimary {
 		errs = append(errs, field.Forbidden(specPath.Child("fallback"), "fallback is only supported for primary zones"))
@@ -285,6 +382,12 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 	transfer, terrs := compileTransfer(spec.Policy, policyPath)
 	keys, kerrs := compileKeyRefs(spec.Policy.TransferTSIGKeyRefs, policyPath.Child("transferTSIGKeyRefs"))
 	notify, targets, nerrs := compileNotify(spec.Policy, policyPath)
+	notifyKey, notifySource, noerrs := compileNotifyOptions(spec.Policy, policyPath)
+	if len(noerrs) > 0 {
+		// Never turn an invalid explicit choice into compatibility fallback.
+		notify = v1alpha1.NotifyNone
+	}
+	nerrs = append(nerrs, noerrs...)
 	var policyErrs field.ErrorList
 	if len(terrs) > 0 || len(kerrs) > 0 {
 		// Fail closed: a transfer policy that does not compile allows
@@ -330,6 +433,8 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 		transferKeys: keys,
 		notify:       notify,
 		notifyTo:     targets,
+		notifyKey:    notifyKey,
+		notifySource: notifySource,
 		generation:   dz.Generation,
 	}
 	if spec.Fallback != nil {
@@ -339,13 +444,18 @@ func NewBuilder(dz *v1alpha1.DNSZone, opts BuildOptions) (*Builder, field.ErrorL
 	}
 	if spec.Type == v1alpha1.ZoneTypeForward {
 		z.upstream = DefaultUpstreamGroup
+		if spec.Forward != nil && spec.Forward.DNSSECValidation != nil {
+			value := *spec.Forward.DNSSECValidation
+			z.dnssecValidation = &value
+		}
 		if spec.Forward != nil && spec.Forward.UpstreamGroup != "" {
 			z.upstream = spec.Forward.UpstreamGroup
 		}
 	} else {
 		z.apex = z.tree.upsert(key, z.name)
 	}
-	return &Builder{z: z, spec: spec, now: now, merge: opts.MergeUnion, nsNames: nsNames,
+	return &Builder{
+		records: opts.Records, recordScope: recordScope(dz), z: z, spec: spec, now: now, merge: opts.MergeUnion, nsNames: nsNames,
 		owners: map[identity]string{}, nameSource: map[string]string{}, policyErrs: policyErrs}, nil
 }
 
@@ -364,10 +474,13 @@ func hostName(s string) (string, error) {
 	if _, ok := dns.IsDomainName(n); !ok {
 		return "", errBadName
 	}
-	if _, err := canonicalKey(n); err != nil {
+	key, err := canonicalKey(n)
+	if err != nil {
 		return "", err
 	}
-	return n, nil
+	// SOA and apex NS bypass endpoint parsing. Give their names the same
+	// stable presentation spelling as owners, including escaped letters.
+	return nameFromKey(key), nil
 }
 
 func (b *Builder) defaultTTL() uint32 {
@@ -377,17 +490,30 @@ func (b *Builder) defaultTTL() uint32 {
 	return DefaultTTL
 }
 
-// Served reports whether an endpoint is served at instant now: disabled
-// records, expired records and records scoped to a view are not. Views are
-// a v0.2 feature; until the rewrite stage can answer per client group an
-// endpoint with any view is withheld rather than leaked to every client
-// ("public" endpoints are never served by design, D29).
+// Served reports whether an endpoint is served in the default view at
+// instant now: disabled records, expired records and records scoped to a
+// view are not. "public" endpoints are never served by design (D29); an
+// endpoint whose view names a ClientGroup is served only to that group,
+// from the zone's view of it (Live, D403).
 func Served(ep *v1alpha1.Endpoint, now time.Time) bool {
 	k := ep.Kudurru
 	if k == nil {
 		return true
 	}
-	if k.Disabled || k.View != "" {
+	if k.View != "" {
+		return false
+	}
+	return Live(ep, now)
+}
+
+// Live reports whether an endpoint is neither disabled nor expired at now,
+// whatever its view.
+func Live(ep *v1alpha1.Endpoint, now time.Time) bool {
+	k := ep.Kudurru
+	if k == nil {
+		return true
+	}
+	if k.Disabled {
 		return false
 	}
 	if k.ExpiresAt != nil && !now.Before(k.ExpiresAt.Time) {
@@ -399,11 +525,18 @@ func Served(ep *v1alpha1.Endpoint, now time.Time) bool {
 // AddRecordSet adds every endpoint of a DNSRecordSet. source identifies the
 // object in Duplicated messages ("namespace/name"); errors carry paths of
 // the form spec.endpoints[i].targets[j].
+//
+// Client-group views refer to ClientGroups by bare name; AddRecordSet uses
+// the name as the group ID. Build passes each record set's namespace.
 func (b *Builder) AddRecordSet(source string, eps []v1alpha1.Endpoint) field.ErrorList {
+	return b.addRecordSet("", source, eps)
+}
+
+func (b *Builder) addRecordSet(namespace, source string, eps []v1alpha1.Endpoint) field.ErrorList {
 	var errs field.ErrorList
 	base := field.NewPath("spec", "endpoints")
 	for i := range eps {
-		errs = append(errs, b.Add(source, base.Index(i), &eps[i])...)
+		errs = append(errs, b.add(namespace, source, base.Index(i), &eps[i])...)
 	}
 	return errs
 }
@@ -411,16 +544,30 @@ func (b *Builder) AddRecordSet(source string, eps []v1alpha1.Endpoint) field.Err
 // Add adds one endpoint. An endpoint is all-or-nothing: when any target
 // fails to parse, or the endpoint conflicts with data already in the zone,
 // none of its records are added and the errors explain why. Disabled,
-// expired and view-scoped endpoints are skipped silently (Served).
+// expired and publish-only endpoints are skipped silently (Served). Live
+// endpoints of a client-group view go to that group's view (D403); the
+// group ID is the bare view name here (see AddRecordSet).
 func (b *Builder) Add(source string, path *field.Path, ep *v1alpha1.Endpoint) field.ErrorList {
-	if b.z.typ != v1alpha1.ZoneTypePrimary {
+	return b.add("", source, path, ep)
+}
+
+func (b *Builder) add(namespace, source string, path *field.Path, ep *v1alpha1.Endpoint) field.ErrorList {
+	if !b.z.holdsRecords() {
 		return field.ErrorList{field.Forbidden(path, fmt.Sprintf("%s zones hold no records", b.z.typ))}
 	}
+	if GroupView(ep) != "" && Live(ep, b.now) {
+		rrs, errs := ParseEndpoint(b.z.name, b.defaultTTL(), ep, path)
+		return b.addView(namespace, source, path, ep, rrs, errs)
+	}
 	if !Served(ep, b.now) {
-		b.claim(source, ep)
+		b.claim(namespace, source, ep)
 		return nil
 	}
 	rrs, errs := ParseEndpoint(b.z.name, b.defaultTTL(), ep, path)
+	return b.addParsed(source, path, ep, rrs, errs)
+}
+
+func (b *Builder) addParsed(source string, path *field.Path, ep *v1alpha1.Endpoint, rrs []dns.RR, errs field.ErrorList) field.ErrorList {
 	if len(errs) > 0 {
 		return errs
 	}
@@ -479,10 +626,15 @@ func (b *Builder) Add(source string, path *field.Path, ep *v1alpha1.Endpoint) fi
 		rr.Header().Name = n.name
 		set.add(rr)
 	}
-	if rrtype == dns.TypeCNAME && len(set.RRs) > 1 {
-		// Two sources merged under MergeUnion with different targets.
+	if (rrtype == dns.TypeCNAME || rrtype == dns.TypeDNAME) && len(set.RRs) > 1 {
+		// Two endpoints with different set identifiers, or two sources
+		// merged under MergeUnion, with different targets. A CNAME or DNAME
+		// RRset holds one record (RFC 2181 §10.1, RFC 6672 §2.4), and the
+		// committed primary refuses any other (BuildCommittedPrimary), so
+		// the later endpoint is dropped here and reported (D373).
 		set.RRs = set.RRs[:1]
-		return field.ErrorList{field.Invalid(path.Child("targets"), ep.Targets, "a name has at most one CNAME target; this one was dropped")}
+		set.TTL = set.RRs[0].Header().Ttl // the dropped record's TTL is not kept
+		return field.ErrorList{field.Invalid(path.Child("targets"), ep.Targets, fmt.Sprintf("a name has at most one %s target; this one was dropped", typeString(rrtype)))}
 	}
 	if k := ep.Kudurru; k != nil && k.ExpiresAt != nil {
 		if t := k.ExpiresAt.Time; b.z.nextExpiry.IsZero() || t.Before(b.z.nextExpiry) {
@@ -523,7 +675,7 @@ func (b *Builder) insertName(key, owner string) *node {
 // the content hash. The Builder must not be used afterwards.
 func (b *Builder) Build() *Zone {
 	z := b.z
-	if z.typ != v1alpha1.ZoneTypePrimary {
+	if !z.holdsRecords() {
 		z.hash = hashForward(z)
 		return z
 	}
@@ -593,6 +745,7 @@ func (b *Builder) Build() *Zone {
 	z.access.nsAddrs = append(z.access.nsAddrs, nsAddrs...)
 	z.transfer.nsAddrs = append(z.transfer.nsAddrs, nsAddrs...)
 	z.hash = contentHash(z)
+	b.finishViews()
 	return z
 }
 
@@ -737,12 +890,28 @@ func Build(dz *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet, opts BuildOption
 	out.Policy = b.PolicyErrors()
 	for _, rs := range sets {
 		src := rs.Namespace + "/" + rs.Name
-		if errs := b.AddRecordSet(src, rs.Spec.Endpoints); len(errs) > 0 {
+		var recordErrs field.ErrorList
+		if opts.Records == nil {
+			recordErrs = b.addRecordSet(rs.Namespace, src, rs.Spec.Endpoints)
+		} else {
+			parsed := b.ParseRecordSet(rs)
+			for i := range rs.Spec.Endpoints {
+				recordErrs = append(recordErrs, parsed.Add(src, i)...)
+			}
+		}
+		if errs := recordErrs; len(errs) > 0 {
 			if out.RecordSets == nil {
 				out.RecordSets = map[string]field.ErrorList{}
 			}
 			out.RecordSets[src] = append(out.RecordSets[src], errs...)
 		}
 	}
-	return b.Build(), out
+	z := b.Build()
+	for src, errs := range b.ViewErrors() {
+		if out.RecordSets == nil {
+			out.RecordSets = map[string]field.ErrorList{}
+		}
+		out.RecordSets[src] = append(out.RecordSets[src], errs...)
+	}
+	return z, out
 }

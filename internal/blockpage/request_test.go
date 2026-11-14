@@ -28,8 +28,28 @@ type requestFixture struct {
 	// unlicensed switches the request workflow off like a node without
 	// license.FeatureRequests.
 	unlicensed bool
-	reg        *prometheus.Registry
-	now        time.Time
+	// unavailable is the message of a node that cannot store requests now
+	// (an enrolled follower).
+	unavailable string
+	reg         *prometheus.Registry
+	now         time.Time
+}
+
+func TestStaticSettingsDisablePublicRequestWrites(t *testing.T) {
+	f := newRequestFixture(t)
+	cfg, err := config.FromFlat(config.Defaults())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Cluster.Role = "static"
+	cfg.UnblockRequests.Enabled = true
+	f.srv.Reconfigure(SettingsFrom(cfg))
+	if response := f.post(url.Values{}, "192.0.2.1:12345"); response.Code != http.StatusNotFound {
+		t.Fatal("static public request accepted or decoded the body", response.Code)
+	}
+	if f.book.Counts().Pending != 0 {
+		t.Fatal("static public request wrote an object")
+	}
 }
 
 func newRequestFixture(t *testing.T) *requestFixture {
@@ -40,9 +60,10 @@ func newRequestFixture(t *testing.T) *requestFixture {
 	finder := &fixedFinder{r: Reason{Kind: KindList, List: "default/ads", Rule: "||ads.example^"}, ok: true}
 	srv, err := New(Options{
 		Node: "node-a", Finder: finder, Requests: f.book, Registerer: f.reg, Now: clock,
-		RequestsAllowed: func() bool { return !f.unlicensed },
-		Settings:        Settings{ShowDetails: true, Requests: true, RequestRate: 5, BlockTTL: 10 * time.Minute},
-		Policy:          func(netip.Addr, time.Time) string { return "default/kids" },
+		RequestsAllowed:     func() bool { return !f.unlicensed },
+		RequestsUnavailable: func() string { return f.unavailable },
+		Settings:            Settings{ShowDetails: true, Requests: true, RequestRate: 5, BlockTTL: 10 * time.Minute},
+		Policy:              func(netip.Addr, time.Time) string { return "default/kids" },
 		Membership: func(netip.Addr, time.Time) ([]string, []string) {
 			return []string{"default/kids"}, []string{"default/kids"}
 		},
@@ -260,5 +281,68 @@ func TestRequestFormNeedsALicense(t *testing.T) {
 	f.unlicensed = false
 	if !strings.Contains(f.page("/", "10.0.20.5:4000"), "<form") {
 		t.Error("the form did not come back with the license")
+	}
+}
+
+// A node that cannot store a request (an enrolled follower: only the primary
+// writes the store) says so instead of showing a form whose post would fail.
+// It stores nothing, and an approval that reached it still shows.
+func TestRequestFormOnANodeThatCannotStoreRequests(t *testing.T) {
+	f := newRequestFixture(t)
+	wantRedirect(t, f.post(url.Values{"reason": {"homework"}}, "10.0.20.5:4000"), flashSent)
+	r := f.book.Lookup(netip.MustParseAddr("10.0.20.5"), "games.example")
+	if r == nil {
+		t.Fatal("fixture request was not stored")
+	}
+	wantRedirect(t, f.post(url.Values{"reason": {"games"}}, "10.0.20.7:4000"), flashSent)
+	declined := f.book.Lookup(netip.MustParseAddr("10.0.20.7"), "games.example")
+	if declined == nil {
+		t.Fatal("fixture request was not stored")
+	}
+	if _, err := f.book.Deny(context.Background(), "default", declined.Name, "", "user:admin"); err != nil {
+		t.Fatal(err)
+	}
+	f.unavailable = "This server cannot take a request for access right now."
+	if page := f.page("/", "10.0.20.7:4000"); !strings.Contains(page, "An administrator declined your request") || strings.Contains(page, "You can ask again") ||
+		strings.Contains(page, "<form") || !strings.Contains(page, f.unavailable) {
+		t.Fatalf("declined request on a node that cannot store requests:\n%s", page)
+	}
+	for _, remote := range []string{"10.0.20.5:4000", "10.0.20.6:4000"} {
+		page := f.page("/", remote)
+		if strings.Contains(page, "<form") || strings.Contains(page, "Request access</button>") || strings.Contains(page, "Update request") ||
+			strings.Contains(page, "you can add details below") || !strings.Contains(page, f.unavailable) {
+			t.Fatalf("page of %s on a node that cannot store requests:\n%s", remote, page)
+		}
+	}
+	// The pending requester still learns that a decision is outstanding;
+	// the client without a request sees only the reason.
+	if page := f.page("/", "10.0.20.5:4000"); !strings.Contains(page, "An administrator has not decided yet.") {
+		t.Fatalf("pending request lost its status on a node that cannot store requests:\n%s", page)
+	}
+	if page := f.page("/", "10.0.20.6:4000"); strings.Contains(page, "You asked for access") || strings.Contains(page, "declined") {
+		t.Fatalf("a client without a request saw a request status:\n%s", page)
+	}
+	w := f.post(url.Values{"reason": {"again"}}, "10.0.20.6:4000")
+	if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), f.unavailable) {
+		t.Fatalf("post on a node that cannot store requests: %d %s", w.Code, w.Body)
+	}
+	if f.book.Lookup(netip.MustParseAddr("10.0.20.6"), "games.example") != nil || f.book.Counts().Pending != 1 {
+		t.Fatal("a refused post stored a request")
+	}
+	if got := testutil.ToFloat64(f.srv.unblockRequests.WithLabelValues("unavailable")); got != 1 {
+		t.Errorf("unavailable metric %v", got)
+	}
+	// An approval that the node received is still shown, without the form.
+	f.now = f.now.Add(time.Minute)
+	if _, err := f.book.Approve(context.Background(), "default", r.Name, unblock.Decision{Duration: time.Hour}); err != nil {
+		t.Fatal(err)
+	}
+	page := f.page("/", "10.0.20.5:4000")
+	if !strings.Contains(page, "An administrator allowed this name until") || strings.Contains(page, "<form") || strings.Contains(page, f.unavailable) {
+		t.Fatalf("approved page on a node that cannot store requests:\n%s", page)
+	}
+	f.unavailable = ""
+	if !strings.Contains(f.page("/", "10.0.20.6:4000"), "<form") {
+		t.Error("the form did not come back")
 	}
 }

@@ -22,6 +22,7 @@ import (
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/loginlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/objcache"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -66,6 +67,9 @@ type Options struct {
 	// IPLimit and UserLimit are the login lockout policies; defaults
 	// DefaultIPLimit and DefaultUserLimit.
 	IPLimit, UserLimit *LimitPolicy
+	// SharedLimit replaces process-local password counters when mounted.
+	// Unavailable shared state refuses login; it never falls back locally.
+	SharedLimit *loginlimit.Limiter
 	// Logger receives login and bootstrap lines; default discards.
 	Logger *slog.Logger
 	// Now is the clock; default time.Now.
@@ -75,13 +79,14 @@ type Options struct {
 // Users is the local account store. It is safe for concurrent use; reads
 // come from the cache, so call Prime (and Run) before serving.
 type Users struct {
-	st     store.Store
-	cache  *objcache.Cache[*internalv1.LocalUser]
-	hasher *Hasher
-	ipLim  *Limiter
-	usrLim *Limiter
-	log    *slog.Logger
-	now    func() time.Time
+	st          store.Store
+	cache       *objcache.Cache[*internalv1.LocalUser]
+	hasher      *Hasher
+	ipLim       *Limiter
+	usrLim      *Limiter
+	sharedLimit *loginlimit.Limiter
+	log         *slog.Logger
+	now         func() time.Time
 
 	dummyOnce sync.Once
 	dummy     string
@@ -108,13 +113,14 @@ func New(opts Options) (*Users, error) {
 		opts.Now = time.Now
 	}
 	return &Users{
-		st:     opts.Store,
-		cache:  objcache.New[*internalv1.LocalUser](opts.Store, internalv1.KindLocalUser, objcache.Options{Logger: opts.Logger}),
-		hasher: opts.Hasher,
-		ipLim:  NewLimiter(*opts.IPLimit, opts.Now),
-		usrLim: NewLimiter(*opts.UserLimit, opts.Now),
-		log:    opts.Logger,
-		now:    opts.Now,
+		st:          opts.Store,
+		cache:       objcache.New[*internalv1.LocalUser](opts.Store, internalv1.KindLocalUser, objcache.Options{Logger: opts.Logger}),
+		hasher:      opts.Hasher,
+		ipLim:       NewLimiter(*opts.IPLimit, opts.Now),
+		usrLim:      NewLimiter(*opts.UserLimit, opts.Now),
+		sharedLimit: opts.SharedLimit,
+		log:         opts.Logger,
+		now:         opts.Now,
 	}, nil
 }
 
@@ -162,7 +168,8 @@ func PrincipalID(name string) string { return PrincipalIDPrefix + name }
 func Principal(usr *internalv1.LocalUser) auth.Principal {
 	return auth.Principal{
 		Kind: auth.KindUser, ID: PrincipalID(usr.Name), Name: usr.Name, Provider: Provider,
-		Groups: slices.Clone(usr.Spec.Groups), BuiltinAdmin: usr.Spec.BuiltinAdmin,
+		AccountUID: string(usr.UID),
+		Groups:     slices.Clone(usr.Spec.Groups), BuiltinAdmin: usr.Spec.BuiltinAdmin,
 		MustChangePassword: usr.Spec.MustChangePassword,
 	}
 }
@@ -202,6 +209,9 @@ func (u *Users) LoadPrincipal(_ context.Context, p auth.Principal) (auth.Princip
 	}
 	if usr.Spec.Disabled {
 		return auth.Principal{}, auth.Unauthenticated(ErrDisabled)
+	}
+	if p.AccountUID != string(usr.UID) || p.AccountUID == "" {
+		return auth.Principal{}, auth.Unauthenticated(errors.New("credential account identity does not match"))
 	}
 	// A credential issued before this account existed belongs to a deleted
 	// account of the same name (one-second resolution: session iat and
@@ -252,14 +262,39 @@ func (u *Users) dummyHash(ctx context.Context) string {
 // account returns ErrDisabled. Success resets the username's counter (not
 // the IP's: a valid account must not launder an IP's guesses) and records
 // lastLoginAt in the background.
+// With SharedLimit, one original bounded reservation covers both keys before
+// hashing; completion must persist before success. Pending attempts count toward
+// capacity, and unavailable or unknown shared completion cannot issue a login.
 func (u *Users) Login(ctx context.Context, username, password, clientIP string) (*internalv1.LocalUser, error) {
 	name := NormalizeUsername(username)
 	ipKey := limiterIPKey(clientIP)
-	if d := u.ipLim.Locked(ipKey); d > 0 {
-		return nil, &LockedError{By: "ip", RetryAfter: d}
+	var ticket loginlimit.Ticket
+	if u.sharedLimit != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, loginlimit.Lifetime)
+		defer cancel()
+		var err error
+		ticket, err = u.sharedLimit.Begin(ctx, ipKey, name)
+		var locked *loginlimit.Locked
+		if errors.As(err, &locked) {
+			return nil, &LockedError{By: "shared", RetryAfter: locked.RetryAfter}
+		}
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		if d := u.ipLim.Locked(ipKey); d > 0 {
+			return nil, &LockedError{By: "ip", RetryAfter: d}
+		}
+		if d := u.usrLim.Locked(name); d > 0 {
+			return nil, &LockedError{By: "user", RetryAfter: d}
+		}
 	}
-	if d := u.usrLim.Locked(name); d > 0 {
-		return nil, &LockedError{By: "user", RetryAfter: d}
+	finish := func(success bool) error {
+		if u.sharedLimit != nil {
+			return ticket.Finish(ctx, success)
+		}
+		return nil
 	}
 	usr, known := u.Get(name)
 	hash := ""
@@ -271,17 +306,31 @@ func (u *Users) Login(ctx context.Context, username, password, clientIP string) 
 	}
 	ok, err := u.hasher.Verify(ctx, hash, password)
 	if err != nil && !errors.Is(err, ErrBadHash) {
+		if limitErr := finish(false); limitErr != nil {
+			return nil, limitErr
+		}
 		return nil, err
 	}
 	if !ok || !known || usr.Spec.PasswordHash == "" {
-		u.ipLim.Fail(ipKey)
-		u.usrLim.Fail(name)
+		if limitErr := finish(false); limitErr != nil {
+			return nil, limitErr
+		}
+		if u.sharedLimit == nil {
+			u.ipLim.Fail(ipKey)
+			u.usrLim.Fail(name)
+		}
 		u.log.WarnContext(ctx, "local login failed", "username", SanitizeForLog(username), "client", clientIP, "known", known)
 		return nil, ErrInvalidCredentials
 	}
 	if usr.Spec.Disabled {
+		if limitErr := finish(false); limitErr != nil {
+			return nil, limitErr
+		}
 		u.log.WarnContext(ctx, "local login to a disabled account", "username", usr.Name, "client", clientIP)
 		return nil, ErrDisabled
+	}
+	if limitErr := finish(true); limitErr != nil {
+		return nil, limitErr
 	}
 	u.usrLim.Reset(name)
 	u.log.InfoContext(ctx, "local login", "username", usr.Name, "client", clientIP)
@@ -298,8 +347,8 @@ func (u *Users) recordLogin(ctx context.Context, name string) {
 	}
 }
 
-// Locked reports the remaining lockout for a client IP or username (for
-// tests and diagnostics).
+// Locked reports process-local lockouts for tests and diagnostics. It does not
+// query the shared owner; shared admission is performed only by Login.
 func (u *Users) Locked(clientIP, username string) time.Duration {
 	return max(u.ipLim.Locked(limiterIPKey(clientIP)), u.usrLim.Locked(NormalizeUsername(username)))
 }

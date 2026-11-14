@@ -1,0 +1,99 @@
+go: downloading github.com/AdguardTeam/dnsproxy v0.86.0
+go: downloading github.com/AdguardTeam/golibs v0.35.13
+go: downloading github.com/AdguardTeam/dnscrypt v0.0.2
+go: downloading github.com/ameshkov/dnsstamps v1.0.3
+go: downloading github.com/quic-go/quic-go v0.63.0
+go: downloading golang.org/x/crypto v0.57.0
+go: downloading github.com/quic-go/qpack v0.6.0
+go: downloading golang.org/x/exp v0.0.0-20260611194520-c48552f49976
+go: downloading github.com/robfig/cron/v3 v3.0.1
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/upstream
+cpu: AMD EPYC 9224 24-Core Processor                
+BenchmarkStrategies/fast/parallel_best-6         	    9570	    122495 ns/op	       116.0 p50-us	       316.0 p99-us	   12983 B/op	     202 allocs/op
+BenchmarkStrategies/fast/strict-6                	   11875	    100793 ns/op	        90.00 p50-us	       244.0 p99-us	    6235 B/op	     101 allocs/op
+BenchmarkStrategies/fast/random-6                	   10000	    111064 ns/op	        95.00 p50-us	       274.0 p99-us	    6251 B/op	     101 allocs/op
+BenchmarkStrategies/fast/rtt_weighted-6          	   10000	    103347 ns/op	        91.00 p50-us	       240.0 p99-us	    6273 B/op	     102 allocs/op
+BenchmarkStrategies/slow-first/parallel_best-6   	    8684	    137043 ns/op	       120.0 p50-us	       422.0 p99-us	   13053 B/op	     203 allocs/op
+BenchmarkStrategies/slow-first/strict-6          	     517	   2470078 ns/op	      2481 p50-us	      3070 p99-us	    6330 B/op	     102 allocs/op
+BenchmarkStrategies/slow-first/random-6          	    1316	    962444 ns/op	       229.0 p50-us	      3018 p99-us	    6276 B/op	     101 allocs/op
+BenchmarkStrategies/slow-first/rtt_weighted-6    	    7694	    168342 ns/op	        92.00 p50-us	      2305 p99-us	    6274 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/parallel_best-6       	     656	   1837706 ns/op	      1482 p50-us	      3622 p99-us	   13175 B/op	     204 allocs/op
+BenchmarkStrategies/jitter/strict-6              	     550	   2397781 ns/op	      2458 p50-us	      3928 p99-us	    6330 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/random-6              	     499	   2412814 ns/op	      2431 p50-us	      4757 p99-us	    6323 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/rtt_weighted-6        	     493	   2442938 ns/op	      2428 p50-us	      4672 p99-us	    6356 B/op	     103 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/upstream	14.778s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/upstream
+cpu: AMD EPYC 9224 24-Core Processor                
+BenchmarkStrategies/fast/parallel_best-6         	    8216	    135412 ns/op	       122.0 p50-us	       324.0 p99-us	   12984 B/op	     202 allocs/op
+BenchmarkStrategies/fast/strict-6                	   10000	    127204 ns/op	       105.0 p50-us	       285.0 p99-us	    6241 B/op	     101 allocs/op
+BenchmarkStrategies/fast/random-6                	   10000	    118152 ns/op	       101.0 p50-us	       285.0 p99-us	    6251 B/op	     101 allocs/op
+BenchmarkStrategies/fast/rtt_weighted-6          	   10000	    114982 ns/op	        95.00 p50-us	       297.0 p99-us	    6275 B/op	     102 allocs/op
+BenchmarkStrategies/slow-first/parallel_best-6   	    8368	    140718 ns/op	       127.0 p50-us	       342.0 p99-us	   13058 B/op	     203 allocs/op
+BenchmarkStrategies/slow-first/strict-6          	     505	   2509488 ns/op	      2532 p50-us	      2667 p99-us	    6316 B/op	     102 allocs/op
+BenchmarkStrategies/slow-first/random-6          	    1255	   1008984 ns/op	       294.0 p50-us	      2596 p99-us	    6266 B/op	     101 allocs/op
+BenchmarkStrategies/slow-first/rtt_weighted-6    	    4663	    289594 ns/op	       200.0 p50-us	      2496 p99-us	    6270 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/parallel_best-6       	     651	   1977437 ns/op	      1542 p50-us	      3777 p99-us	   13174 B/op	     204 allocs/op
+BenchmarkStrategies/jitter/strict-6              	     489	   2368577 ns/op	      2509 p50-us	      3660 p99-us	    6316 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/random-6              	     475	   2422138 ns/op	      2528 p50-us	      3723 p99-us	    6335 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/rtt_weighted-6        	     492	   2389854 ns/op	      2514 p50-us	      3673 p99-us	    6351 B/op	     103 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/upstream	14.893s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/upstream
+cpu: AMD EPYC 9224 24-Core Processor                
+BenchmarkStrategies/fast/parallel_best-6         	    9345	    127667 ns/op	       118.0 p50-us	       353.0 p99-us	   12987 B/op	     202 allocs/op
+BenchmarkStrategies/fast/strict-6                	   10000	    126958 ns/op	       102.0 p50-us	       374.0 p99-us	    6240 B/op	     101 allocs/op
+BenchmarkStrategies/fast/random-6                	   10000	    120387 ns/op	       101.0 p50-us	       360.0 p99-us	    6250 B/op	     101 allocs/op
+BenchmarkStrategies/fast/rtt_weighted-6          	   10000	    123452 ns/op	       104.0 p50-us	       288.0 p99-us	    6276 B/op	     102 allocs/op
+BenchmarkStrategies/slow-first/parallel_best-6   	    7695	    131032 ns/op	       122.0 p50-us	       317.0 p99-us	   13056 B/op	     203 allocs/op
+BenchmarkStrategies/slow-first/strict-6          	     498	   2509255 ns/op	      2533 p50-us	      2777 p99-us	    6317 B/op	     102 allocs/op
+BenchmarkStrategies/slow-first/random-6          	    1201	    985915 ns/op	       284.0 p50-us	      2597 p99-us	    6266 B/op	     101 allocs/op
+BenchmarkStrategies/slow-first/rtt_weighted-6    	    5476	    192057 ns/op	       109.0 p50-us	      2368 p99-us	    6276 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/parallel_best-6       	     577	   1920720 ns/op	      1546 p50-us	      3724 p99-us	   13177 B/op	     204 allocs/op
+BenchmarkStrategies/jitter/strict-6              	     518	   2360006 ns/op	      2485 p50-us	      3666 p99-us	    6333 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/random-6              	     519	   2382319 ns/op	      2513 p50-us	      3675 p99-us	    6340 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/rtt_weighted-6        	     516	   2345961 ns/op	      2493 p50-us	      3654 p99-us	    6371 B/op	     103 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/upstream	14.511s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/upstream
+cpu: AMD EPYC 9224 24-Core Processor                
+BenchmarkStrategies/fast/parallel_best-6         	    9344	    121875 ns/op	       114.0 p50-us	       291.0 p99-us	   12984 B/op	     202 allocs/op
+BenchmarkStrategies/fast/strict-6                	   10000	    102013 ns/op	        91.00 p50-us	       244.0 p99-us	    6240 B/op	     101 allocs/op
+BenchmarkStrategies/fast/random-6                	   10000	    102261 ns/op	        91.00 p50-us	       255.0 p99-us	    6252 B/op	     101 allocs/op
+BenchmarkStrategies/fast/rtt_weighted-6          	   12015	    100984 ns/op	        91.00 p50-us	       236.0 p99-us	    6270 B/op	     102 allocs/op
+BenchmarkStrategies/slow-first/parallel_best-6   	    8696	    124515 ns/op	       116.0 p50-us	       306.0 p99-us	   13055 B/op	     203 allocs/op
+BenchmarkStrategies/slow-first/strict-6          	     499	   2424074 ns/op	      2451 p50-us	      2623 p99-us	    6317 B/op	     102 allocs/op
+BenchmarkStrategies/slow-first/random-6          	    1234	   1016064 ns/op	       291.0 p50-us	      2629 p99-us	    6267 B/op	     101 allocs/op
+BenchmarkStrategies/slow-first/rtt_weighted-6    	    6637	    186502 ns/op	       105.0 p50-us	      2314 p99-us	    6270 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/parallel_best-6       	     612	   1932228 ns/op	      1545 p50-us	      3715 p99-us	   13169 B/op	     204 allocs/op
+BenchmarkStrategies/jitter/strict-6              	     506	   2391758 ns/op	      2491 p50-us	      3650 p99-us	    6318 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/random-6              	     505	   2361743 ns/op	      2483 p50-us	      3604 p99-us	    6330 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/rtt_weighted-6        	     512	   2400737 ns/op	      2477 p50-us	      3715 p99-us	    6345 B/op	     103 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/upstream	14.307s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/upstream
+cpu: AMD EPYC 9224 24-Core Processor                
+BenchmarkStrategies/fast/parallel_best-6         	   10000	    120089 ns/op	       115.0 p50-us	       272.0 p99-us	   12979 B/op	     202 allocs/op
+BenchmarkStrategies/fast/strict-6                	   11677	    104033 ns/op	        92.00 p50-us	       241.0 p99-us	    6236 B/op	     101 allocs/op
+BenchmarkStrategies/fast/random-6                	   11428	    103942 ns/op	        92.00 p50-us	       260.0 p99-us	    6245 B/op	     101 allocs/op
+BenchmarkStrategies/fast/rtt_weighted-6          	   10000	    119801 ns/op	        96.00 p50-us	       294.0 p99-us	    6275 B/op	     102 allocs/op
+BenchmarkStrategies/slow-first/parallel_best-6   	    9123	    126550 ns/op	       116.0 p50-us	       322.0 p99-us	   13054 B/op	     203 allocs/op
+BenchmarkStrategies/slow-first/strict-6          	     502	   2439165 ns/op	      2467 p50-us	      2581 p99-us	    6320 B/op	     102 allocs/op
+BenchmarkStrategies/slow-first/random-6          	    1216	    966480 ns/op	       281.0 p50-us	      2592 p99-us	    6266 B/op	     101 allocs/op
+BenchmarkStrategies/slow-first/rtt_weighted-6    	    4038	    293918 ns/op	       198.0 p50-us	      2480 p99-us	    6275 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/parallel_best-6       	     636	   1880920 ns/op	      1490 p50-us	      3686 p99-us	   13180 B/op	     205 allocs/op
+BenchmarkStrategies/jitter/strict-6              	     528	   2432977 ns/op	      2493 p50-us	      3622 p99-us	    6328 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/random-6              	     507	   2399060 ns/op	      2489 p50-us	      3603 p99-us	    6331 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/rtt_weighted-6        	     526	   2360064 ns/op	      2478 p50-us	      3605 p99-us	    6367 B/op	     103 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/upstream	14.798s

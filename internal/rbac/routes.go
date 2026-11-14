@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 )
 
 // Has reports whether permissions.yaml declares verb on resource.
@@ -72,5 +73,36 @@ func LintRoutes(p *Permissions, routes []Route) []error {
 			}
 		}
 	}
+	return errs
+}
+
+// LintVerbUse is the reverse of LintRoutes (D393): every verb that
+// permissions.yaml declares must be checked somewhere, or be listed under
+// reserved with the release that is to use it. used maps "<resource>.<verb>"
+// to where it is checked (a route, or a handler's own check); the caller
+// builds it from the mounted route table and the handler sources. A
+// reservation for a verb that is in use is stale and is an error too, so
+// the reserved list cannot hide a permission that already guards a route.
+func LintVerbUse(p *Permissions, used map[string][]string) []error {
+	var errs []error
+	for _, res := range p.ResourceNames() {
+		for _, verb := range p.Resources[res] {
+			perm := res + "." + verb
+			_, reserved := p.Reserved[perm]
+			switch where := used[perm]; {
+			case len(where) == 0 && !reserved:
+				errs = append(errs, fmt.Errorf("rbac: %s is declared but no route or handler checks it; use it or reserve it with its target release", perm))
+			case len(where) > 0 && reserved:
+				errs = append(errs, fmt.Errorf("rbac: %s is reserved but is checked by %s; remove the reservation", perm, where[0]))
+			}
+		}
+	}
+	for perm := range used {
+		res, verb, _ := strings.Cut(perm, ".")
+		if !p.Has(res, verb) {
+			errs = append(errs, fmt.Errorf("rbac: %s is checked by %s but permissions.yaml does not declare it", perm, used[perm][0]))
+		}
+	}
+	sort.Slice(errs, func(i, j int) bool { return errs[i].Error() < errs[j].Error() })
 	return errs
 }

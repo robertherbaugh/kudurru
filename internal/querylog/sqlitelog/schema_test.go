@@ -1,6 +1,7 @@
 package sqlitelog
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -120,6 +121,12 @@ func TestMetaAndReopen(t *testing.T) {
 	if id := w2.NextID(); id != 3 {
 		t.Errorf("NextID after reopen = %d", id)
 	}
+	// The reopened file keeps the auto_vacuum mode it was created with,
+	// though the pragma is set only on a fresh file.
+	var vacuum string
+	if err := w2.w.QueryRow("PRAGMA auto_vacuum").Scan(&vacuum); err != nil || vacuum != "2" {
+		t.Errorf("auto_vacuum after reopen = %q, %v", vacuum, err)
+	}
 	meta, _ = readMeta(context.Background(), w2.w)
 	if meta[metaPrivacy] != "hide_domains" {
 		t.Errorf("privacy_mode_at_write = %q", meta[metaPrivacy])
@@ -137,7 +144,16 @@ func TestMetaAndReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = db.Close()
+	before, err := os.ReadFile(path) //nolint:gosec // the test's file
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := Open(context.Background(), Options{Path: path, Node: "node-a", Logger: quietLogger()}); !errors.Is(err, ErrSchemaTooNew) {
 		t.Errorf("newer schema: got %v, want ErrSchemaTooNew", err)
+	}
+	// The refusal writes nothing, not even the header: the newer release
+	// gets its file back as it left it.
+	if after, err := os.ReadFile(path); err != nil || !bytes.Equal(after, before) { //nolint:gosec // the test's file
+		t.Errorf("the refused open changed %s (%v)", FileName, err)
 	}
 }

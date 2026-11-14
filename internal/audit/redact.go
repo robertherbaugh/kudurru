@@ -3,28 +3,38 @@ package audit
 import (
 	"encoding/json"
 
-	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/auditdocument"
 )
 
-// RedactDocuments returns an event safe for audit readers and exports, including
-// historical rows written before credential fields were excluded. Stored hashes
-// describe the original documents; verification must use the unredacted store.
+// RedactDocuments protects both new recordings and historical reader/export
+// documents. Verification always uses original stored bytes, never this copy.
 func RedactDocuments(ev Event) Event {
-	if !internalkinds.IsInternal(ev.Resource.Kind) {
-		return ev
-	}
-	ev.Before = redactDocument(ev.Resource.Kind, ev.Before)
-	ev.After = redactDocument(ev.Resource.Kind, ev.After)
+	ev.Before = auditdocument.Redact(ev.Resource.Kind, ev.Before)
+	ev.After = auditdocument.Redact(ev.Resource.Kind, ev.After)
 	return ev
 }
 
-func redactDocument(kind string, doc json.RawMessage) json.RawMessage {
-	if kind != internalkinds.KindAPIToken || len(doc) == 0 {
+// PrepareDocuments redacts before capping and hashing a new recording. Historical
+// verifier canonicalization must never call this function.
+func PrepareDocuments(ev Event) Event {
+	ev.Before = Document(ev.Resource.Kind, ev.Before)
+	ev.After = Document(ev.Resource.Kind, ev.After)
+	return ev
+}
+
+// Document redacts an original document before applying the audit size cap.
+// Use the runtime kind when known so private carriers are omitted as well.
+func Document(kind string, value any) json.RawMessage {
+	if value == nil {
 		return nil
 	}
-	var tok internalkinds.APIToken
-	if err := json.Unmarshal(doc, &tok); err != nil {
+	data, err := json.Marshal(value)
+	if err != nil {
 		return nil
 	}
-	return tok.AuditDocument()
+	safe := auditdocument.Redact(kind, data)
+	if len(safe) > MaxDiff {
+		safe, _ = json.Marshal(map[string]any{"truncated": true, "bytes": len(safe)})
+	}
+	return safe
 }

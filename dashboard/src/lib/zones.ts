@@ -4,7 +4,8 @@
 import type { EnumOption } from '../components/fields/EnumSelect';
 import type { AccessMode } from '../api/types';
 import { nameError } from './objectSchemas';
-import { hostError } from './rr';
+import { hostError, isIPv4, isIPv6 } from './rr';
+import { hostPortError } from './upstreams';
 
 export const QUERY_ACCESS: (EnumOption & { value: AccessMode })[] = [
   { value: 'allow', label: 'Everyone', help: 'Any client may query the zone (the default).' },
@@ -58,4 +59,52 @@ export function rnameOf(v: string): string {
   const at = t.indexOf('@');
   if (at < 0) return t;
   return `${t.slice(0, at).replace(/\./g, '\\.')}.${t.slice(at + 1).replace(/\.$/, '')}.`;
+}
+
+/** Secondary primaries use hostname/IP[:port], with TCP port 53 by default. */
+export function primaryEndpointError(value: string): string | null {
+  const endpoint = value.trim();
+  if (/\s/.test(endpoint)) return 'No spaces inside an address';
+  return hostPortError(endpoint);
+}
+
+/** Stub bootstrap endpoints select UDP (default) or TCP, with port 53 by default. */
+export function stubEndpointError(value: string): string | null {
+  const endpoint = value.trim();
+  if (endpoint.includes('://') && !/^(udp|tcp):\/\//.test(endpoint)) return 'Use udp:// or tcp://, or omit the protocol';
+  return primaryEndpointError(endpoint.replace(/^(udp|tcp):\/\//, ''));
+}
+
+/** TSIG references are DNS key names, not secret values. */
+export function tsigKeyNameError(value: string): string | null {
+  return value.trim() ? hostError(value) : null;
+}
+
+/** Optional explicit NOTIFY source; an unavailable valid address fails at send. */
+export function notifySourceError(value: string): string | null {
+  const source = value.trim();
+  if (!source) return null;
+  const error = 'Use an unscoped unicast IPv4 or IPv6 address, without a port';
+  if (isIPv4(source)) {
+    const first = Number(source.split('.')[0]);
+    return source === '0.0.0.0' || source === '255.255.255.255' || (first >= 224 && first <= 239) ? error : null;
+  }
+  if (!isIPv6(source)) return error;
+  try {
+    // URL canonicalization recognizes expanded zero/mapped/multicast spellings.
+    const canonical = new URL(`http://[${source}]/`).hostname.slice(1, -1).toLowerCase();
+    return canonical === '::' || canonical.startsWith('ff') || canonical.startsWith('::ffff:') ? error : null;
+  } catch {
+    return error;
+  }
+}
+
+/** The DNSZone label that puts a zone in a zone group (D385, v1alpha1.ZoneGroupLabel). */
+export const ZONE_GROUP_LABEL = 'kudurru.io/zonegroup';
+
+/** Why a zone-group name is not a valid label value, or null (internal/store/validator). */
+export function zoneGroupError(v: string): string | null {
+  if (!v) return 'Enter a zone group';
+  if (v.length > 63) return 'At most 63 characters';
+  return /^[A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?$/.test(v) ? null : 'Letters, digits, "-", "_" or ".", starting and ending with a letter or digit';
 }

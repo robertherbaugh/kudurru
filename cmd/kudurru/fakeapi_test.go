@@ -43,6 +43,8 @@ type fakeAPI struct {
 	streamConn int
 	lastIDs    []string
 	messages   []map[string]any
+	// manifests is the answer of GET /integrations/manifests (404 when nil).
+	manifests any
 }
 
 const (
@@ -284,6 +286,16 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 		f.deleteObject(w, r, r.PathValue("ns"), r.PathValue("name"))
 	})
 	mux.HandleFunc("POST /api/v1/apply", f.apply)
+	mux.HandleFunc("GET /api/v1/integrations/manifests", func(w http.ResponseWriter, _ *http.Request) {
+		f.mu.Lock()
+		m := f.manifests
+		f.mu.Unlock()
+		if m == nil {
+			f.writeErr(w, 404, "not_found", "integration manifests not found", "")
+			return
+		}
+		f.writeJSON(w, 200, m)
+	})
 
 	mux.HandleFunc("GET /api/v1/zones", func(w http.ResponseWriter, _ *http.Request) {
 		f.mu.Lock()
@@ -376,6 +388,50 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 			{"list": "home/kids-extra", "mode": "block", "rule": "ads.example.net"},
 		}})
 	})
+	// RPZ feeds of the answering node (D391): a serving feed with ignored
+	// rules and a failed refresh, an expired one, and one never transferred.
+	rpzFeeds := []map[string]any{
+		{"node": "node-a", "namespace": "default", "list": "threats", "source": "vendor", "origin": "rpz.vendor.example.", "state": "serving", "available": true,
+			"reason": "RPZTransfer", "message": "The last refresh failed; this node keeps applying the copy until it expires: dial tcp 192.0.2.53:53: connection refused",
+			"serial": 2026101107, "primary": "192.0.2.53:53", "lastConfirmedAt": "2026-10-11T11:50:00Z", "expiresAt": "2026-10-11T13:50:00Z", "nextAttemptAt": "2026-10-11T12:01:00Z",
+			"lastError": "dial tcp 192.0.2.53:53: connection refused",
+			"counts":    map[string]any{"records": 1204, "rules": 1197, "invalid": 1, "unsupported": 3, "excluded": 0, "ignoredRecords": 3, "staleExcludes": 0},
+			"rules":     map[string]any{"qname": 1190, "clientIP": 2, "responseIP": 5, "nxdomain": 1100, "nodata": 90, "passthru": 2, "drop": 5, "tcpOnly": 0, "localData": 0},
+			"ignored": []map[string]any{
+				{"reason": "invalid-address-trigger", "unsupported": false, "count": 1, "examples": []string{"999.rpz-ip.rpz.vendor.example."}},
+				{"reason": "resolver-ns-provenance", "unsupported": true, "count": 3, "examples": []string{"ns.bad.example.rpz-nsdname.rpz.vendor.example."}},
+			}},
+		{"node": "node-a", "namespace": "default", "list": "threats", "source": "rpz-1", "origin": "local.rpz.", "state": "expired", "available": false,
+			"reason": "RPZExpired", "message": "The last copy has expired; queries whose policy selects this list answer SERVFAIL on this node.",
+			"serial": 12, "primary": "192.0.2.54:53", "lastConfirmedAt": "2026-10-10T09:00:00Z", "expiresAt": "2026-10-11T09:00:00Z",
+			"counts":  map[string]any{"records": 4, "rules": 2, "invalid": 0, "unsupported": 0, "excluded": 0, "ignoredRecords": 2, "staleExcludes": 0},
+			"rules":   map[string]any{"qname": 2, "clientIP": 0, "responseIP": 0, "nxdomain": 2, "nodata": 0, "passthru": 0, "drop": 0, "tcpOnly": 0, "localData": 0},
+			"ignored": []map[string]any{}},
+		{"node": "node-a", "namespace": "home", "list": "kids-rpz", "source": "feed", "origin": "kids.rpz.", "state": "pending", "available": false,
+			"reason": "TransferPending", "message": "Waiting for this node's first complete transfer; until then queries whose policy selects this list answer SERVFAIL on this node.", "ignored": []map[string]any{}},
+	}
+	mux.HandleFunc("GET /api/v1/blocklists/_rpz", func(w http.ResponseWriter, r *http.Request) {
+		items := []map[string]any{}
+		for _, feed := range rpzFeeds {
+			if ns := r.URL.Query().Get("namespace"); ns == "" || feed["namespace"] == ns {
+				items = append(items, feed)
+			}
+		}
+		f.writeJSON(w, 200, map[string]any{"items": items})
+	})
+	mux.HandleFunc("GET /api/v1/blocklists/{ns}/{name}/rpz", func(w http.ResponseWriter, r *http.Request) {
+		items := []map[string]any{}
+		for _, feed := range rpzFeeds {
+			if feed["namespace"] == r.PathValue("ns") && feed["list"] == r.PathValue("name") {
+				items = append(items, feed)
+			}
+		}
+		if len(items) == 0 {
+			f.writeErr(w, 404, "not_found", "blocklist not found", "")
+			return
+		}
+		f.writeJSON(w, 200, map[string]any{"items": items})
+	})
 	mux.HandleFunc("POST /api/v1/domains/{verb}/{kind}", func(w http.ResponseWriter, r *http.Request) {
 		var req struct{ Domains []string }
 		_ = json.NewDecoder(r.Body).Decode(&req)
@@ -454,6 +510,21 @@ func (f *fakeAPI) routes(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("GET /api/v1/queries", f.queriesPage)
 	mux.HandleFunc("GET /api/v1/queries/stream", f.queriesStream)
+	mux.HandleFunc("GET /api/v1/inventory", func(w http.ResponseWriter, r *http.Request) {
+		// Two pages of internal/api.InventoryDevice rows (D397).
+		if r.URL.Query().Get("continue") == "" {
+			f.writeJSON(w, 200, map[string]any{"node": "node-a", "generation": 3, "readAt": "2026-10-11T12:00:00Z", "continue": "p2", "items": []map[string]any{
+				{"source": "dhcp/lan", "kind": "dhcp", "id": "192.168.1.40", "hostname": "printer", "macs": []string{"02:00:5e:00:00:40"}, "tags": []string{},
+					"addresses": []map[string]any{{"ip": "192.168.1.40", "state": "assigned"}}, "expiresAt": "2026-10-11T18:00:00Z", "stale": false},
+			}})
+			return
+		}
+		f.writeJSON(w, 200, map[string]any{"node": "node-a", "generation": 3, "readAt": "2026-10-11T12:00:00Z", "items": []map[string]any{
+			{"source": "integration-0f3a", "kind": "inventory", "id": "tv", "name": "Living room TV", "macs": []string{"02:00:5e:00:00:41"}, "tags": []string{"media"},
+				"addresses":  []map[string]any{{"ip": "192.168.1.41", "state": "superseded", "ownerSource": "integration-0f3a", "ownerId": "tv-2"}},
+				"observedAt": "2026-10-11T11:00:00Z", "expiresAt": "2026-10-11T11:30:00Z", "stale": true},
+		}})
+	})
 	mux.HandleFunc("GET /api/v1/nodes", func(w http.ResponseWriter, _ *http.Request) {
 		f.writeJSON(w, 200, map[string]any{"items": []map[string]any{
 			{"name": "node-a", "address": "10.0.0.11", "self": true, "leader": true, "ready": true, "version": "v0.1.0", "state": "live"},
@@ -630,7 +701,7 @@ func (f *fakeAPI) apply(w http.ResponseWriter, r *http.Request) {
 		f.writeErr(w, 400, "invalid", "body: "+err.Error(), "")
 		return
 	}
-	plural := map[string]string{"DNSZone": "dnszones", "DNSRecordSet": "dnsrecordsets", "BlockList": "blocklists", "ClientGroup": "clientgroups", "Policy": "policies"}
+	plural := map[string]string{"DNSZone": "dnszones", "DNSRecordSet": "dnsrecordsets", "BlockList": "blocklists", "ClientGroup": "clientgroups", "Policy": "policies", "Integration": "integrations"}
 	var results []map[string]any
 	f.mu.Lock()
 	for _, d := range docs {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/netip"
@@ -78,7 +79,31 @@ type (
 		sqlitelog.Status
 		Took
 	}
+	// QuerylogSinksBody is GET /querylog/sinks.
+	QuerylogSinksBody struct {
+		Node  string         `json:"node" doc:"The node that answered (node.name); every node runs its own sinks."`
+		Sinks []QuerylogSink `json:"sinks" doc:"The sinks that are running or still draining, by name."`
+	}
 )
+
+// QuerylogSink is the state of one additional query-log sink of
+// querylog.sinks on the node that answered (D371).
+type QuerylogSink struct {
+	Name string `json:"name" doc:"The name of the querylog.sinks entry; it labels the sink's metrics."`
+	Type string `json:"type" doc:"The sink type of the entry in force: slog, clickhouse, loki or dnstap."`
+	Raw  bool   `json:"raw" doc:"The sink receives queries as they were, before the privacy transform (a dnstap sink with raw: true, D372)."`
+	// Queued and QueueSize are the events waiting and the bound.
+	Queued    int `json:"queued" doc:"Queries waiting in the sink's queue."`
+	QueueSize int `json:"queue_size" doc:"The bound of the queue (queueSize of the entry in force)."`
+	// Sent, Dropped and Errors are counters since the sink name appeared.
+	Sent    uint64 `json:"sent" doc:"Queries the destination accepted (kudurru_sink_sent_total)."`
+	Dropped uint64 `json:"dropped" doc:"Queries lost for this sink (kudurru_querylog_dropped_total{stage=\"sink\"})."`
+	Errors  uint64 `json:"errors" doc:"Failed attempts to open, write, flush or close (kudurru_sink_errors_total)."`
+	// LastSuccess is absent before the first successful write.
+	LastSuccess *time.Time `json:"last_success,omitempty" doc:"Time of the last successful write; absent before the first."`
+}
+
+type querylogSinksOutput struct{ Body *QuerylogSinksBody }
 
 // UpstreamServer is the live state of one configured upstream server.
 type UpstreamServer struct {
@@ -98,7 +123,7 @@ type WindowParams struct {
 	From   string `query:"from" doc:"Window start (RFC 3339); overrides window."`
 	To     string `query:"to" doc:"Window end (RFC 3339); default now."`
 	Scope  string `query:"scope" enum:"node,cluster," doc:"node (default) or cluster; cluster merges the known nodes and reports partial results on failure."`
-	Node   string `query:"node" doc:"Node to answer for (scope=node); requests for another known node are routed over the internal listener."`
+	Node   string `query:"node" doc:"Node to answer for (scope=node); another node reads central history when configured, otherwise its internal listener."`
 }
 
 type summaryOutput struct{ Body *SummaryBody }
@@ -162,13 +187,21 @@ type streamInput struct {
 	LastEventIDQuery string `query:"last_event_id"`
 }
 
+// HistoryScopeParams selects a local or retained central history source.
+type HistoryScopeParams struct {
+	Scope string `query:"scope"`
+	Node  string `query:"node"`
+}
+
 type suggestionsInput struct {
+	HistoryScopeParams
 	Field  string `query:"field" required:"true" enum:"domain,client,upstream,list,zone,policy"`
 	Prefix string `query:"prefix"`
 	N      int    `query:"n" minimum:"0" maximum:"100"`
 }
 
 type queryActionInput struct {
+	Node  string `query:"node" doc:"Exact historical node for a central row ID; valid only with node scope."`
 	ID    uint64 `path:"id"`
 	Scope string `query:"scope" enum:"node,cluster," doc:"cluster: id is a row of the cluster-wide query log (GET /queries?scope=cluster with a central database)."`
 	Body  struct {
@@ -215,6 +248,7 @@ type ClientsBody struct {
 type clientsOutput struct{ Body *ClientsBody }
 
 func (s *Server) registerStats() {
+	s.registerRollupRecovery()
 	stats := perm{resource: "stats", verb: "read"}
 	ql := perm{resource: "querylog", verb: "read"}
 	register(s, operation(http.MethodGet, "/stats/summary", "statsSummary", "Stat tiles and sidebar counters", "stats"), stats, s.statsSummary)
@@ -235,15 +269,39 @@ func (s *Server) registerStats() {
 		perm{resource: "blocklists", verb: "write"}, s.queryAction)
 	register(s, operation(http.MethodDelete, "/querylog", "purgeQuerylog", "Delete query-log rows", "querylog"), perm{resource: "querylog", verb: "purge"}, s.purgeQuerylog)
 	register(s, operation(http.MethodGet, "/querylog/status", "querylogStatus", "Query-log size, retention and writer state", "querylog"), ql, s.querylogStatus)
+	sinksOp := operation(http.MethodGet, "/querylog/sinks", "querylogSinks", "State of this node's additional query-log sinks", "querylog")
+	sinksOp.Description = "The sinks of querylog.sinks as the node that answers runs them: queue, sent, dropped, failed attempts and last success. " +
+		"Every node runs its own sinks; this route reports only the answering node and asks no other. No credential, error text or query appears."
+	register(s, sinksOp, ql, s.querylogSinks)
 }
+
+func (s *Server) querylogSinks(context.Context, *struct{}) (*querylogSinksOutput, error) {
+	body := &QuerylogSinksBody{Node: s.opts.NodeName, Sinks: []QuerylogSink{}}
+	if s.opts.QuerylogSinks == nil {
+		return &querylogSinksOutput{Body: body}, nil
+	}
+	for _, st := range s.opts.QuerylogSinks() {
+		sink := QuerylogSink{Name: st.Name, Type: st.Type, Raw: st.Raw, Queued: st.Queued, QueueSize: st.QueueSize, Sent: st.Sent, Dropped: st.Dropped, Errors: st.Errors}
+		if !st.LastSuccess.IsZero() {
+			at := st.LastSuccess.UTC()
+			sink.LastSuccess = &at
+		}
+		body.Sinks = append(body.Sinks, sink)
+	}
+	return &querylogSinksOutput{Body: body}, nil
+}
+
+// queryHistoryHint explains a node with neither a local query log nor a
+// central database to read history from.
+const queryHistoryHint = "set querylog.enabled: true and querylog.sink: sqlite on this node, or connect the node to a central database (docs/deploy/postgres.md)"
 
 // reader returns the query-log reader or 503 when the log is off.
 func (s *Server) reader() (*sqlitelog.Reader, error) {
-	if s.opts.Querylog == nil {
+	if s.localQuerylog() == nil {
 		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "the query log is not stored on this node",
 			"set querylog.enabled: true and querylog.sink: sqlite")
 	}
-	return s.opts.Querylog, nil
+	return s.localQuerylog(), nil
 }
 
 // window parses window/from/to.
@@ -315,6 +373,15 @@ func parseStep(v string) (time.Duration, error) {
 
 // readerError maps reader failures.
 func readerError(err error) error {
+	if errors.Is(err, sqlitelog.ErrUnknownNode) {
+		return errNotFound("unknown historical node")
+	}
+	if errors.Is(err, sqlitelog.ErrCentralRead) {
+		return errUnavailable("central query history unavailable")
+	}
+	if errors.Is(err, sqlitelog.ErrInvalidFilter) {
+		return errInvalid("%s", strings.TrimPrefix(err.Error(), "sqlitelog: "))
+	}
 	if strings.Contains(err.Error(), "invalid cursor") {
 		return errInvalid("cursor: not a cursor returned by this API")
 	}
@@ -399,16 +466,34 @@ func (s *Server) statsTop(ctx context.Context, in *topInput) (*topOutput, error)
 	return &topOutput{Body: &TopBody{TopList: *res}}, nil
 }
 
-func (s *Server) upstreamServers() []UpstreamServer {
-	out := []UpstreamServer{}
-	if s.opts.Upstreams == nil {
-		return out
+func (s *Server) upstreamStates(ctx context.Context) ([]upstream.ServerStatus, error) {
+	if s.opts.UpstreamReads != nil {
+		if ctx == nil || ctx.Err() != nil {
+			return nil, errUnavailable("original upstream routes unavailable")
+		}
+		states, err := s.opts.UpstreamReads.UpstreamStates(ctx)
+		if err != nil || ctx.Err() != nil {
+			return nil, errUnavailable("original upstream routes unavailable")
+		}
+		return states, nil
 	}
-	for _, st := range s.opts.Upstreams.Status() {
+	if s.opts.Upstreams == nil {
+		return nil, nil
+	}
+	return s.opts.Upstreams.Status(), nil
+}
+
+func (s *Server) upstreamServers(ctx context.Context) ([]UpstreamServer, error) {
+	states, err := s.upstreamStates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []UpstreamServer{}
+	for _, st := range states {
 		u := upstreamServer(s.opts.NodeName, st)
 		out = append(out, u)
 	}
-	return out
+	return out, nil
 }
 
 func upstreamServer(node string, st upstream.ServerStatus) UpstreamServer {
@@ -424,8 +509,12 @@ func (s *Server) statsUpstreams(ctx context.Context, in *WindowParams) (*upstrea
 	if err != nil {
 		return nil, err
 	}
-	if in.Scope != "cluster" && (in.Node == "" || in.Node == s.opts.NodeName) && s.opts.Querylog == nil {
-		return &upstreamsOutput{Body: &UpstreamsBody{UpstreamTop: sqlitelog.UpstreamTop{Scope: sqlitelog.Scope{Scope: "node", Nodes: []sqlitelog.NodeResult{{Name: s.opts.NodeName, OK: true}}}, Window: w, Items: []sqlitelog.UpstreamItem{}}, Servers: s.upstreamServers()}}, nil
+	if in.Scope != "cluster" && (in.Node == "" || in.Node == s.opts.NodeName) && s.localQuerylog() == nil {
+		servers, err := s.upstreamServers(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return &upstreamsOutput{Body: &UpstreamsBody{UpstreamTop: sqlitelog.UpstreamTop{Scope: sqlitelog.Scope{Scope: "node", Nodes: []sqlitelog.NodeResult{{Name: s.opts.NodeName, OK: true}}}, Window: w, Items: []sqlitelog.UpstreamItem{}}, Servers: servers}}, nil
 	}
 	r, err := s.scopedReader(ctx, in.Scope, in.Node)
 	if err != nil {
@@ -564,7 +653,9 @@ func queryFilter(in QueryParams) (sqlitelog.QueryFilter, error) {
 		}
 		*tc.into = t
 	}
-
+	if err := f.Validate(); err != nil {
+		return f, readerError(err)
+	}
 	return f, nil
 }
 
@@ -590,9 +681,13 @@ func (s *Server) listQueries(ctx context.Context, in *QueryParams) (*queriesOutp
 }
 
 func (s *Server) querySuggestions(ctx context.Context, in *suggestionsInput) (*suggestionsOutput, error) {
-	r, err := s.reader()
+	scoped, err := s.scopedReader(ctx, in.Scope, in.Node)
 	if err != nil {
 		return nil, err
+	}
+	r := scoped.direct()
+	if r == nil {
+		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "dictionary suggestions require local or central history", queryHistoryHint)
 	}
 	res, err := r.Suggestions(ctx, in.Field, in.Prefix, in.N)
 	if err != nil {
@@ -601,10 +696,14 @@ func (s *Server) querySuggestions(ctx context.Context, in *suggestionsInput) (*s
 	return &suggestionsOutput{Body: &SuggestionsBody{Suggestions: *res}}, nil
 }
 
-func (s *Server) querylogStatus(ctx context.Context, _ *struct{}) (*querylogStatusOutput, error) {
-	r, err := s.reader()
+func (s *Server) querylogStatus(ctx context.Context, in *HistoryScopeParams) (*querylogStatusOutput, error) {
+	scoped, err := s.scopedReader(ctx, in.Scope, in.Node)
 	if err != nil {
 		return nil, err
+	}
+	r := scoped.direct()
+	if r == nil {
+		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "query-log status requires local or central history", queryHistoryHint)
 	}
 	res, err := r.Status(ctx)
 	if err != nil {
@@ -641,13 +740,18 @@ func (s *Server) purgeQuerylog(ctx context.Context, in *purgeInput) (*purgeOutpu
 }
 
 func (s *Server) queryAction(ctx context.Context, in *queryActionInput) (*processedOutput, error) {
-	// A row of the central database's log has the database's id (D161).
-	r := s.opts.CentralQuerylog
-	if in.Scope != sqlitelog.ScopeCluster || r == nil {
-		var err error
-		if r, err = s.reader(); err != nil {
-			return nil, err
-		}
+	// The route declares blocklists.write for the list edit. Reading the
+	// logged query by ID is a query-log read, so it needs querylog.read as
+	// well, checked before the row is read (D393).
+	if err := s.require(ctx, "querylog", "read", clusterScope, ""); err != nil {
+		return nil, err
+	}
+	if s.useDomainCommand() {
+		return s.commandQueryAction(ctx, in)
+	}
+	r, err := s.queryActionReader(ctx, in)
+	if err != nil {
+		return nil, err
 	}
 	page, err := r.Queries(ctx, sqlitelog.QueryFilter{Cursor: strconv.FormatUint(in.ID+1, 10), Limit: 1})
 	if err != nil {
@@ -781,7 +885,7 @@ func (s *Server) queryStream(ctx context.Context, in *streamInput) (*huma.Stream
 	if in.Scope == "cluster" || !peers[0].Self {
 		return s.scopedQueryStream(ctx, in, peers)
 	}
-	if s.opts.Tail == nil && s.opts.Querylog == nil {
+	if s.opts.Tail == nil && s.localQuerylog() == nil {
 		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "the live tail is not available on this node", "set querylog.enabled: true")
 	}
 	filter, err := newStreamFilter(in.QueryParams)
@@ -811,7 +915,7 @@ func (s *Server) queryStream(ctx context.Context, in *streamInput) (*huma.Stream
 		if s.opts.Tail != nil {
 			events = s.opts.Tail.Subscribe(sctx)
 		} else {
-			events = s.opts.Querylog.Subscribe(sctx)
+			events = s.localQuerylog().Subscribe(sctx)
 		}
 		h := w.Header()
 		h.Set("Content-Type", "text/event-stream")
@@ -894,4 +998,21 @@ func (s *Server) queryStream(ctx context.Context, in *streamInput) (*huma.Stream
 			}
 		}
 	}}, nil
+}
+
+// queryActionReader preserves the central ID namespace of historical reads.
+// The selected immutable domain remains input to the existing current command.
+func (s *Server) queryActionReader(ctx context.Context, in *queryActionInput) (*sqlitelog.Reader, error) {
+	if in.Scope == sqlitelog.ScopeCluster && in.Node == "" && s.opts.CentralQuerylog == nil {
+		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "central query history unavailable",
+			"an action on cluster-wide history needs a central database (docs/deploy/postgres.md); act on one node's history with scope=node")
+	}
+	r, err := s.scopedReader(ctx, in.Scope, in.Node)
+	if err != nil {
+		return nil, err
+	}
+	if d := r.direct(); d != nil {
+		return d, nil
+	}
+	return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "query actions require local or central history", queryHistoryHint)
 }

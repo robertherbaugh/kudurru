@@ -8,15 +8,19 @@ import (
 // +kubebuilder:validation:Enum=primary;forward;secondary;stub;external;catalog;secondaryCatalog
 type ZoneType string
 
-// Zone types; the version in the comment is when the type becomes servable.
+// Zone types. Primary, forward, secondary and stub zones are served. External
+// zones are served by the Kubernetes store driver only, from the Kubernetes
+// objects spec.external selects (D402); the SQLite driver refuses them. The
+// schema also accepts catalog and secondaryCatalog, but no zone is built for
+// them: the controller reports Ready=False with reason Unsupported.
 const (
 	ZoneTypePrimary          ZoneType = "primary"
 	ZoneTypeForward          ZoneType = "forward"
-	ZoneTypeSecondary        ZoneType = "secondary"        // v0.2
-	ZoneTypeStub             ZoneType = "stub"             // v0.2
-	ZoneTypeExternal         ZoneType = "external"         // v0.2
-	ZoneTypeCatalog          ZoneType = "catalog"          // v1.0
-	ZoneTypeSecondaryCatalog ZoneType = "secondaryCatalog" // v1.0
+	ZoneTypeSecondary        ZoneType = "secondary"        // served since v0.2
+	ZoneTypeStub             ZoneType = "stub"             // served since v0.2
+	ZoneTypeExternal         ZoneType = "external"         // served on Kubernetes since v0.2
+	ZoneTypeCatalog          ZoneType = "catalog"          // not served; planned for v1.0
+	ZoneTypeSecondaryCatalog ZoneType = "secondaryCatalog" // not served; planned for v1.0
 )
 
 // AccessMode is Technitium's six-way access vocabulary applied to queries,
@@ -34,6 +38,23 @@ const (
 	AccessZoneNameServersAndACL    AccessMode = "zoneNameServersAndACL"
 )
 
+// ZoneGroupLabel puts a DNSZone in a zone group: a RoleBinding with scope
+// {kind: zonegroup, name: <value>} covers every zone whose label has that
+// value, and the record sets of those zones (D385). A zone is in at most one
+// group; a zone without the label is in none. Adding, changing or removing
+// the label is an access-control change, so the API requires zones.write at
+// cluster scope for it.
+const ZoneGroupLabel = "kudurru.io/zonegroup"
+
+// ZoneGroupOf returns the zone group of z: its ZoneGroupLabel value, empty
+// for none (also for a nil zone).
+func ZoneGroupOf(z *DNSZone) string {
+	if z == nil {
+		return ""
+	}
+	return z.Labels[ZoneGroupLabel]
+}
+
 // NotifyMode selects where NOTIFY messages are sent on serial change.
 // +kubebuilder:validation:Enum=none;zoneNameServers;specified;both
 type NotifyMode string
@@ -46,8 +67,8 @@ const (
 	NotifyBoth            NotifyMode = "both"
 )
 
-// SOASpec holds the SOA fields the operator controls. The serial is computed
-// by the leader and lives in status (decision D12).
+// SOASpec holds primary-zone SOA fields. The leader computes primary serials
+// in status (D12); secondaries retain the external primary's complete SOA.
 type SOASpec struct {
 	// +optional
 	MName string `json:"mname,omitempty"`
@@ -89,6 +110,23 @@ type ZonePolicy struct {
 	Notify NotifyMode `json:"notify,omitempty"`
 	// +optional
 	NotifyTargets []string `json:"notifyTargets,omitempty"`
+	// NotifyTSIGKeyRef selects the key for outbound NOTIFY independently of
+	// transfer authorization. Empty uses the first transferTSIGKeyRefs key;
+	// with neither configured NOTIFY is unsigned. A selected unavailable key
+	// fails delivery, without falling back to another key or unsigned traffic.
+	// +kubebuilder:validation:MaxLength=254
+	// +kubebuilder:validation:XValidation:rule="self.endsWith('.') || size(self) <= 253",message="must fit a DNS key name of 253 characters plus an optional trailing dot"
+	// +kubebuilder:validation:Pattern=`^$|^([A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.)*[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.?$`
+	// +optional
+	NotifyTSIGKeyRef string `json:"notifyTSIGKeyRef,omitempty"`
+	// NotifySource is the local unicast IPv4/IPv6 address for outbound NOTIFY.
+	// Empty inherits notify.source, then the system-selected source if unset.
+	// No hostnames, ports, scoped or IPv4-mapped IPv6 addresses are accepted.
+	// Bind or address-family failure never falls back to another source.
+	// +kubebuilder:validation:MaxLength=45
+	// +kubebuilder:validation:XValidation:rule="self == '' || (isIP(self) && (ip(self).isGlobalUnicast() || ip(self).isLoopback() || ip(self).isLinkLocalUnicast()))",message="must be empty or an unscoped unicast IPv4 or IPv6 address"
+	// +optional
+	NotifySource string `json:"notifySource,omitempty"`
 	// Update controls RFC 2136 dynamic updates (v0.2).
 	// +kubebuilder:default=deny
 	// +optional
@@ -112,6 +150,8 @@ type ForwardSpec struct {
 	// +kubebuilder:default=default
 	// +optional
 	UpstreamGroup string `json:"upstreamGroup,omitempty"`
+	// DNSSECValidation overrides the global dnssec.enabled default for
+	// this route. Omit it to inherit the default.
 	// +optional
 	DNSSECValidation *bool `json:"dnssecValidation,omitempty"`
 }
@@ -127,26 +167,59 @@ type ZoneFallbackSpec struct {
 
 // SecondarySpec configures a secondary zone (v0.2).
 type SecondarySpec struct {
+	// Primaries are ordered hostnames or IP addresses with optional ports
+	// (default 53). Use brackets around IPv6 addresses when specifying a port.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:items:MinLength=1
 	Primaries []string `json:"primaries"`
+	// TSIGKeyRef names a key configured in every replica's local keyring.
 	// +optional
 	TSIGKeyRef string `json:"tsigKeyRef,omitempty"`
+	// TransferProtocol selects TCP or TLS with certificate and endpoint-name
+	// verification against the node's trust store. There is no plaintext fallback.
+	// Both protocols default to port 53; specify :853 for a standard TLS endpoint.
 	// +kubebuilder:validation:Enum=tcp;tls
 	// +kubebuilder:default=tcp
 	// +optional
 	TransferProtocol string `json:"transferProtocol,omitempty"`
 }
 
-// StubSpec configures a stub zone (v0.2).
+// StubSpec configures node-local authoritative-server discovery. It does
+// not transfer the full zone or enable general iterative resolution.
 type StubSpec struct {
+	// Nameservers bootstrap SOA/NS/glue discovery outside the query path.
+	// Entries are hostnames or IP addresses with optional ports (default 53),
+	// optionally prefixed with udp:// or tcp://. UDP retries TCP on truncation;
+	// explicit TCP stays TCP. TLS is not supported for stub discovery.
+	// Discovered nameservers inherit the bootstrap transport and port.
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:MinLength=1
 	Nameservers []string `json:"nameservers"`
 }
 
-// ExternalSpec synthesises records from Kubernetes objects (v0.2).
+// ExternalSpec synthesizes records from Kubernetes objects (v0.2, D402). It
+// takes effect only when the server runs with externalZones.enabled on the
+// Kubernetes store driver. The elected replica derives one DNSRecordSet per
+// source object and zone in the source's namespace; the zone's
+// recordSetSelector decides which namespaces and labels may contribute
+// (derived record sets carry the source's labels). Names are placed in the
+// external zone with the longest matching apex. Sources are only read.
+// The external-dns annotations external-dns.kubernetes.io/hostname, /target
+// and /ttl (and their external-dns.alpha.kubernetes.io forms) add names,
+// replace targets and set the TTL.
 type ExternalSpec struct {
+	// Ingress publishes networking.k8s.io/v1 Ingress rule and TLS hosts at
+	// the addresses in the Ingress status.
 	// +optional
 	Ingress bool `json:"ingress,omitempty"`
+	// Gateway publishes the hostnames of Gateway API HTTPRoutes, GRPCRoutes
+	// and TLSRoutes that a parent Gateway has accepted, at that Gateway's
+	// status addresses. A route without hostnames uses its listener's.
 	// +optional
 	Gateway bool `json:"gateway,omitempty"`
+	// LoadBalancerServices publishes Services of type LoadBalancer that
+	// carry a hostname annotation, at their load balancer addresses.
 	// +optional
 	LoadBalancerServices bool `json:"loadBalancerServices,omitempty"`
 }
@@ -191,6 +264,8 @@ type PublishRule struct {
 
 // DNSZoneSpec defines the desired state of a zone.
 // +kubebuilder:validation:XValidation:rule="!has(self.fallback) || self.type == 'primary'",message="fallback is only supported for primary zones"
+// +kubebuilder:validation:XValidation:rule="self.type != 'secondary' || has(self.secondary)",message="secondary zones require secondary configuration"
+// +kubebuilder:validation:XValidation:rule="self.type != 'stub' || has(self.stub)",message="stub zones require nameserver configuration"
 type DNSZoneSpec struct {
 	// ZoneName is the fully qualified zone name with a trailing dot.
 	// +kubebuilder:validation:MinLength=1
@@ -246,11 +321,14 @@ type PublicationStatus struct {
 type DNSZoneStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
-	// Serial is stamped by the leader as max(prev+1, unix_now) whenever
-	// ContentHash changes. Replicas serve this value.
+	// Serial describes committed primary data when the committed-status adapter
+	// is installed. Legacy controllers stamp max(prev+1, unix_now) when content
+	// changes. Secondary serials and counts belong to each replica's transferred
+	// data, not this shared status.
 	// +optional
 	Serial uint32 `json:"serial,omitempty"`
-	// ContentHash is the sha256 of the canonical RRsets.
+	// ContentHash is the sha256 of the canonical served RRsets. With committed
+	// primary status, it includes dynamic records from the exact durable head.
 	// +optional
 	ContentHash string `json:"contentHash,omitempty"`
 	// +optional

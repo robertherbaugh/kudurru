@@ -47,9 +47,9 @@ replicas and no key, changes through the API and the dashboard answer
 `402 license_required` ([LICENSING.md](../../LICENSING.md)).
 
 Or straight from a release: `kubectl apply --server-side -f
-https://github.com/robertherbaugh/kudurru/releases/download/v0.1.0/install.yaml`.
+https://github.com/robertherbaugh/kudurru/releases/download/v0.2.0/install.yaml`.
 
-## Customising
+## Customizing
 
 Write your own overlay on top of `deploy/kustomize/default` (or any overlay) and patch
 what you need, for example the upstreams in the node ConfigMap or the
@@ -59,7 +59,7 @@ replica count:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - github.com/robertherbaugh/kudurru/config/overlays/metallb?ref=v0.1.0
+  - github.com/robertherbaugh/kudurru/deploy/kustomize/overlays/metallb?ref=v0.2.0
 patches:
   - target: { kind: Deployment, name: kudurru }
     patch: |-
@@ -68,9 +68,9 @@ patches:
         value: 3
 ```
 
-Releases up to v0.1.0 keep this tree under `config/`, so a remote overlay
-pinned to one of them uses `config/overlays/<name>`; later releases use
-`deploy/kustomize/overlays/<name>`.
+The release candidates up to `v0.1.0-rc.6` keep this tree under `config/`, so
+a remote overlay pinned to one of them uses `config/overlays/<name>`. Every
+later tag, v0.1.0 included, uses `deploy/kustomize/overlays/<name>`.
 
 Changing the node ConfigMap through kustomize does not update the
 `checksum/node-config` annotation the Helm chart maintains; restart the

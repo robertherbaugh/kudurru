@@ -9,6 +9,7 @@ import { ApiError } from './api/client';
 import { ApiProvider, qk, ScopeProvider, useSession } from './api/context';
 import { apiBaseFor } from './lib/basePath';
 import { Link, RouterProvider } from './lib/router';
+import { BrandingProvider } from './lib/branding';
 import { AppearanceProvider } from './lib/theme';
 import { Shell } from './components/Shell';
 import { LoginPage } from './pages/LoginPage';
@@ -48,13 +49,15 @@ export function AppProviders({
     <QueryClientProvider client={client}>
       <ApiProvider baseUrl={apiBase ?? apiBaseFor(basePath)} onUnauthenticated={() => client.setQueryData(qk.me, null)}>
         <RouterProvider basePath={basePath}>
-          <AppearanceProvider>
-            <LinkProvider component={Link}>
-              <LayerProvider>
-                <ScopeProvider>{children}</ScopeProvider>
-              </LayerProvider>
-            </LinkProvider>
-          </AppearanceProvider>
+          <BrandingProvider>
+            <AppearanceProvider>
+              <LinkProvider component={Link}>
+                <LayerProvider>
+                  <ScopeProvider>{children}</ScopeProvider>
+                </LayerProvider>
+              </LinkProvider>
+            </AppearanceProvider>
+          </BrandingProvider>
         </RouterProvider>
       </ApiProvider>
     </QueryClientProvider>

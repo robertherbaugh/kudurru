@@ -5,6 +5,7 @@
 // If-Match mismatch, keyset cursors, took_ms, the settings envelope and
 // the presentation-form dig answer.
 import { http, HttpResponse, sse, type JsonBodyType } from 'msw';
+import { iamHandlers, resetIAM, storeCreatedRoleBinding, userUID } from './iam';
 import type {
   AnyObject,
   ApiToken,
@@ -22,6 +23,7 @@ import type {
   Policy,
   QueryRow,
   SourceStatus,
+  SessionRecordInfo,
   StatusClass,
   TopDim,
   TopItem,
@@ -46,20 +48,53 @@ import {
   unattachedOf,
   WriteError,
 } from './domains';
+import { brandingAccentValid, brandingNameValid, brandingPNGValid } from '../lib/brandingAssets';
 import { getPath } from '../lib/settings';
 import { entryError, sourceName } from '../lib/lists';
 import { derivePolicyState } from '../lib/policies';
 import { rng } from './rand';
 import { dhcpHandlers, resetDHCP } from './dhcp';
-import type { UnblockAllow, UnblockApproval, UnblockDenial, UnblockRequest } from '../api/types';
+import { integrationHandlers, resetIntegrations } from './integrations';
+import { inventoryHandlers, resetInventory } from './inventory';
+import type { RoleBindingDesired, UnblockAllow, UnblockApproval, UnblockDenial, UnblockRequest } from '../api/types';
 import type { DomainAction, DomainBatch, DomainEntriesCreate, DomainEntryPatch, ListEntriesPatch } from '../api/types';
 
-let db: MockDB = createDB();
+const BRAND_FIELDS = ['name', 'logoLight', 'logoDark', 'favicon', 'accentColor'] as const;
+function addBrandingFixture(value: MockDB) {
+  value.settings.branding = Object.fromEntries(BRAND_FIELDS.map((f) => [f, '']));
+  for (const field of BRAND_FIELDS) value.schema.push({ path: `branding.${field}`, scope: 'cluster', type: 'string', default: '', help: 'Enterprise custom branding', hostOnly: false, envLocked: false, restartRequired: false, writeOnly: false });
+  return value;
+}
+let db: MockDB = addBrandingFixture(createDB());
+// UI fixtures only: fixed codes deliberately do not model cryptographic authority.
+const mockFactors = new Set<string>();
+const mockSetups = new Map<string, { challenge: string; expiresAt: string }>();
+// Safe UI fixtures only. Production ownership is the server's immutable UID check.
+const mockSessions = new Map<string, SessionRecordInfo[]>();
+
+function ownSessions(username: string): SessionRecordInfo[] {
+  let rows = mockSessions.get(username);
+  if (!rows) {
+    const issued = db.now - 60_000;
+    rows = [
+      { id: `mock-session-${username}-other`, issuedAt: new Date(issued + 30_000).toISOString(), expiresAt: new Date(issued + 43_200_000).toISOString(), idleExpiresAt: new Date(issued + 1_800_000).toISOString(), current: false, revoked: false },
+      { id: `mock-session-${username}-current`, issuedAt: new Date(issued).toISOString(), expiresAt: new Date(issued + 43_200_000).toISOString(), idleExpiresAt: new Date(issued + 1_800_000).toISOString(), current: true, revoked: false },
+    ];
+    mockSessions.set(username, rows);
+  }
+  return rows;
+}
 
 /** Resets the database to the fixtures (tests call it in beforeEach). */
 export function resetDB(now?: number): MockDB {
-  db = createDB(now);
+  db = addBrandingFixture(createDB(now));
   resetDHCP();
+  resetIntegrations();
+  resetInventory();
+  resetIAM();
+  mockFactors.clear();
+  mockSetups.clear();
+  mockSessions.clear();
   return db;
 }
 
@@ -104,7 +139,8 @@ export const RESOURCE_VERBS: Record<string, string[]> = {
   policies: ['read', 'write', 'delete'],
   clientgroups: ['read', 'write', 'delete'],
   clients: ['read', 'write'],
-  querylog: ['read', 'export', 'purge'],
+  inventory: ['read'],
+  querylog: ['read', 'export', 'purge', 'raw'],
   stats: ['read'],
   cache: ['read', 'flush'],
   blocking: ['read', 'toggle'],
@@ -118,9 +154,10 @@ export const RESOURCE_VERBS: Record<string, string[]> = {
   tokens: ['read', 'write', 'delete', 'own'],
   identityproviders: ['read', 'write', 'delete'],
   rolebindings: ['read', 'write', 'delete'],
-  integrations: ['read', 'write', 'delete', 'sync', 'check', 'secrets', 'act'],
+  integrations: ['read', 'write', 'delete', 'sync', 'check', 'secrets', 'act', 'release'],
   cluster: ['read', 'join', 'promote', 'drain'],
   edge: ['read', 'write'],
+  edgeblocks: ['read', 'write'],
   audit: ['read', 'export'],
   unblockrequests: ['read', 'decide', 'delete'],
 };
@@ -144,8 +181,10 @@ export function permissions(roles: string[]): Record<string, string[]> {
   }
   // The auditor role reads unblock requests but cannot decide them.
   if (roles.includes('auditor')) {
+    out.querylog = ['read', 'export'];
     out.unblockrequests = ['read'];
     out.dhcpleases = ['read', 'export'];
+    out.inventory = ['read'];
   }
   return out;
 }
@@ -234,7 +273,14 @@ function validateObject(kind: ObjectKind, obj: AnyObject): string | null {
     const s = (obj as BlockList).spec;
     if (!Array.isArray(s.sources) || s.sources.length === 0) return 'spec.sources: at least one source is required';
     for (const [i, src] of s.sources.entries()) {
-      if (!src.url && !src.inline?.length && !src.configMapRef) return `spec.sources[${i}]: one of url, inline or configMapRef is required`;
+      // The CRD rules: exactly one kind; rpz exactly with format rpz, in block mode, without subdomains.
+      const kinds = [!!src.url, !!src.inline?.length, !!src.configMapRef, !!src.entries, !!src.rpz].filter(Boolean).length;
+      if (kinds === 0) return `spec.sources[${i}]: one of url, inline or configMapRef is required`;
+      if (kinds > 1) return `spec.sources[${i}]: exactly one of url, inline, configMapRef, entries or rpz must be set`;
+      if (!!src.rpz !== (src.format === 'rpz')) return `spec.sources[${i}]: RPZ transfer configuration requires format rpz, and format rpz requires RPZ configuration`;
+      if (src.rpz && src.subdomains) return `spec.sources[${i}]: RPZ wildcard semantics cannot be overridden with subdomains`;
+      if (src.rpz && s.mode === 'allow') return 'spec: RPZ sources require block mode';
+      if (src.rpz && (!src.rpz.zoneName || !src.rpz.primaries?.length)) return `spec.sources[${i}].rpz: zoneName and at least one primary are required`;
       if (src.url && !/^https?:\/\//.test(src.url)) return `spec.sources[${i}].url: must be an http(s) URL`;
     }
   }
@@ -380,6 +426,8 @@ function zoneSummary(z: DNSZone): ZoneSummary {
     name: z.metadata.name,
     zoneName: z.spec.zoneName,
     type: z.spec.type,
+    ...(z.spec.type === 'secondary' && db.secondaryRuntime[z.metadata.name] ? { secondaryRuntime: db.secondaryRuntime[z.metadata.name] } : {}),
+    ...(z.spec.type === 'stub' && db.stubRuntime[z.metadata.name] ? { stubRuntime: db.stubRuntime[z.metadata.name] } : {}),
     serial: z.status?.serial ?? 0,
     recordCount: z.status?.recordCount ?? 0,
     recordSets: db.recordSets.filter((rs) => rs.spec.zoneRef.name === z.metadata.name).length,
@@ -387,6 +435,7 @@ function zoneSummary(z: DNSZone): ZoneSummary {
     ...(ready?.reason ? { reason: ready.reason } : {}),
     ...(ready?.message ? { message: ready.message } : {}),
     managedBy: z.metadata.annotations?.[MANAGED] ?? '',
+    ...(z.metadata.labels?.['kudurru.io/zonegroup'] ? { zoneGroup: z.metadata.labels['kudurru.io/zonegroup'] } : {}),
     ...(z.metadata.resourceVersion ? { resourceVersion: z.metadata.resourceVersion } : {}),
     ...(z.spec.forward?.upstreamGroup ? { upstreamGroup: z.spec.forward.upstreamGroup } : {}),
     ...(z.spec.fallback ? { fallback: z.spec.fallback } : {}),
@@ -720,6 +769,9 @@ let tailTimer = 0;
 
 export const handlers = [
   ...dhcpHandlers(guard),
+  ...inventoryHandlers(guard),
+  ...integrationHandlers(guard, (resource, verb) => !!db.session && (permissions(db.session.user.roles)[resource] ?? []).includes(verb)),
+  ...iamHandlers(guard, () => db),
   // auth ------------------------------------------------------------------
   http.get(`${B}/auth/status`, () =>
     ok({
@@ -728,13 +780,15 @@ export const handlers = [
       providers: [{ id: 'dex', displayName: 'Dex (corporate SSO)' }, { id: 'github', displayName: 'GitHub' }],
       hasDefaultCredentials: db.users.some((u) => u.username === 'admin' && u.password === 'admin'),
       session: { idleTimeout: '30m0s', lifetime: '12h0m0s' },
+      capabilities: { ...db.authCapabilities },
     }),
   ),
   http.post(`${B}/auth/login`, async ({ request }) => {
-    const body = (await request.json()) as { username?: string; password?: string };
+    const body = (await request.json()) as { username?: string; password?: string; totpCode?: string };
     if (!body.username || !body.password) return fail(400, 'invalid', 'username and password are required');
     const user = db.users.find((u) => u.username === body.username && u.password === body.password);
     if (!user) return fail(401, 'unauthenticated', 'invalid username or password');
+    if (mockFactors.has(user.username) && body.totpCode !== '123456') return fail(401, 'unauthenticated', 'Authenticator code required');
     db.session = { user };
     return ok({ ...me() });
   }),
@@ -742,21 +796,78 @@ export const handlers = [
     db.session = null;
     return new HttpResponse(null, { status: 204 });
   }),
+  http.post(`${B}/auth/logout/browser`, ({ request }) => {
+    if (!db.session) return fail(401, 'unauthenticated', 'No session');
+    if (request.headers.get('X-Kudurru-CSRF') !== CSRF) return fail(403, 'csrf', 'CSRF required');
+    db.session = null;
+    return ok({});
+  }),
   http.get(`${B}/auth/me`, () => (db.session ? ok({ ...me() }) : fail(401, 'unauthenticated', 'No session'))),
+  http.get(`${B}/auth/sessions`, () => db.session ? ok({ items: structuredClone(ownSessions(db.session.user.username)) }) : fail(401, 'unauthenticated', 'No session')),
+  http.delete(`${B}/auth/sessions/:id`, ({ request, params }) => {
+    if (!db.session) return fail(401, 'unauthenticated', 'No session');
+    if (request.headers.get('X-Kudurru-CSRF') !== CSRF) return fail(403, 'csrf', 'CSRF required');
+    const row = ownSessions(db.session.user.username).find((s) => s.id === params.id);
+    if (!row) return fail(404, 'not_found', 'Session not found');
+    row.revoked = true;
+    if (row.current) db.session = null;
+    return new HttpResponse(null, { status: 204 });
+  }),
   http.post(`${B}/auth/password`, async ({ request }) => {
     if (!db.session) return fail(401, 'unauthenticated', 'Sign in to continue');
     if (request.headers.get('X-Kudurru-CSRF') !== CSRF) return fail(403, 'csrf', 'Missing or wrong X-Kudurru-CSRF header');
     const body = (await request.json()) as Record<string, unknown>;
-    const unknown = Object.keys(body).find((k) => k !== 'currentPassword' && k !== 'newPassword');
+    const unknown = Object.keys(body).find((k) => !['currentPassword', 'newPassword', 'revokeTokens', 'totpCode'].includes(k));
     if (unknown) return fail(400, 'invalid', `body: json: unknown field "${unknown}"`);
     const next = typeof body.newPassword === 'string' ? body.newPassword : '';
     if ([...next].length < 8) return fail(400, 'invalid', 'newPassword: users: password is shorter than 8 characters');
     if (next === body.currentPassword) return fail(400, 'invalid', 'newPassword: must differ from the current password');
     const u = db.session.user;
     if (body.currentPassword !== u.password) return fail(403, 'forbidden', 'the current password is wrong');
+    if (mockFactors.has(u.username) && body.totpCode !== '123456') return fail(401, 'unauthenticated', 'Authenticator code required');
     u.password = next;
     u.mustChangePassword = false;
     return ok({ ...me() });
+  }),
+  http.get(`${B}/auth/totp`, () => db.session ? ok({ enabled: mockFactors.has(db.session.user.username) }) : fail(401, 'unauthenticated', 'No session')),
+  http.post(`${B}/auth/totp/:action`, async ({ request, params }) => {
+    if (!db.session) return fail(401, 'unauthenticated', 'No session');
+    if (request.headers.get('X-Kudurru-CSRF') !== CSRF) return fail(403, 'csrf', 'CSRF required');
+    const user = db.session.user;
+    if (user.mustChangePassword) return fail(403, 'forbidden', 'Password change required');
+    const action = String(params.action);
+    if (!['setup', 'confirm', 'disable'].includes(action)) return fail(404, 'not_found', 'Unknown factor action');
+    const body = await request.json() as Record<string, unknown>;
+    const keys = action === 'confirm' ? ['currentPassword', 'totpCode', 'challenge', 'code'] : ['currentPassword', 'totpCode'];
+    if (Object.keys(body).some((key) => !keys.includes(key))) return fail(400, 'invalid', 'Unexpected field');
+    if (body.currentPassword !== user.password || (mockFactors.has(user.username) && body.totpCode !== '123456')) return fail(401, 'unauthenticated', 'Proof not accepted');
+    if (action === 'setup') {
+      const candidate = { challenge: `mock-challenge-${crypto.randomUUID()}`, expiresAt: new Date(Date.now() + 300_000).toISOString() };
+      mockSetups.set(user.username, candidate);
+      return ok({ ...candidate, secret: 'JBSWY3DPEHPK3PXP', otpauthURI: 'otpauth://totp/kudurru:mock?secret=JBSWY3DPEHPK3PXP&issuer=kudurru' });
+    }
+    if (action === 'confirm') {
+      const candidate = mockSetups.get(user.username);
+      if (!candidate || candidate.challenge !== body.challenge || Date.parse(candidate.expiresAt) <= Date.now()) return fail(409, 'conflict', 'Setup changed');
+      if (body.code !== '123456') return fail(401, 'unauthenticated', 'New code not accepted');
+      mockFactors.add(user.username);
+    } else mockFactors.delete(user.username);
+    mockSetups.delete(user.username);
+    db.session = null;
+    return new HttpResponse(null, { status: 204 });
+  }),
+  http.get(`${B}/iam/external-users`, () => HttpResponse.json({ error: { key: 'external_users_unavailable', message: 'External account administration is unavailable in this demo.' } }, { status: 503 })),
+  http.post(`${B}/iam/users/:name/totp/recover`, async ({ request, params }) => {
+    const denied = guard(request, 'users', 'write');
+    if (denied) return denied;
+    const name = String(params.name);
+    const body = await request.json() as Record<string, unknown>;
+    if (Object.keys(body).length !== 1 || typeof body.uid !== 'string') return fail(400, 'invalid', 'UID required');
+    const target = db.users.find((u) => u.username === name);
+    if (!target || body.uid !== userUID(target)) return fail(409, 'conflict', 'Account changed');
+    mockFactors.delete(name); mockSetups.delete(name);
+    if (db.session?.user.username === name) db.session = null;
+    return new HttpResponse(null, { status: 204 });
   }),
   http.get(`${B}/auth/oidc/:idp/start`, ({ params }) => fail(501, 'not_implemented', `The mock cannot redirect to ${String(params.idp)}`)),
   http.get(`${B}/auth/tokens`, ({ request }) => guard(request, 'tokens', 'own') ?? ok({ items: db.tokens, continue: '' })),
@@ -914,22 +1025,24 @@ export const handlers = [
     const origin = z.spec.zoneName.replace(/\.$/, '');
     if (e.dnsName !== origin && !e.dnsName.endsWith(`.${origin}`)) return fail(400, 'invalid', `dnsName: ${e.dnsName} is not inside ${origin}`);
     if (e.recordType === 'A' && e.targets.some((t) => !/^\d+\.\d+\.\d+\.\d+$/.test(t))) return fail(400, 'invalid', 'targets: not an IPv4 address');
-    const rsName = new URL(request.url).searchParams.get('recordSet') ?? `api-${zone}`;
-    let rs = db.recordSets.find((x) => x.metadata.name === rsName);
+    const rsRef = new URL(request.url).searchParams.get('recordSet') ?? `api-${zone}`;
+    // "ns/name" or a bare name in the default namespace, as the server's splitRef.
+    const [rsNS, rsName] = rsRef.includes('/') ? [rsRef.slice(0, rsRef.indexOf('/')), rsRef.slice(rsRef.indexOf('/') + 1)] : ['default', rsRef];
+    let rs = db.recordSets.find((x) => x.metadata.name === rsName && (x.metadata.namespace ?? 'default') === rsNS);
     if (rs && rs.metadata.annotations?.[MANAGED] !== 'api') {
       const owner = rs.metadata.annotations?.[MANAGED] ?? '';
       return fail(409, 'managed_by', `DNSRecordSet ${rsName} is managed by ${owner}`, owner);
     }
     if (!rs) {
       db.rv += 1;
-      rs = { apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSRecordSet', metadata: { name: rsName, namespace: 'default', resourceVersion: String(db.rv), annotations: { [MANAGED]: 'api' } }, spec: { zoneRef: { name: zone }, endpoints: [] } };
+      rs = { apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSRecordSet', metadata: { name: rsName, namespace: rsNS, resourceVersion: String(db.rv), annotations: { [MANAGED]: 'api' } }, spec: { zoneRef: { name: zone }, endpoints: [] } };
       db.recordSets.push(rs);
     }
-    const idx = rs.spec.endpoints.findIndex((x) => x.dnsName === e.dnsName && x.recordType === e.recordType && (x.setIdentifier ?? '') === (e.setIdentifier ?? ''));
+    const idx = rs.spec.endpoints.findIndex((x) => x.dnsName === e.dnsName && x.recordType === e.recordType && (x.setIdentifier ?? '') === (e.setIdentifier ?? '') && (x.kudurru?.view ?? '') === (e.kudurru?.view ?? ''));
     if (idx >= 0) rs.spec.endpoints[idx] = e;
     else rs.spec.endpoints.push(e);
     bumpZone(zone);
-    return ok({ recordSet: rsName, namespace: 'default', ...e, managedBy: 'api' }, { status: idx >= 0 ? 200 : 201 });
+    return ok({ recordSet: rsName, namespace: rsNS, ...e, managedBy: 'api' }, { status: idx >= 0 ? 200 : 201 });
   }),
   http.delete(`${B}/zones/:zone/records/:name/:type`, ({ request, params }) => {
     const g = guard(request, 'records', 'delete');
@@ -937,12 +1050,16 @@ export const handlers = [
     const zone = String(params.zone);
     const q = new URL(request.url).searchParams;
     const rsName = q.get('recordSet');
+    const onlyNS = q.get('namespace');
     const setID = q.get('setIdentifier');
+    // internal/api zones.go viewSelected: "" every view, "-" the default data.
+    const view = q.get('view') ?? '';
+    const inView = (x: Endpoint) => view === '' || (view === '-' ? !x.kudurru?.view : x.kudurru?.view === view);
     let found = false;
     for (const rs of db.recordSets) {
-      if (rs.spec.zoneRef.name !== zone || (rsName && rs.metadata.name !== rsName)) continue;
+      if (rs.spec.zoneRef.name !== zone || (rsName && rs.metadata.name !== rsName) || (onlyNS && (rs.metadata.namespace ?? 'default') !== onlyNS)) continue;
       const before = rs.spec.endpoints.length;
-      const keep = rs.spec.endpoints.filter((x) => !(x.dnsName === params.name && x.recordType === params.type && (!setID || x.setIdentifier === setID)));
+      const keep = rs.spec.endpoints.filter((x) => !(x.dnsName === params.name && x.recordType === params.type && (!setID || x.setIdentifier === setID) && inView(x)));
       if (keep.length !== before) {
         const owner = rs.metadata.annotations?.[MANAGED] ?? '';
         if (owner !== 'api') return fail(409, 'managed_by', `DNSRecordSet ${rs.metadata.name} is managed by ${owner}`, owner);
@@ -1019,6 +1136,22 @@ export const handlers = [
     if (!l) return fail(404, 'not_found', `BlockList ${String(params.ns)}/${String(params.name)} not found`);
     if (l.status) l.status.lastFetched = new Date().toISOString();
     return new HttpResponse(null, { status: 202 });
+  }),
+  // This node's RPZ feeds (D391): 501 without a feed manager, 404 for a list
+  // the node's configuration lacks; the feeds are the test's db.rpzFeeds.
+  http.get(`${B}/blocklists/_rpz`, ({ request }) => {
+    const g = guard(request, 'blocklists', 'read');
+    if (g) return g;
+    if (db.rpzFeeds === false) return fail(501, 'not_implemented', 'RPZ feed state is not available on this node');
+    const ns = new URL(request.url).searchParams.get('namespace') ?? '';
+    return ok({ items: db.rpzFeeds.filter((f) => !ns || f.namespace === ns) });
+  }),
+  http.get(`${B}/blocklists/:ns/:name/rpz`, ({ request, params }) => {
+    const g = guard(request, 'blocklists', 'read');
+    if (g) return g;
+    if (db.rpzFeeds === false) return fail(501, 'not_implemented', 'RPZ feed state is not available on this node');
+    if (!db.lists.some((x) => x.metadata.name === params.name && (x.metadata.namespace ?? 'default') === params.ns)) return fail(404, 'not_found', 'blocklist not found');
+    return ok({ items: db.rpzFeeds.filter((f) => f.list === params.name && f.namespace === params.ns) });
   }),
   http.get(`${B}/blocklists/_search`, ({ request }) => {
     const g = guard(request, 'blocklists', 'read');
@@ -1444,6 +1577,12 @@ export const handlers = [
     });
   }),
 
+  // Public presentation must work before authentication.
+  http.get(`${B}/branding`, () => {
+    const enabled = db.license.plan === 'enterprise' && (db.license.state === 'active' || db.license.state === 'grace');
+    const brand = db.settings.branding as Record<string, string>;
+    return ok(enabled ? { enabled, ...brand, name: brand.name || 'kudurru', validUntil: new Date(Date.now() + 30_000).toISOString() } : { enabled: false, name: 'kudurru', logoLight: '', logoDark: '', favicon: '', accentColor: '' });
+  }),
   // settings ----------------------------------------------------------------
   http.post(`${B}/settings/sections/:section/ownership/:action`, async ({ request, params }) => {
     const g = guard(request, 'settings', 'write'); if (g) return g;
@@ -1481,7 +1620,12 @@ export const handlers = [
     if (bad) return fail(400, 'host_only', `${bad} can only be set in kudurru.yaml or the environment on the host`, bad);
     const unknown = changed.find((p) => !db.schema.some((k) => k.path === p));
     if (unknown) return fail(400, 'invalid', `unknown settings key ${unknown}`);
+    if (changed.some((p) => p.startsWith('branding.')) && !(db.license.plan === 'enterprise' && (db.license.state === 'active' || db.license.state === 'grace'))) return fail(402, 'license_required', 'Custom branding requires Enterprise.');
     const next = withDefaults(mergePatch(db.settings, patch), patch, changed);
+    if (changed.some((p) => p.startsWith('branding.'))) {
+      const b = next.branding as Record<string, unknown>;
+      if (!b || BRAND_FIELDS.some((f) => typeof b[f] !== 'string') || !brandingNameValid(b.name as string) || !brandingAccentValid(b.accentColor as string) || !brandingPNGValid(b.logoLight as string) || !brandingPNGValid(b.logoDark as string) || !brandingPNGValid(b.favicon as string, 256)) return fail(400, 'invalid', 'Invalid branding.');
+    }
     const bad1 = validateSchema(next, changed);
     if (bad1) return fail(400, 'invalid', bad1.message, bad1.hint, undefined, [bad1.field]);
     const invalid = validateUpstreams(next) ?? validateBlockPage(next);
@@ -1541,41 +1685,56 @@ export const handlers = [
     guard(request, 'edge', 'read') ??
     ok({ edge: { enabled: true, state: 'running' }, vip: { enabled: true, state: 'MASTER' }, backends: [{ name: 'kudurru-0', address: '192.168.1.2:53', up: true }, { name: 'kudurru-1', address: '192.168.1.3:53', up: true }], node: 'kudurru-0' }),
   ),
-  http.get(`${B}/info/messages`, ({ request }) => guard(request, 'cluster', 'read') ?? ok({ items: db.messages })),
+  // Operator edge blocks (internal/api edge_blocks.go, D388).
+  http.get(`${B}/edge/blocks`, ({ request }) =>
+    guard(request, 'edgeblocks', 'read') ??
+    ok({ items: structuredClone(db.edgeBlocks), revision: String(db.edgeBlockRevision), maxBlocks: 256, minSeconds: 60, maxSeconds: 604_800, minIPv4Bits: 16, minIPv6Bits: 32 }),
+  ),
+  http.post(`${B}/edge/blocks`, async ({ request }) => {
+    const g = guard(request, 'edgeblocks', 'write');
+    if (g) return g;
+    const body = (await request.json()) as { prefix?: string; seconds?: number; until?: string; reason?: string };
+    const prefix = (body.prefix ?? '').trim();
+    const [addr = '', bits] = prefix.split('/');
+    const v6 = addr.includes(':');
+    if (!/^[0-9a-fA-F.:]+$/.test(addr)) return fail(400, 'invalid', 'prefix: not an address or CIDR prefix');
+    if (bits !== undefined && Number(bits) < (v6 ? 32 : 16)) return fail(400, 'invalid', `prefix: ${v6 ? 'IPv6 /32' : 'IPv4 /16'} or longer`);
+    if ((body.seconds === undefined) === (body.until === undefined)) return fail(400, 'invalid', 'give seconds or until, not both');
+    if (body.seconds !== undefined && (body.seconds < 60 || body.seconds > 604_800)) return fail(400, 'invalid', 'seconds must be between 60 and 604800');
+    const canonical = bits === undefined ? `${addr}/${v6 ? 128 : 32}` : prefix;
+    if (db.edgeBlocks.some((b) => b.prefix === canonical)) return fail(409, 'conflict', `an active block covers ${canonical}`, 'revoke the existing or an expiring block first');
+    const until = body.until ?? new Date(db.now + (body.seconds ?? 0) * 1000).toISOString();
+    const block = { id: `e${db.edgeBlockRevision.toString(16).padStart(15, '0')}`.replace('e', 'a'), prefix: canonical, createdAt: new Date(db.now).toISOString(), until, createdBy: `User:${db.session?.user.username ?? ''}`, ...(body.reason ? { reason: body.reason } : {}) };
+    db.edgeBlocks.push(block);
+    db.edgeBlockRevision++;
+    return HttpResponse.json(block, { status: 201 });
+  }),
+  http.delete(`${B}/edge/blocks/:id`, ({ request, params }) => {
+    const g = guard(request, 'edgeblocks', 'write');
+    if (g) return g;
+    const i = db.edgeBlocks.findIndex((b) => b.id === params.id);
+    if (i < 0) return fail(404, 'not_found', 'active edge block not found');
+    const [gone] = db.edgeBlocks.splice(i, 1);
+    db.edgeBlockRevision++;
+    return ok({ ...gone });
+  }),
+  http.get(`${B}/querylog/sinks`, ({ request }) => guard(request, 'querylog', 'read') ?? ok({ node: 'kudurru-0', sinks: structuredClone(db.querylogSinks) })),
+  http.post(`${B}/iam/rolebindings`, async ({ request }) => {
+    const g = guard(request, 'rolebindings', 'write');
+    if (g) return g;
+    const body = (await request.json()) as RoleBindingDesired;
+    if (body.apiVersion !== 'kudurru.io/v1alpha1' || body.kind !== 'RoleBinding') return fail(400, 'invalid', 'apiVersion and kind must name a kudurru.io/v1alpha1 RoleBinding');
+    const { name, namespace } = body.metadata;
+    if (db.createdRoleBindings.some((b) => b.metadata.name === name && b.metadata.namespace === namespace)) return fail(409, 'conflict', `RoleBinding ${namespace}/${name} already exists`);
+    const scope = body.spec.scope;
+    if (scope?.kind === 'zonegroup' && !/^[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$/.test(scope.name ?? '')) return fail(400, 'invalid', 'spec.scope.name: not a valid label value');
+    db.createdRoleBindings.push(structuredClone(body));
+    return HttpResponse.json(storeCreatedRoleBinding(body), { status: 201 });
+  }),
+  http.get(`${B}/info/messages`, ({ request }) => guard(request, 'settings', 'read') ?? ok({ items: db.messages })),
   http.get(`${B}/version`, () => ok({ version: 'v0.1.0-rc.1', commit: '3e52e5a', date: '2026-10-10T18:00:00Z', go: 'go1.27.2', platform: 'linux/amd64', node: 'kudurru-0', api: 'v1' })),
 
-  // iam and audit -------------------------------------------------------------
-  http.get(`${B}/iam/:what`, ({ request, params }) => {
-    const what = String(params.what);
-    const g = guard(request, what === 'rolebindings' ? 'rolebindings' : what === 'identityproviders' ? 'identityproviders' : what === 'serviceaccounts' ? 'serviceaccounts' : 'users', 'read');
-    if (g) return g;
-    const items: Record<string, unknown[]> = {
-      users: db.users.map((u) => ({
-        name: u.username,
-        ...(u.name !== u.username ? { displayName: u.name } : {}),
-        builtinAdmin: u.username === 'admin',
-        disabled: false,
-        mustChangePassword: !!u.mustChangePassword,
-        ...(u.roles.includes('admin') ? { groups: ['kudurru-admins'] } : {}),
-        lastLoginAt: new Date(db.now - 3_600_000).toISOString(),
-      })),
-      serviceaccounts: [
-        { namespace: 'default', name: 'grafana', description: 'dashboards', disabled: false, builtinAdmin: false, tokens: 1 },
-        { namespace: 'kudurru', name: 'external-dns', disabled: false, builtinAdmin: false, tokens: 0 },
-      ],
-      rolebindings: [
-        { source: 'config', name: 'rbac.bindings[0]', role: 'admin', scope: { kind: 'cluster' }, subjects: [{ kind: 'Group', name: 'kudurru-admins' }] },
-        { source: 'object', namespace: 'default', name: 'viewers', role: 'viewer', scope: { kind: 'cluster' }, subjects: [{ kind: 'Group', name: 'everyone' }], managedBy: 'file:objects.d/rbac.yaml' },
-        { source: 'object', namespace: 'default', name: 'home-admin', role: 'zone-admin', scope: { kind: 'zone', name: 'home-arpa' }, subjects: [{ kind: 'User', name: 'robert@example.com' }] },
-        { source: 'object', namespace: 'kudurru', name: 'external-dns', role: 'integration:external-dns', scope: { kind: 'cluster' }, subjects: [{ kind: 'ServiceAccount', namespace: 'kudurru', name: 'external-dns' }] },
-      ],
-      identityproviders: [
-        { id: 'dex', displayName: 'Dex (corporate SSO)', issuer: 'https://dex.example.com', clientID: 'kudurru', scopes: ['openid', 'email', 'groups'], redirectURL: 'https://kudurru.example.com/api/v1/auth/oidc/dex/callback', source: 'config' },
-        { id: 'github', displayName: 'GitHub', issuer: 'https://token.actions.githubusercontent.com', clientID: 'kudurru-gh', scopes: ['openid'], redirectURL: 'https://kudurru.example.com/api/v1/auth/oidc/github/callback', source: 'object' },
-      ],
-    };
-    return items[what] ? ok({ items: items[what] }) : fail(404, 'not_found', `no IAM collection ${what}`);
-  }),
+  // license and audit (IAM: mocks/iam.ts) ------------------------------------
   http.get(`${B}/license`, ({ request }) =>
     guard(request, 'settings', 'read') ?? ok({ ...db.license, nodesInUse: db.nodes.length, overLimit: db.nodes.length > db.license.nodes }),
   ),

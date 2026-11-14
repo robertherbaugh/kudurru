@@ -1,4 +1,4 @@
-# Benchmark gate rules for `make bench` (internal/blocking/benchgate).
+# Benchmark gate rules for `make bench` (hack/benchgate).
 #
 #   limit  <benchmark name regexp>  <unit>  <max>   absolute ceiling on the median
 #   ignore <benchmark name regexp>  <unit>          not compared with bench/baseline.txt

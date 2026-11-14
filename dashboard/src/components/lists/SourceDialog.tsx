@@ -1,6 +1,6 @@
 // Add or edit one source of a BlockList in a short dialog: a type choice
-// (URL, pasted entries, an uploaded file, a ConfigMap) and the typed fields
-// of that type. Inline entries of an existing source are not edited here;
+// (URL, pasted entries, an uploaded file, a ConfigMap and, for a block list,
+// an RPZ feed) and the typed fields of that type. Inline entries of an existing source are not edited here;
 // the entries browser adds and removes them without a giant text box.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -12,13 +12,15 @@ import { useState } from 'react';
 import type { ListFormat, ListSource } from '../../api/types';
 import { formatExact } from '../../lib/format';
 import { entriesProblem, FORMAT_OPTIONS, guessFormat, isHTTPURL, parseEntries, sourceKind } from '../../lib/lists';
+import { rpzDraft, rpzDraftError, rpzSourceOf, type RPZDraft } from '../../lib/rpz';
 import { EnumSelect } from '../fields/EnumSelect';
 import { FieldShell } from '../fields/FieldHelp';
 import { SwitchField, TextAreaField, TextField } from '../fields/TextField';
 import { errorText } from '../Feedback';
 import { FormDialog } from '../FormDialog';
+import { RPZFields } from './RPZFields';
 
-export type SourceChoice = 'url' | 'paste' | 'file' | 'configMap';
+export type SourceChoice = 'url' | 'paste' | 'file' | 'configMap' | 'rpz';
 
 /** More inline entries than this are better published at a URL. */
 export const LARGE_INLINE = 50_000;
@@ -74,10 +76,12 @@ export interface SourceDialogProps {
   /** Names of the list's other sources. */
   taken: string[];
   onSave: (src: ListSource) => Promise<void>;
+  /** The list's mode: RPZ feeds are offered for block lists only (the CRD refuses them in allow mode). */
+  mode?: 'block' | 'allow' | undefined;
 }
 
 /** Keeps its fields in state: give it a new `key` per opening so each one starts fresh. */
-export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDialogProps) {
+export function SourceDialog({ open, onClose, initial, taken, onSave, mode }: SourceDialogProps) {
   const editing = !!initial;
   const initialKind = initial ? sourceKind(initial) : 'url';
   const [choice, setChoice] = useState<SourceChoice>(initialKind === 'inline' || initialKind === 'entries' ? 'paste' : initialKind);
@@ -91,6 +95,7 @@ export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDi
   const [file, setFile] = useState<File | null>(null);
   const [cmName, setCmName] = useState(initial?.configMapRef?.name ?? '');
   const [cmNamespace, setCmNamespace] = useState(initial?.configMapRef?.namespace ?? '');
+  const [rpz, setRpz] = useState<RPZDraft>(rpzDraft(initial?.rpz));
   const [showErrors, setShowErrors] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -113,12 +118,20 @@ export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDi
             : null
         : null,
     cm: choice === 'configMap' && !/^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$/.test(cmName.trim()) ? 'A ConfigMap name (lower-case RFC 1123)' : null,
+    rpz: choice === 'rpz' ? rpzDraftError(rpz) : null,
   };
   const valid = Object.values(errors).every((e) => !e);
   const err = (k: string) => (showErrors ? (errors[k] ?? undefined) : undefined);
 
   const build = (): ListSource => {
-    const base: ListSource = { name: name.trim(), format };
+    if (choice === 'rpz') {
+      // format rpz with the rpz block and nothing else; subdomains never apply (CRD rules).
+      const feed: ListSource = { name: name.trim(), format: 'rpz', rpz: rpzSourceOf(rpz) };
+      if (initial?.enabled === false) feed.enabled = false;
+      if (initial?.exclude?.length) feed.exclude = initial.exclude;
+      return feed;
+    }
+    const base: ListSource = { name: name.trim(), format: format === 'rpz' ? 'auto' : format };
     if (subdomains) base.subdomains = true;
     if (initial?.enabled === false) base.enabled = false;
     // Entries switched off stay off (the server reports the ones a new body no longer has).
@@ -188,8 +201,11 @@ export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDi
           <SegmentedControlItem value="paste" label="Paste entries" />
           <SegmentedControlItem value="file" label="Upload file" />
           <SegmentedControlItem value="configMap" label="ConfigMap" />
+          {mode !== 'allow' ? <SegmentedControlItem value="rpz" label="RPZ feed" /> : null}
         </SegmentedControl>
       ) : null}
+
+      {choice === 'rpz' ? <RPZFields value={rpz} onChange={(patch) => setRpz((d) => ({ ...d, ...patch }))} showErrors={showErrors} /> : null}
 
       {choice === 'url' ? (
         <TextField
@@ -262,6 +278,7 @@ export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDi
           }}
           error={err('name')}
         />
+        {choice !== 'rpz' ? (
         <EnumSelect
           label="Format"
           value={format}
@@ -272,13 +289,16 @@ export function SourceDialog({ open, onClose, initial, taken, onSave }: SourceDi
             setFormatTouched(true);
           }}
         />
+        ) : null}
       </Grid>
-      <SwitchField
-        label="Include subdomains"
-        help='Hosts and plain-domain entries also match their subdomains, for lists published as "domains with subdomains". Adblock and wildcard rules are not affected.'
-        value={subdomains}
-        onChange={setSubdomains}
-      />
+      {choice !== 'rpz' ? (
+        <SwitchField
+          label="Include subdomains"
+          help='Hosts and plain-domain entries also match their subdomains, for lists published as "domains with subdomains". Adblock and wildcard rules are not affected.'
+          value={subdomains}
+          onChange={setSubdomains}
+        />
+      ) : null}
       {saveError ? <Banner status="error" title="Could not save the source" description={saveError} /> : null}
     </FormDialog>
   );

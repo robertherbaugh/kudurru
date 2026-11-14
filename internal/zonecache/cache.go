@@ -70,6 +70,9 @@ func (b funcBuilder) Build(objects ObjectSet) (any, error) { return b.build(obje
 // Options configures a Cache. The zero value watches every kudurru.io kind
 // with the §4.4 defaults and neither persists nor cold-starts.
 type Options struct {
+	// ExpectedClusterID is an independently provisioned kube-system UID.
+	// Kubernetes saved-state admission requires it even before API contact.
+	ExpectedClusterID string
 	// Kinds to watch. Default DefaultKinds().
 	Kinds []store.Kind
 	// Debounce is the window after a change during which further changes
@@ -128,11 +131,10 @@ func (o *Options) setDefaults() {
 
 // DefaultKinds returns every kind registered in the kudurru.io/v1alpha1
 // scheme that has a matching list type, sorted: a kind added to
-// api/v1alpha1 is watched without touching zonecache. UnblockRequest is
-// left out: it never affects serving, and a block page request must not
-// rebuild the serving snapshot (internal/unblock watches it). DHCPScope is
-// left out too: the DHCP runtime (internal/dhcpkube) watches it, and lease
-// DNS answers come from its own snapshots.
+// api/v1alpha1 is watched without touching zonecache. UnblockRequest and
+// management IAM configuration are left out: they do not affect DNS data.
+// Their own owners watch them, without rebuilding or gating DNS snapshots.
+// DHCPScope is also excluded: internal/dhcpkube owns its watch and lease DNS snapshots.
 func DefaultKinds() []store.Kind {
 	s := runtime.NewScheme()
 	if err := v1alpha1.AddToScheme(s); err != nil {
@@ -155,7 +157,8 @@ func DefaultKinds() []store.Kind {
 		if _, ok := reflect.New(listTyp).Interface().(metav1.ListInterface); !ok {
 			continue
 		}
-		if name == v1alpha1.KindUnblockRequest || name == v1alpha1.KindDHCPScope {
+		switch name {
+		case v1alpha1.KindDHCPScope, v1alpha1.KindUnblockRequest, v1alpha1.KindIdentityProvider, v1alpha1.KindRoleBinding, v1alpha1.KindServiceAccount:
 			continue
 		}
 		kinds = append(kinds, store.Kind(name))
@@ -196,6 +199,8 @@ type Cache struct {
 	noSnapshot   string    // why the fallback found nothing, for Ready
 	lists        *blocking.Snapshot
 	listsDirty   bool
+	inputs       map[string]any
+	inputsDirty  map[string]bool
 	builders     []Builder
 	builderNames map[string]bool
 	conditions   map[string]Condition
@@ -286,6 +291,22 @@ func (c *Cache) SetLists(lists *blocking.Snapshot) {
 	c.trigger()
 }
 
+// SetInput hands the Cache one named external input, a value computed
+// outside the watched objects (for example the MAC grants the Kubernetes
+// integration source runtime derives from committed source heads, D384).
+// It reaches builders through ObjectSet.Input in the next snapshot and
+// triggers a rebuild, like SetLists. The value must be immutable once set.
+func (c *Cache) SetInput(name string, value any) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.inputs == nil {
+		c.inputs, c.inputsDirty = map[string]any{}, map[string]bool{}
+	}
+	c.inputs[name] = value
+	c.inputsDirty[name] = true
+	c.trigger()
+}
+
 // Snapshot returns the current snapshot; never nil. Load it once per query.
 func (c *Cache) Snapshot() *Snapshot { return c.current.Load() }
 
@@ -334,6 +355,13 @@ func (c *Cache) Ready() (bool, []string) {
 		}
 		return true, c.conditionStrings()
 	case FromSnapshot:
+		// The state changes when local.db is read; the snapshot built from
+		// it is published by the next debounced rebuild. Until then the
+		// served snapshot is the empty unsynced one, whose policy index has
+		// no references to wait for (D390).
+		if snap := c.current.Load(); snap == nil || snap.State != FromSnapshot {
+			return false, append([]string{"waiting for the local.db snapshot to be published"}, c.conditionStrings()...)
+		}
 		if age := time.Since(c.snapWritten); age > c.opts.MaxAge {
 			return false, []string{fmt.Sprintf("serving a local.db snapshot %s old, older than maxAge %s", age.Round(time.Second), c.opts.MaxAge)}
 		}
@@ -625,6 +653,11 @@ func (c *Cache) rebuild() time.Time {
 	state := c.state
 	lists, listsChanged := c.lists, c.listsDirty
 	c.listsDirty = false
+	inputs, inputsChanged := maps.Clone(c.inputs), c.inputsDirty
+	c.inputsDirty = nil
+	if len(c.inputs) > 0 {
+		c.inputsDirty = map[string]bool{}
+	}
 	builders := slices.Clone(c.builders)
 	hooks := slices.Clone(c.hooks)
 	writtenAt := c.snapWritten
@@ -658,12 +691,14 @@ func (c *Cache) rebuild() time.Time {
 	}
 
 	set := ObjectSet{
-		idx:          idx,
-		lists:        lists,
-		now:          start,
-		changed:      changed,
-		allChanged:   !c.firstBuilt || state != c.lastState,
-		listsChanged: listsChanged,
+		idx:           idx,
+		lists:         lists,
+		inputs:        inputs,
+		inputsChanged: inputsChanged,
+		now:           start,
+		changed:       changed,
+		allChanged:    !c.firstBuilt || state != c.lastState,
+		listsChanged:  listsChanged,
 	}
 	if c.expiryTick {
 		c.expiryTick = false

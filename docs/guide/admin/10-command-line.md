@@ -53,6 +53,63 @@ The command stores the token in the keyring of your system. If there is no
 keyring, it stores the token in a file that only you can read. To skip the
 keyring, set `KUDURRU_KEYRING=file`.
 
+If your local account has an authenticator, add `--totp`:
+
+```sh
+kudurru login --server https://dns.example.net:8080 --username admin --totp
+```
+
+Enter the password and current six-digit code at the hidden prompts. For piped
+input, use `--password-stdin --totp-stdin` and provide the password line followed
+by the code line. Leading zeros matter. The code is never saved; there is no
+flag that takes its value or environment variable for it.
+
+Login and token creation do not follow redirects and do not try again. Use
+the final address of the server. If you do not get an answer, look at your
+sessions and tokens in the dashboard first. It is possible that the server
+completed the request. Then start a new attempt.
+
+### Sign in with single sign-on
+
+The command can use an identity provider instead of a password or a token.
+
+You need these items:
+
+- A node with SQLite storage and a license key for single sign-on.
+- A public client for the command line at the provider. The entry of the
+  provider in `auth.identityProviders` has its client ID in `cliClientID`.
+- HTTPS for the API and for the provider, with certificates that your
+  computer trusts.
+
+1. Start the sign-in. Replace `corp` with the identifier of the provider:
+
+   ```sh
+   kudurru login --server https://dns.example.net:8080 --provider corp
+   ```
+
+2. Sign in to the provider in the browser that opens.
+3. Go back to the terminal. The command stores the context.
+
+If only one provider has a client for the command line, you can omit
+`--provider`.
+
+On a computer without a browser, add `--device`:
+
+```sh
+kudurru login --server https://dns.example.net:8080 --provider corp --device
+```
+
+The command shows an address and a code. Open the address on a different
+device and enter the code there.
+
+CAUTION: Approve only a request that you started. Compare the provider, the
+client and the code with the text in the terminal.
+
+The command stores the ID token of the provider. It does not make a kudurru
+token or a browser session. When the ID token expires, sign in again.
+[Command-line sign-in](../dashboard/access.md#command-line-sign-in) has the
+details of the setup at the provider.
+
 NOTE: The default certificate of kudurru is self-signed. Use `--ca-file`
 with the certificate to trust it. For a test only, use
 `--insecure-skip-tls-verify`. Do not use this option in production.
@@ -67,11 +124,29 @@ with the certificate to trust it. For a test only, use
 | Use a context for one command | `kudurru --context <name> nodes` |
 | Delete a context | `kudurru config delete-context <name>` |
 
+### Use a Kubernetes context directly
+
+`--context` continues to select a saved Kudurru HTTP context by default. Add
+`--transport kubernetes` to select that name from kubeconfig for generic CRD
+commands:
+
+```sh
+kudurru --transport kubernetes --kubeconfig /path/to/config --context lab get zones
+kudurru --transport kubernetes --context lab -n dns apply -f objects.yaml
+```
+
+Only `get`, `apply`, `delete` and `describe` use this mode. Credentials, optional
+impersonation, TLS trust and the default namespace come from kubeconfig;
+Kubernetes RBAC applies. Existing object ownership is enforced without force.
+Do not combine API server/token overrides with this mode. The
+[CLI start guide](../../../docs-site/content/start/api-cli.md#direct-kubernetes-crd-commands)
+describes bounds and supported kinds.
+
 ### Output formats
 
 Use `-o` to select the format: `table` (default), `wide`, `json`, `yaml`
 or `name`. Use `-n <namespace>` to select a namespace. The default
-namespace is `default`.
+namespace comes from the selected context, otherwise `default`.
 
 ## Common tasks
 
@@ -90,12 +165,29 @@ namespace is `default`.
 | Remove the cache | `kudurru cache flush` |
 | Show the nodes | `kudurru nodes` |
 | Show the audit log | `kudurru audit --since 24h` |
+| Verify the retained audit trail | `kudurru audit verify` |
 | Show the settings | `kudurru settings get` |
 | Change a setting | `kudurru settings set cache.maxEntries=200000` |
 | Set a setting to its default | `kudurru settings set log.level-` |
 
 You cannot change a setting with the label `host only` with
 `settings set`. Change it in `kudurru.yaml`.
+
+### Verify the audit trail
+
+Run `kudurru audit verify` to check the server's complete retained audit chain
+and available batch seals. It requires `audit.read` and the audit license.
+The command prints whether verification passed and when it was checked, plus
+an explanation if an integrity check failed. The server shares scans and
+caches results for 30 seconds, so `checkedAt` can precede the command.
+
+Use `kudurru audit verify -o json` for scripts. A completed integrity check
+prints a result in either format, including `verified: false` on failure.
+The exit status is nonzero when integrity fails, verification is unavailable,
+access is denied, or the request times out or is canceled. Request failures
+print an error to standard error without a verification result. The usual
+`--context`, `--server` and `--request-timeout` flags apply. This command
+checks the retained trail; it cannot prove that deleted history never existed.
 
 ## Work with objects
 
@@ -186,6 +278,19 @@ Chapter 11 explains what a backup holds.
 | `kudurru license status` | Show the license that a node uses (state, plan, nodes, features) |
 | `kudurru license verify <key>` | Check a license key without a running node |
 | `kudurru version` | Show the version |
+
+These command groups are for special tasks. Each has a page with the
+procedure.
+
+| Command | Use | Procedure |
+|---|---|---|
+| `kudurru cluster` | Show the cluster state. Make and change a cluster of SQLite nodes. | [Enrolled SQLite cluster](../../deploy/sqlite-cluster.md) |
+| `kudurru iam rolebindings` | Make, change and delete role bindings on SQLite | [Reviewed RoleBinding commands](../../deploy/rolebindings.md) |
+| `kudurru iam external-users` | Disable, enable and sign out accounts from single sign-on | [External accounts](../dashboard/access.md#external-accounts) |
+| `kudurru iam migrate` | Move the identity data of a Kubernetes installation to version 0.2 | [Kubernetes IAM upgrade](../../deploy/iam-upgrade.md) |
+| `kudurru integrations` | Show, check and run integrations | [Background integrations](../../deploy/integrations.md) |
+| `kudurru anchors` | Read and recover the managed root trust anchors on a stopped node | [Runbooks](../../deploy/runbooks.md#recover-a-quarantined-managed-root-anchor) |
+| `kudurru api` | Send a request to an API path that has no command | [Stored TSIG keys](../../deploy/tsig-keys.md) |
 
 Use `kudurru <command> --help` for the options of each command. The
 [command reference](../../../docs-site/content/reference/cli.md) has all of

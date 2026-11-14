@@ -51,13 +51,50 @@ make generate     # controller-gen: deepcopy, CRDs, RBAC
 make sast         # Semgrep (Docker); make vulncheck, make trivy-fs, make trivy-images
 ```
 
+`make test` discovers the compiled command package's tests, examples and fuzz
+targets and runs them in disjoint batches of at most 100 top-level names. Every
+subtest and fuzz seed remains selected, with race detection and the same
+30-minute process timeout. Other packages keep their ordinary race invocation;
+a failed batch fails the suite without replaying it or omitting later batches.
+
 The security scans (`.github/workflows/security.yml`, and publish.yml's scan of a release candidate's pushed images, `make trivy-published`) fail on a finding. Fix it, or, for a false positive, add a `// nosemgrep: <rule> -- <reason>` comment above the line or an entry with its reason to `.trivyignore.yaml`.
+
+Two optional targets run tests against real servers in Docker. `make
+test-postgres` runs the central-database tests against PostgreSQL
+(`KUDURRU_TEST_POSTGRES_DSN`). `make test-sinks` runs the `TestLive*` tests
+of `internal/querylog/sinks` against ClickHouse and Loki
+(`CLICKHOUSE_IMAGE` and `LOKI_IMAGE` choose the images). Without Docker,
+point the tests at servers of your own with `KUDURRU_TEST_CLICKHOUSE_URL`
+(and `KUDURRU_TEST_CLICKHOUSE_USER`, `KUDURRU_TEST_CLICKHOUSE_PASSWORD` for
+a user that may create a database) and `KUDURRU_TEST_LOKI_URL`. The tests
+skip when a URL is empty; `KUDURRU_REQUIRE_SINK_SERVERS=1` makes that a
+failure.
 
 Go 1.27 is required. `CGO_ENABLED=0` is a release requirement; do not add cgo dependencies.
 
 ## Branches and releases
 
 Open pull requests against `main`; each push to one builds `ghcr.io/robertherbaugh/kudurru:dev-<PR number>` for trying the branch. Releases are cut by merging `main` into `release-candidate` (tags `v<VERSION>-rc.<N>`, a GitHub pre-release) and `release-candidate` into `release` (tags `v<VERSION>`, moves `latest`), where `VERSION` is the file in the repository root. Never push release tags by hand. The steps and the checks around them are in [dev-docs/release-checklist.md](dev-docs/release-checklist.md#release-pipeline).
+
+After editing `VERSION`, run `make version-sync`. To set it and synchronize in
+one command, run `python3 hack/sync-version.py --version 0.3.0` (substitute the
+next version). `make version-check` reports drift without writing; CI runs it.
+These commands need Python 3.9+, Git, Go and Helm on `PATH` in a Git checkout.
+
+The script updates both charts, supervisor version defaults from their
+Dockerfiles, generated Kustomize manifests, Compose images, and current install
+references in the README and deployment/start guides. It adds a missing
+changelog section marked unreleased. Release notes, dates, feature claims and
+historical links still need editorial review; API/CRD versions, dependency
+versions, digest pins and development tags have independent lifecycles.
+Rendering finishes in a temporary directory before tracked files change.
+
+GoReleaser stages manifests and the Compose bundle with the exact GA or RC tag
+in `bin/release`, preserving tracked source. To inspect an RC bundle locally,
+run `make release-manifests RELEASE_ARTIFACT_VERSION=0.3.0-rc.1` with a base
+matching `VERSION`; this installs pinned kustomize if needed and publishes
+nothing. Only tracked deployment files enter the bundle, excluding local
+Compose secrets and data.
 
 ## Layout and seams
 
@@ -66,6 +103,7 @@ Open pull requests against `main`; each push to one builds `ghcr.io/robertherbau
 - `internal/pipeline` defines the fixed stage chain. Stage order is code, not configuration.
 - `ee/integration` is the only way to add outbound sinks (Cloudflare) or inbound sources (UniFi). Integrations never run on the query path.
 - `internal/rbac/permissions.yaml` is the single source for roles, Kubernetes ClusterRoles and the docs table. Every API route declares its permission; a lint fails the build otherwise.
+- Every API operation also has a line in two reviewed tables in `internal/api`: `followerOperations` (`follower.go`: what an enrolled follower does with a mutation) and `operationRefusals` (`refusals.go`: the `501`/`503` key it answers on each deployment shape). Every such key has a row in `refusalKeys` that names its anchor in [docs/deploy/capabilities.md](docs/deploy/capabilities.md). `TestRefusalInventoryNamesEveryOperation` fails for a new route without a line, and the refusal inventory walks (`TestRunServeRefusalInventory*` and `TestRootMemberRefusalInventoryClosedMembers` in `cmd/kudurru`, the enrolled process tests in `test/e2e`) send every operation to each shape and fail for an answer the tables do not declare, a refusal without a hint, or a durable refusal with `Retry-After`. For the refusals a probe does not reach, `TestRefusalEmittersExplainThemselves` reads `internal/api` and fails for each `501` or `503` without a hint that `hintlessRefusals` (`refusal_emitters_test.go`) does not list with its number of call sites; list only an internal fault there, and give a deployment limit a hint.
 - `internal/config/schema.go` describes every settings key. Keys flagged `hostOnly` can never be set through the API.
 
 Deferred features have seams documented in [design-record.md §13.1](dev-docs/design-record.md#131-v010--stone). Land a deferred feature by filling its seam, not by adding a parallel path.

@@ -10,7 +10,9 @@ record sets and the copies held by secondaries are the clay copies.
 Code: `api/v1alpha1/dnszone_types.go`, `dnsrecordset_types.go`,
 `internal/zone` (the tree, lookups, transfers), `internal/zoneview` (the
 zonecache view), `internal/controller` (status and serials),
-`internal/notifier`, `internal/stages/authoritative`.
+`internal/notifier`, `internal/secondary` (independent inbound transfers and
+durable copies), `internal/stub` (authority discovery and direct queries),
+`internal/stages/authoritative`.
 
 ```mermaid
 erDiagram
@@ -18,7 +20,7 @@ erDiagram
     DNSRecordSet ||--|{ Endpoint : "spec.endpoints[] (max 1000)"
     DNSZone {
         string zoneName "FQDN, immutable"
-        string type "primary | forward"
+        string type "primary | forward | secondary | stub"
         object soa "mname, rname, refresh, retry, expire, minimum"
         object fallback "optional: resolve missing names, upstreamGroup"
         object policy "queryAccess, zoneTransfer, notify, ACLs, TSIG refs"
@@ -35,22 +37,77 @@ erDiagram
     }
 ```
 
-Only `primary` and `forward` zones are served. The other types in the
-schema (`secondary`, `stub`, `external`, `catalog`) are accepted but get
-`Ready=False, reason Unsupported`.
+Primary, forward, secondary, and stub zones are served. On the Kubernetes
+store, `external` zones are served too, from Kubernetes objects
+([External zones on Kubernetes](#external-zones-on-kubernetes), D402). The
+other types in the schema (`catalog`, `secondaryCatalog`) are accepted by
+Kubernetes admission and are not served. The zone controller, which runs on
+both stores, gives such a zone `Ready=False, reason Unsupported`
+(`zoneVerdict` in `internal/controller`). The SQLite store does not store an
+`external`, `catalog` or `secondaryCatalog` zone: `zone.ServingErrors`
+refuses the type at write as `invalid` with `spec.type: Unsupported value`,
+and the state.db upgrade refuses a data directory that holds one (see
+below).
+
+A `BlockList` source that never published a body does not hold back the
+SQLite candidate, even when no policy refers to the list. List preparation
+(`notDownloaded` in `internal/listfetcher/prepare.go`) compiles such a
+source empty, whether its first download is still running or failed (an
+unreachable host, an HTTP error, or a body the downloader refuses), and the
+list reports the failure as `Degraded` (`ListFetchFailed`). The download
+that publishes the source's digest changes the object and prepares the next
+candidate. A cached body without a published digest is never used, and a
+published digest whose body this node lacks still holds the candidate back
+(`ErrIncomplete`). The fetcher retries a failed source after one minute,
+doubling up to one hour (`DefaultCooldown`, `DefaultMaxCooldown`); a refresh
+request fetches at once (D373).
 
 Use one DNSZone per canonical apex. If different objects claim the same
-apex, the serving builder logs the conflict and retains the previously
-served zone for that apex. On cold start the first object by metadata name
-wins deterministically. Other zones keep rebuilding, and removing the
+apex, the serving builder logs the conflict and installs unavailable coverage
+for that apex. This v0.2 rule supersedes v0.1's last-good duplicate selection:
+neither ambiguous primary authority nor an acquired secondary may answer.
+Unrelated zones continue rebuilding, including on cold start. Removing the
 duplicate lets the affected zone publish its current data. Cross-object
 admission does not reject duplicates, so remove the conflicting object
-rather than relying on this fallback.
+to recover serving at that apex.
+
+The SQLite store is stricter than the two paragraphs above, which describe
+Kubernetes. Its serving image is complete or absent: one zone that the image
+cannot build, whether by its type (`external`, `catalog`,
+`secondaryCatalog`), a second object for its apex (also a new object for the
+apex of a deleted zone whose lifecycle is still kept) or a query, transfer
+or notify policy that does not compile, would withdraw every zone, readiness
+and the API; a primary zone with an update mode other than `deny` or
+`allow`, or with an update grant the primary runtime cannot compile (an
+owner outside the zone, an unknown type), would never be committed. The store therefore refuses such a zone
+when it is written, as an `invalid` object that names the field (and, for a
+second object, the first), and an upgrade from a release that stored one
+stops before it changes the database
+([the store](configuration-and-store.md#the-store), D373). A record set
+is not such an error on either driver: one that names a forward zone is
+reported on the record set and the zone is served, and whatever the
+primary zone builder refuses of a record set (a record set that is invalid
+as a whole, such as an `A` target that is not an address or two endpoints
+for one name and type; an endpoint outside the zone; a CNAME next to other
+data, an apex CNAME or NS endpoint; data below a DNAME; a second CNAME or
+DNAME target at one name through set identifiers) is left out of the
+commit and reported on its record set while the rest of the zone is served.
+The builder refuses everything the committed primary that the runtime
+builds before admission refuses, so no record set it takes can stop the
+commit; a test runs every pair of endpoints over a small set of names,
+types and set identifiers through that prebuild.
 
 | Type | kudurru does | Example |
 |---|---|---|
 | `primary` | answers from its own records, with SOA and serial | `home.example.com.` |
 | `forward` | sends the name to an upstream group ([upstreams](upstreams-and-cache.md)) | `corp.example.` → `internal-ad`; the bootstrap root zone `.` → `default` |
+| `secondary` | transfers an external primary's data independently on each node | `partner.example.` from `192.0.2.53:53` |
+| `stub` | discovers the zone's authorities and routes directly to them | `corp.example.` via `tcp://192.0.2.53:5353` |
+
+A local primary may omit `spec.nameservers`, as in the original zone builder.
+Its committed data still contains exactly one apex SOA; an apex NS query returns
+NODATA. The frozen configuration must match the committed zone identity to
+authorize this omission. Configured nameservers still require committed NS data.
 
 ## Answering from a zone
 
@@ -64,9 +121,17 @@ flowchart TD
     T -- "forward" --> FS{"snapshot synced?"}
     FS -- "no" --> SF0["SERVFAIL"]
     FS -- "yes" --> FW["set the upstream group hint,<br/>continue to blocking"]
-    T -- "primary" --> ACL{"queryAccess /<br/>queryACL allow<br/>the client?"}
+    T -- "stub" --> ST{"route current<br/>and query ACL allows?"}
+    ST -- "unavailable" --> SS["SERVFAIL; retain zone coverage"]
+    ST -- "denied" --> REF
+    ST -- "yes" --> RD{"client RD?"}
+    RD -- "0" --> SR["local NS/glue referral"]
+    RD -- "1" --> SQ["bounded direct authority query<br/>RD=0; return child referrals"]
+    T -- "primary or secondary" --> ACL{"queryAccess /<br/>queryACL allow<br/>the client?"}
     ACL -- "no" --> REF["REFUSED"]
-    ACL -- "yes" --> XFR{"AXFR or IXFR?"}
+    ACL -- "yes" --> COPY{"secondary copy available<br/>and unexpired?"}
+    COPY -- "no" --> SF1["SERVFAIL; retain zone coverage"]
+    COPY -- "yes, or primary" --> XFR{"AXFR or IXFR?"}
     XFR -- "yes" --> TR["transfer (below)"]
     XFR -- "no" --> GATE{"snapshot state"}
     GATE -- "unsynced" --> UNS["lookup: serve only a found<br/>name or a referral; anything else<br/>SERVFAIL, never NXDOMAIN"]
@@ -88,7 +153,10 @@ The rule "**never NXDOMAIN while unsynced**" matters: a replica that has not
 loaded its zones must not tell the world that names do not exist, because
 resolvers cache negative answers. Wildcards (RFC 4592) and DNAME are handled
 inside the lookup. Records with `disabled: true` or a past `expiresAt` are
-left out when the zone is built, and the zone is rebuilt at the next expiry.
+left out when a primary zone is built, and the zone is rebuilt at the next
+record expiry. Alias targets reselect the most specific configured zone before
+continuing, including a secondary nested under a primary. An unavailable
+secondary cannot be bypassed by a parent wildcard or the root forwarder.
 
 `queryAccess` and `zoneTransfer` take one of six modes: `deny`, `allow`,
 `allowOnlyPrivate`, `allowOnlyZoneNameServers`, `useNetworkACL` (the ordered
@@ -109,7 +177,8 @@ Only absent names fall back. An existing name, an empty non-terminal or a
 wildcard match without the requested type answers NODATA locally. Generated
 apex SOA/NS (and management ANY queries) stay local, but other apex types
 fall back until a record set explicitly defines the apex. Disabled, expired
-and view-withheld records are absent and do not suppress fallback. More
+and publish-only records are absent and do not suppress fallback; a
+client-group view's name suppresses it only for that group's clients. More
 specific zones still win. ACL refusals and stale/unsynced snapshots never
 trigger public fallback; a missing name queried without RD is REFUSED.
 
@@ -129,25 +198,242 @@ and do not encode fallback settings.
 
 ## Which records are served
 
-Several record sets can feed one zone, from several namespaces. The zone's
+Several record sets can feed one primary zone, from several namespaces. The zone's
 `recordSetSelector` says which namespaces and labels may contribute. The
 controller and the dataplane apply the same rule, so the content hash always
 matches what is served:
 
 1. Order record sets oldest first (creation time, then namespace, then name).
 2. An endpoint whose name is not under the apex is dropped: `OutsideZone`.
-3. The identity of an endpoint is (name, type, setIdentifier). A later
-   record set that repeats an identity loses that endpoint: `Duplicated`.
+3. The identity of an endpoint is (name, type, setIdentifier), plus the
+   ClientGroup (`namespace/name`) for an endpoint in a client-group view. A
+   later record set that repeats an identity loses that endpoint:
+   `Duplicated`. A view endpoint that would replace default data another
+   namespace defined is `Duplicated` too (see below).
 4. A record set from a namespace the selector does not allow is `NotSelected`;
    one that points at a missing zone is `ZoneNotFound`.
 
 A record set stays `Ready` while at least one of its endpoints is served;
 dropped endpoints raise `Degraded` with the reason.
 
+The controller, Kubernetes zone-view builder and current primary compiler each
+own a bounded per-record-set parse cache. An unchanged object can reuse its
+validated RRs when another object changes; complete zone assembly and its
+selection, conflict, ownership, hash and serial rules still run. Entries bind the
+complete record-set content and metadata, zone UID/origin and effective default
+TTL. Returned RRs and endpoint extensions are detached copies. Every assembly
+checks the original endpoint expiry at its build instant; reaching that deadline
+invalidates the parse entry without extending it. The cache retains at most
+4,096 objects and 16 MiB of estimated data, prunes absent objects from complete
+zone inputs and evicts least recently used entries. Invalid parses are not
+retained. This cache supplies neither authority nor a publication receipt;
+committed serving models still materialize verified raw records.
+
+## Client-group views (split horizon)
+
+An endpoint's `kudurru.view` is either `public` (published to sinks, never
+served, D29) or the name of a ClientGroup in the record set's namespace
+(D403). A group-view endpoint is served only to clients the identify stage
+placed in that group, on both store drivers:
+
+```yaml
+spec:
+  endpoints:
+    - { dnsName: www.example.com, recordType: A, targets: [203.0.113.10] }
+    - { dnsName: www.example.com, recordType: A, targets: [10.0.0.10], kudurru: { view: lan } }
+    - { dnsName: nas.example.com, recordType: A, targets: [10.0.0.20], kudurru: { view: lan } }
+```
+
+A zone with views is built as its default zone plus one complete variant per
+group. In a variant, a view RRset replaces the default RRset of the same name
+and type; a view CNAME replaces everything at its name, and any view RRset
+replaces a default CNAME at its name. Views never remove a default name,
+while every other client gets the default zone's NXDOMAIN or NODATA (with the
+default SOA) for view-only names. A view name, and each empty non-terminal it
+creates, exists in the group's variant, so a default wildcard does not
+synthesize answers there for the group (RFC 4592): with `*.example.com` in the
+default data and a lan view `a.b.example.com`, lan clients get NXDOMAIN for
+`x.b.example.com` and NODATA for `b.example.com`, where other clients get the
+wildcard's answer. A client
+in several groups with views of one zone gets the view of the group whose
+`namespace/name` sorts first. The authoritative stage picks the variant after
+the zone match and query ACL (`Zone.ForGroups`, no allocation; a zone without
+views returns itself), and CNAME chains that enter the zone from another zone
+use the client's variant there too.
+
+Rules and limits:
+
+- A view replaces only default data of its own namespace. A view RRset that
+  would replace another namespace's default RRset (same name and type, or a
+  CNAME on either side) is refused as `Duplicated`, as the same data as a
+  default endpoint would be; a view-only name is allowed in any namespace the
+  zone admits. Otherwise a namespace that may write a DNSRecordSet and a
+  ClientGroup could override another namespace's names for any clients its
+  group matches.
+- A view holds leaf data only: NS, DNAME, SOA and DNSSEC types are refused, as
+  is a CNAME at the apex. View data at or below a delegation or below a DNAME
+  is refused as `Occluded`, including, on SQLite, a delegation an RFC 2136
+  UPDATE added.
+- A zone serves at most 16 views. The budget is per zone and shared by every
+  record set that feeds it, in the build order above: once 16 groups have
+  views, a later record set's view of another group is refused, whatever its
+  namespace. Each view is a full copy of the zone's names and index (the RRs
+  are shared), rebuilt with the zone.
+- Views are not served in a DNSSEC-signed zone (`spec.dnssec.enabled`, or
+  default data, static or added by UPDATE, with RRSIG, NSEC, NSEC3 or DNSKEY
+  records): the view endpoints are refused as `Invalid` and the group gets the
+  default data.
+- A refused view endpoint is reported on its record set like any other
+  dropped endpoint. On SQLite a record set's projection carries one outcome,
+  so the refusal is visible only when nothing else in the record set is
+  served; a record set that serves other data stays `served`.
+- AXFR, IXFR, the IXFR journal, NOTIFY serials, `GET .../export` and
+  integration sinks (Cloudflare, UniFi) carry the default data only. A
+  secondary never receives group data, and there is no per-key view transfer.
+- RFC 2136 UPDATE reads and writes the default data: prerequisites are
+  evaluated against it, and added records are default records. On SQLite a
+  static view endpoint still reserves its name and type against UPDATE, as
+  disabled and publish-only endpoints do. That reservation includes takeover:
+  when the operator authorizes a takeover of dynamic data, a view endpoint
+  that collides with records an UPDATE added (the same name and type, or a
+  DNAME at or above its name) removes them from the committed records like a
+  default endpoint would, although the view serves only its group. Default
+  clients then lose that dynamic data; authorize a takeover only for record
+  sets whose view endpoints are meant to replace it.
+- The content hash covers the views, so a view change advances the serial.
+  On SQLite the committed aggregate keeps views in their own `views` list,
+  apart from the default `records`.
+- Answers from a view are authoritative and final; they never enter the
+  response cache. The edge's packet caches key on the question, not on the
+  client's group, so any group view (desired, or still served by a committed
+  model) makes kudurru report `zone-client-view` for both the authoritative
+  and the resolver pool, and the edge bypasses both caches. While a
+  ClientGroup with client matchers exists, the policy index is already
+  client dependent and kudurru reports `client-scope` first; both caches are
+  bypassed either way. The edge passes the client address to kudurru in its
+  PROXYv2 header, so kudurru picks the group's view behind it
+  (`TestRunServeRemoteEdgeClientGroupViews`, pinned dnsdist).
+- The record API keys an endpoint by name, type, set identifier and view:
+  `POST /zones/{zone}/records` with a `kudurru.view` writes that view next to
+  the default data instead of replacing it, and
+  `DELETE /zones/{zone}/records/{name}/{type}?view=` removes one view only
+  (`-` the default data; without `view`, every view of the name and type).
+  The dashboard's record editor picks the view under "Served to" (every
+  client, published only, or a ClientGroup of the record set's namespace),
+  says what is refused or bypassed for a group view, and lists each record's
+  view. `?namespace=` narrows a delete to the record sets of one namespace.
+- On the complete SQLite runtime the record list is the served zone, not the
+  desired record sets: its rows name no record set, a served view row carries
+  its ClientGroup's `namespace` (so `kids/lan` and `default/lan` stay two
+  rows, and the dashboard deletes one with `?view=lan&namespace=kids`), and a
+  `public` endpoint or a view the build refuses is stored but not listed. The
+  dashboard says so above the list and in the editor before such a save.
+
+## External zones on Kubernetes
+
+A DNSZone of type `external` is filled from Kubernetes objects (D402): the
+Ingresses, Gateway API routes (HTTPRoute, GRPCRoute, TLSRoute) and Services
+of type `LoadBalancer` that its `spec.external` selects. It needs the
+Kubernetes store and the host setting `externalZones.enabled` (Helm value
+`externalZones.enabled`, which also grants the read-only RBAC); the SQLite
+store refuses the type.
+
+```yaml
+apiVersion: kudurru.io/v1alpha1
+kind: DNSZone
+metadata: {name: apps}
+spec:
+  zoneName: apps.example.com.
+  type: external
+  nameservers: [ns1.example.com.]
+  external: {ingress: true, gateway: true, loadBalancerServices: true}
+  recordSetSelector: {namespaces: [web, shop]}
+```
+
+The source adapter (`internal/sources/k8s`) is a leader-only runnable, the
+same pattern as the DNSEndpoint source (D303). On each pass it lists the
+external zones and every enabled source kind in all namespaces with
+complete, bounded lists, keeps only the fields it needs, and derives one
+`DNSRecordSet` per source object and zone in the source's namespace:
+
+| Source | Names | Targets |
+|---|---|---|
+| Ingress | `spec.rules[].host`, `spec.tls[].hosts` | `status.loadBalancer.ingress` |
+| HTTPRoute, GRPCRoute, TLSRoute | `spec.hostnames`, else the parent listener's hostname | `status.addresses` of each parent Gateway that has accepted the route |
+| Service (`type: LoadBalancer`) | the hostname annotation only | `status.loadBalancer.ingress` |
+
+The external-dns annotations `external-dns.kubernetes.io/hostname` (adds
+names), `/target` (replaces the targets; on a Gateway, for its routes) and
+`/ttl` (seconds or a duration) are honored, and so are their
+`external-dns.alpha.kubernetes.io/` forms; the current prefix wins. Address
+targets become A and AAAA records; otherwise the first host name in sorted
+order becomes a CNAME. A name goes to the external zone with the longest
+apex that contains it; two zones with the same apex select neither. A route
+only publishes through a Gateway whose `Accepted` condition for it is
+`True`, so a route cannot claim names through a Gateway that refuses it.
+The derived record set carries the source's labels, so the zone's
+`recordSetSelector` decides which namespaces and labels may contribute.
+
+```mermaid
+flowchart LR
+    Sources["Ingress, routes + Gateways, LoadBalancer Services (read-only list and watch)"] --> Adapter["Elected source adapter (bounded pass)"]
+    Zones["DNSZones of type external"] --> Adapter
+    Adapter -->|"create-only or exact resourceVersion"| Sets["Source-owned DNSRecordSets (managedBy kubernetes-source:UID)"]
+    Sets --> Controller["Zone controller: status, serial"]
+    Sets --> Cache["Zone cache on every replica"]
+    Cache --> DNS["DNS answers (memory only)"]
+```
+
+A derived record set has a deterministic name, the manager
+`kubernetes-source:<source UID>`, the source UID and name in annotations,
+the label `kudurru.io/external-source: <kind>` and one owner reference to its
+source. An external zone is built only from record sets with that complete
+identity (`zone.ExternalSourceOwned`); any other record set that names it is
+`NotSelected` and not served, so the zone serves what its sources say. The
+API refuses a record set for an external zone with `conflict`, and the zone
+record and import endpoints refuse it as they do for every non-primary zone.
+RFC 2136 UPDATE finds no primary zone for the apex and is refused with
+`NOTAUTH`, writing nothing. On a server without `externalZones.enabled` the
+zone controller reports an external zone `Degraded`, reason
+`SourcesNotRead`: it is still served, but only from record sets derived
+earlier, and source changes do not reach it.
+
+Writes follow D303. A record set is written only after the zone and the
+source are confirmed unchanged since the list: the source by UID and
+resourceVersion, the zone by UID, generation and spec (and still neither
+deleting nor disabled). The zone's resourceVersion is not compared, because
+the zone controller rewrites the zone's status (serial, record count) after
+every record set a pass writes;
+creation requires absence and an update requires the observed
+resourceVersion. A record set with the derived name that someone else owns is
+never taken over. A record set is removed only when its source is confirmed
+absent or replaced (a fresh read by name), when its zone no longer takes it,
+or when no external zone enables its kind any more; the delete carries the
+observed UID and resourceVersion. A failed or refused list (a missing
+Gateway API CRD, RBAC, a list over 4,096 objects or 32 MiB, or a list page
+of 64 objects over the 4 MiB response bound) never authorizes cleanup: the
+kind keeps the record sets of the last complete pass, which are no longer
+updated. Every Service in the cluster counts toward the 4,096-object bound of
+its kind, not only LoadBalancer Services. Invalid source data (an unusable TTL
+annotation) withdraws only that source's records. Watch events only wake a
+new pass; without events a pass runs every ten seconds. Passes start at least
+one second apart, so a burst of source events (controllers updating status)
+coalesces into one relist, and a pass that met a concurrent change
+(`conflict`) is retried after that second instead of after the full ten.
+Sources are never written.
+
+Kubernetes has no transaction across the source, the zone and the record
+sets, so the adapter converges eventually. When the elected replica loses
+its Lease, its term context ends every pending write and the next leader
+derives the same names, so a term change cannot duplicate record sets
+(`TestRunServeExternalZonesFromKubernetesSources`). Every replica answers
+from its zone cache; the DNS query path never reads the API server.
+
 ## Serials
 
-Replicas never compute a serial. The leader's controller stamps it into the
-zone's status, and every node serves `status.serial`.
+For primary zones, the leader's controller stamps the serial into the zone's
+status, and every node serves `status.serial`. Secondary copies retain the
+external primary's SOA and serial, including serial zero and RFC 1982 wrap.
 
 ```mermaid
 sequenceDiagram
@@ -166,7 +452,7 @@ sequenceDiagram
     S-->>Z: watch events (record set, then zone status)
     Z->>Z: rebuild, swap the snapshot (new SOA serial)
     Z-->>N: published
-    N->>X: NOTIFY (TSIG with the first transferTSIGKeyRefs key)
+    N->>X: NOTIFY (selected NOTIFY key, else first transfer key)
     X->>Z: SOA? then IXFR/AXFR over TCP
     Z-->>X: the zone at the new serial
 ```
@@ -187,9 +473,49 @@ and on gaining leadership it notifies every zone once.
   resolved through in-zone glue or the resolver.
 - Each target gets up to 5 attempts with backoff from 2 s to 1 minute; a
   newer serial replaces a round in progress.
-- The source address is `notify.source`. In Kubernetes, NOTIFY leaves from
-  the leader pod and is usually SNAT'ed, so the secondary must allow the
-  node or egress address, not the Service address.
+- `spec.policy.notifyTSIGKeyRef` selects a separate outbound signing key.
+  Empty preserves the first `transferTSIGKeyRefs` key, or unsigned delivery
+  only when neither selects a key. An unavailable selected key refuses
+  delivery; transfer authorization remains independent.
+- `spec.policy.notifySource` selects a literal local unicast IPv4/IPv6 address.
+  Empty inherits `notify.source`, then system selection. Invalid, unavailable
+  or wrong-family sources fail without choosing another address. In Kubernetes,
+  NOTIFY leaves from the leader pod and is usually SNAT'ed, so the secondary
+  must allow the node or egress address, not the Service address.
+- The complete SQLite sender retains the captured key identity, source,
+  transfer policy, writer and durable intent through current admission and
+  acknowledgment. Key rotation/revocation or desired key/source replacement
+  refuses acknowledgment and leaves the original pending intent intact.
+
+### Doctor egress observation
+
+`kudurru doctor --notify --notify-key <name> --notify-target <host:port>`
+uses the selected file-backed TSIG key and global `notify.source` for one
+UDP exchange with a three-second deadline. The complete SQLite listener
+returns the source address it observed in a signed TXT acknowledgment at
+`health.kudurru.internal.`. This does not refresh a zone, mutate state or
+send callbacks. The listener retains the original verified NOTIFY proof and
+captured objects/runtime/zones; the key, writer authority and source/zone
+readiness must still be current when the response is admitted.
+
+An omitted target uses the first configured UDP listener; wildcard addresses
+become loopback. Loopback proves only the local path. An external or hairpin
+target reports the address on that route, which can differ from the route to
+an external secondary. Missing keys, bind failures, stale authority and
+unsigned or malformed replies fail without selecting another credential or
+source.
+
+The Kubernetes listener also mounts this diagnostic using its currently
+published stored/file TSIG keyring. The original verified packet identity must
+match that keyring, within the packet's original deadline; pending, failed,
+wrong-owner and closed sources refuse, and so does a keyring replaced while the
+request is checked. This read-only response attests to
+the packet's observed source only. It supplies no Kubernetes writer, leader or
+zone-readiness authority. The keyring follows the same startup preparation and
+reload rules as ordinary signed DNS
+([stored-key management](#captured-tsig-keys-and-stored-key-management)).
+Actual API-server acceptance covers stored/file keys, restart, unknown startup
+inventory, wrong encrypted owner, unsigned/wrong-key/TCP/malformed refusals.
 
 ## Transfers out
 
@@ -201,12 +527,880 @@ and on gaining leadership it notifies every zone once.
 
 A transfer needs `zoneTransfer` to allow the client address and, when
 `transferTSIGKeyRefs` is set, a request signed with one of those keys. TSIG
-keys are node settings (`tsigKeys`, write-only), not store objects. While
+keys are either node settings (`tsigKeys`: host-only, each secret in a file,
+changed by restart) or encrypted stored keys managed through `/api/v1/tsigkeys`
+([stored-key management](#captured-tsig-keys-and-stored-key-management)). While
 the snapshot is not open, transfers answer SERVFAIL. Every message of a
 signed transfer is signed.
 
-## Not built yet
+## Secondary copies
 
-Secondary and stub zones (transfers in), NOTIFY in, dynamic UPDATE
-(RFC 2136), an IXFR journal, catalog zones and DNSSEC signing are planned.
-Today any opcode other than QUERY is answered NOTIMP at ingress.
+Every replica runs `secondary.Manager`; it does not depend on leadership.
+Configuration and query ACLs come from the normal zonecache snapshot. Raw
+transferred records never become `DNSRecordSet` objects.
+
+```mermaid
+sequenceDiagram
+    participant C as zonecache configuration
+    participant R as secondary manager (each node)
+    participant P as external primary
+    participant D as node local.db
+    participant Q as authoritative queries
+    participant N as peer replicas
+    C->>R: publish secondary configuration
+    R->>D: load identity-bound copy and absolute expiry
+    opt primary sends NOTIFY
+        P->>R: NOTIFY through UDP/TCP/DoT listener
+        R->>R: verify primary source and configured TSIG
+        R->>N: bounded authenticated refresh hint
+        N->>P: independent SOA check and transfer
+    end
+    R->>P: TCP/TLS SOA (TSIG when configured)
+    alt initial, expired or credential-changed copy
+        R->>P: AXFR
+        P-->>R: complete framed and authenticated RR stream
+        R->>R: validate structure, serial and supported data
+    else newer serial with an unexpired base
+        R->>P: IXFR (AXFR fallback when unavailable)
+        P-->>R: complete framed and authenticated RR stream
+        R->>R: validate structure, serial and supported data
+    else same serial
+        R->>R: confirm existing contents
+    end
+    R->>D: atomically persist copy, confirmation and expiry
+    R->>Q: publish immutable snapshot
+    Q->>Q: check current configuration identity and expiry
+```
+
+The primary's SOA controls refresh, retry and expire. Failed or incomplete
+transfers retain the previous copy until its original deadline. For an
+unexpired copy, same-serial SOA confirmation renews expiry; loading from disk,
+restarting or failing a refresh never does. At expiry the configured zone remains
+in suffix matching and answers SERVFAIL. Recovery after expiry always requires a new AXFR, even
+if the serial is unchanged. The obsolete local serial no longer prevents
+recovery from a primary restored to an older serial; the new transfer must
+still be at least as current as its authenticated SOA poll. Configuration older
+than zonecache's `maxAge` also fails closed, even if transferred records have
+not expired.
+
+The versioned, checksummed `local.db` envelope binds records to object UID and
+complete spec, a fingerprint of the selected TSIG credential, and a cluster
+anchor derived from the cluster encryption key. A changed configuration,
+recreated object, rotated encryption key or changed TSIG secret requires a
+fresh transfer. Persisted copies require a persistent node data directory;
+replacing an ephemeral volume loses that node's copy. Data is committed before
+publication. Queries only read immutable memory, with no database/network I/O.
+
+Transfers use the configured primary order, bounded concurrency (four zones),
+a ten-second deadline per exchange, one million records and 64 MiB of wire
+and expanded DNS data. Invalid framing, SOA mismatches, out-of-zone records,
+serial regression, missing/invalid configured TSIG and size limits reject the
+whole candidate. TCP and verified TLS support both SOA polling and transfers.
+TLS verifies the configured endpoint hostname/IP against the node trust store;
+there is no plaintext fallback. Both default to port 53; use an explicit :853
+for the standard TLS port. The data model preserves DNSSEC and unknown RRs.
+Signed copies are preflighted before persistence/publication: one coherent NSEC
+or NSEC3 SHA-1 chain, matching type bitmaps, and applicable stored signatures.
+NSEC3 permits opt-out with at most 150 iterations and 32 decoded salt bytes;
+mixed denial chains and malformed/incomplete proofs reject the new copy.
+
+With DO set, authoritative replies assemble the signatures and denial proofs
+for positive, wildcard, alias, negative and delegation answers. This includes
+parent-side DS and opt-out denial. No local trust validation is claimed and AD
+is always clear. Ordinary DO answers require live applicable signatures;
+expired proof material yields SERVFAIL. DO-clear answers remain available until
+SOA expiry, and explicit DNSSEC-record questions expose stored diagnostic data,
+including expired RRSIGs. SOA confirmation and restart never renew signatures.
+Response TTLs are capped by zone expiry and attached signature lifetime; the
+original transferred bytes and content hash remain unchanged. Each answer is
+bounded to 64 RRsets, 1 MiB expanded data and 4096 NSEC3 hash rounds, with at
+most 16 signatures per RRset. The immutable proof index is built off the query
+path and published together with its zone.
+
+IXFR applies authenticated deltas to a private copy, checking old/new SOA
+continuity, serial wrap, matching deletes, duplicate additions and final
+serial. It preserves raw records and publishes only the complete validated
+result through the normal durable path. Primaries without journal history may
+send AXFR format on the same connection; an authenticated NOTIMP may retry
+AXFR with the same deadline and remaining byte budget. Invalid data and
+authentication failures never trigger fallback. Initial, expired, and
+credential-changed copies use AXFR. The receiver bounds live records, bytes,
+cumulative edits and serial steps independently.
+
+Inbound NOTIFY reaches the authoritative opcode handler through ingress. It
+requires an exact secondary apex, an address belonging to a configured primary,
+and the configured transfer TSIG key when present. Numeric primaries match
+directly; hostname addresses refresh off the request path every 30 seconds and
+expire after two minutes even during lookup failures. Key and source checks
+are conjunctive. DoH/DoQ/DoH3 and synthetic API requests cannot submit hints.
+
+Accepted hints coalesce in a bounded queue and cause at most one SOA check per
+second per zone. A hint received during a transfer schedules another check.
+An authenticated `/internal/events` POST fans the configuration identity to
+peer replicas; those replicas only trigger their local manager and never
+rebroadcast. Four bounded workers handle fan-out. Failed/dropped hints are
+counted, and ordinary refresh/retry timers remain the recovery path. Neither
+a hint nor its advertised serial changes data, confirmation, or expiry.
+
+Shared secondary status has `Ready=Unknown`, reason `PerNodeTransfer`; the
+controller clears legacy primary serial/hash/count fields. Zone API responses
+and the dashboard show `secondaryRuntime` for the responding node, including
+the last copy's serial, confirmation, expiry, next attempt and failures. An
+expired serial describes retained data, not data currently served. In SQLite mode,
+last-copy metadata comes from the original request’s complete serving lease and
+remains bound to the exact zone UID/configuration and, for secondaries, its
+captured transfer credentials. Reporting an expired copy never authorizes record
+reads, exports or DNS routing. The messages
+API and `kudurru_secondary_*` metrics expose local failures and availability.
+An unavailable secondary does not make an otherwise healthy node unready.
+Duplicate configured apices publish unavailable coverage instead of retaining
+an old routing view; unrelated zones continue to receive configuration updates.
+
+## Stub routes
+
+Each node's `stub.Manager` discovers SOA, apex NS/glue, then a confirming SOA
+from one of the configured bootstrap servers. Discovery, hostname resolution
+and persistence happen outside queries. A checksummed identity-bound envelope
+in `local.db` stores the discovered servers and absolute validity; it is
+committed before the immutable route is published. Config UID/spec and the
+cluster key bind the copy. A failed refresh retains only an unexpired route;
+restart and disk restore never extend its lifetime.
+
+```mermaid
+sequenceDiagram
+    participant C as zonecache configuration
+    participant M as stub manager (each node)
+    participant B as bootstrap authority
+    participant D as local.db
+    participant Q as query pipeline
+    participant A as discovered authority
+    C->>M: current stub identity
+    M->>B: SOA, apex NS/glue, confirming SOA
+    M->>M: resolve endpoints#59; bound TTL and SOA expiry
+    M->>D: persist before publishing
+    M->>Q: immutable route
+    alt client RD=0
+        Q-->>Q: return aged NS/glue referral
+    else client RD=1
+        Q->>A: bounded direct query with RD=0
+        A-->>Q: answer or child referral (no iterative chase)
+    end
+```
+
+Bare and `udp://` bootstrap endpoints use UDP, retrying a matching truncated
+response over TCP. `tcp://` uses TCP throughout. Both default to port 53;
+TLS is unsupported. Discovered NS endpoints inherit the successful bootstrap
+server's protocol and port. Only advertised in-bailiwick NS glue is trusted;
+other names resolve with bounded background lookups. Validity is capped by
+SOA expire, NS/glue TTLs, and five minutes for externally resolved addresses.
+Refresh happens by half that validity or SOA refresh, whichever is earlier.
+
+Queries capture the configured zone view once. They use pre-resolved addresses
+and bounded authority exchanges without store or discovery calls. RD=0 returns
+a non-authoritative referral; RD=1 directly asks an authority with RD=0 and
+returns child referrals without iteration. CNAME targets reselect the most
+specific captured zone, including unavailable coverage. Stub AXFR/IXFR is
+refused. Raw DNSSEC data is preserved for DO clients, but stub responses are
+not locally validated, never assert AD, and bypass the ordinary response cache.
+
+Shared status reports `Ready=Unknown/PerNodeDiscovery`; invalid bootstrap
+configuration reports `Ready=False/Invalid`. `stubRuntime` in zone API responses,
+CLI and dashboard exposes the responding node's route, discovered endpoints,
+last observed SOA serial, confirmation, expiry and failures. The observed serial
+does not imply possession of a full zone. `kudurru_stub_*` gauges report local
+availability and deadlines at scrape time. Unavailable or expired routes retain
+coverage and answer SERVFAIL without making unrelated zones unavailable.
+
+## Committed UPDATE storage foundation
+
+The RFC 2136 engine in `internal/dynamicupdate` parses bounded requests and
+evaluates prerequisites, key/owner/type permissions and managed-record
+reservations against one immutable zone state. A failure changes nothing;
+successful plans contain the complete next data and serial. Wire records keep
+their original data, including unknown types.
+
+`internal/zonestate` persists that result as a bounded immutable chunk set with
+one `ZoneState` head. The head binds the cluster and zone UID, root digest,
+serial, authorization epoch and durable NOTIFY intent. Source ownership,
+reservations, frozen configuration and bounded receipts live in the verified
+aggregate. The SQLite adapter commits through its writer transaction and term
+fence. Kubernetes stages immutable Secrets and replaces the head using its
+exact resourceVersion; a conflict requires a new read and a fresh plan.
+
+`internal/primaryzone` reads the complete actual desired source set, bounded by
+count, bytes, pages and time. SQLite pages share one transaction; Kubernetes
+uses continuation tokens and checks the zone identity and intent around the
+list. Failed or incomplete reads never remove committed records. Compilation
+uses the primary builder's selector, oldest-source and set-identifier rules,
+preserves dynamic records and reserves inactive managed names. Policy changes
+advance the authorization epoch; data changes make one serial decision.
+
+The coordinator prebuilds the actual primary tree before committing, then
+publishes only that exact committed root. The materializer retains frozen ACLs,
+raw RRs and serials, and serves unavailable primary coverage at exact expiry.
+Restart loads the verified aggregate. Durable acceptance and local publication
+are separate results; bounded desired-write receipts identify pending, committed,
+equivalent and superseded inputs without ordering opaque resource versions.
+
+```mermaid
+flowchart LR
+    H["Read committed head"] --> P["Fresh sources or UPDATE prerequisites<br/>and current authorization"]
+    P --> C["Bound and prepare complete aggregate"]
+    C --> B["Prebuild primary tree and unavailable coverage"]
+    B --> I["Stage immutable chunks"]
+    I --> CAS["Commit one head<br/>data + serial + authority + NOTIFY intent"]
+    CAS -- "conflict" --> H
+    CAS -- "success" --> S["Install exact prebuilt committed root"]
+    S --> Q["Memory-only captured routing and version"]
+```
+
+Race tests exercise real SQLite and Kubernetes writers, API/file projections
+alongside UPDATE, authorization changes, interrupted preparations, durable
+reopen, immutable chunks and outages. Codec tests include a 100,004-record zone
+and allocation limits before copying or decoding policy and receipt data.
+Desired reconciliation and primary materialization tests also cover real-driver
+source races, restarts, raw TXT/unknown records, exact-expiry failure coverage,
+initial unavailable authority, bounded waiters and truthful desired receipts.
+`internal/primaryruntime` now coordinates a private `ZoneLifecycle` ledger with
+the committed heads. Its phases are preparing, fencing, active, retiring and
+retired. Every replacement gets a new incarnation and RR authority, including
+primary-to-forward-to-primary changes that retain the public object's UID.
+Child activation requires durable reservations in each primary ancestor. A
+later ancestor remains unavailable until existing children acquire the new
+obligation, and keeps them serving while it is still fencing; retirement
+preserves conservative coverage until fences can be released. The driver
+admission adapter must recheck the complete current roster and exact source
+read in the same transaction as each transition (the boundary commands of
+D404 check the same zone instead of the exact receipt).
+
+```mermaid
+flowchart LR
+    L["Private lifecycle CAS"] --> F["Fence ancestor heads"]
+    F --> A["Activate verified membership"]
+    A --> C["Current authorization + head CAS"]
+    C --> P["Complete serving publication"]
+    P --> R["NOERROR"]
+    C --> N["Durable NOTIFY intent"]
+    N --> D["Published head delivery"]
+    D --> K["Exact head acknowledgment CAS"]
+```
+
+The runtime returns SERVFAIL when a durable UPDATE commit has not reached the
+complete local publication boundary. Internal diagnostics distinguish this from
+a failed commit. Receipt replay and rejected requests still cross current
+admission. NOTIFY delivery is bounded and at least once: a crash after delivery
+but before acknowledgment can duplicate a notification. Receipts currently have
+a finite cap (256 by default), with no eviction until safe retention is defined.
+
+The SQLite adapter now checks the complete desired/admitted roster, source
+UID/resourceVersion/intent, head and lifecycle in one `CommandTx`. Current
+credential publication remains pinned through the whole transaction, and the
+original TSIG deadline also covers writer-lock waits and commit. Every outcome,
+including a rejected or deduplicated request, crosses this admission. A child
+stalled by conflicting dynamic parent data retries its unfinished fences after
+an explicit authorized cleanup; it cannot activate without durable witnesses.
+
+Commands that change only a parent/child boundary follow D404 (below).
+
+`primaryruntime/currentguard` uses the same immutable current keyring to compile
+reader policy and validate the transaction's actual desired source. UPDATE needs
+the issuer's policy validator from that same pin; an optional additional validator
+cannot replace it. Key removal withholds grants and credentials so reconciliation
+can revoke them. Default/deny and explicit allow policies are supported; client
+ACL, private-network and nameserver modes remain unavailable until their required
+client-policy capability is bound. Final command checks recheck cancellation and
+the original TSIG deadline without acquiring locks or rereading the store.
+
+`servingbuild.KeyringOwner` orders exclusion as publication, key replacement, then
+SQLite. It retains current keys through the complete command, including its final
+checks, and guards the actual serving pointer swap. Local generation identities
+prevent A → B → A replacement from reviving an old candidate; they do not claim
+a durable fresh-acquisition epoch. Held DNS leases keep their immutable old keys.
+NOTIFY delivery and acknowledgment remain denied until an explicit current policy
+validator and matching immutable sender are installed. The network adapter now
+provides that pair: a private attempt retains the exact served member, head,
+policy and keyring installation through delivery and acknowledgment. Current
+commands compare the actual desired policy and pending head; the final check
+also rejects ancestor expiry even when no pointer or generation changed. Partial
+delivery, rotation and failed acknowledgment retain the whole durable intent.
+
+`primaryruntime.PrepareImage` reconstructs committed primary routing from one
+complete replication image and the explicit local kind manifest, including
+zero-count kinds. It validates every head and chunk, including historical heads
+and orphan chunks awaiting collection. Desired primaries without a committed
+head install unavailable coverage with no invented durable version. Retiring
+coverage remains until the persisted lifecycle permits removal or replacement.
+Parent witnesses, source identity and effective head incarnation all come from
+that same image. Its later `Cut(now)` calls evaluate only prepared memory and
+absolute expiry; they never capture a live runtime or mark a head published.
+Routing and derived publication diagnostics now use the same earliest absolute
+ancestor deadline as admission. The exact boundary installs unavailable coverage
+even when the child's own head has no expiry. Image preparation, runtime rebuild
+and durable restore precompute immutable deadline maps; lookup takes no ancestor
+walk. Raw head expiry, status evidence, versions and exact acknowledgment remain
+unchanged, and held cuts keep their original deadlines after a parent refresh.
+
+`primaryruntime/driver` restores the complete durable roster under the actual
+SQLite publication barrier, then runs one bounded fair reconciliation loop and
+one NOTIFY worker. It keeps the caller's exact writer term and local incarnation;
+source changes, replacement and surviving children are recovered from persisted
+phases. Retiring a parent can release a child's exact historical tombstoned
+witness without changing that old head. Nonprimary activation requires no RR
+head. Diagnostics separate installed state, exact publication acknowledgment and
+active local eligibility. A missing current background guard disables every
+background write, including no-op reconciliation.
+
+The loop steps zones in a fair rotation, but a zone that is still being
+created steps first (D404): a desired zone without an active lifecycle of its
+own source goes ahead of the rotation, without moving its cursor, and a zone
+whose step just committed a lifecycle change that needs another step (its
+creation, a parent fence, the Preparing-to-Fencing CAS, the source refresh of
+a nonprimary zone that is not yet active, and for a re-created zone the
+release or retirement of its old incarnation) ends the pass, so the next pass,
+on a fresh read, resumes at that zone, at most eight times in a row. The
+source refresh of an active nonprimary zone only wakes the loop: it repeats
+whenever that zone's `DNSZone` changes, and the focus would give such a zone
+up to nine steps for each step of the rest of the rotation.
+Only the rest of the pass already running when the zone was created can still
+come first. Before, each of a new zone's three or four steps waited behind a
+step of every other zone, and each such step reconciles that zone and waits
+for its publication, so the wait grew with the number of zones: on a mounted node with 23 zones, without the race detector on
+a shared runner, a new or re-created child under its parent answered 3.4 to
+14.6 s (median 4.5 s) after its creation before this order and 2.5 to 4.9 s
+(median 3.9 s) with it, in alternating runs; with only three zones at load
+13 to 20, 0.5 to 5.2 s. What remains is the rest of the
+pass already running and the child's own four or five steps, each one or more
+transactions, a publication wait and a fresh read (about 0.2 to 1 s each on a
+loaded runner).
+
+Until a new primary child's first publication, names at and below its apex
+answer SERVFAIL from the child's unavailable coverage (the longer routing
+match), not the parent's data. The parent's answer there would be a negative
+answer that resolvers cache for the parent's negative TTL, which would hide
+the child for minutes after it activates, and a referral would need delegation
+data the parent does not have and would lead back to the same unavailable zone
+on this node. The publication before the one that carries the new `DNSZone`
+still answers the parent's data, as it did before the child existed.
+
+The driver retains its immutable validated planning roster and exact Store token
+for one writer run. Timer and publication hints reuse that roster while its
+authority cursor matches; source or authority changes, explicit Wake and failed
+reads require another complete read. This prevents publication preparation from
+triggering competing validations of unchanged data. Each actual mutation still
+uses its original transaction admission, and current-time eligibility and exact
+publication acknowledgment remain independent checks.
+
+`servingbuild.PrimaryPublication` acknowledges commits through one protected
+complete publisher lease. It compares the caller's exact writable term and local
+incarnation, persisted lifecycle identity, sequence, phase, parent witnesses and
+head version, then checks routing from that same bundle. Active primaries must
+actually be admitted and available at the current time. Retirement can acknowledge
+unavailable or removed coverage; a new desired placeholder cannot substitute for
+the old persisted member. Authority and dependency changes invalidate eligibility,
+and waiting retains no database, provider or runtime locks. Failed publication
+does not repeat or roll back a durable commit.
+If the same complete image shows that an active member's desired source or
+frozen configuration has changed, acknowledgment returns superseded immediately.
+The serial driver can then reconcile or retire that source instead of waiting
+until its operation deadline for a member that cannot become available. Source
+changes never grant acknowledgment, and pending preparation and absolute expiry
+retain their existing checks.
+
+`internal/servingzones` combines that primary part with the same candidate's
+public DNS objects and captured secondary, stub and RPZ snapshots. Acquired
+secondary/RPZ data must match an explicit immutable keyring and the exact
+configuration identity. Binding uses the credential recorded with the acquired
+durable copy, not the scheduler's later credential. Matching restored key bytes
+may reuse an unexpired copy; this is not a fresh-acquisition guarantee.
+
+A write of a zone's own `DNSZone` (a query ACL, name servers, a selector) keeps
+the zone answering (D395). Until the driver has refreshed the zone's lifecycle
+receipt and, for a primary, committed a head of the new configuration,
+`PreparedImage.Serves` keeps the same zone (same name, UID, apex and type, a
+source that is not removed, an active lifecycle and head) in DNS routing: a
+primary answers its last committed head under the query access mode and ACL
+of the new configuration (`zone.RetainCommittedPrimary`), with zone transfers
+refused, and a nonprimary answers its new configuration, from which its model
+is always built. Before D395 every publication in that gap served
+committed-unavailable coverage, so the zone answered SERVFAIL for up to about
+0.3 s after each such write. `PreparedImage.Admitted` stays strict for that
+gap, so UPDATE, NOTIFY, status projection, publication acknowledgment and
+integrations wait for the driver; a deleted, replaced or retyped zone, a head
+that is not active and expiry still serve coverage. A child's own write no
+longer unbinds its parent either.
+
+A primary zone and a primary child zone under it on one node converge in
+either order of creation, and across deletion and re-creation of the child
+(D404). The commands that change only a parent/child boundary (the parent's
+fence or release of one child: the `parent-fence`, `late-parent-fence` and
+`parent-release` admissions, and the child's lifecycle transition that changes
+nothing but `Sequence` and `Parents`) need the same zone, not the exact
+lifecycle receipt: the exact receipt still qualifies, and otherwise the same
+object name, UID, apex and type, a `DNSZone` that is not being deleted and a
+source that is not removed. They never advance the receipt. The SQLite adapter
+decides which commands these are (`boundaryCommand`, `boundaryTransition`),
+reads their sources with `boundarySource`, and marks the production guard's
+check with `BackgroundCheck.Boundary`; `currentguard` applies the same rule
+(`sqliteadapter.SameBoundaryZone`) and refuses the flag for any other reason.
+Before D404 they needed the exact receipt, while realigning a receipt (after
+any committed-status write or edit) is a lifecycle CAS that needs the
+boundary, so a parent or child whose receipt was behind its `DNSZone` could
+never be fenced and both zones stayed unavailable until a restart. Every other
+command, and the realignment itself (the Preparing-to-Fencing CAS, a primary
+`Reconcile`, a nonprimary refresh), still checks the exact receipt. DNS also
+keeps answering across the pair's own transitions: a parent with a desired
+child that is not yet fenced keeps serving its committed head (the child's own
+entry is the longer routing match below its apex) and is not admitted until the
+fence is published, and a child keeps serving while its new parent is still
+fencing.
+
+```mermaid
+sequenceDiagram
+    participant S as Status write
+    participant P as Parent lifecycle
+    participant C as Child lifecycle
+    participant H as Parent head
+    S->>P: DNSZone RV advances, receipt behind
+    Note over P,C: before D404: fence needs exact parent receipt,<br/>receipt realignment needs the fence (stuck)
+    C->>H: late-parent fence (same zone suffices)
+    H-->>C: obligation recorded (Sequence and Parents only)
+    P->>P: receipt realigned (exact, membership now satisfied)
+    Note over P,C: parent served (not admitted) until the fence is published
+```
+
+Nonprimary replacements use persisted lifecycle admission, current source and
+parent witnesses. A source name with an old lifecycle cannot bypass coordination
+by being recreated with a new UID or apex. Admission has a precomputed earliest
+ancestor deadline, checked from memory at query time. Missing or expired runtime
+retains unavailable coverage; retiring primary coverage wins at an equal apex.
+RPZ selection preserves ordered canonical list names and required unavailable
+feeds. Unknown names reject selection; reserved service labels belong to the
+same captured catalog. The complete image does not carry external zones; only
+the Kubernetes zone view builds them (D402).
+
+```mermaid
+flowchart LR
+    Image["Complete image + local manifest"] --> Validate["Validate all lifecycle, head and chunk carriers"]
+    Validate --> Committed["Exact committed primary data and witnesses"]
+    Validate --> Missing["Desired-only and retiring unavailable coverage"]
+    Committed --> Part["Immutable primary routing part"]
+    Missing --> Part
+    Runtime["Captured secondary / stub / RPZ + immutable keys"] --> Bound["Exact acquired runtime binding"]
+    Part --> Compose["Same-candidate serving zones"]
+    Bound --> Compose
+    Compose --> Bundle["Whole serving bundle publication"]
+    Driver["Exact admitted writer + bounded lifecycle driver"] --> Image
+    Manual["Current HTTP NOTIFY intent"] --> Image
+    Bundle --> Ack["Exact member + current routing acknowledgment"]
+    Ack --> Driver
+```
+
+The driver and complete publisher are exercised together on actual SQLite.
+The driver admits newly required primary ancestors before moving a preparing
+child to fencing. The existing admission step installs the parent's boundary
+and persists the child's exact witness; attempting the phase change first would
+leave the child waiting for a witness and the parent waiting for that child.
+Startup and fresh-runtime restore tests cover the durable parent-fencing/head-1
+and child-preparing checkpoint. Both routes remain unavailable until their
+existing witness, activation and complete-publication barriers pass.
+Lifecycle result validation treats an empty parent list and nil as the same
+durable value, since copying and JSON omit the empty list. This avoids reporting
+a failed transition after a successful CAS. All populated parent obligations and
+the rest of the returned spec still require exact equality with admitted intent.
+
+Native UDP/TCP/DoT UPDATE callbacks use the original verified request, select the
+exact SOA apex, and return success only after complete publication. A committed
+mutation whose publication fails returns SERVFAIL; retrying the retained original
+proof can recover publication without repeating semantics. New native requests
+receive new retry identities, so this does not claim cross-request deduplication.
+Diagnostics cannot change the wire result even if their callback panics.
+
+After that adapter returns, root binds its exact empty acknowledgment to the
+original writer, verified key, dependency installations and pre-command output
+attempt. The command's own data-generation advance does not invalidate this
+receipt. Ordinary answers are bound to the publication that is served (D378):
+a commit that is not published yet does not withhold them, a published
+successor does, one second after the swap for a query that was already in
+flight on the old publication (D395). API writes do not wait for
+publication, so right after an acknowledged write DNS answers the previous data (`NXDOMAIN` for a new name)
+until the node publishes, and for as long as it cannot publish, deleted
+records and zones included; readiness then reports `prepare_failed` and the
+log says `complete serving generation not published`. Response replacement,
+added data, key/writer loss or original deadline expiry refuses emission without
+replaying the mutation or undoing an already committed effect.
+
+The command assembly binds these adapters to the original elected SQLite writer,
+complete leases and the same current keyring/policy guard. SQLite `serve.go`
+mounts it into the actual DNS listeners, with the complete driver owning automatic
+NOTIFY and the controller using committed status. Manual NOTIFY uses the original
+HTTP lease and raw `zones.transfer` proof to enqueue the exact committed head in
+one fenced transaction. An already pending intent coalesces without a write;
+an acknowledged head is rearmed by changing only its commit and notification
+sequence fields. Records, serial, root digest, receipts and expiry are unchanged.
+Policy-none requests remain checked no-ops. A 202 response means durable acceptance,
+not delivery or publication acknowledgment. The background sender delivers after
+complete publication and acknowledges by exact head CAS; pending intent survives
+restart. Response targets list configured literal addresses, while name-server
+recipient resolution remains background work outside command locks.
+
+An enrolled SQLite follower forwards a signed UPDATE to its primary (D381).
+The ingress issues its writable proof only on the node whose authority is
+writable (`primaryUpdateIngress.capture`). On a follower, `forwardUpdate`
+selects the zone in its own complete cut (NOTAUTH if it is not a primary zone
+there), uses the listener's verified TSIG proof, and admits the key against its
+own keyring (REFUSED for a missing proof or an unknown key). When the
+follower installed a newer commit or replaced a dependency after the request
+captured its publication, that keyring is no longer current: the source
+changed under the request and nothing was sent. In a burst the newer commit
+is usually the previous update's own. The follower decides nothing that the
+primary does not decide again, so it waits, within the forward's bound, for
+its own current publication (`awaitFollowerPublication`), selects the zone and
+admits the key again there, and captures the forward on that source. The
+same happens when the forward finds the source changed only as it acquires it
+for the exchange, before the exchange with the primary began (the forwarder
+marks that refusal `clusterreplica.ErrNotSent`); a refusal once the exchange
+may have begun is never followed by a second send. Then the
+follower sends one version-1
+`dns.update` member command with the exact request minus its TSIG record, the
+key name, algorithm and secret-derived credential version, the transport and
+the signature deadline. The exchange is bounded by four seconds, the DNS
+request and the signature deadline.
+
+The primary admits the key again against its own keyring: the name, algorithm
+and credential version must all match. It then runs the same protocol adapter
+as a native UPDATE, with the same zone selection, grants, prerequisites and
+atomic commit, under its elected writer. The command ID is the update's retry
+identity in the zone's receipt ledger, so a repeated delivery of the same
+command returns the retained rcode without a second commit. The zone runtime
+commits in its own fenced transaction, bound to the writer, the term and the
+key identity. The sender's enrollment is rechecked in a transaction only when
+the acknowledgment is admitted, so a member revoked during those milliseconds
+gets its update committed and its answer withheld. The primary runs the
+command on its current writer publication (`runMemberUpdate`): it waits for
+one within the command's bound (`Publisher.WaitTerm`) and captures it. Each
+commit is followed by its publication and often by the node's own status write
+and another publication, so that lease can still be replaced before
+`captureUpdate` checks it. `captureUpdate` then rejects the update before any
+admission and marks the rejection as stale (the lease was replaced, the
+keyring is no longer current, or the zone is briefly not admitted or routed
+while its lifecycle is realigned), and the command waits for the next
+publication and captures again. `Apply` that lost every compare-and-swap
+attempt and committed nothing runs again the same way, and so does a repeated
+command ID whose retained outcome the receipt ledger returned but whose
+publication met a replaced writer publication (nothing is committed twice; the
+next run reads the same receipt). A retiring or retired
+zone is refused at once, since no later publication admits it. A rejection
+for any other reason, and every other answer, is final, a commit whose
+publication failed included; the command ID is the retry identity in the
+zone's receipt ledger, so no attempt applies twice. A cause that does not
+clear ends at the command's bound with nothing applied. Before this,
+most of a burst of back-to-back updates through a follower answered SERVFAIL.
+A native UPDATE sent to the primary still answers SERVFAIL in that window,
+before anything is applied. The primary
+acknowledges its rcode inside the member request's command output scope. The
+follower relays that rcode, signed with the request's key. The answer
+carries an acknowledgment bound to the verified key and the unchanged empty
+response instead of this node's data generation, so a pull that installs the
+commit first does not withhold it. A command that was not
+sent, or whose exchange was lost, answers SERVFAIL. RFC 2136 section 4.5 tells
+the requestor to try another server on SERVFAIL, and nothing retries or replays
+the command. Fenced, conflicted, standby and static nodes keep their local
+SERVFAIL.
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant F as Follower
+    participant P as Primary
+    C->>F: TSIG-signed UPDATE
+    F->>F: Zone in own cut, verify TSIG, admit key
+    Note over F: Source changed under the request, nothing sent yet: wait for own current publication, check again
+    F->>P: dns.update member command (no TSIG record)
+    P->>P: Wait for current writer publication, capture (again if only the lease was replaced)
+    P->>P: Admit key identity, grants, prerequisites
+    P->>P: Atomic commit, publish (retry ID = command ID)
+    P-->>F: rcode inside command output scope
+    F-->>C: Same rcode, signed
+    Note over F,P: Not sent or lost: SERVFAIL, never retried
+```
+
+Kubernetes does not use this committed history: it serves UPDATE
+through the single-object path under
+[RFC 2136 on Kubernetes](#rfc-2136-on-kubernetes) and sends NOTIFY from its
+elected notifier loop. Receipt capacity remains finite with no automatic eviction.
+
+### Captured TSIG keys and stored-key management
+
+The transport layer also offers explicit captured TSIG mode (D292). Before
+verification it acquires the original complete serving lease and selects that
+lease's immutable key provider. Native reader hooks retain only bounded raw
+frames; the handler owns the lease through the actual response or transfer
+write, signs with the original request MAC, and releases on errors. A later
+message on the same connection captures independently. Encrypted transports
+retain the same original context and signature deadline through emission and
+still cannot issue native mutation proofs. Fixed-key mode remains supported.
+SQLite startup now mounts this captured mode across all six protocols before
+binding listeners. The serving coordinator, secondary manager and RPZ manager
+share the same original encryption and immutable keyring owners. The initial
+file baseline cannot authorize complete serving or acquisition until a complete
+stored source has been prepared. An unavailable first source or uninitialized
+follower retains listeners but refuses complete serving.
+
+Kubernetes prepares one complete stored/file keyring asynchronously at
+startup (D314). Its transport hook captures only immutable credentials and does
+not claim a complete serving lease. Unknown or failed private-source preparation
+refuses signed requests even when a file key is present; unsigned saved-state DNS
+remains independent. A failed startup preparation stays unavailable until
+restart; after a successful one, the published keyring is replaced when the
+stored source changes (D365, below). Secondary jobs
+capture the actual keyring, preserving stored credential epochs in cache
+provenance; unavailable signed jobs cannot renew old data. Unsigned jobs need no
+private-source evidence. The notifier waits for the one startup result, then
+captures the published keyring for each round, before target resolution and all
+attempts.
+
+The coordinator prepares complete encrypted sources outside request handling and
+installs them only under the original encryption and keyring owners. A failed
+prepare retains the prior coherent ring. Complete image capture and current
+transactions independently reject a ring whose original source no longer matches.
+Typed create, replace, revoke and reseal plans validate the original preimage,
+then the complete intended postimage in the same transaction. A final in-memory
+mutation-journal check refuses any later write to that private object kind,
+including an ABA change, without rereading storage after the transaction closes.
+Complete SQLite serving exposes admin-only metadata and create, replace, revoke
+and reseal routes under `/api/v1/tsigkeys`. Each command captures its original
+credential, source, encryption/provider owners and elected writer, then runs
+once in the current transaction with final lifetime checks and safe audit.
+Replace, revoke and reseal require the reviewed UID and resourceVersion. File
+keys remain read-only. The virtual `tsigkeys.kudurru.io` permission does not grant
+access to Kubernetes Secrets. The `kudurru tsigkeys` CLI (D394) sends each command once
+through generated dispatch with redirects and replayable bodies disabled, reads
+the secret only from a file or stdin, and renders the 201/200/202 receipt.
+
+On Kubernetes the same routes run through `kubeTSIGLive` (D365). A command first
+rereads the complete stored source and requires it to equal the node's published
+cut, then `Mutation.ApplyStore` writes one object with its exact resourceVersion.
+Create is two-phase because the API server assigns UIDs: a provisional carrier is
+created and re-sealed bound to the assigned UID, and a failed bind deletes exactly
+that carrier once. `RevokeUnusable` removes a carrier that cannot be opened by its
+exact UID and resourceVersion. Every node rereads the source every ten seconds; a
+changed source that prepares replaces the ring and wakes secondary managers, a
+changed unpreparable source withdraws signing, and a failed read keeps the ring.
+
+```mermaid
+sequenceDiagram
+    participant C as Admin client
+    participant N as Kubernetes node A
+    participant K as Kubernetes API
+    participant M as Node B
+    C->>N: POST /tsigkeys (create)
+    N->>K: List TSIG carriers (must equal published cut)
+    N->>K: Create provisional carrier
+    K-->>N: Assigned UID, resourceVersion
+    N->>K: Update carrier sealed to that UID (exact resourceVersion)
+    N->>N: Reread and prepare, replace ring
+    N-->>C: 201 receipt (published on node A)
+    M->>K: Periodic reread (10 s)
+    M->>M: Prepare, replace ring
+```
+
+Publication observation retains the original ten-second command bound and any
+earlier request deadline. It reauthenticates the same raw credential and checks
+the exact committed source, encryption owner, principal and current grant on a
+complete publication. HTTP 201/200 confirms both commit and bounded publication
+acknowledgment; HTTP 202 confirms commit without that acknowledgment. Errors
+can leave completion uncertain and never authorize replay. See the
+[stored-key guide](../deploy/tsig-keys.md) for request and rotation semantics.
+
+Secondary and RPZ managers can capture one immutable key provider and receiver
+per scheduled job. Credential replacement cancels the old job and waits for it
+to finish before reusing its slot. Stored credential epochs bind persisted data;
+file credentials preserve their existing fingerprint format. The original whole
+job deadline covers network work, persistence and acceptance; RPZ cannot obtain
+a fresh timeout after its transfer returns. SQLite startup supplies these
+capture callbacks and constructs each receiver from that job's captured ring.
+
+Acquisition acceptance pins original encryption and keys, checks the durable
+source, writes the local cache, checks source and time again, then publishes only
+in memory under the manager gate. Failed acceptance restores candidate scheduler
+fields. There is no fallible source read after publication. Local cache data and
+authoritative state live in different databases: an unsuccessful attempt may
+leave a cache artifact, which retains its original credential epoch and expiry.
+Complete serving admission still matches the actual source and acquired epoch;
+the artifact is not an authoritative command acknowledgment.
+
+Native UDP/TCP/DoT listeners now admit bounded UPDATE framing before TSIG
+verification. A successfully verified UPDATE using an immutable static keyring
+carries a private context proof of its parsed message, client, transport,
+signature deadline and exact key/provider version. Modifying the request or
+reusing it on another transport invalidates that proof. Generic mutable keyrings
+and DoH/DoQ/DoH3 do not issue it. This proof is local ingress evidence; it is not
+an original-wire proof for authenticated forwarding and does not replace current
+credential, zone or HA authorization at commit. Ordinary queries and transfers
+retain their existing TSIG behavior.
+
+Native signed NOTIFY has a separate opaque proof bound to its exact opcode,
+message, client, transport and deadline. It cannot be reused as UPDATE evidence.
+`secondary.NotifyReceiver.HandleCaptured` checks that proof against objects and
+immutable keys from the request's complete serving lease, with no live configuration
+fallback. The enclosing callback must retain that lease and check lifecycle
+eligibility. An expired secondary may still accept an authorized refresh hint;
+the hint never renews data itself. SQLite mounts `CapturedNotify` on the complete
+request pipeline; Kubernetes retains the legacy receiver.
+
+### Transferred runtime publication
+
+Secondary, stub and RPZ managers expose immutable installation cuts and broadcast
+actual changes. Identical polling retains the same installation. A new copy,
+credential provenance, expiry or diagnostic state gets a new identity; returning
+to earlier bytes cannot revive an old cut. Captured zone objects keep their
+original absolute expiry.
+
+`servingbuild.TransferredRuntime` composes these cuts into the complete builder,
+wakes the publisher and excludes replacement through its actual SQLite publication
+callback. Current primary commands use the same manager gates through final commit,
+including NOTIFY acknowledgment. Acquisition stays outside these gates. The global
+order is publication, provider resources, host/license, keyring, catalog, secondary, stub,
+RPZ, then SQLite. Acquiring a newer pin does not make an older prepared cut current.
+These adapters have actual manager, complete-builder and SQLite acceptance,
+and SQLite `serve.go` mounts the secondary, stub and RPZ owners together.
+
+The complete root pin holds every dependency in that order through the actual
+command, including its final admission check. Its mandatory current predicate
+checks the original host, license, provider, key, catalog and manager cuts and
+their absolute deadlines without locks or I/O. Holding a replacement gate does
+not stop time: a deadline crossed while waiting for SQLite rejects UPDATE,
+dedup/no-op responses and background lifecycle or NOTIFY acknowledgment alike.
+The predicate also ends when the pin callback returns.
+
+The catalog uses the same installation contract. Its runtime wrapper retains the
+original restart-required source configuration, verifies actual acquired origins,
+and permits the documented embedded/absent-import fallback explicitly. A catalog
+refresh rebuilds the whole policy bundle even when SQLite is unchanged. Held DNS
+requests keep their original service rules. Changing the configured URL cannot
+relabel an earlier acquisition, and current publication/command pins exclude
+catalog replacement through their complete callback.
+
+### Committed primary status
+
+The SQLite status adapter projects serial, served-record hash and record count
+from the actual committed head in one protected complete lease. Dynamic UPDATE
+records therefore appear in status even though they are absent from desired
+DNSRecordSets. It checks the original writer context, exact public object,
+lifecycle and head tokens, frozen configuration and serving deadlines through
+the final status transaction. It preserves unrelated status fields and never
+allocates a serial. Status-only source changes converge to a no-op.
+
+Pending complete publication defers status without changing the source RV.
+Status-only source alignment also defers for one second when the captured
+active primary, source and committed receipt retain the same UID and intent,
+the committed configuration still matches, and the source RV differs from the
+current public object's RV. Writing unavailable status during that interval
+would advance the RV again and keep the controller and driver chasing each
+other. The driver aligns the source before normal status projection resumes.
+This wait preserves historical status; it does not make an unavailable DNS cut
+ready or replace any captured source, head or expiry evidence.
+
+DNS keeps answering the zone from its committed head through that interval.
+Every head commit is followed by the status write of its new serial, which
+advances the DNSZone RV, and then by the driver's realignment of the lifecycle
+receipt to that RV. A publication between the two still serves the zone (and
+keeps it bound as a child of its parent) when the lifecycle receipt differs
+from the DNSZone only in fields outside the intent digest and the NS address
+dependency (status, and metadata such as the RV, annotations other than
+managed-by, finalizers and owner references). It needs the same UID, apex, type
+and intent digest, and a head whose frozen configuration, NS address dependency
+and source receipt match
+the DNSZone. Realignment serves the same head with the same configuration, so
+the answers are the same before and after it. Only serving readiness
+(`Admitted`) accepts this; `SourceMatchesDesired` stays exact, so publication
+acknowledgment and status projection still wait for the realignment, and every
+command's transactional source check still compares the exact token. Before
+v0.2.0 such a publication answered the zone with `servfail_unsynced` for up to
+about half a second after each change.
+The controller retains desired-record conflict diagnostics, but delegates primary
+status when the capability is installed. Kubernetes and unconfigured controllers
+retain their existing behavior. The adapter and controller have actual SQLite,
+native signed UPDATE and Kubernetes race acceptance; SQLite `serve.go` now
+installs the status capability on its controller.
+
+Primary serving also requires the committed head's source receipt and frozen
+configuration to match the current DNSZone. Advancing a lifecycle source before
+head compilation (a change of intent or of the NS address dependency) therefore
+keeps the zone and its coordinated descendants unavailable, using the current
+desired query ACL. Durable versions and status
+remain inspectable, and background reconciliation can repair the head. Equivalent
+status-only changes do not require a new head or relabel an old receipt.
+
+A DNSRecordSet-only create, edit or deletion leaves the last committed records
+available until reconciliation. It neither mixes desired records into the old
+head nor acknowledges their publication. Dynamic records, ownership reservations
+and child boundaries survive the static replacement.
+
+## Remaining work
+
+Catalog zones and DNSSEC signing remain planned. `external` zones are
+served on Kubernetes only. SQLite mounts the atomic
+RFC 2136 handler and durable primary history described above; on Kubernetes, RFC 2136
+uses one UPDATE-owned DNSRecordSet per zone (described below). An enrolled
+SQLite follower forwards a signed UPDATE to its primary (D381). IXFR out has no
+journal and answers in AXFR form. Unknown DNS opcodes remain NOTIMP.
+
+### RFC 2136 on Kubernetes
+
+Kubernetes has no multi-object transactions, and a zone's records span several
+API objects. RFC 2136 section 3.7 requires atomicity with respect to other
+concurrent UPDATE transactions, so each zone has exactly one UPDATE-owned
+DNSRecordSet, `rfc2136-<zone>` in the release namespace (or the first namespace
+the zone's `recordSetSelector` admits), managed by `dns-update` (D366).
+
+Each UPDATE reads the zone and every record set referencing it from the store,
+builds the served zone with the same selection and builder as serving, and runs
+the shared `dynamicupdate.Plan`: prerequisites over the whole zone, key x owner x
+type grants compiled by `currentguard.CompileUpdatePolicy`, and reservations for
+the SOA, apex NS and every RRset another source owns. The UPDATE-owned part of
+the planned zone is then written to that one object with an exact
+resourceVersion CAS (create-only, versioned update, or versioned delete when it
+becomes empty). Concurrent UPDATEs on one node queue on a per-zone lock; across
+nodes, a lost CAS re-plans against fresh data within a bound, and exhaustion
+answers SERVFAIL without a write. A prerequisite or policy refusal writes
+nothing. The controller advances `status.serial`, which drives NOTIFY. API, file
+and integration writers keep their own objects; an UPDATE cannot change their
+records, and the API cannot edit the `dns-update`-owned object.
+
+```mermaid
+sequenceDiagram
+    participant C as nsupdate client
+    participant N as Kubernetes node
+    participant K as Kubernetes API
+    C->>N: TSIG-signed UPDATE
+    N->>N: Verify TSIG, per-zone lock
+    N->>K: Read zone and its record sets
+    N->>N: dynamicupdate.Plan (prerequisites, grants, reservations)
+    alt prerequisites or policy refuse
+        N-->>C: YXDOMAIN / NXRRSET / REFUSED (no write)
+    else changed
+        N->>K: Write rfc2136-zone at exact resourceVersion
+        alt conflict (another node won)
+            N->>K: Re-read and re-plan (bounded)
+        end
+        N-->>C: NOERROR (signed)
+    end
+```
+
+### Captured HTTP diagnostics
+
+SQLite zone summaries, record lists and exports use the original HTTP lease's
+committed model. Dynamic UPDATE records appear without a desired-record rebuild
+or a status restamp. Desired object ownership/counts remain separate; records
+without durable source provenance have empty `recordSet` and `managedBy` fields.
+An unavailable copy returns 503, while an absent desired object returns 404.
+Internal serial advertisements and zone metrics explicitly capture a complete
+lease and include only available authoritative copies. Record and owner-name
+counts come from that exact model. Held reads retain their original generation
+and still enforce absolute inherited expiry.
+
+Zone cascade deletion, single-record edits/deletes and imports use one current
+compound command on SQLite. Manual NOTIFY uses the durable intent path described
+above. Generic single-object writes retain their current command admission.
+Kubernetes retains its existing routes.

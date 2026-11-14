@@ -15,7 +15,7 @@
 name: kudurru
 services:
   kudurru:
-    image: ghcr.io/robertherbaugh/kudurru:0.1.0
+    image: ghcr.io/robertherbaugh/kudurru:0.2.0
     # The image has no default command (ko sets only the entrypoint).
     command: [serve]
     network_mode: host                       # :5353 for dnsdist, :8080 API, :8082 internal; keepalived owns the VIP
@@ -60,7 +60,7 @@ services:
     stop_grace_period: 30s
 
   dnsdist:
-    image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.2-k0.1.0
+    image: ghcr.io/robertherbaugh/kudurru-dnsdist:2.1.3-k0.2.0
     network_mode: host                       # binds 0.0.0.0:53 so the VIP is served as soon as it appears
     # On the host network uid 953 cannot bind :53 (the host's
     # ip_unprivileged_port_start applies): the supervisor and dnsdist start
@@ -95,7 +95,7 @@ services:
     depends_on: [kudurru]
 
   keepalived:
-    image: ghcr.io/robertherbaugh/kudurru-keepalived:2.4.3-k0.1.0
+    image: ghcr.io/robertherbaugh/kudurru-keepalived:2.4.3-k0.2.0
     network_mode: host
     cap_add: [NET_ADMIN, NET_RAW, NET_BROADCAST]
     restart: unless-stopped

@@ -1,5 +1,7 @@
 // One zone: its records flattened across record sets, the typed record
-// editor, BIND import/export, NOTIFY and the transfer status.
+// editor, BIND import/export, NOTIFY and the transfer status. Each record
+// shows who it is served to (its kudurru.view, D403): everyone, published
+// only, or one client group.
 import { AlertDialog } from '@astryxdesign/core/AlertDialog';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
@@ -14,18 +16,21 @@ import { Text } from '@astryxdesign/core/Text';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { qk, useApi, useCan } from '../api/context';
-import type { ZoneImportResult, ZoneRecord } from '../api/types';
+import { qk, useApi, useCan, useCannotReason } from '../api/context';
+import type { ClientGroup, DNSZone, ZoneImportResult, ZoneRecord } from '../api/types';
 import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
 import { TextAreaField, TextField } from '../components/fields/TextField';
 import { FormDialog } from '../components/FormDialog';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { ManagedBadge } from '../components/ManagedBadge';
+import { SecondaryAvailability, SecondaryRuntimeSection } from '../components/SecondaryRuntime';
+import { StubAvailability, StubRuntimeSection } from '../components/StubRuntime';
 import { RecordEditor } from '../components/RecordEditor';
 import { ZoneDeleteDialog } from '../components/ZoneDeleteDialog';
 import { ZoneSettingsSection } from '../components/ZoneSettingsSection';
 import { ownership, readOnlyReason } from '../lib/managedBy';
 import { useNavigate } from '../lib/router';
+import { objectHref } from '../lib/policies';
 import { dnsNameToOwner } from '../lib/rr';
 import type { PageProps } from '../routes';
 import { TransferCell } from './ZonesPage';
@@ -36,7 +41,51 @@ const MONO = { fontFamily: 'var(--font-family-code)' };
 
 type RecordRow = ZoneRecord & Record<string, unknown>;
 
-const recordKey = (r: RecordRow) => `${r.recordSet}/${r.dnsName}/${r.recordType}/${r.setIdentifier ?? ''}`;
+// A served view row has no record set; its group namespace keeps the views
+// of one name in two namespaces apart.
+const recordKey = (r: RecordRow) => `${r.recordSet}/${r.namespace ?? ''}/${r.dnsName}/${r.recordType}/${r.setIdentifier ?? ''}/${r.kudurru?.view ?? ''}`;
+
+/** DNSSEC data in the default records also makes the zone signed for views (D403). */
+const SIGNED_TYPES = new Set(['RRSIG', 'NSEC', 'NSEC3', 'DNSKEY']);
+
+/** Who a record is served to, in words, for the record list and dialogs ("ns/name" outside the default namespace). */
+export function viewText(view: string | undefined, namespace = 'default'): string {
+  if (!view) return 'every client';
+  if (view === 'public') return 'published only (public)';
+  return `client group ${namespace === 'default' ? view : `${namespace}/${view}`}`;
+}
+
+/** The namespace of a "ns/name" record set reference. */
+function recordSetNS(ref: string): string {
+  const i = ref.indexOf('/');
+  return i > 0 ? ref.slice(0, i) : 'default';
+}
+
+/** The namespace a row's view resolves in: the served row's group namespace, else its record set's. */
+export function rowNamespace(r: ZoneRecord): string {
+  return r.namespace || recordSetNS(r.recordSet);
+}
+
+/**
+ * Whether the record list is the served zone (the complete SQLite runtime):
+ * its rows never name a record set (internal/api ZoneRecord.RecordSet), while
+ * a desired row always does, and a served zone always lists its SOA.
+ */
+export function listsServed(items: readonly ZoneRecord[]): boolean {
+  return items.length > 0 && items.every((r) => !r.recordSet);
+}
+
+function ViewCell({ r }: { r: ZoneRecord }) {
+  const view = r.kudurru?.view;
+  if (!view) return null;
+  if (view === 'public') return <Badge variant="neutral" label="public" />;
+  const ns = rowNamespace(r);
+  return (
+    <Link href={objectHref('groups', `${ns}/${view}`)}>
+      <Badge variant="blue" label={`view ${ns === 'default' ? view : `${ns}/${view}`}`} />
+    </Link>
+  );
+}
 
 function ImportDialog({ zone, open, onClose }: { zone: string; open: boolean; onClose: () => void }) {
   const api = useApi();
@@ -150,6 +199,7 @@ function ZoneDetail({ zone }: { zone: string }) {
   const api = useApi();
   const navigate = useNavigate();
   const can = useCan();
+  const cannot = useCannotReason();
   const qc = useQueryClient();
   const notify = useNotify();
   const [editing, setEditing] = useState<ZoneRecord | 'new' | null>(null);
@@ -159,11 +209,21 @@ function ZoneDetail({ zone }: { zone: string }) {
   const [deleting, setDeleting] = useState(false);
   const [confirmRecord, setConfirmRecord] = useState<ZoneRecord | null>(null);
 
-  const z = useQuery({ queryKey: qk.zone(zone), queryFn: () => api.zones.get(zone) });
-  const recs = useQuery({ queryKey: qk.records(zone), queryFn: () => api.zones.records(zone) });
+  const z = useQuery({ queryKey: qk.zone(zone), queryFn: () => api.zones.get(zone), refetchInterval: 30_000 });
+  const secondary = z.data?.type === 'secondary';
+  const stub = z.data?.type === 'stub';
+  const primary = z.data?.type === 'primary';
+  const recs = useQuery({ queryKey: qk.records(zone), queryFn: () => api.zones.records(zone), enabled: primary });
+  // Same key as ZoneSettingsSection: the object says whether the zone is signed.
+  const zoneObj = useQuery({ queryKey: [...qk.objects('dnszones'), zone], queryFn: () => api.objects.get<DNSZone>('dnszones', zone), enabled: primary });
+  const groups = useQuery({ queryKey: qk.objects('clientgroups'), queryFn: () => api.objects.list<ClientGroup>('clientgroups'), enabled: primary && can('clientgroups', 'read') });
+  const served = listsServed(recs.data?.items ?? []);
+  const signed = zoneObj.data?.spec.dnssec?.enabled === true || (recs.data?.items ?? []).some((r) => SIGNED_TYPES.has(r.recordType.toUpperCase()) && !r.kudurru?.view);
   const own = ownership(z.data?.managedBy);
   const zoneEditable = own.editable && z.data?.type === 'primary';
-  const canWrite = can('records', 'write');
+  // Zone and zone-group grants of /auth/me count on this zone (D385).
+  const on = { zone: z.data?.name ?? zone, zoneGroup: z.data?.zoneGroup };
+  const canWrite = can('records', 'write', on);
 
   const rows = useMemo(() => {
     const all = recs.data?.items ?? [];
@@ -178,7 +238,11 @@ function ZoneDetail({ zone }: { zone: string }) {
   };
 
   const del = useMutation({
-    mutationFn: (r: ZoneRecord) => api.zones.deleteRecord(zone, r.dnsName, r.recordType, r.recordSet, r.setIdentifier),
+    // "-" deletes the default data only, so a view of the same name survives.
+    // A served view row names no record set: its group namespace keeps the
+    // delete to the record sets that view belongs to.
+    mutationFn: (r: ZoneRecord) =>
+      api.zones.deleteRecord(zone, r.dnsName, r.recordType, r.recordSet, r.setIdentifier, r.kudurru?.view || '-', !r.recordSet && r.kudurru?.view && r.namespace ? r.namespace : undefined),
     onSuccess: (_x, r) => {
       notify.success(`Deleted ${r.dnsName} ${r.recordType}`);
       invalidate();
@@ -188,7 +252,7 @@ function ZoneDetail({ zone }: { zone: string }) {
   const notifyM = useMutation({
     mutationFn: () => api.zones.notify(zone),
     onSuccess: (r) => {
-      notify.success(r.targets.length ? `NOTIFY sent to ${r.targets.join(', ')}` : 'No NOTIFY targets configured');
+      notify.success(r.targets.length ? `NOTIFY accepted; configured targets: ${r.targets.join(', ')}` : 'NOTIFY request accepted');
       invalidate();
     },
     onError: (err) => notify.error(err, 'NOTIFY failed'),
@@ -216,6 +280,7 @@ function ZoneDetail({ zone }: { zone: string }) {
           <HStack gap={1} vAlign="center" wrap="wrap">
             <Text type="code" size="sm">{dnsNameToOwner(r.dnsName, zoneName)}</Text>
             {r.kudurru?.disabled ? <Badge variant="warning" label="disabled" /> : null}
+            <ViewCell r={r} />
           </HStack>
           {r.kudurru?.comment ? <Text type="supporting">{r.kudurru.comment}</Text> : null}
         </VStack>
@@ -267,7 +332,7 @@ function ZoneDetail({ zone }: { zone: string }) {
               label="Delete"
               size="sm"
               variant="ghost"
-              isDisabled={!editable || !can('records', 'delete')}
+              isDisabled={!editable || !can('records', 'delete', on)}
               onClick={() => setConfirmRecord(r)}
             />
           </HStack>
@@ -288,29 +353,38 @@ function ZoneDetail({ zone }: { zone: string }) {
           z.data ? (
             <>
               <Badge variant="neutral" label={z.data.type} />
-              <Text size="sm">serial {z.data.serial}</Text>
-              <Text size="sm">{z.data.recordCount} records</Text>
-              {z.data.ready ? <Badge variant="success" label="Ready" /> : <Badge variant="error" label="Not ready" />}
+              {secondary ? <SecondaryAvailability runtime={z.data.secondaryRuntime} /> : stub ? <StubAvailability runtime={z.data.stubRuntime} /> : (
+                <>
+                  <Text size="sm">serial {z.data.serial}</Text>
+                  <Text size="sm">{z.data.recordCount} records</Text>
+                  {z.data.ready ? <Badge variant="success" label="Ready" /> : <Badge variant="error" label="Not ready" />}
+                </>
+              )}
+              {z.data.zoneGroup ? <Text size="sm">zone group {z.data.zoneGroup}</Text> : null}
               <ManagedBadge owner={z.data.managedBy} />
             </>
           ) : null
         }
         actions={
           <>
-            <Button label="Add record" variant="primary" isDisabled={!zoneEditable || !canWrite} onClick={() => setEditing('new')} />
-            <Button label="Import BIND" variant="secondary" isDisabled={!zoneEditable || !canWrite} onClick={() => setImporting(true)} />
-            <Button label="Export" variant="secondary" onClick={() => setExporting(true)} />
-            <Button label="Send NOTIFY" variant="ghost" isDisabled={!can('zones', 'transfer')} isLoading={notifyM.isPending} onClick={() => notifyM.mutate()} />
+            {z.data && primary ? (
+              <>
+                <Button label="Add record" variant="primary" isDisabled={!zoneEditable || !canWrite} onClick={() => setEditing('new')} />
+                <Button label="Import BIND" variant="secondary" isDisabled={!zoneEditable || !canWrite} onClick={() => setImporting(true)} />
+                <Button label="Export" variant="secondary" onClick={() => setExporting(true)} />
+                <Button label="Send NOTIFY" variant="ghost" isDisabled={!can('zones', 'transfer', on)} tooltip={cannot('zones', 'transfer', on)} isLoading={notifyM.isPending} onClick={() => notifyM.mutate()} />
+              </>
+            ) : null}
             <Button
               label="Delete zone"
               variant="destructive"
-              isDisabled={!z.data || !!z.data.deleteRefusal || !can('zones', 'delete')}
+              isDisabled={!z.data || !!z.data.deleteRefusal || !can('zones', 'delete', on)}
               tooltip={
                 z.data?.deleteRefusal === 'default_zone'
                   ? 'The root zone routes every other name; edit its settings instead'
                   : z.data?.deleteRefusal === 'managed_by'
                     ? 'The zone or some of its records are managed elsewhere'
-                    : !can('zones', 'delete')
+                    : !can('zones', 'delete', on)
                       ? 'Needs zones.delete'
                       : undefined
               }
@@ -321,19 +395,28 @@ function ZoneDetail({ zone }: { zone: string }) {
       />
       {z.data && !own.editable ? <Banner status="info" title={`Managed by ${own.owner}`} description={readOnlyReason(own)} /> : null}
       {z.data && own.editable && z.data.type !== 'primary' ? (
-        <Banner status="info" title={`A ${z.data.type} zone`} description="Records of secondary, forward and stub zones come from elsewhere and are read-only." />
+        <Banner status="info" title={`A ${z.data.type} zone`} description={secondary ? 'Records are transferred from the primary and are read-only. Refresh, retry, expiry and TTLs come from the primary. Transferred contents are not listed as editable record sets.' : stub ? 'Authorities are discovered from the bootstrap servers. Queries go directly to them; this node does not keep an editable copy of the zone.' : 'Queries go to the configured upstream group; records are managed there.'} />
       ) : null}
       {z.data ? <ZoneSettingsSection zone={zone} own={own} /> : null}
-      {z.data?.transfer ? (
+      {secondary ? <SecondaryRuntimeSection runtime={z.data?.secondaryRuntime} /> : null}
+      {stub ? <StubRuntimeSection runtime={z.data?.stubRuntime} /> : null}
+      {primary && z.data?.transfer ? (
         <Panel title="Transfers and NOTIFY" headingId="xfr">
           <TransferCell z={z.data} />
         </Panel>
       ) : null}
 
-      <TextField label="Filter records" isLabelHidden startIcon="search" placeholder="Filter by name, type or value" value={filter} onChange={setFilter} hasClear />
-      {recs.error ? <ErrorBanner error={recs.error} /> : null}
-      {recs.isLoading ? <Loading /> : null}
-      {recs.data ? (
+      {primary ? <TextField label="Filter records" isLabelHidden startIcon="search" placeholder="Filter by name, type or value" value={filter} onChange={setFilter} hasClear /> : null}
+      {primary && recs.error ? <ErrorBanner error={recs.error} /> : null}
+      {primary && recs.isLoading ? <Loading /> : null}
+      {primary && served ? (
+        <Banner
+          status="info"
+          title="This list shows what this node serves"
+          description="Rows come from the zone this node answers from, so they name no record set, and a record saved as Published only (public) or a client-group view the server refuses (a signed zone, more than 16 views, or default data of another namespace) is stored but not listed. Deleting a row removes that name and type from every record set of the zone, or for a client-group view from every record set of its group’s namespace."
+        />
+      ) : null}
+      {primary && recs.data ? (
         <Card>
           <Table<RecordRow>
             aria-label={`Records of ${zoneName}`}
@@ -350,7 +433,7 @@ function ZoneDetail({ zone }: { zone: string }) {
       <FormDialog
         isOpen={editing !== null}
         onClose={() => setEditing(null)}
-        title={editing === null ? '' : editing === 'new' ? `Add a record to ${zoneName}` : `Edit ${editing.dnsName} ${editing.recordType}`}
+        title={editing === null ? '' : editing === 'new' ? `Add a record to ${zoneName}` : `Edit ${editing.dnsName} ${editing.recordType}${editing.kudurru?.view ? ` (${viewText(editing.kudurru.view, rowNamespace(editing))})` : ''}`}
         width={720}
       >
         {editing !== null ? (
@@ -358,6 +441,9 @@ function ZoneDetail({ zone }: { zone: string }) {
             zoneName={zoneName}
             initial={editing === 'new' ? undefined : editing}
             defaultRecordSet={`api-${zone}`}
+            groups={groups.data?.items}
+            signed={signed}
+            listsServed={served}
             onCancel={() => setEditing(null)}
             onSubmit={async (ep, recordSet) => {
               try {
@@ -365,7 +451,7 @@ function ZoneDetail({ zone }: { zone: string }) {
               } catch (err) {
                 throw new Error(errorText(err), { cause: err });
               }
-              notify.success(`Saved ${ep.dnsName} ${ep.recordType}`);
+              notify.success(served && ep.kudurru?.view === 'public' ? `Saved ${ep.dnsName} ${ep.recordType}; a public record is not listed on this server` : `Saved ${ep.dnsName} ${ep.recordType}`);
               setEditing(null);
               invalidate();
             }}
@@ -378,7 +464,7 @@ function ZoneDetail({ zone }: { zone: string }) {
           if (!open) setConfirmRecord(null);
         }}
         title={confirmRecord ? `Delete ${confirmRecord.dnsName} ${confirmRecord.recordType}?` : 'Delete the record?'}
-        description={confirmRecord ? `Every ${confirmRecord.recordType} value of ${confirmRecord.dnsName} in record set ${confirmRecord.recordSet} is removed.` : ''}
+        description={confirmRecord ? `Every ${confirmRecord.recordType} value of ${confirmRecord.dnsName} served to ${viewText(confirmRecord.kudurru?.view, rowNamespace(confirmRecord))} ${confirmRecord.recordSet ? `in record set ${confirmRecord.recordSet}` : confirmRecord.kudurru?.view && confirmRecord.namespace ? `in every record set of namespace ${confirmRecord.namespace}` : 'in every record set of the zone'} is removed.` : ''}
         cancelLabel="Keep it"
         actionLabel="Delete record"
         actionVariant="destructive"
@@ -388,8 +474,8 @@ function ZoneDetail({ zone }: { zone: string }) {
         }}
       />
       <ZoneDeleteDialog zone={zone} zoneName={zoneName} isOpen={deleting} onClose={() => setDeleting(false)} onDeleted={() => navigate('/zones')} />
-      <ImportDialog zone={zone} open={importing} onClose={() => setImporting(false)} />
-      <ExportDialog zone={zone} open={exporting} onClose={() => setExporting(false)} />
+      {primary ? <ImportDialog zone={zone} open={importing} onClose={() => setImporting(false)} /> : null}
+      {primary ? <ExportDialog zone={zone} open={exporting} onClose={() => setExporting(false)} /> : null}
     </Page>
   );
 }

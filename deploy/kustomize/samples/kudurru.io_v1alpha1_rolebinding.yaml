@@ -1,0 +1,14 @@
+apiVersion: kudurru.io/v1alpha1
+kind: RoleBinding
+metadata:
+  name: home-editors
+  namespace: dns
+spec:
+  role: operator
+  scope:
+    kind: zone
+    name: home
+  subjects:
+    - kind: ServiceAccount
+      name: automation
+      namespace: dns

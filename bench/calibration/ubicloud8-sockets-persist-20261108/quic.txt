@@ -1,0 +1,55 @@
+2026/11/08 19:26:15 failed to sufficiently increase receive buffer size (was: 1024 kiB, wanted: 7168 kiB, got: 2048 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: AMD EPYC 9454P 48-Core Processor               
+BenchmarkQUICSockets/doq/sockets=1-6         	   39390	     31097 ns/op	   10073 B/op	     138 allocs/op
+BenchmarkQUICSockets/doq/sockets=4-6         	   45578	     25978 ns/op	   10029 B/op	     138 allocs/op
+BenchmarkQUICSockets/doh3/sockets=1-6        	   28015	     37664 ns/op	   18242 B/op	     262 allocs/op
+BenchmarkQUICSockets/doh3/sockets=4-6        	   31707	     38021 ns/op	   18233 B/op	     262 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	6.691s
+2026/11/08 19:29:48 failed to sufficiently increase receive buffer size (was: 1024 kiB, wanted: 7168 kiB, got: 2048 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: AMD EPYC 9454P 48-Core Processor               
+BenchmarkQUICSockets/doq/sockets=1-6         	   37198	     29078 ns/op	   10039 B/op	     138 allocs/op
+BenchmarkQUICSockets/doq/sockets=4-6         	   42487	     26240 ns/op	   10026 B/op	     138 allocs/op
+BenchmarkQUICSockets/doh3/sockets=1-6        	   31539	     37116 ns/op	   18230 B/op	     262 allocs/op
+BenchmarkQUICSockets/doh3/sockets=4-6        	   32127	     35413 ns/op	   18233 B/op	     262 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	6.506s
+2026/11/08 19:33:20 failed to sufficiently increase receive buffer size (was: 1024 kiB, wanted: 7168 kiB, got: 2048 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: AMD EPYC 9454P 48-Core Processor               
+BenchmarkQUICSockets/doq/sockets=1-6         	   39145	     31135 ns/op	   10081 B/op	     138 allocs/op
+BenchmarkQUICSockets/doq/sockets=4-6         	   39415	     26686 ns/op	   10031 B/op	     138 allocs/op
+BenchmarkQUICSockets/doh3/sockets=1-6        	   30181	     38153 ns/op	   18248 B/op	     262 allocs/op
+BenchmarkQUICSockets/doh3/sockets=4-6        	   29876	     35934 ns/op	   18218 B/op	     262 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	6.509s
+2026/11/08 19:36:55 failed to sufficiently increase receive buffer size (was: 1024 kiB, wanted: 7168 kiB, got: 2048 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: AMD EPYC 9454P 48-Core Processor               
+BenchmarkQUICSockets/doq/sockets=1-6         	   35541	     28675 ns/op	   10033 B/op	     138 allocs/op
+BenchmarkQUICSockets/doq/sockets=4-6         	   41755	     25960 ns/op	   10030 B/op	     138 allocs/op
+BenchmarkQUICSockets/doh3/sockets=1-6        	   31105	     36882 ns/op	   18237 B/op	     262 allocs/op
+BenchmarkQUICSockets/doh3/sockets=4-6        	   32728	     35202 ns/op	   18211 B/op	     262 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	6.478s
+2026/11/08 19:40:29 failed to sufficiently increase receive buffer size (was: 1024 kiB, wanted: 7168 kiB, got: 2048 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: AMD EPYC 9454P 48-Core Processor               
+BenchmarkQUICSockets/doq/sockets=1-6         	   36036	     29146 ns/op	   10038 B/op	     138 allocs/op
+BenchmarkQUICSockets/doq/sockets=4-6         	   42423	     26416 ns/op	   10029 B/op	     138 allocs/op
+BenchmarkQUICSockets/doh3/sockets=1-6        	   29821	     37922 ns/op	   18233 B/op	     262 allocs/op
+BenchmarkQUICSockets/doh3/sockets=4-6        	   33478	     35503 ns/op	   18225 B/op	     262 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	6.484s

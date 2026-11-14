@@ -103,8 +103,8 @@ func TestRebindAddress(t *testing.T) {
 	}
 }
 
-// TestMultiSocketListeners: udp and tcp listeners bind Options.Sockets
-// sockets on one port (DoT keeps one), every socket answers, and queries
+// TestMultiSocketListeners: UDP, TCP and DoT bind Options.Sockets
+// sockets on one port, and queries
 // from many source ports all get answers.
 func TestMultiSocketListeners(t *testing.T) {
 	const sockets = 4
@@ -123,12 +123,8 @@ func TestMultiSocketListeners(t *testing.T) {
 	}
 	for _, p := range []Protocol{ProtoUDP, ProtoTCP, ProtoDoT} {
 		l := reg.Lookup(p)[0].(*dnsListener)
-		w := want
-		if p == ProtoDoT {
-			w = 1
-		}
-		if got := l.Sockets(); got != w {
-			t.Errorf("%s: %d sockets, want %d", p, got, w)
+		if got := l.Sockets(); got != want {
+			t.Errorf("%s: %d sockets, want %d", p, got, want)
 		}
 	}
 	for _, p := range []Protocol{ProtoUDP, ProtoTCP} {
@@ -159,17 +155,22 @@ func TestMultiSocketListeners(t *testing.T) {
 // (or registry) silently share a port that is already serving; the plain
 // probe bind fails first, as a single-socket bind would.
 func TestMultiSocketBindConflict(t *testing.T) {
+	pair, err := testcert.Write(t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	first := runSocketRegistry(t, 4, nil,
 		Spec{Protocol: ProtoUDP, Address: "127.0.0.1:0"},
 		Spec{Protocol: ProtoTCP, Address: "127.0.0.1:0"},
+		Spec{Protocol: ProtoDoT, Address: "127.0.0.1:0", CertFile: pair.CertFile, KeyFile: pair.KeyFile},
 	)
-	for _, p := range []Protocol{ProtoUDP, ProtoTCP} {
+	for _, p := range []Protocol{ProtoUDP, ProtoTCP, ProtoDoT} {
 		taken := first.Addr(p).String()
 		second, err := NewRegistry(Options{Handler: &Handler{Chain: pipeline.MustNew(localAnswer{})}, Logger: quietLogger, Sockets: 4})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := second.Add(Spec{Protocol: p, Address: taken}); err != nil {
+		if err := second.Add(Spec{Protocol: p, Address: taken, CertFile: pair.CertFile, KeyFile: pair.KeyFile}); err != nil {
 			t.Fatal(err)
 		}
 		err = second.Bind()

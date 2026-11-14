@@ -1,0 +1,43 @@
+# Initial socket/persistence calibration: first five-process Ubicloud recording.
+# Source 9cc2ae0423070fc514c94a25ab5b92e3816889e7; procs 6; see calibration/ubicloud8-sockets-persist-20261108/.
+# Original limits/baselines unchanged. Required metrics cannot disappear.
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ B/op
+limit ^BenchmarkDoTSockets/sockets=1/churn=false$ B/op 2845.1999999999998
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ allocs/op
+limit ^BenchmarkDoTSockets/sockets=1/churn=false$ allocs/op 40.799999999999997
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ failed
+zero ^BenchmarkDoTSockets/sockets=1/churn=false$ failed
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ ns/op
+limit ^BenchmarkDoTSockets/sockets=1/churn=false$ ns/op 8218.7999999999993
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ q/s
+minimum ^BenchmarkDoTSockets/sockets=1/churn=false$ q/s 116799.20000000001
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ B/op
+limit ^BenchmarkDoTSockets/sockets=1/churn=true$ B/op 155550
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ allocs/op
+limit ^BenchmarkDoTSockets/sockets=1/churn=true$ allocs/op 1102.8
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ failed
+zero ^BenchmarkDoTSockets/sockets=1/churn=true$ failed
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ ns/op
+limit ^BenchmarkDoTSockets/sockets=1/churn=true$ ns/op 298706.40000000002
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ q/s
+minimum ^BenchmarkDoTSockets/sockets=1/churn=true$ q/s 3213.6000000000004
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ B/op
+limit ^BenchmarkDoTSockets/sockets=6/churn=false$ B/op 2846.4000000000001
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ allocs/op
+limit ^BenchmarkDoTSockets/sockets=6/churn=false$ allocs/op 40.799999999999997
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ failed
+zero ^BenchmarkDoTSockets/sockets=6/churn=false$ failed
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ ns/op
+limit ^BenchmarkDoTSockets/sockets=6/churn=false$ ns/op 8101.1999999999998
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ q/s
+minimum ^BenchmarkDoTSockets/sockets=6/churn=false$ q/s 118496
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ B/op
+limit ^BenchmarkDoTSockets/sockets=6/churn=true$ B/op 155516.39999999999
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ allocs/op
+limit ^BenchmarkDoTSockets/sockets=6/churn=true$ allocs/op 1102.8
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ failed
+zero ^BenchmarkDoTSockets/sockets=6/churn=true$ failed
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ ns/op
+limit ^BenchmarkDoTSockets/sockets=6/churn=true$ ns/op 299164.79999999999
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ q/s
+minimum ^BenchmarkDoTSockets/sockets=6/churn=true$ q/s 3208.8000000000002

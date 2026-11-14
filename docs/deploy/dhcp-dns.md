@@ -22,6 +22,17 @@ reservations do not prevent impersonation. Enforce required restrictions with
 IP/network policies and a restrictive default policy; hostname matching is
 advisory, and a missing match can select a fallback policy.
 
+The lease MAC of a bound lease also fills the MAC of queries from the leased
+address when no inventory integration reports a MAC for it, so `ClientGroup`
+`mac` matchers work with the built-in DHCP server alone, in every scope and on
+both store drivers. On a SQLite cluster this is node-local: a lease MAC applies
+only to queries answered by the node that serves that DHCP scope, and the same
+client querying another node falls through to its CIDR, hostname or default
+policy. Use an inventory integration or CIDR matchers for cluster-wide effect
+([client identity](client-identity.md#where-each-identity-comes-from)).
+`kudurru inventory --kind dhcp` lists the leases of the answering node
+([client identity](client-identity.md#client-inventory)).
+
 Option 12 hostnames have trailing NUL bytes stripped. Empty or unusable names
 are ignored, so an otherwise valid DHCP request can still obtain a lease.
 Malformed option framing and invalid configured reservation names are rejected.

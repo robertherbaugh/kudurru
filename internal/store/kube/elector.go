@@ -70,7 +70,10 @@ type term struct {
 	done   chan struct{} // closed after onStopped returned
 }
 
-var _ store.Elector = (*LeaseElector)(nil)
+var (
+	_ store.Elector      = (*LeaseElector)(nil)
+	_ store.TermVerifier = (*LeaseElector)(nil)
+)
 
 // NewLeaseElector validates cfg and returns an elector. It does no I/O.
 func NewLeaseElector(leases coordinationv1client.LeasesGetter, cfg ElectorConfig) (*LeaseElector, error) {
@@ -289,11 +292,15 @@ func (e *LeaseElector) runTerm(callerCtx, leCtx context.Context, onStarted func(
 		e.mu.Unlock()
 		return false
 	}
-	termCtx, cancel := context.WithCancel(leCtx)
+	base, cancel := context.WithCancel(leCtx)
 	t := &term{cancel: cancel, done: make(chan struct{})}
 	e.term = t
 	e.leading.Store(true)
 	e.mu.Unlock()
+	// Record the acquisition this term proves itself against (D384) before
+	// any term work starts. A failed read leaves a term that never verifies.
+	proof := e.recordTerm(base)
+	termCtx := context.WithValue(store.WithTermVerifier(base, proof.verify), leaseTermKey{}, e)
 	stop := context.AfterFunc(callerCtx, cancel)
 
 	defer func() {
@@ -319,6 +326,81 @@ func (e *LeaseElector) runTerm(callerCtx, leCtx context.Context, onStarted func(
 	}
 	return panicked
 }
+
+// leaseTerm is what one term proves itself against (D384): the Lease's
+// holder, acquire time and transition count as read when the term started.
+type leaseTerm struct {
+	e           *LeaseElector
+	term        context.Context
+	recorded    bool
+	acquire     metav1.MicroTime
+	transitions int32
+}
+
+// recordTerm reads the Lease once, bounded by RenewDeadline, and records the
+// acquisition when it names this identity.
+func (e *LeaseElector) recordTerm(term context.Context) *leaseTerm {
+	t := &leaseTerm{e: e, term: term}
+	ctx, cancel := context.WithTimeout(term, e.cfg.RenewDeadline)
+	defer cancel()
+	lease, err := e.leases.Leases(e.cfg.Namespace).Get(ctx, e.cfg.Name, metav1.GetOptions{})
+	if err != nil {
+		e.log.Warn("lease term: acquisition read failed; this term cannot verify", "err", err)
+		return t
+	}
+	if ptr.Deref(lease.Spec.HolderIdentity, "") != e.cfg.Identity || lease.Spec.AcquireTime == nil {
+		e.log.Warn("lease term: the Lease does not name this term; it cannot verify")
+		return t
+	}
+	t.recorded, t.acquire, t.transitions = true, *lease.Spec.AcquireTime, ptr.Deref(lease.Spec.LeaseTransitions, 0)
+	return t
+}
+
+// verify is one live GET of the Lease (store.VerifyTerm). It refuses unless
+// the term context is live and the Lease still names this identity with the
+// recorded acquisition and an unexpired renew time. It never writes.
+//
+// The proof assumes one live process per identity. client-go keeps the
+// recorded acquire time and transition count when it observes a valid Lease
+// under its own identity, so two live processes that share an identity (a
+// force-deleted StatefulSet pod still running on a partitioned node and its
+// replacement, both named after the node) both pass it (D384).
+func (t *leaseTerm) verify(ctx context.Context) error {
+	if ctx == nil || ctx.Err() != nil || t.term.Err() != nil || !t.recorded {
+		return store.ErrTermLost
+	}
+	ctx, cancel := context.WithTimeout(ctx, t.e.cfg.RenewDeadline)
+	defer cancel()
+	lease, err := t.e.leases.Leases(t.e.cfg.Namespace).Get(ctx, t.e.cfg.Name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("%w: lease read failed", store.ErrTermLost)
+	}
+	s := lease.Spec
+	if ptr.Deref(s.HolderIdentity, "") != t.e.cfg.Identity || s.AcquireTime == nil || !s.AcquireTime.Equal(&t.acquire) || ptr.Deref(s.LeaseTransitions, 0) != t.transitions {
+		return store.ErrTermLost
+	}
+	if s.RenewTime == nil || s.LeaseDurationSeconds == nil || !time.Now().Before(s.RenewTime.Add(time.Duration(*s.LeaseDurationSeconds)*time.Second)) {
+		return store.ErrTermLost
+	}
+	if t.term.Err() != nil {
+		return store.ErrTermLost
+	}
+	return nil
+}
+
+// VerifyTerm implements store.TermVerifier for a context derived from one of
+// this elector's terms: it refuses a term of another elector.
+func (e *LeaseElector) VerifyTerm(ctx, term context.Context) error {
+	if term == nil {
+		return store.ErrTermLost
+	}
+	if owner, ok := term.Value(leaseTermKey{}).(*LeaseElector); !ok || owner != e {
+		return store.ErrTermLost
+	}
+	return store.VerifyTerm(ctx, term)
+}
+
+type leaseTermKey struct{}
 
 // guard runs a callback, logging a panic instead of crashing the process:
 // a bug in leader-only work must not take the DNS dataplane down (D44).

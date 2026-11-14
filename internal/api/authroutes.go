@@ -19,6 +19,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/audit"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/license"
+	"github.com/robertherbaugh/kudurru/internal/rbac"
 )
 
 // Me is GET /auth/me.
@@ -33,6 +34,9 @@ type Me struct {
 	// Permissions maps every resource to the verbs granted at cluster
 	// scope.
 	Permissions map[string][]string `json:"permissions"`
+	// ScopedPermissions add the verbs granted at each scope of a scoped
+	// grant in Roles, keyed by scope (zone:<name>, zonegroup:<group>).
+	ScopedPermissions map[string]map[string][]string `json:"scopedPermissions,omitempty" doc:"Verbs per resource for each scoped grant in roles, keyed by scope (zone:home-example-com, zonegroup:prod)."`
 	// MustChangePassword is set for a local user whose password was
 	// generated or reset: every route but /auth/* answers 403
 	// password_change_required until POST /auth/password.
@@ -80,6 +84,10 @@ type AuditPage struct {
 type auditOutput struct{ Body *AuditPage }
 
 func (s *Server) registerAuth() {
+	s.registerExternalUsers()
+	s.registerRoleBindings()
+	s.registerIAMWriters()
+	s.registerCLILogin()
 	public := perm{public: true}
 	authed := perm{authenticated: true}
 	// Own tokens: every built-in role holds tokens.own, including the
@@ -89,14 +97,28 @@ func (s *Server) registerAuth() {
 	// them to the caller. A token never carries more than its owner's
 	// bindings (§8.6).
 	tokens := authed
+	bounded := func(method, path, id, summary, tag string) huma.Operation {
+		op := operation(method, path, id, summary, tag)
+		op.MaxBodyBytes = 16 << 10
+		return op
+	}
 	s.forward(operation(http.MethodGet, "/auth/status", "authStatus", "Login options", "auth"), public, nil, AuthStatus{})
 	s.forward(withRateLimit(operation(http.MethodPost, "/auth/login", "login", "Local login (sets the session cookie)", "auth")), public, LoginRequest{}, SessionInfo{})
 	start := operation(http.MethodGet, "/auth/oidc/{idp}/start", "oidcStart", "Start an OIDC login (302 to the IdP)", "auth")
 	start.Parameters = append(start.Parameters, &huma.Param{Name: "next", In: "query", Description: "Same-origin path to return to after the login.", Schema: &huma.Schema{Type: "string"}})
 	s.forward(start, public, nil, nil)
 	s.forward(operation(http.MethodGet, "/auth/oidc/{idp}/callback", "oidcCallback", "OIDC redirect target (302 to the app)", "auth"), public, nil, nil)
+	s.forward(withStatus(operation(http.MethodGet, "/auth/oidc/{idp}/logout", "oidcLogout", "Continue a committed browser logout (302 to the IdP)", "auth"), http.StatusFound), public, nil, nil)
+	s.forward(withStatus(operation(http.MethodGet, "/auth/oidc/{idp}/logout/callback", "oidcLogoutCallback", "Validate the logout return state (302 to the app)", "auth"), http.StatusFound), public, nil, nil)
+	s.forward(operation(http.MethodPost, "/auth/logout/browser", "browserLogout", "Revoke the session and optionally continue provider logout", "auth"), authed, nil, BrowserLogoutBody{})
 	s.forward(withStatus(operation(http.MethodPost, "/auth/logout", "logout", "Clear the session cookie", "auth"), http.StatusNoContent), authed, nil, nil)
 	s.forward(operation(http.MethodPost, "/auth/password", "changePassword", "Change the local user's own password (a cookie session gets a new cookie)", "auth"), authed, PasswordChangeRequest{}, SessionInfo{})
+	s.forward(operation(http.MethodGet, "/auth/sessions", "listSessions", "List own enrolled sessions", "auth"), authed, nil, AuthList[SessionRecordInfo]{})
+	s.forward(withStatus(operation(http.MethodDelete, "/auth/sessions/{id}", "revokeSession", "Revoke an enrolled session of the current account", "auth"), http.StatusNoContent), authed, nil, nil)
+	s.forward(bounded(http.MethodGet, "/auth/totp", "totpStatus", "Own local authenticator status", "auth"), authed, nil, TOTPStatus{})
+	s.forward(withRateLimit(bounded(http.MethodPost, "/auth/totp/setup", "beginTOTP", "Prepare an authenticator (provisioning secret returned once)", "auth")), authed, TOTPProofRequest{}, TOTPSetupResponse{})
+	s.forward(withStatus(withRateLimit(bounded(http.MethodPost, "/auth/totp/confirm", "confirmTOTP", "Activate the authenticator and revoke existing sessions", "auth")), http.StatusNoContent), authed, TOTPConfirmRequest{}, nil)
+	s.forward(withStatus(withRateLimit(bounded(http.MethodPost, "/auth/totp/disable", "disableTOTP", "Disable own authenticator and revoke existing sessions", "auth")), http.StatusNoContent), authed, TOTPProofRequest{}, nil)
 	s.forward(withStatus(operation(http.MethodPost, "/auth/tokens", "createToken", "Create a personal API token (the secret is returned once)", "auth"), http.StatusCreated), tokens, CreateTokenRequest{}, CreatedToken{})
 	list := operation(http.MethodGet, "/auth/tokens", "listTokens", "List own API tokens", "auth")
 	list.Parameters = append(list.Parameters, &huma.Param{Name: "all", In: "query", Description: "true lists every owner's tokens (needs tokens.read).", Schema: &huma.Schema{Type: "boolean"}})
@@ -105,12 +127,20 @@ func (s *Server) registerAuth() {
 	s.forward(withStatus(operation(http.MethodDelete, "/auth/tokens/{id}", "deleteToken", "Revoke one API token (someone else's needs tokens.delete)", "auth"), http.StatusNoContent), tokens, nil, nil)
 	register(s, operation(http.MethodGet, "/auth/me", "me", "The authenticated principal, roles, permissions and CSRF token", "auth"), authed, s.me)
 
-	// IAM, read-only (the write API is v0.2): served by the auth stack.
+	// IAM inventory and explicitly supported commands use the auth handler.
 	iam := func(path, resource, id string, resp any) {
-		s.forward(operation(http.MethodGet, path, id, "List "+resource+" (read-only; the write API is v0.2)", "iam"),
+		s.forward(operation(http.MethodGet, path, id, "List "+resource, "iam"),
 			perm{resource: resource, verb: "read"}, nil, resp)
 	}
 	iam("/iam/users", "users", "listUsers", AuthList[IAMUser]{})
+	createUser := withStatus(bounded(http.MethodPost, "/iam/users", "createLocalUser", "Create an API-managed local user requiring a password change", "iam"), http.StatusCreated)
+	createUser.Description = "Creates an ordinary local account with no groups or authenticator. Requires the complete SQLite runtime; existing accounts and other managers cannot be adopted. No session or token is issued."
+	s.forward(createUser, perm{resource: "users", verb: "write"}, CreateLocalUserRequest{}, IAMUser{})
+	resetUser := withStatus(bounded(http.MethodPost, "/iam/users/{name}/password", "resetLocalUserPassword", "Reset an exact API-managed local account's password", "iam"), http.StatusNoContent)
+	resetUser.Description = "Requires exact UID and resourceVersion. Preserves the authenticator and disabled state, requires a password change, revokes enrolled sessions, and deletes exact-owned local personal tokens atomically. Built-in and non-API-managed accounts are excluded. No automatic retry or replacement session."
+	s.forward(resetUser, perm{resource: "users", verb: "write"}, ResetLocalUserPasswordRequest{}, nil)
+	s.forward(withStatus(bounded(http.MethodPost, "/iam/users/{name}/totp/recover", "recoverTOTP", "Disable a lost authenticator for an exact account UID", "iam"), http.StatusNoContent),
+		perm{resource: "users", verb: "write"}, TOTPRecoverRequest{}, nil)
 	iam("/iam/serviceaccounts", "serviceaccounts", "listServiceAccounts", AuthList[ServiceAccountInfo]{})
 	iam("/iam/rolebindings", "rolebindings", "listRoleBindings", AuthList[RoleBindingInfo]{})
 	iam("/iam/identityproviders", "identityproviders", "listIdentityProviders", AuthList[IdentityProviderInfo]{})
@@ -128,6 +158,12 @@ func withRateLimit(op huma.Operation) huma.Operation {
 // and authorized like any other, then the original request is handed to
 // the auth handler untouched.
 func (s *Server) forward(op huma.Operation, p perm, reqExample, respExample any) {
+	s.forwardWithCapability(op, p, reqExample, respExample, nil)
+}
+
+// forwardWithCapability checks concrete runtime availability only after the
+// declared authentication and permission middleware. It grants no authority.
+func (s *Server) forwardWithCapability(op huma.Operation, p perm, reqExample, respExample any, available func() error) {
 	reg := s.api.OpenAPI().Components.Schemas
 	if reqExample != nil {
 		op.RequestBody = &huma.RequestBody{Required: true, Content: map[string]*huma.MediaType{
@@ -147,11 +183,18 @@ func (s *Server) forward(op huma.Operation, p perm, reqExample, respExample any)
 	// tiny and the login route is public: never buffer more than the auth
 	// handler accepts (64 KiB) for an anonymous caller.
 	op.SkipValidateBody = true
-	op.MaxBodyBytes = maxAuthBodyBytes
+	if op.MaxBodyBytes == 0 || op.MaxBodyBytes > maxAuthBodyBytes {
+		op.MaxBodyBytes = maxAuthBodyBytes
+	}
 	for _, m := range pathParamRE.FindAllStringSubmatch(op.Path, -1) {
 		op.Parameters = append(op.Parameters, &huma.Param{Name: m[1], In: "path", Required: true, Schema: &huma.Schema{Type: "string"}})
 	}
 	serve := func(body []byte) (*huma.StreamResponse, error) {
+		if available != nil {
+			if err := available(); err != nil {
+				return nil, err
+			}
+		}
 		if s.opts.AuthHandler == nil {
 			return nil, errNotImplemented("authentication (no auth handler is configured)")
 		}
@@ -249,13 +292,50 @@ func (s *Server) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
 		// Every permission route answers 403 password_change_required.
 		return &meOutput{Body: out}, nil
 	}
-	for _, res := range s.perms.ResourceNames() {
-		for _, verb := range s.perms.Resources[res] {
-			dec, err := s.authorize(ctx, p, res, verb, clusterScope, "")
-			if err == nil && dec.Allowed {
-				out.Permissions[res] = append(out.Permissions[res], verb)
+	// A verb whose decision cannot be made (the authorizer, or the zone group
+	// of a zone grant's zone, cannot be read) fails the answer with 503
+	// (D385): the matrix never reports an outage as a missing permission.
+	var undecided error
+	matrix := func(sc rbac.Scope) map[string][]string {
+		granted := map[string][]string{}
+		for _, res := range s.perms.ResourceNames() {
+			for _, verb := range s.perms.Resources[res] {
+				dec, err := s.authorize(ctx, p, res, verb, sc, "")
+				if err != nil {
+					if undecided == nil {
+						undecided = err
+					}
+					continue
+				}
+				if dec.Allowed {
+					granted[res] = append(granted[res], verb)
+				}
 			}
 		}
+		return granted
+	}
+	out.Permissions = matrix(clusterScope)
+	// Each scoped grant reports what it allows at its own scope; a zonegroup
+	// grant at zonegroup:<group> is what it allows on each member zone (D385).
+	for _, wire := range out.Roles {
+		g, err := rbac.ParseGrant(wire)
+		if err != nil || g.Normalized().Scope.Kind == rbac.ScopeCluster {
+			continue
+		}
+		key := scopeString(g.Scope)
+		if _, done := out.ScopedPermissions[key]; done {
+			continue
+		}
+		if out.ScopedPermissions == nil {
+			out.ScopedPermissions = map[string]map[string][]string{}
+		}
+		out.ScopedPermissions[key] = matrix(g.Scope)
+	}
+	if _, current := auth.PrincipalFrom(ctx); !current {
+		return nil, errUnauthenticated()
+	}
+	if undecided != nil {
+		return nil, errUnavailable("authorizer: %v", undecided)
 	}
 	return &meOutput{Body: out}, nil
 }

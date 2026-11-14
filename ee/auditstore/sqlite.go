@@ -41,21 +41,22 @@ func (s SQLite) Record(ctx context.Context, ev audit.Event) error {
 		manager = store.ManagerAPI
 	}
 	_, err := s.Store.RecordAudit(ctx, sqlite.AuditEntry{
-		Time:    ev.Time,
-		Actor:   ev.Actor.String(),
-		Manager: manager,
-		Action:  ev.Action,
-		Key:     store.Key{Kind: store.Kind(ev.Resource.Kind), Namespace: ev.Resource.Namespace, Name: ev.Resource.Name},
-		Result:  ev.Result,
-		Reason:  reasonWithContext(ev),
-		Before:  ev.Before,
-		After:   ev.After,
+		Time:            ev.Time,
+		Actor:           ev.Actor.String(),
+		Manager:         manager,
+		Action:          ev.Action,
+		Key:             store.Key{Kind: store.Kind(ev.Resource.Kind), Namespace: ev.Resource.Namespace, Name: ev.Resource.Name},
+		Result:          ev.Result,
+		Reason:          reasonWithContext(ev),
+		Before:          ev.Before,
+		After:           ev.After,
+		ResourceVersion: ev.ResourceVersion, Authz: ev.Authz, RequestID: ev.Request.ID, ClientIP: ev.Request.IP, UserAgent: ev.Request.UA, RequestMethod: ev.Request.Method, RequestPath: ev.Request.Path,
 	})
 	return err
 }
 
-// reasonWithContext folds the §11.4 fields the audit table has no column
-// for yet (authz path, request id, client address) into the reason.
+// reasonWithContext preserves the historical human-readable reason suffix.
+// Dedicated authenticated columns carry attribution without parsing this text.
 func reasonWithContext(ev audit.Event) string {
 	var parts []string
 	if ev.Reason != "" {

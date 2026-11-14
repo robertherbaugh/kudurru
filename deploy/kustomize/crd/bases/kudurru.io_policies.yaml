@@ -50,7 +50,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: PolicySpec binds client groups to lists and resolver behaviour.
+            description: PolicySpec binds client groups to lists and resolver behavior.
             properties:
               allowListRefs:
                 items:
@@ -130,23 +130,74 @@ spec:
                 description: QueryLog false excludes matching clients from the query
                   log.
                 type: boolean
+              response:
+                description: |-
+                  PolicyResponse overrides selected global response processing for clients.
+                  Each field uses the highest-priority policy that explicitly sets it.
+                properties:
+                  dns64Prefix:
+                    description: |-
+                      DNS64Prefix overrides response.dns64.prefix. An explicit empty string
+                      disables inherited DNS64; omitted inherits the next policy or global value.
+                    maxLength: 64
+                    type: string
+                    x-kubernetes-validations:
+                    - message: must be empty or a canonical IPv6 /32, /40, /48, /56,
+                        /64 or /96 prefix
+                      rule: size(self) == 0 || (isCIDR(self) && cidr(self).ip().family()
+                        == 6 && cidr(self).ip().isGlobalUnicast() && cidr(self).prefixLength()
+                        in [32, 40, 48, 56, 64, 96] && cidr(self) == cidr(self).masked())
+                  filterAAAA:
+                    description: FilterAAAA overrides response.filterAAAA. False explicitly
+                      disables it.
+                    type: boolean
+                type: object
               rewrites:
                 items:
-                  description: Rewrite rewrites answers for matching names (v0.2).
+                  description: |-
+                    Rewrite replaces forwarded answers for an exact name or descendant-only
+                    *.suffix. Type is a DNS RR type; omitted, address targets infer A or AAAA.
+                    CNAME is an alternative to Type CNAME with one target. CNAME responses
+                    return an alias that the client follows through the ordinary query path.
                   properties:
                     cname:
                       type: string
                     name:
+                      maxLength: 253
+                      minLength: 1
                       type: string
                     targets:
                       items:
+                        maxLength: 4096
                         type: string
+                      maxItems: 16
                       type: array
                     type:
+                      enum:
+                      - ""
+                      - A
+                      - AAAA
+                      - CNAME
+                      - PTR
+                      - TXT
+                      - MX
+                      - SRV
+                      - HTTPS
+                      - SVCB
+                      - CAA
+                      - NS
+                      - NAPTR
                       type: string
                   required:
                   - name
                   type: object
+                  x-kubernetes-validations:
+                  - message: provide either a CNAME or targets, not both
+                    rule: 'has(self.cname) && size(self.cname) > 0 ? (!has(self.targets)
+                      || size(self.targets) == 0) && (!has(self.type) || size(self.type)
+                      == 0 || self.type == ''CNAME'') : has(self.targets) && size(self.targets)
+                      > 0'
+                maxItems: 128
                 type: array
               safeSearch:
                 description: |-

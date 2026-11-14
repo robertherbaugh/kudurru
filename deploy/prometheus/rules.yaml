@@ -8,8 +8,8 @@
 # (the Helm chart's <release>-edge PodMonitor does).
 #
 # §11.6 alerts not shipped yet, because their metric does not exist (see
-# dev-docs/followups.md): KudurruClusterFenced (kudurru_cluster_fenced, v0.2),
-# KudurruDNSSECKeyExpiring (kudurru_dnssec_key_expiry_timestamp_seconds, v1.0).
+# dev-docs/followups.md): KudurruDNSSECKeyExpiring
+# (kudurru_dnssec_key_expiry_timestamp_seconds, v1.0).
 #
 # Without the Prometheus Operator, load spec.groups as a plain rule file:
 #   yq '.spec' deploy/prometheus/rules.yaml > kudurru.rules.yml
@@ -61,6 +61,13 @@ spec:
             summary: Upstream {{ $labels.upstream }} is unhealthy on {{ $labels.instance }}.
     - name: kudurru.cluster
       rules:
+        - alert: KudurruClusterFenced
+          expr: kudurru_cluster_fenced == 1
+          labels:
+            severity: critical
+          annotations:
+            summary: "SQLite member {{ $labels.instance }} is fenced from writes."
+            description: Check replication authority for a newer primary, conflicting promotions or divergent images, and storage errors for a failed durable fence. Resolve authority explicitly; valid last-good DNS can continue. A healthy follower is not fenced, and zero does not establish writable readiness.
         - alert: KudurruNoLeader
           expr: max(kudurru_leader{role="controller"}) == 0
           for: 2m

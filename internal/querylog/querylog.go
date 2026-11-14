@@ -1,8 +1,11 @@
 // Package querylog defines the query event, the non-blocking collector the
 // log observer writes to, the privacy transform applied once at ingest, the
-// live tail, the querylog metrics and the Sink contract every sink
-// implements (dev-docs/design-record.md §11.2). The SQLite writer, rollups and
-// the read API live in internal/querylog/sqlitelog.
+// live tail, the querylog metrics, the Sink contract every sink implements
+// (dev-docs/design-record.md §11.2) and the host that runs the additional
+// sinks of querylog.sinks, each behind its own bounded queue (SinkHost,
+// D371). The SQLite writer, rollups and the read API live in
+// internal/querylog/sqlitelog; the ClickHouse and Loki sinks in
+// internal/querylog/sinks.
 package querylog
 
 import (
@@ -69,6 +72,48 @@ type Event struct {
 	// Answer is a short summary of the first answer records. Stored only
 	// under privacy full (D59).
 	Answer string `json:"answer,omitempty"`
+	// Wire is the query and response as DNS messages. The log stage fills
+	// it only while the route holds a raw sink (WireRetainer), and the
+	// collector clears it before any consumer but a raw sink sees the event:
+	// it is never stored, shown or sent by any other sink (D372).
+	Wire *Wire `json:"-"`
+	// ClientPort is the client's source port. The collector uses it only to
+	// recognize a dnstap message about a query this node answered itself
+	// (DedupIndex) and clears it before any consumer sees the event.
+	ClientPort uint16 `json:"-"`
+	// Origin is set on an event a dnstap listener ingested (D372): the
+	// identity of the dnstap sender, or "dnstap" when it sent none. Such an
+	// event is recorded like any other, but a dnstap sink never sends it,
+	// so a listener and an emitter can never feed each other in a loop.
+	// Empty for the queries this node answered.
+	Origin string `json:"origin,omitempty"`
+}
+
+// Wire is the DNS messages of one query, kept only for raw sinks.
+type Wire struct {
+	// Query is the query as received; Response the answer as the pipeline
+	// produced it, before the transport truncated or padded it. Either is
+	// nil when it was not available.
+	Query, Response []byte
+	// ClientPort is the client's source port.
+	ClientPort uint16
+}
+
+// WireRetainer is implemented by the collectors of the query path: it
+// reports whether an event should carry its Wire, which is true only while
+// the route feeds a raw sink. The log stage asks it for every query, so the
+// default path packs and allocates nothing extra.
+type WireRetainer interface {
+	RetainsWire() bool
+}
+
+// RawSink is implemented by a sink that receives events as they were
+// admitted, before the privacy transform, with their Wire: a dnstap sink
+// with raw: true (D372). The collector gives it a copy of every event the
+// exclusions admit, whatever the privacy mode. Every other sink receives
+// the transformed event.
+type RawSink interface {
+	Raw() bool
 }
 
 // Traced reports whether the event carries a trace id.
@@ -195,4 +240,12 @@ type Sink interface {
 	Write(batch []*Event) error
 	Flush(ctx context.Context) error
 	Close() error
+}
+
+// BatchSink accepts an original captured privacy mode and cancellation for a
+// pending batch. Async never retries a batch after this call was attempted.
+// The additional-sink host (SinkHost) calls it again for the same batch only
+// after an error marked Retryable, within the sink's attempt budget.
+type BatchSink interface {
+	WriteBatch(context.Context, []*Event, Mode) error
 }

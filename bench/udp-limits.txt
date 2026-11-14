@@ -1,0 +1,23 @@
+# Initial socket/persistence calibration: first five-process Ubicloud recording.
+# Source 9cc2ae0423070fc514c94a25ab5b92e3816889e7; procs 6; see calibration/ubicloud8-sockets-persist-20261108/.
+# Original limits/baselines unchanged. Required metrics cannot disappear.
+require ^BenchmarkUDPSockets/sockets=1$ B/op
+limit ^BenchmarkUDPSockets/sockets=1$ B/op 2772
+require ^BenchmarkUDPSockets/sockets=1$ allocs/op
+limit ^BenchmarkUDPSockets/sockets=1$ allocs/op 39.600000000000001
+require ^BenchmarkUDPSockets/sockets=1$ lost
+zero ^BenchmarkUDPSockets/sockets=1$ lost
+require ^BenchmarkUDPSockets/sockets=1$ ns/op
+limit ^BenchmarkUDPSockets/sockets=1$ ns/op 10525.200000000001
+require ^BenchmarkUDPSockets/sockets=1$ q/s
+minimum ^BenchmarkUDPSockets/sockets=1$ q/s 91212
+require ^BenchmarkUDPSockets/sockets=6$ B/op
+limit ^BenchmarkUDPSockets/sockets=6$ B/op 2842.8000000000002
+require ^BenchmarkUDPSockets/sockets=6$ allocs/op
+limit ^BenchmarkUDPSockets/sockets=6$ allocs/op 39.600000000000001
+require ^BenchmarkUDPSockets/sockets=6$ lost
+zero ^BenchmarkUDPSockets/sockets=6$ lost
+require ^BenchmarkUDPSockets/sockets=6$ ns/op
+limit ^BenchmarkUDPSockets/sockets=6$ ns/op 6828
+require ^BenchmarkUDPSockets/sockets=6$ q/s
+minimum ^BenchmarkUDPSockets/sockets=6$ q/s 140590.39999999999

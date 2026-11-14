@@ -28,8 +28,10 @@ type Result struct {
 	Group, Server, Upstream string
 	RTT                     time.Duration
 	// DNSSEC is the validation state from a recursive group; unknown for
-	// forwarded answers, which kudurru does not validate.
+	// forwarded answers, which the separate DNSSEC stage may validate.
 	DNSSEC recursor.Security
+	// NativeValidation is out-of-band provenance, absent for forwarded data.
+	NativeValidation recursor.Validation
 }
 
 // Error is returned when no server of a group produced a usable answer.
@@ -41,6 +43,12 @@ type Error struct {
 	// upstream's extended error.
 	Msg      *dns.Msg
 	Upstream string
+	// Attempted reports that at least one server was actually asked: a
+	// forwarder received the query, or the native resolver sent a query to
+	// at least one authority before it failed (it marks its own refusals
+	// recursor.IsAdmission; D377). It is false when the query ended before
+	// any server was tried.
+	Attempted bool
 }
 
 func (e *Error) Error() string {
@@ -206,7 +214,7 @@ func (g *Group) exchange(ctx context.Context, msg *dns.Msg) (*Result, error) {
 		}
 		a := g.race(ctx, batch, msg, failure)
 		if a != nil {
-			return &Result{Msg: a.msg, Group: g.name, Server: a.srv.name, Upstream: a.srv.label, RTT: a.rtt, DNSSEC: a.sec}, nil
+			return &Result{Msg: a.msg, Group: g.name, Server: a.srv.name, Upstream: a.srv.label, RTT: a.rtt, DNSSEC: a.sec.State, NativeValidation: a.sec}, nil
 		}
 	}
 	if len(failure.Errs) == 0 {
@@ -246,6 +254,9 @@ func (g *Group) collect(a attempt, failure *Error) *attempt {
 		return &a
 	}
 	failure.Errs = append(failure.Errs, a.err)
+	if !recursor.IsAdmission(a.err) {
+		failure.Attempted = true
+	}
 	var rc errRcode
 	if errors.As(a.err, &rc) {
 		failure.Msg, failure.Upstream = a.msg, a.srv.label

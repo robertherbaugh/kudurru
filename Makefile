@@ -1,11 +1,11 @@
 MODULE      := github.com/robertherbaugh/kudurru
 BIN         := bin/kudurru
-# RELEASE_VERSION is what a build without a reachable tag reports (a
-# tarball, a shallow clone, a fork without tags): the VERSION file, which
+# RELEASE_VERSION is what a build without a reachable tag for this version
+# reports (a tarball, a shallow clone, a new version): the VERSION file, which
 # also names the next release candidate and release tags
 # (dev-docs/release-checklist.md, "Release pipeline").
 RELEASE_VERSION := $(shell tr -d '[:space:]' < VERSION 2>/dev/null)
-VERSION     ?= $(shell git describe --tags --dirty 2>/dev/null || echo $(RELEASE_VERSION))
+VERSION     ?= $(shell git describe --tags --match 'v$(RELEASE_VERSION)' --match 'v$(RELEASE_VERSION)-rc.*' --dirty 2>/dev/null || echo $(RELEASE_VERSION))
 COMMIT      ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE        ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS     := -s -w -X $(MODULE)/internal/version.Version=$(VERSION) -X $(MODULE)/internal/version.Commit=$(COMMIT) -X $(MODULE)/internal/version.Date=$(DATE)
@@ -18,12 +18,21 @@ GOLANGCI_LINT  ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@
 SETUP_ENVTEST  ?= go run sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.25.2
 ENVTEST_K8S_VERSION ?= 1.37.x
 
-.PHONY: test-postgres all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
+.PHONY: test-postgres test-sinks all build size run test test-short lint vet generate manifests fmt openapi client-go rbac-manifests tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest dashboard-install dashboard-build dashboard-test dashboard-lint dashboard-dev dashboard-e2e
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker helm-lint check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest edge-check edge-images kind-e2e compose-e2e check-generated-code
 .PHONY: all build size run test test-short lint vet generate manifests fmt tidy clean docker docker-debug docker-hostnetwork docker-dhcp hostnetwork-check volume-check helm-lint helm-check deploy-tools deploy-assets release-manifests check-generated validator-crds dex test-auth-e2e bench bench-baseline envtest
 
 all: build
+
+.PHONY: version-sync version-check
+## Synchronize charts, rendered manifests, Compose and install examples from VERSION.
+## To start another version: python3 hack/sync-version.py --version 0.3.0
+version-sync:
+	python3 hack/sync-version.py
+
+version-check:
+	python3 hack/sync-version.py --check
 
 .PHONY: ad-dns-check
 ## ad-dns-check: isolated GSS-TSIG feasibility probe, outside the product build.
@@ -35,6 +44,11 @@ ad-dns-check:
 
 build:
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/kudurru
+
+.PHONY: test-adguard
+# Pinned external executable; first-party corpus, no vendored copyleft data.
+test-adguard:
+	bash hack/test-adguard.sh
 
 ## size: build the stripped CGO_ENABLED=0 release binary and fail when it is
 ## larger than SIZE_BUDGET bytes (D75, D138). History: 46,575,776 at the end
@@ -62,9 +76,27 @@ run: build
 ## when `make envtest` has installed the control-plane binaries and skip
 ## otherwise. TEST_PKGS narrows the run (ci.yml passes one shard of
 ## hack/go-test-shard.sh).
+## Some kube suites (internal/api, internal/auth/k8s, internal/cluster,
+## internal/controller, internal/zonecache) read only KUBEBUILDER_ASSETS and
+## never look in bin/k8s, so the recipe exports the newest installed version
+## for them; a value from the environment wins. With
+## KUDURRU_REQUIRE_ENVTEST=1 (CI) the run fails before it starts when there
+## is no kube-apiserver, instead of skipping those suites.
+# The command package is split by its actual compiled test inventory. Every
+# test/example/fuzz seed still runs once with race detection and original fixture
+# bounds; each bounded batch retains the same 30-minute process deadline.
 TEST_PKGS ?= ./...
+TEST_TIMEOUT ?= 30m
+ENVTEST_ASSETS ?= $(lastword $(sort $(wildcard $(CURDIR)/bin/k8s/*-$(shell go env GOOS)-$(shell go env GOARCH))))
 test:
-	CGO_ENABLED=1 go test -race -count=1 $(TEST_PKGS)
+	@assets="$${KUBEBUILDER_ASSETS:-$(ENVTEST_ASSETS)}"; \
+	if [ -n "$${KUDURRU_REQUIRE_ENVTEST:-}" ] && [ ! -x "$$assets/kube-apiserver" ]; then \
+		echo "error: KUDURRU_REQUIRE_ENVTEST is set but there is no kube-apiserver in '$$assets' (run make envtest)" >&2; \
+		exit 1; \
+	fi; \
+	if [ -n "$$assets" ]; then export KUBEBUILDER_ASSETS="$$assets"; fi; \
+	echo "envtest assets: $${assets:-none, the kube suites skip}"; \
+	set -x; python3 hack/go-test.py --timeout=$(TEST_TIMEOUT) $(TEST_PKGS)
 
 ## test-short: no race detector, no cgo; what `go test` gives on a plain checkout
 test-short:
@@ -86,6 +118,22 @@ test-postgres:
 	KUDURRU_TEST_POSTGRES_DSN='postgres://postgres:kudurru@127.0.0.1:55432/postgres?sslmode=disable' KUDURRU_REQUIRE_POSTGRES=1 \
 		go test -count=1 $$(go list ./... | grep -E '/internal/(central|audit|querylog)|/cmd/kudurru'); \
 		status=$$?; docker rm -f kudurru-test-postgres >/dev/null; exit $$status
+
+## test-sinks: the query-log sinks of querylog.sinks (D371) against real
+## ClickHouse and Loki in Docker: the documented table reads the rows and
+## Loki serves the documented mapping. Optional; not run in CI.
+CLICKHOUSE_IMAGE ?= clickhouse/clickhouse-server:25.8
+LOKI_IMAGE ?= grafana/loki:3.7.9
+test-sinks:
+	docker rm -f kudurru-test-clickhouse kudurru-test-loki >/dev/null 2>&1 || true
+	docker run -d --rm --name kudurru-test-clickhouse -e CLICKHOUSE_PASSWORD=kudurru -p 58123:8123 $(CLICKHOUSE_IMAGE) >/dev/null
+	docker run -d --rm --name kudurru-test-loki -p 53100:3100 $(LOKI_IMAGE) >/dev/null
+	until curl -fsS http://127.0.0.1:58123/ping >/dev/null 2>&1; do sleep 1; done
+	until curl -fsS http://127.0.0.1:53100/ready >/dev/null 2>&1; do sleep 1; done
+	KUDURRU_TEST_CLICKHOUSE_URL=http://127.0.0.1:58123 KUDURRU_TEST_CLICKHOUSE_USER=default KUDURRU_TEST_CLICKHOUSE_PASSWORD=kudurru \
+		KUDURRU_TEST_LOKI_URL=http://127.0.0.1:53100 KUDURRU_REQUIRE_SINK_SERVERS=1 \
+		go test -count=1 -run TestLive -v ./internal/querylog/sinks/; \
+		status=$$?; docker rm -f kudurru-test-clickhouse kudurru-test-loki >/dev/null; exit $$status
 
 vet:
 	go vet ./...
@@ -116,13 +164,14 @@ OAPI_CODEGEN ?= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@
 client-go: openapi
 	$(OAPI_CODEGEN) -config internal/apiclient/openapi/oapi-codegen.yaml api/openapi-3.0.json
 	gofmt -s -w internal/apiclient/openapi
+	go run ./hack/clientdispatch
 
 tidy:
 	go mod tidy
 
 ## generate: deepcopy functions, CRD manifests and the CRD chart copies.
 ## Deepcopy covers api/v1alpha1 and the internal kinds of api/internalkinds/v1alpha1
-## (LocalUser, APIToken, ServiceAccount, RoleBinding, IdentityProvider); the
+## (LocalUser, APIToken, PrincipalState); the
 ## CRD run reads api/v1alpha1 only, because the internal kinds are never CRDs
 ## (Secrets in Kubernetes, JSON rows in state.db; D26).
 generate: manifests
@@ -135,6 +184,7 @@ generate: manifests
 ## all are copied into the kudurru-crds chart.
 manifests:
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/v1alpha1/... output:crd:artifacts:config=deploy/kustomize/crd/bases
+	go run ./hack/settingscrd -file deploy/kustomize/crd/bases/kudurru.io_kudurrus.yaml
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/audit/v1alpha1/... output:crd:artifacts:config=deploy/kustomize/crd/audit
 	$(CONTROLLER_GEN) crd:crdVersions=v1 paths=./api/dhcp/v1alpha1/... output:crd:artifacts:config=deploy/kustomize/crd/dhcp
 	mkdir -p deploy/helm/kudurru-crds/templates
@@ -195,14 +245,47 @@ test-auth-e2e: $(DEX_BIN)
 ## when named is not installed). Recorded bugs are skipped; set
 ## KUDURRU_E2E_KNOWN_BUGS=1 to reproduce them. The dex OIDC end to end
 ## test is `make test-auth-e2e`; CI's e2e job runs both.
-.PHONY: e2e interop fuzz
-E2E_FLAGS ?= -race -count=1 -timeout 20m
+## Tests that need a program or a service skip without it: named and the
+## BIND 9 tools, PostgreSQL (KUDURRU_TEST_POSTGRES_DSN, the two-node central
+## audit and query log tests) and the envtest control plane (`make envtest`,
+## the Kubernetes audit test). KUDURRU_REQUIRE_BIND=1,
+## KUDURRU_REQUIRE_POSTGRES=1 and KUDURRU_REQUIRE_ENVTEST=1 turn each skip
+## into a failure; CI's e2e job sets all three.
+## To run on built artifacts instead of building: KUDURRU_E2E_BINARY=<path>
+## (a release build) and KUDURRU_E2E_LICENSED_BINARY=<path> (the same build
+## with -tags licensetest, for the multi-node fixtures that need the test
+## license key). The log names every binary used, built or prebuilt.
+## The upgrade tests start from a data directory written by the previous
+## release (0.1.0): its binary is built from the v0.1.0 tag of the clone in
+## a temporary directory, or is the file KUDURRU_E2E_PREVIOUS_BINARY names.
+## Without the tag and the variable they skip;
+## KUDURRU_REQUIRE_PREVIOUS_RELEASE=1 turns that into a failure too.
+.PHONY: e2e interop interop-internal fuzz upgrade-fixture
+E2E_FLAGS ?= -race -count=1 -timeout 45m
 e2e:
 	CGO_ENABLED=1 KUDURRU_E2E=1 go test $(E2E_FLAGS) -v ./test/e2e/ ./test/interop/
+
+## upgrade-fixture: regenerate the golden state.db files of the 0.1.0
+## release (internal/store/sqlite/testdata/v0.1.0) with the released binary;
+## see hack/upgrade-fixture.sh before running it.
+upgrade-fixture:
+	hack/upgrade-fixture.sh
 
 ## interop: only the BIND 9 interop (dnf install bind / apt-get install bind9)
 interop:
 	CGO_ENABLED=1 KUDURRU_E2E=1 go test $(E2E_FLAGS) -v ./test/interop/
+
+## interop-internal: the BIND 9 interop tests that live beside the code they
+## qualify instead of in test/interop: response policy zones transferred from
+## BIND (internal/rpz), a BIND-signed secondary zone through the listeners
+## (internal/stages/authoritative) and stub zone discovery
+## (internal/zoneview), and the RFC 5011 rollover timeline on freshly
+## BIND-signed root wires (internal/trustanchors, D398). `make test` skips
+## them where named is not installed (and the RPZ tests without
+## KUDURRU_E2E); CI's e2e job runs them here.
+INTEROP_INTERNAL_PKGS ?= ./internal/rpz ./internal/stages/authoritative ./internal/zoneview ./internal/trustanchors
+interop-internal:
+	CGO_ENABLED=1 KUDURRU_E2E=1 go test $(E2E_FLAGS) -v -run '^Test(BIND|RFC5011RolloverFromBINDWires)' $(INTEROP_INTERNAL_PKGS)
 
 ## fuzz: every fuzz target for FUZZTIME each (hack/fuzz.sh --list); FUZZ_JOBS
 ## targets at a time. Without -fuzz, `make test` replays the seed corpora.
@@ -236,13 +319,13 @@ BENCH_RUN        = for i in $$(seq $(BENCH_COUNT)); do \
 bench:
 	@mkdir -p $(dir $(BENCH_OUT))
 	{ $(BENCH_RUN); } | tee $(BENCH_OUT)
-	go run ./internal/blocking/benchgate -baseline $(BENCH_BASELINE) -limits $(BENCH_LIMITS) -threshold $(BENCH_THRESHOLD) $(BENCH_OUT)
+	go run ./hack/benchgate -baseline $(BENCH_BASELINE) -limits $(BENCH_LIMITS) -threshold $(BENCH_THRESHOLD) -samples $(BENCH_COUNT) $(BENCH_OUT)
 
 ## bench-baseline: re-record bench/baseline.txt on this machine and check it against the limits
 bench-baseline:
 	@mkdir -p $(dir $(BENCH_OUT))
 	{ $(BENCH_RUN); } | tee $(BENCH_OUT)
-	go run ./internal/blocking/benchgate -limits $(BENCH_LIMITS) $(BENCH_OUT)
+	go run ./hack/benchgate -limits $(BENCH_LIMITS) -samples $(BENCH_COUNT) $(BENCH_OUT)
 	cp $(BENCH_OUT) $(BENCH_BASELINE)
 
 ## dashboard-*: the dashboard SPA in dashboard/ (Bun + Vite, dev-docs/design-record.md §10,
@@ -388,12 +471,11 @@ helm-check: helm-lint deploy-tools
 deploy-assets:
 	go test -count=1 ./deploy/ -update
 
-## release-manifests: crds.yaml and install.yaml (kustomize build
-## deploy/kustomize/default) for the GitHub release, written to bin/release/.
+## Release artifacts are staged at the actual tag, including RC image references.
+## No tracked files are modified. GoReleaser supplies its exact build version.
+RELEASE_ARTIFACT_VERSION ?= $(RELEASE_VERSION)
 release-manifests: $(DEPLOY_BIN)/kustomize
-	mkdir -p bin/release
-	$(DEPLOY_BIN)/kustomize build deploy/kustomize/crd > bin/release/crds.yaml
-	$(DEPLOY_BIN)/kustomize build deploy/kustomize/default > bin/release/install.yaml
+	PATH=$(DEPLOY_BIN):$$PATH python3 hack/sync-version.py --artifact-version '$(RELEASE_ARTIFACT_VERSION)'
 
 ## edge-check: validate the golden dnsdist and keepalived configurations
 ## (ee/edge/*/testdata) with the real programs inside the pinned images:

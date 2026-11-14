@@ -47,39 +47,13 @@ func (m *minuteAcc) merge(o *minuteAcc) {
 	}
 }
 
-// hourAcc mirrors the facts of one hour that has not been derived into
-// the _1h tables yet, keyed by dictionary id. It is a read cache: the
-// hourly job derives rollup_domain_1h/list_1h/zone_1h from the fact table
-// (crash-safe), and the read API answers the pending part of a window from
-// here instead of scanning the facts.
+// hourAcc caches configuration-bounded list/zone counts for pending hours.
+// domains is used only by the bounded source-reconstruction helper; live
+// readers use the transaction-maintained retained-fact domain index.
 type hourAcc struct {
-	domains map[int64]*[2]int64 // total, blocked
-	lists   map[int64]*[2]int64 // blocked hits, permitted hits
+	domains map[int64]*[2]int64
+	lists   map[int64]*[2]int64
 	zones   map[int64]int64
-	// full is set once the hour saw more than maxHourDomains distinct
-	// domains: domains is dropped and reads take the hour's domains from
-	// the fact table. Lists and zones are bounded by the configuration.
-	full bool
-}
-
-// maxHourDomains bounds the domains one pending hour keeps in memory
-// (about 24 bytes each). Without it a flood of unique names (random
-// subdomains over TCP, which the rate limiter does not cover) grew the map
-// by every accepted name until the hour was derived, gigabytes per hour at
-// the query log's peak rate, and every stats read copied it under the
-// writer's lock.
-var maxHourDomains = 100_000
-
-// addDomain counts one domain unless the hour is full.
-func (h *hourAcc) addDomain(k, a, b int64) {
-	if h.full {
-		return
-	}
-	if _, ok := h.domains[k]; !ok && len(h.domains) >= maxHourDomains {
-		h.full, h.domains = true, nil
-		return
-	}
-	addPair(h.domains, k, a, b)
 }
 
 func newHourAcc() *hourAcc {
@@ -97,11 +71,8 @@ func addPair(m map[int64]*[2]int64, k, a, b int64) {
 }
 
 func (h *hourAcc) merge(o *hourAcc) {
-	if o.full {
-		h.full, h.domains = true, nil
-	}
 	for k, v := range o.domains {
-		h.addDomain(k, v[0], v[1])
+		addPair(h.domains, k, v[0], v[1])
 	}
 	for k, v := range o.lists {
 		addPair(h.lists, k, v[0], v[1])

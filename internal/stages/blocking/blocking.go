@@ -11,27 +11,31 @@
 //  2. When blocking is off (blocking.enabled false, or the Toggle is
 //     temporarily disabled) or the policy filters nothing, the query
 //     passes.
-//  3. The question is evaluated by the policy's blocking.Selection: an
-//     allow list of any applied policy wins, then allow-only mode blocks,
-//     then each block list's deny rules unless that list's @@ exception
-//     matches.
+//  3. The question is evaluated with its original type and pinned client
+//     identity by the policy's blocking.Selection: an allow list of any
+//     applied policy wins, then allow-only mode blocks, then typed dnsrewrite
+//     plans take priority over ordinary blocking. Important exceptions beat
+//     important denies, which beat ordinary exceptions and denies. Exception
+//     and badfilter scope is list-local unless selection scope is configured.
 //  4. When the policy enforces safe search (spec.safeSearch) and the
-//     question is a search engine's host name in the catalogue
+//     question is a search engine's host name in the catalog
 //     (internal/listdata/catalogue), the answer is the vendor's safe
 //     target: a CNAME to it plus the target's records resolved through
-//     the rest of the chain, or the documented addresses, with status
+//     ResolveTarget callback, or the documented addresses, with status
 //     blocked_safesearch and list "safesearch:<engine>". An allow list
 //     match in step 3 skips this, as it skips every block.
 //  5. Otherwise the query continues, and the answer is inspected: every
 //     CNAME target, SVCB/HTTPS target name and A/AAAA address (and SVCB
-//     address hint) is checked against the same lists (bare-IP entries
-//     match addresses). Skipped when an allow list allowed the question.
+//     address hint) is checked against the same lists using the original
+//     query/client selectors (bare-IP entries match addresses). This runs
+//     after cache hits and configured rewrites too, and is skipped when an
+//     allow list allowed the question.
 //
 // A Policy's blockedServices are block lists of the selection like any
-// other ("service:<id>", compiled from the catalogue), so steps 3 and 5
+// other ("service:<id>", compiled from the catalog), so steps 3 and 5
 // apply to them unchanged.
 //
-// A block synthesises the response (BlockList response, else the policy's
+// A block synthesizes the response (BlockList response, else the policy's
 // blockMode, else blocking.defaultResponse): zeroIP answers 0.0.0.0 for A
 // and :: for AAAA and NODATA for other types; nxdomain answers NXDOMAIN
 // without an SOA; customIP answers the configured addresses (NODATA for a
@@ -61,6 +65,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
+	"github.com/robertherbaugh/kudurru/internal/rpz"
 )
 
 // DefaultBlockTTL is the block response TTL when neither the policy nor
@@ -82,6 +87,16 @@ type IndexSource interface {
 
 // Options configures the stage.
 type Options struct {
+	// RPZ supplies required transferred feeds from the request's pinned
+	// policy/configuration cut. Nil selection means no selected feeds; errors
+	// fail capture. The stage pins its result once and inherits it in targets.
+	RPZ func(*pipeline.Request) (*rpz.Selection, error)
+	// Context supplies operator-published client names/tags for rule matching.
+	// The stage always pins question fields and source IP from the request.
+	Context func(*pipeline.Request) engine.Context
+	// ResolveTarget routes synthesized CNAME targets through authority/policy
+	// boundaries. Nil reenters this stage and then the remaining chain.
+	ResolveTarget pipeline.Next
 	// Disabled turns blocking off permanently (blocking.enabled false).
 	Disabled bool
 	// DefaultResponse applies when neither the BlockList nor the Policy
@@ -141,6 +156,8 @@ func OptionsFromConfig(c *config.Config) Options {
 
 // Stage implements pipeline.Stage.
 type Stage struct {
+	// Capture supplies immutable defaults/runtime/catalogue from Request.Serving.
+	Capture func(*pipeline.Request) (*View, error)
 	opts    Options
 	live    atomic.Pointer[defaults]
 	toggle  *Toggle
@@ -154,11 +171,12 @@ type defaults struct {
 	customV4, customV6 netip.Addr
 	pageV4, pageV6     netip.Addr
 	blockTTL           time.Duration
+	allowDegraded      bool
 }
 
 func defaultsOf(o Options) *defaults {
 	d := &defaults{disabled: o.Disabled, response: o.DefaultResponse, customV4: o.CustomV4, customV6: o.CustomV6,
-		pageV4: o.BlockPageV4, pageV6: o.BlockPageV6, blockTTL: o.BlockTTL}
+		pageV4: o.BlockPageV4, pageV6: o.BlockPageV6, blockTTL: o.BlockTTL, allowDegraded: o.AllowDegraded}
 	if d.response == "" {
 		d.response = v1alpha1.BlockResponse("zeroIP")
 	}
@@ -169,7 +187,7 @@ func defaultsOf(o Options) *defaults {
 }
 
 // Reconfigure applies the blocking.* settings that are hot (enabled,
-// defaultResponse, blockTTL, customIP) and the block page addresses from o; Toggle, Index, AllowDegraded
+// defaultResponse, blockTTL, customIP, allowDegraded) and the block page addresses from o; Toggle, Index
 // and the metrics stay. Queries in flight finish with the old values.
 func (s *Stage) Reconfigure(o Options) { s.live.Store(defaultsOf(o)) }
 
@@ -210,7 +228,8 @@ func (s *Stage) Enabled() bool { return !s.live.Load().disabled && s.toggle.Enab
 // not ready while a referenced BlockList is not compiled yet, unless
 // AllowDegraded.
 func (s *Stage) Ready() (bool, []string) {
-	if s.opts.AllowDegraded || s.live.Load().disabled || s.opts.Index == nil {
+	d := s.live.Load()
+	if d.allowDegraded || d.disabled || s.opts.Index == nil {
 		return true, nil
 	}
 	ix := s.opts.Index.Index()
@@ -255,6 +274,13 @@ func groupLabel(req *pipeline.Request) string {
 
 // Serve implements pipeline.Stage.
 func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Response, error) {
+	view, err := s.pin(req)
+	if err != nil {
+		return nil, err
+	}
+	if req.Msg == nil || req.Msg.Opcode != dns.OpcodeQuery || len(req.Msg.Question) != 1 || req.Question().Qclass != dns.ClassINET || req.Question().Qtype == dns.TypeAXFR || req.Question().Qtype == dns.TypeIXFR {
+		return next(req)
+	}
 	d := policy.FromRequest(req)
 	if !d.Applies() {
 		return next(req)
@@ -265,15 +291,35 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 	if !d.Filters() || req.Msg == nil || len(req.Msg.Question) == 0 {
 		return next(req)
 	}
-	if !s.Enabled() {
+	if !view.enabled(s.opts.Now()) {
 		s.metrics.decision(passDisabled, groupLabel(req))
 		return next(req)
 	}
 	q := req.Msg.Question[0]
-	bd := d.Selection.Evaluate(q.Name)
+	ctx := s.ruleContext(req)
+	if req.CollectExclusions {
+		matches, truncated := d.Selection.ExcludedQuestionRules(req.Ctx, ctx)
+		req.Exclusions = make([]pipeline.RuleExclusion, len(matches))
+		for i, match := range matches {
+			req.Exclusions[i] = pipeline.RuleExclusion{List: match.List, Source: match.Source, Rule: match.Rule, Effect: match.Effect}
+		}
+		req.ExclusionsTruncated = truncated
+	}
+	if req.Msg.RecursionDesired && s.opts.RPZ != nil {
+		selected, err := s.pinRPZ(req)
+		if err != nil {
+			return nil, err
+		}
+		if !selected.Empty() {
+			return s.serveRPZ(req, d, ctx, selected, next)
+		}
+	}
+	bd := d.Selection.EvaluateContext(ctx)
 	switch bd.Action {
 	case engine.ActionBlock:
 		return s.block(req, d, bd), nil
+	case engine.ActionRewrite:
+		return s.rewrite(req, d, bd, ctx, next)
 	case engine.ActionAllow:
 		if bd.Reason == engine.ReasonAllowList {
 			s.metrics.decision(allowList, groupLabel(req))
@@ -281,8 +327,8 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		}
 	}
 	if d.SafeSearchOn() && q.Qclass == dns.ClassINET {
-		if rw, ok := s.catalogue().RewriteFor(q.Name, d.SafeSearchMode); ok {
-			return s.safeSearch(req, d, rw, next)
+		if rw, ok := view.catalogue.RewriteFor(q.Name, d.SafeSearchMode); ok {
+			return s.safeSearch(req, d, rw, ctx, next)
 		}
 	}
 	resp, err := next(req)
@@ -290,7 +336,8 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 		s.countQuestion(req, bd)
 		return resp, err
 	}
-	if rd := s.inspect(d, resp.Msg); rd.Action == engine.ActionBlock {
+	if rd := s.inspectContext(d, ctx, resp.Msg); rd.Action == engine.ActionBlock {
+		resp.Close()
 		return s.block(req, d, rd), nil
 	}
 	s.countQuestion(req, bd)
@@ -309,13 +356,13 @@ func (s *Stage) countQuestion(req *pipeline.Request, bd engine.Decision) {
 const maxInspect = 64
 
 // inspect applies the response-side checks to an upstream answer.
-func (s *Stage) inspect(d *policy.Decision, m *dns.Msg) engine.Decision {
+func (s *Stage) inspectContext(d *policy.Decision, ctx engine.Context, m *dns.Msg) engine.Decision {
 	var nbuf [8]string
 	var abuf [16]netip.Addr
 	names, addrs := nbuf[:0], abuf[:0]
 	for _, rr := range m.Answer {
-		if len(names)+len(addrs) >= maxInspect {
-			break
+		if len(names)+len(addrs) > maxInspect {
+			return engine.Decision{Action: engine.ActionBlock, Reason: engine.ReasonDeny, Response: true, Match: engine.Match{Text: "response inspection limit"}}
 		}
 		switch v := rr.(type) {
 		case *dns.A:
@@ -334,15 +381,21 @@ func (s *Stage) inspect(d *policy.Decision, m *dns.Msg) engine.Decision {
 			names, addrs = svcbTargets(&v.SVCB, names, addrs)
 		}
 	}
+	if len(names)+len(addrs) > maxInspect {
+		return engine.Decision{Action: engine.ActionBlock, Reason: engine.ReasonDeny, Response: true, Match: engine.Match{Text: "response inspection limit"}}
+	}
 	if len(names) == 0 && len(addrs) == 0 {
 		return engine.Decision{}
 	}
-	return d.Selection.EvaluateResponse(names, addrs)
+	return d.Selection.EvaluateResponseContext(ctx, names, addrs)
 }
 
 func svcbTargets(v *dns.SVCB, names []string, addrs []netip.Addr) ([]string, []netip.Addr) {
 	if v.Target != "." && v.Target != "" {
 		names = append(names, v.Target)
+	}
+	if len(names)+len(addrs) > maxInspect {
+		return names, addrs
 	}
 	for _, kv := range v.Value {
 		switch h := kv.(type) {
@@ -350,12 +403,18 @@ func svcbTargets(v *dns.SVCB, names []string, addrs []netip.Addr) ([]string, []n
 			for _, ip := range h.Hint {
 				if a, ok := netip.AddrFromSlice(ip.To4()); ok {
 					addrs = append(addrs, a)
+					if len(names)+len(addrs) > maxInspect {
+						return names, addrs
+					}
 				}
 			}
 		case *dns.SVCBIPv6Hint:
 			for _, ip := range h.Hint {
 				if a, ok := netip.AddrFromSlice(ip.To16()); ok {
 					addrs = append(addrs, a)
+					if len(names)+len(addrs) > maxInspect {
+						return names, addrs
+					}
 				}
 			}
 		}
@@ -388,7 +447,7 @@ func (s *Stage) block(req *pipeline.Request, d *policy.Decision, bd engine.Decis
 	}
 	s.metrics.listHit(bd.List)
 
-	live := s.live.Load()
+	live := s.view(req).defaults
 	mode, v4, v6 := d.BlockMode, live.customV4, live.customV6
 	if info != nil && info.Response != "" {
 		mode = info.Response
@@ -414,7 +473,21 @@ func (s *Stage) block(req *pipeline.Request, d *policy.Decision, bd engine.Decis
 		ede = dns.ExtendedErrorCodeFiltered
 	}
 	m := Synthesize(req.Msg, Response{Mode: mode, TTL: ttl, V4: v4, V6: v6, EDE: ede, EDEText: bd.List})
-	return &pipeline.Response{Msg: m, Status: status(bd, info), List: bd.List, Rule: bd.Rule()}
+	return &pipeline.Response{Msg: m, Status: status(bd, info), List: bd.List, Rule: bd.Rule(), Origin: pipeline.OriginSynthetic, Modified: true}
+}
+
+func (s *Stage) ruleContext(req *pipeline.Request) engine.Context {
+	ctx := engine.Context{}
+	if s.opts.Context != nil {
+		ctx = s.opts.Context(req)
+	}
+	if req.Client.IdentityCaptured {
+		ctx.ClientNames, ctx.Tags = req.Client.Names, req.Client.Tags
+	}
+	q := req.Question()
+	ctx.Name, ctx.Type, ctx.Class = q.Name, q.Qtype, q.Qclass
+	ctx.ClientIP, ctx.ClientID = req.Client.Addr.Addr(), req.Client.ClientID
+	return ctx
 }
 
 // Response describes a synthesised block response.

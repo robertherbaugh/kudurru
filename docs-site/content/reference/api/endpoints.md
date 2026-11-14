@@ -11,253 +11,344 @@ base path `/api/v1`. The permission is the RBAC check of the route (`resource.ve
 is evaluated in), `authenticated` (any signed-in caller) or `public` (no credentials).
 The [API explorer](explorer.md) shows the request and response schemas.
 
+The last column says what an enrolled SQLite follower does with a changing request: it is
+`forwarded` to the primary, it runs as a `local` command of the node, or it is `refused` with
+`503 primary_required`, which names the primary. Reading routes show `-`; a follower answers
+them from its own copy.
+
 ## audit
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/audit` | Audit events of this node (oldest first; order=desc for newest first) | `audit.read` (cluster) |
-| GET | `/api/v1/audit/export` | Audit events as JSON lines | `audit.export` (cluster) |
-| GET | `/api/v1/audit/verify` | Verify the complete retained audit chain and available batch seals | `audit.read` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/audit` | Audit events of this node (oldest first; order=desc for newest first) | `audit.read` (cluster) | - |
+| GET | `/api/v1/audit/export` | Audit events as JSON lines | `audit.export` (cluster) | - |
+| GET | `/api/v1/audit/verify` | Verify the complete retained audit chain and available batch seals | `audit.read` (cluster) | - |
 
 ## auth
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| POST | `/api/v1/auth/login` | Local login (sets the session cookie) | public |
-| POST | `/api/v1/auth/logout` | Clear the session cookie | authenticated |
-| GET | `/api/v1/auth/me` | The authenticated principal, roles, permissions and CSRF token | authenticated |
-| GET | `/api/v1/auth/oidc/{idp}/callback` | OIDC redirect target (302 to the app) | public |
-| GET | `/api/v1/auth/oidc/{idp}/start` | Start an OIDC login (302 to the IdP) | public |
-| POST | `/api/v1/auth/password` | Change the local user's own password (a cookie session gets a new cookie) | authenticated |
-| GET | `/api/v1/auth/status` | Login options | public |
-| GET | `/api/v1/auth/tokens` | List own API tokens | authenticated |
-| POST | `/api/v1/auth/tokens` | Create a personal API token (the secret is returned once) | authenticated |
-| GET | `/api/v1/auth/tokens/{id}` | Get one API token (someone else's needs tokens.read) | authenticated |
-| DELETE | `/api/v1/auth/tokens/{id}` | Revoke one API token (someone else's needs tokens.delete) | authenticated |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/auth/cli/providers` | Advertised public-client login options | public | - |
+| POST | `/api/v1/auth/cli/{idp}/prepare` | Correlate a public CLI login source without issuing authority | public | refused |
+| POST | `/api/v1/auth/cli/{idp}/verify` | Verify original CLI ID-token proof without issuing authority | authenticated | refused |
+| POST | `/api/v1/auth/login` | Local login (sets the session cookie) | public | forwarded |
+| POST | `/api/v1/auth/logout` | Clear the session cookie | authenticated | forwarded |
+| POST | `/api/v1/auth/logout/browser` | Revoke the session and optionally continue provider logout | authenticated | forwarded |
+| GET | `/api/v1/auth/me` | The authenticated principal, roles, permissions and CSRF token | authenticated | - |
+| GET | `/api/v1/auth/oidc/{idp}/callback` | OIDC redirect target (302 to the app) | public | - |
+| GET | `/api/v1/auth/oidc/{idp}/logout` | Continue a committed browser logout (302 to the IdP) | public | - |
+| GET | `/api/v1/auth/oidc/{idp}/logout/callback` | Validate the logout return state (302 to the app) | public | - |
+| GET | `/api/v1/auth/oidc/{idp}/start` | Start an OIDC login (302 to the IdP) | public | - |
+| POST | `/api/v1/auth/password` | Change the local user's own password (a cookie session gets a new cookie) | authenticated | forwarded |
+| GET | `/api/v1/auth/sessions` | List own enrolled sessions | authenticated | - |
+| DELETE | `/api/v1/auth/sessions/{id}` | Revoke an enrolled session of the current account | authenticated | forwarded |
+| GET | `/api/v1/auth/status` | Login options | public | - |
+| GET | `/api/v1/auth/tokens` | List own API tokens | authenticated | - |
+| POST | `/api/v1/auth/tokens` | Create a personal API token (the secret is returned once) | authenticated | forwarded |
+| GET | `/api/v1/auth/tokens/{id}` | Get one API token (someone else's needs tokens.read) | authenticated | - |
+| DELETE | `/api/v1/auth/tokens/{id}` | Revoke one API token (someone else's needs tokens.delete) | authenticated | forwarded |
+| GET | `/api/v1/auth/totp` | Own local authenticator status | authenticated | - |
+| POST | `/api/v1/auth/totp/confirm` | Activate the authenticator and revoke existing sessions | authenticated | refused |
+| POST | `/api/v1/auth/totp/disable` | Disable own authenticator and revoke existing sessions | authenticated | refused |
+| POST | `/api/v1/auth/totp/setup` | Prepare an authenticator (provisioning secret returned once) | authenticated | refused |
 
 ## blocklists
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/blocklists` | List blocklists | `blocklists.read` (cluster) |
-| POST | `/api/v1/blocklists` | Create a BlockList | `blocklists.write` (cluster) |
-| GET | `/api/v1/blocklists/_search` | Which lists contain a domain | `blocklists.read` (cluster) |
-| GET | `/api/v1/blocklists/{namespace}/{name}` | Get a BlockList | `blocklists.read` (cluster) |
-| PUT | `/api/v1/blocklists/{namespace}/{name}` | Create or replace a BlockList | `blocklists.write` (cluster) |
-| DELETE | `/api/v1/blocklists/{namespace}/{name}` | Delete a BlockList | `blocklists.delete` (cluster) |
-| POST | `/api/v1/blocklists/{namespace}/{name}/refresh` | Fetch a BlockList's sources now | `blocklists.refresh` (cluster) |
-| GET | `/api/v1/blocklists/{namespace}/{name}/sources/{source}/entries` | Page through the entries of a BlockList source | `blocklists.read` (cluster) |
-| PATCH | `/api/v1/blocklists/{namespace}/{name}/sources/{source}/entries` | Switch entries of a BlockList source off and on, add and remove inline entries | `blocklists.write` (cluster) |
-| POST | `/api/v1/blocklists:batchDelete` | Delete several blocklists | `blocklists.delete` (cluster) |
-| POST | `/api/v1/domains/{action}/{kind}` | Allow or deny domains through the UI lists | `blocklists.write` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/blocklists` | List blocklists | `blocklists.read` (cluster) | - |
+| POST | `/api/v1/blocklists` | Create a BlockList | `blocklists.write` (cluster) | forwarded |
+| GET | `/api/v1/blocklists/_rpz` | RPZ feed state on this node | `blocklists.read` (cluster) | - |
+| GET | `/api/v1/blocklists/_search` | Which lists contain a domain | `blocklists.read` (cluster) | - |
+| GET | `/api/v1/blocklists/{namespace}/{name}` | Get a BlockList | `blocklists.read` (cluster) | - |
+| PUT | `/api/v1/blocklists/{namespace}/{name}` | Create or replace a BlockList | `blocklists.write` (cluster) | forwarded |
+| DELETE | `/api/v1/blocklists/{namespace}/{name}` | Delete a BlockList | `blocklists.delete` (cluster) | forwarded |
+| POST | `/api/v1/blocklists/{namespace}/{name}/refresh` | Fetch a BlockList's sources now | `blocklists.refresh` (cluster) | refused |
+| GET | `/api/v1/blocklists/{namespace}/{name}/rpz` | RPZ feed state of one BlockList on this node | `blocklists.read` (cluster) | - |
+| GET | `/api/v1/blocklists/{namespace}/{name}/sources/{source}/entries` | Page through the entries of a BlockList source | `blocklists.read` (cluster) | - |
+| PATCH | `/api/v1/blocklists/{namespace}/{name}/sources/{source}/entries` | Switch entries of a BlockList source off and on, add and remove inline entries | `blocklists.write` (cluster) | refused |
+| POST | `/api/v1/blocklists:batchDelete` | Delete several blocklists | `blocklists.delete` (cluster) | forwarded |
+| POST | `/api/v1/domains/{action}/{kind}` | Allow or deny domains through the UI lists | `blocklists.write` (cluster) | refused |
 
 ## catalogue
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/catalogue` | The blocked-services and safe-search catalogue in service | `policies.read` (cluster) |
-| GET | `/api/v1/catalogue/categories` | Categories Policy.spec.blockedCategories can block | `policies.read` (cluster) |
-| GET | `/api/v1/catalogue/icons` | Logos embedded in this build | public |
-| GET | `/api/v1/catalogue/icons/{file}` | One embedded logo (image/svg+xml) | public |
-| GET | `/api/v1/catalogue/safesearch` | Search engines Policy.spec.safeSearch rewrites | `policies.read` (cluster) |
-| GET | `/api/v1/catalogue/services` | Services Policy.spec.blockedServices can block | `policies.read` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/catalogue` | The blocked-services and safe-search catalogue in service | `policies.read` (cluster) | - |
+| GET | `/api/v1/catalogue/categories` | Categories Policy.spec.blockedCategories can block | `policies.read` (cluster) | - |
+| GET | `/api/v1/catalogue/icons` | Logos embedded in this build | public | - |
+| GET | `/api/v1/catalogue/icons/{file}` | One embedded logo (image/svg+xml) | public | - |
+| GET | `/api/v1/catalogue/safesearch` | Search engines Policy.spec.safeSearch rewrites | `policies.read` (cluster) | - |
+| GET | `/api/v1/catalogue/services` | Services Policy.spec.blockedServices can block | `policies.read` (cluster) | - |
 
 ## clientgroups
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/clientgroups` | List clientgroups | `clientgroups.read` (cluster) |
-| POST | `/api/v1/clientgroups` | Create a ClientGroup | `clientgroups.write` (cluster) |
-| GET | `/api/v1/clientgroups/{namespace}/{name}` | Get a ClientGroup | `clientgroups.read` (cluster) |
-| PUT | `/api/v1/clientgroups/{namespace}/{name}` | Create or replace a ClientGroup | `clientgroups.write` (cluster) |
-| DELETE | `/api/v1/clientgroups/{namespace}/{name}` | Delete a ClientGroup | `clientgroups.delete` (cluster) |
-| POST | `/api/v1/clientgroups:batchDelete` | Delete several clientgroups | `clientgroups.delete` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/clientgroups` | List clientgroups | `clientgroups.read` (cluster) | - |
+| POST | `/api/v1/clientgroups` | Create a ClientGroup | `clientgroups.write` (cluster) | forwarded |
+| GET | `/api/v1/clientgroups/{namespace}/{name}` | Get a ClientGroup | `clientgroups.read` (cluster) | - |
+| PUT | `/api/v1/clientgroups/{namespace}/{name}` | Create or replace a ClientGroup | `clientgroups.write` (cluster) | forwarded |
+| DELETE | `/api/v1/clientgroups/{namespace}/{name}` | Delete a ClientGroup | `clientgroups.delete` (cluster) | forwarded |
+| POST | `/api/v1/clientgroups:batchDelete` | Delete several clientgroups | `clientgroups.delete` (cluster) | forwarded |
+
+## clients
+
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/inventory` | Devices known to the inventory, including ones that never queried | `inventory.read` (cluster) | - |
 
 ## cluster
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/cluster` | Store, leader and shape | `cluster.read` (cluster) |
-| GET | `/api/v1/doctor` | The checks of `kudurru doctor` as this node sees them | `settings.read` (cluster) |
-| GET | `/api/v1/edge` | dnsdist backends and VIP owners | `edge.read` (cluster) |
-| GET | `/api/v1/info/messages` | Diagnosis messages (objects, policies, lists, readiness) | `settings.read` (cluster) |
-| GET | `/api/v1/license` | License state, node limit and licensed features of this node | `settings.read` (cluster) |
-| GET | `/api/v1/nodes` | Nodes of the cluster | `cluster.read` (cluster) |
-| GET | `/api/v1/nodes/{name}/health` | Readiness detail of one node | `cluster.read` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/cluster` | Store, leader and shape | `cluster.read` (cluster) | - |
+| POST | `/api/v1/cluster/activate` | Activate an explicitly reviewed standalone SQLite primary | `cluster.join` (cluster) | local |
+| GET | `/api/v1/cluster/anchors` | Read this node's managed root trust-anchor status | `cluster.read` (cluster) | - |
+| GET | `/api/v1/cluster/enrollment` | Review the complete local enrollment source | `cluster.read` (cluster) | - |
+| POST | `/api/v1/cluster/join-token` | Issue an invitation from an explicitly reviewed primary | `cluster.join` (cluster) | local |
+| POST | `/api/v1/cluster/promote` | Promote an explicitly reviewed enrolled follower | `cluster.promote` (cluster) | local |
+| GET | `/api/v1/cluster/promotion` | Review local follower promotion eligibility | `cluster.read` (cluster) | - |
+| GET | `/api/v1/doctor` | The checks of `kudurru doctor` as this node sees them | `settings.read` (cluster) | - |
+| GET | `/api/v1/edge` | dnsdist backends and VIP owners | `edge.read` (cluster) | - |
+| GET | `/api/v1/edge/blocks` | Active operator edge blocks | `edgeblocks.read` (cluster) | - |
+| POST | `/api/v1/edge/blocks` | Block a client prefix at every dnsdist edge until an expiry | `edgeblocks.write` (cluster) | refused |
+| DELETE | `/api/v1/edge/blocks/{id}` | Revoke an active edge block | `edgeblocks.write` (cluster) | refused |
+| GET | `/api/v1/edge/vip/stream` | Local observed VIP transitions (Server-Sent Events) | `edge.read` (cluster) | - |
+| GET | `/api/v1/info/messages` | Diagnosis messages (objects, policies, lists, readiness) | `settings.read` (cluster) | - |
+| GET | `/api/v1/license` | License state, node limit and licensed features of this node | `settings.read` (cluster) | - |
+| GET | `/api/v1/nodes` | Nodes of the cluster | `cluster.read` (cluster) | - |
+| GET | `/api/v1/nodes/{name}/health` | Readiness detail of one node | `cluster.read` (cluster) | - |
 
 ## dhcp
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/node/dhcp/v4/interfaces` | IPv4 interfaces on this node | `dhcp.read` (cluster) |
-| GET | `/api/v1/node/dhcp/v4/scopes/{scope}/config` | Effective DHCPv4 scope configuration | `dhcp.read` (cluster) |
-| PUT | `/api/v1/node/dhcp/v4/scopes/{scope}/config` | Atomically update DHCPv4 pool options | `dhcp.write` (cluster) |
-| GET | `/api/v1/node/dhcp/v4/scopes/{scope}/export` | Export native DHCPv4 lease state | `dhcpleases.export` (cluster) |
-| POST | `/api/v1/node/dhcp/v4/scopes/{scope}/import` | Atomically import native or dnsmasq leases | `dhcpleases.import` (cluster) |
-| GET | `/api/v1/node/dhcp/v4/scopes/{scope}/leases` | Live DHCPv4 leases on this node | `dhcpleases.read` (cluster) |
-| GET | `/api/v1/node/dhcp/v4/scopes/{scope}/reservations` | Effective DHCPv4 reservations | `dhcp.read` (cluster) |
-| PUT | `/api/v1/node/dhcp/v4/scopes/{scope}/reservations/{mac}` | Create or replace a DHCPv4 reservation | `dhcp.write` (cluster) |
-| DELETE | `/api/v1/node/dhcp/v4/scopes/{scope}/reservations/{mac}` | Remove a reservation while preserving live leases | `dhcp.delete` (cluster) |
-| GET | `/api/v1/node/dhcp/v4/setup` | Saved DHCPv4 setup on this node | `dhcp.read` (cluster) |
-| PUT | `/api/v1/node/dhcp/v4/setup` | Save DHCPv4 setup for the next restart | `dhcp.write` (cluster) |
-| GET | `/api/v1/node/dhcp/v4/status` | DHCPv4 scopes on this node | `dhcp.read` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/node/dhcp/v4/interfaces` | IPv4 interfaces on this node | `dhcp.read` (cluster) | - |
+| GET | `/api/v1/node/dhcp/v4/scopes/{scope}/config` | Effective DHCPv4 scope configuration | `dhcp.read` (cluster) | - |
+| PUT | `/api/v1/node/dhcp/v4/scopes/{scope}/config` | Atomically update DHCPv4 pool options | `dhcp.write` (cluster) | local |
+| GET | `/api/v1/node/dhcp/v4/scopes/{scope}/export` | Export native DHCPv4 lease state | `dhcpleases.export` (cluster) | - |
+| POST | `/api/v1/node/dhcp/v4/scopes/{scope}/import` | Atomically import native or dnsmasq leases | `dhcpleases.import` (cluster) | local |
+| GET | `/api/v1/node/dhcp/v4/scopes/{scope}/leases` | Live DHCPv4 leases on this node | `dhcpleases.read` (cluster) | - |
+| GET | `/api/v1/node/dhcp/v4/scopes/{scope}/reservations` | Effective DHCPv4 reservations | `dhcp.read` (cluster) | - |
+| PUT | `/api/v1/node/dhcp/v4/scopes/{scope}/reservations/{mac}` | Create or replace a DHCPv4 reservation | `dhcp.write` (cluster) | local |
+| DELETE | `/api/v1/node/dhcp/v4/scopes/{scope}/reservations/{mac}` | Remove a reservation while preserving live leases | `dhcp.delete` (cluster) | local |
+| GET | `/api/v1/node/dhcp/v4/setup` | Saved DHCPv4 setup on this node | `dhcp.read` (cluster) | - |
+| PUT | `/api/v1/node/dhcp/v4/setup` | Save DHCPv4 setup for the next restart | `dhcp.write` (cluster) | local |
+| GET | `/api/v1/node/dhcp/v4/status` | DHCPv4 scopes on this node | `dhcp.read` (cluster) | - |
 
 ## dhcpscopes
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| POST | `/api/v1/dhcpscopes:batchDelete` | Delete several dhcpscopes | `dhcp.delete` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| POST | `/api/v1/dhcpscopes:batchDelete` | Delete several dhcpscopes | `dhcp.delete` (cluster) | refused |
 
 ## dnsrecordsets
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| POST | `/api/v1/dnsrecordsets:batchDelete` | Delete several dnsrecordsets | `records.delete` (cluster or per object) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| POST | `/api/v1/dnsrecordsets:batchDelete` | Delete several dnsrecordsets | `records.delete` (cluster or per object) | forwarded |
 
 ## dnszones
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| POST | `/api/v1/dnszones:batchDelete` | Delete several dnszones | `zones.delete` (cluster or per object) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| POST | `/api/v1/dnszones:batchDelete` | Delete several dnszones | `zones.delete` (cluster or per object) | forwarded |
 
 ## domains
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/allowlist` | List Allowlist entries | `blocklists.read` (cluster) |
-| POST | `/api/v1/allowlist` | Add Allowlist entries | `blocklists.write` (cluster) |
-| GET | `/api/v1/allowlist/{id}` | Get a Allowlist entry | `blocklists.read` (cluster) |
-| PATCH | `/api/v1/allowlist/{id}` | Change a Allowlist entry | `blocklists.write` (cluster) |
-| DELETE | `/api/v1/allowlist/{id}` | Delete a Allowlist entry | `blocklists.write` (cluster) |
-| POST | `/api/v1/allowlist:batch` | Switch on, off or delete several Allowlist entries | `blocklists.write` (cluster) |
-| GET | `/api/v1/denylist` | List Denylist entries | `blocklists.read` (cluster) |
-| POST | `/api/v1/denylist` | Add Denylist entries | `blocklists.write` (cluster) |
-| GET | `/api/v1/denylist/{id}` | Get a Denylist entry | `blocklists.read` (cluster) |
-| PATCH | `/api/v1/denylist/{id}` | Change a Denylist entry | `blocklists.write` (cluster) |
-| DELETE | `/api/v1/denylist/{id}` | Delete a Denylist entry | `blocklists.write` (cluster) |
-| POST | `/api/v1/denylist:batch` | Switch on, off or delete several Denylist entries | `blocklists.write` (cluster) |
-| GET | `/api/v1/domains` | List Allowlist and Denylist entries together | `blocklists.read` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/allowlist` | List Allowlist entries | `blocklists.read` (cluster) | - |
+| POST | `/api/v1/allowlist` | Add Allowlist entries | `blocklists.write` (cluster) | refused |
+| GET | `/api/v1/allowlist/{id}` | Get a Allowlist entry | `blocklists.read` (cluster) | - |
+| PATCH | `/api/v1/allowlist/{id}` | Change a Allowlist entry | `blocklists.write` (cluster) | refused |
+| DELETE | `/api/v1/allowlist/{id}` | Delete a Allowlist entry | `blocklists.write` (cluster) | refused |
+| GET | `/api/v1/allowlist/{id}/impact` | Test a regex entry against one domain and opposing lists | `blocklists.read` (cluster) | - |
+| POST | `/api/v1/allowlist:batch` | Switch on, off or delete several Allowlist entries | `blocklists.write` (cluster) | refused |
+| GET | `/api/v1/denylist` | List Denylist entries | `blocklists.read` (cluster) | - |
+| POST | `/api/v1/denylist` | Add Denylist entries | `blocklists.write` (cluster) | refused |
+| GET | `/api/v1/denylist/{id}` | Get a Denylist entry | `blocklists.read` (cluster) | - |
+| PATCH | `/api/v1/denylist/{id}` | Change a Denylist entry | `blocklists.write` (cluster) | refused |
+| DELETE | `/api/v1/denylist/{id}` | Delete a Denylist entry | `blocklists.write` (cluster) | refused |
+| GET | `/api/v1/denylist/{id}/impact` | Test a regex entry against one domain and opposing lists | `blocklists.read` (cluster) | - |
+| POST | `/api/v1/denylist:batch` | Switch on, off or delete several Denylist entries | `blocklists.write` (cluster) | refused |
+| GET | `/api/v1/domains` | List Allowlist and Denylist entries together | `blocklists.read` (cluster) | - |
 
 ## iam
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/iam/identityproviders` | List identityproviders (read-only; the write API is v0.2) | `identityproviders.read` (cluster) |
-| GET | `/api/v1/iam/rolebindings` | List rolebindings (read-only; the write API is v0.2) | `rolebindings.read` (cluster) |
-| GET | `/api/v1/iam/serviceaccounts` | List serviceaccounts (read-only; the write API is v0.2) | `serviceaccounts.read` (cluster) |
-| GET | `/api/v1/iam/users` | List users (read-only; the write API is v0.2) | `users.read` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/iam/external-users` | List persisted external accounts | `users.read` (cluster) | - |
+| GET | `/api/v1/iam/external-users/{name}` | Read an exact external account | `users.read` (cluster) | - |
+| POST | `/api/v1/iam/external-users/{name}/disable` | Disable an external account and revoke its credentials | `users.write` (cluster) | refused |
+| POST | `/api/v1/iam/external-users/{name}/enable` | Enable an external account without restoring credentials | `users.write` (cluster) | refused |
+| POST | `/api/v1/iam/external-users/{name}/logout` | Revoke all credentials of an external account | `users.write` (cluster) | refused |
+| GET | `/api/v1/iam/identityproviders` | List identityproviders | `identityproviders.read` (cluster) | - |
+| POST | `/api/v1/iam/identityproviders` | Create an IdentityProvider object only if absent | `identityproviders.write` (cluster) | refused |
+| GET | `/api/v1/iam/identityproviders/{name}` | Read an IdentityProvider object and its current UID/resourceVersion | `identityproviders.read` (cluster) | - |
+| PUT | `/api/v1/iam/identityproviders/{name}` | Replace an explicitly reviewed API-owned IdentityProvider | `identityproviders.write` (cluster) | refused |
+| DELETE | `/api/v1/iam/identityproviders/{name}` | Delete an explicitly reviewed API-owned IdentityProvider | `identityproviders.delete` (cluster) | refused |
+| GET | `/api/v1/iam/rolebindings` | List rolebindings | `rolebindings.read` (cluster) | - |
+| POST | `/api/v1/iam/rolebindings` | Create a public RoleBinding only if absent | `rolebindings.write` (cluster) | refused |
+| GET | `/api/v1/iam/rolebindings/{namespace}/{name}` | Read a public RoleBinding and its current UID/resourceVersion | `rolebindings.read` (cluster) | - |
+| PUT | `/api/v1/iam/rolebindings/{namespace}/{name}` | Replace an explicitly reviewed public RoleBinding | `rolebindings.write` (cluster) | refused |
+| DELETE | `/api/v1/iam/rolebindings/{namespace}/{name}` | Delete an explicitly reviewed public RoleBinding | `rolebindings.delete` (cluster) | refused |
+| GET | `/api/v1/iam/serviceaccounts` | List serviceaccounts | `serviceaccounts.read` (cluster) | - |
+| POST | `/api/v1/iam/serviceaccounts` | Create a ServiceAccount only if absent | `serviceaccounts.write` (cluster) | refused |
+| GET | `/api/v1/iam/serviceaccounts/{namespace}/{name}` | Read a ServiceAccount and its current UID/resourceVersion | `serviceaccounts.read` (cluster) | - |
+| PUT | `/api/v1/iam/serviceaccounts/{namespace}/{name}` | Replace an explicitly reviewed API-owned ServiceAccount | `serviceaccounts.write` (cluster) | refused |
+| DELETE | `/api/v1/iam/serviceaccounts/{namespace}/{name}` | Delete an explicitly reviewed API-owned ServiceAccount | `serviceaccounts.delete` (cluster) | refused |
+| POST | `/api/v1/iam/serviceaccounts/{namespace}/{name}/tokens` | Issue an API token for an exact ServiceAccount (the secret is returned once) | `serviceaccounts.write` (cluster) | refused |
+| GET | `/api/v1/iam/users` | List users | `users.read` (cluster) | - |
+| POST | `/api/v1/iam/users` | Create an API-managed local user requiring a password change | `users.write` (cluster) | refused |
+| PATCH | `/api/v1/iam/users/{name}` | Change an exact API-managed local account's display name, groups or disabled state | `users.write` (cluster) | refused |
+| DELETE | `/api/v1/iam/users/{name}` | Delete an exact API-managed local account | `users.delete` (cluster) | refused |
+| POST | `/api/v1/iam/users/{name}/password` | Reset an exact API-managed local account's password | `users.write` (cluster) | refused |
+| POST | `/api/v1/iam/users/{name}/totp/recover` | Disable a lost authenticator for an exact account UID | `users.write` (cluster) | refused |
 
 ## imports
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| POST | `/api/v1/imports/adopt` | Track reviewed previous imports without reimporting records | `settings.write` (cluster) |
-| POST | `/api/v1/imports/apply` | Apply a reviewed migration preview | `settings.write` (cluster) |
-| GET | `/api/v1/imports/existing` | Find previous API imports without a migration run | `settings.write` (cluster) |
-| POST | `/api/v1/imports/preview` | Preview an API migration from Pi-hole v6 or Technitium | `settings.write` (cluster) |
-| GET | `/api/v1/imports/runs` | List migration runs | `settings.write` (cluster) |
-| GET | `/api/v1/imports/runs/{id}` | Read a migration run and its cutovers | `settings.write` (cluster) |
-| POST | `/api/v1/imports/runs/{id}/decommission` | Replace imported zone authority and record the results | `settings.write` (cluster) |
-| POST | `/api/v1/imports/runs/{id}/decommission/preview` | Preview replacing an imported zone's NS and SOA primary | `settings.write` (cluster) |
-| POST | `/api/v1/imports/start` | Start a reviewed migration in the background | `settings.write` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| POST | `/api/v1/imports/adopt` | Track reviewed previous imports without reimporting records | `settings.write` (cluster) | refused |
+| POST | `/api/v1/imports/apply` | Apply a reviewed migration preview | `settings.write` (cluster) | refused |
+| GET | `/api/v1/imports/existing` | Find previous API imports without a migration run | `settings.write` (cluster) | - |
+| POST | `/api/v1/imports/preview` | Preview an API migration from Pi-hole v6 or Technitium | `settings.write` (cluster) | refused |
+| GET | `/api/v1/imports/runs` | List migration runs | `settings.write` (cluster) | - |
+| GET | `/api/v1/imports/runs/{id}` | Read a migration run and its cutovers | `settings.write` (cluster) | - |
+| POST | `/api/v1/imports/runs/{id}/decommission` | Replace imported zone authority and record the results | `settings.write` (cluster) | refused |
+| POST | `/api/v1/imports/runs/{id}/decommission/preview` | Preview replacing an imported zone's NS and SOA primary | `settings.write` (cluster) | refused |
+| POST | `/api/v1/imports/start` | Start a reviewed migration in the background | `settings.write` (cluster) | refused |
+
+## integrations
+
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/integrations` | List bounded integration status | `integrations.read` (cluster) | - |
+| GET | `/api/v1/integrations/manifests` | List provider manifests and this node's integration limits | `integrations.read` (cluster) | - |
+| GET | `/api/v1/integrations/{namespace}/{name}` | Read exact integration status | `integrations.read` (cluster) | - |
+| GET | `/api/v1/integrations/{namespace}/{name}/actions` | List original advertised actions | `integrations.read` (cluster) | - |
+| POST | `/api/v1/integrations/{namespace}/{name}/actions/{action}` | Invoke one reviewed advertised action | `integrations.act` (cluster) | refused |
+| POST | `/api/v1/integrations/{namespace}/{name}/check` | Run a reviewed integration check | `integrations.check` (cluster) | refused |
+| POST | `/api/v1/integrations/{namespace}/{name}/preview` | Run a reviewed integration preview | `integrations.read` (cluster) | refused |
+| POST | `/api/v1/integrations/{namespace}/{name}/release` | Release one reviewed terminating integration without cleanup | `integrations.release` (cluster) | refused |
+| POST | `/api/v1/integrations/{namespace}/{name}/sync` | Run a reviewed integration sync | `integrations.sync` (cluster) | refused |
+| POST | `/api/v1/integrations:batchDelete` | Delete several integrations | `integrations.delete` (cluster) | forwarded |
 
 ## meta
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/version` | Build information of this node | public |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/branding` | Public Enterprise branding, or the built-in presentation | public | - |
+| GET | `/api/v1/version` | Build information of this node | public | - |
 
 ## objects
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| POST | `/api/v1/apply` | Apply objects (multi-document YAML or a JSON array) |  |
-| GET | `/api/v1/objects/{kind}` | List objects of a kind |  |
-| POST | `/api/v1/objects/{kind}` | Create an object (409 when it exists) |  |
-| GET | `/api/v1/objects/{kind}/{namespace}/{name}` | Get a namespaced object |  |
-| PUT | `/api/v1/objects/{kind}/{namespace}/{name}` | Create or replace a namespaced object |  |
-| DELETE | `/api/v1/objects/{kind}/{namespace}/{name}` | Delete a namespaced object |  |
-| GET | `/api/v1/objects/{kind}/{name}` | Get a cluster-scoped object (dnszones) |  |
-| PUT | `/api/v1/objects/{kind}/{name}` | Create or replace a cluster-scoped object |  |
-| DELETE | `/api/v1/objects/{kind}/{name}` | Delete a cluster-scoped object |  |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| POST | `/api/v1/apply` | Apply objects (multi-document YAML or a JSON array) |  | forwarded |
+| GET | `/api/v1/objects/{kind}` | List objects of a kind |  | - |
+| POST | `/api/v1/objects/{kind}` | Create an object (409 when it exists) |  | forwarded |
+| GET | `/api/v1/objects/{kind}/{namespace}/{name}` | Get a namespaced object |  | - |
+| PUT | `/api/v1/objects/{kind}/{namespace}/{name}` | Create or replace a namespaced object |  | forwarded |
+| DELETE | `/api/v1/objects/{kind}/{namespace}/{name}` | Delete a namespaced object |  | forwarded |
+| GET | `/api/v1/objects/{kind}/{name}` | Get a cluster-scoped object (dnszones) |  | - |
+| PUT | `/api/v1/objects/{kind}/{name}` | Create or replace a cluster-scoped object |  | forwarded |
+| DELETE | `/api/v1/objects/{kind}/{name}` | Delete a cluster-scoped object |  | forwarded |
 
 ## policies
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/policies` | List policies | `policies.read` (cluster) |
-| POST | `/api/v1/policies` | Create a Policy | `policies.write` (cluster) |
-| GET | `/api/v1/policies/{namespace}/{name}` | Get a Policy | `policies.read` (cluster) |
-| PUT | `/api/v1/policies/{namespace}/{name}` | Create or replace a Policy | `policies.write` (cluster) |
-| DELETE | `/api/v1/policies/{namespace}/{name}` | Delete a Policy | `policies.delete` (cluster) |
-| GET | `/api/v1/policies/{namespace}/{name}/state` | A policy's current state | `policies.read` (cluster) |
-| POST | `/api/v1/policies:batchDelete` | Delete several policies | `policies.delete` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/policies` | List policies | `policies.read` (cluster) | - |
+| POST | `/api/v1/policies` | Create a Policy | `policies.write` (cluster) | forwarded |
+| GET | `/api/v1/policies/{namespace}/{name}` | Get a Policy | `policies.read` (cluster) | - |
+| PUT | `/api/v1/policies/{namespace}/{name}` | Create or replace a Policy | `policies.write` (cluster) | forwarded |
+| DELETE | `/api/v1/policies/{namespace}/{name}` | Delete a Policy | `policies.delete` (cluster) | forwarded |
+| GET | `/api/v1/policies/{namespace}/{name}/state` | A policy's current state | `policies.read` (cluster) | - |
+| POST | `/api/v1/policies:batchDelete` | Delete several policies | `policies.delete` (cluster) | forwarded |
 
 ## querylog
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/queries` | Query log page (keyset cursor, newest first) | `querylog.read` (cluster) |
-| GET | `/api/v1/queries/stream` | Live query tail (Server-Sent Events) | `querylog.read` (cluster) |
-| GET | `/api/v1/queries/suggestions` | Filter value suggestions | `querylog.read` (cluster) |
-| POST | `/api/v1/queries/{id}/actions` | Allow or deny the domain of a logged query | `blocklists.write` (cluster) |
-| DELETE | `/api/v1/querylog` | Delete query-log rows | `querylog.purge` (cluster) |
-| GET | `/api/v1/querylog/status` | Query-log size, retention and writer state | `querylog.read` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/queries` | Query log page (keyset cursor, newest first) | `querylog.read` (cluster) | - |
+| GET | `/api/v1/queries/export` | Download one filtered query-log page as JSON (up to 1000 rows) | `querylog.export` (cluster) | - |
+| GET | `/api/v1/queries/stream` | Live query tail (Server-Sent Events) | `querylog.read` (cluster) | - |
+| GET | `/api/v1/queries/suggestions` | Filter value suggestions | `querylog.read` (cluster) | - |
+| POST | `/api/v1/queries/{id}/actions` | Allow or deny the domain of a logged query | `blocklists.write` (cluster) | refused |
+| DELETE | `/api/v1/querylog` | Delete query-log rows | `querylog.purge` (cluster) | local |
+| GET | `/api/v1/querylog/rollup-evidence` | Capture bounded retained-input recovery evidence | `querylog.read` (cluster) | - |
+| POST | `/api/v1/querylog/rollup-evidence/verify` | Verify recovery evidence without changing history | `querylog.read` (cluster) | local |
+| GET | `/api/v1/querylog/sinks` | State of this node's additional query-log sinks | `querylog.read` (cluster) | - |
+| GET | `/api/v1/querylog/status` | Query-log size, retention and writer state | `querylog.read` (cluster) | - |
 
 ## runtime
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| POST | `/api/v1/cache/flush` | Flush the response cache (or one name) | `cache.flush` (cluster) |
-| GET | `/api/v1/dns/blocking` | Blocking state of this node | `blocking.read` (cluster) |
-| POST | `/api/v1/dns/blocking` | Enable blocking, or disable it for a while | `blocking.toggle` (cluster) |
-| POST | `/api/v1/dns/query` | Run one query through the pipeline in-process (built-in dig) | `stats.read` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| POST | `/api/v1/cache/flush` | Flush the response cache (or one name) | `cache.flush` (cluster) | local |
+| GET | `/api/v1/cache/inspect` | Inspect one raw default-route cache entry without resolving | `cache.read` (cluster) | - |
+| GET | `/api/v1/dns/blocking` | Blocking state of this node | `blocking.read` (cluster) | - |
+| POST | `/api/v1/dns/blocking` | Enable blocking, or disable it for a while | `blocking.toggle` (cluster) | forwarded |
+| POST | `/api/v1/dns/query` | Run one query through the pipeline in-process (built-in dig) | `stats.read` (cluster) | local |
 
 ## settings
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/blockpage/preview` | Render the block page (text/html) with the current blockPage settings | `settings.read` (cluster) |
-| GET | `/api/v1/node/config` | This node's host-local settings (redacted) | `settings.read` (cluster) |
-| PATCH | `/api/v1/node/config` | Change this node's settings (hostOnly keys refused) | `node.config` (cluster) |
-| GET | `/api/v1/settings` | Cluster-scope settings (redacted) | `settings.read` (cluster) |
-| PATCH | `/api/v1/settings` | Change cluster-scope settings (JSON merge patch) | `settings.write` (cluster) |
-| GET | `/api/v1/settings/_schema` | The settings metadata table | `settings.read` (cluster) |
-| POST | `/api/v1/settings/sections/{section}/ownership/{action}` | Adopt or release a settings section using its reviewed revision | `settings.write` (cluster) |
-| POST | `/api/v1/settings/sections/{section}/yaml` | Generate Helm values for the current or proposed complete section without writing | `settings.read` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/blockpage/preview` | Render the block page (text/html) with the current blockPage settings | `settings.read` (cluster) | - |
+| GET | `/api/v1/node/config` | This node's host-local settings (redacted) | `settings.read` (cluster) | - |
+| PATCH | `/api/v1/node/config` | Change this node's settings (hostOnly keys refused) | `node.config` (cluster) | refused |
+| GET | `/api/v1/settings` | Cluster-scope settings (redacted) | `settings.read` (cluster) | - |
+| PATCH | `/api/v1/settings` | Change cluster-scope settings (JSON merge patch) | `settings.write` (cluster) | forwarded |
+| GET | `/api/v1/settings/_schema` | The settings metadata table | `settings.read` (cluster) | - |
+| POST | `/api/v1/settings/sections/{section}/ownership/{action}` | Adopt or release a settings section using its reviewed revision | `settings.write` (cluster) | local |
+| POST | `/api/v1/settings/sections/{section}/yaml` | Generate Helm values for the current or proposed complete section without writing | `settings.read` (cluster) | local |
 
 ## stats
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/clients` | Client inventory from the query log | `clients.read` (cluster) |
-| GET | `/api/v1/stats/clients/timeseries` | Per-client query volume over time | `stats.read` (cluster) |
-| GET | `/api/v1/stats/recent_blocked` | Most recently blocked queries | `querylog.read` (cluster) |
-| GET | `/api/v1/stats/summary` | Stat tiles and sidebar counters | `stats.read` (cluster) |
-| GET | `/api/v1/stats/timeseries` | Query volume by status class over time | `stats.read` (cluster) |
-| GET | `/api/v1/stats/top` | Top domains, clients, upstreams, lists or zones | `stats.read` (cluster) |
-| GET | `/api/v1/stats/upstreams` | Traffic and health per upstream | `stats.read` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/clients` | Client inventory from the query log | `clients.read` (cluster) | - |
+| GET | `/api/v1/stats/clients/timeseries` | Per-client query volume over time | `stats.read` (cluster) | - |
+| GET | `/api/v1/stats/recent_blocked` | Most recently blocked queries | `querylog.read` (cluster) | - |
+| GET | `/api/v1/stats/summary` | Stat tiles and sidebar counters | `stats.read` (cluster) | - |
+| GET | `/api/v1/stats/timeseries` | Query volume by status class over time | `stats.read` (cluster) | - |
+| GET | `/api/v1/stats/top` | Top domains, clients, upstreams, lists or zones | `stats.read` (cluster) | - |
+| GET | `/api/v1/stats/upstreams` | Traffic and health per upstream | `stats.read` (cluster) | - |
+
+## tsigkeys
+
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/tsigkeys` | List captured TSIG key metadata | `tsigkeys.read` (cluster) | - |
+| POST | `/api/v1/tsigkeys` | Create an absent stored TSIG key | `tsigkeys.write` (cluster) | refused |
+| POST | `/api/v1/tsigkeys/{keyName}/replace` | Replace a reviewed stored TSIG key | `tsigkeys.write` (cluster) | refused |
+| POST | `/api/v1/tsigkeys/{keyName}/reseal` | Reseal a reviewed stored TSIG key | `tsigkeys.write` (cluster) | refused |
+| POST | `/api/v1/tsigkeys/{keyName}/revoke` | Revoke a reviewed stored TSIG key | `tsigkeys.delete` (cluster) | refused |
 
 ## unblockrequests
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/unblockrequests` | List the unblock requests users made on the block page, newest first | `unblockrequests.read` (cluster) |
-| GET | `/api/v1/unblockrequests/{namespace}/{name}` | Get an unblock request | `unblockrequests.read` (cluster) |
-| DELETE | `/api/v1/unblockrequests/{namespace}/{name}` | Delete an unblock request | `unblockrequests.delete` (cluster) |
-| POST | `/api/v1/unblockrequests/{namespace}/{name}/approve` | Approve an unblock request: add the allow entry | `unblockrequests.decide` (cluster) |
-| POST | `/api/v1/unblockrequests/{namespace}/{name}/deny` | Deny an unblock request (revokes an approval in force) | `unblockrequests.decide` (cluster) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/unblockrequests` | List the unblock requests users made on the block page, newest first | `unblockrequests.read` (cluster) | - |
+| GET | `/api/v1/unblockrequests/{namespace}/{name}` | Get an unblock request | `unblockrequests.read` (cluster) | - |
+| DELETE | `/api/v1/unblockrequests/{namespace}/{name}` | Delete an unblock request | `unblockrequests.delete` (cluster) | refused |
+| POST | `/api/v1/unblockrequests/{namespace}/{name}/approve` | Approve an unblock request: add the allow entry | `unblockrequests.decide` (cluster) | refused |
+| POST | `/api/v1/unblockrequests/{namespace}/{name}/deny` | Deny an unblock request (revokes an approval in force) | `unblockrequests.decide` (cluster) | refused |
 
 ## zones
 
-| Method | Path | Summary | Permission |
-|---|---|---|---|
-| GET | `/api/v1/zones` | List zones with serial, record count and readiness | `zones.read` (cluster or per object) |
-| GET | `/api/v1/zones/{zone}` | Get one zone | `zones.read` (zone) |
-| DELETE | `/api/v1/zones/{zone}` | Delete a zone with every record set that references it | `zones.delete` (zone) |
-| GET | `/api/v1/zones/{zone}/export` | Export the served zone as a BIND master file (text/dns) | `zones.read` (zone) |
-| POST | `/api/v1/zones/{zone}/import` | Import a BIND master file (text/dns) | `records.write` (zone) |
-| POST | `/api/v1/zones/{zone}/notify` | Send NOTIFY for the zone now | `zones.transfer` (zone) |
-| GET | `/api/v1/zones/{zone}/records` | List the endpoints of a zone across record sets | `records.read` (zone) |
-| POST | `/api/v1/zones/{zone}/records` | Create or replace one endpoint in a record set | `records.write` (zone) |
-| DELETE | `/api/v1/zones/{zone}/records/{name}/{type}` | Delete the endpoints of one name and type | `records.delete` (zone) |
+| Method | Path | Summary | Permission | On a follower |
+|---|---|---|---|---|
+| GET | `/api/v1/zones` | List zones with serial, record count and readiness | `zones.read` (cluster or per object) | - |
+| GET | `/api/v1/zones/{zone}` | Get one zone | `zones.read` (zone) | - |
+| DELETE | `/api/v1/zones/{zone}` | Delete a zone with every record set that references it | `zones.delete` (zone) | forwarded |
+| GET | `/api/v1/zones/{zone}/export` | Export the served zone as a BIND master file (text/dns) | `zones.read` (zone) | - |
+| POST | `/api/v1/zones/{zone}/import` | Import a BIND master file (text/dns) | `records.write` (zone) | forwarded |
+| POST | `/api/v1/zones/{zone}/notify` | Send NOTIFY for the zone now | `zones.transfer` (zone) | refused |
+| GET | `/api/v1/zones/{zone}/records` | List the endpoints of a zone across record sets | `records.read` (zone) | - |
+| POST | `/api/v1/zones/{zone}/records` | Create or replace one endpoint in a record set | `records.write` (zone) | forwarded |
+| DELETE | `/api/v1/zones/{zone}/records/{name}/{type}` | Delete the endpoints of one name and type | `records.delete` (zone) | forwarded |

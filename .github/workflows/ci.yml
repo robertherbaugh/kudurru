@@ -73,6 +73,9 @@ jobs:
     env:
       KUDURRU_TEST_POSTGRES_DSN: postgres://postgres:kudurru@127.0.0.1:55432/postgres?sslmode=disable
       KUDURRU_REQUIRE_POSTGRES: "1"
+      # `make test` hands the installed envtest binaries to the kube suites
+      # and, with this, fails instead of skipping them when there are none.
+      KUDURRU_REQUIRE_ENVTEST: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -103,7 +106,12 @@ jobs:
       - name: Test
         env:
           SHARD: ${{ matrix.shard }}
-        run: make test TEST_PKGS="$(hack/go-test-shard.sh "$SHARD" 2 | tr '\n' ' ')"
+        run: |
+          python3 -m unittest discover -s hack -p test_go_test.py
+          python3 -B -m unittest discover -s hack -p 'test_bench_*.py'
+          python3 -B -m unittest discover -s hack -p test_sync_version.py
+          python3 -B -m unittest discover -s hack -p test_snapshot_images.py
+          make test TEST_PKGS="$(hack/go-test-shard.sh "$SHARD" 2 | tr '\n' ' ')"
       # Only what this run used: go marks a cache entry used by touching it
       # (when it is over an hour old), so the cache does not grow forever.
       - name: Drop cache entries this run did not use (main)
@@ -209,6 +217,9 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.3
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
       - name: Install (frozen lockfile)
         run: bun install --frozen-lockfile
       - name: Lint
@@ -281,16 +292,43 @@ jobs:
   # End to end (dev-docs/milestones/m5/e2e.md): `kudurru serve` processes on loopback
   # (two nodes, lameduck, restarts, config and port failures), BIND 9 as a
   # secondary and as a forwarding target, and the OIDC login against dex.
+  # This job has every program those tests can skip without: BIND 9,
+  # PostgreSQL (the two-node central audit and query log tests) and the
+  # envtest control plane (the Kubernetes audit test). The KUDURRU_REQUIRE_*
+  # variables make a missing one a failure instead of a skipped test.
   e2e:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubicloud-standard-4-ubuntu-2404
-    timeout-minutes: 30
+    # The process tests of test/e2e alone take about 20 minutes under the race
+    # detector (the enrolled cluster and managed anchor flows are 2 to 3
+    # minutes each); E2E_FLAGS in the Makefile bounds each package at 45.
+    timeout-minutes: 75
+    # The server of the go job.
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+        env:
+          POSTGRES_PASSWORD: kudurru
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      KUDURRU_TEST_POSTGRES_DSN: postgres://postgres:kudurru@127.0.0.1:55432/postgres?sslmode=disable
+      KUDURRU_REQUIRE_POSTGRES: "1"
+      KUDURRU_REQUIRE_BIND: "1"
+      KUDURRU_REQUIRE_ENVTEST: "1"
+      KUDURRU_REQUIRE_PREVIOUS_RELEASE: "1"
+      KUDURRU_NAMED: /usr/sbin/named
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # The upgrade tests build the previous release from its tag
+      # (kudurrutest.Previous); the checkout above has no tags.
+      - name: Fetch the v0.1.0 tag for the upgrade tests
+        run: git fetch --no-tags --depth=1 origin +refs/tags/v0.1.0:refs/tags/v0.1.0
       - name: Install BIND 9
         run: |
           sudo apt-get update
@@ -301,17 +339,42 @@ jobs:
           sudo systemctl stop named || true
           sudo apparmor_parser -R /etc/apparmor.d/usr.sbin.named || true
           /usr/sbin/named -v
+      # kube-apiserver and etcd for TestKubeAuditAcrossReplicas: the cache of
+      # the go job (same key).
+      - name: Cache envtest control-plane binaries
+        id: envtest-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: bin/k8s
+          key: envtest-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('Makefile') }}
+      - name: Install envtest control-plane binaries
+        if: steps.envtest-cache.outputs.cache-hit != 'true'
+        run: make envtest
       - name: Cache dex
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: bin/dex-*
           key: dex-${{ runner.os }}-${{ hashFiles('Makefile') }}
       - name: kudurru end to end and BIND interop
-        env:
-          KUDURRU_NAMED: /usr/sbin/named
+        id: e2e
         run: make e2e
+      # The BIND tests that live in internal packages: the go job has no
+      # named, so they only run here. They do not depend on the step above
+      # and run after a failure in it too (not after a failed setup step),
+      # so that one failing end-to-end test does not take their results out
+      # of the log.
+      - name: BIND interop of response policy zones, signed secondaries and stub zones
+        if: ${{ !cancelled() && (success() || steps.e2e.conclusion == 'failure') }}
+        run: make interop-internal
+      - name: Recursive denial proof reuse against BIND
+        env:
+          KUDURRU_RECURSOR_BIND: "1"
+          GOMAXPROCS: "2"
+        run: go test -race -p 2 ./internal/recursor -run '^TestAggressiveBIND$' -count=1 -timeout=90s
       - name: OIDC login end to end against dex
         run: make test-auth-e2e
+      - name: Blocking conformance against pinned AdGuard Home
+        run: make test-adguard
   # Stock-client DHCP interoperability, entirely inside a disconnected outer
   # network namespace. Installing dhcpcd-base does not enable a host DHCP daemon.
   dhcp-acceptance:
@@ -428,7 +491,19 @@ jobs:
           key: deploy-${{ runner.os }}-${{ hashFiles('Makefile') }}
       - name: Render matrix, kustomize overlays, kubeconform
         run: make helm-check
+      # hack/sync-version.py on this tree; its unit tests run in the go job's
+      # Test step with the other hack/ tests.
+      - name: Release version references are current
+        run: make version-check
+      # TestChartUpgradeV01FixtureMatchesTag compares testdata/v0.1.0/chart
+      # with what the chart of the v0.1.0 tag renders; the checkout above has
+      # no tags. With KUDURRU_REQUIRE_PREVIOUS_RELEASE a missing tag fails the
+      # step instead of skipping the comparison.
+      - name: Fetch the v0.1.0 tag for the 0.1.0 chart fixture
+        run: git fetch --no-tags --depth=1 origin +refs/tags/v0.1.0:refs/tags/v0.1.0
       - name: Generated deployment assets are current
+        env:
+          KUDURRU_REQUIRE_PREVIOUS_RELEASE: "1"
         run: |
           make deploy-assets
           git diff --exit-code -- deploy

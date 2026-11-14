@@ -35,6 +35,14 @@ type migration struct {
 // (TestMigrationsCoverSchemaVersion).
 var migrations = []migration{
 	{version: 1, name: "objects, change feed, audit", up: migrate1},
+	{version: 2, name: "replication authority and owned sections", up: migrate2},
+	{version: 3, name: "bind stored credentials to account identities", up: migrateCredentialUIDs},
+	{version: 4, name: "move service account authority to private identities", up: migratePrincipalStates},
+	{version: 5, name: "convert public IAM configuration and references", up: migratePublicIAM},
+	{version: 6, name: "authenticated audit attribution", up: migrateAuditAttribution},
+	{version: 7, name: "explicit managed root-anchor owner", up: migrateTrustAnchorOwner},
+	{version: 8, name: "private local root-anchor retirement", up: migrateAnchorLocal},
+	{version: 9, name: "explicit member enrollment owner", up: migrateEnrollmentOwner},
 }
 
 // schemaV1 is migration 1. Objects keep the whole JSON document in data;
@@ -95,11 +103,32 @@ func migrate1(ctx context.Context, tx *sql.Tx) error {
 	return err
 }
 
+func migrate2(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `CREATE TABLE replication_sections (
+		section TEXT NOT NULL CHECK (section IN ('runtime', 'security', 'membership', 'dedup')),
+		key TEXT NOT NULL, data TEXT NOT NULL,
+		PRIMARY KEY(section, key)
+	) STRICT, WITHOUT ROWID;
+	CREATE TABLE replication_quarantine (
+		generation TEXT PRIMARY KEY, image TEXT NOT NULL
+	) STRICT, WITHOUT ROWID;`)
+	return err
+}
+
 // migrate brings the database to target in one transaction: it creates
 // the meta table, refuses a database newer than target (ErrSchemaTooNew),
 // runs every step above the recorded version, and initialises the identity
 // rows (cluster_id once, cluster_epoch, counters) when they are missing.
 func migrate(ctx context.Context, db *sql.DB, steps []migration, target int, now func() time.Time) error {
+	return migrateAdmitted(ctx, db, steps, target, now, nil)
+}
+
+// migrateAdmitted is migrate with the last word of the release that opens
+// the database: when the transaction moved an existing database to a newer
+// schema, admit sees the upgraded contents (and the version it came from)
+// before the commit, and its error leaves the database unchanged
+// (Store.admitUpgrade).
+func migrateAdmitted(ctx context.Context, db *sql.DB, steps []migration, target int, now func() time.Time, admit func(ctx context.Context, tx *sql.Tx, from int) error) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("store/sqlite: begin migration: %w", err)
@@ -123,6 +152,7 @@ func migrate(ctx context.Context, db *sql.DB, steps []migration, target int, now
 		return fmt.Errorf("%w: state.db is at schema version %d, this binary supports up to %d; "+
 			"run the newer kudurru release or restore a backup taken with this one", ErrSchemaTooNew, current, target)
 	}
+	from := current
 	for _, m := range steps {
 		if m.version <= current || m.version > target {
 			continue
@@ -137,6 +167,13 @@ func migrate(ctx context.Context, db *sql.DB, steps []migration, target int, now
 	}
 	if current != target {
 		return fmt.Errorf("store/sqlite: no migration reaches schema %d (stopped at %d)", target, current)
+	}
+	if target >= zoneNameIndexSchema {
+		for _, index := range []string{sqlZoneNameIndex, sqlLifecycleApexIndex} {
+			if _, err := tx.ExecContext(ctx, index); err != nil {
+				return fmt.Errorf("store/sqlite: index zone names: %w", err)
+			}
+		}
 	}
 	defaults := map[string]string{
 		metaClusterID:       uuid.NewString(),
@@ -153,6 +190,16 @@ func migrate(ctx context.Context, db *sql.DB, steps []migration, target int, now
 	if _, err := tx.ExecContext(ctx, `INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
 		metaSchemaVersion, strconv.Itoa(target)); err != nil {
 		return fmt.Errorf("store/sqlite: write schema_version: %w", err)
+	}
+	if target >= 6 {
+		if err := validateAuditFormats(ctx, tx); err != nil {
+			return err
+		}
+	}
+	if admit != nil && from > 0 && from < target {
+		if err := admit(ctx, tx, from); err != nil {
+			return err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("store/sqlite: commit migration: %w", err)

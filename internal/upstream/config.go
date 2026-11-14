@@ -95,6 +95,11 @@ type GroupConfig struct {
 	// Recursive groups have no servers: the built-in resolver
 	// (internal/recursor) walks the DNS tree from the root servers.
 	Recursive bool
+	// TracePropagation sends the query's TRACEPARENT option to the
+	// servers of this group when the trace is sampled (D382). Only for servers that belong to the
+	// same tracing domain (another kudurru, a PowerDNS Recursor, dnsdist):
+	// a public resolver must never learn trace ids. Forward groups only.
+	TracePropagation bool `json:",omitempty"`
 }
 
 // Config describes every group of a node.
@@ -142,6 +147,8 @@ func ConfigFrom(c config.Upstreams) Config {
 			Strategy:  Strategy(g.Strategy),
 			Timeout:   g.Timeout.Std(),
 			Recursive: g.Mode == config.UpstreamModeRecursive,
+
+			TracePropagation: g.TracePropagation,
 		}
 	}
 	for k, v := range c.Conditional {
@@ -159,6 +166,7 @@ func RecursionFrom(c config.Recursion) recursor.Config {
 		rc.IPv6 = recursor.IPv6Mode(c.IPv6)
 	}
 	rc.TrustAnchors = append([]string(nil), c.TrustAnchors...)
+	rc.NegativeTrustAnchors = c.NTAs()
 	rc.RootHints = append([]string(nil), c.RootHints...)
 	return rc
 }
@@ -208,6 +216,9 @@ func (c Config) Validate() error {
 			errs = append(errs, fmt.Errorf("upstream: recursive group %q lists servers", n))
 		case !g.Recursive && len(g.Servers) == 0:
 			errs = append(errs, fmt.Errorf("upstream: group %q has no servers", n))
+		}
+		if g.Recursive && g.TracePropagation {
+			errs = append(errs, fmt.Errorf("upstream: recursive group %q cannot propagate TRACEPARENT: it asks the internet's authoritative servers", n))
 		}
 		if !g.Strategy.Valid() {
 			errs = append(errs, fmt.Errorf("upstream: group %q: unknown strategy %q", n, g.Strategy))

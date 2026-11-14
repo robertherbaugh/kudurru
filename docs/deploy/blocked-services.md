@@ -195,14 +195,22 @@ as BlockList URLs: loopback, link-local and metadata addresses need
 `blocking.allowLocalListURLs`. Replicas pull the leader's copy over the
 internal listener (`GET /internal/catalogue`, sha256-verified) every 5
 minutes and download the URL themselves only after the leader has been
-unreachable for 10 minutes. The last good download is kept in
-`<node.dataDir>/catalogue/` and served at the next start.
+unavailable for 10 minutes. A leader copy from a different configured URL is
+rejected, including when its content matches the current copy. The last good
+download is kept in `<node.dataDir>/catalogue/catalogue.receipt.json` and served
+at the next start. This bounded receipt atomically binds the original content,
+digest, source URL and format. Older separate document/source cache files are
+ignored; the node fetches a new copy and uses the embedded catalog meanwhile.
 
 A document is put in service only after it parses and validates. A
 `schemaVersion` this build does not read, a malformed document, an HTTP
 error or a network error keeps the catalogue in service: the last good
 download, else the embedded one. `GET /api/v1/catalogue` reports `origin`, `version`,
 `digest` and `refresh.lastError`.
+
+To refuse plaintext origins and redirect downgrades for new downloads, enable
+[the host HTTPS-only download policy](download-policy.md). Existing cached
+data and authenticated peer copies retain their current behavior.
 
 ### Document format (schema version 2)
 
@@ -300,26 +308,41 @@ Rules this build checks (`catalogue.Parse`):
 - Limits: 4 MiB per document, 1000 services, 100 categories, 100 engines,
   10,000 safe-search domains.
 
-### URL contract for the data repository
+### Published data and pinned updates
 
-D60 puts the catalogue in a separate public data repository owned by the
-project. kudurru expects, at a stable URL such as
-`https://raw.githubusercontent.com/<owner>/<repo>/main/v2/catalogue.json`:
+The public [kudurru-data repository](https://github.com/robertherbaugh/kudurru-data)
+contains the Apache-2.0 catalog, per-entry provenance, original icon attribution
+and a standalone manifest verifier. Its initial schema-2 revision contains 150
+services in 15 categories and seven safe-search engines.
 
-- one document per schema version, under a path that names the version
-  (`v1/catalogue.json`, `v2/catalogue.json`), so a release that reads
-  version 3 can move to `v3/` while older releases keep reading theirs;
-  this build reads both `v1/` and `v2/` documents;
-- `Content-Type: application/json`, an `ETag` or `Last-Modified` header for
-  conditional GETs, and HTTPS;
-- every entry with its `source`, a permissive licence (Apache-2.0 or CC0)
-  in `license`, and a provenance file in the repository. Nothing derived
-  from GPL tables (AdGuard's blocked-services and safe-search lists) or any
-  other copyleft source.
+To use that exact reviewed revision, configure:
 
-Until that repository exists, leave `blocking.catalogue.url` empty: the
-embedded catalogue is complete, and each release ships the catalogue
-current at its build.
+```yaml
+blocking:
+  catalogue:
+    url: https://raw.githubusercontent.com/robertherbaugh/kudurru-data/13d8d42b504246867dea420a8ad0e04ff5043776/catalogue.json
+```
+
+The document's SHA-256 is
+`110d1368d6f2d6c38d23c0555f54b9ea195d3f74c95abb79edfa9caefe0a300f`.
+The full commit URL pins the document and its schema. Leave the URL empty to
+keep the embedded offline catalog. Selecting a new commit is an explicit
+operator update; using a moving branch intentionally accepts future changes.
+Neither fetching the catalog nor publishing new data enables a policy by itself.
+
+Consumers validate the document's schema and contents, rather than the URL path
+or HTTP media type. GitHub raw responses use `text/plain` and an `ETag` over
+HTTPS. A full commit URL prevents a future schema from replacing the selected
+document; versioned paths are also suitable when maintaining moving feeds for
+multiple schema versions. This build accepts schema 1 and 2. An incompatible,
+malformed, oversized or unavailable update retains the last good catalog under
+the runtime contract above.
+
+Every entry retains its source and permissive license. Data updates must preserve
+provenance and exclude material derived from GPL/EUPL tables. Run `python3
+verify.py` in the data repository and the consumer catalog compilation and DNS
+tests before publishing a new revision. The data repository's README documents
+the update procedure.
 
 ## AdGuard's services (opt-in, GPL-3.0)
 
@@ -343,10 +366,12 @@ What the opt-in does:
   link-local URLs need `blocking.allowLocalListURLs`). Replicas pull the
   leader's copy over the internal listener
   (`GET /internal/catalogue/adguard`, sha256-verified) and download it
-  themselves only after the leader has been unreachable for 10 minutes.
+  themselves only after the leader has been unavailable for 10 minutes.
   The last good download is kept in
-  `<node.dataDir>/catalogue/adguard-services.json` and served at the next
-  start; a failed or empty download keeps the previous one. The setting
+  `<node.dataDir>/catalogue/adguard-services.receipt.json` with its original
+  source and digest, and served at the next start. Legacy separate cache files
+  require a fresh download; a failed or empty download keeps an already accepted
+  copy. The setting
   needs a restart.
 - The file's format: an object with `blocked_services`, each
   `{id, name, rules, group}` (a bare array is read too, `icon_svg` is

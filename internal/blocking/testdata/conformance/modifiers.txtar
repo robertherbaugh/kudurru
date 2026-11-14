@@ -1,6 +1,5 @@
-Every DNS modifier is tokenised and counted as unsupported; unknown
-(browser) modifiers, cosmetic rules and URL rules are invalid; none of them
-blocks anything in v0.1.
+Supported DNS modifiers compile; respgeo remains separately unsupported.
+Unknown modifiers and browser/cosmetic/URL rules never become plain denies.
 
 -- list m block adblock --
 ||important.example^$important
@@ -9,7 +8,6 @@ blocks anything in v0.1.
 ||rewrite.example^$dnsrewrite=NOERROR;A;1.2.3.4
 ||client.example^$client='Frank\'s laptop'
 ||ctag.example^$ctag=device_pc|device_phone
-*$denyallow=com|net
 ||geo.example^$respgeo=US
 @@||exception.example^$important
 ||thirdparty.example^$third-party
@@ -20,14 +18,14 @@ example.org#@#.banner
 example.org$$script[data-ad]
 ||plain.example^
 -- counts m --
-rules=1 exceptions=0 unsupported=9 invalid=6 entries=1
+rules=8 exceptions=1 unsupported=1 invalid=6 entries=7
 -- expect --
-important.example     pass
+important.example     block m ||important.example^$important
 badfilter.example     pass
 dnstype.example       pass
-rewrite.example       pass
+rewrite.example       rewrite m ||rewrite.example^$dnsrewrite=NOERROR;A;1.2.3.4
 client.example        pass
-anything.com          pass    # *$denyallow is not applied
+anything.com          pass
 thirdparty.example    pass    # unknown modifier: the whole rule is ignored (spec)
 script.example        pass
 example.org           pass    # cosmetic and URL rules are not DNS rules

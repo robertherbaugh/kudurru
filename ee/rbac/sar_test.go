@@ -29,6 +29,7 @@ func TestSARVerbAndAttributes(t *testing.T) {
 		{rbac.Attributes{Resource: "cache", Verb: "flush"}, "caches", "flush", "", ""},
 		{rbac.Attributes{Resource: "audit", Verb: "export"}, "audits", "export", "", ""},
 		{rbac.Attributes{Resource: "cluster", Verb: "read"}, "clusters", "list", "", ""},
+		{rbac.Attributes{Resource: "tsigkeys", Verb: "write", Name: "stored-key"}, "tsigkeys", "update", "", "stored-key"},
 	} {
 		ra := ResourceAttributes(tc.a)
 		if ra.Group != SARGroup || ra.Resource != tc.res || ra.Verb != tc.verb || ra.Namespace != tc.ns || ra.Name != tc.named {

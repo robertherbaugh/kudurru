@@ -25,6 +25,8 @@ func (dropper) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Respo
 		return nil, pipeline.ErrDrop
 	case strings.HasPrefix(name, "drop-rl."):
 		return &pipeline.Response{Status: pipeline.StatusBlockedRateLimit}, nil
+	case strings.HasPrefix(name, "drop-rpz."):
+		return &pipeline.Response{Status: pipeline.StatusBlockedRPZ, List: "dns/feed", Rule: "drop-rpz.policy.test. drop"}, pipeline.ErrDrop
 	}
 	return localAnswer{}.Serve(req, next)
 }
@@ -53,7 +55,7 @@ func TestDropsSendNothing(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			for _, q := range []string{"drop-ctl.example", "drop-rl.example"} {
+			for _, q := range []string{"drop-ctl.example", "drop-rl.example", "drop-rpz.example"} {
 				start := time.Now()
 				var resp *dns.Msg
 				var err error
@@ -82,7 +84,7 @@ func TestDropsSendNothing(t *testing.T) {
 
 func TestResolveDropIsServfailForCallersThatNeedAnAnswer(t *testing.T) {
 	h := &Handler{Chain: pipeline.MustNew(dropper{}), Logger: quietLogger}
-	for _, q := range []string{"drop-ctl.example", "drop-rl.example"} {
+	for _, q := range []string{"drop-ctl.example", "drop-rl.example", "drop-rpz.example"} {
 		m := h.Resolve(context.Background(), query(q), pipeline.Client{Proto: pipeline.ProtoUDP})
 		if m == nil || m.Rcode != dns.RcodeServerFailure {
 			t.Fatalf("%s: %v", q, m)

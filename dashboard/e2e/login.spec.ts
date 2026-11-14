@@ -34,7 +34,7 @@ test.describe('signed out', () => {
     await page.getByRole('textbox', { name: 'Username' }).fill('nobody');
     await page.getByLabel(/^Password/).fill('not-the-password-at-all');
     await page.getByRole('button', { name: 'Sign in' }).click();
-    await expect(page.getByRole('alert')).toContainText(/invalid username or password/i);
+    await expect(page.getByRole('alert')).toContainText('current credential is invalid or expired');
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
   });
 });

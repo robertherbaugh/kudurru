@@ -3,6 +3,10 @@
 // (GET /cluster: store driver, epoch, leader), the edge supervisors
 // (GET /edge: dnsdist and keepalived state, dnsdist backends) and the
 // health components of this node on demand (GET /nodes/{name}/health).
+// On the SQLite driver (GET /cluster role) also this node's enrollment with
+// the activation, invitation and promotion wizards, and its managed root
+// trust-anchor state (GET /cluster/enrollment, /cluster/anchors). The
+// additional query-log sinks of this node (GET /querylog/sinks).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
@@ -17,10 +21,13 @@ import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
-import { qk, useApi } from '../api/context';
+import { useApi, useCan, useClusterInfo } from '../api/context';
 import { useNodes } from '../api/hooks';
 import type { EdgeComponentState, HealthComponent, NodeInfo } from '../api/types';
+import { ClusterMembership } from '../components/cluster/ClusterMembership';
+import { RootAnchors } from '../components/cluster/RootAnchors';
 import { ErrorBanner, Loading } from '../components/Feedback';
+import { QuerylogSinksPanel } from '../components/QuerylogSinks';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { formatRelative } from '../lib/format';
 import { readiness } from '../lib/nodes';
@@ -116,7 +123,9 @@ function EdgeRow({ label, c, off }: { label: string; c: EdgeComponentState | und
 export default function NodesPage() {
   const api = useApi();
   const nodes = useNodes();
-  const cluster = useQuery({ queryKey: qk.cluster, queryFn: () => api.cluster.info() });
+  const can = useCan();
+  // Shared with the capability hooks: no read without cluster.read, none after a 403.
+  const cluster = useClusterInfo();
   const edge = useQuery({ queryKey: ['edge'], queryFn: () => api.cluster.edge(), refetchInterval: 10_000 });
   const [open, setOpen] = useState<string | null>(null);
   const c = cluster.data;
@@ -169,7 +178,8 @@ export default function NodesPage() {
       key: 'leader',
       header: 'Role',
       width: proportional(1, { minWidth: 90 }),
-      renderCell: (n) => (n.leader ? <Badge variant="blue" label="leader" /> : <Text color="secondary">follower</Text>),
+      // The SQLite driver names write authority "primary" (GET /cluster role).
+      renderCell: (n) => (n.leader ? <Badge variant="blue" label={c?.role ? 'primary' : 'leader'} /> : <Text color="secondary">follower</Text>),
     },
     { key: 'snapshotAge', header: 'Snapshot age', width: proportional(1.35, { minWidth: 148 }), renderCell: (n) => <Text>{n.snapshotAge ?? '–'}</Text> },
     {
@@ -197,8 +207,9 @@ export default function NodesPage() {
             <>
               <Badge variant="neutral" label={`store ${c.driver}`} />
               <Text type="supporting" color="primary">
-                leader {c.leader || 'none'}
+                {c.role ? `primary ${c.primary || c.leader || 'none'}` : `leader ${c.leader || 'none'}`}
               </Text>
+              {c.role ? <Text type="supporting">this node: {c.role}</Text> : null}
               {c.readOnly ? <Badge variant="warning" label="read-only" /> : null}
             </>
           ) : null
@@ -219,15 +230,34 @@ export default function NodesPage() {
       <Grid columns={{ minWidth: 420, repeat: 'fit' }} gap={4}>
         <Panel title="Cluster" headingId="cluster-title">
           {cluster.error ? <ErrorBanner error={cluster.error} /> : null}
+          {!c && !cluster.error && !can('cluster', 'read') ? (
+            <Text color="secondary" as="p">
+              Needs cluster.read
+            </Text>
+          ) : null}
           {c ? (
             <MetadataList columns="multi">
               <MetadataListItem label="Store">{c.driver}</MetadataListItem>
-              <MetadataListItem label="Leader">{c.leader || 'none'}</MetadataListItem>
+              {c.role ? (
+                <>
+                  <MetadataListItem label="This node">{c.role}</MetadataListItem>
+                  <MetadataListItem label="Primary">{c.primary || 'unknown'}</MetadataListItem>
+                </>
+              ) : (
+                <MetadataListItem label="Leader">{c.leader || 'none'}</MetadataListItem>
+              )}
               <MetadataListItem label="Nodes">{c.nodes}</MetadataListItem>
               <MetadataListItem label="Epoch">
                 <Text type="code">{c.epoch}</Text>
               </MetadataListItem>
-              <MetadataListItem label="Object writes">{c.readOnly ? 'refused (objects are file-managed on every node)' : 'accepted'}</MetadataListItem>
+              <MetadataListItem label="Object writes">
+                {c.readOnly ? 'refused (objects are file-managed on every node)' : c.primaryRequired ? `forwarded to ${c.primary || 'the primary'}` : 'accepted'}
+              </MetadataListItem>
+              {c.primaryRequired ? (
+                <MetadataListItem label="Changes on this follower">
+                  {`${c.forwardedOperations?.length ?? 0} kinds of change are forwarded to ${c.primary || 'the primary'} and ${c.localOperations?.length ?? 0} run on this node; every other change answers primary_required and is made on ${c.primary || 'the primary'}`}
+                </MetadataListItem>
+              ) : null}
               {c.clusterID ? (
                 <MetadataListItem label="Cluster ID">
                   <Text type="code" size="sm">
@@ -286,6 +316,13 @@ export default function NodesPage() {
           ) : null}
         </Panel>
       </Grid>
+      {c?.role && !c.readOnly ? (
+        <Grid columns={{ minWidth: 420, repeat: 'fit' }} gap={4}>
+          <ClusterMembership node={c.node} />
+          <RootAnchors />
+        </Grid>
+      ) : null}
+      <QuerylogSinksPanel />
     </Page>
   );
 }

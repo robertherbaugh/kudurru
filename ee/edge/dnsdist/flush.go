@@ -36,8 +36,7 @@ const maxScheduledFlush = 366 * 24 * time.Hour
 // the edge until those entries expire; the integrator calls
 // BlockingChanged from the toggle's change path (POST /dns/blocking and
 // the replicated Toggle.Apply) and FlushResolver after a list refresh.
-// Remote edges (edge Deployments in Kubernetes) cannot be reached this
-// way; see dev-docs/followups.md.
+// Remote edges use their authenticated serving-publication pull instead.
 type CacheFlusher struct {
 	// API is the local dnsdist API; KeyFile is read on every flush
 	// because the key changes on every dnsdist start.
@@ -49,10 +48,11 @@ type CacheFlusher struct {
 	// Now is the clock; default time.Now.
 	Now func() time.Time
 
-	mu      sync.Mutex
-	timer   *time.Timer
-	stopped bool
-	wg      sync.WaitGroup
+	mu               sync.Mutex
+	timer            *time.Timer
+	stopped          bool
+	running, pending bool
+	wg               sync.WaitGroup
 }
 
 // NewLocalCacheFlusher returns a flusher for the dnsdist API at apiURL
@@ -152,15 +152,31 @@ func (f *CacheFlusher) BlockResponsesChanged() {
 
 // flushAsync runs FlushResolver on its own goroutine; f.mu is held.
 func (f *CacheFlusher) flushAsync(why string) {
+	if f.running {
+		f.pending = true
+		return
+	}
+	f.running = true
 	f.wg.Go(func() {
-		err := f.FlushResolver(context.Background())
-		switch {
-		case err == nil:
-			f.log().Info("flushed the edge resolver cache", "reason", why)
-		case errors.Is(err, ErrNoLocalEdge):
-			f.log().Debug("no local edge to flush", "reason", why)
-		default:
-			f.log().Warn("edge resolver cache flush failed; cached answers expire with their TTL", "reason", why, "err", err)
+		for {
+			err := f.FlushResolver(context.Background())
+			switch {
+			case err == nil:
+				f.log().Info("flushed the edge resolver cache", "reason", why)
+			case errors.Is(err, ErrNoLocalEdge):
+				f.log().Debug("no local edge to flush", "reason", why)
+			default:
+				f.log().Warn("edge resolver cache flush failed; cached answers expire with their TTL", "reason", why, "err", err)
+			}
+			f.mu.Lock()
+			if f.stopped || !f.pending {
+				f.running = false
+				f.mu.Unlock()
+				return
+			}
+			f.pending = false
+			f.mu.Unlock()
+			why = "coalesced publication changes"
 		}
 	})
 }

@@ -23,7 +23,7 @@ import { VStack } from '@astryxdesign/core/VStack';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
 import { ApiError } from '../../api/client';
-import { qk, useApi } from '../../api/context';
+import { qk, useApi, usePrimaryOnly } from '../../api/context';
 import type { BlockList, ListEntriesPatch, ListEntry, SourceEntriesPage } from '../../api/types';
 import { actionPath } from '../../lib/domains';
 import { formatDateTime, formatExact, formatRelative } from '../../lib/format';
@@ -61,8 +61,12 @@ function plural(n: number, one: string, many: string): string {
   return `${formatExact(n)} ${n === 1 ? one : many}`;
 }
 
-export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowserProps) {
+export function EntriesBrowser({ list, index, editable: listEditable, onClose }: EntriesBrowserProps) {
   const api = useApi();
+  // Entry switches and inline additions are a source-entries command, which
+  // an enrolled follower does not forward (D368).
+  const followerTip = usePrimaryOnly()('patchSourceEntries');
+  const editable = listEditable && !followerTip;
   const qc = useQueryClient();
   const notify = useNotify();
   const titleId = useId();
@@ -77,6 +81,7 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
   const [pageSize, setPageSize] = useState(25);
   // cursors[i] is the continue token of page i ("" for the first page).
   const [cursors, setCursors] = useState<string[]>(['']);
+  const [refresh, setRefresh] = useState(0);
   const page = cursors.length - 1;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState('');
@@ -99,7 +104,7 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
 
   const cursor = cursors[page] ?? '';
   const entriesKey = [...listKey(ns, name), 'entries', source] as const;
-  const pageKey = [...entriesKey, query, disabledOnly, pageSize, cursor];
+  const pageKey = [...entriesKey, query, disabledOnly, pageSize, cursor, refresh];
   const q = useQuery({
     queryKey: pageKey,
     queryFn: () =>
@@ -125,10 +130,14 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
     mutationFn: (body: ListEntriesPatch) => api.lists.patchEntries(ns, name, source, body),
     // Switches move at once and move back when the write fails.
     onMutate: async (body) => {
+      // A write changes the generation bound into every continuation token.
+      // Retire the old page before dispatch, including add/remove mutations.
+      await qc.cancelQueries({ queryKey: entriesKey });
+      setCursors(['']);
+      setSelected(new Set());
       const values = [...(body.enable ?? []), ...(body.disable ?? [])];
       if (!values.length) return { snapshot: [] as [readonly unknown[], SourceEntriesPage | undefined][] };
       setPending((p) => new Set([...p, ...values]));
-      await qc.cancelQueries({ queryKey: entriesKey });
       const snapshot = qc.getQueriesData<SourceEntriesPage>({ queryKey: entriesKey });
       if (body.enable?.length) setEnabledInCache(body.enable, true);
       if (body.disable?.length) setEnabledInCache(body.disable, false);
@@ -170,7 +179,15 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
           return next;
         });
       }
-      void qc.invalidateQueries({ queryKey: qk.objects('blocklists') });
+      // React may not have committed the page reset yet. Never refetch an
+      // active old continuation during prefix invalidation; the new first-page
+      // key below performs the read once the reset is rendered.
+      void qc.invalidateQueries({ queryKey: entriesKey, refetchType: 'none' });
+      void qc.invalidateQueries({
+        queryKey: qk.objects('blocklists'),
+        predicate: ({ queryKey }) => !(queryKey[2] === ns && queryKey[3] === name && queryKey[4] === 'entries'),
+      });
+      setRefresh((value) => value + 1);
     },
   });
 
@@ -383,7 +400,7 @@ export function EntriesBrowser({ list, index, editable, onClose }: EntriesBrowse
                     value={r.enabled}
                     isLoading={pending.has(r.value)}
                     isDisabled={!editable || pending.has(r.value)}
-                    disabledMessage={editable ? undefined : 'Read-only: the list is managed elsewhere or you lack blocklists.write'}
+                    disabledMessage={editable ? undefined : (followerTip ?? 'Read-only: the list is managed elsewhere or you lack blocklists.write')}
                     onChange={(on) => patch.mutate(on ? { enable: [r.value] } : { disable: [r.value] })}
                   />
                 ),

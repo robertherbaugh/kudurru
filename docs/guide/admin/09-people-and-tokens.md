@@ -30,12 +30,27 @@ bindings give none. The audit log and single sign-on also need a key. See
 |---|---|---|
 | Viewer | Look at the setup and the statistics | Read zones, records, lists, policies, groups, clients, settings and statistics |
 | Auditor | Check what happens | Everything that a viewer can do. Also read the query log, the access requests and the audit log, and export them. |
-| Operator | Run the daily work | Everything that an auditor can do, except reading the audit log. Also change records, lists, policies, groups and clients. Switch blocking on and off. Flush the cache. Answer access requests. |
+| Operator | Run the daily work | Everything that an auditor can do, except reading the audit log and exporting the query log. Also change records, lists, policies, groups and clients. Switch blocking on and off. Flush the cache. Answer access requests. |
 | Zone admin | Run one or more zones | Read statistics. Manage the zones and the records in its scope, including transfers. |
 | Admin | Run everything | All functions, including settings, upstreams, nodes and purge of the query log |
 
 A role has a scope. The scope is the whole cluster. The role Zone admin
-can also have the scope of one zone. Then it works for that zone only.
+can also have the scope of one zone or of one zone group. Then it works for
+that zone, or for the zones of that group, only.
+
+A zone group is a label on the zone: a zone is in the group `prod` when its
+object has the label `kudurru.io/zonegroup: prod`. A zone is in one group or
+in none. Only an administrator with the scope of the whole cluster can add,
+change or remove this label. When the label is removed, the people bound to
+the group lose access to the zone at once.
+
+On Kubernetes, the label may also be set with kubectl or a GitOps tool.
+When an administrator adds, changes or removes it through kudurru, kudurru
+takes over the whole zone object, so the label goes away even if kubectl set
+it. This happens on every label change through kudurru. Each field that
+kubectl or the tool set and that the change from kudurru does not contain is
+removed from the zone, not only the label. If a GitOps tool owns the zone,
+change the label in Git: the tool puts its own label back on its next sync.
 
 Each page of the dashboard shows only what the role can use. A button that
 the role cannot use is gray. A page that the role cannot read shows the
@@ -50,15 +65,14 @@ message **Not permitted** with the name of the missing permission.
 
 Figure 1 shows the page.
 
-![The Access page on the You and tokens tab. It shows the account admin with the role admin, and the API tokens section with a form and a table.](../images/access.png)
+![The Access page on the You and tokens tab. It shows the account admin with the role admin, the sections Authenticator and Browser sessions, and the API tokens section with a form and a table.](../images/access.png)
 
 *Figure 1. The page Access.*
 
 ## Give a role to a person
 
-In version 0.1, the dashboard shows users, role bindings and identity
-providers but does not change them. You set them in files or in
-Kubernetes objects. The page shows the label **Read-only in this release**.
+The dashboard shows role bindings and identity providers but does not
+change them yet. You set them in files, in objects or with the command line.
 
 A role binding gives a role to users, groups or service accounts. Add
 bindings in `kudurru.yaml`:
@@ -77,11 +91,16 @@ rbac:
 
 The first binding gives the role Operator to the group `network-team` of the
 identity provider `dex`. The second gives the role Zone admin for the zone
-`home-arpa` to one user. The name of a user or group starts with the
+`home-arpa` to one user. For all zones of a zone group, use
+`scope: {kind: zonegroup, name: prod}`. The name of a user or group starts with the
 identifier of the identity provider and a colon.
 
 In Kubernetes, use `RoleBinding` objects. They add to the bindings in the
 file.
+
+On a node with SQLite storage, the command `kudurru iam rolebindings` also
+makes, changes and deletes `RoleBinding` objects. See
+[Reviewed RoleBinding commands](../../deploy/rolebindings.md).
 
 NOTE: A change to `rbac.bindings` needs a restart of the node.
 
@@ -99,8 +118,113 @@ After you set up a provider, the sign-in page shows one button for it.
 ### Local accounts
 
 The account `admin` is a local account. kudurru makes it at the first
-start. You set up other local accounts in files. The dashboard shows
-the local users on the tab **Identity**.
+start. The dashboard shows local users on the tab **Identity**.
+
+On a node with SQLite storage, `kudurru iam users` makes and changes ordinary
+local accounts through the API (D396):
+
+```sh
+kudurru iam users create alice --display-name "Alice"   # asks for the first password
+kudurru iam users list                                  # shows uid and resourceVersion
+kudurru iam users update alice --uid UID --resource-version RV --group operators
+kudurru iam users update alice --uid UID --resource-version RV --disabled
+kudurru iam users reset-password alice --uid UID --resource-version RV
+kudurru iam users delete alice --uid UID --resource-version RV
+```
+
+A new account must change its password at the first sign-in. Creation does not
+assign a role or enroll an authenticator; a role binding with a `User` or
+`Group` subject does that. Every change needs the exact `uid` and
+`resourceVersion` from `kudurru iam users list`. A conflict means that the
+account changed: read it again and decide again. The command never retries.
+
+- `update` changes only the fields you give. `--group` replaces the whole list
+  of local groups (repeat it; `--group=` removes all). A local group name has
+  no colon, so it cannot look like a group of an identity provider.
+- Changing the groups, disabling the account and deleting it end its sessions
+  and delete its API tokens in the same commit. Enabling it again restores
+  none of them. A display-name change ends nothing.
+- `reset-password` signs out the account and revokes its local personal
+  tokens. It keeps the authenticator and the disabled state, and requires
+  another password change. It does not recover a lost authenticator.
+- A later account with the same name never inherits the sessions or tokens of
+  a deleted one.
+
+The built-in admin and accounts of the configuration file are excluded: use
+`kudurru admin reset-password` on the node for them. On the Kubernetes driver
+these commands answer `503 user_management_unavailable`. The API routes are
+`POST /api/v1/iam/users`, `PATCH` and `DELETE /api/v1/iam/users/{name}` and
+`POST /api/v1/iam/users/{name}/password`.
+
+### Service accounts
+
+A kudurru service account is an account for a program. It has no password;
+it signs in with API tokens. Give it a role with a role binding whose subject
+is `{kind: ServiceAccount, name: NAME, namespace: NAMESPACE}`.
+
+On a node with SQLite storage, `kudurru iam serviceaccounts` (short `sa`)
+manages them:
+
+```sh
+cat > robot.yaml <<'YAML'
+apiVersion: kudurru.io/v1alpha1
+kind: ServiceAccount
+metadata: {name: backup-robot, namespace: apps}
+spec: {description: Nightly backup}
+YAML
+kudurru iam sa create -f robot.yaml
+kudurru iam sa get apps backup-robot -o yaml          # uid and resourceVersion
+kudurru iam sa create-token apps backup-robot --uid UID --expires-in 720h
+```
+
+`create-token` prints the token once. kudurru keeps only its hash, so it can
+never show it again: store it in your secret manager at once. List the tokens
+with `kudurru api GET '/auth/tokens?all=true'` and revoke one with
+`kudurru api DELETE /auth/tokens/ID`. Issuing a token needs both
+`serviceaccounts.write` and `tokens.write`; the built-in role Admin has them.
+A token never outlives the API token you issue it with: when you sign in with
+an API token, the new token expires no later than yours, even without
+`--expires-in`. `auth.tokens.maxLifetime` bounds both.
+
+`replace` and `delete` need the exact `--uid` and `--resource-version`.
+Disabling an account (`spec.disabled: true`) or deleting it deletes all of its
+tokens in the same commit, and they stay refused after a restart. A replica
+that installs the data, or is promoted, keeps the deletion and the revocation
+record. Enabling it again restores none; issue new tokens. The bootstrap
+account and accounts of other managers cannot be changed, deleted or given a
+token with these commands.
+
+Each delete, and the first disable of an account, keeps a small permanent
+revocation record. Together with active sessions these records share a limit
+of about 4,000 entries per cluster. Prefer disabling a long-lived account to
+creating and deleting one per job: when the limit is reached, deletes and new
+sign-ins answer `503 unavailable` and change nothing.
+
+### Identity provider objects
+
+Besides the entries in `kudurru.yaml`, an identity provider can be an
+`IdentityProvider` object. On a node with SQLite storage,
+`kudurru iam identityproviders` (short `idp`) creates, replaces and deletes
+them with the same review rules as role bindings:
+
+```sh
+kudurru iam idp create -f partner.yaml
+kudurru iam idp get partner -o yaml
+kudurru iam idp delete partner --uid UID --resource-version RV
+```
+
+`spec.clientSecretRef` names where the client secret is: an environment
+variable or a file that `credentials.allowedEnvironment` or
+`credentials.allowedFiles` allows, or a Secret key on Kubernetes. The object
+never holds the secret itself, and kudurru never returns or logs it. An id that
+`kudurru.yaml` already defines cannot be created. The provider shows on the
+sign-in page after its discovery succeeds and the license allows single
+sign-on. Changing or deleting a provider ends every session and token that
+came from it.
+
+On the Kubernetes driver the service account and provider commands answer
+`503 iam_management_unavailable`: create and change the objects with `kubectl`
+or your GitOps tool. `get` and `list` work on both drivers.
 
 To turn off the local sign-in when all your people use single sign-on, set
 `auth.localLogin` to `disabled`. The value `admins-only` allows the built-in
@@ -124,15 +248,16 @@ hours at the most. You can change these times with
 
 Click the tab **Identity** on the page **Access**. Figure 2 shows it.
 
-![The tab Identity with the message Read-only in this release, and the tables Local users, Service accounts, Role bindings and Identity providers.](../images/access-identity.png)
+![The tab Identity with the message Identity management, and the sections Local users, External accounts, Service accounts and Role bindings.](../images/access-identity.png)
 
 *Figure 2. The tab Identity.*
 
-The tab has four tables.
+The tab has five sections.
 
-| Table | Content |
+| Section | Content |
 |---|---|
-| **Local users** | The local accounts, their groups and the time of the last sign-in |
+| **Local users** | The local accounts, their groups and the time of the last sign-in. The column **Actions** removes the authenticator of a person. |
+| **External accounts** | The accounts of people who signed in with single sign-on. Only a node with SQLite storage has this list. |
 | **Service accounts** | Accounts for programs, with the number of tokens |
 | **Role bindings** | The role, the scope, the subjects, and where the binding comes from |
 | **Identity providers** | The single sign-on providers |
@@ -147,6 +272,115 @@ The tab has four tables.
 4. Click **Change password**.
 
 kudurru signs out all the other sessions of the account.
+
+## Use an authenticator
+
+An authenticator is an app that shows a new code of 6 digits every 30
+seconds. With an authenticator, kudurru asks for the password and the code
+each time that you sign in.
+
+NOTE: Only local accounts on a node with SQLite storage have this function.
+A node with Kubernetes storage and a static node do not have it. In a
+cluster of SQLite nodes, use the dashboard of the primary.
+
+The section **Authenticator** is on the tab **You & tokens** of the page
+**Access**. It shows if an authenticator is enabled.
+
+### Set up an authenticator
+
+1. Open **System** > **Access**.
+2. In the section **Authenticator**, click **Set up authenticator**.
+3. Enter the **Current password**.
+4. Click **Next**. The dialog shows the **Authenticator key**.
+5. Add a new account in your authenticator app.
+6. Enter the **Authenticator key** as the key of that account.
+7. Click **Next**.
+8. Enter the **Current password again**.
+9. Enter the code from the app in **New authenticator code**.
+10. Click **Confirm authenticator**.
+
+kudurru signs out all the browser sessions of the account. The API tokens
+of the account continue to work. Sign in again. Enter the password and the
+next code from the app in **Authenticator code**.
+
+NOTE: The key is valid for 5 minutes. If you are not ready in that time,
+start the procedure again.
+
+The app must use these values: a code that changes with the time, SHA1,
+6 digits and 30 seconds. Most apps use them by default.
+
+To move to a different app or telephone, click **Replace authenticator**.
+The steps are the same. The dialog also asks for codes from the old
+authenticator.
+
+### Remove your authenticator
+
+1. In the section **Authenticator**, click **Disable authenticator**.
+2. Enter the **Current password**.
+3. Enter the **Current authenticator code**.
+4. Click **Disable authenticator**.
+
+kudurru signs out all the browser sessions of the account. Sign in again
+with the password only.
+
+### Remove the authenticator of a different person
+
+Use this procedure for a person who lost the authenticator. You must have
+the role Admin.
+
+1. Open **System** > **Access**.
+2. Click the tab **Identity**.
+3. In the table **Local users**, find the row of the person.
+4. Click **Recover authenticator…** in that row.
+5. Make sure that the dialog shows the correct account.
+6. Click **Recover authenticator**.
+
+kudurru removes the authenticator of the account and signs out its browser
+sessions. The person signs in with the password only. Then the person can
+set up a new authenticator.
+
+NOTE: The column **Actions** is at the right end of the table. In a window
+that is not wide, scroll the table to the right to see it.
+
+If you lost the authenticator of the only administrator, use a token from
+the host. Chapter 11 has the procedure:
+[Recover a lost authenticator](11-maintenance.md#recover-a-lost-authenticator).
+
+## See and end your browser sessions
+
+A browser session starts when you sign in to the dashboard. The section
+**Browser sessions** on the tab **You & tokens** lists the sessions of your
+account. Use it to end a session on a computer that you do not use now.
+
+NOTE: Only a node with SQLite storage has this function. On a node with
+Kubernetes storage, the section shows the message **Session inventory is
+unavailable on this server.** In a cluster of SQLite nodes, end a session
+on the dashboard of the primary.
+
+| Column | Meaning |
+|---|---|
+| **Session** | The identifier of the session |
+| **Issued** | The time of the sign-in |
+| **Lifetime ends** | The time when the session ends at the latest |
+| **Idle deadline** | The time when the session ends if you do not use it |
+| **Flags** | **Current session** is the session of this browser. **Revoked** is a session that someone ended. |
+
+To end a session:
+
+1. Find the row of the session.
+2. Click the button in the column **Actions**. Its name starts with
+   **Revoke session**.
+3. Make sure that the dialog shows the correct session.
+4. Click **Revoke selected session**.
+5. Click **Refresh sessions** to see the new state.
+
+For the session of this browser, the button is **Revoke this session**.
+After you click it, the browser shows the sign-in page.
+
+NOTE: The column **Actions** is at the right end of the table. In a window
+that is not wide, scroll the table to the right to see it.
+
+A change of your password also ends the other sessions of the account.
 
 ## API tokens
 

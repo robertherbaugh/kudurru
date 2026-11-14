@@ -26,7 +26,7 @@ const (
 	StatusBlockedExact
 	StatusBlockedCNAME
 	StatusBlockedUpstream
-	StatusBlockedRPZ // reserved
+	StatusBlockedRPZ
 	StatusBlockedSafeSearch
 	StatusBlockedRateLimit
 	StatusRefusedACL

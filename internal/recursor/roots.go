@@ -31,6 +31,18 @@ var rootHints = []struct {
 	{"m.root-servers.net.", "202.12.27.33", "2001:dc3::35"},
 }
 
+// DefaultRootHints returns detached numeric endpoints from the same IANA hints
+// used by recursion. It does not prime, resolve names, or test network routes.
+func DefaultRootHints() []netip.AddrPort {
+	out := make([]netip.AddrPort, 0, 2*len(rootHints))
+	for _, hint := range rootHints {
+		out = append(out,
+			netip.AddrPortFrom(netip.MustParseAddr(hint.v4), 53),
+			netip.AddrPortFrom(netip.MustParseAddr(hint.v6), 53))
+	}
+	return out
+}
+
 // DefaultTrustAnchors are the root zone's key-signing keys as DS records
 // from IANA's root-anchors.xml: KSK-2017 (20326) and KSK-2024 (38696),
 // which signs the root DNSKEY set from 11 October 2026.

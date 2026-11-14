@@ -2,8 +2,10 @@ import { useQuery } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { useApi } from '../api/context';
 import { describe, expect, it } from 'vitest';
+import { http, HttpResponse } from 'msw';
 import { mockDB, signIn } from '../mocks/handlers';
-import { renderWithApp } from '../test/utils';
+import { API, renderWithApp } from '../test/utils';
+import { server } from '../test/setup';
 import { AccountMenu, isLocalUser, passwordProblems, principalName } from './AccountMenu';
 
 function fill(dialog: HTMLElement, current: string, next: string, confirm = next) {
@@ -13,6 +15,28 @@ function fill(dialog: HTMLElement, current: string, next: string, confirm = next
 }
 
 describe('change password', () => {
+  it('sends a factor proof once and clears it after an unsuccessful command', async () => {
+    const requests: unknown[] = [];
+    server.use(http.post(`${API}/auth/password`, async ({ request }) => {
+      requests.push(await request.json());
+      return HttpResponse.json({ error: { key: 'unavailable', message: 'Try a new request' } }, { status: 503 });
+    }));
+    renderWithApp(<AccountMenu />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Change password' }));
+    const dialog = await screen.findByRole('dialog');
+    fill(dialog, 'admin', 'new-password');
+    const code = within(dialog).getByLabelText(/^Authenticator code/);
+    fireEvent.change(code, { target: { value: '012345' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Change password' }));
+    expect(await screen.findByText('Try a new request')).toBeInTheDocument();
+    await waitFor(() => expect(code).toHaveValue(''));
+    expect(requests).toEqual([{ currentPassword: 'admin', newPassword: 'new-password', totpCode: '012345' }]);
+    fireEvent.change(code, { target: { value: '654321' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    expect(within(await screen.findByRole('dialog')).getByLabelText(/^Authenticator code/)).toHaveValue('');
+  });
+
   it('validates before sending', () => {
     expect(passwordProblems('', 'short', 'other')).toEqual({ current: 'Required', next: 'At least 8 characters', confirm: 'Does not match the new password' });
     expect(passwordProblems('same-pass', 'same-pass', 'same-pass')).toEqual({ next: 'Must differ from the current password' });

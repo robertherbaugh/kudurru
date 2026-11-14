@@ -14,6 +14,7 @@ import (
 	"github.com/miekg/dns"
 	"github.com/quic-go/quic-go"
 
+	"github.com/robertherbaugh/kudurru/internal/clientid"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 )
 
@@ -46,9 +47,7 @@ type doqListener struct {
 	qcfg *quic.Config
 
 	mu     sync.Mutex
-	pc     net.PacketConn
-	tr     *quic.Transport
-	ln     *quic.Listener
+	ln     *quicSockets
 	active map[*quic.Conn]struct{}
 
 	workers chan struct{}
@@ -89,10 +88,19 @@ func (l *doqListener) Ready() bool { return l.ready.Load() }
 func (l *doqListener) Addr() net.Addr {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.pc == nil {
+	if l.ln == nil {
 		return nil
 	}
-	return l.pc.LocalAddr()
+	return l.ln.Addr()
+}
+
+func (l *doqListener) Sockets() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.ln == nil {
+		return 0
+	}
+	return len(l.ln.packets)
 }
 
 func (l *doqListener) Bind() error {
@@ -100,18 +108,15 @@ func (l *doqListener) Bind() error {
 	if err != nil {
 		return err
 	}
-	pc, err := net.ListenPacket("udp", l.spec.Address)
+	tls := r.TLSConfig(ProtoDoQ.ALPN()...)
+	ln, err := listenQUICSockets(l.spec.Address, l.env.sockets, func(tr *quic.Transport) (quicAcceptor, error) {
+		return tr.Listen(tls, l.qcfg)
+	})
 	if err != nil {
-		return err
-	}
-	tr := &quic.Transport{Conn: pc}
-	ln, err := tr.Listen(r.TLSConfig(ProtoDoQ.ALPN()...), l.qcfg)
-	if err != nil {
-		_ = pc.Close()
 		return err
 	}
 	l.mu.Lock()
-	l.pc, l.tr, l.ln = pc, tr, ln
+	l.ln = ln
 	l.mu.Unlock()
 	return nil
 }
@@ -119,17 +124,17 @@ func (l *doqListener) Bind() error {
 func (l *doqListener) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.pc == nil {
+	if l.ln == nil {
 		return nil
 	}
-	_ = l.ln.Close()
-	_ = l.tr.Close()
-	err := l.pc.Close()
-	l.pc = nil
+	err := l.ln.closeSockets()
+	l.ln = nil
 	return err
 }
 
 func (l *doqListener) Serve(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	l.mu.Lock()
 	ln := l.ln
 	l.mu.Unlock()
@@ -143,7 +148,7 @@ func (l *doqListener) Serve(ctx context.Context) error {
 	for {
 		conn, err := ln.Accept(ctx)
 		if err != nil {
-			if ctx.Err() == nil && !errors.Is(err, quic.ErrServerClosed) {
+			if ctx.Err() == nil && !normalQUICClose(err) {
 				serveErr = err
 			}
 			break
@@ -170,6 +175,7 @@ func (l *doqListener) Serve(ctx context.Context) error {
 	// DOQ_NO_ERROR.
 	l.ready.Store(false)
 	_ = ln.Close()
+	cancel() // An individual accept-loop failure must also join stream acceptors.
 	conns.Wait()
 	drained := make(chan struct{})
 	go func() { l.streams.Wait(); close(drained) }()
@@ -245,33 +251,77 @@ func (l *doqListener) serveStream(conn *quic.Conn, st *quic.Stream) {
 		return
 	}
 
-	resp := l.env.handler.resolveFreshID(st.Context(), req, clientFrom(conn.RemoteAddr(), pipeline.ProtoDoQ))
-	if resp == nil {
+	client := clientFrom(conn.RemoteAddr(), pipeline.ProtoDoQ)
+	client.ClientID = clientid.FromSNI(conn.ConnectionState().TLS.ServerName, l.spec.ClientIDDomain)
+	// quic.Stream.Context is the SEND-side lifetime: even our successful FIN
+	// cancels it. Preserve connection/reset cancellation independently, while
+	// letting our own successful completion leave the original query valid
+	// through its final admission check. No deadline is replaced or renewed.
+	requestCtx, cancelRequest := context.WithCancelCause(conn.Context())
+	var ownFIN atomic.Bool
+	bridgeDone := make(chan struct{})
+	stopBridge := context.AfterFunc(st.Context(), func() {
+		defer close(bridgeDone)
+		cause := context.Cause(st.Context())
+		if cause != context.Canceled || !ownFIN.Load() {
+			cancelRequest(cause)
+		}
+	})
+	defer func() {
+		if !stopBridge() {
+			<-bridgeDone
+		}
+		cancelRequest(context.Canceled)
+	}()
+	out, err := l.env.handler.resolveEncrypted(requestCtx, l.env, wire, req, client)
+	if err != nil {
+		st.CancelWrite(DoQInternalError)
+		return
+	}
+	defer out.Close()
+	if !out.current() {
 		// A pipeline drop: reset the stream without a response.
 		st.CancelRead(DoQRequestCancelled)
 		st.CancelWrite(DoQRequestCancelled)
 		return
 	}
-	out, err := resp.Pack()
-	if err != nil {
-		fail := new(dns.Msg)
-		fail.SetRcode(req, dns.RcodeServerFailure)
-		fail.Id = 0
-		if out, err = fail.Pack(); err != nil {
-			st.CancelWrite(DoQInternalError)
-			return
+	buf := make([]byte, 2+len(out.wire))
+	binary.BigEndian.PutUint16(buf, uint16(len(out.wire))) //nolint:gosec // Pack never exceeds 65535 bytes
+	copy(buf[2:], out.wire)
+	finCompleted := false
+	if err := out.emit(func() error {
+		deadline := time.Now().Add(lim.WriteTimeout)
+		if !out.deadline.IsZero() && out.deadline.Before(deadline) {
+			deadline = out.deadline
 		}
-	}
-	buf := make([]byte, 2+len(out))
-	binary.BigEndian.PutUint16(buf, uint16(len(out))) //nolint:gosec // Pack never exceeds 65535 bytes
-	copy(buf[2:], out)
-	_ = st.SetWriteDeadline(time.Now().Add(lim.WriteTimeout))
-	if _, err := st.Write(buf); err != nil {
-		st.CancelWrite(DoQInternalError)
+		if err := st.SetWriteDeadline(deadline); err != nil {
+			return err
+		}
+		if _, err := st.Write(buf); err != nil {
+			return err
+		}
+		// STREAM FIN belongs to the same admission as the framed response.
+		ownFIN.Store(true)
+		if err := st.Close(); err != nil {
+			cancelRequest(err)
+			return err
+		}
+		finCompleted = true
+		// Observe any already reported peer reset synchronously as well as
+		// through the joined cancellation bridge.
+		if cause := context.Cause(st.Context()); cause != nil && cause != context.Canceled {
+			cancelRequest(cause)
+			return cause
+		}
+		return nil
+	}); err != nil {
+		// A later context/admission error cannot undo bytes plus FIN already
+		// handed off. Resetting then can corrupt the completed peer response.
+		if !finCompleted {
+			st.CancelWrite(DoQInternalError)
+		}
 		return
 	}
-	// STREAM FIN: no more data on this stream (RFC 9250 §4.2).
-	_ = st.Close()
 }
 
 // protocolError closes the connection with DOQ_PROTOCOL_ERROR (RFC 9250

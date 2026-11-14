@@ -1,0 +1,334 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: unblockrequests.kudurru.io
+spec:
+  group: kudurru.io
+  names:
+    kind: UnblockRequest
+    listKind: UnblockRequestList
+    plural: unblockrequests
+    shortNames:
+    - ubr
+    singular: unblockrequest
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.domain
+      name: DOMAIN
+      type: string
+    - jsonPath: .spec.client
+      name: CLIENT
+      type: string
+    - jsonPath: .status.state
+      name: STATE
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          UnblockRequest is a user's request, made on the block page, to allow a
+          blocked name. Administrators approve (which adds an allow entry) or
+          deny it; the leader expires and prunes old requests
+          (docs/deploy/blocking-page.md, "Unblock requests").
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              UnblockRequestSpec is what a user asked for on the block page. The block
+              page writes it; administrators decide through the API (status).
+            properties:
+              block:
+                description: |-
+                  Block is why the name was blocked; nil when the block page did not
+                  know.
+                properties:
+                  kind:
+                    description: Kind is list, service, safesearch, policy (allow-only)
+                      or cname.
+                    maxLength: 32
+                    type: string
+                  list:
+                    description: |-
+                      List is the deciding list ("ns/name", "service:<id>",
+                      "safesearch:<engine>").
+                    maxLength: 300
+                    type: string
+                  policy:
+                    description: Policy is the policy that applied to the client,
+                      "ns/name".
+                    maxLength: 300
+                    type: string
+                  rule:
+                    description: Rule is the matching rule text.
+                    maxLength: 1024
+                    type: string
+                type: object
+              client:
+                description: |-
+                  Client is the requester as querylog.privacy allows recording it:
+                  the address (full), its /24 or /48 (prefix), or empty (hidden).
+                maxLength: 64
+                type: string
+              clientPrivacy:
+                description: ClientPrivacy says how Client was recorded.
+                enum:
+                - full
+                - prefix
+                - hidden
+                type: string
+              contact:
+                maxLength: 254
+                type: string
+              domain:
+                description: |-
+                  Domain is the blocked name, from the Host header or TLS server name
+                  of the block page request (never from the form).
+                maxLength: 253
+                minLength: 1
+                type: string
+              groups:
+                description: Groups are the client's ClientGroups ("ns/name") at request
+                  time.
+                items:
+                  maxLength: 300
+                  type: string
+                maxItems: 16
+                type: array
+              node:
+                description: Node is the node whose block page took the request.
+                maxLength: 253
+                type: string
+              policies:
+                description: |-
+                  Policies are the policies that applied to the client, highest
+                  priority first.
+                items:
+                  maxLength: 300
+                  type: string
+                maxItems: 16
+                type: array
+              reason:
+                description: Reason is the user's explanation (plain text).
+                maxLength: 500
+                type: string
+              requestedAt:
+                description: |-
+                  RequestedAt is the latest submission (the object's creation is the
+                  first); Submissions counts them.
+                format: date-time
+                type: string
+              requesterName:
+                description: RequesterName and Contact are what the user typed (plain
+                  text).
+                maxLength: 100
+                type: string
+              submissions:
+                minimum: 0
+                type: integer
+            required:
+            - domain
+            type: object
+          status:
+            description: UnblockRequestStatus is the decision.
+            properties:
+              allow:
+                description: Allow is the allow entry of an approval.
+                properties:
+                  added:
+                    description: |-
+                      Added is true when this approval added Entry (it was not on the
+                      list before); only then does expiry remove it.
+                    type: boolean
+                  entry:
+                    maxLength: 300
+                    type: string
+                  expiresAt:
+                    description: ExpiresAt ends a time-limited approval; nil is permanent.
+                    format: date-time
+                    type: string
+                  group:
+                    description: Group is the ClientGroup of a group approval, "ns/name".
+                    maxLength: 300
+                    type: string
+                  list:
+                    description: |-
+                      List is the allow BlockList, "ns/name", and Entry the line in its
+                      inline "ui" source.
+                    maxLength: 300
+                    type: string
+                  match:
+                    description: Match is exact (the name only) or subdomains (the
+                      name and below).
+                    enum:
+                    - exact
+                    - subdomains
+                    type: string
+                  policies:
+                    description: Policies are the policies the list was attached to
+                      by this approval.
+                    items:
+                      type: string
+                    maxItems: 64
+                    type: array
+                  removed:
+                    description: Removed is when the expired entry was taken off the
+                      list.
+                    format: date-time
+                    type: string
+                  scope:
+                    description: Scope is everyone (the ui-allow list) or group (ui-allow-<group>).
+                    enum:
+                    - everyone
+                    - group
+                    type: string
+                required:
+                - entry
+                - list
+                - match
+                - scope
+                type: object
+              decidedAt:
+                format: date-time
+                type: string
+              decidedBy:
+                description: |-
+                  DecidedBy is the administrator ("user:alice") or "system" for
+                  expiry; DecidedAt when.
+                maxLength: 300
+                type: string
+              history:
+                description: |-
+                  History holds the earlier decisions when the user asked again,
+                  oldest first.
+                items:
+                  description: UnblockDecision is one past decision of a request that
+                    was asked again.
+                  properties:
+                    allow:
+                      description: UnblockAllow is the allow entry an approval created.
+                      properties:
+                        added:
+                          description: |-
+                            Added is true when this approval added Entry (it was not on the
+                            list before); only then does expiry remove it.
+                          type: boolean
+                        entry:
+                          maxLength: 300
+                          type: string
+                        expiresAt:
+                          description: ExpiresAt ends a time-limited approval; nil
+                            is permanent.
+                          format: date-time
+                          type: string
+                        group:
+                          description: Group is the ClientGroup of a group approval,
+                            "ns/name".
+                          maxLength: 300
+                          type: string
+                        list:
+                          description: |-
+                            List is the allow BlockList, "ns/name", and Entry the line in its
+                            inline "ui" source.
+                          maxLength: 300
+                          type: string
+                        match:
+                          description: Match is exact (the name only) or subdomains
+                            (the name and below).
+                          enum:
+                          - exact
+                          - subdomains
+                          type: string
+                        policies:
+                          description: Policies are the policies the list was attached
+                            to by this approval.
+                          items:
+                            type: string
+                          maxItems: 64
+                          type: array
+                        removed:
+                          description: Removed is when the expired entry was taken
+                            off the list.
+                          format: date-time
+                          type: string
+                        scope:
+                          description: Scope is everyone (the ui-allow list) or group
+                            (ui-allow-<group>).
+                          enum:
+                          - everyone
+                          - group
+                          type: string
+                      required:
+                      - entry
+                      - list
+                      - match
+                      - scope
+                      type: object
+                    decidedAt:
+                      format: date-time
+                      type: string
+                    decidedBy:
+                      maxLength: 300
+                      type: string
+                    note:
+                      maxLength: 500
+                      type: string
+                    state:
+                      description: UnblockRequestState is the lifecycle state of an
+                        UnblockRequest.
+                      enum:
+                      - Pending
+                      - Approved
+                      - Denied
+                      - Expired
+                      type: string
+                  required:
+                  - state
+                  type: object
+                maxItems: 20
+                type: array
+              note:
+                description: |-
+                  Note is the administrator's note, shown to the user on the block
+                  page.
+                maxLength: 500
+                type: string
+              state:
+                description: State is Pending (also when empty), Approved, Denied
+                  or Expired.
+                enum:
+                - Pending
+                - Approved
+                - Denied
+                - Expired
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

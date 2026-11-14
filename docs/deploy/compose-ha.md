@@ -20,10 +20,20 @@ kudurru, dnsdist and keepalived from `deploy/compose/ha/node-{a,b,c}`.
   logs the real client address and applies client groups correctly.
 - kudurru runs the same file-managed configuration on every node.
   `kudurru.yaml` and `objects.d/` are distributed by your own tooling (git,
-  ansible, rsync); the UI is read-only for `kudurru.io` objects in this shape.
+  ansible, rsync); `cluster.role: static` makes the API and dashboard read-only for object
+  changes, including objects previously managed by the API. Every member
+  remains its own leader and has an independent database identity.
 
 The `kudurru-dnsdist` and `kudurru-keepalived` images (supervisors
 `kudurru edge run` and `kudurru vip run`) are milestone M4 deliverables.
+
+Static twins do not replicate: you distribute the files, and the API accepts
+no object changes. For SQLite nodes that take changes through the API and the
+dashboard and copy them to the other nodes, see the
+[enrolled SQLite cluster](sqlite-cluster.md). It is a different shape: a
+database that is enrolled does not start with `cluster.role: static`. The
+compose files of this page are not set up for it, and its acceptance behind
+a keepalived VIP on separate machines has not been run.
 
 ## Prepare every host
 
@@ -37,7 +47,9 @@ A free personal key covers up to 3 nodes for eligible community use
 1. Replace the example addresses (10.0.0.11-13, VIP 10.0.0.53/24, `eth0`) in
    the three `docker-compose.yml` files: `--backends`, `--peers`, `--vip` and
    `KUDURRU_LISTENERS__PROXYPROTOCOLFROM` (exact `/32`s of the three hosts,
-   never the LAN prefix).
+   never the LAN prefix). Also replace the internal endpoints in the identical
+   `cluster.peers` list in every `kudurru.yaml`. Each unique name must match
+   that host's `node.name`; endpoints include the TLS port (normally 8082).
 2. Create the secrets once and copy the same files to every host:
 
    ```sh
@@ -72,11 +84,36 @@ dnsdist's pool without moving the VIP; `kudurru vip drain` moves it (D51).
 
 ## Changing configuration
 
+Static membership is a host-only setting that requires a restart. Its shared
+TLS and bearer credentials permit internal reads; the peer list grants no
+replication, enrollment or promotion authority. A static process refuses a
+database already enrolled as a primary or follower. An unavailable peer remains
+listed with unknown readiness; local DNS keeps using its admitted local state.
+
+Object, cluster-setting, IAM credential and provider mutation requests return
+`503 read_only` after ordinary authentication and permission checks. The
+external-dns mutation webhook cannot be enabled in this mode. Supply the
+bootstrap password file shown above or provision accounts before enabling
+static mode. Public block-page unblock requests are disabled as well.
+A generated password requiring a first-login change cannot be
+changed through this read-only API. Host-local administration remains a
+separate privileged operation. Sign-in, sign-out and inventory reads remain
+available. Blocking toggles and cache flushes affect only the addressed node;
+blocking responses explicitly report `scope: node`.
+
 Edit `kudurru.yaml` or `objects.d/` in your source of truth and distribute it
 to all three hosts. Objects re-apply on file change; keys flagged `R` in
 `kudurru config schema` need `docker compose restart kudurru` (one host at a
-time). Zone serials are `max(prev+1, unix_now)` on each twin, close but not
-identical: external secondaries should transfer from one named node.
+time). Cluster settings are the exception: each twin copies them from
+`kudurru.yaml` into its database on its first 0.2 start and keeps them, so a
+later edit of a cluster key in the file is not applied (the start logs a
+warning naming the keys whose file value differs), and the API refuses
+settings writes. Set the cluster settings you need
+before a host's first 0.2 start
+([Upgrading from 0.1.x](runbooks.md#upgrading-from-01x)); changing them
+afterwards is not supported in 0.2.0. Zone serials are
+`max(prev+1, unix_now)` on each twin, close but not identical: external
+secondaries should transfer from one named node.
 
 ## Audit log, query log and statistics of all nodes
 
@@ -93,3 +130,10 @@ and keep their data until it is back.
 One host at a time: `docker compose pull && docker compose up -d`, wait for
 `kudurru health --ready`, then the next host. See
 [runbooks.md](runbooks.md#upgrading).
+
+From 0.1.x, take the new compose files first (`command: [serve]`,
+`cluster.role: static` with `cluster.peers`) and follow
+[Upgrading from 0.1.x](runbooks.md#upgrading-from-01x). While one host still
+runs 0.1.0, the upgraded hosts list it on **Nodes** with its version and
+readiness and report its health detail as `peer health: unsupported`;
+each host keeps answering from its own files.

@@ -146,3 +146,10 @@ func TestDeleteZoneKube(t *testing.T) {
 		t.Fatal("zone deleted alone")
 	}
 }
+
+// TestIntegrationObjectWritesKube runs the Integration object writes on the
+// kube driver over kube-apiserver with the Integration CRD (D400).
+func TestIntegrationObjectWritesKube(t *testing.T) {
+	st := kubeStore(t)
+	runIntegrationObjectWrites(t, integrationHarness(t, func(o *Options) { o.Store = st }))
+}

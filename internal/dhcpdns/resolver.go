@@ -48,13 +48,22 @@ func New(stores map[string]*dhcp.LeaseStore) *Resolver {
 func (r *Resolver) SetSource(fn func() []*dhcp.LeaseStore) { r.source.Store(&fn) }
 
 func (r *Resolver) snapshots() []*dhcp.DNSSnapshot {
+	return r.capture(true)
+}
+
+// capture loads each store's committed snapshot once. registered keeps only
+// scopes that publish DNS; identity reads use every scope.
+func (r *Resolver) capture(registered bool) []*dhcp.DNSSnapshot {
+	if r == nil {
+		return nil
+	}
 	stores := r.stores
 	if fn := r.source.Load(); fn != nil {
 		stores = (*fn)()
 	}
 	result := make([]*dhcp.DNSSnapshot, 0, len(stores))
 	for _, store := range stores {
-		if snapshot := store.DNS(); snapshot != nil && snapshot.Enabled() {
+		if snapshot := store.DNS(); snapshot != nil && (!registered || snapshot.Enabled()) {
 			result = append(result, snapshot)
 		}
 	}
@@ -235,4 +244,62 @@ func (r *Resolver) Hostnames(address netip.Addr) []string {
 		return nil
 	}
 	return []string{strings.TrimSuffix(record.Name, ".")}
+}
+
+// LeaseMAC returns the MAC of the live bound lease of address on this node,
+// from every scope whether or not it registers DNS (D397). Two live leases
+// with different MACs for one address are ambiguous and fill nothing. It reads
+// committed in-memory snapshots only: no store, SQL or leader.
+func (r *Resolver) LeaseMAC(address netip.Addr, at time.Time) (string, bool) {
+	if r == nil {
+		return "", false
+	}
+	address = address.Unmap()
+	stores := r.stores
+	if fn := r.source.Load(); fn != nil {
+		stores = (*fn)()
+	}
+	mac := ""
+	for _, store := range stores {
+		snapshot := store.DNS()
+		if snapshot == nil {
+			continue
+		}
+		lease, found := snapshot.Bound(address)
+		if !found || !at.Before(lease.ExpiresAt) {
+			continue
+		}
+		if mac != "" && mac != lease.MAC {
+			return "", false
+		}
+		mac = lease.MAC
+	}
+	return mac, mac != ""
+}
+
+// Lease is one bound lease of this node with the scope that holds it.
+type Lease struct {
+	Scope string
+	dhcp.BoundLease
+}
+
+// Leases lists the bound leases of every scope on this node, expired ones
+// included, sorted by scope and address. It is a management read; the query
+// path uses LeaseMAC.
+func (r *Resolver) Leases() []Lease {
+	var out []Lease
+	for _, snapshot := range r.capture(false) {
+		scope := snapshot.Scope()
+		if scope == "" {
+			scope = "default"
+		}
+		snapshot.ForBound(func(l dhcp.BoundLease) { out = append(out, Lease{Scope: scope, BoundLease: l}) })
+	}
+	slices.SortFunc(out, func(a, b Lease) int {
+		if n := strings.Compare(a.Scope, b.Scope); n != 0 {
+			return n
+		}
+		return a.Address.Compare(b.Address)
+	})
+	return out
 }

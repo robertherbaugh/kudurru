@@ -3,8 +3,8 @@
 // ports under a temporary directory (sqlite store, own data directory,
 // admin socket, encryption key and admin password files, objects.d with a
 // primary zone, a block list and, on a node with a key, a policy), starts
-// the process, waits for GET /healthz/ready on the ops listener and stops
-// it again (the server log goes to test-results/; KUDURRU_E2E_KEEP=1 keeps
+// the process, waits for fixed-seed metadata, DNS and ops readiness, and
+// stops it again (the server log goes to test-results/; KUDURRU_E2E_KEEP=1 keeps
 // the temporary directory). The Go side of the same idea is
 // internal/testutil/kudurrutest.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
@@ -15,6 +15,8 @@ import dgram from 'node:dgram';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startupRoutesSettled } from './startup';
+import { query, TYPE_A } from './dns';
 
 export const WEB_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 export const REPO_DIR = path.resolve(WEB_DIR, '..');
@@ -124,6 +126,8 @@ export interface ServerOptions {
   upstream: string;
   /** The admin password; undefined lets kudurru generate one (must change at first login). */
   adminPassword?: string;
+  /** Optional API/dashboard path prefix, without a trailing slash. */
+  pathPrefix?: string;
   /** Node name. */
   node?: string;
   /**
@@ -132,6 +136,8 @@ export interface ServerOptions {
    * free limit of one policy.
    */
   community?: boolean;
+  /** credentials.allowedFiles of the node: the files an Integration may reference. */
+  allowedCredentialFiles?: string[];
 }
 
 export interface Server {
@@ -145,8 +151,14 @@ export interface Server {
   ops: string;
   /** The admin password: the configured one, or the generated one from stderr. */
   adminPassword: string;
+  /** The internal (member) listener, host:port. */
+  internal: string;
+  /** The environment of the process (encryption and license key files), for offline commands. */
+  env: Record<string, string>;
   log: () => string;
   stop: () => Promise<void>;
+  /** Stops the process and starts it again on the same directory and ports; resolves once it is ready. */
+  restart: () => Promise<void>;
 }
 
 /**
@@ -200,7 +212,7 @@ async function startServerOnce(bin: string, opts: ServerOptions): Promise<Server
     store: { driver: 'sqlite' },
     listeners: {
       dns: [{ address: ports.dns, protocols: ['udp', 'tcp'] }],
-      api: { address: ports.api },
+      api: { address: ports.api, pathPrefix: opts.pathPrefix },
       ops: { address: ports.ops },
       metrics: { address: ports.metrics },
       internal: { address: ports.internal },
@@ -215,24 +227,31 @@ async function startServerOnce(bin: string, opts: ServerOptions): Promise<Server
     // may name the loopback stub publisher (support/lists.ts).
     blocking: { initStrategy: 'blocking', allowLocalListURLs: true },
     auth: { adminSocket: { path: path.join(dir, 'admin.sock') } },
+    ...(opts.allowedCredentialFiles?.length ? { credentials: { allowedFiles: opts.allowedCredentialFiles } } : {}),
     log: { level: 'info', format: 'text' },
   };
   const configFile = path.join(dir, 'kudurru.yaml');
   fs.writeFileSync(configFile, JSON.stringify(config, null, 2), { mode: 0o600 });
 
   let out = '';
-  const child: ChildProcess = spawn(bin, ['serve', '--config', configFile], { env, stdio: ['ignore', 'pipe', 'pipe'] });
-  child.stdout?.on('data', (b: Buffer) => (out += b.toString()));
-  child.stderr?.on('data', (b: Buffer) => (out += b.toString()));
+  let child: ChildProcess;
   let exited: string | null = null;
-  const done = new Promise<void>((resolve) =>
-    child.once('exit', (code, sig) => {
-      exited = sig ? `signal ${sig}` : `exit ${code}`;
-      resolve();
-    }),
-  );
-
-  const stop = async () => {
+  let done: Promise<void> = Promise.resolve();
+  // One process of this node; restart() starts another on the same directory.
+  const launch = () => {
+    exited = null;
+    const proc = spawn(bin, ['serve', '--config', configFile], { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    proc.stdout?.on('data', (b: Buffer) => (out += b.toString()));
+    proc.stderr?.on('data', (b: Buffer) => (out += b.toString()));
+    done = new Promise<void>((resolve) =>
+      proc.once('exit', (code, sig) => {
+        exited = sig ? `signal ${sig}` : `exit ${code}`;
+        resolve();
+      }),
+    );
+    child = proc;
+  };
+  const terminate = async () => {
     if (exited === null) {
       child.kill('SIGTERM');
       const killed = await Promise.race([done.then(() => false), sleep(15_000).then(() => true)]);
@@ -241,33 +260,52 @@ async function startServerOnce(bin: string, opts: ServerOptions): Promise<Server
         await done;
       }
     }
+  };
+
+  const stop = async () => {
+    await terminate();
     // Kept next to the traces (CI uploads test-results/ on failure).
     const logDir = path.join(WEB_DIR, 'test-results');
     fs.mkdirSync(logDir, { recursive: true });
-    fs.writeFileSync(path.join(logDir, `kudurru-${node}.log`), out);
+    // Concurrent beforeAll nodes can share a name; retain each process log.
+    fs.writeFileSync(path.join(logDir, `${path.basename(dir)}.log`), out);
     if (!process.env.KUDURRU_E2E_KEEP) fs.rmSync(dir, { recursive: true, force: true });
   };
 
-  const deadline = Date.now() + 60_000;
-  let last: string;
-  for (;;) {
-    if (exited !== null) {
-      if (!process.env.KUDURRU_E2E_KEEP) fs.rmSync(dir, { recursive: true, force: true });
-      throw new Error(`kudurru exited before it was ready (${exited as string}):\n${out}`);
+  // Resolves once the process is ready; stops the node and throws otherwise.
+  const awaitReady = async () => {
+    const deadline = Date.now() + 60_000;
+    let last: string;
+    const remaining = (limit: number) => Math.max(1, Math.min(limit, deadline - Date.now()));
+    for (;;) {
+      if (exited !== null) {
+        const why = exited;
+        await stop();
+        throw new Error(`kudurru exited before it was ready (${why}):\n${out}`);
+      }
+      try {
+        const r = await fetch(`http://${ports.ops}/healthz/ready`, { signal: AbortSignal.timeout(remaining(2000)) });
+        if (r.ok && startupRoutesSettled(path.join(dataDir, 'state.db'), ZONE.object)) {
+          // Check fixed-seed DNS membership and current publication after
+          // metadata settles. A later command still retains its own gates.
+          const answer = await query(ports.dns, ZONE.host, TYPE_A, remaining(3000));
+          const published = await fetch(`http://${ports.ops}/healthz/ready`, { signal: AbortSignal.timeout(remaining(2000)) });
+          if (answer.rcode === 0 && answer.a.includes(ZONE.hostA) && published.ok && Date.now() <= deadline) break;
+        }
+        last = r.ok ? 'startup route status/lifecycle publication pending' : `${r.status} ${(await r.text()).trim()}`;
+      } catch (err) {
+        last = (err as Error).message;
+      }
+      if (Date.now() > deadline) {
+        await stop();
+        throw new Error(`kudurru not ready after 60 s: ${last}\n${out}`);
+      }
+      await sleep(100);
     }
-    try {
-      const r = await fetch(`http://${ports.ops}/healthz/ready`, { signal: AbortSignal.timeout(2000) });
-      if (r.ok) break;
-      last = `${r.status} ${(await r.text()).trim()}`;
-    } catch (err) {
-      last = (err as Error).message;
-    }
-    if (Date.now() > deadline) {
-      await stop();
-      throw new Error(`kudurru not ready after 60 s: ${last}\n${out}`);
-    }
-    await sleep(100);
-  }
+  };
+
+  launch();
+  await awaitReady();
 
   let adminPassword = opts.adminPassword;
   if (adminPassword === undefined) {
@@ -278,7 +316,15 @@ async function startServerOnce(bin: string, opts: ServerOptions): Promise<Server
     }
     adminPassword = m[1];
   }
-  return { node, dir, url: `https://${ports.api}`, blockPage: `http://${ports.blockPage}`, dns: ports.dns, ops: ports.ops, adminPassword, log: () => out, stop };
+  const restart = async () => {
+    await terminate();
+    launch();
+    await awaitReady();
+  };
+  return {
+    node, dir, url: `https://${ports.api}${opts.pathPrefix ?? ''}`, blockPage: `http://${ports.blockPage}`, dns: ports.dns, ops: ports.ops, internal: ports.internal,
+    env: { ...env }, adminPassword, log: () => out, stop, restart,
+  };
 }
 
 export function sleep(ms: number): Promise<void> {

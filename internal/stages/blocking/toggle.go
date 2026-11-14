@@ -10,20 +10,13 @@ import (
 // Forever is what DisabledUntil reports for a disable without a timer.
 var Forever = time.Unix(0, math.MaxInt64).UTC()
 
-// Publisher is the replication seam of the temporary disable
-// (dev-docs/design-record.md §7.1 step 7): a local Disable or Enable is handed
-// to it so that every replica follows. The cluster-wide implementations
-// are wired later and are not part of this package:
-//
-//   - Kubernetes v0.1: server-side apply of the annotation
-//     kudurru.io/blocking-disabled-until on the kudurru-runtime ConfigMap
-//     (Kudurru.status.blocking.disabledUntil once Kudurru is a CRD).
-//   - Docker: a row in state.db through the Store.
-//   - ha-static twins: none; the toggle stays node-local (badged in the UI).
-//
-// Every replica, including the one that published, watches that field and
-// calls Toggle.Apply with the new value. PublishDisabledUntil runs on the
-// caller's goroutine (an API request) and must not block the query path;
+// Publisher is the legacy local replication seam. Production Kubernetes uses
+// an original authorized ConfigMap CAS, then Apply only after a confirmed
+// commit; bounded read reconciliation distributes the absolute deadline.
+// Complete SQLite publishes Kudurru.status.blocking through its serving bundle.
+// Static SQLite twins retain node-local scope. These paths do not use the
+// local-first Enable/Disable methods to acknowledge a replicated mutation.
+// PublishDisabledUntil runs on the caller's goroutine, never the query path;
 // a zero time means enabled, Forever means disabled without a timer.
 type Publisher interface {
 	PublishDisabledUntil(until time.Time) error
@@ -68,7 +61,9 @@ func (t *Toggle) SetOnChange(fn func(until time.Time)) {
 }
 
 // Disable turns blocking off for d (d <= 0: until Enable) and publishes the
-// change. It returns the time blocking comes back (Forever without a
+// change. Production Kubernetes uses its guarded ConfigMap command before Apply;
+// complete SQLite publishes the canonical status through its serving bundle.
+// This local API returns the time blocking comes back (Forever without a
 // timer) and the publisher's error; the local change applies either way.
 func (t *Toggle) Disable(d time.Duration) (time.Time, error) {
 	until := Forever

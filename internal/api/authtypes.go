@@ -16,6 +16,16 @@ type (
 		Providers             []AuthProvider     `json:"providers" nullable:"false" doc:"The OIDC login options."`
 		HasDefaultCredentials bool               `json:"hasDefaultCredentials" doc:"The bootstrap admin still has its generated password."`
 		Session               *AuthSessionLimits `json:"session,omitempty"`
+		Role                  string             `json:"role,omitempty" doc:"follower on an enrolled SQLite follower, which offers local login only: OIDC login runs on the primary. Absent otherwise."`
+		Primary               string             `json:"primary,omitempty" doc:"Name of the primary, set together with role."`
+		Capabilities          AuthCapabilities   `json:"capabilities"`
+	}
+	// AuthCapabilities says which account commands this runtime offers, so a
+	// client can hide controls it would only see refused (D387).
+	AuthCapabilities struct {
+		FactorManagement  bool `json:"factorManagement" doc:"Authenticator (TOTP) enrollment, disabling and recovery, and authenticator codes at login. False on the Kubernetes driver, where the routes answer 503 factor_management_unavailable: use the identity provider's second factor (D387)."`
+		LocalUserCommands bool `json:"localUserCommands" doc:"Creating, changing and deleting local users and resetting their passwords (POST /iam/users, PATCH and DELETE /iam/users/{name}, POST /iam/users/{name}/password). False on the Kubernetes driver, where the routes answer 503 user_management_unavailable (D387, D396)."`
+		IAMObjectCommands bool `json:"iamObjectCommands" doc:"Creating, replacing and deleting ServiceAccounts, IdentityProviders and RoleBindings, and issuing service account tokens. False on the Kubernetes driver, where the ServiceAccount and IdentityProvider commands answer 503 iam_management_unavailable and the RoleBinding commands 503 unavailable: change those objects with kubectl (D294, D396)."`
 	}
 	// AuthProvider is one OIDC login option.
 	AuthProvider struct {
@@ -32,6 +42,7 @@ type (
 	LoginRequest struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		TOTPCode string `json:"totpCode,omitempty" doc:"The enrolled authenticator code, when required."`
 	}
 	// SessionInfo is the answer of POST /auth/login and POST
 	// /auth/password (stack.MeResponse): the new session's principal,
@@ -65,6 +76,17 @@ type (
 		CurrentPassword string `json:"currentPassword" doc:"The current password."`
 		NewPassword     string `json:"newPassword" doc:"The new password (at least 12 characters, different from the current one)."`
 		RevokeTokens    bool   `json:"revokeTokens,omitempty" doc:"Also revoke every API token of the user; a password change alone revokes sessions, not tokens."`
+		TOTPCode        string `json:"totpCode,omitempty" doc:"The enrolled authenticator code, when required."`
+	}
+	// SessionRecordInfo is an enrollment belonging to the current account UID.
+	// It never includes cookie secrets, CSRF hashes or authentication evidence.
+	SessionRecordInfo struct {
+		ID            string    `json:"id"`
+		IssuedAt      time.Time `json:"issuedAt"`
+		ExpiresAt     time.Time `json:"expiresAt"`
+		IdleExpiresAt time.Time `json:"idleExpiresAt"`
+		Current       bool      `json:"current"`
+		Revoked       bool      `json:"revoked"`
 	}
 
 	// CreateTokenRequest is the body of POST /auth/tokens.
@@ -91,6 +113,7 @@ type (
 		Namespace string `json:"namespace,omitempty" doc:"The service account's namespace."`
 		ID        string `json:"id,omitempty" doc:"The owner's principal id (local:alice, oidc:...)."`
 		Provider  string `json:"provider,omitempty" doc:"local, or the identity provider id."`
+		UID       string `json:"uid,omitempty" doc:"Immutable account identity for local users and service accounts."`
 	}
 	// CreatedToken is the answer of POST /auth/tokens; Token, the kdr_
 	// secret, is shown this once.
@@ -102,6 +125,8 @@ type (
 	// IAMUser is one local user of GET /iam/users (adminsock.User).
 	IAMUser struct {
 		Name               string     `json:"name"`
+		UID                string     `json:"uid" doc:"Immutable account identity required for administrator recovery and password reset."`
+		ResourceVersion    string     `json:"resourceVersion,omitempty" doc:"Opaque version required for administrator password-reset compare-and-swap."`
 		DisplayName        string     `json:"displayName,omitempty"`
 		BuiltinAdmin       bool       `json:"builtinAdmin"`
 		Disabled           bool       `json:"disabled"`

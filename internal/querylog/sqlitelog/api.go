@@ -358,6 +358,7 @@ type Suggestions struct {
 
 // Status is GET /querylog/status.
 type Status struct {
+	Backfill *RollupBackfillStatus `json:"backfill,omitempty"`
 	Scope
 	Rows        int64      `json:"rows"`
 	DBBytes     int64      `json:"db_bytes"`

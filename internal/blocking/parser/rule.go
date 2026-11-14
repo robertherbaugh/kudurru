@@ -171,7 +171,8 @@ func (m Modifier) Values() []string {
 	return append(out, cur.String())
 }
 
-// Unsupported reasons: valid rules that v0.1 parses but does not compile.
+// Slow-candidate reasons. EmitSlow may accept a candidate; otherwise it is
+// counted as unsupported.
 const (
 	ReasonModifiers      = "modifiers"
 	ReasonWildcard       = "wildcard-pattern"
@@ -195,9 +196,9 @@ const (
 	ReasonTooLong            = "too-long"
 )
 
-// UnsupportedRule is a valid rule that this version does not compile, kept
-// with its tokenised modifiers so that the v0.2 modifier slow path can use
-// it (dev-docs/design-record.md §7.3 item 4).
+// UnsupportedRule describes one non-fast candidate, streamed through EmitSlow
+// or retained as a bounded diagnostic. Callback strings may alias the parser's
+// buffer; clone retained values before returning. Diagnostics own their strings.
 type UnsupportedRule struct {
 	Line      int
 	Text      string // the trimmed line

@@ -2,12 +2,10 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
-	"net/http/httptest"
 	"sort"
 	"strings"
 	"sync"
@@ -15,6 +13,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/central"
+	"github.com/robertherbaugh/kudurru/internal/cluster/internalapi"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
@@ -60,8 +59,20 @@ type ClusterInfo struct {
 	Nodes     int    `json:"nodes"`
 	// ReadOnly is true in the ha-static shape: objects are file-managed on
 	// every node and the API refuses object writes (503 read_only).
-	ReadOnly bool   `json:"readOnly"`
-	Node     string `json:"node"`
+	ReadOnly bool `json:"readOnly"`
+	// Role is this node's replication role on the SQLite driver. A fenced or
+	// conflicted node closes its API and is never read here.
+	Role string `json:"role,omitempty" doc:"Replication role of this node on the SQLite driver: standalone, primary or follower. Absent on other drivers."`
+	// Primary names the member that holds write authority.
+	Primary string `json:"primary,omitempty" doc:"Name of the node that holds write authority (SQLite driver)."`
+	// PrimaryRequired is true on an enrolled follower: a mutation that is in
+	// neither list below answers 503 primary_required (D368).
+	PrimaryRequired bool `json:"primaryRequired" doc:"True on an enrolled SQLite follower: every mutating operation that is in neither forwardedOperations nor localOperations answers 503 primary_required."`
+	// ForwardedOperations and LocalOperations are operationIds, set only
+	// while PrimaryRequired is true.
+	ForwardedOperations []string `json:"forwardedOperations,omitempty" doc:"operationIds that this follower sends to its primary. Set only while primaryRequired is true."`
+	LocalOperations     []string `json:"localOperations,omitempty" doc:"operationIds that this follower runs itself, on its own node-local state or by its own role. Set only while primaryRequired is true."`
+	Node                string   `json:"node"`
 	Took
 }
 
@@ -69,12 +80,13 @@ type clusterOutput struct{ Body *ClusterInfo }
 
 // EdgeInfo is GET /edge: live supervisor readiness, backends and VIP states.
 type EdgeInfo struct {
-	Edge        EdgeComponent          `json:"edge"`
-	VIP         EdgeComponent          `json:"vip"`
-	Backends    []EdgeBackend          `json:"backends" nullable:"false"`
-	VIPs        []EdgeVIP              `json:"vips" nullable:"false"`
-	Supervisors []EdgeSupervisorStatus `json:"supervisors" nullable:"false"`
-	Node        string                 `json:"node"`
+	Observation *VIPObservationSnapshot `json:"observation,omitempty"`
+	Edge        EdgeComponent           `json:"edge"`
+	VIP         EdgeComponent           `json:"vip"`
+	Backends    []EdgeBackend           `json:"backends" nullable:"false"`
+	VIPs        []EdgeVIP               `json:"vips" nullable:"false"`
+	Supervisors []EdgeSupervisorStatus  `json:"supervisors" nullable:"false"`
+	Node        string                  `json:"node"`
 	Took
 }
 
@@ -112,6 +124,9 @@ type DiagnosisMessage struct {
 type messagesOutput struct{ Body *List[DiagnosisMessage] }
 
 func (s *Server) registerNodes() {
+	s.registerClusterEnrollment()
+	s.registerVIPEvents()
+	s.registerEdgeBlocks()
 	cl := perm{resource: "cluster", verb: "read"}
 	register(s, operation(http.MethodGet, "/nodes", "listNodes", "Nodes of the cluster", "cluster"), cl, s.listNodes)
 	register(s, operation(http.MethodGet, "/nodes/{name}/health", "nodeHealth", "Readiness detail of one node", "cluster"), cl, s.nodeHealth)
@@ -158,6 +173,10 @@ func (s *Server) listNodes(ctx context.Context, _ *struct{}) (*nodesOutput, erro
 					s.log.WarnContext(ctx, "peer status unavailable", "node", p.Name, "address", p.Address, "error", err)
 					return
 				}
+				if status.Node != p.Name {
+					items[i].Error = "peer status: node identity mismatch"
+					return
+				}
 				items[i].Ready, items[i].Unready = status.Ready, status.Unready
 				items[i].Version, items[i].State, items[i].Snapshot = status.Version, status.State, status.Snapshot
 			}()
@@ -188,24 +207,66 @@ func (s *Server) ready() (bool, []string) {
 }
 
 func (s *Server) nodeHealth(ctx context.Context, in *nodeNameInput) (*nodeHealthOutput, error) {
-	if in.Name != s.opts.NodeName {
-		peers, _ := s.opts.Membership.Peers(ctx)
-		for _, p := range peers {
-			if p.Name == in.Name {
-				return nil, newError(http.StatusNotImplemented, KeyNotImplemented, "health of other nodes needs scatter-gather over the internal listener",
-					"ask "+in.Name+" directly")
-			}
+	if in.Name == s.opts.NodeName {
+		var handler http.Handler
+		if s.opts.Health != nil {
+			handler = s.opts.Health.Handler()
 		}
-		return nil, errNotFound("node " + in.Name)
+		out, err := internalapi.LocalHealth(ctx, s.opts.NodeName, handler)
+		if err != nil {
+			return nil, errUnavailable("node health: unavailable")
+		}
+		return &nodeHealthOutput{Body: &NodeHealth{Node: out.Node, Ready: out.Ready, Health: out.Health}}, nil
 	}
-	ready, _ := s.ready()
-	out := &NodeHealth{Node: s.opts.NodeName, Ready: ready, Health: map[string]any{}}
-	if s.opts.Health != nil {
-		rec := httptest.NewRecorder()
-		s.opts.Health.Handler().ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodGet, "/healthz", nil))
-		_ = json.Unmarshal(rec.Body.Bytes(), &out.Health)
+	peerCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	peers, err := s.opts.Membership.Peers(peerCtx)
+	if err != nil {
+		return nil, errUnavailable("node health: membership unavailable")
 	}
-	return &nodeHealthOutput{Body: out}, nil
+	for _, p := range peers {
+		if p.Name != in.Name {
+			continue
+		}
+		if p.Self {
+			return nil, errUnavailable("peer health: unavailable")
+		}
+		if s.opts.InternalClient == nil || p.Address == "" {
+			// A deployment limit: this node has no internal credentials, or
+			// the peer announces no internal address.
+			return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "peer health: unavailable",
+				peerTransportHint+"; or read GET "+BasePath+"/nodes/{name}/health on that node itself")
+		}
+		out, err := s.opts.InternalClient.Health(peerCtx, p.Address, p.Name)
+		if err != nil {
+			return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, peerHealthError(err), peerHealthHint)
+		}
+		return &nodeHealthOutput{Body: &NodeHealth{Node: out.Node, Ready: out.Ready, Health: out.Health}}, nil
+	}
+	return nil, errNotFound("node " + in.Name)
+}
+
+// peerHealthHint explains a peer health read that reached the peer's
+// address and failed: the peer is down, slow, refuses this node's internal
+// credential, or runs a version without the health route.
+const peerHealthHint = "check that the peer is running, reachable on its internal address, shares this node's internal credentials and runs the same kudurru version; or read GET " + BasePath + "/nodes/{name}/health on that node itself"
+
+func peerHealthError(err error) string {
+	var netErr net.Error
+	switch {
+	case errors.Is(err, context.Canceled):
+		return "peer health: canceled"
+	case errors.Is(err, context.DeadlineExceeded) || errors.As(err, &netErr) && netErr.Timeout():
+		return "peer health: timeout"
+	case errors.Is(err, internalapi.ErrHealthUnsupported):
+		return "peer health: unsupported"
+	case errors.Is(err, internalapi.ErrHealthInvalid), errors.Is(err, internalapi.ErrHealthTooLarge), errors.Is(err, internalapi.ErrHealthIdentity):
+		return "peer health: invalid response"
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "peer health: connection refused"
+	default:
+		return "peer health: unavailable"
+	}
 }
 
 func (s *Server) getCluster(ctx context.Context, _ *struct{}) (*clusterOutput, error) {
@@ -217,13 +278,28 @@ func (s *Server) getCluster(ctx context.Context, _ *struct{}) (*clusterOutput, e
 	if peers, err := s.opts.Membership.Peers(ctx); err == nil {
 		out.Nodes = len(peers)
 	}
-	if s.opts.Objects != nil {
-		out.ReadOnly = s.opts.Objects.APIReadOnly()
+	out.ReadOnly = s.staticMode()
+	out.Role, out.Primary = info.Role, info.Leader
+	if info.Role == "" {
+		out.Primary = ""
+	}
+	// The request's own source decides what its mutations would answer, so
+	// the capability names exactly that source.
+	if role := s.clusterRole(ctx); role.Follower {
+		out.Role, out.Primary, out.PrimaryRequired = "follower", role.Primary, true
+		if role.Primary != "" {
+			out.Leader = role.Primary
+		}
+		out.ForwardedOperations = s.followerOperationIDs(FollowerForwarded)
+		out.LocalOperations = s.followerOperationIDs(FollowerLocal)
 	}
 	return &clusterOutput{Body: out}, nil
 }
 
-func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, error) {
+func (s *Server) infoMessages(ctx context.Context, _ *struct{}) (*messagesOutput, error) {
+	if s.opts.InfoMessageReads != nil || s.opts.ObjectReads != nil || s.opts.ZoneReads != nil || s.opts.CanonicalSettings != nil {
+		return s.capturedInfoMessages(ctx)
+	}
 	var out []DiagnosisMessage
 	add := func(m DiagnosisMessage) {
 		m.Node = s.opts.NodeName
@@ -269,11 +345,46 @@ func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, erro
 		if snap := s.opts.Cache.Snapshot(); snap != nil && snap.State == zonecache.FromSnapshot {
 			msg := "serving from the local.db snapshot while the store is unreachable"
 			if snap.Stale {
-				msg = "serving a stale local.db snapshot; names in primary zones answer SERVFAIL"
+				msg = "serving a stale local.db snapshot; names in primary and secondary zones answer SERVFAIL"
 			}
 			add(DiagnosisMessage{Severity: "warning", Source: "zonecache", Reason: "ServingFromSnapshot", Message: msg})
 		}
 	}
+	if s.opts.Secondaries != nil {
+		for _, st := range s.opts.Secondaries.Statuses() {
+			runtime := secondaryRuntime(s.opts.NodeName, st, true)
+			if runtime.Message == "" {
+				continue
+			}
+			severity := "warning"
+			if !st.Available {
+				severity = "error"
+			}
+			if runtime.State == "pending" {
+				severity = "info"
+			}
+			add(DiagnosisMessage{Severity: severity, Source: "secondary", Reason: runtime.Reason, Object: "DNSZone/" + st.Zone,
+				Message: runtime.Message, Hint: "This node's served serial and expiry are available in the zone's secondary status."})
+		}
+	}
+	if s.opts.Stubs != nil {
+		for _, st := range s.opts.Stubs.Statuses() {
+			runtime := stubRuntime(s.opts.NodeName, st, true)
+			if runtime.Message == "" {
+				continue
+			}
+			severity := "warning"
+			if !st.Available {
+				severity = "error"
+			}
+			if runtime.State == "pending" {
+				severity = "info"
+			}
+			add(DiagnosisMessage{Severity: severity, Source: "stub", Reason: runtime.Reason, Object: "DNSZone/" + st.Zone,
+				Message: runtime.Message, Hint: "This node's discovered authorities and expiry are available in the zone's stub status."})
+		}
+	}
+	_ = s.rpzFeedMessages(func(m DiagnosisMessage) error { add(m); return nil })
 	if s.opts.Objects != nil && s.opts.Objects.APIReadOnly() {
 		add(DiagnosisMessage{Severity: "info", Source: "cluster", Reason: "ReadOnly", Message: "objects are read-only through the API (ha-static)",
 			Hint: "edit objects.d on every node"})
@@ -288,7 +399,62 @@ func (s *Server) infoMessages(context.Context, *struct{}) (*messagesOutput, erro
 			add(DiagnosisMessage{Severity: "error", Source: "health", Reason: "NotReady", Message: u})
 		}
 	}
+	if m, ok := s.auditLogMessage(ctx); ok {
+		add(m)
+	}
 	return &messagesOutput{Body: newList(out, "")}, nil
+}
+
+// infoOperationalMessages samples process observations. These do not attest to
+// the policy, lists, or routes installed in the original request's serving cut.
+func (s *Server) infoOperationalMessages(ctx context.Context, now time.Time, add func(DiagnosisMessage) error) error {
+	if m, ok := s.auditLogMessage(ctx); ok {
+		if err := add(m); err != nil {
+			return err
+		}
+	}
+	if s.opts.Objects != nil {
+		for _, d := range s.opts.Objects.Diagnoses() {
+			const prefix = "Current object loader: "
+			if len(d.Source) > maxInfoMessageText-len(prefix)-2 || len(d.Message) > maxInfoMessageText-len(prefix)-2-len(d.Source) || len(d.Object) > 512 || len(d.Hint) > 8<<10 {
+				return errUnavailable("object loader diagnosis exceeds bounds")
+			}
+			message := prefix + d.Source + ": " + d.Message
+			if err := add(DiagnosisMessage{Severity: string(d.Severity), Source: "objects", Reason: string(d.Reason), Object: d.Object, Message: message, Hint: d.Hint}); err != nil {
+				return err
+			}
+		}
+		if s.opts.Objects.APIReadOnly() {
+			if err := add(DiagnosisMessage{Severity: "info", Source: "cluster", Reason: "ReadOnly", Message: "objects are read-only through the API (ha-static)", Hint: "edit objects.d on every node"}); err != nil {
+				return err
+			}
+		}
+	}
+	if err := s.rpzFeedMessages(add); err != nil {
+		return err
+	}
+	if s.opts.Central != nil {
+		st := s.opts.Central.State()
+		if len(st.LastError) > maxInfoMessageText-len("the central database is unreachable: ") {
+			return errUnavailable("central diagnosis exceeds bounds")
+		}
+		if m, ok := centralMessage(st, now); ok {
+			if err := add(m); err != nil {
+				return err
+			}
+		}
+	}
+	if ok, unready := s.ready(); !ok {
+		for _, u := range unready {
+			if len(u) > maxInfoMessageText-len("Current node readiness: ") {
+				return errUnavailable("node health diagnosis exceeds bounds")
+			}
+			if err := add(DiagnosisMessage{Severity: "error", Source: "health", Reason: "NotReady", Message: "Current node readiness: " + u}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // centralUnreachableAfter is how long the central database may be away

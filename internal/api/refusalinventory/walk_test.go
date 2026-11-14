@@ -1,0 +1,327 @@
+package refusalinventory
+
+import (
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/robertherbaugh/kudurru/internal/api"
+)
+
+const document = `{"paths":{
+ "/auth/logout":{"post":{"operationId":"logout"}},
+ "/auth/sessions":{"get":{"operationId":"listSessions"}},
+ "/settings/sections/{section}/yaml":{"post":{"operationId":"exportSettingsSectionYAML"}},
+ "/auth/tokens":{"post":{"operationId":"createToken"},"get":{"operationId":"listTokens"},"parameters":[]}
+}}`
+
+func TestOperationsSortsSessionEndingLast(t *testing.T) {
+	ops, err := Operations([]byte(document))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, op := range ops {
+		ids = append(ids, op.ID)
+	}
+	if got := strings.Join(ids, " "); got != "listSessions listTokens createToken exportSettingsSectionYAML logout" {
+		t.Fatal("operation order:", got)
+	}
+	if _, err := Operations([]byte(`{"paths":{"/x":{"get":{}}}}`)); err == nil {
+		t.Fatal("an operation without an operationId was accepted")
+	}
+	if got := ProbePath("/objects/{kind}/{namespace}/{name}"); got != api.BasePath+"/objects/dnszones/default/refusal-probe" {
+		t.Fatal("probe path:", got)
+	}
+}
+
+func TestProblemsNameWhatToAdd(t *testing.T) {
+	envelope := func(status int, key, hint, retry string) Answer {
+		return Answer{Status: status, ContentType: "application/json", Envelope: true, Key: key, Message: "m", Hint: hint, RetryAfter: retry}
+	}
+	get := Operation{Method: http.MethodGet, Path: "/auth/sessions", ID: "listSessions"}
+	post := Operation{Method: http.MethodPost, Path: "/auth/tokens", ID: "createToken"}
+	for _, tc := range []struct {
+		name  string
+		shape api.RuntimeShape
+		op    Operation
+		a     Answer
+		want  string
+	}{
+		{"declared refusal", api.ShapeKubernetes, get, envelope(503, "sessions_unavailable", "h", ""), ""},
+		{"no refusal", api.ShapeStandalone, get, Answer{Status: 200}, ""},
+		{"plain-text error", api.ShapeStandalone, get, Answer{Status: 404, ContentType: "text/plain"}, "without the JSON error envelope"},
+		{"undeclared refusal", api.ShapeStandalone, get, envelope(503, "unavailable", "h", ""), "declares no refusal for it there"},
+		{"other key", api.ShapeKubernetes, get, envelope(503, "unavailable", "h", ""), `declares "sessions_unavailable" there`},
+		{"declared but absent", api.ShapeKubernetes, get, Answer{Status: 200}, "remove the declaration or restore the refusal"},
+		{"no hint", api.ShapeKubernetes, get, envelope(503, "sessions_unavailable", "", ""), "without a hint"},
+		{"durable with Retry-After", api.ShapeKubernetes, get, envelope(503, "sessions_unavailable", "h", "1"), "Retry-After"},
+		{"transient without Retry-After", api.ShapeStandalone, post, envelope(503, "generation_pending", "h", ""), "declares no refusal"},
+		// The follower runs no allowlist entry write and forwards none.
+		{"follower refusal", api.ShapeFollower, Operation{Method: http.MethodPost, Path: "/allowlist", ID: "createAllowlistEntries"}, envelope(503, api.KeyPrimaryRequired, "h", ""), ""},
+		{"unknown key", api.ShapeStandalone, Operation{Method: http.MethodPost, Path: "/x", ID: "exportSettingsSectionYAML"}, envelope(503, "something_new", "h", ""), `declares "unavailable" there`},
+		{"succeeded mutation", api.ShapeStandalone, Operation{Method: http.MethodDelete, Path: "/objects/{kind}/{namespace}/{name}", ID: "deleteObject"}, Answer{Status: 200}, "add it to probeMutations"},
+		{"reviewed mutation", api.ShapeStandalone, post, Answer{Status: 201}, ""},
+		{"new route", api.ShapeStandalone, Operation{Method: http.MethodGet, Path: "/new", ID: "aRouteAddedLater"}, Answer{Status: 200}, "has no line in operationRefusals"},
+	} {
+		problems := strings.Join(Problems(tc.shape, tc.op, tc.a), "\n")
+		if (tc.want == "") != (problems == "") || !strings.Contains(problems, tc.want) {
+			t.Errorf("%s: problems %q, want one containing %q", tc.name, problems, tc.want)
+		}
+	}
+	// A key outside the allowlist is reported with what to add.
+	if problems := strings.Join(Problems(api.ShapeFenced, get, envelope(503, "something_new", "h", "")), "\n"); !strings.Contains(problems, "without a row in refusalKeys") {
+		t.Errorf("unknown key: %q", problems)
+	}
+}
+
+// Walk probes every operation once (generation_pending excepted), sends the
+// credential, and in parallel mode still runs the session-ending operations
+// after every other one.
+func TestWalkSequentialAndParallel(t *testing.T) {
+	ops, err := Operations([]byte(document))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, parallel := range []int{1, 4} {
+		var pending, others, readiness atomic.Int64
+		var endedEarly atomic.Bool
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("X-Test") != "credential" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			if r.URL.Path == api.BasePath+"/auth/logout" {
+				if others.Load() != int64(len(ops)-1) {
+					endedEarly.Store(true)
+				}
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			if r.URL.Path == api.BasePath+"/auth/sessions" && pending.Add(1) == 1 {
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Retry-After", "1")
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"error":{"key":"generation_pending","message":"m","hint":"h"}}`))
+				return
+			}
+			if r.URL.Path == api.BasePath+"/auth/me" {
+				// The readiness probe after a pending answer.
+				readiness.Add(1)
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			others.Add(1)
+			w.WriteHeader(http.StatusOK)
+		}))
+		c := Client{HTTP: server.Client(), Base: server.URL, Parallel: parallel, Prepare: func(r *http.Request) { r.Header.Set("X-Test", "credential") }}
+		results, err := c.Walk(t.Context(), api.ShapeStandalone, ops)
+		server.Close()
+		if err != nil || len(results) != len(ops) {
+			t.Fatal(parallel, err, len(results))
+		}
+		// The pending operation is sent again only after one readiness probe.
+		if endedEarly.Load() || pending.Load() != 2 || readiness.Load() != 1 {
+			t.Fatalf("parallel=%d: logout ran early=%t, pending probes=%d, readiness probes=%d", parallel, endedEarly.Load(), pending.Load(), readiness.Load())
+		}
+		for i, r := range results {
+			if r.Operation != ops[i] {
+				t.Fatalf("parallel=%d: result %d is %s, want %s", parallel, i, r.Operation, ops[i])
+			}
+		}
+	}
+}
+
+// A probe of an operation with a probeRequests entry sends its query, body
+// and If-Match, so that it passes request validation.
+func TestProbeSendsTheRequestThatReachesTheHandler(t *testing.T) {
+	var path, query, body, ifMatch string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		path, query, body, ifMatch = r.URL.Path, r.URL.RawQuery, string(raw), r.Header.Get("If-Match")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	c := Client{HTTP: server.Client(), Base: server.URL}
+	for _, tc := range []struct {
+		op                   Operation
+		query, body, ifMatch string
+	}{
+		{Operation{http.MethodGet, "/integrations", "listIntegrations"}, "namespace=default", "", ""},
+		{Operation{http.MethodPost, "/integrations/{namespace}/{name}/check", "checkIntegration"}, "", integrationReview, ""},
+		{Operation{http.MethodDelete, "/dhcp/scopes/{scope}/reservations/{mac}", "deleteDHCPReservation"}, "", "{}", `"refusal-probe"`},
+		{Operation{http.MethodPost, "/auth/tokens", "createToken"}, "", "{}", ""},
+		{Operation{http.MethodPost, "/queries/{id}/actions", "queryAction"}, "scope=cluster", `{"action":"allow"}`, ""},
+	} {
+		if _, err := c.Probe(t.Context(), tc.op); err != nil {
+			t.Fatal(err)
+		}
+		if query != tc.query || body != tc.body || ifMatch != tc.ifMatch {
+			t.Errorf("%s: query %q body %q If-Match %q", tc.op, query, body, ifMatch)
+		}
+		if tc.op.ID == "queryAction" && path != api.BasePath+"/queries/9007199254740991/actions" {
+			t.Errorf("%s: path %q", tc.op, path)
+		}
+	}
+	if !StoppedAtValidation(Answer{Status: 400, Envelope: true, Key: api.KeyInvalid, Message: "validation failed: body: expected required property uid to be present"}) ||
+		StoppedAtValidation(Answer{Status: 400, Envelope: true, Key: api.KeyInvalid, Message: "action must be adopt or release"}) {
+		t.Error("StoppedAtValidation does not tell request validation from a handler's answer")
+	}
+}
+
+// While a node stays pending, only the readiness probe is repeated: the
+// operation itself, which a rate limit may charge, is sent once more after
+// the pending state ends.
+func TestProbeWaitsForReadinessBeforeResending(t *testing.T) {
+	var starts, readiness atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pending := false
+		switch r.URL.Path {
+		case api.BasePath + "/auth/oidc/refusal-probe/start":
+			pending = starts.Add(1) == 1
+		case api.BasePath + "/auth/me":
+			pending = readiness.Add(1) < 10
+		}
+		if pending {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"key":"generation_pending","message":"m","hint":"h"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer server.Close()
+	c := Client{HTTP: server.Client(), Base: server.URL}
+	answer, err := c.Probe(t.Context(), Operation{Method: http.MethodGet, Path: "/auth/oidc/{idp}/start", ID: "oidcStart"})
+	if err != nil || answer.Status != http.StatusFound {
+		t.Fatal(answer, err)
+	}
+	if starts.Load() != 2 || readiness.Load() != 10 {
+		t.Fatalf("operation sent %d times, readiness probed %d times", starts.Load(), readiness.Load())
+	}
+}
+
+// A browser sign-in start is charged against its admission lane on every
+// send, and the charge's own commit can leave the next generation pending
+// (a node under load takes longer than the capture wait to prepare it).
+// The walk never sends it more often than the lane admits in one window:
+// after the last admitted send it waits for the window to pass before it
+// sends again, so that a slow node never answers 429 rate_limited.
+func TestProbeStaysWithinTheSignInAdmissionLimit(t *testing.T) {
+	window := 300 * time.Millisecond
+	previous := admissionWindow
+	admissionWindow = window
+	t.Cleanup(func() { admissionWindow = previous })
+	var (
+		mu     sync.Mutex
+		used   int
+		last   time.Time
+		starts int
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != api.BasePath+"/auth/oidc/refusal-probe/start" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		// requestlimit's rule: a send within the window of the previous
+		// one is counted, and a full lane admits nothing until a whole
+		// window has passed after its last send.
+		now := time.Now()
+		if now.Sub(last) > window {
+			used = 0
+		}
+		if used >= admissionBudget["oidcStart"] {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":{"key":"rate_limited","message":"too many login requests; try again later"}}`))
+			return
+		}
+		used, last = used+1, now
+		starts++
+		if starts <= 7 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"key":"generation_pending","message":"m","hint":"h"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":{"key":"unavailable","message":"captured browser provider login unavailable","hint":"h"}}`))
+	}))
+	defer server.Close()
+	c := Client{HTTP: server.Client(), Base: server.URL}
+	answer, err := c.Probe(t.Context(), Operation{Method: http.MethodGet, Path: "/auth/oidc/{idp}/start", ID: "oidcStart"})
+	if err != nil || answer.Key != api.KeyUnavailable {
+		t.Fatalf("answer %v, %v after %d admitted sends", answer, err, starts)
+	}
+	if starts != 8 {
+		t.Fatalf("operation admitted %d times, want 8", starts)
+	}
+}
+
+// The command path's 503 for a writable state that changed while the command
+// was admitted, and the follower's answers for a forwarded write it did not
+// send because its data changed, are a race with the node's own commits, not
+// the shape's answer: the probe is sent again, as for generation_pending.
+// Any other 503 unavailable is the observation, sent once.
+func TestProbeResendsAfterCommandStateChanged(t *testing.T) {
+	for _, tc := range []struct {
+		message    string
+		sends      int64
+		wantStatus int
+	}{
+		{commandStateChangedMessage, 2, http.StatusBadRequest},
+		{followerSourceChangedMessage, 2, http.StatusBadRequest},
+		{followerUnsentMessage, 2, http.StatusBadRequest},
+		{"another refusal", 1, http.StatusServiceUnavailable},
+	} {
+		var sends atomic.Int64
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != api.BasePath+"/policies" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if sends.Add(1) == 1 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"error":{"key":"unavailable","message":"` + tc.message + `","hint":"h"}}`))
+				return
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"key":"invalid","message":"m"}}`))
+		}))
+		c := Client{HTTP: server.Client(), Base: server.URL}
+		answer, err := c.Probe(t.Context(), Operation{Method: http.MethodPut, Path: "/policies", ID: "putPolicies"})
+		server.Close()
+		if err != nil || answer.Status != tc.wantStatus || sends.Load() != tc.sends {
+			t.Errorf("%q: answer %v, %v after %d sends", tc.message, answer, err, sends.Load())
+		}
+	}
+}
+
+// Every probe but the session-ending ones runs in path order: no probe is
+// moved to avoid an answer that another one provokes.
+func TestOperationsKeepDHCPSetupInPathOrder(t *testing.T) {
+	ops, err := Operations([]byte(`{"paths":{
+ "/auth/logout":{"post":{"operationId":"logout"}},
+ "/dhcp/setup":{"put":{"operationId":"putDHCPSetup"}},
+ "/policies":{"put":{"operationId":"putPolicies"}}
+}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, op := range ops {
+		ids = append(ids, op.ID)
+	}
+	if got := strings.Join(ids, " "); got != "putDHCPSetup putPolicies logout" {
+		t.Fatal("operation order:", got)
+	}
+}

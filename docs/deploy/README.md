@@ -7,17 +7,44 @@ To assign client addresses, use the [DHCP walkthrough](../guide/dhcp/README.md).
 |---|---|---|
 | One container (Docker, Podman) | [docker.md](docker.md) | `deploy/compose/single`, `deploy/compose/single-edge` |
 | Three hosts with a VIP (dnsdist + keepalived, `ha-static`) | [compose-ha.md](compose-ha.md) | `deploy/compose/ha/node-{a,b,c}` |
+| SQLite nodes that replicate: one primary and its followers | [sqlite-cluster.md](sqlite-cluster.md) | none; the commands are on that page |
 | Kubernetes with Helm | [helm.md](helm.md) | `deploy/helm/kudurru`, `deploy/helm/kudurru-crds` |
 | Kubernetes with kustomize | [kustomize.md](kustomize.md) | `deploy/kustomize/` |
 | Linux packages (deb, rpm, apk) with systemd | [docker.md#linux-packages-and-systemd](docker.md#linux-packages-and-systemd) | `deploy/systemd` |
 | Monitoring | [helm.md#monitoring](helm.md#monitoring) | `deploy/grafana/kudurru-overview.json`, `deploy/prometheus/rules.yaml` |
 
 Runbooks: [cold start without the apiserver, key rotation, upgrades](runbooks.md).
+Upgrading from 0.1.x: [the ordered upgrade notes](runbooks.md#upgrading-from-01x).
+External filtering data: [require HTTPS for list and catalog downloads](download-policy.md).
+For scripts and CLI clients: [apply results, settings and live-event contracts](api-contracts.md).
+What works on which deployment shape, and what each refusal key means: [capabilities.md](capabilities.md).
 The optional central database for the audit log, query log and statistics of every node: [postgres.md](postgres.md).
+Sending the query log to ClickHouse, Grafana Loki or log lines next to the local database: [query-log-sinks.md](query-log-sinks.md).
+OpenTelemetry traces of DNS queries, with dnsdist TRACEPARENT: [tracing.md](tracing.md).
 Blocked services and safe search, and the runtime catalogue URL: [blocked-services.md](blocked-services.md).
 Allowlist, Denylist and switching single entries of any list off: [allowlist.md](allowlist.md).
 The block page (blocked names open a page explaining the block, with a Request access form administrators answer on the Requests page): [blocking-page.md](blocking-page.md).
-The optional DHCPv4 server included in v0.1.0: [dhcp.md](dhcp.md).
+The optional DHCPv4 server, included since v0.1.0: [dhcp.md](dhcp.md).
+
+More pages, by task:
+
+| Task | Page |
+|---|---|
+| Add a member to an enrolled SQLite cluster, recover a join, take an old primary back, recover from two promotions | [sqlite-join.md](sqlite-join.md) |
+| Put `local.db` or the query log on separate storage | [sqlite-storage.md](sqlite-storage.md) |
+| Accept RFC 2136 dynamic updates (`nsupdate`) for a zone | [dynamic-updates.md](dynamic-updates.md) |
+| Create, replace and revoke stored TSIG keys | [tsig-keys.md](tsig-keys.md) |
+| Transfer RPZ feeds, supported triggers and actions, check a feed on each node | [rpz.md](rpz.md) |
+| Validate DNSSEC on forwarded answers; trust anchors and exceptions | [dnssec-validation.md](dnssec-validation.md) |
+| Update recursive root trust anchors automatically (RFC 5011): enable order, monitoring, behavior | [managed-root-anchors.md](managed-root-anchors.md) |
+| Rewrite, filter and check forwarded answers (DNS64, rebinding protection) | [response-processing.md](response-processing.md) |
+| Limit client networks and refuse query types | [dns-controls.md](dns-controls.md) |
+| Match clients by MAC address, hostname or client ID | [client-identity.md](client-identity.md) |
+| Run Cloudflare, UniFi and webhook integrations on SQLite, and Cloudflare and UniFi on Kubernetes | [integrations.md](integrations.md) |
+| Create, replace and delete role bindings; role bindings on Kubernetes | [rolebindings.md](rolebindings.md) |
+| Move the identity data of a Kubernetes installation to v0.2 | [iam-upgrade.md](iam-upgrade.md) |
+| Provide and rotate the VRRP HMAC key files of the keepalived supervisor | [vrrp-keys.md](vrrp-keys.md) |
+| Show your organization's name, logos and accent color (Enterprise) | [custom-branding.md](custom-branding.md) |
 
 Built-in DHCPv4 is disabled by default and runs on Linux with either store:
 SQLite standalone or three-node quorum failover, or the Kubernetes store with
@@ -31,8 +58,10 @@ Keep IPv6 router and DNS advertisements on your router.
 
 v0.1.0 ("stone"), dated 18 October 2026, is the first release. Its
 [release page](https://github.com/robertherbaugh/kudurru/releases/tag/v0.1.0)
-has binaries, packages and deployment assets. The examples in these guides
-use the `0.1.0` image and chart versions.
+has binaries, packages and deployment assets, and each later release has a
+page of the same kind under its own tag. These pages describe v0.2.0 ("clay
+copies"). Installation examples in this checkout follow `VERSION`; use the
+tagged checkout for a published release.
 
 Releases are cut by merging `main` into `release-candidate` (a
 `v<version>-rc.<N>` pre-release) and `release-candidate` into `release` (the
@@ -48,10 +77,16 @@ Both run `.github/workflows/publish.yml`, which runs goreleaser
   release candidate does not;
 - binaries for linux and darwin on amd64 and arm64, deb/rpm/apk packages with
   a hardened systemd unit, a compose bundle, `crds.yaml` and `install.yaml`
-  (`kustomize build deploy/kustomize/default`), all covered by `checksums.txt`, which is
-  cosign-signed, plus GitHub build provenance;
+  (rendered from the charts and Kustomize tree at the exact release tag,
+  including RC tags), all covered by `checksums.txt`, which is cosign-signed,
+  plus GitHub build provenance;
 - the Helm charts at `oci://ghcr.io/robertherbaugh/charts/kudurru` and
   `.../kudurru-crds`, cosign-signed.
+
+`make version-sync` keeps checkout deployment references aligned with `VERSION`;
+`make version-check` checks them without writing. Release packaging stages
+tag-specific manifests and Compose files in `bin/release` without modifying
+tracked files ([contributor instructions](../../CONTRIBUTING.md#branches-and-releases)).
 
 Every pull request against `main` also pushes
 `ghcr.io/robertherbaugh/kudurru:dev-<PR number>` (unsigned, for testing the
@@ -60,7 +95,7 @@ branch; later pushes overwrite it).
 Verify an image:
 
 ```sh
-cosign verify ghcr.io/robertherbaugh/kudurru:0.1.0 \
+cosign verify ghcr.io/robertherbaugh/kudurru:0.2.0 \
   --certificate-identity-regexp '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/publish\.yml@refs/heads/release(-candidate)?$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
@@ -70,7 +105,7 @@ cosign verify ghcr.io/robertherbaugh/kudurru:0.1.0 \
 | Port | Protocol | Purpose |
 |---|---|---|
 | 53 | udp, tcp | DNS (5353 PROXYv2-only behind the dnsdist edge) |
-| 67 | udp | DHCPv4 (optional, v0.1.0); replies go to client UDP 68 or the relay's authorized UDP source port |
+| 67 | udp | DHCPv4 (optional, since v0.1.0); replies go to client UDP 68 or the relay's authorized UDP source port |
 | 853 | tcp / udp | DNS over TLS / DNS over QUIC |
 | 443 | tcp / udp | DNS over HTTPS / HTTP/3 |
 | 8080 | tcp | API and UI |
@@ -106,3 +141,10 @@ Every settings key can also be set as `KUDURRU_<SECTION>__<KEY>` (for example
 keys (listeners, upstream groups) only from the file. An environment variable
 that names no key stops the server at start, so typos do not go unnoticed.
 `kudurru config schema` lists every key.
+
+## Kubernetes API clients
+
+Jobs and controllers using ServiceAccount credentials must project an audience
+`kudurru` token with a ten-minute lifetime. See [ServiceAccount authentication](kubernetes-service-account-auth.md)
+for the exact projection, rotation requirements, bounded deletion revocation and
+API-outage behavior. Legacy and ordinary one-hour incoming tokens are rejected.

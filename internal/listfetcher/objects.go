@@ -120,6 +120,9 @@ func ListName(namespace, name string) string {
 // BlockList in namespace: the URL, or configmap://<namespace>/<name>; ""
 // for sources kept in the object.
 func SourceKey(namespace string, src v1alpha1.ListSource) string {
+	if blocking.IsRPZSource(src) {
+		return ""
+	}
 	switch {
 	case src.URL != "":
 		return src.URL
@@ -146,6 +149,9 @@ type plannedSource struct {
 	// neither downloaded nor compiled; its cache entry stays (it is still
 	// referenced) so that switching it back on needs no download.
 	disabled bool
+	// external sources are acquired by the node-local RPZ manager. They
+	// never contribute a text body, digest or ordinary compile statistics.
+	external bool
 	inline   []string
 	// exclude is spec.sources[].exclude plus, for structured entries, the
 	// rules of the entries switched off.
@@ -211,9 +217,12 @@ func plan(bl *v1alpha1.BlockList, defaultRefresh, minRefresh time.Duration) plan
 		pl.statusBy[s.Name] = s
 	}
 	for i, src := range bl.Spec.Sources {
-		ps := plannedSource{index: i, name: blocking.SourceName(i, src), format: parser.Format(src.Format), subdomains: src.Subdomains, disabled: !src.IsEnabled()}
+		ps := plannedSource{index: i, name: blocking.SourceName(i, src), format: parser.Format(src.Format), subdomains: src.Subdomains, disabled: !src.IsEnabled(), external: blocking.IsRPZSource(src)}
 		ps.exclude = src.Exclude
 		switch {
+		case ps.external:
+			// Even an invalid RPZ+URL configuration belongs to the required
+			// external policy engine, never the downloader or text parser.
 		case len(src.Inline) > 0 || len(src.Entries) > 0:
 			ps.inline, ps.format, ps.exclude, _ = blocking.InlineLines(src)
 			if len(src.Entries) > 0 {
@@ -236,6 +245,26 @@ func plan(bl *v1alpha1.BlockList, defaultRefresh, minRefresh time.Duration) plan
 		pl.sources = append(pl.sources, ps)
 	}
 	return pl
+}
+
+func (pl *plannedList) externalPolicy() bool {
+	for _, ps := range pl.sources {
+		if ps.external && !ps.disabled {
+			return true
+		}
+	}
+	return false
+}
+
+// externalStatus is deliberately neutral. Transfer state is node-local and
+// read from RPZ StatusFor; old inline/URL counts and errors cannot describe it.
+func externalStatus(ps *plannedSource) v1alpha1.SourceStatus {
+	ss := v1alpha1.SourceStatus{Name: ps.name}
+	if ps.disabled {
+		off := false
+		ss.Enabled = &off
+	}
+	return ss
 }
 
 // allDisabled reports whether the list has sources and every one of them

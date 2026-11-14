@@ -34,8 +34,8 @@ Do not enable the router relay yet.
    For a Helm-managed release named `kudurru`, the commands are:
 
    ```sh
-   helm upgrade --install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.1.0
-   helm upgrade kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.1.0 \
+   helm upgrade --install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.2.0
+   helm upgrade kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.2.0 \
      --namespace kudurru-system --values kudurru-values.yaml
    ```
 

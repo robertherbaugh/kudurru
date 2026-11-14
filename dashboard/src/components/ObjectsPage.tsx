@@ -132,7 +132,11 @@ export function ObjectsPage<T extends AnyObject>({ title, description, schema, c
         const [ns, name] = k.split('/') as [string, string];
         byNs.set(ns, [...(byNs.get(ns) ?? []), name]);
       }
-      const results = await Promise.all([...byNs].map(([ns, names]) => api.objects.batchDelete(schema.kind, names, ns || undefined)));
+      // One request at a time: on SQLite a request with several names keeps
+      // its place only while no other change is committed, so two at once
+      // would refuse one of them as a whole.
+      const results: Awaited<ReturnType<typeof api.objects.batchDelete>>[] = [];
+      for (const [ns, names] of byNs) results.push(await api.objects.batchDelete(schema.kind, names, ns || undefined));
       return {
         success: results.flatMap((r) => r.processed.success),
         errors: results.flatMap((r) => r.processed.errors),

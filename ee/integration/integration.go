@@ -36,6 +36,8 @@ type SecretKey struct {
 	Path string `json:"path"`
 	// Verify describes how Check validates it (e.g. "cloudflare:tokens/verify").
 	Verify string `json:"verify,omitempty"`
+	// Required mirrors the Integration CRD rule that the type needs it.
+	Required bool `json:"required,omitempty"`
 }
 
 // Manifest describes an integration type. ConfigSchema also becomes the
@@ -107,26 +109,28 @@ type RecordSink interface {
 	ApplyChanges(ctx context.Context, zone string, ch Changes) (ApplyResult, error)
 }
 
-// Network is a client network (VLAN) from an inventory source.
+// Network is a client network (VLAN) from an inventory source. The JSON
+// names are the Tier-B wire format, frozen for v0.2 (D379); decoding stays
+// case-insensitive, so peers that sent the field names still decode.
 type Network struct {
-	Name   string
-	VLAN   int
-	CIDR   string
-	Domain string
+	Name   string `json:"name"`
+	VLAN   int    `json:"vlan"`
+	CIDR   string `json:"cidr"`
+	Domain string `json:"domain"`
 }
 
 // Client is one inventory entry.
 type Client struct {
-	ID         string
-	MACs       []string
-	IPs        []string
-	Name       string
-	Hostname   string
-	Network    Network
-	FixedIP    string
-	Tags       []string
-	LastSeen   time.Time
-	Attributes map[string]string
+	ID         string            `json:"id"`
+	MACs       []string          `json:"macs"`
+	IPs        []string          `json:"ips"`
+	Name       string            `json:"name"`
+	Hostname   string            `json:"hostname"`
+	Network    Network           `json:"network"`
+	FixedIP    string            `json:"fixedIP"`
+	Tags       []string          `json:"tags"`
+	LastSeen   time.Time         `json:"lastSeen"`
+	Attributes map[string]string `json:"attributes"`
 }
 
 // ClientSource provides inventory.
@@ -135,11 +139,13 @@ type ClientSource interface {
 	ListNetworks(ctx context.Context) ([]Network, error)
 }
 
-// Event is a lifecycle event delivered at-least-once.
+// Event is a lifecycle event delivered at-least-once. Its JSON encoding is
+// the signed body of POST /events, frozen for v0.2 (D379):
+// {"topic":...,"time":...,"payload":...}.
 type Event struct {
-	Topic   string
-	Time    time.Time
-	Payload json.RawMessage
+	Topic   string          `json:"topic"`
+	Time    time.Time       `json:"time"`
+	Payload json.RawMessage `json:"payload"`
 }
 
 // Hook subscribes to events.
@@ -159,6 +165,16 @@ type ActionSpec struct {
 type ActionProvider interface {
 	Actions() []ActionSpec
 	Invoke(ctx context.Context, name string, params json.RawMessage) (json.RawMessage, error)
+}
+
+// ActionAuditor optionally names what an action invocation affects, for the
+// audit row of the reviewed command (D384), for example "client
+// 00:11:22:33:44:55" for a client block. It is pure (no I/O), runs before
+// Invoke so an uncertain outcome is still attributed, and must return a
+// canonical, non-secret text of at most 256 bytes; ok is false when the
+// parameters name nothing it can describe.
+type ActionAuditor interface {
+	AuditSubject(name string, params json.RawMessage) (subject string, ok bool)
 }
 
 // Host is what the host lends an integration. The concrete readers and

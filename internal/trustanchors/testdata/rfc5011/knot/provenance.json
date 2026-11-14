@@ -1,0 +1,29 @@
+{
+  "signer": "Knot DNS online signing (manual policy, keymgr timeline)",
+  "authority": "knotd, Knot DNS 3.6.2; cznic/knot@sha256:174b0fcb24c6c3bc5065c9d1ce46b588eec607a5f32bc40ff0cda60150f00bd9",
+  "t0": "2026-11-13T08:46:57Z",
+  "captured": "2026-11-13T08:45:57Z",
+  "seedDS": ". DS 35395 13 2 570803875b09b74345d7a5723ac617b8c7bda01a9fd75910a150b96e9a12b70e",
+  "steps": [
+    "keymgr -c knot.conf . generate algorithm=13 ksk=yes zsk=no",
+    "keymgr -c knot.conf . generate algorithm=13 ksk=no zsk=yes",
+    "keymgr -c knot.conf . ds f2d43bf1bb7663c9fb24306294609d68b49e6bd1",
+    "knotd -c knot.conf; capture s1",
+    "keymgr -c knot.conf . generate algorithm=13 ksk=yes zsk=no publish=+0 ready=+365d active=+365d",
+    "knotd -c knot.conf; capture s2",
+    "keymgr -c knot.conf . set 6ab58dc5dd8fcff02390aa5355183f76aef9759d ready=+0 active=+0",
+    "knotd -c knot.conf; capture s3",
+    "keymgr -c knot.conf . set f2d43bf1bb7663c9fb24306294609d68b49e6bd1 revoke=1794559554",
+    "knotd -c knot.conf; capture s5",
+    "keymgr -c knot.conf . set f2d43bf1bb7663c9fb24306294609d68b49e6bd1 retire=1794559555 remove=1794559556",
+    "knotd -c knot.conf; capture s4",
+    "knotd serves each stage on loopback; the reply to the managed acquisition request (RD clear, EDNS 1232 with DO) over TCP is kept as \u003cstage\u003e.wire; rrsig-lifetime 90d; DNSKEY TTL 172800; stages: s1 {K1,ZSK} by K1; s2 {K1,K2,ZSK} by K1 and K2 (Knot signs with K2 once it is published); s3 repeats s2 (the ready/active step changes nothing served); s4 {K2,ZSK} by K2; s5 {K1+REVOKE,K2,ZSK} by K1+REVOKE and K2; four distinct stages"
+  ],
+  "files": {
+    "s1.wire": "f422beb87f28f4a108b458aa5bf0f92edf15f1762fa634c4c04f557c16f70ed4",
+    "s2.wire": "241ece8ada71645bb525fe103c445bf21debee703f2a8292d029026f6bbaaecd",
+    "s3.wire": "d74766b0b3914f8df7220fdd22da2f5edd72dad5f180b1c5a2bb4af228500390",
+    "s4.wire": "f17fd96c7bd9485e0d2a4d32969c4057a7946bab6da51ff62a73cd71c1a5b0ef",
+    "s5.wire": "58157d99ded1eaa6a1b5b713cbd3f0f4e83ff9729fa4827a31d02e24579f7ea8"
+  }
+}

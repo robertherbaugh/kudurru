@@ -59,6 +59,17 @@ export interface WizardProps {
   /** Above the footer's buttons, e.g. the API error of the finishing call. */
   error?: ReactNode;
   isFinishing?: boolean;
+  /** Disables the finishing action (a command whose outcome is unknown is never sent again). */
+  isFinishDisabled?: boolean;
+  /**
+   * Runs every earlier step's `validate` again before `onFinish` and shows
+   * the first step that fails, with its message. The stepper jumps to any
+   * step already reached, so without this a value changed on a revisited
+   * step (an unticked confirmation, a re-read review) is never checked again.
+   */
+  revalidateOnFinish?: boolean;
+  /** Disables Cancel, e.g. while a command whose answer must be shown is in flight. */
+  isCancelDisabled?: boolean;
   /** Start somewhere else than the first step. */
   initialStep?: number;
   onStepChange?: (index: number) => void;
@@ -113,9 +124,13 @@ export interface WizardDialogProps {
   width?: number;
   /** The caller's wizard: a component rendering <Wizard>, mounted while open. */
   children: ReactNode;
+  /** Replaces "Discard the new …?" and its sentence, e.g. once a secret is shown. */
+  discard?: { title: string; description: string; actionLabel: string; cancelLabel: string } | undefined;
+  /** A command is in flight: ✕, Escape and the backdrop do nothing until it answers. */
+  isBusy?: boolean;
 }
 
-export function WizardDialog({ isOpen, onClose, title, subtitle, what, width = 820, children }: WizardDialogProps) {
+export function WizardDialog({ isOpen, onClose, title, subtitle, what, width = 820, children, discard, isBusy }: WizardDialogProps) {
   const [dirty, setDirty] = useState(false);
   const [confirming, setConfirming] = useState(false);
   // Every opening starts pristine (state adjusted during render, as FormDialog does).
@@ -128,6 +143,7 @@ export function WizardDialog({ isOpen, onClose, title, subtitle, what, width = 8
     }
   }
   const requestClose = () => {
+    if (isBusy) return;
     if (dirty) setConfirming(true);
     else onClose();
   };
@@ -141,10 +157,10 @@ export function WizardDialog({ isOpen, onClose, title, subtitle, what, width = 8
         onOpenChange={(open) => {
           if (!open) setConfirming(false);
         }}
-        title={`Discard the new ${what}?`}
-        description="What you entered in this wizard is lost."
-        cancelLabel="Keep editing"
-        actionLabel="Discard"
+        title={discard?.title ?? `Discard the new ${what}?`}
+        description={discard?.description ?? 'What you entered in this wizard is lost.'}
+        cancelLabel={discard?.cancelLabel ?? 'Keep editing'}
+        actionLabel={discard?.actionLabel ?? 'Discard'}
         onAction={() => {
           setConfirming(false);
           onClose();
@@ -154,7 +170,7 @@ export function WizardDialog({ isOpen, onClose, title, subtitle, what, width = 8
   );
 }
 
-export function Wizard({ label, steps, finishLabel, onFinish, onCancel, isDirty, notice, error, isFinishing, initialStep = 0, onStepChange }: WizardProps) {
+export function Wizard({ label, steps, finishLabel, onFinish, onCancel, isDirty, notice, error, isFinishing, isFinishDisabled, revalidateOnFinish, isCancelDisabled, initialStep = 0, onStepChange }: WizardProps) {
   const frame = useDialogFrame();
   const [active, setActive] = useState(() => Math.min(Math.max(initialStep, 0), steps.length - 1));
   // The furthest step every earlier step validated for.
@@ -206,9 +222,29 @@ export function Wizard({ label, steps, finishLabel, onFinish, onCancel, isDirty,
     }
   };
 
+  // The first earlier step whose validate fails is shown with its message.
+  const validateEarlier = async (): Promise<boolean> => {
+    setChecking(true);
+    try {
+      for (let i = 0; i < active; i++) {
+        const msg = await steps[i]?.validate?.();
+        if (msg) {
+          go(i);
+          setMessage(msg);
+          return false;
+        }
+      }
+      return true;
+    } finally {
+      setChecking(false);
+    }
+  };
+
   const next = async () => {
     if (!(await validateCurrent())) return;
     if (last) {
+      if (isFinishDisabled) return;
+      if (revalidateOnFinish && !(await validateEarlier())) return;
       await onFinish();
       return;
     }
@@ -280,10 +316,10 @@ export function Wizard({ label, steps, finishLabel, onFinish, onCancel, isDirty,
             <VStack gap={2}>
               {error}
               <HStack gap={2} vAlign="center">
-                {cancel ? <Button label="Cancel" variant="ghost" onClick={cancel} /> : null}
+                {cancel ? <Button label="Cancel" variant="ghost" onClick={cancel} isDisabled={isCancelDisabled} /> : null}
                 <StackItem size="fill">{message ? <FieldStatus type="error" variant="detached" message={message} /> : null}</StackItem>
                 {active > 0 ? <Button label="Back" variant="secondary" onClick={() => go(active - 1)} /> : null}
-                <Button type="submit" label={last ? finishLabel : 'Next'} variant="primary" isLoading={checking || (last && isFinishing)} />
+                <Button type="submit" label={last ? finishLabel : 'Next'} variant="primary" isLoading={checking || (last && isFinishing)} isDisabled={last && isFinishDisabled} />
               </HStack>
             </VStack>
           </LayoutFooter>

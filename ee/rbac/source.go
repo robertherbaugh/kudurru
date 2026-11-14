@@ -32,17 +32,24 @@ import (
 // groups that matched (D48), so narrowing a binding revokes the grant for
 // every session that resolved it earlier, and those users log in again.
 // The revocation times are kept in memory on every replica (each one
-// watches the bindings); the existence rule is what survives a restart.
+// watches the bindings). With DurableFloors, every replica also persists the
+// revocations it observes and merges the floors every other replica recorded
+// (MergeFloors), so a restart or a replica that missed the change cannot
+// revive an earlier session's grant. Until the durable floors first load,
+// pre-resolved grants are refused (fail closed); live bindings still apply.
 type BindingSource struct {
 	perms *rbac.Permissions
 	log   *slog.Logger
 	now   func() time.Time
 
-	mu       sync.Mutex // serialises writers
-	static   []rbac.Binding
-	objects  map[string]rbac.Binding
-	allowed  map[rbac.Grant]bool
-	onRevoke []func([]Revocation)
+	mu sync.Mutex // serialises writers
+	// floorsRequired refuses pre-resolved grants until floorsLoaded.
+	floorsRequired bool
+	floorsLoaded   atomic.Bool
+	static         []rbac.Binding
+	objects        map[string]rbac.Binding
+	allowed        map[rbac.Grant]bool
+	onRevoke       []func([]Revocation)
 
 	state atomic.Pointer[sourceState]
 }
@@ -73,6 +80,9 @@ type SourceOptions struct {
 	Logger *slog.Logger
 	// Now is the clock; default time.Now.
 	Now func() time.Time
+	// DurableFloors refuses pre-resolved grants until MergeFloors first loads
+	// the replicas' persisted revocation floors.
+	DurableFloors bool
 }
 
 // NewBindingSource validates the static bindings (an invalid config file
@@ -92,7 +102,7 @@ func NewBindingSource(p *rbac.Permissions, static []rbac.Binding, opts SourceOpt
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	s := &BindingSource{perms: p, log: opts.Logger, now: opts.Now, static: slices.Clone(static), objects: map[string]rbac.Binding{}, allowed: map[rbac.Grant]bool{}}
+	s := &BindingSource{perms: p, log: opts.Logger, now: opts.Now, floorsRequired: opts.DurableFloors, static: slices.Clone(static), objects: map[string]rbac.Binding{}, allowed: map[rbac.Grant]bool{}}
 	s.rebuild()
 	return s, nil
 }
@@ -212,6 +222,9 @@ func (s *BindingSource) GrantsFor(p rbac.Principal) []rbac.Grant {
 
 // GrantValid reports whether a grant resolved at issuedAt is still honoured.
 func (s *BindingSource) GrantValid(g rbac.Grant, issuedAt time.Time) bool {
+	if s.floorsRequired && !s.floorsLoaded.Load() {
+		return false
+	}
 	st := s.state.Load()
 	g = g.Normalized()
 	if !st.granted[g] {
@@ -239,15 +252,50 @@ func (s *BindingSource) ValidGrants(grants []rbac.Grant, issuedAt time.Time) []r
 func (s *BindingSource) Authorize(_ context.Context, p rbac.Principal, a rbac.Attributes) (rbac.Decision, error) {
 	st := s.state.Load()
 	for _, b := range st.bindings {
-		if b.Scope.Covers(a.Scope) && rbac.SubjectsMatch(b.Subjects, p) && s.perms.Grants(b.Role, a.Resource, a.Verb) {
+		if b.Scope.Admits(a) && rbac.SubjectsMatch(b.Subjects, p) && s.perms.Grants(b.Role, a.Resource, a.Verb) {
 			return rbac.Decision{Allowed: true, Path: "binding", Reason: "role " + b.Role}, nil
 		}
 	}
 	for _, g := range p.Grants {
-		if g.Scope.Covers(a.Scope) && s.perms.Grants(g.Role, a.Resource, a.Verb) && s.GrantValid(g, p.GrantsIssuedAt) {
+		if g.Scope.Admits(a) && s.perms.Grants(g.Role, a.Resource, a.Verb) && s.GrantValid(g, p.GrantsIssuedAt) {
 			return rbac.Decision{Allowed: true, Path: "binding", Reason: "role " + g.Role + " (session)"}, nil
 		}
 	}
 	missing := a
 	return rbac.Decision{Allowed: false, Path: "binding", Missing: &missing, Reason: "no binding grants " + a.Resource + "." + a.Verb}, nil
 }
+
+// MergeFloors raises the revocation floors to at least the supplied times
+// (another replica's or a restart's durable record) and marks floors loaded.
+// Floors only ever rise; a merge cannot restore a revoked grant.
+func (s *BindingSource) MergeFloors(floors map[rbac.Grant]time.Time) {
+	s.mu.Lock()
+	prev := s.state.Load()
+	next := *prev
+	next.revokedAt = make(map[rbac.Grant]time.Time, len(prev.revokedAt)+len(floors))
+	for g, t := range prev.revokedAt {
+		next.revokedAt[g] = t
+	}
+	for g, t := range floors {
+		g = g.Normalized()
+		if old, ok := next.revokedAt[g]; !ok || t.After(old) {
+			next.revokedAt[g] = t
+		}
+	}
+	s.state.Store(&next)
+	s.floorsLoaded.Store(true)
+	s.mu.Unlock()
+}
+
+// Floors returns the current revocation floors.
+func (s *BindingSource) Floors() map[rbac.Grant]time.Time {
+	st := s.state.Load()
+	out := make(map[rbac.Grant]time.Time, len(st.revokedAt))
+	for g, t := range st.revokedAt {
+		out[g] = t
+	}
+	return out
+}
+
+// FloorsLoaded reports whether durable floors have been merged at least once.
+func (s *BindingSource) FloorsLoaded() bool { return !s.floorsRequired || s.floorsLoaded.Load() }

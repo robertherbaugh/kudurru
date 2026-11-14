@@ -1,6 +1,7 @@
-// Access: the signed-in principal, its roles and permissions, its
-// own API tokens (the kdr_ secret is shown once), the read-only IAM views
-// (the write API is v0.2; IAM is declared in YAML today).
+// Access: the signed-in principal, its roles and permissions, its own API
+// tokens (the kdr_ secret is shown once), and on the Identity tab the IAM
+// inventory with the reviewed writers of the SQLite driver (D294, D396).
+import { ExternalUsersPanel } from '../components/access/ExternalUsers';
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -16,18 +17,26 @@ import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { canAnyScope, qk, useApi, useCan, useSession } from '../api/context';
+import { canAnyScope, qk, useApi, useAuthCapabilities, useCan, useSession, useStaticMode } from '../api/context';
 import { useFeature } from '../api/hooks';
-import type { ApiToken, CreatedToken, IamIdentityProvider, IamRoleBinding, IamServiceAccount, IamUser, RbacScope } from '../api/types';
+import type { ApiToken, CreatedToken, IamRoleBinding, RbacScope } from '../api/types';
+import { AuthenticatorPanel } from '../components/access/Authenticators';
+import { IdentityProvidersPanel } from '../components/access/IdentityProviders';
+import { LocalUsersPanel } from '../components/access/LocalUsers';
+import { NewRoleBindingButton, RoleBindingActions } from '../components/access/RoleBindingForm';
+import { ServiceAccountsPanel } from '../components/access/ServiceAccounts';
+import { SessionsPanel } from '../components/access/Sessions';
 import { ChangePasswordButton, principalName } from '../components/AccountMenu';
 import { ErrorBanner, useNotify } from '../components/Feedback';
 import { DurationField, durationPresets } from '../components/fields/DurationField';
-import { EnumSelect, type EnumOption } from '../components/fields/EnumSelect';
+import { EnumSelect } from '../components/fields/EnumSelect';
 import { ObjectRefPicker } from '../components/fields/ObjectRefPicker';
 import { TextField } from '../components/fields/TextField';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { formatDateTime, formatRelative } from '../lib/format';
+import { ROLES, SCOPE_KINDS, scopeString } from '../lib/rbac';
 import { useNavigate, useSearchParams } from '../lib/router';
+import { zoneGroupError } from '../lib/zones';
 
 /** A relative time with the exact instant in its tooltip. */
 function Relative({ at }: { at: string }) {
@@ -71,25 +80,7 @@ function Me() {
 /** Token lifetimes offered; "" asks for the server maximum (auth.tokens.maxLifetime). */
 const TOKEN_LIFETIMES = durationPresets(['24h', '168h', '720h', '2160h', '8760h']);
 
-/** The roles of internal/rbac (the rbac.bindings role enum of the settings schema). */
-export const ROLES: EnumOption[] = [
-  { value: 'viewer', label: 'Viewer', help: 'Read zones, records, lists, policies, stats and settings.' },
-  { value: 'auditor', label: 'Auditor', help: 'Viewer plus the query log and the audit log.' },
-  { value: 'operator', label: 'Operator', help: 'Manage records, lists, policies, groups, clients and blocking; flush the cache.' },
-  { value: 'zone-admin', label: 'Zone admin', help: 'Manage zones and their records, transfers and signing.' },
-  { value: 'admin', label: 'Admin', help: 'Everything.' },
-];
-
-const SCOPE_KINDS: EnumOption[] = [
-  { value: 'cluster', label: 'Everything', help: 'The role applies to every object.' },
-  { value: 'zone', label: 'One zone', help: 'The role applies to one zone and its records.' },
-];
-
-/** The scope string of a token restricted to a role: "viewer" or "zone-admin@zone:home-arpa". */
-export function scopeString(role: string, kind: string, name: string): string {
-  if (!role) return '';
-  return kind === 'zone' && name.trim() ? `${role}@zone:${name.trim()}` : role;
-}
+export { ROLES, scopeString };
 
 /** Scopes typed as "viewer, zone-admin@zone:home-example-com". */
 export function parseScopes(s: string): string[] {
@@ -106,6 +97,7 @@ function Tokens() {
   const qc = useQueryClient();
   const notify = useNotify();
   const can = useCan();
+  const readOnly = useStaticMode();
   const { data: session } = useSession();
   const [description, setDescription] = useState('');
   const [expires, setExpires] = useState('720h');
@@ -140,7 +132,7 @@ function Tokens() {
     },
     onError: (err) => notify.error(err, 'Could not revoke the token'),
   });
-  const allowed = (!!session && canAnyScope(session, 'tokens', 'own')) || can('tokens', 'write');
+  const allowed = !readOnly && ((!!session && canAnyScope(session, 'tokens', 'own')) || can('tokens', 'write'));
   const columns: TableColumn<TokenRow>[] = [
     {
       key: 'description',
@@ -187,7 +179,7 @@ function Tokens() {
       key: 'actions',
       header: <VisuallyHidden>Actions</VisuallyHidden>,
       width: pixel(128),
-      renderCell: (t) => <Button label="Revoke" size="sm" variant="ghost" onClick={() => del.mutate(t.id)} />,
+      renderCell: (t) => <Button label="Revoke" size="sm" variant="ghost" isDisabled={readOnly} tooltip={readOnly ? 'Tokens are read-only in static mode' : undefined} onClick={() => del.mutate(t.id)} />,
     },
   ];
   return (
@@ -213,13 +205,16 @@ function Tokens() {
           <TextField label="Description" value={description} onChange={setDescription} placeholder="ci-deploy" />
           <DurationField label="Expires in" value={expires} onChange={setExpires} presets={TOKEN_LIFETIMES} emptyLabel="Server maximum" />
           <EnumSelect label="Limit to role" value={role} options={ROLES} onChange={setRole} emptyLabel="All my roles" />
-          {role ? <EnumSelect label="For" value={scopeKind} options={SCOPE_KINDS} onChange={setScopeKind} /> : null}
+          {role ? <EnumSelect label="For" value={scopeKind} options={SCOPE_KINDS} onChange={(k) => { setScopeKind(k); setScopeZone(''); }} /> : null}
           {role && scopeKind === 'zone' ? (
             <ObjectRefPicker kind="dnszones" label="Zone" value={scopeZone ? [scopeZone] : []} onChange={(v) => setScopeZone(v[0] ?? '')} />
           ) : null}
+          {role && scopeKind === 'zonegroup' ? (
+            <TextField label="Zone group" value={scopeZone} onChange={setScopeZone} mono placeholder="prod" error={scopeZone ? (zoneGroupError(scopeZone) ?? undefined) : undefined} />
+          ) : null}
         </HStack>
         <HStack gap={2}>
-          <Button type="submit" label="Create token" variant="primary" isDisabled={!allowed || !description.trim()} isLoading={create.isPending} />
+          <Button type="submit" label="Create token" variant="primary" isDisabled={!allowed || !description.trim() || (!!role && scopeKind === 'zonegroup' && !!zoneGroupError(scopeZone))} isLoading={create.isPending} />
         </HStack>
       </VStack>
       {created ? (
@@ -249,10 +244,11 @@ function Tokens() {
   );
 }
 
-/** "cluster" or "zone home-arpa". */
+/** "cluster", "zone home-arpa" or "zone group prod". */
 export function scopeText(s: RbacScope | undefined): string {
   if (!s || !s.kind || s.kind === 'cluster') return 'cluster';
-  return s.name ? `${s.kind} ${s.name}` : s.kind;
+  const kind = s.kind === 'zonegroup' ? 'zone group' : s.kind;
+  return s.name ? `${kind} ${s.name}` : kind;
 }
 
 function bindingName(b: IamRoleBinding): string {
@@ -264,58 +260,7 @@ function Diagnoses({ items }: { items: string[] | undefined }) {
   return <Banner status="warning" title="Some entries were ignored" description={items.join('; ')} />;
 }
 
-type UserRow = IamUser & Record<string, unknown>;
-type ServiceAccountRow = IamServiceAccount & Record<string, unknown>;
 type BindingRow = IamRoleBinding & Record<string, unknown>;
-type ProviderRow = IamIdentityProvider & Record<string, unknown>;
-
-const userColumns: TableColumn<UserRow>[] = [
-  {
-    key: 'name',
-    header: 'User',
-    width: proportional(2, { minWidth: 180 }),
-    renderCell: (u) => (
-      <HStack gap={1} vAlign="center" wrap="wrap">
-        <Text weight="semibold">{u.displayName || u.name}</Text>
-        {u.displayName ? (
-          <Text type="code" size="sm" color="secondary">
-            {u.name}
-          </Text>
-        ) : null}
-        {u.builtinAdmin ? <Badge variant="blue" label="admin" /> : null}
-        {u.disabled ? <Badge variant="warning" label="disabled" /> : null}
-        {u.mustChangePassword ? <Badge variant="orange" label="must change password" /> : null}
-      </HStack>
-    ),
-  },
-  { key: 'groups', header: 'Groups', width: proportional(1.5, { minWidth: 120 }), renderCell: (u) => <Text size="sm">{u.groups?.length ? u.groups.join(', ') : '–'}</Text> },
-  { key: 'lastLoginAt', header: 'Last sign-in', width: proportional(1, { minWidth: 110 }), renderCell: (u) => <Text size="sm">{u.lastLoginAt ? formatRelative(u.lastLoginAt) : 'never'}</Text> },
-  {
-    key: 'passwordChangedAt',
-    header: 'Password changed',
-    width: proportional(1.5, { minWidth: 192 }),
-    renderCell: (u) => <Text size="sm">{u.passwordChangedAt ? formatRelative(u.passwordChangedAt) : '–'}</Text>,
-  },
-];
-
-const serviceAccountColumns: TableColumn<ServiceAccountRow>[] = [
-  {
-    key: 'name',
-    header: 'Service account',
-    width: proportional(2, { minWidth: 200 }),
-    renderCell: (s) => (
-      <HStack gap={1} vAlign="center" wrap="wrap">
-        <Text type="code">
-          {s.namespace}/{s.name}
-        </Text>
-        {s.builtinAdmin ? <Badge variant="blue" label="admin" /> : null}
-        {s.disabled ? <Badge variant="warning" label="disabled" /> : null}
-      </HStack>
-    ),
-  },
-  { key: 'description', header: 'Description', width: proportional(2, { minWidth: 160 }), renderCell: (s) => <Text size="sm">{s.description || '–'}</Text> },
-  { key: 'tokens', header: 'Tokens', align: 'end', width: pixel(96), renderCell: (s) => <Text hasTabularNumbers>{s.tokens}</Text> },
-];
 
 const bindingColumns: TableColumn<BindingRow>[] = [
   { key: 'role', header: 'Role', width: proportional(1, { minWidth: 190 }), renderCell: (b) => <Badge variant="blue" label={b.role} /> },
@@ -341,88 +286,30 @@ const bindingColumns: TableColumn<BindingRow>[] = [
   },
 ];
 
-const providerColumns: TableColumn<ProviderRow>[] = [
-  {
-    key: 'id',
-    header: 'Provider',
-    width: proportional(1.5, { minWidth: 160 }),
-    renderCell: (p) => (
-      <HStack gap={1} vAlign="center" wrap="wrap">
-        <Text weight="semibold">{p.displayName || p.id}</Text>
-        <Text type="code" size="sm" color="secondary">
-          {p.id}
-        </Text>
-      </HStack>
-    ),
-  },
-  {
-    key: 'issuer',
-    header: 'Issuer',
-    width: proportional(2, { minWidth: 160 }),
-    renderCell: (p) => (
-      <Text type="code" size="sm">
-        {p.issuer}
-      </Text>
-    ),
-  },
-  {
-    key: 'clientID',
-    header: 'Client ID',
-    width: proportional(1, { minWidth: 120 }),
-    renderCell: (p) => (
-      <Text type="code" size="sm">
-        {p.clientID}
-      </Text>
-    ),
-  },
-  { key: 'source', header: 'Source', width: proportional(1, { minWidth: 100 }), renderCell: (p) => <Text size="sm">{p.source === 'config' ? 'kudurru.yaml' : (p.source ?? '–')}</Text> },
-];
-
 function Iam() {
   const api = useApi();
   const can = useCan();
-  const users = useQuery({ queryKey: ['iam', 'users'], queryFn: () => api.iam.users(), enabled: can('users', 'read') });
-  const sas = useQuery({ queryKey: ['iam', 'sa'], queryFn: () => api.iam.serviceAccounts(), enabled: can('serviceaccounts', 'read') });
   const rbs = useQuery({ queryKey: ['iam', 'rb'], queryFn: () => api.iam.roleBindings(), enabled: can('rolebindings', 'read') });
-  const idps = useQuery({ queryKey: ['iam', 'idp'], queryFn: () => api.iam.identityProviders(), enabled: can('identityproviders', 'read') });
   const rbac = useFeature('rbac');
-  const oidc = useFeature('oidc');
-  const empty = (what: string, loading: boolean) => (
-    <Text type="supporting" as="p">
-      {loading ? 'Loading…' : `No ${what}.`}
-    </Text>
-  );
+  const { localUserCommands, iamObjectCommands } = useAuthCapabilities();
+  const readOnly = useStaticMode();
   return (
     <VStack gap={4}>
       <Banner
         status="info"
-        title="Read-only in this release"
-        description="Users are managed with `kudurru admin` on the host; service accounts, role bindings and identity providers are declared in kudurru.yaml or as objects (objects.d or Kubernetes). The write API arrives in v0.2."
+        title="Identity management"
+        description={
+          readOnly
+            ? 'This node runs in static mode: identity is read-only here. Change accounts with kudurru admin on each host and objects in the distributed files.'
+            : !localUserCommands || !iamObjectCommands
+              ? 'This server (the Kubernetes driver) does not change identity through the API: manage people in your identity provider, service accounts, identity providers and role bindings with kubectl or your GitOps tool, and the built-in admin with kudurru admin. Administrators with users.write can still disable or sign out external accounts.'
+              : 'Local users, service accounts with their tokens, identity providers and role bindings are created and changed here on the SQLite driver; on a cluster, use the primary. Objects of kudurru.yaml or objects.d are changed where they are declared, and the built-in admin with kudurru admin on the host. Every change names the exact version you reviewed and is sent once.'
+        }
       />
-      <Panel title="Local users" headingId="iam-users">
-        {users.error ? <ErrorBanner error={users.error} /> : null}
-        <Diagnoses items={users.data?.diagnoses} />
-        {users.data?.items.length ? (
-          <Table<UserRow> aria-label="Local users" density="compact" idKey="name" data={users.data.items as UserRow[]} columns={userColumns} />
-        ) : (
-          empty('local users', users.isLoading)
-        )}
-      </Panel>
-      <Panel title="Service accounts" headingId="iam-sa">
-        {sas.error ? <ErrorBanner error={sas.error} /> : null}
-        {sas.data?.items.length ? (
-          <Table<ServiceAccountRow>
-            aria-label="Service accounts"
-            density="compact"
-            idKey={(s) => `${s.namespace}/${s.name}`}
-            data={sas.data.items as ServiceAccountRow[]}
-            columns={serviceAccountColumns}
-          />
-        ) : (
-          empty('service accounts', sas.isLoading)
-        )}
-      </Panel>
-      <Panel title="Role bindings" headingId="iam-rb">
+      <LocalUsersPanel />
+      <ExternalUsersPanel />
+      <ServiceAccountsPanel />
+      <Panel title="Role bindings" headingId="iam-rb" actions={<NewRoleBindingButton />}>
         {rbs.error ? <ErrorBanner error={rbs.error} /> : null}
         {!rbac.allowed && rbs.data?.items.length ? (
           <Banner
@@ -440,30 +327,15 @@ function Iam() {
             density="compact"
             idKey={(b) => `${b.source}/${bindingName(b)}`}
             data={rbs.data.items as BindingRow[]}
-            columns={bindingColumns}
+            columns={[...bindingColumns, { key: 'actions', header: 'Actions', width: proportional(1.5, { minWidth: 180 }), renderCell: (b) => <RoleBindingActions binding={b} /> }]}
           />
         ) : (
-          empty('role bindings', rbs.isLoading)
+          <Text type="supporting" as="p">
+            {rbs.isLoading ? 'Loading…' : 'No role bindings.'}
+          </Text>
         )}
       </Panel>
-      <Panel title="Identity providers" headingId="iam-idp">
-        {idps.error ? <ErrorBanner error={idps.error} /> : null}
-        {!oidc.allowed && idps.data?.items.length ? (
-          <Banner
-            data-testid="oidc-locked"
-            status="warning"
-            title="Single sign-on needs a license key"
-            description="Without one these identity providers are configured but switched off. Local sign-in keeps working."
-            endContent={<Link href="/license">View license</Link>}
-          />
-        ) : null}
-        <Diagnoses items={idps.data?.diagnoses} />
-        {idps.data?.items.length ? (
-          <Table<ProviderRow> aria-label="Identity providers" density="compact" idKey="id" data={idps.data.items as ProviderRow[]} columns={providerColumns} />
-        ) : (
-          empty('identity providers', idps.isLoading)
-        )}
-      </Panel>
+      <IdentityProvidersPanel />
     </VStack>
   );
 }
@@ -485,6 +357,8 @@ export default function AccessPage() {
       {tab === 'me' ? (
         <>
           <Me />
+          <AuthenticatorPanel />
+          <SessionsPanel />
           <Tokens />
         </>
       ) : null}

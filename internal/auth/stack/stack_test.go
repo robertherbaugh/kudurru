@@ -607,3 +607,54 @@ func TestRBACNeedsALicense(t *testing.T) {
 		t.Errorf("licensed: stale diagnosis %q", d)
 	}
 }
+
+// The item read returns the stored RoleBinding with the identity an operator
+// reviews. It needs rolebindings.read and never serves config-file bindings.
+func TestIAMRoleBindingItemRead(t *testing.T) {
+	st := authtest.Memory(t)
+	e := newEnv(t, st, testConfig)
+	cookie, _ := e.login("admin", "admin-password-1")
+	binding := &internalv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: "staff-view", Namespace: "dns"}, Spec: internalv1.RoleBindingSpec{
+		Role: "viewer", Subjects: []internalv1.BindingSubject{{Kind: "Group", Name: "staff"}},
+	}}
+	applied, err := st.Apply(e.ctx, binding, store.ApplyOptions{Manager: store.ManagerAPI})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var read internalv1.RoleBinding
+	eventually(t, "the RoleBinding item read", func() bool {
+		r := e.do(http.MethodGet, "/api/v1/iam/rolebindings/dns/staff-view", nil, withCookie(cookie))
+		return r.code == http.StatusOK && json.Unmarshal([]byte(r.raw), &read) == nil
+	})
+	if read.UID != applied.GetUID() || read.ResourceVersion != applied.GetResourceVersion() || read.Kind != internalv1.KindRoleBinding ||
+		read.APIVersion != "kudurru.io/v1alpha1" || read.Spec.Role != "viewer" || len(read.Spec.Subjects) != 1 || store.ManagedBy(&read) != store.ManagerAPI {
+		t.Fatalf("item read lost reviewed identity: %+v", read)
+	}
+	for path, want := range map[string]struct {
+		code int
+		key  string
+	}{
+		"/api/v1/iam/rolebindings/dns/absent":                {http.StatusNotFound, "not_found"},
+		"/api/v1/iam/rolebindings/other/staff-view":          {http.StatusNotFound, "not_found"},
+		"/api/v1/iam/rolebindings/dns/rbac.bindings%5B0%5D":  {http.StatusBadRequest, "invalid"},
+		"/api/v1/iam/rolebindings/Not_A_Label/staff-view":    {http.StatusBadRequest, "invalid"},
+		"/api/v1/iam/rolebindings/dns/staff-view?watch=true": {http.StatusBadRequest, "invalid"},
+	} {
+		r := e.do(http.MethodGet, path, nil, withCookie(cookie))
+		if r.code != want.code || r.errKey() != want.key {
+			t.Fatalf("%s: %d %q %s", path, r.code, r.errKey(), r.raw)
+		}
+	}
+	if r := e.do(http.MethodGet, "/api/v1/iam/rolebindings/dns/staff-view", nil); r.code != http.StatusUnauthorized {
+		t.Fatalf("anonymous item read: %d", r.code)
+	}
+	for _, method := range []string{http.MethodPut, http.MethodDelete} {
+		if r := e.do(method, "/api/v1/iam/rolebindings/dns/staff-view", nil, withCookie(cookie)); r.code < 400 {
+			t.Fatalf("%s reached a RoleBinding writer on the stack: %d", method, r.code)
+		}
+	}
+	var unchanged internalv1.RoleBinding
+	if err := st.Get(e.ctx, store.Key{Kind: internalv1.KindRoleBinding, Namespace: "dns", Name: "staff-view"}, &unchanged); err != nil || unchanged.ResourceVersion != applied.GetResourceVersion() {
+		t.Fatal("item route changed the stored RoleBinding", err)
+	}
+}

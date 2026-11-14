@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/spf13/cobra"
+	"golang.org/x/sync/errgroup"
 	discoveryv1client "k8s.io/client-go/kubernetes/typed/discovery/v1"
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
@@ -49,15 +50,20 @@ type edgeFlags struct {
 	authCacheTTL                    int
 	authZones, transferSources, acl []string
 	resolverCacheSize               int
+	managedCacheBypass              bool
 	dynblocks                       bool
 	dynQPS, dynNX                   int
 	ebpf                            bool
 	renderer, dnsdistBin, configDir string
 	dnsdistUser                     string
 	serverID                        string
+	dnstapTarget, dnstapIdentity    string
+	clientIDDomain                  string
+	clientIDs                       bool
 	threads                         int
 	// run only
 	healthAddr                                string
+	managedObservationAddr                    string
 	debounce, drain, zonePoll, stopTimeout    time.Duration
 	pollZones                                 bool
 	internalTokenFile, internalCA, internalSN string
@@ -71,7 +77,7 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 	fl.StringVar(&f.backendsFrom, "backends-from", "static", "membership source: static (from --backends) or endpointslice:<namespace>/<service>")
 	fl.IntVar(&f.backendPort, "backend-port", cluster.DefaultBackendPort, "kudurru DNS port for entries without a port and EndpointSlices without the named port")
 	fl.StringVar(&f.backendPortName, "backend-port-name", "dns", "EndpointSlice port name carrying DNS")
-	fl.IntVar(&f.internalPort, "internal-port", cluster.DefaultInternalPort, "kudurru internal listener port (zone serial polling); 0 disables")
+	fl.IntVar(&f.internalPort, "internal-port", cluster.DefaultInternalPort, "kudurru internal listener port (zone serial polling and operator edge blocks); 0 disables")
 	fl.StringVar(&f.poolResolver, "pool-resolver", "chashed", "load-balancing policy of the resolver pool")
 	fl.StringVar(&f.poolAuthoritative, "pool-authoritative", "leastOutstanding", "load-balancing policy of the authoritative pool")
 	fl.StringVar(&f.tlsDir, "tls-dir", "", "directory with tls.crt+tls.key (or fullchain.pem+privkey.pem): enables DoT/DoH/DoQ/DoH3, watched for rotation")
@@ -93,6 +99,7 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 	fl.StringSliceVar(&f.transferSources, "transfer-sources", nil, "addresses/prefixes allowed to send AXFR/IXFR/NOTIFY/UPDATE through the edge")
 	fl.StringSliceVar(&f.acl, "acl", nil, "client prefixes allowed to query (default: private and loopback ranges)")
 	fl.IntVar(&f.resolverCacheSize, "cache-size", 200000, "resolver pool packet cache entries")
+	fl.BoolVar(&f.managedCacheBypass, "managed-cache-bypass", false, "retain both packet-cache bypasses in config-dir across restarts; required before managed root-anchor backends activate")
 	fl.BoolVar(&f.dynblocks, "dynblocks", false, "enable dnsdist dynamic blocking")
 	fl.IntVar(&f.dynQPS, "dynblocks-qps", 50, "per-client query rate (qps over 10 s) that triggers a dynamic block")
 	fl.IntVar(&f.dynNX, "dynblocks-nxdomain-rate", 20, "per-client NXDOMAIN rate that triggers a dynamic block; 0 disables")
@@ -100,11 +107,16 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 	fl.StringVar(&f.renderer, "renderer", "yaml", "configuration format: yaml (dnsdist.yml + functions-only dnsdist.lua) or lua (dnsdist.conf)")
 	fl.StringVar(&f.serverID, "server-id", "", "dnsdist general.server_id; default the host name")
 	fl.IntVar(&f.threads, "threads", 2, "Do53 listener threads")
+	fl.StringVar(&f.dnstapTarget, "dnstap-target", "", "send dnstap of the answers dnsdist gives itself (packet cache, own rules) to a kudurru listeners.dnstap entry: tcp:ip:port or unix:/path")
+	fl.StringVar(&f.dnstapIdentity, "dnstap-identity", "", "dnstap identity of the edge's messages; default the server id. List it in unforwardedIdentities of the kudurru listener")
+	fl.StringVar(&f.clientIDDomain, "client-id-domain", "", "DNS suffix of DoT/DoQ client IDs (phone.<suffix> selects phone), sent to kudurru in PROXYv2 TLV 0xE1; needs --proxy-protocol-secret-file")
+	fl.BoolVar(&f.clientIDs, "client-ids", false, "accept DoH/DoH3 client IDs as one path component (/dns-query/phone), sent to kudurru in PROXYv2 TLV 0xE1; needs --proxy-protocol-secret-file")
 	if run {
 		fl.StringVar(&f.dnsdistBin, "dnsdist-bin", "dnsdist", "dnsdist executable")
 		fl.StringVar(&f.dnsdistUser, "dnsdist-user", "", "uid[:gid] dnsdist switches to after binding its sockets and creating the eBPF maps (dnsdist --uid/--gid), for a supervisor started as root; dnsdist keeps only capabilities_to_retain")
 		fl.StringVar(&f.configDir, "config-dir", "/etc/dnsdist", "directory for the rendered configuration")
 		fl.StringVar(&f.healthAddr, "health-address", ":8084", "supervisor listener: /healthz/ready, /healthz/live, /status, /metrics")
+		fl.StringVar(&f.managedObservationAddr, "managed-observation-address", "", "optional authenticated TLS listener for installed managed-cache observations (host:port); requires retained bypass and internal credentials")
 		fl.StringVar(&f.healthAddr, "readiness-address", ":8084", "alias of --health-address (the chart's form)")
 		fl.DurationVar(&f.debounce, "debounce", 5*time.Second, "delay before re-rendering after membership or certificate changes")
 		fl.DurationVar(&f.drain, "drain", time.Second, "readiness 503 period before a restart")
@@ -121,29 +133,32 @@ func (f *edgeFlags) register(cmd *cobra.Command, run bool) {
 	}
 }
 
-func newEdgeCmd() *cobra.Command {
+func newEdgeCmd(configPath *string, o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "edge",
 		Short: "dnsdist supervisor: render the configuration or run dnsdist (PID 1 of the kudurru-dnsdist image)",
 	}
 	var rf, uf edgeFlags
 	render := &cobra.Command{
-		Use:   "render",
-		Short: "Print the dnsdist configuration the supervisor would run (credentials are random per call)",
+		Use:     "render",
+		Short:   "Print the dnsdist configuration the supervisor would run (credentials are random per call)",
+		PreRunE: func(c *cobra.Command, _ []string) error { return rf.load(c, *configPath) },
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runEdgeRender(c, &rf)
 		},
 	}
 	rf.register(render, false)
 	run := &cobra.Command{
-		Use:   "run",
-		Short: "Render, check, exec and supervise dnsdist (dev-docs/design-record.md §3.6)",
+		Use:     "run",
+		Short:   "Render, check, exec and supervise dnsdist (dev-docs/design-record.md §3.6)",
+		PreRunE: func(c *cobra.Command, _ []string) error { return uf.load(c, *configPath) },
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runEdgeRun(c, &uf)
 		},
 	}
 	uf.register(run, true)
 	cmd.AddCommand(render, run)
+	cmd.AddCommand(newEdgeBlockCmds(o)...)
 	return cmd
 }
 
@@ -153,11 +168,18 @@ func (f *edgeFlags) options() (edge.Options, error) {
 		ServerID: f.serverID, Listen: f.listen,
 		PoolResolver: f.poolResolver, PoolAuthoritative: f.poolAuthoritative,
 		ResolverCacheSize:  f.resolverCacheSize,
+		ManagedCacheBypass: f.managedCacheBypass,
 		AuthoritativeCache: f.authCache, AuthoritativeCacheTTL: f.authCacheTTL,
 		API: f.api, Console: f.console,
 		ACL: f.acl, TransferSources: f.transferSources, AuthoritativeZones: f.authZones,
-		Threads: f.threads,
-		EBPF:    edge.EBPF{Enabled: f.ebpf},
+		Threads:   f.threads,
+		EBPF:      edge.EBPF{Enabled: f.ebpf},
+		ClientIDs: edge.ClientIDs{Domain: f.clientIDDomain, Paths: f.clientIDs},
+	}
+	if f.dnstapTarget != "" {
+		o.Dnstap = &edge.Dnstap{Target: f.dnstapTarget, Identity: f.dnstapIdentity}
+	} else if f.dnstapIdentity != "" {
+		return o, errors.New("--dnstap-identity needs --dnstap-target")
 	}
 	if f.dynblocks {
 		o.DynBlocks = edge.DynBlocks{Enabled: true, QueryRate: f.dynQPS, NXDomainRate: f.dynNX}
@@ -385,15 +407,27 @@ func runEdgeRun(c *cobra.Command, f *edgeFlags) error {
 		Debounce: f.debounce, Drain: f.drain, ZonePoll: f.zonePoll, StopTimeout: f.stopTimeout,
 		Logger: logger, Registerer: reg, Gatherer: reg,
 	}
-	if f.pollZones && f.internalPort > 0 {
-		zl, err := f.zoneLister()
-		switch {
-		case err != nil:
+	var internalCredentials *internalapi.Credentials
+	if f.internalPort > 0 || f.managedObservationAddr != "" {
+		internalCredentials, err = f.internalCredentials()
+		if err != nil {
 			return err
-		case zl == nil:
+		}
+	}
+	if f.pollZones && f.internalPort > 0 {
+		if internalCredentials == nil {
 			logger.Warn("zone polling disabled: no KUDURRU_ENCRYPTION_KEY[_FILE] and no --internal-token-file; authoritative routing uses --authoritative-zones only")
-		default:
-			cfg.Zones = zl
+		} else {
+			cfg.Zones = internalapi.NewClient(internalCredentials, internalapi.ClientOptions{Timeout: 3 * time.Second})
+		}
+	}
+	// Operator edge blocks (D388) ride the same authenticated internal
+	// channel; without its credentials the edge applies none.
+	if f.internalPort > 0 {
+		if internalCredentials == nil {
+			logger.Warn("operator edge blocks disabled: no KUDURRU_ENCRYPTION_KEY[_FILE] and no --internal-token-file")
+		} else {
+			cfg.Blocks = internalapi.NewClient(internalCredentials, internalapi.ClientOptions{Timeout: 3 * time.Second})
 		}
 	}
 	sup, err := dnsdist.New(cfg)
@@ -405,19 +439,22 @@ func runEdgeRun(c *cobra.Command, f *edgeFlags) error {
 		_ = sup.Signal(s)
 	})
 	defer stop()
-	errCh := make(chan error, 1)
-	go func() { errCh <- sup.Serve(ctx, f.healthAddr) }()
-	runErr := sup.Run(ctx)
-	stop()
-	if err := <-errCh; err != nil && runErr == nil {
-		runErr = fmt.Errorf("health listener: %w", err)
+	observation, err := f.managedObservationServer(sup, logger, internalCredentials)
+	if err != nil {
+		return err
 	}
-	return runErr
+	g, runContext := errgroup.WithContext(ctx)
+	g.Go(func() error { return sup.Serve(runContext, f.healthAddr) })
+	g.Go(func() error { return sup.Run(runContext) })
+	if observation != nil {
+		g.Go(func() error { return observation.Run(runContext) })
+	}
+	return g.Wait()
 }
 
-// zoneLister returns the internal-API client for /internal/zones, or nil
-// when no internal credentials are configured.
-func (f *edgeFlags) zoneLister() (dnsdist.ZoneLister, error) {
+// Capture one immutable credential source for both backend polling and the
+// optional observation listener. Neither path rereads files after startup.
+func (f *edgeFlags) internalCredentials() (*internalapi.Credentials, error) {
 	key, prev, err := readEncryptionKeys()
 	if err != nil {
 		return nil, err
@@ -426,14 +463,10 @@ func (f *edgeFlags) zoneLister() (dnsdist.ZoneLister, error) {
 		return nil, nil
 	}
 	host, _ := os.Hostname()
-	creds, err := internalapi.NewCredentials(internalapi.CredentialOptions{
+	return internalapi.NewCredentials(internalapi.CredentialOptions{
 		Key: key, PreviousKey: prev, NodeName: host, TokenFile: f.internalTokenFile,
 		CAFile: f.internalCA, ServerName: f.internalSN,
 	})
-	if err != nil {
-		return nil, err
-	}
-	return internalapi.NewClient(creds, internalapi.ClientOptions{Timeout: 3 * time.Second}), nil
 }
 
 func isLoopbackHostPort(hp string) bool {

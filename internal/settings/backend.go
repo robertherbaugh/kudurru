@@ -197,7 +197,7 @@ func (b FileBackend) Save(ctx context.Context, d Document, revision string) (str
 		}
 		// Convert section values to the schema's dotted leaves.
 		for _, key := range config.Schema {
-			if len(key.Path) > len(section) && key.Path[:len(section)+1] == section+"." {
+			if config.PublicClusterKey(key) && len(key.Path) > len(section) && key.Path[:len(section)+1] == section+"." {
 				v := any(tree)
 				for _, part := range splitPath(key.Path[len(section)+1:]) {
 					m, ok := v.(map[string]any)

@@ -50,10 +50,11 @@ type addrSet []netip.Addr
 
 // lru is a size-bounded cache with per-entry expiry.
 type lru struct {
-	mu  sync.Mutex
-	max int
-	m   map[string]*list.Element
-	l   *list.List
+	mu    sync.Mutex
+	epoch uint64
+	max   int
+	m     map[string]*list.Element
+	l     *list.List
 }
 
 type lruItem struct {
@@ -84,16 +85,31 @@ func (c *lru) get(key string, now time.Time) (any, bool) {
 }
 
 func (c *lru) set(key string, val any, ttl time.Duration, now time.Time) {
-	ttl = min(max(ttl, minCacheTTL), maxCacheTTL)
+	c.setUntil(key, val, cacheExpiry(ttl, now), c.generation(), nil)
+}
+
+func (c *lru) generation() uint64 { c.mu.Lock(); defer c.mu.Unlock(); return c.epoch }
+
+func cacheExpiry(ttl time.Duration, origin time.Time) time.Time {
+	return origin.Add(min(max(ttl, minCacheTTL), maxCacheTTL))
+}
+
+// setUntil takes the original expiry and checks admission under the actual
+// cache mutex. Waiting for a contended native lock cannot renew validity.
+func (c *lru) setUntil(key string, val any, expires time.Time, epoch uint64, admit func() bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.epoch != epoch || admit != nil && !admit() {
+		return
+	}
+
 	if e, ok := c.m[key]; ok {
 		it := e.Value.(*lruItem)
-		it.val, it.exp = val, now.Add(ttl)
+		it.val, it.exp = val, expires
 		c.l.MoveToFront(e)
 		return
 	}
-	c.m[key] = c.l.PushFront(&lruItem{key: key, val: val, exp: now.Add(ttl)})
+	c.m[key] = c.l.PushFront(&lruItem{key: key, val: val, exp: expires})
 	for c.l.Len() > c.max {
 		last := c.l.Back()
 		c.l.Remove(last)
@@ -110,6 +126,7 @@ func (c *lru) len() int {
 func (c *lru) flush() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.epoch++
 	c.m = make(map[string]*list.Element)
 	c.l.Init()
 }

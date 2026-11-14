@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/blocking/parser"
+	"github.com/robertherbaugh/kudurru/internal/downloadpolicy"
 	"github.com/robertherbaugh/kudurru/internal/version"
 )
 
@@ -48,6 +49,9 @@ type DownloadOptions struct {
 	// DefaultHTTPTimeout, the proxy from the environment and, unless
 	// AllowLocalAddresses is set, a dialer that refuses local addresses.
 	Client *http.Client
+	// HTTPSOnly rejects HTTP initial requests and redirects before transport.
+	// Cached bodies and ConfigMap sources keep their existing behavior.
+	HTTPSOnly bool
 	// AllowLocalAddresses lets list URLs reach loopback, link-local
 	// (169.254.0.0/16 and fe80::/10: cloud metadata services), unspecified,
 	// multicast and the known cloud metadata addresses
@@ -95,6 +99,9 @@ func NewDownloader(cache *DiskCache, opts DownloadOptions) *Downloader {
 		} else {
 			opts.Client = guardedClient()
 		}
+	}
+	if opts.HTTPSOnly {
+		opts.Client = downloadpolicy.HTTPSOnly(opts.Client)
 	}
 	if opts.MaxHTTPSize <= 0 {
 		opts.MaxHTTPSize = DefaultMaxHTTPSize
@@ -205,6 +212,10 @@ func (d *Downloader) fetchOnce(ctx context.Context, src Source, origin string) (
 	}
 	resp, err := d.opts.Client.Do(req)
 	if err != nil {
+		if errors.Is(err, downloadpolicy.ErrHTTPSRequired) {
+			// net/http wraps errors with the URL, which can contain tokens.
+			return Result{}, false, downloadpolicy.ErrHTTPSRequired
+		}
 		if errors.Is(err, ErrLocalAddress) {
 			return Result{}, false, fmt.Errorf("listfetcher: GET %s: %w", redact(src.Key), err)
 		}

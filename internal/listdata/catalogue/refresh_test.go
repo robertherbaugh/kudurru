@@ -128,7 +128,7 @@ func TestRefresherReplica(t *testing.T) {
 		if addr != "10.0.0.1:8082" {
 			t.Errorf("pulled from %s", addr)
 		}
-		return []byte(leaderDoc), "https://data.example/c.json", pullErr
+		return []byte(leaderDoc), ts.URL, pullErr
 	}
 	h := NewHolder(nil)
 	r, err := NewRefresher(RefresherOptions{

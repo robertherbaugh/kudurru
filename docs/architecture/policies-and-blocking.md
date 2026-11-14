@@ -10,14 +10,16 @@ erDiagram
     Policy }o--o{ ClientGroup : "clientGroupRefs"
     Policy }o--o{ BlockList : "blockListRefs (mode block)"
     Policy }o--o{ BlockList : "allowListRefs (mode allow)"
+    BlockList }o--o{ ClientGroup : "optional clientGroupRefs scope"
     Policy }o--o{ CatalogueService : "blockedServices / blockedCategories"
-    BlockList ||--|{ Source : "sources[]: url | inline | configMapRef | entries"
+    BlockList ||--|{ Source : "sources[]: url | inline | configMapRef | entries | rpz"
     ClientMatcher {
         string ip
         string cidr
-        string mac "not filled in yet"
-        string hostname "not filled in yet"
-        string clientID "not filled in yet"
+        string mac "from the client inventory"
+        string hostname "inventory, DHCP lease or reverse-PTR name"
+        string nameGlob "pattern over the same names"
+        string clientID "DoT/DoQ SNI, DoH path or PROXYv2 TLV"
     }
     Policy {
         int priority
@@ -61,13 +63,15 @@ flowchart TD
     CID -- "no" --> CATCH{"a group with<br/>0.0.0.0/0 or ::/0?"}
     CATCH -- "yes" --> G
     CATCH -- "no" --> DEF["group default<br/>(if it exists)"]
-    classDef dead fill:#e6e9e8,stroke:#5b6664,color:#5b6664
-    class MAC,HN,CID dead
 ```
 
-The grey tiers exist in the index, but nothing feeds them yet: no transport
-sets a MAC or a DoT/DoH client ID, and no hostname resolver is wired. Today
-clients are matched by exact IP, by CIDR, or fall through to the catch-all.
+The MAC, hostname and client-ID tiers match only when something supplies that
+identity for the client: the captured inventory (MAC addresses and names),
+DHCP lease names and, when the inventory has no MAC for the address, the lease
+MAC, the optional reverse-PTR lookup, or an opt-in encrypted
+transport client ID. [Captured client identity](#captured-client-identity)
+describes each source. Without one, a client is matched by exact IP, by CIDR,
+or falls through to the catch-all.
 The bootstrap `ClientGroup default` lists `0.0.0.0/0` and `::/0`, which is
 how "default matches everybody" works.
 
@@ -96,10 +100,21 @@ crosses midnight and belongs to the start day; `start == end` means 24 hours;
 no weekdays means every day. A schedule that does not parse makes the policy
 **always active** (it fails closed) and raises a diagnosis.
 
-`queryLog` is merged into the decision but nothing reads it yet, and
-`rewrites` is ignored (planned for v0.2).
+`queryLog` is merged into the decision but nothing reads it yet. `rewrites`
+are compiled into the decision in policy priority order and answered by the
+`rewrite` stage with status `local_record`
+([response processing](../deploy/response-processing.md)).
 
 ## 3. Is this name blocked?
+
+The diagram below describes ordinary list evaluation. The transferred RPZ
+adapter inserts ordered feed evaluation after explicit allow/allow-only and
+before ordinary denies, rewrites and safe search. It uses one resolved response
+for both RPZ and ordinary answer inspection; required unavailable feeds fail
+closed. The complete SQLite runtime mounts the adapter; the Kubernetes store
+does not evaluate RPZ sources. See
+[transferred RPZ](block-lists.md#transferred-rpz-foundation) for that flow and
+its current implementation boundary.
 
 ```mermaid
 flowchart TD
@@ -157,10 +172,31 @@ inline entries, and `blocked_list` otherwise.
 ### Turning blocking off for a while
 
 `POST /api/v1/dns/blocking {blocking: false, timer: 300}` disables blocking
-**on the node that receives the request**, in memory, until the timer ends
-or the process restarts. The API reports `scope: "node"`. The cluster-wide
-toggle that the design record describes is not built: the replication hook
-exists, but nothing implements it.
+until an absolute deadline. Complete SQLite stores canonical
+`Kudurru.status.blocking` in its original authorized command and acknowledges
+the matching complete serving publication. Static SQLite twins retain independent
+local state and report `scope: "node"`; enrolled replication uses the complete
+image, with its separate membership and transport requirements.
+
+Kubernetes stores the release namespace's runtime state in the
+`kudurru-runtime` ConfigMap annotation `kudurru.io/blocking-disabled-until`:
+absent means enabled, `forever` means an indefinite disable, and otherwise the
+value is an absolute RFC 3339 timestamp. A command retains its original bounded
+request and checks authorization before reading and before a single
+resourceVersion/UID-bound update (or create when absent). Conflicts are returned
+without replay. Only a confirmed API-server result changes the local toggle;
+a lost reply returns an unknown outcome, not a rollback or success.
+
+Every replica reconciles this field through a bounded read once per second,
+serialized with its local commands. The API reports `scope: "cluster"`, with
+eventual cross-node observation rather than synchronous acknowledgment from
+every replica. Restart and repeated reads preserve the original deadline.
+The existing cache-flush observer runs when applied state changes. Before first
+observation, DNS keeps blocking enabled; during an outage it retains confirmed
+state and its absolute expiry, while unavailable runtime reads return 503.
+Malformed state is refused rather than silently repaired. Kubernetes auditing
+records the runtime action separately from the ConfigMap write; this path does
+not claim SQLite's same-transaction identity and audit guarantees.
 
 ## Blocked services and safe search
 
@@ -191,6 +227,23 @@ keeps those lists attached to the right policies:
 Policies owned by files or integrations are never edited; they are reported
 as skipped.
 
+Attachment makes a list available to a policy; `BlockList.spec.clientGroupRefs`
+restricts it to the captured winning membership of the query. These optional
+namespace-local names form a set: any matching group permits the list, including
+ties in the winning tier. Lower tiers and groups from another namespace do not.
+The policy index copies this scope and filters list references before building
+its immutable selection, including fallback decisions. Serving never reads the
+store for scope, and a held request keeps its original complete publication.
+
+General lists without this field remain unrestricted. Reserved
+`ui-allow-<group>` and `ui-deny-<group>` names keep their exact group meaning for
+legacy objects too; dashboard and unblock writers materialize that scope on the
+list. Admission rejects an explicit scope that contradicts a reserved name.
+`ui-allow` and `ui-deny` retain their everyone meaning. A shared policy can
+therefore carry a group's allow or deny list without applying it to other groups.
+Content and regex caches stay shared behind the scoped selection; cached raw
+responses are inspected under the original request's selection.
+
 ## The block page and unblock requests
 
 With `blockMode: blockPage`, a blocked web site resolves to the block page
@@ -213,8 +266,9 @@ sequenceDiagram
     BP-->>U: "blocked by dns/ads: ||ads.example^" + request form
     U->>BP: POST /.kudurru/request (same origin, rate limited)
     BP->>S: Apply UnblockRequest ur-<HMAC(client, domain)> (Pending)
-    A->>S: approve (scope everyone or group, exact or subdomains, optional duration)
-    S->>S: add the entry to ui-allow[-group], attach it to the policies
+    A->>S: approve under original current proof and writer (scope, match, duration)
+    S->>S: one SQLite transaction: entry, policy references, request decision
+    Note over A,S: decide permission delegates only these derived effects#59; final credential and license checks
     Note over S,D: every node: list recompiles → new snapshot → allow list wins
     A->>D: the API flushes the name from this node's cache
     U->>D: A ads.example (after the old block TTL)
@@ -224,7 +278,9 @@ sequenceDiagram
 - One request object exists per (client, domain): the name is an HMAC of
   both, so repeated submissions update one object. The client address is
   stored according to `querylog.privacy`.
-- A leader janitor runs every minute: time-limited approvals expire (and
+- A leader janitor runs every minute: on SQLite its original elected writer
+  atomically applies current canonical retention/expiry policy. Time-limited
+  approvals expire (and
   their allow entry is removed), pending requests expire after 14 days, and
   decided requests are deleted after 30 days.
 - The block page finds the reason in the query log first. Under the
@@ -233,3 +289,70 @@ sequenceDiagram
 
 Next: [Block lists](block-lists.md) shows how the lists behind all of this
 are fetched and compiled.
+
+## Captured client identity
+
+The identify stage captures one immutable inventory snapshot before matching.
+It supplies normalized MACs, hostnames and tags to the policy and modifier
+engines. Group IDs are policy membership, not inventory tags. The fixed order
+is exact IP, MAC, longest nonzero CIDR, exact hostname, hostname glob, ClientID,
+catch-all CIDR, then default group. All matches within a tier join; in
+particular, multiple MAC addresses cannot make group selection depend on order.
+A known-empty inventory result stays empty for that query and its dependencies.
+
+Inventory producers replace complete bounded batches off the DNS query path.
+Observed and expiry timestamps describe the device observation, not a repeated
+poll. The newest IP claim wins; equal-time conflicting claims are ambiguous.
+Expired or removed claims do not expose an older device at a reassigned IP.
+Failures retain the previous batch only until its existing expiry. The holder
+is shared by integrations; queries never call a provider or perform PTR lookups.
+
+When the captured inventory has no MAC for the source address, the identify
+stage fills it from the live bound lease of the built-in DHCP server, read from
+the committed in-memory lease snapshot (D397). Inventory MACs win; colliding
+leases fill nothing; the lease MAC clears the inventory source, so a
+source-bound private grant cannot match it. The lease snapshot is local to the
+process: on Kubernetes every replica watches all leases, while on a SQLite
+cluster only the node serving the scope has them, so another node answers the
+same client without the lease MAC. The block page's `PolicyFinder` identifies
+the client by its address only and does not apply this fill. `GET /inventory` presents the same
+rule: it lists inventory devices and leases with each address's state
+(assigned, expired, ambiguous, superseded or withdrawn) and never reads the
+DNS path.
+
+```mermaid
+flowchart LR
+    provider["Inventory producer"] --> batch["Validate complete source batch"]
+    batch --> snapshot["Immutable IP ownership snapshot"]
+    transport["Address and optional client ID"] --> identify["Capture inventory once"]
+    snapshot --> identify
+    dhcp["Current local DHCP names<br/>and lease MACs"] --> identify
+    ptr["Bounded asynchronous PTR cache"] -. "only if no inventory/DHCP name" .-> identify
+    identify --> tiers["D86 matching tiers"]
+    tiers --> policy["Client policy"]
+    identify --> modifiers["Client names and tags"]
+```
+
+### Optional reverse-PTR name fallback
+
+`clientNames.reversePTR.enabled` opts the host into background name acquisition.
+The operator must provide one to four unicast IP:port DNS servers and one to 32
+client CIDRs in `networks`. These node settings are host-only and require restart;
+API updates and null resets are refused. The default is disabled.
+
+Identification samples the memory cache only when captured inventory and local
+DHCP provide no name. A cold or expired lookup returns immediately and requests
+background work through a bounded nonblocking queue. Two workers and 4,096 cache
+entries are the defaults (limits: eight workers, 65,536 entries, 256 queued
+addresses). Exact IP, MAC and nonzero CIDR matching retain higher precedence.
+The resulting names and membership remain pinned to the original request and its
+dependencies. PTR is an operator-selected DNS observation, never authentication.
+
+Acquisition uses direct UDP with a single original timeout across configured
+sources. Only a direct, unambiguous PTR target with matching ID/question/owner,
+IN class and nonzero TTL is admitted. Truncated answers, CNAME chasing and invalid
+hostnames are refused. Positive lifetime starts at acquisition and is capped by
+`maxAge`; failed/negative acquisitions use `negativeTTL` backoff. No stale name is
+returned while refreshing. Shutdown cancels and joins the fixed workers and
+invalidates local observations. This source is independent of the resolver's
+ordinary DNS cache and never uses system name resolution or the query pipeline.

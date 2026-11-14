@@ -45,8 +45,23 @@ func splitPath(p string) []string { return strings.Split(p, ".") }
 
 func upstreamValue(c *config.Config) any {
 	raw, _ := json.Marshal(c.Upstreams)
-	var v any
+	var v map[string]any
 	_ = json.Unmarshal(raw, &v)
+	// A section can contain both cluster settings and host-only declarations.
+	// Keep the same effective public values, but never copy a node's source
+	// paths, ingress topology or installed edge identities into shared ownership.
+	for _, key := range config.Schema {
+		path, upstream := strings.CutPrefix(key.Path, "upstreams.")
+		if !upstream || config.PublicClusterKey(key) {
+			continue
+		}
+		parts := splitPath(path)
+		parent := v
+		for _, part := range parts[:len(parts)-1] {
+			parent, _ = parent[part].(map[string]any)
+		}
+		delete(parent, parts[len(parts)-1])
+	}
 	return v
 }
 
@@ -280,7 +295,7 @@ func (m *Manager) yamlLocked(section string, proposed map[string]any) (string, e
 		}
 		flat := config.Flatten(c)
 		for _, key := range config.Schema {
-			if !strings.HasPrefix(key.Path, section+".") {
+			if !config.PublicClusterKey(key) || !strings.HasPrefix(key.Path, section+".") {
 				continue
 			}
 			v, ok := values[key.Path]

@@ -30,12 +30,18 @@ deployments.
 | Edge and virtual IP | kudurru supervisors for dnsdist load balancing and keepalived VIP failover, with backend health and VIP visibility | [Compose HA](deploy/compose-ha.md) |
 | Integrations | The external-dns webhook provider for DNSRecordSet objects | [Configuration and stores](architecture/configuration-and-store.md) |
 
-Cloudflare split-horizon and UniFi inventory integrations are planned;
-they are not current capabilities.
+The Cloudflare split-horizon and UniFi inventory integrations stay on the
+roadmap. This version runs a first, partial form of them only on a licensed
+SQLite node, as background integrations (Cloudflare record publication,
+UniFi client inventory and webhook providers). They do not run on
+Kubernetes, and parts such as their management UI are not done.
+[Background integrations](deploy/integrations.md) states what this version
+covers and what it leaves out.
 
-## Planned: Active Directory DNS
+## Preview: Active Directory DNS
 
-Planned for **v0.2.0**, AD DNS replacement targets an existing single-domain
+AD DNS replacement remains **preview**, with implementation and Windows
+qualification deferred to future work. It targets an existing single-domain
 forest, including multiple domain controllers and AD sites. The goal is to
 make kudurru the authoritative source for the migrated zones so Windows DNS
 can remain stopped on every domain controller. AD DS continues to provide
@@ -54,8 +60,8 @@ The planned scope includes:
 
 Completion requires Windows qualification with all DC DNS services stopped
 and no DNS forwarding or update proxy back to them for the migrated zones.
-This is planned work; the current release does not provide complete AD DNS
-replacement.
+The current release does not provide complete or production-qualified AD DNS
+replacement. No supported Windows matrix is claimed.
 
 ## Pricing
 

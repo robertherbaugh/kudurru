@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"time"
 )
@@ -16,9 +15,10 @@ type Auth struct {
 	Tokens     AuthTokens    `koanf:"tokens" json:"tokens"`
 	// IdentityProviders are OpenID Providers in the IdentityProvider spec
 	// shape plus an "id" key (ee/oidc.ProviderFromMap).
-	IdentityProviders []map[string]any `koanf:"identityProviders" json:"identityProviders,omitempty"`
-	Kubernetes        AuthKubernetes   `koanf:"kubernetes" json:"kubernetes"`
-	AdminSocket       AuthAdminSocket  `koanf:"adminSocket" json:"adminSocket"`
+	IdentityProviders []map[string]any  `koanf:"identityProviders" json:"identityProviders,omitempty"`
+	ProviderResources ProviderResources `koanf:"providerResources" json:"providerResources"`
+	Kubernetes        AuthKubernetes    `koanf:"kubernetes" json:"kubernetes"`
+	AdminSocket       AuthAdminSocket   `koanf:"adminSocket" json:"adminSocket"`
 }
 
 // AuthBootstrap configures the first-boot admin.
@@ -44,9 +44,16 @@ type AuthTokens struct {
 
 // AuthKubernetes configures how Kubernetes identities are authorized.
 type AuthKubernetes struct {
-	// Mode is sar (SubjectAccessReview, D55). impersonate is v0.2.
+	// Mode is sar (SubjectAccessReview, the default, D55) or impersonate
+	// (API writes of kudurru.io objects run as the principal, D386).
 	Mode string `koanf:"mode" json:"mode"`
 }
+
+// Kubernetes authorization modes (auth.kubernetes.mode).
+const (
+	KubernetesModeSAR         = "sar"
+	KubernetesModeImpersonate = "impersonate"
+)
 
 // AuthAdminSocket is the local admin socket (`kudurru admin`, §8.7).
 type AuthAdminSocket struct {
@@ -75,7 +82,7 @@ const (
 // provider and binding entries get a shallow check from the metadata and
 // a full one when ee/oidc and internal/rbac build them.
 func (a *Auth) validate() []error {
-	var errs []error
+	errs := a.ProviderResources.validate()
 	if a.Session.IdleTimeout.Std() < time.Minute {
 		errs = append(errs, fmt.Errorf("auth.session.idleTimeout: %s is shorter than 1m", a.Session.IdleTimeout))
 	}
@@ -84,9 +91,6 @@ func (a *Auth) validate() []error {
 	}
 	if a.Tokens.MaxLifetime < 0 {
 		errs = append(errs, fmt.Errorf("auth.tokens.maxLifetime: %s is negative", a.Tokens.MaxLifetime))
-	}
-	if a.Kubernetes.Mode == "impersonate" {
-		errs = append(errs, errors.New("auth.kubernetes.mode: impersonate is planned for v0.2 (D55: the impersonate grant makes kudurru cluster-admin-equivalent); v0.1 supports only sar"))
 	}
 	seen := map[string]bool{}
 	for i, p := range a.IdentityProviders {

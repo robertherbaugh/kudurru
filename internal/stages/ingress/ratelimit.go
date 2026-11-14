@@ -120,6 +120,7 @@ type RateLimiter struct {
 	shards  [rateLimitShards]shard
 	buckets atomic.Int64
 	over    atomic.Uint64 // over-limit queries seen, drives the slip ratio
+	slipped atomic.Uint64 // cumulative decisions, retained across reconfiguration
 	hook    atomic.Pointer[func(Verdict)]
 }
 
@@ -237,6 +238,15 @@ func (l *RateLimiter) Collector() prometheus.Collector {
 	}, func() float64 { return float64(l.Buckets()) })
 }
 
+// SlipCollector counts truncated-response decisions independently from drops.
+// No client or prefix labels are exported.
+func (l *RateLimiter) SlipCollector() prometheus.Collector {
+	return prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Name: "kudurru_ratelimit_slipped_total",
+		Help: "UDP queries selected for a truncated rate-limit response so clients can retry over TCP.",
+	}, func() float64 { return float64(l.slipped.Load()) })
+}
+
 // Exempt reports whether addr is never limited.
 func (l *RateLimiter) Exempt(addr netip.Addr) bool {
 	addr = addr.Unmap()
@@ -284,6 +294,7 @@ func (l *RateLimiter) overLimit(slip uint64) Verdict {
 	v := VerdictDrop
 	if n*slip/100 != (n-1)*slip/100 {
 		v = VerdictSlip
+		l.slipped.Add(1)
 	}
 	if fn := l.hook.Load(); fn != nil {
 		(*fn)(v)

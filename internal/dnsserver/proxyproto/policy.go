@@ -3,6 +3,7 @@ package proxyproto
 import (
 	"bytes"
 	"crypto/subtle"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+
+	"github.com/robertherbaugh/kudurru/internal/clientid"
 )
 
 // MinSecretLen is the shortest shared secret NewPolicy accepts. The
@@ -290,7 +293,7 @@ func (p *Policy) authenticate(peer netip.AddrPort, h *Header) (netip.AddrPort, b
 //
 // The returned payload aliases b. On a disabled Policy Datagram returns b
 // unchanged.
-func (p *Policy) Datagram(peer netip.AddrPort, b []byte) (payload []byte, client netip.AddrPort, proxied bool, err error) {
+func (p *Policy) Datagram(peer netip.AddrPort, b []byte, identity ...func(string)) (payload []byte, client netip.AddrPort, proxied bool, err error) {
 	if !p.Enabled() || !HasSignature(b) {
 		return b, peer, false, nil
 	}
@@ -305,6 +308,11 @@ func (p *Policy) Datagram(peer netip.AddrPort, b []byte) (payload []byte, client
 	client, proxied, err = p.authenticate(peer, &h)
 	if err != nil {
 		return nil, netip.AddrPort{}, false, err
+	}
+	if proxied {
+		if err := p.clientIdentity(peer, h, identity); err != nil {
+			return nil, netip.AddrPort{}, false, err
+		}
 	}
 	return b[n:], client, proxied, nil
 }
@@ -321,7 +329,7 @@ func (p *Policy) Datagram(peer netip.AddrPort, b []byte) (payload []byte, client
 // It reads only as far as needed to rule a header out, so a DNS or TLS
 // stream costs one Read. The caller sets the read deadline. On a disabled
 // Policy Stream reads nothing.
-func (p *Policy) Stream(peer netip.AddrPort, r io.Reader) (consumed []byte, client netip.AddrPort, proxied bool, err error) {
+func (p *Policy) Stream(peer netip.AddrPort, r io.Reader, identity ...func(string)) (consumed []byte, client netip.AddrPort, proxied bool, err error) {
 	if !p.Enabled() {
 		return nil, peer, false, nil
 	}
@@ -361,5 +369,41 @@ func (p *Policy) Stream(peer netip.AddrPort, r io.Reader) (consumed []byte, clie
 	if err != nil {
 		return nil, netip.AddrPort{}, false, err
 	}
+	if proxied {
+		if err := p.clientIdentity(peer, h, identity); err != nil {
+			return nil, netip.AddrPort{}, false, err
+		}
+	}
 	return nil, client, proxied, nil
+}
+
+// clientIdentity runs only after authentication. Even loopback ID propagation
+// requires the shared secret; the address-only loopback exemption is narrower.
+func (p *Policy) clientIdentity(peer netip.AddrPort, h Header, observers []func(string)) error {
+	id := ""
+	for rest := h.RawTLVs; len(rest) >= 3; {
+		n := int(binary.BigEndian.Uint16(rest[1:3]))
+		if len(rest) < n+3 {
+			return p.drop(ReasonMalformed, peer, ErrMalformed)
+		}
+		if rest[0] == TLVTypeClientID {
+			if len(p.secret) == 0 {
+				return p.drop(ReasonUnauthenticated, peer, errNeedTLV)
+			}
+			value, ok := clientid.Normalize(string(rest[3 : 3+n]))
+			if !ok || id != "" {
+				return p.drop(ReasonMalformed, peer, ErrMalformed)
+			}
+			id = value
+		}
+		rest = rest[3+n:]
+	}
+	if id != "" {
+		for _, observe := range observers {
+			if observe != nil {
+				observe(id)
+			}
+		}
+	}
+	return nil
 }

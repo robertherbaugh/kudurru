@@ -15,11 +15,11 @@ import { Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { ApiError } from '../api/client';
-import { qk, useApi, useCan } from '../api/context';
+import { can as hasPermission, qk, useApi, useCan, useSession } from '../api/context';
 import type { SettingKey, SettingsBody } from '../api/types';
+import { BrandingSettings, isBrandingSetting } from '../components/BrandingSettings';
 import { AppearanceControls } from '../components/AppearanceButton';
-import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
+import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
 import { BlockPageIntro } from '../components/BlockPagePreview';
 import { AdGuardImportNote } from '../components/CatalogueSources';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
@@ -146,7 +146,10 @@ export default function SettingsPage() {
 
   const schema = useQuery({ queryKey: qk.schema, queryFn: () => api.settings.schema(), staleTime: Infinity });
   const cluster = useQuery({ queryKey: qk.settings, queryFn: () => api.settings.get() });
-  const node = useQuery({ queryKey: qk.nodeConfig, queryFn: () => api.settings.nodeConfig(), enabled: can('node', 'config') });
+  const { data: me } = useSession();
+  // The node's values stay readable on a follower, where useCan refuses
+  // node.config because PATCH /node/config needs the primary.
+  const node = useQuery({ queryKey: qk.nodeConfig, queryFn: () => api.settings.nodeConfig(), enabled: !!me && hasPermission(me, 'node', 'config') });
 
   const keys = useMemo(() => {
     const all = schema.data?.items ?? [];
@@ -159,6 +162,8 @@ export default function SettingsPage() {
         })
       : all;
   }, [schema.data, view, search]);
+
+  const showBranding = view === 'basic' || !search.trim() || keys.some((k) => isBrandingSetting(k.path));
 
   const [notice, setNotice] = useState<SaveNotice | null>(null);
 
@@ -178,8 +183,7 @@ export default function SettingsPage() {
       setNotice(noticeFor(body));
       notify.success(`${k.path} ${value === null ? 'reset to its default' : 'saved'}${k.restartRequired || body.restartRequired?.length ? '; takes effect after a restart' : ''}`);
     } catch (err) {
-      const msg = err instanceof ApiError ? err.describe() : (err as Error).message;
-      throw new Error(msg, { cause: err });
+      throw new Error(errorText(err), { cause: err });
     }
   };
 
@@ -202,6 +206,7 @@ export default function SettingsPage() {
       ) : (
         <TextInput label="Search settings" isLabelHidden placeholder="Search all settings" value={search} onChange={(v) => setParams({ q: v || null })} hasClear />
       )}
+      {schema.data && cluster.data && showBranding ? <BrandingSettings settings={cluster.data.settings} schema={schema.data.items} canWrite={can('settings', 'write')} /> : null}
       {notice && !notice.persisted ? (
         <Banner
           status="warning"
@@ -225,7 +230,7 @@ export default function SettingsPage() {
       {schema.isLoading || cluster.isLoading ? <Loading /> : null}
       {schema.data && cluster.data ? (
         <SettingsList
-          keys={keys}
+          keys={keys.filter((k) => !isBrandingSetting(k.path))}
           cluster={cluster.data.settings}
           node={node.data?.settings}
           canWriteCluster={can('settings', 'write')}

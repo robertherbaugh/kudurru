@@ -34,6 +34,35 @@ func identificationFixture() Input {
 	}}
 }
 
+func TestCapturedInventoryPrecedenceAndMACUnion(t *testing.T) {
+	in := identificationFixture()
+	in.ClientGroups = append(in.ClientGroups, group(ns, "second-mac", v1alpha1.ClientMatcher{MAC: "02:00:00:00:00:02"}))
+	ip := netip.MustParseAddr("192.168.1.50")
+	ix := Build(in, Options{Inventory: true, Hostnames: staticHosts{ip: {"living-room-tv"}}})
+	c := pipeline.Client{Addr: netip.AddrPortFrom(ip, 53), IdentityCaptured: true, MACs: []string{"02:00:00:00:00:02", "aa:bb:cc:dd:ee:ff"}, Names: []string{"ps5-x"}, ClientID: "pixel"}
+	for range 2 {
+		m := ix.Identify(c)
+		if m.Tier != TierMAC || !slices.Equal(m.GroupIDs, []string{"default/lab-b", "default/second-mac"}) {
+			t.Fatalf("MAC union: %+v", m)
+		}
+		slices.Reverse(c.MACs)
+	}
+	c.MACs = nil
+	m := ix.Identify(c)
+	if m.Tier != TierNameGlob || !slices.Equal(m.GroupIDs, []string{"default/consoles", "default/kids"}) {
+		t.Fatalf("captured hostname ignored: %+v", m)
+	}
+	c.Names = nil
+	if m := ix.Identify(c); m.Tier != TierClientID {
+		t.Fatalf("known-empty inventory consulted a newer hostname source: %+v", m)
+	}
+	c.MACs = []string{"02:00:00:00:00:02"}
+	c.Addr = netip.MustParseAddrPort("10.0.20.7:53")
+	if m := ix.Identify(c); m.Tier != TierIP {
+		t.Fatalf("MAC overrode exact IP: %+v", m)
+	}
+}
+
 func TestIdentificationMatrix(t *testing.T) {
 	hosts := staticHosts{
 		netip.MustParseAddr("192.168.1.50"): {"ps5-kids.lan"},
@@ -510,5 +539,35 @@ func BenchmarkBuild(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		_ = Build(in, Options{})
+	}
+}
+
+// A referenced list that exists but is not compiled yet stays in the decision
+// as pending, with its accepted object, and keeps the decision filtering, so
+// the RPZ selectors can require its feed before the list resolver compiles it
+// (D390). Disabled, missing and compiled references are not pending.
+func TestPendingBlockListsReachTheDecision(t *testing.T) {
+	disabled := blockList(ns, "off", "block")
+	disabled.Annotations = map[string]string{"kudurru.io/enabled": "false"}
+	ix := Build(Input{
+		ClientGroups: []*v1alpha1.ClientGroup{group(ns, "default", v1alpha1.ClientMatcher{CIDR: "0.0.0.0/0"})},
+		Policies: []*v1alpha1.Policy{
+			pol(ns, "default", v1alpha1.PolicySpec{ClientGroupRefs: []string{"default"}, BlockListRefs: []string{"feed", "off", "missing", "feed"}}),
+			pol(ns, "second", v1alpha1.PolicySpec{ClientGroupRefs: []string{"default"}, Priority: -1, BlockListRefs: []string{"feed"}}),
+		},
+		BlockLists: []*v1alpha1.BlockList{blockList(ns, "feed", "block"), disabled},
+	}, Options{})
+	d := ix.SelectPolicy(client("10.0.0.1"), time.Now())
+	if got := d.PendingBlockLists(); !slices.Equal(got, []string{"default/feed"}) {
+		t.Fatalf("PendingBlockLists = %v", got)
+	}
+	if !d.Filters() || d.Selection == nil || len(d.Selection.BlockLists()) != 0 {
+		t.Fatalf("a decision with only a pending list must filter: filters=%v selection=%v", d.Filters(), d.Selection)
+	}
+	if list := d.List("default/feed").BlockList(); list == nil || list.Name != "feed" {
+		t.Fatalf("pending list object = %v", list)
+	}
+	if (*Decision)(nil).PendingBlockLists() != nil {
+		t.Fatal("nil decision has pending lists")
 	}
 }

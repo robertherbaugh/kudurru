@@ -110,9 +110,9 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-func newKubeStore(t *testing.T, cfg *rest.Config, identity string) *kube.Store {
+func newKubeStore(t *testing.T, cfg *rest.Config, identity, expected string) *kube.Store {
 	t.Helper()
-	st, err := kube.New(cfg, kube.Options{Namespace: "kudurru-system", Identity: identity, Logger: quietLogger(), StartupTimeout: time.Second})
+	st, err := kube.New(cfg, kube.Options{Namespace: "kudurru-system", Identity: identity, ExpectedClusterID: expected, Logger: quietLogger(), StartupTimeout: time.Second})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestKubeColdStart(t *testing.T) {
 	}
 	db, _ := openDB(t)
 
-	st := newKubeStore(t, cfg, "zonecache-live")
+	st := newKubeStore(t, cfg, "zonecache-live", string(ks.UID))
 	a := newCache(t, st, Options{LocalDB: db, PersistInterval: 100 * time.Millisecond, Debounce: 10 * time.Millisecond})
 	if err := a.Register(zonesBuilder()); err != nil {
 		t.Fatal(err)
@@ -181,9 +181,9 @@ func TestKubeColdStart(t *testing.T) {
 	// The restarted replica: the apiserver is unreachable.
 	pcfg, down := partitioned(cfg)
 	down.Store(true)
-	cold := newKubeStore(t, pcfg, "zonecache-cold")
+	cold := newKubeStore(t, pcfg, "zonecache-cold", string(ks.UID))
 	reg := prometheus.NewRegistry()
-	b := newCache(t, cold, Options{LocalDB: db, Registerer: reg, StartupTimeout: time.Second, Debounce: 10 * time.Millisecond, PersistInterval: 100 * time.Millisecond})
+	b := newCache(t, cold, Options{LocalDB: db, ExpectedClusterID: string(ks.UID), Registerer: reg, StartupTimeout: time.Second, Debounce: 10 * time.Millisecond, PersistInterval: 100 * time.Millisecond})
 	if err := b.Register(zonesBuilder()); err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +208,7 @@ func TestKubeColdStart(t *testing.T) {
 	t.Logf("fell back to local.db after %s; snapshot age %.1fs, %d objects", fellBack.Round(time.Millisecond), age, snap.Objects.Len())
 
 	// A write while the replica is cut off.
-	writer := newKubeStore(t, cfg, "zonecache-writer")
+	writer := newKubeStore(t, cfg, "zonecache-writer", string(ks.UID))
 	if _, err := writer.Apply(ctx, rrset("apps", "late", "home", nil), store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
 		t.Fatal(err)
 	}

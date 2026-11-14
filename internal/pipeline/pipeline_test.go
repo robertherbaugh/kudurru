@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -11,6 +12,59 @@ import (
 type named struct {
 	name string
 	fn   func(*Request, Next) (*Response, error)
+}
+
+func TestResponseTransformOrderWrapsTerminalAnswers(t *testing.T) {
+	for _, terminal := range []string{"local", "authoritative", "blocking", "rewrite", "upstream"} {
+		t.Run(terminal, func(t *testing.T) {
+			var events []string
+			stages := []Stage{named{name: "postprocess", fn: func(r *Request, next Next) (*Response, error) {
+				events = append(events, "postprocess-enter")
+				resp, err := next(r)
+				events = append(events, "postprocess-exit")
+				return resp, err
+			}}}
+			for _, name := range []string{"local", "authoritative", "blocking", "rewrite", "cache", "dnssec", "upstream"} {
+				stages = append(stages, named{name: name, fn: func(r *Request, next Next) (*Response, error) {
+					events = append(events, name+"-enter")
+					if name == terminal {
+						return Reply(r, dns.RcodeSuccess, StatusForwarded), nil
+					}
+					resp, err := next(r)
+					events = append(events, name+"-exit")
+					return resp, err
+				}})
+			}
+			q := new(dns.Msg)
+			q.SetQuestion("example.", dns.TypeA)
+			if _, err := MustNew(stages...).Serve(&Request{Msg: q}); err != nil {
+				t.Fatal(err)
+			}
+			want := []string{"postprocess-enter"}
+			var entered []string
+			for _, name := range []string{"local", "authoritative", "blocking", "rewrite", "cache", "dnssec", "upstream"} {
+				want = append(want, name+"-enter")
+				if name == terminal {
+					break
+				}
+				entered = append(entered, name)
+			}
+			for i := len(entered) - 1; i >= 0; i-- {
+				want = append(want, entered[i]+"-exit")
+			}
+			want = append(want, "postprocess-exit")
+			if !reflect.DeepEqual(events, want) {
+				t.Fatalf("unwind: %v, want %v", events, want)
+			}
+		})
+	}
+	if _, err := New(named{name: "upstream"}, named{name: "postprocess"}); err == nil {
+		t.Fatal("postprocess accepted after terminal upstream")
+	}
+	var response Response
+	if response.Origin != OriginUnknown || response.Origin == OriginForwarded {
+		t.Fatal("zero provenance implies forwarding")
+	}
 }
 
 func (n named) Name() string { return n.name }

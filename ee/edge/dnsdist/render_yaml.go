@@ -26,11 +26,21 @@ func (YAMLRenderer) Main() string { return "dnsdist.yml" }
 
 // Render implements Renderer.
 func (r YAMLRenderer) Render(in *edge.Topology) ([]File, error) {
+	return r.render(in, nil)
+}
+
+func (r YAMLRenderer) render(in *edge.Topology, initialDown map[string]bool) ([]File, error) {
 	t, err := prepare(in)
 	if err != nil {
 		return nil, err
 	}
 	cfg := buildYAML(t)
+	yamlDnstap(&cfg, t)
+	for i := range cfg.Backends {
+		if initialDown[cfg.Backends[i].ID] {
+			cfg.Backends[i].HealthChecks.Mode = "down"
+		}
+	}
 	var buf bytes.Buffer
 	buf.WriteString("# " + header + "\n")
 	enc := yaml.NewEncoder(&buf)
@@ -43,6 +53,12 @@ func (r YAMLRenderer) Render(in *edge.Topology) ([]File, error) {
 	}
 	lua := "-- " + header + "\n-- Functions only: loaded next to dnsdist.yml without configuration directives.\n"
 	if v := luaValidators(t); v != "" {
+		lua += "\n" + v
+	}
+	if t.ManagedCacheBypass {
+		lua += "\n" + luaManagedCacheBypass + "\n"
+	}
+	if v := luaClientID(t); v != "" {
 		lua += "\n" + v
 	}
 	return []File{{Name: r.Main(), Data: buf.Bytes()}, {Name: "dnsdist.lua", Data: []byte(lua)}}, nil
@@ -60,6 +76,9 @@ type yConfig struct {
 	Backends              []yBackend      `yaml:"backends"`
 	QueryRules            []yRule         `yaml:"query_rules"`
 	DynamicRules          []yDynamicGroup `yaml:"dynamic_rules,omitempty"`
+	RemoteLogging         *yRemoteLogging `yaml:"remote_logging,omitempty"`
+	CacheHitRules         []yRule         `yaml:"cache_hit_response_rules,omitempty"`
+	SelfAnsweredRules     []yRule         `yaml:"self_answered_response_rules,omitempty"`
 	EBPF                  *yEBPF          `yaml:"ebpf,omitempty"`
 }
 
@@ -112,6 +131,8 @@ type yCert struct {
 
 type yDoH struct {
 	Paths []string `yaml:"paths"`
+	// ExactPathMatching false lets /<path>/<id> reach the client-ID rule.
+	ExactPathMatching *bool `yaml:"exact_path_matching,omitempty"`
 }
 
 type yPacketCache struct {
@@ -164,6 +185,7 @@ type yRule struct {
 
 type ySelector struct {
 	Type      string      `yaml:"type"`
+	QName     string      `yaml:"qname,omitempty"`
 	Code      string      `yaml:"code,omitempty"`
 	QType     string      `yaml:"qtype,omitempty"`
 	Suffixes  []string    `yaml:"suffixes,omitempty"`
@@ -173,11 +195,39 @@ type ySelector struct {
 }
 
 type yAction struct {
-	Type      string `yaml:"type"`
-	RCode     string `yaml:"rcode,omitempty"`
-	PoolName  string `yaml:"pool_name,omitempty"`
-	ProxyType *int   `yaml:"proxy_type,omitempty"`
-	Value     string `yaml:"value,omitempty"`
+	Type       string `yaml:"type"`
+	RCode      string `yaml:"rcode,omitempty"`
+	PoolName   string `yaml:"pool_name,omitempty"`
+	ProxyType  *int   `yaml:"proxy_type,omitempty"`
+	Value      string `yaml:"value,omitempty"`
+	Identity   string `yaml:"identity,omitempty"`
+	LoggerName string `yaml:"logger_name,omitempty"`
+	// FunctionName names a global function of the sibling dnsdist.lua.
+	FunctionName string `yaml:"function_name,omitempty"`
+}
+
+type yRemoteLogging struct {
+	DnstapLoggers []yDnstapLogger `yaml:"dnstap_loggers"`
+}
+
+type yDnstapLogger struct {
+	Name      string `yaml:"name"`
+	Transport string `yaml:"transport"`
+	Address   string `yaml:"address"`
+}
+
+// yamlDnstap adds the dnstap logger and the two response rules that log
+// what dnsdist answers without a backend (D372).
+func yamlDnstap(cfg *yConfig, t *edge.Topology) {
+	d := t.Dnstap
+	if d == nil {
+		return
+	}
+	transport, address, _ := d.Transport() // validated by prepare
+	cfg.RemoteLogging = &yRemoteLogging{DnstapLoggers: []yDnstapLogger{{Name: edge.DnstapLogger, Transport: transport, Address: address}}}
+	action := yAction{Type: "DnstapLog", Identity: d.Identity, LoggerName: edge.DnstapLogger}
+	cfg.CacheHitRules = []yRule{{Name: ruleDnstapCacheHit, UUID: ruleUUID(ruleDnstapCacheHit), Selector: ySelector{Type: "All"}, Action: action}}
+	cfg.SelfAnsweredRules = []yRule{{Name: ruleDnstapSelfAnswered, UUID: ruleUUID(ruleDnstapSelfAnswered), Selector: ySelector{Type: "All"}, Action: action}}
 }
 
 type yDynamicGroup struct {
@@ -239,6 +289,9 @@ func buildYAML(t *edge.Topology) yConfig {
 		}
 		if b.Protocol == edge.DoH || b.Protocol == edge.DoH3 {
 			yb.DoH = &yDoH{Paths: b.DoHPaths}
+			if b.Protocol == edge.DoH && t.ClientIDs.Paths {
+				yb.DoH.ExactPathMatching = new(false)
+			}
 		}
 		cfg.Binds = append(cfg.Binds, yb)
 	}
@@ -307,6 +360,25 @@ func yamlRules(t *edge.Topology) []yRule {
 		rules = append(rules, yRule{
 			Name: ruleProxySecret, UUID: ruleUUID(ruleProxySecret), Selector: ySelector{Type: "All"},
 			Action: yAction{Type: "SetAdditionalProxyProtocolValue", ProxyType: &pt, Value: t.ProxyProtocolSecret},
+		})
+	}
+	if t.ClientIDs.Enabled() {
+		rules = append(rules, yRule{
+			Name: ruleClientID, UUID: ruleUUID(ruleClientID), Selector: ySelector{Type: "All"},
+			Action: yAction{Type: "Lua", FunctionName: luaClientIDFunction},
+		})
+	}
+	// Health can briefly SERVFAIL before active checks remove a draining
+	// backend. Never retain that failure after a healthy peer becomes usable.
+	rules = append(rules, yRule{
+		Name: ruleHealthNoCache, UUID: ruleUUID(ruleHealthNoCache),
+		Selector: ySelector{Type: "QName", QName: t.HealthCheck.QName},
+		Action:   yAction{Type: "SetSkipCache"},
+	})
+	if t.ManagedCacheBypass {
+		rules = append(rules, yRule{
+			Name: ruleManagedNoCache, UUID: ruleUUID(ruleManagedNoCache),
+			Selector: ySelector{Type: "All"}, Action: yAction{Type: "SetSkipCache"},
 		})
 	}
 	if len(t.Rules.AuthoritativeZones) > 0 {

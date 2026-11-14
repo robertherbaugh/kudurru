@@ -4,6 +4,8 @@
 
 - You need permission to read the zone.
 - You need the `admin`, `operator` or scoped `zone-admin` role to edit its records.
+  A `zone-admin` binding for the zone or for its zone group enables the actions on that zone only.
+  **Zones** shows the zone group of a zone under its name.
 - Use [Create a local DNS name](../local-dns/create-name.md) if you need a new primary zone.
 
 ## Find and edit a record

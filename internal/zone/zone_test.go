@@ -79,6 +79,8 @@ func TestBuildRejectsConflicts(t *testing.T) {
 		{"apex-cname", []v1alpha1.Endpoint{ep("@", "CNAME", "y.example.net")}, "apex"},
 		{"apex-ns", []v1alpha1.Endpoint{ep("example.org", "NS", "ns.example.net")}, "spec.nameservers"},
 		{"two-cnames-same-object", []v1alpha1.Endpoint{ep("x.example.org", "CNAME", "a.example.net"), ep("x.example.org", "CNAME", "b.example.net")}, "at most one CNAME"},
+		{"two-dnames-two-set-identifiers", []v1alpha1.Endpoint{withSetID(ep("x.example.org", "DNAME", "a.example.net"), "a"), withSetID(ep("x.example.org", "DNAME", "b.example.net"), "b")}, "at most one DNAME"},
+		{"two-dnames-plain-and-set-identifier", []v1alpha1.Endpoint{ep("x.example.org", "DNAME", "a.example.net"), withSetID(ep("x.example.org", "DNAME", "b.example.net"), "b")}, "at most one DNAME"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, errs := Build(dnsZone("example.org."), []*v1alpha1.DNSRecordSet{recordSet("ns", "rs", tc.eps...)}, BuildOptions{Now: testNow})
@@ -240,5 +242,57 @@ func TestQueryAllowedWithZoneNameServers(t *testing.T) {
 		if got := z.QueryAllowed(netip.MustParseAddr(addr)); got != want {
 			t.Errorf("%s: %v, want %v", addr, got, want)
 		}
+	}
+}
+
+func withSetID(e v1alpha1.Endpoint, id string) v1alpha1.Endpoint {
+	e.SetIdentifier = id
+	return e
+}
+
+// TestBuildKeepsOneDNAMEAcrossSetIdentifiers: a DNAME RRset holds one record
+// (RFC 6672 §2.4), so the committed primary refuses two. Two DNAME endpoints
+// at one name with different set identifiers keep the first and report the
+// second, and the zone the builder makes commits (D373).
+func TestBuildKeepsOneDNAMEAcrossSetIdentifiers(t *testing.T) {
+	first := withSetID(ep("x.example.org", "DNAME", "a.example.net"), "a")
+	first.RecordTTL = 600
+	second := withSetID(ep("x.example.org", "DNAME", "b.example.net"), "b")
+	second.RecordTTL = 60
+	z, errs := Build(dnsZone("example.org."), []*v1alpha1.DNSRecordSet{recordSet("ns", "rs", first, second)}, BuildOptions{Now: testNow})
+	if got := errs.RecordSets["ns/rs"]; len(got) != 1 || got[0].Field != "spec.endpoints[1].targets" {
+		t.Fatalf("errors %v, want the second endpoint reported", got)
+	}
+	r := z.Lookup("x.example.org.", dns.TypeDNAME)
+	if len(r.Answer) != 1 || r.Answer[0].(*dns.DNAME).Target != "a.example.net." || r.Answer[0].Header().Ttl != 600 {
+		t.Fatalf("DNAME answer %v, want the first target with its own TTL", r.Answer)
+	}
+	var records []dns.RR
+	z.RRsets(func(set *RRset) bool {
+		records = append(records, set.RRs...)
+		return true
+	})
+	if _, err := BuildCommittedPrimary(dnsZone("example.org."), records, z.SOA().Serial, time.Time{}, false); err != nil {
+		t.Fatal("the committed primary refuses what the builder kept:", err)
+	}
+}
+
+// TestBuildKeepsOneCNAMEWithItsOwnTTL: of two CNAME targets for one name
+// through set identifiers, the kept target is served with its own TTL, not
+// the lower TTL of the dropped one. 0.1.0 served the lower TTL in this
+// case, so such a zone gets a new serial on its first commit after the
+// upgrade (D373).
+func TestBuildKeepsOneCNAMEWithItsOwnTTL(t *testing.T) {
+	first := withSetID(ep("x.example.org", "CNAME", "a.example.net"), "a")
+	first.RecordTTL = 600
+	second := withSetID(ep("x.example.org", "CNAME", "b.example.net"), "b")
+	second.RecordTTL = 60
+	z, errs := Build(dnsZone("example.org."), []*v1alpha1.DNSRecordSet{recordSet("ns", "rs", first, second)}, BuildOptions{Now: testNow})
+	if got := errs.RecordSets["ns/rs"]; len(got) != 1 || got[0].Field != "spec.endpoints[1].targets" {
+		t.Fatalf("errors %v, want the second endpoint reported", got)
+	}
+	r := z.Lookup("x.example.org.", dns.TypeCNAME)
+	if len(r.Answer) != 1 || r.Answer[0].(*dns.CNAME).Target != "a.example.net." || r.Answer[0].Header().Ttl != 600 {
+		t.Fatalf("CNAME answer %v, want the first target with its own TTL", r.Answer)
 	}
 }

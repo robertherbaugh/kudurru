@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { collectEntries } from '../mocks/domains';
+import { qk } from '../api/context';
 import { mockDB } from '../mocks/handlers';
 import { getSelector, pick, valueOf } from '../test/controls';
 import { server } from '../test/setup';
@@ -78,10 +79,21 @@ describe('QueryLogPage', () => {
     expect(seen[0]?.get('node')).toBe('kudurru-1');
     expect(valueOf(getSelector('Status'))).toBe('blocked');
     expect(valueOf(getSelector('Node scope'))).toBe('kudurru-1');
+    const download = new URL(screen.getByRole('link', { name: 'Export up to 1,000 queries' }).getAttribute('href')!, window.location.href);
+    expect(download.pathname).toBe('/api/v1/queries/export');
+    expect(download.searchParams.get('domain')).toBe('*.doubleclick.net');
+    expect(download.searchParams.get('status_class')).toBe('blocked');
+    expect(download.searchParams.get('node')).toBe('kudurru-1');
+    expect(download.searchParams.get('scope')).toBe('node');
+    expect(download.searchParams.get('limit')).toBe('1000');
+    expect(download.searchParams.get('cursor')).toBeNull();
     pick(getSelector('Node scope'), 'All');
     await waitFor(() => expect(seen.at(-1)?.get('scope')).toBe('cluster'));
     expect(seen.at(-1)?.get('node')).toBeNull();
     expect(seen.at(-1)?.get('domain')).toBe('*.doubleclick.net');
+    const clusterDownload = new URL(screen.getByRole('link', { name: 'Export up to 1,000 queries' }).getAttribute('href')!, window.location.href);
+    expect(clusterDownload.searchParams.get('scope')).toBe('cluster');
+    expect(clusterDownload.searchParams.get('node')).toBeNull();
   });
 
   it('expands the "why" row from the keyboard', async () => {
@@ -125,6 +137,18 @@ describe('QueryLogPage', () => {
     await screen.findByTestId('log-totals');
     const [allow] = await screen.findAllByRole('button', { name: 'Allow' });
     expect(allow).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('offers the export only to roles with querylog.export', async () => {
+    // The mock viewer reads the log (querylog.read) but cannot export it.
+    const { unmount, client } = renderWithApp(<QueryLogPage />, { route: '/queries', user: 'viewer' });
+    await screen.findByTestId('log-totals');
+    await waitFor(() => expect(client.getQueryData(qk.me)).toBeTruthy());
+    expect(screen.queryByRole('link', { name: 'Export up to 1,000 queries' })).toBeNull();
+    unmount();
+    renderWithApp(<QueryLogPage />, { route: '/queries', user: 'auditor' });
+    await screen.findByTestId('log-totals');
+    expect(await screen.findByRole('link', { name: 'Export up to 1,000 queries' })).toBeInTheDocument();
   });
 });
 

@@ -2,6 +2,21 @@
 # points here). Scope every entry to the paths it is about, and give a
 # vulnerability an expired_at so it comes back for review.
 misconfigurations:
+  - id: DS-0002
+    paths:
+      - third_party/quic-go/.clusterfuzzlite/Dockerfile
+      - third_party/quic-go/interop/Dockerfile
+    statement: >-
+      Unmodified upstream fuzz-builder and network-simulator fixtures, retained
+      for provenance only. Kudurru CI, release images and deployments never
+      build or run these Dockerfiles. The product uses its own scanned images.
+  - id: DS-0029
+    paths:
+      - third_party/quic-go/interop/Dockerfile
+    statement: >-
+      Unmodified upstream network-simulator fixture, not built or run by
+      Kudurru. Its optional apt recommendations do not enter product images.
+      Keep the original file for comparison against UPSTREAM.json.
   - id: KSV-0046
     paths:
       - deploy/helm/kudurru/templates/rbac-aggregated.yaml
@@ -22,6 +37,15 @@ misconfigurations:
     statement: >-
       keepalived must run as root for VRRP (raw sockets, NET_ADMIN); the
       image comment explains the capability set it needs.
+  - id: DS-0002
+    paths:
+      - hack/labs/ad-samba/Dockerfile
+    statement: >-
+      Disposable Samba AD protocol fixture, never shipped with Kudurru.
+      Domain provisioning and DC identity changes require root. The runner
+      confines it to private tmpfs and an internal Docker network, with no
+      published ports, host realm, privileged mode or additional capabilities.
+      See dev-docs/labs/samba-ad-protocol.md.
   - id: DS-0002
     paths:
       - license-server/cloudflare/local/Dockerfile

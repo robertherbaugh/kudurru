@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/internal/blocking/parser"
 )
 
@@ -30,6 +31,7 @@ type corpusExpect struct {
 type corpus struct {
 	lists   []corpusList
 	opts    SelectOptions
+	context Context
 	counts  map[string]map[string]int
 	expects []corpusExpect
 }
@@ -70,7 +72,7 @@ func readCorpus(t *testing.T, path string) corpus {
 			case "counts":
 				target = f[1]
 				c.counts[target] = map[string]int{}
-			case "options", "expect":
+			case "options", "context", "expect":
 			default:
 				t.Fatalf("%s:%d: unknown section %q", path, n, section)
 			}
@@ -89,6 +91,32 @@ func readCorpus(t *testing.T, path string) corpus {
 					c.opts.ExceptionScope = ScopeSelection
 				default:
 					t.Fatalf("%s:%d: unknown option %q", path, n, o)
+				}
+			}
+		case "context":
+			for _, token := range strings.Fields(line) {
+				key, value, _ := strings.Cut(token, "=")
+				switch key {
+				case "dnstype":
+					typ, ok := dns.StringToType[value]
+					if !ok {
+						t.Fatalf("%s:%d: unknown dnstype", path, n)
+					}
+					c.context.Type = typ
+				case "clientIP":
+					ip, err := netip.ParseAddr(value)
+					if err != nil {
+						t.Fatal(err)
+					}
+					c.context.ClientIP = ip
+				case "clientID":
+					c.context.ClientID = value
+				case "tags":
+					c.context.Tags = strings.Split(value, "|")
+				case "names":
+					c.context.ClientNames = strings.Split(value, "|")
+				default:
+					t.Fatalf("%s:%d: unknown context %s", path, n, key)
 				}
 			}
 		case "counts":
@@ -181,17 +209,22 @@ func TestConformance(t *testing.T) {
 			}
 			for _, e := range c.expects {
 				var d Decision
+				ctx := c.context
+				ctx.Name, ctx.Class = e.query, dns.ClassINET
+				if ctx.Type == 0 {
+					ctx.Type = dns.TypeA
+				}
 				switch {
 				case strings.HasPrefix(e.query, "cname:"):
-					d = sel.EvaluateResponse([]string{strings.TrimPrefix(e.query, "cname:")}, nil)
+					d = sel.EvaluateResponseContext(ctx, []string{strings.TrimPrefix(e.query, "cname:")}, nil)
 				case strings.HasPrefix(e.query, "ip:"):
 					a, err := netip.ParseAddr(strings.TrimPrefix(e.query, "ip:"))
 					if err != nil {
 						t.Fatalf("line %d: %v", e.line, err)
 					}
-					d = sel.EvaluateResponse(nil, []netip.Addr{a})
+					d = sel.EvaluateResponseContext(ctx, nil, []netip.Addr{a})
 				default:
-					d = sel.Evaluate(e.query)
+					d = sel.EvaluateContext(ctx)
 				}
 				if got := d.Action.String(); got != e.action || d.List != e.list || d.Rule() != e.rule {
 					t.Errorf("line %d: %s -> %s %q %q (reason %s), want %s %q %q",

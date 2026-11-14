@@ -123,9 +123,13 @@ export interface DNSZoneSpec {
     transferTSIGKeyRefs?: string[];
     notify?: NotifyMode;
     notifyTargets?: string[];
+    notifyTSIGKeyRef?: string;
+    notifySource?: string;
     update?: AccessMode;
   };
   forward?: { upstreamGroup?: string; dnssecValidation?: boolean };
+  /** Online signing (D403: client-group views are not served in a signed zone). */
+  dnssec?: { enabled?: boolean; algorithm?: string };
   fallback?: { upstreamGroup?: string };
   secondary?: { primaries: string[]; tsigKeyRef?: string; transferProtocol?: 'tcp' | 'tls' };
   stub?: { nameservers: string[] };
@@ -174,7 +178,8 @@ export type DNSRecordSet = KObject<
   { observedGeneration?: number; names?: number; conditions?: Condition[] }
 >;
 
-export type ListFormat = 'auto' | 'hosts' | 'domains' | 'adblock' | 'regex';
+/** rpz only with an rpz block (an RPZ feed source); the others for url, inline and configMap sources. */
+export type ListFormat = 'auto' | 'hosts' | 'domains' | 'adblock' | 'regex' | 'rpz';
 /** blockPage answers A/AAAA with the block-page address (ux-plan C5). */
 export type BlockResponse = 'nxdomain' | 'zeroIP' | 'refused' | 'customIP' | 'blockPage';
 
@@ -190,11 +195,27 @@ export interface ListSource {
   enabled?: boolean;
   /** Structured entries (the dashboard's allow and deny lists ui-*); exclusive with url, inline and configMapRef. */
   entries?: ListSourceEntry[];
-  /** Normalised rules of this url, configMap or inline source that are switched off. */
+  /** Normalized rules of this url, configMap or inline source that are switched off; for an RPZ feed, absolute policy owner names. */
   exclude?: string[];
+  /** A response policy zone each node transfers itself (AXFR/IXFR, api/v1alpha1 RPZSource); requires format rpz and a block list. */
+  rpz?: RPZSource;
+}
+
+/** api/v1alpha1 RPZSource: a policy zone transferred from its primaries, never secret material. */
+export interface RPZSource {
+  /** The non-root absolute policy-zone origin. */
+  zoneName: string;
+  /** Tried in order (host or host:port, [IPv6]:port), 1 to 32. */
+  primaries: string[];
+  /** tcp (the default) or tls. */
+  transferProtocol?: 'tcp' | 'tls';
+  /** A stored or file TSIG key name. */
+  tsigKeyRef?: string;
 }
 
 export interface BlockListSpec {
+  /** Restrict to captured winning groups in this list's namespace. */
+  clientGroupRefs?: string[];
   mode?: 'block' | 'allow';
   sources: ListSource[];
   refreshInterval?: string;
@@ -245,7 +266,7 @@ export interface ClientMatcher {
 
 export type ClientGroup = KObject<
   'ClientGroup',
-  { clients?: ClientMatcher[]; sources?: { integrationRef?: { name: string; namespace?: string } } },
+  { clients?: ClientMatcher[]; rateLimitExempt?: boolean; sources?: { integrationRef?: { name: string; namespace?: string } } },
   { observedGeneration?: number; members?: number; conditions?: Condition[] }
 >;
 
@@ -261,6 +282,7 @@ export interface PolicySpec {
   queryLog?: boolean;
   priority?: number;
   rewrites?: { name: string; type?: string; targets?: string[]; cname?: string }[];
+  response?: { dns64Prefix?: string; filterAAAA?: boolean };
   /** Catalogue service IDs (GET /catalogue/services) blocked like a list. */
   blockedServices?: string[];
   /** Catalogue category IDs (GET /catalogue/categories): every service in them, including ones added later. */
@@ -306,6 +328,30 @@ export type ZoneSummary = Omit<S['ZoneSummary'], 'type'> & {
   /** Transfer and NOTIFY state; not served yet, so the panel stays hidden. */
   transfer?: ZoneTransferStatus;
 };
+
+/** The responding node's secondary snapshot, independent of shared status. */
+export type SecondaryRuntime = S['SecondaryRuntime'];
+
+// RPZ feed state of the answering node (D391), GET /blocklists/_rpz and
+// /blocklists/{namespace}/{name}/rpz. Every field is optional here: the
+// dashboard renders what the node reports (a discarded copy, for example,
+// carries no serial or counts) and never fills a field in itself.
+type Loose<T> = { [K in keyof T]?: T[K] | undefined };
+export type RPZFeedState = S['RPZFeed']['state'];
+export type RPZFeedCounts = Loose<S['RPZFeedCounts']>;
+export type RPZRuleCounts = Loose<S['RPZRuleCounts']>;
+export type RPZIgnoredReason = Loose<S['RPZIgnoredReason']>;
+export type RPZFeed = Loose<Omit<S['RPZFeed'], 'counts' | 'rules' | 'ignored' | 'state'>> & {
+  /** pending, serving, expired or unavailable; a newer node may report another word. */
+  state?: RPZFeedState | (string & {});
+  counts?: RPZFeedCounts;
+  rules?: RPZRuleCounts;
+  ignored?: RPZIgnoredReason[] | null;
+};
+export interface RPZFeedList {
+  items?: RPZFeed[] | null;
+}
+export type StubRuntime = S['StubRuntime'];
 
 export interface ZoneTransferStatus {
   zoneTransfer: AccessMode;
@@ -379,6 +425,12 @@ export interface AuthStatus {
   providers: { id: string; displayName: string }[] | null;
   hasDefaultCredentials: boolean;
   session?: { idleTimeout: string; lifetime: string };
+  /** "follower" on an enrolled SQLite follower, which offers local login only (D368). */
+  role?: string;
+  /** The primary, set together with role. */
+  primary?: string;
+  /** What account commands this driver offers (D387); absent on older servers, where both count as offered. */
+  capabilities?: S['AuthCapabilities'];
 }
 
 /** Who owns a token (api/internalkinds TokenOwner). */
@@ -388,6 +440,7 @@ export interface TokenOwner {
   namespace?: string;
   id?: string;
   provider?: string;
+  uid?: string;
 }
 
 /** GET /auth/tokens row (stack TokenInfo); never the secret. */
@@ -418,17 +471,23 @@ export interface CreatedToken extends ApiToken {
 }
 
 /** Body of POST /auth/password (stack PasswordRequest). */
-export interface PasswordChangeRequest {
-  currentPassword: string;
-  newPassword: string;
-  /** Also revoke every API token of the user (a change alone keeps them). */
-  revokeTokens?: boolean;
-}
+export type PasswordChangeRequest = S['PasswordChangeRequest'];
+
+export type SessionRecordInfo = S['SessionRecordInfo'];
+
+export type TOTPStatus = S['TOTPStatus'];
+export type TOTPProofRequest = S['TOTPProofRequest'];
+export type TOTPConfirmRequest = S['TOTPConfirmRequest'];
+export type TOTPSetupResponse = S['TOTPSetupResponse'];
+export type TOTPRecoverRequest = S['TOTPRecoverRequest'];
 
 // ---------------------------------------------------------------------------
 // Runtime
 
 /** GET|POST /dns/blocking (internal/api runtime.go). */
+export type BlockingCommandReceipt = S['BlockingCommandReceipt'];
+export type BlockingCommandResult = BlockingState | BlockingCommandReceipt;
+
 export interface BlockingState {
   blocking: boolean;
   /** Seconds left until blocking re-enables; absent when indefinite. */
@@ -648,6 +707,16 @@ export interface QuerylogStatus {
   subscribers: number;
 }
 
+/** GET /querylog/sinks: the additional query-log sinks of the answering node (D371, D372). */
+export type QuerylogSinks = S['QuerylogSinksBody'];
+export type QuerylogSink = S['QuerylogSink'];
+
+// Operator edge blocks (D388) ------------------------------------------------
+
+export type EdgeBlock = S['EdgeBlock'];
+export type EdgeBlockList = S['EdgeBlockList'];
+export type EdgeBlockRequest = S['EdgeBlockRequest'];
+
 // ---------------------------------------------------------------------------
 // Settings and nodes
 
@@ -656,6 +725,8 @@ export type SettingType = 'string' | 'int' | 'bool' | 'duration' | 'bytes' | 'st
 /** One row of GET /settings/_schema (internal/config.Key plus the effective value). */
 export type SettingKey = Omit<S['SettingKey'], 'type' | 'value'> & {
   type: SettingType;
+  /** This server cannot accept API writes for the key. */
+  readOnly?: boolean;
   /** The effective value ("<redacted>" for writeOnly keys). */
   value?: unknown;
 };
@@ -706,6 +777,21 @@ export type NodeHealth = Omit<S['NodeHealth'], 'health'> & { health: HealthDoc }
 
 /** GET /cluster: store driver, leader, epoch and shape. */
 export type ClusterInfo = S['ClusterInfo'];
+
+/** GET /cluster/enrollment: the local enrollment source, reviewed before activation or an invitation. */
+export type ClusterEnrollmentInfo = S['ClusterEnrollmentInfo'];
+export type ActivateClusterCommand = S['ActivateClusterCommand'];
+export type ClusterActivationReceipt = S['ClusterActivationReceipt'];
+export type ClusterJoinTokenCommand = S['ClusterJoinTokenCommand'];
+/** Carries the invitation, a bearer secret: never cache, log or route it. */
+export type ClusterJoinTokenReceipt = S['ClusterJoinTokenReceipt'];
+/** GET /cluster/promotion. `installed` is sent back exactly as received
+ * (its revision and term epoch are strings on the wire). */
+export type ClusterPromotionInfo = S['ClusterPromotionInfo'];
+export type ClusterPromoteCommand = S['ClusterPromoteCommand'];
+export type ClusterPromotionReceipt = S['ClusterPromotionReceipt'];
+/** GET /cluster/anchors: this node's managed root trust-anchor state (D369). */
+export type RootAnchorStatus = S['RootAnchorStatus'];
 
 /** GET /license: the effective license of the node (state, limits, licensed features). */
 export type LicenseInfo = S['LicenseInfo'];
@@ -760,20 +846,11 @@ export type DoctorCheck = S['DoctorCheck'];
 export type DoctorReport = S['DoctorReport'];
 
 // ---------------------------------------------------------------------------
-// IAM (read-only in v0.1; the write API is v0.2). Hand-written from
+// IAM reads. Hand-written from
 // internal/auth/stack/iam.go and internal/auth/adminsock (see the header).
 
 /** A local user (adminsock User). */
-export interface IamUser {
-  name: string;
-  displayName?: string;
-  builtinAdmin: boolean;
-  disabled: boolean;
-  mustChangePassword: boolean;
-  groups?: string[];
-  lastLoginAt?: string;
-  passwordChangedAt?: string;
-}
+export type IamUser = S['IAMUser'];
 
 /** A kudurru service account (stack ServiceAccountInfo). */
 export interface IamServiceAccount {
@@ -798,6 +875,11 @@ export interface RbacSubject {
   namespace?: string;
 }
 
+/** POST /iam/rolebindings: a public RoleBinding manifest without server metadata. */
+export type RoleBindingDesired = S['RoleBindingDesired'];
+/** The RoleBinding as stored, with its UID and resourceVersion. */
+export type RoleBindingDocument = S['RoleBindingDocument'];
+
 /** A role binding from the config file (source "config") or a RoleBinding object (stack RoleBindingInfo). */
 export interface IamRoleBinding {
   source: 'config' | 'object';
@@ -820,6 +902,27 @@ export interface IamIdentityProvider {
   redirectURL?: string;
   source?: 'config' | 'object';
 }
+
+// IAM writers on the complete SQLite runtime (D294, D396). Every replace and
+// delete names the exact UID and resourceVersion of the reviewed read.
+export type CreateLocalUserRequest = S['CreateLocalUserRequest'];
+export type UpdateLocalUserRequest = S['UpdateLocalUserRequest'];
+export type ResetLocalUserPasswordRequest = S['ResetLocalUserPasswordRequest'];
+/** The exact UID and resourceVersion a reviewed replace or delete names. */
+export type ObjectReview = S['ObjectReview'];
+export type ServiceAccountDesired = S['ServiceAccountDesired'];
+/** A ServiceAccount as stored, with its UID and resourceVersion. */
+export type ServiceAccountDocument = S['ServiceAccountDocument'];
+export type ReplaceServiceAccountCommand = S['ReplaceServiceAccountCommand'];
+/** POST /iam/serviceaccounts/{namespace}/{name}/tokens; the answer is a CreatedToken. */
+export type CreateServiceAccountTokenRequest = S['CreateServiceAccountTokenRequest'];
+export type IdentityProviderDesired = S['IdentityProviderDesired'];
+export type IdentityProviderSpec = S['IdentityProviderSpec'];
+/** An IdentityProvider object as stored; its client secret is a reference, never a value. */
+export type IdentityProviderDocument = S['IdentityProviderDocument'];
+export type ReplaceIdentityProviderCommand = S['ReplaceIdentityProviderCommand'];
+export type ReplaceRoleBindingCommand = S['ReplaceRoleBindingCommand'];
+export type RoleBindingReview = S['RoleBindingReview'];
 
 /** The IAM list envelope; diagnoses explain ignored bindings or providers. */
 export interface IamList<T> extends ListEnvelope<T> {
@@ -987,6 +1090,7 @@ export type DomainEntryList = S['DomainEntryList'];
 
 /** One logical allow or deny entry (namespace, action, type, value) across its lists. */
 export type DomainEntry = S['DomainEntry'];
+export type DomainRegexImpact = S['DomainRegexImpact'];
 
 /** One list behind the entries of GET /allowlist, /denylist or /domains. */
 export type DomainListInfo = S['DomainListInfo'];
@@ -1027,3 +1131,80 @@ export type MigrationResult = S['MigrationResult'];
 export type MigrationRun = S['MigrationRun'];
 export type MigrationCutoverPlan = S['MigrationCutoverPlan'];
 export type MigrationAuthorityChange = S['MigrationAuthorityChange'];
+
+/** Public Enterprise presentation; no license or account details. */
+export type BrandingInfo = S['BrandingInfo'];
+
+export type ExternalUser = S['ExternalUser'];
+export type ExternalUserCommand = S['ExternalUserCommand'];
+export type ExternalUserPage = S['AuthListExternalUser'];
+
+// ---------------------------------------------------------------------------
+// Integrations (docs/deploy/integrations.md, D367, D400)
+
+/** GET /integrations/manifests: the provider types this node runs and its limits. */
+export type IntegrationManifests = S['IntegrationManifests'];
+export type IntegrationManifest = S['IntegrationManifest'];
+export type IntegrationCredentialKey = S['IntegrationCredentialKey'];
+/** One spec field this node's host refuses (effect refused) or accepts without effect (inert), D384. */
+export type IntegrationFieldLimit = S['IntegrationFieldLimit'];
+/** GET /integrations and /integrations/{ns}/{name}: status of one exact revision. */
+export type IntegrationSummary = S['IntegrationSummary'];
+/** The exact review a check, preview, sync, action or release is bound to. */
+export type IntegrationReview = S['IntegrationReview'];
+export type IntegrationExecutionResult = S['IntegrationExecutionResult'];
+export type IntegrationPreview = S['IntegrationPreview'];
+export type IntegrationPlanOperation = S['IntegrationPlanOperation'];
+export type IntegrationPlanConflict = S['IntegrationPlanConflict'];
+export type IntegrationRecord = S['IntegrationRecord'];
+export type IntegrationAction = S['IntegrationAction'];
+export type IntegrationReleaseResult = S['IntegrationReleaseResult'];
+
+// ---------------------------------------------------------------------------
+// Client inventory (GET /inventory, D397): devices from inventory integrations
+// and this node's DHCP leases, whether or not they sent a query.
+
+export type InventoryBody = S['InventoryBody'];
+export type InventoryDevice = S['InventoryDevice'];
+export type InventoryAddress = S['InventoryAddress'];
+export type InventoryAddressState = InventoryAddress['state'];
+/** GET /inventory filters; empty values are not sent. */
+export interface InventoryQuery {
+  source?: string;
+  kind?: '' | 'inventory' | 'dhcp';
+  stale?: '' | 'true' | 'false';
+  q?: string;
+  limit?: number;
+  continue?: string;
+}
+
+/** api/v1alpha1 CredentialReference: a reference to a credential, never its value. */
+export interface CredentialReference {
+  file?: string;
+  env?: string;
+  /** Accepted by the CRD; not resolved for Integrations by either host. */
+  secretRef?: { name: string; key: string };
+}
+
+/** api/v1alpha1 IntegrationSpec; the provider block sits under the manifest's configField. */
+export interface IntegrationSpec {
+  type: string;
+  credentials?: Record<string, CredentialReference>;
+  resync?: string;
+  suspend?: boolean;
+  deletionPolicy?: 'Retain' | 'Delete';
+  [configField: string]: unknown;
+}
+
+export interface IntegrationStatus {
+  observedGeneration?: number;
+  conditions?: Condition[];
+  lastSyncTime?: string;
+  records?: { managed?: number; drift?: number; conflicts?: number };
+  clients?: number;
+}
+
+/** An Integration object of /objects/integrations (metadata may carry a deletion timestamp). */
+export type Integration = Omit<KObject<'Integration', IntegrationSpec, IntegrationStatus>, 'metadata'> & {
+  metadata: ObjectMeta & { deletionTimestamp?: string; finalizers?: string[] };
+};

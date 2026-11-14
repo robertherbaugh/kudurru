@@ -1,6 +1,6 @@
 # DHCPv4 and lease state
 
-DHCPv4 is an optional **v0.1.0 feature**, disabled by default. It runs on Linux
+DHCPv4 is an optional feature, included since v0.1.0 and disabled by default. It runs on Linux
 with either store. With the SQLite store, each node owns its setup and lease
 databases and supports multiple directly attached and relayed IPv4 subnets.
 With the Kubernetes store, scopes are `DHCPScope` objects, leases are
@@ -32,6 +32,7 @@ flowchart LR
     response --> client
     db -->|"Publish committed state"| snapshot["Immutable bound-lease snapshot"]
     snapshot --> dns["Authoritative local-record hook<br/>A/PTR and policy hostnames"]
+    snapshot --> identity["Identify stage MAC fill<br/>and GET /inventory"]
     leases -->|"Packet handler/storage failure"| dropped["ERROR log; drop packet<br/>DNS stays available"]
     dropped -->|"Next packet or retry"| service
     service -->|"Unexpected runtime socket failure"| fatal["Fatal runnable error"]
@@ -338,6 +339,24 @@ HA snapshots preserve exact ranks; replicated claims use an epoch, the global
 Raft index and a per-command ordinal, retaining standalone owners adopted at
 bootstrap. None of this adds storage access to DNS queries.
 
+## Lease MACs and the inventory
+
+The same committed snapshot also holds the identity of every bound lease:
+address, MAC, client hostname and expiry, whether or not the scope registers
+DNS and whether or not the lease has a usable name (D397). On Kubernetes the
+replica's working copies are filled from `DHCPLease` objects, so every replica
+holds the same leases. The identify stage asks this snapshot for the live
+lease of the query's source address. When the captured inventory supplied no
+MAC for that address, the lease MAC fills it and `ClientGroup` `mac` matchers
+apply. MACs reported by an inventory source win over a lease MAC for the same
+address. Two scopes that lease one address to different MACs fill nothing.
+Source-bound private inventory grants never match a lease MAC. The read
+checks expiry with the request time and touches no SQLite, store or leader.
+
+`GET /api/v1/inventory` (permission `inventory.read`) lists these leases as
+devices with source `dhcp/<scope>` next to the inventory-source devices; see
+[client identity](../deploy/client-identity.md#client-inventory).
+
 Client names and MAC addresses remain unauthenticated. A client can claim an
 unused name or impersonate a reserved MAC. Use reservations for stable naming,
 IP/network policies for required restrictions and a restrictive default policy.
@@ -365,6 +384,12 @@ claims, setup tokens and SQLite applied indexes. A committed command carries
 its decision time; replay clamps backward leader time deterministically. Healthy,
 synchronized host clocks are required: quorum cannot correct a clock jumping
 forward and expiring leases early.
+
+Offline-voter recovery follows Raft's log-replication retry schedule. In the
+currently pinned Raft v1.7.3, a failed log attempt can back off for 10.24 seconds;
+successful heartbeats do not reset that independent delay. Snapshot transfer
+and durable restore follow when the retained log no longer covers the voter.
+Current command deadlines remain separate from this recovery interval.
 
 ```mermaid
 flowchart LR

@@ -7,8 +7,8 @@
 // the policy already has when GET /objects/policies/{ns}/{name} can read
 // it) and says where that definition lives from the policy's
 // kudurru.io/managed-by value: a file in the objects directory (watched and
-// re-applied on change), the objects: of the configuration file (read at
-// start), a Kubernetes resource (kubectl or GitOps) or an integration.
+// re-applied on change), the objects: of the configuration file (also watched),
+// a Kubernetes resource (kubectl or GitOps) or an integration.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Code } from '@astryxdesign/core/Code';
@@ -99,7 +99,7 @@ export function attachWhere(managedBy: string, policy: string, field: string): {
             {name} is defined under <Code size="inherit">objects:</Code> in <Code size="inherit">{path}</Code>, the kudurru configuration file on the host. In that <Code size="inherit">kind: Policy</Code> entry, set {spec} to:
           </>
         ),
-        after: 'Objects in the configuration file are read at start: restart kudurru after saving it.',
+        after: 'kudurru watches the configuration file and applies valid objects without a restart. Invalid input keeps the previous objects. Change the file on every node that uses a copy.',
       };
     }
     case 'kubernetes':

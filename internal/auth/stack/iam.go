@@ -8,7 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/validation"
+
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
 	"github.com/robertherbaugh/kudurru/internal/auth/tokens"
@@ -116,7 +119,7 @@ func (s *Stack) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 	}
 	switch p.Kind {
 	case auth.KindUser:
-		opts.Owner = internalv1.TokenOwner{Kind: internalv1.OwnerUser, Name: p.Name, ID: p.ID, Provider: p.Provider}
+		opts.Owner = internalv1.TokenOwner{Kind: internalv1.OwnerUser, Name: p.Name, ID: p.ID, Provider: p.Provider, UID: p.AccountUID}
 		if p.Provider != "local" {
 			// OIDC users have no stored groups (D48): freeze what they hold
 			// now; the binding source keeps honouring each grant only while
@@ -127,7 +130,7 @@ func (s *Stack) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 		}
 	case auth.KindServiceAccount:
 		ns, name, _ := strings.Cut(p.ServiceAccount, "/")
-		opts.Owner = internalv1.TokenOwner{Kind: internalv1.OwnerServiceAccount, Name: name, Namespace: ns}
+		opts.Owner = internalv1.TokenOwner{Kind: internalv1.OwnerServiceAccount, Name: name, Namespace: ns, UID: p.AccountUID}
 	default:
 		writeErr(w, r, &auth.Error{Status: http.StatusBadRequest, Key: "unsupported_principal",
 			Message: "API tokens belong to users and kudurru service accounts; " + string(p.Kind) + " principals cannot own them"})
@@ -238,7 +241,7 @@ func (s *Stack) handleIAMServiceAccounts(w http.ResponseWriter, r *http.Request)
 	items := []ServiceAccountInfo{}
 	for _, sa := range sas {
 		items = append(items, ServiceAccountInfo{Namespace: sa.Namespace, Name: sa.Name, Description: sa.Spec.Description,
-			Disabled: sa.Spec.Disabled, BuiltinAdmin: sa.Spec.BuiltinAdmin, Tokens: len(s.tokens.List(tokens.ServiceAccountID(sa.Namespace, sa.Name)))})
+			Disabled: sa.Spec.Disabled, BuiltinAdmin: s.tokens.BuiltinAdmin(sa), Tokens: len(s.tokens.List(tokens.ServiceAccountID(sa.Namespace, sa.Name)))})
 	}
 	writeList(w, r, items, nil)
 }
@@ -271,6 +274,64 @@ func (s *Stack) handleIAMRoleBindings(w http.ResponseWriter, r *http.Request) {
 			ManagedBy: store.ManagedBy(o)})
 	}
 	writeList(w, r, items, s.bindings.Diagnoses())
+}
+
+// handleIAMRoleBinding reads one RoleBinding object for operator review: the
+// stored object with its exact UID and resourceVersion, as the complete SQLite
+// runtime's item route returns it. Config-file bindings are not objects and
+// appear only in the list. The stack has no RoleBinding write routes.
+func (s *Stack) handleIAMRoleBinding(w http.ResponseWriter, r *http.Request) {
+	key := store.Key{Kind: internalv1.KindRoleBinding, Namespace: r.PathValue("namespace"), Name: r.PathValue("name")}
+	if r.URL.RawQuery != "" || len(validation.IsDNS1123Label(key.Namespace)) != 0 || len(validation.IsDNS1123Subdomain(key.Name)) != 0 {
+		writeErr(w, r, &auth.Error{Status: http.StatusBadRequest, Key: "invalid", Message: "invalid RoleBinding target"})
+		return
+	}
+	binding, ok := s.roleBindings.Get(key)
+	if !ok {
+		writeErr(w, r, &auth.Error{Status: http.StatusNotFound, Key: "not_found", Message: "RoleBinding " + key.Namespace + "/" + key.Name + " not found"})
+		return
+	}
+	out := binding.DeepCopy()
+	out.APIVersion, out.Kind = publicv1.GroupVersion.String(), internalv1.KindRoleBinding
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleIAMServiceAccount reads one ServiceAccount object for operator review,
+// with its exact UID and resourceVersion, as the complete SQLite runtime's item
+// route returns it. The stack has no ServiceAccount write routes (D396).
+func (s *Stack) handleIAMServiceAccount(w http.ResponseWriter, r *http.Request) {
+	key := store.Key{Kind: internalv1.KindServiceAccount, Namespace: r.PathValue("namespace"), Name: r.PathValue("name")}
+	if r.URL.RawQuery != "" || len(validation.IsDNS1123Label(key.Namespace)) != 0 || len(validation.IsDNS1123Subdomain(key.Name)) != 0 {
+		writeErr(w, r, &auth.Error{Status: http.StatusBadRequest, Key: "invalid", Message: "invalid ServiceAccount target"})
+		return
+	}
+	sa, ok := s.tokens.ServiceAccounts().Get(key)
+	if !ok {
+		writeErr(w, r, &auth.Error{Status: http.StatusNotFound, Key: "not_found", Message: "ServiceAccount " + key.Namespace + "/" + key.Name + " not found"})
+		return
+	}
+	out := sa.DeepCopy()
+	out.APIVersion, out.Kind = publicv1.GroupVersion.String(), internalv1.KindServiceAccount
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleIAMIdentityProvider reads one IdentityProvider object for operator
+// review. Configuration-file providers are not objects and appear only in the
+// list. The object holds a credential reference, never a secret value.
+func (s *Stack) handleIAMIdentityProvider(w http.ResponseWriter, r *http.Request) {
+	key := store.Key{Kind: internalv1.KindIdentityProvider, Name: r.PathValue("name")}
+	if r.URL.RawQuery != "" || len(validation.IsDNS1123Label(key.Name)) != 0 {
+		writeErr(w, r, &auth.Error{Status: http.StatusBadRequest, Key: "invalid", Message: "invalid IdentityProvider target"})
+		return
+	}
+	idp, ok := s.idps.Get(key)
+	if !ok {
+		writeErr(w, r, &auth.Error{Status: http.StatusNotFound, Key: "not_found", Message: "IdentityProvider " + key.Name + " not found"})
+		return
+	}
+	out := idp.DeepCopy()
+	out.APIVersion, out.Kind = publicv1.GroupVersion.String(), internalv1.KindIdentityProvider
+	writeJSON(w, http.StatusOK, out)
 }
 
 // IdentityProviderInfo is a configured provider as listed (no secrets).

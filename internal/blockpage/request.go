@@ -98,6 +98,15 @@ func (s *Server) requestsAllowed() bool {
 	return s.opts.RequestsAllowed == nil || s.opts.RequestsAllowed()
 }
 
+// requestsUnavailable is the message of a node that cannot store requests
+// now, "" when it can.
+func (s *Server) requestsUnavailable() string {
+	if s.opts.RequestsUnavailable == nil {
+		return ""
+	}
+	return s.opts.RequestsUnavailable()
+}
+
 // requestView builds the section for client and domain, nil when
 // requests are off or the page names no domain.
 func (s *Server) requestView(st *Settings, client netip.Addr, domain, flash string, now time.Time, preview bool) *RequestView {
@@ -110,6 +119,28 @@ func (s *Server) requestView(st *Settings, client netip.Addr, domain, flash stri
 	}
 	book := s.opts.Requests
 	r := book.Lookup(client, domain)
+	if message := s.requestsUnavailable(); message != "" {
+		// This node cannot store a request. A request that reached it still
+		// reports its state, without the form and without an invitation to
+		// add details or ask again; the reason the form is missing follows.
+		v.Form, v.Status = false, message
+		if r != nil {
+			switch r.EffectiveState() {
+			case v1alpha1.UnblockApproved:
+				if unblock.Active(r, now) {
+					v.Note = r.Status.Note
+					v.Status = "An administrator allowed this name" + approvalUntil(r) + ". Try again in a moment" + retryHint(r, st.BlockTTL, now) + "."
+				}
+			case v1alpha1.UnblockPending:
+				v.Note = r.Status.Note
+				v.Status = "You asked for access on " + timeText(unblock.RequestedAt(r)) + ". An administrator has not decided yet. " + message
+			case v1alpha1.UnblockDenied:
+				v.Note = r.Status.Note
+				v.Status = "An administrator declined your request" + decidedOn(r) + ". " + message
+			}
+		}
+		return v
+	}
 	if r != nil {
 		v.Note = r.Status.Note
 		switch r.EffectiveState() {
@@ -221,6 +252,11 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	st := s.settings.Load()
 	if s.opts.Requests == nil || !st.Requests || !s.requestsAllowed() {
 		http.Error(w, "unblock requests are off on this server", http.StatusNotFound)
+		return
+	}
+	if message := s.requestsUnavailable(); message != "" {
+		s.unblockResult("unavailable")
+		http.Error(w, message, http.StatusServiceUnavailable)
 		return
 	}
 	domain := requestDomain(r)

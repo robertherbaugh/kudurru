@@ -5,9 +5,26 @@ downloaded **once, by the leader**, shared with every other node by digest,
 and **compiled on every node**. Only bodies travel; compiled matchers never
 leave the process that built them.
 
+The host-only `blocking.httpsOnly` option applies to new external downloads
+through the leader's downloader and the replica's direct fallback, and to both
+catalog refreshers. A transport guard checks the initial URL and every redirect
+before sending it. The existing TLS roots, local-address restrictions, proxy
+configuration and deadlines still apply. Refusal keeps the last good body;
+cached data and authenticated peer copies retain their existing semantics.
+See [download policy](../deploy/download-policy.md).
+
 Code: `internal/listfetcher` (the leader's fetcher, the disk cache, every
 node's resolver), `internal/blocking` (parsing, the compiled list, the
 snapshot) and `internal/blocking/matcher`.
+
+The compiler also retains bounded evidence of actual source rules removed by
+exclusions. Explicit HTTP dig diagnostics evaluate these witnesses against the
+original selected policies and client/question context. Evidence stays on the
+request and never enters response caches; ordinary DNS requests skip the scan.
+The dashboard consumes the same answer, without a later list read or browser
+regex evaluation. See [disabled-rule diagnostics](../deploy/allowlist.md#checking-disabled-rules)
+for permissions, bounds and the distinction between a disabled rule and the
+final verdict (D255).
 
 ## The object
 
@@ -73,6 +90,14 @@ with up to three attempts; a failing source cools down from 1 minute up to
 fetched, and loopback, link-local and metadata addresses are refused unless
 `blocking.allowLocalListURLs` is set.
 
+`blocking.refreshInterval` reloads the default schedule in the existing leader
+fetcher and replica resolver. Each pass pins its source plan and interval;
+reload wakes the next pass without replacing downloads, credentials, contexts,
+failure cooldowns or compiled policy. Deadlines are recomputed from the original
+successful fetch time. A per-list `spec.refreshInterval` takes precedence; newly
+omitted values inherit the cluster default. Persisted values, including `24h`
+inserted by older schemas, remain explicit overrides.
+
 ### When the leader is out of reach
 
 ```mermaid
@@ -97,13 +122,73 @@ comes back with its lists before it can reach anybody. Readiness follows
 source is waiting (unless `blocking.allowDegraded`), and `failOnError` exits
 the process when the first load fails.
 
+`blocking.allowDegraded` reloads readiness while lists are loading; startup
+`initStrategy` stays fixed. Complete serving still requires every candidate's
+exact bodies and digests. Allowing degraded readiness never permits a partial
+DNS policy publication. Operational reloads consume accepted complete settings,
+and held DNS requests retain their original compiled lists and response settings.
+
+## Source-entry pagination
+
+The entries API retains a bounded in-memory index of parsed URL and ConfigMap
+bodies by exact SHA-256 digest, format and subdomain mode. Compact owned data
+blocks and line references preserve parser normalization, physical line numbers,
+multiple hosts on a line and duplicate rules. Exclusions and filters belong to
+each request; the shared index contains no object, URL, credentials or policy.
+
+Every complete-serving page still authorizes the original captured object,
+checks its bound continuation and opens/verifies its exact body before consulting
+the index. A missing or changed body returns unavailable even when its parsed
+index remains cached. A different publication, object UID/version, parser option,
+filter or exclusion list invalidates the continuation. Index eviction never
+changes a held request's owner. The legacy file-body adapter independently checks
+file length and digest before index reuse; non-file adapters keep streaming.
+
+The cache retains at most 16 indexes and 128 MiB of accounted storage. Each
+builder stops at 96 MiB and continues the same bounded streaming parse if a
+normalized source exceeds that budget. The existing four-request admission gate
+bounds simultaneous builds and indexes held after eviction; there is no disk
+artifact or background worker. Unfiltered pages without exclusions select only
+the requested rules from the index. Filtered/excluded pages still scan normalized
+rules for exact totals; all pages still pay for body verification. These are
+administrative read optimizations, with no change to DNS compilation or cache
+invalidation.
+
+## Complete serving candidates
+
+`listfetcher.PrepareComplete` supplies strict list preparation for the complete
+serving publisher. It receives all BlockList objects from one captured image
+and the exact pinned service catalog. Every enabled external text source must
+have an explicit published digest, matching cache metadata and matching SHA-256
+body bytes. The file descriptor remains open through verification and parsing.
+Preparation performs no network requests or store reads, and bounds the number
+of lists, sources and bytes it consumes.
+
+A missing body, digest mismatch or compilation failure rejects the whole
+candidate. The publisher retains its previous complete bundle. Disabled and
+empty lists remain explicit; RPZ lists retain their identity while their feed
+data comes from a separately captured runtime owner. This preparer does not
+use the older-body and individual-list fallback behavior of the existing
+resolver described above. The SQLite production server publishes through this
+complete path; the resolver's live pointer does not supply its DNS policy.
+
+```mermaid
+flowchart LR
+    Image["One captured BlockList object cut"] --> Verify["Verify each exact published body digest"]
+    Cache["Pinned local cache files"] --> Verify
+    Verify --> Compile["Compile all lists with pinned catalog"]
+    Compile --> Candidate["One complete candidate"]
+    Verify -->|failure| Retain["Retain previous whole serving bundle"]
+    Compile -->|failure| Retain
+```
+
 ## Inside a compiled list
 
 ```mermaid
 flowchart LR
     N(["name, lower-cased,<br/>no trailing dot"]) --> E{"exact set<br/>sorted buckets by length,<br/>bit filter, binary search"}
     E -- "miss" --> S{"suffix set<br/>||x^, *.x, hosts with subdomains;<br/>walk labels broadest first"}
-    S -- "miss" --> RX{"regex set<br/>RE2, indexed by a 4-byte<br/>piece of each literal"}
+    S -- "miss" --> RX{"regex set<br/>RE2 languages, literal-gram index<br/>and tagged lazy-DFA batches"}
     RX -- "miss" --> M["no match"]
     E -- "hit" --> HIT["match + rule text"]
     S -- "hit" --> HIT
@@ -116,7 +201,8 @@ in a block list, allow rules in an allow list) and the **exception** chain
 when the answer is checked. Each entry keeps a one-byte syntax tag, so the
 query log can show the rule as written without storing the lines.
 
-Lookups allocate nothing. The spike measured p99 1.18 µs for a hit and
+The matchers reserve query scratch and transition capacity during compilation.
+Cold and saturated regex execution uses the same reserved storage. The spike measured p99 1.18 µs for a hit and
 0.71 µs for a miss over a 1 M-entry suffix set, and about 90 MB steady RSS
 for 3 M entries ([spike](../../dev-docs/spikes/blocking.md)); `make bench` guards it.
 
@@ -126,7 +212,33 @@ for 3 M entries ([spike](../../dev-docs/spikes/blocking.md)); `make bench` guard
 | `\|\|example.com^`, `\|\|example.com`, `*.example.com` | suffix (`*.x` also matches `x`) |
 | `@@\|\|example.com^` | exception chain (per list) |
 | `/regex/` | regex (at most 1000 per list) |
-| `$important`, `$badfilter`, other modifiers, mid-pattern wildcards | counted as unsupported, ignored |
+| `$dnstype`, `$dnsrewrite`, `$client`, `$ctag`, `$important`, `$badfilter`, `$denyallow`, mid-pattern wildcards | complete contextual rule stream; unknown modifiers remain counted and ignored |
+
+Regex modifiers begin after the closing `/`, for example
+`/^ads[.]example$/$client=192.0.2.0/24,dnstype=AAAA`. CIDR slashes and quoted
+client-selector slashes remain part of their modifier values. Escaped slashes,
+character classes and RE2 literal quoting retain their regex meaning; scoped
+exceptions and `$badfilter` use the complete original rule identity.
+
+Regexes and contextual patterns share a tagged lazy-DFA executor. Conservative
+literal prefilters retain original rule order; dense and unindexed candidates
+use fixed batches. A sparse route also reuses its sole unindexed batch when
+every original member is admitted, merging its result at the original rule
+positions. A selected gram alone does not require scanning every indexed batch:
+the original full required literal must also occur in the query. This refinement
+is used only on prefilter-safe names; Unicode and other unsafe inputs retain
+exact execution. A bounded transition arena freezes when full and continues
+with exact NFA execution. When every program provably requires the start of
+text, fallback advances current states without retrying starts at later
+boundaries. Invalid syntax and typed resource refusal remain
+separate outcomes; cache saturation never changes the language.
+
+Compilation reserves programs, mappings, transition capacity and fallback
+scratch against each list and the complete serving candidate. Both default to
+128 MiB; reused lists still debit the candidate. Refusal preserves the previous
+complete owner. These reservations are not total RSS or a bound on old and new
+serving bundles held together. The original performance gates remain open:
+integrated correctness does not clear historical relative regressions.
 
 ## Compile and swap
 
@@ -147,9 +259,20 @@ flowchart TD
     SNAP --> SET["zonecache SetLists → rebuild → atomic swap"]
 ```
 
-A comment-only change to a list does not recompile it. Lists of 1 MiB or more
-trigger a garbage collection between compiles, so a refresh of several big
-lists does not hold them all in memory at once.
+A comment-only change to a list does not recompile it. The fingerprint pass
+shares the parser's format detection, input checks and normalized CRC stream.
+It classifies only lines containing a literal `$`, passing them through the
+actual parser and modifier callback so all `$badfilter` validation and exclusions
+still apply. Ordinary lines contribute to the checksum without building rules;
+changed lists receive the full parser pass and diagnostics. Fingerprint versions,
+options and source identity retain their exact encoding. The fingerprint pass
+omits diagnostic storage it does not return; full parsing still returns all
+original counters and samples. Failures keep the previous
+complete owner. The integrated lazy-DFA compiler shares this fingerprint path;
+correctness checks and performance acceptance remain separate.
+
+Lists of 1 MiB or more trigger a garbage collection between compiles, so a
+refresh of several big lists does not hold them all in memory at once.
 
 ## The starter list
 
@@ -157,3 +280,194 @@ On the first start the bootstrap seeds `BlockList starter` (one inline
 source made from the StevenBlack hosts file, embedded in the binary) and
 `Policy default` that uses it. Blocking therefore works offline from the
 first query, and its hits show as `blocked_exact`.
+
+## Transferred RPZ foundation
+
+`BlockList` sources can describe an RPZ origin and TCP/TLS transfer primaries,
+with an optional TSIG key reference. The `internal/rpz` receiver reuses the
+secondary transfer transport, but never installs the feed as an authoritative
+zone. Each node maintains its own SOA refresh/retry/expire timers and durable
+last-good copy. Unsupported NSDNAME/NSIP triggers and unknown policy actions
+are counted; the compiler supports QNAME, CLIENT-IP and RESPONSE-IP with
+NXDOMAIN, NODATA, PASSTHRU, DROP, TCP-only and local-data actions.
+
+Within a feed, client-IP precedes QNAME and answer-IP; feed declaration order
+takes precedence across feeds. A selected required feed that is missing,
+expired or bound to an old source identity returns an unavailable decision.
+The query evaluator reads immutable memory and checks exact expiry. RPZ names
+use DNS closest-encloser wildcard semantics, distinct from adblock suffix rules.
+
+```mermaid
+flowchart LR
+    Source["Selected BlockList RPZ source"] --> XFR["Per-node SOA / AXFR / IXFR"]
+    XFR --> Validate["Bounded complete RR validation and compile"]
+    Validate --> Durable["Candidate slot then accepted marker"]
+    Durable --> Snapshot["Immutable feed snapshot + exact expiry"]
+    Snapshot --> Decision["Ordered selected-policy decision"]
+```
+
+Durable data binds cluster, source UID/configuration and credential fingerprint.
+Restart cannot renew expiry. Candidate and acceptance writes use two bounded
+slots and a checksum/nonce-bound marker; failed acceptance preserves the prior
+copy. A configuration race invalidates the candidate. If both marker deletion
+and fallback overwrite fail, an exact configuration/credential restoration after
+a crash can still recover that candidate; production publication must coordinate
+the source/credential cut with this separate local storage boundary.
+
+The ordinary list fetcher never downloads or parses RPZ sources, including an
+invalid RPZ source. RPZ-only lists retain their policy identity with zero text
+rules; mixed lists compile their ordinary sources separately. Shared source
+counts and digests describe only ordinary rules. RPZ transfer state belongs to
+each node, so shared BlockList status cannot establish feed availability.
+
+The blocking-stage adapter evaluates only the feeds in the selected policy's
+list order. Explicit allow lists and allow-only run first. It resolves the
+original query once, preserves resolver failures, then evaluates QNAME, CNAME
+targets and answer addresses together. Thus an earlier feed's answer-IP rule
+beats a later feed's QNAME rule. PASSTHRU stops RPZ evaluation and continues
+ordinary blocking. Local data, CNAME, NXDOMAIN/NODATA, DROP and TCP-only have
+distinct responses; synthesis removes AD/proofs and remains outside the raw
+resolver cache. CNAME dependencies retain the captured policy and cleanup
+ownership, and feed expiry is checked again after target resolution.
+
+```mermaid
+flowchart TD
+    Query["Selected recursive IN query"] --> Allow["Explicit allow / allow-only"]
+    Allow --> Required["Required feed availability"]
+    Required --> Raw["Resolve original once"]
+    Raw --> Failure{"Resolver failure?"}
+    Failure -- yes --> Preserve["Return original failure"]
+    Failure -- no --> Evaluate["Ordered RPZ evaluation over names and addresses"]
+    Evaluate --> Action["Private policy response, DROP or TCP-only"]
+    Evaluate --> Ordinary["Unmatched / PASSTHRU: ordinary rules over raw response"]
+```
+
+Compiler/runtime/schema acceptance includes native BIND transfers and policy
+comparisons, TSIG/TLS rejection, IXFR, outage/restart, expiry, identity changes
+and persistence faults. Adapter tests cover policy order, all actions, raw-cache
+isolation, bounded CNAME resolution, expiry and response cleanup.
+
+On SQLite the complete runtime mounts this path. `serve` creates the feed manager
+and runs it on every node; `servingbuild.TransferredRuntime` composes its
+installation cut into each complete serving candidate; and `BindDNS` gives the
+blocking stage a selector that reads the feeds of the request's own
+publication, never a live manager. A hit is answered and logged with status
+`blocked_rpz`, the list and the rule (`<owner> <action>`), and the HTTP dig
+explanation shows the same fields. Policy list reads add the feed's rule count.
+The shared dnsdist packet cache is eligible only while every feed of the
+publication is available and has no client-IP rule, and never beyond the
+earliest feed expiry.
+
+```mermaid
+flowchart LR
+    Manager["rpz.Manager<br/>(every SQLite node)"] --> Cut["Installation cut"]
+    Cut --> Candidate["TransferredRuntime:<br/>complete serving candidate"]
+    Candidate --> Bundle["Published serving bundle"]
+    Bundle --> Select["Blocking stage selector<br/>(BindDNS, per request)"]
+    Select --> Hit["blocked_rpz + list + rule"]
+    Bundle --> Reads["Policy list reads, dig explanation"]
+    Bundle --> Edge["Shared edge-cache eligibility"]
+```
+
+The Kubernetes store mounts the same manager on every replica (D390). It
+acquires feeds with the stored TSIG startup source and its hot replacement
+(D314/D365): an unsigned feed is admitted at once, a signed one once the stored
+keys are prepared, and a ring replacement wakes the manager like a SQLite key
+change. Accepted copies persist in `local.db`, so a restart reuses an unexpired
+copy without contacting the primary. Only an unsigned feed is reused without the
+apiserver: a signed feed needs the stored TSIG keys, which a restarting pod reads
+from the apiserver with no local fallback. A pod that restarts while the
+apiserver is unreachable therefore leaves every signed feed unbound, and every
+recursive query from a client whose policy selects it answers SERVFAIL, until
+the pod is restarted with the apiserver reachable (a running pod keeps its ring
+through an outage). The policy index there
+comes from the zone cache rather than a complete bundle, so the blocking stage
+selector (`kubeRPZ` in `cmd/kudurru`) binds per request: it takes the
+BlockList objects of the request's own policy decision (`policy.ListInfo`),
+and binds them to the node's feed snapshot and the published TSIG ring. The
+binding is rebuilt only when the configuration snapshot, the feed snapshot or
+the ring changes, and every input is an in-memory atomic read: no store read,
+no leader and no network work on the DNS path. A feed that is missing, rotated
+to a new credential, unbound or expired stays selected as an unavailable
+sentinel and fails closed (SERVFAIL with EDE "not ready"); a stale or unsynced
+configuration snapshot does the same. Unlike primary zones, where a `local.db`
+snapshot older than `store.kube.snapshot.maxAge` stops only authoritative
+answers, this stops forwarding too for every client whose policy selects an RPZ
+list, unsigned feeds with an unexpired copy included. An RPZ feed does not wait
+for the list resolver: a policy decision carries every referenced BlockList that
+exists but is not compiled yet (`Decision.PendingBlockLists`), and both drivers'
+selectors require those lists' feeds too (D390). A just-started node therefore
+applies a persisted copy, or fails closed, from its first answer, whatever
+`blocking.allowDegraded` says; the downloaded sources of a mixed list still
+apply only once it is compiled. With `blocking.allowDegraded: false` the node
+also stays not ready until every referenced list is in the policy: on a restart
+from `local.db` the zone cache reports ready only once the snapshot built from
+`local.db` is published, not when it switches to it (before the fix, the empty
+unsynced snapshot's index, which references no list, made the node ready about
+100 ms early). Leader changes do not affect feeds: the
+manager is not a leader-only runnable. The shared dnsdist cache eligibility
+above is SQLite-only; on Kubernetes the edge cache is not flushed when a feed
+changes, so an edge-cached answer can outlive a feed update by its TTL.
+
+```mermaid
+flowchart LR
+    KManager["rpz.Manager<br/>(every Kubernetes replica)"] --> KSnap["Feed snapshot"]
+    Ring["Stored TSIG ring<br/>(startup + hot replacement)"] --> KManager
+    Zc["zone cache snapshot"] --> Index["Policy index<br/>(ListInfo keeps the BlockList)"]
+    Index --> Decision["Request policy decision<br/>(compiled and pending lists)"]
+    KSnap --> Bind["kubeRPZ binding<br/>(rebuilt on change only)"]
+    Ring --> Bind
+    Zc --> Bind
+    Decision --> KSelect["Blocking stage selector<br/>(per request)"]
+    Bind --> KSelect
+    KSelect --> KHit["blocked_rpz + list + rule"]
+```
+
+Per-feed state is node-local and is read from the feed manager at request
+time (D391), on both drivers. `GET /blocklists/_rpz` and
+`GET /blocklists/{namespace}/{name}/rpz` (`blocklists.read`) map each
+`rpz.Status` to a state (`pending`, `serving`, `expired`, `unavailable`; every
+state but `serving` answers SERVFAIL for a selecting policy, and `expired` is
+reported only once the copy's absolute expiry has passed) with
+the serial, primary, confirmation, expiry, next attempt, last error, compiler
+counts, rule counts by trigger and action, and every ignored reason with its
+complete count and bounded examples. `kudurru lists rpz` renders the same items,
+`/info/messages` adds a diagnosis per feed that is not serving cleanly or ignores
+owners, and an `rpz.Collector` exports `kudurru_rpz_feed_*` gauges at scrape
+time. None of these reads touch the DNS path; they can disagree briefly with
+the serving snapshot a dig explanation reports, and they converge within one
+publication. The dashboard reads the same routes: a list page with an RPZ
+source shows an "RPZ feeds on this node" section from the per-list route
+(polled every 30 s, every 3 s while the node lacks the list or a feed is not
+serving, and again after every list or source change), and the Lists page reads `GET /blocklists/_rpz` once a
+block list has an enabled feed and shows the worst feed state under the list's
+health. Both say which node answered and render only the fields that node
+sends. Operator guide: [docs/deploy/rpz.md](../deploy/rpz.md).
+
+```mermaid
+flowchart LR
+    M["rpz.Manager (per node)"] --> S["Statuses / ListStatuses"]
+    S --> API["GET /blocklists/_rpz<br/>GET /blocklists/{ns}/{name}/rpz"]
+    S --> Msg["/info/messages (source rpz)"]
+    S --> Met["/metrics kudurru_rpz_feed_*"]
+    API --> CLI["kudurru lists rpz"]
+    API --> UI["Dashboard: list page section,<br/>Lists page state"]
+```
+
+### Regex impact inspection
+
+The Domains, Allowlist and Denylist pages offer **Test a domain** for regex
+entries, including entries managed elsewhere. The read-only
+`GET /allowlist/{id}/impact?name=...` and denylist equivalent require
+`blocklists.read`. They evaluate one concrete name with the production regex
+engine and report opposing compiled list/rule matches from the same captured
+publication. They never issue a DNS query or change an entry.
+
+The result includes enabled state, client-group scope and an explicit partial
+flag. Inspection is limited to 256 lists, 64 matches and 128 KiB of match data,
+with a two-second context and a 1024-byte expression limit. It uses an A/IN
+question without client identity: selected policy, schedules, modifiers and
+other rules still determine actual blocking. A disabled expression may match
+mathematically but has no effect. This is concrete-name evidence, not exhaustive
+regex-language overlap or a final client decision. Responses use `no-store`;
+closing a dialog isolates any late response from its next opening.

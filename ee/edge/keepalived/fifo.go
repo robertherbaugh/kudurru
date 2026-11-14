@@ -3,6 +3,7 @@ package keepalived
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -95,7 +96,24 @@ type StateFile struct {
 	Node    string              `json:"node"`
 	Updated time.Time           `json:"updated"`
 	VIPs    map[string]VIPState `json:"vips"`
+	// Session and Sequence identify one Consumer episode. Transitions is a
+	// bounded journal, not a heartbeat or proof of current physical ownership.
+	// Older state-file readers safely ignore these additive fields.
+	Session     string       `json:"session,omitempty"`
+	Sequence    uint64       `json:"sequence,omitempty"`
+	Transitions []Transition `json:"transitions,omitempty"`
 }
+
+// Transition retains notifications between bounded observation polls.
+type Transition struct {
+	Sequence uint64   `json:"sequence"`
+	VIP      string   `json:"vip"`
+	Previous VIPState `json:"previous"`
+	Next     VIPState `json:"next"`
+}
+
+// TransitionLimit bounds the on-disk notification journal.
+const TransitionLimit = 64
 
 // StatePath is the state file in runDir.
 func StatePath(runDir string) string { return filepath.Join(runDir, "vip-state.json") }
@@ -145,7 +163,7 @@ func (c *Consumer) init() {
 	}
 	if c.state.VIPs == nil {
 		// keepalived (re)started us: whatever the file said is stale.
-		c.state = StateFile{Node: c.Node, Updated: c.Now().UTC(), VIPs: map[string]VIPState{}}
+		c.state = StateFile{Node: c.Node, Updated: c.Now().UTC(), VIPs: map[string]VIPState{}, Session: rand.Text()}
 	}
 }
 
@@ -153,6 +171,7 @@ func (c *Consumer) init() {
 func (c *Consumer) Reset() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.state = StateFile{}
 	c.init()
 	return c.writeLocked()
 }
@@ -162,7 +181,7 @@ func (c *Consumer) writeLocked() error {
 	if err != nil {
 		return err
 	}
-	return edge.WriteFileAtomic(StatePath(c.RunDir), append(b, '\n'), 0o644) //nolint:gosec // read by the local kudurru and the supervisor
+	return edge.WriteFileAtomic(StatePath(c.RunDir), append(b, '\n'), 0o600)
 }
 
 // Handle applies one FIFO line.
@@ -204,6 +223,13 @@ func (c *Consumer) Handle(line string) error {
 	}
 	c.state.VIPs[vipName] = next
 	c.state.Updated = now
+	if !had || next.State != prev.State {
+		c.state.Sequence++
+		c.state.Transitions = append(c.state.Transitions, Transition{Sequence: c.state.Sequence, VIP: vipName, Previous: prev, Next: next})
+		if len(c.state.Transitions) > TransitionLimit {
+			c.state.Transitions = c.state.Transitions[len(c.state.Transitions)-TransitionLimit:]
+		}
+	}
 	if err := c.writeLocked(); err != nil {
 		return err
 	}

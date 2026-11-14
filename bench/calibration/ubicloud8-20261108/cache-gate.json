@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "go",
+    "run",
+    "./hack/benchgate",
+    "-samples",
+    "5",
+    "-procs",
+    "6",
+    "-strict-cpu",
+    "-threshold",
+    "20",
+    "/home/runner/work/kudurru/kudurru/control/bin/release-reference/cache.txt"
+  ],
+  "child_exit_code": 0,
+  "stop_reason": null,
+  "minimum_free_bytes": 138921480192,
+  "pid": 11089,
+  "wall_seconds": 0.20632211999998162,
+  "post_free_bytes": 138921480192,
+  "output_bytes": 65,
+  "group_reaped": true
+}

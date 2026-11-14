@@ -1,0 +1,63 @@
+# A home network Corefile covering every converted plugin and several
+# unsupported ones. Values containing "secret-" must never reach the plan.
+(common) {
+    errors
+    log
+}
+
+.:53 {
+    import common
+    import /etc/coredns/secret-snippets/*.conf
+    health :8080
+    prometheus :9153
+    acl {
+        block type ANY HINFO
+        allow net 192.168.1.0/24 fd00::/64 10.0.0.7
+        block
+    }
+    hosts /etc/secret-hosts-file {
+        192.168.1.10 nas.lan.example nas.home.example
+        192.168.1.11 printer.lan.example
+        fd00::11 printer.lan.example
+        fallthrough
+    }
+    rewrite name exact tv.lan.example media.lan.example
+    forward . 192.0.2.53 tls://198.51.100.53 dns://[2001:db8::53]:5353 {
+        policy sequential
+        max_fails 3
+        health_check 5s
+    }
+    cache 600 {
+        success 5000 300 10
+        denial 2000 60
+        prefetch 10 2m
+        serve_stale 24h
+    }
+    secret-unknown-directive with-a-secret-value
+    loop
+    reload
+}
+
+home.example:53, 10.0.0.0/8 {
+    forward . 192.168.1.1 {
+        force_tcp
+    }
+    file /etc/coredns/secret-db.home.example home.example
+}
+
+corp.example {
+    forward . 192.0.2.1 {
+        tls_servername secret-servername.corp.example
+    }
+}
+
+tls://.:853 {
+    tls /etc/secret-cert.pem /etc/secret-key.pem
+    forward . 192.0.2.53
+}
+
+lab.example:1053 {
+    forward . /etc/resolv.conf
+    kubernetes cluster.local
+    template IN A {$SECRET_ENV_MARKER}
+}

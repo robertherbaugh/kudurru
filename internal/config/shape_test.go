@@ -189,11 +189,46 @@ func TestSchemaEnumsRejectBogus(t *testing.T) {
 				t.Errorf("%s: %v does not list %v", k.Path, err, want)
 			}
 			for _, v := range want {
+				if k.Path == "vip.observation.provider" && v != "none" {
+					continue
+				} // provider-specific prerequisites are covered by observation tests
 				if v == "customIP" || v == "blockPage" || k.Path == "audit.store" && (v == "auditlog" || v == "database") {
 					continue // needs blocking.customIP.v4/v6, blockPage.enabled, store.driver kube, database.dsn
 				}
-				if err := validateWith(t, k.Path, v); err != nil {
-					t.Errorf("%s=%s rejected: %v", k.Path, v, err)
+				var validErr error
+				if k.Path == "upstreams.recursion.anchorMode" && v == "managed" {
+					// Exercise the enum with its required explicit seed. The
+					// dedicated managed-policy cases still reject missing seeds.
+					flat := Defaults()
+					flat[k.Path] = v
+					flat["upstreams.recursion.trustAnchors"] = []string{"12345 15 2 " + strings.Repeat("AB", 32)}
+					_, validErr = FromFlat(flat)
+				} else if k.Path == "upstreams.recursion.managedTopology" && v == "edges" {
+					// The edge enum requires an explicit complete host fleet.
+					flat := Defaults()
+					flat[k.Path] = v
+					flat["node.name"] = "backend-a"
+					flat["upstreams.recursion.managedEdges"] = []map[string]any{{"node": "edge-a", "address": "192.0.2.2:8085", "deployment": strings.Repeat("a", 64), "backendAddress": "192.0.2.1:5353", "backendInternalAddress": "192.0.2.1:8082"}}
+					_, validErr = FromFlat(flat)
+				} else if k.Path == "auth.kubernetes.mode" && v == "impersonate" {
+					// Impersonation is an opt-in of the kube driver (D386).
+					flat := Defaults()
+					flat[k.Path] = v
+					flat["store.driver"] = "kube"
+					_, validErr = FromFlat(flat)
+				} else if k.Path == "cluster.role" && v == "static" {
+					// Static membership requires a real named self endpoint.
+					// Missing and invalid peers remain negative topology cases.
+					flat := Defaults()
+					flat[k.Path] = v
+					flat["node.name"] = "node-a"
+					flat["cluster.peers"] = []map[string]any{{"name": "node-a", "address": "127.0.0.1:8082"}}
+					_, validErr = FromFlat(flat)
+				} else {
+					validErr = validateWith(t, k.Path, v)
+				}
+				if validErr != nil {
+					t.Errorf("%s=%s rejected: %v", k.Path, v, validErr)
 				}
 			}
 		}
@@ -249,7 +284,7 @@ func TestSchemaSpecialEnums(t *testing.T) {
 	}{
 		{"log.level", "info,dns=debug", true},
 		{"log.level", "loud,dns=debug", false},
-		{"auth.kubernetes.mode", "impersonate", false}, // Auth.validate explains D55
+		{"auth.kubernetes.mode", "impersonation", false},
 		{"upstreams.groups", map[string]any{"default": map[string]any{"servers": []string{"1.1.1.1"}}}, true},
 		{"upstreams.groups", map[string]any{"default": map[string]any{"servers": []string{"cloudflare=tls://1.1.1.1", "https://dns.google/dns-query", "[2606:4700::1111]:53", "dns.quad9.net:53", "sdns://AgcAAAAAAAAABzEuMC4wLjE"}, "strategy": "rtt_weighted", "timeout": "1s"}}, true},
 		{"upstreams.groups", map[string]any{"default": map[string]any{"servers": []string{"ftp://x"}}}, false},
@@ -316,6 +351,38 @@ func TestRBACRolesMatchPermissions(t *testing.T) {
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
 		t.Fatalf("rbac.bindings role enum %v, permissions.yaml %v", got, want)
+	}
+}
+
+// TestBindingScopeHelp: a zonegroup binding covers the zones that carry the
+// kudurru.io/zonegroup label (D385), so its help names the label and no longer
+// calls the scope reserved. No request carries a clientgroup scope, so that
+// binding grants nothing and its help must say that the scope is reserved.
+// Neither help may name the v0.2 line ("zone groups arrive in v0.2" shipped
+// in an earlier schema).
+func TestBindingScopeHelp(t *testing.T) {
+	seen := 0
+	for _, o := range bindingScopes {
+		switch o.Value {
+		case "zonegroup":
+			seen++
+			if !strings.Contains(o.Help, "kudurru.io/zonegroup") || strings.Contains(o.Help, "reserved") || strings.Contains(o.Help, "grants nothing") {
+				t.Errorf("scope zonegroup: help does not describe the zone group label: %q", o.Help)
+			}
+		case "clientgroup":
+			seen++
+			if !strings.Contains(o.Help, "reserved") {
+				t.Errorf("scope clientgroup: help does not say that the scope is reserved: %q", o.Help)
+			}
+		default:
+			continue
+		}
+		if strings.Contains(o.Help, "v0.2") {
+			t.Errorf("scope %s: help names the v0.2 line: %q", o.Value, o.Help)
+		}
+	}
+	if seen != 2 {
+		t.Fatalf("found %d group scopes among %d binding scopes, want 2", seen, len(bindingScopes))
 	}
 }
 

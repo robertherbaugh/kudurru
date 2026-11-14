@@ -76,8 +76,11 @@ func TestInternalKindsRoundTrip(t *testing.T) {
 	if err := s.Snapshot(ctx, &full, store.SnapshotOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(safe.String(), "argon2id") || strings.Contains(safe.String(), "RoleBinding") {
+	if strings.Contains(safe.String(), "argon2id") || strings.Contains(safe.String(), "LocalUser") {
 		t.Fatalf("safe snapshot leaks internal kinds:\n%s", safe.String())
+	}
+	if !strings.Contains(safe.String(), "RoleBinding") {
+		t.Fatal("safe snapshot omitted public IAM configuration")
 	}
 	if !strings.Contains(full.String(), "LocalUser") || !strings.Contains(full.String(), "RoleBinding") {
 		t.Fatalf("full snapshot misses internal kinds:\n%s", full.String())

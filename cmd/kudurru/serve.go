@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -21,20 +23,28 @@ import (
 	"github.com/spf13/cobra"
 	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 
-	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	"github.com/robertherbaugh/kudurru/dashboard"
 	"github.com/robertherbaugh/kudurru/ee/auditstore"
+	"github.com/robertherbaugh/kudurru/ee/branding"
 	"github.com/robertherbaugh/kudurru/ee/edge/dnsdist"
 	"github.com/robertherbaugh/kudurru/ee/integration/externaldns"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/audit/auditkeys"
+	"github.com/robertherbaugh/kudurru/internal/audit/auditlog"
 	"github.com/robertherbaugh/kudurru/internal/audit/spool"
 	authn "github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/adminsock"
+	"github.com/robertherbaugh/kudurru/internal/auth/iamgate"
 	"github.com/robertherbaugh/kudurru/internal/auth/keys"
+	"github.com/robertherbaugh/kudurru/internal/auth/loginlimit"
+	"github.com/robertherbaugh/kudurru/internal/auth/requestlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/auth/stack"
+	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/blocking"
+	"github.com/robertherbaugh/kudurru/internal/blockpage"
 	"github.com/robertherbaugh/kudurru/internal/bootstrap"
 	"github.com/robertherbaugh/kudurru/internal/cache"
 	"github.com/robertherbaugh/kudurru/internal/cache/persist"
@@ -49,7 +59,9 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/domainlist"
+	"github.com/robertherbaugh/kudurru/internal/dynamicupdate"
 	"github.com/robertherbaugh/kudurru/internal/health"
+	"github.com/robertherbaugh/kudurru/internal/inventory"
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 	"github.com/robertherbaugh/kudurru/internal/listfetcher"
@@ -61,20 +73,34 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/recursor"
+	"github.com/robertherbaugh/kudurru/internal/rpz"
+	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
+	"github.com/robertherbaugh/kudurru/internal/secondary"
+	"github.com/robertherbaugh/kudurru/internal/servingbuild"
+	"github.com/robertherbaugh/kudurru/internal/servingdns"
+	"github.com/robertherbaugh/kudurru/internal/servinghttp"
 	"github.com/robertherbaugh/kudurru/internal/settings"
+	k8ssource "github.com/robertherbaugh/kudurru/internal/sources/k8s"
 	"github.com/robertherbaugh/kudurru/internal/stages/authoritative"
 	blockingstage "github.com/robertherbaugh/kudurru/internal/stages/blocking"
 	cachestage "github.com/robertherbaugh/kudurru/internal/stages/cache"
 	"github.com/robertherbaugh/kudurru/internal/stages/control"
+	dnssecstage "github.com/robertherbaugh/kudurru/internal/stages/dnssec"
 	"github.com/robertherbaugh/kudurru/internal/stages/identify"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
 	logstage "github.com/robertherbaugh/kudurru/internal/stages/log"
+	"github.com/robertherbaugh/kudurru/internal/stages/postprocess"
+	"github.com/robertherbaugh/kudurru/internal/stages/rewrite"
 	upstreamstage "github.com/robertherbaugh/kudurru/internal/stages/upstream"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/kube"
 	"github.com/robertherbaugh/kudurru/internal/store/localdb"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
+	"github.com/robertherbaugh/kudurru/internal/stub"
+	"github.com/robertherbaugh/kudurru/internal/tsigkeys"
+	"github.com/robertherbaugh/kudurru/internal/unblock"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 	"github.com/robertherbaugh/kudurru/internal/version"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
@@ -139,7 +165,10 @@ func newLoggerAt(cfg config.Log, level *slog.LevelVar) *slog.Logger {
 // with the public and internal kudurru.io kinds. The rest config is non-nil
 // only for the kube driver.
 func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, reg prometheus.Registerer, logger *slog.Logger) (store.Store, *localdb.SnapshotStore, *rest.Config, error) {
-	scheme, err := internalkinds.NewScheme()
+	if err := prepareStoragePaths(cfg); err != nil {
+		return nil, nil, nil, err
+	}
+	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -148,16 +177,31 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 	switch cfg.Store.Driver {
 	case "sqlite":
 		s, err := sqlite.Open(filepath.Join(cfg.Node.DataDir, sqlite.FileName), sqlite.Options{
-			Validator: v, Scheme: scheme, InternalKinds: stack.InternalKinds(),
+			Validator: v, Scheme: scheme, InternalKinds: privateStoreKinds(),
 			Identity: cfg.Node.Name, Logger: logger.With("component", "store"), Metrics: sqlite.NewMetrics(reg),
+			ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage,
 		})
 		switch {
 		case errors.Is(err, sqlite.ErrSchemaTooNew):
 			return nil, nil, nil, fmt.Errorf("state.db was written by a newer kudurru: %w", err)
+		case errors.Is(err, sqlite.ErrUpgradeRefused):
+			// The store lists every object and leaves the database as the
+			// earlier release wrote it (D373), so that release still runs on it.
+			return nil, nil, nil, fmt.Errorf("state.db was written by an earlier kudurru: %w. "+
+				"Start that earlier release on this data directory, correct or delete the listed objects "+
+				"(in the configuration file or the objects directory when they are managed there), stop it and start this release again", err)
 		case errors.Is(err, sqlite.ErrLocked):
 			return nil, nil, nil, fmt.Errorf("another kudurru process owns state.db: %w", err)
 		case err != nil:
 			return nil, nil, nil, err
+		}
+		if cfg.Cluster.Static() && s.Authority().Mode != replication.Standalone {
+			_ = s.Close()
+			return nil, nil, nil, errors.New("cluster.role static requires an independent standalone database; enrolled authority cannot be replaced by host routing")
+		}
+		if err := initializeSQLiteRuntime(ctx, s, cfg); err != nil {
+			_ = s.Close()
+			return nil, nil, nil, fmt.Errorf("initialize runtime owners: %w", err)
 		}
 		st = s
 	case "kube":
@@ -166,17 +210,29 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 			return nil, nil, nil, fmt.Errorf("store.driver kube: %w", err)
 		}
 		s, err := kube.New(restCfg, kube.Options{
-			Scheme: scheme, InternalKinds: stack.InternalKinds(),
-			Identity: cfg.Node.Name, StartupTimeout: cfg.Store.Kube.StartupTimeout.Std(), Logger: logger.With("component", "store"),
+			Scheme: scheme, InternalKinds: privateStoreKinds(),
+			Identity: cfg.Node.Name, ExpectedClusterID: cfg.Store.Kube.ExpectedClusterID, StartupTimeout: cfg.Store.Kube.StartupTimeout.Std(), Logger: logger.With("component", "store"),
+			Impersonate: kubeImpersonation(cfg),
 		})
 		if err != nil {
 			return nil, nil, nil, err
 		}
+		checkCtx, cancel := context.WithTimeout(ctx, kubeStartupTimeout(cfg))
+		identityErr := s.CheckClusterIdentity(checkCtx)
+		cancel()
+		if ctx.Err() != nil || identityErr != nil && !kube.IsUnavailable(identityErr) {
+			_ = s.Close()
+			if ctx.Err() != nil {
+				return nil, nil, nil, ctx.Err()
+			}
+			return nil, nil, nil, identityErr
+		}
+		restCfg = s.RESTConfig()
 		st = s
 	default:
 		return nil, nil, nil, fmt.Errorf("store.driver %q is not supported", cfg.Store.Driver)
 	}
-	db, err := localdb.OpenSnapshotStore(ctx, filepath.Join(cfg.Node.DataDir, localdb.FileName))
+	db, err := localdb.OpenSnapshotStore(ctx, filepath.Join(cfg.LocalDataDir(), localdb.FileName))
 	if err != nil {
 		_ = st.Close()
 		if errors.Is(err, localdb.ErrSchemaTooNew) {
@@ -188,6 +244,15 @@ func openStore(ctx context.Context, cfg *config.Config, v *validator.Validator, 
 }
 
 func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error {
+	if cfg.Cluster.Static() {
+		if err := cfg.Validate(); err != nil {
+			return err
+		}
+	}
+	cfg, err := prepareServingNodeLog(ctx, cfg)
+	if err != nil {
+		return err
+	}
 	logger := newLoggerAt(cfg.Log, logLevel)
 	slog.SetDefault(logger)
 	// Settings hot reload (D25): every consumer of a cluster-scope key that
@@ -195,8 +260,8 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	info := version.Get()
 	logger.Info("kudurru starting", "version", info.Version, "commit", info.Commit, "node", cfg.Node.Name, "config", cfg.Source, "store", cfg.Store.Driver)
 
-	if err := os.MkdirAll(cfg.Node.DataDir, 0o750); err != nil {
-		return fmt.Errorf("node.dataDir: %w", err)
+	if err := prepareStoragePaths(cfg); err != nil {
+		return err
 	}
 	cfg, dhcpSetup, dhcpServer, dhcpSetupError, closeDHCP, err := prepareDHCP(cfg, logger)
 	if err != nil {
@@ -227,6 +292,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	licSources := license.DefaultSources(licenseKey, cfg.Node.DataDir, os.Getenv)
 	if err := lic.Load(licSources); err != nil {
 		logger.Warn("license key", "error", err)
+	}
+	if cfg.Branding != (config.Branding{}) && !lic.Allows(license.FeatureBranding) {
+		logger.Warn("custom branding is inactive: an Enterprise license including branding is required; using built-in presentation")
 	}
 	reg.MustRegister(license.NewCollector(lic))
 
@@ -265,6 +333,15 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 		leaseDNS.SetSource(dhcpKube.Stores)
 	}
+	// Retain the concrete authority before any management facade is installed.
+	// Followers receive bootstrap state only in a validated complete replica.
+	sql, _ := st.(*sqlite.Store)
+	kubeStore, _ := st.(*kube.Store)
+	bootstrapWritable := sql == nil || sql.Authority().Writable()
+	var complete *servingRuntime
+	var remoteCache *servingbuild.EdgeCache
+	var zoneReads *servingbuild.Diagnostics
+	var capturedZoneReads api.ZoneReadSource
 
 	// Use the release namespace for seeds, policy fallback and API writes.
 	// Preserve the namespace of a legacy default policy on upgrades.
@@ -281,20 +358,38 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			}
 			// Select the same policy fallback as the last serving snapshot.
 			// Never ignore malformed SQLite data or reuse another cluster's
-			// namespace when its identity is already known.
+			// namespace without an independently trusted matching identity.
 			namespace = releaseNamespace
 			saved, loadErr := snapDB.Load(ctx)
 			if loadErr != nil && !errors.Is(loadErr, localdb.ErrNoSnapshot) {
 				return loadErr
 			}
-			if loadErr == nil && (st.Info().ClusterID == "" || st.Info().ClusterID == saved.ClusterID) {
+			if loadErr == nil && localdb.CheckClusterIdentity(cfg.Store.Kube.ExpectedClusterID, st.Info().ClusterID, saved.ClusterID) == nil {
 				namespace = bootstrap.NamespaceFromObjects(saved.Objects, releaseNamespace)
 			}
-			logger.Warn("policy namespace read deferred; using snapshot namespace", "namespace", namespace, "error", err)
+			logger.Warn("policy namespace read deferred; using admitted startup namespace", "namespace", namespace, "error", err)
 		}
 		if namespace != releaseNamespace {
 			logger.Warn("keeping legacy default policy namespace", "namespace", namespace, "releaseNamespace", releaseNamespace)
 		}
+	}
+	// An incomplete offline IAM cutover must not seed accounts or admit remote
+	// identities. This gate performs no work on the DNS path. Recheck every IAM
+	// mutation independently of the HTTP request's earlier admission result.
+	var identityGate *iamgate.Gate
+	if restCfg != nil {
+		migration, err := newKubeIAMMigrator(restCfg, cfg, releaseNamespace)
+		if err != nil {
+			return err
+		}
+		identityGate = iamgate.New(migration)
+		initCtx, cancel := context.WithTimeout(ctx, kubeStartupTimeout(cfg))
+		_, status, err := identityGate.Capture(initCtx)
+		cancel()
+		if err != nil {
+			logger.Warn("remote identity admission disabled; inspect kudurru iam migrate status", "state", status.State, "releaseNamespace", releaseNamespace)
+		}
+		st = &iamgate.Store{Store: st, Gate: identityGate}
 	}
 
 	// Audit in Kubernetes (§11.4, #10): the kube driver keeps no audit rows,
@@ -311,7 +406,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 		defer func() { _ = auditSpool.Close() }()
-		scheme, err := internalkinds.NewScheme()
+		scheme, err := runtimekinds.NewScheme()
 		if err != nil {
 			return err
 		}
@@ -339,7 +434,12 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return nil
 	}
 	seedPending := false
-	if err := seedDefaults(ctx); err != nil {
+	if err := func() error {
+		if !bootstrapWritable {
+			return nil
+		}
+		return seedDefaults(ctx)
+	}(); err != nil {
 		if ctx.Err() != nil || cfg.Store.Driver != "kube" || !kube.IsUnavailable(err) {
 			return err
 		}
@@ -352,9 +452,19 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if cfg.Source != "" {
 		inlineSource = filepath.Base(cfg.Source)
 	}
+	inlineFile := cfg.Source
+	if slices.Contains(cfg.EnvLocked, "objects") {
+		inlineFile = "" // the process environment retains precedence over the file
+	}
+	var sourceBindings objects.RoleBindingEffects
+	if sql != nil {
+		sourceBindings = newSQLiteObjectSources(sql)
+	}
 	loader, err := objects.New(objects.Options{
 		Store: st, Validator: v, Logger: logger, Registerer: reg,
-		Inline: cfg.Objects, InlineSource: inlineSource, Dir: cfg.ObjectsDir,
+		Static:       cfg.Cluster.Static(),
+		RoleBindings: sourceBindings, RequireRoleBindings: sql != nil,
+		Inline: cfg.Objects, InlineFile: inlineFile, InlineSource: inlineSource, Dir: cfg.ObjectsDir,
 	})
 	if err != nil {
 		return err
@@ -364,13 +474,32 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if cfg.Store.Driver == "kube" {
 		loadCtx, loadCancel = context.WithTimeout(ctx, kubeStartupTimeout(cfg))
 	}
-	if report := loader.Load(loadCtx); len(report.Diagnoses) > 0 {
-		for _, d := range report.Diagnoses {
-			logger.Warn("object file diagnosis", "diagnosis", d)
+	if sql != nil && bootstrapWritable {
+		// Initial source admission captures this startup writer ONCE, before
+		// reading manifests. Later loads inherit the actual elector's token.
+		token, err := sql.WriterToken()
+		if err != nil {
+			loadCancel()
+			return err
+		}
+		loadCtx = sqlite.WithWriterToken(loadCtx, token)
+	}
+	if bootstrapWritable {
+		if report := loader.Load(loadCtx); len(report.Diagnoses) > 0 {
+			for _, d := range report.Diagnoses {
+				logger.Warn("object file diagnosis", "diagnosis", d)
+			}
 		}
 	}
 	loadCancel()
-	checker.Register("objects", loader.Ready)
+	checker.Register("objects", func() (bool, []string) {
+		if sql != nil && !sql.Authority().Writable() {
+			// A follower intentionally never loads local desired objects. Its
+			// complete replicated image is checked by the serving readiness gate.
+			return true, nil
+		}
+		return loader.Ready()
+	})
 
 	// zonecache: store watches → serving snapshots, local.db cold start (§4.4).
 	var zcLocal *localdb.SnapshotStore
@@ -378,24 +507,34 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		zcLocal = snapDB
 	}
 	zc, err := zonecache.New(st, zonecache.Options{
-		LocalDB: zcLocal, StartupTimeout: cfg.Store.Kube.StartupTimeout.Std(), MaxAge: cfg.Store.Kube.Snapshot.MaxAge.Std(),
+		LocalDB: zcLocal, ExpectedClusterID: cfg.Store.Kube.ExpectedClusterID, StartupTimeout: cfg.Store.Kube.StartupTimeout.Std(), MaxAge: cfg.Store.Kube.Snapshot.MaxAge.Std(),
 		Registerer: reg, Logger: logger,
 	})
 	if err != nil {
 		return err
 	}
-	if err := zc.Register(zoneview.Builder(logger)); err != nil {
-		return err
+	if sql == nil {
+		if err := zc.Register(zoneview.Builder(logger)); err != nil {
+			return err
+		}
 	}
 	// Blocked services and safe-search catalog (D60): embedded, replaced
 	// at runtime from blocking.catalogue.url, plus the opt-in AdGuard
 	// services import (blocking.catalogue.adguardServicesURL).
 	catalogs := catalogue.NewHolder(nil)
-	if err := zc.Register(policy.Builder(policy.Options{DefaultNamespace: namespace, Services: catalogs, Hostnames: leaseDNS}, logger)); err != nil {
+	clientInventory := inventory.New(nil)
+	// On Kubernetes the integration source runtime (D384) feeds the
+	// inventory the identify stage reads and the MAC grants of the policy.
+	var kubeSources *kubeSourceRuntime
+	policyOptions := policy.Options{DefaultNamespace: namespace, Services: catalogs, Inventory: true, Hostnames: leaseDNS}
+	if kubeStore != nil {
+		kubeSources = newKubeSourceRuntime(kubeStore, zc, releaseNamespace, time.Now, logger)
+		policyOptions.MACGrantsInput = kubeMACGrantsInput
+	}
+	if err := zc.Register(policy.Builder(policyOptions, logger)); err != nil {
 		return err
 	}
 	checker.Register("zonecache", zc.Ready)
-	reg.MustRegister(zoneview.NewCollector(zc)) // kudurru_zone_serial, kudurru_zone_records (§11.6)
 
 	// Blocklists (§7.3, D15): the leader fetches, every node pulls bodies by
 	// digest over the internal listener (D47) and compiles locally.
@@ -404,7 +543,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	listObjs := listfetcher.NewZoneCacheObjects(zc)
-	downloader := listfetcher.NewDownloader(lists, listfetcher.DownloadOptions{AllowLocalAddresses: cfg.Blocking.AllowLocalListURLs})
+	downloader := listfetcher.NewDownloader(lists, listfetcher.DownloadOptions{AllowLocalAddresses: cfg.Blocking.AllowLocalListURLs, HTTPSOnly: cfg.Blocking.HTTPSOnly})
 	initStrategy, err := listfetcher.ParseInitStrategy(cfg.Blocking.InitStrategy)
 	if err != nil {
 		return err
@@ -417,6 +556,14 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	var membership cluster.Membership = cluster.Self{Name: cfg.Node.Name}
+	if cfg.Cluster.Static() {
+		members := make([]cluster.Peer, len(cfg.Cluster.Peers))
+		for i, peer := range cfg.Cluster.Peers {
+			members[i] = cluster.Peer{Name: peer.Name, Address: peer.Address}
+		}
+		membership = &cluster.Static{SelfName: cfg.Node.Name, LeaderName: cfg.Node.Name, Members: members}
+	}
+	registerHealthDetails(checker, st.Elector(cluster.ElectionController), cfg.Node.Name, zc.Snapshot)
 	if cfg.Store.Driver == "kube" {
 		headless := os.Getenv("KUDURRU_HEADLESS_SERVICE")
 		_, port, _ := net.SplitHostPort(cfg.Listeners.Internal.Address)
@@ -450,13 +597,132 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if encKeys.Generated {
 		logger.Info("generated the encryption key", "path", encKeys.Path)
 	}
+	// Every replica receives external zones independently. The cluster key
+	// binds persisted copies even during an apiserver outage; rotating it
+	// requires fresh transfers rather than trusting an unrelated local copy.
+	keyring, err := dnsserver.KeyringFromConfig(cfg.TSIGKeys)
+	if err != nil {
+		return err
+	}
+	// SQLite shares these exact owners between background acquisition and
+	// complete serving. The baseline alone is not an admitted stored source:
+	// captureHost requires the coordinator's complete Prepared image first.
+	var authKeys *authKeyOwner
+	var rings *servingbuild.KeyringOwner
+	var tsigSource *tsigRuntime
+	var kubeTSIG *kubeTSIGStartup
+	var kubeTSIGManaged *kubeTSIGLive
+	if sql != nil {
+		authKeys, err = newAuthKeyOwner(ctx, encKeys)
+		if err != nil {
+			return err
+		}
+		rings, err = servingbuild.NewKeyringOwner(keyring)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = rings.Close(context.Background()) }()
+		tsigSource, err = newTSIGRuntime(sql, authKeys, rings, keyring)
+		if err != nil {
+			return err
+		}
+	}
+	if kubeStore != nil {
+		sealer, err := tsigkeys.NewSealer(encKey, encPrev)
+		if err != nil {
+			return err
+		}
+		kubeTSIG, err = newKubeTSIGStartup(ctx, kubeStore, sealer, keyring, kubeStartupTimeout(cfg))
+		if err != nil {
+			return err
+		}
+		defer kubeTSIG.Close()
+		// Hot stored-key replacement and management (F07a, D365).
+		kubeTSIGManaged = newKubeTSIGLive(kubeTSIG, kubeStore, kubeStore, sealer)
+		liveCtx, stopLive := context.WithCancel(ctx)
+		liveDone := make(chan struct{})
+		go func() { defer close(liveDone); kubeTSIGManaged.run(liveCtx) }()
+		defer func() { stopLive(); <-liveDone }()
+	}
+	secondaryCluster := sha256.Sum256(append([]byte("kudurru/secondary/cluster/v1:"), encKey...))
+	secondaryOptions := secondary.Options{
+		Cache: zc, Blobs: snapDB, ClusterID: fmt.Sprintf("%x", secondaryCluster), Keyring: keyring,
+		Receiver: &secondary.TransferClient{Keyring: keyring}, Logger: logger,
+	}
+	if tsigSource != nil {
+		secondaryOptions.Keyring, secondaryOptions.Receiver = nil, nil
+		secondaryOptions.CaptureKeys = tsigSource.captureAcquisition
+		secondaryOptions.ReceiverForKeys = func(keys *dnsserver.StaticKeyring) secondary.Receiver {
+			return &secondary.TransferClient{Keyring: keys}
+		}
+		secondaryOptions.KeysChanged = rings.Changes
+	}
+	if kubeTSIG != nil {
+		secondaryOptions.Keyring, secondaryOptions.Receiver = nil, nil
+		secondaryOptions.CaptureZoneKeys = kubeTSIG.captureAcquisition
+		secondaryOptions.ReceiverForKeys = func(keys *dnsserver.StaticKeyring) secondary.Receiver {
+			return &secondary.TransferClient{Keyring: keys}
+		}
+		secondaryOptions.KeysChanged = kubeTSIGManaged.changes
+	}
+	secondaries, err := secondary.New(secondaryOptions)
+	if err != nil {
+		return err
+	}
+	if sql == nil {
+		reg.MustRegister(zoneview.NewCollector(zc, secondaries))
+	}
+	reg.MustRegister(secondary.NewCollector(secondaries))
+	stubClient := &stub.Client{}
+	stubCluster := sha256.Sum256(append([]byte("kudurru/stub/cluster/v1:"), encKey...))
+	stubs, err := stub.New(stub.Options{
+		Cache: zc, Blobs: snapDB, ClusterID: fmt.Sprintf("%x", stubCluster), Discoverer: stubClient, Logger: logger,
+	})
+	if err != nil {
+		return err
+	}
+	reg.MustRegister(stub.NewCollector(stubs))
+	// RPZ feeds run on every replica of both drivers (D390). SQLite binds them
+	// into each complete serving bundle; Kubernetes binds them per query to the
+	// legacy policy decision (kubeRPZ) with the stored TSIG source (D314/D365).
+	var feeds *rpz.Manager
+	var kubeFeeds *kubeRPZ
+	rpzCluster := sha256.Sum256(append([]byte("kudurru/rpz/cluster/v1:"), encKey...))
+	rpzOptions := rpz.Options{
+		Cache: zc, Blobs: snapDB, ClusterID: fmt.Sprintf("%x", rpzCluster), Logger: logger,
+		ReceiverForKeys: func(keys *dnsserver.StaticKeyring) rpz.Receiver {
+			return &secondary.TransferClient{Keyring: keys}
+		},
+	}
+	switch {
+	case sql != nil:
+		rpzOptions.CaptureKeys, rpzOptions.KeysChanged = tsigSource.captureAcquisition, rings.Changes
+	case kubeTSIG != nil:
+		rpzOptions.CaptureZoneKeys, rpzOptions.KeysChanged = kubeTSIG.captureAcquisition, kubeTSIGManaged.changes
+	default:
+		// No stored source: the file keyring is the only provider.
+		rpzOptions.Keyring, rpzOptions.Receiver, rpzOptions.ReceiverForKeys = keyring, &secondary.TransferClient{Keyring: keyring}, nil
+	}
+	feeds, err = rpz.New(rpzOptions)
+	if err != nil {
+		return err
+	}
+	reg.MustRegister(rpz.NewCollector(feeds))
+	if sql == nil {
+		kubeFeeds, err = newKubeRPZ(zc, feeds, kubeTSIG.keys)
+		if err != nil {
+			return err
+		}
+	}
+	notifyReceiver := secondary.NewNotifyReceiver(secondaries, reg)
 	var (
 		internalClient *internalapi.Client
 		internalSrv    *internalapi.Server
+		internalOpts   internalapi.ServerOptions
 		internalCreds  *internalapi.Credentials
 		listResolver   *listfetcher.Resolver
 		qlTail         *querylog.Tail
-		qlReader       *sqlitelog.Reader
+		qlLogs         *querylogRuntime
 		queryUpstreams func() []upstream.ServerStatus
 	)
 	if encKey != nil || cfg.Listeners.Internal.TokenFile != "" {
@@ -471,9 +737,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 		internalCreds = creds
 		internalClient = internalapi.NewClient(creds, internalapi.ClientOptions{})
-		internalSrv, err = internalapi.NewServer(internalapi.ServerOptions{
+		internalOpts = internalapi.ServerOptions{
+			Event: func(e internalapi.Event) bool { return secondaries.Trigger(e.Identity) },
 			Querylog: func(ctx context.Context, q internalapi.QuerylogRequest) (*internalapi.QuerylogResponse, error) {
-				out, err := internalapi.ReadLocalQuerylog(ctx, qlReader, q)
+				out, err := internalapi.ReadLocalQuerylog(ctx, qlLogs.reader(), q)
 				if err == nil && q.Kind == "upstreams" && queryUpstreams != nil {
 					out.Servers = queryUpstreams()
 				}
@@ -493,21 +760,38 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 					Snapshot: zc.Snapshot().SnapshotAge(time.Now()),
 				}
 			},
+			Health: func(ctx context.Context) (internalapi.Health, error) {
+				return internalapi.LocalHealth(ctx, cfg.Node.Name, checker.Handler())
+			},
 			// Zones and serials for the edge supervisors (§3.6 step 5).
-			Zones: func(context.Context) internalapi.ZoneList {
+			ServingZones: func(ctx context.Context) (*internalapi.ZoneList, error) {
+				if remoteCache == nil {
+					// Legacy Kubernetes projection has no complete resolver proof.
+					return nil, nil
+				}
+				return remoteCache.Zones(ctx)
+			},
+			Zones: func(ctx context.Context) internalapi.ZoneList {
 				zl := internalapi.ZoneList{Node: cfg.Node.Name}
-				for _, z := range zoneview.Served(zc) {
+				if zoneReads != nil {
+					for _, z := range capturedAuthoritativeZones(ctx, zoneReads) {
+						zl.Zones = append(zl.Zones, internalapi.Zone{Name: z.Apex, Serial: z.Serial, Type: string(z.Type)})
+					}
+					return zl
+				}
+				for _, z := range zoneview.Served(zc, secondaries) {
 					zl.Zones = append(zl.Zones, internalapi.Zone{Name: z.Name(), Serial: z.Serial(), Type: string(z.Type())})
 				}
 				return zl
 			},
 			Registerer: reg, Logger: logger,
-		})
-		if err != nil {
-			return err
 		}
 	} else if cfg.Store.Driver == "kube" {
 		return errors.New("KUDURRU_ENCRYPTION_KEY (or listeners.internal.tokenFile) is required for the internal listener in Kubernetes")
+	}
+	notifyFanout := internalapi.NewEventFanout(membership, internalClient, reg, logger)
+	notifyReceiver.Accepted = func(identity string) {
+		notifyFanout.Enqueue(internalapi.Event{Type: "secondary-notify", Identity: identity})
 	}
 	// A dnsdist next to this node (sidecar, compose single-edge, HA nodes)
 	// caches blocked and unblocked answers up to their TTL: flush its
@@ -531,55 +815,38 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 
 	// Query log (§11.2): privacy once at ingest, live tail, sqlite or slog sink.
-	var (
-		collector querylog.Collector // nil interface when disabled
-		qlAsync   *querylog.Async
-		qlWriter  *sqlitelog.Writer
-	)
 	listedDomains := func() int64 {
 		if sn := zc.Snapshot(); sn != nil {
 			return domainsOnLists(sn.Objects.Lists())
 		}
 		return 0
 	}
-	if cfg.Querylog.Enabled {
-		qlMetrics := querylog.NewMetrics(reg)
-		privacy, err := querylog.PrivacyFrom(cfg.Querylog)
-		if err != nil {
-			return err
-		}
-		tail := querylog.NewTail(0, 0, qlMetrics)
-		qlTail = tail
-		var sink querylog.Sink
-		var firstID uint64
-		switch cfg.Querylog.Sink {
-		case "sqlite":
-			opts, err := sqlitelog.OptionsFrom(cfg.Querylog, cfg.Node.DataDir, cfg.Node.Name)
-			if err != nil {
-				return err
-			}
-			opts.Metrics, opts.Tail, opts.Logger = qlMetrics, tail, logger
-			opts.DomainsOnLists = listedDomains
-			if qlWriter, err = sqlitelog.Open(ctx, opts); err != nil {
-				if errors.Is(err, sqlitelog.ErrSchemaTooNew) {
-					return fmt.Errorf("querylog.db was written by a newer kudurru: %w", err)
-				}
-				return err
-			}
-			sink, firstID = qlWriter, qlWriter.NextID()
-			qlReader = qlWriter.Reader()
-		default:
-			s := &querylog.SlogSink{Logger: logger, Level: slog.LevelInfo}
-			if err := s.Open(ctx, nil, reg); err != nil {
-				return err
-			}
-			sink = s
-		}
-		qlAsync = querylog.NewAsyncWith(querylog.AsyncOptions{Sink: sink, Privacy: privacy, Tail: tail, Metrics: qlMetrics, FirstID: firstID, Logger: logger})
-		collector = qlAsync
+	// On Kubernetes the sinks of querylog.sinks may reference Secrets of
+	// the release namespace for their credentials (D371).
+	sinkSecrets, err := querylogKubeSecrets(restCfg, releaseNamespace)
+	if err != nil {
+		return err
 	}
+	qlLogs, err = newQuerylogRuntimeWithSecrets(ctx, cfg, reg, logger, listedDomains, sinkSecrets)
+	if err != nil {
+		if errors.Is(err, sqlitelog.ErrSchemaTooNew) {
+			return fmt.Errorf("querylog.db was written by a newer kudurru: %w", err)
+		}
+		return err
+	}
+	defer func() {
+		closeCtx, closeCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer closeCancel()
+		if err := qlLogs.close(closeCtx); err != nil {
+			logger.Warn("query log flush incomplete", "err", err, "dropped", qlLogs.async.Dropped())
+		}
+	}()
+	qlTail = qlLogs.tail
+	qlAsync := qlLogs.async
+	checker.Register("querylog", qlLogs.ready)
 
-	// Pipeline: ingress → authoritative → cache → upstream, with the log observer.
+	// Postprocess wraps all answering stages; DNSSEC validates raw forwarded
+	// answers before the cache stores them. The log observer sees the result.
 	// One recursive resolver for every recursive group, kept across reloads
 	// so its delegation and key caches survive settings changes.
 	var rec *recursor.Resolver
@@ -593,12 +860,19 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
-	upOpts := upstream.Options{Logger: logger, Metrics: upstream.NewMetrics(reg), Recursor: rec}
+	upOpts := upstream.Options{Logger: logger, Metrics: upstream.NewMetrics(reg), Recursor: rec, RecursorMetrics: recMetrics, TraceOptionCode: uint16(cfg.Tracing.EDNSOptionCode)} //nolint:gosec // validated to 65001-65534
 	upSet, err := upstream.New(upstream.ConfigFrom(cfg.Upstreams), upOpts)
 	if err != nil {
 		return err
 	}
 	fwd := upstreamstage.NewStage(upSet)
+	validation, err := cfg.DNSSEC.Validator(nil)
+	if err != nil {
+		return err
+	}
+	if err := fwd.SetValidation(validation, cfg.DNSSEC.Enabled); err != nil {
+		return err
+	}
 	queryUpstreams = func() []upstream.ServerStatus { return fwd.Set().Status() }
 	hostname, _ := os.Hostname()
 
@@ -620,18 +894,31 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			dnsMetrics.Dropped.WithLabelValues(ingress.DropReason).Inc()
 		}
 	})
-	reg.MustRegister(limiter.Collector())
+	reg.MustRegister(limiter.Collector(), limiter.SlipCollector())
 
 	// Policies and blocking (§7.1 steps 3, 4, 7).
 	polSrc := policy.Source{Cache: zc}
 	bopts := blockingstage.OptionsFromConfig(cfg)
 	bopts.Index, bopts.Registerer, bopts.Catalogue = polSrc, reg, catalogs
+	bopts.Context = func(req *pipeline.Request) blocking.Context {
+		q := req.Question()
+		return blocking.Context{Name: q.Name, Type: q.Qtype, Class: q.Qclass, ClientIP: req.Client.Addr.Addr(), ClientID: req.Client.ClientID, ClientNames: req.Client.Names, Tags: req.Client.Tags}
+	}
+	var rewriteTarget pipeline.Next
+	bopts.ResolveTarget = func(req *pipeline.Request) (*pipeline.Response, error) {
+		return rewriteTarget(req)
+	}
 	bs, err := blockingstage.New(bopts)
 	if err != nil {
 		return err
 	}
-	checker.Register("blocking", bs.Ready)
+	if sql == nil {
+		checker.Register("blocking", bs.Ready)
+	}
 	bs.Toggle().SetOnChange(edgeFlush.BlockingChanged)
+	if kubeFeeds != nil {
+		bs.SetRPZCapture(kubeFeeds.capture)
+	}
 
 	// Block page (docs/deploy/blocking-page.md): the renderer always exists
 	// for the API preview; its listener runs when blockPage.enabled.
@@ -641,87 +928,133 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
-	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlReader, qlAsync, unblockBook, lic, reg, logger)
+	var brandCache branding.PageCache
+	var brandSource []func(context.Context) (*blockpage.Branding, error)
+	if sql != nil {
+		brandSource = append(brandSource, func(ctx context.Context) (*blockpage.Branding, error) {
+			return complete.captureBlockPageBranding(ctx, &brandCache)
+		})
+	}
+	var requestsUnavailable func() string
+	if sql != nil && !cfg.Cluster.Static() {
+		requestsUnavailable = unblockRequestsUnavailable(sql)
+	}
+	blockPage, err := newBlockPage(cfg, reload, polSrc, qlTail, qlLogs.reader(), qlAsync, qlLogs.reader, unblockBook, lic, reg, logger, requestsUnavailable, brandSource...)
 	if err != nil {
 		return err
 	}
 
-	auth := authoritative.New(zoneview.Source{Cache: zc})
+	var zoneSource authoritative.Source
+	if sql == nil {
+		zoneSource = zoneview.Source{Cache: zc, Secondary: secondaries, Stub: stubs}
+	}
+	auth := authoritative.New(zoneSource)
 	auth.Metrics = authoritative.NewMetrics(reg)
 	auth.LocalRecords = leaseDNS
+	auth.Notify = notifyReceiver.Handle
+	if kubeTSIG != nil {
+		auth.Notify = kubeTSIG.doctorNotify(auth.Notify)
+		// RFC 2136 on Kubernetes: one UPDATE-owned record set per zone,
+		// committed by resourceVersion CAS (F12a, D366).
+		auth.Update = (&kubeUpdate{store: kubeStore, keys: kubeTSIG.keys, namespace: releaseNamespace,
+			limits: dynamicupdate.Limits{}.Defaults(), now: time.Now, log: logger}).Handle
+	}
+	auth.StubQuery = stubClient.Exchange
 
+	responseSettings, err := cfg.Response.Compile()
+	if err != nil {
+		return err
+	}
+	post := &postprocess.Stage{}
+	post.SetSettings(responseSettings)
+	idStage := identify.New(polSrc, nil)
+	idStage.Inventory = clientInventory
+	if kubeSources != nil {
+		idStage.Inventory = kubeSources
+	}
+	idStage.Hostnames = leaseDNS
+	// DHCP lease MACs fill the MAC of a query without an inventory MAC on
+	// both drivers (D397). leaseDNS reads committed in-memory lease snapshots.
+	idStage.LeaseMACs = leaseDNS
+	ptrRun, err := mountReversePTR(cfg.ClientNames.ReversePTR, idStage)
+	if err != nil {
+		return err
+	}
+	controlView, err := control.ViewFromConfig(cfg.Control)
+	if err != nil {
+		return err
+	}
+	controlStage := control.New(control.Options{})
+	if err := controlStage.Replace(controlView); err != nil {
+		return err
+	}
 	stages := []pipeline.Stage{
-		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version, Limiter: limiter, Lameduck: checker.IsLameduck},
-		identify.New(polSrc, nil),
-		control.New(control.Options{}),
+		&ingress.Stage{NodeID: cfg.Node.Name, Hostname: hostname, Version: info.Version, Limiter: limiter, GroupExempt: idStage.RateLimitExempt, Lameduck: checker.IsLameduck},
+		idStage,
+		controlStage,
+		post,
 		auth,
 		bs,
+		&rewrite.Stage{GuardDependency: controlStage.Serve},
 	}
 	// The cache stage always exists; cache.maxEntries 0 makes it pass
 	// queries through, so the key can change at runtime.
 	rc := cache.New(cache.OptionsFrom(cfg.Cache, cache.NewMetrics(reg)))
 	cs := cachestage.New(rc, cachestage.SettingsFrom(cfg.Cache), fwd)
 	cs.SetDisabled(cfg.Cache.MaxEntries == 0)
-	stages = append(stages, cs)
-	stages = append(stages, fwd)
+	stages = append(stages, cs, dnssecstage.New(fwd), fwd)
 	chain, err := pipeline.New(stages...)
 	if err != nil {
 		return err
 	}
-	chain.Observe(&logstage.Observer{Node: cfg.Node.Name, Collector: collector, Metrics: dnsMetrics})
+	// Rewrite dependencies keep the captured client/settings but enter normal
+	// authority and recursive policy dispatch for their own target name. This
+	// prevents CNAME rewrites from bypassing configured child-zone coverage.
+	dependencies, err := pipeline.New(controlStage, auth, bs, &rewrite.Stage{GuardDependency: controlStage.Serve}, cs, dnssecstage.New(fwd), fwd)
+	if err != nil {
+		return err
+	}
+	rewriteTarget = dependencies.Serve
+	// Query tracing (D382): the transport's chain starts each trace; the
+	// rewrite dependency chain adds its stage spans to the same trace.
+	tracer, err := newTracer(cfg, reg, logger)
+	if err != nil {
+		return err
+	}
+	if tracer != nil {
+		chain.SetTracer(tracer, tracePrivacy(reload))
+		stopTracer := startTracer(ctx, tracer, logger)
+		defer stopTracer()
+		logger.Info("query tracing enabled", "sampleRate", cfg.Tracing.SampleRate, "slowThreshold", cfg.Tracing.SlowThreshold.Std().String(), "acceptTraceparent", cfg.Tracing.AcceptTraceparent)
+	}
+	loggingObserver := &logstage.Observer{Node: cfg.Node.Name, Collector: qlAsync, Metrics: dnsMetrics}
+	chain.Observe(loggingObserver)
 	logger.Info("pipeline ready", "stages", chain.Stages(), "upstreamGroups", upSet.Groups())
 
 	// TSIG keys for transfers and NOTIFY (RFC 8945).
-	keyring, err := dnsserver.KeyringFromConfig(cfg.TSIGKeys)
-	if err != nil {
-		return err
-	}
 	tsigFailures := prometheus.NewCounterVec(prometheus.CounterOpts{Name: "kudurru_dns_tsig_failures_total", Help: "Requests rejected for their TSIG (RFC 8945), by error."}, []string{"error"})
 	reg.MustRegister(tsigFailures)
 
-	// DNS listeners: udp/tcp/dot/doh/doq/doh3 with the shared certificate
-	// store and the authenticated PROXYv2 policy (D45, D56, D67).
-	proxyPolicy, err := dnsserver.PolicyFromConfig(cfg.Listeners)
-	if err != nil {
-		return err
-	}
-	if proxyPolicy != nil {
-		proxyPolicy.SetDropHook(func(r proxyproto.Reason) { dnsMetrics.Dropped.WithLabelValues(string(r)).Inc() })
-	}
-	registry, err := dnsserver.NewRegistry(dnsserver.Options{
-		Handler:       &dnsserver.Handler{Chain: chain, Logger: logger},
-		Logger:        logger,
-		Proxy:         proxyPolicy,
-		TSIG:          keyring,
-		OnTSIGFailure: func(reason string) { tsigFailures.WithLabelValues(reason).Inc() },
-		Sockets:       cfg.Listeners.Sockets,
-	})
-	if err != nil {
-		return err
-	}
-	if err := registry.Add(dnsserver.SpecsFromConfig(cfg.Listeners)...); err != nil {
-		return err
-	}
-	if err := registry.Bind(); err != nil { // fail fast on port conflicts
-		return err
-	}
-	checker.Register("dns", registry.Ready)
-	if cfg.BlockPage.Enabled {
-		if err := blockPage.Listen(); err != nil { // fail fast on port conflicts
+	// SQLite's lifecycle driver owns durable NOTIFY. The legacy notifier is
+	// retained only for the Kubernetes serving path.
+	var nt *notifier.Notifier
+	var manualNotify api.ZoneNotifier
+	if sql == nil {
+		var notifySrc netip.Addr
+		if cfg.Notify.Source != "" {
+			notifySrc = netip.MustParseAddr(cfg.Notify.Source)
+		}
+		notifyOptions := notifier.Options{Source: zoneview.Source{Cache: zc}, Keyring: keyring, SourceAddr: notifySrc, Registerer: reg, Logger: logger}
+		if kubeTSIG != nil {
+			notifyOptions.Keyring, notifyOptions.CaptureKeys = nil, kubeTSIG.keys
+		}
+		nt, err = notifier.New(notifyOptions)
+		if err != nil {
 			return err
 		}
+		zc.OnPublish(func(*zonecache.Snapshot) { nt.Trigger() })
+		manualNotify = api.NotifyTrigger(nt.Trigger)
 	}
-
-	// NOTIFY out (RFC 1996): leader-only, triggered by every published snapshot.
-	var notifySrc netip.Addr
-	if cfg.Notify.Source != "" {
-		notifySrc = netip.MustParseAddr(cfg.Notify.Source)
-	}
-	nt, err := notifier.New(notifier.Options{Source: zoneview.Source{Cache: zc}, Keyring: keyring, SourceAddr: notifySrc, Registerer: reg, Logger: logger})
-	if err != nil {
-		return err
-	}
-	zc.OnPublish(func(*zonecache.Snapshot) { nt.Trigger() })
 
 	// Response cache persistence across restarts (local.db blob).
 	var cachePersister *persist.Persister
@@ -739,12 +1072,38 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	// Identity (§8): users, tokens, sessions, OIDC, Kubernetes identities,
 	// the RBAC engine and the admin socket.
 	stackOpts := identityOptions(cfg, st, encKeys, logger)
+	crossOrigin := http.NewCrossOriginProtection()
+	stackOpts.CrossOrigin = crossOrigin
+	stackOpts.DisableBootstrap = !bootstrapWritable
+	stackOpts.DisableProviderDiscovery = sql != nil
+	if identityGate != nil {
+		stackOpts.TokenMigration = iamgate.ResolveToken
+		stackOpts.InitializationAdmission = func(ctx context.Context) error {
+			_, _, err := identityGate.Capture(ctx)
+			return err
+		}
+	}
 	stackOpts.Kube = restCfg
+	if kubeStore != nil {
+		stackOpts.GrantFloors = kubeStore
+		stackOpts.RequestLimit, err = requestlimit.New(kubeStore, nil)
+		if err != nil {
+			return err
+		}
+		stackOpts.LoginLimit, err = loginlimit.New(kubeStore,
+			loginlimit.Policy{Failures: 5, Window: 5 * time.Minute, Lockout: 5 * time.Minute},
+			loginlimit.Policy{Failures: 10, Window: 15 * time.Minute, Lockout: 15 * time.Minute}, nil)
+		if err != nil {
+			return err
+		}
+	}
 	stackOpts.OIDCAllowed = func() bool { return lic.Allows(license.FeatureOIDC) }
 	stackOpts.RBACAllowed = func() bool { return lic.Allows(license.FeatureRBAC) }
 	if cfg.Store.Driver == "kube" {
 		stackOpts.Namespace = releaseNamespace
-		stackOpts.RetryUnavailable = kube.IsUnavailable
+		stackOpts.RetryUnavailable = func(err error) bool {
+			return kube.IsUnavailable(err) || errors.Is(err, iamgate.ErrClosed)
+		}
 		stackOpts.InitializationTimeout = kubeStartupTimeout(cfg)
 	}
 	if internalCreds != nil {
@@ -754,8 +1113,221 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return fmt.Errorf("auth: %w", err)
 	}
-	authMux := http.NewServeMux()
-	ids.Register(authMux)
+	authenticate := identityAuthentication(ids, identityGate)
+	authorizer, roles := ids.Authorizer(), ids.Roles
+	var authHandler http.Handler
+	// Complete SQLite settings use the fenced canonical command path; legacy
+	// ownership actions must not write a separate settings file beside it.
+	if complete != nil {
+		settingsManager = nil
+	}
+	var dnsQueryCapture pipeline.Capture
+	var dnsQueryOutput func(*pipeline.Request) (api.DNSQueryEmission, error)
+	var canonicalSettings api.CanonicalSettings
+	var integrationAdmin api.IntegrationAdministration
+	var brandingReads api.BrandingReadSource
+	// Kubernetes reads the shared producer holder the identify stage reads;
+	// the complete SQLite runtime reads the request's original serving cut.
+	inventoryReads := api.InventoryReadSource(func(context.Context) (*inventory.Snapshot, error) { return clientInventory.Snapshot(), nil })
+	var blockPagePreview api.BlockPagePreviewer = blockPage
+	var nodeConfigCommand api.NodeConfigCommand
+	var cacheFlushCommand api.CacheFlushCommand
+	var objectCommand api.ObjectCommand
+	var objectItems api.ObjectItems
+	var objectForward api.ObjectForward
+	var zoneForward api.ZoneForward
+	var settingsForward api.SettingsForward
+	var clusterRole api.ClusterRoleFunc
+	var objectReads api.ObjectReadSource
+	var infoMessageReads api.InfoMessageReadSource
+	var sourceBodyReads api.SourceBodyReadSource
+	var policyListReads api.PolicyListReadSource
+	var blockingReads api.BlockingReadSource
+	var blockingCommand api.BlockingCommand
+	var upstreamReads api.UpstreamReadSource
+	var migrationReads api.MigrationReadSource
+	var migrationCommand api.MigrationCommand
+	var zoneCommand api.ZoneCommand
+	var unblockCommand unblock.Command
+	var domainCommand api.DomainCommand
+	var zoneNotifyCommand api.ZoneNotifyCommand
+	var tsigKeyReads api.TSIGKeyReadSource
+	var tsigKeyCommand api.TSIGKeyCommand
+	catalogSource := catalogueAPI(catalogs, catRefreshers)
+	if sql == nil {
+		authHandler = legacyAuthHandler(ids)
+	}
+	// Kubernetes integration host (D384): Cloudflare publication and UniFi
+	// inventory and groups run under one verified Lease per Integration,
+	// deletionPolicy Delete runs its cleanup, and the administration API
+	// answers on the Lease holder. Other instances are refused on their
+	// objects.
+	var kubeIntegrations *kubeIntegrationRuntime
+	if kubeStore != nil {
+		kubeIntegrations, err = newKubeIntegrationRuntime(kubeIntegrationOptions{Store: kubeStore, Cache: zc, Namespace: releaseNamespace, License: lic, Credentials: cfg.Credentials, FingerprintKey: encKey, Logger: logger, Sources: kubeSources})
+		if err != nil {
+			return err
+		}
+		integrationAdmin = kubeIntegrations
+		logger.Info("Kubernetes integration host mounted: Cloudflare publication and UniFi inventory and groups run; Integrations outside the release namespace, webhook instances and UniFi record publication are refused on their objects")
+	}
+	if sql != nil {
+		complete, err = newServingRuntime(ctx, servingRuntimeOptions{
+			Store: sql, Config: cfg, Validator: v, License: lic, AuthKeys: authKeys,
+			Keyrings: rings, TSIG: tsigSource, Catalog: catalogs, Transferred: servingbuild.NewTransferredRuntime(secondaries, stubs, feeds),
+			Lists: lists, Namespace: namespace, Upstreams: upOpts, Logging: qlLogs, InternalClient: internalClient,
+			Registerer: reg,
+		})
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := complete.Close(context.Background()); err != nil {
+				logger.Error("complete runtime shutdown", "error", err)
+			}
+		}()
+		auth.Update = complete.primary.Update
+		remoteCache, err = servingbuild.NewEdgeCache(complete.publisher, cfg.Node.Name, time.Now)
+		if err != nil {
+			return err
+		}
+		auth.Notify = complete.primary.doctorNotify(servingbuild.CapturedNotify(notifyReceiver, time.Now))
+		if err := servingbuild.BindDNS(complete.publisher, servingbuild.DNSStages{Chain: chain, Control: controlStage, Identify: idStage, Authority: auth, Blocking: bs, Cache: cs, Response: post, Resolution: fwd}, time.Now); err != nil {
+			return err
+		}
+		cs.CaptureInsertion = captureRootAnchorInsertion
+		fwd.CaptureNative = captureRootNativeSource
+		loggingObserver.Capture = func(req *pipeline.Request) (querylog.Collector, error) {
+			return servingdns.Component[*querylog.Captured](req, "logging")
+		}
+		checker.Register("serving", complete.ready)
+		zoneReads, err = servingbuild.NewDiagnostics(complete.publisher, time.Now)
+		if err != nil {
+			return err
+		}
+		capturedZoneReads = zoneReads
+		integrationAdmin = complete.integrations
+		reg.MustRegister(newServingZoneCollector(zoneReads))
+		httpAuth, err := newServingHTTP(servingHTTPOptions{
+			Runtime: complete, Cookie: ids.Cookie(), CrossOrigin: crossOrigin,
+			ClientIP: apiClientIP, Hasher: users.NewHasher(0),
+		})
+		if err != nil {
+			return err
+		}
+		httpAuth.opts.ProviderHandler = httpAuth.CapturedBrowserHandler()
+		authenticate = httpAuth.Middleware
+		authorizer, roles = httpAuth.Authorizer(), httpAuth.Roles
+		authHandler = httpAuth.Handler()
+		dnsQueryCapture = func(req *pipeline.Request) (pipeline.ServingLease, error) {
+			lease, err := servinghttp.CloneLease(req.Ctx)
+			return servingdns.Wrap(lease), err
+		}
+		dnsQueryOutput = captureRootAnchorQueryOutput
+		canonicalSettings, objectCommand = complete, complete.ObjectCommand
+		objectItems = complete.ObjectItems
+		objectForward, zoneForward, settingsForward = complete.ObjectForward, complete.ZoneForward, complete.SettingsForward
+		clusterRole = complete.ClusterRole
+		brandingReads = complete.Branding
+		inventoryReads = servingbuild.InventoryReads
+		blockPagePreview = servingBrandingPreview{runtime: complete, server: blockPage, cache: &brandCache}
+		nodeConfigCommand, err = newServingNodeCommand(complete, reload, logLevel)
+		if err != nil {
+			return err
+		}
+		cacheFlushCommand, err = newServingCacheCommand(complete, rc)
+		if err != nil {
+			return err
+		}
+		objectReads = servingbuild.NewObjectReads()
+		infoMessageReads = servingbuild.NewInfoMessageReads()
+		sourceBodyReads, err = servingbuild.NewSourceBodyReads(lists)
+		if err != nil {
+			return err
+		}
+		policyListReads = servingbuild.NewPolicyListReads()
+		blockingReads = servingbuild.NewBlockingReads()
+		blockingCommand = complete.BlockingCommand
+		upstreamReads = servingbuild.NewUpstreamReads()
+		migrationCommand = complete.MigrationCommand
+		migrationReads = servingbuild.NewMigrationReads()
+		zoneCommand = complete.ZoneCommand
+		unblockCommand = complete.UnblockCommand
+		domainCommand = complete.DomainCommand
+		zoneNotifyCommand = complete.ZoneNotifyCommand
+		tsigKeyReads, tsigKeyCommand = complete.TSIGKeyReads, complete.TSIGKeyCommand
+		catalogSource.Read = servingbuild.NewCatalogueReads().Catalogue
+	}
+	if kubeTSIGManaged != nil {
+		tsigKeyReads, tsigKeyCommand = kubeTSIGManaged.reads, kubeTSIGManaged.command
+	}
+	var kubeBlocking *kubeBlockingRuntime
+	if kubeStore != nil {
+		kubeBlocking = newKubeBlockingRuntime(kubeStore, bs.Toggle(), reload, authorizer)
+		blockingReads, blockingCommand = kubeBlocking, kubeBlocking.Command
+	}
+	// Operator edge blocks (D388): the complete SQLite runtime keeps them in
+	// a replicated runtime row, Kubernetes in the runtime ConfigMap.
+	var edgeBlocks api.EdgeBlocks
+	var kubeEdge *kubeEdgeBlocks
+	switch {
+	case complete != nil:
+		edgeBlocks = complete
+	case kubeStore != nil:
+		kubeEdge = newKubeEdgeBlocks(kubeStore, authorizer, cfg.Node.Name)
+		edgeBlocks = kubeEdge
+	}
+
+	// DNS listeners: udp/tcp/dot/doh/doq/doh3 with the shared certificate
+	// store and the authenticated PROXYv2 policy (D45, D56, D67).
+	proxyPolicy, err := dnsserver.PolicyFromConfig(cfg.Listeners)
+	if err != nil {
+		return err
+	}
+	if proxyPolicy != nil {
+		proxyPolicy.SetDropHook(func(r proxyproto.Reason) { dnsMetrics.Dropped.WithLabelValues(string(r)).Inc() })
+	}
+	dnsHandler := &dnsserver.Handler{Chain: chain, Logger: logger}
+	if complete != nil {
+		// Configure once before any listener binds: signature verification and
+		// emission retain the same original complete publication as the query.
+		dnsHandler.Capture = servingdns.Capture(complete.publisher)
+		dnsHandler.Keys = servingbuild.DNSKeys
+		dnsHandler.Output = captureRootAnchorOutput
+	}
+	if kubeTSIG != nil {
+		dnsHandler.Keys = kubeTSIG.requestKeys
+	}
+	registry, err := dnsserver.NewRegistry(dnsserver.Options{
+		Handler:       dnsHandler,
+		Logger:        logger,
+		Proxy:         proxyPolicy,
+		TSIG:          keyring,
+		OnTSIGFailure: func(reason string) { tsigFailures.WithLabelValues(reason).Inc() },
+		Sockets:       cfg.Listeners.Sockets,
+		Limits:        dnsserver.LimitsFromConfig(cfg.Listeners),
+	})
+	if err != nil {
+		return err
+	}
+	if err := registry.Add(dnsserver.SpecsFromConfig(cfg.Listeners)...); err != nil {
+		return err
+	}
+	if err := registry.Bind(); err != nil { // fail fast on port conflicts
+		return err
+	}
+	defer func() {
+		for _, listener := range registry.Listeners() {
+			_ = listener.Close()
+		}
+	}()
+	checker.Register("dns", registry.Ready)
+
+	if cfg.BlockPage.Enabled {
+		if err := blockPage.Listen(); err != nil { // fail fast on port conflicts
+			return err
+		}
+	}
 
 	// The optional central database (D158): opened here, connected and
 	// migrated in the background by its runnable; never part of readiness.
@@ -784,12 +1356,18 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	}
 	var auditLogs *auditLogStore
+	var auditDiagnosis func(context.Context) auditlog.Diagnostic
 	if auditSpool != nil {
 		auditReader = auditSpool
 		recorders = audit.Multi{audit.Log{Logger: logger}, auditSpool}
 		// audit.store auditlog: every replica reads every node's events.
 		if cfg.AuditStore() == config.AuditStoreAuditLog {
-			if auditLogs, err = openAuditLog(ctx, restCfg, auditSpool, encKey, encPrev, logger, kubeStartupTimeout(cfg)); err != nil {
+			auditDiagnosis = auditLogDiagnosis(restCfg)
+			auditKeys, keyErr := auditkeys.NewSource(restCfg, kube.PodNamespace(), cfg.Audit.KeySecret, func() string { return st.Info().ClusterID })
+			if keyErr != nil {
+				return keyErr
+			}
+			if auditLogs, err = openAuditLog(ctx, restCfg, auditSpool, auditKeys, logger, kubeStartupTimeout(cfg)); err != nil {
 				return fmt.Errorf("audit: %w", err)
 			}
 			if auditLogs != nil {
@@ -797,6 +1375,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			}
 		}
 	}
+	// A raw dnstap sink opens only after its audit event is recorded
+	// (D372); until now it has waited for these recorders.
+	qlLogs.rawAudit.bind(recorders)
 	// audit.store database (D159): every node ships its own audit (the
 	// spool, or state.db) into the central chain; every replica reads it.
 	var auditShipper *audit.Shipper
@@ -822,18 +1403,21 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	// The query log in the central database (D160): this node copies its
 	// querylog.db rows and rollups; the leader keeps the partitions.
-	var qlShipper *pgquerylog.Shipper
+	var qlShipper func(context.Context) error
 	var centralQuerylog *sqlitelog.Reader
 	var centralPurger api.QuerylogPurger
 	if centralDB != nil && cfg.Database.Querylog.Ship {
 		centralQuerylog = sqlitelog.NewCentralReader(centralDB.SQL, sqlitelog.CentralOptions{
-			RawRetention: cfg.Database.Querylog.Retention.Raw.Std(), DomainsOnLists: listedDomains})
+			RawRetention: cfg.Database.Querylog.Retention.Raw.Std(), DomainsOnLists: listedDomains, Recovery: pgquerylog.Recovery{DB: centralDB}})
 		centralPurger = pgquerylog.Purger{DB: centralDB}
-		if qlWriter == nil {
-			logger.Info("database.querylog.ship is set but this node keeps no query log (querylog.enabled and querylog.sink: sqlite); nothing is sent", "component", "central")
-		} else {
-			qlShipper = &pgquerylog.Shipper{DB: centralDB, Local: qlWriter, Node: cfg.Node.Name, Version: info.Version,
+		qlShipper = func(ctx context.Context) error {
+			w := qlLogs.waitWriter(ctx)
+			if w == nil {
+				return nil
+			}
+			shipper := &pgquerylog.Shipper{DB: centralDB, Local: w, Node: cfg.Node.Name, Version: info.Version,
 				Facts: cfg.Database.Querylog.Facts, Retention: cfg.Database.Querylog.Retention.Raw.Std(), Registerer: reg, Logger: logger}
+			return shipper.Run(ctx)
 		}
 		centralJobs = append(centralJobs, pgquerylog.Jobs(cfg.Database.Querylog.Retention.Raw.Std())...)
 	}
@@ -844,39 +1428,65 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	if err != nil {
 		return err
 	}
+	vipObservation, vipObserveRun, vipObserveErr := serviceVIPObservation(cfg, restCfg)
+	if vipObserveErr != nil {
+		logger.Warn("VIP ownership observation unavailable", "provider", cfg.VIP.Observation.Provider)
+	}
+	vipEvents, vipEventsRun, err := keepalivedVIPObservation(cfg, recorders, logger)
+	if err != nil {
+		return err
+	}
 	var dhcpCluster api.DHCPCluster
 	if dhcpKube != nil {
 		dhcpCluster = dhcpKube
+	}
+	// The API names the member that holds durable write authority as the
+	// leader, so an enrolled follower reports its primary and answers a list
+	// refresh with that name. List bodies, NOTIFY fan-out and catalog refresh
+	// keep the node-local membership above.
+	apiMembership := membership
+	if sql != nil && !cfg.Cluster.Static() {
+		apiMembership = cluster.Authority{SelfName: cfg.Node.Name, Elector: st.Elector(cluster.ElectionController)}
 	}
 	apiSrv, err := api.New(api.Options{
 		DHCP:            dhcpServer,
 		DHCPKube:        dhcpCluster,
 		DHCPSetup:       dhcpSetup,
 		DHCPSetupError:  dhcpSetupError,
-		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised,
+		EdgeSupervisors: edgeSupervisors, VIPSupervised: vipSupervised, VIPObservation: vipObservation, VIPEvents: vipEvents,
 		Store: st, Validator: v, Cache: zc, Policy: polSrc, Blocking: bs,
-		Querylog: qlReader, Tail: qlTail, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
+		ZoneReads: capturedZoneReads, CanonicalSettings: canonicalSettings, Integrations: integrationAdmin, ObjectCommand: objectCommand, ObjectItems: objectItems, ObjectForward: objectForward, ObjectReads: objectReads, ZoneCommand: zoneCommand, ZoneForward: zoneForward, SettingsForward: settingsForward, ClusterRole: clusterRole, DomainCommand: domainCommand, MigrationCommand: migrationCommand, MigrationReads: migrationReads, UnblockCommand: unblockCommand, PolicyListReads: policyListReads,
+		BlockingReads: blockingReads, BlockingCommand: blockingCommand, AuditBlockingCommand: kubeBlocking != nil, EdgeBlocks: edgeBlocks, AuditEdgeBlocks: kubeEdge != nil, UpstreamReads: upstreamReads, ZoneNotifyCommand: zoneNotifyCommand,
+		SourceBodyReads: sourceBodyReads, InfoMessageReads: infoMessageReads, BrandingReads: brandingReads,
+		InventoryReads: inventoryReads, InventoryLeases: leaseDNS,
+		TSIGKeyReads: tsigKeyReads, TSIGKeyCommand: tsigKeyCommand,
+		Querylog: qlLogs.reader(), QuerylogSource: qlLogs.reader, Tail: qlTail, QuerylogSinks: qlLogs.sinks.Status, CentralQuerylog: centralQuerylog, CentralPurger: centralPurger,
 		Upstreams:     api.UpstreamStatusFunc(func() []upstream.ServerStatus { return fwd.Set().Status() }),
-		ResponseCache: rc, Chain: chain,
-		Config: cfg, Reload: reload, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: membership,
-		InternalClient: internalClient, License: lic,
-		Lists: listResolver, Notifier: api.NotifyTrigger(nt.Trigger),
-		Refresher:  listRefresher(membership, fetcher),
+		ResponseCache: rc, CacheFlushCommand: cacheFlushCommand, CacheInspect: newCacheInspector(cs, fwd, dnsQueryCapture), Chain: chain, DNSQueryCapture: dnsQueryCapture, DNSQueryOutput: dnsQueryOutput,
+		Config: cfg, Reload: reload, NodeConfigCommand: nodeConfigCommand, Settings: settingsWriter(cfg), SettingsOwnership: settingsManager, Objects: loader, Health: checker, Membership: apiMembership,
+		InternalClient: internalClient, License: lic, Secondaries: secondaries, Stubs: stubs, RPZ: feeds,
+		Lists: listResolver, Notifier: manualNotify,
+		Refresher:  listRefresher(apiMembership, fetcher),
 		ListBodies: listBodies{cache: lists},
-		Purger:     querylogPurger(qlWriter),
-		Audit:      recorders, AuditReader: auditReader, Central: centralState,
-		Authenticate: ids.Middleware(), Authorizer: ids.Authorizer(), CSRF: authn.CSRF,
-		AuthHandler: authMux,
-		Roles:       ids.Roles,
+		Purger:     qlLogs,
+		Audit:      recorders, AuditReader: auditReader, Central: centralState, AuditLogDiagnosis: auditDiagnosis,
+		Authenticate: authenticate, Authorizer: authorizer, CSRF: authn.CSRF, CrossOrigin: crossOrigin,
+		AuthHandler: authHandler,
+		Roles:       roles,
 		UIHandler:   dashboard.Handler(dashboard.Options{BasePath: cfg.Listeners.API.PathPrefix}),
 		Logger:      logger, Registerer: reg, Version: info, NodeName: cfg.Node.Name,
 		DefaultNamespace: namespace,
-		Catalogue:        catalogueAPI(catalogs, catRefreshers),
-		BlockPage:        blockPage,
+		Catalogue:        catalogSource,
+		BlockPage:        blockPagePreview,
 		Unblock:          unblockBook,
 	})
 	if err != nil {
 		return err
+	}
+	if complete != nil {
+		// Primary-side execution of follower-forwarded object commands uses the
+		// same public command bodies as this API server.
+		complete.objectAPI.Store(apiSrv)
 	}
 	var edns *externaldns.Server
 	if cfg.ExternalDNS.Webhook.Enabled {
@@ -893,8 +1503,53 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	}
 
+	var endpointCRDs *externaldns.CRDController
+	if cfg.ExternalDNS.CRD.Enabled {
+		if kubeStore == nil {
+			return errors.New("externalDNS.crd.enabled requires the Kubernetes store")
+		}
+		if err := lic.Require(license.FeatureIntegrations); err != nil {
+			return err
+		}
+		endpointCRDs, err = externaldns.NewCRDController(kubeStore.RESTConfig(), externaldns.CRDOptions{
+			Store: st, Validator: v, Namespace: cfg.ExternalDNS.CRD.Namespace, ZoneSelector: cfg.ExternalDNS.CRD.ZoneSelector, Logger: logger,
+			Admit: func(original context.Context) error {
+				if err := original.Err(); err != nil {
+					return err
+				}
+				return lic.Require(license.FeatureIntegrations)
+			},
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	// External zones (D402): the elected replica derives the record sets of
+	// DNSZones of type external from Ingresses, Gateway API routes and
+	// LoadBalancer Services. Every replica serves them from its zone cache.
+	var externalZones *k8ssource.Controller
+	if cfg.ExternalZones.Enabled {
+		if kubeStore == nil {
+			return errors.New("externalZones.enabled requires the Kubernetes store")
+		}
+		externalZones, err = k8ssource.New(kubeStore.RESTConfig(), k8ssource.Options{
+			Store: st, Validator: v, Logger: logger.With("component", "external-zones"),
+			Admit: func(term context.Context) error { return term.Err() },
+		})
+		if err != nil {
+			return err
+		}
+	}
+
 	// Controller: leader-only reconcilers (status, serials, Events).
-	ctrl, err := controller.New(st, controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe()})
+	ctrlOpts := controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe(), ExternalZoneSources: externalZones != nil, ExternalZoneSourcesUnsupported: kubeStore == nil}
+	if complete != nil {
+		// complete.status also reports the endpoints left out for dynamic
+		// ownership on their record sets (committedDynamicOwnership).
+		ctrlOpts.CommittedPrimaryStatus = complete.status
+	}
+	ctrl, err := controller.New(st, ctrlOpts)
 	if err != nil {
 		return err
 	}
@@ -905,6 +1560,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		Elector:          st.Elector(cluster.ElectionController),
 		Lameduck:         func(context.Context) { checker.Lameduck() },
 		LameduckDuration: cfg.Node.Lameduck.Std(),
+		JoinShutdown:     complete != nil,
 		Registerer:       reg, Logger: logger,
 	})
 	if err != nil {
@@ -912,6 +1568,74 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 	add := func(name string, leaderOnly bool, fn func(context.Context) error) error {
 		return runner.Add(name, leaderOnly, fn)
+	}
+	if kubeBlocking != nil {
+		if err := add("blocking-runtime", false, kubeBlocking.Run); err != nil {
+			return err
+		}
+	}
+	if kubeIntegrations != nil {
+		if err := add("integration-host", false, kubeIntegrations.Run); err != nil {
+			return err
+		}
+	}
+	if kubeSources != nil {
+		if err := add("integration-sources", false, kubeSources.Run); err != nil {
+			return err
+		}
+	}
+	if kubeEdge != nil {
+		if err := add("edge-blocks", false, kubeEdge.Run); err != nil {
+			return err
+		}
+	}
+	if feeds != nil {
+		if err := add("rpz", false, feeds.Run); err != nil {
+			return err
+		}
+	}
+	if complete != nil {
+		if err := add("serving", false, complete.Run); err != nil {
+			return err
+		}
+		if err := add("serving-writer", true, complete.RunWriter); err != nil {
+			return err
+		}
+	} else {
+		runNotifier := nt.Run
+		if kubeTSIG != nil {
+			runNotifier = func(ctx context.Context) error { return kubeTSIG.runNotifier(ctx, nt.Run) }
+		}
+		if err := add("notifier", true, runNotifier); err != nil {
+			return err
+		}
+	}
+	if kubeTSIG != nil {
+		if err := add("tsig-startup", false, func(ctx context.Context) error {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-kubeTSIG.done:
+			}
+			if ctx.Err() == nil && kubeTSIG.keys() == nil {
+				logger.Warn("stored TSIG startup source unavailable; signed operations require restart")
+			}
+			<-ctx.Done()
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+	if complete == nil {
+		if err := add("settings", false, func(ctx context.Context) error {
+			opts := config.WatchOptions{Environ: os.Environ(), Logger: logger}
+			if settingsManager != nil {
+				opts.Refresh = settingsManager.Refresh
+			}
+			return config.WatchSettings(ctx, reload, opts)
+		}); err != nil {
+			return err
+		}
 	}
 	if seedPending {
 		if err := add("bootstrap", false, func(ctx context.Context) error {
@@ -940,14 +1664,16 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}{
 		{"license", false, func(ctx context.Context) error { return lic.Run(ctx, licSources, time.Minute, logger) }},
 		{"zonecache", false, zc.Start},
-		{"settings", false, func(ctx context.Context) error {
-			opts := config.WatchOptions{Environ: os.Environ(), Logger: logger}
-			if settingsManager != nil {
-				opts.Refresh = settingsManager.Refresh
+		{"secondaries", false, secondaries.Run},
+		{"stubs", false, stubs.Run},
+		{"secondary-notify-sources", false, notifyReceiver.Run},
+		{"secondary-notify-fanout", false, notifyFanout.Run},
+		{"objects", sql != nil, func(ctx context.Context) error {
+			if sql != nil {
+				loader.Load(ctx) // every original writer starts with its local manifest
 			}
-			return config.WatchSettings(ctx, reload, opts)
+			return loader.Watch(ctx)
 		}},
-		{"objects", false, loader.Watch},
 		{"dns", false, registry.Run},
 		{"ops", false, func(ctx context.Context) error {
 			return serveHTTP(ctx, cfg.Listeners.Ops.Address, checker.Handler(), logger, "ops")
@@ -958,8 +1684,12 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return serveHTTP(ctx, cfg.Listeners.Metrics.Address, mux, logger, "metrics")
 		}},
 		{"selfcheck", false, func(ctx context.Context) error {
+			initialized := zc.Initialized()
+			if complete != nil {
+				initialized = complete.publisher.Initialized()
+			}
 			select {
-			case <-zc.Initialized():
+			case <-initialized:
 				checker.SetStarted()
 			case <-ctx.Done():
 				return nil
@@ -976,13 +1706,19 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			}
 		}},
 		{"controller", true, ctrl.Run},
-		{"notifier", true, nt.Run},
 		{"listfetcher", true, fetcher.Run},
 		{"listresolver", false, listResolver.Run},
 		{"identity", false, ids.Run},
 		{"api", false, apiSrv.Run},
 		{"unblock", false, unblockBook.Run},
-		{"unblock-janitor", true, unblockBook.RunJanitor},
+		{"unblock-janitor", true, func(ctx context.Context) error {
+			if complete != nil {
+				return unblockBook.RunCurrentJanitor(ctx, func(ctx context.Context) (unblock.SweepResult, error) {
+					return complete.SweepUnblock(ctx)
+				})
+			}
+			return unblockBook.RunJanitor(ctx)
+		}},
 		{"domainlist", true, domainlist.New(domainlist.Options{Store: st, Logger: logger}).Run},
 	} {
 		if err := add(r.name, r.leaderOnly, r.fn); err != nil {
@@ -999,10 +1735,42 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 	}
-	subscribeReload(ctx, reload, reloadTargets{
+	reloadConsumers := reloadTargets{
+		listFetcher: fetcher, listResolver: listResolver,
 		logger: logger, level: logLevel, upstreams: fwd, upOpts: upOpts, cache: rc, cacheStg: cs,
-		blocking: bs, blockPage: blockPage, edgeFlush: edgeFlush, limiter: limiter, qlAsync: qlAsync, qlWriter: qlWriter,
-	})
+		control: controlStage, blocking: bs, blockPage: blockPage, edgeFlush: edgeFlush, limiter: limiter, qlOwner: qlLogs, postprocess: post,
+	}
+	if complete != nil {
+		// Complete requests use immutable settings and resource owners. Legacy
+		// reload callbacks must not replace or close their serving resources.
+		reloadConsumers.upstreams, reloadConsumers.cache, reloadConsumers.cacheStg = nil, nil, nil
+		reloadConsumers.control, reloadConsumers.blocking, reloadConsumers.postprocess = nil, nil, nil
+		// The current node command owns local logger adoption. Cluster
+		// operational refreshes must not restore the startup log level.
+		reloadConsumers.level = nil
+		if err := add("serving-settings", false, func(ctx context.Context) error {
+			return complete.runServingReload(ctx, reloadConsumers, rc)
+		}); err != nil {
+			return err
+		}
+	} else {
+		subscribeReload(ctx, reload, reloadConsumers)
+	}
+	if ptrRun != nil {
+		if err := add("client-names-ptr", false, ptrRun); err != nil {
+			return err
+		}
+	}
+	if vipObserveRun != nil {
+		if err := add("vip-observation", false, vipObserveRun); err != nil {
+			return err
+		}
+	}
+	if vipEventsRun != nil {
+		if err := add("vip-notifications", false, vipEventsRun); err != nil {
+			return err
+		}
+	}
 	if rc != nil {
 		if err := add("cache-sweep", false, func(ctx context.Context) error { return rc.Run(ctx, time.Minute) }); err != nil {
 			return err
@@ -1015,7 +1783,25 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 	}
-	if internalSrv != nil {
+	if complete != nil {
+		internalOpts.Enrolled, complete.member, complete.memberForward, err = complete.prepareMemberServices(ctx, internalCreds)
+		if err != nil {
+			return fmt.Errorf("prepare member listener: %w", err)
+		}
+	}
+	if internalCreds != nil {
+		switch {
+		case complete != nil:
+			internalOpts.EdgeBlocks = func(ctx context.Context) (*internalapi.EdgeBlockList, error) {
+				return complete.InternalEdgeBlocks(ctx, cfg.Node.Name)
+			}
+		case kubeEdge != nil:
+			internalOpts.EdgeBlocks = kubeEdge.Internal
+		}
+		internalSrv, err = internalapi.NewServer(internalOpts)
+		if err != nil {
+			return err
+		}
 		if err := add("internal", false, internalSrv.Run); err != nil {
 			return err
 		}
@@ -1032,6 +1818,16 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			}
 			return err
 		}); err != nil {
+			return err
+		}
+	}
+	if endpointCRDs != nil {
+		if err := add("externaldns-crd", true, endpointCRDs.Run); err != nil {
+			return err
+		}
+	}
+	if externalZones != nil {
+		if err := add("external-zones", true, externalZones.Run); err != nil {
 			return err
 		}
 	}
@@ -1055,10 +1851,13 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return err
 		}
 	}
-	if qlWriter != nil {
-		if err := add("querylog", false, qlWriter.Run); err != nil {
+	if len(qlLogs.dnstap) > 0 {
+		if err := add("querylog-dnstap", false, qlLogs.serveDnstap); err != nil {
 			return err
 		}
+	}
+	if err := add("querylog", false, qlLogs.run); err != nil {
+		return err
 	}
 	// Audit retention (§11.4): the leader prunes state.db audit rows older
 	// than 400 days once a day.
@@ -1078,7 +1877,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		}
 	}
 	if qlShipper != nil {
-		if err := add("querylog-ship", false, qlShipper.Run); err != nil {
+		if err := add("querylog-ship", false, qlShipper); err != nil {
 			return err
 		}
 	}
@@ -1110,13 +1909,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		cs.Wait()
 	}
 	_ = fwd.Set().Close()
-	shutdownCtx, c2 := context.WithTimeout(context.Background(), 5*time.Second)
-	defer c2()
-	if qlAsync != nil {
-		if err := qlAsync.Close(shutdownCtx); err != nil {
-			logger.Warn("query log flush incomplete", "err", err, "dropped", qlAsync.Dropped())
-		}
-	}
+
 	if snapDB != nil {
 		_ = snapDB.Close()
 	}
@@ -1168,6 +1961,17 @@ func readEncryptionKeys() (key, previous []byte, err error) {
 		return nil, nil, err
 	}
 	return key, previous, nil
+}
+
+// identityAuthentication keeps migration admission outside the entire remote
+// authentication stack, including anonymous login and callback requests.
+func identityAuthentication(ids *stack.Stack, gate *iamgate.Gate) func(http.Handler) http.Handler {
+	if gate == nil {
+		return ids.Middleware()
+	}
+	return func(next http.Handler) http.Handler {
+		return gate.Middleware(ids.Middleware()(next))
+	}
 }
 
 // identityOptions are the stack.Options that do not depend on the
@@ -1231,3 +2035,7 @@ func domainsOnLists(sn *blocking.Snapshot) int64 {
 	}
 	return n
 }
+
+// committedDynamicOwnership keeps the committed primary status the source
+// of the record set conditions for dynamically owned names (D373).
+var _ controller.CommittedDynamicOwnership = (*servingbuild.PrimaryStatus)(nil)

@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/auth"
+	"github.com/robertherbaugh/kudurru/internal/auth/loginlimit"
+	"github.com/robertherbaugh/kudurru/internal/auth/requestlimit"
 	"github.com/robertherbaugh/kudurru/internal/auth/users"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 )
@@ -71,25 +73,46 @@ type Route struct {
 //	GET    /iam/users                      users.read
 //	GET    /iam/serviceaccounts            serviceaccounts.read
 //	GET    /iam/rolebindings               rolebindings.read
+//	GET    /iam/rolebindings/{namespace}/{name}  rolebindings.read
 //	GET    /iam/identityproviders          identityproviders.read
+//	GET    /iam/serviceaccounts/{namespace}/{name}  serviceaccounts.read
+//	GET    /iam/identityproviders/{name}   identityproviders.read
 func (s *Stack) Routes() []Route {
 	return []Route{
 		{Method: http.MethodGet, Path: "/auth/status", Access: AccessPublic, Handler: http.HandlerFunc(s.handleStatus)},
 		{Method: http.MethodPost, Path: "/auth/login", Access: AccessPublic, Handler: http.HandlerFunc(s.handleLogin)},
 		{Method: http.MethodPost, Path: "/auth/logout", Access: AccessPublic, Handler: http.HandlerFunc(s.handleLogout)},
+		// Legacy hosts retain safe local logout; remote logout requires the
+		// complete captured provider/session authority in the SQLite runtime.
+		{Method: http.MethodPost, Path: "/auth/logout/browser", Access: AccessPublic, Handler: http.HandlerFunc(s.handleLogout)},
 		{Method: http.MethodGet, Path: "/auth/me", Access: AccessAuthenticated, Handler: http.HandlerFunc(s.handleMe)},
 		{Method: http.MethodPost, Path: "/auth/password", Access: AccessAuthenticated, Handler: http.HandlerFunc(s.handlePassword)},
+		{Method: http.MethodGet, Path: "/auth/sessions", Access: AccessAuthenticated, Handler: http.HandlerFunc(s.handleSessionsUnavailable)},
+		{Method: http.MethodDelete, Path: "/auth/sessions/{id}", Access: AccessAuthenticated, Handler: http.HandlerFunc(s.handleSessionsUnavailable)},
 		{Method: http.MethodGet, Path: "/auth/oidc/{idp}/start", Access: AccessPublic, Handler: http.HandlerFunc(s.handleOIDC)},
 		{Method: http.MethodGet, Path: "/auth/oidc/{idp}/callback", Access: AccessPublic, Handler: http.HandlerFunc(s.handleOIDC)},
 		{Method: http.MethodGet, Path: "/auth/tokens", Access: AccessAnyScope, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleListTokens)},
 		{Method: http.MethodPost, Path: "/auth/tokens", Access: AccessAnyScope, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleCreateToken)},
 		{Method: http.MethodGet, Path: "/auth/tokens/{id}", Access: AccessAnyScope, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleGetToken)},
 		{Method: http.MethodDelete, Path: "/auth/tokens/{id}", Access: AccessAnyScope, Resource: "tokens", Verb: "own", Handler: http.HandlerFunc(s.handleDeleteToken)},
+		{Method: http.MethodGet, Path: "/iam/external-users", Access: AccessPermission, Resource: "users", Verb: "read", Handler: http.HandlerFunc(s.handleExternalUsersUnavailable)},
+		{Method: http.MethodGet, Path: "/iam/external-users/{name}", Access: AccessPermission, Resource: "users", Verb: "read", Handler: http.HandlerFunc(s.handleExternalUsersUnavailable)},
+		{Method: http.MethodPost, Path: "/iam/external-users/{name}/disable", Access: AccessPermission, Resource: "users", Verb: "write", Handler: http.HandlerFunc(s.handleExternalUsersUnavailable)},
+		{Method: http.MethodPost, Path: "/iam/external-users/{name}/enable", Access: AccessPermission, Resource: "users", Verb: "write", Handler: http.HandlerFunc(s.handleExternalUsersUnavailable)},
+		{Method: http.MethodPost, Path: "/iam/external-users/{name}/logout", Access: AccessPermission, Resource: "users", Verb: "write", Handler: http.HandlerFunc(s.handleExternalUsersUnavailable)},
 		{Method: http.MethodGet, Path: "/iam/users", Access: AccessPermission, Resource: "users", Verb: "read", Handler: http.HandlerFunc(s.handleIAMUsers)},
 		{Method: http.MethodGet, Path: "/iam/serviceaccounts", Access: AccessPermission, Resource: "serviceaccounts", Verb: "read", Handler: http.HandlerFunc(s.handleIAMServiceAccounts)},
 		{Method: http.MethodGet, Path: "/iam/rolebindings", Access: AccessPermission, Resource: "rolebindings", Verb: "read", Handler: http.HandlerFunc(s.handleIAMRoleBindings)},
+		{Method: http.MethodGet, Path: "/iam/rolebindings/{namespace}/{name}", Access: AccessPermission, Resource: "rolebindings", Verb: "read", Handler: http.HandlerFunc(s.handleIAMRoleBinding)},
 		{Method: http.MethodGet, Path: "/iam/identityproviders", Access: AccessPermission, Resource: "identityproviders", Verb: "read", Handler: http.HandlerFunc(s.handleIAMIdentityProviders)},
+		{Method: http.MethodGet, Path: "/iam/serviceaccounts/{namespace}/{name}", Access: AccessPermission, Resource: "serviceaccounts", Verb: "read", Handler: http.HandlerFunc(s.handleIAMServiceAccount)},
+		{Method: http.MethodGet, Path: "/iam/identityproviders/{name}", Access: AccessPermission, Resource: "identityproviders", Verb: "read", Handler: http.HandlerFunc(s.handleIAMIdentityProvider)},
 	}
+}
+
+func (s *Stack) handleSessionsUnavailable(w http.ResponseWriter, r *http.Request) {
+	writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "sessions_unavailable", NoRetryAfter: true, Message: "enrolled session management requires the complete SQLite authentication runtime",
+		Hint: "sign out in the browser to end this session; other sessions end at their lifetime"})
 }
 
 // Guard wraps a route's handler with its access rule (auth.Require for
@@ -164,6 +187,20 @@ type StatusResponse struct {
 	Providers             []oidcProviderInfo  `json:"providers"`
 	HasDefaultCredentials bool                `json:"hasDefaultCredentials"`
 	Session               *statusSessionLimit `json:"session,omitempty"`
+	// Role and Primary are set by an enrolled SQLite follower only (the
+	// complete runtime answers there); this stack never sets them.
+	Role    string `json:"role,omitempty"`
+	Primary string `json:"primary,omitempty"`
+	// Capabilities are the account commands this runtime offers. The stack
+	// serves the Kubernetes driver, which offers none of them (D387, D396).
+	Capabilities StatusCapabilities `json:"capabilities"`
+}
+
+// StatusCapabilities are the account commands of StatusResponse.
+type StatusCapabilities struct {
+	FactorManagement  bool `json:"factorManagement"`
+	LocalUserCommands bool `json:"localUserCommands"`
+	IAMObjectCommands bool `json:"iamObjectCommands"`
 }
 
 type oidcProviderInfo struct {
@@ -202,6 +239,7 @@ func (s *Stack) handleStatus(w http.ResponseWriter, _ *http.Request) {
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	TOTPCode string `json:"totpCode,omitempty"`
 }
 
 func (s *Stack) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -224,6 +262,10 @@ func (s *Stack) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, &auth.Error{Status: http.StatusBadRequest, Key: "invalid", Message: "username and password are required"})
 		return
 	}
+	if req.TOTPCode != "" {
+		writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "factor_unavailable", Message: "authenticator login requires the complete SQLite authentication runtime"})
+		return
+	}
 	usr, err := s.users.Login(r.Context(), req.Username, req.Password, s.opts.ClientIP(r))
 	var locked *users.LockedError
 	switch {
@@ -235,6 +277,9 @@ func (s *Stack) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(err, users.ErrInvalidCredentials):
 		writeErr(w, r, &auth.Error{Status: http.StatusUnauthorized, Key: "unauthenticated", Message: "invalid username or password"})
+		return
+	case errors.Is(err, loginlimit.ErrUnavailable):
+		writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "login_limit_unavailable", Message: "shared login admission is unavailable"})
 		return
 	case err != nil:
 		writeErr(w, r, &auth.Error{Status: http.StatusInternalServerError, Key: "internal", Message: "login failed", Err: err})
@@ -441,7 +486,8 @@ type PasswordRequest struct {
 	NewPassword     string `json:"newPassword"`
 	// RevokeTokens also revokes every API token of the user (a changed
 	// password alone revokes sessions, not tokens).
-	RevokeTokens bool `json:"revokeTokens,omitempty"`
+	RevokeTokens bool   `json:"revokeTokens,omitempty"`
+	TOTPCode     string `json:"totpCode,omitempty"`
 }
 
 func (s *Stack) handlePassword(w http.ResponseWriter, r *http.Request) {
@@ -453,6 +499,10 @@ func (s *Stack) handlePassword(w http.ResponseWriter, r *http.Request) {
 	var req PasswordRequest
 	if e := decode(r, &req); e != nil {
 		writeErr(w, r, e)
+		return
+	}
+	if req.TOTPCode != "" {
+		writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "factor_unavailable", Message: "authenticator password changes require the complete SQLite authentication runtime"})
 		return
 	}
 	if err := users.CheckNewPassword(req.NewPassword); err != nil {
@@ -504,6 +554,24 @@ func (s *Stack) handlePassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Stack) handleOIDC(w http.ResponseWriter, r *http.Request) {
+	if s.opts.RequestLimit != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), requestlimit.Lifetime)
+		defer cancel()
+		r = r.WithContext(ctx)
+		lane := requestlimit.Start
+		if strings.HasSuffix(r.URL.Path, "/callback") {
+			lane = requestlimit.Callback
+		}
+		if err := s.opts.RequestLimit.Admit(ctx, lane, requestlimit.ClientKey(s.opts.ClientIP(r))); err != nil {
+			var locked *loginlimit.Locked
+			if errors.As(err, &locked) {
+				writeErr(w, r, &auth.Error{Status: http.StatusTooManyRequests, Key: "rate_limited", Message: "too many login requests; try again later", RetryAfter: locked.RetryAfter})
+			} else {
+				writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "login_limit_unavailable", Message: "shared browser admission is unavailable"})
+			}
+			return
+		}
+	}
 	if reg := s.activeRegistry(); reg != nil {
 		if p, ok := reg.Provider(r.PathValue("idp")); ok {
 			if strings.HasSuffix(r.URL.Path, "/callback") {
@@ -575,4 +643,9 @@ func (s *Stack) Roles(_ context.Context, p auth.Principal) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+func (s *Stack) handleExternalUsersUnavailable(w http.ResponseWriter, r *http.Request) {
+	writeErr(w, r, &auth.Error{Status: http.StatusServiceUnavailable, Key: "external_users_unavailable", NoRetryAfter: true, Message: "external account administration requires the complete SQLite authentication runtime",
+		Hint: "manage these accounts at the identity provider and with RoleBinding objects"})
 }

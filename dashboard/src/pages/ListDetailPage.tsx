@@ -2,8 +2,9 @@
 // mode, health, entries, unsupported rules, last refresh, owner, which
 // policies use it), the sources table with Pi-hole-style enable switches
 // (spec.sources[].enabled, ux-plan C2), the inline entries browser
-// (?source=<name>), the list-level settings with their own Save, and "View
-// as YAML". Objects managed elsewhere show the same page read-only.
+// (?source=<name>), the RPZ feeds of a block list as this node reports them
+// (D391), the list-level settings with their own Save, and "View as YAML".
+// Objects managed elsewhere show the same page read-only.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -18,7 +19,7 @@ import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, useEffect, useState } from 'react';
-import { qk, useApi, useCan } from '../api/context';
+import { qk, useApi, useCan, useCannotReason } from '../api/context';
 import type { BlockList, BlockResponse, Condition, ListSource, Policy } from '../api/types';
 import { DurationField } from '../components/fields/DurationField';
 import { EnumSelect } from '../components/fields/EnumSelect';
@@ -27,19 +28,21 @@ import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedba
 import { FormDialog } from '../components/FormDialog';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { EntriesBrowser } from '../components/lists/EntriesBrowser';
+import { RPZ_KEY, RPZFeedsPanel, servfailFeed, useRPZFeeds } from '../components/lists/RPZFeeds';
 import { SourceDialog } from '../components/lists/SourceDialog';
 import { SourcesTable } from '../components/lists/SourcesTable';
 import { ManagedBadge } from '../components/ManagedBadge';
 import { YamlDialog } from '../components/YamlDialog';
 import { formatDateTime, formatExact, formatRelative } from '../lib/format';
 import { listHealth } from '../lib/listHealth';
-import { listKey, MODE_OPTIONS, RESPONSE_OPTIONS, sourceName, sourcesSummary, withSourceEnabled } from '../lib/lists';
+import { isRPZSource, listKey, MODE_OPTIONS, RESPONSE_OPTIONS, sourceName, sourcesSummary, withSourceEnabled } from '../lib/lists';
 import { MANAGED_BY, objectComment, objectEnabled, objectOwnership, readOnlyReason, withMeta } from '../lib/managedBy';
 import { durationError } from '../lib/objectSchemas';
 import { useNavigate, useSearchParams } from '../lib/router';
 import { isIPv4, isIPv6 } from '../lib/rr';
 import type { PageProps } from '../routes';
-import { inlineOnly, STATUS_POLL_MS } from './ListsPage';
+import { feedStateView } from '../lib/rpz';
+import { feedsOnly, inlineOnly, STATUS_POLL_MS } from './ListsPage';
 
 export const REFRESH_PRESETS = [
   { value: '1h', label: 'Every hour' },
@@ -72,6 +75,7 @@ export default function ListDetailPage({ params }: PageProps) {
   const name = params.name ?? '';
   const api = useApi();
   const can = useCan();
+  const cannot = useCannotReason();
   const qc = useQueryClient();
   const notify = useNotify();
   const navigate = useNavigate();
@@ -91,13 +95,19 @@ export default function ListDetailPage({ params }: PageProps) {
     refetchInterval: polling > 0 ? 2_000 : false,
   });
   const policies = useQuery({ queryKey: qk.objects('policies'), queryFn: () => api.objects.list<Policy>('policies') });
+  const hasFeeds = !!q.data && q.data.spec.mode !== 'allow' && q.data.spec.sources.some(isRPZSource);
+  // The same read as the feed section (one request): the header says when this node's feed fails clients.
+  const feedRead = useRPZFeeds(ns, name, hasFeeds);
+  const failingFeed = hasFeeds ? servfailFeed(feedRead.data?.items ?? undefined) : undefined;
 
   const [sourceDialog, setSourceDialog] = useState<{ index: number | null; key: number } | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [deletingList, setDeletingList] = useState(false);
   const [yaml, setYaml] = useState(false);
 
-  const invalidate = () => qc.invalidateQueries({ queryKey: qk.objects('blocklists') });
+  // A list or source change also changes which feeds this node transfers, so
+  // the feed reads (this list's and the Lists page's) are repeated too.
+  const invalidate = () => Promise.all([qc.invalidateQueries({ queryKey: qk.objects('blocklists') }), qc.invalidateQueries({ queryKey: RPZ_KEY })]);
 
   /** Whole-object PUT with If-Match; the answer replaces the cached list. */
   const save = async (next: BlockList): Promise<BlockList> => {
@@ -192,6 +202,10 @@ export default function ListDetailPage({ params }: PageProps) {
   const taken = (except: number | null) => sources.flatMap((s, i) => (i === except ? [] : [sourceName(i, s)]));
   const editingIndex = sourceDialog?.index ?? null;
   const ready = st?.conditions?.find((c) => c.type === 'Ready');
+  const failingText = failingFeed
+    ? `RPZ feed ${failingFeed.source ?? failingFeed.origin ?? 'of this list'} is ${feedStateView(failingFeed).label} on ${failingFeed.node ? `node ${failingFeed.node}` : 'this node'}: clients whose policy uses this list get SERVFAIL from it`
+    : undefined;
+  const browsingFeed = browseIndex >= 0 && !!sources[browseIndex] && isRPZSource(sources[browseIndex]);
 
   const saveSource = async (src: ListSource) => {
     const next = editingIndex === null ? [...sources, src] : sources.map((s, i) => (i === editingIndex ? src : s));
@@ -229,13 +243,19 @@ export default function ListDetailPage({ params }: PageProps) {
             <Tooltip content={health.detail} isEnabled={!!health.detail} hasHoverIndication={false}>
               <Badge variant={health.tone === 'neutral' ? 'neutral' : health.tone} label={health.label} />
             </Tooltip>
+            {failingFeed && failingText ? (
+              // The health badge is the shared BlockList status; feed state is this node's own.
+              <Tooltip content={`${failingText}. The other badge is the list's shared status.`} hasHoverIndication={false}>
+                <Badge variant={feedStateView(failingFeed).tone === 'warning' ? 'warning' : 'error'} label={`RPZ ${feedStateView(failingFeed).label} on this node`} data-testid="rpz-header-state" />
+              </Tooltip>
+            ) : null}
             <ManagedBadge owner={list.metadata.annotations?.[MANAGED_BY]} />
           </>
         }
         actions={
           <>
             {sources.some((s) => s.url) ? (
-              <Button label="Refresh now" variant="secondary" isDisabled={!can('blocklists', 'refresh') || !enabled} tooltip={enabled ? undefined : 'Disabled lists are not fetched'} isLoading={refresh.isPending} onClick={() => refresh.mutate()} />
+              <Button label="Refresh now" variant="secondary" isDisabled={!can('blocklists', 'refresh') || !enabled} tooltip={enabled ? cannot('blocklists', 'refresh') : 'Disabled lists are not fetched'} isLoading={refresh.isPending} onClick={() => refresh.mutate()} />
             ) : null}
             <Button label="View as YAML" variant="ghost" onClick={() => setYaml(true)} />
             {own.editable ? <Button label="Delete list" variant="ghost" isDisabled={!can('blocklists', 'delete')} onClick={() => setDeletingList(true)} /> : null}
@@ -272,21 +292,36 @@ export default function ListDetailPage({ params }: PageProps) {
               <time dateTime={st.lastFetched} title={formatDateTime(st.lastFetched)}>
                 {formatRelative(st.lastFetched)}
               </time>
+            ) : feedsOnly(sources) ? (
+              <Text color="secondary">per node (see RPZ feeds)</Text>
             ) : inlineOnly(sources) ? (
               <Text color="secondary">inline, nothing to fetch</Text>
             ) : (
               <Text color="secondary">not yet</Text>
             )}
           </MetadataListItem>
-          <MetadataListItem label="Refresh interval">{list.spec.refreshInterval ?? <Text color="secondary">24h (default)</Text>}</MetadataListItem>
-          <MetadataListItem label="Status">
-            {ready ? (
-              <Text maxLines={3} wordBreak="break-word">
-                {readyText(ready)}
-              </Text>
+          <MetadataListItem label="Refresh interval">
+            {feedsOnly(sources) ? (
+              <Text color="secondary">not used: RPZ feeds follow their zone's SOA timers</Text>
             ) : (
-              <Text color="secondary">pending</Text>
+              (list.spec.refreshInterval ?? <Text color="secondary">24h (default)</Text>)
             )}
+          </MetadataListItem>
+          <MetadataListItem label="Status">
+            <VStack gap={0.5}>
+              {ready ? (
+                <Text maxLines={3} wordBreak="break-word">
+                  {readyText(ready)}
+                </Text>
+              ) : (
+                <Text color="secondary">pending</Text>
+              )}
+              {failingText ? (
+                <Text wordBreak="break-word" data-testid="rpz-status">
+                  {failingText}.
+                </Text>
+              ) : null}
+            </VStack>
           </MetadataListItem>
           <MetadataListItem label="Used by">
             {usedBy.length
@@ -324,8 +359,12 @@ export default function ListDetailPage({ params }: PageProps) {
         />
       </Panel>
 
+      {hasFeeds ? <RPZFeedsPanel namespace={ns} name={name} listEnabled={enabled} /> : null}
+
       {browsing !== null ? (
-        browseIndex >= 0 ? (
+        browsingFeed ? (
+          <Banner status="info" title={`${browsing} is an RPZ feed`} description="A feed has no entries to browse: every node transfers it itself. Its rules and ignored owners on this node are under RPZ feeds." />
+        ) : browseIndex >= 0 ? (
           <EntriesBrowser key={browsing} list={list} index={browseIndex} editable={editable} onClose={() => setParams({ source: null }, { push: true })} />
         ) : (
           <Banner status="warning" title="No such source" description={`${name} has no source named ${browsing}.`} />
@@ -342,6 +381,7 @@ export default function ListDetailPage({ params }: PageProps) {
           initial={editingIndex === null ? undefined : sources[editingIndex]}
           taken={taken(editingIndex)}
           onSave={saveSource}
+          mode={list.spec.mode}
         />
       ) : null}
 

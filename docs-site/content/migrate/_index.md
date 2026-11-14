@@ -5,23 +5,30 @@ description: Compare Pi-hole, AdGuard Home, Technitium and kudurru, then migrate
 weight: 30
 ---
 
-Start with the DNS server you run today. These guides describe **kudurru
-v0.1.0**: working features, configuration differences and the checks to make
-before changing a network's DNS.
+Start with the DNS server you run today. These guides describe working
+features, configuration differences and the checks to make before changing
+a network's DNS. The comparison below covers v0.2.0. A few features depend on
+the store a node uses, SQLite or Kubernetes; the comparison and the linked
+pages say where.
 
 | Your current server | What the guide covers |
 |---|---|
 | [Pi-hole](/migrate/pihole/) | Teleporter backup, adlists, exact/wildcard/regex domains, groups, local DNS and a DHCP handoff |
 | [AdGuard Home](/migrate/adguard-home/) | Configuration backup, filter compatibility, exceptions, persistent clients, rewrites and encrypted DNS |
 | [Technitium](/migrate/technitium/) | Zone export/import, conditional forwarders, allowed/blocked zones, DNS Apps and features to retain elsewhere |
+| [Blocky](/migrate/blocky/) | Offline YAML conversion, client policy selection, suffix-wide local mappings and explicit conversion losses |
+| [CoreDNS](/migrate/coredns/) | Offline Corefile conversion of forwarders, inline hosts, exact name rewrites, cache and access rules, with every other plugin named |
+| [Offline configuration conversion](/migrate/offline-config/) | AdGuard Home, Blocky and CoreDNS preview, selection, tracked application and limits |
 | [Cutover and rollback checklist](/migrate/cutover/) | Parallel installation, CLI setup, client identity, real DNS tests, IPv4/IPv6 rollout and recovery |
 
 **Pi-hole v6 and Technitium have built-in API importers.** In **Tools**, choose
 **Import from DNS server** to connect, preview and import directly, or use
 `kudurru import pihole|technitium --source-url URL --apply`. Supported objects
 and upstreams transfer automatically; the preview reports unsupported features.
-kudurru cannot restore a Pi-hole Teleporter archive, `AdGuardHome.yaml` or a
-Technitium backup. `kudurru import bind` imports standard DNS zone files.
+`kudurru import adguard|blocky --file PATH` converts supported YAML
+settings offline, and `kudurru import coredns --file Corefile` converts a
+CoreDNS Corefile; each is a partial conversion with a loss report. kudurru cannot
+restore a Pi-hole Teleporter archive, a product working directory or a Technitium backup. `kudurru import bind` imports standard DNS zone files.
 Migration time
 depends on your rules and services; a server that also provides DHCP,
 DNSSEC or app-specific behavior needs more preparation than a basic blocker.
@@ -29,40 +36,76 @@ DNSSEC or app-specific behavior needs more preparation than a basic blocker.
 ## Feature comparison
 
 Built-in capabilities unless stated otherwise; planned features are labeled
-explicitly. Reviewed October 16, 2026
-against the [Pi-hole documentation](https://docs.pi-hole.net/),
-[AdGuard Home configuration reference](https://github.com/AdguardTeam/AdGuardHome/wiki/Configuration),
-[Technitium feature list](https://technitium.com/dns/) and
+explicitly. The Pi-hole, AdGuard Home and Technitium columns were reviewed
+October 16, 2026 against the [Pi-hole documentation](https://docs.pi-hole.net/),
+[AdGuard Home configuration reference](https://github.com/AdguardTeam/AdGuardHome/wiki/Configuration)
+and [Technitium feature list](https://technitium.com/dns/). The kudurru column
+was reviewed November 10, 2026 against the v0.2.0 code and the
 [kudurru changelog](/project/changelog/). Other projects evolve independently;
 check the version you run.
 
-| Feature | Pi-hole | AdGuard Home | Technitium | kudurru v0.1.0 |
+| Feature | Pi-hole | AdGuard Home | Technitium | kudurru v0.2.0 |
 |---|---|---|---|---|
-| Filtering | Hosts, domains, regex and groups | Adblock DNS syntax, allowlists and client settings | Allowed/blocked zones and lists; Advanced Blocking app | Hosts, domains, adblock subset and RE2; client-group policies |
-| Local names and authority | Local DNS and CNAME records | DNS rewrites | Primary, secondary, stub, forwarder and catalog zones | Primary and forward zones; BIND import/export; AXFR/IXFR out |
+| Filtering | Hosts, domains, regex and groups | Adblock DNS syntax, allowlists and client settings | Allowed/blocked zones and lists; Advanced Blocking app | Hosts, domains, adblock rules with DNS modifiers and RE2; client-group policies |
+| Local names and authority | Local DNS and CNAME records | DNS rewrites | Primary, secondary, stub, forwarder and catalog zones | Primary, forward, secondary and stub zones; RFC 2136 updates; per-policy answer rewrites; BIND import/export; AXFR out, AXFR/IXFR in |
 | Resolution | Forwarding; recursion with a separate resolver | Forwarding | Full recursion or forwarding | Forwarding or built-in recursion (QNAME minimization) per named upstream group; conditional forwarding |
-| DNSSEC | Optional validation | Requests DNSSEC data from upstreams | Validation and authoritative signing | Validation in recursive groups; no signing |
+| DNSSEC | Optional validation | Requests DNSSEC data from upstreams | Validation and authoritative signing | Validation in recursive groups; opt-in validation of forwarded answers; no signing |
 | DHCP | Built in | Built in | Built in | Opt-in DHCPv4 on Linux; dashboard setup; three-node quorum failover on SQLite or an elected replica behind a relay on Kubernetes; no DHCPv6 |
 | Encrypted DNS listeners | Separate proxy | DoT, DoH, DoQ | DoT, DoH, DoQ | DoT, DoH, DoQ, DoH3 |
-| Multiple servers | Separate instances; external sync tools | Separate instances; external sync tools | Built-in clustering | Shared Kubernetes store; Compose HA uses shared object files |
+| Multiple servers | Separate instances; external sync tools | Separate instances; external sync tools | Built-in clustering | Shared Kubernetes store; enrolled SQLite cluster with one primary and its followers; Compose HA uses shared object files |
 | Kubernetes configuration | Container configuration; no native CRDs | Container configuration; no native CRDs | Container configuration; no native CRDs | Native CRDs, Helm, external-dns webhook |
-| Identity | Local dashboard login | Local users | Roles, OIDC, LDAP | Local users; OIDC and scoped roles with a key |
+| Identity | Local dashboard login | Local users | Roles, OIDC, LDAP | Local users, with authenticator codes on the SQLite store; OIDC and scoped roles with a key |
 | License | Open source; component licenses apply | GPL-3.0 | GPL-3.0 | Source available; eligible community use free, commercial production by agreement |
 
 AdGuard Home's DNSSEC option requests DNSSEC records from its upstreams;
-it does not make it a local validating resolver. kudurru v0.1.0 validates
-DNSSEC in upstream groups set to recursive mode, which resolve from the root
-servers instead of forwarding; it does not validate answers from forwarding
-groups (forward to a validating resolver for that) and does not sign zones.
-Forwarding stays the default; see
+it does not make it a local validating resolver. kudurru validates DNSSEC
+in upstream groups set to recursive mode, which resolve from the root servers
+instead of forwarding. It validates answers from forwarding groups only when
+you turn that on: the setting `dnssec.enabled` is off by default, and a
+forward zone can set its own choice ([DNSSEC validation](/deploy/dnssec-validation/)).
+It does not sign zones. Forwarding stays the default; see
 [resolving names yourself](/start/home/#7-resolve-names-yourself-optional).
 A schema field for a future feature does not mean that feature is active.
-In particular, secondary/stub/catalog zones, RFC 2136 updates and general
-per-policy answer rewrites are not implemented in v0.1.0.
+In particular, the zone types `catalog` and `secondaryCatalog` and zone
+signing (`spec.dnssec`) are in the schema and are not served, and the type
+`external` is served only on Kubernetes (from Ingresses, Gateway API routes
+and LoadBalancer Services, with `externalZones.enabled`).
+
+On the SQLite store the API refuses a zone of those three types with
+`invalid` (`spec.type: Unsupported value`), and nothing is stored. An upgrade
+from v0.1.0 that finds such a zone in the data directory stops before it
+changes anything and names the zone
+([upgrade refused](/deploy/runbooks/#upgrade-refused-stored-objects-are-not-valid-in-this-release)).
+
+A block-list URL that kudurru cannot download does not stop a node. That
+covers a host that does not answer, an HTTP error (also after a redirect),
+and a download that kudurru refuses to use as a list: an HTML page, a file
+without rules, a body over the size limit (64 MiB), an `http://` URL while
+`blocking.httpsOnly` is on, or a loopback, link-local or other special
+address while `blocking.allowLocalListURLs` is off (private LAN addresses
+are always allowed). Such a source contributes no rules, and the node keeps
+answering and serving its API. Once an attempt has failed, the list reports
+`Degraded` with reason `ListFetchFailed` and the download error; while the
+first download is still running it reports nothing. The list stays `Ready`
+either way, and `kudurru lists list` shows `0` entries and no `LAST-FETCH`
+for it, so check those columns, or the list's conditions, before you rely on
+it. After a failed attempt kudurru waits one minute, and twice as long after
+each further failure, up to one hour. `kudurru lists refresh NAME` downloads
+the list at once.
+
+Since v0.2.0, secondary and stub zones, RFC 2136 updates
+([dynamic updates](/deploy/dynamic-updates/)), validation of forwarded answers,
+adblock modifiers and per-policy answer rewrites
+([response processing](/deploy/response-processing/)) are served on both
+stores. Some other features behave differently on the two stores or need one
+of them, for example [background integrations](/deploy/integrations/),
+transferred RPZ feeds and authenticator codes. The architecture overview keeps
+[the table](/architecture/#what-depends-on-the-store-driver); read it for your
+store before you plan around one of these.
 
 ### DHCPv4 support
 
-Built-in DHCPv4 is included in v0.1.0 and disabled by default. It supports
+Built-in DHCPv4 has been included since v0.1.0 and is disabled by default. It supports
 standalone Linux/SQLite nodes or a three-node quorum, the
 [Kubernetes store](/deploy/dhcp/#kubernetes) (`DHCPScope` and `DHCPLease`
 objects, one elected replica serving relayed clients), durable leases and
@@ -79,17 +122,20 @@ keep IPv6 router and DNS advertisements on your router.
 
 Without a key, kudurru runs one node, `Policy/default` and the built-in
 administrator. Additional policies, OIDC, scoped roles, audit storage,
-statistics older than 24 hours and the edge supervisors need the applicable
-entitlements. A free key for eligible community use unlocks these features
+statistics older than 24 hours, integrations and the edge supervisors need
+the applicable entitlements. A free key for eligible community use unlocks these features
 and up to three nodes. Business and government production use requires a
 commercial agreement; see [licensing](/project/licensing/) and
 [request a key](https://kudurru.io/license/).
 
 For multiple nodes, choose [Kubernetes](/deploy/helm/) for a shared
-configuration store, or the [Compose HA layout](/deploy/compose-ha/) for
-independent SQLite nodes managed from the same object files. Independent
-Docker containers do not synchronize their configuration automatically.
-Follower and Raft stores are deferred.
+configuration store, an [enrolled SQLite cluster](/deploy/sqlite-cluster/) in
+which followers copy the data of one primary, or the
+[Compose HA layout](/deploy/compose-ha/) for independent SQLite nodes managed
+from the same object files. In an enrolled cluster nothing is elected: when
+the primary is lost, an operator promotes a follower. Docker containers that
+are neither enrolled nor managed from the same files do not synchronize their
+configuration. There is no Raft store.
 
 ## How to approach the move
 

@@ -35,13 +35,19 @@ func Builder(opts Options, logger *slog.Logger) zonecache.Builder {
 	return zonecache.NewBuilder(ViewName, func(objects zonecache.ObjectSet) (any, error) {
 		mu.Lock()
 		defer mu.Unlock()
+		grantsChanged := opts.MACGrantsInput != "" && objects.InputChanged(opts.MACGrantsInput)
 		if prev != nil && !objects.ListsChanged() && !objects.Changed(zonecache.KindClientGroup) &&
-			!objects.Changed(zonecache.KindPolicy) && !objects.Changed(zonecache.KindBlockList) {
+			!objects.Changed(zonecache.KindPolicy) && !objects.Changed(zonecache.KindBlockList) && !grantsChanged {
 			return prev, nil // only zones or record sets changed
+		}
+		var grants []MACGrant
+		if opts.MACGrantsInput != "" {
+			grants, _ = objects.Input(opts.MACGrantsInput).([]MACGrant)
 		}
 		generation++
 		ix := Build(Input{
 			ClientGroups: objects.ClientGroups(),
+			MACGrants:    grants,
 			Policies:     objects.Policies(),
 			BlockLists:   objects.BlockLists(),
 			Lists:        objects.Lists(),

@@ -10,9 +10,9 @@
 //     hosts-style entries with subdomain semantics), bucketed by TLD with
 //     the same buckets and a bit filter over the full base names; lookups
 //     walk parent labels broadest-first.
-//  3. Regex: RE2 expressions (capped per list) indexed by a four-byte gram
-//     of their required literal, so a lookup runs only the expressions
-//     whose gram occurs in the name plus the few without a usable literal.
+//  3. Regex: RE2 languages with conservative literal-gram prefilters and
+//     shared tagged lazy-DFA execution for dense/unindexed rules. Fixed
+//     transition arenas freeze on saturation; bounded NFA execution is exact.
 //
 // IPSet adds the response-side IP entries (bare IP addresses in a list).
 //
@@ -22,8 +22,10 @@
 // dev-docs/design-record.md §7.3 (TLD buckets plus a bit filter) rather than
 // blocky's map-per-node trie, which costs far more memory per entry.
 //
-// All matchers are immutable once built and safe for concurrent use; a nil
-// matcher is empty. Lookups never allocate. Callers pass names that are
+// Matcher semantics are immutable once built and safe for concurrent use;
+// regex execution mutates only bounded derived transition/scratch storage,
+// guarded by the engine mutex. A nil matcher is empty. Lookups never allocate,
+// including cold/saturated execution. Callers pass names that are
 // already normalised: lower-case ASCII, no trailing dot (see
 // blocking.NormalizeName). Builders are not safe for concurrent use.
 //

@@ -1,6 +1,8 @@
 package dnsserver
 
 import (
+	"github.com/robertherbaugh/kudurru/internal/clientid"
+
 	"context"
 	"encoding/base64"
 	"errors"
@@ -14,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -27,14 +30,19 @@ const dohMIME = "application/dns-message"
 // GET with ?dns=<base64url> and POST with an application/dns-message body.
 // The response carries Cache-Control: max-age=<smallest TTL>.
 type dohHandler struct {
-	h       *Handler
-	path    string
-	proto   pipeline.Proto
-	maxBody int
+	h         *Handler
+	env       *env
+	path      string
+	proto     pipeline.Proto
+	maxBody   int
+	clientIDs bool
+	// altSvc is fixed at registry bind and observes the matching H3 listener.
+	altSvc func(*http.Request) string
 }
 
 func (d *dohHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != d.path {
+	id, matches := clientid.FromPath(r.URL.Path, d.path, d.clientIDs)
+	if !matches || r.URL.EscapedPath() != r.URL.Path {
 		http.NotFound(w, r)
 		return
 	}
@@ -85,25 +93,63 @@ func (d *dohHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "malformed DNS message", http.StatusBadRequest)
 		return
 	}
-	resp := d.h.resolveFreshID(r.Context(), req, clientFromHTTP(r, d.proto))
-	if resp == nil {
+	client := clientFromHTTP(r, d.proto)
+	client.ClientID = id
+	out, err := d.h.resolveEncrypted(r.Context(), d.env, wire, req, client)
+	if err != nil {
+		http.Error(w, "response could not be encoded", http.StatusInternalServerError)
+		return
+	}
+	defer out.Close()
+	if !out.current() {
 		// A pipeline drop: abort the exchange without a response (HTTP/2
 		// and HTTP/3 reset the stream, HTTP/1.1 closes the connection).
 		panic(http.ErrAbortHandler)
 	}
-	out, err := resp.Pack()
-	if err != nil {
-		d.h.logger().Debug("doh: pack failed", "err", err)
-		http.Error(w, "response could not be encoded", http.StatusInternalServerError)
-		return
-	}
 	hdr := w.Header()
+	if d.altSvc != nil {
+		if alternate := d.altSvc(r); alternate != "" {
+			hdr.Set("Alt-Svc", alternate)
+		}
+	}
 	hdr.Set("Content-Type", dohMIME)
-	hdr.Set("Cache-Control", cacheControl(resp))
-	hdr.Set("Content-Length", strconv.Itoa(len(out)))
-	w.WriteHeader(http.StatusOK)
-	if r.Method != http.MethodHead {
-		_, _ = w.Write(out) //nolint:gosec // G705: a packed DNS message served as application/dns-message, never HTML
+	// Every reply can depend on client policy, even without an explicit ID.
+	// Shared HTTP caches must never reuse one client's answer for another.
+	hdr.Set("Cache-Control", "private, "+out.cache)
+	hdr.Set("Content-Length", strconv.Itoa(len(out.wire)))
+	flushed := false
+	if err := out.emit(func() error {
+		controller := http.NewResponseController(w)
+		if out.output != nil {
+			deadline := out.deadline
+			if d.env != nil && d.env.limits.WriteTimeout > 0 {
+				if bound := time.Now().Add(d.env.limits.WriteTimeout); bound.Before(deadline) {
+					deadline = bound
+				}
+			}
+			if err := controller.SetWriteDeadline(deadline); err != nil {
+				return err
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+		if r.Method != http.MethodHead {
+			if _, err := w.Write(out.wire); err != nil { //nolint:gosec // G705: packed DNS served as application/dns-message, never HTML
+				return err
+			}
+		}
+		// Small bodies and HEAD headers may still be buffered. The explicit
+		// flush is part of the same final admission as body/header emission.
+		if err := controller.Flush(); err != nil {
+			return err
+		}
+		flushed = true
+		return nil
+	}); err != nil {
+		// Keep actual completion distinct from a later admission error. An
+		// abort after a successful flush can reset already delivered bytes.
+		if !flushed {
+			panic(http.ErrAbortHandler)
+		}
 	}
 }
 
@@ -168,7 +214,7 @@ func newDoHListener(spec Spec, e *env) (Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	l := &dohListener{spec: spec, env: e, handler: &dohHandler{h: e.handler, path: spec.Path, proto: ProtoDoH.Pipeline(), maxBody: e.limits.MaxBodyBytes}}
+	l := &dohListener{spec: spec, env: e, handler: &dohHandler{h: e.handler, env: e, path: spec.Path, clientIDs: spec.ClientIDs, proto: ProtoDoH.Pipeline(), maxBody: e.limits.MaxBodyBytes}}
 	lim := e.limits
 	l.srv = &http.Server{
 		Handler:           l.handler,

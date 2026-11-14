@@ -10,7 +10,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 
-	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/store"
@@ -213,16 +212,5 @@ func document(obj store.Object) json.RawMessage {
 	if obj == nil {
 		return nil
 	}
-	if tok, ok := obj.(*internalkinds.APIToken); ok {
-		return Diff(tok.AuditDocument())
-	}
-	if internalkinds.IsInternal(string(store.KeyOf(obj).Kind)) {
-		return nil
-	}
-	cp, ok := obj.DeepCopyObject().(store.Object)
-	if !ok {
-		return nil
-	}
-	cp.SetManagedFields(nil)
-	return Diff(cp)
+	return Document(string(store.KindOf(obj)), obj)
 }
