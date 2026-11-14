@@ -171,7 +171,7 @@ func stageServingLocalUserCreate(ctx context.Context, tx *sqlite.CommandTx, req 
 	if err := tx.Get(ctx, store.KeyOf(u), u); err != nil {
 		return api.IAMUser{}, err
 	}
-	created := api.IAMUser{Name: u.Name, UID: string(u.UID), ResourceVersion: u.ResourceVersion, DisplayName: u.Spec.DisplayName, MustChangePassword: u.Spec.MustChangePassword, Groups: []string{}}
+	created := api.IAMUser{Name: u.Name, UID: string(u.UID), ResourceVersion: u.ResourceVersion, DisplayName: u.Spec.DisplayName, MustChangePassword: u.Spec.MustChangePassword, Groups: []string{}, ManagedBy: store.ManagedBy(u)}
 	if u.Status.PasswordChangedAt != nil {
 		stamp := u.Status.PasswordChangedAt.Time
 		created.PasswordChangedAt = &stamp

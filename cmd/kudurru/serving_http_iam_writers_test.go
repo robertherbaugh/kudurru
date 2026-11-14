@@ -237,6 +237,19 @@ func TestServingHTTPIAMServiceAccountsStrictInputOwnershipAndPermission(t *testi
 		_, err = tx.Apply(ctx, &internalv1.PrincipalState{ObjectMeta: metav1.ObjectMeta{Name: internalv1.PrincipalStateName(serviceAccountOwner(&bootstrap))}, Spec: internalv1.PrincipalStateSpec{Owner: serviceAccountOwner(&bootstrap), BuiltinAdmin: true}}, store.ApplyOptions{Manager: store.ManagerSystem})
 		return err
 	})
+	listed := f.call(t, "GET", "/iam/serviceaccounts", "", f.token, nil, "")
+	expectServingHTTPStatus(t, listed, http.StatusOK)
+	var accounts api.AuthList[api.ServiceAccountInfo]
+	if json.Unmarshal(listed.Body.Bytes(), &accounts) != nil {
+		t.Fatal("invalid service account inventory")
+	}
+	managers := map[string]string{}
+	for _, sa := range accounts.Items {
+		managers[sa.Namespace+"/"+sa.Name] = sa.ManagedBy
+	}
+	if managers["apps/system-owned"] != store.ManagerSystem || managers["apps/bootstrap-like"] != store.ManagerAPI {
+		t.Fatalf("service account inventory managers %v", managers)
+	}
 	before = roleBindingImage(t, f.s.opts.Store)
 	expectServingHTTPStatus(t, f.call(t, "DELETE", "/iam/serviceaccounts/apps/system-owned", roleBindingBody(t, objectReview(&system)), f.token, nil, ""), http.StatusConflict)
 	expectServingHTTPStatus(t, f.call(t, "DELETE", "/iam/serviceaccounts/apps/bootstrap-like", roleBindingBody(t, objectReview(&bootstrap)), f.token, nil, ""), http.StatusForbidden)

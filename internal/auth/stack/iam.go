@@ -231,6 +231,7 @@ type ServiceAccountInfo struct {
 	Disabled     bool   `json:"disabled"`
 	BuiltinAdmin bool   `json:"builtinAdmin"`
 	Tokens       int    `json:"tokens"`
+	ManagedBy    string `json:"managedBy,omitempty"`
 }
 
 func (s *Stack) handleIAMServiceAccounts(w http.ResponseWriter, r *http.Request) {
@@ -241,7 +242,7 @@ func (s *Stack) handleIAMServiceAccounts(w http.ResponseWriter, r *http.Request)
 	items := []ServiceAccountInfo{}
 	for _, sa := range sas {
 		items = append(items, ServiceAccountInfo{Namespace: sa.Namespace, Name: sa.Name, Description: sa.Spec.Description,
-			Disabled: sa.Spec.Disabled, BuiltinAdmin: s.tokens.BuiltinAdmin(sa), Tokens: len(s.tokens.List(tokens.ServiceAccountID(sa.Namespace, sa.Name)))})
+			Disabled: sa.Spec.Disabled, BuiltinAdmin: s.tokens.BuiltinAdmin(sa), Tokens: len(s.tokens.List(tokens.ServiceAccountID(sa.Namespace, sa.Name))), ManagedBy: store.ManagedBy(sa)})
 	}
 	writeList(w, r, items, nil)
 }

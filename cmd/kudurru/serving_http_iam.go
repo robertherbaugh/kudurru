@@ -26,7 +26,7 @@ func (h *servingHTTP) iamUsers(w http.ResponseWriter, r *http.Request) error {
 	out := []api.IAMUser{}
 	for _, o := range objects {
 		u := o.(*internalv1.LocalUser)
-		p := api.IAMUser{Name: u.Name, UID: string(u.UID), ResourceVersion: u.ResourceVersion, DisplayName: u.Spec.DisplayName, BuiltinAdmin: u.Spec.BuiltinAdmin, Disabled: u.Spec.Disabled, MustChangePassword: u.Spec.MustChangePassword, Groups: slices.Clone(u.Spec.Groups)}
+		p := api.IAMUser{Name: u.Name, UID: string(u.UID), ResourceVersion: u.ResourceVersion, DisplayName: u.Spec.DisplayName, BuiltinAdmin: u.Spec.BuiltinAdmin, Disabled: u.Spec.Disabled, MustChangePassword: u.Spec.MustChangePassword, Groups: slices.Clone(u.Spec.Groups), ManagedBy: store.ManagedBy(u)}
 		if u.Status.LastLoginAt != nil {
 			at := u.Status.LastLoginAt.Time
 			p.LastLoginAt = &at
@@ -59,7 +59,7 @@ func (h *servingHTTP) iamServiceAccounts(w http.ResponseWriter, r *http.Request)
 	out := []api.ServiceAccountInfo{}
 	for _, o := range sas {
 		sa := o.(*publicv1.ServiceAccount)
-		p := api.ServiceAccountInfo{Namespace: sa.Namespace, Name: sa.Name, Description: sa.Spec.Description, Disabled: sa.Spec.Disabled}
+		p := api.ServiceAccountInfo{Namespace: sa.Namespace, Name: sa.Name, Description: sa.Spec.Description, Disabled: sa.Spec.Disabled, ManagedBy: store.ManagedBy(sa)}
 		owner := internalv1.TokenOwner{Kind: internalv1.OwnerServiceAccount, Name: sa.Name, Namespace: sa.Namespace, UID: string(sa.UID), ID: "sa:" + sa.Namespace + "/" + sa.Name, Provider: "kudurru"}
 		for _, o := range states {
 			s := o.(*internalv1.PrincipalState)
