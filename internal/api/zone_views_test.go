@@ -10,6 +10,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/zone"
+	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
 
 func viewEP(name, typ, view string, targets ...string) v1alpha1.Endpoint {
@@ -194,5 +195,79 @@ func TestCapturedZoneRecordsListServedViews(t *testing.T) {
 	slices.Sort(got)
 	if want := []string{" www.example.com=203.0.113.10", "default/lan nas.example.com=10.0.0.20", "default/lan www.example.com=10.0.0.10", "kids/lan nas.example.com=10.9.0.20"}; !slices.Equal(got, want) {
 		t.Fatalf("served rows %q, want %q", got, want)
+	}
+}
+
+// TestCapturedZoneRecordsNameTheProvenRecordSet: a served row names the
+// desired record set (and its manager, set identifier, comment and labels)
+// when exactly one live endpoint of the request's captured objects has its
+// name, type and view, a view only from its group's namespace. Otherwise
+// (system data, an endpoint the objects do not hold, two candidates) the row
+// names none. The list says which list it is: served here, desired on the
+// store path.
+func TestCapturedZoneRecordsNameTheProvenRecordSet(t *testing.T) {
+	h, f := newZoneReadFixture(t)
+	z := zoneObj("example", "example.com.")
+	commented := viewEP("www.example.com", "A", "", "203.0.113.10")
+	commented.Kudurru = &v1alpha1.EndpointExt{Comment: "front door"}
+	commented.Labels = map[string]string{"team": "web"}
+	def := recordSetObj("default", "api-example", "example", commented,
+		viewEP("www.example.com", "A", "lan", "10.0.0.10"),
+		viewEP("mail.example.com", "A", "", "203.0.113.25"))
+	kids := recordSetObj("kids", "kids-views", "example", viewEP("nas.example.com", "A", "lan", "10.9.0.20"))
+	store.SetManagedBy(kids, store.ManagerFile("objects.d/kids.yaml"))
+	// A second desired candidate for mail: the build serves one of them,
+	// and the row cannot say which.
+	other := recordSetObj("default", "other", "example", viewEP("mail.example.com", "A", "", "203.0.113.25"))
+	model, _ := zone.Build(z, []*v1alpha1.DNSRecordSet{def, kids, recordSetObj("default", "dynamic", "example", ep("dyn.example.com", "A", "192.0.2.7"))}, zone.BuildOptions{})
+	if model == nil || !model.HasViews() {
+		t.Fatal("fixture model with views did not build")
+	}
+	snapshot, err := zonecache.Prepare(zonecache.PrepareOptions{}, []store.Object{z, def, kids, other}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.objects, f.model = snapshot.Objects, model
+
+	var records ZoneRecordList
+	h.do(http.MethodGet, "/api/v1/zones/example/records", "viewer", nil).want(http.StatusOK).json(&records)
+	if records.Source != RecordSourceServed {
+		t.Fatalf("source %q, want served", records.Source)
+	}
+	got := map[string]ZoneRecord{}
+	for _, row := range records.Items {
+		key := row.DNSName + " " + row.RecordType
+		if row.Kudurru != nil && row.Kudurru.View != "" {
+			key += " " + row.Namespace + "/" + row.Kudurru.View
+		}
+		got[key] = row
+	}
+	www := got["www.example.com A"]
+	if www.RecordSet != "default/api-example" || www.ManagedBy != "" || www.Kudurru == nil || www.Kudurru.Comment != "front door" || www.Labels["team"] != "web" {
+		t.Fatalf("default row did not name its proven record set: %+v", www)
+	}
+	if lan := got["www.example.com A default/lan"]; lan.RecordSet != "default/api-example" || lan.Kudurru.View != "lan" {
+		t.Fatalf("default/lan row: %+v", lan)
+	}
+	if lan := got["nas.example.com A kids/lan"]; lan.RecordSet != "kids/kids-views" || lan.Namespace != "kids" || lan.ManagedBy != "file:objects.d/kids.yaml" || lan.Kudurru.View != "lan" {
+		t.Fatalf("kids/lan row did not name the kids record set: %+v", lan)
+	}
+	for _, key := range []string{"mail.example.com A", "dyn.example.com A", "example.com SOA"} {
+		row, ok := got[key]
+		if !ok {
+			t.Fatalf("row %s missing: %v", key, records.Items)
+		}
+		if row.RecordSet != "" || row.ManagedBy != "" {
+			t.Fatalf("row %s names an unproven record set: %+v", key, row)
+		}
+	}
+
+	var desired ZoneRecordList
+	hd := newHarness(t)
+	hd.seed(store.ManagerAPI, zoneObj("example", "example.com."))
+	hd.seed(store.ManagerAPI, recordSetObj("default", "api-example", "example", ep("www.example.com", "A", "192.0.2.1")))
+	hd.do(http.MethodGet, "/api/v1/zones/example/records", "viewer", nil).want(http.StatusOK).json(&desired)
+	if desired.Source != RecordSourceDesired || len(desired.Items) != 1 || desired.Items[0].RecordSet != "default/api-example" {
+		t.Fatalf("desired list: %+v", desired)
 	}
 }

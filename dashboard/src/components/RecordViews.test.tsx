@@ -131,14 +131,19 @@ describe('record editor views', () => {
     expect(remapView('apps/lab', 'api-x', 'default/api-x')).toBe('apps/lab');
     expect(remapView('lab', 'apps/api-x', 'api-x')).toBe('apps/lab');
     expect(remapView('lab', 'apps/api-x', 'apps/other')).toBe('lab');
+    // Editing the namespace part in place keeps naming the apps group, so the
+    // save is refused instead of moving the view to kids/lab.
+    expect(remapView('lab', 'apps/api-x', 'kids/api-x')).toBe('apps/lab');
+    expect(viewNamespaceError(remapView('lab', 'apps/api-x', 'kids/api-x'), 'kids/api-x')).toMatch(/namespace apps/);
     expect(remapView('public', 'api-x', 'apps/api-x')).toBe('public');
     expect(viewNamespaceError('apps/lab', 'default/api-x')).toMatch(/namespace apps/);
     expect(viewNamespaceError('apps/lab', 'apps/api-x')).toBeUndefined();
     expect(viewNamespaceError('apps/lab', 'api-x')).toBeUndefined();
     expect(viewNamespaceError('lab', 'default/api-x')).toBeUndefined();
-    expect(listsServed([])).toBe(false);
-    expect(listsServed([{ recordSet: '', dnsName: '@', recordType: 'SOA', targets: [] }])).toBe(true);
-    expect(listsServed([{ recordSet: 'default/a', dnsName: 'www', recordType: 'A', targets: [] }])).toBe(false);
+    // The API says which list it returned; the rows are not inspected.
+    expect(listsServed(undefined)).toBe(false);
+    expect(listsServed({ source: 'served' })).toBe(true);
+    expect(listsServed({ source: 'desired' })).toBe(false);
   });
 });
 
@@ -171,7 +176,7 @@ describe('record list views', () => {
   it('on a served list, keeps views of one name in two namespaces apart and deletes one namespace’s only', async () => {
     const soa: ZoneRecord = { recordSet: '', dnsName: '@', recordType: 'SOA', targets: ['ns1.example.internal. hostmaster.example.internal. 1 3600 600 86400 300'] };
     const nas = (namespace: string, target: string): ZoneRecord => ({ recordSet: '', namespace, dnsName: 'nas.example.internal', recordType: 'A', targets: [target], kudurru: { view: 'lan' } });
-    server.use(http.get(`${API}/zones/:zone/records`, () => HttpResponse.json({ items: [soa, nas('default', '10.0.0.20'), nas('kids', '10.9.0.20')], took_ms: 1 })));
+    server.use(http.get(`${API}/zones/:zone/records`, () => HttpResponse.json({ items: [soa, nas('default', '10.0.0.20'), nas('kids', '10.9.0.20')], source: 'served', took_ms: 1 })));
     const deletes: URLSearchParams[] = [];
     server.use(
       http.delete(`${API}/zones/:zone/records/:name/:type`, ({ request }) => {
@@ -195,6 +200,45 @@ describe('record list views', () => {
     expect(deletes[0]!.get('view')).toBe('lan');
     expect(deletes[0]!.get('namespace')).toBe('kids');
     expect(deletes[0]!.get('recordSet')).toBeNull();
+    // Neither row names a record set, so Edit is withheld instead of writing
+    // a second endpoint into a record set the row does not come from.
+    expect(within(kids.closest('tr')!).getByRole('button', { name: 'Edit' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('on a served list, edits a view of a non-default namespace in the record set that holds it', async () => {
+    const soa: ZoneRecord = { recordSet: '', dnsName: '@', recordType: 'SOA', targets: ['ns1.example.internal. hostmaster.example.internal. 1 3600 600 86400 300'] };
+    const kids: ZoneRecord = { recordSet: 'kids/kids-views', namespace: 'kids', dnsName: 'nas.example.internal', recordType: 'A', targets: ['10.9.0.20'], recordTTL: 300, kudurru: { view: 'lan', comment: 'kids NAS' } };
+    server.use(http.get(`${API}/zones/:zone/records`, () => HttpResponse.json({ items: [soa, kids], source: 'served', took_ms: 1 })));
+    const posts: { recordSet: string | null; namespace: string | null; body: unknown }[] = [];
+    server.use(
+      http.post(`${API}/zones/:zone/records`, async ({ request }) => {
+        const u = new URL(request.url);
+        const body = await request.json();
+        posts.push({ recordSet: u.searchParams.get('recordSet'), namespace: u.searchParams.get('namespace'), body });
+        return HttpResponse.json({ ...kids, targets: ['10.9.0.21'] });
+      }),
+    );
+    renderWithApp(<ZoneDetailPage params={{ zone: 'example-internal' }} />, { route: '/zones/example-internal' });
+    const badge = await screen.findByText('view kids/lan');
+    const edit = within(badge.closest('tr')!).getByRole('button', { name: 'Edit' });
+    await waitFor(() => expect(edit).not.toHaveAttribute('aria-disabled', 'true'));
+    expect(within(screen.getByText('SOA').closest('tr')!).getByRole('button', { name: 'Edit' })).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(edit);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('client group kids/lan');
+    expect(within(dialog).getByRole('textbox', { name: /^Record set/ })).toHaveValue('kids/kids-views');
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /IPv4 address/ }), { target: { value: '10.9.0.21' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save record' }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]!.recordSet).toBe('kids/kids-views');
+    expect(posts[0]!.body).toMatchObject({ dnsName: 'nas.example.internal', recordType: 'A', targets: ['10.9.0.21'], kudurru: { view: 'lan', comment: 'kids NAS' } });
+  });
+
+  it('keeps a served view row’s namespace when it names no record set', async () => {
+    const onSubmit = setup({ initial: { recordSet: '', namespace: 'kids', dnsName: 'nas.example.internal', recordType: 'A', targets: ['10.9.0.20'], kudurru: { view: 'lan' } }, listsServed: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Save record' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ kudurru: { view: 'lan' } }), 'kids/api-example-internal');
   });
 
   it('adds a view next to the default data instead of replacing it', async () => {

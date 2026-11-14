@@ -106,16 +106,17 @@ function viewNamespace(value: string, recordSet: string): string | undefined {
  * the view keeps naming the same ClientGroup: a group chosen while the record
  * set was bare ("ns/name") becomes its bare name once the record set names
  * that namespace, and a bare group name gains its namespace when the record
- * set loses it. A group of another namespace than the new record set's is
- * kept as it is; validation refuses it (viewNamespaceError).
+ * set loses it. A group of another namespace than the new record set's keeps
+ * its namespace ("ns/name"), so validation refuses it (viewNamespaceError)
+ * instead of the bare name silently naming that namespace's group.
  */
 export function remapView(value: string, from: string, to: string): string {
   if (!isGroupView(value)) return value;
   const gns = viewNamespace(value, from);
   if (gns === undefined) return value;
   const ns = recordSetNamespace(to);
-  if (ns === undefined) return `${gns}/${viewName(value)}`;
-  return ns === gns ? viewName(value) : value;
+  if (ns === undefined || ns !== gns) return `${gns}/${viewName(value)}`;
+  return viewName(value);
 }
 
 /** Why the view's ClientGroup cannot serve this record set (another namespace), or undefined. */
@@ -211,7 +212,9 @@ export function RecordEditor({ zoneName, initial, defaultRecordSet, onSubmit, on
   const [draft, setDraft] = useState<Draft>(() => draftFrom(initial));
   const [comment, setComment] = useState(initial?.kudurru?.comment ?? '');
   const [disabled, setDisabled] = useState(initial?.kudurru?.disabled ?? false);
-  const [recordSet, setRecordSet] = useState(initial?.recordSet ?? defaultRecordSet);
+  // A served row names its record set when one is proven; otherwise a view
+  // row still names its group's namespace, which the record set must keep.
+  const [recordSet, setRecordSet] = useState(initial?.recordSet || (initial?.namespace && initial.kudurru?.view ? `${initial.namespace}/${defaultRecordSet}` : defaultRecordSet));
   const [view, setView] = useState(initial?.kudurru?.view ?? VIEW_DEFAULT);
   const [errors, setErrors] = useState<EditorErrors | null>(null);
   const [serverError, setServerError] = useState<string | undefined>();

@@ -10,7 +10,9 @@
 //
 // Record views (D403): on the run's node, a record served to one ClientGroup
 // is added through the record editor next to the default data of the same
-// name and type, listed with its view, and deleted alone.
+// name and type, listed with its view, and deleted alone. A view of a group
+// in another namespace is edited in the record set that holds it and
+// deleted without touching the default namespace's view of the same name.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -170,12 +172,13 @@ test('a client-group view is added beside the default data, listed and deleted a
     await expect(records.getByRole('row').filter({ hasText: '203.0.113.10' })).toHaveCount(1);
     const both = (await api.get<{ items: ZoneRecord[] }>(`/zones/${name}/records`)).body.items.filter((r) => r.recordType === 'A');
     expect(both.map((r) => `${r.kudurru?.view ?? ''}=${r.targets.join(',')}`).sort()).toEqual(['=203.0.113.10', `${group}=10.0.0.10`]);
-    // A served view row names its ClientGroup's namespace (no record set).
-    expect(both.find((r) => r.kudurru?.view)).toMatchObject({ recordSet: '', namespace: 'default' });
+    // A served view row names its ClientGroup's namespace and, proven by
+    // the one desired endpoint behind it, its record set.
+    expect(both.find((r) => r.kudurru?.view)).toMatchObject({ recordSet: `default/api-${name}`, namespace: 'default' });
 
     await viewRow.getByRole('button', { name: 'Delete' }).click();
     const confirm = page.getByRole('alertdialog');
-    await expect(confirm).toContainText(`served to client group ${group} in every record set of namespace default`);
+    await expect(confirm).toContainText(`served to client group ${group} in record set default/api-${name}`);
     await confirm.getByRole('button', { name: 'Delete record' }).click();
     await expect.poll(async () => {
       await page.reload();
@@ -188,5 +191,91 @@ test('a client-group view is added beside the default data, listed and deleted a
   } finally {
     await api.del(`/zones/${name}`);
     await api.del(`/objects/clientgroups/default/${group}`);
+  }
+});
+
+test('a view of a non-default namespace is edited in its own record set and deleted alone', async ({ page }) => {
+  test.setTimeout(120_000);
+  const label = `nsviews-${suffix()}`;
+  const name = `${label}-example`;
+  const apex = `${label}.example.`;
+  const host = `nas.${label}.example`;
+  const group = `${label}-lan`;
+  const kidsSet = `${label}-kids`;
+  await page.goto('/');
+  const api = await adminApi(page);
+  await api.put(`/objects/clientgroups/default/${group}`, object('ClientGroup', group, { clients: [{ ip: '192.0.2.201' }] }));
+  await api.put(`/objects/clientgroups/kids/${group}`, { ...object('ClientGroup', group, { clients: [{ ip: '192.0.2.202' }] }), metadata: { name: group, namespace: 'kids' } });
+  await api.put(`/objects/dnszones/${name}`, { apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSZone', metadata: { name }, spec: { zoneName: apex, type: 'primary' } });
+  const kidsEndpoints = async () =>
+    (await api.get<{ spec: { endpoints: { dnsName: string; targets: string[]; kudurru?: { view?: string; comment?: string } }[] } }>(`/objects/dnsrecordsets/kids/${kidsSet}`));
+  try {
+    await expect.poll(async () => {
+      const current = await api.get<DNSZone>(`/objects/dnszones/${name}`);
+      if (current.status !== 200) return false;
+      const { metadata, status } = current.body;
+      return status?.conditions?.some((c) => c.type === 'Ready' && c.status === 'True' && c.observedGeneration === metadata.generation) === true;
+    }, { timeout: 30_000 }).toBe(true);
+    // default/lan through the records API (default/api-<zone>), kids/lan in
+    // a record set of the kids namespace that is not api-<zone>.
+    await api.post(`/zones/${name}/records`, { dnsName: host, recordType: 'A', targets: ['10.0.0.20'], kudurru: { view: group } });
+    await api.put(`/objects/dnsrecordsets/kids/${kidsSet}`, {
+      apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSRecordSet', metadata: { name: kidsSet, namespace: 'kids' },
+      spec: { zoneRef: { name }, endpoints: [{ dnsName: host, recordType: 'A', targets: ['10.9.0.20'], recordTTL: 300, kudurru: { view: group, comment: 'kids NAS' } }] },
+    });
+
+    await page.goto(`/zones/${name}`);
+    await settle(page);
+    const records = main(page).getByRole('table', { name: `Records of ${apex}`, exact: true });
+    const kidsRow = records.getByRole('row').filter({ hasText: `view kids/${group}` });
+    await expect.poll(async () => {
+      if ((await kidsRow.count()) > 0) return true;
+      await page.reload();
+      await settle(page);
+      return (await kidsRow.count()) > 0;
+    }, { timeout: 30_000, intervals: [1_000] }).toBe(true);
+    await expect(kidsRow).toContainText('10.9.0.20');
+    await expect(kidsRow).toContainText(`kids/${kidsSet}`);
+    await expect(kidsRow.getByRole('link', { name: `view kids/${group}` })).toHaveAttribute('href', `/groups/kids/${group}`);
+    const listed = (await api.get<{ items: ZoneRecord[]; source: string }>(`/zones/${name}/records`)).body;
+    expect(listed.source).toBe('served');
+    expect(listed.items.filter((r) => r.kudurru?.view).map((r) => `${r.namespace}/${r.kudurru?.view} ${r.recordSet}`).sort()).toEqual([`default/${group} default/api-${name}`, `kids/${group} kids/${kidsSet}`]);
+    // The SOA names no record set, so it cannot be edited here.
+    await expect(records.getByRole('row').filter({ hasText: 'SOA' }).getByRole('button', { name: 'Edit' })).toBeDisabled();
+
+    await kidsRow.getByRole('button', { name: 'Edit' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toContainText(`client group kids/${group}`);
+    await expect(dialog.getByRole('textbox', { name: /^Record set/ })).toHaveValue(`kids/${kidsSet}`);
+    await dialog.getByRole('textbox', { name: /IPv4 address/ }).fill('10.9.0.21');
+    await dialog.getByRole('button', { name: 'Save record' }).click();
+    await expect(dialog).toHaveCount(0);
+    // The edit replaced the kids endpoint in place, kept its comment, and
+    // wrote nothing into the default namespace.
+    const edited = (await kidsEndpoints()).body.spec.endpoints;
+    expect(edited.map((e) => `${e.kudurru?.view}=${e.targets.join(',')} ${e.kudurru?.comment ?? ''}`)).toEqual([`${group}=10.9.0.21 kids NAS`]);
+    expect((await api.get(`/objects/dnsrecordsets/kids/api-${name}`)).status).toBe(404);
+    await expect.poll(async () => {
+      await page.reload();
+      await settle(page);
+      return (await kidsRow.textContent()) ?? '';
+    }, { timeout: 30_000, intervals: [1_000] }).toContain('10.9.0.21');
+
+    await kidsRow.getByRole('button', { name: 'Delete' }).click();
+    const confirm = page.getByRole('alertdialog');
+    await expect(confirm).toContainText(`served to client group kids/${group} in record set kids/${kidsSet}`);
+    await confirm.getByRole('button', { name: 'Delete record' }).click();
+    await expect.poll(async () => (await kidsEndpoints()).status, { timeout: 15_000 }).toBe(404);
+    await expect.poll(async () => {
+      await page.reload();
+      await settle(page);
+      return kidsRow.count();
+    }, { timeout: 30_000, intervals: [1_000] }).toBe(0);
+    const left = (await api.get<{ items: ZoneRecord[] }>(`/zones/${name}/records`)).body.items.filter((r) => r.kudurru?.view);
+    expect(left.map((r) => `${r.namespace}/${r.kudurru?.view}=${r.targets.join(',')}`)).toEqual([`default/${group}=10.0.0.20`]);
+  } finally {
+    await api.del(`/zones/${name}`);
+    await api.del(`/objects/clientgroups/default/${group}`);
+    await api.del(`/objects/clientgroups/kids/${group}`);
   }
 });

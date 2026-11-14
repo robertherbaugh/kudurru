@@ -72,6 +72,7 @@ import type {
   UpstreamsResult,
   VersionInfo,
   ZoneRecord,
+  ZoneRecordList,
   ZoneSummary,
   AnyObject,
   Endpoint,
@@ -229,7 +230,7 @@ export function endpoints(c: ApiClient) {
           query: opts.dryRun ? { dryRun: true } : undefined,
           ...(opts.ifMatch ? { headers: { 'If-Match': opts.ifMatch } } : {}),
         }),
-      records: (zone: string) => c.get<ListEnvelope<ZoneRecord>>(`/zones/${enc(zone)}/records`),
+      records: (zone: string) => c.get<ZoneRecordList>(`/zones/${enc(zone)}/records`),
       upsertRecord: (zone: string, ep: Endpoint, recordSet?: string) =>
         c.post<ZoneRecord>(`/zones/${enc(zone)}/records`, ep, recordSet ? { recordSet } : undefined),
       /**

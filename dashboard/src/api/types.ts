@@ -360,6 +360,16 @@ export interface ZoneTransferStatus {
   lastTransfer?: { at: string; peer: string; kind: 'AXFR' | 'IXFR'; ok: boolean };
 }
 
+/**
+ * GET /zones/{zone}/records: the rows and which list they are. desired: the
+ * endpoints of the zone's record sets. served: what this node answers from
+ * (the complete SQLite runtime); a served row names a record set only when
+ * one live desired endpoint proves it (internal/api servedOwners).
+ */
+export interface ZoneRecordList extends ListEnvelope<ZoneRecord> {
+  source: 'desired' | 'served';
+}
+
 /** GET /zones/{zone}/records row: one flattened endpoint. */
 export interface ZoneRecord {
   recordSet: string;
