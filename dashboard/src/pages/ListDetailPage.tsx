@@ -28,7 +28,7 @@ import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedba
 import { FormDialog } from '../components/FormDialog';
 import { Page, PageHeader, Panel } from '../components/layout/Page';
 import { EntriesBrowser } from '../components/lists/EntriesBrowser';
-import { RPZ_KEY, RPZFeedsPanel, servfailFeed, useRPZFeeds } from '../components/lists/RPZFeeds';
+import { invalidateRPZFeeds, RPZFeedsPanel, servfailFeed, useRPZFeeds } from '../components/lists/RPZFeeds';
 import { SourceDialog } from '../components/lists/SourceDialog';
 import { SourcesTable } from '../components/lists/SourcesTable';
 import { ManagedBadge } from '../components/ManagedBadge';
@@ -106,8 +106,9 @@ export default function ListDetailPage({ params }: PageProps) {
   const [yaml, setYaml] = useState(false);
 
   // A list or source change also changes which feeds this node transfers, so
-  // the feed reads (this list's and the Lists page's) are repeated too.
-  const invalidate = () => Promise.all([qc.invalidateQueries({ queryKey: qk.objects('blocklists') }), qc.invalidateQueries({ queryKey: RPZ_KEY })]);
+  // the feed reads (this list's and the Lists page's) are repeated too, fast
+  // again even if a feed had backed off.
+  const invalidate = () => Promise.all([qc.invalidateQueries({ queryKey: qk.objects('blocklists') }), invalidateRPZFeeds(qc)]);
 
   /** Whole-object PUT with If-Match; the answer replaces the cached list. */
   const save = async (next: BlockList): Promise<BlockList> => {

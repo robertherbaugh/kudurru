@@ -14,7 +14,7 @@ import { MetadataList, MetadataListItem } from '@astryxdesign/core/MetadataList'
 import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { proportional, pixel, Table } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type QueryClient } from '@tanstack/react-query';
 import { ApiError } from '../../api/client';
 import { useApi } from '../../api/context';
 import type { RPZFeed, RPZFeedList, RPZIgnoredReason } from '../../api/types';
@@ -73,6 +73,21 @@ interface SettlingStreak {
   at: number;
   signature: string;
   reads: number;
+  epoch: number;
+}
+
+/** Bumped by invalidateRPZFeeds: a list or source change starts every streak again. */
+let settlingEpoch = 0;
+
+/**
+ * Reread every feed read after a list or source change, and restart the
+ * fast settling reads: the change may leave a feed's state and serial as
+ * they were (a pending feed whose URL changed) while its first transfer is
+ * now due, so the signature alone would keep the backed-off interval.
+ */
+export function invalidateRPZFeeds(qc: QueryClient): Promise<void> {
+  settlingEpoch += 1;
+  return qc.invalidateQueries({ queryKey: RPZ_KEY });
 }
 
 /** Per query (the cache entry), its run of unchanged settling reads. */
@@ -83,8 +98,9 @@ type PolledQuery = { state: { data: RPZFeedList | undefined; error: unknown; dat
 /**
  * The refetchInterval of a feed read: every 30 s while every feed serves;
  * while it settles, fast at first and backing off while nothing changes
- * (rpzSettlingDelay). React Query evaluates this on every observer update,
- * so a read is counted once, by its update time.
+ * (rpzSettlingDelay); a list or source change (invalidateRPZFeeds) starts
+ * the fast reads again. React Query evaluates this on every observer
+ * update, so a read is counted once, by its update time.
  */
 export function rpzPollInterval(query: PolledQuery): number {
   const { data, error } = query.state;
@@ -96,9 +112,9 @@ export function rpzPollInterval(query: PolledQuery): number {
   const signature = settlingSignature(data, error);
   const prev = streaks.get(query);
   let reads = prev?.reads ?? 0;
-  if (!prev || prev.signature !== signature) reads = 1;
+  if (!prev || prev.signature !== signature || prev.epoch !== settlingEpoch) reads = 1;
   else if (prev.at !== at) reads += 1;
-  streaks.set(query, { at, signature, reads });
+  streaks.set(query, { at, signature, reads, epoch: settlingEpoch });
   return rpzSettlingDelay(reads);
 }
 
