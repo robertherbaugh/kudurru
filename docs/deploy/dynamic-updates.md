@@ -197,9 +197,19 @@ node. Followers serve the dynamic records after their next pull.
 When the follower cannot reach the primary, or loses the connection after
 sending, it answers `SERVFAIL` and does not retry. RFC 2136 tells a client
 to try its next server on `SERVFAIL`, so list the primary as well. A lost
-exchange may still have committed on the primary; check the record before
-sending a change that is not idempotent again. A fenced or conflicted node
+exchange may still have committed on the primary. A fenced or conflicted node
 answers `SERVFAIL` without forwarding.
+
+The follower derives the update's retry identity from the exact signed
+message (the key, the transport and every byte of the request, its TSIG
+record included). When a client sends the same signed message again after a
+`SERVFAIL` or a timeout, as `nsupdate` does, through the same follower or
+another one, the primary recognizes it: if the first one committed, the
+repeat is answered with the original `NOERROR` from the zone's receipt
+ledger and nothing is applied again. A message that the client signs again
+(a new time or message ID) is a new update and is decided again, as on any
+server. The primary keeps a receipt for each committed update in the zone's
+receipt ledger ([zones.md](../architecture/zones.md)).
 
 A forwarded update expires at most four seconds after the follower sends it,
 and the primary checks that against its own clock. If the primary's clock
@@ -213,23 +223,29 @@ followed by a new publication on the primary and, at the next pull, on the
 follower. An update that reaches either node while that publication is being
 replaced waits for it, within the four seconds of the forward, instead of
 failing: the follower selects the zone and checks the key again on its new
-publication, and the primary checks again on its own. Nothing has been sent
-or applied at that point, so this is not a retry of the update. A burst sent
-through a follower no longer fails because of these publications. An update
-through a follower can still be answered `SERVFAIL` when:
+publication, and the primary checks again on its own. When the primary
+committed the update but could not publish it yet, it waits for its next
+publication within the same four seconds and answers the commit's own
+`NOERROR` from the receipt ledger. Nothing is applied twice at any point:
+every attempt carries the same retry identity. An update through a follower
+can still be answered `SERVFAIL` when:
 
 - it could not be sent, or was not answered, within the four seconds of the
-  forward (a publication that takes longer, on a loaded node, counts here);
+  forward (a publication that takes longer, on a loaded node, counts here;
+  the update may be applied, and sending the same signed message again gets
+  its original answer);
 - the follower cannot reach the primary, or the primary does not accept the
   follower as a member at that moment;
-- the primary committed the update but could not publish the commit (the
-  update is applied; check it before a change that is not idempotent);
 - the zone is retiring on the primary.
+
+Each forwarded update answered `SERVFAIL` is logged at warning level on the
+follower ("forwarded DNS UPDATE answered SERVFAIL", with the stage and the
+cause) and, when the primary decided it, on the primary too.
 
 In every case the follower sends the update at most once. An insert or
 delete of a whole RRset is idempotent, so a client's retry of it is safe; for
-any other change, check the record first when the answer may follow a
-commit. An update sent to the primary directly does not wait: right after a
+any other change, send the same signed message again, or check the record
+first. An update sent to the primary directly does not wait: right after a
 commit it can still be answered `SERVFAIL` without being applied, and the
 client's retry is safe.
 

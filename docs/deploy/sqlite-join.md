@@ -170,32 +170,37 @@ when the lifetime has ended ("the request's 30-second forwarding lifetime
 ended"), when the follower installed newer data in the meantime ("the
 follower's source changed"), or when the primary refused the command because
 the follower's view of the cluster's authority no longer held ("cluster
-authority changed"). The second case is the one to expect for a long
-apply: the follower's next pull, five seconds by default, installs the earlier
-documents of the same request, and every later document is then refused. A
-single-item route answers `503 unavailable` with the same messages. An item
-whose exchange with the primary fails after a connection was made, or whose
-connection attempt runs into the deadline, reports `completion_unknown`, and
-one whose connection was refused or whose host was reported unreachable
-reports `unavailable`, as a single write does. An item that the primary
-answered, but whose answer the follower could not relay because its own data
-changed during the exchange, reports `completion_unknown` too: it may have
-been applied. A cut item's message says what to do: it names the primary and
-asks you to send the items that were not applied there. Earlier items stay
-committed and nothing is replayed. Check the per-item results. Running the
-apply again through the follower does not reliably finish a file that was
-cut: the
-follower forwards the committed documents again, the primary records every
-forwarded command with its deduplication record, also one whose result is
-`unchanged`, and the follower's next pull therefore changes its source again.
-The rules for a multi-item request on the primary (each later item chained on
-the request's own commits, D378) and for a command superseded before its
-dispatch (D399) do not change this: the follower's own pull of the request's
-earlier items is what cuts it. In 18 process-test runs on the release
-branch, a file of 40 documents through a follower was applied completely 5
-times and was cut after 23 to 37 documents otherwise, and a file of 160 was
-cut after 9 to 33 documents in all 5 runs that sent one. Send an apply of
-many documents, and every restore, to the primary.
+authority changed"). A single-item route answers `503 unavailable` with the
+same messages. An item whose exchange with the primary fails after a
+connection was made, or whose connection attempt runs into the deadline,
+reports `completion_unknown`, and one whose connection was refused or whose
+host was reported unreachable reports `unavailable`, as a single write does.
+An item that the primary answered, but whose answer the follower could not
+relay because its own data changed during the exchange, reports
+`completion_unknown` too: it may have been applied. A cut item's message says
+what to do: it names the primary and asks you to send the items that were not
+applied there. Earlier items stay committed and nothing is replayed. Check
+the per-item results.
+
+While a forwarded request runs, the follower holds its scheduled pull
+(D375): the pull would install the request's own earlier documents and
+change the data the request is bound to, and every later document would then
+be refused. A pull that is installing when the request arrives is waited for
+first (at most five seconds), so the request is bound to the installed data.
+The scheduled pull waits for every forwarded request, but at most 30 seconds
+(the request's lifetime), and then installs anyway. The follower applies
+nothing itself and sends no document twice; reads on the follower only see
+the request's documents after that pull. So a file through a follower is
+applied completely when it fits the 30-second lifetime and no other change
+lands on the follower meanwhile: a pull that another request starts at once
+(after a sign-in, a sign-out or a settings change through the same
+follower) still cuts it, and so does the scheduled pull once it has waited
+30 seconds. In the process tests on the release branch one file of 200 DNS
+record sets through a follower was applied completely in every run
+(HA-OPEN7; before the hold, a file of 40 documents was applied completely in
+5 of 18 runs and a file of 160 in none). Each document is its own exchange
+with the primary, so a file that does not fit 30 seconds, and every restore,
+goes to the primary.
 
 On the primary, and on a standalone node, `POST /api/v1/apply` and
 `:batchDelete` run one command for each document or name inside the one
