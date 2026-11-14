@@ -249,7 +249,13 @@ func transientAnswer(a Answer) bool {
 // The walk waits for the end of the pending state with readinessProbe, which
 // no rate limit charges, and only then sends the operation again: provider
 // sign-in admission charges its lane before the serving generation is
-// captured, and five quick resends of the browser start exhaust it.
+// captured, and five quick resends of the browser start exhaust it. That
+// charge is a commit, so on a node that takes longer than its capture wait
+// to prepare the next generation the operation's own charge leaves it
+// pending again. An operation that admission charges (admissionBudget) is
+// therefore never sent more often than its lane admits: after the last
+// admitted send the walk waits for the lane's window to pass, at most twice,
+// and a 429 rate_limited is still an answer that the inventory judges.
 func (c Client) Probe(ctx context.Context, op Operation) (Answer, error) {
 	timeout := c.Timeout
 	if timeout == 0 {
@@ -257,10 +263,33 @@ func (c Client) Probe(ctx context.Context, op Operation) (Answer, error) {
 	}
 	deadline := time.Now().Add(time.Minute)
 	pending := transientAnswer
+	budget, charged := admissionBudget[op.ID]
+	sends, renewals := 0, 0 // charged sends since the lane was last renewed
 	for {
 		answer, err := c.probeOnce(ctx, op, timeout)
 		if err != nil || !pending(answer) {
 			return answer, err
+		}
+		if charged {
+			if sends++; sends >= budget {
+				// The lane counts every send that follows the previous one
+				// within its window and admits no further one until a whole
+				// window has passed after the last. Wait for that instead
+				// of a send that would be refused; the wait is not counted
+				// against the minute, which bounds the pending state, and
+				// at most two windows are waited for.
+				if renewals == 2 || !time.Now().Before(deadline) {
+					return answer, nil
+				}
+				wait := admissionWindow + time.Second
+				select {
+				case <-ctx.Done():
+					return answer, ctx.Err()
+				case <-time.After(wait):
+				}
+				deadline = deadline.Add(wait)
+				sends, renewals = 0, renewals+1
+			}
 		}
 		for {
 			if !time.Now().Before(deadline) {
@@ -281,6 +310,22 @@ func (c Client) Probe(ctx context.Context, op Operation) (Answer, error) {
 		}
 	}
 }
+
+// admissionBudget is, for each operation that browser sign-in admission
+// charges on every send (cmd/kudurru serving_http_request_limit.go), the
+// number of sends that its lane admits from one client in admissionWindow
+// (internal/auth/requestlimit: the start and CLI lanes admit five, the
+// callback lane ten; the send after that answers 429 rate_limited until the
+// window has passed).
+var admissionBudget = map[string]int{
+	"oidcStart":       5,
+	"prepareCLILogin": 5,
+	"oidcCallback":    10,
+}
+
+// admissionWindow is the window of a sign-in admission lane
+// (internal/auth/requestlimit). Tests shorten it.
+var admissionWindow = time.Minute
 
 // readinessProbe is the request that tells when a node's pending serving
 // generation is complete: it passes the same serving gate as every
