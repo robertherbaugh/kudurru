@@ -163,6 +163,22 @@ function credentialsChanged(a: Integration['spec'] | undefined, b: Integration['
 
 const result = (r: Partial<IntegrationExecutionResult>): IntegrationExecutionResult => ({ completed: true, uncertain: false, applied: 0, unchanged: 0, pending: 0, conflicts: 0, clients: 0, sourceCommitted: false, sourcePublished: false, ...r });
 
+/** DELETE of one Integration object: a Delete policy holds it terminating, Retain removes it. */
+function removeOne(ns: string, name: string, match: string | null): Response {
+  const o = find(ns, name);
+  if (!o) return fail(404, 'not_found', 'integrations not found');
+  const owner = o.metadata.annotations?.['kudurru.io/managed-by'];
+  if (owner && owner !== 'api') return fail(409, 'managed_by', `integrations ${o.metadata.name} is managed by ${owner}`, owner);
+  if (match && match !== o.metadata.resourceVersion) return fail(412, 'precondition_failed', 'resourceVersion does not match');
+  if (o.spec.deletionPolicy === 'Delete') {
+    const stored: Integration = { ...o, metadata: { ...o.metadata, deletionTimestamp: new Date().toISOString(), finalizers: ['kudurru.io/integration-cleanup'], resourceVersion: String(++state.revision) } };
+    state.objects = state.objects.map((x) => (x === o ? stored : x));
+  } else {
+    state.objects = state.objects.filter((x) => x !== o);
+  }
+  return new HttpResponse(null, { status: 204 });
+}
+
 export function integrationHandlers(guard: Guard, allowed: Allowed) {
   const B = '*/api/v1';
   const host = () => (state.unavailable ? fail(503, 'unavailable', 'complete integration administration unavailable') : null);
@@ -315,19 +331,25 @@ export function integrationHandlers(guard: Guard, allowed: Allowed) {
     http.delete(`${B}/objects/integrations/:ns/:name`, ({ request, params }) => {
       const g = guard(request, 'integrations', 'delete');
       if (g) return g;
-      const o = find(String(params.ns), String(params.name));
-      if (!o) return fail(404, 'not_found', 'integrations not found');
-      const owner = o.metadata.annotations?.['kudurru.io/managed-by'];
-      if (owner && owner !== 'api') return fail(409, 'managed_by', `integrations ${o.metadata.name} is managed by ${owner}`, owner);
-      const match = request.headers.get('If-Match');
-      if (match && match !== o.metadata.resourceVersion) return fail(412, 'precondition_failed', 'resourceVersion does not match');
-      if (o.spec.deletionPolicy === 'Delete') {
-        const stored: Integration = { ...o, metadata: { ...o.metadata, deletionTimestamp: new Date().toISOString(), finalizers: ['kudurru.io/integration-cleanup'], resourceVersion: String(++state.revision) } };
-        state.objects = state.objects.map((x) => (x === o ? stored : x));
-      } else {
-        state.objects = state.objects.filter((x) => x !== o);
+      return removeOne(String(params.ns), String(params.name), request.headers.get('If-Match'));
+    }),
+    // POST /integrations:batchDelete (the generic object batch delete): each
+    // name as an unconditional DELETE, in one namespace.
+    http.post(`${B}/:kindBatch`, async ({ request, params }) => {
+      if (String(params.kindBatch) !== 'integrations:batchDelete') return undefined;
+      const g = guard(request, 'integrations', 'delete');
+      if (g) return g;
+      const body = (await request.json()) as { names: string[]; namespace?: string };
+      const ns = body.namespace ?? 'default';
+      state.calls.push({ path: new URL(request.url).pathname, body });
+      const success: { item: string }[] = [];
+      const errors: { item: string; error: string }[] = [];
+      for (const n of body.names) {
+        const r = removeOne(ns, n, null);
+        if (r.status === 204) success.push({ item: `${ns}/${n}` });
+        else errors.push({ item: `${ns}/${n}`, error: ((await r.json()) as { error: { message: string } }).error.message });
       }
-      return new HttpResponse(null, { status: 204 });
+      return HttpResponse.json({ processed: { success, errors } });
     }),
   ];
 }

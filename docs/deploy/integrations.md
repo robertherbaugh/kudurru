@@ -338,6 +338,16 @@ The dashboard's **System → Integrations** page lists every Integration with
 the host's state of its stored revision (phase, reason, deletion policy, last
 sync, who manages it), and each instance has its own page.
 
+- **Delete N selected** deletes the selected instances with
+  `POST /api/v1/integrations:batchDelete`, one request per namespace, one at
+  a time, after a confirmation that names each instance and its deletion
+  policy. Each is deleted as `DELETE` without `If-Match` (the revision on
+  screen is not compared): a `Retain` instance goes at once, a `Delete`
+  instance stays terminating until its cleanup finishes. Instances that a
+  file, Kubernetes or the system manages, and terminating ones, cannot be
+  selected; the batch needs `integrations.delete` and is refused in static
+  mode.
+
 - **New integration** opens a wizard built from `GET
   /api/v1/integrations/manifests`: the provider types of this build (a type
   this node does not run, such as a webhook on Kubernetes, is shown with the
