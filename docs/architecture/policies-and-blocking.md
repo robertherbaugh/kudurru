@@ -307,8 +307,8 @@ Expired or removed claims do not expose an older device at a reassigned IP.
 Failures retain the previous batch only until its existing expiry. The holder
 is shared by integrations; queries never call a provider or perform PTR lookups.
 
-When the captured inventory has no MAC for the source address, the identify
-stage fills it from the live bound lease of the built-in DHCP server, read from
+When the captured inventory has no MAC for the source address and the captured
+index has a `ClientGroup` `mac` matcher, the identify stage fills it from the live bound lease of the built-in DHCP server, read from
 the committed in-memory lease snapshot (D397). Inventory MACs win; colliding
 leases fill nothing; the lease MAC clears the inventory source, so a
 source-bound private grant cannot match it. The lease snapshot is local to the

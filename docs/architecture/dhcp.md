@@ -346,8 +346,9 @@ address, MAC, client hostname and expiry, whether or not the scope registers
 DNS and whether or not the lease has a usable name (D397). On Kubernetes the
 replica's working copies are filled from `DHCPLease` objects, so every replica
 holds the same leases. The identify stage asks this snapshot for the live
-lease of the query's source address. When the captured inventory supplied no
-MAC for that address, the lease MAC fills it and `ClientGroup` `mac` matchers
+lease of the query's source address, once per query and only when the captured
+policy index has a `ClientGroup` `mac` matcher. When the captured inventory
+supplied no MAC for that address, the lease MAC fills it and `ClientGroup` `mac` matchers
 apply. MACs reported by an inventory source win over a lease MAC for the same
 address. Two scopes that lease one address to different MACs fill nothing.
 Source-bound private inventory grants never match a lease MAC. The read
