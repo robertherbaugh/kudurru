@@ -207,6 +207,8 @@ export function endpoints(c: ApiClient) {
           integrationBody(obj),
           obj.metadata.resourceVersion ? { 'If-Match': obj.metadata.resourceVersion } : undefined,
         ),
+      /** POST /integrations:batchDelete: the names of one namespace, each deleted as DELETE without If-Match. */
+      batchDelete: (namespace: string, names: string[]) => c.post<Processed>('/integrations:batchDelete', { names, namespace }),
       remove: (namespace: string, name: string, resourceVersion?: string) =>
         c.request<void>('DELETE', `/objects/integrations/${enc(namespace)}/${enc(name)}`, resourceVersion ? { headers: { 'If-Match': resourceVersion } } : {}),
       check: (namespace: string, name: string, review: IntegrationReview) => c.post<IntegrationExecutionResult>(`/integrations/${enc(namespace)}/${enc(name)}/check`, review),

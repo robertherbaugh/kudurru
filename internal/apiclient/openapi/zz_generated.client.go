@@ -1631,6 +1631,24 @@ func (e ZoneDetailDeleteRefusal) Valid() bool {
 	}
 }
 
+// Defines values for ZoneRecordListSource.
+const (
+	ZoneRecordListSourceDesired ZoneRecordListSource = "desired"
+	ZoneRecordListSourceServed  ZoneRecordListSource = "served"
+)
+
+// Valid indicates whether the value is a known member of the ZoneRecordListSource enum.
+func (e ZoneRecordListSource) Valid() bool {
+	switch e {
+	case ZoneRecordListSourceDesired:
+		return true
+	case ZoneRecordListSourceServed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ZoneSummaryDeleteRefusal.
 const (
 	ZoneSummaryDeleteRefusalDefaultZone ZoneSummaryDeleteRefusal = "default_zone"
@@ -3945,11 +3963,14 @@ type Generation struct {
 
 // IAMUser defines model for IAMUser.
 type IAMUser struct {
-	BuiltinAdmin       bool       `json:"builtinAdmin"`
-	Disabled           bool       `json:"disabled"`
-	DisplayName        *string    `json:"displayName,omitempty"`
-	Groups             *[]string  `json:"groups,omitempty"`
-	LastLoginAt        *time.Time `json:"lastLoginAt,omitempty"`
+	BuiltinAdmin bool       `json:"builtinAdmin"`
+	Disabled     bool       `json:"disabled"`
+	DisplayName  *string    `json:"displayName,omitempty"`
+	Groups       *[]string  `json:"groups,omitempty"`
+	LastLoginAt  *time.Time `json:"lastLoginAt,omitempty"`
+
+	// ManagedBy The account's single writer (kudurru.io/managed-by): api for an account the API created, which the reviewed commands change; bootstrap:..., system or file:... for the built-in admin and accounts of the configuration file, which they refuse with 409 managed_by.
+	ManagedBy          *string    `json:"managedBy,omitempty"`
 	MustChangePassword bool       `json:"mustChangePassword"`
 	Name               string     `json:"name"`
 	PasswordChangedAt  *time.Time `json:"passwordChangedAt,omitempty"`
@@ -4420,16 +4441,6 @@ type ListSettingKey struct {
 	// Continue Opaque keyset token for the next page; empty on the last page.
 	Continue *string      `json:"continue,omitempty"`
 	Items    []SettingKey `json:"items"`
-
-	// TookMs Server-side duration of the request in milliseconds.
-	TookMs float64 `json:"took_ms"`
-}
-
-// ListZoneRecord defines model for ListZoneRecord.
-type ListZoneRecord struct {
-	// Continue Opaque keyset token for the next page; empty on the last page.
-	Continue *string      `json:"continue,omitempty"`
-	Items    []ZoneRecord `json:"items"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -5656,8 +5667,11 @@ type ServiceAccountInfo struct {
 	BuiltinAdmin bool    `json:"builtinAdmin"`
 	Description  *string `json:"description,omitempty"`
 	Disabled     bool    `json:"disabled"`
-	Name         string  `json:"name"`
-	Namespace    string  `json:"namespace"`
+
+	// ManagedBy The service account's single writer (kudurru.io/managed-by): api for one the API manages, which the reviewed commands change; another manager is refused with 409 managed_by.
+	ManagedBy *string `json:"managedBy,omitempty"`
+	Name      string  `json:"name"`
+	Namespace string  `json:"namespace"`
 
 	// Tokens Number of API tokens the account owns.
 	Tokens int64 `json:"tokens"`
@@ -6571,6 +6585,22 @@ type ZoneRecord struct {
 	SetIdentifier *string   `json:"setIdentifier,omitempty"`
 	Targets       *[]string `json:"targets"`
 }
+
+// ZoneRecordList defines model for ZoneRecordList.
+type ZoneRecordList struct {
+	// Continue Opaque keyset token for the next page; empty on the last page.
+	Continue *string      `json:"continue,omitempty"`
+	Items    []ZoneRecord `json:"items"`
+
+	// Source desired: the endpoints of the zone's DNSRecordSets, each naming its record set. served: the RRsets this node answers from (the complete SQLite runtime): a publish-only (public) endpoint, a disabled or expired one and one the build refused are not listed, and a row names a record set only when exactly one live desired endpoint of the request's captured objects has its name, type and view.
+	Source ZoneRecordListSource `json:"source"`
+
+	// TookMs Server-side duration of the request in milliseconds.
+	TookMs float64 `json:"took_ms"`
+}
+
+// ZoneRecordListSource desired: the endpoints of the zone's DNSRecordSets, each naming its record set. served: the RRsets this node answers from (the complete SQLite runtime): a publish-only (public) endpoint, a disabled or expired one and one the build refused are not listed, and a row names a record set only when exactly one live desired endpoint of the request's captured objects has its name, type and view.
+type ZoneRecordListSource string
 
 // ZoneSummary defines model for ZoneSummary.
 type ZoneSummary struct {
@@ -48254,7 +48284,7 @@ type ListZoneRecordsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *ListZoneRecord
+	JSON200 *ZoneRecordList
 	// JSON400 the response for an HTTP 400 `application/json` response
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
@@ -48272,7 +48302,7 @@ type ListZoneRecordsResponse struct {
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ListZoneRecordsResponse) GetJSON200() *ListZoneRecord {
+func (r ListZoneRecordsResponse) GetJSON200() *ZoneRecordList {
 	return r.JSON200
 }
 
@@ -69745,7 +69775,7 @@ func ParseListZoneRecordsResponse(rsp *http.Response) (*ListZoneRecordsResponse,
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ListZoneRecord
+		var dest ZoneRecordList
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

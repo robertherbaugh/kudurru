@@ -4808,6 +4808,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "managedBy": {
+            "description": "The account's single writer (kudurru.io/managed-by): api for an account the API created, which the reviewed commands change; bootstrap:..., system or file:... for the built-in admin and accounts of the configuration file, which they refuse with 409 managed_by.",
+            "type": "string"
+          },
           "mustChangePassword": {
             "type": "boolean"
           },
@@ -6193,31 +6197,6 @@
           "items": {
             "items": {
               "$ref": "#/components/schemas/SettingKey"
-            },
-            "type": "array"
-          },
-          "took_ms": {
-            "description": "Server-side duration of the request in milliseconds.",
-            "format": "double",
-            "type": "number"
-          }
-        },
-        "required": [
-          "items",
-          "took_ms"
-        ],
-        "type": "object"
-      },
-      "ListZoneRecord": {
-        "additionalProperties": false,
-        "properties": {
-          "continue": {
-            "description": "Opaque keyset token for the next page; empty on the last page.",
-            "type": "string"
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ZoneRecord"
             },
             "type": "array"
           },
@@ -9874,6 +9853,10 @@
           "disabled": {
             "type": "boolean"
           },
+          "managedBy": {
+            "description": "The service account's single writer (kudurru.io/managed-by): api for one the API manages, which the reviewed commands change; another manager is refused with 409 managed_by.",
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
@@ -12573,6 +12556,40 @@
           "dnsName",
           "recordType",
           "targets"
+        ],
+        "type": "object"
+      },
+      "ZoneRecordList": {
+        "additionalProperties": false,
+        "properties": {
+          "continue": {
+            "description": "Opaque keyset token for the next page; empty on the last page.",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ZoneRecord"
+            },
+            "type": "array"
+          },
+          "source": {
+            "description": "desired: the endpoints of the zone's DNSRecordSets, each naming its record set. served: the RRsets this node answers from (the complete SQLite runtime): a publish-only (public) endpoint, a disabled or expired one and one the build refused are not listed, and a row names a record set only when exactly one live desired endpoint of the request's captured objects has its name, type and view.",
+            "enum": [
+              "desired",
+              "served"
+            ],
+            "type": "string"
+          },
+          "took_ms": {
+            "description": "Server-side duration of the request in milliseconds.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "source",
+          "items",
+          "took_ms"
         ],
         "type": "object"
       },
@@ -38787,7 +38804,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListZoneRecord"
+                  "$ref": "#/components/schemas/ZoneRecordList"
                 }
               }
             },
