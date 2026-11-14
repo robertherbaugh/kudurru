@@ -1522,7 +1522,7 @@ interoperability and atomic/durable storage per deployment mode are required
 feasibility gates.
 
 What of this scope is implemented and what is open, package by package, is
-in the [v0.2 feature package acceptance table](milestones/v0.2/gaps.md#feature-package-acceptance-at-154a779a-november-13-2026);
+in the [v0.2 feature package acceptance table](milestones/v0.2/gaps.md#feature-package-acceptance-at-7663c957-november-14-2026);
 the text above is the original scope and is not edited.
 
 ### 13.3 v1.0 — "temple" (~16-20 weeks)
