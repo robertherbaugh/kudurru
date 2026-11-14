@@ -319,7 +319,9 @@ flowchart TD
     Act["Reviewed act (integrations.act)"] --> Action{"Action"}
     Action -- dhcp-dns-servers --> DHCP["Preview digest, or apply under it"]
     Action -- block or unblock --> Station["One legacy cmd/stamgr command"]
-``` Event delivery persists sanitized input and a stable delivery ID
+```
+
+Event delivery persists sanitized input and a stable delivery ID
 before callbacks, retries to the original 24-hour deadline, and retains terminal
 records for deduplication and audit. Delivery is at least once. Retention
 bounds the rows of each hook instance by count and by time (see the hook
