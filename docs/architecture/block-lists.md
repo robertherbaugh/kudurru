@@ -441,7 +441,11 @@ source shows an "RPZ feeds on this node" section from the per-list route
 (polled every 30 s, every 3 s while the node lacks the list or a feed is not
 serving, and again after every list or source change), and the Lists page reads `GET /blocklists/_rpz` once a
 block list has an enabled feed and shows the worst feed state under the list's
-health. Both say which node answered and render only the fields that node
+health. Both settling reads back off while nothing changes: two reads 3 s
+apart, then 6, 12 and 24 s, then every 30 s, so a feed that stays expired,
+unavailable or pending does not cost a read every 3 s for as long as a page is
+open; a change of a feed's state or serial, or of the list, starts the fast
+reads again. Both say which node answered and render only the fields that node
 sends. Operator guide: [docs/deploy/rpz.md](../deploy/rpz.md).
 
 ```mermaid
