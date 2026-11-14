@@ -4715,6 +4715,8 @@ export interface components {
             deletionPolicy: "Retain" | "Delete";
             /** Format: date-time */
             deletionRequestedAt?: string;
+            /** @description Inventory source ID of this incarnation (cluster, namespace, name and UID): the source of the devices it reports in GET /inventory. */
+            inventorySource?: string;
             /** Format: date-time */
             lastSync?: string;
             leader: boolean;
@@ -4756,6 +4758,8 @@ export interface components {
             items: components["schemas"]["InventoryDevice"][];
             /** @description The node that answered; DHCP leases are this node's. */
             node: string;
+            /** @description True when the answering node is one member of a SQLite cluster: lease devices and lease MACs are this node's own, and a lease MAC selects mac matchers only for queries this node answers (D397). */
+            nodeLocalLeases: boolean;
             /**
              * Format: date-time
              * @description Time used to decide staleness and address states.
@@ -5743,6 +5747,8 @@ export interface components {
                 [key: string]: string;
             };
             managedBy?: string;
+            /** @description On a served client-group view row (complete runtime): the namespace of the view's ClientGroup. */
+            namespace?: string;
             recordSet: string;
             /** Format: int64 */
             recordTTL?: number;
@@ -6945,6 +6951,8 @@ export interface components {
                 [key: string]: string;
             };
             managedBy?: string;
+            /** @description On a served client-group view row (complete runtime): the namespace of the view's ClientGroup. */
+            namespace?: string;
             recordSet: string;
             /** Format: int64 */
             recordTTL?: number;
@@ -26561,6 +26569,10 @@ export interface operations {
                 /** @description Only this DNSRecordSet (namespace/name or name). */
                 recordSet?: string;
                 setIdentifier?: string;
+                /** @description Only endpoints of this view: public, a ClientGroup name, or - for the default endpoints without a view (D403). Empty: every view. */
+                view?: string;
+                /** @description Only record sets of this namespace (a view names the ClientGroup of its record set's namespace). Empty: every namespace. */
+                namespace?: string;
             };
             header?: never;
             path: {

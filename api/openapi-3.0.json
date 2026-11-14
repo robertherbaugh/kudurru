@@ -5449,6 +5449,10 @@
             "format": "date-time",
             "type": "string"
           },
+          "inventorySource": {
+            "description": "Inventory source ID of this incarnation (cluster, namespace, name and UID): the source of the devices it reports in GET /inventory.",
+            "type": "string"
+          },
           "lastSync": {
             "format": "date-time",
             "type": "string"
@@ -5569,6 +5573,10 @@
             "description": "The node that answered; DHCP leases are this node's.",
             "type": "string"
           },
+          "nodeLocalLeases": {
+            "description": "True when the answering node is one member of a SQLite cluster: lease devices and lease MACs are this node's own, and a lease MAC selects mac matchers only for queries this node answers (D397).",
+            "type": "boolean"
+          },
           "readAt": {
             "description": "Time used to decide staleness and address states.",
             "format": "date-time",
@@ -5584,6 +5592,7 @@
           "node",
           "generation",
           "readAt",
+          "nodeLocalLeases",
           "items",
           "took_ms"
         ],
@@ -8465,6 +8474,10 @@
             "type": "object"
           },
           "managedBy": {
+            "type": "string"
+          },
+          "namespace": {
+            "description": "On a served client-group view row (complete runtime): the namespace of the view's ClientGroup.",
             "type": "string"
           },
           "recordSet": {
@@ -12276,6 +12289,10 @@
             "type": "object"
           },
           "managedBy": {
+            "type": "string"
+          },
+          "namespace": {
+            "description": "On a served client-group view row (complete runtime): the namespace of the view's ClientGroup.",
             "type": "string"
           },
           "recordSet": {
@@ -38798,6 +38815,28 @@
             "in": "query",
             "name": "setIdentifier",
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only endpoints of this view: public, a ClientGroup name, or - for the default endpoints without a view (D403). Empty: every view.",
+            "explode": false,
+            "in": "query",
+            "name": "view",
+            "schema": {
+              "description": "Only endpoints of this view: public, a ClientGroup name, or - for the default endpoints without a view (D403). Empty: every view.",
+              "maxLength": 253,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Only record sets of this namespace (a view names the ClientGroup of its record set's namespace). Empty: every namespace.",
+            "explode": false,
+            "in": "query",
+            "name": "namespace",
+            "schema": {
+              "description": "Only record sets of this namespace (a view names the ClientGroup of its record set's namespace). Empty: every namespace.",
+              "maxLength": 253,
               "type": "string"
             }
           }

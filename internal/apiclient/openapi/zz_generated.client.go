@@ -4177,20 +4177,23 @@ type IntegrationSummary struct {
 	Blocked             int64                            `json:"blocked"`
 	DeletionPolicy      IntegrationSummaryDeletionPolicy `json:"deletionPolicy"`
 	DeletionRequestedAt *time.Time                       `json:"deletionRequestedAt,omitempty"`
-	LastSync            *time.Time                       `json:"lastSync,omitempty"`
-	Leader              bool                             `json:"leader"`
-	Name                string                           `json:"name"`
-	Namespace           string                           `json:"namespace"`
-	Phase               string                           `json:"phase"`
-	Reason              string                           `json:"reason"`
-	Remaining           int64                            `json:"remaining"`
-	Revision            string                           `json:"revision"`
-	StatusKnown         bool                             `json:"statusKnown"`
-	Suspended           bool                             `json:"suspended"`
-	Terminating         bool                             `json:"terminating"`
-	Type                string                           `json:"type"`
-	Uid                 string                           `json:"uid"`
-	Uncertain           int64                            `json:"uncertain"`
+
+	// InventorySource Inventory source ID of this incarnation (cluster, namespace, name and UID): the source of the devices it reports in GET /inventory.
+	InventorySource *string    `json:"inventorySource,omitempty"`
+	LastSync        *time.Time `json:"lastSync,omitempty"`
+	Leader          bool       `json:"leader"`
+	Name            string     `json:"name"`
+	Namespace       string     `json:"namespace"`
+	Phase           string     `json:"phase"`
+	Reason          string     `json:"reason"`
+	Remaining       int64      `json:"remaining"`
+	Revision        string     `json:"revision"`
+	StatusKnown     bool       `json:"statusKnown"`
+	Suspended       bool       `json:"suspended"`
+	Terminating     bool       `json:"terminating"`
+	Type            string     `json:"type"`
+	Uid             string     `json:"uid"`
+	Uncertain       int64      `json:"uncertain"`
 }
 
 // IntegrationSummaryDeletionPolicy defines model for IntegrationSummary.DeletionPolicy.
@@ -4224,6 +4227,9 @@ type InventoryBody struct {
 
 	// Node The node that answered; DHCP leases are this node's.
 	Node string `json:"node"`
+
+	// NodeLocalLeases True when the answering node is one member of a SQLite cluster: lease devices and lease MACs are this node's own, and a lease MAC selects mac matchers only for queries this node answers (D397).
+	NodeLocalLeases bool `json:"nodeLocalLeases"`
 
 	// ReadAt Time used to decide staleness and address states.
 	ReadAt time.Time `json:"readAt"`
@@ -5258,15 +5264,18 @@ type RecentBlockedBody struct {
 
 // RecordBody defines model for RecordBody.
 type RecordBody struct {
-	DnsName       string             `json:"dnsName"`
-	Kudurru       *EndpointExt       `json:"kudurru,omitempty"`
-	Labels        *map[string]string `json:"labels,omitempty"`
-	ManagedBy     *string            `json:"managedBy,omitempty"`
-	RecordSet     string             `json:"recordSet"`
-	RecordTTL     *int64             `json:"recordTTL,omitempty"`
-	RecordType    string             `json:"recordType"`
-	SetIdentifier *string            `json:"setIdentifier,omitempty"`
-	Targets       *[]string          `json:"targets"`
+	DnsName   string             `json:"dnsName"`
+	Kudurru   *EndpointExt       `json:"kudurru,omitempty"`
+	Labels    *map[string]string `json:"labels,omitempty"`
+	ManagedBy *string            `json:"managedBy,omitempty"`
+
+	// Namespace On a served client-group view row (complete runtime): the namespace of the view's ClientGroup.
+	Namespace     *string   `json:"namespace,omitempty"`
+	RecordSet     string    `json:"recordSet"`
+	RecordTTL     *int64    `json:"recordTTL,omitempty"`
+	RecordType    string    `json:"recordType"`
+	SetIdentifier *string   `json:"setIdentifier,omitempty"`
+	Targets       *[]string `json:"targets"`
 
 	// TookMs Server-side duration of the request in milliseconds.
 	TookMs float64 `json:"took_ms"`
@@ -6549,15 +6558,18 @@ type ZoneFallbackSpec struct {
 
 // ZoneRecord defines model for ZoneRecord.
 type ZoneRecord struct {
-	DnsName       string             `json:"dnsName"`
-	Kudurru       *EndpointExt       `json:"kudurru,omitempty"`
-	Labels        *map[string]string `json:"labels,omitempty"`
-	ManagedBy     *string            `json:"managedBy,omitempty"`
-	RecordSet     string             `json:"recordSet"`
-	RecordTTL     *int64             `json:"recordTTL,omitempty"`
-	RecordType    string             `json:"recordType"`
-	SetIdentifier *string            `json:"setIdentifier,omitempty"`
-	Targets       *[]string          `json:"targets"`
+	DnsName   string             `json:"dnsName"`
+	Kudurru   *EndpointExt       `json:"kudurru,omitempty"`
+	Labels    *map[string]string `json:"labels,omitempty"`
+	ManagedBy *string            `json:"managedBy,omitempty"`
+
+	// Namespace On a served client-group view row (complete runtime): the namespace of the view's ClientGroup.
+	Namespace     *string   `json:"namespace,omitempty"`
+	RecordSet     string    `json:"recordSet"`
+	RecordTTL     *int64    `json:"recordTTL,omitempty"`
+	RecordType    string    `json:"recordType"`
+	SetIdentifier *string   `json:"setIdentifier,omitempty"`
+	Targets       *[]string `json:"targets"`
 }
 
 // ZoneSummary defines model for ZoneSummary.
@@ -7404,6 +7416,12 @@ type DeleteZoneRecordParams struct {
 	// RecordSet Only this DNSRecordSet (namespace/name or name).
 	RecordSet     *string `form:"recordSet,omitempty" json:"recordSet,omitempty"`
 	SetIdentifier *string `form:"setIdentifier,omitempty" json:"setIdentifier,omitempty"`
+
+	// View Only endpoints of this view: public, a ClientGroup name, or - for the default endpoints without a view (D403). Empty: every view.
+	View *string `form:"view,omitempty" json:"view,omitempty"`
+
+	// Namespace Only record sets of this namespace (a view names the ClientGroup of its record set's namespace). Empty: every namespace.
+	Namespace *string `form:"namespace,omitempty" json:"namespace,omitempty"`
 }
 
 // CreateAllowlistEntriesJSONRequestBody defines body for CreateAllowlistEntries for application/json ContentType.
@@ -26131,6 +26149,30 @@ func NewDeleteZoneRecordRequest(server string, zone string, name string, pType s
 		if params.SetIdentifier != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "setIdentifier", *params.SetIdentifier, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.View != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "view", *params.View, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Namespace != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", false, "namespace", *params.Namespace, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
