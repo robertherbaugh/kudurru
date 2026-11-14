@@ -332,7 +332,7 @@ func reviewedLocalUser(ctx context.Context, tx *sqlite.CommandTx, name string, r
 }
 
 func servingIAMUser(u *internalv1.LocalUser) api.IAMUser {
-	out := api.IAMUser{Name: u.Name, UID: string(u.UID), ResourceVersion: u.ResourceVersion, DisplayName: u.Spec.DisplayName, BuiltinAdmin: u.Spec.BuiltinAdmin, Disabled: u.Spec.Disabled, MustChangePassword: u.Spec.MustChangePassword, Groups: slices.Clone(u.Spec.Groups)}
+	out := api.IAMUser{Name: u.Name, UID: string(u.UID), ResourceVersion: u.ResourceVersion, DisplayName: u.Spec.DisplayName, BuiltinAdmin: u.Spec.BuiltinAdmin, Disabled: u.Spec.Disabled, MustChangePassword: u.Spec.MustChangePassword, Groups: slices.Clone(u.Spec.Groups), ManagedBy: store.ManagedBy(u)}
 	if out.Groups == nil {
 		out.Groups = []string{}
 	}

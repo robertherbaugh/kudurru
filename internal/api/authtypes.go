@@ -134,6 +134,7 @@ type (
 		Groups             []string   `json:"groups,omitempty"`
 		LastLoginAt        *time.Time `json:"lastLoginAt,omitempty"`
 		PasswordChangedAt  *time.Time `json:"passwordChangedAt,omitempty"`
+		ManagedBy          string     `json:"managedBy,omitempty" doc:"The account's single writer (kudurru.io/managed-by): api for an account the API created, which the reviewed commands change; bootstrap:..., system or file:... for the built-in admin and accounts of the configuration file, which they refuse with 409 managed_by."`
 	}
 	// ServiceAccountInfo is one kudurru service account of GET
 	// /iam/serviceaccounts.
@@ -144,6 +145,7 @@ type (
 		Disabled     bool   `json:"disabled"`
 		BuiltinAdmin bool   `json:"builtinAdmin"`
 		Tokens       int    `json:"tokens" doc:"Number of API tokens the account owns."`
+		ManagedBy    string `json:"managedBy,omitempty" doc:"The service account's single writer (kudurru.io/managed-by): api for one the API manages, which the reviewed commands change; another manager is refused with 409 managed_by."`
 	}
 	// RoleBindingInfo is one binding of GET /iam/rolebindings: from the
 	// config file (rbac.bindings) or a RoleBinding object.

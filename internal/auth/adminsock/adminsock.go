@@ -340,6 +340,8 @@ type User struct {
 	Groups             []string   `json:"groups,omitempty"`
 	LastLoginAt        *time.Time `json:"lastLoginAt,omitempty"`
 	PasswordChangedAt  *time.Time `json:"passwordChangedAt,omitempty"`
+	// ManagedBy is the account's single writer (kudurru.io/managed-by).
+	ManagedBy string `json:"managedBy,omitempty"`
 }
 
 // ListUsersResponse is the answer of GET /admin/v1/list-users.
@@ -358,7 +360,7 @@ func (s *Server) listUsers(w http.ResponseWriter, _ *http.Request) {
 // UserOf renders a LocalUser without its password hash.
 func UserOf(u *internalv1.LocalUser) User {
 	out := User{Name: u.Name, UID: string(u.UID), ResourceVersion: u.ResourceVersion, DisplayName: u.Spec.DisplayName, BuiltinAdmin: u.Spec.BuiltinAdmin, Disabled: u.Spec.Disabled,
-		MustChangePassword: u.Spec.MustChangePassword, Groups: u.Spec.Groups}
+		MustChangePassword: u.Spec.MustChangePassword, Groups: u.Spec.Groups, ManagedBy: store.ManagedBy(u)}
 	if t := u.Status.LastLoginAt; t != nil {
 		v := t.UTC()
 		out.LastLoginAt = &v

@@ -85,6 +85,22 @@ func localUsersCreate(t *testing.T, f *servingHTTPFixture, name string) api.IAMU
 	return out
 }
 
+// localUsersManagers is GET /iam/users as name -> managedBy.
+func localUsersManagers(t *testing.T, f *servingHTTPFixture) map[string]string {
+	t.Helper()
+	w := f.call(t, "GET", "/iam/users", "", f.token, nil, "")
+	expectServingHTTPStatus(t, w, 200)
+	var listed api.AuthList[api.IAMUser]
+	if json.Unmarshal(w.Body.Bytes(), &listed) != nil {
+		t.Fatal("invalid inventory")
+	}
+	out := map[string]string{}
+	for _, item := range listed.Items {
+		out[item.Name] = item.ManagedBy
+	}
+	return out
+}
+
 func localUsersResetBody(t *testing.T, u internalv1.LocalUser) string {
 	t.Helper()
 	return factorBody(t, api.ResetLocalUserPasswordRequest{UID: string(u.UID), ResourceVersion: u.ResourceVersion, NewPassword: "replacement-password"})
@@ -127,7 +143,7 @@ func TestServingHTTPLocalUsersCreateExactProjectionAndOwnChange(t *testing.T) {
 	if string(u.UID) != out.UID || u.ResourceVersion != out.ResourceVersion || out.PasswordChangedAt == nil || u.Status.PasswordChangedAt == nil || !out.PasswordChangedAt.Equal(u.Status.PasswordChangedAt.Time) {
 		t.Fatal("create did not project exact final staged row")
 	}
-	if store.ManagedBy(&u) != store.ManagerAPI || u.Spec.BuiltinAdmin || u.Spec.Disabled || !u.Spec.MustChangePassword || len(u.Spec.Groups) != 0 || u.Spec.TOTPSecret != "" {
+	if out.ManagedBy != store.ManagerAPI || store.ManagedBy(&u) != store.ManagerAPI || u.Spec.BuiltinAdmin || u.Spec.Disabled || !u.Spec.MustChangePassword || len(u.Spec.Groups) != 0 || u.Spec.TOTPSecret != "" {
 		t.Fatal("create broadened authority or adopted another owner")
 	}
 	ok, err := f.h.opts.Hasher.Verify(t.Context(), u.Spec.PasswordHash, "temporary-password")
@@ -274,6 +290,11 @@ func TestServingHTTPLocalUsersResetCASOwnershipAndDisabled(t *testing.T) {
 	})
 	foreign := localUsersRead(t, f.s.opts.Store, "file-person")
 	expectServingHTTPStatus(t, f.call(t, "POST", "/iam/users/file-person/password", localUsersResetBody(t, foreign), f.token, nil, ""), 409)
+	// The inventory names each account's manager, so a client can tell the
+	// refused account from the one the reviewed commands change.
+	if got := localUsersManagers(t, f); got["file-person"] != store.ManagerFile("fixture.yaml") || got[u.Name] != store.ManagerAPI {
+		t.Fatalf("inventory managers %v", got)
+	}
 	cookie, info := localUsersLogin(t, f, foreign.Name, "temporary-password", "")
 	expectServingHTTPStatus(t, f.call(t, "POST", "/auth/password", factorBody(t, api.PasswordChangeRequest{CurrentPassword: "temporary-password", NewPassword: "chosen-password"}), "", cookie, info.CSRF), 409)
 	unchanged := localUsersRead(t, f.s.opts.Store, foreign.Name)
