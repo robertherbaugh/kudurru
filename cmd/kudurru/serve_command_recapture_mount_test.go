@@ -93,8 +93,15 @@ func classifyMounted(status int, raw []byte, err error, ok ...int) mountedRefusa
 // runner while still failing a node that stops publishing.
 const mountedPublicationLagBound = 10 * time.Second
 
-// A ready node that is sent a steady stream of signed UPDATEs (10 per second,
-// each followed by the node's own zone status work) serves its operators
+// mountedMinCommittedRate is the least rate of committed signed UPDATEs, a
+// second, at which the load proves anything: below it the API commands are
+// hardly ever superseded. It measured about one a second (151 in 146 s)
+// with ten sent a second, so the floor is half of that.
+const mountedMinCommittedRate = 0.5
+
+// A ready node that is sent a steady stream of signed UPDATEs (ten sent a
+// second, of which at least mountedMinCommittedRate commit, each followed by
+// the node's own zone status work) serves its operators
 // meanwhile: 200 sign-ins, 200 record-set writes and 200 reads of the
 // written object, each sent exactly once and none retried, all succeed
 // (D399, D405), and each write is answered in DNS within
@@ -269,18 +276,20 @@ func TestRunServeCommandsNotRefusedAsSupersededUnderSteadyUpdates(t *testing.T) 
 		elapsed.Round(time.Millisecond), sent.Load(), rcodes, count, signIns, writes, reads, counts[mountedSuperseded], counts[mountedAtCapture], counts[mountedUnacknowledged], counts[mountedOther], median.Round(time.Millisecond), worst.Round(time.Millisecond))
 	committed := rcodes[dns.RcodeSuccess]
 	mu.Unlock()
-	// The load is ten UPDATEs sent a second; how many of them commit depends
-	// on the runner (most of the rest answer SERVFAIL: an UPDATE's ingress
-	// check needs a current publication and is not recaptured, D399), so the
-	// committed rate is logged with the result it was proven at.
-	t.Logf("signed UPDATEs committed %d, %.2f a second", committed, float64(committed)/elapsed.Seconds())
+	// Ten UPDATEs are sent a second; about one a second commits on the
+	// reference runner (the rest answer SERVFAIL: an UPDATE's ingress check
+	// needs a current publication and is not recaptured, D399). The proof
+	// needs a real stream of commits superseding the API commands, so the
+	// committed rate must reach mountedMinCommittedRate.
+	rate := float64(committed) / elapsed.Seconds()
+	t.Logf("signed UPDATEs committed %d, %.2f a second", committed, rate)
 	for _, failure := range failures {
 		t.Error(failure)
 	}
 	if worst > mountedPublicationLagBound {
 		t.Errorf("a write was answered in DNS %s after its commit; the bound is %s", worst.Round(time.Millisecond), mountedPublicationLagBound)
 	}
-	if committed == 0 {
-		t.Fatal("no signed UPDATE committed during the load")
+	if committed == 0 || rate < mountedMinCommittedRate {
+		t.Fatalf("signed UPDATEs committed %d during the load, %.2f a second; the proof needs at least %.1f a second", committed, rate, mountedMinCommittedRate)
 	}
 }
