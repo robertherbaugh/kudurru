@@ -165,6 +165,41 @@ func (h *servingHTTP) boundMemberObjectWrites(next http.Handler) http.Handler {
 	})
 }
 
+// memberPullHoldWait bounds how long a forwarded request waits for a pull
+// that is installing when it arrives before it goes on without a hold.
+const memberPullHoldWait = 5 * time.Second
+
+// holdMemberPulls keeps an enrolled follower's scheduled pull from installing
+// while one of its forwarded requests runs (D375). The request captures its
+// source after the hold is granted, and every item of a multi-item request
+// (POST /apply, :batchDelete) is forwarded on that source: the follower's own
+// pull, which installs the request's earlier items, no longer cuts it. The
+// follower applies nothing itself and nothing is retried; the pull only comes
+// later, at most the request's 30-second lifetime later
+// (clusterreplica.CoordinatorOptions.MaxPullHold). An explicit pull, such as
+// the one after a forwarded sign-in, does not wait and still cuts a running
+// request, as a change of another party would. The node's current authority
+// decides only whether to take the hold; the request's lease still decides
+// its role.
+func (h *servingHTTP) holdMemberPulls(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s := h.opts.Runtime
+		escaped := r.URL.EscapedPath()
+		if s.member == nil || !memberForwardRoute(r.Method, h.opts.RoutePrefix, escaped) && !memberOwnForwardRoute(r.Method, h.opts.RoutePrefix, escaped) ||
+			s.opts.Store.Authority().Mode != replication.Follower {
+			next.ServeHTTP(w, r)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), memberPullHoldWait)
+		release, err := s.member.HoldPulls(ctx)
+		cancel()
+		if err == nil {
+			defer release()
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // memberObjectAttributes is the follower's early admission and the primary's
 // envelope-level subject check. The primary's command body still authorizes
 // the exact old/new scopes of the object it actually reads.
@@ -268,13 +303,14 @@ func (s *servingRuntime) ObjectForward(ctx context.Context, in api.ForwardedObje
 
 // memberItemRefusal says what to do with one item of a multi-item request
 // (POST /apply, POST /{kind}:batchDelete) that a follower cut because its
-// own source changed while the request ran (D375). The follower installs the
-// primary's commits, usually this request's own earlier items, and does not
-// chain later items on them as the primary does (D378), so every later item
-// is cut too. Running the same file through the follower again does not
-// finish it either: each document it sends again commits a deduplication
-// record on the primary, and the next pull cuts the run again. The primary
-// applies every document of the file in one request.
+// own source changed while the request ran (D375). The request holds the
+// follower's scheduled pull (holdMemberPulls), so this happens only when the
+// follower installed anyway: an explicit pull after another request's
+// forwarded sign-in, sign-out or settings change, or the scheduled pull once
+// the request held it for its whole lifetime. The follower does not chain
+// later items on its installed source as the primary does (D378), so every
+// later item is cut too. The primary applies every document of the file in
+// one request.
 func memberItemRefusal(err error, primary string) error {
 	var refusal *api.Error
 	if !errors.As(err, &refusal) || refusal.Status != http.StatusServiceUnavailable {
@@ -286,10 +322,9 @@ func memberItemRefusal(err error, primary string) error {
 	}
 	switch {
 	case refusal.Body.Key == api.KeyUnavailable && refusal.Body.Message == memberSourceChanged:
-		return objectForwardUnavailable("the follower's source changed while this request ran (it installed newer data from the primary, " +
-			"usually this request's own earlier items); this item was not sent and was not applied, and neither was any later one; " +
-			"send the items that were not applied, or the whole file, to " + where + ", which applies them in one request; " +
-			"running it again through this follower stops in the same way")
+		return objectForwardUnavailable("the follower's source changed while this request ran (it installed newer data from the primary); " +
+			"this item was not sent and was not applied, and neither was any later one; " +
+			"send the items that were not applied, or the whole file, to " + where + ", which applies them in one request")
 	case refusal.Body.Key == "completion_unknown":
 		return &api.Error{Status: http.StatusServiceUnavailable, Body: api.ErrorBody{Key: "completion_unknown",
 			Message: refusal.Body.Message + "; the items after it were not applied; send them to " + where}}

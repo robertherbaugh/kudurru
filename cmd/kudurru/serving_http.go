@@ -76,7 +76,7 @@ func newServingHTTP(o servingHTTPOptions) (*servingHTTP, error) {
 	return h, nil
 }
 func (h *servingHTTP) Middleware(next http.Handler) http.Handler {
-	return h.clusterEnrollmentLifetime(h.requestAdmissionMiddleware(h.adapter.Middleware(h.captureClusterOutput(h.forwardMemberBlocking(h.boundMemberObjectWrites(next))))))
+	return h.clusterEnrollmentLifetime(h.requestAdmissionMiddleware(h.holdMemberPulls(h.adapter.Middleware(h.captureClusterOutput(h.forwardMemberBlocking(h.boundMemberObjectWrites(next)))))))
 }
 func (h *servingHTTP) Handler() http.Handler       { return h.mux }
 func (h *servingHTTP) Authorizer() rbac.Authorizer { return h.adapter }
