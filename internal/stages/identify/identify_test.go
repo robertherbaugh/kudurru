@@ -1,6 +1,7 @@
 package identify
 
 import (
+	"errors"
 	"net/netip"
 	"slices"
 	"testing"
@@ -325,6 +326,51 @@ func TestLeaseMACsUnreadWithoutMACMatcher(t *testing.T) {
 	with := testing.AllocsPerRun(200, func() { serve(leased) })
 	if with != base || leases.calls != 0 {
 		t.Fatalf("lease MACs cost a query without a mac matcher: allocs %v, want %v; lease reads %d", with, base, leases.calls)
+	}
+}
+
+// D397: a request whose identity was captured by a call that returned no
+// identification (no index yet, or a failed index capture) still gets its
+// lease MAC from the call that identifies it, and only from that call.
+func TestLeaseMACFillsAtTheIdentifyingCall(t *testing.T) {
+	now := time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC)
+	addr := netip.MustParseAddrPort("192.0.2.10:53")
+	ix := policy.Build(policy.Input{ClientGroups: []*v1alpha1.ClientGroup{
+		{ObjectMeta: metav1.ObjectMeta{Name: "default"}, Spec: v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{{CIDR: "0.0.0.0/0"}}}},
+		{ObjectMeta: metav1.ObjectMeta{Name: "laptop"}, Spec: v1alpha1.ClientGroupSpec{Clients: []v1alpha1.ClientMatcher{{MAC: "02:00:00:00:00:10"}}}},
+	}}, policy.Options{Inventory: true})
+	inv := inventory.New(func() time.Time { return now })
+	for _, first := range []string{"no_index", "capture_error"} {
+		t.Run(first, func(t *testing.T) {
+			st := New(nil, func() time.Time { return now })
+			st.CaptureInventory = func(*pipeline.Request) (*inventory.Snapshot, error) { return inv.Snapshot(), nil }
+			leases := &leaseMACs{macs: map[netip.Addr]string{addr.Addr(): "02:00:00:00:00:10"}, until: now.Add(time.Hour)}
+			st.LeaseMACs = leases
+			captures := 0
+			st.Capture = func(*pipeline.Request) (*policy.Index, error) {
+				captures++
+				if captures > 1 {
+					return ix, nil
+				}
+				if first == "capture_error" {
+					return nil, errors.New("index capture failed")
+				}
+				return nil, nil
+			}
+			req := &pipeline.Request{Received: now, Client: pipeline.Client{Addr: addr}}
+			if exempt, err := st.RateLimitExempt(req); exempt || (err != nil) != (first == "capture_error") || !req.Client.IdentityCaptured || leases.calls != 0 {
+				t.Fatalf("first call: exempt=%t err=%v captured=%t lease reads=%d", exempt, err, req.Client.IdentityCaptured, leases.calls)
+			}
+			next := func(*pipeline.Request) (*pipeline.Response, error) { return nil, nil }
+			for range 2 {
+				if _, err := st.Serve(req, next); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !slices.Equal(req.Client.GroupIDs, []string{"laptop"}) || !slices.Equal(req.Client.MACs, []string{"02:00:00:00:00:10"}) || leases.calls != 1 {
+				t.Fatalf("identifying call did not fill the lease MAC once: lease reads=%d client=%+v", leases.calls, req.Client)
+			}
+		})
 	}
 }
 

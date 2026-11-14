@@ -124,7 +124,6 @@ func (s *Stage) identify(req *pipeline.Request) (*identification, error) {
 	if at.IsZero() {
 		at = s.now()
 	}
-	leaseFill := false
 	if (s.Inventory != nil || s.CaptureInventory != nil || s.Hostnames != nil || s.FallbackHostnames != nil || s.LeaseMACs != nil || req.Serving != nil) && !req.Client.IdentityCaptured {
 		var snapshot *inventory.Snapshot
 		if s.CaptureInventory != nil {
@@ -145,7 +144,6 @@ func (s *Stage) identify(req *pipeline.Request) (*identification, error) {
 			req.Client.MACs, req.Client.Names, req.Client.Tags = c.MACs, c.Names(), c.Tags
 			req.Client.InventorySource = c.Source
 		}
-		leaseFill = len(req.Client.MACs) == 0 && s.LeaseMACs != nil
 		if s.Hostnames != nil {
 			names := append([]string(nil), req.Client.Names...)
 			req.Client.Names = append(names, s.Hostnames.Hostnames(req.Client.Addr.Addr())...)
@@ -172,10 +170,14 @@ func (s *Stage) identify(req *pipeline.Request) (*identification, error) {
 		}
 		return nil, nil
 	}
-	// The lease fill runs once, with the identity it completes, and only when
-	// the captured index has a ClientGroup mac matcher: a query no mac
-	// matcher can select never reads the lease snapshots (D397).
-	if leaseFill && ix.MatchesMACs() {
+	// The lease fill runs once, with the first identification of the
+	// request, and only when the captured index has a ClientGroup mac
+	// matcher: a query no mac matcher can select never reads the lease
+	// snapshots (D397). An earlier call that captured the identity but
+	// returned without an identification (no index yet, or a failed index
+	// capture) leaves the fill to the call that identifies; once identified,
+	// later calls reuse that identification and never fill again.
+	if s.LeaseMACs != nil && req.Client.IdentityCaptured && len(req.Client.MACs) == 0 && ix.MatchesMACs() {
 		if mac, ok := s.LeaseMACs.LeaseMAC(req.Client.Addr.Addr(), at); ok {
 			req.Client.MACs = []string{mac}
 			// Private grants are bound to the source that observed the
