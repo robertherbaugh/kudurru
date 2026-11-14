@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
 )
@@ -202,6 +204,65 @@ func TestProbeWaitsForReadinessBeforeResending(t *testing.T) {
 	}
 	if starts.Load() != 2 || readiness.Load() != 10 {
 		t.Fatalf("operation sent %d times, readiness probed %d times", starts.Load(), readiness.Load())
+	}
+}
+
+// A browser sign-in start is charged against its admission lane on every
+// send, and the charge's own commit can leave the next generation pending
+// (a node under load takes longer than the capture wait to prepare it).
+// The walk never sends it more often than the lane admits in one window:
+// after the last admitted send it waits for the window to pass before it
+// sends again, so that a slow node never answers 429 rate_limited.
+func TestProbeStaysWithinTheSignInAdmissionLimit(t *testing.T) {
+	window := 300 * time.Millisecond
+	previous := admissionWindow
+	admissionWindow = window
+	t.Cleanup(func() { admissionWindow = previous })
+	var (
+		mu     sync.Mutex
+		used   int
+		last   time.Time
+		starts int
+	)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != api.BasePath+"/auth/oidc/refusal-probe/start" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		// requestlimit's rule: a send within the window of the previous
+		// one is counted, and a full lane admits nothing until a whole
+		// window has passed after its last send.
+		now := time.Now()
+		if now.Sub(last) > window {
+			used = 0
+		}
+		if used >= admissionBudget["oidcStart"] {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error":{"key":"rate_limited","message":"too many login requests; try again later"}}`))
+			return
+		}
+		used, last = used+1, now
+		starts++
+		if starts <= 7 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"key":"generation_pending","message":"m","hint":"h"}}`))
+			return
+		}
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":{"key":"unavailable","message":"captured browser provider login unavailable","hint":"h"}}`))
+	}))
+	defer server.Close()
+	c := Client{HTTP: server.Client(), Base: server.URL}
+	answer, err := c.Probe(t.Context(), Operation{Method: http.MethodGet, Path: "/auth/oidc/{idp}/start", ID: "oidcStart"})
+	if err != nil || answer.Key != api.KeyUnavailable {
+		t.Fatalf("answer %v, %v after %d admitted sends", answer, err, starts)
+	}
+	if starts != 8 {
+		t.Fatalf("operation admitted %d times, want 8", starts)
 	}
 }
 
