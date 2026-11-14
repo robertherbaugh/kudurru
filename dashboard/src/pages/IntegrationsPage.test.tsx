@@ -73,6 +73,44 @@ describe('IntegrationsPage', () => {
     expect(within(office).getByText('file')).toBeInTheDocument();
   });
 
+  it('deletes the selected instances with one batch per namespace, after naming each one’s deletion policy', async () => {
+    const m = mockIntegrations();
+    m.objects.push(
+      { apiVersion: 'kudurru.io/v1alpha1', kind: 'Integration', metadata: { name: 'peer', namespace: 'default', uid: 'uid-peer', resourceVersion: '12', annotations: { 'kudurru.io/managed-by': 'api' } }, spec: { type: 'webhook', webhook: { url: 'https://peer.example/' } } },
+      { apiVersion: 'kudurru.io/v1alpha1', kind: 'Integration', metadata: { name: 'lab', namespace: 'lab', uid: 'uid-lab', resourceVersion: '13', annotations: { 'kudurru.io/managed-by': 'api' } }, spec: { type: 'webhook', webhook: { url: 'https://lab.example/' } } },
+    );
+    const seen = requests();
+    renderWithApp(<IntegrationsPage />, { route: '/integrations' });
+    const table = await screen.findByRole('table', { name: 'Integrations' });
+    await screen.findByTestId('integration-lab/lab');
+    // The file-managed instance cannot be selected.
+    expect(within(screen.getByTestId('integration-default/office')).getByRole('checkbox')).toBeDisabled();
+    for (const key of ['default/public-dns', 'default/peer', 'lab/lab']) fireEvent.click(within(screen.getByTestId(`integration-${key}`)).getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete 3 selected' }));
+    const d = await screen.findByRole('dialog');
+    expect(d).toHaveTextContent('Delete 3 integrations?');
+    expect(within(d).getByText('default/public-dns').closest('li')).toHaveTextContent(/Delete: stays terminating/);
+    expect(within(d).getByText('default/peer').closest('li')).toHaveTextContent(/Retain: removed at once/);
+    fireEvent.click(within(d).getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    const batches = m.calls.filter((c) => c.path === '/api/v1/integrations:batchDelete').map((c) => c.body);
+    expect(batches).toEqual([{ names: ['peer', 'public-dns'], namespace: 'default' }, { names: ['lab'], namespace: 'lab' }]);
+    expect(seen.filter((p) => p.startsWith('POST') && p.includes('batchDelete'))).toHaveLength(2);
+    // Retain instances are gone; the Delete instance stays terminating.
+    expect(m.objects.map((o) => `${o.metadata.namespace}/${o.metadata.name}`).sort()).toEqual(['default/office', 'default/public-dns']);
+    expect(m.objects.find((o) => o.metadata.name === 'public-dns')?.metadata.deletionTimestamp).toBeTruthy();
+    expect(table).toBeInTheDocument();
+  });
+
+  it('offers no batch delete without integrations.delete or in static mode', async () => {
+    cluster({ readOnly: true });
+    renderWithApp(<IntegrationsPage />, { route: '/integrations' });
+    const row = await screen.findByTestId('integration-default/public-dns');
+    fireEvent.click(within(row).getByRole('checkbox'));
+    const del = await screen.findByRole('button', { name: 'Delete 1 selected' });
+    expect(del).toHaveAttribute('aria-disabled', 'true');
+  });
+
   it('asks for nothing without integrations.read', async () => {
     const seen = requests();
     renderWithApp(<IntegrationsPage />, { route: '/integrations', user: 'viewer' });
