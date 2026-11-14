@@ -3,12 +3,15 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/miekg/dns"
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
@@ -101,9 +104,15 @@ func (s *servingRuntime) forwardUpdate(req *pipeline.Request, apex string) (*pip
 		return response, true
 	}
 	now := time.Now()
+	// servfail answers SERVFAIL and logs why: the operator sees each forwarded
+	// UPDATE whose outcome the client cannot tell from the answer.
+	servfail := func(stage string, err error) (*pipeline.Response, bool) {
+		slog.Warn("forwarded DNS UPDATE answered SERVFAIL", "zone", apex, "stage", stage, "elapsed", time.Since(now).Round(time.Millisecond), "error", err)
+		return reply(dns.RcodeServerFailure)
+	}
 	owner, err := servingdns.Component[*servingbuild.RuntimeOwner](req, "runtime")
 	if err != nil || owner.Zones() == nil {
-		return reply(dns.RcodeServerFailure)
+		return servfail("runtime", err)
 	}
 	native, verified := dnsserver.VerifiedTSIGFor(req, now)
 	bound := memberForwardUpdateTimeout
@@ -128,7 +137,7 @@ func (s *servingRuntime) forwardUpdate(req *pipeline.Request, apex string) (*pip
 		}
 	}()
 	var wire []byte
-	commandID := uuid.NewString()
+	var commandID string
 	var result memberUpdateResult
 	for {
 		route := owner.Zones().Zones(time.Now()).Match(apex)
@@ -148,7 +157,10 @@ func (s *servingRuntime) forwardUpdate(req *pipeline.Request, apex string) (*pip
 			if wire == nil {
 				msg := native.Message()
 				if msg == nil {
-					return reply(dns.RcodeServerFailure)
+					return servfail("message", nil)
+				}
+				if commandID, err = memberUpdateCommandID(identity, req.Client.Proto.String(), msg); err != nil {
+					return reply(dns.RcodeFormatError)
 				}
 				extra := msg.Extra[:0]
 				for _, rr := range msg.Extra {
@@ -178,7 +190,11 @@ func (s *servingRuntime) forwardUpdate(req *pipeline.Request, apex string) (*pip
 			// section 4.5 directs the requestor to try another server on
 			// SERVFAIL.
 			if !errors.Is(err, replication.ErrCAS) || request != nil && !errors.Is(err, clusterreplica.ErrNotSent) {
-				return reply(dns.RcodeServerFailure)
+				stage := "capture"
+				if request != nil {
+					stage = "forward"
+				}
+				return servfail(stage, err)
 			}
 		}
 		// This node installed a newer commit (in a burst, usually the
@@ -195,17 +211,45 @@ func (s *servingRuntime) forwardUpdate(req *pipeline.Request, apex string) (*pip
 		}
 		lease, next, err := s.awaitFollowerPublication(ctx, previous)
 		if err != nil {
-			return reply(dns.RcodeServerFailure)
+			return servfail("await publication", err)
 		}
 		if held != nil {
 			held.Release()
 		}
 		held = lease
 		if token, err = lease.SourceToken(); err != nil || token.Authority().Mode != replication.Follower {
-			return reply(dns.RcodeServerFailure)
+			return servfail("source", err)
 		}
 		owner = next
 	}
+}
+
+// memberUpdateCommandID derives a forwarded UPDATE's command ID, which is its
+// retry identity in the zone's receipt ledger, from the exact signed request:
+// the admitted key identity, the transport and the whole message with its
+// TSIG record (message ID, time signed and MAC included). A client that got
+// SERVFAIL, outcome unknown, and sends the same signed message again, to
+// this follower or to another one, therefore reaches the primary with the
+// same retry identity: if the first one committed, the repeat is answered
+// from its retained outcome and is not applied again (D381). A message that
+// was signed again is a new request and is decided again, as on any server.
+func memberUpdateCommandID(identity dnsserver.TSIGIdentity, transport string, signed *dns.Msg) (string, error) {
+	if signed == nil || signed.IsTsig() == nil {
+		return "", clusterreplica.ErrProtocol
+	}
+	signed.Compress = false
+	wire, err := signed.Pack()
+	if err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	for _, field := range [][]byte{[]byte(memberDNSUpdate), []byte(identity.Key), []byte(identity.Algorithm), []byte(identity.CredentialVersion), []byte(transport), wire} {
+		var size [8]byte
+		binary.BigEndian.PutUint64(size[:], uint64(len(field)))
+		h.Write(size[:])
+		h.Write(field)
+	}
+	return "dns-update-" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // sendMemberUpdate sends one dns.update member command for the follower's
@@ -319,10 +363,14 @@ func (s *servingRuntime) executeMemberUpdate(ctx context.Context, request *sqlit
 	defer release()
 	response, releaseLease, err := s.runMemberUpdate(bound, status.Writer, command.ID, msg, proto, claim, in)
 	if err != nil {
+		slog.Warn("forwarded DNS UPDATE not answered", "error", err)
 		return err
 	}
 	defer releaseLease()
 	defer response.Close()
+	if s.memberUpdateAnswered != nil {
+		s.memberUpdateAnswered(bound)
+	}
 	body, err := json.Marshal(memberUpdateResult{Rcode: response.Msg.Rcode})
 	if err != nil {
 		return err
@@ -365,19 +413,20 @@ func (s *servingRuntime) executeMemberUpdate(ctx context.Context, request *sqlit
 // or its zone is briefly not admitted for updates, and captureUpdate refuses
 // it with SERVFAIL before any admission: most of a burst of UPDATEs through a
 // follower failed so (D381). A forwarded UPDATE instead waits, inside the
-// member command's bound, until this writer serves a current publication. It
-// runs again only when nothing was decided or committed: when captureUpdate
-// rejected it only because of that publication state (forwardedUpdate.stale),
-// when every compare-and-swap attempt of Apply lost against another writer
-// of the zone and nothing committed (pr.ErrConflict), or when the command ID
-// was already in the receipt ledger and only the publication of its
-// retained outcome failed. It then waits for the next publication first. Every other answer is final, including a commit
-// whose publication failed; the command ID is the retry identity in the
-// zone's receipt ledger throughout, so no attempt can apply twice. The
-// returned release ends the serving lease the answer was computed under.
+// member command's bound, until this writer serves a current publication,
+// and runs again after the next publication when memberUpdateRerun says that
+// its SERVFAIL decided nothing new. The command ID is the retry identity in
+// the zone's receipt ledger throughout, so no attempt can apply twice: once
+// an attempt committed, every later attempt reads that retained outcome, and
+// only that outcome may answer (otherwise the answer is SERVFAIL, outcome
+// unknown). The returned release ends the serving lease the answer was
+// computed under.
 func (s *servingRuntime) runMemberUpdate(ctx context.Context, writer pr.PublicationFence, commandID string, msg *dns.Msg, proto pipeline.Proto, claim clusterreplica.SubjectRef, in memberUpdate) (*pipeline.Response, func(), error) {
 	target := serving.TermActivation{Term: writer.Term, Incarnation: writer.Incarnation}
 	var previous *serving.Bundle
+	// committed is set once an attempt committed this command and only the
+	// publication of that commit failed.
+	committed := false
 	for {
 		if previous != nil {
 			// The last attempt's publication is still served: wait until it
@@ -423,23 +472,71 @@ func (s *servingRuntime) runMemberUpdate(ctx context.Context, writer pr.Publicat
 			lease.Release()
 			return nil, nil, clusterreplica.ErrProtocol
 		}
-		// Apply also refuses, without committing, when every one of its
-		// compare-and-swap attempts lost against another writer of the zone
-		// (the node's own status and lifecycle writes follow each commit).
-		lost := applied != nil && !applied.Committed && errors.Is(applied.Err, pr.ErrConflict)
-		// A command ID the zone's receipt ledger already holds commits
-		// nothing again: Apply only publishes the retained outcome, and that
-		// publication can meet a replaced writer publication ("requested term
-		// superseded"; 2 of 15 HA-OPEN6 fix-diag04 runs of
-		// TestRootMemberUpdateKeyIdentityAndRetryActualHTTP). The retained
-		// answer is read again on the next publication.
-		replay := applied != nil && applied.Deduplicated && !applied.Published
-		if (forwarded.stale || lost || replay) && response.Msg.Rcode == dns.RcodeServerFailure {
+		if applied != nil && applied.Committed && applied.PublishFailed {
+			committed = true
+		}
+		if memberUpdateRerun(forwarded.stale, applied, response.Msg.Rcode) {
 			previous = captured.Bundle()
 			response.Close()
 			lease.Release()
 			continue
 		}
+		if response.Msg.Rcode == dns.RcodeServerFailure {
+			var cause error
+			if applied != nil {
+				cause = applied.Err
+			}
+			slog.Warn("forwarded DNS UPDATE answered SERVFAIL", "committed", applied != nil && applied.Committed, "error", cause)
+		}
+		if committed && !memberUpdateRetained(applied, response.Msg.Rcode) {
+			slog.Warn("forwarded DNS UPDATE committed earlier; answering SERVFAIL instead of a later attempt's answer", "rcode", dns.RcodeToString[response.Msg.Rcode])
+			// An earlier attempt committed this command. Only the retained
+			// outcome read from the receipt ledger may answer; any other
+			// answer (a key or grant that changed since, a zone that began
+			// retiring) would deny an applied update. Its outcome is unknown
+			// to this attempt, so it answers SERVFAIL.
+			response.Msg.Rcode = dns.RcodeServerFailure
+		}
 		return response, lease.Release, nil
 	}
+}
+
+// memberUpdateRerun reports whether a forwarded UPDATE's SERVFAIL decided
+// nothing that its command ID does not already retain, so that the primary
+// may run the same command again on its next publication (D381):
+//
+//   - stale: captureUpdate rejected it only because its lease was not this
+//     node's current writer publication, its keyring was not current or the
+//     zone was not admitted for updates at that moment, before any admission;
+//   - every compare-and-swap attempt of Apply lost against another writer of
+//     the zone and nothing was committed (pr.ErrConflict);
+//   - Apply decided it, or found its command ID already in the receipt
+//     ledger, and only the zone's publication failed (PublishFailed): a
+//     commit whose publication failed, the publication of a retained
+//     outcome ("serving: requested term superseded"), or the recovery
+//     publication of an earlier commit.
+//
+// Every other answer is final. In particular a replayed command ID whose
+// admission refused (Deduplicated without PublishFailed) is not run again:
+// its cause does not clear by waiting.
+func memberUpdateRerun(stale bool, applied *pr.UpdateOutcome, rcode int) bool {
+	if rcode != dns.RcodeServerFailure {
+		return false
+	}
+	if stale {
+		return true
+	}
+	if applied == nil {
+		return false
+	}
+	lost := !applied.Committed && errors.Is(applied.Err, pr.ErrConflict)
+	return lost || applied.PublishFailed
+}
+
+// memberUpdateRetained reports whether an attempt answered with the retained
+// outcome of its command ID: the receipt ledger held it and its publication
+// succeeded. The ledger retains only committed updates, so that answer is
+// NOERROR.
+func memberUpdateRetained(applied *pr.UpdateOutcome, rcode int) bool {
+	return applied != nil && applied.Deduplicated && applied.Published && applied.Err == nil && rcode == dns.RcodeSuccess
 }

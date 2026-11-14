@@ -145,6 +145,11 @@ type servingRuntime struct {
 	// relays the answer; tests only. Nil does nothing.
 	memberRelay func(context.Context)
 
+	// memberUpdateAnswered runs on the primary after a forwarded UPDATE was
+	// decided and before its answer is acknowledged to the follower; tests
+	// only. Nil does nothing.
+	memberUpdateAnswered func(context.Context)
+
 	// anchorCaptureRead runs right after a root anchor operation read its
 	// image, before it checks that image is still current; tests only. Nil
 	// does nothing.
