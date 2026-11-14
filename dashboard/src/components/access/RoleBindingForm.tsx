@@ -19,7 +19,6 @@
 // one of them, in their stored order.
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
-import { Card } from '@astryxdesign/core/Card';
 import { FieldStatus } from '@astryxdesign/core/FieldStatus';
 import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
@@ -32,6 +31,7 @@ import { iamOutcomeUnknown, managerOf, operatorAnnotations } from '../../lib/iam
 import { ROLES, SCOPE_KINDS, type ScopeKind } from '../../lib/rbac';
 import { zoneGroupError } from '../../lib/zones';
 import { EnumSelect, type EnumOption } from '../fields/EnumSelect';
+import { FieldGroup } from '../fields/FieldGroup';
 import { ObjectRefPicker } from '../fields/ObjectRefPicker';
 import { TextField } from '../fields/TextField';
 import { ErrorBanner, useNotify } from '../Feedback';
@@ -322,14 +322,12 @@ function RoleBindingDialog({ onClose, review }: { onClose: () => void; review?: 
         );
         if (d.subjects.length === 1) return <VStack key={i} gap={3}>{fields}</VStack>;
         return (
-          <Card key={i} padding={3} role="group" aria-label={`Subject ${i + 1}`}>
-            <VStack gap={2}>
-              {fields}
-              <HStack gap={2}>
-                <Button label={`Remove subject ${i + 1}`} size="sm" variant="ghost" onClick={() => setD((prev) => ({ ...prev, subjects: prev.subjects.filter((_, j) => j !== i) }))} />
-              </HStack>
-            </VStack>
-          </Card>
+          <FieldGroup key={i} label={`Subject ${i + 1}`} isLabelHidden>
+            {fields}
+            <HStack gap={2}>
+              <Button label={`Remove subject ${i + 1}`} size="sm" variant="ghost" onClick={() => setD((prev) => ({ ...prev, subjects: prev.subjects.filter((_, j) => j !== i) }))} />
+            </HStack>
+          </FieldGroup>
         );
       })}
       <HStack gap={2}>
