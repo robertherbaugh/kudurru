@@ -13475,7 +13475,13 @@ commits.
   change to a shared path needs the full suite. D399 is being redone as
   package D399-REDO, with the full `./cmd/kudurru` suite and the enrolled
   e2e tests as acceptance; **it is not at this head and D399 has no
-  decision row.**
+  decision row.** At this head `docs/deploy/sqlite-join.md` (line 193,
+  restored with HA-OPEN6 by `832dab99`) and a comment in
+  `cmd/kudurru/serve_zone_change_mount_test.go` (line 106) still cite D399,
+  and two comments in `cmd/kudurru/serving_member_update_stale_test.go`
+  (lines 326 and 334) cite D405; neither decision has a row, so these
+  references dangle until D399-REDO and PUBLISH-STARVATION land or the text
+  is reworded (a follow-up row records it).
 - **D405, publication starvation (PUBLISH-STARVATION).** Five of its
   commits that did not need D399 (the zone chunk sweep `5b200f28`, Wake
   coalescing `f66940d5`, and `a141541e`, `5e8dd096`, `53eea181`; at this
