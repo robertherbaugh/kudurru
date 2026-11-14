@@ -3,6 +3,7 @@ package replica
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/store/follower"
@@ -40,6 +41,10 @@ type CoordinatorOptions struct {
 	// Default time.Since(start), including Go's monotonic clock. Tests inject it.
 	Elapsed func() time.Duration
 	WallNow func() time.Time
+	// MaxPullHold bounds how long one scheduled pull waits for the forwarded
+	// requests that hold pulls (HoldPulls). Default Timeout (30 seconds, the
+	// lifetime of a follower's forwarded request).
+	MaxPullHold time.Duration
 	// ObservePull, when set, receives the result of every scheduled or
 	// explicit pull, after the loss window is updated and before Pull
 	// returns. It is diagnostic only: it must not block, retry, or call back
@@ -56,7 +61,23 @@ type Coordinator struct {
 	since, lastMiss, lastTick time.Duration
 	misses                    int
 	reason                    string
+	hold                      pullHold
 }
+
+// pullHold lets a follower's forwarded requests keep the scheduled pull from
+// installing while they run (HoldPulls).
+type pullHold struct {
+	mu      sync.Mutex
+	holders int
+	// idle is closed when the last holder releases; nil without holders.
+	idle chan struct{}
+	// pulling is closed when the running pull ends; nil while none runs.
+	pulling chan struct{}
+}
+
+// errPullHeld ends one scheduled pull attempt that a new holder arrived
+// before; the scheduled pull waits again within its bound.
+var errPullHeld = errors.New("replica: pull held by a forwarded request")
 
 // CoordinatorStatus distinguishes installed data, served data and reachability.
 type CoordinatorStatus struct {
@@ -94,6 +115,9 @@ func NewCoordinator(o CoordinatorOptions) (*Coordinator, error) {
 	}
 	if o.Timeout <= 0 {
 		o.Timeout = 30 * time.Second
+	}
+	if o.MaxPullHold <= 0 {
+		o.MaxPullHold = o.Timeout
 	}
 	if o.Elapsed == nil {
 		start := time.Now()
@@ -138,13 +162,114 @@ func (c *Coordinator) tickLocked() time.Duration {
 	return now
 }
 
+// HoldPulls keeps this follower's scheduled pull from installing until the
+// returned release runs (D375). A follower forwards each item of a
+// multi-item request as its own member command on the source that the
+// request captured when it began, and refuses the remaining items once its
+// source changes; its own scheduled pull, which installs the request's
+// earlier items, was what cut such requests. A holder never applies
+// anything itself and nothing is retried: the hold only delays the next
+// install. A running pull is waited for (within ctx) before the hold is
+// granted, so a request that captures its source after HoldPulls returns
+// captures the installed one. The scheduled pull waits for every holder,
+// but at most MaxPullHold; then it installs anyway, and a request still
+// running is cut as before. Explicit pulls (Pull) do not wait for holders.
+func (c *Coordinator) HoldPulls(ctx context.Context) (func(), error) {
+	if ctx == nil {
+		return nil, replication.ErrInvalid
+	}
+	for {
+		c.hold.mu.Lock()
+		if running := c.hold.pulling; running != nil {
+			c.hold.mu.Unlock()
+			select {
+			case <-running:
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		if c.hold.holders == 0 {
+			c.hold.idle = make(chan struct{})
+		}
+		c.hold.holders++
+		c.hold.mu.Unlock()
+		var once sync.Once
+		return func() {
+			once.Do(func() {
+				c.hold.mu.Lock()
+				defer c.hold.mu.Unlock()
+				c.hold.holders--
+				if c.hold.holders == 0 {
+					close(c.hold.idle)
+					c.hold.idle = nil
+				}
+			})
+		}, nil
+	}
+}
+
+// beginPull marks a pull as running unless admit refuses it, under the hold
+// lock, so that no holder is granted between the check and the install.
+func (c *Coordinator) beginPull(admit func(holders int) bool) (func(), bool) {
+	c.hold.mu.Lock()
+	defer c.hold.mu.Unlock()
+	if admit != nil && !admit(c.hold.holders) {
+		return nil, false
+	}
+	done := make(chan struct{})
+	c.hold.pulling = done
+	return func() {
+		c.hold.mu.Lock()
+		defer c.hold.mu.Unlock()
+		c.hold.pulling = nil
+		close(done)
+	}, true
+}
+
+// scheduledPull waits, at most MaxPullHold, until no forwarded request holds
+// pulls, then pulls.
+func (c *Coordinator) scheduledPull(ctx context.Context) error {
+	limit := time.NewTimer(c.opts.MaxPullHold)
+	defer limit.Stop()
+	expired := false
+	for {
+		c.hold.mu.Lock()
+		idle := c.hold.idle
+		c.hold.mu.Unlock()
+		if idle != nil && !expired {
+			select {
+			case <-idle:
+			case <-limit.C:
+				expired = true
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		err := c.pull(ctx, func(holders int) bool { return holders == 0 || expired })
+		if !errors.Is(err, errPullHeld) {
+			return err
+		}
+	}
+}
+
 // Pull serializes installs and updates continuous network-loss eligibility.
+// It does not wait for HoldPulls holders.
 func (c *Coordinator) Pull(ctx context.Context) error {
+	return c.pull(ctx, nil)
+}
+
+func (c *Coordinator) pull(ctx context.Context, admit func(holders int) bool) error {
 	ctx, release, err := c.enter(ctx)
 	if err != nil {
 		return err
 	}
 	defer release()
+	end, ok := c.beginPull(admit)
+	if !ok {
+		return errPullHeld
+	}
+	defer end()
 	// Primary processes do not pull their own images. They still need actual
 	// enrolled-peer term contact after a partition. This concrete metadata path
 	// never contributes a missed-pull window or promotion eligibility. A fence
@@ -293,7 +418,7 @@ func (c *Coordinator) Run(ctx context.Context) error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		_ = c.Pull(ctx)
+		_ = c.scheduledPull(ctx)
 		timer := time.NewTimer(c.opts.Interval)
 		select {
 		case <-ctx.Done():

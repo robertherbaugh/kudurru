@@ -272,11 +272,10 @@ func TestRootMemberForwardApplyOriginalSourceCutRefusesItems(t *testing.T) {
 		if item.Result != api.ResultError || item.ErrorKey != api.KeyUnavailable || !strings.HasPrefix(item.Error, "the follower's source changed") {
 			t.Fatalf("item after the source cut: %+v", item)
 		}
-		// The refusal says what to do: send the rest to the primary, by name,
-		// because running the file again through this follower stops the
-		// same way (D375).
+		// The refusal says what to do: send the rest to the primary, by name
+		// (D375).
 		if primary := f.primary.s.opts.Store.Authority().Term.PrimaryName; primary == "" || !strings.Contains(item.Error, "the enrolled primary "+primary) ||
-			!strings.Contains(item.Error, "was not applied") || !strings.Contains(item.Error, "running it again through this follower stops") {
+			!strings.Contains(item.Error, "was not applied") || !strings.Contains(item.Error, "which applies them in one request") {
 			t.Fatalf("item after the source cut does not say what to do: %q", item.Error)
 		}
 	}
