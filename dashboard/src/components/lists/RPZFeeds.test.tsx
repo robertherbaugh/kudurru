@@ -5,6 +5,7 @@
 // sources; static mode and an enrolled follower keep the gating every other
 // list action has.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 import type { BlockList, ClusterInfo, RPZFeed, RPZFeedList } from '../../api/types';
@@ -14,7 +15,7 @@ import { server } from '../../test/setup';
 import { API, renderWithApp } from '../../test/utils';
 import { feedStateView, rpzDraftError, worstFeed } from '../../lib/rpz';
 import { ApiError } from '../../api/client';
-import { RPZ_POLL_MS, RPZ_SETTLING_POLL_MS, rpzPollInterval, rpzSettling, rpzSettlingDelay } from './RPZFeeds';
+import { invalidateRPZFeeds, RPZ_POLL_MS, RPZ_SETTLING_POLL_MS, rpzPollInterval, rpzSettling, rpzSettlingDelay } from './RPZFeeds';
 import ListDetailPage from '../../pages/ListDetailPage';
 import ListsPage from '../../pages/ListsPage';
 import { ListWizardDialog } from '../wizards/ListWizard';
@@ -395,6 +396,35 @@ describe('RPZ helpers', () => {
     query.state.data = expired;
     query.state.dataUpdatedAt = 10;
     expect(rpzPollInterval(query)).toBe(3_000);
+  });
+
+  it('starts the fast reads again after a list or source change, even when the feed reads the same', async () => {
+    const pending = { items: [serving({ state: 'pending', serial: 0 })] };
+    const query = { state: { data: pending as RPZFeedList | undefined, error: null as unknown, dataUpdatedAt: 1, errorUpdatedAt: 0 } };
+    for (let at = 1; at <= 7; at++) {
+      query.state.dataUpdatedAt = at;
+      rpzPollInterval(query);
+    }
+    expect(rpzPollInterval(query)).toBe(RPZ_POLL_MS);
+    // A source's URL changed: the feed is still pending with serial 0, but
+    // its first transfer is due now.
+    await invalidateRPZFeeds(new QueryClient());
+    query.state.dataUpdatedAt = 8;
+    expect(rpzPollInterval(query)).toBe(3_000);
+    query.state.dataUpdatedAt = 9;
+    expect(rpzPollInterval(query)).toBe(3_000);
+    query.state.dataUpdatedAt = 10;
+    expect(rpzPollInterval(query)).toBe(6_000);
+  });
+
+  it('backs off a node that keeps answering 404 for the list', () => {
+    const query = { state: { data: undefined as RPZFeedList | undefined, error: new ApiError(404, 'not_found', 'no such list') as unknown, dataUpdatedAt: 0, errorUpdatedAt: 1 } };
+    const seen: number[] = [];
+    for (let at = 1; at <= 6; at++) {
+      query.state.errorUpdatedAt = at;
+      seen.push(rpzPollInterval(query));
+    }
+    expect(seen).toEqual([3_000, 3_000, 6_000, 12_000, 24_000, 30_000]);
   });
 
   it('picks the feed that most needs attention', () => {

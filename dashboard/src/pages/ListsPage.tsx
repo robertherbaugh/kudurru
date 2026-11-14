@@ -28,7 +28,7 @@ import { formatExact, formatRelative } from '../lib/format';
 import { listHealth } from '../lib/listHealth';
 import { isRPZSource, listPath, sourceEnabled, sourceName, sourcesSummary } from '../lib/lists';
 import { feedStateView, feedsOf, hasEnabledFeed, worstFeed } from '../lib/rpz';
-import { RPZ_KEY, rpzPollInterval } from '../components/lists/RPZFeeds';
+import { invalidateRPZFeeds, rpzPollInterval } from '../components/lists/RPZFeeds';
 import { SCHEMAS } from '../lib/objectSchemas';
 
 function ListSearch() {
@@ -156,7 +156,7 @@ export default function ListsPage() {
   const pollStatus = () => {
     setPolling((n) => n + 1);
     // A created or changed list changes which feeds this node reports.
-    void qc.invalidateQueries({ queryKey: RPZ_KEY });
+    void invalidateRPZFeeds(qc);
   };
   useEffect(() => {
     if (!polling) return undefined;
