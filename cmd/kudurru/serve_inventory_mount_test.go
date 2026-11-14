@@ -225,28 +225,57 @@ func awaitInventoryAnswer(t *testing.T, cfg *config.Config, source, name string,
 // awaitInventoryDNSBefore is awaitInventoryDNS for an answer that only exists
 // until expires (a short lease's match): once expires passes without the
 // answer, it fails at once with why instead of polling on to the generic
-// 30-second failure.
+// 30-second failure, and a query sent at or after expires fails with why even
+// when it is answered as wanted (inventoryAttemptAfter).
 func awaitInventoryDNSBefore(t *testing.T, cfg *config.Config, source, name string, blocked bool, expires time.Time, why string) {
 	t.Helper()
 	awaitInventoryAnswerBefore(t, cfg, source, name, blocked, uniFiHostnameAnswer, expires, why)
+}
+
+// inventoryAttempt is what one query of awaitInventoryAnswerBefore decides.
+type inventoryAttempt int
+
+const (
+	inventoryRetry   inventoryAttempt = iota // ask again
+	inventoryMatched                         // the wanted answer, in time
+	inventoryExpired                         // the expiry passed: fail with why
+)
+
+// inventoryAttemptAfter decides one query that was sent at sent and whose
+// answer (matched or not) was seen at now, against an expiry (zero: none). A
+// wanted answer to a query sent before the expiry counts even when it arrives
+// after it: the server matched at its own receive time. A query sent at or
+// after the expiry fails whatever it is answered, so a wanted answer from an
+// expired lease never passes; a query sent in time whose answer is not the
+// wanted one fails once the expiry has passed.
+func inventoryAttemptAfter(sent, now, expires time.Time, matched bool) inventoryAttempt {
+	if !expires.IsZero() && !sent.Before(expires) {
+		return inventoryExpired
+	}
+	if matched {
+		return inventoryMatched
+	}
+	if !expires.IsZero() && !now.Before(expires) {
+		return inventoryExpired
+	}
+	return inventoryRetry
 }
 
 func awaitInventoryAnswerBefore(t *testing.T, cfg *config.Config, source, name string, blocked bool, answer func(*dns.Msg, bool) bool, expires time.Time, why string) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for {
+		sent := time.Now()
 		a, err := uniFiHostnameExchange(t.Context(), cfg, inventoryEdgeSecret, source, "edge-udp", name, true)
-		if err == nil && answer(a, blocked) {
-			// The server matched at its own request time, before the
-			// expiry, even when the answer arrives just after it.
+		switch inventoryAttemptAfter(sent, time.Now(), expires, err == nil && answer(a, blocked)) {
+		case inventoryMatched:
 			return
-		}
-		if !expires.IsZero() && !time.Now().Before(expires) {
+		case inventoryExpired:
 			code := -1
 			if a != nil {
 				code = a.Rcode
 			}
-			t.Fatalf("%s: UDP query from %s for %s still rcode=%d transport_error=%t at the expiry, want blocked=%t", why, source, name, code, err != nil, blocked)
+			t.Fatalf("%s: UDP query from %s for %s (sent %s from the expiry) answered rcode=%d transport_error=%t, want blocked=%t before the expiry", why, source, name, sent.Sub(expires).Round(time.Millisecond), code, err != nil, blocked)
 		}
 		if time.Now().After(deadline) {
 			code := -1
@@ -260,6 +289,33 @@ func awaitInventoryAnswerBefore(t *testing.T, cfg *config.Config, source, name s
 			t.Fatalf("UDP query from %s for %s: rcode=%d transport_error=%t, want blocked=%t (control name rcode=%d)", source, name, code, err != nil, blocked, control)
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// The short lease's expiry decision: a wanted answer counts only for a query
+// sent before the expiry, and the wait ends with why once the expiry passes.
+func TestInventoryAttemptAfterExpiry(t *testing.T) {
+	expires := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+	before, after := expires.Add(-time.Millisecond), expires.Add(time.Millisecond)
+	for _, c := range []struct {
+		name           string
+		sent, now, exp time.Time
+		matched        bool
+		want           inventoryAttempt
+	}{
+		{"no expiry, matched", after, after, time.Time{}, true, inventoryMatched},
+		{"no expiry, not yet", after, after, time.Time{}, false, inventoryRetry},
+		{"matched in time", before, before, expires, true, inventoryMatched},
+		{"sent in time, matched answer arrives late", before, after, expires, true, inventoryMatched},
+		{"not yet, in time", before, before, expires, false, inventoryRetry},
+		{"sent in time, unmatched answer arrives late", before, after, expires, false, inventoryExpired},
+		{"sent at the expiry, matched", expires, expires, expires, true, inventoryExpired},
+		{"sent after the expiry, matched", after, after, expires, true, inventoryExpired},
+		{"sent after the expiry, unmatched", after, after, expires, false, inventoryExpired},
+	} {
+		if got := inventoryAttemptAfter(c.sent, c.now, c.exp, c.matched); got != c.want {
+			t.Errorf("%s: got %d, want %d", c.name, got, c.want)
+		}
 	}
 }
 
