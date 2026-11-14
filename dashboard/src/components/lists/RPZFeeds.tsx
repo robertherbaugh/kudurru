@@ -29,7 +29,8 @@ export const RPZ_POLL_MS = 30_000;
  * How often a read is repeated while it is settling: the node's configuration
  * lacks the list yet (404) or has none (503), or a feed is not serving. A new
  * or changed feed then shows its first transfer within seconds instead of
- * after the next 30 s read.
+ * after the next 30 s read. A read that keeps settling without a change backs
+ * off to 30 s (rpzPollInterval).
  */
 export const RPZ_SETTLING_POLL_MS = 3_000;
 
@@ -47,9 +48,58 @@ export function rpzSettling(data: RPZFeedList | undefined, error: unknown): bool
   return (data?.items ?? []).some((f) => f.state !== 'serving');
 }
 
-/** The refetchInterval of a feed read: fast while it settles, else every 30 s. */
-export function rpzPollInterval(query: { state: { data: RPZFeedList | undefined; error: unknown } }): number {
-  return rpzSettling(query.state.data, query.state.error) ? RPZ_SETTLING_POLL_MS : RPZ_POLL_MS;
+/** The reads at the settling interval before it starts doubling. */
+export const RPZ_SETTLING_FAST_READS = 2;
+
+/**
+ * The settling interval after `reads` consecutive settling reads that showed
+ * no change: RPZ_SETTLING_POLL_MS for the first RPZ_SETTLING_FAST_READS, then
+ * doubling up to RPZ_POLL_MS. A feed that stays expired, unavailable or
+ * pending therefore costs a read every 30 s after about a minute, not every
+ * 3 s for as long as the page is open.
+ */
+export function rpzSettlingDelay(reads: number): number {
+  const doublings = Math.max(0, reads - RPZ_SETTLING_FAST_READS);
+  return Math.min(RPZ_SETTLING_POLL_MS * 2 ** Math.min(doublings, 16), RPZ_POLL_MS);
+}
+
+/** What a settling read reports, so progress (a feed changing state or serial, a list change) restarts the fast reads. */
+function settlingSignature(data: RPZFeedList | undefined, error: unknown): string {
+  if (error instanceof ApiError) return `error:${error.status}`;
+  return JSON.stringify((data?.items ?? []).map((f) => [f.namespace, f.list, f.source, f.origin, f.state, f.serial, f.reason]));
+}
+
+interface SettlingStreak {
+  at: number;
+  signature: string;
+  reads: number;
+}
+
+/** Per query (the cache entry), its run of unchanged settling reads. */
+const streaks = new WeakMap<object, SettlingStreak>();
+
+type PolledQuery = { state: { data: RPZFeedList | undefined; error: unknown; dataUpdatedAt?: number; errorUpdatedAt?: number } };
+
+/**
+ * The refetchInterval of a feed read: every 30 s while every feed serves;
+ * while it settles, fast at first and backing off while nothing changes
+ * (rpzSettlingDelay). React Query evaluates this on every observer update,
+ * so a read is counted once, by its update time.
+ */
+export function rpzPollInterval(query: PolledQuery): number {
+  const { data, error } = query.state;
+  if (!rpzSettling(data, error)) {
+    streaks.delete(query);
+    return RPZ_POLL_MS;
+  }
+  const at = Math.max(query.state.dataUpdatedAt ?? 0, query.state.errorUpdatedAt ?? 0);
+  const signature = settlingSignature(data, error);
+  const prev = streaks.get(query);
+  let reads = prev?.reads ?? 0;
+  if (!prev || prev.signature !== signature) reads = 1;
+  else if (prev.at !== at) reads += 1;
+  streaks.set(query, { at, signature, reads });
+  return rpzSettlingDelay(reads);
 }
 
 /** This node's feeds of one list (shared by the feed section and the list header). */

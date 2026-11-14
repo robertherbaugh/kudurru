@@ -7,14 +7,14 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
-import type { BlockList, ClusterInfo, RPZFeed } from '../../api/types';
+import type { BlockList, ClusterInfo, RPZFeed, RPZFeedList } from '../../api/types';
 import { mockDB } from '../../mocks/handlers';
 import { getSelector, pick } from '../../test/controls';
 import { server } from '../../test/setup';
 import { API, renderWithApp } from '../../test/utils';
 import { feedStateView, rpzDraftError, worstFeed } from '../../lib/rpz';
 import { ApiError } from '../../api/client';
-import { RPZ_POLL_MS, RPZ_SETTLING_POLL_MS, rpzSettling } from './RPZFeeds';
+import { RPZ_POLL_MS, RPZ_SETTLING_POLL_MS, rpzPollInterval, rpzSettling, rpzSettlingDelay } from './RPZFeeds';
 import ListDetailPage from '../../pages/ListDetailPage';
 import ListsPage from '../../pages/ListsPage';
 import { ListWizardDialog } from '../wizards/ListWizard';
@@ -370,6 +370,31 @@ describe('RPZ helpers', () => {
     expect(rpzSettling({ items: [serving()] }, null)).toBe(false);
     expect(rpzSettling({ items: [serving(), { state: 'pending' }] }, null)).toBe(true);
     expect(RPZ_SETTLING_POLL_MS).toBeLessThan(RPZ_POLL_MS);
+  });
+
+  it('backs off while a read keeps settling without a change, and is fast again after one', () => {
+    expect([1, 2, 3, 4, 5, 6, 50].map(rpzSettlingDelay)).toEqual([3_000, 3_000, 6_000, 12_000, 24_000, 30_000, 30_000]);
+    const expired = { items: [serving({ state: 'expired', serial: 7 })] };
+    const query = { state: { data: expired as RPZFeedList | undefined, error: null as unknown, dataUpdatedAt: 1, errorUpdatedAt: 0 } };
+    const seen: number[] = [];
+    for (let at = 1; at <= 7; at++) {
+      query.state.dataUpdatedAt = at;
+      // React Query evaluates the interval on every observer update: a read counts once.
+      seen.push(rpzPollInterval(query));
+      expect(rpzPollInterval(query)).toBe(seen.at(-1));
+    }
+    expect(seen).toEqual([3_000, 3_000, 6_000, 12_000, 24_000, 30_000, 30_000]);
+    // Progress (the feed moved to pending with a new serial) restarts the fast reads.
+    query.state.data = { items: [serving({ state: 'pending', serial: 8 })] };
+    query.state.dataUpdatedAt = 8;
+    expect(rpzPollInterval(query)).toBe(3_000);
+    // Serving: the normal 30 s, and a later settling run starts fast again.
+    query.state.data = { items: [serving()] };
+    query.state.dataUpdatedAt = 9;
+    expect(rpzPollInterval(query)).toBe(RPZ_POLL_MS);
+    query.state.data = expired;
+    query.state.dataUpdatedAt = 10;
+    expect(rpzPollInterval(query)).toBe(3_000);
   });
 
   it('picks the feed that most needs attention', () => {
