@@ -280,6 +280,7 @@ export function schemaError(s: JSONSchema, v: unknown, where: string): string | 
       if (s.pattern) {
         let re: RegExp | null;
         try {
+          // nosemgrep: detect-non-literal-regexp -- the pattern is a field's JSON Schema pattern from this node's provider manifest, not user input; it tests one form value in the operator's own browser
           re = new RegExp(s.pattern);
         } catch {
           re = null;
