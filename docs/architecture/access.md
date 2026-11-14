@@ -245,9 +245,11 @@ Captured again (marked):
 - a sign-out (`POST /auth/logout`): it verifies its credential again in the
   transaction and revokes only its own session;
 - a whole-object write without `If-Match` (`PUT` or `POST` of one object
-  under `/objects`, `api.RecapturableCommand`): the request is the whole
-  document, and the command reads, authorizes and admits the stored object
-  in its own transaction.
+  under `/objects`, `api.RecapturableCommand`) of a `DNSZone`,
+  `DNSRecordSet`, `BlockList`, `ClientGroup`, `Policy` or `Integration`:
+  the request is the whole document, and the command reads, authorizes and
+  admits the stored object in its own transaction (for an `Integration`
+  that includes its secrets authorization and license check).
 
 Never captured again (unmarked), each with the test that states it:
 
@@ -270,8 +272,10 @@ Never captured again (unmarked), each with the test that states it:
 - cluster activation, `join-token` and promotion, bound to a reviewed
   source; OIDC callbacks and browser sign-out, bound to captured provider
   evidence; TSIG keys, factors, tokens, users, role bindings, IAM writers,
-  blocking, notify and every integration operation (whose first no-op holds
-  the integration host's lease barrier and runtime lock).
+  blocking, notify and the integration operations (check, preview, sync,
+  actions, release and delete cleanup, whose first no-op holds the
+  integration host's lease barrier and runtime lock; a whole-object write
+  of an `Integration` is marked, above).
 
 Rules of the recapture itself:
 
