@@ -871,6 +871,8 @@ export interface IamServiceAccount {
   builtinAdmin: boolean;
   /** Number of API tokens it holds. */
   tokens: number;
+  /** The single writer (kudurru.io/managed-by); the reviewed commands change only api. */
+  managedBy?: string;
 }
 
 /** An RBAC scope: cluster, or one zone ("zone" + name). */

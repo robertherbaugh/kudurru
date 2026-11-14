@@ -870,7 +870,12 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 });
   }),
   http.get(`${B}/auth/oidc/:idp/start`, ({ params }) => fail(501, 'not_implemented', `The mock cannot redirect to ${String(params.idp)}`)),
-  http.get(`${B}/auth/tokens`, ({ request }) => guard(request, 'tokens', 'own') ?? ok({ items: db.tokens, continue: '' })),
+  // ?all=true lists every owner's tokens (tokens.read); without it the
+  // caller's own, which the mock approximates as the users' tokens.
+  http.get(`${B}/auth/tokens`, ({ request }) => {
+    if (new URL(request.url).searchParams.get('all') === 'true') return guard(request, 'tokens', 'read') ?? ok({ items: db.tokens, continue: '' });
+    return guard(request, 'tokens', 'own') ?? ok({ items: db.tokens.filter((t) => t.owner.kind !== 'ServiceAccount'), continue: '' });
+  }),
   http.post(`${B}/auth/tokens`, async ({ request }) => {
     const g = guard(request, 'tokens', 'own');
     if (g) return g;
@@ -894,7 +899,8 @@ export const handlers = [
     return ok({ ...t, token: `kdr_${id}_${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}` }, { status: 201 });
   }),
   http.delete(`${B}/auth/tokens/:id`, ({ request, params }) => {
-    const g = guard(request, 'tokens', 'own');
+    // Someone else's token (a service account's) needs tokens.delete.
+    const g = db.tokens.find((t) => t.id === params.id)?.owner.kind === 'ServiceAccount' ? guard(request, 'tokens', 'delete') : guard(request, 'tokens', 'own');
     if (g) return g;
     db.tokens = db.tokens.filter((t) => t.id !== params.id);
     return new HttpResponse(null, { status: 204 });

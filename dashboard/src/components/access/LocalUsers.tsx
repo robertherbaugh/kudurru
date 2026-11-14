@@ -4,7 +4,9 @@
 // password, delete. Each command names the exact UID and resourceVersion of
 // the row the operator chose and is sent once; a 409 asks for a fresh read,
 // an unknown outcome is never sent again. The built-in admin and accounts of
-// other managers stay with `kudurru admin` on the host. A group change, a
+// other managers (GET /iam/users managedBy other than api) stay with
+// `kudurru admin` on the host: their row actions are disabled with the
+// reason. A group change, a
 // disable and a delete end the account's sessions and delete its tokens; the
 // first disable and every delete also keep a permanent revocation record
 // against the cluster's limit (FLOOR_LIMIT_TEXT). On Kubernetes
@@ -22,7 +24,7 @@ import { useState } from 'react';
 import { qk, useApi, useCan, useSession } from '../../api/context';
 import type { IamUser, UpdateLocalUserRequest } from '../../api/types';
 import { formatRelative } from '../../lib/format';
-import { FLOOR_LIMIT_TEXT, groupsError, passwordErrors, subdomainError } from '../../lib/iam';
+import { accountManagerReason, FLOOR_LIMIT_TEXT, groupsError, passwordErrors, subdomainError } from '../../lib/iam';
 import { ErrorBanner, useNotify } from '../Feedback';
 import { cleanList, StringListField } from '../fields/StringListField';
 import { TextField } from '../fields/TextField';
@@ -37,6 +39,8 @@ type Action = 'edit' | 'disable' | 'enable' | 'password' | 'delete';
 /** Why a row's commands are refused whatever the session holds. */
 function rowReason(u: IamUser): string | undefined {
   if (u.builtinAdmin) return 'The built-in admin is changed with kudurru admin on the host';
+  const managed = accountManagerReason(u.managedBy);
+  if (managed) return managed;
   if (!u.uid || !u.resourceVersion) return 'Read the list again: this row has no UID or resourceVersion';
   return undefined;
 }

@@ -180,7 +180,8 @@ kudurru iam sa create-token apps backup-robot --uid UID --expires-in 720h
 `create-token` prints the token once. kudurru keeps only its hash, so it can
 never show it again: store it in your secret manager at once. List the tokens
 with `kudurru api GET '/auth/tokens?all=true'` and revoke one with
-`kudurru api DELETE /auth/tokens/ID`. Issuing a token needs both
+`kudurru api DELETE /auth/tokens/ID`, or use **Tokens…** on the account's
+row under Access > Identity in the dashboard. Issuing a token needs both
 `serviceaccounts.write` and `tokens.write`; the built-in role Admin has them.
 A token never outlives the API token you issue it with: when you sign in with
 an API token, the new token expires no later than yours, even without

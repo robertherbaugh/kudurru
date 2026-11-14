@@ -199,7 +199,7 @@ function ReviewedBindingDialog({ namespace, name, action, onClose }: { namespace
 function DeleteBindingDialog({ doc, title, onClose }: { doc: RoleBindingDocument; title: string; onClose: () => void }) {
   const api = useApi();
   const notify = useNotify();
-  const cmd = useIamCommand('role binding', { isUnknown: roleBindingUnknown });
+  const cmd = useIamCommand('role binding', { isUnknown: roleBindingUnknown, floor: false });
   const submit = async () => {
     const r = await cmd.run((signal) => api.iam.deleteRoleBinding(doc.metadata.namespace ?? '', doc.metadata.name ?? '', { uid: doc.metadata.uid ?? '', resourceVersion: doc.metadata.resourceVersion ?? '' }, signal));
     if (r.ok) {
@@ -237,7 +237,7 @@ function RoleBindingDialog({ onClose, review }: { onClose: () => void; review?: 
   const [touched, setTouched] = useState(false);
   // A create may be sent again after a refusal once the draft changed; a
   // reviewed edit is bound to its read and locked after one.
-  const cmd = useIamCommand('role binding', { retryAfterRefusal: !review, isUnknown: roleBindingUnknown });
+  const cmd = useIamCommand('role binding', { retryAfterRefusal: !review, isUnknown: roleBindingUnknown, floor: false });
   const zones = useQuery({ queryKey: qk.zones, queryFn: () => api.zones.list() });
   const groups = useMemo(() => [...new Set((zones.data?.items ?? []).map((z) => z.zoneGroup).filter((g): g is string => !!g))].sort(), [zones.data]);
   const errors = draftErrors(d);

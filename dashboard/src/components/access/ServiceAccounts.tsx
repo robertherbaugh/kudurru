@@ -5,8 +5,12 @@
 // that read's exact UID (and resourceVersion), once. An issued token's
 // secret exists only in the 201 answer: the dialog shows it once, keeps it
 // only in its own state (never in a query or mutation cache, never logged)
-// and drops it when it closes. Accounts of other managers and the bootstrap
-// account are refused by the server; the dialog says so before sending.
+// and drops it when it closes. Accounts of other managers (managedBy other
+// than api in the list) have their change actions disabled with the reason,
+// the dialog says so again after its fresh read, and the server refuses them.
+// "Tokens…" lists the account's tokens (GET /auth/tokens?all=true, needs
+// tokens.read) and revokes one (DELETE /auth/tokens/{id}, tokens.delete)
+// once per decision, like every other IAM command.
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -17,9 +21,10 @@ import { pixel, proportional, Table, type TableColumn } from '@astryxdesign/core
 import { Text } from '@astryxdesign/core/Text';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useApi, useCan } from '../../api/context';
-import type { CreatedToken, IamServiceAccount, ServiceAccountDocument } from '../../api/types';
-import { FLOOR_LIMIT_TEXT, labelError, managerOf, operatorAnnotations, subdomainError } from '../../lib/iam';
+import { useApi, useCan, useCannotReason } from '../../api/context';
+import type { ApiToken, CreatedToken, IamServiceAccount, ServiceAccountDocument } from '../../api/types';
+import { formatDateTime, formatRelative } from '../../lib/format';
+import { accountManagerReason, FLOOR_LIMIT_TEXT, labelError, managerOf, operatorAnnotations, subdomainError } from '../../lib/iam';
 import { ROLES, SCOPE_KINDS, scopeString } from '../../lib/rbac';
 import { zoneGroupError } from '../../lib/zones';
 import { ErrorBanner, useNotify } from '../Feedback';
@@ -32,7 +37,7 @@ import { Panel } from '../layout/Page';
 import { useIamCommand, useIamObjectReason, useReviewRead } from './iamCommand';
 
 type Row = IamServiceAccount & Record<string, unknown>;
-type Action = 'edit' | 'token' | 'delete';
+type Action = 'edit' | 'token' | 'delete' | 'tokens';
 
 const TOKEN_LIFETIMES = durationPresets(['24h', '168h', '720h', '2160h', '8760h']);
 const API = 'kudurru.io/v1alpha1';
@@ -42,6 +47,7 @@ const saName = (s: { namespace?: string | undefined; name?: string | undefined }
 export function ServiceAccountsPanel() {
   const api = useApi();
   const can = useCan();
+  const cannot = useCannotReason();
   const reason = useIamObjectReason();
   const sas = useQuery({ queryKey: ['iam', 'sa'], queryFn: () => api.iam.serviceAccounts(), enabled: can('serviceaccounts', 'read') });
   const [creating, setCreating] = useState(false);
@@ -69,7 +75,8 @@ export function ServiceAccountsPanel() {
       header: 'Actions',
       width: proportional(2, { minWidth: 260 }),
       renderCell: (s) => {
-        const row = s.builtinAdmin ? 'The bootstrap account is not changed or given tokens here' : undefined;
+        const row = s.builtinAdmin ? 'The bootstrap account is not changed or given tokens here' : accountManagerReason(s.managedBy);
+        const list = cannot('tokens', 'read');
         const w = row ?? writeReason;
         const t = row ?? (s.disabled ? 'Enable the account before issuing a token' : tokenReason);
         const d = row ?? deleteReason;
@@ -81,6 +88,9 @@ export function ServiceAccountsPanel() {
             </Button>
             <Button label={`New token for ${saName(s)}`} size="sm" variant="ghost" isDisabled={!!t} tooltip={t} onClick={() => choose('token')}>
               New token…
+            </Button>
+            <Button label={`Tokens of ${saName(s)}`} size="sm" variant="ghost" isDisabled={!!list} tooltip={list} onClick={() => choose('tokens')}>
+              Tokens…
             </Button>
             <Button label={`Delete ${saName(s)}`} size="sm" variant="ghost" isDisabled={!!d} tooltip={d} onClick={() => choose('delete')}>
               Delete…
@@ -106,7 +116,8 @@ export function ServiceAccountsPanel() {
         </Text>
       )}
       {creating ? <CreateServiceAccountDialog onClose={() => setCreating(false)} /> : null}
-      {selected ? <ReviewedServiceAccountDialog sa={selected.sa} action={selected.action} onClose={() => setSelected(null)} /> : null}
+      {selected?.action === 'tokens' ? <ServiceAccountTokensDialog sa={selected.sa} onClose={() => setSelected(null)} /> : null}
+      {selected && selected.action !== 'tokens' ? <ReviewedServiceAccountDialog sa={selected.sa} action={selected.action} onClose={() => setSelected(null)} /> : null}
     </Panel>
   );
 }
@@ -153,6 +164,100 @@ function CreateServiceAccountDialog({ onClose }: { onClose: () => void }) {
       <Text type="supporting" as="p">
         No token is issued with the account: use New token… on its row afterwards.
       </Text>
+      {cmd.outcome}
+    </FormDialog>
+  );
+}
+
+type TokenRow = ApiToken & Record<string, unknown>;
+
+/** Whether a token belongs to this service account (owner kind, namespace and name). */
+export function ownedBy(t: ApiToken, sa: Pick<IamServiceAccount, 'namespace' | 'name'>): boolean {
+  return t.owner.kind === 'ServiceAccount' && t.owner.namespace === sa.namespace && t.owner.name === sa.name;
+}
+
+/**
+ * The account's tokens and their revocation. The list is GET
+ * /auth/tokens?all=true filtered to the account; Revoke asks first in the
+ * dialog (no second dialog), then sends one DELETE for that token ID. A
+ * refusal or an unknown outcome locks the dialog: close it, read the list
+ * again and decide again.
+ */
+function ServiceAccountTokensDialog({ sa, onClose }: { sa: IamServiceAccount; onClose: () => void }) {
+  const api = useApi();
+  const notify = useNotify();
+  const cannot = useCannotReason();
+  const revokeReason = cannot('tokens', 'delete');
+  const tokens = useQuery({ queryKey: ['iam', 'tokens', 'all'], queryFn: ({ signal }) => api.auth.allTokens(signal) });
+  const [confirm, setConfirm] = useState<ApiToken | null>(null);
+  const cmd = useIamCommand('token revocation', { floor: false });
+  const rows = (tokens.data?.items ?? []).filter((t) => ownedBy(t, sa));
+  const revoke = async (t: ApiToken) => {
+    const r = await cmd.run((signal) => api.auth.deleteToken(t.id, signal));
+    if (r.ok) {
+      notify.success(`Revoked token ${t.description || t.id} of ${saName(sa)}`);
+      setConfirm(null);
+    }
+  };
+  const columns: TableColumn<TokenRow>[] = [
+    {
+      key: 'description',
+      header: 'Token',
+      width: proportional(2, { minWidth: 160 }),
+      renderCell: (t) => (
+        <Text type="inherit">
+          {t.description ? <Text type="inherit">{t.description}</Text> : <Text color="secondary">(no description)</Text>}{' '}
+          <Text type="code" size="sm" color="secondary">
+            kdr_{t.id}_…
+          </Text>
+        </Text>
+      ),
+    },
+    { key: 'scopes', header: 'Limited to', width: proportional(1.5, { minWidth: 110 }), renderCell: (t) => <Text size="sm">{t.scopes?.length ? t.scopes.join(', ') : 'the account’s bindings'}</Text> },
+    { key: 'expiresAt', header: 'Expires', width: proportional(1, { minWidth: 100 }), renderCell: (t) => <Text size="sm">{t.expiresAt ? formatDateTime(t.expiresAt) : 'never'}</Text> },
+    { key: 'lastUsedAt', header: 'Last used', width: proportional(1, { minWidth: 100 }), renderCell: (t) => <Text size="sm">{t.lastUsedAt ? formatRelative(t.lastUsedAt) : 'never'}</Text> },
+    {
+      key: 'actions',
+      header: 'Actions',
+      width: pixel(110),
+      renderCell: (t) => (
+        <Button label={`Revoke ${t.description || t.id}`} size="sm" variant="ghost" isDisabled={!!revokeReason || cmd.locked || cmd.pending} tooltip={revokeReason} onClick={() => setConfirm(t)}>
+          Revoke…
+        </Button>
+      ),
+    },
+  ];
+  return (
+    <FormDialog
+      isOpen
+      onClose={onClose}
+      title={`Tokens of ${saName(sa)}`}
+      width={760}
+      onSubmit={() => {
+        if (confirm) void revoke(confirm);
+      }}
+      footer={
+        confirm && !cmd.locked ? (
+          <>
+            <Button label="Keep it" variant="ghost" onClick={() => setConfirm(null)} isDisabled={cmd.pending} />
+            <Button type="submit" label="Revoke token" variant="destructive" isLoading={cmd.pending} />
+          </>
+        ) : (
+          <Button label="Close" variant="ghost" onClick={onClose} />
+        )
+      }
+    >
+      {tokens.error ? <ErrorBanner error={tokens.error} title="The tokens could not be read" /> : null}
+      {tokens.data && !rows.length ? <Text type="supporting" as="p">This account has no tokens.</Text> : null}
+      {rows.length ? <Table<TokenRow> aria-label={`Tokens of ${saName(sa)}`} density="compact" idKey="id" data={rows as TokenRow[]} columns={columns} /> : null}
+      {tokens.isLoading ? <Text>Reading the tokens…</Text> : null}
+      {confirm && !cmd.locked ? (
+        <Banner
+          status="warning"
+          title={`Revoke token ${confirm.description || confirm.id}?`}
+          description={`Programs that use kdr_${confirm.id}_… are refused from the next request on. A revoked token cannot be restored; issue a new one with New token… instead.`}
+        />
+      ) : null}
       {cmd.outcome}
     </FormDialog>
   );
@@ -317,7 +422,7 @@ function TokenDialog({ doc, title, onClose }: { doc: ServiceAccountDocument; tit
           <CodeBlock data-testid="new-sa-token" code={created.token} width="100%" />
         </Banner>
         <Text type="supporting" as="p">
-          {created.expiresAt ? `It expires ${new Date(created.expiresAt).toLocaleString()}.` : 'It does not expire.'} Use it as <Code size="inherit">Authorization: Bearer kdr_…</Code>. List or revoke the account’s tokens with <Code size="inherit">kudurru api GET '/auth/tokens?all=true'</Code>.
+          {created.expiresAt ? `It expires ${new Date(created.expiresAt).toLocaleString()}.` : 'It does not expire.'} Use it as <Code size="inherit">Authorization: Bearer kdr_…</Code>. Tokens… on the account’s row lists and revokes its tokens.
         </Text>
       </FormDialog>
     );
