@@ -91,12 +91,12 @@ tests cannot substitute for any external result.
 | F07b | TSIG on DoH/DoQ/DoH3 | Zones and AD | Integrated a6bf8e1; actual encrypted wire and native mutation-refusal races pass; immutable installed keyrings |
 | F08 | `doctor` self-NOTIFY / egress-address round trip | Zones and AD | Implemented D261/D331; authenticated SQLite native/CLI and actual Kubernetes stored/file/restart/refusal races pass; final gates open |
 | F09a | Per-integration elector, rather than one global Runner lease | Zones and AD | Implemented; final gates open |
-| F09b | Production integration-host wiring and failover | Zones and AD | SQLite mount integrated 687371f; Kubernetes atomic-source and Delete dependencies remain. November 11 (68a709e2): D367 Delete lifecycle merged on SQLite (reserved finalizer, elected terminating job, bounded cleanup, release command, restart/failover/license acceptance); INT-DEL-C verifier left one minor and one cosmetic problem open, INT-DEL-B's five follow-ups are not confirmed item by item; the Kubernetes host (F09b-K0..K8, DEL-8) is not started, so Delete has no effect there. November 13 (17b7c87a): the Kubernetes integration host merged (D384: F09B-KUBE-ROOT, F09B-KUBE-SOURCES, F09B-OPEN): Cloudflare publication, UniFi inventory and groups, the administration API and `deletionPolicy: Delete` run on Kubernetes; K3 and K7 stay partial (budget sharing by hand-placed Leases, credential rotation by order only, no holder-change, partition or mid-cleanup lease-loss qualification); UniFi record publication and Tier-B webhooks are refused on Kubernetes; INT-OPEN confirmed INT-DEL-B's five follow-ups |
+| F09b | Production integration-host wiring and failover | Zones and AD | SQLite mount integrated 687371f; Kubernetes atomic-source and Delete dependencies remain. November 11 (68a709e2): D367 Delete lifecycle merged on SQLite (reserved finalizer, elected terminating job, bounded cleanup, release command, restart/failover/license acceptance); INT-DEL-C verifier left one minor and one cosmetic problem open, INT-DEL-B's five follow-ups are not confirmed item by item; the Kubernetes host (F09b-K0..K8, DEL-8) is not started, so Delete has no effect there. November 13 (17b7c87a): the Kubernetes integration host merged (D384: F09B-KUBE-ROOT, F09B-KUBE-SOURCES, F09B-OPEN): Cloudflare publication, UniFi inventory and groups, the administration API and `deletionPolicy: Delete` run on Kubernetes; K3 and K7 stay partial (budget sharing by hand-placed Leases, credential rotation by order only, no holder-change, partition or mid-cleanup lease-loss qualification); UniFi record publication and Tier-B webhooks are refused on Kubernetes; INT-OPEN confirmed INT-DEL-B's five follow-ups November 14 (7663c957): Integrations are written through the generic object routes and listed with manifests and per-field limits on both drivers (D400, D384 after INT-OPEN2); UniFi optional writes run as reviewed commands on SQLite only (D401); external zones fill from Ingress, Gateway API routes and LoadBalancer Services on Kubernetes (D402); a failed provider setup is retried with backoff and a status-only write no longer stales a review (INT-OPEN2); K3 and K7 stay partial; every capture reads the whole stored image, so a large SQLite store can drop every integration job (open); several integration tests are intermittent (hosted `TestIntegrationWebhookMountedClientsRestart` twice); no live Cloudflare account or UniFi controller is exercised. |
 | F10a | Reload inline objects without restart | Zones and AD | Integrated 71c0393; whole-source refusal and actual mounted reload races pass |
 | F10b | `Policy/default` as explicit fallback | Zones and AD | Implemented; final gates open |
 | F11a | Server-side Kerberos/GSS-TSIG/TKEY feasibility implementation | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
 | F11b | Real Windows DC/member/DHCP; SPN provisioning/rotation; edge/VIP routing | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
-| F12a | Atomic RFC 2136 storage for each advertised driver | Zones and AD | SQLite atomic handler mounted earlier; D366 Kubernetes per-zone UPDATE-owned record set with exact-version CAS passes mounted two-node envtest acceptance (serialization, prerequisites, grants, ownership, restart); final gates open. November 11 (68a709e2): SQLite now refuses at write update modes other than deny/allow and update grants the primary runtime cannot compile (D373); the DOCS-OPS verifier found three more accepted policy shapes that stopped a SQLite zone before that change, not rechecked at this head; operator guide `docs/deploy/dynamic-updates.md` added. November 13 (17b7c87a): enrolled SQLite followers forward signed UPDATEs (D381); bursts through a follower fail after the first SERVFAIL (5 or 6 of 8 in the verifier's run; HA-OPEN5 not merged); the docs-lane observations stay unrechecked |
+| F12a | Atomic RFC 2136 storage for each advertised driver | Zones and AD | SQLite atomic handler mounted earlier; D366 Kubernetes per-zone UPDATE-owned record set with exact-version CAS passes mounted two-node envtest acceptance (serialization, prerequisites, grants, ownership, restart); final gates open. November 11 (68a709e2): SQLite now refuses at write update modes other than deny/allow and update grants the primary runtime cannot compile (D373); the DOCS-OPS verifier found three more accepted policy shapes that stopped a SQLite zone before that change, not rechecked at this head; operator guide `docs/deploy/dynamic-updates.md` added. November 13 (17b7c87a): enrolled SQLite followers forward signed UPDATEs (D381); bursts through a follower fail after the first SERVFAIL (5 or 6 of 8 in the verifier's run; HA-OPEN5 not merged); the docs-lane observations stay unrechecked November 14 (7663c957): a burst of signed UPDATEs through an enrolled follower is answered for every update the primary accepts (HA-OPEN5 and HA-OPEN6, D381); open: one UPDATE sent once through the first follower was answered SERVFAIL after 330 ms in the fixer's last process run (cause unknown, HA-OPEN6 blocker), and through a newly promoted primary the bound SERVFAIL is tolerated by test resends. |
 | F12b | Principal/record ownership and AD permission translation | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
 | F12c | Imported-record adoption for legitimate AD registrants | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
 | F12d | Durable content/security/aging replication and fenced failover | Zones and AD | Preview; remaining AD implementation and Windows acceptance deferred by owner (D353); original requirements retained |
@@ -110,7 +110,7 @@ tests cannot substitute for any external result.
 | F17 | `$important` / `$badfilter` | DNS and resolver | Implemented; final gates open |
 | F18a | `control.allowedNetworks` / `control.blockedQTypes` config | DNS and resolver | Integrated 50773f9; generated schemas and composed mounted/publication races pass |
 | F18b | Reverse-PTR hostname cache | DNS and resolver | Integrated 83c1096; bounded async PTR, actual UDP and mounted SQLite policy/expiry races; scoped lint pass |
-| F18c | UniFi hostname source | DNS and resolver | Integrated 380f43f; actual TLS/SQLite/native/PROXYv2/dnsdist lifecycle races pass. Fixture correction 4337c79 retains the original five-second held-CNAME deadline; repeated focused and full mounted acceptance pass, with earlier failed commands retained in the ledger |
+| F18c | UniFi hostname source | DNS and resolver | Integrated 380f43f; actual TLS/SQLite/native/PROXYv2/dnsdist lifecycle races pass. Fixture correction 4337c79 retains the original five-second held-CNAME deadline; repeated focused and full mounted acceptance pass, with earlier failed commands retained in the ledger November 14 (7663c957): `TestRunServeUniFiHostnamePolicyLifecycle` fails under the race detector since the inventory commits of ID-INVENTORY (bisected; INVENTORY-REGRESS in progress, not at this head); the inventory API and DHCP lease MACs merged (D397). |
 | F19a | Durable replicated blocking toggle on complete SQLite path | Store and HA | Implemented; final gates open |
 | F19b | Kube runtime annotation publisher/watcher or equivalent cluster toggle | Store and HA | Implemented D301: original bounded ConfigMap CAS, confirmed local application and read reconciliation on all replicas. Actual two-runServe/API-server DNS, shared expiry, restart and outage acceptance passes; driver conflict/lost-reply, original credential/cancellation and audit races plus vet pass. Earlier fixture failures retained; configured lint and final supported-driver gates remain |
 | F20a | AdGuard black-box conformance implementation | DNS and resolver | Implemented; final gates open |
@@ -135,7 +135,7 @@ tests cannot substitute for any external result.
 | F26d | Querylog enabled/sink hot reload | DNS and resolver | Integrated 08ee759/9a62eb4; captured sink/drain, mounted reload and disabled-restart history races pass. November 11 (68a709e2): D371/D372 additional sinks (slog, ClickHouse, Loki, dnstap) hot-reload on both drivers; OBS-HTTP-SINKS fix commits never verified; post-verify of OBS-FANOUT left one minor and two nits open. November 13 (17b7c87a): OBS-OPEN verified the OBS-HTTP-SINKS fixes and closed the OBS-FANOUT nits; `GET /querylog/sinks` and dnstap listen (D372) merged; live ClickHouse/Loki probes not rerun |
 | F26e | Auth settings hot reload | IAM and access | Implemented D290 on complete SQLite: five controls, exact host locks and original-view cookies; mounted TLS/router/restart/current-command races pass. Legacy/Kubernetes and host inputs remain restart-bound |
 | F27 | RFC 8198 aggressive NSEC/NSEC3 cached synthesis | DNS and resolver | Implemented D296: bounded complete-proof reuse with original expiry and cumulative hash reserve; full affected races, actual BIND authority and delayed outer-cache acceptance pass. Final merged/release gates remain |
-| F28 | RFC 5011 automatic trust-anchor updates | DNS and resolver | Active D297/D315–D319: schema8 accepted history/local denial, original receipt authentication, complete managed publication, common mode/output retirement, native/raw cache admission and installed edge-bypass prerequisites are integrated. Direct SQLite activation mounts the elected updater and independent follower supervisor. Runtime terminal writer failures survive host/Runner restarts; follower terminal results survive same-term replica installs and their incarnation increments, while role changes join old sockets. Actual native recursive signed DNSKEY passes all six transports and restart without rebootstrap/progress (ordinary1, combined direct race2). Final follower/root/runtime race106 and actual runServe follower revoke/all-six-output/restart race1 pass without skips. Config/reference354 pass; generator and final full configured lint pass. Fresh same-term installed-source acquisition after successful normal polling now passes27 follower race entries/no skips; held and terminal failures remain retained. Prior failures, exact scopes and earlier qualified prerequisites remain in the gap/audit ledgers. Canonical writer all-anchor-loss/output-drain and physical same-database restart now pass ordinary1/race1; managed/static/disabled restart preserves quarantine and refuses fallback. Explicit edge-fleet activation now captures one original local cut and adopts authenticated installed persistent bypass from every declared peer; pinned dnsdist/backend UDP/TCP both-pool restart acceptance and composed race133 pass with no skips. D320 recovery primitives now preserve bounded explicit trust history and tombstones through original SQLite commit, follower installation and physical restart; corrected focused recovery race2 passes. The first broad SQLite race timed out after975 passing entries; the final sequential full trustanchors/SQLite/runtimeowners default-race suite passes1026 without failures/skips, preserving the earlier timeout. D321 offline status/recovery now requires the original exact digest and independently trusted DS, strictly opens the existing current-schema database, and commits the OS-attributed audit with trust; strict-open race17 and actual command/native-six-transport/physical-restart race8 pass without skips. Pre-change codec compatibility race1 preserves format1 and rejects recovery format2. Fleet mixed-version acceptance, initial empty edge-follower installation, full enrolled HA orchestration, RFC interoperability and final gates remain open. November 11 (68a709e2): D369 fenced/conflicted members keep managed DNS and restart, clock-skew wait, term-ordered adoption with carried revocations (F28-HISTORY fix never verified in its lane; F28-HISTORY-RECHECK re-examined it but was itself never reviewed); D370 Kubernetes refusal, image-less refusal, format goldens and mixed-version position; F28-EF-1 live dnsdist follower test does not exist (verifier: major unresolved), so initial empty edge-follower installation remains open with RFC interoperability and final gates. November 13 (17b7c87a): operator status `GET /cluster/anchors`, metrics and process acceptance with managed anchors merged (D369, F28-PROCESS); the live follower-behind-edges test exists (F28-EF1-LIVE, opt-in); F28-HA-4 is proven only by an opt-in soak that skips by default; hosted e2e fails `TestEnrolledManagedAnchorsPromoteAndRejoin` ("rejoin acquisitions 5") on f6afe7d6, b9b66cba, b6e09f9d, 3a6ab137 and 85913663; F28-OPEN6 was backed out and F28-RFC is not merged; open |
+| F28 | RFC 5011 automatic trust-anchor updates | DNS and resolver | Active D297/D315–D319: schema8 accepted history/local denial, original receipt authentication, complete managed publication, common mode/output retirement, native/raw cache admission and installed edge-bypass prerequisites are integrated. Direct SQLite activation mounts the elected updater and independent follower supervisor. Runtime terminal writer failures survive host/Runner restarts; follower terminal results survive same-term replica installs and their incarnation increments, while role changes join old sockets. Actual native recursive signed DNSKEY passes all six transports and restart without rebootstrap/progress (ordinary1, combined direct race2). Final follower/root/runtime race106 and actual runServe follower revoke/all-six-output/restart race1 pass without skips. Config/reference354 pass; generator and final full configured lint pass. Fresh same-term installed-source acquisition after successful normal polling now passes27 follower race entries/no skips; held and terminal failures remain retained. Prior failures, exact scopes and earlier qualified prerequisites remain in the gap/audit ledgers. Canonical writer all-anchor-loss/output-drain and physical same-database restart now pass ordinary1/race1; managed/static/disabled restart preserves quarantine and refuses fallback. Explicit edge-fleet activation now captures one original local cut and adopts authenticated installed persistent bypass from every declared peer; pinned dnsdist/backend UDP/TCP both-pool restart acceptance and composed race133 pass with no skips. D320 recovery primitives now preserve bounded explicit trust history and tombstones through original SQLite commit, follower installation and physical restart; corrected focused recovery race2 passes. The first broad SQLite race timed out after975 passing entries; the final sequential full trustanchors/SQLite/runtimeowners default-race suite passes1026 without failures/skips, preserving the earlier timeout. D321 offline status/recovery now requires the original exact digest and independently trusted DS, strictly opens the existing current-schema database, and commits the OS-attributed audit with trust; strict-open race17 and actual command/native-six-transport/physical-restart race8 pass without skips. Pre-change codec compatibility race1 preserves format1 and rejects recovery format2. Fleet mixed-version acceptance, initial empty edge-follower installation, full enrolled HA orchestration, RFC interoperability and final gates remain open. November 11 (68a709e2): D369 fenced/conflicted members keep managed DNS and restart, clock-skew wait, term-ordered adoption with carried revocations (F28-HISTORY fix never verified in its lane; F28-HISTORY-RECHECK re-examined it but was itself never reviewed); D370 Kubernetes refusal, image-less refusal, format goldens and mixed-version position; F28-EF-1 live dnsdist follower test does not exist (verifier: major unresolved), so initial empty edge-follower installation remains open with RFC interoperability and final gates. November 13 (17b7c87a): operator status `GET /cluster/anchors`, metrics and process acceptance with managed anchors merged (D369, F28-PROCESS); the live follower-behind-edges test exists (F28-EF1-LIVE, opt-in); F28-HA-4 is proven only by an opt-in soak that skips by default; hosted e2e fails `TestEnrolledManagedAnchorsPromoteAndRejoin` ("rejoin acquisitions 5") on f6afe7d6, b9b66cba, b6e09f9d, 3a6ab137 and 85913663; F28-OPEN6 was backed out and F28-RFC is not merged; open November 14 (7663c957): F28-OPEN6 (re-applied by F28-OPEN7), F28-OPEN7, F28-RFC and F28-REVOKE-HOSTED merged (D369, D398): writer services start at once when the refresh is not due, DNS keeps answering while a fence is persisted, root-check counts are exact, the 10 s SERVFAIL tolerance is gone, real BIND and Knot authorities are qualified (Knot local-only) and `TestBINDManagedRootRevocation` passed on hosted CI at `531bffd0`; open: a fresh managed recursive node misses the 10 s readiness bound of two tests under race and load, an early writer return is unexplained, and the raced bootstrap cap has no hosted evidence. |
 | F29a | Expiring negative trust anchors for forwarded validation | DNS and resolver | Implemented; final gates open |
 | F29b | Negative trust anchors for recursive groups | DNS and resolver | Integrated ddc5f2d; native/socket, captured-publication and actual Kubernetes schema races pass |
 | F30 | DNSSEC validation of forwarded answers | DNS and resolver | Implemented; final gates open |
@@ -160,7 +160,7 @@ tests cannot substitute for any external result.
 | F43b | `reloadAllCertificates()` without restart | Edge and VIP | Integrated e60001f; real pinned all-frontend leaf checks, held DoT, invalid-pair retention and child-restart acceptance pass |
 | F43c | Console spike (a) gates both changes | Edge and VIP | D275: actual dnsdist 2.1.3 YAML console, live DNS/cert/invalid-cert/PID/restart checks pass; established-connection limit recorded |
 | F44a | Persist grant revocation across restart/regrant | IAM and access | Implemented; final gates open |
-| F44b | Cluster-wide production use on every advertised driver/route | IAM and access | D294 public SQLite RoleBinding API/CLI integrated c44b67d; actual TLS/router/replica focused races and lint pass. Merged 180-operation contracts pass; file/inline security effects integrated 91443d7 with real OP/startup/restart/replica races and lint. D364 durable Kubernetes grant revocation floors pass unit, envtest store and 100 mounted kube races; final composed gates remain open. November 11 (68a709e2): D374 serves the RoleBinding item read on Kubernetes; RoleBinding API writes remain SQLite-only. November 13 (17b7c87a): zone-group bindings on both drivers (D385; a zone-recreate race found by code trace is open) and opt-in Kubernetes impersonation for API writes (D386) merged |
+| F44b | Cluster-wide production use on every advertised driver/route | IAM and access | D294 public SQLite RoleBinding API/CLI integrated c44b67d; actual TLS/router/replica focused races and lint pass. Merged 180-operation contracts pass; file/inline security effects integrated 91443d7 with real OP/startup/restart/replica races and lint. D364 durable Kubernetes grant revocation floors pass unit, envtest store and 100 mounted kube races; final composed gates remain open. November 11 (68a709e2): D374 serves the RoleBinding item read on Kubernetes; RoleBinding API writes remain SQLite-only. November 13 (17b7c87a): zone-group bindings on both drivers (D385; a zone-recreate race found by code trace is open) and opt-in Kubernetes impersonation for API writes (D386) merged November 14 (7663c957): a zone deleted during a group member's PUT is no longer recreated and lists answer 503 when a zone group cannot be read (CORE-OPEN4, D385); the Kubernetes delete-before-Apply case is untested. |
 | F45a | Stored OIDC identities with independent UID | IAM and access | Implemented; final gates open |
 | F45b | External per-user disable / log out everywhere administration | IAM and access | Implemented D289 on complete SQLite: exact UID/revision API/CLI/UI, atomic credential/audit revocation, actual TLS/router/restart/replica races, nine dashboard tests and lint/contracts pass; unsupported Stack explicitly refuses |
 | F46 | Share login lockout counters across replicas | IAM and access | Kubernetes password admission implemented D304 with actual two-runServe/CAS/restart/outage races. SQLite login implemented D305: original-command counters and enrollment, typed pre-mutation refusals, exact rollback and physical follower restart; focused race11/full owner-auth race324 and vet pass. Browser own-commit regression fixed D306; complete HTTP race 108/58 top-level plus final browser race 52/23 and vet pass, earlier failures retained. SQLite TOTP management shares counters in D307: focused race 24, full security/loginlimit race 110 and vet pass. SQLite password changes share counters in D308: full security race 105, focused HTTP race 18 and vet pass. SQLite browser/CLI request budgets mounted D309 before the first auth capture: full owner race 45, final focused race 32 including installed Chrome, and vet pass; earlier concurrency/partial-fixture failures retained. Kubernetes browser admission mounted D310 with backend race 22, two actual mounted replica/restart/outage passes, full Stack race 46 and vet pass. D363 enrolled-follower local login forwards to the primary's shared admission with real two-process acceptance; OIDC/browser/device logins on followers and final gates remain. November 11 (68a709e2): CLI password login refuses on a follower before sending the password (HA-REFUSAL, fix never verified); sign-out and own-session revocation forward to the primary (D368, HA-AUTH-SETTINGS verified); OIDC/browser/device logins on followers and final gates remain. November 13 (17b7c87a): a follower forwards the caller's own password change and personal tokens (D368, HA-SELF verified, three low notes open) |
@@ -181,14 +181,14 @@ tests cannot substitute for any external result.
 | F58b | `/queries/export` API and query-log link | Operations and UI | Implemented; filtered bounded download, API/privacy races, 20 UI cases and actual mounted DNS/history export pass |
 | F59 | `--context` chooses kubeconfig/direct CRD verbs | Operations and UI | Implemented explicit direct CRD transport; real envtest context/CRUD/RBAC/ownership and replacement-refusal races pass |
 | F60a | Offline `import adguard` / `import blocky` | Store and HA | Integrated; final gates open. November 13 (17b7c87a): `kudurru import coredns` merged (D392, OPS-COREDNS verified; its four new findings fixed by RPZ-OPEN at the lane head, reviewed and verified with one new minor report-line defect open) |
-| F60b | `cluster status` / `promote` / `join-token` | Store and HA | Status CLI implemented on the actual authenticated route with table/wide/JSON/YAML; real-router race9 and vet pass. Peer/coordinator original-deadline admission and actual command commit/no-op expiry now pass 160 affected race entries with the real Kubernetes Lease handoff, vet and scoped lint. Retained enrolled TLS listener startup and the typed root blocking executor are mounted with scoped race/lint evidence recorded below. Reviewed first-primary activation API/CLI is mounted (D345); reviewed join-token issuance is mounted (D347); retained enrolled acquisition/publication/restart is mounted (D351), with 444 affected race entries and scoped lint passing; operator promotion API/CLI is mounted (D354), with actual TLS-loss, original-proof, audit, publication and restart races; initial remote join is mounted (D355) and explicit incomplete-join reconciliation retains original intent (D356); original follower blocking forwarding is mounted (D357), with 254 compatibility race entries and scoped lint/SAST passing; D359 bounded peer authority observation and two-process promoted rejoin pass, including 321 subsequent compatibility race entries; D360 fenced/conflicted DNS-only publication and D361 offline audited branch recovery pass three-process conflicting-promotion acceptance with 748 SQLite, 433 cluster and 274 root race entries; D362 typed follower forwarding of canonical object writes and zone commands passes real two-process acceptance; settings, IAM/login admission and other domains remain open; status grants no promotion eligibility. November 11 (68a709e2): D368 follower contract (one class per unsafe operation, `primary_required`, forwarded sign-out and settings patch, node-local cache flush, role reporting), D374–D376 (forwarded apply/kind routes/batch delete under one 30 s lifetime, acknowledgment under the commit's writer exclusion), D378 multi-item requests on the primary; HA-REFUSAL fix never verified; CORE-APPLY-MULTI leaves a major residual (an 80 s DNS gap and failed reads during a 120-document apply on the merged head); hosted CI red on 68a709e2; final gates remain. November 13 (17b7c87a): the follower contract gained forwarded password, tokens and RFC 2136 UPDATE (D368, D381); dial failures answer `unavailable`; the 503-after-ready refusals behind most hosted failures are not fixed (D399 not merged); final gates remain |
-| F60c | `integrations …` CLI | Store and HA | Active D291/D295/D298: reviewed API/CLI, standalone conformance and SQLite Tier-B clients/actions mount implemented; mounted TLS/router races, full provider races and scoped lint pass. Merged 180-operation contracts pass; hooks/record ownership, remaining driver/restart and final contract gates remain. November 11 (68a709e2): `integrations release` CLI/API and the deletion fields of the summaries merged with D367 (SQLite only). November 13 (17b7c87a): Tier-B hooks (D379) and webhook record ownership (D380) merged with F60C-OPEN; the integration administration API works on Kubernetes (D384); dashboard Integrations page not built |
+| F60b | `cluster status` / `promote` / `join-token` | Store and HA | Status CLI implemented on the actual authenticated route with table/wide/JSON/YAML; real-router race9 and vet pass. Peer/coordinator original-deadline admission and actual command commit/no-op expiry now pass 160 affected race entries with the real Kubernetes Lease handoff, vet and scoped lint. Retained enrolled TLS listener startup and the typed root blocking executor are mounted with scoped race/lint evidence recorded below. Reviewed first-primary activation API/CLI is mounted (D345); reviewed join-token issuance is mounted (D347); retained enrolled acquisition/publication/restart is mounted (D351), with 444 affected race entries and scoped lint passing; operator promotion API/CLI is mounted (D354), with actual TLS-loss, original-proof, audit, publication and restart races; initial remote join is mounted (D355) and explicit incomplete-join reconciliation retains original intent (D356); original follower blocking forwarding is mounted (D357), with 254 compatibility race entries and scoped lint/SAST passing; D359 bounded peer authority observation and two-process promoted rejoin pass, including 321 subsequent compatibility race entries; D360 fenced/conflicted DNS-only publication and D361 offline audited branch recovery pass three-process conflicting-promotion acceptance with 748 SQLite, 433 cluster and 274 root race entries; D362 typed follower forwarding of canonical object writes and zone commands passes real two-process acceptance; settings, IAM/login admission and other domains remain open; status grants no promotion eligibility. November 11 (68a709e2): D368 follower contract (one class per unsafe operation, `primary_required`, forwarded sign-out and settings patch, node-local cache flush, role reporting), D374–D376 (forwarded apply/kind routes/batch delete under one 30 s lifetime, acknowledgment under the commit's writer exclusion), D378 multi-item requests on the primary; HA-REFUSAL fix never verified; CORE-APPLY-MULTI leaves a major residual (an 80 s DNS gap and failed reads during a 120-document apply on the merged head); hosted CI red on 68a709e2; final gates remain. November 13 (17b7c87a): the follower contract gained forwarded password, tokens and RFC 2136 UPDATE (D368, D381); dial failures answer `unavailable`; the 503-after-ready refusals behind most hosted failures are not fixed (D399 not merged); final gates remain November 14 (7663c957): the dashboard cluster membership wizards (DASH-CLUSTER) merged; D399 (command recapture) was merged, broke seven command tests and was reverted (`827a6ebe`), so the 503 right after ready stays intermittent (D399-REDO, D405 not at this head); hosted `ci` passed once, on `bae1c9df`; the integrator decided that D375 stands (a large apply through a follower is still cut), marked for the owner's confirmation. |
+| F60c | `integrations …` CLI | Store and HA | Active D291/D295/D298: reviewed API/CLI, standalone conformance and SQLite Tier-B clients/actions mount implemented; mounted TLS/router races, full provider races and scoped lint pass. Merged 180-operation contracts pass; hooks/record ownership, remaining driver/restart and final contract gates remain. November 11 (68a709e2): `integrations release` CLI/API and the deletion fields of the summaries merged with D367 (SQLite only). November 13 (17b7c87a): Tier-B hooks (D379) and webhook record ownership (D380) merged with F60C-OPEN; the integration administration API works on Kubernetes (D384); dashboard Integrations page not built November 14 (7663c957): the dashboard Integrations page merged (DASH-INTEGRATIONS: list, wizard from the manifests, check, preview, publish, sync, actions, edit, delete and release), with DASH-IAM's fix of the uncertain-sync hold; Integration writes through the API and CLI (D400). |
 | F60d | Zone option writes via PUT/PATCH | Store and HA | Integrated c9f14dc; actual-router/current SQLite final-expiry races and lint pass |
 | F61a | CLI browser loopback + PKCE login | IAM and access | Integrated 4fddbce; original public CLI ID-token bearer storage, real TLS OP/loopback/installed Chrome, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass. November 11 (68a709e2): on Kubernetes public CLI login answers `503 cli_login_unavailable` with a fixed CLI message (D374); it remains SQLite-only |
 | F61b | CLI device-code login | IAM and access | Integrated b09fc77; actual TLS RFC 8628 polling/refusals, raw public ID-token storage, original expiry/source/cancellation, scoped races and lint pass; merged 169-operation contracts and selected CLI login checks pass |
 | F62a | CLI conformance against actual API router | Operations and UI | Integrated 6938fbb; actual router/CLI races and scoped lint pass |
 | F62b | §10 documents ApplyResult errorKey/hint, wrapped settings, SSE event | Operations and UI | Integrated c439532; exact wire contracts and API serialization races pass |
-| F63 | Fixed-class benchmark job, including UDP sockets and Persist200k | Observability and release | Manual class-parameterized workflow and eight-suite fresh-process collector implemented; control tests4, gate race37, vet and scoped lint pass. Actual local expanded collection completes 40 native commands and seven shape/absolute checks, 136 cases/592 metrics/five samples each; separate original relative gate exits 1 with three suffix-miss regressions. Owner selected Ubicloud 8-core Ubuntu 24.04 (ubicloud-standard-8-ubuntu-2404), retaining GOMAXPROCS6. Original cache/strategy limits are calibrated. Paired Ubicloud run42518988512 performs actual strict same-VM comparisons and fails one blocking/eight cache metrics; strategy passes. New paired run42522360297 on91cb21bb passes blocking-zone/upstream and cache memory but fails cache hit/Set latency; all811 five-value vectors and failures retained. Initial socket/persistence bounds now calibrated from first hosted recording42514599389 (D335); current-source and final gates stay open. November 11 (68a709e2): no fixed-class or paired run in this pass; the paired benchmark on the final head has not been run. November 13 (17b7c87a): still no fixed-class or paired run on the final head |
+| F63 | Fixed-class benchmark job, including UDP sockets and Persist200k | Observability and release | Manual class-parameterized workflow and eight-suite fresh-process collector implemented; control tests4, gate race37, vet and scoped lint pass. Actual local expanded collection completes 40 native commands and seven shape/absolute checks, 136 cases/592 metrics/five samples each; separate original relative gate exits 1 with three suffix-miss regressions. Owner selected Ubicloud 8-core Ubuntu 24.04 (ubicloud-standard-8-ubuntu-2404), retaining GOMAXPROCS6. Original cache/strategy limits are calibrated. Paired Ubicloud run42518988512 performs actual strict same-VM comparisons and fails one blocking/eight cache metrics; strategy passes. New paired run42522360297 on91cb21bb passes blocking-zone/upstream and cache memory but fails cache hit/Set latency; all811 five-value vectors and failures retained. Initial socket/persistence bounds now calibrated from first hosted recording42514599389 (D335); current-source and final gates stay open. November 11 (68a709e2): no fixed-class or paired run in this pass; the paired benchmark on the final head has not been run. November 13 (17b7c87a): still no fixed-class or paired run on the final head November 14 (7663c957): still no fixed-class or paired run on the final head. |
 | F64a | `kudurru_cluster_fenced` metric/dashboard/alert | Store and HA | Implemented and scoped tests pass; final gates open |
 | F64b | `/healthz` snapshotAge / leader | Store and HA | Implemented; actual kube outage/identity/health races pass |
 | F64c | DNSSEC signing-key expiry metric | Store and HA | Original v1.0 subtarget; not a v0.2 closure |
@@ -213,20 +213,20 @@ tests cannot substitute for any external result.
 | IDs | Current state and remaining closure |
 |---|---|
 | G01–G03 | Implemented and validated existing mutations; preserve regressions. |
-| G04 | Baseline GitHub CI/security green; repeat on integrated final head. November 11: CI failed on both pushed heads of the completion pass (42954844334 on de0d249a; 43045349810 on 68a709e2, `go test 1/2` and `helm`); not passed. Both Cloudflare Workers Builds checks are excluded by the owner. November 13 (17b7c87a): no pushed head of the second splice had a green CI run (ee76c04b, 7648c479, 2b8a5150, 2133f47e, 291c55a5, ecd633b1, f6afe7d6, b9b66cba, b6e09f9d, 3a6ab137, 85913663 all failed; most failures are sign-in or activation 503 right after ready, which D399 is to fix and which is not merged). Not passed. |
-| G05–G15 | All 11 feature packages remain open until their F rows and original additional package acceptance pass. November 11 (68a709e2): G09 gains the SQLite Delete lifecycle (Kubernetes host not started); G11 gains the follower contract and multi-item requests with open findings; G13 gains query-log sinks and dnstap (OBS-HTTP-SINKS unverified). None is closed. November 13 (17b7c87a): G09 gains the Kubernetes integration host and Tier-B hooks and records; G11 gains forwarded self-service and UPDATE routing with open findings; G13 gains dnstap listen and tracing; RPZ on Kubernetes, RPZ diagnostics, edge blocks, edge client IDs, zone groups, impersonation, the CoreDNS importer and the tsigkeys CLI merged. None is closed. |
+| G04 | Baseline GitHub CI/security green; repeat on integrated final head. November 11: CI failed on both pushed heads of the completion pass (42954844334 on de0d249a; 43045349810 on 68a709e2, `go test 1/2` and `helm`); not passed. Both Cloudflare Workers Builds checks are excluded by the owner. November 13 (17b7c87a): no pushed head of the second splice had a green CI run (ee76c04b, 7648c479, 2b8a5150, 2133f47e, 291c55a5, ecd633b1, f6afe7d6, b9b66cba, b6e09f9d, 3a6ab137, 85913663 all failed; most failures are sign-in or activation 503 right after ready, which D399 is to fix and which is not merged). Not passed. November 14 (7663c957): the `ci` workflow passed for the first time in this pass on `bae1c9df` (run 43532858454); the `docs` workflow (a closing code fence sharing its line with prose) and the `security` workflow (one SAST finding) failed on that head and are fixed by `cb04067b` and `7663c957`; no result is recorded for `81c2d3af` or `7663c957`; every other pushed head of the third splice failed (`d063f929`, `daff96e5`, `a3b5a1d0`, `c5b0637c`, `95c57113`, `2e15060e`, `531bffd0`). Not passed. |
+| G05–G15 | All 11 feature packages remain open until their F rows and original additional package acceptance pass. November 11 (68a709e2): G09 gains the SQLite Delete lifecycle (Kubernetes host not started); G11 gains the follower contract and multi-item requests with open findings; G13 gains query-log sinks and dnstap (OBS-HTTP-SINKS unverified). None is closed. November 13 (17b7c87a): G09 gains the Kubernetes integration host and Tier-B hooks and records; G11 gains forwarded self-service and UPDATE routing with open findings; G13 gains dnstap listen and tracing; RPZ on Kubernetes, RPZ diagnostics, edge blocks, edge client IDs, zone groups, impersonation, the CoreDNS importer and the tsigkeys CLI merged. None is closed. November 14 (7663c957): the integration administration API, UniFi optional writes, external zones and client-group record views (D400–D403), the inventory API with lease MACs (D397), IAM writers (D396), parent and child zones (D404), answers across commits (D395) and the dashboard pages for clusters, edge blocks, sinks, zone groups, RPZ feeds, Integrations, IAM writers and the inventory merged; D399 and D405 were reverted. None is closed; see the acceptance table. |
 | G16–G19 | AD discovery/security/DHCP/aging/cutover and Windows acceptance remain open. |
 | G20 | Inventory complete: 75 original rows, 130 subrequirements, retained above. |
-| G21 | Per-feature production wiring, API/CLI/UI/schema/permissions/docs and original-proof behavior. November 11: D374 removes the plain-text 404s and the vestigial 503 gate; the follower class table covers every unsafe operation; DOCS-VERSION/DOCS-OPS pages still carry statements the merged code has overtaken (DOCS-RECONCILE not run). Open. November 13 (17b7c87a): permission table reconciled with a reverse lint (D393); DOCS-RECONCILE corrected the overtaken docs and added the capability matrix; dashboard follower gating merged with an audited 403 poll open; G21-REFUSAL-INVENTORY not merged. Open. |
-| G22 | Supported-driver upgrade, mixed-version rejection, cold start, restart, promotion, partition and rejoin. November 11: D373 scope and SQLite/Kubernetes upgrade tests from 0.1.0 merged; QUAL-SQLITE-UPGRADE-2 was rejected by its reviewer and keeps one major finding unresolved, its mounted upgrade test failed in the composed run, `TestChartUpgradeFromV01` fails in hosted CI (no tag), and an unpinned Kubernetes node crash-loops during an API outage. Open. November 13 (17b7c87a): QUAL-UPGRADE-OPEN, QUAL-MIXED-VERSION and QUAL-OPEN2 merged (mixed versions with the released 0.1.0 binary); `TestAnchorUpgradeStaticTwinV010` and `TestV01BinaryRefusesEnrolledDirectory` failed hosted CI on b9b66cba (503 after ready); an unpinned Kubernetes node still exits during an API outage. Open. |
-| G23 | Actual BIND/Knot/AdGuard/dnsdist/Windows results plus fixed-class bounds; no skipped comparator credited. November 11: CI wiring for the formerly skipped BIND/PostgreSQL/envtest tests merged (QUAL-CI) but not credited without a green hosted run; F28-EF-1 live dnsdist test missing; no fixed-class run. Open. November 13 (17b7c87a): Knot primary interop and the digest-pinned dnsdist live suites pass on the private Docker daemon only (D383 crediting rule); no hosted job runs them; no fixed-class or paired run. Open. |
-| G24 | Applicable release checklist, Compose/Kubernetes, licensing and artifact checks; independent two-VM VIP acceptance is owner-deferred follow-up (D358), not passed; no release publication implied. November 11: prebuilt-artifact switches for the harnesses merged; no checklist item closed. November 13 (17b7c87a): no checklist item closed. |
-| G25 | Keep this plan, audit closures, gap ledger, changelog and PR consistent with exact commits/results. November 11: decision rows D367–D378, the completion-pass sections and the changelog folded for what is merged at 68a709e2; later lanes still owe their sections, and the PR body is not updated. Open. November 13 (17b7c87a): decision rows D379–D394 and the replaced D368, D369, D372, D373, D377 and D378, the second-splice sections and the folded changelog record what is at 17b7c87a; packages merged after 85913663 owe a third splice; the PR body is not updated. Open. |
+| G21 | Per-feature production wiring, API/CLI/UI/schema/permissions/docs and original-proof behavior. November 11: D374 removes the plain-text 404s and the vestigial 503 gate; the follower class table covers every unsafe operation; DOCS-VERSION/DOCS-OPS pages still carry statements the merged code has overtaken (DOCS-RECONCILE not run). Open. November 13 (17b7c87a): permission table reconciled with a reverse lint (D393); DOCS-RECONCILE corrected the overtaken docs and added the capability matrix; dashboard follower gating merged with an audited 403 poll open; G21-REFUSAL-INVENTORY not merged. Open. November 14 (7663c957): the refusal inventory merged (G21-REFUSAL-MERGE: walks reach 212 operations on primary, follower, fenced and conflicted shapes in e2e), with its verification's four findings unresolved (single-pass e2e walks; the standalone walk times out on a starved CPU; one tolerated follower message; no green full `./cmd/kudurru` run). Open. |
+| G22 | Supported-driver upgrade, mixed-version rejection, cold start, restart, promotion, partition and rejoin. November 11: D373 scope and SQLite/Kubernetes upgrade tests from 0.1.0 merged; QUAL-SQLITE-UPGRADE-2 was rejected by its reviewer and keeps one major finding unresolved, its mounted upgrade test failed in the composed run, `TestChartUpgradeFromV01` fails in hosted CI (no tag), and an unpinned Kubernetes node crash-loops during an API outage. Open. November 13 (17b7c87a): QUAL-UPGRADE-OPEN, QUAL-MIXED-VERSION and QUAL-OPEN2 merged (mixed versions with the released 0.1.0 binary); `TestAnchorUpgradeStaticTwinV010` and `TestV01BinaryRefusesEnrolledDirectory` failed hosted CI on b9b66cba (503 after ready); an unpinned Kubernetes node still exits during an API outage. Open. November 14 (7663c957): no new upgrade evidence; the enrolled e2e tests are now part of the integrator's pre-push routine after the D405 commits broke them. Open. |
+| G23 | Actual BIND/Knot/AdGuard/dnsdist/Windows results plus fixed-class bounds; no skipped comparator credited. November 11: CI wiring for the formerly skipped BIND/PostgreSQL/envtest tests merged (QUAL-CI) but not credited without a green hosted run; F28-EF-1 live dnsdist test missing; no fixed-class run. Open. November 13 (17b7c87a): Knot primary interop and the digest-pinned dnsdist live suites pass on the private Docker daemon only (D383 crediting rule); no hosted job runs them; no fixed-class or paired run. Open. November 14 (7663c957): real BIND and Knot RFC 5011 qualification added (D398; Knot local-only); no fixed-class or paired run. Open. |
+| G24 | Applicable release checklist, Compose/Kubernetes, licensing and artifact checks; independent two-VM VIP acceptance is owner-deferred follow-up (D358), not passed; no release publication implied. November 11: prebuilt-artifact switches for the harnesses merged; no checklist item closed. November 13 (17b7c87a): no checklist item closed. November 14 (7663c957): `hack/release-local-checks.sh` scripts the local release checks (G24-LOCAL), and its live recursion check found a first-boot defect (`be0f2787`); the full goreleaser snapshot has not run (it needs about 14 GB of free disk; about 11 GB were free), and its image check ran only against a fake docker. No checklist item closed. |
+| G25 | Keep this plan, audit closures, gap ledger, changelog and PR consistent with exact commits/results. November 11: decision rows D367–D378, the completion-pass sections and the changelog folded for what is merged at 68a709e2; later lanes still owe their sections, and the PR body is not updated. Open. November 13 (17b7c87a): decision rows D379–D394 and the replaced D368, D369, D372, D373, D377 and D378, the second-splice sections and the folded changelog record what is at 17b7c87a; packages merged after 85913663 owe a third splice; the PR body is not updated. Open. November 14 (7663c957): the third splice records D395–D398 and D400–D404, the changed D369, D375, D381, D383–D385, D390 and D392, the package sections, the two reverts and the hosted CI history, the folded changelog and the acceptance table at this head; D399 and D405 are pending; the PR body is not updated. Open. |
 
 The explicit verdict for each of the 11 feature packages, with its F rows,
 evidence and open items, is the table
-[Feature package acceptance at 154a779a](gaps.md#feature-package-acceptance-at-154a779a-november-13-2026)
-in the gap ledger (November 13, G25-DOCS). No package is accepted there, and
+[Feature package acceptance at 7663c957](gaps.md#feature-package-acceptance-at-7663c957-november-14-2026)
+in the gap ledger (November 13, G25-DOCS; updated to `7663c957` on November 14). No package is accepted there, and
 the release is not ready.
 
 Current integrated static check: golangci-lint v2.15.0 scans all root packages
@@ -13413,3 +13413,5803 @@ names another block takes on a different port are imported with a loss line
 rather than omitted, because kudurru has one listener set.
 
 **Review and verification state at 17b7c87a.** This package is the lane head that this splice documents; its four commits (`1d9892a4`, `2c364c95`, `6931568c`, `17b7c87a`) are not on the PR branch at the time of writing. The review accepted the first three with seven findings (one major: a server block keyed only by an encrypted classless prefix such as `tls://10.0.0.0/12` aborted the whole import with "corefile server block has no keys"; four minor: such a key next to a plain key vanished from the report, one name answered by blocks on two ports refused the import, the SQLite half of the load-window fix had no test that fails without it while the changelog said it held on SQLite, and a block with unreadable keys left `forward` routes imported without a loss line; two nits: a pending list of any kind, not only an RPZ one, now makes a decision filter and counts in the per-group filtering gauge, and the subject of `2c364c95` is 73 characters). The fixer addressed the major and the four minor findings in `17b7c87a` and rebutted the SQLite test (on SQLite only a BlockList held by a finalizer while it is deleted reaches the pending line); the two nits were not taken up. The verifier resolved all five findings, accepted the rebuttal from the code, left nothing unresolved and reported **three new problems, open**: one minor: when blocks on two ports answer one name and the higher port's answer is dropped, the import report still carries that block's line saying the name is imported and gets "this block's answer on every listener", next to the port-drop line saying that answer was omitted (the imported data is right, the report contradicts itself; `serves()` counts the ports before `addRewrite` drops the answer, and no test asserts the stale line is absent); two nits: the port-drop line counts omitted answers, not names (one name on ports 53, 5353 and 5354 reports 2 names), and the integrator is to check the `Co-Authored-By` trailer of `17b7c87a` against the brief before cherry-picking. Also open from the implementer's report: the SQLite compile window was never measured and no mounted SQLite restart test exercises it; a signed RPZ feed restarted without the apiserver still fails closed (D390); with `allowDegraded: true` downloaded lists still apply only once compiled; and the CoreDNS importer treats an IPv6 classless key in brackets as unreadable and imports names another block takes on a different port with a loss line.
+
+
+### v0.2 completion pass, third splice: what was merged after 17b7c87a, and its verification state — November 14, 2026
+
+This section and the package sections after it record what is in the tree
+at `7663c957`, the PR branch as pushed on November 14 at 06:40 UTC.
+`git log 17b7c87a..7663c957` holds 278 commits. The second splice
+(`e7e438fa`, `aff37a80`, `86d97ea1`, `7b11a139`) recorded the tree at
+`17b7c87a`; G25-DOCS (`12c7ae4b`) then added the
+[feature package acceptance table](gaps.md#feature-package-acceptance-at-7663c957-november-14-2026)
+of the 11 packages, which this splice updates to `7663c957`. Each package
+section below is the package's own ledger draft, followed by its
+verification state at `7663c957` taken from the integrator's log
+(`.context/v020-final-20261110/PLAN.md`) and
+`.context/v020-final-20261110/followups/wave3-open.json`, which holds every
+verification result of wave 3. A draft describes its lane head; where the
+merged tree differs (a commit skipped, a section dropped, a package carried
+by a later one), the state paragraph says so.
+
+**What was merged, and how.** The integrator merged each package after its
+lane finished, ran a pre-push check (`evidence/INTEGRATE-26/` to
+`INTEGRATE-49/`) and pushed. Pushed heads in order: `d063f929`,
+`daff96e5`, `72c887ef`, `a3b5a1d0`, `c5b0637c`, the D399 revert (`95c57113`),
+`2e15060e`, `531bffd0`, `bae1c9df`, `81c2d3af`, `7663c957`. Commits the
+integrator wrote while merging: `2a15e5a0` and `faa6c4e1` (the dashboard's
+follower and forwarded-route tables for Integration writes), `72c887ef`
+(`listAllowed` known to the reverse permission lint), `a3b5a1d0` (the e2e
+package limit from 20 to 45 minutes and the job from 30 to 75: every e2e
+test had passed on `daff96e5` and the package was then killed by its own
+limit), `2ec31b82` (the IAM writers' six verbs out of `reserved:`, the
+dashboard follower table and the mounted follower counts), `3bc4c24b` (a
+secret-lint mark on a test fixture), `6259b61c` (the dashboard's
+integration field limits driven by the manifest after INT-OPEN2 changed it;
+written by a helper agent and merged by the integrator), the three revert
+commits described below, `cb04067b`, `7663c957` and the `chore(gen)`
+commits.
+
+**Two reverts, and one revert undone.**
+
+- **D399, command recapture (CMD-RECAPTURE).** Merged locally at about
+  12:50 UTC on November 13 and pushed in `c5b0637c`. Hosted CI on
+  `c5b0637c` and a local rerun then failed seven existing command tests
+  deterministically:
+  `TestServingAdoptionActualHTTPOriginalWriterProofAndLease/stale-lease`
+  (412, want 503), `TestServingCacheCommandRefusesOriginalAuthorityLoss/keys`,
+  `TestServingDomainCommandRetainsOriginalLeaseAndPlan/stale`,
+  `TestServingNodeCommandActualRefusesStaleAuthorityAndFinalExpiry/rotated-keys`,
+  `TestRunServeSQLiteControlSettingsRestart` ("superseded control request:
+  status=200"), `TestServingSourceCommandRetainsOriginalRequest` and the
+  package's own `TestServingCommandRecaptureSignInSupersededBeforeDispatch`
+  (`evidence/INTEGRATE-38/ci-c5b0637c-*.log`,
+  `evidence/INTEGRATE-40/d399-regress-local.log`). Those tests state the
+  contract that a rotated key, a stale lease, lost authority or a superseded
+  control request is refused, never captured again. The integrator reverted
+  the whole package (`827a6ebe`, which removes all of its code, tests and
+  docs, and `07f56d53`) and restored a row the revert had brought back
+  (`95c57113`); all seven pass after the revert
+  (`evidence/INTEGRATE-41/after-revert.log`). The integrator's own lesson:
+  the pre-push step had run only the new `./cmd/kudurru` tests, and a
+  change to a shared path needs the full suite. D399 is being redone as
+  package D399-REDO, with the full `./cmd/kudurru` suite and the enrolled
+  e2e tests as acceptance; **it is not at this head and D399 has no
+  decision row.**
+- **D405, publication starvation (PUBLISH-STARVATION).** Five of its
+  commits that did not need D399 (the zone chunk sweep `5b200f28`, Wake
+  coalescing `f66940d5`, and `a141541e`, `5e8dd096`, `53eea181`; at this
+  head `b0d0e801`, `e76eb08c`, `3059bbeb`, `448303ca`, `5638e416`) were
+  merged early, at about 19:20 UTC on November 13, and pushed in
+  `531bffd0`. Hosted CI on `531bffd0` (run 43514296652) then failed all four
+  enrolled e2e tests ("document N of 40 after the cut at M was not refused
+  as documented: ... the enrolled primary is unavailable; the write was not
+  applied"), and the failure reproduced locally
+  (`evidence/INTEGRATE-46/e2e-partition-local.log`). The integrator first
+  reverted HA-OPEN6 on suspicion (`88bed726`, 29 commits); the test still
+  failed without it (`e2e-partition-after-revert.log`). A bisect in a
+  separate worktree (`evidence/INTEGRATE-46/e2e-bisect-*.log`: passes at
+  `2e15060e` and `e0bddb72`, fails at `606a53a8`) put the cause in the five
+  D405 commits. They were reverted (`bae1c9df`) and the HA-OPEN6 revert was
+  undone (`832dab99`), so **HA-OPEN6 is at this head and D405 is not**; with
+  that, `TestEnrolledClusterProcessesPartitionCatchupAndRestart` and
+  `...PromoteAndRejoin` passed locally (`e2e-after-d405-revert.log`). The
+  rest of PUBLISH-STARVATION and the D399 commits are kept on
+  `wip/v020/ci-held`; D405 has no decision row. The integrator added the
+  enrolled e2e tests to the routine before any push that touches serving,
+  store, zone state or cluster code.
+- **F28-OPEN6** was backed out of the local PR branch before any push on
+  November 13 (with it `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart`
+  failed every run and three enrolled anchor e2e tests failed on root
+  acquisition counts). F28-OPEN7 re-applied its eleven commits; it showed
+  that the count failures came from the integrator's earlier merge, which
+  had dropped F28-REJOIN-COUNT's blocking-switch wait, and that the
+  recursive readiness failure is load (the same at base). F28-OPEN6's
+  content is at this head through F28-OPEN7.
+
+**Superseded and carried packages.** CORE-CHILD-ZONE (the flake lane's
+fix for primary parent and child zones, also numbered D404) overlapped the
+fix CORE-OPEN4 had already merged; CORE-CHILD-RECONCILE kept one mechanism
+and both tests, and CORE-CHILD-ZONE's commits (`wip/v020/flake-childzone`)
+are not merged. HA-OPEN5's ten commits and CI-RED-2's held product fixes
+reached the PR branch through HA-OPEN6. G21-REFUSAL-INVENTORY and
+G21-REFUSAL-OPEN were backed out or held (their walks failed by design for
+every operation other lanes had added, and G21-REFUSAL-OPEN's `ee5415ca`
+broke two existing tests); G21-REFUSAL-MERGE re-applied both on the head
+without that change.
+
+**Interruptions and machine limits.** The machine's disk filled at about
+11:25 UTC on November 13 (the Go build cache grew 24 GB in two hours); the
+cache was trimmed and the disk guard tightened, and the repository and
+worktrees were intact. Disk is also why the full goreleaser snapshot has
+not run (below).
+
+**Verification state by package** (verification of the fix commits:
+resolved, unresolved and new findings; details in each section):
+
+| Package | Decision | At 7663c957 | Verification |
+|---|---|---|---|
+| CORE-COMMIT-GAP | D395 | pushed `d063f929` | 4 resolved, 1 minor unresolved (thin mounted coverage), 4 new (the parent/child SERVFAIL, later fixed by D404; seven loosened assertions for the owner) |
+| DASH-CLUSTER | none | pushed `d063f929` | 4 resolved, 2 new (invitation view could not be closed; fixed by DASH-OPEN) |
+| CI-RED-2 | none | six test-only commits pushed `daff96e5`; product fixes through HA-OPEN6 | 5 resolved, **2 major unresolved**, 8 new |
+| DASH-OPS | none | pushed `daff96e5` | nothing unresolved, nothing new (integrator's log) |
+| INT-ADMIN-API | D400 | pushed `daff96e5` with `2a15e5a0` | 6 resolved, 2 new (map keys under `spec.credentials` echoed: fixed by INT-OPEN2) |
+| F28-REJOIN-COUNT | none | pushed `daff96e5` | 1 resolved, 2 minor unresolved (hosted proof; 1-or-2 absorption), 3 new low |
+| F28-RFC | D398 | pushed `72c887ef` | 7 resolved, 2 new low |
+| DASH-OPEN | none | pushed `72c887ef` with `faa6c4e1` | nothing unresolved, nothing new (integrator's log) |
+| CORE-OPEN4 | D385 | pushed `72c887ef`; its child-zone part replaced by D404 | 3 resolved, 3 unresolved (minor), 3 new |
+| DASH-RPZ | D391 | pushed `c5b0637c` | 3 resolved, 1 new minor |
+| G24-LOCAL | none | pushed `c5b0637c` | 4 resolved, **2 unresolved (1 major: no full snapshot)**, 3 new |
+| G25-DOCS | none | pushed `95c57113` | 5 resolved, 2 new (draft table stale; one nit) |
+| IAM-WRITERS | D396 | pushed `95c57113` with `2ec31b82` | 4 resolved, **2 major unresolved** (proofs; permanent floors), 3 new |
+| INT-UNIFI-PUSH | D401 | pushed `95c57113` | 5 resolved, 1 minor unresolved (fixed by INT-OPEN2), 5 new low |
+| INT-EXTERNAL-ZONES | D402 | pushed `2e15060e` | 3 resolved, 2 minor unresolved, 3 new (two fixed by INT-OPEN2) |
+| DASH-INTEGRATIONS | none | pushed `531bffd0` with `326289ea` | 5 resolved, 1 new minor (fixed by DASH-IAM) |
+| ID-INVENTORY | D397 | pushed `531bffd0` | 4 resolved, 3 new (a race-detector regression, being fixed by INVENTORY-REGRESS) |
+| F28-OPEN6 | D369 | through F28-OPEN7 | 5 resolved, **4 unresolved (2 major)**, 5 new; taken up by F28-OPEN7 |
+| F28-OPEN7 | D369 | pushed `531bffd0` | 6 resolved, **3 unresolved (1 major)**, 4 new |
+| F28-REVOKE-HOSTED | D398 | pushed `531bffd0` | 3 resolved, 1 minor unresolved (hosted evidence only), 1 new |
+| DASH-IAM | D396 | pushed `531bffd0` | 5 resolved, 2 new low |
+| INT-GROUP-VIEWS | D403 | pushed `531bffd0` | 9 resolved, 2 new minor |
+| HA-OPEN5 | D375, D381 | through HA-OPEN6 | 5 resolved, **5 unresolved (2 major)**, 3 new |
+| HA-OPEN6 | D381 | pushed `531bffd0`; reverted in `88bed726`, restored in `832dab99` (pushed `bae1c9df`) | 6 resolved, **1 blocker unresolved**, 3 new |
+| CORE-CHILD-RECONCILE | D404 | pushed `bae1c9df` | 4 resolved, 1 minor unresolved |
+| INT-OPEN2 | D384 | pushed `bae1c9df` with `6259b61c` | 7 resolved, 1 minor unresolved, 4 new |
+| DASH-INVENTORY | D397, D403 | pushed `81c2d3af` | 3 resolved, 1 minor unresolved, 3 new (1 an edit into the wrong group) |
+| G21-REFUSAL-INVENTORY | none | through G21-REFUSAL-MERGE | 4 resolved, 2 unresolved (1 major), 4 new |
+| G21-REFUSAL-OPEN | none | through G21-REFUSAL-MERGE, without `ee5415ca`'s hint | 3 resolved, 1 major unresolved (fixed by leaving the answer unchanged), 3 new |
+| G21-REFUSAL-MERGE | none | pushed `7663c957` | **0 resolved, 4 unresolved (2 major)**, 3 new |
+| LEDGER-SPLICE-2 | none | pushed `72c887ef` | 2 resolved, 1 nit (an empty lint log cited) |
+
+**Not at this head.** CMD-RECAPTURE (D399, reverted) and D399-REDO (in
+progress); PUBLISH-STARVATION (D405: five commits reverted, the rest held);
+CORE-CHILD-ZONE (superseded); INVENTORY-REGRESS (in progress, for the
+`TestRunServeUniFiHostnamePolicyLifecycle` regression). The decision rows
+D399 and D405 are not written; they are pending.
+
+**Hosted CI.** The `ci` workflow passed for the first time in this
+completion pass on `bae1c9df` (run 43532858454, all jobs). On that head the
+`docs` workflow failed because a closing code fence in
+`docs/architecture/integrations.md` shared its line with the next sentence
+(the rest of the page rendered as code and the link check failed on the
+Kubernetes execution anchor), and the `security` workflow failed on one SAST
+finding (semgrep `detect-non-literal-regexp` on the dashboard's manifest
+pattern check). `cb04067b` and `7663c957` fix them; the SAST annotation was
+not rerun locally. No result is recorded here for `81c2d3af` or
+`7663c957`. Earlier heads of this splice:
+
+- `d063f929`: e2e `TestEnrolledManagedAnchorsPromoteAndRejoin` ("rejoin
+  acquisitions 5"), `TestIntegrationWebhookMountedClientsRestart`
+  ("complete assembly did not converge", first sighting) and
+  `internal/rpz` `TestBINDRPZRuntimeTransfersRefreshRestart/tcp` (first
+  sighting).
+- `daff96e5`: no e2e test failed; `go test ./test/e2e` was killed by its
+  20-minute limit (the "FAIL test/e2e 1320 s" of every earlier run was this
+  kill; fixed in `a3b5a1d0`). The only failing test was
+  `internal/cluster/replica` `TestWriteWhoseDialRunsIntoTheDeadlineStaysUnknown`
+  (HA-OPEN6 fixed the timed-out dial classification).
+- `a3b5a1d0` (first run with the 45-minute e2e limit,
+  `evidence/INTEGRATE-36/ci-a3b5a1d0-*`): e2e passed; failed
+  `test/interop` `TestBINDManagedRootRevocation` ("committed refresh: 1
+  managed acquisitions, want 3"), dashboard-e2e `zones.spec.ts` (`PUT
+  /objects/dnszones` 503 "current writable ..." after 11 ms) and
+  `TestRunServeSQLiteZonesAnswerAcrossCommits` (`POST /objects/blocklists`
+  503).
+- `c5b0637c`: the seven command tests above (D399) and
+  `TestBINDManagedRootRevocation` again.
+- `95c57113` (run 43447535882): e2e passed; failed
+  `TestRunServeSQLiteZonesAnswerAcrossCommits` and
+  `TestRunServeStaticTwinsReadOnlyPeerLossRestart` (503),
+  `TestIntegrationWebhookMountedClientsRestart` (second sighting),
+  `TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers`
+  (first sighting) and `TestBINDManagedRootRevocation` (third run in a row)
+  (`evidence/INTEGRATE-41/ci-95c57113-*.log`).
+- `2e15060e`: three failing tests,
+  `TestRunServeDirectAnchorsFencedAndConflictRestart` and
+  `TestRunServeSQLiteZonesAnswerAcrossCommits` (503) and
+  `TestBINDManagedRootRevocation`; e2e, fuzz, dashboard, dashboard-e2e,
+  helm, lint, postgres and `go test 2/2` passed. The revocation failure was
+  the integrator's partial merge: F28-RFC's test needs the `licensetest`
+  seam file of F28-OPEN7's `43d42037` (F28-REVOKE-HOSTED).
+- `531bffd0` (run 43514296652): `TestBINDManagedRootRevocation` passed;
+  all four enrolled e2e tests failed (the D405 commits, above), plus
+  `TestRootMemberPasswordCommandActualHTTP`,
+  `TestServingHTTPLocalUsersResetCASOwnershipAndDisabled` (503, want 201),
+  `TestRunServeTracingThroughCacheAndRace` and the managed-anchor sign-in
+  503 (`evidence/INTEGRATE-45/ci-531bffd0-*`).
+
+The `503` right after a node reports ready is still intermittent: on a
+ready node a sign-in, a read or a write can be refused before dispatch with
+`503 generation_pending` or "current writable serving generation
+unavailable" while a background publication is prepared (publication
+restarts its preparation on every generation or Wake). It did not fail
+`bae1c9df`. D399 removed one cause and was reverted; D399-REDO and D405 are
+to remove it.
+
+**Known intermittent tests at this head** (each seen failing at least once
+in this pass; none is skipped):
+
+- The 503-after-ready family: `TestRunServeDirectAnchorsFencedAndConflictRestart`,
+  `TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled`,
+  `TestRunServeSQLiteZonesAnswerAcrossCommits`,
+  `TestRunServeStaticTwinsReadOnlyPeerLossRestart`,
+  `TestRootMemberForwardPasswordAndTokensActualHTTP`,
+  `TestRootMemberPasswordCommandActualHTTP`,
+  `TestServingHTTPLocalUsersResetCASOwnershipAndDisabled`,
+  `TestServingHTTPIAMLocalUserUpdateAndDelete`,
+  `TestServingObjectCommandResolvesZoneGroupInTransaction` and dashboard-e2e
+  `zones.spec.ts` (D399-REDO, D405).
+- `TestRunServeUniFiHostnamePolicyLifecycle` fails under the race detector
+  since ID-INVENTORY (bisect: 3 of 3 pass at `2e15060e`, 3 of 3 fail at
+  `e0bddb72`; `evidence/INTEGRATE-45/unifi-hostname-at-*.log`); it did not
+  fail hosted `bae1c9df`. INVENTORY-REGRESS is fixing it.
+- Integrations: `TestIntegrationWebhookMountedClientsRestart` (hosted
+  twice; INT-OPEN2 found and fixed a setup that was never retried, which
+  it names as the cause), `TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers`
+  (hosted once), and locally `TestIntegrationUniFiPushMirrorPartialCreate`
+  (an unexplained 30 s stall), `TestIntegrationUniFiPushMirrorRecordsReviewed`
+  (`/sync` 503 `integration_uncertain`),
+  `TestRunServeWebhookRecordsFileIntegrationAndCLI`,
+  `TestIntegrationDeleteForgetsAHistoryOfSeveralStoredPages` and
+  `ee/integration/host` `TestActualSQLiteSourceCommittedPendingSurvivesAckDeadline`
+  (also at base); `TestRunServeKubeClientGroupViews` (an update conflict
+  the test does not retry).
+- Managed anchors: `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart`
+  and `TestOfflineAnchorRecoveredTrustServesAfterRestart` (10 s readiness
+  bound under race and load), `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture`
+  (early writer return, cause unknown), `internal/store/sqlite`
+  `TestAnchorPublicationHeldAndFinalOriginalExpiryRefuseWithoutRenewal/inside-final-callback`
+  (250 ms timer under load).
+- Followers and UPDATE: e2e `TestEnrolledClusterProcessesPartitionCatchupAndRestart`
+  (an early SERVFAIL through the first follower, HA-OPEN6's open blocker),
+  `TestRootMemberUpdateKeyIdentityAndRetryActualHTTP`.
+- In CORE-CHILD-RECONCILE's full `./cmd/kudurru` run (and with its
+  production files reverted): `TestRunServeKubeUniFiSourcesTwoReplicasAndPartition`,
+  `TestRunServeUniFiHostnameHeldPublicationDeadline`, `TestRunServeKubeRPZFeeds`,
+  `TestRunServeSQLiteTOTPEnrollmentRestartRecovery` (503) and
+  `TestRunServeSQLiteCompoundZoneCommands` (503 `generation_pending`); once,
+  a fixture data race in `TestAnchorEdgeActivationJoinedFollower`
+  (`cluster_join_test.go:51`; `4a58f33a` sets the data directory before the
+  primary runs and it did not recur in six runs).
+- Others seen under local load: `TestCLIOIDCBrowserActualTLSProofRefusals`,
+  `TestServingMigrationCutWaitDoesNotBoundTheStepCommand`,
+  `TestServingTSIGFinalCommandLifetimeRollback`,
+  `TestServingHTTPTOTPLoginPasswordConsumeExactlyOnce`,
+  `TestRunServeSQLiteLongApplyKeepsServingDNSAndReads` (its read assertion
+  without race), `TestRunServeSQLiteParentEditedAsChildIsCreated` (half its
+  bound), `TestRunServeRefusalInventoryStandalone` (on a starved CPU),
+  `internal/primaryruntime/network`
+  `TestActualNotifyAncestorExpiryInvalidatesBoundChildWithoutNewGeneration`
+  under race (also at base), and on hosted CI once each `internal/rpz`
+  `TestBINDRPZRuntimeTransfersRefreshRestart/tcp` and
+  `TestRunServeTracingThroughCacheAndRace`.
+
+**Decisions the integrator made and marked for the owner's confirmation.**
+
+1. D395 changes DNS serving semantics: a query whose publication was
+   replaced is answered from it for up to one second, and a zone keeps
+   answering its last committed head across its own DNSZone write; seven
+   older assertions that pinned the earlier behavior were inverted or
+   loosened. Merged; confirmation pending.
+2. D399's rule: a command refused before its transaction began only because
+   its captured publication was superseded captures again, rechecks
+   everything and dispatches once, bounded. The rule as built broke the
+   seven tests above, which say that a rotated key, a stale lease, lost
+   authority or a superseded control request is refused and never captured
+   again; D399-REDO must keep both. Not at this head; confirmation pending.
+3. D375 stands for v0.2.0: a large multi-document apply through a follower
+   is still cut at the follower's next pull (HA-OPEN6: 40 documents applied
+   completely in 5 of 18 runs, 160 never); `docs/deploy/sqlite-join.md`
+   says to send such files, and every restore, to the primary. Confirmation
+   pending.
+
+Also for the owner: IAM-WRITERS keeps revocation floors permanent, so about
+4,000 delete or first disable cycles fill the security section and deletes
+and new sign-ins then fail (D396), and it uses `tokens.write`, which was
+reserved for v1.0; G25-DOCS closed follow-up rows of packages that are not
+accepted.
+
+**G24 snapshot.** The full goreleaser snapshot (`hack/release-local-checks.sh
+--full-snapshot`) has not run: it needs about 14 GB of free disk (an
+unverified estimate) and the shared machine had about 11 GB. The image
+check has run only against a fake docker. It is to run in the final pass
+with the lanes stopped.
+
+**Excluded checks.** Both Cloudflare Workers Builds checks (`kudurru-docs`,
+`kudurru-www`) stay excluded by the owner.
+
+**Decision rows.** This splice adds D395–D398 and D400–D404 (D398 with
+F28-REVOKE-HOSTED's amendment folded in; D404 is CORE-CHILD-RECONCILE's row
+and replaces D385 item (4)), folds F28-OPEN6 and F28-OPEN7 into D369,
+INT-OPEN2 into D384 and CORE-OPEN4 into D385, replaces D375 by HA-OPEN5's
+complete row with the owner position, and D381 by HA-OPEN6's complete row,
+and gives D383, D390 and D392 their state at this head. Each changed row
+ends with what is open at `7663c957`. D399 and D405 are not written.
+
+No gate is closed by this splice. G04 had one green `ci` run (`bae1c9df`)
+whose `docs` and `security` workflows failed; no result is recorded for
+the head; G05–G15 and G21–G25 stay open; the paired benchmark has not run
+on the final head; the release is not ready.
+
+
+### CORE-COMMIT-GAP zones keep answering across canonical commits — November 13, 2026 (D395)
+
+**Answer to the integrator's question.** The QUAL-OPEN3 measurement
+(`fix-measure03-release.log`) ran at `d2039002`, a commit that does not contain
+D378 (`10d3ab5b`, "answer local data from the served publication"). That change
+already stopped an unrelated commit (a BlockList create or delete) from leaving an
+authoritative zone unanswered: the same QUAL-OPEN3 harness at the lane head
+`cd0ee44f` showed no gap in either unrelated-BlockList window beyond one 8 ms
+probe (`measure01-head-norace.log`). The draft's explanation (answers of a
+superseded publication withheld by design) was half right. Two causes were
+still there at the lane head, and both are now fixed:
+
+1. **SERVFAIL after a zone's own write.** A write of a zone's own `DNSZone`
+   (query ACL, name servers, selector) made every publication serve that zone as
+   committed-unavailable coverage until the zone driver had refreshed the
+   lifecycle receipt and, for a primary, committed a head of the new
+   configuration. Primary and forward zones answered SERVFAIL for up to 320 ms
+   and 302 ms (`measure01`). Now `PreparedImage.Serves` keeps the same zone (same
+   name, UID, apex and type, a source that is not removed, an active lifecycle
+   and head) in DNS routing through that gap. A primary answers its last
+   committed head under the query access mode and ACL of the new configuration
+   (`zone.RetainCommittedPrimary`), with zone transfers refused. A nonprimary
+   answers its new configuration, which is what its model is always built from.
+   `PreparedImage.Admitted` keeps the strict meaning, so UPDATE, NOTIFY, status
+   projection, publication acknowledgment and integrations still wait for the
+   driver. A deleted, replaced or retyped zone, a head that is not active, and
+   expiry still get coverage. A child's own write no longer unbinds its parent.
+2. **No reply for a query in flight across a publication swap.** The check that
+   withheld the answer is `rootAnchorOutput.Emit` →
+   `recursiveRootSeal.servedCurrent` → `Publisher.Serves`. A query captured on
+   publication N whose output came after N+1 was swapped in failed that check
+   with `serving: dependency changed`, and the UDP listener sent nothing. Shown by
+   temporary instrumentation of every refusal point (`gapdbg-instrumentation.patch`,
+   never committed): `emit-refused ... current=false dnsCurrent=true
+   servesNow=false` followed by `write-failed` in `gap08` (grace removed) and in
+   the before-variant of `gap10`. Now `Publisher.ServedWithin` also recognizes the
+   last eight replaced publications for one second (`servedSuccessorGrace`) after
+   the swap that replaced each, however many swaps followed. The record holds
+   weak pointers only. It is written under the publication lock *before* the
+   pointer swap, so a reader that loads the current pointer first always finds
+   a leased publication either still current or already retired. (The first
+   version wrote it after the swap; a reviewer's spinning-reader probe found
+   that leftover window refusing a leased publication on about one swap in
+   four, `review-08`/`review-09`.) A DNS-only (fenced) successor clears the
+   record before it is swapped in, and `Close` clears it.
+
+**Safety.** Every answer sent under these rules is committed data. `Capture`
+only returns the served publication, so a query in flight was received while its
+data was current. The one-second bound limits staleness; it is not a window of
+silence. No query captured after a swap can use the old publication, and an
+answer from a replaced publication is sent at most one second after that
+publication was replaced. Nothing is answered across a fence. The DNS dependency
+installations (keyring, transferred and catalog zone data, root lifetime) and
+the anchor input are still checked at the handoff. Transfers, UPDATE
+acknowledgments, API dig, cache insertions and native resolver mutations keep
+full data currency. A tightened query ACL applies from the first publication
+after the write, as the coverage did before.
+
+**The 1.39 s gap of CORE-OPEN3 `run05`** (TestRunServeSQLiteLongApplyKeepsServingDNSAndReads,
+no SERVFAIL): its cause is **not determined**, and it was not reproduced. The
+long-apply probe uses a 200 ms timeout and sleeps 50 ms between queries
+(`cmd/kudurru/serve_apply_multi_mount_test.go`), so one withheld query makes a
+gap of about 0.3 s; 1.39 s needs five or six consecutive unanswered probes. The
+withheld-answer mechanism was measured at about one query in a few thousand per
+swap, and the only refusal caught in the instrumented control (`gap10`, the
+before-variant) produced a 313 ms gap, one lost probe. Five or six independent
+hits in a row is not a credible explanation; a server-side stall of more than
+200 ms per query is at least as likely, and the one-second grace would not fix
+that. After the change, 10 instrumented long-apply runs (`gap09`), 6
+interleaved ones (`gap10` B) and 5 final ones (`gap11`) logged no refusal, and
+the longest DNS gap was 238 ms, under load averages of 10 to 32. A follow-up
+should capture it on an idle machine with the refusal instrumentation
+(`gapdbg-instrumentation.patch`) plus per-query latency.
+
+Evidence under `.context/v020-final-20261110/evidence/CORE-COMMIT-GAP/`:
+
+- New mounted test `TestRunServeSQLiteZonesAnswerAcrossCommits`
+  (`cmd/kudurru/serve_commit_gap_test.go`): a complete SQLite `runServe`, and
+  direct UDP probes every 5 ms for a primary zone name and a forward zone name
+  (upstream on loopback) while the test makes 32 writes: four rounds of the
+  primary's query ACL on and off, a change of its name servers, its record set
+  to a new address, the forward zone's query ACL on and off, and an unrelated
+  BlockList created and deleted. Without the race detector every probe must get
+  committed data (no SERVFAIL, no silence, no uncommitted address), and once a
+  new address has been seen published and one second (`servedSuccessorGrace`)
+  has passed, no probe sent after that may get an older address. Under the race
+  detector SERVFAIL and wrong answers still fail and silent probes are bounded
+  by one per commit. `hack/go-test.py` now runs it a second time without the
+  race detector (`NORACE_TESTS`).
+  - Before the fix (`-overlay overlay-before.json`, the lane-head versions of
+    `image.go`, `membership.go`, `zones.go`, `serving_runtime.go`): `gap04`, 2
+    of 2 runs fail with 254 and 378 probes answered SERVFAIL for the primary
+    zone.
+  - With the zone fix but without the grace (`overlay-nograce.json`): `gap06`
+    2 of 2 fail (3 silent probes each), `gap08` 1 of 1 fails (1 silent probe,
+    instrumented as above).
+  - After the fix, no race detector: `gap05` 2 of 3 pass (1 silent probe, with
+    the earlier immediate-predecessor-only grace; cause not captured), `gap07`
+    3 of 3 pass, `gap09` 3 of 3 pass, and with the final code `gap11` 5 of 5,
+    `gap12` 3 of 3 and `gap13` 3 of 3 pass: 0 of about 7,000 to 8,500 probes per
+    name per run without a correct answer.
+  - After the fix, race detector: `race04-zones.log` 3 of 3 pass, 0 of about
+    12,300 to 13,500 probes per name without a correct answer (1 and 2 setup API
+    requests asked again after 503 `generation_pending`). `race02` and `race03`
+    are retained failures of earlier test versions: their setup GET or PUT got
+    503 `generation_pending` under the race detector and the test did not ask
+    again. Not a DNS failure; fixed in `69cc3aa1`.
+- Review fixes (after the first acceptance review), with the final test:
+  `fix-04` (with a child zone, see below) 3 of 3 and `fix-14` 3 of 3 and
+  `fix-16` 2 of 2 pass without the race detector (0 of about 9,000 to 10,000
+  probes per name without a correct answer); `fix-17` 3 of 3 pass under the
+  race detector (0 of about 15,000 per name; 1 to 4 setup requests asked again
+  after 503).
+- `TestPublisherServedWithinHasNoGapAtTheSwap` (`internal/serving`): a lease
+  holder spins on `ServedWithin` with a one-hour grace across 400 swaps.
+  `fix-01` passes (386 swaps seen, 0 refusals). With the previous order (record
+  written after the swap, `fix-overlay.json`), `fix-02` 2 of 2 fail with 145
+  and 109 refused swaps out of 391 and 392. `fix-03`: `internal/serving` under
+  the race detector passes.
+- `TestRunServeSQLitePrimaryAnswersAcrossStatusWrites`: its status read now asks
+  again for up to 30 s after 503 `generation_pending` (the transport gave up
+  after 5 s once in the reviewer's `review-02`). Under the race detector
+  `fix-06` and `fix-15` 6 of 6 pass with 0 probes unanswered within 200 ms and
+  0 or 1 status reads asked again.
+- QUAL-OPEN3 harness (`fix-measure-window.patch`, applied, never committed), no
+  race detector: `measure01-head-norace.log` at the lane head (primary zone
+  SERVFAIL up to 320 ms, forward zone up to 302 ms after their own writes) and
+  `measure02-final-norace.log` after the fix: 0 SERVFAIL and 0 no-response in
+  every one of the 16 windows (about 3,000 probes each).
+- `TestPublisherServedWithinKeepsRecentlyReplacedPublications`
+  (`internal/serving`): grace counted from each publication's own replacement,
+  two swaps old still admitted, past the grace refused, older than the record
+  refused, across a DNS-only fenced publication refused, after `Close` refused.
+  Checked to fail with the DNS-only clearing removed and with a record depth of
+  one.
+- Unit and package tests updated to the new rule: `TestRootAnchorServedDNSFollowsThePublication`
+  (inside the grace a query in flight is answered and a transfer is still
+  refused; after it, refused as before), `TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation`,
+  `TestImageStatusActualSourceAdvancedOldHeadAdmissionWindow`,
+  `TestImageReadinessActualParentConfigGapClosesPrimaryAndNonprimaryChildren`,
+  `TestImageReadinessStatusWriteKeepsCommittedAuthority`,
+  `TestActualNonprimarySourceMutationMissingWitnessAndPreparing`,
+  `TestPrimaryPublicationStopsWaitingForChangedDesiredSource`, and the primary
+  status feedback fixture.
+- Race runs: `light01`/`light03` (`internal/serving`, `internal/zone`,
+  `internal/servingzones`) and `light02`/`light04` (`internal/primaryruntime`
+  75 s, `internal/servingbuild` 229 s) all pass. `race02-cmd-selection.log`:
+  every `TestRootAnchor*` test, `TestRunServeSQLitePrimaryAnswersAcrossStatusWrites`,
+  `TestRunServeSQLiteCompletePrimaryUpdateRestart` and
+  `TestRunServeSQLiteLongApplyKeepsServingDNSAndReads` pass under the race
+  detector (the gap test's failure there is the setup 503 described above).
+- Lint: `fix-07` and `fix-19` (`./internal/serving/...` and
+  `./cmd/kudurru/...` after the review fixes), 0 issues. `lint02` (the five internal packages and `./cmd/kudurru/...`) and
+  `lint03` (`./cmd/kudurru/...` after the last test change), 0 issues. `lint01`
+  reported one errcheck issue in the uncommitted QUAL-OPEN3 measurement file
+  only. Bench guards: 14 tests OK.
+
+**Still open.** A new defect found while adding a parent/child pair to the
+mounted test, not fixed here and not caused by D395: on a mounted node a
+primary child zone under a primary parent can leave one of them SERVFAIL for
+good, readiness reporting `zone awaiting committed publication: <apex>`. A
+child created after its parent was answering stayed unanswered for six minutes
+in 3 of 5 runs (`fix-13`, overlay `fix-overlay-latechild.json`; it either
+answers within about 0.9 s or never), and in `fix-09`/`fix-11`/`fix-12` 3 of 6
+runs at the 60 s setup bound. Created together, the parent never answered
+within 60 s in 4 of 6 race runs (`fix-06` 1 of 3, `fix-15` 3 of 3) while 3 of
+3 runs without the race detector passed (`fix-04`). The lane-head code without
+D395 (`overlay-before.json`) does the same: `fix-08` 1 of 1 without the race
+detector (child created later) and `fix-18` 2 of 2 under it (created together,
+`fix-overlay-before-child.json`). The likely area is the driver's late-child
+admission (`AdmitAncestor` and the parent fence in `primaryruntime/driver/work.go`,
+`c.ready[ancestor] = false` in `primaryruntime/image.go`); it needs its own
+package. The mounted commit-gap test therefore has no parent/child pair:
+parent/child behavior across each other's writes, a forward zone changing its
+upstream group, and a tightened ACL refusing from the first publication are
+still shown only by `internal/primaryruntime`, `internal/servingbuild` and
+`internal/servingzones` tests.
+
+The silent-probe count of the status-write test under the race detector (0 to
+10 per run, before and after D395, reviewer's `review-06`/`review-07` and
+`fix-06`/`fix-15`) was not compared in a larger before/after control; the
+samples are too small to attribute it either way.
+
+`TestRunServeSQLiteLongApplyKeepsServingDNSAndReads` should be tracked as its
+own package (CORE-APPLY-MULTI / D378 area); D395 does not resolve it. It fails
+without the race detector on this shared machine on its *read* assertion
+(`generation_pending` refusals of a second caller during the long apply; 0
+SERVFAIL, DNS gaps at most 238 ms): `gap09` 10 of 10 at load 21 to 32, `gap11`
+2 of 5 at load 5 to 15. The interleaved control `gap10` (before the fix: 3 of 6
+fail; after: 3 of 6 fail) shows it does not come from this package. The apply
+itself takes 9 to 69 s there against 4 to 5 s in the CORE-OPEN3 runs. This is
+the CORE-APPLY-MULTI or D378 area and needs its own look on an idle machine. The
+grace is one second, and a query whose processing outlives that (more than one
+second between capture and output) is still withheld. The measurements are on
+mounted `runServe` test binaries with `CGO_ENABLED=0` on 8 shared CPUs, not on
+the packaged release binary. The live dnsdist suites (QUAL-OPEN3) were not run
+again. Their harness waits stay as they are, but they should no longer be
+needed for the reasons D383 gave.
+
+**Verification state at 7663c957.** Merged with D395 and pushed at `d063f929`. The verifier confirmed findings 1, 2 and 4 resolved (the new test passes on the fixed code and fails on the old `publisher.go`), accepted finding 5 as its own package, and left finding 3 (minor) **partly unresolved**: the mounted test now writes name servers each round and fails on an address older than one already published once the one-second grace has passed, but a parent/child pair, a forward zone changing its upstream group and a tightened ACL refusing from the first publication are proven by unit tests only. New, open: the seven assertions this package inverted or loosened still need the integrator's and the owner's explicit acceptance (marked for the owner; see the splice section). The parent/child SERVFAIL the fixer's logs showed with and without D395 was taken up by CORE-OPEN4 and then CORE-CHILD-RECONCILE (D404). The fix commits carry a different model trailer than the session asked for (cosmetic).
+
+
+### HA-1 / G21-10 Dashboard cluster page with the join wizard — November 13, 2026 (no new decision)
+
+The Nodes page of a SQLite node (GET /cluster reports a `role`, and the node is
+not static) now has a **Cluster membership** panel and a **Root trust anchors**
+panel. Membership reads GET /cluster/enrollment and offers, by mode, one of
+three wizards in a WizardDialog (dev-docs/milestones/m3/ui.md):
+**Activate cluster** on a dormant standalone node, **Invite a member** on the
+primary and **Review promotion** on a follower. Each wizard reads its review
+once when it opens (GET /cluster/enrollment or /cluster/promotion, never
+refetched behind the operator; the follower read-back of D368 now skips review
+queries), requires an explicit "I reviewed" confirmation, and sends exactly
+the values the operator confirmed. Ticking the box snapshots the review on
+screen; "Read again" or unticking drops the snapshot, and the finishing
+action validates every earlier step again (`revalidateOnFinish` on
+`Wizard`), because the stepper jumps to any step already reached without
+passing the review step's Next. A re-read review is therefore never sent
+without a new confirmation, and a promotion whose re-read review is no
+longer eligible is not sent. The command carries the four enrollment identities with the member name,
+internal `host:port` and audit reason; for an invitation also an absolute
+`expiresAt` computed on the browser's clock when the operator presses Issue
+(2, 5 or 9 minutes: the primary accepts at most ten minutes on its own clock,
+so the longest choice keeps a minute's margin for a browser clock a little
+ahead); for
+a promotion the reviewed `memberID` and `installed` generation passed through
+unchanged (revision and epoch stay wire strings), the typed node name and one
+`dashboard-<uuid>` request ID per opening. Every command is sent once, and
+while it is in flight Cancel is disabled and ✕, Escape and the backdrop do
+nothing (`isBusy` on `WizardDialog`), so a committed invitation cannot be
+dropped by closing the dialog before its answer. A 409 (the review changed;
+for an invitation the lock is titled "The primary refused the invitation"
+and also names the other documented causes: a member name or internal
+address already used or reserved, or an expiry too far ahead or already past
+on the primary's clock) or an answer that leaves the outcome unknown
+(`completion_unknown`, `committed_output_unavailable`, a lost response, the
+client's 35-second bound, any other 5xx) locks the wizard with an explanation
+and rereads the page's state; only definite refusals before a commit (400,
+401, 403, 413, 415, 429, and 503 `primary_required`/`cluster_fenced`/
+`cluster_conflict`/`generation_pending`) can be corrected and decided again
+(`commandOutcome` in dashboard/src/lib/cluster.ts). The invitation is requested
+with a plain call (no TanStack query or mutation), kept only in the state of
+the step that shows it, shown with the `kudurru cluster join --offline`
+command and the Docker Compose changes for the new node (a `member`
+subdirectory as data directory because the join refuses an existing one; the
+invitation on standard input so the container user can read it), and dropped
+when the dialog closes; ✕ and Escape ask "Close the invitation?" first.
+Activation ends with a "restart kudurru on this node" banner; promotion with
+the committed term. The anchors panel renders GET /cluster/anchors (owner,
+keys, workers, last pull, warnings) and, for every state that needs an
+operator, the documented action linked into docs/deploy/sqlite-join.md and
+runbooks.md: a refused adoption by reason (carried_revocation, recovery_history,
+dormant_owner, others), fenced behind its term, conflict, quarantine,
+retired or terminal output, a pending local denial, stopped workers, closed
+admission and an uncertain clock. Error banners and the sign-in page now name
+`cluster_fenced` and `cluster_conflict` and link the procedure. No API, Go or
+generated file changed.
+
+Evidence under `.context/v020-final-20261110/evidence/DASH-CLUSTER/`:
+
+- `vitest01.log`: first run of the new `src/components/cluster/ClusterMembership.test.tsx`
+  (10 of 20 failed: the tests clicked through asynchronously validated steps
+  without waiting, and the follower mock lacked `localOperations`, which gated
+  the promotion button; both were test defects, fixed before the next run).
+  The fixed file then passed 20/20 (activation with exact reviewed body; refusal
+  of a non-dormant review; 409 lock with one POST; definite 400 corrected and
+  re-decided; invitation shown once and absent from query cache, mutation
+  cache, local/session storage, URL and console spies, discard prompt, fresh
+  review on reopen; never-replay after a lost response, `completion_unknown`
+  and `committed_output_unavailable` (one POST each); ineligible promotion
+  blocked with its reason; promotion with exact generation, node confirmation
+  and request ID; promotion `completion_unknown` lock; no panels without a
+  SQLite role; refused adoption, fenced-behind-term and quiet anchors; helper
+  tests for addresses, outcomes, snippets and anchor advice; the fenced banner).
+- `lint01.log`: typecheck and lint, 2 `no-unnecessary-type-assertion` errors
+  (fixed); `lint02.log`: typecheck and lint after the commits.
+- `vitest02.log`: full dashboard suite, 968 passed, 1 failed in 213 s:
+  `AccessPage > lists the audit log newest first and pages with the cursor`
+  timed out at 20 s under a load average of about 13.5. Re-run alone it timed
+  out with and without this package's changes (at the base commit it failed
+  once at 23.9 s and passed once), so it is load-sensitive and unrelated.
+  `vitest03.log` is a focused re-run of the touched areas (the same AccessPage
+  timeout, everything else passed).
+- `build01.log`: `bun run build` (bundle within budget) and a
+  `-tags licensetest` binary.
+- `e2e01.log`-`e2e04.log`: retained failed Playwright runs of the new
+  `e2e/cluster.spec.ts`: the browser context inherited the worker's session
+  cookie for 127.0.0.1 (01, 02), a second sign-in after the restart sent a
+  session cookie without CSRF (03), and a wrapper timeout before the run
+  started (04). All were spec defects.
+- `e2e05.log`: `cluster.spec.ts` passed (15.2 s): activate through the
+  wizard, restart, the session survives, issue an invitation shown once, no
+  invitation in console, request URLs, storage, cookies, server log or page
+  after close, and `kudurru cluster join --offline` with the shown invitation
+  answers `primary.committed: true` with an installed digest.
+- `e2e06.log`: `cluster`, `login`, `pages` and `secondary` specs, 80 passed in
+  3.0 min (the changed server helper starts and stops every node).
+- `review-*.log`: the independent reviewer's runs (accept-with-fixes).
+
+Review fixes (on top of the two commits above):
+
+- `fix-vitest01.log`: the seven new tests before the fix, with a stepper
+  helper that did not find the Astryx step buttons yet (6 failed; test defect).
+  `fix-vitest02.log`: the seven new tests before the fix, all failing for the
+  intended reasons (no return to the review step after Read again or an
+  untick and a stepper jump; a re-read digest sent without a new
+  confirmation; a re-read ineligible promotion not blocked; a 10-minute
+  option offered; the 409 lock text; Cancel enabled while the invitation
+  request is in flight). `fix-vitest03.log`: after the fix,
+  `ClusterMembership.test.tsx` 27/27 passed: `sends no invitation after Read
+  again on a revisited review step, even through the stepper`, the same
+  `after unticking the confirmation`, `sends exactly the confirmed review,
+  never a re-read one that was not confirmed again`, `sends no promotion when
+  a re-read review is no longer eligible`, `offers invitation lifetimes that
+  leave a margin below the primary maximum`, `names the correctable causes
+  when the primary refuses an invitation with 409`, `cannot be closed while
+  the invitation request is in flight`.
+- `fix-lint01.log`: typecheck and lint, exit 0.
+- `fix-vitest04.log`: every test file that uses `Wizard` or `WizardDialog`
+  plus the cluster, api, Nodes and Login tests: 19 files, 207 passed, 1
+  failed in 76 s (11 min wall time behind the lock): `PolicyWizardDialog >
+  walks Who → What → Safe search → How → When → Review and creates the policy`
+  timed out at 20 s under a load average of about 21. PolicyWizard uses none
+  of the new opt-in Wizard props; `fix-vitest05.log` re-ran
+  `PolicyPages.test.tsx` alone: 14/14 passed.
+- `fix-build01.log`: `bun run build` within budget (490.0 of 600 KiB) and a
+  temporary `-tags licensetest` binary (removed afterwards; `dist/index.html`
+  restored). `fix-e2e01.log`, `fix-e2e02.log`: `e2e/cluster.spec.ts` against a
+  real SQLite node passed twice (25.0 s and 15.7 s). The real-node spec now also
+  asserts that the **Root trust anchors** region renders this node's
+  `GET /cluster/anchors` answer (Anchor mode, Authority, either the advice
+  list or "No trust-anchor state needs you on this node.", and no error
+  banner).
+
+What remains open: the invitation expiry is still computed on the browser's
+clock, not derived from the primary's; a browser clock more than a minute
+ahead of the primary, or behind it by more than the chosen validity, still
+gets a 409 (now with a lock text that names the clock). A 409 to an
+invitation still locks the wizard even when the cause is a correctable
+reused name or address, because the answer does not say which cause applies.
+Beyond that: the root-anchor states are shown for the node that serves
+the dashboard only. On SQLite, GET /nodes lists only that node and a fenced or
+conflicted member closes its HTTP API, so `fencedBehindTerm` and a pull refusal
+of a fenced member are proven with vitest against MSW, not against a real
+fenced member; the panel and docs say to read such a member with its metrics
+or `anchors status --offline`. No browser test drives a promotion (it needs a
+lost primary and two enrolled processes; test/e2e has them but no dashboard
+driver), so promotion is proven with vitest only. The Compose snippet is not
+exercised by a Compose run. kudurru 0.2.0 has no member removal, so the
+wizard only notes that earlier names and addresses stay reserved.
+
+**Verification state at 7663c957.** Merged and pushed at `d063f929`. The verifier resolved all four findings and found one regression in `ad633743`: after an invitation response that is not instant, the invitation view could be closed only with Done (the close button, Escape and the backdrop did nothing, and the "Close the invitation?" prompt never appeared). DASH-OPEN fixed it (`a715adfa`, merged). Still open: `PromoteDialog` and `ActivateDialog` use the same report-by-effect pattern (not visibly affected); the invitation expiry is computed on the browser's clock, so a clock more than a minute ahead of the primary still gets a 409 (the message names the clock).
+
+
+### CI-RED-2 The five hosted failures of 7648c479 — November 12, 2026 (no decision number assigned)
+
+Base-versus-head, in one line each (base control 33ee04bc, head = the lane at
+923d7720, which has the same failing tests and code as 7648c479; identical
+command: race binary, `taskset -c 0-3`, `GOMAXPROCS=4`, one process per run).
+None of the rates below discriminates: every one is 0 failures at both
+commits, so each verdict rests on a deterministic reproduction and a code
+comparison, not on a measured rate.
+
+1. `TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled` (login 503):
+   head 0/40, base 0/40. The mechanism predates the pass: the held-login
+   reproduction is refused 10 of 10 at both commits. The test and its settle
+   helper are byte-identical at base; the login's publication check is
+   semantically unchanged (for a single-command login `currentAuthCommandThen`
+   still reaches `servinghttp.CheckWriter`; this pass added the D378 item
+   chain and `primaryRequired` to that function and changed
+   `internal/servinghttp/http.go` and `internal/serving/status.go`, so the
+   code is not byte-identical). Whether this pass widened the window was not
+   measured. Test ordering, fixed in the test.
+2. `TestRunServeDirectAnchorsFencedAndConflictRestart` (login 503): head 0/40,
+   base not applicable (the test was added in this pass by ed1c0499, D369, and
+   is not in 33ee04bc). Same mechanism as 1, through 1's helper. Fixed in the
+   test.
+3. `TestRunServeSQLiteReversePTRPolicy` ("expired identity did not
+   reacquire"): head 0/40, base 0/40. Predates the pass: the delayed-PTR
+   fixture with the old check fails 10 of 10 at both commits. Test ordering,
+   fixed in the test.
+4. `TestSupervisorLifecycle` (ee/edge/dnsdist): recorded only (owned by
+   FLAKE-PRIMARY-UNAVAILABLE).
+5. `TestEnrolledClusterProcessesPromoteAndRejoin` (activation 409): head 0/15,
+   base 0/5 (40 each were asked for). Introduced by this pass in the test:
+   dd2e3b53, which is not in the base, added the second zone before the
+   enrollment review without waiting for its status; the reproduction answers
+   409 5 of 5. Fixed in the test.
+
+The review of the first fix found three product defects behind or next to
+these failures. Two are fixed here, one is measured and left for a decision:
+
+- A signed UPDATE forwarded by an enrolled follower could be answered
+  REFUSED during a burst (the 1-of-24 failure of the fixed e2e test). Fixed.
+- A fresh node with managed direct anchors parked its anchor updater for the
+  whole writer term (on a single node, until restart). Fixed.
+- A sign-in is refused 503 whenever another commit publishes while it runs;
+  on a node with steady UPDATE commits about one sign-in in eight is refused.
+  Measured; not changed (needs a decision).
+
+What happens now in each case:
+
+Login 503 (1 and 2). Both tests wrote their zone into SQLite before the first
+`runServe`, so the zone had no status. The node first answers the zone about
+2.0 s after start and then publishes the zone's first Ready status write
+about 0.4-0.6 s later (readiness drops, in-flight UDP answers are dropped,
+then it realigns); a restart of the same store publishes nothing after
+readiness. The settle helper logged in right after the first DNS answer, and
+a login under race takes about 0.5 s. A login is a command held to the
+publication its request began on: D199 keeps in-flight work on its captured
+publication and D208 rechecks a mutation (session enrollment is one) in the
+current command. `currentAuthCommandThen` -> `servinghttp.CheckWriter` ->
+`Publisher.CheckWriterLease` returns `ErrPending` when the current bundle is
+not the request's, which the session route answers 503 `unavailable`
+"current writable serving generation unavailable" with Retry-After and no
+effect. No decision row states this consequence for sign-in (the earlier
+ledger and the 5edb45b2 comment cited D313, which covers UPDATE
+acknowledgments; both now cite D199 and D208). The fix orders the tests: the
+first start of both begins on an empty node, waits for readiness, logs in,
+creates the zone and record in one `POST /apply` (D378) and waits for the
+zone's status; zone status reads in that wait are observations and are read
+again after a 503 (as the e2e `enrolledProcessRead` does). Restarts keep the
+login after the first answer. A `controlMountedRequest` failure names the
+error key and message of an error body. Because the empty-node change left no
+committed test starting a managed anchor node on a seeded store,
+`TestRunServeDirectAnchorsSeededFirstStartRefusesStraddlingLogin` now does:
+it seeds the zone, starts, settles through DNS only, and requires the anchors
+to bootstrap exactly once and managed history to be committed. It also pins
+the refusal: the login's headers arrive, a signed UPDATE commits and is
+served, then the body arrives, and the login answers 503 `unavailable` with
+Retry-After and sets no cookie.
+
+Sign-in under steady commits (measured, unchanged). On one mounted node
+(non-race binary, 4 CPUs, a loaded shared machine), 100 single-shot logins
+per UPDATE rate, never retried:
+
+| Signed UPDATEs | Logins 200 / 503 | Login p50 / p95 | UPDATE NOERROR / SERVFAIL |
+|---|---|---|---|
+| none | 100 / 0 | 149 ms / 331 ms | - |
+| 1 per second | 89 / 11 | 701 ms / 2.28 s | 51 / 27 |
+| 10 per second | 87 / 13 | 2.42 s / 4.71 s | 89 / 92 (6 timeouts) |
+| back to back (one sender) | 73 / 27 | 3.72 s / 6.84 s | 64 / 172,229 (26 timeouts) |
+
+So sign-in is not starved (at least 73 of 100 succeed even against a
+back-to-back sender), but on a node that takes DHCP updates an operator
+meets an explicit, effect-free, retryable 503 on about one sign-in in eight,
+and sign-in slows down several-fold. The machine's load average was 9-13
+during the run, so the absolute numbers are pessimistic; the UPDATE SERVFAIL
+counts of the back-to-back row are mostly fast refusals in the sender's own
+loop while logins committed, and are not a rate per second. The refusal is honest (nothing is
+committed, Retry-After is set) and the dashboard can retry it, but no row
+decides it. Proposed followup for the integrator (no decision number was
+assigned to this package): "Sign-in and other single session commands are
+refused 503 when any other commit publishes while they run (about 1 in 8 at
+1-10 signed UPDATEs per second). Decide whether a command that has not
+entered its transaction may capture again before its first effect, or
+whether the UI retries on 503 `unavailable` with Retry-After; record the
+decision." The same refusal appears for other commands: the aborted e2e
+chunk below had one `POST /objects/dnsrecordsets: status 503 ... unavailable`
+on the static process.
+
+PTR reacquisition (3). An expired PTR name is never served stale: the first
+query after expiry is answered unblocked at once and only queues the
+background lookup. The test read its PTR counter at that first unblocked
+answer, racing the resolver worker. The fake PTR server answers the negative
+reacquisition 250 ms late (inside the 1 s resolver timeout) and now counts a
+lookup after it has written its answer; the test waits, bounded, for the
+second answered lookup and then requires every query for one second after it
+to be unblocked. With the fake server answering the PTR name again on
+reacquisition, the new check fails 3 of 3, while the previous check
+(faad35d4) passed it.
+
+Activation 409 (5). The enrollment review returns the exact served source
+digest, and `POST /cluster/activate` refuses a review that a later
+publication made stale (409 `conflict`). Since dd2e3b53 the test also creates
+the dyn-test UPDATE zone before the review, but waited only for the e2e-test
+zone's startup status write; dyn-test's first Ready status write could land
+between review and activation. `enrolledZoneObjectSettled` waits for any zone
+object, and the test waits for both zones before the review.
+
+Forwarded UPDATE answered REFUSED (the fixed e2e run 4 failure). Diagnosed:
+a signed UPDATE on an enrolled follower captured the follower's publication,
+and the follower then installed the primary's next commit (in a burst, often
+the previous update's own) before `forwardUpdate` checked its keyring. The
+keyring predicate (`RuntimeOwner.NotifyKeys` current, which compares the
+captured token's authority, including the installed revision, with the
+store's) then reported "not current", and the follower answered REFUSED,
+which tells an RFC 2136 client its key is refused. It is a product defect,
+not test ordering. A keyring that stopped being current is now SERVFAIL, sent
+nothing, never retried (D381), on the follower and in both branches of the
+primary's `captureUpdate`; a missing proof or an unknown key still answers
+REFUSED. `TestRootMemberFollowerUpdateAcrossInstallAnswersServfail` holds an
+UPDATE on a mounted follower right after it captured its publication,
+installs the primary's next commit and requires SERVFAIL, no effect, and a
+later forwarded UPDATE that commits; before the fix it answered REFUSED. The
+burst's accepted rcodes are unchanged. `docs/deploy/dynamic-updates.md` and
+`docs/architecture/zones.md` say so. The primary-side change has no test of
+its own: on the primary the earlier `CheckWriter` catches almost all of this
+window.
+
+Anchor updater parked on a fresh node. Diagnosed with temporary markers: the
+updater's bootstrap step commits, and its next step's
+`captureAnchorOperation` read its image while first-boot status writes were
+committing; `PublishIfCurrent` refused the stale token with `replication:
+authority changed` before any acquisition, and the writer recorded that as
+terminal for the term ("root anchor updater stopped for this writer term"),
+2 of 3 empty-node starts. On a single node that is the process lifetime: the
+node would not refresh its anchors until a restart. The capture acquired,
+authenticated and staged nothing, so there is nothing to replay; the step now
+reports `captureLost` and captures again a second later. Failures after the
+capture keep their D297 meaning (terminal). With the fix the same diagnostic
+shows the capture lost once and captured again on the next step, 3 of 3, and
+no stop. `TestAnchorUpdaterCaptureLostToConcurrentCommitCapturesAgain`
+commits an ordinary write inside the capture (a test-only hook,
+`servingRuntime.anchorCaptureRead`, after the image read) and requires no
+stop, no acquisition and a normal next step; it failed 3 of 3 before.
+`docs/architecture/upstreams-and-cache.md` says so. The empty node still
+becomes ready only at about 5.7-10 s under race on this machine; that delay
+is not caused by the updater stop.
+
+Evidence under `.context/v020-final-20261110/evidence/CI-RED-2/` (scripts,
+including the temporary test files and overlays, in
+`.context/v020-final-20261110/scripts-CI-RED-2/`; saved output of every
+failed rate run under `failures/`). Every rate run is `rate.sh`: one race test
+binary, one process per run, `taskset` to 4 CPUs, `GOMAXPROCS=4`, through the
+heavy wrapper.
+
+First pass (5edb45b2 and earlier):
+
+- `rate01-head-*.log`, `rate02-base-*.log`: test 1 head 40/40 pass (median
+  10.6 s), base 40/40 (12.7 s); test 2 head 40/40 (18.5 s), base: the test does
+  not exist at 33ee04bc, so its 40 "passes" of 1.4 s are "no tests to run";
+  test 3 head 40/40 (5.5 s), base 40/40 (4.0 s).
+- `rate03-head-e2e.log`: test 5 head 15/15 (181 s each), stopped at 15.
+  `rate04-base-e2e.log`: base 5/5 (85 s; the base test has no UPDATE zone),
+  cut off by the 2-hour background limit.
+- `diag01`..`diag05`: the publication timeline of the managed anchor fixture
+  (seeded zone: first answer about 2.0 s, status write and readiness gap about
+  2.5 s, realigned about 3.0 s; restart: nothing after readiness; empty first
+  boot: defaults and their status writes at 1.2-1.6 s, ready at 6-7 s, the
+  updater ERROR at about 4 s).
+- `repro03-login-*.log`, `repro04-base-*.log`: held login across the seeded
+  node's readiness gap refused 10/10 at head and at base; on the empty node
+  held 1 s, passes 10/10 at both. `repro04-base` also has the delayed-PTR
+  fixture with the old check: 0/10 at base. `repro01-ptr-delay-old-check.log`:
+  0/10 at head. `repro02-e2e-review-then-publication.log`: 409 5/5.
+- `fixed02-100-*.log`, `fixed04-test1-extra10.log` (5edb45b2): test 2 100/100
+  (median 30.0 s), test 3 100/100 (4.2 s), test 1 99/100 then 10/10 (26.4 s);
+  its run 1 failed on an ops-port bind collision with another process
+  (`offlineFreeAddress`, FLAKE-PORT-RACE).
+- `fixed03-e2e-100.log` (5edb45b2): test 5 23 of 24 pass (191 s); activation
+  succeeded in all 24. Run 4 failed on the REFUSED burst UPDATE diagnosed
+  above.
+- `review-01-cmd.log`, `review-02-e2e.log`: the reviewer's runs (3/3 each of
+  tests 1-3, 2/2 of test 5).
+
+This pass (4b78eec5 .. 93a9a09b):
+
+- `fix-01`..`fix-03-follower-refused-before.log`: the new follower test
+  before the product fix: REFUSED on every run that got past the pull
+  (1 of 3, 0 of 5 with a too-strict primary wait, 1 of 5); the other runs
+  failed on a transient "unauthorized peer" refusal of the fixture's pull,
+  which `fix-04-diag-pull.log` shows clears on the next pull (once per run).
+  The fixture now pulls again on failure (a read, bounded at 50 attempts).
+  `fix-04` also shows REFUSED 3 of 3 once the pull is retried.
+- `fix-05-follower-refused-after.log`: after the fix, the new test 5/5 plus
+  `TestPrimaryRuntime*`, `TestRootMemberUpdate*` and
+  `TestServingRuntimeActualElectorNativeUpdate*` 5/5 (race).
+- `fix-07-ptr-negative-assertion.log`: the strengthened PTR test 5/5; with
+  the fake server answering the PTR name again, 3/3 fail at the new check;
+  the previous check with the same mutant passes 3/3.
+- `fix-08-anchor-updater-diag.log`, `fix-10-anchor-updater-diag-after.log`:
+  the empty-node updater markers before (capture lost, stopped, 2/3) and
+  after (capture lost once, captured again, 3/3, no stop).
+- `fix-09-anchor-capture-race.log`: the new updater test fails 3/3 before
+  the fix (overlay of the old updater with only the new field); after it,
+  all `TestAnchorUpdater*` 5/5 (race).
+- `fix-11-seeded-login.log`: the new seeded first-start test 5/5 (race,
+  about 5 s each).
+- `fix-12-login-under-updates.log` (temporary
+  `zz_cired2_loginload_test.go`, non-race): the sign-in table above.
+- `fix-e2e-100-chunk1.log`: the fixed e2e test, 8 runs, 4 FAIL, stopped by
+  hand: the machine's load average was 12-14 on 8 CPUs (other lanes, plus
+  this lane's own race runs outside the e2e CPU set) and the worktree source
+  changed during run 9. The failures (`failures/fix-e2e-chunk1/`): a 503
+  `unavailable` on `POST /objects/dnsrecordsets` at 12 s (the command
+  refusal above); "fenced former primary never named its state: status=0";
+  "a refused forwarded UPDATE was applied" (a single, non-retrying
+  observation that fails on any transient answer); and a first
+  via-rejoined UPDATE answered SERVFAIL where the test requires NOERROR at
+  once. None is a REFUSED. They are not a measurement of the fixed test on a
+  quiet slot.
+- `fix-e2e-100-chunk2.log` (93a9a09b, quiet slot): 23 of 24 pass (median
+  about 190 s), stopped at 24 by a machine restart. Run 17
+  (`failures/fix-e2e-chunk2/run-17.txt`) failed on a forwarded UPDATE through
+  the rejoined former primary (via-rejoined-after) answered SERVFAIL where
+  the test required NOERROR at once, right after the new primary answered two
+  SERVFAILs to the native UPDATE before it. No REFUSED in any run.
+- Fourth fix (5318385e, test only). That SERVFAIL, and chunk 1's run 8 on
+  via-rejoined-udp, is the documented D381 answer: an enrolled follower
+  answers SERVFAIL, sending nothing, when its source changes under the request
+  (it installed the primary's next commit, often an asynchronous status write;
+  this is also what the REFUSED of the first fix became), and relays the
+  primary's SERVFAIL when a republication replaced the lease the UPDATE
+  captured. RFC 2136 clients send it again; the test already did so for the
+  native UPDATE just before. `enrolledFollowerUpdates` now sends each
+  idempotent update again after a SERVFAIL (`enrolledEventuallyRcode`,
+  bounded at 20 s, every SERVFAIL logged); any other unexpected rcode,
+  REFUSED included, still fails at once, and the burst's accepted rcodes are
+  unchanged. The check that the prerequisite and ungranted updates were not
+  applied was one observation and failed on any transient answer (chunk 1
+  run 7, "a refused forwarded UPDATE was applied" at 33 s, without node logs);
+  it now waits for the authoritative NXDOMAIN over UDP and TCP and logs every
+  differing answer, as the refused-fenced check does. This is a guard change
+  the integrator should know about: a single forwarded UPDATE is no longer
+  required to answer NOERROR on its first attempt. The node logs at the
+  fixture's info level were empty in every saved failure, so the attribution
+  of the two SERVFAILs to a concurrent install or republication rests on the
+  code (`forwardUpdate`'s SERVFAIL paths: keyring not current, member capture
+  refused, forward refused or lost, or the primary's own SERVFAIL), not on a
+  logged reason.
+- `fix-14-build-lint-e2e.log` (5318385e): race e2e binary built, golangci-lint
+  v2.15.0 over `./test/e2e/...` 0 issues, `gofmt -l` empty, `go vet` clean.
+- `fix-15-e2e-100.log` (5318385e, race, `taskset -c 0-3`, `GOMAXPROCS=4`,
+  one heavy slot held for the whole run): 34 of 37 pass (median about 230 s;
+  run 1 took 734 s at a load average of 25-28), stopped by hand during run
+  38 to change the test. No REFUSED and no forwarded-UPDATE failure in any
+  run. Failures (`failures/fix-e2e-100/`): run 29, an API port bind
+  collision of enrolled-b before readiness (`bind: address already in use`,
+  FLAKE-PORT-RACE, not this package); runs 30 and 37, a single command on
+  the primary refused 503 `unavailable` "current writable serving generation
+  unavailable": the batch deletion of the five direct records (every item,
+  the first included) right after `enrolledZoneSettled`, and
+  `DELETE /objects/dnsrecordsets/default/hosts` right after creating the
+  successor record. Same refusal as the sign-in 503 above, met by a
+  command of the test itself.
+- Fifth fix (271e77bd, test only). A record change is followed by a status
+  write of its zone (serial, content hash, record count), and a command
+  whose request began before that write publishes is refused, as the test's
+  own comment before the direct apply says. `enrolledZoneObjectSettled`
+  required only Ready for the current generation, already true from the
+  zone's first status write, and an unchanged resourceVersion across one
+  DNS answer, so it could return before the latest record change's status
+  write. It now also requires the zone's status serial to equal the SOA
+  serial the primary serves; the deletion of hosts now waits for that settle
+  after the successor record is created. This is a stronger wait, not a
+  weaker assertion; the refusal itself is unchanged.
+- `fix-16-zone-settle-smoke.log` (271e77bd): both enrolled process tests
+  pass (`TestEnrolledClusterProcessesPartitionCatchupAndRestart` 163 s,
+  `TestEnrolledClusterProcessesPromoteAndRejoin` 210 s; the latter logged
+  two SERVFAILs on the native UPDATE after promotion and one burst SERVFAIL,
+  all within the accepted answers). `fix-17-lint-e2e.log`: golangci-lint
+  0 issues, `gofmt -l` empty.
+- `fix-18-e2e-100.log` (271e77bd, same command as fix-15): 39 of 40 pass
+  (median 224 s), the last 34 consecutive; stopped by hand during run 41 to
+  free the shared slot. Run 6 (`failures/fix-e2e-100b/run-6.txt`) failed at
+  27 s: `POST /objects/dnszones` on the freshly started primary, right after
+  its first login, refused 503 `unavailable`; the empty node publishes
+  again after it first reports ready (the diagnostic timelines show
+  readiness 200 -> 503 -> 200 about 0.3-1 s after the first ready), and the
+  zone creation's request began on the publication that replaced. Same
+  refusal again; nothing in the test can wait for a publication that the
+  node does not expose.
+- `fix-13-lint.log` (93a9a09b): `gofmt -l` empty, `go vet ./cmd/kudurru ./test/e2e`
+  clean, golangci-lint v2.15.0 over `./cmd/kudurru/...` and `./test/e2e/...`: 0
+  issues. `python3 -B -m unittest discover -s hack -p 'test_bench_*.py'`: 14 OK.
+
+Open. The acceptance of 100 consecutive passes of the fixed
+`TestEnrolledClusterProcessesPromoteAndRejoin` is not met. Across the fixed
+runs on a quiet slot (fix-e2e-100-chunk2, fix-15, fix-18: 101 runs, 96
+pass) the remaining failures are: one API port bind collision
+(FLAKE-PORT-RACE), one forwarded-UPDATE SERVFAIL (now retried as an RFC 2136
+client does, 5318385e), and three single commands on the primary refused
+503 `unavailable` because another publication landed while they ran (two
+fixed in the test by the stronger zone settle, 271e77bd; one, the first
+zone creation on a freshly started node, has no observable state to wait
+for). After 271e77bd: 39 of 40, the longest streak 34. The last class is
+the product behavior measured in the sign-in table: any single command
+whose request began on a publication that another commit then replaced is
+refused 503 with Retry-After and no effect. It is honest and effect-free,
+but it is reached by an operator (about one sign-in in eight under 1-10
+signed UPDATEs per second, and here by ordinary object writes right after a
+start or another write), and no decision row covers it. D199 and D208 are
+the closest rows, not a decision on this consequence. Proposed followup and
+decision for the integrator: "A single session or object command is
+refused 503 `unavailable` when another commit publishes while it runs.
+Decide whether a command that has not entered its transaction may capture
+again before its first effect (once, bounded), or whether clients and the
+dashboard retry 503 `unavailable` with Retry-After; then remove the
+test-side waits that exist only for this." Until that decision the e2e job
+can still go red on this test at roughly 1-3 runs in 100. Also open: the
+anchor updater's terminal state has no operator-visible signal (no status
+field or metric), so no mounted test can assert that the updater is still
+running after an empty first boot; the fix is proven through the real
+updater with a test-only hook
+(`TestAnchorUpdaterCaptureLostToConcurrentCommitCapturesAgain`) and the
+diagnostic markers of fix-10. Proposed followup: expose the root anchor
+updater's state (running, or stopped with its reason) in the anchor status
+the API already serves. Base-versus-head rates remain non-discriminating
+(0 failures at both commits for tests 1 and 3; test 5 15 and 5 runs), and
+whether this pass widened the sign-in window was not measured.
+`TestSupervisorLifecycle` stays with FLAKE-PRIMARY-UNAVAILABLE. The
+temporary diagnostic test files remain only under `scripts-CI-RED-2/`.
+
+**Verification state at 7663c957.** Only the six test-only commits were merged (lane `f90fadbe`, `faad35d4`, `976ff9c5`, `e2280a59`, `5318385e`, `271e77bd`; at this head `003eaf42`, `3ca52f73`, `831d43c3`, `8b3344bd`, `be3eb1a0`, `4e6d539b`), pushed at `daff96e5`. The held product commits reached the PR branch through HA-OPEN6: `4b78eec5` (SERVFAIL when an UPDATE's keyring stops being current) as `ded345d1`; the product hunk of `1621b669` (capture again after a lost anchor capture) was dropped because the F28 lane had landed the same rule, and only its test was kept; `5edb45b2` and `93a9a09b` were dropped. The verifier left **two major findings unresolved**: the e2e acceptance of 100 consecutive passes was not met (96 of 101, longest streak 34; one failure class, a 503 `unavailable` on the first `POST /objects/dnszones` after a fresh start, has no test-side wait and no decision), and the operator-reachable sign-in 503 is unchanged in the product (11, 13 and 27 of 100 sign-ins refused at 1/s, 10/s and during back-to-back UPDATEs; D399 was to fix it and is not at this head). New problems, open where not noted: `TestRootMemberFollowerUpdateAcrossInstallAnswersServfail` failed 4 of 4 pinned to four CPUs (HA-OPEN5 rewrote it); `TestRunServeDirectAnchorsSeededFirstStartRefusesStraddlingLogin` flaked (dropped with `93a9a09b`); `TestRootMemberUpdateKeyIdentityAndRetryActualHTTP` flakes on single-shot assertions after a commit; `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` misses its 10 s readiness bound under load (F28-OPEN7, open); `TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled` failed once on its 5 s client timeout; the "sql: transaction has already been committed or rolled back" stop log at shutdown and the "unauthorized peer" pull after a commit (both fixed by HA-OPEN6); the unbounded Debug-level capture retry (superseded by the F28 rule, which logs at powers of two).
+
+
+### DASH-OPS Dashboard surfaces for edge blocks, query-log sinks and zone-group scopes — November 13, 2026 (no new decision; follows D371, D372, D385, D387, D388)
+
+The dashboard now has surfaces for four APIs merged in this pass.
+
+**Operator edge blocks (EDGE-1 UI, D388).** Every address row on **Clients**
+and every address client page has **Block at edge**. A client known only by a
+client ID has none, because edges see addresses only. The dialog asks for the
+address or prefix and checks it against the bounds `GET /edge/blocks`
+reports (IPv4 /16 or longer, IPv6 /32 or longer). It also asks for a duration
+preset or a custom duration between the reported minimum and maximum, and an
+optional reason of at most 256 bytes. It then sends one
+`POST /edge/blocks` with `seconds`. **Edge blocks** under the client list
+shows the active blocks (prefix, expiry, reason, author) with **Revoke**,
+which sends `DELETE /edge/blocks/{id}` after a confirmation. The actions need
+`edgeblocks.write`, and the list needs `edgeblocks.read`; without it, the
+list is neither rendered nor requested. On an enrolled follower,
+`useCan('edgeblocks','write')` refuses the actions with the primary named,
+because `createEdgeBlock` and `revokeEdgeBlock` are in neither of the
+follower's lists (D368 table `PERMISSION_OPERATIONS`). If the server did not
+answer, answered 500/502/504, or answered 503 with the Kubernetes "dispatched"
+hint, the outcome is unknown: the dialog shows **Outcome unknown**, disables
+its submit button, sends nothing again and rereads the list
+(`lib/cluster.ts outcomeUnknown`).
+
+**Query-log sink status (OBS-1/OBS-5 UI, D371, D372).** **Nodes** has a
+**Query-log sinks** panel (`querylog.read`). It shows `GET /querylog/sinks`
+of the answering node: name, type, the **raw** mark of a raw dnstap sink,
+queued/bound, sent, dropped, failed attempts and last success. It names the
+node and says that every node runs its own sinks. The route carries no
+credential, URL or error text. The panel copies only the named fields into
+its rows (`sinkRow`), so a field a later server adds is not shown either. It
+shows no "last error": the API deliberately has none (D371: error text can
+quote rows). The panel points to the node log and `kudurru_sink_errors_total`
+instead.
+
+**Zone-group scope (IAM-2 UI, D385).** `can`, `useCan` and `useCannotReason`
+take an optional `{zone, zoneGroup}` and count the `zone:<name>` and
+`zonegroup:<group>` entries of `/auth/me scopedPermissions`. The zone page
+(Add record, Import, Edit, Delete record, Send NOTIFY, Delete zone), the zone
+settings section and the zone list's Delete now enable exactly the actions a
+zone- or group-scoped user holds on that zone, and disable the others with
+the reason. Before, they used cluster permissions only, so a zone admin saw
+everything disabled. Actions stay visible and disabled with a tooltip, as
+everywhere else in the dashboard; they are not hidden. **Zones** and the zone
+page show `zoneGroup`. **Access > Identity > Role bindings** has **New role
+binding**: name, namespace, role, a scope picker (Everything / One zone with
+the zone picker / A zone group with label-value validation and the groups in
+use), and one subject (User, Group, or ServiceAccount with namespace). It
+sends one `POST /iam/rolebindings` (RoleBindingDesired) with the same lock
+after an unknown outcome. That route has its own classifier
+(`roleBindingOutcomeUnknown`): on the SQLite runtime it answers every error it
+does not classify, including a commit that was attempted and failed, with the
+catch-all 503 `unavailable` of `servingHTTPAuthError`, so a 503 `unavailable`
+counts as a refusal only with the hint "requires the complete SQLite runtime"
+(the answer it gives before it runs anything). Any other 503 `unavailable`
+locks the dialog as **Outcome unknown**; a definite pre-commit refusal such as
+"current writable serving generation unavailable" therefore also locks it,
+which costs a reread and never a resend. API tokens can also be limited to
+`<role>@zonegroup:<group>`.
+
+**Account-command capabilities (D387).** `useAuthCapabilities` reads
+`/auth/status capabilities`. Where `factorManagement` is false, the sign-in
+page has no authenticator code field, the Authenticator panel says that no
+authenticators are offered (and never asks `GET /auth/totp`), and
+**Recover authenticator** is not rendered. A server that does not report
+capabilities counts as offering both. The dashboard has no local-user create
+or password-reset control, so `localUserCommands` gates nothing yet.
+
+The dashboard guide (`docs/guide/dashboard/clients.md`, `nodes.md`,
+`identity.md`, `zones.md`, `access.md`) describes the new actions.
+
+Evidence under `.context/v020-final-20261110/evidence/DASH-OPS/`:
+
+- `vitest03.log` (before the review fixes): `src/components/DashOps.test.tsx`, 16 of 16 pass (MSW
+  against the shared mock contract). It covers: block from a row with the
+  exact POST body `{prefix, seconds: 3600, reason}`; list and revoke;
+  rejection of a /8 before any request; one POST only after a network error,
+  then locked; `outcomeUnknown` for 0, 409, primary_required and the
+  dispatched 503; disabled actions and no list request without the
+  permissions; follower gating of block and revoke; no action for a
+  client ID; the sink panel with extra `url`, `passwordRef` and `lastError`
+  fields in the answer, none of which (including `s3cr3t`) reach the page;
+  the sink panel hidden and never asked without `querylog.read`; `can` with
+  zone and group grants; Add record enabled for a labeled member zone and
+  disabled once the label is removed; the group shown on Zones; role binding
+  creation with the exact manifest, validation of an invalid group before any
+  request, scope options, and follower gating; capabilities hiding the TOTP
+  controls and the login code field.
+- Review fixes (commit `fix(dashboard): lock the role-binding dialog on a
+  catch-all 503`): `fix-vitest03-after.log`, `DashOps.test.tsx` 21 of 21 pass
+  (31.6 s). The five new or extended cases: the role-binding dialog answered
+  503 `{key: unavailable, message: "authentication operation unavailable"}`
+  shows **Outcome unknown**, disables Create and sends exactly one POST; the
+  same 503 with the missing-runtime hint shows an ordinary error and leaves
+  Create enabled; edge-block create answered 503 with
+  `{dispatched: true, outcome: unknown}` and revoke answered 500 each lock
+  their dialog after one request; a zone-group member zone enables Import,
+  Send NOTIFY and the zone settings Edit button and disables them once the
+  label is removed; a group grant holding `zones.delete` enables Delete zone
+  on the zone page and the Zones list Delete, which turns off when the zone
+  moves to another group. `fix-vitest01-before.log` and
+  `fix-vitest02-before-full.log` are the runs before the classifier fix
+  (17 of 21): both role-binding cases failed as expected, and two Delete
+  cases failed because the fixture zone carries external-dns records
+  (delete refusal `managed_by`); the tests now remove that record set first.
+  `fix-vitest04-mutation-drop-scope.log`: with the scope argument dropped at
+  `ZonesPage.tsx:131` and `ZoneSettingsSection.tsx:37`, two zone-group tests
+  fail. `fix-typecheck01.log` and `fix-eslint01.log` exit 0.
+  `fix-vitest05-access.log`: `AccessPage.test.tsx` 6 of 6 pass (22.3 s, load
+  average about 12), including the audit-log test that timed out at load 25.
+- `vitest04-mutation-no-scoped-can.log`: with the scope check removed from
+  `can`, the two zone-group tests fail.
+- `vitest05-full.log`: the whole dashboard suite with two workers through the
+  heavy lock, 991 of 992 pass in 482.9 s. The failure is
+  `AccessPage > lists the audit log newest first and pages with the cursor`
+  (20 s timeout). `vitest06-access.log` repeats it alone, and
+  `vitest07-access-base.log` shows it also times out with this package's
+  changes stashed (29.9 s). It is a timing problem of the shared machine and
+  not changed here.
+- `typecheck02.log` (`tsc --noEmit`) clean; `eslint02.log`
+  (`eslint --max-warnings 0 .`) exit 0.
+- `guide-lint03.log`: `hack/guide-lint.py` finds 9 problems, all in lines
+  this package did not write (`admin/09-people-and-tokens.md:47` and
+  `dashboard/nodes.md` lines 30-60 from earlier packages). `guide-lint01.log`
+  and `guide-lint02.log` retain the runs before this package's own lines were
+  shortened.
+- `e2e02.log`: Playwright `e2e/operations.spec.ts` PASS (23.4 s). It runs
+  against a real `kudurru serve` (`-tags licensetest`, its own SQLite data
+  directory) with the embedded production bundle. It blocks 127.0.0.1 from
+  its Clients row; the POST answers 201, the list shows `127.0.0.1/32` with
+  the reason, and `GET /edge/blocks` agrees. It revokes the block from the
+  list, which `GET /edge/blocks` then shows empty. It sets a Loki sink on a
+  closed port through `PATCH /settings` and waits for its failed attempts;
+  the Nodes panel then shows the row and the node name, and the page text does
+  not contain the sink's address. It creates a role binding with scope
+  `zonegroup:prod` through the Identity tab (201); the table shows
+  "zone group prod" and `GET /iam/rolebindings` reports the scope. No console
+  error appears. `e2e01.log` is the first run together with `pages.spec.ts`
+  and `login.spec.ts`: 78 passed, and the new spec failed only at its own
+  ambiguous `Name` field locator (it also matched `Namespace`), after the
+  edge block and sink steps had passed. The bundle build rewrote
+  `dashboard/dist/index.html`; it was restored and never staged.
+
+What remains open: the role-binding route cannot tell a pre-commit refusal
+from an unknown commit in its bare 503 `unavailable`, so the dialog locks on
+both; the server should distinguish them. Role binding replace and delete need the reviewed
+UID/resourceVersion (`GET /iam/rolebindings/{ns}/{name}`) and are not built.
+The create form takes one subject. Nothing reports whether a driver offers
+role binding commands, so on Kubernetes the button is enabled and the 503
+"requires the complete SQLite runtime" is shown in the dialog. A
+`capabilities.roleBindingCommands` field in `/auth/status` would let the
+dashboard hide it. The sink panel shows only the node that serves the
+dashboard, because the route asks no other node. It has no last-error text
+by design. Edge blocks have no per-client "blocked" mark in the Clients
+table (the list is separate). Actions the scoped permissions do not allow
+are disabled with a reason, not removed.
+
+**Verification state at 7663c957.** Merged and pushed at `daff96e5`. The integrator's log records the verification with nothing unresolved and nothing new. Still open, from the draft: the role-binding route's bare `503 unavailable` cannot tell a pre-commit refusal from an unknown commit, so the dialog locks on both; nothing reports whether a driver offers role-binding commands; the sink panel shows only the node that serves the dashboard. DASH-IAM later added role-binding replace and delete.
+
+
+### INT-ADMIN-API Integration administration API: manifests and Integration writes — November 10, 2026 (D400)
+
+Map entries: INT-5 (`map-packages-g05-g15-remaining.json`, API, CLI, permission,
+follower-contract, audit and docs part) and G21-09 (`map-g21-route-and-contract-sweep.json`,
+"Integration object writes" part). The dashboard Integrations page is not part of
+this package (see the last paragraph).
+
+What now happens. `Integration` is a kind of the generic object routes on both
+drivers: `GET/PUT/DELETE /api/v1/objects/integrations/{namespace}/{name}`,
+`POST /api/v1/objects/integrations`, `POST /api/v1/apply` and the new
+`POST /api/v1/integrations:batchDelete`, and the CLI's `kudurru get|apply|delete
+integrations` (alias `intg`). A write takes the same reviewed path as every other
+object: the document is sanitized (status and server metadata dropped) and
+validated strictly against the CRD schema, written as manager `api`, refused with
+`409 managed_by` when a file or another manager owns the object, and bound to the
+stored `resourceVersion` by `If-Match` (`412` otherwise). On the complete SQLite
+runtime the write runs in one current command: the original credential is
+re-authorized against the attributes the command derives from its own read, the
+store arms the `deletionPolicy: Delete` cleanup finalizer (D367) and writes the
+`integration.create`/`update`/`delete` audit row in the same transaction. An
+enrolled follower forwards these writes to its primary as the typed object member
+command (`batchDeleteIntegrations` is a new forwarded operation; the provider
+commands check, preview, sync, act and release stay primary-only). On Kubernetes
+the API reads the object, checks, and applies with `ExpectedResourceVersion`;
+the kube audit spool records it. Two checks are specific to the kind, both
+decided on the stored object the write is compare-and-swapped against: a write
+that binds or changes `spec.credentials` also needs `integrations.secrets`
+besides `integrations.write` (a reference can name any credential the node's
+allowlist grants), and so does a write that, while credentials are bound,
+changes where the host presents them (`spec.type`, `spec.unifi.endpoint`,
+`spec.unifi.tlsFingerprint`, `spec.webhook.endpoint`), so a writer without the
+verb cannot point the node's credential at its own server, and a new Integration needs the integrations license
+feature (`402 license_required`, re-checked at commit on SQLite); replace and
+delete need no license. `integrations.write`, `integrations.delete` and
+`integrations.secrets` are no longer reserved. Credentials stay references:
+the CRD has no value field, strict decoding refuses one (`400`), and reads
+return the references only (a holder of `integrations.read` sees the reference
+names in use; the manifests route withholds only the rest of the allowlist).
+A validation failure of an Integration write that names `spec.credentials` is
+answered with a fixed message and the field paths only, because the validator
+prints the refused value `%q`-quoted; every other refusal has each
+`spec.credentials` string removed in its raw, Go-quoted and JSON-escaped forms.
+A value pasted into `file` or `env`, also with a trailing newline, a tab, a
+quote, a backslash, a control character or under six bytes, is therefore not
+echoed by `PUT`, `POST /apply`, a follower or a log (the first version matched
+raw substrings only and leaked those values; review probe
+`review-probe02.log`). `GET /api/v1/integrations/manifests` (`integrations.read`,
+`kudurru integrations manifests`) returns the compiled provider manifests
+(configuration schema, credential keys with `required`, capabilities, I/O
+class), the driver, the only namespace whose Integrations run (Kubernetes
+release namespace), license coverage, the reference forms this node resolves
+(`file`, `env`), and per type `supported`/`reason` and the `refused` spec fields
+of this driver (Kubernetes: webhook unsupported, `spec.unifi.inventory`; both
+drivers: UniFi push fields). The node's allowlisted file paths and environment
+names are included only for a holder of `integrations.secrets`. `kudurru backup`
+and a kind-less `kudurru export` keep covering only the DNS objects (they would
+otherwise start needing `integrations.read`); `kudurru export integrations`
+exports Integrations.
+
+Evidence under `.context/v020-final-20261110/evidence/INT-ADMIN-API/`:
+
+Review fixes (November 13, 2026):
+
+- `fix-prefix01.log`: the new tests run against the reviewed code (source files stashed): `TestIntegrationObjectWrites`, `TestIntegrationObjectCommandAdmission` and `TestIntegrationNeedsSecrets` fail; the first shows the 400 body repeating `"trailing-newline-token-0123456789\n"`, the last reports the endpoint, TLS pin, type and webhook endpoint changes as needing no `integrations.secrets`.
+- `fix-race02-api.log`: `go test -race -count=1 -v -run 'TestIntegration|TestObjectCommand' ./internal/api` with envtest, 11 of 11 passed: `TestIntegrationObjectWrites` (1.3 s), `TestIntegrationObjectWritesKube` (10.1 s, the same sequence over kube-apiserver), `TestIntegrationObjectCommandAdmission`, `TestIntegrationNeedsSecrets`, `TestIntegrationCredentialsChanged`, `TestIntegrationManifestsRoute` and the object-command tests. The write sequence now sends six echo values (trailing newline, quote and backslash, tab, control character, `abc!5`, non-ASCII) through `PUT` and `POST /apply` and checks every string of the answer for the raw, Go-quoted and JSON-escaped form; the command path checks the same values; a `writer` without `integrations.secrets` gets `403` for a UniFi endpoint or TLS pin change and `200` for a suspend, an admin moves the endpoint; `POST /apply` refuses a credential binding to the writer and creates and updates as admin; `POST /integrations:batchDelete` is `403` for an operator and deletes two of three names for the writer. `fix-race01-api.log` is a retained earlier run of the same selection without envtest assets, which failed only on that test's wrong expectation of a per-item operator refusal (the route answers `403` as a whole).
+- `fix-race03-api-full.log`: `go test -race -count=1 ./internal/api` with envtest, `ok` in 642.2 s (includes `TestOpenAPIDrift`, the follower contract tests and both permission lints).
+- `fix-race05-cmd.log`: `go test -race -count=3 -v -run 'TestIntegrationAdminObjectWritesOnCompleteSQLite|TestIntegrationsObjectCLI|TestIntegrationsManifestsCLI' ./cmd/kudurru`, 9 of 9 passed (SQLite test 13.2 s to 14.9 s). The mounted SQLite test now also refuses an unlicensed create with `402 license_required` from the current command and stores nothing, finds `kudurru.io/integration-cleanup` armed on a `deletionPolicy: Delete` create, gets a per-document `403` for an operator's `POST /apply`, creates through `POST /apply` and removes through `POST /integrations:batchDelete` (one success, one missing). `TestIntegrationsObjectCLI` covers `get integrations`, `get intg`, `-o wide`, `apply -f`, `delete integrations`, a kind-less `export` and `backup` that send no Integration list request, and `export integrations`; `TestIntegrationsManifestsCLI` covers the table and `-o json`. `fix-race04-cmd.log` is retained: the same tests plus `TestBackupAndRestore`, `TestConvenienceGolden`, `TestApply*` and the attribute tests passed, but the SQLite test failed with `503 generation_pending` because the new steps sent a request before the cleanup create was published; the test now waits for the published generation, as its other steps do.
+- `fix-mutation01-nobackup.log`: with `NoBackup` set to false, `TestIntegrationsObjectCLI` fails (the kind-less export includes the Integration).
+- `fix-lint02.log`: golangci-lint v2.15.0 over `./internal/api/... ./cmd/kudurru/...`, 0 issues (`fix-lint01.log` retained: refused to start beside another lane's lint run). `fix-bench-guards01.log`: 14 bench guard tests OK.
+
+Original implementation:
+
+- `race08.log`: `go test -race -count=3 -run 'TestIntegrationAdminObjectWritesOnCompleteSQLite|TestObjectCommandAttributesIntegrationSecrets|TestIntegrationManifestsMatchKubernetesRefusals' ./cmd/kudurru`, 9 of 9 passed (12.2 s to 16.3 s per run of the SQLite test, package 46.4 s). The SQLite test mounts the API on the complete runtime (object commands, captured object reads, the integration host, the license), reads the manifests, refuses an operator-scoped token (`403`), creates an Integration with a file reference, finds its `integration.create` audit row at the returned resourceVersion with no credential value in it, waits for the host to run it and checks it through `POST /integrations/default/second/check` with the UID the write returned (one provider request), replaces and deletes it under `If-Match` (stale `412`, operator delete `403`), and gets `409 managed_by` for a file-managed Integration; no answer contains the credential value.
+- `race06-internal.log`: `go test -race -count=1 -p 2 ./internal/api ./internal/cli ./internal/rbac` with envtest assets: every test passed except `TestOpenAPIDrift` (expected before the generated commit; it passes in `drift01-api.log`). This includes `TestIntegrationObjectWrites` (memory store, the Kubernetes write path), `TestIntegrationObjectWritesKube` (the same sequence over kube-apiserver with the Integration CRD, 6.6 s), `TestIntegrationObjectCommandAdmission` (SQLite command: `integrations.secrets` attribute exactly when credentials change, `402` under a community license cut, `412`, no echo), `TestIntegrationCredentialsChanged`, `TestIntegrationManifestsRoute` (`503` without a host, `403` for a viewer, grants withheld without `integrations.secrets`), `TestFollowerOperationsClassifyEveryMutation` (forwarded 34, local 14, primary 49) and `TestPermissionVerbsAreUsedOrReserved`.
+- `race05.log`: `TestRootMemberFollowerRefusesUnforwardedMutations` (refused 49, admitted 48) and `TestMemberForwardRouteCoversEveryForwardedRoute` (with `POST /integrations:batchDelete` in the reviewed table) passed 3 of 3; the SQLite object test failed 3 of 3 in that run on a test wait (see below).
+- `mutation01.log`: with the `integrations.secrets` check removed `TestIntegrationObjectWrites` fails (a writer without the verb creates the object); with the redaction removed both the ordinary and the command test fail and show the CRD error repeating the pasted value.
+- `drift01-api.log` (`TestOpenAPIDrift`, `TestRoutePermissionLint`, `TestPermissionVerbsAreUsedOrReserved`, follower tests) and `drift02-docsgen.log` (`./hack/docsgen`, `TestReferenceDrift`) pass after `chore(gen)`; `race09-cmd.log`: `go test -race -count=1 -run 'TestCLIReferenceDrift|TestAggregatedRolesDrift|TestIntegrationAdmin|TestIntegrationManifests|TestObjectCommandAttributes|TestServingObject|TestMemberForwardRoute|TestRootMemberFollower|TestRootMemberObject|TestBackup|TestExport|TestRestore|TestIntegrationsCLI|TestIntegrationCLI' ./cmd/kudurru` after `chore(gen)`: `ok` in 157.5 s (run without `-v`, so no per-test count is recorded).
+- `lint02.log`: golangci-lint v2.15.0 over `./internal/api/... ./internal/cli/... ./cmd/kudurru/... ./ee/integration/...`, 0 issues (`lint01.log` retained: one gosec G602 on a slice index, fixed by `integrationSecretsPair`). `bench-guards01.log`: 14 bench guard tests OK. `gen01.log`, `gen02-dashboard.log`: `make openapi`, `make client-go`, `make docs-gen`, `bun run gen:api`.
+
+Retained failed runs: `race01.log` (`503 generation_pending` on the first request after the test created a token; the test now waits for the published generation), `race02.log` and `race03.log` (the test counted provider requests exactly and reviewed the new instance before its status settled: `409` "review or authority changed"), `race04.log` and `race05.log` (`503` from check and `generation_pending` while the instance and its budget publication were still settling; `race05` waited for a known status the SQLite host does not report for this probe). All were waits in the new test, not product failures; `race08.log` uses `integrationReadyCommand` and waits for the published generation before each request, as the neighboring integration tests do. `race07` was stopped by the tool's background time limit before it ran and has no result.
+
+What remains open. The dashboard Integrations page (manifest-driven forms, conditions, check/sync, the Cloudflare preview plan with digest-bound apply, the inventory view, zone/record publication conditions) and its vitest and Playwright specs are a later dashboard package; this package exposes the routes and fields it needs. The Kubernetes write path has no original-credential proof re-checked at commit (as for every Kubernetes object write); a permission withdrawn between the check and the apply does not stop that apply. No custom role in the SQLite RBAC holds `integrations.write` without `integrations.secrets`, so the split is proven at the API seam with a custom authorizer and on SQLite through the command's attribute check, not with a second built-in role. The destination fields are a fixed list (`integrationDestinationFields`); a provider that later adds a field that decides where a credential is sent must add it there. A holder of `integrations.read` sees the reference names (file paths, environment variable names) that Integrations use, by design (an object without them could not be re-applied); the dashboard should not present the manifests gate as hiding them. The generated `chore(gen)` commit is no longer the last commit of the lane: the review-fix commits change no route, DTO, permission or CLI reference, and `TestOpenAPIDrift` passes in `fix-race03-api-full.log`. Follower forwarding of Integration writes uses the generic object member command and is covered by the route-table and refusal tests, not by a two-member Integration write test. The driver limits in the manifests are a table in `cmd/kudurru/integration_manifests.go`; the Kubernetes half is pinned to `kubeIntegrationRefusal` by a test, the SQLite UniFi push entry is not, and INT-UNIFI-PUSH must update it.
+
+**Verification state at 7663c957.** Merged and pushed at `daff96e5`, together with the integrator's dashboard follower-table fix `2a15e5a0` (and `faa6c4e1` with DASH-OPEN). The verifier resolved all five findings (the blocker and the major on both write paths: no refused value echoed in any shape tried, and a writer without `integrations.secrets` can no longer move bound credentials) and accepted the nit's rebuttal. Two new problems: map keys under `spec.credentials` were still repeated in refusals (minor; INT-OPEN2 now redacts them, D384 (5)), and the shorter unquoted-match minimum can replace a legitimate reference equal to a common word of a message with `[redacted]` (cosmetic, open, untested). The draft changelog's claim that no string of `spec.credentials` is ever repeated is true only with INT-OPEN2.
+
+
+### F28-REJOIN-COUNT Rejoin root acquisitions in the managed-anchors process test — November 13, 2026 (no decision)
+
+`TestEnrolledManagedAnchorsPromoteAndRejoin` failed on the last three hosted
+runs (INTEGRATE-18, -20, -21) at `rejoin acquisitions 5` against a bound of 3
+to 4. Running the product with debug logs, a temporary log line on each
+deny-only acquisition of the follower poller (role, incarnation, settings
+resourceVersion, previous identity, offset) and a per-request log of the
+stand-in root showed that the old primary makes three root acquisitions after
+its partitioned restart. The first is the fenced child's first check (offset
+0, mode fenced) while the old primary cannot reach the new primary. The second
+is the follower child's first check (offset 0, mode follower) after it
+installs the successor. The third is a second check by that follower child
+after the settings patch forwarded through the rejoined member (owner
+unchanged, settings resourceVersion 377 to 379). Each one follows a rule the
+design states (D369; docs/architecture/upstreams-and-cache.md): one child
+per member, term and role, each checking once at start, and a changed
+settings identity ends the one-hour cooldown of an unchanged owner. The
+product acquires no more often than the design allows. The old bound was
+written for the F28 lane's flow, where the settings patch through the
+rejoined member came later, and the hand merge kept the HA lane's partitioned
+restart and the settings patch ahead of the count. The test bound was wrong,
+so no product code changed.
+
+The test now synchronizes on each rule and asserts exact counts. It waits for
+exactly one check while the old primary is fenced, before the partition
+heals. It waits for exactly one more once the old primary follows, before the
+settings patch. It absorbs the settings patch with the existing
+`absorbSettings` helper (one check per coalesced settings change; the two
+patches coalesce or not depending on whether the second lands inside the
+follower's one-second wake coalescing, so 1 or 2). At the end it requires
+exactly four acquisitions since the absorbed baseline.
+
+The same repeated runs showed a second instance of the same rule earlier in
+the flow, shared by both `TestEnrolledManagedAnchors*` process tests. The
+forwarded blocking switch (`POST /dns/blocking` through the follower) writes
+`Kudurru/default` status, so the follower checks the root again for the
+changed settings identity. Depending on when its five-second pull installs
+the switch, that check either coalesced into the first settings patch's
+absorption window or landed just before the window's baseline was taken. In
+the second case it was never absorbed, and the later `partition` check failed
+with one acquisition too many (run02, and diag09/diag10, where the root log
+puts the check 0.7 s and 0.13 s before the settings patch started, with
+settings resourceVersion 1 to 83). The test now waits for exactly that one
+check after both nodes serve the switch and adds it to the baseline.
+
+Evidence under `.context/v020-final-20261110/evidence/F28-REJOIN-COUNT/`:
+
+- `diag01.log` and `diag01/` (temporary instrumentation, not committed):
+  attribution of the three post-restart acquisitions described above. The run
+  failed at the old bound, as on hosted CI (`rejoin acquisitions 5`).
+- `run02.log` to `run08.log` (first commit, `-race`; 05 to 08 under
+  `taskset -c 0-3`): the new exact fenced and follower checks passed in every
+  run that reached them (run03, 04, 05, 08). The full test passed in run05
+  (233.8 s) and run08 (243.7 s). Failed runs that were kept: run02
+  (`partition: 5 root acquisitions, want 4`, the blocking-switch race above);
+  run03 and run04 (a forwarded UPDATE through the rejoined member answered
+  REFUSED, the HA lane's held-across-install item, also seen in CI-RED-2);
+  run06 (`UPDATE on enrolled-b answered SERVFAIL`, the HA lane's
+  forwarded-UPDATE SERVFAIL under load); run07 (`refused partitioned write was
+  applied or replayed`, a one-shot DNS check in the HA partition step).
+- `diag09.log`, `diag10.log` and their directories (instrumented): both
+  failed at `partition: 4 root acquisitions, want 3`. The root and poller logs
+  attribute the extra check to the blocking switch's settings write.
+- `run13.log` to `run16.log` (second commit, both
+  `TestEnrolledManagedAnchors(PromoteAndRejoin|PartitionRestartAndRevoke)`,
+  `-race`, `taskset -c 0-3`): `PartitionRestartAndRevoke` passed in run13
+  (210.2 s), run14 (179.2 s) and run16 (214.7 s). `PromoteAndRejoin` passed in
+  run13 (268.5 s) and run14 (253.5 s). Failed runs that were kept: run15 (both
+  tests failed in the forwarded UPDATE steps before any anchor count: a burst
+  UPDATE answered REFUSED, and `UPDATE on enrolled-b answered SERVFAIL`);
+  run16 `PromoteAndRejoin` (`UPDATE on enrolled-a answered SERVFAIL, want
+  NXRRSET`, after the new fenced, rejoin and settings checks had passed). All
+  are HA lane forwarded-UPDATE items. Every run that reached a new check
+  passed it: the blocking-switch check 6 of 6, the fenced and rejoin checks 7
+  of 7 (runs 03, 04, 05, 08, 13, 14, 16), and the final `rejoin acquisitions`
+  check (now exactly 4) 4 of 4 (runs 05, 08, 13, 14). No test was skipped.
+- `lint01.log`: golangci-lint v2.15.0 on `./test/e2e/...`, 0 issues.
+
+Review follow-up: an independent review (`review-run01.log` to
+`review-run06.log`, `-race`, `taskset -c 0-3`) passed
+`PartitionRestartAndRevoke` 3 of 3 (197.8 s, 199.3 s, 196.0 s) and
+`PromoteAndRejoin` 1 of 6 (run06, 238.5 s, final `n != 4` check passed).
+Every new anchor check passed whenever reached (blocking switch 7 of 7,
+fenced and rejoin 4 of 4). The five failures were HA lane steps: a burst
+UPDATE through the rejoined member answered REFUSED (run01, 03, 04),
+`UPDATE on enrolled-b answered SERVFAIL` (run05), and a new one,
+`POST /objects/dnszones: status 503` at 3.6 s during setup (run02). The
+architecture page (docs/architecture/upstreams-and-cache.md) now states that
+the settings identity is the `Kudurru/default` UID and resourceVersion, so a
+status-only write such as the blocking switch makes each running deny-only
+member check the root once, paced only by the one-second wake coalescing.
+Whether the cooldown should bind the settings spec only (root-server
+politeness) is a follow-up for the integrator.
+
+Open: hosted CI has not yet run with these commits; the first hosted e2e job
+should confirm that `rejoin acquisitions` no longer fires. The settings-patch
+absorption is still a 1-or-2 range by design (coalescing of the two patches
+`enrolledForwardedSettings` sends), as is the earlier forwarded settings
+change, so the final `== 4` is exact relative to that absorbed baseline. The
+shared helper was left unchanged because F28-OPEN6 edits the same files. Making it exact would need a single patch or a status field
+naming the last checked settings identity. The forwarded UPDATE that answers
+REFUSED or SERVFAIL through a just-installed follower, and the one-shot
+partitioned DNS check, are HA lane items that can still fail this test
+before it reaches the anchor counts.
+
+**Verification state at 7663c957.** Merged and pushed at `daff96e5`; the "rejoin acquisitions 5" failure did not recur on hosted CI after it. The verifier resolved the documentation finding and left **two minor findings unresolved**: the exact final `n != 4` check had no hosted proof at verification time (both local runs failed earlier on HA-lane forwarded UPDATE steps), and the settings change through the rejoined member is still absorbed as a range of 1 or 2 (two back-to-back patches share one wake), so a duplicated check for one change would pass as 2. New, low: one unwrapped line and an imprecise "costs one root TCP check" in `docs/architecture/upstreams-and-cache.md`. The integrator's later merge dropped this package's blocking-switch wait; F28-OPEN7 restored it.
+
+
+### F28-RFC RFC 5011 interoperability with real authorities, live root check and timer position — November 13, 2026 (D398)
+
+Managed root anchors are now qualified against real authorities, not only the
+in-process miekg stand-in roots. Separate `kudurru serve` processes (the
+interop harness's CGO-free release build) run with `anchorMode: managed`,
+`managedTopology: direct`, the authority as their only numeric root hint and
+no cache. They bootstrap over the production TCP acquisition from a root zone
+that BIND 9 signs (dnssec-keygen and dnssec-signzone; RSA/SHA-256 2048,
+ECDSA P-256 and Ed25519 KSK plus ZSK), or from one that Knot DNS signs online
+(the digest-pinned `cznic/knot` 3.6.2 image, keys from keymgr). They then answer
+AD-validated recursion over UDP and TCP for `www.example.` through a signed
+child delegation and for the root DNSKEY set.
+
+Acquisitions are counted exactly. For BIND the count comes from named's query
+log, where each acquisition is a line `. IN DNSKEY -E(0)TD`: TCP, EDNS version
+0, DO, RD clear, no CD and no cookie. For Knot it comes from a byte-for-byte
+UDP/TCP relay, because knotd keeps no query log. A bootstrap makes exactly one
+acquisition, and a restart before the refresh is due makes none.
+
+Both servers answer the apex DNSKEY query with NSCOUNT 0 and only the OPT
+record. BIND 9.18.50 does so by default and also with `minimal-responses no`,
+so the strict parser (NSCOUNT 0, ARCOUNT at most 1) needs neither a fixture
+setting nor a relaxation.
+
+Refusals against real BIND data:
+
+- A DS that matches no published key, a seed published already revoked (by
+  dnssec-revoke, self-signed) and an expired DNSKEY signature each make one
+  acquisition. The node stays unready, answers SERVFAIL and logs
+  `root anchor updater stopped for this writer term`. A restart makes exactly
+  one new attempt, and it is refused the same way.
+- An Ed448 (algorithm 16) seed is refused by configuration before any
+  acquisition.
+- An Ed448 KSK that signs beside the seeded key is ignored: it never enters
+  the managed state.
+
+A BIND-made revocation is observed at the committed refresh. The TTL is 3600,
+so the refresh comes at the one-hour minimum, and it is reached through the
+existing `-tags licensetest` updater-due seam (`KUDURRU_TEST_ANCHOR_UPDATER_AHEAD`,
+F28-HA-4). That seam moves only the due comparison: the acquisition, its
+receipt sample, the authentication and the commit are production code.
+
+- With two seeds, the revoked key becomes a tombstone, the other key stays
+  Valid and validated recursion continues. This holds across a restart without
+  the seam: two acquisitions in total.
+- With one seed and the successor still in hold-down, the successor is dropped
+  and the node quarantines and answers SERVFAIL, also after a restart without
+  the seam. This case takes three acquisitions, for the reason in the finding
+  below.
+
+The RFC 5011 timing itself is proven in the pure package on real bytes.
+`internal/trustanchors` replays root stages that BIND (dnssec-signzone with
+explicit signature windows) and Knot (online signing driven through a keymgr
+timeline) signed and served. BIND yields five distinct stages. Knot yields
+four: it signs the DNSKEY set with K2 as soon as K2 is published, so its s2
+already carries signatures by K1 and K2 and its s3 repeats s2. Only the BIND
+capture therefore has "K2 published, signed by K1 only" and "K1 still
+published, signed by K2 only". Each stage is the exact TCP reply to the
+production request. The replay places them on a 39-day synthetic timeline
+through a test-binary-only `SyntheticSample` (export_test.go) and checks:
+
+- A new key becomes Valid at the first authenticated observation strictly
+  after 30 days of accrued same-session hold-down. No extra poll beyond that
+  one is needed, but an observation exactly at the threshold does not count:
+  the key is still AddPend at day 31 (first seen at day 1) and Valid one hour
+  later.
+- Missing stays trusted and returns without a new hold-down.
+- Self-revocation is immediate, and permanent across republication.
+- A restart in the middle of the hold-down loses only the credit that was not
+  checkpointed: 7 days kept and Valid at day 39 plus one hour, not day 31.
+- Revoking the only trusted key while the successor is pending quarantines.
+
+The resulting states are framed through `accepted.ProposeManaged`, and
+`resolverstate.Project` yields exactly the successor's DS with the revoked ID
+(and the Quarantined disposition with no DS). The committed captures under
+`internal/trustanchors/testdata/rfc5011/{bind,knot}` carry provenance (tool
+versions, commands, signature windows) and SHA-256 pins, so CI without the
+tools still replays real bytes. A fresh BIND capture runs whenever named is
+installed; `make interop-internal` now includes the package, and CI's e2e job
+sets KUDURRU_REQUIRE_BIND. A fresh Knot capture runs with KUDURRU_KNOT=1
+(`hack/test-knot-managed-root.sh`).
+
+The opt-in live check `TestLiveRootManagedBootstrap` (`KUDURRU_LIVE_DNS=1`,
+`./cmd/kudurru`) runs the production wire plan, the first complete TCP reply,
+the strict bootstrap unpack, and `trustanchors.Bootstrap` with each shipped seed
+against all 26 built-in root addresses. On November 13, 2026, all 13 IPv4
+letters answered 1139 to 1141 bytes with NSCOUNT 0 and ARCOUNT 1. KSK-2017
+(20326) and KSK-2024 (38696) were both published, only 38696 signed, and only
+38696 authenticated (13 of 13). The 13 IPv6 addresses were unreachable from
+this sandbox: there was no complete reply, which the test reports and does
+not count. The release checklist now runs this check.
+
+D398 records the timer position: production constants and no release clock
+seam, qualification in the three layers above, and the documented deviations
+from RFC 5011. Operators get a new page, `docs/deploy/managed-root-anchors.md`
+(requirements and seed choice; enable order for standalone, enrolled and edges;
+monitoring; recovery; deviations), linked from the deploy index,
+`docs/deploy/dnssec-validation.md` and `docs/architecture/upstreams-and-cache.md`.
+
+F28-GATE-2 tracker reconciliation (for the integrator to apply):
+
+- gaps.md "Managed-anchor hosted DoH investigation" (:6849) and its
+  "unexplained and open" line (:7071), completion-plan.md (:1553, :1775) and
+  followup-audit.md (:3698, :3920). Close these with a7e70b22 ("order transport
+  checks after primary status settles": a startup DNSZone status write retires
+  in-flight answers by design, D313/D332), and with hosted ci run 42736964083
+  and kind run 42736964167 on 33ee04bc (from the map; this package did not
+  re-run hosted CI).
+- completion-plan.md:138 F28 row: replace "RFC interoperability ... remain
+  open" with this section's result. "Full enrolled HA orchestration" stays
+  open (F28-OPEN6 is partial: transition SERVFAIL at authority changes).
+- followup-audit.md:147 F28 row still says "Missing ... No hold-down/add/revoke
+  state machine". Mark it implemented: durable transitions D297, operator
+  recovery D320/D321, revoked/unsupported keys and real-authority
+  interoperability D398.
+- docs/architecture/upstreams-and-cache.md: the review found that the stale
+  "no reset or recovery path is mounted yet" and "backend activation admission
+  is still pending" sentences were still there (an earlier draft of this
+  ledger wrongly said they were gone). They are now rewritten: recovery is the
+  offline `kudurru anchors recover --offline` (D320/D321), and edge-backed
+  activation goes through the backend's startup admission of every declared
+  edge (D319), covered by the pinned dnsdist test. The same stale claim in
+  docs/architecture/deployment.md ("edge-backed managed activation is still
+  disabled", "activation coordinator ... is still unmounted") is corrected
+  too. The page also links the operator page and states the D398
+  qualification. The flows and diagrams did not change.
+- docs/deploy/dnssec-validation.md now limits "no RFC 5011 worker" to
+  forwarded validation.
+- CHANGELOG.md: see `changelog.md` beside this file.
+
+Finding, not fixed (recorded in D398 and the operator page): an observation
+that only the revoked key itself authenticates commits the tombstone, but
+`trustanchors.Advance` reschedules only authenticated observations. The
+committed refresh therefore stays due and the updater polls once more at once.
+When that leaves no trusted key (the quarantine case), the second poll is
+unauthenticated and stops the updater for the term, which is harmless because
+recovery is offline. With a remaining trusted key that does not sign the set,
+the same second poll would also stop the updater for the term, while the node
+keeps serving. That case is not seen at the real root and was not run. Changing
+it touches the audited pure core (D297), so it is left for a decision.
+
+Evidence under `.context/v020-final-20261110/evidence/F28-RFC/`:
+
+- `interop04.log`: `go test -race -p 2 -count=1 -v -run '^Test(BIND|Knot)ManagedRoot' ./test/interop`
+  with KUDURRU_E2E=1, KUDURRU_REQUIRE_BIND=1, KUDURRU_KNOT=1 and the private
+  daemon: PASS, 251.5 s, no skips.
+  - TestKnotManagedRootBootstrap: 16.5 s.
+  - TestBINDManagedRootRevocation: OnlyTrustedKey 73.6 s (3 acquisitions,
+    quarantined); SecondSeedContinues 60.7 s (2 acquisitions).
+  - TestBINDManagedRootBootstrap: RSASHA256, ECDSAP256SHA256, ED25519 and
+    MinimalResponsesNo; 32.9 s.
+  - TestBINDManagedRootRefusals: WrongDS, RevokedSeed, ExpiredSignature,
+    UnsupportedSeedAlgorithm and UnsupportedKeyIgnored; 37.7 s.
+- `rollover01-generate.log`: BIND generated PASS (capture written). Knot
+  generated FAIL: the test parsed keymgr's DS output with the wrong field
+  count.
+- `rollover02-generate-knot.log`: Knot generated FAIL, same cause.
+- `rollover03-generate-knot.log` and `rollover04-generate-knot.log`: Knot
+  generated PASS (6.8 s). rollover04 wrote the committed capture with the
+  tidied provenance steps.
+- `rollover05-default.log`: default run with no Docker, named present. BIND
+  committed and generated PASS, Knot committed PASS, Knot generated SKIP (no
+  KUDURRU_KNOT).
+- `race01-trustanchors.log`: `go test -race -count=1 ./internal/trustanchors/...`.
+  All five packages pass.
+- `live01.log`: TestLiveRootManagedBootstrap with KUDURRU_LIVE_DNS=1: PASS,
+  0.55 s, with 13 IPv4 replies accepted and 38696 authenticating 13 of 13.
+- `lint03.log`: scoped golangci-lint v2.15.0 over `./internal/trustanchors/...`,
+  `./test/interop/...` and `./cmd/kudurru/...`: 0 issues. gofmt is clean,
+  go vet passes, and the bench guards pass (14 tests).
+
+Review fixes (fix-*.log, after the accept-with-fixes review):
+
+- `fix-rollover03-bind-before.log`: the generated BIND capture as first
+  committed (readiness = the word "running" in named's log, then one dial),
+  30 runs on the loaded machine: 22 FAIL, 8 PASS, every failure
+  `dial tcp 127.0.0.1:<port>: connect: connection refused`. named prints
+  "running on Linux ..." before it listens. Kept as the failing-before proof.
+- `fix-rollover01-bind.log` and `fix-rollover02-bind.log` (the second at load
+  average 16 to 22, with the interop run on the machine): after the fix
+  (readiness is the first authoritative NOERROR reply to the capture request,
+  named started up to three times), 30 of 30 and 30 of 30 generated BIND
+  captures PASS; no restart was needed.
+- `fix-rollover04-all.log`: `go test -race -count=1 -run '^TestRFC5011'
+  ./internal/trustanchors` with KUDURRU_REQUIRE_BIND=1, KUDURRU_KNOT=1 and the
+  private daemon: BIND committed and generated, Knot committed and generated
+  (14.7 s) PASS, no skips; no `kudurru-f28-rfc-*` container left afterwards.
+- `fix-interop01.log`: `go test -race -p 2 -count=1 -v -run
+  '^Test(BIND|Knot)ManagedRoot' ./test/interop` with KUDURRU_E2E=1,
+  KUDURRU_REQUIRE_BIND=1, KUDURRU_KNOT=1: PASS, 383.0 s, no skips.
+  TestKnotManagedRootBootstrap 21.6 s, and its new cleanup check found the
+  container removed; `docker ps -a` showed no f28 container after the run.
+  TestBINDManagedRootRevocation with the 120 s refresh window:
+  OnlyTrustedKey 154.1 s (3 acquisitions, quarantined), SecondSeedContinues
+  131.1 s (2 acquisitions). TestBINDManagedRootBootstrap 25.0 s,
+  TestBINDManagedRootRefusals 32.8 s.
+- `fix-containers01.log`: the two knotd containers the earlier interop03 and
+  interop04 runs leaked (`kudurru-f28-rfc-knot-ij55olyb7v`,
+  `kudurru-f28-rfc-knot-jrvhqqbo5c`) were removed; the reviewer removed the
+  two from the review runs.
+- `fix-gate01-knot-skip.log`: without KUDURRU_E2E and KUDURRU_KNOT,
+  TestKnotManagedRootBootstrap skips before managedRootIP.
+- `fix-race01-trustanchors.log`: `go test -race ./internal/trustanchors/...`,
+  all five packages PASS.
+- `fix-lint01.log`: one `unused` finding (the single-dial `captureTCP`
+  helper the fix made obsolete), removed. `fix-lint02.log`: scoped
+  golangci-lint v2.15.0 over `./internal/trustanchors/...` and
+  `./test/interop/...`, 0 issues.
+- `fix-checks01.log`: bench guards (14 tests), guide-lint (67 files, 0
+  errors) and gofmt clean.
+
+Retained failed runs and what they showed:
+
+- `interop01.log`: dnssec-signzone needs a ZSK or `-z`. The first probe count
+  raced named's query log.
+- `interop02.log`: named 9.18.50 sometimes aborts at startup in
+  dns_cache_create (cache.c:263 REQUIRE). The fixture now waits for an answer
+  and restarts named up to three times. dnssec-signzone's own verification
+  refuses expired signatures (`-P` added). A quarantined node never reports
+  ready, so the fixture uses Start instead of StartReady.
+- `interop03.log`: keymgr cannot open the KASP database while knotd runs
+  ("temporarily out of resources"), so the root DS is now read before knotd
+  starts. It also revealed the third acquisition after a quarantine
+  (09:02:50.945 refresh, 09:02:52.069 unauthenticated re-poll), the finding
+  above.
+- Review runs `review-rollover01.log` and `review-rollover02.log` (1 of 8 and
+  10 of 25 generated BIND captures failed with `connection refused`): the
+  readiness defect fixed above. The review interop runs also showed each run
+  leaking one knotd container (canceled `t.Context()` in the cleanup), fixed
+  above.
+- `lint01.log`: six gosec findings in the new tests, fixed in place.
+  `lint02.log` did not run: another lane's lint was running in parallel.
+
+Still open:
+
+- No running node takes a key from AddPend to Valid in real time. That step is
+  proven only in the pure package and through the structural owner and
+  projection chain, by decision.
+- The optional real-time soak (two scheduled refreshes, about 2 h 10 min) was
+  not run.
+- IPv6 root letters were not reachable from this sandbox, so the live check
+  covered IPv4 only. Run it once from a CI runner with IPv6 egress.
+- Knot qualification runs only with KUDURRU_KNOT=1 on a private daemon. Hosted
+  CI does not run it.
+- The Knot capture has four distinct stages (its s3 repeats s2), so the
+  single-signer stages "K2 published, signed by K1 only" and "K1 still
+  published, signed by K2 only" are proven on BIND bytes only.
+- The revoke-only rescheduling finding above needs a decision.
+- The tracker edits listed above are for the integrator.
+
+**Verification state at 7663c957.** Merged and pushed at `72c887ef`. The verifier resolved all seven findings (25 of 25 BIND captures, all RFC 5011 captures for both signers and the BIND and Knot interop tests passed; no container left behind) and found no weakened guard. Two new, low, open: one header comment in `internal/trustanchors/rfc5011_rollover_test.go` still says both signers produce five stages, and the 120 s refresh window makes `TestBINDManagedRootRevocation` take about 288 s. That test then failed on hosted CI at `a3b5a1d0`, `c5b0637c`, `95c57113` and `2e15060e` because the merged tree lacked F28-OPEN7's `licensetest` seam file; F28-REVOKE-HOSTED found the cause and the test passed on hosted `531bffd0`. The Knot evidence is local-only (private Docker daemon; D383).
+
+
+### DASH-OPEN What verification left open in the dashboard lane — November 13, 2026 (no decision number)
+
+Five items left open by the DASH-FOLLOWER and DASH-CLUSTER verifications (FWD-UI in map-f60b-f46-follower-forwarding.json) are closed.
+
+**Role poll and audit noise.** `useClusterInfo` sent `GET /cluster` for every signed-in session and refetched it every 30 s. TanStack Query keeps that interval running in the error state, so every session without `cluster.read` got a 403 every 30 s, and every node audited each one as a denial. Now only a session that holds `cluster.read` sends `GET /cluster`, and a 403 ends its poll (this covers a grant withdrawn during the session). Every other session takes the role and the primary from the public, unaudited `GET /auth/status`, which carries the poll. It still reports `role: follower` and `primary` at this head (internal/api/authtypes.go). Static mode (`readOnly`) was never visible to those sessions (their `/cluster` read was refused), so nothing they saw changes. After review, a 403 is also not retried when another view mounts (`retryOnMount`) or the window regains focus (`refetchOnWindowFocus`): before, a session whose `/auth/me` still claimed `cluster.read` sent another audited read on each navigation and refocus until `/auth/me` was reread (at most 60 s). `useClusterInfo` is now exported, and the Nodes page and the upstreams panel use it instead of their own `useQuery` on `qk.cluster`, so every observer carries the same guards. Without `cluster.read` the Nodes page no longer reads `GET /cluster` at all (before: one audited denial per visit and one per window refocus); its Cluster panel says "Needs cluster.read".
+
+**Invitation view could not be closed.** `useOnce.run` calls `done(result)` and `setPending(false)` in one batch, so `InviteWizard` unmounted before `usePendingReport` could report `false`, and `InviteDialog` stayed busy. `usePendingReport`'s effect cleanup now reports `false` when the wizard unmounts while pending. `ActivateWizard` and `PromoteWizard` use the same hook, so they get the same cleanup.
+
+**Remaining gated surfaces now mounted on a follower.** Each of these is mounted against a follower and must show its control disabled with the primary named:
+
+- QueryLogPage row Allow and Deny
+- ClientDetailPage quick Allow and Deny, and its row Allow and Deny
+- EntriesBrowser source-entry switches (and no add box or selection)
+- MigrationImport, MigrationHistory "Track previous imports", and MigrationRunPage "Decommission source nameservers"
+- ExternalUsersPanel commands
+- RecoverAuthenticatorButton
+
+**`?add=` deep link and read-back scope.**
+
+- The Allowlist and Denylist `?add=` link now waits for the node's role (new `useClusterRoleKnown`), so it no longer opens the add dialog for a moment on a follower. When the session cannot follow the link, the link is removed from the URL.
+- The API client now passes the method and path of each answered write to `onMutation`. A new `FORWARDED_ROUTES` table maps them to an operation ID; `follower.test.ts` keeps the table equal to the `x-kudurru-follower: forwarded` operations of api/openapi.json.
+- The six-second read-back now runs only for a forwarded operation that the cached role forwards. It does not run for login, logout, browser logout or password change (`NO_READ_BACK`). A DNS query, a cache flush or any other local command now schedules nothing.
+
+**Audit-log paging was slow.** The cause was Astryx's row-expansion plugin. It adds a right-click "Expand row" action to every body cell, so each cell was wrapped in its own ContextMenu with a layer anchor and a `<template>`: 700 for a page of 100 events. A rendered page had about 7,500 elements, and each role query over it took over a second in jsdom. The audit page's plugin wrapper (`withWideChevron`) now drops that action; a row click, the chevron, Enter and Space still expand a row. A page now has about 2,600 elements. In a probe under load about 14, the table appeared after 1.6 s instead of 12.8 s, and the second page after 0.9 s instead of 21 s. The test's timeout was not changed.
+
+Evidence under `.context/v020-final-20261110/evidence/DASH-OPEN/`:
+
+- `vitest01-invite-close-before-fix.log`: the extended `cannot be closed while the invitation request is in flight` test fails before the fix: no "Close the invitation?" alertdialog after Escape. `vitest02-cluster-after-fix.log`: ClusterMembership.test.tsx 27/27 passed.
+- `vitest03-role-poll-before-fix.log`: the new tests `never asks GET /cluster, which would be audited as a denial, and follows the role through /auth/status` (5 `/cluster` reads instead of 0 over four poll periods) and `stops polling GET /cluster after a 403` (5 instead of 1) fail at the old context.tsx. `vitest04-follower-after-poll-fix.log`: follower-mode, lib/follower and logout-context tests 34/34 passed.
+- `vitest05-follower-readback-deeplink.log`: 38/38 passed in the same three files, after the read-back and deep-link changes. `vitest06-deeplink-without-fix.log`: `does not open the add dialog from ?add= before the role of a follower is known, and drops the link` fails without the DomainEntriesView change (the dialog opened once). `vitest07-readback-without-fix.log`: `schedules no read-back on a follower for a sign-in, a DNS query or a change the node runs itself` fails with the old context.tsx (2 reads instead of 1). The existing read-back test now writes `PUT /objects/policies/default/probe`, a forwarded route, instead of an unclassified `/probe-write`. It is otherwise unchanged.
+- `vitest08-audit-baseline.log`: `lists the audit log newest first and pages with the cursor` failed alone at the base: 26.9 s under load about 16. `vitest09-audit-contextmenu-without-fix.log`: the new `renders the cells without a context menu each, and a row click still expands` fails without the fix. `vitest10-audit-access-after-fix.log`: AuditPage.test and AccessPage.test 14/14 passed in 10.0 s. `vitest11-audit-paging-after-fix.log`: the paging test passed in 2.4 s under load about 12.
+- `vitest12-gated-surfaces-with-gating-reverted.log`: with the follower gating removed from QueryLogPage, ClientDetailPage, EntriesBrowser, MigrationWizard, MigrationHistory, MigrationRunPage and ExternalUsers, all five new follower tests fail. Restored afterwards.
+- `vitest13-full.log`: full suite, 1,010 of 1,011 passed in 266 s. The one failure is the known `Shell navigation > starts expanded and keeps the icon rail after navigating`: "Unable to find heading Tools", 6.1 s against the 5 s findBy limit. It is not touched here, and DASH-FOLLOWER recorded it at the base. `vitest16-shell-head-1.log` and `vitest16-shell-head-2.log`: Shell.test.tsx alone, 3/3 passed both times.
+- After review: `fix-vitest01-before-fix.log`: the new tests `sends no further GET /cluster after a 403 when another view mounts or the window regains focus` (3 `/cluster` reads instead of 1 after a second hook, the Nodes page and a focus event) and `sends no GET /cluster from the Nodes page without cluster.read` (no "Needs cluster.read" text) fail before the fix. `fix-vitest02-after-fix.log`: both pass with the existing `stops polling GET /cluster after a 403`, 3/3. `fix-typecheck2.log` and `fix-lint2.log`: exit 0 (`fix-typecheck.log` is a retained failed run: a type error in the first draft of the 403 helper). `fix-vitest03-full.log` (retained failed run): full suite under load about 18, 1,009 of 1,013 passed in 371 s; four page tests ran out of time (`signs in locally and lands on the dashboard`, `starts expanded and keeps the icon rail after navigating`, both findBy limits; the policy wizard and DHCP adoption walks, 20 s each). `fix-vitest04-failed-files.log`: those four files with NodesPage.test and follower-mode.test, 112/116, again timeouts (App.test's `navigates client side from a tile into the pre-filtered log` at 5.3 s instead of the DHCP walk). `fix-vitest06-failed-files-at-base.log`: the same six files with this fix's four source files reverted to aee726cb, 112/114 with the same App.test and Shell.test timeouts, so these are load, not this change. `fix-vitest05-app-alone.log`: App.test.tsx alone, 50/50 in 76 s. `fix-vitest07-head-rerun.log`: PolicyPages, DHCPAdoption, Shell, NodesPage and follower-mode tests, 66/66 in 59 s at load about 13. No timeout was changed.
+- `lint14-full.log`: `bun run lint` (eslint over the dashboard and the theme check), exit 0. `typecheck15.log`: `tsc --noEmit`, exit 0.
+- `build17.log`, `e2e18-gobuild.log`, `e2e19-playwright.log`: the dashboard build, `go build -tags licensetest`, and Playwright `cluster.spec.ts login.spec.ts data.spec.ts` against a real `kudurru serve`. The build exited 0 (embedded bundle 1,086.4 KiB) and the binary built. Playwright: 10 passed in 46.9 s. These include `activates a primary, shows an invitation exactly once and the invitation joins a member` (34.5 s), the three login specs (sign in, reload and sign out; wrong password; first boot with a generated password) and `query log: a blocked row explains itself and links to the Allowlist add dialog`. `dashboard/dist/index.html` was restored, not staged.
+
+Still open: The right-click "Expand row" menu is gone from the audit log, by choice. No other page uses the row-expansion plugin. A session whose `/auth/me` still claims a withdrawn `cluster.read` sends one audited `GET /cluster` before the 403 stops it. No browser test runs against a real enrolled follower. The Shell.test first test still runs close to its 5 s limit under full-suite load. It was not changed.
+
+**Verification state at 7663c957.** Merged and pushed at `72c887ef`, with the integrator's `faa6c4e1` (the Integration batch delete in the dashboard's forwarded-route table). The integrator's log records the verification with nothing unresolved and nothing new. It closes DASH-FOLLOWER's audited `GET /cluster` poll and DASH-CLUSTER's invitation-close regression. Still open, from the draft: a session whose `/auth/me` still claims a withdrawn `cluster.read` sends one audited `GET /cluster` before the 403 stops it; no browser test runs against a real enrolled follower; the full vitest suite has only load-attributed timeouts recorded, and the first Shell test runs close to its 5 s limit.
+
+
+### CORE-OPEN4 zone-group, impersonation and parent/child gaps closed — November 13, 2026 (D385)
+
+This package closes what the verifications of IAM-ZONEGROUP, IAM-IMPERSONATION
+and CORE-COMMIT-GAP left open. Item 3 of the integrator's list (the 503
+`current writable serving generation unavailable` answers after another commit)
+belongs to CMD-RECAPTURE (D399) and was not touched: the shared command path
+(`servinghttp.CheckWriter`, `Publisher.CheckWriterLease`,
+`currentAuthCommandThen`) and the 503 retries of the mounted zone-group tests
+are unchanged.
+
+**A zone deleted during a PUT is not created again.** On the store
+(Kubernetes) path `authorizeWrite` reads the DNSZone and admits a PUT at zone
+scope when the zone exists and its label is unchanged. `writeObject` then reads
+it again for the compare-and-swap. If an administrator deleted the zone between
+the two reads, `writeObject` found nothing and applied without an expected
+resourceVersion, so a zone-group member's or zone admin's PUT created the zone
+again, label included. `writeObject` now requires `zones.write` at cluster
+scope whenever a DNSZone write finds no zone on its own read. A delete after
+that read fails the compare-and-swap with 409. The SQLite command path already
+read and authorized in one transaction and treated a missing zone as a create.
+
+**Lists answer 503 instead of silently leaving items out.** `allowed()` turned
+an authorizer or zone-group read error into "not allowed". List filters
+(`GET /zones`, `GET /objects/{kind}` on the store and the captured paths) now
+use `listAllowed`, which reports the error. The whole list answers 503, and a
+credential that ended meanwhile answers 401. `GET /auth/me` answers 503 when a
+verb of its matrix cannot be decided. `allowed()` keeps its old meaning only
+for the cluster-scope capability checks, which never read a zone. The code and
+docs/architecture/access.md now say the same thing.
+
+**Impersonation refusal match anchored.** `impersonateVerbDenied` now
+recognizes only the apiserver's own form
+(`<resource> ["<name>"] is forbidden: User "<requester>" cannot impersonate...`,
+which covers legacy `impersonate`, `impersonate:<mode>` and
+`impersonate-on:<mode>:<verb>`). The quoted requester is parsed as a Go string
+and must differ from the impersonated user. A principal whose name contains the
+phrase, or an admission webhook message that uses it, is the principal's 403
+again, not a 503 deployment fault.
+
+**Docs.** The admin guide (`docs/guide/admin/09-people-and-tokens.md`) and
+access.md now say that on Kubernetes the forced field-ownership takeover happens
+on every label change through kudurru: adding, changing or removing the label,
+always by a cluster-scope writer. It removes every field that kubectl or a
+GitOps tool set and the document omits, when managed-by is empty, `api` or
+`bootstrap`. access.md also describes the create rule, the list 503 and the
+anchored match. The broken code fence in `docs/deploy/helm.md` (a verifier
+finding of IAM-IMPERSONATION) is fixed. `docs/architecture/zones.md` describes
+the boundary-command rule below.
+
+**Parent/child SERVFAIL for good: cause found and fixed (in two steps).**
+This was the new problem raised by the CORE-COMMIT-GAP verifier. On a mounted
+SQLite node, a primary child created under a primary parent could leave the
+pair SERVFAIL ("zone awaiting committed publication"). A driver trace showed a
+deadlock (temporary overlays `overlay-childdbg` and `overlay-conflictdbg*`,
+which log every step error and every `ErrConflict` site; never committed). The
+child's fence (`AdmitAncestor` or `FenceParents`, an admission with a `Parent`)
+required both zones' recorded lifecycle sources to equal their DNSZones' latest
+revisions. The parent's DNSZone had moved on (an edit, its own status write).
+An Active parent records a new source only through a transition whose
+`verifyDescendants` and adapter `membership` need every desired child already
+fenced. The child's DNSZone could also move on, and the driver fences a child
+before it refreshes the child's source. A boundary command changes nothing in
+the parent head but the child's system reservation (`candidate` enforces this),
+so the revisions add no safety there.
+
+The revision was checked in two places, and the first fix (`c3c4be32`) relaxed
+only one. The SQLite adapter checks both zones of a boundary command with
+`boundarySource`: the exact lifecycle as before, and the same source zone (UID,
+type, apex, not deleting), not its latest revision; a removed source keeps the
+exact check. The fence's child transition records the child's current source
+(`Runtime.currentSource`). But the production background guard,
+`currentguard.checkBackground` (mounted at `cmd/kudurru/primary_runtime.go`),
+still compared the parent's current DNSZone revision and intent digest with the
+parent lifecycle's recorded source, so a parent whose DNSZone moved on still
+could not have a child fenced; the adapter tests had passed only with the
+permissive test guard. The reviewer reproduced this with the real guard
+(`review-01`, `review-04`) and on a mounted node (`review-07`: pair 1 of 2
+SERVFAIL for 90 s, readiness 503). `87618b4a` makes the guard agree: for the
+parent-fence, late-parent-fence and parent-release reasons it needs the same
+object name, UID, type and apex and an undeleted, unremoved source, not the
+latest revision. The guard reads no source policy for those reasons, and every
+other reason keeps the exact revision check. The parent then records its own
+source on its next reconcile. The child zone is back in
+`TestRunServeSQLiteZonesAnswerAcrossCommits` (reverting the test half of
+`b1ae724a`).
+
+Evidence under `.context/v020-final-20261110/evidence/CORE-OPEN4/`:
+
+- `TestZoneDeletedDuringPutIsNotRecreated` (`internal/api`) deletes the zone
+  before each DNSZone read of the PUT in turn, for a group member and a zone
+  admin. Before the change (`unit02-before.log`) it fails at read 3 with HTTP 201
+  and the zone recreated with its label. After (`unit01-after.log`) it passes.
+  `TestServingObjectCommandResolvesZoneGroupInTransaction` now also deletes a
+  member zone and checks that the group token's PUT of it gets 403 and commits
+  nothing. It passed under race in `race02` and `race08`. It pins the SQLite
+  behavior, which was already correct, so it does not fail before the change.
+- `TestZoneGroupUnreadableZoneFailsLists` (`internal/api`): before
+  (`unit03-lists-before.log`, overlay `overlay-lists.json`) it fails with "status
+  200, want 503: {"items":[]}". After it passes (`unit04`). The whole
+  `internal/api` package passes (`unit05-api-all.log`, 65.7 s), and the
+  zone-group tests pass under race (`race03`).
+- `TestImpersonateVerbDeniedMatchesOnlyTheAPIServerForm` (`internal/store/kube`):
+  before (`unit07`, overlay `overlay-impersonate.json`) it fails for the odd
+  principal name (twice), the self-named requester and the webhook message.
+  After it passes. `race01-kube-impersonation.log`: every `Impersonat*` test
+  passes under race on envtest 1.37, including
+  `TestImpersonationWithoutImpersonateVerb`, which sees the real apiserver
+  refusal (20.5 s).
+- Late child: `TestLateChildFencesAParentWhoseSourceAdvanced` and
+  `TestLateChildFencesWhenBothSourcesAdvanced` (`internal/primaryruntime/sqliteadapter`)
+  fail before (`unit08`, `unit11`, overlay `overlay-latechild-before.json`) with
+  "admission conflict" and pass after (`unit09`, `unit10`). The second test also
+  checks that a replaced child zone is still refused. These use the permissive
+  adapter test guard, so on their own they did not prove the production path.
+  - With the production guard (`internal/primaryruntime/currentguard`,
+    `latechild_test.go`, real guard on real SQLite):
+    `TestActualLateChildFencesAParentWhoseSourceAdvanced` (subtests
+    `AdmitAncestor` and `FenceParents`),
+    `TestActualLateChildFencesWhenBothSourcesAdvanced` and
+    `TestActualBackgroundGuardRelaxesOnlyBoundaryRevisions` fail before
+    `87618b4a` (`fix-01-guard-before.log`: "admission conflict" for each step
+    and each of the three boundary reasons) and pass after.
+    `TestActualLateChildIsNotFencedIntoAReplacedParent` passes before and after
+    (it pins that a replaced parent is still refused). The relaxation test also
+    checks that a replaced, retyped, moved or deleting source is refused for
+    every boundary reason, and that `source-reconcile` and `lifecycle` still
+    refuse a source past the recorded revision. `fix-02-guard-after-race.log`:
+    `currentguard` (90 s), `sqliteadapter` (130 s) and `primaryruntime` (240 s)
+    pass under race, count=2.
+  - Mounted: `TestRunServeSQLiteParentEditedAsChildIsCreated` (new,
+    `cmd/kudurru/serve_zone_change_mount_test.go`, adapted from the reviewer's
+    probe) creates four parent/child pairs and edits each answering parent's
+    name servers at the same moment as its child is created (child object name
+    sorting first). With the pre-fix guard through an overlay
+    (`fix-overlay-guard-before.json`) it fails at pair 0
+    (`fix-03-mount-parent-edit-before-norace.log`: "30s after the child's
+    records: parent=SERVFAIL child=SERVFAIL readiness=503"). After the fix,
+    `fix-05-mount-after-norace.log`: 3 of 3 pass without race, every pair
+    answering 1.3 to 5.3 s after the child's records. A retained failed run,
+    `fix-04-mount-after-norace.log`, passed pair 0 and then failed on the
+    concurrent child `POST` answered 503 "current writable serving generation
+    unavailable" (the D399 family); the test helper now asks such a `POST`
+    again and counts a later 409 "already exists" as created.
+    `fix-06-mount-after-race.log` (race, count=2, about 25 minutes, with other
+    lanes' heavy runs sharing the machine): the new test, the zone-change test
+    and `TestRunServeSQLiteZonesAnswerAcrossCommits` pass 2 of 2 each. Pairs
+    answered 19 to 61 s after the child's records under race (bound 2 min),
+    and the commit-gap test had 0 probes without a correct answer across about
+    42,000 probes per name per run.
+  - Mounted reproduction before the fix: `child02` (child created 2 s after the
+    parent answered) has 2 of 6 runs stuck for 60 s, and `child03` has 1 of 6
+    (with the step and conflict trace). `child01` (no forward zone, simpler
+    setup) passes 6 of 6, so the deadlock depends on timing.
+  - `TestRunServeSQLiteZonesAnswerAcrossCommits` with the child created together
+    with its parent, under race: with the old adapter (`gap03`, overlay
+    `overlay-adapter-before.json`) 3 of 3 fail in setup ("mounted DNS never
+    reached probe.private.example."). With only the parent half of the fix
+    (`gap02`, `gap04` traced) 3 of 6 runs still deadlock, on the child's stale
+    source. That trace is what led to the second half. With the final code:
+    `gap06` 3 of 3 pass without race (about 11,100 probes per name, 0 without a
+    correct answer). `gap05` 3 of 4 pass under race (22,000 to 41,500 probes per
+    name, 0 without a correct answer). The fourth `gap05` run failed on a setup
+    `POST /objects/blocklists` answered 503 "current writable serving generation
+    unavailable" (the CMD-RECAPTURE family, D399), not on DNS. `gap01` (parent
+    half only, without race) passed 5 of 5.
+  - `race04`/`race05`/`race06` (`internal/primaryruntime`, `.../sqliteadapter`,
+    `.../driver`, with envtest) and `race07` (`internal/servingbuild` 587 s,
+    `internal/servingzones`, `internal/primaryruntime/network`) pass under race.
+    `race04`'s kube subtests failed only because `KUBEBUILDER_ASSETS` was unset;
+    `race05` reruns them with it set and they pass.
+- `TestRunServeSQLiteZoneChangesApplyFromTheirPublication` (new,
+  `cmd/kudurru/serve_zone_change_mount_test.go`; the forward-group and
+  tightened-ACL coverage the CORE-COMMIT-GAP verifier found missing). A forward
+  zone moves to another upstream group, and a primary zone's query access is
+  tightened so the prober is refused, then loosened. After review it fails on
+  any unanswered probe without the race detector (at most one per write under
+  it), on any SERVFAIL or other answer, on an old answer later than
+  `servedSuccessorGrace` after the first new one, and when the first new answer
+  comes later than 5 s (30 s under race) after the write's 200.
+  `fix-05-mount-after-norace.log`: 3 of 3 pass; the first new answer came 131
+  to 383 ms after the 200, with 0 old answers inside the grace and 0 probes
+  unanswered (`change01`/`change02` from before the review: 3 of 3 each).
+  `fix-06` under race: 2 of 2 pass, first new answer 2.3 to 4.6 s after the
+  200, 0 old answers inside the grace, 0 unanswered. What
+  it proves is "the change takes effect within a bound of its commit, and no old
+  answer after the first new one plus the grace". It does not prove refusal from
+  the very first publication that carries the tightened ACL: the write returns
+  at commit, before its publication, so 13 to 30 old answers between the 200 and
+  the first new one are allowed, and a mounted probe cannot see which
+  publication answered it. That rule is proven only in `internal/servingbuild`
+  and `internal/servingzones`. It covers existing D395 behavior, so it is not a
+  fail-first test.
+- `race02-cmd-selection.log` (32 tests from the auth, IAM, zone-group and
+  impersonation mount files, under race): 30 pass. The two failures,
+  `TestServingHTTPAuthCookieCommittedEnrollmentMismatch` and
+  `TestServingHTTPLocalUsersResetImageRestartPromotion`, are a data race in the
+  test fixture, not in this package. `newServingHTTPFixture`
+  (`serving_http_test.go:34`) writes `f.s.opts.Now` after the serving runtime
+  started, while the integration host reads it (`integration_runtime.go:157`).
+  `race08-cmd-final-selection.log` (20 tests after the zones fix:
+  zone-group mounts, `TestRunServeSQLitePrimaryAnswersAcrossStatusWrites`,
+  `TestRunServeSQLiteCompletePrimaryUpdateRestart`, `TestRootAnchor*`,
+  `TestServingAnchor*`, the new zone-change test) all pass.
+- Review fixes: `fix-07-lint.log` (`./internal/primaryruntime/currentguard/...`,
+  `./cmd/kudurru/...`) reports 0 issues; `fix-08-bench-guards.log` 14 tests OK.
+  No API, DTO or generated file changed, so there is still no generated commit.
+- Lint: `lint01` (`./internal/api/...`, `./internal/store/kube/...`) and `lint02`
+  (also `./internal/primaryruntime/...`, `./cmd/kudurru/...`) report 0 issues.
+  Bench guards: 14 tests OK. `TestOpenAPIDrift` and `TestReferenceDrift` pass
+  (`drift01`). No API or DTO changed, so there is no generated commit.
+
+**Still open.** The 503 "current writable serving generation unavailable"
+retries in `cmd/kudurru/serve_zone_change_mount_test.go` (`zoneChangeNode.request`,
+which also asks a POST again and counts a later 409 "already exists" as created)
+and in `cmd/kudurru/serve_commit_gap_test.go` mask the D399 family like the
+zone-group mount tests' retries do; CMD-RECAPTURE should remove them together
+with those (the integrator has to hand these two files over). The Kubernetes
+half of the delete-during-PUT rule (a delete between `writeObject`'s read and
+its `Apply` fails the compare-and-swap with 409) is argued from
+`internal/store/kube/crud.go` `Apply` (an `ExpectedResourceVersion` with no
+current object returns `ErrConflict`, and a NotFound under a precondition is
+treated as raced) and is not exercised on envtest or the mounted Kubernetes
+test; the captured SQLite list paths that now call `listAllowed` have no 503
+test. A mounted test cannot show that the first publication carrying a
+tightened ACL refuses (see above); that stays proven only below `cmd/kudurru`.
+Under race a parent/child pair took up to 61 s to answer on a loaded machine,
+so the driver's retry backoff deserves a measurement. The fixture data race above (`f.s.opts.Now` written after
+start) is a test defect in the integration and serving-HTTP fixtures. It is not
+fixed here and should go to the lane that owns them. Under race the
+created-together parent took 21 to 54 s to answer for the first time (`gap05`),
+close to the 60 s bound of `awaitMountedDNS`. The driver's per-zone retry
+backoff (1 s doubling to 32 s after transient conflicts) is the likely reason;
+I did not measure it. The seven assertions that CORE-COMMIT-GAP inverted or
+loosened still need the integrator's explicit acceptance; I did not re-audit
+them. The trailer remark of the CORE-COMMIT-GAP verifier needs no change: the
+brief asks for the model that actually ran. The 503 `generation unavailable`
+setup refusals stay with CMD-RECAPTURE. The 1.39 s CORE-OPEN3 `run05` gap and
+`TestRunServeSQLiteLongApplyKeepsServingDNSAndReads` were not looked at again.
+
+**Verification state at 7663c957.** Merged and pushed at `72c887ef`, with the integrator's `72c887ef` lint fix. Its parent/child part (`f517c1fb`, `7b5f3271`) was replaced by CORE-CHILD-RECONCILE's single boundary rule (D404); D385 item (4) now points there. The verifier confirmed the blocker (the parent/child deadlock) and the major (a zone recreated by a member's looping PUT) resolved, by running the tests with and without the fixes, and the zone-change test's bound. **Three findings unresolved (minor)**: the mounted zone-change helper still retries `503 current writable serving generation unavailable`, now also for a POST, and counts a later 409 already-exists as created, which shows that such a 503 can have taken effect while the helper's comment calls it a refusal before any effect (handed to D399-REDO); the Kubernetes delete between `writeObject`'s read and `Apply` and the SQLite list 503 are untested; CORE-COMMIT-GAP's seven loosened assertions were not re-audited. New: `TestRunServeSQLiteParentEditedAsChildIsCreated` took up to 15.7 s per pair against its 30 s bound on a loaded machine; a boundary command whose source is deleting was accepted when the recorded revision matched exactly (D404's `SameBoundaryZone` now refuses a deleting zone).
+
+
+### DASH-RPZ Dashboard support for RPZ feeds — November 13, 2026 (D391)
+
+The dashboard now shows the RPZ feed state that D391 exposes. A block list
+with an RPZ source has an "RPZ feeds on this node" section on its page, read
+from `GET /blocklists/{namespace}/{name}/rpz`. The read repeats every 30
+seconds while every feed serves, every 3 seconds while it answers 404 or 503
+or a feed is not serving, and at once after any list or source write on the
+page (every RPZ read, this list's and the Lists page's, is invalidated with the
+list). A new list's feed therefore appears within seconds of the node's next
+configuration snapshot, and a pending or expired feed is followed closely. For
+each feed it shows the state the answering node reports (`pending`, `serving`,
+`expired`, `unavailable`; the API word for a current copy is `serving`). Every
+state but `serving`, `pending` included, gets an alert that says plainly that
+this node answers SERVFAIL to every client whose policy uses the list. The
+alert also carries the reason and message of the node's diagnosis and the next
+transfer attempt. A serving copy whose refresh failed gets a warning with the
+node's message. The section also shows the node, serial ("Last serial" once
+the copy is not serving), primary, last confirmation, expiry, next attempt,
+last error, configuration error, the compiler totals, the compiled rules by
+trigger (QNAME, CLIENT-IP, RESPONSE-IP) and action (NXDOMAIN, NODATA,
+PASSTHRU, DROP, TCP-only, local data), and a table of the ignored reasons with
+their kind (unsupported or malformed), count and example owners. The dashboard
+types treat every feed field as optional and render only what the node sends.
+A copy the manager discarded (RPZ-OPEN) shows "no copy" instead of values the
+node did not send. 501 (no feed manager), 404 (the node's configuration lacks
+the list) and 503 (no configuration yet) are explained in an info banner. The
+Lists page reads `GET /blocklists/_rpz` only while some block list has an
+enabled feed. It shows the worst feed state of each such list under its
+health: plain text while serving, a badge otherwise, and the node's message in
+the tooltip.
+
+RPZ sources used to be treated as inline sources: the sources table showed
+"0 inline entries" and offered an entries browser that the API refuses with 422,
+"Last refresh" said "inline, nothing to fetch", and an unnamed source was
+called `inline-<i>` instead of the server's `rpz-<i>`. They now have their own
+kind. The table shows the zone, primaries, TLS and TSIG key name, shows "per
+node" for entries and fetch time, and offers no entries browser. A
+`?source=` deep link to a feed explains that a feed has no entries. Feeds can
+be created with **Add source → RPZ feed** (offered for block lists only) and
+with **Add an RPZ feed** in the new-list wizard. Both take the policy zone,
+ordered primaries (1 to 32), TCP or TLS and an optional TSIG key name, and
+check them as the CRD does. The writes go through the existing `useCan` path,
+so static mode and missing `blocklists.write` hide them, and on an enrolled
+follower they are forwarded to the primary like every other list change. The
+feed section has no actions and on a follower shows the follower's own copy.
+The mock API now enforces the CRD source rules (exactly one kind, `rpz` exactly
+with format `rpz`, block mode, no subdomains) and serves `db.rpzFeeds`.
+`docs/deploy/rpz.md` and `docs/architecture/block-lists.md` (text and diagram)
+describe the dashboard views.
+
+The list header keeps the health badge of the shared BlockList status, but
+when this node's feed answers SERVFAIL an "RPZ <state> on this node" badge
+stands beside it and the Status line adds "RPZ feed <source> is <state> on node
+<node>: clients whose policy uses this list get SERVFAIL from it." A list whose
+fetched sources are all RPZ feeds shows "per node (see RPZ feeds)" for Last
+refresh instead of a permanent "not yet", "not used: RPZ feeds follow their
+zone's SOA timers" instead of the 24h default refresh interval, and "per node"
+in the Lists page's Updated column.
+
+Evidence under `.context/v020-final-20261110/evidence/DASH-RPZ/`:
+
+- `vitest01.log` (retained failure): the first run of the new
+  `src/components/lists/RPZFeeds.test.tsx` had 15 PASS and 3 FAIL. The mock API
+  refused an RPZ source ("one of url, inline or configMapRef is required",
+  fixed by mirroring the CRD rules). The allow-list test found no API-owned
+  allow list in the fixture (the test now creates one). The wizard derived the
+  source and list name `rpz.vendor.example`, which has dots (now
+  `rpz-vendor-example`).
+- `vitest02.log`: `RPZFeeds.test.tsx` 18 PASS. These tests cover serving with
+  every field, pending with the SERVFAIL alert and next attempt, expired with
+  the last serial, counts and last error, a discarded copy with only
+  identity, state and message, a configuration failure next to a serving copy
+  with a failed refresh, 501 and 404, the `?source=` feed link, the source
+  dialog (validation, then the exact stored `rpz` block with TLS and TSIG),
+  no RPZ choice on an allow list, static mode (no Add source or Edit, a
+  disabled switch, the section still shown), a follower (its own node and
+  serial, Add source still offered), the Lists page (worst state, "RPZ
+  unknown" on 501, no `_rpz` read without a feed list), the wizard creating
+  an RPZ-only list, and the helpers (state words, worst feed, CRD checks).
+- `vitest04-lists.log` (retained): the list, wizard and lib files run in
+  parallel at a load average of 33 to 43 (other lanes) gave 6 FAIL. All were
+  20 s test timeouts or `findBy` timeouts, two of them in tests that existed
+  before this change. `vitest05-lists-serial.log`: the same four list files with
+  `--no-file-parallelism`, 53 PASS (173 s).
+- `vitest03-full.log`: full dashboard suite `bunx vitest run` through the
+  heavy lock, 76 files, 1031 PASS (242 s).
+- `lint01.log`: `bun run lint` (eslint `--max-warnings 0` and the theme check)
+  and `bun run typecheck`, clean.
+- `e2e01.log` (retained failure): `bun run build`, a `-tags=licensetest`
+  binary and `e2e/rpz.spec.ts` against a real node. The flow worked up to the
+  serving page; the test's `/Serial\s*7\b/` did not match the rendered
+  "Serial7Primary" (no word boundary between "7" and "P"). The assertion was
+  corrected to `(?!\d)`. The application was not changed.
+- `e2e02.log`: `e2e/rpz.spec.ts`, `e2e/lists.spec.ts` and
+  `e2e/secondary.spec.ts`, 5 PASS (38.3 s; the RPZ spec 18.2 s). The RPZ
+  spec uses a stub TCP primary (`e2e/support/rpz.ts`: SOA, AXFR and IXFR as a
+  full transfer, refresh and retry 1 s, expire 8 s). It creates the list in
+  the wizard and applies it to its own client with its own policy. It sees
+  the feed serving (serial 7, primary, QNAME 1, the NSDNAME owner in the
+  ignored table) while `/dns/query` reports the name blocked. After the
+  primary fails, the copy expires: the page shows "Expired: clients get
+  SERVFAIL" with `RPZExpired` and "Last serial 7", `/dns/query` answers
+  SERVFAIL, and the Lists page row shows "RPZ expired".
+- `bench01.log`: bench guards, 14 OK.
+
+Review fixes (after the review logs `review-*.log`):
+
+- `fix-vitest01.log`: `RPZFeeds.test.tsx` 25 PASS (35 s). New: the 503 banner
+  ("This node has no configuration yet"), a 404 first answer followed within
+  the settling poll by a serving feed without a reload, a second feed read
+  right after the source switch is toggled, the header badge "RPZ expired on
+  this node" with the Status sentence, "per node (see RPZ feeds)" and the SOA
+  wording for an RPZ-only list, no flag while serving, "per node" under
+  Updated on the Lists page, and `rpzSettling` (fast on 404 and 503 and on a
+  non-serving feed, not on 501 or all serving).
+- `fix-vitest02-mutated.log` (retained, intended failure): the same file with
+  the fix's behavior reverted in place (30 s poll, no RPZ invalidation, no
+  header flag, old wording): 4 FAIL, 21 PASS. The failing tests are the
+  settling reread, the reread after a source change, the header flag and
+  wording, and the Lists page wording. The 503 test passes both ways: the
+  branch existed and was only untested.
+- `fix-lint01.log`: `bun run typecheck` and eslint `--max-warnings 0` on the
+  touched source and e2e files, exit 0.
+- `fix-e2e01.log`: rebuilt dashboard bundle and `-tags=licensetest` binary,
+  then `e2e/rpz.spec.ts --repeat-each=2`, 2 PASS (42.0 s, 40.9 s). The stub
+  primary now holds its answers until `serve()`, so the real node's first
+  transfer stays in flight: the page shows the feed `pending` with "Pending:
+  clients get SERVFAIL" and "Until its first complete transfer", the header
+  badge "RPZ pending on this node" and "per node (see RPZ feeds)", and
+  `/dns/query` answers SERVFAIL with no transfer served. After `serve()` the
+  section turns `serving` and the name is blocked; after `fail()` it turns
+  `expired` with the header badge and Status sentence. The page is never
+  reloaded. The 404 console allowance stays, because the first read after
+  the wizard can still come before the node's snapshot.
+- `fix-vitest03-lists.log`: `src/components/lists`, `ListDetailPage.test.tsx`,
+  `ListsPage.test.tsx` and `ListWizard.test.tsx` with `--no-file-parallelism`,
+  4 files, 60 PASS (114 s); then `e2e/lists.spec.ts` and `e2e/rpz.spec.ts`,
+  4 PASS (1.0 min).
+- `fix-bench01.log`: bench guards, 14 OK.
+
+What remains open: feed state is per node and the dashboard shows only the
+answering node's. There is no cluster-wide view, because the API has no
+fan-out read. The list header's health badge still comes from the shared
+BlockList status; a failing feed on this node is flagged beside it, not
+merged into it, and the Lists page's health column shows the feed state on
+its own line as before. A feed that stays expired is reread every 3 seconds
+for as long as the page is open. Editing `exclude` of an RPZ source
+(switching single policy owners off) is not offered in the UI. An existing
+exclusion is kept on edit. No Playwright run covers a follower, a
+Kubernetes node, the `unavailable` state or static mode; those views use the
+same routes and are covered by vitest against MSW. The test file names RPZ-OPEN's discarded-copy shape from
+its ledger; if that package changes which fields it drops, the dashboard
+still renders whatever arrives.
+
+**Verification state at 7663c957.** Merged and pushed at `c5b0637c`. The verifier resolved all three findings (vitest 55 passed, typecheck and lint clean, Playwright `e2e/rpz.spec.ts` passed). One new minor problem, open: one feed anywhere on the node that stays expired, unavailable or pending makes the Lists page reread `GET /blocklists/_rpz` every 3 s while it is open, with no backoff.
+
+
+### G24-LOCAL Local release checks, live recursion and the version-sync CI step — November 13, 2026 (no decision number)
+
+Covers map entries G24-LOCAL, G24-SNAPSHOT, G24-LIVE, G24-SYNCTEST and
+G24-TREE. Every check ran in the lane worktree on a clean tree; each log's
+first line names the commit. The checks ran on lane commits `f1cf1cac`
+(run01) and `59aeee6e` (run02), which are the integrated head `7b11a139`
+plus this package's commits only, so their results describe `7b11a139`'s
+product code. **They must be repeated on the final release head**, with:
+
+```sh
+export DOCKER_HOST=unix:///tmp/kudurru-lab-docker.sock    # only for --full-snapshot
+PATH=<dir with syft 1.54.1>:$PATH hack/release-local-checks.sh --full-snapshot --live
+```
+
+Lane commits (source only; no generated artifact changed, so there is no
+`chore(gen)` commit):
+
+- `1920e4e1` test(recursor): compare the built-in root anchors with IANA's file
+- `bd3114b4` ci(go): run the version-sync tests with the other hack/ tests
+- `f1cf1cac` build(release): script the local release checks no workflow runs
+- `59aeee6e` build(release): check a live recursive node and guard the snapshot disk
+- `3709a4e6` test(recursor): check the body close error in the IANA anchor test
+- `56443b9a` fix(config): omit an empty strategy so a recursive group boots
+- `ed865717` fix(release): find the snapshot ko images under goreleaser.ko.local
+- `7acc069b` fix(release): wait for /healthz/ready in the live recursive node check
+
+What now happens. `hack/release-local-checks.sh` runs, on a clean tree, the
+checklist steps no pull request workflow runs: `make version-check`, the
+version-sync unit tests, `hack/release-tag.sh rc`, `make check-generated`,
+`make release-manifests RELEASE_ARTIFACT_VERSION=<VERSION>-rc.<N>` followed by
+an inspection that every kudurru image reference in `bin/release` carries the
+candidate tag and that `git status` is unchanged, `make dashboard-build`,
+`go test -count=1 ./dashboard/...` and `make size` on the real bundle,
+`goreleaser check` and the single-target snapshot with `kudurru version`
+(goreleaser v2.18.3 built into a scratch directory), optionally the full
+snapshot (`release --snapshot --clean --skip=publish,sign`, Docker and syft)
+and the live checks. It writes one numbered log per step and a `summary.txt`,
+restores the placeholder `dashboard/dist/index.html`, removes `dist/`,
+`bin/release` and the dashboard build output, and fails unless
+`git status --short` is empty. With `--full-snapshot`,
+`hack/snapshot-images.sh` handles the ko images goreleaser loads into the
+daemon in snapshot mode, which are named `goreleaser.ko.local:<version>` and
+`goreleaser.ko.local:<version>-debug` (goreleaser v2.18.3 `getLocalDomain`;
+ko v0.19.1's daemon publisher with `bare: true`): it lists the refs under
+that domain before the run and afterwards fails the step unless both images
+exist and `kudurru version` in each prints the version from
+`dist/metadata.json`, runs `hack/volume-check.sh` on them (reported, not
+counted) and removes only the refs the run created. Until `ed865717` the
+step looked for `ghcr.io/robertherbaugh/kudurru:*SNAPSHOT*` and would have
+skipped all of that on a successful run. The full snapshot's disk guard
+(`SNAPSHOT_MIN_FREE_GB`, default 14) is an unverified estimate, stated as such
+in the script and the checklist. `hack/live-recursive-node.sh` is the
+on-node half of D170: it starts a node with the documented
+`default: { mode: recursive, timeout: 4s }`, waits for `/healthz/ready`
+(until `7acc069b` it polled `/readyz`, which does not exist, and always waited
+60 s) and fails with the node log if readiness never comes. A recursive group
+in the configuration file now boots: `UpstreamGroup.Strategy` is
+`omitempty`, so the cluster settings seed of a recursive group carries no
+`strategy` instead of `""`, which the Kudurru CRD's enum refused. `TestLiveIANATrustAnchors` (gated on
+`KUDURRU_LIVE_DNS=1`) fetches IANA's root-anchors.xml over HTTPS and compares
+the DS records valid today with `DefaultTrustAnchors`; offline,
+`TestIANAAnchorsValidity` checks the validity rule against a trimmed copy of
+the file and `TestBuiltInAnchorsAgree` keeps `recursor.DefaultTrustAnchors`
+and `dnssec.RootAnchors` identical. In CI, `hack/test_sync_version.py` now runs
+in the go job's Test step next to `test_go_test.py` and `test_bench_*.py`; the
+helm job's duplicate step (added by QUAL-CI) is removed, and the helm job
+keeps `make version-check`.
+
+Evidence under `.context/v020-final-20261110/evidence/G24-LOCAL/`:
+
+- `run01/` (commit `f1cf1cac`, `--full-snapshot --live`; disk 8.5 GB free
+  before, 14 GB after): `summary.txt` exit/seconds per step:
+  version-check 0 (9 s, PASS); sync-version tests 0 (5 tests OK);
+  `hack/release-tag.sh rc` 0 (`version=0.2.0`, `tag=v0.2.0-rc.1`,
+  `exists=false`, `previous=v0.1.0`); `make check-generated` 0 (112 s, no
+  diff); `make release-manifests RELEASE_ARTIFACT_VERSION=0.2.0-rc.1` 0
+  (19 s; `bin/release` has `crds.yaml` 260,056 bytes, `install.yaml` 277,316
+  bytes and `compose/` with single, single-edge, ha and the two storage
+  overlays); inspection 0: the only kudurru references are
+  `ghcr.io/robertherbaugh/kudurru:0.2.0-rc.1` (6 files),
+  `kudurru-dnsdist:2.1.3-k0.2.0-rc.1` (4) and
+  `kudurru-keepalived:2.4.3-k0.2.0-rc.1` (3); tree unchanged after
+  release-manifests 0; `make dashboard-build` 0 (initial load 490.6 KiB of the
+  600 KiB budget; embedded bundle 1,085.8 KiB); `go test -count=1
+  ./dashboard/...` ok; `make size` 0: **`bin/kudurru: 84832416 bytes, budget
+  100000000 bytes (84% used, 14812 KiB headroom)`** with the real bundle
+  (linux/amd64, Go 1.27.3; the hosted build job measures the placeholder
+  only); goreleaser v2.18.3 install 128 s, `goreleaser check` 0 (1
+  configuration file validated); single-target snapshot 0 (17 s):
+  `kudurru 0.1.0-rc.5-SNAPSHOT-f1cf1cac (f1cf1cac, go1.27.3, linux/amd64)`,
+  84,832,416 bytes, sha256 `f845b7f2…de86ed3b`; live-recursor 0; live
+  managed-root 0 (377 s, mostly compiling `./cmd/kudurru`); tree clean 0.
+- `run01/15-snapshot-full.log` (retained failure): the full snapshot with
+  Docker 25.0.16 (private daemon) and syft 1.54.1 ran the before hooks and
+  then failed after 7 min 26 s compiling `darwin_arm64`: `compile: writing
+  output: ... no space left on device`. No archive, package, SBOM or image was
+  produced; this run filled the shared disk for a few minutes.
+- `run02/` (commit `59aeee6e`, `--full-snapshot --live --skip-generated`;
+  disk 10 GB free before, 6.7 GB after): every step as in run01 with the same
+  results (`make size` 84,832,416 bytes again; single-target snapshot
+  `kudurru 0.1.0-rc.5-SNAPSHOT-59aeee6e`, sha256 `a6368c34…ad5ea5fb`), except
+  `14-snapshot-full.log`, exit 1 by design: "only 6 GB free here; the full
+  snapshot needs about 12 GB" (the new guard, so the shared disk was not
+  filled again). `17-live-recursive-node.log`: all six checks ok.
+- Live internet (outbound UDP/TCP 53 and HTTPS work in this sandbox):
+  `01-live-internet.log` `TestLiveInternet` PASS (0.70 s) at `7b11a139`;
+  `02-live-anchors.log` `-race` `TestLiveInternet`, `TestLiveIANATrustAnchors`,
+  `TestIANAAnchorsValidity`, `TestBuiltInAnchorsAgree` 4 PASS (2.8 s): IANA's
+  file on November 13, 2026 at 10:40 UTC lists as valid exactly
+  `20326 8 2 E06D44B8…7C7F8EC8D` and `38696 8 2 683D2D0A…C0FB2B16` (KSK-2010
+  19036 expired 2019-01-11), equal to both built-in copies. The comparison
+  trusts HTTPS from data.iana.org; it does not verify the file's CMS
+  signature. `run01/17-live-managed-root.log` `TestLiveRootManagedBootstrap`
+  PASS: all 13 IPv4 root addresses answered with KSKs 20326 and 38696, signed
+  by 38696; seed 38696 authenticated the DNSKEY set on 13 of 13, 20326 on 0 of
+  13 (published, not signing), matching the November 13 line in the checklist.
+  `08-live-recursive-node.log` and `run02/17-live-recursive-node.log`
+  (`kudurru 0.2.0` built at `f1cf1cac`/`59aeee6e`): `dig +dnssec example.com`
+  NOERROR with `ad`; `dnssec-failed.org` SERVFAIL with `EDE: 6 (DNSSEC
+  Bogus)`; `+cd` NOERROR with the A record; `kudurru_recursor_outgoing_queries_total`
+  ok 18, timeout 0, error 0.
+- `07-recursive-group-doc-config.log` (**retained failure, product bug, fixed
+  in `56443b9a`**):
+  the documented file configuration `default: { mode: recursive, timeout: 4s }`
+  (docs/guide/admin/07-zones-and-upstreams.md:454) does not start a first-boot
+  SQLite node at `f1cf1cac`: `error: initialize runtime owners:
+  Kudurru.kudurru.io "default" is invalid:
+  [spec.settings.upstreams.groups.default.strategy: Unsupported value: "":
+  supported values: "parallel_best", "strict", "random", "rtt_weighted"]`.
+  `config.Upstreams.normalize` leaves `Strategy` empty for recursive groups,
+  `UpstreamGroup.Strategy` is serialized without `omitempty`, and the Kudurru
+  CRD enum refuses `""`. No mounted test starts a node with a recursive group
+  from the configuration file. The live node script set
+  `strategy: parallel_best` to work around it until `7acc069b`.
+- `03-sync-version-tests.log` 5 tests OK; `04-sync-version-tests-no-helm.log`
+  the same 5 OK with neither helm nor kustomize on `PATH` (so the go job's
+  runner is enough); `05-deploy-release-tests.log` `TestGoreleaserConfig`,
+  `TestVersionFile`, `TestVersionSyncScript`, `TestReleaseTagScript`,
+  `TestWorkflowActionsPinned` PASS at `bd3114b4`; `ci.yml` parses as YAML (14
+  jobs).
+- `06-tree.log` (G24-TREE): the main checkout at `7b11a139` shows only
+  ` M dashboard/dist/index.html`, nothing staged; the working copy is a built
+  index (0 placeholder markers, 23 `./assets/` references, +34/-3 lines);
+  `HEAD:dashboard/dist/index.html` has 1 `kudurru:placeholder` marker. The
+  lane worktree is clean and every script run ended with `git status --short`
+  empty. The main checkout's file was not touched (the brief forbids editing
+  it); restoring it is `git checkout -- dashboard/dist/index.html` there.
+- `09-bench-guards.log` 14 bench guard tests OK; `10-lint.log` (retained):
+  golangci-lint v2.15.0 on `./internal/recursor/...` found 1 errcheck issue
+  (`defer resp.Body.Close()`), fixed in `3709a4e6`; `11-lint-race.log` after the fix: 0 issues, `go vet` ok, `KUDURRU_LIVE_DNS=1 go test -race ./internal/recursor` ok (7.2 s).
+
+- Review fixes (lane head `7acc069b`): `fix-01-config-seed-before.log`
+  `TestRecursiveGroupSeedOmitsStrategy` FAIL without the fix (seed has
+  `"strategy":""`); `fix-02-config-seed-after.log` it and
+  `TestRecursiveGroupReplacesDefault` PASS. `fix-03-mounted-before.log`
+  `TestRunServeRecursiveGroupFromFileFirstBoot` FAIL without the fix (0.40 s,
+  the CRD enum error); `fix-04-mounted-after.log` `-race` it (5.7 s),
+  `TestRecursiveNTAReloadAndSettingsRestore`,
+  `TestRunServeDirectAnchorsFencedRecursiveValidation` (15.9 s) and
+  `TestRunServeHumanHealthDetails` 4 PASS. `fix-09-config-race.log` `-race`
+  `./internal/config`, `./internal/upstream`, `./internal/importers` ok;
+  `fix-10-api-settings.log` `./internal/api -run 'Settings|OpenAPI|Upstream|Recursi'`
+  ok; `fix-12-cmd-settings.log` `./cmd/kudurru -run
+  'Reload|Settings|Upstream|Recursive|ClusterSeed'` ok (103 s);
+  `fix-17-lint.log` golangci-lint on `./internal/config/...` 0 issues.
+  `fix-05-snapshot-images-tests.log` `hack/test_snapshot_images.py` 7 tests
+  OK (fake docker: both images found and version-checked, removal limited to
+  the refs the run created, missing images and a wrong version fail);
+  `fix-06-snapshot-images-old-filter.log` the old filter matches neither
+  goreleaser.ko.local ref, and `snapshot-images.sh list`/`check` against the
+  private daemon list nothing and fail as expected without touching it.
+  `fix-08-live-node-old-binary.log`: the script with the documented
+  configuration on the old binary (`59aeee6e`) exits 1 in 1.6 s and prints
+  the enum error; `fix-14-live-node.log` on `bin/kudurru` built at
+  `56443b9a`: ready in about a second, 6 of 6 checks ok, 18 outgoing queries,
+  0 timeouts, 6.8 s total (65 s before); `fix-15-live-node-never-ready.log` a
+  fake binary that never serves: exit 1 after 60 s with "the node was not
+  ready". `fix-13-deploy-release-tests.log` the five deploy release tests
+  PASS with the new ci.yml line; `fix-16-bench-guards.log` 14 OK.
+
+What remains open. The full goreleaser snapshot (archives, deb/rpm/apk,
+SBOMs, checksums, both ko images with `kudurru version`, `hack/volume-check.sh`
+on them) has **not** succeeded: Docker and syft were available, but the
+shared disk (8.5 GB, then 6 to 10 GB free) is too small for four
+cross-compiled builds; it needs a machine with an estimated 14 GB free (a
+guess: 8.5 GB was not enough, nothing more is known), or a label-triggered
+hosted dry-run workflow (map option B, not built here). The image half
+(`hack/snapshot-images.sh`) is tested only against a fake docker and has
+never run on real snapshot images; the first full run proves it. Record
+G24-SNAPSHOT as an open gap, not passed. Even
+then, a local snapshot uses the plain distroless bases (publish.yml builds
+`images/base` first), so `volume-check` on the snapshot images is expected to
+fail on the missing directories; the hosted edge workflow's `make
+volume-check` covers the image layout. Signing is not exercised locally. The
+snapshot version is `0.1.0-rc.5-SNAPSHOT-<commit>` because the nearest
+reachable tag on this branch is `v0.1.0-rc.5`; the real candidate's
+manifests use `0.2.0-rc.1`, as the release-manifests step shows. The recursive
+group fix changes only the JSON of a recursive group (no `strategy` key); the
+integrator's full `./cmd/kudurru` run has not covered it yet. The
+G24-SYNCTEST step (and the new `test_snapshot_images.py` line) still has to appear and pass in the hosted ci run on the
+final head. Every result here must be repeated on the final head.
+
+**Verification state at 7663c957.** Merged and pushed at `c5b0637c`, with an integrator script fix. The verifier resolved three findings (snapshot image names checked against the goreleaser and ko sources; the recursive group's first boot, a real defect fixed in `be0f2787`; the disk threshold wording) and accepted the CI rebuttal. **Unresolved**: finding 4 (major), no full `goreleaser release --snapshot` has succeeded, so there is no artifact list, no checksums and no ko images; the image half is tested only against a fake docker, and the machine had 11 GB free against the script's 14 GB guard; and finding 2 (minor) is half fixed, because with a dig that gets no answer `hack/live-recursive-node.sh` still exits 1 without FAIL lines or the node log (the display `grep` pipelines under `set -euo pipefail`), contrary to the commit message. New: `hack/snapshot-images.sh` removes the two version tags even when they existed before a run that failed early; shellcheck was not run (not installed); the `ci.yml` version-sync line had no hosted result at verification time. The G24 checklist is not closed.
+
+
+### G25-DOCS release documentation: package acceptance table, roadmap, operator pages and follow-ups — November 13, 2026
+
+Map entries G25-PACKAGES, G25-ROADMAP, G25-OPDOCS, G25-FOLLOWUPS
+(`map-g24-g25-release-docs.json`) and G21-13 to G21-16
+(`map-g21-route-and-contract-sweep.json`). No decision number; no design
+decision was made. Base `7acc069b` (lane `wip/v020/qual`, 7b11a139 plus
+G24-LOCAL). Seven source commits: `8951ec53` (acceptance table), `f5925ff2`
+(roadmap and progress), `cd93a449` (operator pages), `f13f8ceb`
+(follow-ups), and three review fixes: `af69c591` (the `unavailable`
+glossary row), `d7ade2fc` (DASH-RPZ and the F rows outside the packages),
+`bf156c6b` (a commit for every closed follow-up, F60c's open page). No
+generated commit: nothing changes a generator input. No
+Go code or test changed.
+
+Each map item was first checked against the files at the base, because
+DOCS-ARCH, DOCS-OPS, DOCS-VERSION, DOCS-RECONCILE and LEDGER-SPLICE-2 had
+already done most of them. Done before this package and left as they are:
+the enrolled cluster guide with activation and promotion, the dynamic
+update page, the Kubernetes role-binding and grant-floor text, the TSIG key
+page, the managed root anchors page, the Enterprise page, the version
+statements of the guides and the migration pages, the command-line chapter,
+the capability matrix and refusal glossary (G21-13) and the architecture
+corrections (G21-16). Each map grep (`cluster activate`, `cluster promote`,
+`rfc2136-`, `kudurru-grant-floors`, `anchorMode` in `docs/deploy`; the
+stale phrases of G25-ROADMAP in `README.md` and `docs/architecture`) was
+rerun at the base.
+
+What now exists:
+
+- **Acceptance table** (`gaps.md`, "Feature package acceptance at
+  154a779a"; pointed to from the completion plan's gate table, the v0.2
+  plan, the README and design record §13.2). Eleven rows, V2-ZONE to
+  V2-OPS, each with the verdict, its F rows, what is implemented with the
+  decision rows and ledger sections that hold the evidence, and what is
+  open. No package is accepted: G04 has no green hosted run, G21–G24 are
+  open, and the packages not merged at `154a779a` are named (IAM-WRITERS,
+  ID-INVENTORY, INT-UNIFI-PUSH, INT-EXTERNAL-ZONES, INT-GROUP-VIEWS,
+  CORE-CHILD-ZONE, PUBLISH-STARVATION, HA-OPEN5, HA-OPEN6, F28-OPEN7,
+  DASH-RPZ, G21-REFUSAL-OPEN). DASH-RPZ merged on the PR branch after
+  `154a779a` (`5b94bd81` to `2918adbf`), so the V2-RPZ row lists the
+  dashboard feed views as implemented and the v0.2 plan's current state
+  says they are merged. A paragraph under the table names the inventory
+  rows that belong to no feature package (F01, F02a, F02b, F02d, F03, F04,
+  F10a, F10b, F18a, F23, F33, F51, F52, F55, F56, F63, F64c, F68a and the AD
+  rows F11a to F15 except F12a) and says the package assignment is new to
+  this table; F21a is listed once, under V2-OPS. The table is written against the PR
+  branch head `154a779a`, not the lane base, because that is where it is
+  merged; its open items were taken from the tracker, `PLAN.md` and the
+  package drafts under `out/`, not from rerunning tests.
+- **Roadmap and progress.** README: integrations no longer "planned for
+  v0.2"; a v0.2.0 "in development, not released" line; the follower-mode
+  shape is the enrolled SQLite cluster with its guide; roadmap and plan
+  sentences link the acceptance table. The v0.2 plan: the starting point is
+  marked as the October 14 baseline; "Implementation progress" opens with
+  the current state, and eleven overtaken sentences now name the decision
+  or commit that changed them. Architecture index: the Kubernetes
+  integration host and inventory (D384).
+- **Operator pages.** The capability matrix says integrations run on
+  Kubernetes on the Lease holder, and its `unavailable` glossary row no
+  longer gives integrations on Kubernetes as an example; the deployment index links
+  `custom-branding.md` and names Kubernetes integrations; chapter 11 points
+  to the 0.1.x upgrade notes; the Nodes guide page passes the guide checker.
+- **Follow-ups.** 56 rows whose own item is done are deleted and listed
+  with their F row and the commit or decision that did the work (every
+  one now cites one; the seven that said "inventory row" cite `524d16a8`,
+  `f044fcd3`, `0ac2fefb`, `c2b50011`, `66d74761`, `dbfd2963`, `2f362c65`
+  and `13dceddd`). The inventory marks those F rows integrated,
+  implemented or complete, except F21c, F60b, F60c and F67, which it marks
+  active with only package or release gates left; the paragraph says so.
+  F60c's open part, the dashboard Integrations page, is kept as its own
+  row; its Kubernetes refusals were already in the integration host row.
+  Nine partly open rows are restated; seven sections left
+  without rows are removed. `grep -c 'v0\.2' dev-docs/followups.md` went
+  from 106 to 50 (the rest are open rows, AD preview rows, the
+  completion-pass sections and links). Only F64c's target changed, to its
+  original v1.0 subtarget.
+
+Evidence under `.context/v020-final-20261110/evidence/G25-DOCS/`:
+`guidelint01.log` (`python3 hack/guide-lint.py` at the base plus the
+chapter 11 edit: 9 errors, all already present: 7 in
+`docs/guide/dashboard/nodes.md`, 2 in `docs/guide/admin/09-people-and-tokens.md`);
+`guidelint02.log` (after the Nodes page rewrite: 2 errors, both in chapter 9
+line 47, left because the PR head rewrites that paragraph); `checks01.log`
+(`git diff --check` clean; `hack/sync-version.py --check` PASS; 14 bench
+guard tests OK; every edited table keeps its column count);
+`docsgen01.log` (`go test -count=1 ./hack/docsgen` ok); `links01.log`
+is empty: that `make docs-check-links` run did not finish and is retained
+as such. The reviewer's run at `f13f8ceb`, `review-links01.log`, passed
+(168 documents, rc=0), and `fix-links01.log` at `bf156c6b` passed (168
+documents, 248 ms, rc=0). `fix-checks01.log` at `bf156c6b`: `git diff
+--check` clean, `hack/sync-version.py --check` PASS, guide-lint 67 files
+with the same 2 errors in chapter 9 line 47 (this package does not touch
+that file, and the sentence with "may" is unchanged at `00cd1b13`), one
+sign-off and one Co-Authored-By trailer on each of the seven commits.
+`git merge-tree` of the four first commits onto `154a779a` and onto the PR
+head `00cd1b13` is clean. `fix-checks02.log` and `fix-checks03.log`:
+applied in order onto `00cd1b13`, every commit is clean except
+`af69c591`, which conflicts on line 88 of `docs/deploy/capabilities.md`
+with `bc5690d8` (the PR head rewrote that row). Resolve it by keeping the
+PR head's line and deleting "integrations and " from it
+(`sed -i 's/, integrations and API role bindings on Kubernetes,/, API role bindings on Kubernetes,/' docs/deploy/capabilities.md`);
+the rest of the commits then apply cleanly.
+
+What remains open. The package verdicts are a documentation statement; the
+release still needs G04 green, G21–G24 and the third ledger splice
+(D395–D405 rows and sections). Chapter 9 line 47 still fails the guide
+checker at the base and at `00cd1b13`; it is left for the merged head.
+Closing follow-up rows of packages that are not accepted (their F rows
+done, the package gates open) is this package's reading of G25-FOLLOWUPS;
+the owner should confirm it. Row-level claims of the acceptance table were
+sampled against the tracker, not rerun as tests. The README's v0.1.0 framing (lines 10, 12, 24 of the map) flips
+at GA. The map's "hosted docs workflow green" proof needs a push.
+
+**Verification state at 7663c957.** Merged and pushed at `95c57113` (the docs conflict on `docs/deploy/capabilities.md` resolved as the verifier described). The verifier resolved all five findings. New: the draft `out/G25-DOCS/acceptance-table.md` is stale and must not be used (gaps.md is the source); a nit in `dev-docs/followups.md` about the wording of closed F rows (F43c, F50, F60c). Closing follow-up rows of packages that are not accepted still needs the owner's confirmation. This splice updates the acceptance table to `7663c957`.
+
+
+### IAM-WRITERS IAM writers for local accounts, ServiceAccounts and IdentityProviders — November 10, 2026 (D396)
+
+The complete SQLite runtime now has reviewed writers for every remaining IAM
+object (IAM-3, G21-08 API and CLI part). `PATCH /iam/users/{name}` changes the
+display name, the local groups or the disabled state of an API-managed account
+and `DELETE /iam/users/{name}` deletes it. `POST /iam/serviceaccounts`,
+`PUT`/`DELETE /iam/serviceaccounts/{namespace}/{name}` and
+`POST /iam/serviceaccounts/{namespace}/{name}/tokens` manage kudurru service
+accounts and issue their tokens. `POST /iam/identityproviders` and
+`PUT`/`DELETE /iam/identityproviders/{name}` manage provider objects. Every
+command works like the RoleBinding commands (D294): the permission and cookie
+CSRF are checked on the request's original view before the body is read, the
+body is decoded strictly, and one current command reverifies the original raw
+credential for each attribute, compares the exact reviewed UID and
+resourceVersion and the API manager, stages the object through the security
+owners (account or provider revocation floor) and deletes the tokens the change
+ends. The object audit row commits with them. A group change, disable or delete
+ends the account's sessions and deletes its tokens; enabling restores none. A
+service account token is issued only for the exact UID of an enabled account,
+needs `serviceaccounts.write` and `tokens.write`, must authenticate from its
+stored form inside the transaction, and its secret is only in the 201 answer.
+Provider objects carry a credential reference, never a value. The built-in
+admin, other managers and a service account with bootstrap authority are
+refused by replace, delete and token issuance alike, and an issued token
+expires no later than the calling API token (as `POST /auth/tokens`) and within
+`auth.tokens.maxLifetime`. `GET /auth/status` reports `capabilities.iamObjectCommands`. On
+Kubernetes the commands answer `503 iam_management_unavailable` or
+`503 user_management_unavailable`, with a hint and no `Retry-After`, and the new
+item reads (`GET /iam/serviceaccounts/{namespace}/{name}`,
+`GET /iam/identityproviders/{name}`) answer from the stack's caches. All nine new
+mutations are `primary` in the follower table. The CLI gains
+`kudurru iam users create|reset-password|update|delete|list`,
+`kudurru iam serviceaccounts` (`sa`) and `kudurru iam identityproviders` (`idp`),
+each a single attempt without redirect or replay.
+
+Evidence under `.context/v020-final-20261110/evidence/IAM-WRITERS/`:
+
+- `race01.log`: `go test -race -count=1 -v ./cmd/kudurru` selection, 25 tests
+  passed in 177.9 s: `TestServingHTTPIAMServiceAccountsReviewedLifecycle`
+  (create-only, exact review, token issuance with a stale UID refused, token
+  secret absent from the stored image, audit and token inventory, disable
+  floor and token deletion, refused issuance while disabled, enable restores
+  nothing, delete and recreate with a new UID), `...StrictInputOwnershipAndPermission`
+  (duplicate and unknown keys, `spec.token`, server metadata, wrong kind,
+  query, CSRF, viewer token 403, other manager 409, bootstrap authority 403,
+  stopped writer 503, image unchanged on every refusal),
+  `TestServingHTTPIAMLocalUserUpdateAndDelete` (display name keeps the session,
+  group change ends cookie and token, disable refuses login, built-in admin
+  403, stale delete 409, delete floor, recreated name gets a new UID and no
+  token), `TestServingHTTPIAMIdentityProvidersReviewedLifecycle` (no secret
+  value accepted or echoed, provider floor on change and delete, other
+  commands still commit after the provider set changed),
+  `TestIAMWritersCLIReviewedCommands` (full CLI over the real router),
+  `TestRunServeSQLiteIAMWritersRevokeAcrossRestart` (mounted `runServe`, 22.6 s:
+  a deleted account's token stays refused after a real restart, another
+  account's token keeps working, the provider object survives and is deleted),
+  `TestForwardedShapes` (Kubernetes stack: every new command answers its keyed
+  503 with a hint and no `Retry-After`, capability false, item reads), and the
+  unchanged RoleBinding, local-user, external-user and local-user mount tests.
+- `race02.log`: the two service account tests again after a lint fix, passed.
+- `race03.log`: `internal/apiclient`, `internal/auth/stack`, and the
+  `internal/api` follower, route-lint, envelope and RoleBinding tests under
+  race, passed.
+- `run04.log`: the four fixture tests and `TestForwardedShapes` without race,
+  passed. Retained failures: `run01.log`/`run02.log` (first drafts: the
+  fixture has no management entitlement, so bindings grant nothing there; a
+  PrincipalState name rule; a local user without a role cannot create a
+  token; the tests were corrected, not the code) and `run03.log` (build
+  failure from an edit during compilation).
+- `api01.log`: `TestFollowerOperationsClassifyEveryMutation` failed on the
+  reviewed contract size (primary 50 → 59) until it and
+  `docs/deploy/sqlite-join.md` were updated.
+- `lint01.log` (one ineffassign in a test, fixed), `lint02.log` (0 issues),
+  `gen01.log` (openapi, client-go, docs-gen, dashboard gen:api) and
+  `drift01.log` (`TestOpenAPIDrift`, `TestReferenceDrift`,
+  `TestCLIReferenceDrift`, `TestAggregatedRolesDrift`, route lint, passed).
+
+- Review fixes (commits 6c79f799, 12e0fe15, d6fc4bb6 and 0d969081 on top of
+  8bee347e; no generated artifact changed, so there is no new chore(gen)).
+  The reviewer's `review-race01.log` (2 of 2 failures of the mounted test,
+  `503 generation_pending` on the token POST) and `review-probe01.log` (a
+  token issued for a bootstrap-authority and a system-owned account) are the
+  retained failures they fix.
+  `fix-before01.log`: the extended `TestServingHTTPIAMServiceAccountsReviewedLifecycle`
+  (expiry bound: "outlives its issuer: <nil>") and
+  `...StrictInputOwnershipAndPermission` (system-owned issuance "got 201,
+  want 409") fail against the previous handler (`go test -overlay`).
+  `fix-race01.log`: first race run of the IAM selection; all passed except
+  `TestServingHTTPIAMWritersDeleteFloorsSurviveReplicaPromotion`, failed by a
+  data race on `f.s.opts.Now` written by `newServingHTTPFixture` while the
+  runtime runs (`serving_http_test.go:34`). `fix-race02.log`: the same test
+  alone, passed. `fix-race03.log`: the race again (in
+  `...ConcurrentCreateAndReplace`) and a losing concurrent DELETE answering
+  404, which the test now accepts for deletes only. The fixture race is
+  pre-existing and is fixed on the PR branch by ebe67588 ("swap fixture clocks
+  without racing the runtime"); the lane does not carry that fix.
+  `fix-race04.log`: `-race -count=3` over every IAM writer test,
+  `TestIAMWritersCLIReviewedCommands` and `TestForwardedShapes`: all 3 runs
+  passed for every test (mounted test 27.5 to 36.7 s) except one of three
+  `TestServingHTTPIAMWritersDeleteAtSecurityCapacity` runs (503 on a read
+  while the 4096-row section was still publishing). `fix-race05.log`: 3 of 4
+  passed; the failure is the staging wait (15 s `localUsersFresh`) expiring
+  while the full section published. The test now waits up to 90 s for the
+  same condition and checks that the delete's 503 is the capacity refusal
+  (`"key":"unavailable"`, not `generation_pending`); `fix-race06.log`: 4 of 4
+  passed (16.6 to 19.7 s). `fix-race07.log`:
+  `TestRunServeSQLiteIAMWritersRevokeAcrossRestart` under `-race -count=5`
+  at load average 10 to 13: 5 of 5 passed (26.6 to 31.9 s), so 8 of 8
+  across `fix-race04.log` and `fix-race07.log`. `fix-lint01.log`: golangci-lint on
+  `./cmd/kudurru/...`, 0 issues. `fix-bench01.log`: bench guards OK. `fix-race08.log`: after the
+  0d969081 refactor, every IAM writer test, the CLI test, the mounted test and
+  the seven RoleBinding tests under race, all passed, no data race;
+  `fix-lint03.log`: 0 issues. `fix-lint02.log`: an attempt to run the PR
+  branch's `TestPermissionVerbsAreUsedOrReserved` through `-overlay` did not
+  build (it needs the PR branch's `rbac.LintVerbUse`), so the lint itself was
+  not run here.
+  New tests: `TestServingHTTPIAMWritersConcurrentCreateAndReplace` (same create,
+  reviewed replace and IdentityProvider delete twice at once; each commits
+  exactly once), `TestServingHTTPIAMWritersOriginalFinalClockAndCancellation`
+  (expiry, rollback and cancel, noop and changed: the floor is the original
+  verification time and the image is unchanged; a released lease is not
+  repaired), `TestServingHTTPIAMWritersDeleteFloorsSurviveReplicaPromotion`
+  (service account and provider delete floors and the token deletion survive
+  replica install, restart and promotion; the promoted owner refuses the old
+  review), `TestServingHTTPIAMWritersDeleteAtSecurityCapacity`. The mounted
+  test now waits on an independent GET between commands and never retries a
+  mutation.
+
+What remains open: the dashboard forms (create, edit, delete and token display
+for users, service accounts, role bindings and providers on the Access page,
+with vitest and Playwright specs) belong to the dashboard lane. The merge must
+remove `users.delete`, `serviceaccounts.write`, `serviceaccounts.delete`,
+`tokens.write`, `identityproviders.write` and `identityproviders.delete` from
+`reserved:` in `permissions.yaml` and add the nine operations and two item
+reads to the refusal inventory (`operationRefusals`, capabilities page). There
+are no writers on Kubernetes (kubectl stays the writer there, as for
+RoleBindings), no `/iam/groups` CRUD (`groups.*` stay reserved), and no OIDC
+login against a TLS double through an API-created provider was run: the
+provider tests prove the object, floor and publication path, not discovery and
+sign-in through the new object. Not proven per writer as in D294: no
+actual-TLS router test and no live follower that refuses the revoked
+credential (the promotion test proves the image, not a serving follower);
+no session or token of an API-created provider shown refused after its
+replace or delete (only the provider floor row is asserted); no mounted test
+of `PATCH`/`DELETE /iam/users`; the self-change cookie clearing
+(`clearOwnCookie`) and a caller holding `serviceaccounts.write` without
+`tokens.write` are untested. Account and provider floors are permanent and
+share the 4096-row security cap with sessions; nothing prunes them, and a
+deleted local user's TOTP record stays too. At the cap, deletes and new
+sign-ins answer `503 unavailable` and commit nothing, with no API recovery.
+Pruning floors of UIDs that can no longer authenticate needs its own design
+(it relaxes the monotonic-floor rule of the security owner). Publishing a
+section near the cap takes 15 s or more under the race detector. Integration:
+for the PR branch's reverse permission lint (D393,
+`TestPermissionVerbsAreUsedOrReserved`), 0d969081 replaced `iamAttrs` with
+`iamTarget(servingHTTPCluster("<resource>", "<verb>"), namespace, name)` and
+made every verb a literal, so only known callees carry the pairs (not run
+against the PR lint, see `fix-lint02.log`). The merge must still remove the six
+reservations listed above, and the owner must confirm that
+`tokens.write`, reserved there for v1.0 ("issuing API tokens for another
+principal"), is used in v0.2.
+
+**Verification state at 7663c957.** Merged with the integrator's contract commit `2ec31b82` (six reserved verbs released, dashboard follower table, mounted follower counts 58/48, API counts 34/14/58) and pushed at `95c57113`. The verifier resolved four findings (the mounted restart test passed 5 of 5 under race; token issuance shares the exclusion helper and caps expiry at the caller's token) and left **two major findings unresolved**: the D294-style proofs are partly missing (no actual-TLS test, no live follower refusing a revoked credential, no session of an API-created provider shown refused, no mounted `PATCH`/`DELETE /iam/users`, `clearOwnCookie` and a caller without `tokens.write` untested; the new concurrency and final-clock proofs cover some writers only), and floors are never pruned, so after about 4,000 delete or first disable or group-change cycles deletes and new sign-ins fail durably with no API recovery (documented; needs the owner's decision). New: `TestServingHTTPIAMLocalUserUpdateAndDelete` failed 1 of 4 under race with a 503 on a recreate (body not logged); `TestServingHTTPIAMWritersDeleteAtSecurityCapacity` takes 18 to 20 s and depends on a 90 s publication wait; the `newServingHTTPFixture` data race the fixer met is, by the verifier's account, fixed on the PR branch (`ebe67588`).
+
+
+### INT-UNIFI-PUSH UniFi optional push and actions — November 10, 2026 (D401)
+
+**What now happens.** Every UniFi write is still off by default, but each can now be enabled on one Integration and runs only as an explicit, reviewed, audited operator command on the complete SQLite runtime. No live UniFi controller was exercised: the behavior is proven against a stateful TLS double of the documented UniFi Network API surface (10.6.106: `info`, `sites`, `clients`, `networks`, `dns/policies`) plus the legacy `cmd/stamgr` command, served over verified, fingerprint-pinned HTTPS through the mounted SQLite runtime, the real API router and the registered UniFi provider.
+
+- *Mirrored records.* `spec.unifi.push.mirrorRecords` (with the new `domains`, required when enabled, and optional `labels` and `exclude`) makes the UniFi provider a publisher of A and CNAME records into the site's DNS policies. It uses the ordinary planner, ledger, intent, receipt and `Delete` cleanup path, but its roles carry the new `Reviewed` flag: a poll or reconcile tick builds and applies no plan. It reads DNS policies only when a ledger row is pending, and then only settles that intent from a fresh complete reread. New operations run only from `integrations sync --mode publish` with the digest of a complete preview. A DNS policy has no field for an ownership marker, so A and CNAME policies are reported as `Unmarked` rows and every other policy (a forwarded domain, other types) as a claim on its name. A row is the Integration's only when the confirmed ledger of its RRset lists its policy ID; any other policy at a selected name is a preview conflict and is never modified or adopted. One request per effect, no retry; a changed address is rewritten in place under the same policy ID. Records with a view, wildcards and names over 127 characters make the preview fail instead of being exposed to every gateway client.
+- *DHCP DNS servers.* `push.dhcpDNSServers` with the new `dnsServers` (one to four IPv4 addresses) and `networks` advertises the `dhcp-dns-servers` action. `{"mode":"preview"}` returns each named network as `update`, `unchanged`, `missing` or `unsupported` with its current and desired servers, and a digest over the site, the desired servers and the full body of every network read. `{"mode":"apply","digest":...}` rereads, refuses a changed plan with `409` and a missing or unsupported network with `501` before any write, sends one PUT per changed network (the body as read, without `id` and `metadata`, with only `ipv4Configuration.dhcpConfiguration.dnsServerIpAddressesOverride` replaced), and rereads to confirm.
+- *Client actions.* `push.clientActions` (requires `legacy: true`) advertises `block-client` and `unblock-client` (`{"mac":"..."}`), one legacy `cmd/stamgr` `block-sta`/`unblock-sta` command each. Nothing invokes them automatically.
+- *API and audit.* An acknowledged action's answer is now returned in the new `result` field of the execution result (OpenAPI and both clients regenerated). The `integration.act` audit row names the action and the SHA-256 of its canonical parameters. An action may refuse before any effect only with a stale review or an inapplicable plan; every other failure is `503 integration_uncertain` and is not replayed. All actions require `integrations.act`.
+- *Drivers.* The SQLite manifests refuse no UniFi field (`sqliteIntegrationLimits` is empty and pinned by a test). The Kubernetes root refuses an Integration that enables any UniFi write with the new reason `UniFiPushUnsupportedOnKubernetes`, and its manifest lists `spec.unifi.push.dhcpDNSServers`, `.mirrorRecords` and `.clientActions` as refused (pinned by the extended `TestIntegrationManifestsMatchKubernetesRefusals`).
+- *Uncertain creates.* An unacknowledged write records no ambiguous fact. The intent stays pending, a policy it may have created is never owned (it shows as a conflict), reviewed syncs are refused while it is pending, and the next poll abandons it without any write only when the site shows exactly the baseline (for example after the operator deletes such a policy). An unacknowledged address change settles by itself at the next poll, without a write. A multi-address create cut off after some of its policies were acknowledged (a failed, refused or timed-out later POST) also settles: the acknowledged policies are the intent's own unfinished work and keep it pending while they exist; once the operator removes them, the next poll finds the baseline and none of the acknowledged IDs, and recovery abandons the intent without a write. This exit exists only for a publisher with no recovery path (the UniFi mirror); the ledger accepts it through the new `Observation.Gone` list, which must name every acknowledged ID outside the baseline, and keeps those facts in the terminal operation as `undone`. Every failed write, a definite 4xx refusal included, is still reported as `integration_uncertain`.
+- *Review fixes.* A review whose captured frame still selects a record set or zone deleted since now answers `409` instead of `404 integration not found` (`integrationInputsCurrent` fences a missing source). The `integration.act` audit row digests the canonical JSON of the parameters (compact, keys sorted).
+
+Evidence under `.context/v020-final-20261110/evidence/INT-UNIFI-PUSH/` (race detector throughout; the machine was shared with other lanes at load averages of 11 to 55):
+
+- New mounted tests in `cmd/kudurru/integration_unifi_push_test.go` (real SQLite runtime, real API router, registered UniFi provider, pinned-TLS double):
+  - `TestIntegrationUniFiPushDefaultsNeverWrite`: check, observation sync, action listing (empty), an unadvertised `block-client` (`501`) and preview (`501`) send zero non-GET requests.
+  - `TestIntegrationUniFiPushMirrorRecordsReviewed`: an unreviewed host sync writes nothing; the preview lists exactly the creates of `web.example.` A and `alias.example.` CNAME and two conflicts (the operator's `nas.example` A policy, and `corp.example` claimed by a forwarded domain); a wrong digest is `409` with no write; the reviewed sync sends exactly two POSTs; a repeat preview is empty with two unchanged and its apply sends nothing; an owned policy whose address was changed in UniFi previews as an update and one PUT to its ID repairs it; a removed record previews as a delete and sends one DELETE of its own policy; no write names an operator policy; four `integration.sync` audit rows.
+  - `TestIntegrationUniFiPushActionsReviewed`: the three actions are advertised; the DHCP preview (`update`, current none, desired two servers) writes nothing; a stale digest is `409` with no write; the apply sends one PUT whose body carries the override and keeps the other network fields (`leaseTimeSeconds`, `vlanId`) without `id`; a repeat preview is `unchanged`; drift appears after the double changes the servers back; one `block-sta` and one `unblock-sta`; an invalid MAC is `400`; six `integration.act` audit rows with a parameter digest; a viewer token is `403` with no write.
+  - `TestIntegrationUniFiPushMirrorUncertainCreate`: the double applies a POST and drops the connection; the sync answers `503 integration_uncertain` with `pending: 1`; a poll reports the intent pending, still observes, and sends nothing; after the stray policy is deleted in the double, the next poll settles the intent with no write and the preview offers the create again; one uncertain `integration.sync` audit row.
+  - `TestIntegrationManifestsSQLiteRunsUniFiPush` (new) and `TestIntegrationManifestsMatchKubernetesRefusals` (extended to the three push fields).
+- `race10.log` (`-count=2` over the four push tests and the two manifest tests, with the site reuse of `6885dab7` already in the tree, while the load average was 35 to 55): 10 of 12 pass; `TestIntegrationUniFiPushMirrorRecordsReviewed` failed in both iterations at its first reviewed sync, which hit the 30 s operation bound (`took_ms` 30001), as it had in `race07` before the site reuse. That sync applies two creates and then runs the inventory observation in the same operation, about 20 provider requests each with its own budget transaction; `6885dab7` removed four requests per create (the apply reuses the site its listing resolved). At lower load it passes: `race12.log` (alone, load 12 to 15): pass, 130.3 s; `race14.log` (with other tests, load 12 to 17): all four push tests pass (21.0 s, 84.8 s, 28.2 s, 20.8 s). The test remains sensitive to machine load because 30 s is the production operation bound, which this package did not change.
+- `race05.log`, `race06.log`, `race09.log`: earlier passes of the push tests (race06 and race09 for the uncertain-create test after its two fixes; race05 found that the test did not wait for the first poll's status write before the second, `incarnation fenced`).
+- `race02.log` to `race04.log`, retained: `race02` showed that an owned address change was applied as DELETE plus POST (now an in-place PUT) and that the viewer step reviewed after losing read permission; `race03` showed a review taken before the integration root had captured a deleted record set (`404`); `race04`: all three tests then present passed.
+- `race01.log`, `race11.log`, `race13.log`: `go test -race ./ee/integration/...` (`race11` also `./internal/api/...`). In `race01` only `TestStrictEndpointAndOfflineConfiguration` failed, because it asserted the old refusal of every push; that assertion was replaced (an incomplete DHCP push is `ErrInvalid` and client actions without `legacy` are `ErrUnsupported`, both visible at provision with no network call). In `race11` every package passed except `ee/integration/host`, where `TestActualSQLiteSourceCommittedPendingSurvivesAckDeadline` (a 40 ms operation bound, not on the reviewed path) failed once; `race13.log` passes it three times, and it also failed in this run's `F09B-OPEN` evidence before this package. New unit tests: `TestUnmarkedRowsOwnedOnlyByLedgerEvidence`, `TestUnmarkedOmittedFromMarkedDigests`, `TestReviewedRoleRequiresPublisher`; the pinned-digest test `TestOrdinaryPlanDigestUnchangedByCleanupMode` still passes, so Cloudflare and webhook plan digests did not change. `race08.log` is a run whose builds failed because the shared Go build cache was trimmed during the build; it is superseded by `race11`.
+- `race07.log`, the regression selection `-run 'TestIntegration|TestRunServeKube.*Integration|TestRunServeDirectDNSEndpoint|TestServeUniFi|TestRunServeUniFi' ./cmd/kudurru` on `2489b752` while the machine was at load 15 to 55 with the disk briefly full: 80 pass, 5 fail. `TestIntegrationWebhookMountedRecordPublication` (30 s bound) and `TestRunServeUniFiHostnamePolicyLifecycle` / `...HeldPublicationDeadline` (`database or disk is full`) pass in `race14.log` (18.6 s, 101.6 s, 38.3 s). `TestIntegrationUniFiPushMirrorRecordsReviewed` is the bound described above. `TestIntegrationDeleteForgetsAHistoryOfSeveralStoredPages` also fails in `race14` and twice in `race15`: its Cloudflare cleanup spreads over several leases (`ProviderFailed`, `AuthorityChanged`) and either does not finalize within five minutes or finalizes with a summary that does not count every forgotten operation. It fails the same way without this package: `base01-overlay.log` and `base02-overlay.log` run it with every Go file this package changed restored to `ad33a576` through `go test -overlay` (the overlay is kept in `base-overlay/`): one pass at load 12 (151.0 s), then two failures at load 12 to 19 (336.5 s, 262.1 s). It also failed in this run's `F09B-KUBE-SOURCES` and `INT-DEL-C` evidence. This is a pre-existing, load-dependent test, not a regression.
+- `gen01.log` to `gen04.log`: `make generate`, `make openapi`, `make client-go`, `bun run gen:api`, `make docs-gen`. `drift01.log`: `TestOpenAPIDrift`, `TestReferenceDrift`, `TestAggregatedRolesDrift` pass; `drift02.log`: `TestCLIReferenceDrift` and `TestForwardedShapes` pass; `deploy01.log`: `go test ./deploy/ ./internal/store/validator/...` pass. `bench01.log`: bench guards, 14 tests OK. `lint03.log`: scoped golangci-lint v2.15.0 over `./ee/integration/...`, `./internal/api/...` and `./cmd/kudurru/...`: 0 issues (`lint02.log` found the then-unused `refused` helper, removed in `2489b752`; `lint01.log` could not start because another lane held the linter). `gofmt -l` and `go vet` are clean for the touched packages.
+
+- Review fixes (after an independent review returned accept-with-fixes; its probe `review-probe05.log` showed a partial create pending forever and `review-race01.log` a `404` after the record removal):
+  - `fix-race02-before.log`: the new mounted `TestIntegrationUniFiPushMirrorPartialCreate` run through `go test -overlay` with `ee/integration/host/engine.go` and `ee/integration/ledger/repository.go` restored to `cec39dda` (overlay in `fix-overlay/`): fails at `baseline did not settle the partial intent` with `Pending:1`, reproducing the review's finding.
+  - `fix-race01.log` (`-race -count=1 -run TestIntegrationUniFiPush`): all five push tests pass (14.4 s, 116.4 s, 53.1 s, 22.6 s, 34.9 s).
+  - `fix-race03.log` (`-race -count=5` over the five push tests, both manifest tests and `TestIntegrationParamsDigestCanonical`, load 14 to 20): 38 of 40 pass. In iteration 4 `TestIntegrationUniFiPushMirrorRecordsReviewed` (line 335, its first reviewed sync) and `TestIntegrationUniFiPushMirrorPartialCreate` (line 662, the retried sync) answered `503` with `took_ms` 30003 and 30004: the 30 s operation bound described below, not a product fault. The mirror test passed its removal review in the other four iterations; the `404` did not recur. The test now waits until the frame an operator command captures (`CaptureCommand`, `Bind`, `RequestResource`) no longer lists the removed record set: the root published its cut before the host adopted it as the frame's input, which was the window the review hit.
+  - `fix-unit01.log`, `fix-unit02.log`: `go test -race` over `./ee/integration/host`, `./ee/integration/ledger`, `./ee/integration/unifi`, `./ee/integration/plan`: pass. New unit tests: `TestAbandonAcceptsAcknowledgedEffectsProvenGone` (and an extended `TestAbandonRejectsAmbiguousOrStaleProof`: a `Gone` list without the acknowledged ID still refuses); in `ee/integration/unifi/push_test.go` `TestDHCPApplyRefusesUnusableNetworksBeforeWriting` (missing, duplicated, switch-managed, relay: `501`-class refusal, zero writes), `TestDHCPApplyPartialFailureDriftAndRepeat` (second PUT 500 stops the apply, the next apply writes only that network, a repeat writes nothing, an answered-but-unkept PUT is `ErrDrift`), `TestStationCommandRequiresAcknowledgment` (rc not ok is not acknowledged; the MAC is normalized), `TestMirrorApplyRefusesForeignPoliciesAtTheName` (foreign A, foreign CNAME, forwarded-domain claim: `ErrDrift`, zero writes). The mounted actions test also asserts a repeat DHCP apply under the fresh digest sends no PUT (seven `integration.act` success rows).
+  - `fix-bench01.log`: bench guards, 14 tests OK. `fix-lint01.log`: scoped golangci-lint v2.15.0 over `./ee/integration/...` and `./cmd/kudurru/...`: 0 issues. `gofmt -l` is clean for the touched files.
+
+Commits: `21468b91` (host and planner seams), `960faeb9` (UniFi writes, wiring, API field, tests), `4220a2c5` (docs), `2489b752` (keep observing while an intent is pending), `6885dab7` (reuse the resolved site), `cec39dda` (`chore(gen)`); review fixes `0c8a8d11` (settle an intent whose acknowledged effects are gone), `cf7e4e72` (UniFi write failure-path tests), `6dab3990` (fence stale source reviews, canonical act digests, partial-create mounted test), `bed36205` (docs). The review fixes change no generated artifact, so no second `chore(gen)` commit was added; `cec39dda` is no longer the last commit.
+
+**What remains open.** No live UniFi controller was exercised; the write bodies follow the published 10.6.106 schema and the legacy `cmd/stamgr` convention, and the DHCP PUT drops `id` and `metadata` from the GET body on the assumption that the controller rejects or ignores read-only fields. UniFi writes are refused on Kubernetes. The dashboard has no controls for them yet (the Integrations page belongs to a later dashboard package): it needs the `result` field of act, the three action schemas and the `UniFiPushUnsupportedOnKubernetes` reason. Disabling `mirrorRecords` leaves applied policies in place (only `deletionPolicy: Delete` removes them), and nothing restores previous DHCP servers automatically; the preview shows them. Because the UniFi provider now reports negotiated roles, its polling interval is the smaller of `spec.unifi.poll` and `spec.resync` (default 10 m), so a poll longer than ten minutes now polls every ten minutes unless `resync` is raised. A reviewed mirror sync runs inside the one 30 s operation bound of every reviewed command, together with the inventory observation that follows it; each policy effect costs a reread, the write and a confirming reread, each with a budget transaction, so a large first mirror (dozens of records) may not finish in one sync: the operations not begun stay unapplied, an interrupted one is uncertain and settles at a later poll, and the operator previews and syncs again. No test drives a large mirror. A source change does not wake a mirror instance (it is reviewed-only); a review started before the host has adopted a deleted record set into its frame now answers `409` (it answered `404` before the review fixes; this applied to every publisher). A partially created record leaves the controller-acknowledged policies in place and the intent pending until the operator removes them; a reviewed sync does not resume such an intent (the review suggested that as a further exit; it would let an operator command write under a pending intent and was not built). Every failed write, a definite 4xx refusal included, answers `integration_uncertain`, and a record the controller keeps refusing stops each sync at that record until it is excluded (abandoned at the next poll, since nothing was acknowledged). The act audit row of `block-client` carries a parameter digest, not the MAC; the digest is canonical JSON, so the same MAC written in another letter case still digests differently. The polling cadence change is now in the changelog and the operator docs; no test pins the UniFi cadence itself.
+
+**Verification state at 7663c957.** Merged and pushed at `95c57113`, after the integrator's contract commit. The verifier resolved the blocker (an intent whose acknowledged effects are gone is abandoned only with exact proof), the major (a 409 fence on the frame a command captures) and three more, and left finding 5 (minor) partly unresolved: the act audit row named only a parameter digest; INT-OPEN2 made it name the client's MAC in lowercase. New, low, open: the recovery exit covers only acknowledged creates (a partial update or delete needs the operator to restore the baseline; untested and undocumented); a deleted source now yields 409 for every publisher and the background operation path, with no test pinning it; the parameter digest collapses duplicate keys and misses trailing brackets of malformed input; the host-level abandon path has no unit test. Locally `TestIntegrationUniFiPushMirrorPartialCreate` failed once under load (INT-OPEN2 left its 30 s stall open). No live UniFi controller was exercised.
+
+
+### INT-EXTERNAL-ZONES Kubernetes external zones from Ingress, Gateway API routes and LoadBalancer Services — November 10, 2026 (D402)
+
+**What now happens.** A DNSZone of type `external` is served on the Kubernetes store. The zone model (`internal/zone`) builds it like a primary zone, but `ServedRecordSets` admits only record sets with the complete source-adapter identity (`zone.ExternalSourceOwned`: managedBy `kubernetes-source:<uid>`, the source UID and name annotations, the `kudurru.io/external-source` kind label and one matching owner reference). The zone controller reports every other record set naming the zone as `NotSelected`, so status, serial and the served zone agree, and the zone is `Ready` instead of `Unsupported`. The object API refuses a DNSRecordSet for an external zone with `409 conflict`; the zone-record and import endpoints and RFC 2136 on Kubernetes already refuse non-primary zones. External zones never transfer, are listed as served authoritative zones and take part in CNAME chasing. The complete SQLite image still refuses the type (`ServingErrors`, and `BuildNonprimary` now refuses it explicitly).
+
+With the new host-only setting `externalZones.enabled` (store driver kube only), serve mounts a leader-only runnable `external-zones` (`internal/sources/k8s`, no license gate). Each pass (30 s bound) lists the external zones through the store and every source kind some zone enables with complete paginated lists (4,096 objects and 32 MiB per kind, 4 MiB per response): Ingresses (rule and TLS hosts, load balancer status), HTTPRoute/GRPCRoute/TLSRoute (route or listener hostnames, the status addresses of each parent Gateway whose `Accepted` condition for the route is `True`), and LoadBalancer Services named by the hostname annotation. Only names and targets are retained. The external-dns `hostname`, `target` and `ttl` annotations are honored, current prefix before `alpha`. Address targets become A/AAAA; otherwise one CNAME. Names go to the longest unambiguous external apex. One deterministic DNSRecordSet per source and zone is kept in the source's namespace with the source's labels, so the zone's `recordSetSelector` gates namespaces and labels. Writes follow D303: before a write the source is re-read and must have the listed UID and resourceVersion, and the zone is re-read and must have the listed UID, generation and spec and still be served (not deleting or disabled); the zone's resourceVersion is deliberately not compared, because the zone controller's status write after each record set (new serial) moves it and refused the rest of the pass (review finding). Applies are create-only or exact-version, a foreign record set with the derived name is never taken over, cleanup only after a fresh read confirms the source is gone or replaced (or no zone enables the kind), deletes carry UID and resourceVersion, and a refused, partial or missing-CRD list never authorizes cleanup. Watches only wake the next pass; without events it runs every 10 s. Passes start at least 1 s apart (an event storm coalesces into one relist per second), and a pass that met a concurrent change (`conflict`) is retried after that second instead of after the resync. List pages hold 64 objects so a page stays under the 4 MiB response bound. On a server without `externalZones.enabled` the zone controller reports an external zone `Degraded`, reason `SourcesNotRead` (still served from record sets derived earlier). RFC 2136 UPDATE into an external zone gets `NOTAUTH` and writes nothing. Sources are never written. The Gateway API Go module is not a dependency; those kinds are read unstructured, and the test installs hand-written stand-in CRDs (`internal/sources/k8s/testdata/gateway-api-crds.yaml`). The Helm value `externalZones.enabled` sets the node key and only then adds the ClusterRole rules (get/list/watch on `networking.k8s.io` ingresses and `gateway.networking.k8s.io` gateways, httproutes, grpcroutes, tlsroutes); the chart refuses it in standalone mode and refuses the key through `config.node`/`config.settings`.
+
+Evidence under `.context/v020-final-20261110/evidence/INT-EXTERNAL-ZONES/`:
+
+- `race03-mounted-external-zones.log`: `TestRunServeExternalZonesFromKubernetesSources` passed in 56.5 s (race, envtest 1.37.0, two mounted replicas, no license key): A, then B, answer an Ingress, an HTTPRoute through its Gateway and a LoadBalancer Service over UDP and TCP (TTL annotation 45 applied); a foreign record set holding the derived name of a second Ingress is not taken over (spec, generation, metadata unchanged) and neither it nor a kubectl-written set is served; an Ingress address change reaches both replicas; partitioning the leader moves the Lease to B, which alone applies a Service change while A keeps its last data; after healing A converges, B keeps the Lease, exactly three derived record sets exist; deleting the sources withdraws every name (NXDOMAIN on both) and every derived set, and leaves the foreign and manual sets.
+- `race04-mounted-regression.log`: the same test again (36.7 s) with `TestRunServeDirectDNSEndpointLeaseLossAndPartition` (26.4 s), `TestRunServeKubeDynamicUpdateAtomicityAndOwnership` (13.9 s) and `TestCLIReferenceDrift`, all passed, no data race.
+- Retained failures: `race01-mounted-external-zones.log` (the stand-in Gateway CRDs lacked the `api-approved.kubernetes.io` annotation protected groups require; test data fixed) and `race02-mounted-external-zones.log` (the test compared the foreign record set's resourceVersion, which the zone controller's `NotSelected` status write legitimately moves; the assertion now compares spec, generation, labels, annotations and owners). Neither showed a product defect.
+- `unit01`/`unit03`: race `./internal/zone` (new `TestExternalZoneServesOnlyAdapterRecordSets`, `TestExternalZoneIsNotACompleteImageZone`), `./internal/controller` (new `TestBuildZoneViewExternalZoneSelectsAdapterRecordSets`), `./internal/zoneview`, `./internal/sources/k8s` (projection tests for Ingress, Service, routes and Gateways, endpoints and zone choice); `unit04`: race `./internal/api` (new `TestExternalZoneRefusesAPIRecordWrites`), `./internal/config`, `./internal/zoneview`; earlier run also `./internal/stages/authoritative`. All passed.
+- `unit02`/`unit05`: `./deploy` (render matrix with the new `kubernetes-external-zones` case, default-case assertion of no grant, three new refusal cases), `./hack/docsgen` (`TestReferenceDrift`), validator and SQLite admission tests: passed.
+- `gen01`/`gen02`: `make generate`, `make docs-gen`; `lint01.log`: golangci-lint v2.15.0 over the touched packages, 0 issues. Bench guards (`test_bench_*.py`) passed.
+
+Review fixes (evidence `fix-*.log`):
+
+- `fix-race02-mounted.log`: `TestRunServeExternalZonesFromKubernetesSources` passed in 51.9 s (race), now also: an unsigned RFC 2136 UPDATE for `upd.ext.example.` over TCP gets `NOTAUTH` on both replicas, the name stays NXDOMAIN on both and the cluster's record set count is unchanged; the zone carries no `SourcesNotRead` condition with the adapter mounted; 40 Ingresses created at once are served on both replicas within the 15 s bound (4.8 s in this run, previously 66.5 s for 60 in the reviewer's experiment) and are withdrawn again.
+- `fix-race03-mounted-prefix-adapter.log`: the same test through `go test -overlay` with the adapter as committed before the fix (`1aa7e39d`): every earlier step, including the UPDATE refusal, passed, and the run failed at the bulk step, `never converged: 40 new Ingresses served on both replicas` (68.7 s), so the new bound catches the defect.
+- `fix-unit00-adapter-before.log` / `fix-unit01-adapter-after.log`: new `TestCurrentZoneIgnoresStatusButNotSpec` (three status writes keep the zone confirmed; a spec change, the disabled annotation, a new UID or a deletion timestamp refuse it) and `TestRunPacesPassesUnderEventStorm` (fake dynamic client, an Ingress created every 10 ms for 2 s with a 500 ms floor: 2 to 5 passes). With the pre-fix semantics overlaid both fail (`status write 1 refused the pass`; 118 passes in 2 s); with the fix both pass (race).
+- `fix-unit02-controller-before.log` / `fix-unit02-controller-after.log`: new `TestExternalZoneWithoutSourcesIsDegraded` fails with the previous `zone.go` (`Degraded False/AsExpected`) and passes with the fix (adapter off: `Degraded True/SourcesNotRead`; adapter on: not Degraded; a primary zone unaffected either way).
+- `fix-unit03-race-packages.log`: race `./internal/sources/k8s`, `./internal/controller` (115 s), `./api/v1alpha1`: passed. `fix-unit04-docsgen.log`: `./hack/docsgen` (`TestReferenceDrift`) passed; no generated artifact changed, so no new `chore(gen)` commit. `fix-lint01.log`: golangci-lint v2.15.0 over `./internal/sources/...`, `./internal/controller/...`, `./api/v1alpha1/...`: 0 issues. Bench guards passed.
+- Retained failure: `fix-race01-mounted.log` is a build failure only (the run compiled while `serve.go` already named the new controller option that was not yet written); not a product or test defect.
+
+**What remains open.** The full `./cmd/kudurru` suite was not run (the integrator runs `hack/go-test.py`). No real ingress controller, Gateway controller or cloud load balancer was exercised: statuses were written by the test, and the Gateway API CRDs are permissive stand-ins, so schema-specific shapes are not validated. Adapter-level tests use a memory store and the client-go fake dynamic client, not envtest. File-managed writes into an external zone have no dedicated test (on Kubernetes they would be `NotSelected` by the same identity rule the kubectl case proves). GRPCRoute and TLSRoute are covered by projection unit tests only, and TLSRoute is read at `v1alpha2` against a stand-in CRD. The per-kind bounds (4,096 objects or 32 MiB; every Service counts) are documented operational limits; a kind over them is still refused cluster-wide with only a log warning and no metric or zone condition. The D303 DNSEndpoint adapter (`ee/integration/externaldns/crd.go`) has the same zone resourceVersion check, but it retries after 1 s, and it was not changed here. A held derived name logs a warning on every pass (every 10 s). Ingress class, `ingress-hostname-source`, `internal-hostname`, Gateway `addresses` of type NamedAddress and route/listener hostname intersection are not implemented; a route's own hostnames are used as given once the Gateway accepted the route. Kubernetes has no transaction across source, zone and record set, so the adapter converges eventually and is not a distributed fence (as D303). Disabling `externalZones.enabled` stops reconciliation and keeps derived record sets; Kubernetes garbage collection still follows their owner references. No dashboard surface shows the source of an external zone's records.
+
+**Verification state at 7663c957.** Merged and pushed at `2e15060e`. The verifier resolved three findings, including the major, and left **two minor findings unresolved**: with the adapter on but its RBAC missing an external zone is still Ready and empty (only a log warning); the page size is 64 but there is no smaller-page fallback, the 4,096-object and 32 MiB caps and the unfiltered Service list remain, and a refused kind has no metric or zone condition. New: the runbook's `object too large` line is wrong for a truncated page (a decode error, not `store.ErrTooLarge`; open); `SourcesNotRead` replaced a more specific Degraded reason, and its message named a setting that a non-Kubernetes store refuses (both fixed by INT-OPEN2).
+
+
+### DASH-INTEGRATIONS Dashboard Integrations page — November 13, 2026 (no new decision; builds on D367, D384, D400)
+
+Map entries: INT-5 (`map-packages-g05-g15-remaining.json`, the dashboard part; the API part landed as INT-ADMIN-API, D400) and G21-09 (`map-g21-route-and-contract-sweep.json`, "Integrations administration UI").
+
+What now happens. The dashboard has an Integrations page (System → Integrations, `/integrations`) and a page per instance (`/integrations/:ns/:name`). The list reads `GET /objects/integrations` and, per namespace, `GET /integrations?namespace=` and shows each Integration with the host's state for its stored revision, its deletion policy, last sync and manager. Nothing is requested without `integrations.read`; a node without an integration host (503 `unavailable`) says so.
+
+Forms are driven by `GET /integrations/manifests`, not by a provider list in the dashboard (`dashboard/src/lib/integrations.ts`): the provider block's JSON Schema becomes the C1 shape `ShapeField` renders (objects, lists, maps, enums, bounded integers, durations by field name, https URLs by pattern), validated in two passes: draft-only problems (half-typed numbers, durations, map keys, formats) on the draft with nothing marked required, then required/enum/pattern/bounds on the built value against the schema, so a required child of an optional object (Cloudflare `adoptFrom.externalDNSOwner`, UniFi `inventory.zoneRef`) is required only when that object is set; the manifest's `refused` fields are left out and listed as not offered; a type the node does not run (`supported: false`, e.g. webhook on Kubernetes) is listed with its reason but cannot be chosen; on Kubernetes the namespace is fixed to the manifest's `namespace`. Each credential key of the manifest is a reference of a form in `credentialSources` (`file`, `env`), a select of `allowedFiles`/`allowedEnvironment` when the caller holds `integrations.secrets` and a validated text field (clean absolute path, variable name) otherwise; a stored `secretRef` is kept and shown as not resolved. There is no control for a credential value, and the review step and the configuration view show references only. Writes are the D400 object routes: create-only `POST /objects/integrations` from the wizard (Provider → Settings → Credentials → Review, `?new=1`), `PUT` with `If-Match` from the in-place Configuration section (a change that binds or moves a credential is refused on the client without `integrations.secrets`, mirroring `needsSecrets` of D400), `DELETE` with `If-Match`. Optional provider fields are pruned of Go-omitempty zero values, so a round trip through the form does not rewrite the document.
+
+Commands are bound to the UID and revision of the status on screen. Check shows reachable/authenticated. A record sink with destinations previews (operations, conflicts left alone, unchanged count, digest) and "Publish this plan" sends `mode: publish` with exactly that digest; an inventory provider has "Sync now" (`mode: observe`). A 409 on a sync is shown as an expired or stale preview with nothing published and the preview is dropped; a 503 `integration_uncertain` is shown as an unknown outcome, and the page then offers no other sync of that instance (held by UID, so a status write that moves the revision does not lift it) until a Check or a Preview succeeds. The hold is component state: leaving or reloading the page drops it, and it does not bind another client; the server does not replay the uncertain operation itself. A stored preview whose revision is no longer the one on screen (every host status write moves it) is not sent and is replaced by a "Preview superseded" notice naming the old and new revision; other 409s say the review changed. Actions are listed on demand and run with their schema parameters. While an Integration is terminating the page shows deletion time, reason and the `remaining`/`blocked`/`uncertain` counts, offers no command or edit, and "Release without cleanup" (confirmation, `integrations.release`) posts the reviewed UID and revision and leaves the page. Gates: permission per verb (`useCan`/`useCannotReason`), the license the manifests report (no New, commands disabled; edit, delete and release stay), static mode (`release` joined the dashboard's static verbs, as `internal/api/static.go` refuses it), and on an enrolled follower by operation: object writes are forwarded and stay enabled, check/preview/sync/actions/release are disabled with the primary named. `dashboard/src/lib/follower.ts` needed no change: its tables already list `batchDeleteIntegrations` and the integration verbs, and `follower.test.ts` still proves them equal to `api/openapi.json`.
+
+Found by the Playwright run against a real node: every background status write gives the Integration a new resourceVersion, while the host keeps reporting the revision it captured (`ee/integration/host/lifecycle.go` moves `statuses[key].Revision` to the new frame only for terminating jobs), so `GET /integrations/{ns}/{name}` answers `statusKnown: false` for a healthy, running instance. The page therefore shows the phase of the object's own Ready condition for its generation in that case and leaves each command to the server; the e2e spec waits for a stable revision before each reviewed command. The server behavior is not changed here (see the last paragraph).
+
+Evidence under `.context/v020-final-20261110/evidence/DASH-INTEGRATIONS/`:
+
+- `vitest03-focused.log`: `src/pages/IntegrationsPage.test.tsx`, `src/lib/integrations.test.ts`, `src/lib/follower.test.ts`, `src/api/follower-mode.test.tsx`, `src/api/static-mode.test.tsx`: 71 of 71 passed (63.5 s). The page tests (now 18) cover the list; no request without `integrations.read`; the no-host banner; no license (New disabled, `Paused`); the wizard end to end (validation of name, required zones, required credential; only the node's reference forms offered; a granted file chosen; the created spec equal to `{type, cloudflare.zones, credentials.apiToken.file, deletionPolicy}` with no value field); Kubernetes (webhook not selectable with its reason, namespace fixed, `inventory` and `push` not offered); preview then publish with the exact body `{uid, revision, mode: publish, previewDigest}` and the plan spent afterward; an expired preview refused with "Nothing was published"; an uncertain sync shown and not sent again (one POST after two clicks); check and an observing sync with `{uid, revision, mode: observe}`; a changed revision refused; the Ready-condition fallback with commands left to the server; delete of a `Delete` instance into the terminating panel (counts, commands withdrawn, edit disabled), release with `{uid, revision}`, navigation, and no read of the removed object afterward; a file-managed instance read-only; a configuration save as `PUT` keeping the references; follower gates; static gates; an advertised action run with `{uid, revision, params: {full: true}}`. `src/lib/integrations.test.ts` (9 tests) reads the configuration schemas straight out of `ee/integration/{cloudflare,unifi,webhook}/manifest.go` and checks the derived shapes, refused-field pruning per driver, schema validation, reference validation, document building and round trip, `publishes`, `needsSecrets` and the refusal texts.
+- `vitest01.log`: full suite before the fixes, 1062 passed and 4 failed of 1066 (711.8 s, two workers, under load from three lanes): `App.test.tsx` "signs in locally…" and "navigates client side…", `DomainsPage.test.tsx` "pages with continue tokens", `QueryLogPage.test.tsx` "pages through the log…", all timeouts. `vitest02-retry-failed.log`: the three files alone, 104 of 105 passed; the remaining "signs in locally and lands on the dashboard" passed twice when run alone and is the known load flake recorded at base in `DASH-OPEN/fix-vitest06-failed-files-at-base.log`. `vitest04-full.log`: the full suite on the final head (`f5046056`): 78 files, 1067 of 1067 passed (449.9 s, two workers).
+- `lint01.log`: `bun run lint` (eslint over the whole dashboard with zero warnings, theme check) and `bun run typecheck`: clean.
+- `build01.log`–`build04.log`: `bun run build`, initial load 492.7 KiB of the 600 KiB budget; `gobuild01.log`–`gobuild04.log`: `go build -tags licensetest` of the e2e binary (empty logs, success).
+- `e2e05.log`: `bunx playwright test e2e/integrations.spec.ts e2e/pages.spec.ts --workers=2` against the real binary: 78 passed (2.5 min). `integrations.spec.ts` (29.5 s) starts its own node with `credentials.allowedFiles` naming one bearer-token file and a local external-dns webhook peer on 127.0.0.1 (`e2e/support/externaldns.ts`); it creates a webhook Integration through the wizard with a file reference, sees the host publish the zone's records and registry TXT rows at the peer, wipes the peer, previews (digest and planned changes shown, no POST to the peer), publishes the plan (rows restored), checks (reachable, credential accepted), and deletes it (Retain: the rows stay); the page contains no token and the suite's no-console-error rule holds. `pages.spec.ts` now lists `/integrations` in the navigation and renders it in both color schemes.
+- Retained failed runs: `e2e01.log` (preview answered 409: the page's revision was older than the host's frame right after a status write; the spec now waits for a stable revision), `e2e02.log` (a client-side gate on `statusKnown` never opened, because the host keeps reporting the captured revision after its own status write, as described above; the gate was removed and the page falls back to the Ready condition; also 503 `generation_pending` reads right after start, now retried like every other page), `e2e03.log` (the spec expected names without the trailing dot; plan rows are FQDNs), `e2e04.log` (the whole flow passed, but the detail page read the deleted object again and logged two 404s; it now drops those queries and navigates first).
+
+Review fixes (commits `092d60fb`, `7ea39ebe`, `7afa8e39` on top of `f5046056`). The reviewer found that `configError` enforced the required children of optional, unset objects, so on a real node a Cloudflare zone always failed on `adoptFrom.externalDNSOwner` and a UniFi instance on SQLite on `inventory.zoneRef`; the mock hid it with reduced schemas. The draft pass now marks nothing required and required-ness is checked on the built value; the mock serves the schemas of `ee/integration/*/manifest.go` verbatim and a test compares them. The uncertain-sync hold is now by UID and lifted only by a successful Check or Preview, and a superseded preview is named instead of vanishing. A test pins `publishes()` and `DESTINATION_FIELDS` to `integrationPublishes` (`cmd/kudurru/integration_runtime.go`) and `integrationDestinationFields` (`internal/api/integration_objects.go`) in the Go sources. The Playwright spec gained a Delete-policy instance taken through edit, terminating and release.
+
+- `fix-vitest01-before.log`: `src/lib/integrations.test.ts` with the new tests before any fix: 2 failed of 11 ("creates and saves minimal instances against the real schemas", configError returned "Zones #1 Adopt from External DNS owner is required"; "serves the exact Go schemas from the dashboard mock", the mock lacked `adoptFrom`, `select`, `translate` and more). `fix-vitest02.log`: the same file after the lib fix and the verbatim mock: 11 of 11.
+- `fix-vitest03-without-lib-fix.log`: the page and lib tests with the verbatim mock but the old `lib/integrations.ts`: 4 failed of 33, the lib case above plus three mounted page tests: the wizard's minimal Cloudflare create, "saves the configuration bound to the stored resourceVersion" (Cloudflare) and the new "saves a UniFi instance that sets no inventory zone (real schema)". That is the reviewer's blocker reproduced through the page.
+- `fix-vitest05-without-page-fix.log`: `IntegrationsPage.test.tsx` with the old `IntegrationDetailPage.tsx`: 2 failed of 21, the new "keeps an uncertain sync from being sent again after the revision moves, until a Check succeeds" (Sync now came back after the revision moved) and "says so when the instance changed since the preview".
+- `fix-vitest04.log`: page and lib tests on the fixed tree: 33 of 33 (19.6 s). `fix-vitest06-focused.log`: the reviewer's focused set (`IntegrationsPage.test.tsx`, `integrations.test.ts`, `follower.test.ts`, `follower-mode.test.tsx`, `static-mode.test.tsx`): 5 files, 78 of 78 (61.7 s; 72 before plus 6 new). `integrations.test.ts` now has 12 tests, the page file 21.
+- `fix-lint01.log`, `fix-lint02.log`: `bun run lint` (whole dashboard, zero warnings, theme check) and `bun run typecheck` (includes `e2e/`): clean.
+- `fix-vitest07-full.log`: full suite on `7afa8e39` under a load average near 20 on 8 cores: 78 files, 1070 passed and 3 failed of 1073 (284.8 s), all timeouts in files that do not import the integrations code: `App.test.tsx` "signs in locally and lands on the dashboard", `PolicyPages.test.tsx` "walks Who → What → … and creates the policy", `QueryLogPage.test.tsx` "pages through the log with the keyset cursor". `fix-vitest08-retry-failed.log`: the three files together, 84 of 87 (the policy walk, the known App sign-in flake and "navigates client side from a tile" timed out; the query-log test passed). `fix-vitest09-retry-alone.log`: `App.test.tsx` alone 52 of 52; `PolicyPages.test.tsx` alone 13 of 14 (the walk again at its 20 s limit). `fix-vitest10-policy-diagnostic-timeout90s.log`: that one test with `--testTimeout=90000` on the command line (no file changed): passed. This is CPU starvation, not a regression; the integrator's run should confirm it.
+- `fix-build01.log`, `fix-gobuild01.log`: `bun run build` (initial load 492.7 KiB of 600 KiB) and `go build -tags licensetest` of the e2e binary, both clean; `dashboard/dist/index.html` was restored afterward and not staged.
+- `fix-e2e01.log`: `bunx playwright test e2e/integrations.spec.ts --workers=2` against that binary: 2 of 2 passed (1.1 min). The existing webhook test (42.4 s) as before; the new "edits a Delete instance, holds it terminating and releases it without cleanup" (48.8 s) creates a webhook Integration with deletionPolicy Delete against its own peer, suspends and un-suspends it from the Configuration section (the stored object keeps `bearerToken: {file}` and `Delete`), deletes it while the peer answers 503 to `POST /records`, sees the terminating panel on the instance's page with Preview gone and edit disabled while the peer keeps its rows, then releases it without cleanup: the page returns to the list, the object answers 404 and the peer still has the rows.
+
+What remains open. The host reports `statusKnown: false` for a running instance after its first status write (`ee/integration/host/lifecycle.go`, the `s.Revision = i.definition.ResourceVersion` branch is limited to `j.mode != GuardNormal`); every client of `GET /integrations` sees it, and a reviewed command can be refused with 409 when a status write lands between the read and the command. The dashboard works around it (Ready-condition fallback, server decides, 409 explained) but the server fix belongs to the integration host. The map's "inventory view" and "zone/record publication conditions" are not built: no route exposes an Integration's inventory (the Clients page shows clients; the page links the client count there), and `DNSZoneStatus` has no publication list while `DNSRecordSetStatus.Publications` is written by nothing in the tree, so there is nothing to show yet. The Playwright spec covers the webhook path only (create, preview, publish, check, Retain delete, configuration edit, a Delete instance held terminating and released). Cloudflare and UniFi are covered by vitest against the mock, whose schemas are now asserted equal to the Go manifests, but no spec drives them against a real node; a refused or uncertain sync, actions, a follower, static mode and the Kubernetes disabled state are proven against the mock only. The uncertain-sync hold is page state (by UID, lifted by a successful Check or Preview): a reload or another client is not held. `publishes()` and `DESTINATION_FIELDS` are provider knowledge kept on the client, pinned to the server rules by a source-reading test; the UI needs the manifest to report whether an instance publishes and which fields are destinations, so the client can drop both. Batch delete (`POST /integrations:batchDelete`) is not offered on the list (single delete per page).
+
+**Verification state at 7663c957.** Merged with the helper commit `326289ea` (lane `649c1403`; mock manifests equal to the Go schemas after INT-UNIFI-PUSH) and pushed at `531bffd0`; `6259b61c` later drove the field limits from INT-OPEN2's manifest. The verifier resolved all five findings (vitest 33 of 33, Playwright 2 of 2 against a fresh binary). One new minor problem: any Check answering 200 lifted the uncertain-sync hold even when it reported the provider unreachable or the credential refused; DASH-IAM fixed it (`7bff6f04`). Noticed and not counted: saving a stored Cloudflare zone drops explicit `adoptUnowned: false` and `defaults.proxied: false`. Server issues found while building the page went to INT-OPEN2.
+
+
+### ID-INVENTORY Inventory API with MAC fill from DHCP leases — November 10, 2026 (D397)
+
+The client inventory now has a read API, and the built-in DHCP server supplies
+MAC addresses to `ClientGroup` `mac` matchers on both store drivers.
+
+Every DHCP lease store snapshot, which is published only after a committed
+transaction, now also holds the identity of each bound lease: address, MAC,
+client hostname and expiry. It includes leases without a usable name and
+scopes without `registerDNS`. On Kubernetes the working copies are filled from
+`DHCPLease` objects, so every replica holds them. The identify stage asks
+`dhcpdns.Resolver.LeaseMAC` for the live lease of the query's source address.
+When the captured inventory supplied no MAC for the address, the lease MAC
+fills it. Inventory MACs win. Two scopes that lease one address to different
+MACs fill nothing. The fill clears the inventory source, so a source-bound
+private MAC grant never matches a lease MAC. The read uses the request time,
+touches only committed memory, and adds no store, SQL or leader dependency to
+the DNS path.
+
+A UniFi poll in which two clients claim one address with the same
+observation time now passes the contested address to the inventory as a tied
+claim on every claimant (also an expired one). Before, the UniFi translation
+dropped the address from both clients, so the inventory listed them with no
+address and no sign of the collision, and an older claim of another source
+could still win the address. Now the inventory's tie rule identifies nobody at
+the address, `Devices` lists it as `ambiguous` on each claimant, and no older
+claim can take it. Forward and reverse records, names and group contributions
+are still built only from the addresses a client owns outright.
+
+The lease snapshot is local to the process. On Kubernetes every replica
+watches all leases, so the lease MAC applies to queries answered by any
+replica. On a SQLite cluster only the node whose DHCP service holds the lease
+fills the MAC. The same client querying another node falls through to its
+CIDR, hostname, client ID or default policy there, and can get a different
+policy. `docs/deploy/client-identity.md` and `dhcp-dns.md` state this and
+recommend an inventory integration or `ip`/`cidr` matchers for cluster-wide
+effect.
+
+`GET /api/v1/inventory` lists every inventory device, including devices that
+never sent a DNS query: integration-source devices (UniFi, webhook) and the
+answering node's bound leases (source `dhcp/<scope>`). Each device carries
+MACs, names, tags, observation and expiry, `stale`, and a state for every
+address: assigned, expired, ambiguous, superseded (with the owning source and
+ID) or withdrawn. `inventory.Snapshot.Devices` computes these states from the
+same claim map that `Lookup` uses. Leases follow the identify rule, so an
+inventory MAC supersedes a lease MAC. The API has filters (`source`, `kind`,
+`stale`, `q`) and keyset pages by (source, id). On the complete SQLite runtime
+it reads the inventory owner of the request's original serving cut. On
+Kubernetes it reads the shared producer holder that the identify stage reads,
+so it shows whatever the F09B Kubernetes sources feed into that holder. The
+route needs the new permission `inventory.read` (auditor, operator, admin; not
+viewer, the same split as `dhcpleases.read`). Kubernetes identities map it to
+the virtual resource `inventories`. `kudurru inventory` walks the pages. GET
+/clients is unchanged and stays the query-log view.
+
+Evidence under `.context/v020-final-20261110/evidence/ID-INVENTORY/`:
+
+- `mount08-both.log` (no race detector): `TestRunServeSQLiteInventoryAPIAndLeaseMACs`
+  passes in 30.8 s and `TestRunServeKubeLeaseMACSelectsGroupAndInventory`
+  passes in 8.6 s. `race05-mounted.log` (race detector): they pass in 53.9 s
+  and 17.7 s.
+- The SQLite test runs the real serve command with the UniFi TLS double, the
+  node's DHCP service bound to loopback sockets (`dhcp.Service.ListenWith`
+  through the `listenDHCPService` seam), the query log, and the authenticated
+  PROXYv2 UDP edge path. The DHCP server cannot lease loopback addresses, so
+  leased clients use TEST-NET-1 addresses. The test shows:
+  - UniFi devices are listed before any of them sends a query (generation > 0,
+    official device `assigned`).
+  - A dnsmasq lease import through `POST /node/dhcp/v4/scopes/lan/import`
+    makes a `mac` group block `leased.test` over UDP for both leased
+    addresses. It does not block an unleased address or a UniFi device.
+  - The leases are listed with their MAC and hostname.
+  - A lease that expires stops matching and is no longer listed as live.
+  - `GET /clients` lists the addresses that queried, not the UniFi devices
+    that never did.
+  - In the UniFi conflict phase, both colliding devices list 127.0.0.2 as
+    `ambiguous`, and the official device keeps its address.
+  - After the controller fails, the official device turns `stale` with its
+    address `expired` at the original expiry.
+- The Kubernetes test (envtest) creates a `DHCPLease` object, which makes the
+  `mac` group block over UDP (the block answer is REFUSED, because cluster
+  settings come from the settings ConfigMap and the environment) for the
+  leased address only. `GET /inventory` lists the lease on the replica.
+  Deleting the object ends both the match and the listing.
+- `race04-pkgs.log` (race detector, after the generated commit): `internal/api`
+  (577 s, including `TestOpenAPIDrift`), `ee/rbac` (including
+  `TestAggregatedRolesDrift`), `internal/rbac`, `internal/inventory` and
+  `internal/servingbuild` (548 s) all pass. `race01-pkgs.log`:
+  `internal/inventory/...`, `internal/dhcpdns` and `internal/stages/identify`
+  pass under race. `internal/dhcp` passes under race in the focused runs.
+- `race03-root.log` (race detector, root selection): 24 passes, including
+  `TestDHCP*` (16), `TestNodeDHCPLeavesTheKubeStoreToDHCPKube`,
+  `TestInventoryCommand`, `TestCLIReferenceDrift`, `TestConvenienceGolden`,
+  `TestForwardedShapes` and the Kubernetes inventory test. Two failures are
+  retained:
+  - The SQLite inventory test failed because its first login got a 503 before
+    a serving generation existed. The test now retries 503 for up to 30 s
+    (commit "retry the mounted login").
+  - `TestRunServeUniFiHostnameHeldPublicationDeadline` failed with
+    `assignment_remaining` < 0. It failed the same way in `race05`. It passes
+    without the race detector in this tree (`mount09-unifi-held.log`, 17.6 s,
+    held policy retained in 366 ms). The same failure appears in other lanes'
+    evidence before this package (`INT-UNIFI-PUSH/race07.log`,
+    `INTEGRATE-1/oidc-repro-base-INVALID-ran-whole-suite.log`). The test has no
+    DHCP service, so `LeaseMAC` returns false at once. I conclude that the
+    failure comes from race-detector load, not from this package, but I did
+    not run the base commit under race to confirm it.
+- `drift01.log`: `go test ./deploy/ ./hack/docsgen/` pass after regeneration.
+  `lint01.log`: golangci-lint v2.15.0 reports 0 issues on every touched
+  package.
+- New unit tests:
+  - `TestLeaseMACFillsOnlyWithoutInventoryMACs`. A mutation check confirms it
+    fails if the fill keeps the inventory source.
+  - `TestDevicesExplainStalenessAndAddressOwnership`.
+  - `TestResolverLeaseMACsAndListing`.
+  - `TestLeaseBoundIdentityWithoutDNSRegistration`.
+  - `TestServiceListenWithCallerSockets`.
+  - `TestInventoryListsDevicesLeasesAndConflicts`: ambiguous inventory and
+    DHCP collisions, an inventory MAC superseding a lease, stale flags,
+    filters, pages, and 400/403/503 answers.
+  - `TestInventoryCommand`, with goldens.
+- `race01-pkgs.log` (retained, failed): `TestMeWithBearerRoles` counts one
+  permission entry per resource. Adding `inventory` raised the count from 26
+  to 27, and the expected count was updated. `TestOpenAPIDrift` failed before
+  regeneration. `race02-api.log` (retained): only `TestOpenAPIDrift` failed,
+  before regeneration.
+- Retained failed mounted runs. Each one showed a test-fixture issue:
+  - `mount01`/`mount02`: the DHCP config was rejected, first for an empty
+    management value, then because a loopback subnet is not usable for DHCP.
+  - `mount03`: UniFi device IDs have the form `<site>/<MAC>`. On Kubernetes,
+    cluster settings ignore the in-memory upstream, so allowed and blocked
+    answers were both NXDOMAIN.
+  - `mount04`: the import was refused because the addresses were outside the
+    pool.
+  - `mount05`/`mount06`: the query log excludes special-use `.test` names by
+    default, and the UniFi source withholds colliding addresses instead of
+    passing an ambiguous claim to the inventory.
+  - `mount07`: a device whose own claim had expired in a restored serving
+    image was reported as `withdrawn`. Fixed in `inventory.Snapshot.Devices`
+    (commit "report a device's own expired claim as expired"); the mounted
+    test now checks for `expired`.
+- Review fixes (`fix-*.log`):
+  - `fix-01-unifi-collision-before.log` (retained, failed on purpose): the
+    new `TestSamePollCollisionIsListedAmbiguous` fails without the UniFi
+    change, because an older claim of another source identified the contested
+    address. `fix-02-unifi-unit-race.log`: `ee/integration/unifi` and
+    `internal/inventory` pass under race with it. `fix-04-ee-integration.log`:
+    every `ee/integration/...` package passes. `fix-05-lint.log`:
+    golangci-lint v2.15.0 reports 0 issues on `ee/integration/unifi`.
+  - `fix-06-mounted-norace.log` (no race detector):
+    `TestRunServeSQLiteInventoryAPIAndLeaseMACs` (40.2 s, now with the short
+    lease at 20 s and asserted first),
+    `TestIntegrationUniFiHostnameConflictAndOmissionCommit` (12.4 s),
+    `TestRunServeUniFiHostnamePolicyLifecycle` (69.6 s) and
+    `TestRunServeUniFiHostnameHeldPublicationDeadline` (23.6 s) pass.
+  - `fix-07-mounted-race.log` (race detector): the SQLite inventory test
+    (52.5 s), the Kubernetes lease test (10.3 s), `TestInventoryCommand` and
+    `TestIntegrationUniFiHostnameConflictAndOmissionCommit` (41.0 s) pass.
+    Retained failures, at a load average of about 16 on 8 cores:
+    `TestRunServeUniFiHostnamePolicyLifecycle` (successor identity did not
+    converge, after its conflict phase was accepted) and
+    `TestRunServeUniFiHostnameHeldPublicationDeadline`
+    (`assignment_remaining=-1.148s`). `fix-03-mounted-race.log` (retained):
+    the same `assignment_remaining` failure in the lifecycle test, before the
+    hostname test's conflict predicate was updated; the other selected tests
+    passed.
+  - To settle the earlier unconfirmed attribution: `fix-08-base-0d969081-unifi-race.log`
+    runs the two UniFi hostname tests under race on the pre-package base
+    (pass, 105.9 s and 43.3 s), and `fix-09-head-unifi-race.log` runs them
+    at the new head with `-count=2` (all four pass: 117.9 s, 32.1 s, 105.6 s,
+    69.8 s). Both pass when run alone at head. They fail only in longer
+    selections on a loaded machine. That supports the load attribution, but a
+    single base run does not prove it.
+  - The hostname lifecycle test used to recognize the accepted conflict phase
+    as "one address left in the durable source". The tied claims are now in
+    the durable source, so it requires three addresses with two clients
+    claiming 127.0.0.2. Its DNS assertions are unchanged: in that phase
+    127.0.0.2 still identifies nobody.
+  - `fix-10-bench-guards.log`: the bench guards pass (14 tests).
+- `dash-typecheck01.log`: the dashboard typecheck could not run in this
+  worktree because `tsc` is not installed (no `node_modules`). Only
+  `generated.ts` changed there.
+
+What remains open: the dashboard inventory view, its unit tests and the
+Playwright spec belong to the later dashboard lane, and the GroupDetailPage MAC
+tooltip still says only an inventory integration supplies MACs. The mounted
+runs prove the lease-MAC precedence over an inventory MAC only in unit and API
+tests: the UniFi double reports loopback addresses, which the DHCP server cannot
+lease. The Kubernetes inventory devices come only from what feeds the shared
+holder (the F09B lane). On a multi-node SQLite cluster, DHCP leases are per
+node for both the listing and the MAC fill (documented, not changed). The
+block page and unblock requests (`internal/blockpage.PolicyFinder`) still
+identify the client by address only: they get no inventory or lease MAC,
+hostname or client ID, so for a MAC- or name-selected client the policy shown
+and the groups recorded on an unblock request can differ from what the DNS
+answer applied. This gap predates this package for integration MACs; it is
+documented in `docs/deploy/client-identity.md` and needs a follow-up that
+gives `PolicyFinder` the identify stage's capture. No new proof was added for
+CIDR ties or identity refresh (README D86). No query-path benchmark was rerun
+for the per-query lease lookup, which loads one atomic snapshot per lease
+scope when inventory gives no MAC.
+
+**Verification state at 7663c957.** Merged and pushed at `531bffd0` (with the integrator's lint mark `3bc4c24b`). The verifier resolved all four findings. New: **`TestRunServeUniFiHostnamePolicyLifecycle` fails under the race detector at the lane head** (4 of 4, "original hostname policy unavailable at held request capture ... assignment_remaining" between -0.8 and -2.3 s); the integrator's bisect on the merged tree (3 of 3 pass at `2e15060e`, 3 of 3 fail at `e0bddb72`, right after the inventory commits) shows it is a regression of this package, pushed as a known regression with `531bffd0`; INVENTORY-REGRESS is fixing it and is not at this head. Also new: the "short lease expired" diagnostic fires only in one ordering (otherwise a generic 30 s message), and a same-poll UniFi tie now also keeps an older claim of another source from identifying the address (disclosed in the changelog).
+
+
+### F28-OPEN6 What verification left open in the managed-anchor packages — November 13, 2026 (D369)
+
+Lane `wip/v020/f28`, base `97c9117b`. Source commits `1ef0b201`, `4827ec14`,
+`1658a4c7`, `5757051e`, `2649a86f`, `83e671b2`, `e79c29fc`, `d485cce0`, and
+after the review `a23db4d3`, `8ff9aa69` and `b400469f`. No
+generated file changed (no `chore(gen)` commit), no new dependency.
+
+What now happens:
+
+- **A managed primary whose refresh is not due accepts writer commands without
+  waiting for the anchor step.** A restarted, promoted or resolved managed
+  primary already holds accepted managed trust, so it publishes and reports
+  ready and mode primary. Its writer episode held the elected services that
+  admit writer commands (primary driver, providers) behind the anchor
+  updater's first step, which can be a 30-second root round trip, so every
+  writer command in that window was refused 503 "current writable serving
+  generation unavailable". The anchor child now releases that startup gate at
+  once when the image it starts on carries an accepted managed owner that is
+  not due for a refresh within a minute by the updater's own wall clock (the
+  step's due and checkpoint rule). That first step then only captures and
+  schedules, and a startup write that races the capture refuses only the
+  capture. Before the bootstrap, and whenever the refresh is due, the first
+  step still precedes the writer services, as it did before this package.
+  The review showed why (`a23db4d3`): a due reply may be a REVOKE, and a
+  revocation denial that a startup write rolls back is terminal for the
+  writer term (`anchorUpdateRaced`). With the gate released on every managed
+  writer, a restarted writer's first-step REVOKE ended 3 of 3 with a terminal
+  updater and the revocation uncommitted (`review-probe-head.log`). This
+  removes the anchor-step wait for the usual restart, promotion and
+  resolution. It does not make readiness imply writer admission. Readiness
+  depends on publication only (`serving_mount.go` `ready()`), so a due
+  writer, for up to its 30-second first step, and any writer, during the
+  short start of its writer services after `resetWriter`, can still answer
+  503 while it reports ready. That remainder belongs to CI-RED-2 and CI-RED-3.
+  No test asserts writer admission at the first ready report. The three "wait
+  for the updater's first step" blocks are gone from the managed conflict
+  e2e test, and its writes after the restart, both promotions and the
+  resolution restart all ran in `fix-e2e01`.
+- **Capture-phase races.** A capture refused by ErrCAS keeps its own
+  consecutive count and logs "root anchor capture raced an ordinary commit;
+  capturing again" (it used to log the update-phase count, often 0). Its
+  one-second pace is deliberately not backed off: a backed-off capture kept a
+  fresh node unready for many seconds under race (retained runs `race05`,
+  `race08`), because the bootstrap it delays is what lets the node publish.
+  Instead its warning is logged only at the first, second, fourth, eighth and
+  so on consecutive race (`anchorCaptureRaceLogged`, at most 12 lines in an
+  hour of races). The status board still shows every race as `raced`.
+- **The conflicted member's SERVFAIL (fix-e2e02-conflict.log) is diagnosed.** A
+  primary that becomes Conflict or Fenced after the committed-status writer wrote
+  its zone's status, and before the driver realigned the zone lifecycle's source
+  receipt to the new DNSZone resourceVersion, can never realign: a DNS-only node
+  commits nothing. Under the exact-resourceVersion serving rule the zone is
+  served as committed-unavailable coverage (SERVFAIL, AA clear) for the whole
+  conflict. In that run the heal came inside the half-second window after B's
+  write. The product fix is `6780f27d` ("keep serving a zone across its own
+  status write", CORE-STATUS-WRITE-SERVFAIL), which is on the PR branch but not
+  on this lane. `TestRunServeDirectAnchorsConflictServesAcrossUnrealignedStatusWrite`
+  builds that durable state on one runServe database with managed anchors and
+  requires authoritative answers on all six transports.
+- **F28-HA-4 runs by default.** A `-tags licensetest`-only seam,
+  `KUDURRU_TEST_ANCHOR_UPDATER_AHEAD`, moves one process's writer-updater wall
+  clock ahead for its due and checkpoint comparisons only (samples, receipts and
+  stored state keep the real clock; a default build has none,
+  `TestDefaultBuildHasNoAnchorUpdaterWall`). `TestEnrolledManagedAnchorsOfflineRecovery`
+  (was the skipping `TestSoakEnrolledAnchorsOfflineRecovery`) restarts the
+  primary with it, so its updater observes the REVOKE; both nodes quarantine;
+  recover on the follower database is refused with no change and no
+  acquisition; the stopped primary's offline recover commits with exactly one
+  recovery acquisition; the follower adopts the recovered image through its
+  scheduled pulls without a restart; keys, tombstones and recovery record are
+  identical on both. About 170 s, no skip. `KUDURRU_ANCHOR_SOAK=1` still runs it
+  with production timers.
+- **A real store refusal reaches the gauge.** In the partition variant the
+  follower has denied the sole key. The root answers normally again and the
+  primary, restarted with its refresh due, commits a new owner that still
+  trusts the key. The follower's scheduled pull through `follower.Puller`,
+  `Coordinator.Pull` and `ObservePull` is refused (`carried_revocation`) and
+  installs nothing. The follower's running metrics listener exports
+  `kudurru_root_anchor_adoption_refused{reason="carried_revocation"}` as 0
+  before the owner moves (now required, so a silent listener cannot pass) and
+  as 1 after. `GET /cluster/anchors` on that retired follower answers 503: the
+  route serves only under a lease of a published complete generation
+  (`getClusterAnchors`, `CheckReadLease`), and a retired follower publishes
+  none. The test now requires that the node also reports not ready in that
+  case. The route assertion runs only if the route is open, which a retired
+  follower's never is. The route's projection of a refusal shares
+  `anchorCurrentRefusal` with the gauge and is covered in-process
+  (`TestAnchorStatusBoardTracksAdoptionRefusal`,
+  `TestAnchorStatusRefusalGaugeFollowsRole`), not by a real puller refusal.
+- **Edge test gaps (F28-EF1-LIVE).** The observation listener stays up across
+  the second edge restart of `TestRunServeManagedEdgePinnedDaemonFollower` and
+  serves whichever supervisor is current (an observation while the child is
+  down is counted and refused); the stale D370 comment is gone.
+- **History recheck.** `TestClusterResolveAbandonedMemberRunsAsTheNewPrimary`
+  abandons a lost term through the actual CLI, starts an actual serving runtime
+  on the member with the store's elector carrying the writer token, and requires
+  readiness, complete publication for the new term, a running primary driver, a
+  writer token for exactly that term and an ordinary write under it.
+- **Sampling.** The validated-recursion sampler starts with the process and
+  judges every sample from the node's first DNS answer of any kind. A wrong
+  answer (an rcode other than SERVFAIL, or NOERROR that is not the validated
+  key set) fails. So does a node not validated when sampling stops, a SERVFAIL
+  or no-answer gap longer than ten seconds, or, where the role must be
+  sampled while fenced or conflicted, no validated DNS-only sample. Shorter
+  gaps are logged as `OPEN F28-HA-3` with time, length, startup or not,
+  DNS-only or not, and the first answer. d485cce0 failed on the first
+  SERVFAIL, which turned `TestEnrolledManagedAnchorsPromoteAndRejoin` and
+  `TestEnrolledManagedAnchorsConflictResolution` red by design and stopped the
+  conflict test before its resolution step. The known transition defect
+  (below) is now recorded on every run without failing the suite, and a
+  persistent SERVFAIL (a lost zone or lost trust) still fails. This is looser
+  than d485cce0's zero-SERVFAIL rule and than the pre-package promote
+  sampler, which failed on any non-validated answer from readiness on. The
+  F28-HA-3 criterion "never SERVFAIL" is therefore not met; it is recorded,
+  bounded and open.
+- **Deterministic settings absorption.** `absorbSettings` slept a fixed three
+  seconds after the first deny-only acquisition of the two-patch settings
+  change. When the second came later it was counted at the partition check
+  ("partition: 4 root acquisitions, want 3"; 3 of 4 review runs on the lane
+  binary, and earlier in the F28-PROCESS logs). The ledger's earlier
+  attribution of the extra acquisition to the PR overlay and D377 was wrong.
+  It now waits until the follower's supervisor is running with its next
+  check at the minimum refresh and the count has been unchanged for five
+  seconds, and logs each supervisor change. That fixed the settings case
+  (`fix-e2e01`: the second acquisition came 0.6 s after the first and was
+  absorbed). It did not remove every extra acquisition: in `fix-e2e02` one
+  partition run absorbed 2 and still counted one more at the partition check
+  ("5 root acquisitions, want 4"). The source of that query is not
+  identified. Since `b400469f` the stand-in root lists each TCP DNSKEY query
+  (time, mode, source, flags) in a failing count, and the test logs the
+  primary updater's and the follower supervisor's last state before the
+  check, so the next occurrence names it.
+
+Evidence under `.context/v020-final-20261110/evidence/F28-OPEN6/`:
+
+- `race01`-`race10` (earlier implementer, retained): `race01` and `race03`/`race10`
+  show the new gate tests failing (the second also with the early release
+  disabled by mutation: "writer services waited for an in-flight poll of already
+  accepted managed trust"); `race05`/`race08` show the backed-off capture pace
+  breaking `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` 4 of 4
+  ("complete serving generation unavailable: preparing"), `race06` the same test
+  passing at the base; `race07` is a build-cache trim; `race09` the selection
+  passing after the pace was restored (ok, 121.0 s).
+- `race11` (retained), `race13`: the conflict status-write test on this lane:
+  `race11` failed in the shared settle helper (503 on a zone read under load),
+  replaced by an observation-tolerant helper; `race13` fails as expected,
+  "did not answer its zone across an unrealigned status write; last rcode
+  SERVFAIL" after 30 s. `race12` was stopped by hand (source edited while it
+  compiled). `race14`: the same test, `TestRunServeDirectAnchorsFencedAndConflictRestart`,
+  `TestDirectAnchorRestartedWriter*` and `TestAnchorUpdater*` with
+  `internal/primaryruntime/image.go` of the PR branch (6780f27d) as an overlay:
+  ok, 80.3 s.
+- `race15` (retained): the first form of the abandoned-member runtime test did
+  not run the elector (driver never started). `race16`: `^TestClusterResolve`
+  3 of 3 PASS (abandoned member runtime 16.6 s).
+- `race17`: `-race`, `KUDURRU_ANCHOR_EDGE_LIVE=1` against the pinned dnsdist image
+  on the lab daemon: `TestRunServeManagedEdgePinnedDaemonRestart` PASS 28.4 s,
+  `TestRunServeManagedEdgePinnedDaemonFollower` PASS 49.8 s,
+  `TestAnchorEdgeActivationJoinedFollower`, all twelve `TestAnchorUpdater*`
+  (including `TestAnchorUpdaterCaptureRaceRetriesPacedWithoutStopping`), all
+  `TestDirectAnchor*` (including `TestDirectAnchorRestartedWriterDuePollDoesNotHoldWriterServices`
+  and `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture`), every
+  `TestRunServeDirectAnchors*` and `TestDefaultBuildHasNoAnchorUpdaterWall`
+  PASS; the one FAIL is the conflict status-write test (no 6780f27d on the
+  lane, as in `race13`). No data race, no container left.
+- `e2e01`-`e2e06` (`KUDURRU_E2E=1`, `-race`): `TestEnrolledManagedAnchorsOfflineRecovery`
+  PASS in every run (168.1 s, 173.7 s, 165.8 s); the partition variant with the
+  refusal step PASS in `e2e05` and `e2e06` (142.2 s, 154.2 s; `e2e01`/`e2e02`
+  failed on the route read of the retired follower, which answers 503);
+  `TestEnrolledClusterProcesses*` and `TestEnrolledProcessConflictResolution`
+  PASS. Every managed conflict run passed the one-shot writes right after both
+  promotions and after the primary's restart with the waits removed.
+  `e2e03`-`e2e05` use a licensetest binary built from this lane with the PR
+  branch's 6780f27d, a8be6d71 and 89bda06a production files as an overlay
+  (`/tmp/f28-open6/overlay-pr.json`), the closest approximation of the
+  integrated branch available here. `e2e07` (diagnostic test overlay that only
+  turns the heal-to-conflict sampler failure into a log line) runs the rest of
+  the conflict flow, including the write right after the resolution restart:
+  PASS 98.7 s on the lane binary (the sampler line is logged, B's first failure
+  33 ms after its write, EDE 23, C's 1 s later without EDE).
+- `lint01` (retained): three issues in the new tests, fixed in `83e671b2` and
+  `d485cce0`. `lint02`: golangci-lint v2.15.0 over `./cmd/kudurru/...` and
+  `./test/e2e/...` at `d485cce0`: 0 issues. `bench01`: 14 bench guard tests OK.
+
+Review fixes (after `d485cce0`), same directory, `fix-*` logs:
+
+- `fix-race01-gate`: `-race -count=2` of `TestDirectAnchorRestartedWriter*`,
+  `TestAnchorUpdater*`, `TestDirectAnchorActualWriterBootstrap*`: ok, 123.2 s
+  (not verbose).
+- `fix-race02-gate-mutant` (retained, stopped by hand): the first form of the
+  new tests hung in cleanup with the early release forced on. The held root
+  reply was released after the root fixture joined its handler, so the
+  cleanup order was fixed.
+- `fix-race03-gate-mutant`: early release forced on for every managed writer
+  (`return true || ...`): `TestDirectAnchorRestartedWriterDuePollPrecedesWriterServices`
+  and `TestDirectAnchorRestartedWriterDueRevokeCommitsBeforeWriterServices`
+  FAIL 3 of 3 each ("writer services started while a due root poll was in
+  flight"). This is the reviewer's case. Their probe (`review-probe-head.log`)
+  showed the same release ending in a terminal updater with the REVOKE
+  uncommitted 3 of 3.
+- `fix-race04-selection`: `-race -count=2 -v` of `TestDirectAnchor*`,
+  `TestAnchorUpdater*`, `TestAnchorCaptureRace*`, `TestRunServeDirectAnchors*`,
+  `TestDefaultBuildHasNoAnchorUpdaterWall` and `TestAnchorStatus*`: 58 PASS
+  lines, no data race. The two new due-poll tests PASS twice each (4.85 s and
+  4.86 s; 3.84 s and 4.01 s), as do
+  `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture` and
+  `TestAnchorCaptureRaceLogIsBounded`. The one FAIL, twice, is
+  `TestRunServeDirectAnchorsConflictServesAcrossUnrealignedStatusWrite`
+  (40.3 s, 41.1 s), expected on this lane without 6780f27d.
+- `fix-e2e01` (`KUDURRU_E2E=1`, `-race`, lane binary at `a23db4d3` plus the
+  e2e changes): `TestEnrolledManagedAnchorsPartitionRestartAndRevoke` PASS
+  154.0 s (refusal step reached; route 503 with the node not ready),
+  `...PromoteAndRejoin` PASS 152.5 s (two gaps logged: a 1.07 s startup gap,
+  and a 0.94 s gap while fenced with EDE 23), `...OfflineRecovery` PASS
+  173.5 s, `...ConflictResolution` PASS 101.4 s. The conflict run includes
+  the writes after both promotions and after the resolution restart with no
+  updater wait. B had 4 gaps, longest 353 ms; C had 1 gap of 310 ms; all
+  were taken while not DNS-only.
+- `fix-e2e02` (`-count=2`, plus `TestEnrolledProcessConflictResolution`): 9
+  PASS, 1 FAIL. The Partition run FAILED once (147.0 s, "partition: 5 root
+  acquisitions, want 4" after absorbing 2, see above) and PASSED once
+  (140.7 s). PromoteAndRejoin passed 2 of 2, OfflineRecovery 2 of 2, managed
+  ConflictResolution 2 of 2 (longest gap 201 ms) and the static
+  TestEnrolledProcessConflictResolution 2 of 2.
+- `fix-e2e03-partition-diag` (`-count=3`, `b400469f` instrumentation):
+  Partition PASS 3 of 3 (155.2 s, 149.3 s, 144.5 s). Totals since the
+  absorbSettings change: Partition 5 of 6, OfflineRecovery 3 of 3,
+  PromoteAndRejoin 3 of 3, managed ConflictResolution 3 of 3.
+- `fix-lint01` (retained): one revive issue (context-as-argument) in the new
+  test helper, fixed in `b400469f`. `fix-lint02`: golangci-lint v2.15.0 over
+  `./cmd/kudurru/...` and `./test/e2e/...`: 0 issues. `fix-lint03-licensetest`:
+  the same with `--build-tags licensetest`: 0 issues. `fix-bench01`: 14
+  bench guard tests OK.
+
+What remains open:
+
+- **SERVFAIL on members holding valid trust at authority transitions (product
+  defect, not fixed).** Every run records it. The restarted old primary
+  answers SERVFAIL for up to about 1 s during startup and around its
+  fenced-to-follower install (EDE 23 on the lane, the D377 commit-window class
+  that a8be6d71 fixes). In the conflict variant B and C answer SERVFAIL for
+  0.1 to 0.4 s around B's write and the conflict detection, while not
+  DNS-only. The likely mechanism is the managed resolver input's currency
+  check (`AnchorResolverInput.Current`: `gate.MatchesInstalled(mark)`)
+  refusing a lookup whose lease predates an authority change. The samplers
+  now record these gaps (`OPEN F28-HA-3`) and fail only on a wrong answer, a
+  gap over ten seconds or a node not validated at the end, so the F28-HA-3
+  criterion "never SERVFAIL on a Follower, Fenced or Conflict node holding
+  valid trust" is **not met**. It needs a product fix or an owner decision
+  against the anchor output guard's design. A startup gap (before the first
+  validated answer) is now judged, and bounded the same way, rather than
+  ignored.
+- **Readiness does not imply writer admission.** A writer whose committed
+  refresh is due keeps its first anchor step (up to 30 s) ahead of the writer
+  services, so it can answer writer commands 503 while it reports ready. Any
+  writer can do the same during the short start of its writer services.
+  Readiness depends on publication only. No test issues a writer command at
+  the first ready report. Defer to CI-RED-2 and CI-RED-3.
+- **The occasional extra root acquisition before the partition check** (1 of
+  6 partition runs after the settings fix) is not explained. The
+  instrumentation in `b400469f` names it the next time it happens.
+- The retire-on-REVOKE-then-promote sequence is not run. Fetch counts stay
+  bounded rather than exact (`enrolled_cluster_test.go` still accepts 3 or 4
+  rejoin acquisitions). A member of the abandoned term is not brought back
+  through the production puller (only the abandoned member's own runtime is
+  started).
+- A retired follower's `GET /cluster/anchors` is closed by design (it
+  publishes no generation, so no read lease). The refusal's online surface on
+  it is the gauge, and the route's projection of a real puller refusal is
+  not proven end to end.
+- The conflict status-write test fails on this lane by design until 6780f27d is
+  integrated. `5757051e` and `83e671b2` should be picked only onto a branch
+  that contains 6780f27d, and that test run there twice under `-race` before
+  item 2 is recorded as closed (proven so far only by the single overlay run
+  `race14`). Its fixture builds the durable state by hand (status write plus
+  ObserveAuthority on a closed database) rather than through the heal race.
+- The full `./cmd/kudurru` package and the live edge tests were not rerun after
+  the review fixes.
+
+**Verification state at 7663c957.** Backed out of the local PR branch before any push (with it `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` failed every run and three enrolled anchor e2e tests failed on root acquisition counts); its eleven commits were re-applied by F28-OPEN7 and are at this head. Its verifier resolved the REVOKE blocker, the red-suite part of finding 2, finding 5 (documentation) and finding 8, and left **four unresolved**: the acquisition-count flake at the partition check (major; "partition: 4 root acquisitions, want 3", an extra query before the settings change), a real store refusal driven through the status route (major; only the gauge is checked), the conflict-serving test failing on a lane without `6780f27d` (a cherry-pick condition), and three remaining items of finding 7. New: the 10 s SERVFAIL tolerance in the e2e samplers, a vacuous not-ready check when the ops listener is silent, a new timing dependency in `absorbSettings`. F28-OPEN7 took these up: it showed the count failure came from the integrator's merge, made the counts exact and removed the 10 s tolerance.
+
+
+### F28-OPEN7 The held managed-anchor package, exact root-check counts and DNS across a persisted fence — November 13, 2026 (D369)
+
+Lane `wip/v020/f28`, base `7b11a139`. The eleven held F28-OPEN6 commits were
+cherry-picked one at a time (`533e7104`, `153320fd`, `6e63eb03`, `18913b79`,
+`1e692b23`, `e29b7c26`, `43d42037`, `e1fda92a`, `90cdcb98`, `04aff32f`,
+`faae0487`), followed by this package's source commits `131a236a`,
+`2c636e66`, `75f8f07f`, `a09860c6`, `74e41d81`, `2fd09d9c`, `09a9d6ec` and
+`b22b24c1`, and the review fixes `f43b2f77`, `3afb1485`, `9bf55b66`,
+`6d3aa571` and `87551fe9`. No generated file changed (no `chore(gen)`
+commit; the new metric has no generated reference), no new dependency.
+
+What now happens:
+
+- **The held package is back without its count regression.** Two picks
+  conflicted. `serving_runtime.go` kept both sets of test-only fields. In the
+  promote flow, the HA lane's partitioned restart of the old primary is kept:
+  the restarted old primary is now sampled from the start of its process
+  (before it is fenced) through the fenced restart checks, the heal, the
+  install of the successor and its follower role, and the exact
+  F28-REJOIN-COUNT checks (one fenced check before the partition heals, one
+  follower check after the install) are kept as they were. 8ff9aa69 had
+  changed `absorbSettings` to take the follower; the rejoin call is updated
+  (`131a236a`). The integrator's
+  earlier merge (`c7432461`) had dropped the "forwarded blocking switch" wait
+  of F28-REJOIN-COUNT; that is what failed all three tests with "partition: 4
+  root acquisitions, want 3" in `INTEGRATE-26/e2e.log`: the TCP log there
+  shows the bootstrap, the follower's start check, the blocking switch's check
+  about two seconds before the settings change, and the settings check. On
+  this tree the wait is present and that check is counted exactly.
+- **Every root-check count is exact, the bootstrap included.** The
+  standalone bootstrap was accepted as 1 to 4 acquisitions (and with no
+  bound in the conflict flow), because an ordinary startup commit that lands
+  while the reply is in flight makes the updater discard it and acquire
+  again. The elected updater now counts its acquisitions by outcome in
+  `kudurru_root_anchor_updater_acquisitions_total{outcome}` (`applied`,
+  `raced`, `failed`, `refused`; `3afb1485`), and both flows require exactly
+  one applied acquisition plus the raced ones that counter reports, none
+  failed or refused, every one in normal mode (`settleBootstrap`,
+  `9bf55b66`). In every final run the bootstrap was exactly 1
+  acquisition, 0 raced, in every test. A forwarded settings change was
+  absorbed as one or two checks, because the two patches of
+  `enrolledForwardedSettings` either shared the follower's one-second wake
+  coalescing or did not. The helper now hands each patch to the managed
+  variant, which reads the count before the patch, sends it (the follower
+  answers only once it serves the change) and requires exactly one check,
+  settled for five seconds, before the next patch. Both forwarded changes and
+  the change through the rejoined member are exactly two checks in every run;
+  the partition, follower restart, promotion, fenced, rejoin and final
+  `rejoin acquisitions` (exactly 4) checks are unchanged and passed whenever
+  reached.
+- **Managed members keep validated DNS while a fence is persisted (product
+  fix).** Diagnostic runs (`diag05`, temporary instrumentation in the binary,
+  not committed) showed the SERVFAIL at conflict detection: writes blocked,
+  mode still primary, the managed input refused with "anchor lifecycle
+  unavailable". `ObserveAuthority` blocks writers and retires every elected
+  term, then persists the new authority (an fsync), then publishes it, and
+  the anchor source read the write block itself as unavailable. The store now
+  marks that transition of an unblocked store as in flight (`fenceInFlight`)
+  and DNS output reads the block in its DNS form (`Store.DNSServingAuthority`):
+  the managed and static anchor inputs and root admission stay current, so
+  recursion and zone answers continue from the served publication until the
+  DNS-only cut takes over. Writers, protected HTTP, publication and the updater
+  still see the store blocked. A fence whose write fails keeps DNS blocked, and
+  a retry of it does not reopen DNS. The same applies to the divergence
+  install. D395's served-publication grace was not used for this: it would also
+  admit an input retired by a revocation or owner change.
+- **The samplers no longer tolerate SERVFAIL.** Once the node reports a
+  publication (ready or DNS-only), every sample must be validated, and no
+  answer at all fails too. The only window allowed is the start of a process,
+  before its first publication (its listeners answer SERVFAIL until then,
+  0.8 to 1.2 s in these runs, logged). A SERVFAIL whose extended error carries
+  the resolver's "no name server of the zone answered" (the stand-in root, in
+  the loaded test process, timed out; `e2e-final-1`) is counted and logged as
+  an upstream failure, not failed; a refused anchor input answers SERVFAIL
+  without that text. The promote variant now also samples the follower across
+  its own promotion. Both exemptions are now bounded (`9bf55b66`): the
+  startup gap may last 5 s in all per sampler (0.65 to 2.0 s observed), and a
+  root timeout counts only when the resolver's wrapped cause is "context
+  deadline exceeded", at most two per sampler and never two in a row; any
+  other non-validated sample fails. No final run used the root-timeout
+  exemption.
+- **Readiness of a managed recursive node: cause measured, directive not
+  met.** Direction item 2 asked to find and fix why a fresh managed recursive
+  node becomes ready slowly. The cause named before ("every startup commit
+  cancels and restarts the preparation") is not what costs the time. Two
+  instrumented runs (`fix-diag01-startup-commits.log`,
+  `fix-diag02-startup-joins.log`: every generation commit with its caller,
+  every preparation with its start, cancel reason, join and result; an
+  overlay, nothing committed) show the phase-0 startup as a serial chain:
+  the startup writes (seed, admin user, controller and list statuses, about
+  2.5 s), the writer start and the anchor bootstrap commit (the gate holds
+  the other writer services until the first step, so that the bootstrap
+  is one acquisition), then the primary driver's three lifecycle transitions
+  of the new zone (one commit each, about 1.0 to 1.6 s apart, each after a
+  full image re-read), then one full preparation (1.1 to 1.8 s under race),
+  then the zone's admission. A preparation cannot be published across a
+  later commit (the token CAS is the publication invariant), so the first
+  publishable preparation starts after the last lifecycle commit whether or
+  not earlier ones were canceled: canceling them costs no time to ready.
+  The cancellations by `Wake` and provider-dependency changes seen in the
+  same runs (up to 1 s of work each) end before the bootstrap or before a
+  lifecycle commit that would supersede them anyway. On this machine (load
+  15 to 28 on 8 cores, `-race`) the chain takes 8.5 to 12 s, and the
+  10-second bound fails: both tests failed in both instrumented runs and in
+  every review run (12 of 12), at the base as well (`diag03`, `diag07`).
+  Shortening the chain needs either the bootstrap and the lifecycle work to
+  overlap (the bootstrap would then race them and the root count would no
+  longer be one) or the primary driver to make several lifecycle
+  transitions per pass (a primaryruntime change outside this package). The
+  readiness bounds were not changed. This needs an integrator decision:
+  accept the two tests as load-bound (and run them at lower parallelism),
+  raise their readiness bound with a recorded reason, or schedule the driver
+  change.
+- **Smaller items.** The divergence install's half of the fence fix now has
+  store tests (`f43b2f77`): a same-revision image with a different digest is
+  installed on a static follower while its authority write is held by an exec
+  hook on the writer connection; the anchor input stays current and DNS
+  unblocked throughout, and a failed authority write leaves writes and DNS
+  blocked. The live edge primary now settles its startup cascade read-only
+  before it signs in (`87551fe9`). Setup writes after a new zone wait until
+  the source has been quiet for two seconds (`9bf55b66`). An early return of
+  the direct writer in `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture`
+  now names the term context's error and cause and the authority mode
+  (`6d3aa571`). The retired follower's not-ready check now requires an
+  explicit 503 from `/healthz/ready` (a silent listener returned 0 and passed).
+  The hosted-CI data race in `TestAnchorEdgeActivationJoinedFollower` is gone:
+  every runtime fixture gets a private data directory before the runtime is
+  built, and `joinPrimaryOn` no longer writes the configuration of a running
+  runtime. The first sign-in on the recovered primary uses the 35-second
+  request timeout of the shared flow's follower login (it exceeded five
+  seconds in `e2e01`).
+
+Evidence under `.context/v020-final-20261110/evidence/F28-OPEN7/`:
+
+Review fixes (on `87551fe9`; the review's own runs are `review-*.log`):
+
+- `fix-store01-divergence.log` (retained): the first form of the divergence
+  tests held the SQLite lock from a second connection, which blocks the
+  install's immediate transaction before it reaches the divergence; both
+  failed as fixtures. `fix-store02-divergence.log`: the four
+  `TestAnchorInputStays*` store tests, `-race -count=3`: 12 PASS.
+  `fix-mut01-divergence.log`: with the in-flight mark removed from the
+  divergence install (overlay), `TestAnchorInputStaysCurrentWhileADivergenceIsPersisted`
+  FAILS ("input current false, DNS blocked true").
+- `fix-race01-acquisition-counter.log`: `^(TestAnchorUpdater|TestAnchorStatus|TestAnchorCaptureRace)`,
+  `-race`: 17 PASS (the raced-bootstrap test requires 1 raced and 1 applied,
+  the terminal-updater test 1 refused).
+- `fix-diag01-startup-commits.log`, `fix-diag02-startup-joins.log`: the
+  readiness timelines above (`TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart`
+  with an instrumentation overlay, `-count=2` each: 4 FAIL on the 10-second
+  bound).
+- `fix-edge-live01.log` (retained): run without `KUDURRU_ANCHOR_EDGE_WORKDIR`,
+  6 setup FAIL, nothing started. `fix-edge-live02.log`:
+  `TestRunServeManagedEdgePinnedDaemonFollower` and
+  `TestRunServeManagedEdgePinnedDaemonRestart`, live pinned dnsdist,
+  `-race -count=3`: ok in 418 s (6 PASS, not `-v`), no container left.
+- `fix-race02-cmd-anchors.log`: the anchors selection below, `-race`, once:
+  140 PASS, 0 SKIP, no data race, 2 FAIL:
+  `TestOfflineAnchorRecoveredTrustServesAfterRestart` and
+  `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` (the 10-second
+  readiness bound, above); `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture`
+  passed there and 4 of 4 in `fix-race03-restarted-writer.log`.
+- `fix-e2e-1.log`, `fix-e2e-2.log`, `fix-e2e-3.log`: all
+  `TestEnrolledManagedAnchors*`, `-race`, `-v`: all four PASS in all three
+  runs (Partition 265.0, 208.4, 242.0 s; PromoteAndRejoin 269.2, 242.4,
+  268.6 s; OfflineRecovery 247.0, 238.4, 248.9 s; Conflict 106.5, 107.0,
+  106.1 s), no skip. Every bootstrap was 1 acquisition, 0 raced; every
+  settings change exactly one check; no failing sample after a first
+  publication and no root-timeout exemption used (follower across its
+  promotion 595 to 840 samples; restarted old primary 1505 to 1935, 181 to
+  230 DNS-only, startup gap 0.65 to 1.14 s; conflict members 490 to 988, 432
+  to 650 DNS-only).
+- `fix-lint01.log`: golangci-lint v2.15.0 over `./cmd/kudurru/...`,
+  `./test/e2e/...`, `./internal/store/sqlite/...`: 0 issues.
+
+Earlier runs of this package:
+
+- `store01.log`: `TestAnchorInputStaysCurrentWhileAFenceIsPersisted`,
+  `TestAnchorInputStaysRetiredAfterAFailedFence` and the six
+  `TestAnchorPublicationCurrent*` tests, `-race`: 8 PASS. `mut01-store.log`:
+  with the old block check (overlay), the first FAILS ("input current false,
+  DNS blocked true").
+- `race06-fence-window.log`: `TestRootAnchorManagedRecursionAcrossAPersistedFence`
+  and `TestRootAnchorManagedRecursionStopsAfterAFailedFence`, `-race
+  -count=3`: 6 PASS (198 to 220 validated UDP and TCP samples per run, 57 to 60
+  of them while the fence write was held for 1.5 s). `mut03-fence-window.log`:
+  the first FAILS at sample 0 with the old block check. `race02`-`race05`
+  (retained) are fixture fixes: the fixture's canonical settings overrode the
+  recursive group (answers came from the default forwarders) and the lock
+  holder needed a busy timeout.
+- `race08-sqlite-serving.log`: `go test -race ./internal/store/sqlite
+  ./internal/serving`: ok (739.8 s, 40.6 s).
+- `race07-cmd-anchors.log` (retained): the anchors selection failed four join
+  tests ("invalid or untrusted member identity") after the first data-race fix;
+  fixed in `2fd09d9c`. `race09-cmd-anchors.log`: `-race` selection
+  `^(Test.*Anchor|TestManagedTopology|TestManagedEdges|TestServingRuntime|TestRootAnchor|TestClusterResolve|TestClusterJoin|TestDefaultBuildHasNoAnchorUpdaterWall)`
+  over `./cmd/kudurru ./internal/config`: 140 PASS, 0 SKIP, no data race, 2
+  FAIL: `TestOfflineAnchorRecoveredTrustServesAfterRestart` (10-second
+  readiness, see above) and `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture`
+  ("direct writer stopped before caller cancellation"); `diag07` reran the
+  latter 5 of 6 PASS, the sixth failing its 3-second "restarted writer did not
+  capture" wait. `TestAnchorEdgeActivationJoinedFollower`,
+  `TestRunServeDirectAnchorsConflictServesAcrossUnrealignedStatusWrite`
+  (now on a tree with `6780f27d`), the three `TestClusterResolve*` and
+  `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` passed there. The
+  pinned-dnsdist edge tests were not in this selection.
+- `race01-recursive.log`, `diag02`-`diag04`, `diag07`: the readiness
+  measurements above.
+- `e2e01-picked.log` (retained): the picked tree before this package's test
+  changes: Partition PASS, PromoteAndRejoin FAIL (forwarded UPDATE through the
+  rejoined member answered REFUSED), OfflineRecovery FAIL (sign-in timeout),
+  ConflictResolution PASS with one 57 ms SERVFAIL on C.
+  `diag05-e2e-servfail.log` (instrumented, retained): diagnosis of that gap;
+  PromoteAndRejoin failed in the first form of the per-patch count (count read
+  after the patch). `diag06-e2e-after-fix.log` (instrumented): both tests
+  PASS, no gap after publication, one 891 ms startup gap.
+- Final runs, `KUDURRU_E2E=1 go test -race -count=1 -run '^TestEnrolledManagedAnchors' ./test/e2e`:
+  - `e2e-final-1.log` (before `09a9d6ec`): Partition PASS 303.9 s,
+    PromoteAndRejoin FAIL 263.4 s (one stand-in root timeout, EDE 9 "no name
+    server of the zone answered", long after every transition; this is what
+    `09a9d6ec` classifies), OfflineRecovery PASS 243.6 s, Conflict PASS 102.5 s.
+    `e2e-final-2-stopped.log`: stopped by hand to rerun on the final commit.
+  - `e2e-final-3.log`: Partition PASS 264.2 s, PromoteAndRejoin PASS 256.1 s,
+    OfflineRecovery FAIL 230.5 s, Conflict PASS 96.2 s.
+  - `e2e-final-4.log`: Partition PASS 223.3 s, PromoteAndRejoin PASS 255.3 s,
+    OfflineRecovery FAIL 237.0 s, Conflict PASS 105.6 s.
+  - `e2e-final-5.log`: Partition PASS 217.8 s, PromoteAndRejoin PASS
+    256.6 s, OfflineRecovery FAIL 228.2 s, Conflict PASS 110.5 s.
+  The three OfflineRecovery failures were "enrolled read refused
+  /cluster/anchors 401". `diag08-recovery-401.log` (a temporary log of each
+  status read) placed it on the follower, 2.1 s after the new sign-in on the
+  recovered primary: the session was committed after the follower had
+  installed the recovered image, so the follower knew it only after its next
+  five-second pull. The test now waits (at most four pulls, retrying only 401
+  and 503) until the follower accepts the session before it reads the
+  follower's status (`b22b24c1`). Every anchor check before that read passed
+  in all three runs, including the partition count.
+  - On the final commit: `e2e-final-6.log`: all four PASS (221.0 s, 283.5 s,
+    236.3 s, 107.4 s). `e2e-final-7.log`: all four PASS (235.5 s, 282.4 s,
+    260.6 s, 104.1 s). `e2e-final-8.log`: Partition
+    PASS 213.6 s, PromoteAndRejoin FAIL 4.8 s (setup: the fresh standalone
+    primary answered `POST /objects/dnsrecordsets` 503 "unavailable" right
+    after it reported ready, before any anchor step of the test; this is the
+    open "readiness does not imply writer admission" window below, for a
+    writer before its bootstrap), OfflineRecovery PASS 270.7 s, Conflict PASS
+    110.4 s.
+  In every final run each settings change was exactly one check, and no
+  sampled member had a failing sample after its first publication except the
+  one stand-in root timeout of `e2e-final-1` (follower across its own
+  promotion 546 to 807 samples; restarted old primary 1245 to 2049 samples,
+  187 to 238 DNS-only, with a startup gap of 0.8 to 2.0 s before its first
+  publication; conflict members 547 to 1028 samples, 439 to 681 DNS-only). No
+  test was skipped.
+- `lint01.log`, `lint03.log`, `lint04-e2e.log`: golangci-lint v2.15.0 over `./cmd/kudurru/...`,
+  `./test/e2e/...` and `./internal/store/sqlite/...`: 0 issues;
+  `lint02-licensetest.log` (`--build-tags licensetest`, `./cmd/kudurru/...`):
+  0 issues. `bench01.log`: 14 bench guard tests OK.
+
+What remains open:
+
+- Direction item 2 is not met: a fresh managed recursive node's readiness is
+  bound by the serial startup chain described above, and
+  `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` and
+  `TestOfflineAnchorRecoveredTrustServesAfterRestart` keep failing their
+  10-second bound on this loaded machine, at the base as well. The bounds
+  were not changed; the integrator decides (see above).
+- The full `./cmd/kudurru` package has not been run with `2fd09d9c` (every
+  runtime fixture gets a private data directory); the integrator runs it
+  through `hack/go-test.py` after the pick, and a new fixture failure there
+  belongs to that commit.
+- `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture` failed 2
+  of 7 earlier runs; it passed in every run since (5 of 5 in review,
+  5 of 5 here) and now reports what ended the writer if it fails
+  again. The cause is not known.
+- The startup gap (SERVFAIL before a node's first publication) remains a
+  product item; the samplers now bound it at 5 s.
+
+- A forwarded UPDATE through the just-rejoined member can still answer
+  REFUSED or SERVFAIL (`e2e01`; HA lane item, unchanged).
+- The items F28-OPEN6 listed as open and not touched here stay open:
+  readiness does not imply writer admission for a writer before its
+  bootstrap or with a due refresh (CI-RED-2 and CI-RED-3; `e2e-final-8`
+  failed on a write between a new zone's commits and their publication,
+  which the fixture now waits out), the retire-on-REVOKE-then-promote sequence is not run, an
+  abandoned-term member is not brought back through the production puller,
+  and the status route's projection of a real puller refusal is proven only
+  in-process.
+
+**Verification state at 7663c957.** Merged with F28-REVOKE-HOSTED and pushed at `531bffd0`. The verifier resolved six findings (the DNS SERVFAIL while a fence is persisted, `91fca04a`; exact counts; the e2e managed suite passed under race; the live edge tests passed 4 of 4) and left **three unresolved**: (major) a fresh managed recursive node still takes about 9 s to become ready under race, so `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` and `TestOfflineAnchorRecoveredTrustServesAfterRestart` fail their 10 s bound on a loaded machine (a serial startup chain; the integrator has to accept it as load-bound, raise the bound with a reason or change the driver); (minor) the early `RunWriter` return in `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture` is not explained; (minor) the full `./cmd/kudurru` package had not been run with `2fd09d9c`'s fixture change (the integrator's baseline full run on `606a53a8` stopped after five of nine batches; no green full run is recorded). New, low: `settleBootstrap`'s raced count has no upper bound; the e2e `enrolledQuietReview(2 s)` quiet period hides the 503 window after a new zone; any error that is neither a race nor a failure counts as `refused` (F28-REVOKE-HOSTED added `canceled`); one log line lacks `-v`.
+
+
+### F28-REVOKE-HOSTED Why the BIND revocation interop test failed on hosted CI — November 13, 2026 (D398)
+
+Lane `wip/v020/f28`, base `87551fe9` (the end of F28-OPEN7). Source commits
+`0e7b4879` (test(interop): fail the revocation test fast on a binary without
+its seam) and `c7159c4b` (fix(anchors): count an acquisition its writer term
+ended as canceled), then the review fixes `45ccd2ad` (fix(anchors):
+describe and test the canceled acquisition outcome) and `10baf336`
+(test(interop): compare the next refresh with the time the node stopped).
+No generated file changed, so there is no `chore(gen)`
+commit. No new dependency.
+
+What now happens:
+
+- **Cause of the hosted failures.** `TestBINDManagedRootRevocation`
+  (F28-RFC) restarts the node with `KUDURRU_TEST_ANCHOR_UPDATER_AHEAD`, which
+  moves the writer updater's wall clock just past the committed refresh. That
+  variable is read only by `cmd/kudurru/anchor_updater_wall_licensetest.go`,
+  which arrived in commit `43d42037` of F28-OPEN7. The pull request branch
+  (`606a53a8`, and the hosted heads `a3b5a1d0`, `c5b0637c`, `95c57113`) had
+  the test but not that file. On hosted the variable was ignored, so the
+  restarted node's refresh was correctly an hour away and it made no
+  acquisition. Both subtests then failed at `managed_root_revoke_test.go:145`
+  with `1 managed acquisitions, want 3` and `want 2`. The hosted logs show
+  this: after the seam restart the node sends no query at all to named, and
+  logs no updater line. BIND made no difference. Hosted runs 9.18.39 and this
+  machine 9.18.50, and both publish DNSKEY TTL 3600 with 30-day signatures,
+  so the RFC 5011 interval is 1 h on either. Timing made no difference
+  either, and neither did the product: the updater's due rule is right.
+  Merging F28-OPEN7 restores the seam. The window widening in `ea9386c6`
+  (`43bbfad4` on the PR) was not the fix. It stays, because it is harmless
+  and keeps the "exactly two" margin.
+- **A missing seam now fails as a missing seam.** A writer updater that
+  starts on a moved wall clock logs `root anchor updater runs its due checks
+  on a moved test clock` with the offset. A release binary never does, since
+  its wall is nil. The test requires that line within 20 s of the seam
+  restart, and otherwise fails with "the binary lacks the
+  KUDURRU_TEST_ANCHOR_UPDATER_AHEAD seam". This also covers a stale prebuilt
+  `KUDURRU_E2E_LICENSED_BINARY`.
+- **Expectations come from the published timers.** The test reads the root
+  DNSKEY set over UDP, which the acquisition count never matches. It takes
+  the original TTL and the signature expiration and computes the RFC 5011
+  section 2.3 interval itself: max(1 h, min(15 d, TTL/2, remaining
+  validity/2)). It requires:
+  - the bootstrap's committed refresh to lie at that interval after the
+    acquisition;
+  - in the continuing case, the rescheduled refresh to lie at the re-signed
+    zone's interval after the second acquisition;
+  - the node to have stopped (timed after `node.Stop` returns) before its
+    moved clock reaches that rescheduled refresh. This is what makes "exactly 2" a consequence of the timers rather than an
+    assumption;
+  - in the quarantine case, the bootstrap's refresh to be kept exactly. Its
+    third acquisition follows from that.
+- **F28-OPEN7 review follow-ups.**
+  - `kudurru_root_anchor_updater_acquisitions_total` has a `canceled` outcome
+    for an acquisition whose writer context had ended. `refused` now means
+    only that the updater stopped for its term on the reply or on a store
+    error. The deploy and architecture docs and the metric's HELP text list
+    all five outcomes.
+  - `settleBootstrap` in `test/e2e` now requires no canceled acquisition and
+    at most 2 raced ones (`enrolledBootstrapRaces`), so an acquisition storm
+    no longer passes because the metric agrees.
+
+Evidence under `.context/v020-final-20261110/evidence/F28-REVOKE-HOSTED/`:
+
+- `repro01.log`: the old test at `87551fe9` with the seam, hosted shape
+  (`taskset -c 0-3`, `-race`). `TestBINDManagedRootRevocation` PASS (2
+  subtests, 282.8 s).
+- `repro02-noseam.log` (retained failure, the reproduction): the old test
+  with a `-tags licensetest` binary whose
+  `anchor_updater_wall_licensetest.go` was overlaid empty (`go build
+  -overlay`, passed as `KUDURRU_E2E_LICENSED_BINARY`). Both subtests FAIL at
+  line 145 with `committed refresh: 1 managed acquisitions, want 3` and
+  `want 2`, the hosted failure exactly. named logged 2 TCP DNSKEY
+  acquisitions in all, one per bootstrap.
+- `interop04-noseam-guard.log` (retained, expected failure): the new test
+  with the same seamless binary. Both subtests fail at the seam check with
+  the message that names the missing file.
+- `interop03-package.log`: the whole `./test/interop` package, `taskset -c
+  0-3 -race -count=1 -v`. ok in 418.5 s, every test PASS, and the three Knot
+  tests SKIP (no `KUDURRU_KNOT`). The revocation test PASS (284.1 s); the
+  published timers were TTL 3600 s and a refresh of 1 h; the counts were 3
+  (quarantined) and 2 (continuing).
+- `interop11-final.log`: the revocation test at the final head `c7159c4b`,
+  hosted shape. PASS (279.6 s).
+- `e2e06-settle.log`: `TestEnrolledManagedAnchorsPartitionRestartAndRevoke`
+  PASS (222.7 s) and `TestEnrolledManagedAnchorsConflictResolution` PASS
+  (109.7 s) under `-race`. Each bootstrap was 1 acquisition, 0 raced.
+- `unit01.log` and `race10-anchors.log`: the cmd/kudurru anchor updater,
+  status, writer and direct-anchor selections under `-race`. 29 PASS,
+  including the new `TestAnchorAcquisitionOutcomeSeparatesCancellation`. One
+  FAIL, `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` ("did not
+  become ready", 10.13 s, load average about 9). This is the known F28-OPEN7
+  finding 1, which also fails at the base. No data race.
+- `fix01-mutant.log` (retained, expected failure): the new
+  `TestAnchorUpdaterCountsWriterEndDuringQueryAsCanceled`, which ends the
+  writer context from inside the root query, run against a mutant whose
+  `step` classifies with `context.Background()`. FAIL with `failed:1
+  canceled:0`, so the test pins the call site, not only the classifier.
+- `fix02-unit.log`: `TestAnchorUpdater*`, `TestAnchorAcquisitionOutcome*`,
+  `TestAnchorStatus*` and `TestDefaultBuildHasNoAnchorUpdaterWall` at
+  `45ccd2ad`, `-race -count=3`: 57 PASS, ok in 101.8 s, no data race.
+- `fix05-interop.log`: the revocation test at `10baf336`, hosted shape.
+  PASS (282.3 s; OnlyTrustedKey 152.2 s with 3 acquisitions,
+  SecondSeedContinues 129.9 s with 2), TTL 3600 s, refresh 1 h.
+  `fix03-interop.log` is the same command without `KUDURRU_E2E=1` and only
+  shows a SKIP; it is not evidence.
+- `fix04-lint.log`: golangci-lint v2.15.0 on `./cmd/kudurru/...` and
+  `./test/interop/...` at the review fixes, 0 issues.
+- `race05-restarted-writer.log`:
+  `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture`
+  `-race -count=8`, 8 PASS. F28-OPEN7 finding 8 did not reproduce, and its
+  cause is still unknown.
+- `lint09.log`: golangci-lint v2.15.0 on `./cmd/kudurru/...`,
+  `./test/interop/...` and `./test/e2e/...`, 0 issues. `lint07.log` is the
+  earlier run, whose one S1024 issue was fixed before the commit was final.
+  `pyguards08.log`: bench guards OK (14 tests).
+
+Still open:
+
+- The hosted e2e job stays red on this test until F28-OPEN7 (`43d42037`) is
+  on the pull request branch. The test needs that seam, and it is not on the
+  branch yet. No hosted run has been made at a head that has both.
+- The cap of 2 raced bootstrap acquisitions in `test/e2e` (`enrolledBootstrapRaces`)
+  has only local evidence (0 raced in every run here). Watch the first
+  hosted run: its failure message prints the counts, so 3 or more raced can
+  be judged as a storm or as a bound that is too tight.
+- F28-RFC-1 (Knot via docker) and F28-RFC-2 (rollover from real authority
+  wires) are not part of this package. The Knot tests SKIP here and must not
+  be credited from this evidence.
+- F28-OPEN7 finding 1 is unchanged: two managed-recursive readiness tests
+  miss their 10 s bound under load. Raising the bound, or changing the
+  startup chain, is the integrator's call.
+- F28-OPEN7 finding 8 is unchanged: 8 of 8 passed here and the cause is
+  unknown.
+- F28-OPEN7 finding 9 is unchanged: the full `./cmd/kudurru` run is reserved
+  for the integrator.
+- F28-OPEN7 new item 2 is unchanged: the `enrolledQuietReview` quiet-period
+  heuristic is still how the e2e tests avoid the 503-after-ready window. It
+  belongs to the CI-RED-2/3 product item: ready does not yet mean writes are
+  admitted.
+
+**Verification state at 7663c957.** Merged and pushed at `531bffd0`, the first hosted run on which `TestBINDManagedRootRevocation` passed. The verifier resolved three findings and left one minor unresolved: the cap of two raced bootstrap acquisitions has only local evidence (0 raced). New: `fix05-interop.log` was built from `c7159c4b` with uncommitted changes, not from `10baf336` as the draft says (the verifier's clean-head run gives the same result).
+
+
+### DASH-IAM Dashboard IAM writers and the Integrations check hold — November 13, 2026 (D396)
+
+The Identity tab of the Access page now drives every reviewed IAM writer of
+the complete SQLite runtime (IAM-3 UI part, G21-08 dashboard part) instead of
+read-only tables. **Local users**: New user (username, display name, first
+password that must be changed at the first sign-in), Edit… (display name and
+the whole list of local groups), Disable…/Enable…, Reset password…, Delete…,
+next to the existing authenticator recovery; each command names the row's
+exact `uid` and `resourceVersion` from `GET /iam/users`. **Service
+accounts**: create, Edit… (description, disabled), Delete…, and New token….
+**Identity providers**: create, Edit… (replace) and Delete…, with the client
+secret as an environment-variable or file reference, never a value; a replace
+carries the stored labels, operator annotations and the spec fields the form
+does not show (claim mappings and rules, provisioning, allowed domains,
+audiences). **Role bindings**: Edit… and Delete… of API-owned bindings next to
+the existing create; an edit carries the reviewed labels and operator
+annotations (the server's replace takes both from the desired document), and
+a binding whose scope kind is not cluster, zone or zone group (the reserved
+`clientgroup`) is not editable here, on the row and again after the reviewed
+read, because the form would otherwise send it back as a cluster-wide grant. Every ServiceAccount, IdentityProvider and RoleBinding
+command first reads the item (`GET .../{name}`), shows its UID and
+resourceVersion, sends exactly those, and refuses an object whose
+`kudurru.io/managed-by` is not `api` before sending anything (the manager
+annotation is never sent back). Each dialog sends one request: a 4xx is shown
+as a refusal and locks a reviewed command (creates may be corrected and sent
+again); no answer, a 5xx or a bare `503 unavailable` (the SQLite catch-all,
+which the security-row bound also answers) is an unknown outcome that locks
+the dialog and says that at the limit nothing changed; `primary_required`,
+`read_only`, `user_management_unavailable` and `iam_management_unavailable`
+are refusals. A service account token's secret lives only in the token
+dialog's component state (no query or mutation cache, never logged) and is
+gone when the dialog closes. The disable, group-change, reset and delete
+dialogs and the provider change/delete dialogs state the permanent revocation
+record they keep and the shared limit of about 4,000 rows at which deletes,
+disables and sign-ins answer 503. Controls are disabled with the reason from
+the session's permissions (token issuance also needs `tokens.write`), static
+mode, the follower table and `GET /auth/status`
+`capabilities.localUserCommands`/`iamObjectCommands` (new in
+`useAuthCapabilities`); the built-in admin, kudurru.yaml providers, role
+bindings of another manager, multi-subject bindings and bindings of an
+unsupported scope kind are disabled with their reason. A service account
+managed elsewhere is refused when its dialog's read returns, and a local
+account of the configuration file by the server's `409 managed_by`. Role
+binding create, edit and delete run through the same `useIamCommand` as the
+other dialogs (one request, aborted on close, a reviewed edit locked after a
+refusal), with a classifier that also keeps the RoleBinding route's
+missing-runtime `503 unavailable` a refusal. The MSW mock
+(`dashboard/src/mocks/iam.ts`) implements the writers with strict decoding,
+exact review, manager and driver refusals.
+
+The Integrations page item its verifier left is closed: after an uncertain
+sync, a Check lifts the hold only when it reports the endpoint reachable and
+the credential accepted; a 200 Check reporting either one failing keeps it
+(`dashboard/src/pages/IntegrationDetailPage.tsx`, docs/architecture/integrations.md).
+
+Evidence under `.context/v020-final-20261110/evidence/DASH-IAM/`:
+
+- `vitest01-integrations.log`: `src/pages/IntegrationsPage.test.tsx`, 22 of 22
+  passed (34.4 s), including the new "keeps the uncertain-sync hold after a
+  Check that reports the endpoint unreachable or the credential refused";
+  `vitest02-integrations-before.log`: that test against the previous page
+  fails (Sync now re-enabled after a `reachable: false` Check).
+- `vitest05-focused.log`: `src/components/access` (with the new
+  `IamWriters.test.tsx`, 21 tests: create, groups edit, disable/enable, reset,
+  delete, stale 409 and unknown 503 never resent, built-in admin, service
+  account create/edit/delete/token shown once and absent from the caches and
+  page after Done, `tokens.write` gate, managed-elsewhere refusal, provider
+  create with a file reference, replace keeping unedited fields, delete,
+  validation, role binding edit/delete, refusals on Kubernetes, follower,
+  static mode and without permission, driver refusal not shown as unknown,
+  answer classification), `AccessPage.test.tsx`, `DashOps.test.tsx`,
+  `lib/follower.test.ts`, `src/api` and `IntegrationsPage.test.tsx`: 202 of 202
+  passed (60.0 s).
+- `vitest03-full.log`: `bun run typecheck`, `bun run lint` (zero warnings,
+  theme check) and the full vitest suite: 1091 of 1095 passed. The four
+  failures are not from this package: three in `src/lib/integrations.test.ts`
+  compare the mock and `publishes()` with the Go sources and already fail at
+  the base 229b5466 (the merged UniFi push work made `integrationPublishes`
+  include `UniFi.Push.MirrorRecords.Enabled` and changed the UniFi schema;
+  this package touches neither); `Shell.test.tsx` "starts expanded and keeps
+  the icon rail after navigating" timed out under load and passed alone
+  (`vitest04-retry.log`, which also shows the three integrations failures
+  again).
+- `build01.log` (`bun run build`, initial load 493.0 KiB of the 600 KiB
+  budget), `gobuild01.log` (`go build -tags licensetest` of the e2e binary,
+  empty: success); `dashboard/dist/index.html` restored, not staged.
+- `e2e03.log`: `e2e/access-iam.spec.ts` against the real binary, 2 of 2 passed
+  (25.2 s): on its own SQLite node, create `e2e-alice` in the dashboard, sign
+  in as it in a second browser and change the first password, disable it (its
+  `/auth/me` answers 401, sign-in answers 401), delete it (sign-in 401); create
+  `apps/e2e-robot`, issue a token in the dashboard, use it once
+  (`GET /auth/me` with the bearer outside the browser: 200,
+  `ServiceAccount serviceaccount:apps:e2e-robot`), close the dialog and find
+  the secret gone from the page. Retained failures: `e2e01.log` (the forced
+  password dialog is an `alertdialog`; the principal name of a service
+  account is `serviceaccount:<ns>:<name>`), `e2e02.log` (the Banner title is
+  rendered twice in the browser; the spec takes the first). Spec fixes only.
+- `e2e04.log`: `access-iam`, `access-sessions`, `access-factors`, `pages`,
+  `login` and `integrations` specs together: 86 of 86 passed (3.5 min).
+
+Review fixes (commits d07a0d65 and 90762166):
+
+- `fix-vitest01-before.log`: the three new `IamWriters.test.tsx` role binding
+  cases against the previous dialog: 3 failed, 1 passed ("keeps the stored
+  labels and operator annotations on an edit, never the manager", "does not
+  edit a binding whose scope kind the form does not know", "locks an edit
+  after a refusal and after an unknown outcome, each sent once").
+- `fix-vitest02-after.log`: `src/components/access`, `DashOps.test.tsx`,
+  `AccessPage.test.tsx`: 115 of 115 passed (45.1 s), including the existing
+  create tests (unknown 503 locks; missing-runtime 503 is an ordinary error).
+- `fix-vitest03-focused.log`: those plus `lib/follower.test.ts`,
+  `IntegrationsPage.test.tsx` and `src/api`: 13 files, 205 of 205 passed
+  (123.5 s).
+- `fix-lint01.log`: `bun run typecheck` and `bun run lint` (zero warnings,
+  theme check), exit 0.
+- `fix-build01.log`, `fix-gobuild01.log`: dashboard build and the
+  `licensetest` e2e binary; `dashboard/dist/index.html` not staged.
+- `fix-e2e02.log`: `e2e/access-iam.spec.ts` against the rebuilt binary, 3 of 3
+  passed (42.5 s). The new "edits and deletes an API-owned role binding and
+  keeps its metadata" (9.8 s) creates `default/e2e-rb` (zone group `prod`) and
+  `default/e2e-rb-clients` (`clientgroup` scope) through the API, each with a
+  label and an operator annotation; Edit of the clientgroup binding is
+  disabled; editing the other in the dashboard sends one PUT (200), and
+  `GET /iam/rolebindings/default/e2e-rb` then shows the new subject, the same
+  scope, the label, the operator annotation and `managed-by: api`; both are
+  deleted in the dashboard with one DELETE (204) each. Retained failure:
+  `fix-e2e01.log` (edit and metadata checks passed; the spec's "row gone"
+  check matched `default/e2e-rb` inside `default/e2e-rb-clients`; spec fix
+  only, it now waits for the row's Delete button to disappear).
+
+What remains open. The Integrations mock and `publishes()` lag the merged
+UniFi push rule (three failing `integrations.test.ts` cases at base; a UniFi
+instance with `push.mirrorRecords.enabled` publishes, so the page should
+require a preview for it): an Integrations-page follow-up, not done here. The
+dashboard shows no list of a service account's tokens and cannot revoke one
+(`GET /auth/tokens?all=true` and `DELETE /auth/tokens/{id}` exist; the CLI
+does it). A role binding with more than one subject is edited with the CLI
+only (the form edits one subject). Provider claim mappings, claim rules,
+provisioning, allowed domains and audiences are kept on replace but not
+editable in the form, and Kubernetes `secretRef` is not offered (no writer
+there). Local accounts of the configuration file cannot be told apart from
+API accounts in `GET /iam/users` (no manager field), so their actions are
+enabled and the server's `409 managed_by` is shown as a refusal. The
+revocation-record limit is explained, not prevented: the UI does not know how
+close the cluster is to it. A created-then-closed token dialog does not ask
+"Close the token?" before dropping the secret. The Playwright spec does not
+cover identity providers, the refusal states or a follower; those are proven
+against the mock only. Role binding create through the form is covered by
+vitest only (the e2e creates its bindings through the API to give them a
+label, an operator annotation and the clientgroup scope).
+
+**Verification state at 7663c957.** Merged and pushed at `531bffd0`. The verifier resolved all five findings (vitest 24 and 21, typecheck and lint clean, Playwright `e2e/access-iam.spec.ts` 3 of 3). New, low, open: `docs/guide/dashboard/identity.md` slightly overstates which rows show disabled actions (an IdentityProvider owned by another manager keeps its row enabled; a role binding not from an object shows no actions); the role-binding create dialog's unknown-outcome banner mentions the revocation-record limit, which may not apply to role bindings.
+
+
+### INT-6 ClientGroup-scoped record views (split horizon) — November 10, 2026 (D403)
+
+An endpoint whose `kudurru.view` names a ClientGroup used to be withheld
+from every client (`zone.Served`), so only the publish-only `public` half of
+split horizon worked. It is now served to that group, on both drivers. The
+ClientGroup is looked up in the record set's namespace, as Policy
+`clientGroupRefs` are, and the resulting ID (`namespace/name`) is compared
+with the `Client.GroupIDs` the identify stage already captured. A zone with
+views is built as its default zone plus one complete variant per group (at
+most 16). In a variant a view RRset replaces the default RRset of the same
+name and type, a view CNAME replaces everything at its name, and any view
+RRset replaces a default CNAME. Views never remove a default name, but a
+view name and its empty non-terminals exist in the variant, so a default
+wildcard does not synthesize answers at those names for the group (standard
+wildcard semantics). Clients outside the group get the default zone,
+including NXDOMAIN or NODATA with the default SOA for view-only names and
+their empty non-terminals. A view replaces only default data its own
+namespace claimed: a view RRset that would replace another namespace's
+default RRset (same name and type, or a CNAME on either side) is refused as
+`Duplicated`, as the same default endpoint would be. View identities are
+keyed by the ClientGroup ID, so views of one name in two namespaces do not
+conflict. The
+authoritative stage selects the variant after the zone match, the query ACL,
+the availability gate and the transfer branch (`Zone.ForGroups`). The
+selection reads no store, does not allocate, and returns the zone itself when
+the zone has no views. CNAME chains entering the zone from another zone use
+the client's variant there too. A client in several groups with views of one
+zone gets the view of the group whose ID sorts first.
+
+How views interact with the rest of the system (all recorded in D403):
+
+- DNSSEC: views are not served in a signed zone (`spec.dnssec.enabled`, or
+  RRSIG/NSEC/NSEC3/DNSKEY in the default data, including imported
+  signatures). The view endpoints are reported `Invalid` and the group gets
+  the default data. Views cannot hold NS, DNAME, SOA or DNSSEC records or an
+  apex CNAME. View data at or below a delegation, or below a DNAME, is
+  refused as `Occluded`. On SQLite the compiler also checks the dynamic
+  (RFC 2136) records of the committed head: a view endpoint below a
+  delegation an UPDATE added is `Occluded`, and any DNSSEC record an UPDATE
+  added makes the zone's view endpoints `Invalid`. Before this fix such a
+  view was committed and reported served, and the committed build then
+  refused the whole zone on every pass (review finding 1).
+- Budget: at most 16 views per zone, shared in build order by every record
+  set that feeds the zone, whatever its namespace (a known limit). Each view
+  is a full copy of the zone's names and index, rebuilt with the zone.
+- Reporting: on Kubernetes a refused view endpoint is reported on its record
+  set like any other dropped endpoint. On SQLite the record set projection
+  carries one outcome, so a refusal is visible only when nothing else in
+  the record set is served (the existing rule for every dropped endpoint).
+- Transfers and exports: AXFR, IXFR, the IXFR journal, NOTIFY serials and the
+  BIND export read the default data only (`Zone.RRsets`; on SQLite the
+  committed aggregate's `records`). A secondary never receives group data,
+  and there is no per-TSIG-key view transfer.
+- RFC 2136 UPDATE: prerequisites are evaluated against the default data and
+  added records are default records, on both drivers (Kubernetes builds
+  `dynamicupdate.State` from `built.RRsets`; SQLite from
+  `Aggregate.Records`). On SQLite a static view endpoint still reserves its
+  name and type against UPDATE, as disabled and publish-only endpoints
+  already did. On Kubernetes view records are not reserved, as before.
+- Content hash and serial: the hash covers the views (zones without views
+  keep their hash), so a view change advances the serial. On SQLite the
+  committed aggregate holds views in a separate `views` list (validated,
+  sorted, charged against the record and wire limits, and folded into the
+  head content hash only when present). `ReplaceSource` drops a removed
+  source's view records.
+- Answer cache: view answers are authoritative and final and never reach the
+  cache stage. The e2e test shows that a lan-only name in an overlay zone is
+  answered locally for lan while other clients keep getting the cached
+  upstream answer.
+- Edge (dnsdist) packet caches: they key on the question, never on the
+  client's group. Any group view, whether in a desired record set or still
+  served by a committed model in the same publication, makes the edge-cache
+  state report `zone-client-view`. That turns off both
+  `AuthoritativeAvailable` and `Available`, so the edge bypasses its
+  authoritative and resolver pools (`bypass-zone-client-view`). The view
+  check now runs before any authoritative-only reason, such as
+  `zone-expiry`, can mask it. While a ClientGroup with client matchers
+  exists the policy index is already client dependent and kudurru reports
+  `client-scope` first; the live edge test shows both reasons.
+- Sinks: Cloudflare plan selection skips group-view endpoints (it used to
+  select them, which would have published internal data). UniFi push already
+  skipped every viewed endpoint.
+- Admission: the CRD schema restricts `view` to `public` or a DNS-1123
+  subdomain name (pattern and 253-byte bound), and the builder checks the
+  same rule for objects stored before the schema change.
+
+Evidence under `.context/v020-final-20261110/evidence/INT-GROUP-VIEWS/`:
+
+- `e2e01.log`: `CGO_ENABLED=1 KUDURRU_E2E=1 go test -count=1 -v -run 'TestClientGroupViewsSplitHorizon|TestModifierTargetsAndClientCacheIsolation' ./test/e2e/`:
+  2 passed, 0 skipped. TestClientGroupViewsSplitHorizon took 7.64 s
+  (SQLite binary: two groups over UDP and TCP, view-only NXDOMAIN with SOA,
+  overlay/cache isolation, `public` never served, AXFR from a lan client
+  carries no group data). TestModifierTargetsAndClientCacheIsolation took
+  9.51 s. The package took 93.5 s, including the binary build.
+- `race01-kube-mounted.log`: `go test -race -count=1 -run 'TestRunServeKubeClientGroupViews$' ./cmd/kudurru`:
+  1 passed in 11.27 s (envtest and runServe: two groups over UDP and TCP,
+  view-only NXDOMAIN, `public` never served, the apiserver refuses an
+  invalid view name, a view change reaches the served zone).
+- `race02-packages.log`: `go test -race -count=1` passed for
+  `internal/zone` (10.8 s), `internal/zonestate` (76.3 s),
+  `internal/stages/authoritative` (3.1 s), `internal/primaryzone` (246.5 s),
+  `ee/integration/plan` (1.6 s) and `internal/servingbuild` (395.7 s).
+  `race03-dnsdist.log`: `ee/edge/dnsdist` passed (44.7 s).
+- New tests: `TestClientGroupViewsAnswerPerGroup`,
+  `TestClientGroupViewsStayOutOfTransfersAndExport`,
+  `TestClientGroupViewRefusals`, `TestClientGroupViewInactiveEndpoints`,
+  `TestForGroupsAllocation` (0 allocations with and without views),
+  `TestCommittedPrimaryViews` and `TestClientGroupViewsThroughRecordCache`
+  (`internal/zone`); `TestClientGroupViewsPerClientAnswers` and
+  `TestClientGroupViewsTransferDefaultData` (authoritative stage, UDP and
+  TCP, chains, overlay fallback). With the two `ForGroups` lines disabled the
+  stage test fails 16 assertions. `TestCompilerCommitsClientGroupViews`
+  (SQLite compiler, codec, build, UPDATE state, serial),
+  `TestCodecClientGroupViews` (zonestate), and
+  `TestAuthoritativeCacheRefusesServedClientViews` plus extended
+  `TestAuthoritativeCacheOriginalStaticAndUnavailableSources` (servingbuild:
+  both pools refused). The extended dnsdist mode tests and
+  `TestSelectOriginalPublicAndExpiry` (Cloudflare selection skips group
+  views) also cover the change.
+- Existing tests changed on purpose because they asserted the old withheld
+  behavior. `TestContentHashIsCanonical` now requires a view record to change
+  the hash. `TestLookupDoesNotMutateZone` recomputes the hash including views.
+  `TestBINDRoundTrip` compares the export with the default-data hash, because
+  the export carries no views.
+- Performance (`bench01-baseline.log` at 841c5e99, `bench02-after.log` at
+  37e162f1): BenchmarkServe B/op and allocs/op are unchanged:
+  authoritative 464 B/5, cname-chain 480 B/5, nxdomain 448 B/4, not-local
+  256 B/1. BenchmarkLookup100k is unchanged: hit 16 B/1, cname 32 B/1,
+  wildcard 96 B/3, nodata 0/0, nxdomain 0/0. Wall time is within the noise
+  of the shared machine (authoritative 2.9 to 5.9 µs before and 3.7 to
+  5.5 µs after). TestLookupCNAMEAnswerAllocation, TestTracedChainAllocations
+  and TestRequestKeepsItsSizeClass pass before and after. BenchmarkBuild100k
+  at the base (`bench05-build-base.log`): 271.36 MB/op, 6,244,421 to
+  6,244,426 allocs/op, 318.5 B/record. The first version, with the view in
+  the shared identity key (`bench04-build-after.log`), measured
+  275.56 MB/op. Commit 85c45854 moved view identities to their own map, and
+  `bench06-build-after.log` measured 271.36 MB/op, 6,244,423 allocs/op and
+  318.5 B/record, back at the base. No pinned benchmark file was edited, and
+  `bench-guards01.log` shows the 14 bench guard tests passing.
+- Retained failed runs: `bench03-build-base.log` did not compile, because
+  `internal/zonestate` at HEAD referenced `zone.MaxViews` while
+  `internal/zone` was checked out at the base. It was rerun as bench05.
+  `lint01.log` reported one gofmt issue in `internal/zonestate/views_test.go`,
+  fixed before commit aab4d80e. `unit01-neighbors.log` shows
+  `internal/primaryruntime` failing only because `KUBEBUILDER_ASSETS` was
+  unset; `unit02-primaryruntime.log` passed with it set.
+- `drift01.log`: `internal/store/validator` and `hack/docsgen`
+  (TestReferenceDrift) pass after the generated commit 9ee8dde8.
+  `lint02.log`: golangci-lint v2.15.0 reports 0 issues over every touched
+  package, including `./cmd/kudurru/...` and `./api/v1alpha1/...`.
+  `race04-cmd-neighbors.log`: `go test -race -count=1 -run
+  'TestRunServeSQLiteCompletePrimaryUpdateRestart|TestRunServeKubeDynamicUpdateAtomicityAndOwnership|TestRunServeKubeClientGroupViews|TestForwardedShapes|TestCLIReferenceDrift'
+  ./cmd/kudurru` passed (ok, 41.6 s; run without -v, so there are no
+  per-test durations).
+
+Review fixes (commits a14a18fd, 8154ec2e, 55f56160; evidence `fix*.log`):
+
+- Dynamic data wedge: `TestCompilerRefusesViewsHiddenByDynamicData`
+  (`internal/primaryzone`, four cases: dynamic delegation above and at the
+  view name, dynamic DNSKEY, unrelated dynamic A). `fix00-compiler-dynamic-before.log`
+  is the retained failing run without the compiler change (3 of 4 cases
+  fail: the view record set is `served`); `fix01-compiler-dynamic.log`
+  passes. The committed build of the zone now succeeds and the unrelated
+  record set commits.
+- Ownership: `TestClientGroupViewsCannotOverrideAnotherNamespace` and
+  `TestClientGroupViewsSameNameInTwoNamespaces` (`internal/zone`).
+  `fix03-zone-ownership-before.log` is the retained failing run at the
+  previous code (no Duplicated for three cross-namespace overrides; the
+  same view name in two namespaces refused); `fix04-zone-ownership-after.log`
+  passes the whole package.
+- Recorded limits pinned by tests that pass before and after:
+  `TestClientGroupViewNamesSuppressDefaultWildcard` and
+  `TestClientGroupViewBudgetIsPerZone`.
+- Export and IXFR: `TestClientGroupViewsSplitHorizon` now logs in to the
+  mounted API, reads `GET /api/v1/zones/split/export` before and after a
+  view-only change, and sends IXFR from the old serial. The serial
+  advances; the IXFR answer is the unchanged default data with the new
+  serial in AXFR form (the stage keeps no IXFR journal for this zone, as
+  documented in `transfer.go`), with no group data. Retained failed runs:
+  `fix05-e2e-export-ixfr.log` and `fix05b` (the wait treated the
+  fail-closed no-answer window during the commit as fatal),
+  `fix05c` (IXFR query with an empty SOA in authority: FORMERR),
+  `fix05d` (the assertion expected an SOA-only delta). `fix05e` and
+  `fix18-e2e-final.log`: `-count=2` of TestClientGroupViewsSplitHorizon
+  and TestModifierTargetsAndClientCacheIsolation, 4/4 passed (43.6 s
+  package).
+- Live edge: `TestRunServeRemoteEdgeClientGroupViews` (`cmd/kudurru`, F39
+  live suite, pinned `powerdns/dnsdist-21:2.1.3@sha256:c70ae736...`, image
+  already present): the real root behind the real supervisor and dnsdist.
+  After an authoritative cache hit on the default answer, ClientGroups lan
+  (127.0.0.2) and kids (127.0.0.3) and an outside client (127.0.0.4) each
+  get their own answer for `probe.private.example` and `nas` three times
+  in alternating order, with no cache hit, both caches detached and the
+  same daemon PID (mode `bypass-client-scope`). After the ClientGroups are
+  deleted the zone still serves views and both caches stay detached as
+  `bypass-zone-client-view`; removing the views requalifies both caches.
+  `fix06-live-edge-views.log` is a retained failure (`root ready` timed out
+  after 25 s while two other heavy runs shared the machine; the existing
+  `TestRunServeRemoteEdgeAuthoritativeCacheACL` passed alone right after,
+  `fix10`). `fix11` and `fix12` are retained failures of the first test
+  version, which expected `bypass-zone-client-view` while ClientGroups
+  existed; `fix12` logged the actual `bypass-client-scope` with the correct
+  per-group answer. `fix13` passed (98.7 s). `fix14-live-f39-suite.log`:
+  `hack/test-dnsdist-live.sh f39` (now including the new test), 3/3
+  passed: RegexAndLateFill 81.6 s, AuthoritativeCacheACL 54.1 s,
+  ClientGroupViews 66.7 s.
+- `fix07-race-packages.log`: `go test -race -count=1` passed for
+  `internal/zone` (10.4 s), `internal/zonestate` (81.2 s),
+  `internal/primaryzone` (181.3 s), `internal/stages/authoritative`
+  (2.5 s), `ee/integration/plan` (1.6 s), `internal/primaryruntime`
+  (116.7 s). `fix09-kube-mounted.log`: `TestRunServeKubeClientGroupViews`
+  passed with -race (21.6 s). `fix19-bench-build.log`: BenchmarkBuild100k
+  271.36 MB/op, 6,244,420 to 6,244,426 allocs/op, 318.5 B/record (equal
+  to the base); TestForGroupsAllocation and
+  TestLookupCNAMEAnswerAllocation pass. `fix08-bench-guards.log`: 14 bench
+  guard tests pass. `fix17-lint.log`: golangci-lint 0 issues over the
+  touched packages (`fix15` and `fix16` are retained gosec findings on the
+  new e2e login, fixed by using the existing login helper).
+  `fix20-drift.log`: `internal/store/validator` and `hack/docsgen` pass; no
+  generated file changed, so there is no new generated commit.
+
+What remains open: views cannot be
+transferred to a secondary, and there is no per-TSIG-key view selection.
+Views are not served in signed zones. A client in several groups gets only
+the first group's view; views are not merged. On Kubernetes, static view
+records do not reserve their names against UPDATE, while on SQLite they do
+(a pre-existing difference, unchanged here). There is no dashboard surface
+for choosing a view, and the API and UI do not show which group sees which
+answer. The 16-view budget is shared first come across namespaces; there
+is no per-namespace budget. On SQLite a refused view endpoint is not
+reported when the rest of its record set is served. The live edge test runs
+Do53 over UDP only. The full `./cmd/kudurru` suite was not run.
+
+**Verification state at 7663c957.** Merged and pushed at `531bffd0`. The verifier resolved all eight findings and accepted the rebuttal on the four test changes (overlay probes found no wedge and no cross-namespace override; the edge views test passed against the pinned dnsdist). Two new minor problems, open: on SQLite with a takeover authorized, a view-only endpoint that collides with dynamic (RFC 2136) data takes it over like a default endpoint, so default clients lose that data (not documented); the new refusals are silent on SQLite when the record set serves anything else (documented in `zones.md`). Under load `TestRunServeKubeClientGroupViews` once failed on an update conflict that the test does not retry (integrator's log).
+
+
+### HA-OPEN5 What verification left open in the three follower packages, and a large apply through a follower — November 13, 2026 (D381, D375)
+
+**Forwarded UPDATE bursts (D381).** A burst of signed UPDATEs sent through an
+enrolled follower, back to back as a DHCP server sends them, is now answered
+`NOERROR` for every update the primary accepts. Before, once a commit was
+being republished, most of the rest of the burst answered SERVFAIL (up to 6 of
+8 in the HA-UPDATE-ROUTING verification; the verifier was right that the
+comment in `test/e2e/enrolled_update_test.go` named the wrong cause, and the
+docs and changelog draft understated it). Diagnostic runs with temporary
+logging (`e2e02`, `e2e03`, `e2e05`, `e2e06`, `e2e08`; reverted before commit)
+found four separate refusals, none of which had decided or committed
+anything: the follower's keyring check after it installed the previous
+update's commit, the primary's writer check on a lease being replaced, the
+primary's zone admission while its lifecycle was being realigned after a
+status write, and `Apply` running out of compare-and-swap attempts against
+those writes (`primaryruntime: admission conflict`, committed=false). Now the
+follower waits, inside the forward's four-second bound, for its own current
+publication (`awaitFollowerPublication`), selects the zone and admits the key
+again there and captures the forward on that source; a command is sent at
+most once. The primary runs the command on its current writer publication
+(`runMemberUpdate`, `Publisher.WaitTerm`) and runs it again after the next
+publication only when `captureUpdate` rejected it for publication state alone
+(`forwardedUpdate.stale`, set before admission) or when `Apply` lost every
+compare-and-swap and committed nothing (`pr.ErrConflict`, observed through the
+new `network.WithOutcome`). Every other answer is final, a committed but
+unpublished one included; the command ID stays the retry identity in the zone's
+receipt ledger. A native UPDATE to the primary is unchanged: right after a
+commit it can still answer SERVFAIL without being applied (the e2e logs it
+for `promoted.dyn.test.` on every run). What a client sees through a follower
+now: NOERROR (or the primary's own refusal) for every update, after a wait of
+up to the four-second bound; a burst of 8 took 1.2 s to 14.1 s on this loaded
+machine (up to about 1.8 s per update on the rejoined former primary). An
+update that is not sent within the bound, or whose exchange is lost, still
+answers SERVFAIL and is never retried. CI-RED-2's
+`TestRootMemberFollowerUpdateAcrossInstallAnswersServfail` pinned the old
+follower SERVFAIL; it now requires the held UPDATE to be sent once on the
+newer publication and answered NOERROR, and is renamed
+`TestRootMemberFollowerUpdateAcrossInstallWaitsForItsPublication`.
+
+**Refused write on neither node (HA-OPEN finding 2).** The check no longer
+tolerates an unanswered query. `enrolledAbsent` requires every query over UDP
+and TCP to be answered (an unanswered one fails at once) and allows an answer
+that differs for at most two seconds; it is used for the refused-fenced write
+and for the prerequisite and ungranted updates. The cause HA-OPEN found (a UDP
+answer resolved from a replaced generation was refused by the guarded
+emission and nothing was sent) is fixed on the release branch by binding an
+ordinary answer to its publication and sending it across a swap (D378, D395,
+commits `10d3ab5b`, `f0d2bca0`, `444ec28c`), which this lane does not carry.
+The strict check passed in all three promote runs of `e2e09` on this lane too.
+
+**Large apply through a follower (D375).** Chaining a follower's items on the
+primary's receipts was examined and does not hold with the present protocol:
+the primary's chain compares an in-process coordinator mark by identity, and
+a follower would need a serializable receipt in every member outcome, a new
+command field checked by the primary before admission, and a rule for
+accepting a newer installed image and lease (its admission and every
+forward's pins are bound to the request's publication) in the middle of a
+request. That is recorded in the D375 row as rejected for v0.2. Making a
+repeat finish the file was rejected too: it needs either an `unchanged`
+answer decided from the follower's own data (wrong for a key repeated in the
+file) or no deduplication record for an `unchanged` result (removes the
+replay guard). Instead the refusal says exactly what to do: an item of a
+multi-item request that a follower cut (marked by the new
+`api.InObjectItems`) answers `unavailable` "the follower's source changed
+while this request ran (...); this item was not sent and was not applied,
+and neither was any later one; send the items that were not applied, or the
+whole file, to the enrolled primary <name>, which applies them in one
+request; running it again through this follower stops in the same way". A
+forwarded write whose answer arrived but could not be relayed because the
+follower's own source or membership changed during the exchange now answers
+`completion_unknown` ("the write may have been applied") instead of
+`unavailable` "cluster authority changed", which said that nothing was made;
+in a multi-item request it adds that the later items were not applied and
+names the primary. The cluster guide also no longer says that a follower does
+not pass RFC 2136 updates on.
+
+**Self-service low items (HA-SELF verification).** A token caller's forwarded
+password change is answered for the original principal with
+`mustChangePassword` cleared in every case, as the primary's route answers,
+instead of from the token's own authentication with any failure treated as
+`revokeTokens`. A cookie caller's `committed_output_unavailable` now names
+the cause (bound ran out, cookie settings changed, other seal refusal). The
+reviewer's "response-write error after the cookie was set" cannot occur:
+`servingHTTPJSON` reports no write error, and every seal refusal comes before
+the cookie and the answer are written. The mounted follower test
+`TestRootMemberForwardPasswordAndTokensActualHTTP` now checks the primary's
+audit rows: two attributed LocalUser rows of one member command for the
+password change, one APIToken row each for creation and revocation, none for
+the refused change or the refused revocation.
+
+Evidence under `.context/v020-final-20261110/evidence/HA-OPEN5/`:
+
+- `race07-update-fixed-x3.log`: `TestRootMemberUpdate*` under `-race
+  -count=3`, 8 of 9 passed; the failure is the pre-existing
+  `TestRootMemberUpdateKeyIdentityAndRetryActualHTTP` "a repeated command ID
+  committed a second time 2 3".
+- `race08-update-base-overlay-x4.log`: the same tests with the previous
+  `primary_runtime.go` and `serving_member_update.go` (overlay):
+  `TestRootMemberUpdateBurstActualHTTP` fails 4 of 4 (SERVFAIL in the burst),
+  and the key-identity test fails 1 of 4 with the same "2 3", so that flake
+  predates this package (an unrelated head commit of the zone lands between
+  the test's two reads; the dedup itself is not at fault, as the retained
+  NOERROR shows).
+- `race01` to `race06`: development runs of the burst test, retained;
+  `race02`-`race06` contain temporary diagnostics, and the concurrent variant
+  in `race06` was dropped (concurrent member commands hit the harness's
+  six-second client timeout and the member listener's admission, outside this
+  package).
+- `race09-self.log`, `race10`/`race11`, `race12`/`race13`: self-service tests.
+  `TestRootMemberForwardTokenCallerPasswordActualHTTP` failed 2 of 9 runs of
+  the changed code while two heavy runs shared the machine (the fallback
+  `CaptureHTTP` after the five-second wait was refused) and passed 5 of 5
+  alone (`race13`); the previous code passed 8 of 8 (`race11`, `race12`). The
+  changed lines do not touch that fallback. Review fix `84f54bf9` makes the
+  fallback wait for a publication being prepared (see below).
+- `race14-follower-wait.log`, `race15-apply-refusal.log`: the stale-follower
+  test, the item-refusal unit tests and `TestRootMemberForwardApply*`,
+  `TestServingItems*`; race15 passed 14 of 14.
+- `race16-root-selection.log`: `-race` selection `TestRootMember|
+  TestMemberForward|TestMemberLogout|TestPrimaryRuntime|
+  TestPrimaryUpdateIngress|TestRootUpdateOutput|
+  TestRunServeSQLiteStoredTSIGNativeUpdateTransferNotify|TestServingItems|
+  TestObjectForwardError|TestMemberItemRefusal|TestCLILogin` on the final
+  code: 68 passed, 0 skipped, 605 s.
+- `e2e09-final-x3.log`: `KUDURRU_E2E=1 go test -count=3 -run
+  TestEnrolledClusterProcesses ./test/e2e` on the final code: 6 of 6 passed,
+  0 skipped, 1268.6 s; every burst all NOERROR (8 of 8 each, 1.2 s to 14.1 s).
+  `e2e01`, `e2e04` (failed bursts before the follower wait and the stale
+  admission), `e2e07` (build error) and the diagnostic runs are retained.
+- `e2e10-conflict.log`: `TestEnrolledProcessConflictResolution` on the final code: passed, 0 skipped, 121.4 s.
+- `light01-api-network-race.log`: `internal/api` passed;
+  `internal/primaryruntime/network` failed once in
+  `TestActualNotifyAncestorExpiryInvalidatesBoundChildWithoutNewGeneration`
+  under load, and passed 4 of 4 with and without the change (`light02`,
+  `light03`).
+- `lint02.log`: scoped golangci-lint v2.15.0 over `./cmd/kudurru/...`,
+  `./internal/primaryruntime/network/...`, `./internal/api/...`,
+  `./test/e2e/...` on the final code: 0 issues (`lint01` did not run: another
+  lane's lint held its lock). `gofmt -l` is empty, `go vet` clean on the
+  touched packages, and the bench guards pass (14 tests).
+
+
+**Review fixes (accept-with-fixes review of November 13).** Six source
+commits on top of `9d2c42f4`, no generated artifacts:
+
+- `4a98737f` The stale-follower test
+  (`TestRootMemberFollowerUpdateAcrossInstallWaitsForItsPublication`) failed
+  4 of 7 race runs in review. Its held request's DNS deadline (five seconds
+  from receipt, `dnsserver.DefaultQueryTimeout`), the client's five seconds
+  and the follower's four-second forward bound all also covered the fixture's
+  own hold (a commit on the primary and a pull). The mounted follower fixture
+  now allows 30 seconds for pipeline and client, and the follower's forward
+  bound is replaceable in tests (`servingRuntime.memberForwardUpdateBound`,
+  zero keeps four seconds; 25 seconds here). The assertions are unchanged
+  (NOERROR, signed, served once, YXDOMAIN on a repeat). The four-second bound
+  itself is exercised only by the process test (`e2e09`, `review-e2e01`).
+- `472a9f79` `TestRootMemberUpdateKeyIdentityAndRetryActualHTTP` compared
+  the zone head's `CommitSequence`, which also advances on a head commit that
+  changes no data (the root digest also binds expiry, configuration and
+  receipts; a NOTIFY rearm is another). It now selects the head of the
+  current DNSZone by UID and compares content hash and serial, which only a
+  data commit changes (`zonestate.Prepare`). Which head commit moved the
+  sequence in the retained failures was not identified.
+- `56f06b45` `memberItemRefusal` recognized a cut by `strings.HasPrefix` on
+  the message; it now compares memberCaptureError's exact answer through the
+  shared constant `memberSourceChanged`. `TestMemberItemRefusalNamesThePrimary`
+  adds a refusal that only starts the same way and must stay unchanged (the
+  old prefix match rewrote it), and `TestMemberSessionUnservedNamesTheCause`
+  covers the three causes of a cookie caller's `committed_output_unavailable`.
+- `84f54bf9` A token caller's committed password change, after the
+  five-second wait, captured once; while the follower was still preparing a
+  publication (`ErrPending`) it answered 503 `committed_output_unavailable`
+  (the review's flake of `TestRootMemberForwardTokenCallerPasswordActualHTTP`,
+  `took_ms` about 6000). The fallback now waits for the publication being
+  prepared, within another five seconds and the route's deadline; the
+  architecture page says so.
+- `c8c9e3b1` `captureUpdate` marked every non-active phase as stale; a
+  retiring or retired zone is now refused at once, since a lifecycle never
+  returns from retirement. The zones page now lists every stale cause and the
+  rerun after a lost compare-and-swap (it said that nothing that reached
+  `Apply` runs again, which was wrong for `pr.ErrConflict`).
+- `7ac4f5a2` lets `TestRootMemberUpdateBurstActualHTTP` raise the member
+  harness client's six-second timeout to 25 seconds, above the commands' own
+  20-second bound: in `fix-race02` one burst command was reported as
+  unanswered ("Client.Timeout exceeded while awaiting headers") while it was
+  still inside its bound.
+
+Review evidence under `.context/v020-final-20261110/evidence/HA-OPEN5/`:
+
+- `fix-race01-follower-wait-x10.log`: the stale-follower test under `-race
+  -count=10`, load average 13.7 to 15.4: 10 of 10 passed, 19.5 s to 24.0 s
+  each.
+- `fix-race02-touched-x3.log`: `TestRootMemberUpdate*`,
+  `TestRootMemberForwardTokenCallerPasswordActualHTTP`,
+  `TestRootMemberForwardCookiePassword*`, `TestRootMemberForwardApply*`,
+  `TestRootMemberForwardPasswordAndTokensActualHTTP` and the three unit tests
+  under `-race -count=3`: 41 passed, 1 failed (the burst harness timeout
+  above, retained). The token-caller test passed 3 of 3 and the key-identity
+  test 3 of 3.
+- `fix-race03-burst-dedup-token-x5.log`: on the final code,
+  `TestRootMemberUpdateBurstActualHTTP`,
+  `TestRootMemberUpdateKeyIdentityAndRetryActualHTTP` and
+  `TestRootMemberForwardTokenCallerPasswordActualHTTP` under `-race -count=5`,
+  load average 14.7 to 16.3: 15 of 15 passed, 0 skipped (burst 21.5 s to
+  48.3 s, key identity 5.1 s to 12.9 s, token caller 17.5 s to 21.7 s).
+- `fix-lint01.log`: scoped golangci-lint v2.15.0 over `./cmd/kudurru/...`: 0
+  issues (before `7ac4f5a2`, which changes two test files only). `gofmt -l` empty, `go vet` clean, bench
+  guards 14 of 14.
+
+Not done in review, for the integrator:
+
+- Direction (1): the strict refused-write check (`enrolledAbsent`) still
+  relies on D378/D395 (`10d3ab5b`, `f0d2bca0`, `444ec28c`), which this lane
+  does not carry. After the cherry-pick, run `KUDURRU_E2E=1 go test -count=5
+  -run 'TestEnrolledClusterProcessesPromoteAndRejoin' ./test/e2e` on the
+  release branch and keep the log; an unanswered query there means the cause
+  is not closed.
+- Direction (4) and D375 against D381: the D381 follower re-capture is for
+  one UPDATE that has sent and decided nothing yet, and it is sent at most
+  once. A per-item re-capture in `POST /apply` would continue a request whose
+  earlier items committed, and admit later items against a newer view and
+  newer dependency pins than the earlier ones within one request
+  (`CheckReadLease`). Whether the primary's recheck of the retained raw
+  credential makes that equivalent was not examined, and no variant was
+  built or measured. Accept D375 as written for v0.2 and track chaining (or a
+  per-item re-capture) as a follow-up, or ask for that evaluation.
+- Direction (3a) still has no differential test: no test fails with the old
+  `Authenticate` fallback (a token that stops authenticating for a reason
+  other than `revokeTokens` during the wait was not built).
+- No mounted test changes the follower's source between the primary's answer
+  and the relay (`completion_unknown`); it is proven by
+  `TestObjectForwardErrorAfterTheAnswerIsUnknown` on the mapping alone.
+- A forwarded UPDATE for a zone that stays unadmitted for any cause other
+  than retirement (admission deadline passed, a desired-only placeholder,
+  routing unavailable) still waits for publications until the command's
+  bound, so the follower answers SERVFAIL after up to four seconds instead of
+  at once, with nothing applied. No mounted test ends the retry loop at its
+  bound: the fixture has no way to hold a zone unadmitted.
+
+Open: FWD-E2E stays open in the tracker. Its static-twin re-run, one
+`primary_required` representative per primary-only group, the node-local
+route assertions and the `/cluster` role check on the follower in the process
+test, the Semgrep scan, the full `internal/api` and `internal/auth`
+default-race runs and the frozen-source hash evidence directory were not done
+in this package. The follower's apply cut remains: a
+file of many documents through a follower stops at the follower's next pull,
+and a repeat through the follower does not finish it; chaining is a member
+protocol change for a later release. The native UPDATE SERVFAIL right after a
+commit on the primary is unchanged (D378/D395 lane). The strict absence check
+relies on D395 on the release branch; it was not run on a binary built from
+that branch. The full `./cmd/kudurru` package was not run.
+
+**Verification state at 7663c957.** Not merged on its own: it sat on the held CI-RED-2 commits. HA-OPEN6 re-applied all ten of its commits (two with conflicts, resolved as its section describes), so its changes are at this head. Its verifier resolved findings 1, 4 and 7 (the eight affected tests passed under race six times each) and left **five unresolved**: (major) the strict `enrolledAbsent` check had never run on code with its fix; (major) a large apply through a follower is still cut at the follower's next pull, which needs the D375 decision (the integrator decided D375 stands, marked for the owner's confirmation); the lasting non-retirement causes are still waited out to the bound, untested; `completion_unknown` after the primary answered has no mounted test; FWD-E2E's wider acceptance is not implemented. New: no `./cmd/kudurru` test exercises the production four-second bound under race; the dedup test no longer asserts exactly one commit; the retiring-zone branch of `captureUpdate` has no test.
+
+
+### HA-OPEN6 The follower lane's held fixes on the pull request head, and what their verification left open — November 13, 2026 (D381)
+
+**Held commits.** The lane was reset to the integrated head `223269c8`. Of the
+commits held on `wip/v020/ha-held`:
+
+- CI-RED-2 `4b78eec5` (SERVFAIL instead of REFUSED when an UPDATE's keyring
+  stops being current): kept, cherry-picked cleanly (`43dcd029`). Its new test
+  is renamed and rewritten by HA-OPEN5's `ad85c999`.
+- CI-RED-2 `1621b669` (anchor updater captures again after a lost capture):
+  changed. The F28 lane landed the same rule at head (`anchorUpdater.step`
+  marks a capture refused with `replication.ErrCAS` as raced and schedules the
+  next step a second later), so the product hunk is dropped and one mechanism
+  remains. Head had no test reaching that capture branch; its test and the
+  test-only hook `servingRuntime.anchorCaptureRead` are kept, adapted to
+  head's `raced` field (`5d28289e`).
+- CI-RED-2 `5edb45b2` (log in before the zone exists): dropped. It worked
+  around the sign-in 503 across a status write, which D399 removes, and it
+  conflicts with the current `serve_anchor_activation_test.go`.
+- CI-RED-2 `93a9a09b` (pin the login refusal on a seeded store): dropped. It
+  pins the 503 that D399 removes; the inverted assertion is already covered by
+  `TestRunServeCommandsNotRefusedAsSupersededUnderSteadyUpdates` (`c19f1610`),
+  and its seeded-start part flaked in verification on `generation_pending`
+  inside the startup readiness gap, which is PUBLISH-STARVATION's (D405).
+- HA-OPEN5, all ten: kept (lane SHAs `c0e00366`, `978c38f1`, `359e4f26`,
+  `f6b471b6`, `fbee6fc6`, `caf2dba7`, `649d6f25`, `1724fa5c`, `e3f5b683`,
+  `cb9ae60f`, in the held order). `ad85c999`, `98439589`, `9d2c42f4`, `472a9f79`,
+  `56f06b45`, `84f54bf9`, `c8c9e3b1`, `7ac4f5a2` applied cleanly; `29c32ca3`
+  conflicted in `docs/deploy/sqlite-cluster.md` (head had added the
+  `primary_required` row; kept head's three rows with HA-OPEN5's wording of the
+  `completion_unknown` row); `4a98737f` conflicted in
+  `cmd/kudurru/primary_runtime_test.go` (head had removed
+  `expectWriterLoss`; kept head's fields plus HA-OPEN5's `timeout`).
+
+**A signed UPDATE through a follower (D381).** A burst through a follower
+could still get an immediate SERVFAIL that a second identical send would not
+get. The new mounted test `TestRootMemberFollowerUpdateBurstWithinTheProductionBound`
+(six UPDATEs through the follower's real DNS listener under the production
+four-second `memberForwardUpdateTimeout`, while the follower pulls) failed 7
+of 7 race runs (`diag02`, `diag03`) with SERVFAIL after 90 to 290 ms on the
+third or fourth update. Temporary diagnostics showed the cause: the forward
+capture only retains the follower's token, `WithMemberForward` checks it again
+when it acquires the store for the exchange, and a pull that installed the
+primary's next commit between the two made `Forward` fail with "replication:
+authority changed" before anything was sent; `forwardUpdate` answered that at
+once. `EnrolledForwarder.Forward` now joins `clusterreplica.ErrNotSent` to any
+error returned before the member client's exchange begins, and
+`forwardUpdate` treats such a source change like one found at capture: it
+waits for its current publication, selects the zone and admits the key again
+there, and sends the same command ID once. A refusal after the exchange may
+have begun is never followed by a second send. The CMD-RECAPTURE decline in
+`docs/architecture/access.md` is kept for a native UPDATE (a second capture
+would admit the same wire message on a second keyring) and the page now says
+why a forwarded one differs: the follower re-admits only the same key
+identity, and the primary decides everything again. The process tests' follower
+UPDATEs (inserts over UDP and TCP, the failed prerequisite, the ungranted type,
+the marker) are now sent once through the first follower and must get their
+answer at once; through the rejoined member a SERVFAIL at the four-second
+bound is accepted and the update sent again (review fixes below); the native
+UPDATE to the newly promoted primary keeps its retry, because a native UPDATE
+still meets SERVFAIL right after a commit (every run logs it for
+`promoted.dyn.test.`). What is left through a follower is the documented
+SERVFAIL at the four-second bound itself, outcome unknown: pulling every 20 ms
+in the fixture (`diag04`) kept the follower's publisher from publishing for
+the whole bound and kept a committed update on the primary waiting for its
+publication, the publication-starvation limit that PUBLISH-STARVATION (D405)
+works on; the test now pulls once a second and accepts at most one SERVFAIL,
+only at the bound (review fixes below).
+
+**Unauthorized pull after a commit (verify note).** The member pull refused as
+"replica: unauthorized peer" right after an ordinary commit was investigated
+with temporary logging (`diag01`, `diag02`): `MemberServer.image` read the
+image under one authority, the zone status write that follows a create
+replaced it before the emission, and `MemberRequest.WithOutput` refused with
+"replication: authority changed". The refusal is written without
+authenticated metadata, so the client reported an unauthenticated response as
+"unauthorized peer" and the coordinator counted a rejected pull until the next
+interval. An image is a read and nothing is written at that point, so the
+member server now captures the member request again and reads the current
+image, at most three times within the request's deadline, each attempt
+admitted and checked in full. `memberUpdatePull` no longer retries that
+refusal, and `TestRootMemberPullRightAfterACommitIsServed` makes five
+single-attempt pulls right after commits (it hit the refusal on 3 of 4 runs of
+the old fixture). Diagnostic logging was reverted before every commit.
+
+**The other verify notes.**
+
+- `TestWriteWhoseDialRunsIntoTheDeadlineStaysUnknown` (hosted CI: "dial tcp
+  ...: i/o timeout" reported as not sent): the member client's dialer timeout
+  and HTTP client timeout are the same exchange timeout, and whichever fired
+  first decided the answer. `notDispatched` now excludes a dial whose error is
+  a timeout, so both give the documented unknown outcome;
+  `TestDialTimeoutIsNotANotSentDial` pins the classification without
+  depending on timer order, and the mounted test also ends the dial through a
+  shorter caller deadline.
+- "root anchor updater stopped for this writer term: sql: transaction has
+  already been committed or rolled back": both occurrences were at the
+  teardown of a failed test. `database/sql` reports `sql.ErrTxDone` for a
+  transaction its context rollback ended; `anchorWriterCanceled` treats that
+  as the cancellation once the writer context has ended, and
+  `TestAnchorWriterCanceledOnlyAfterTheContextEnded` pins every case.
+- The retiring branch of `captureUpdate`: `TestRootMemberUpdateForRetiringZoneIsAnsweredAtOnce`
+  deletes the zone on the mounted primary, waits for its publication to show
+  the zone retiring or retired, and requires a forwarded UPDATE with a
+  20-second bound to answer SERVFAIL or NOTAUTH well inside it (52 to 137 ms).
+- `completion_unknown` after the primary answered:
+  `TestRootMemberForwardAnswerNotRelayedIsUnknown` holds a forwarded client
+  group write on the real follower, after the primary committed and answered,
+  through the test-only hook `servingRuntime.memberRelay`, until the
+  request's 30-second lifetime ends; the answer is 503 `completion_unknown`,
+  relayed once, and the object is on the primary. This reaches
+  `objectForwardError`'s default (deadline) branch only; the new "source
+  changed after the primary answered" branch is pinned by the unit test
+  `TestObjectForwardErrorAfterTheAnswerIsUnknown` alone (review fixes below). A version that installed a
+  newer commit inside the hook deadlocked (`race02`, retained): the follower
+  holds its Store lock from the forward's acquisition through the relay, so
+  an install cannot land there.
+- The production four-second bound under race: the burst test above runs
+  under it.
+- `TestRootMemberFollowerUpdateAcrossInstallAnswersServfail` (now
+  `...WaitsForItsPublication`) and `TestRootMemberUpdateKeyIdentityAndRetryActualHTTP`:
+  HA-OPEN5's `4a98737f` and `472a9f79`, carried here, removed their timing and
+  `CommitSequence` dependence; the stale-test fixture's last retry is gone.
+
+**Strict refused-write check.** HA-OPEN5's strict `enrolledAbsent` (every
+query answered over UDP and TCP) now runs on a head that contains D378/D395
+(`10d3ab5b` and its follow-ups): it passed in every process run below.
+
+**Large apply through a follower (D375).** Measured on this head over the
+six process runs (18 measurements): a file of 40 documents through a follower
+was applied completely 5 times and was cut after 23 to 37 documents
+otherwise; each of the 5 files of 160 documents (sent only after a complete
+40) was cut after 9 to 33. So not every document can be applied unless a
+foreign commit intervenes: the cut is the follower's own pull. D378 chains a request's items on the
+node that owns the commits and D399 recaptures only before a request's first
+dispatch; neither prevents the follower's own pull of the request's earlier
+items from changing its source. D375 stands; `docs/deploy/sqlite-join.md`
+says so with the numbers, and the cut item's refusal already names the primary
+and says to send the rest there (`29c32ca3`).
+
+Evidence under `.context/v020-final-20261110/evidence/HA-OPEN6/`:
+
+- `e2e01.log` to `e2e06.log` (`.commit` files beside them): `KUDURRU_E2E=1 go
+  test -v -count=1 -run 'TestEnrolledClusterProcesses|TestEnrolledManagedAnchorsPromoteAndRejoin'
+  ./test/e2e`, through the heavy wrapper. Every run passed all three tests, 0
+  skipped, 18 of 18 in total: `e2e01` at `cb9ae60f` (held commits only, the
+  follower UPDATEs still retried; none retried), 717 s; `e2e02` to `e2e04` at
+  `fb4138e4` (all source fixes, follower UPDATEs sent once), 634 s, 609 s,
+  646 s; `e2e05`, `e2e06` at `3e2974b0` (differs from the final head only in a
+  cmd/kudurru test file, a gofmt-only change and docs), 666 s, 631 s.
+  `TestEnrolledManagedAnchorsPromoteAndRejoin` 238 to 288 s,
+  `TestEnrolledClusterProcessesPartitionCatchupAndRestart` 145 to 168 s,
+  `TestEnrolledClusterProcessesPromoteAndRejoin` 198 to 223 s. Every burst
+  through a follower was 8 of 8 NOERROR (1.1 s to 15.6 s); no forwarded
+  UPDATE answered SERVFAIL or REFUSED in any run. The native UPDATE to the
+  newly promoted primary was retried after 2 to 7 SERVFAILs in every run
+  (unchanged, see below). The strict `enrolledAbsent` checks passed in all
+  six PromoteAndRejoin runs.
+- `diag01`, `diag02` (unauthorized pull; temporary logging), `diag03`,
+  `diag04` (burst SERVFAIL; temporary logging), with `diag-patch.diff`:
+  retained diagnostic runs. `diag02` and `diag03` hold the 7 of 7 failing
+  burst runs before the fix; `diag04` the bound expiries with 20 ms pulls.
+- `race01-anchor.log`: `TestAnchorUpdater` under `-race -count=3`: passed
+  (100.9 s).
+- `race02.log`: stopped by hand, the deadlocking first relay test (retained).
+- `race03.log`: the new and affected cmd/kudurru tests under `-race
+  -count=3` after the fix: the burst test failed 3 of 3 at the four-second
+  bound (20 ms pulls, load average 14 to 21), all others passed.
+- `race04-follower-x3.log`, `race05-root-selection.log`: the follower tests
+  `-count=3` (8 passed, 1 failed: the anchor-unavailable pull after a
+  canceled pull) and the root selection `TestRootMember|TestMemberForward|
+  TestMemberLogout|TestAnchorUpdater|TestAnchorWriter|TestPrimaryRuntime|
+  TestPrimaryUpdateIngress|TestRootUpdateOutput|TestServingItems|
+  TestObjectForwardError|TestMemberItemRefusal|
+  TestRunServeSQLiteStoredTSIGNativeUpdateTransferNotify` (79 passed, 1
+  failed for the same cause, 488 s).
+- `race06-follower-x5.log`: after `3e2974b0`, `TestRootMemberFollowerUpdate|
+  TestRootMemberPullRightAfterACommitIsServed` under `-race -count=5`: 15 of
+  15 passed, 0 skipped, 230 s; every burst 6 of 6 NOERROR; no pull read
+  again.
+- `light01`, `light02`, `light04`: `internal/cluster/replica` under `-race`
+  (dial tests `-count=3`, full package twice): passed. `light03` also ran
+  `internal/store/sqlite`, which hit the default 10-minute test timeout at
+  `-p 2` on the loaded machine (untouched package; not rerun).
+- `lint02.log`: scoped golangci-lint v2.15.0 over `./cmd/kudurru/...`,
+  `./internal/cluster/replica/...`, `./test/e2e/...`: 0 issues (`lint01`
+  found the gofmt alignment fixed in `372409b9`). `go vet` clean,
+  `pyguards.log` 14 of 14.
+
+Open. The native signed UPDATE to a primary still answers SERVFAIL right
+after a commit (every process run logs it on the new primary); it is not
+recaptured, by the decision CMD-RECAPTURE recorded in access.md, which this
+package keeps. A forwarded UPDATE still answers the documented SERVFAIL at
+the four-second bound when a publication takes longer than that, which the
+fixture produced by pulling every 20 ms; that is the publication-starvation
+limit PUBLISH-STARVATION (D405) is changing, and Publisher.Run was not
+touched here. The follower pull refused with "store/sqlite: anchor
+lifecycle unavailable" after a canceled pull is found and fixed (review
+fixes below). The large
+apply cut through a follower (D375) is measured and documented, not removed.
+FWD-E2E's wider acceptance (one `primary_required` representative per
+primary-only group, node-local routes, `/cluster` role on the follower in the
+process test, the static twin and conflict re-runs, Semgrep, the full
+`internal/api` and `internal/auth` default-race runs, frozen-source hashes)
+was not done in this package. The full `./cmd/kudurru` package was not run.
+
+### HA-OPEN6 review fixes — November 13, 2026 (D381)
+
+The review (verdict accept-with-fixes, lane head `fefcf07e`) found a single
+signed UPDATE through the rejoined member answered SERVFAIL in one of three
+runs of `TestEnrolledManagedAnchorsPromoteAndRejoin`, with no elapsed time
+recorded. Seven commits on top (`fb9037ac`..`4a77f00a`) address it and the
+other findings.
+
+**Through the rejoined member.** A run with temporary logging in a
+licensed binary built outside the worktree through `go test -overlay`
+(`fix-diag01`, 6 runs, worktree untouched) reproduced it in the rejoined
+member's burst: the newly promoted primary took 1.1 to 1.4 s to answer each
+forwarded commit, against 0.3 to 0.7 s on the first primary; the first
+UPDATE after the forwarded settings patch waited 3.1 s on the follower for a
+current keyring; and one update lost a compare-and-swap round against the
+primary's own status write, committed on the second round after 3.47 s,
+and its publication wait ran into the command's deadline. The primary
+answered SERVFAIL, the follower's exchange ended "write outcome unknown" at
+4.34 s. That is the documented SERVFAIL at the four-second bound for a
+commit whose publication did not complete, the publication latency
+PUBLISH-STARVATION (D405) works on. The rejoined member's updates now accept
+a SERVFAIL only at the bound (3.9 s or later, logged) and send the
+idempotent update again, at most four times; a SERVFAIL before the bound
+still fails at once. The first follower's updates stay single-send, and
+`enrolledExpectUpdate` reports when an UPDATE was sent and how long its
+answer took. The reviewer's own failure has no elapsed time, so whether it
+was this bound case cannot be shown.
+
+**A repeated command ID (new defect).** `TestRootMemberUpdateKeyIdentityAndRetryActualHTTP`
+answered SERVFAIL instead of the retained NOERROR for the same command ID
+sent again in 1 of 3 race runs (`fix-race02`) and 2 of 15 diagnostic runs
+(`fix-diag04`): Apply's receipt replay committed nothing again, but the
+publication of the retained outcome met "serving: requested term
+superseded", and Apply reports a replay as committed, so it was final.
+`runMemberUpdate` now waits for the next publication and runs the command
+again when Apply deduplicated it and only that publication failed (`9397a519`);
+15 of 15 race runs passed (`fix-race05`). `docs/architecture/zones.md` says so.
+
+**A pull after a canceled pull (finding 2, new defect).**
+`TestRootMemberPullAfterACanceledPullIsServed` commits on the primary,
+cancels a follower pull after 0 to 1.8 s and requires the next single pull
+to succeed, in 16 rounds. It failed 5 of 5 race runs (`fix-race02`,
+`fix-diag02`) with "store/sqlite: anchor lifecycle unavailable", and twenty
+more pulls 100 ms apart were refused too: not transient. The refusal came
+from `BindAnchorLifecycle`'s `anchorBlocked` check. database/sql rolls a
+transaction back when its context ends, so the install's final Rollback
+reported `sql.ErrTxDone`, and `anchorSQL.finish` classified every rollback
+error as an unknown completion, which closes anchor admission for the Store
+until the process restarts. A production pull timeout during an install
+therefore stopped a follower's replication. `anchorSQL` now carries the
+transaction's context; `ErrTxDone` from the final Rollback is a confirmed
+rollback only when that context has ended and no commit was attempted
+(`88a7bc05`). A rollback error under a live context, a commit error and any
+commit attempt stay unknown, as the existing `TestAnchorSQLActualTermination`
+cases require; its new `context-ended` case fails without the change
+(`fix-light02`). After it the mounted test passed 3 of 3 (`fix-race03`), and
+`memberUpdatePull` is one attempt again. This changes the anchor lane's
+stated rule ("Neither an error nor ErrTxDone is evidence of rollback") in
+one case; the integrator should have the anchor lane confirm it.
+`docs/architecture/upstreams-and-cache.md` says it.
+
+**The other findings.**
+
+- Finding 3: `TestRootMemberForwardAnswerNotRelayedIsUnknown` reaches the
+  default (deadline) `completion_unknown` branch only. With the Store lock
+  held through the relay, no cause for the new "source changed after the
+  primary answered" branch exists in that fixture; the test now says so and
+  asserts the default message's own "outcome is unknown" text (`8dc8503c`).
+  The new branch is unit-tested only.
+- Finding 4 (a forwarded UPDATE may hold the follower's Store lock for up to
+  the four-second bound): not changed. The follower already holds that lock
+  for up to the same bound for any forward to a slow or unreachable primary;
+  only a valid TSIG key holder can cause it; a cap on the number of
+  publications would not bound the time; and answering zone-state causes at
+  once brings back the burst SERVFAILs HA-OPEN5 removed. No mounted test of a
+  zone that never becomes active was added.
+- Finding 5: `docs/deploy/dynamic-updates.md` and the changelog list the
+  remaining SERVFAIL cases and say a client's retry of an idempotent update is
+  safe (`d5872a2c`).
+- Finding 6: the burst test accepts at most one SERVFAIL, only at the bound,
+  and requires at least five of six commits (`3c268d8f`); `fix-race02` had
+  two runs with exactly one.
+- Finding 7: `TestHTTPForwardingAmbiguousTimeoutAndExplicitSameIDRetry`'s
+  retry now uses its own 10 s client. That exposed a second load race (1 of
+  5, "lost-response retry executed twice"): the client's 100 ms timeout could
+  cancel the dropped exchange before it committed. The dropped exchange now
+  runs to its end and the test waits for it (`fb9037ac`); 20 of 20 race runs
+  passed (`fix-replica03`), the unchanged test 10 of 10 (`fix-replica02-orig`).
+
+Weakened guards the review listed, kept: the `CommitSequence` comparisons
+replaced by zone data and serial (a NOTIFY rearm also advances the head's
+`CommitSequence`, so `before+1` was not an exactly-once proof), and
+`ErrUnavailable` not required with a timed-out dial (which timer fires first
+decides the error; `ErrOutcomeUnknown` is still required).
+
+Evidence under `.context/v020-final-20261110/evidence/HA-OPEN6/` (all `fix-*`):
+
+- `fix-e2e01.log` (at `bde0791c`, with the cmd/kudurru test and sqlite
+  edits uncommitted; the node binary was built from committed product code):
+  the three enrolled process tests `-count=2`: 6 of 6 passed, 0 skipped,
+  1352 s. Through the rejoined member one burst met the bound five times and
+  completed after resends (36.2 s for 8).
+- `fix-e2e02.log` (at the final head `4a77f00a`): `-count=2`: 5 of 6 passed.
+  `TestEnrolledClusterProcessesPartitionCatchupAndRestart` failed once (29 s):
+  burst UPDATE 2 of 8 through the first follower answered SERVFAIL after
+  330 ms, before the bound. The node logs are at level error and hold
+  nothing; the cause is not identified.
+- `fix-diag05.log` (final head, diagnostic binary): `-count=3`: 9 of 9
+  passed, so that SERVFAIL did not recur with logging.
+- `fix-diag01` to `fix-diag04`: the diagnostic runs above (failed runs
+  retained).
+- `fix-race02.log`: the affected cmd/kudurru tests `-race -count=3` before
+  the two fixes (the canceled-pull and dedup failures above);
+  `fix-race03-canceled-pull.log` 3 of 3; `fix-race05-dedup.log` 15 of 15;
+  `fix-race06-root-selection.log`: the reviewer's root selection
+  (`TestRootMember|TestMemberForward|TestMemberLogout|TestAnchorUpdater|TestAnchorWriter|TestPrimaryRuntime|TestPrimaryUpdateIngress|TestRootUpdateOutput|TestServingItems|TestObjectForwardError|TestMemberItemRefusal|TestRunServeSQLiteStoredTSIGNativeUpdateTransferNotify`)
+  under `-race` at the final head: ok, 500 s.
+- `fix-race04-sqlite.log`: `internal/store/sqlite` under `-race`: ok, 900 s.
+  `fix-race07-replica.log`: `internal/cluster/replica` under `-race`: ok.
+  `fix-light01-anchorsql.log`: `TestAnchorSQLActualTermination -count=5`: ok.
+- `fix-lint02.log`: scoped golangci-lint v2.15.0 over `./cmd/kudurru/...`,
+  `./internal/cluster/replica/...`, `./internal/store/sqlite/...`,
+  `./test/e2e/...`: 0 issues (`fix-lint01-parallel.log` refused to start
+  beside another lint). `fix-pyguards.log` 14 of 14.
+
+Open. A signed UPDATE through the first follower was answered SERVFAIL
+330 ms after it was sent, before the bound, in 1 of 15 test runs at the
+final head (`fix-e2e02`, `fix-diag05`); the cause is not identified, so "never a
+transient SERVFAIL" is not proven. Through the rejoined member the
+four-second bound is met often on this loaded machine, because the promoted
+primary publishes each forwarded commit three to four times slower than the
+first primary; the reason was not found and belongs with PUBLISH-STARVATION
+(D405). A native UPDATE to a primary still answers SERVFAIL right after a
+commit (CMD-RECAPTURE, unchanged). The `sqlite` classification change needs
+the anchor lane's confirmation. FWD-E2E's wider acceptance remains as stated
+above.
+
+**Verification state at 7663c957.** Merged and pushed at `531bffd0`, without `5d28289e` (a duplicate capture test) and without its D399 section of `docs/architecture/access.md` and D399 field context, which the integrator dropped because D399 had been reverted. After hosted CI on `531bffd0` failed every enrolled e2e test, the integrator reverted the package on suspicion (`88bed726`); the tests still failed without it, the bisect put the cause in the D405 commits, and the revert was undone (`832dab99`, pushed at `bae1c9df`). The verifier resolved six of seven findings (the mounted cluster tests 2 of 2 under race, the replica test 10 of 10, both PromoteAndRejoin process tests 3 of 3) and left the **blocker unresolved**: a signed UPDATE sent once through the first follower was answered SERVFAIL after 330 ms in the fixer's run at the final head (`fix-e2e02.log`, `TestEnrolledClusterProcessesPartitionCatchupAndRestart`), cause unknown, and through a newly promoted primary the bound SERVFAIL is tolerated by test-side resends, not removed (deferred to D405, which is not at this head). New, minor: the replay condition also reruns an admission error, which then waits out the whole bound; the rejoined-member path tolerates up to four bound SERVFAILs per update with no cap across the burst; `88a7bc05` changes the anchor lane's ErrTxDone rule for one case without that lane's confirmation.
+
+
+### CORE-CHILD-RECONCILE one parent/child boundary rule, and a new child answers sooner — November 13, 2026 (D404)
+
+Two packages fixed the same defect independently: a primary zone and a
+primary child zone on one node could leave one or both answering SERVFAIL
+until a restart. CORE-OPEN4 (in the pull request, D385 item 4) and
+CORE-CHILD-ZONE (branch `wip/v020/flake-childzone`, not in the pull request)
+found the same cycle: fencing a child in its parent and the child's lifecycle
+transition required the exact lifecycle receipt of both zones, in
+`sqliteadapter.source` and again in `currentguard.checkBackground`, while
+realigning either receipt is a lifecycle CAS whose membership check needs that
+fence. Every committed-status write puts a receipt behind its `DNSZone`.
+
+**Where the two fixes differed, and what was kept.** Both relaxed the exact
+receipt to "the same zone" for boundary-only commands. They differed in three
+places:
+
+1. *How the guard knows a check is boundary-only.* CORE-OPEN4 relaxed the
+   guard by reason (`parent-fence`, `late-parent-fence`, `parent-release`)
+   alone. CORE-CHILD-ZONE had the adapter, which knows the command, set
+   `BackgroundCheck.Boundary`; the guard honors it only with those reasons or
+   `lifecycle` and answers unavailable for the flag with any other reason.
+   Kept: the flag. A reason alone also relaxed any future unmarked check with
+   that reason.
+2. *Whether a boundary command advances a receipt.* CORE-OPEN4's fence
+   transition recorded the child's current source (`Runtime.currentSource`,
+   read outside the transaction), so the child's CAS could stay exact.
+   CORE-CHILD-ZONE never advances a receipt in a boundary command and reads the
+   child's obligation-only transition (`boundaryTransition`: nothing but
+   `Sequence` and `Parents` changes) with `boundarySource`. Kept: never
+   advance. Recording a source, including a new intent digest, belongs to the
+   exact realignment paths, and the outside read raced the next status write.
+   `currentSource` is removed. One gap that this exposed is closed:
+   `Runtime.FenceParents`' own Preparing-to-Fencing CAS kept the old receipt,
+   so a Preparing child whose receipt was behind could not progress through
+   the runtime path (the driver's own phase CAS already carried the observed
+   source). It now carries the source observed at that moment, still checked
+   exactly in the transaction (`Runtime.observedSource`).
+3. *Deletion.* CORE-OPEN4 refused a `DNSZone` with a deletion timestamp on the
+   relaxed path; CORE-CHILD-ZONE did not check it. Kept: refuse (the stricter
+   rule). Both the adapter and the guard now call one predicate,
+   `sqliteadapter.SameBoundaryZone` (object name, UID of the lifecycle and of
+   its source, type, apex, not deleting, source not removed); the exact receipt
+   still qualifies on its own.
+
+The flake lane's serving changes (`image.go`, `membership.go`: a parent with an
+unfenced desired child keeps serving and is not admitted; a child under a
+Fencing parent keeps serving) had no counterpart in CORE-OPEN4 and are kept as
+they were. `docs/architecture/zones.md` states the rule once (the CORE-OPEN4
+paragraph is replaced by a pointer to the D404 paragraph and its sequence
+diagram). The flake lane's commits were cherry-picked: `6ee32906` (resolved
+against the head as above, commit `50534605`), `edcc5f5c`, `282fbc36`,
+`d7671c31`, `34ca179e`; `880e4e2e` and its revert `8ffd0610` were not brought
+except the test bound of `880e4e2e` that the revert kept. The five
+refusal-inventory commits of that branch's base were not brought.
+
+**Contradictory tests.** CORE-OPEN4's `TestLateChildFencesWhenBothSourcesAdvanced`
+(`sqliteadapter`) and `TestActualLateChildFencesWhenBothSourcesAdvanced`
+(`currentguard`) asserted that the fence records the child's current source.
+That contradicts the kept rule, so they now assert the opposite (the fence
+changes only the obligation; the source equals the old receipt) and,
+additionally, that the child's own realignment records the current source once
+it activates. `TestActualBackgroundGuardRelaxesOnlyBoundaryRevisions` now passes
+the flag and additionally requires that an unmarked check with a boundary
+reason is refused, that the flag is refused for `source-reconcile`, and that an
+obligation-only `lifecycle` check refuses a deleting source. No bound was
+loosened.
+
+**A new child answers sooner (the open item of CORE-CHILD-ZONE).** Names under
+a new child apex answer SERVFAIL until the child's first publication. That
+answer is kept, deliberately: the parent's answer there would be a negative
+answer that resolvers cache for the parent's negative TTL (minutes), hiding the
+child after it activates, and a referral needs delegation data the parent does
+not have and leads back to the same unavailable zone on this node. The
+publication before the one that carries the new `DNSZone` still answers the
+parent's data. What the driver waited for between zones: each of the child's
+steps (creation, parent fence, Preparing-to-Fencing, activation; for a
+re-created child also the release or retirement of the old incarnation) waited
+behind one step of every other zone, and each such step reconciles that zone
+and waits for its publication. The driver now steps a zone being created ahead
+of the rotation (without moving its cursor) and keeps a zone whose step
+committed a change needing another step in focus for up to eight passes. The
+source refresh of an active nonprimary zone does not take the focus (review
+fix): it repeats whenever that zone's `DNSZone` changes and would otherwise
+give it up to nine steps for each step of the rest of the rotation. Steps
+keep their own admission and publication waits; only the order changes. The
+D395 bound (about 0.3 s) is not reached: the child's own steps (about 0.2 to
+1 s each on this runner) and the rest of the pass already running remain.
+
+Evidence under `.context/v020-final-20261110/evidence/CORE-CHILD-RECONCILE/`:
+
+- Merge (`50534605`): `unit01` (the merged code with the CORE-OPEN4 tests
+  unchanged: the three contradictory assertions fail, as expected), `unit02`
+  (after updating them, the child's Reconcile from Preparing failed with
+  `admission conflict`, which found the `FenceParents` gap), `unit03`
+  (`currentguard`, `sqliteadapter`, `primaryruntime`, `driver` pass), `unit04`
+  (`internal/primaryruntime/...` and `internal/servingzones` pass), `unit05`
+  (`internal/servingbuild` passes, 101.5 s, including
+  `TestPrimaryParentAndChildServeAcrossEachOther`), `race01` (`driver`,
+  `currentguard`, `sqliteadapter` under race: pass).
+- Scheduling, `internal/primaryruntime/driver`
+  `TestNewChildStepsAreNotQueuedBehindEveryZone` (eight unrelated active
+  zones; counts their publication waits while a child is created): before
+  (`focus02`, `focus04`, `focus06`, `focus08`, overlay
+  `overlay-before-focus.json`) 72 waits after the child's lifecycle existed and
+  73 after its `DNSZone` was created, every run fails; after (`focus03`,
+  `focus05`, `focus07`) 0 after the lifecycle existed, at most one in-flight
+  pass from the creation, 5 of 5 pass. Under race (`race03`, retained) it
+  failed twice: the fixture's 1 s operation timeout cut the child's steps
+  short and their backoff let the rotation run; the test now uses the
+  production 10 s timeout and passes 4 of 4 under race (`race04`).
+  `TestLeadingZonesKeepTheRotationFair` (regression guard, not fail-first):
+  passes (`race04`). `race05`, `race07`: the driver and `primaryruntime`
+  packages pass under race. `race06`: 16 alternating race runs of
+  `TestActualConcurrentCreationTypeReplacementAndMovedApex` (it failed once in
+  `race03` at its 8 s `await`, as it did on the base in CORE-CHILD-ZONE
+  `review-06`): 8 of 8 pass before (14.1 to 23.4 s), 8 of 8 after (12.2 to
+  17.9 s).
+- Tried and reverted: ending a running pass on any store change after the poll
+  interval, so a zone created mid-pass leads sooner. Under race the driver
+  package went from 142 s to 527 s with three failures (`race02`, retained),
+  because with the tests' 10 ms poll interval every step forced a full read.
+  `focus09` and `mount04` (first of its two runs) are from that version.
+- Mounted, `TestRunServeSQLitePrimaryParentAndChildZones` now creates the child
+  under its serving parent with `awaitNewChild`, which samples every 10 ms from
+  the POST and requires the parent's negative answer, then SERVFAIL, then the
+  child's answer (its own negative answer allowed), never the parent's
+  negative answer once the child was seen, no silence without race, and a first
+  answer within 15 s. Three zones, without race: before the order change
+  (`mount01`, overlay) 3 of 3 pass, first answer 0.87 to 2.47 s; after
+  (`mount02`) 3 of 3 pass, 0.49 to 4.12 s (the review's `review-mount02`,
+  load about 20, measured up to 5.21 s, so the three-zone range is 0.5 to
+  5.2 s; under race, `review-mount03`, 13.8 to 27.2 s), and
+  `TestRunServeKubePrimaryParentAndChildZones` 3 of 3 pass (0.18 to 0.36 s);
+  0 failed probes in every run. With three zones the order hardly matters.
+  With 20 more zones on the node (overlay `overlay-manyzones-*.json`, evidence
+  only): `mount06`, alternating, final code: before 3.43 to 14.61 s (median
+  4.54 s), after 2.47 to 4.87 s (median 3.91 s), 2 of 2 runs pass each.
+  `mount03` and `mount05` are earlier versions (without the re-creation fix in
+  `223e2647`); `dbg04` (instrumented, retained failure: a re-created child took
+  more than 15 s at load about 20) showed the old incarnation's release step
+  did not keep focus, which `223e2647` fixed; `dbg05` after it: 1.86 to 5.27 s.
+  `dbg01` to `dbg03`: instrumented baselines (step and read timings).
+- Final code, the CORE-OPEN4 mounted tests and neighbors without race
+  (`mount07`): `TestRunServeSQLiteParentEditedAsChildIsCreated` (31.3 s),
+  `TestRunServeSQLiteZoneChangesApplyFromTheirPublication` (14.0 s),
+  `TestRunServeSQLitePrimaryAnswersAcrossStatusWrites` (31.2 s),
+  `TestRunServeSQLiteCompletePrimaryUpdateRestart` (6.8 s),
+  `TestRunServeKubePrimaryParentAndChildZones` (52.5 s): all pass. Under race
+  they and the commit-gap test (child zone included) pass in the full run.
+  `race08`: `internal/servingbuild` (424 s) and `internal/servingzones` pass
+  under race.
+- Lint `lint01`, `lint02` (`./internal/primaryruntime/... ./internal/servingbuild/... ./cmd/kudurru/...`):
+  0 issues. Bench guards `bench01`: 14 tests OK. No API, DTO or generated file
+  changed, so there is no generated commit.
+- Review fix (focus fairness, `internal/primaryruntime/driver`
+  `TestRefreshedActiveZoneDoesNotTakeTheFocus`: eight active primaries and an
+  active forward zone whose `DNSZone` gets a status write after every
+  committed change of its lifecycle, so its source is ahead at every read;
+  the test reads the forward zone's lifecycle sequence at each publication
+  wait of the other zones). Before the fix (`fix-focus02-before`,
+  `fix-focus05-before`): 6 of 6 fail, 27 refreshes in 80 waits and 9
+  refreshes between two steps of the other zones. After (`fix-focus04-after`):
+  5 of 5 pass, at most 1 between two of them. `fix-focus01-before` (retained)
+  is a first version with a free-running status writer that never let a
+  refresh commit (every one conflicted); `fix-focus03-after` (retained) is the
+  fixed code against that test's too-strict liveness check (at least eight
+  refreshes; a fair rotation gives about three here), relaxed to two.
+  `fix-race01-driver` (retained) is the driver package under race against
+  that too-strict check (only the new test failed); `fix-race02-driver`: the
+  driver package under race, `-count=2`, final code. `fix-lint01`: 0 issues.
+  `TestImageLateDesiredChildBeforeLifecycleBlocksParent` is renamed
+  `...HoldsParentAdmission` (the parent keeps serving; only its admission
+  waits), assertions unchanged (`fix-unit01-image`: pass).
+- Full command package: `full01` to `full04` (below).
+
+**Full command package.** `python3 hack/go-test.py --timeout=30m github.com/robertherbaugh/kudurru/cmd/kudurru`
+through the heavy wrapper at `3e822b60` (864 tests in 9 race batches, then the
+no-race timing pass). `full01` ran batches 1 to 7 and was cut off by the 2 h
+background-command limit during batch 8 (load about 20, three other lanes'
+suites running); `full02` ran batches 8 and 9 and the no-race pass with the
+same batching code (`hack/go-test.py`'s own `inventory` and `batches`). Batches
+2, 3, 5, 6, 7 and 9 pass; the no-race pass
+(`TestRunServeSQLiteLongApplyKeepsServingDNSAndReads`,
+`TestRunServeSQLiteZonesAnswerAcrossCommits`,
+`TestRunServeSQLitePrimaryParentAndChildZones`) passes. Six tests failed:
+`TestRunServeKubeUniFiSourcesTwoReplicasAndPartition` ("the non-holder's
+grant lapsed between holder commits"), `TestRunServeUniFiHostnameHeldPublicationDeadline`
+("original hostname policy unavailable at held request capture"),
+`TestAnchorEdgeActivationJoinedFollower` (a data race in the test fixture:
+`joinPrimaryOn` in `cluster_join_test.go:51` writes the config while the
+publisher's `config.Flatten` reads it), `TestRunServeKubeRPZFeeds` ("restart
+with the primary unavailable: 40 answers for the listed name, none NOERROR"),
+`TestRunServeSQLiteTOTPEnrollmentRestartRecovery` (`POST /auth/totp/confirm`
+503) and `TestRunServeSQLiteCompoundZoneCommands` (`POST /zones/compound/notify`
+503 `generation_pending`). Controls, three race runs of the six each:
+`full03` on this head: UniFi hostname 2 of 3, Kubernetes UniFi 1 of 3, TOTP
+1 of 3 fail, the other three pass 3 of 3; `full04` with the nine production
+files of this package overlaid back to `95c57113` (`overlay-base-source.json`;
+tests unchanged): RPZ 1 of 3, compound zone commands 2 of 3, Kubernetes UniFi
+1 of 3, UniFi hostname 2 of 3, TOTP 1 of 3 fail, the anchor test passes 3 of
+3. So five of the six fail without this package's change too; the sixth is a
+fixture data race in code this package does not touch (`cluster_join_test.go`,
+`internal/config`) that did not recur in six runs.
+
+**Still open.** A new child still answers SERVFAIL for a few seconds on a
+loaded node (2.5 to 4.9 s measured with 23 zones, up to 5.2 s with three at
+load about 20), not the D395 0.3 s, so direction item (4) is only partly met
+and needs a follow-up: its own
+four or five steps, each a transaction, a publication wait and a fresh read,
+and the rest of the pass already running when it was created. Shortening that
+further means merging lifecycle steps or yielding a running pass cheaply, both
+changes to the driver's protocol that were not made. Under race a new child
+can still take tens of seconds (the mounted test allows three minutes). The
+mounted no-race bound stays 15 s, about three times the slowest sample; it
+can be tightened toward 10 s once more samples on loaded runners exist. Not
+re-measured here: deleting a parent while its child survives (existing
+re-incarnation, CORE-CHILD-ZONE's open item). D385 item 4 (CORE-OPEN4) is
+superseded by D404 and should be marked so in the decision log. The setup
+retries after 503 `current writable serving generation unavailable` in the
+mounted tests remain (CMD-RECAPTURE, D399).
+
+**Verification state at 7663c957.** Merged and pushed at `bae1c9df`; it replaces both the CORE-OPEN4 child-zone variant and the unmerged CORE-CHILD-ZONE, and it ran the full `./cmd/kudurru` suite at its lane head: six tests failed, five of which also fail with its production files overlaid back to `95c57113`, the sixth a fixture data race in `cluster_join_test.go` that did not recur in six runs (see its section), so no green full run exists. The verifier resolved findings 2 and 3 and left finding 1 (minor) **unresolved by design**: a new child zone answers SERVFAIL until its first publication, up to 5.2 s without race and 27 s under race (bound 15 s without race, three minutes under race), not within the D395 bound of about 0.3 s; it is a disclosed limitation for the integrator to accept or schedule. The new fairness test's liveness floor (at least two refreshes, where a fair rotation gives three) is thin; its upper bound is the assertion that catches the defect.
+
+
+### INT-OPEN2 Integration lane: stale status revision, intermittent tests, Kubernetes limits and the verifiers' open items — November 13, 2026 (D384)
+
+What now happens. The integration host no longer goes stale on its own status write. Before, only a terminating job moved its local status revision to a new frame, so after the host wrote the Ready status of a healthy instance, `GET /integrations/{namespace}/{name}` answered `statusKnown: false`, and a check, preview or sync reviewed just before a status write was refused with 409 (the dashboard worked around both). Every same-instance frame now carries the status revision forward, and each job keeps the last eight earlier resource versions that differ from its frame only by status (`host.StatusOnly`: same UID, generation, spec, labels, annotations, finalizers, owners and deletion). `CaptureCommand` accepts a review of one of them; the command still runs on, and every effect is still fenced by, the current frame and guard. Both roots compare their own read of the object against the reviewed revision or `CommandCapture.Revision()`. A label, spec or finalizer change still makes the review stale. The tolerance starts once the host has captured the frame that carries the status write: between the write and that capture (at most one capture interval, two seconds by default), a command at the old or the new revision still answers 409, as does one at a revision the host never captured (two status writes inside one capture). The deploy guide says so; a client keeps its single reread-and-retry on 409.
+
+A provider setup that fails (Provision, Validate, Check, its declared schedule, or the original scope) is now repeated with backoff: the job is replaced once one poll interval, doubling to five minutes, has passed, counted per instance and forgotten on success, the same mechanism as an unpublished refusal. A provider that stays unreachable is therefore contacted about every five minutes. A schedule refused as unsupported or invalid (a webhook instance without domains against a records-only peer has no role) is not retried: it follows from the definition and the peer, so it waits for a change as before. A successful setup clears its job's retry mark, so a job that set up in a later term of its election waits to be elected again when that term is lost instead of being replaced. Before, a `ProvisionFailed` instance stayed inert until its object, credential or license changed (the F09B-OPEN ledger already listed this as open, and the deploy guide claimed a retry). This was the cause of `TestIntegrationWebhookMountedClientsRestart` failing twice on hosted CI with `complete assembly did not converge` at the poll wait: a probe of the restart scenario (`probe01-webhook-restart.log`, 6 runs) caught one run where the restarted instance was `Degraded/ProvisionFailed` at once and was set up again 3.3 s later by the new retry; without it that run would have waited forever. A real node can hit this: any setup failure on a quiet node, including one during start-up.
+
+On Kubernetes the manifests now carry `fieldLimits`: for UniFi, `spec.unifi.inventory`, `spec.unifi.push.dhcpDNSServers`, `spec.unifi.push.mirrorRecords.enabled` and `spec.unifi.push.clientActions` as `refused` with their status reason and message, and `spec.unifi.push.dnsServers` and `networks` as `inert` (they need the refused `dhcpDNSServers`), as are `spec.unifi.push.mirrorRecords.types`, `domains`, `labels` and `exclude` (they need the refused `mirrorRecords.enabled`). `refused` keeps its shape and now names `mirrorRecords.enabled` instead of the whole block. A terminating `deletionPolicy: Delete` UniFi instance refused for `dhcpDNSServers` or `clientActions` is cleaned up like one refused for `spec.unifi.inventory` (local purge, finalizer removal, no controller request); `mirrorRecords.enabled` makes it a publisher whose cleanup needs its provider, so it stays Terminating until that switch is off or the cleanup is released. A push refusal has its own condition message. The `dnsServers` schema has a pattern for the canonical dotted form `validatePush` accepts and a description naming 0.0.0.0, loopback, multicast and 255.255.255.255; the doc comment no longer gives `spec.unifi.push` as a refused field.
+
+Verifier items closed: a map key under `spec.credentials` is redacted like a value unless it is a credential name a provider of this build reads or a reference field, so a refusal no longer repeats a pasted key (INT-ADMIN-API); a UniFi `block-client`/`unblock-client` audit row names the client in lowercase through a new `integration.ActionAuditor` seam (pure, asked before invoking, at most 256 printable non-secret bytes), so rows of one client match whatever case was sent (INT-UNIFI-PUSH finding 5); the deploy guide says how to settle a partial UniFi update or delete (INT-UNIFI-PUSH); `SourcesNotRead` names the store when it cannot run the external-zone adapter and keeps a more specific Degraded reason, and the runbook's `object too large` step is corrected (INT-EXTERNAL-ZONES); zones.md states that on SQLite an authorized takeover lets a view-only endpoint remove dynamic data for every client (INT-GROUP-VIEWS).
+
+The other intermittent tests, cause by cause:
+- `TestActualSQLiteSourceCommittedPendingSurvivesAckDeadline` (and the deadline case of `TestActualSQLiteSourceCommandOnceRollbackFinalAndNoop`): the 40 ms operation bound covers the work before the commit too; on CI it ran out before the commit, which rightly committed nothing. A 20 µs bound reproduces the CI message exactly (`host05-ackdeadline-20us-bound.log`). Test assumption, no product change; the bound is 2 s and the asserted outcome is unchanged. A real node's 30 s bound behaves the same way: nothing committed, an explicit error.
+- `TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers` (`called its provider 1`): the live instance (resync 1 s) polls until the host sees the delete; the test counted from before. The count is now taken when the terminating job asks its elector, which happens only after the live job stopped and joined its provider. Test assumption.
+- `TestIntegrationDeleteForgetsAHistoryOfSeveralStoredPages` (summary 703 operations, expected 702; later, in the review, `the cleanup did not finalize; status Terminating/CleanupFailed` at its 5-minute bound): the first fix only loosened the summary count on an inferred cause and the test still failed one of three review runs. Instrumented runs (`fix-probe01`, which failed the same way, and `fix-probe02`, which passed) found the cause. Every changing SQLite command reads the whole stored image back before it commits, and so does every host capture; with the test's 1,000 seeded operation rows under the race detector at a load average of 15 to 20, a command took 2.0 to 2.8 s and a capture 6 to 10.7 s. One cleanup run made 12 commands (a budget charge per provider request, the delete intent, the receipt, the confirmation), so it reached the 30 s operation bound after it began its delete intent and before the delete was confirmed; the next run fenced at once (AuthorityChanged) and the one after replaced the intent, which is the extra forgotten operation; and a capture that passed the 10 s capture bound dropped the job, whose next term started over (the `status /` and `Election` lines). The paging this test is about is not involved. The mounted runtime now takes a test-only `IntegrationBounds` override (zero in production, which keeps 10 s and 30 s); this test gives the host a 1-minute capture and 2-minute operation bound, and the exact summary check (`forgot 1 ledger rows and settled+orphans+2 operations`) is restored with the single delete batch at the peer. A real node is affected only when its store is large enough that a dozen commands exceed 30 s; that liveness limit is recorded as open below.
+- `TestIntegrationUniFiPushMirrorPartialCreate` (`/sync: status 503 ... integration_uncertain`, `took_ms` 30026): not fixed, and still open. Both CI-era failures (INTEGRATE-40 and INT-UNIFI-PUSH fix-race03) have the same signature: the final reviewed sync applied its create (Applied 1, four POSTs), then spent the rest of the 30 s operation bound in the trailing observation before its source commit (the status has no source outcome), and was fenced by the expired bound, so the answer was correctly uncertain and nothing was replayed. Where the observation waited (most likely the root fence's publication pin while publications are re-prepared under load) is not proven. A real node under sustained load can hit the 30 s bound the same way; the outcome is honest. It passed in `race07.log` (33.7 s).
+
+Evidence under `.context/v020-final-20261110/evidence/INT-OPEN2/`:
+
+- Host library: `host01.log` (TestStatusOnlyWriteKeepsStatusAndReviewCurrent, TestStatusOnly, TestCommandCapture*: pass), `host02-before-revision.log` (the status test fails with the old terminating-only rule), `host03`/`host06` (the SQLite source tests pass, -count=3 and -count=2 under -race), `host04`/`host05` (a 2 ms bound passes, a 20 µs bound reproduces the CI message), `host07-audit.log` (TestAuditSubjectIsBoundedAndCarriesNoSecret, TestAuditSubjectNamesTheClient), `host08-provision-retry.log` (TestFailedProvisionIsRetriedWithBackoff -count=3 with the refusal tests), `host09-provision-before.log` (without the retry: one setup in 1.5 s, fails), `host10-full.log` (whole `ee/integration/host` under -race: ok, 108.7 s), `unifi01.log` (TestManifestDNSServerPatternMatchesValidation).
+- API and controller: `api01.log` (TestIntegrationObject*, TestIntegrationNeedsSecrets under -race with envtest: ok), `api02-before-keys.log` (the new key cases fail on the old redaction: the pasted key is repeated), `controller01.log` (TestWithoutSourcesNamesTheStoreAndKeepsSpecificReasons, TestExternalZone*).
+- Mounted (`cmd/kudurru`, -race): `race01.log` (first run of the new admin test failed on a 503 read during a publication; the test now waits only on answered reads), `race02.log` (pass), `race03-before-status.log` (without the status half: statusKnown never true), `race05-before-review.log` (without the predecessor acceptance: `check reviewed one status write before 20: 409`), `race06.log` (14 tests incl. TestIntegrationAdminStatusOnlyWriteKeepsReviewCurrent, TestKubeRefusalAdmitsCleanupOfNonPublishers, TestIntegrationManifestsMatchKubernetesRefusals, TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation, TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup, TestRunServeKubeCloudflarePublicationAndRefusals: ok, 168.5 s), `race07.log` (the five flaky tests plus TestIntegrationUniFiPushActionsReviewed and TestIntegrationCredentialNamesMatchProviders: all pass, 207 s), `race09-integration-all.log` (empty: this run of every `cmd/kudurru/integration*_test.go` test never started, so the full integration selection was not run in this package), `probe01-webhook-restart.log` (temporary overlay probe, not committed).
+- `race04-before-review-overlay-build-failed.log` is a retained overlay build error (unused import), rerun as race05.
+- Review fixes (`fix-*.log`): `fix-probe01-delete-history-timing.log` (instrumented run of the delete-history test that failed as in the review: CleanupFailed at the 5-minute bound; it shows provider requests of 5 to 8 s and captures of up to 10.7 s), `fix-probe02-delete-history-commits.log` (instrumented pass, 175.1 s: 12 SQLite commands of 1.7 to 2.8 s in the first 30 s run); the instrumentation is kept as `fix-probe-instrumentation.patch` and was not committed. `fix-host01-provision-before.log` (without the retry fix: TestDefiniteScheduleRefusalIsNotRetried sets up 6 times in a second, TestSuccessfulSetupClearsTheRetryOfItsJob sees the job replaced), `fix-host02-full.log` (whole `ee/integration/host` under -race: ok, 191.5 s), `fix-host03-provision.log` (the three provision-retry tests, -count=3: pass). `fix-race01-kube-manifests.log` (TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup with the new review and push-cleanup steps, TestIntegrationManifestsMatchKubernetesRefusals, TestIntegrationManifestsSQLiteRunsUniFiPush, TestKubeRefusalAdmitsCleanupOfNonPublishers, TestIntegrationWebhookMountedRecordDomainsRemovedCleanup, TestIntegrationWebhookMountedClientsRestart, TestIntegrationAdminStatusOnlyWriteKeepsReviewCurrent: all pass, 56.2 s), `fix-race02-before-kube-review.log` (with the exact cached-revision comparison: `check reviewed before the host's status write at 315: 409`), `fix-race03-before-push-cleanup.log` (with the inventory-only cleanup admission: `never converged: the instance refused for clientActions purges its source and is removed`), `fix-race04-delete-history-count3.log` (-count=3 at a load average near 15 with the exact summary check restored: TestIntegrationDeleteForgetsAHistoryOfSeveralStoredPages 202.0, 144.1 and 90.7 s, each finalized in one run with no ProviderFailed or AuthorityChanged step; TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup 45.2, 38.9 and 33.8 s; TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers, TestIntegrationManifestsMatchKubernetesRefusals and TestIntegrationUniFiPushMirrorPartialCreate (42.6 to 57.8 s): all pass, 743.8 s), `fix-pyguards01.log` (14 bench guards OK), `fix-lint01.log` (`ee/integration/host/...` and `cmd/kudurru/...`: 0 issues). No generated artifact changed, so there is no new generated commit.
+- Gates: `drift01.log` (TestOpenAPIDrift, TestReferenceDrift, TestCLIReferenceDrift, TestAggregatedRolesDrift after the generated commit), `pyguards01.log` (14 bench guards OK), `lint01.log`, `gen01.log`. `race08-libs.log` was cut off after three packages; the reviewer's `review-libs01.log` covers its scope (`ee/integration/...`, `internal/api`, `internal/controller` under -race) and passes.
+
+Still open, stated plainly. `TestIntegrationUniFiPushMirrorPartialCreate`'s 30 s stall is not explained or fixed; its exact wait point is unproven (see above), it stays open in the tracker, and the next step is to instrument the trailing observation (the publication pin wait) as the delete-history probes did. Every changing SQLite command and every host capture reads the whole stored image, so on a node whose store makes a dozen commands take longer than 30 s a terminating instance's cleanup would never finish, and a capture longer than its 10 s bound stops every integration job until the next capture; neither bound is configurable in production. The full `cmd/kudurru` integration selection (all 97 mounted integration tests) was not run in this package with the provision-retry change; the integrator's `hack/go-test.py` run must cover it before merge. The INT-EXTERNAL-ZONES remainders are unchanged: with the adapter on but its RBAC missing an external zone still shows Ready and empty, and the per-kind caps, the unfiltered Service list and the missing metric or condition for a refused kind remain. Known credential names (`apiToken` and the others) may still appear in a refusal; the INT-ADMIN-API changelog line "never repeats a string of its spec.credentials" should say "never repeats a value or an unknown key". The 4-byte unquoted redaction minimum (cosmetic) is unchanged. The dashboard Check hold (lifted by a Check that answers unreachable) is the dashboard lane's. Reviews tolerate at most eight status-only writes; an older review is refused with 409 as before. The two-replica Kubernetes qualification (F09b-K7) gained no new runs in this package beyond the selection above.
+
+**Verification state at 7663c957.** Merged and pushed at `bae1c9df`, with `6259b61c` for the dashboard, whose typecheck failed until its mocks and field-limit rules followed the new manifest contract. The verifier resolved seven of eight findings (all 97 tests of `cmd/kudurru/integration*_test.go` under race at the lane head, 1,356 s; the whole host package) and left finding 8 (minor) **unresolved**: the 30 s stall in `TestIntegrationUniFiPushMirrorPartialCreate` is not explained. New, open: every changing SQLite command and every host capture reads the whole stored image, so on a large store a capture over 10 s drops every integration job and a cleanup whose commands exceed 30 s never finishes (the test raises both bounds to the host's maximums; production cannot configure them; the real threshold is unknown); permanent Provision/Validate/Check errors and the fenced setup branch are retried every five minutes indefinitely; `docs/deploy/integrations.md` does not name the four inert record-mirror fields on Kubernetes; two new mounted Kubernetes steps depend on timing (a fixed 5 s sleep, up to five resends).
+
+
+### DASH-INVENTORY Dashboard inventory view and client-group record views — November 13, 2026 (D397, D403)
+
+The dashboard now has an inventory view, and its record editor can set
+client-group record views.
+
+**Filtering > Inventory** (`/inventory`) is a separate list page in the
+navigation, next to Clients, and the Clients page header links to it. It is
+not a tab of Clients. The ui.md rule is that every inspected list gets its
+own page with a URL. The two lists also come from different sources (the
+query log against the inventory snapshot), use different permissions
+(`clients.read` against `inventory.read`) and have different columns. The
+page reads `GET /inventory` (D397) and shows every device: devices that
+inventory integrations report and the answering node's DHCP leases, including
+devices that never sent a query. Each row shows:
+
+- names, hostname, device ID and tags;
+- MAC addresses;
+- every address with its state in words, explained in a tooltip (Assigned,
+  Expired, Ambiguous, Superseded with the owning device and source, or
+  Withdrawn);
+- observation and expiry times;
+- Live or Stale. Only Stale is a badge.
+
+The filters (source, kind, staleness, text) are sent to the server and kept
+in the URL. Keyset pages load with "Load more devices". A device links to the
+Integration that reported it and, for a lease, to its DHCP scope. It also
+links to the client page of each address that the query log knows (GET
+/clients, 24 h).
+
+For the Integration link, `GET /integrations` summaries now carry
+`inventorySource`. It is computed with the same `host.SourceID` (cluster,
+namespace, name, UID) that the host stamps on every observation, on both the
+SQLite and the Kubernetes administration paths. A session without
+`integrations.read` sees the raw source ID instead.
+
+On a SQLite cluster member the page states that DHCP lease devices and lease
+MACs belong to the answering node only. `GET /inventory` itself now answers
+`nodeLocalLeases: true` on such a node (SQLite driver with more than one
+peer, or the primary or follower role, decided as `GET /cluster` does), so
+operator and auditor sessions, which have `inventory.read` but not
+`cluster.read`, get the caveat on a cluster primary too. GET /cluster and the
+follower status remain fallbacks. On other nodes a
+short line names the node whose leases are shown. Without `inventory.read`
+(the viewer role) the page sends no request and says which permission is
+needed. The two 503 answers each get their own message: "not mounted" and
+"serving inventory unavailable" (startup, retried every 30 s). Any other
+error uses the usual error banner. The page only reads, so the follower and
+static-mode gating does not hide it, and tests show it lists on both. The
+follower tables did not change (`inventory.read` is a read). `follower.test.ts`
+still checks them against the regenerated OpenAPI document. The `mac`
+matcher help on the group pages and in MatchersField now names DHCP lease
+MACs and their node-local effect.
+
+**Record views (D403).** The record editor has a "Served to" picker:
+
+- every client (the default data);
+- published only (`public`);
+- a ClientGroup. For a record set given as `ns/name`, only groups in that
+  namespace are offered. For a bare name, groups of every namespace are
+  offered, and choosing one from another namespace stores the new record in
+  `that-namespace/api-<zone>`. When the record set is retyped afterwards,
+  the choice keeps naming the same group (`ns/name` becomes `name` once the
+  record set names that namespace, and the reverse), and a group of another
+  namespace than the record set's is refused before saving instead of
+  storing the view name where it would name a different group.
+
+When a group is chosen, the editor says what zones.md says: views are not
+served in a DNSSEC-signed zone (it warns when the zone object has
+`spec.dnssec.enabled` or the records hold RRSIG/NSEC/NSEC3/DNSKEY). AXFR,
+IXFR, NOTIFY, export, RFC 2136 UPDATE and integration sinks carry only the
+default data. The dnsdist edge bypasses both packet caches
+(`zone-client-view`). A zone holds at most 16 views, and a view replaces only
+default data from its own namespace. The editor refuses NS, DNAME, SOA, the
+DNSSEC types and an apex CNAME in a view before saving. An existing record's
+view is fixed, because the view is part of the record's identity.
+
+Record lists show a "view <group>" badge (`ns/name` outside the default
+namespace) linked to the group, or a "public" badge. Rows are keyed by view
+and namespace. Delete removes one view only, and the confirmation names the
+view.
+
+On the SQLite runtime the record list is the served zone: its rows name no
+record set, and a `public` endpoint or a group view the build refuses (a
+signed zone, more than 16 views, default data of another namespace) is stored
+but never listed. The zone page detects such a list (every row has an empty
+`recordSet`, which a desired row never has, and a served zone always lists
+its SOA) and says above it what it shows and leaves out; the editor warns
+before a public save there ("A public record is stored but not listed
+here", naming the Tools download and the `DELETE ...?view=public` call that
+still reach it), the group-view note says a refused view is not listed, and
+the success toast says a public record is not listed.
+
+Three server changes were needed for this:
+
+- `POST /zones/{zone}/records` matched an endpoint by name, type and set
+  identifier only. Writing a view therefore replaced the default endpoint of
+  the same name and type in the record set, and the other way round. The view
+  is now part of the identity, on the store path and on the SQLite command
+  path.
+- `DELETE /zones/{zone}/records/{name}/{type}` takes `?view=` (a ClientGroup
+  name, `public`, or `-` for the default data only). Without it, every view
+  is removed, as before. The forwarded follower input omits an empty view.
+- The Playwright run found that on the complete SQLite runtime the record
+  list (the served model) never listed view RRsets, so a committed view was
+  not visible. Served rows now include `Zone.ViewRRsets`, with `kudurru.view`
+  set to the group name and `namespace` set to the group's namespace, so
+  `kids/lan` and `default/lan` of one name and type are two rows.
+- `DELETE /zones/{zone}/records/{name}/{type}` also takes `?namespace=`
+  (only record sets of that namespace; omitted when empty in a forwarded
+  input), on the store and the SQLite command path. The dashboard sends it
+  for a served view row, so deleting `kids/lan` keeps `default/lan`.
+- `GET /inventory` answers `nodeLocalLeases`.
+
+`docs/deploy/client-identity.md` and `docs/architecture/zones.md` describe
+all of this.
+
+Evidence under `.context/v020-final-20261110/evidence/DASH-INVENTORY/`:
+
+Review fixes (after the "accept-with-fixes" review, `review-*.log`):
+
+- `fix-api01-without-namespace.log` and `fix-api02-field-without-effect.log`
+  (retained, failed on purpose): without `ZoneRecord.Namespace` the test does
+  not build; with the field but without setting it and without the delete
+  filter, `TestZoneRecordDeleteViewInOneNamespace` fails on both subtests
+  ("the delete of kids/lan touched default/lan: []") and
+  `TestCapturedZoneRecordsListServedViews` lists two identical
+  `/lan nas.example.com` rows.
+- `fix-api03.log`: `TestZoneRecordDeleteViewInOneNamespace` (store and
+  command), `TestCapturedZoneRecordsListServedViews` (now with a `kids`
+  record set holding a `lan` view of the same name and type),
+  `TestZoneRecordWritesKeepViewsApart`, `TestZoneRecords`,
+  `TestCapturedZone*` and `TestZoneCommandEndpoint*` pass.
+  `fix-api04-race.log`: those plus `TestInventory*`, `TestOpenAPIDrift` and
+  the forwarding tests pass with `-race -count=2` (56.5 s).
+  `fix-api05-full-pkg.log`: `go test ./internal/api/...` passes (129.1 s).
+  `TestInventorySaysWhenLeasesAreNodeLocal` (memory, SQLite standalone,
+  primary, follower; auditor and operator) is new.
+- `fix-mount01-race.log` (race, `./cmd/kudurru`):
+  `TestRunServeSQLiteInventoryAPIAndLeaseMACs` (now also asserts
+  `nodeLocalLeases` false on a standalone node),
+  `TestRunServeKubeUniFiSourcesTwoReplicasAndPartition` and
+  `TestCLIReferenceDrift` pass (108.3 s).
+- `fix-lint01.log`: golangci-lint v2.15.0, 0 issues on `./internal/api/...`.
+  `fix-docsgen01.log`: `hack/docsgen` passes. `fix-bench01.log`: 14 bench
+  guard tests pass. `fix-gen01.log`, `fix-gen02-docs.log`: generators.
+- `fix-tsc-eslint01.log`, `fix-tsc-eslint02.log`: tsc and eslint
+  (`--max-warnings 0`) over `src` and `e2e`, exit 0.
+- `fix-vitest03-without-fix.log` (retained, failed on purpose): with the
+  product files reverted, 5 of the new tests fail.
+  `fix-vitest04-caveat-without-fix.log` (retained): the auditor-on-primary
+  caveat test fails without the fix (the mock viewer matrix grants
+  `cluster.read`, unlike permissions.yaml, so the test answers GET /cluster
+  with 403). `fix-vitest02.log`/`fix-vitest05.log`: RecordViews,
+  InventoryPage and ZoneDetailPage, 43 passed. New vitest cases: the public
+  "stored but not listed" warning (and its absence on a desired list), the
+  retyped record set keeping or refusing the group, the helpers
+  (`remapView`, `viewNamespaceError`, `listsServed`), a served list with
+  `default/lan` and `kids/lan` rows (distinct links, delete sends
+  `view=lan&namespace=kids` and no record set), and the auditor caveat.
+- `fix-vitest06-full.log` (retained): full suite at a load average of about
+  16 while lint and Go tests shared the machine: 1128 passed, 4 failed (three
+  20 s timeouts in DomainsPage, InventoryPage paging and PolicyPages, and the
+  App sign-in heading). `fix-vitest07-rerun-four.log`: those four files
+  pass alone (115 tests). `fix-vitest08-full.log`: the full suite at a load average of about 10, 81 files and 1132 tests passed (258.7 s), so the `PolicyPages.test.tsx` timeout is load, not a defect.
+- `fix-e2e01.log`: rebuilt bundle and licensetest binary, then
+  `e2e/inventory.spec.ts --repeat-each=2`, 4 passed (33.4 s). The view test
+  now also checks the served-list banner, the public warning in the editor,
+  that the served view row carries `recordSet: ""` and `namespace:
+  "default"`, and that the confirmation names "every record set of namespace
+  default" (the real server accepts `?namespace=`).
+
+Original implementation evidence:
+
+- `api03-views.log` (race): `TestZoneRecordWritesKeepViewsApart` (store and
+  SQLite command subtests; 1.89 s), `TestZoneRecords`, and the
+  `TestZoneCommandEndpoint*` tests pass. `api04-mutation-without-view-identity.log`
+  (retained, failed on purpose): without the view in `sameEndpoint`, both
+  subtests fail (200 instead of 201 when the lan view is written).
+  `api01`/`api02` are retained failures of the first test fixture: the
+  command harness reads from another store.
+- `api05-served-views.log` (race): `TestCapturedZoneRecordsListServedViews`
+  and the three `TestCapturedZoneReads*` tests pass.
+  `api06-mutation-without-served-views.log` (retained, failed on purpose):
+  without the `ViewRRsets` block only the default row is listed.
+- `mount01-race.log` (race, `./cmd/kudurru`):
+  `TestRunServeSQLiteInventoryAPIAndLeaseMACs` (54.4 s, now asserts that the
+  Integration summary's `inventorySource` equals the UniFi devices' source),
+  `TestRunServeKubeUniFiSourcesTwoReplicasAndPartition` (68.1 s, both replicas
+  name the same `integration-` source) and
+  `TestIntegrationAdminActualRouterReadCheckAndRefusals` (8.9 s) pass.
+- `race01-api.log`: `go test -race ./internal/api/` passes (451.8 s).
+  `drift01-lint02.log`: `TestOpenAPIDrift`, `hack/docsgen` (TestReferenceDrift),
+  `TestCLIReferenceDrift` and the 14 bench guard tests pass after the
+  generated commit, and golangci-lint v2.15.0 reports 0 issues on
+  `./internal/api/...`. `lint01.log`: 0 issues on `./internal/api/...` and
+  `./cmd/kudurru/...` before the served-views fix.
+- vitest: `vitest06-full.log` covers 81 files, with 1126 passed and 1 failed.
+  The failure was `policyFields.test.tsx`, which asserted the old MAC help
+  text on purpose. It was updated, and `vitest07-matchers-follower.log` shows
+  it passing together with `follower.test.ts` (17 tests). `vitest08-full.log`
+  (tsc, eslint over src and e2e, all files) shows 1126 passed and 1 failed: a
+  20 s timeout in `PolicyPages.test.tsx` (policy wizard) at a load average of
+  about 14, while the `internal/api` race run shared the machine. The same
+  file passes alone (`vitest09-policy-alone.log`, 14 tests), and the test
+  passed in `vitest06`. New tests:
+  - `InventoryPage.test.tsx` (14): every state in words, the links, filters
+    and URL, pages, viewer restricted with no request, auditor raw source,
+    both 503s, the cluster caveat, the single node, follower and static,
+    the Clients link, and the helpers;
+  - `RecordViews.test.tsx` (9): options, namespace move, public, refused
+    types, signed warning, fixed view on edit, helpers, the list badge with
+    single-view delete keeping the default data, and adding beside the
+    default data.
+- Playwright against a real `kudurru serve` (licensetest binary, embedded
+  bundle):
+  - `e2e02.log`: `e2e/inventory.spec.ts` and `e2e/zones.spec.ts`, 5 passed
+    (26.8 s). The inventory test (9.7 s) uses its own node and a webhook
+    inventory peer (`e2e/support/inventorypeer.ts`, "clients" capability).
+    The node polls it, the two devices that never queried are listed with
+    MAC, Assigned, tags, Live and the Integration link, and the text and kind
+    filters reach the server and the URL. The view test (10.4 s) adds a lan
+    view beside a default A record through the editor, sees it listed once
+    served, and deletes it alone.
+  - `e2e04-pages.log`: `pages.spec.ts` (now listing `/inventory`),
+    `navigation.spec.ts` and `inventory.spec.ts`, 83 passed (2.3 min).
+  - Retained failures: `e2e01.log` (the view row never appeared, which led to
+    the served-views fix) and `e2e03-pages-and-checks.log` (`pages.spec.ts`
+    requires every navigation entry to be listed).
+
+What remains open:
+
+- The Playwright spec does not create a DHCP lease. The harness has no DHCP
+  socket seam for a real binary, so lease devices, the Superseded and
+  Ambiguous states and the cluster caveat are proven against the mock only;
+  `nodeLocalLeases` is proven by the API unit test (faked store Info) and as
+  false on the mounted standalone node, not on a mounted cluster.
+- Stale devices are also mock-only: the webhook inventory lifetime is 3
+  minutes from `lastSeen`.
+- The view spec checks the listing and the editor, not per-group DNS answers.
+  Those are covered by INT-GROUP-VIEWS.
+- On the SQLite runtime, a public endpoint, or a group view the build
+  refuses, is still not listed, so the dashboard cannot edit or delete it;
+  it now says so, and the Tools download and the records API still reach
+  it. Listing desired public endpoints on the served path was not done: that
+  path deliberately lists only the served image.
+- Served rows still carry no record set. A default-data row's Delete removes
+  that name and type from every record set of the zone; a view row's Delete
+  is limited to its group's namespace.
+- The served-list detection (every row has an empty `recordSet`) relies on
+  that API contract rather than an explicit flag.
+- The record list on SQLite still does not poll after a save. A new record
+  appears on the next read once it is served, as before this package.
+- `kudurru records add/rm` have no `--view` flag. The API supports it.
+- A client in several groups and the 16-view budget are not shown in the UI.
+
+**Verification state at 7663c957.** Merged and pushed at `81c2d3af` (checks INTEGRATE-48 green and one enrolled e2e pass). The verifier resolved three of four findings and left one minor **partly unresolved**: when a namespaced record set's namespace is edited, a bare "Served to" value silently moves from one namespace's group to the other's (`remapView`). New: **Edit on a served view row outside the default namespace writes into `default/api-<zone>`, changing `default/lan` while the dialog shows `kids/lan`** (by reading; predates the fix; untested; open); the served-list detection is a heuristic, not an API flag; a follower on this build forwarding a namespaced delete to a primary on an older build with strict decoding would be refused (mixed-version only, untested).
+
+
+### G21-11 Refusal inventory test across every runtime shape — November 13, 2026 (no decision row)
+
+The claim "no unexplained 501/503 remains" is now checked by tests, in two
+halves: the mounted walks for every refusal a probe reaches, and a static check
+of this package's emitters for the rest (both described below). It builds
+on the follower table of D368 and D381 and does not add a second follower
+classification. `internal/api/refusals.go` names every API operation in
+`operationRefusals`, with the 501/503 key that a probe answers on each runtime
+shape: standalone, enrolled primary, static, follower and Kubernetes. The
+primary, the static twin and the follower inherit the standalone key. The
+follower's `primary_required` for every `FollowerPrimary` mutation comes from
+`followerOperations`. Fenced and conflicted members answer `cluster_fenced` or
+`cluster_conflict` for every operation. Refusals that exist only because the
+query log, DHCP or a VRRP address is turned off are listed apart, in
+`featureRefusals`. `refusalKeys` is the allowlist of 501/503 keys. Each row
+names its anchor on the operator page `docs/deploy/capabilities.md` (G21-13).
+
+`TestRefusalInventoryNamesEveryOperation` fails for a route that has no line,
+and its message says what to add and how to see what each shape answers. It
+also fails for a stale line, an undeclared key, and an anchor that the page
+does not have. The new package `internal/api/refusalinventory` walks the
+served OpenAPI document with an admin session and runs the session-ending
+operations last. It fails for:
+
+- an error without the JSON envelope;
+- a 501/503 that the table does not declare for that shape;
+- a declared refusal that the shape does not answer;
+- a key without an allowlist row;
+- a refusal without a hint;
+- a durable refusal that carries `Retry-After`, or a transient one that does
+  not.
+
+The walk runs through the real seams:
+
+- mounted `runServe` for a licensed SQLite standalone node with the query log
+  on;
+- a static twin;
+- a Kubernetes node against envtest;
+- the fenced and conflicted states of the in-process member fixture, through
+  the production serving gate;
+- in test/e2e, an enrolled primary and its follower (real processes; the
+  follower's sign-in is forwarded) and both conflicted processes of the
+  conflict scenario.
+
+Walking the shapes found real defects, and they are fixed:
+
+- On Kubernetes, `sessions_unavailable`, `factor_management_unavailable`,
+  `external_users_unavailable` and `user_management_unavailable` had no hint.
+- Those keys, `cli_login_unavailable`, `provider_logout_unavailable` and the
+  legacy mux fallback carried `Retry-After: 1`, because the auth error writer
+  adds it by default.
+- Cluster enrollment, invitations and promotion on a static or standalone
+  node had no hint and carried `Retry-After: 1`.
+- An unknown or unready OIDC provider (browser and CLI), DHCP reads without
+  DHCP, the VIP event stream without a VRRP address, integration
+  administration on Kubernetes and `generation_pending` had no hint.
+
+Each durable refusal now sets `NoRetryAfter`, as D368 does for the fenced and
+conflicted answers. Statuses and keys did not change.
+
+Review fixes (November 13, 2026). An independent review found that the walks
+stopped at request validation for more than half of the operations, and that
+the table therefore missed the Kubernetes `unavailable` of seven integration
+operations. Now:
+
+- Probes send a query, a body and an `If-Match` where the handler decides
+  (`probeRequests` in the walk): the integration reads and commands (namespace,
+  uid and revision of a review that names nothing) and the DHCP mutations reach
+  their handlers. Every integration operation declares `unavailable` on
+  Kubernetes, as `docs/deploy/capabilities.md` says, and the DHCP mutations
+  joined `featureRefusals`. Probes that stop at validation fell from 72 to 30 of
+  191 on the standalone node and from 58 to 30 on Kubernetes; each walk logs how
+  many stopped at validation and how many answered 404.
+- `TestRefusalEmittersExplainThemselves` parses `internal/api` and fails for
+  any `errUnavailable` call, or `newError` with 501 or 503 and an empty hint,
+  that `hintlessRefusals` does not name. The list holds 144 internal-fault and
+  per-request answers (a command result that went missing, a broken plan
+  invariant, an exceeded bound) whose message is the whole explanation.
+  `errNotImplemented` (eight call sites) now always has a hint, and the
+  deployment limits that had none gained one: no block page renderer, no DHCP
+  setup manager, no query history for suggestions, status and actions, and
+  cluster-wide query actions without a central database.
+- A declared `unavailable` may not carry `Retry-After`, except for browser and
+  CLI provider sign-in (`transientUnavailable`), so the `NoRetryAfter` of
+  enrollment, invitations and promotion is now enforced by every walk.
+  `TestLegacyAuthHandlerFallbackAndRefusals` asserts no `Retry-After` on each
+  legacy refusal, including the last fallback.
+- A probe of a mutation that succeeds outside the reviewed `probeMutations`
+  list fails the walk. The enrolled process test walks the primary and the
+  follower as its last step, after the restart checks.
+- A `generation_pending` answer is waited out through `GET /auth/me` before
+  the operation is sent again. Provider sign-in admission charges its
+  five-request lane before the serving generation is captured, so quick
+  resends of `oidcStart` ended in 429 (fix05, below).
+
+Evidence under `.context/v020-final-20261110/evidence/G21-REFUSAL-INVENTORY/`:
+
+- `explore01`-`explore04.log`: development walks with
+  `KUDURRU_REFUSAL_INVENTORY_DUMP=1`. These are retained failures that show
+  the defects above. explore01 ran without a license, so most mutations
+  answered 402. explore02 found the missing hints. explore03 found the
+  `Retry-After: 1` on durable refusals and the undeclared Kubernetes `501
+  read_only` of `PATCH /node/config`. In explore04 only the standalone
+  settings-ownership line was still missing.
+- `explore05.log`: a retained failure. Each request to a fenced or conflicted
+  member waits for the serving gate's 2-second capture wait, so a sequential
+  walk of 191 operations ran past its 5-minute budget. The walk now probes
+  closed members 16 at a time. `explore06.log`: fenced and conflicted pass,
+  191 of 191 operations refused (54.9 s).
+- `e2e01.log`: empty. The run was stopped at its background limit while it
+  waited for the heavy lock. `e2e02.log`: a retained failure. The enrolled
+  fixtures run without the query log (which led to `featureRefusals`).
+  Promotion review and commands are not refused on enrolled members, and OIDC
+  start and callback answer `primary_required` on a follower. `e2e03.log`:
+  `TestEnrolledClusterProcessesPartitionCatchupAndRestart` passed (184.6 s;
+  primary: 191 operations, 17 refused; follower: 191, 67) and
+  `TestEnrolledProcessConflictResolution` passed (120.9 s; 191 of 191 refused
+  on each conflicted process). `e2e04-final.log`: the same two tests pass on the
+  committed tree (134.9 s and 133.9 s; the same counts).
+- `race01-light.log`: `-race` for `internal/auth/stack`, `internal/apiclient`
+  and `internal/api/refusalinventory`; all pass.
+- `race02-api.json`: `-race` for all of `internal/api`: 668 pass, 3
+  environmental skips, 1 fail (267.6 s). The one failure is
+  `TestRefusalInventoryNamesEveryOperation`, and only because this lane does
+  not have `docs/deploy/capabilities.md`; the integration branch does.
+  `api03-anchors-with-pr-capabilities.log`: the same test passes with that
+  page copied from `robertherbaugh/v020-features-review`. The page was removed
+  again afterward and is not committed.
+- `race03-root.log`: `-race` selection of 62 tests in `cmd/kudurru` (652.6
+  s). 59 passed. These are retained failures: the standalone and static walks
+  saw `generation_pending` for more than the walk's 10-second window on the
+  provider routes, and that answer had no hint. The walk now waits up to a
+  minute for that transient answer only, and the answer has a hint.
+  `TestServingHTTPTOTPLoginPasswordConsumeExactlyOnce` failed once with
+  401 instead of 429 (its per-second limiter expired under the batch's load).
+  This lane did not change that path.
+- `race04-root.log`: `-race`. All four inventory tests, the legacy fallback
+  test and the TOTP test pass (129.3 s): standalone 25.3 s, static 17.5 s,
+  Kubernetes 17.1 s, fenced 30.2 s, conflicted 30.4 s.
+- `drift01.log`: `TestOpenAPIDrift`, `TestRoutePermissionLint`,
+  `TestOpenAPIServedAndDocs`, `TestUnknownAPIPathIsEnvelope` and both follower
+  table tests pass. No generated artifact changed.
+- `lint01.log`: a retained failure (one gosec G115 finding in the new walk
+  test). `lint02.log`: 0 issues after the fix.
+
+Review-fix evidence (`fix01`...`fix09`):
+
+- `fix01-emitters-before.log`: `TestRefusalEmittersExplainThemselves` with an
+  empty `hintlessRefusals` and the hint changes stashed: 151 hintless sites
+  reported, among them the five configuration answers above and
+  `errNotImplemented answers 501 with hint <nil>`.
+- `fix02-root.log`: a retained failure. The ownership probe body with
+  `action` was rejected (`action` is a path parameter); the body went back to
+  the revision only.
+- `fix03-light.log`: `-race` for `internal/api/refusalinventory`,
+  `internal/auth/stack`, `internal/servinghttp`: all pass.
+- `fix04-api.json`: `-race` for all of `internal/api`, with
+  `docs/deploy/capabilities.md` copied from the integration branch for the
+  run and removed afterward: 671 pass, 3 environmental skips, 0 fail (417.5 s).
+- `fix05-root.log`: a retained failure. The static walk's `oidcStart` answered
+  `429 rate_limited` after quick resends of a pending answer; the other walks
+  passed (standalone 15 refused, 30 stopped at validation, 39 not found;
+  Kubernetes 45, 30, 39).
+- `fix06-root.log`: `-race -count=2` of the standalone, static, Kubernetes and
+  closed-member walks, `TestLegacyAuthHandlerFallbackAndRefusals` and
+  `TestRunServeKubeForwardedAuthRoutesAnswerEnvelope`: every test passes in
+  both iterations (302.2 s). Per iteration: standalone 191 walked, 15 refused,
+  30 validation, 39 not found; static 87, 10, 22; Kubernetes 45, 30, 39; fenced
+  and conflicted 191 of 191.
+- `fix07-e2e.log`: `KUDURRU_E2E=1`.
+  `TestEnrolledClusterProcessesPartitionCatchupAndRestart` passes (186.9 s;
+  primary 21 refused, 30 validation, 39 not found; follower 71, 16, 29) and
+  `TestEnrolledProcessConflictResolution` passes (137.1 s; 191 of 191 on each
+  conflicted process).
+- `fix08-lint.log`: a retained failure, golangci-lint for `internal/api/...`,
+  `test/e2e/...` and `cmd/kudurru/...`: one gosec G304 in the emitter check
+  (`os.ReadFile` of a listed name). `fix09-lint.log`: 0 issues after the
+  parser reads the files itself.
+- The bench guards (`hack/test_bench_*.py`) show only the pre-existing
+  socket-calibration failure described below; no bench file was touched.
+
+What remains open:
+
+- On the integration branch, `TestRefusalInventoryNamesEveryOperation` and
+  every walk will fail for the seven operations that other lanes added:
+  `createEdgeBlock`, `listEdgeBlocks`, `revokeEdgeBlock`, `getClusterAnchors`,
+  `getBlockListRPZFeeds`, `listRPZFeeds` and `querylogSinks`. Each needs a
+  line in `operationRefusals`; the failure messages say so. This is by design.
+- The fenced shape is walked only in the in-process member fixture, not
+  between processes. This lane's e2e has no fenced scenario; the integration
+  branch's `enrolledFencedClosed` (enrolled_cluster_test.go) is where an
+  `enrolledRefusalInventory(t, apiA, api.ShapeFenced, document)` call belongs,
+  with the document read before the promotion. The integrator must add it and
+  run the e2e once more; until then the fenced shape between processes is
+  unmet.
+- The walks still stop at request validation for 30 of 191 operations on the
+  standalone node, the primary and Kubernetes (16 on the follower, 10 on the
+  static node), and 39 answer 404 for an object that does not exist. A refusal
+  that a handler decides after validation or after the lookup is not observed
+  there. In `internal/api` the static check covers it: every hintless 501/503
+  is named and classified. Handlers outside `internal/api` (`cmd/kudurru`,
+  `internal/auth/stack`, `internal/servinghttp`) have no static check; their
+  refusals are checked where a probe reaches them.
+- `browserLogout` is probed after `logout` ends the session, so it answers 401
+  on every shape and is never observed with a live session.
+- The provider sign-in hint ("GET /api/v1/auth/status lists the identity
+  providers ...") is also answered for transient failures of that path (a
+  writer bind or a command error), where "try again" is the useful part.
+- `docs/deploy/capabilities.md` (on the integration branch) explains
+  `not_implemented` only as an integration provider's missing command. It now
+  also means a server started without that part of the runtime; the glossary
+  row should say so when the page is next edited.
+- In this lane, `CONTRIBUTING.md` links `docs/deploy/capabilities.md`, which
+  is on the integration branch.
+- An unrelated pre-existing failure: `hack/test_bench_socket_calibration.py`
+  fails in this lane. `internal/dnsserver/quic_socket_test.go` no longer
+  matches its pinned SHA-256, because of the earlier lane commit c510158d.
+
+**Verification state at 7663c957.** Backed out of the local PR branch before any push: on the merged tree its tests failed by design for every operation other lanes had added without an inventory line or hint (`evidence/INTEGRATE-32/`). G21-REFUSAL-MERGE re-applied it on the head. Its verifier resolved findings 1, 3 and 5 and left two unresolved: (major) handler-level refusals not reached and hintless deployment-limit 503s still listed as internal faults (`recoveryReader`'s "central rollup recovery unavailable"; G21-REFUSAL-OPEN hinted it), and (minor) the fenced shape not walked between real processes (`3162daec` added the walk). New: a misleading DHCP setup hint for a nil manager (fixed by G21-REFUSAL-OPEN); the hintless check keys by file, function and message and misses non-literal statuses or hints; changelog text existed only as a draft; `TestRefusalInventoryNamesEveryOperation` needed `docs/deploy/capabilities.md`, which is on the PR branch.
+
+
+### G21-11 Refusal inventory: what verification left open — November 13, 2026 (no decision row)
+
+This package closes the open findings of the G21-REFUSAL-INVENTORY
+verification (`followups/wave3-open.json`, `verify:G21-REFUSAL-INVENTORY`).
+
+Deployment limits that answered a 503 without a hint now have one. All 501
+and 503 answers in `internal/api` were reviewed again:
+
+- Rollup recovery evidence (`rollupEvidence`, `verifyRollupEvidence`) on a
+  node without a central database: the hint names `database.dsn` and
+  `database.querylog.ship` (docs/deploy/postgres.md). Both operations joined
+  `featureRefusals` under the new feature `FeatureCentralHistory`. Their
+  probes now send a source and a closed hour from the last day (`{closedHour}`
+  is filled in when the probe is sent), so every walk reaches the refusal.
+- Peer health of a node that this node cannot reach over the internal listener
+  (no internal credentials, or a peer without an internal address). Also
+  history and live-tail reads that no requested node answered. Each hint names
+  the internal credentials and the query log, and says to ask with
+  `scope=node`.
+- `listIntegrationManifests` on a server without the integration runtime
+  answers the same hinted `errIntegrationsUnavailable` as the other
+  integration routes.
+- `querySuggestions` joined `featureRefusals` (query log), and its probe
+  sends `field=domain`.
+
+The DHCP setup write (`putDHCPSetup`) with no setup manager now says what is
+true on each driver. `runServe` opens the manager on every Linux SQLite node,
+with DHCP on or off. So only two cases reach this answer:
+
+- A Kubernetes node with DHCP off: the hint is the Helm values `dhcp.enabled`
+  and `dhcp.serverAddress`, as `dhcpGetSetup` says.
+- A SQLite node that is not on Linux: DHCP runs only on Linux, and no setting
+  helps.
+
+The Kubernetes walk now reaches this answer: the probe sends a valid body with
+an If-Match that matches nothing. `featureRefusalShapes` limits the DHCP
+feature refusal of `putDHCPSetup` to Kubernetes. On the standalone node the
+probe answers `412`.
+
+`TestRefusalEmittersExplainThemselves` changes in three ways:
+
+- `hintlessRefusals` is now a map from site key to the number of call sites.
+  A second hintless answer that reuses a listed message in the same function
+  fails, and so does a second `<dynamic>` message.
+- A numeric `501`/`503` counts as a refusal.
+- A hint resolves through literals, package string constants and `+`
+  concatenation. A status or hint that the check cannot read is reported,
+  unless `unresolvedRefusalSites` lists it with its count and a reason. It
+  lists two: huma's own error constructor, and `primaryRequired`, which
+  replaces an empty hint before it calls `newError`.
+
+`TestRefusalEmitterScanCountsAndResolves` holds the scanner to these rules on
+a fixture source.
+
+The fenced shape is now walked between processes. In
+`TestEnrolledClusterProcessesPromoteAndRejoin`, the served document and a
+session of its own are taken from the former primary before it stops for the
+promotion. After `enrolledFencedClosed`, while the partition keeps it fenced:
+
+- `enrolledFencedLoginRefused` asserts that a password sign-in with valid
+  credentials answers `503 cluster_fenced`, names the newer primary, carries
+  no `Retry-After` and sets no cookie;
+- `enrolledRefusalInventory(..., api.ShapeFenced, ...)` walks every operation
+  with the earlier session.
+
+`docs/deploy/capabilities.md` now gives both meanings of `not_implemented`.
+`CONTRIBUTING.md` describes the counted emitter check.
+
+The lane's HEAD already contained routes and behavior that the inventory
+table did not reflect, so the table and two stale tests were brought up to
+date. Walks confirmed every change:
+
+- Nine operations had no line: `createEdgeBlock`, `listEdgeBlocks`,
+  `revokeEdgeBlock`, `getClusterAnchors`, `getBlockListRPZFeeds`,
+  `listRPZFeeds`, `querylogSinks`, `listIntegrationManifests` and
+  `batchDeleteIntegrations`. Each has one now. Static answers `read_only` for
+  edge block writes and `batchDeleteIntegrations`. Static and Kubernetes
+  answer `unavailable` for `getClusterAnchors`.
+- Integrations now run on Kubernetes in this lane, so the Kubernetes
+  `unavailable` lines of every integration operation were removed.
+- `createToken` is `FollowerForwarded` (D368). The follower examples in
+  `TestExpectedRefusalInheritance` and `TestProblemsNameWhatToAdd` now use
+  `createAllowlistEntries`, a `FollowerPrimary` mutation.
+- The emitter list gained the hintless sites that other packages added: the
+  integration license capture, the edge block set invariant and the RPZ
+  snapshot. Two functions were renamed (`requireGroup`, `writeCommand`).
+
+Evidence under `.context/v020-final-20261110/evidence/G21-REFUSAL-OPEN/`:
+
+- `root01-dump.log`: a retained failure (no race, with dump). The standalone
+  walk and both closed members passed (200 operations; fenced and conflicted
+  200 of 200 refused). The static and Kubernetes walks failed for the stale
+  lines above: integrations on Kubernetes, the anchors and the edge block
+  writes. The dump shows `rollupEvidence` and `verifyRollupEvidence` answering
+  the hinted 503 on every shape, and the Kubernetes `putDHCPSetup` answering
+  "DHCP is off in this release" with the Helm hint.
+- `emit01-mutation.log`: two hintless refusals were inserted into
+  `recoveryError` and reverted afterward: a second `errUnavailable` with a
+  listed message, and a numeric `503`. The counted check reports both ("2
+  times, and hintlessRefusals lists 1"; "a numeric status").
+- `api01-before.log`: the new handler assertions with the handler changes
+  stashed. `TestKubeDHCPOffInTheChart`, `TestDHCPSetupWithoutManagerOnSQLite`,
+  `TestNodeHealthDiscoveryAndMissingTransport` (no client, no address),
+  `TestRollupRecoveryWithoutCentralDatabase` and
+  `TestClusterReadsWithLocalLogDisabled` all fail.
+`race02-root.log` is a retained failure that shows nothing about the code.
+Its build ran while `emit01` and `api01` had temporarily mutated or stashed
+`querylog_recovery.go`, so the recovery refusal had no hint. It was rerun.
+- `race03-api.log`: a retained failure. `-race` for `internal/api/...` with
+  the default 10-minute package timeout ran out under machine load
+  (`TestZoneGroupResolutionReadsEachZoneOnce` was running); no test failed.
+  `race06-api.log` is the rerun with `-timeout 40m`: `internal/api` passes
+  (735.9 s), and so does `internal/api/refusalinventory`.
+- `race04-root.log`: `-race` for the standalone, static and Kubernetes walks,
+  the closed members, `TestLegacyAuthHandlerFallbackAndRefusals` and
+  `TestRunServeKubeForwardedAuthRoutesAnswerEnvelope`. Everything passed
+  except the standalone walk, a retained failure. There, `putPolicies`
+  answered the hintless `503 unavailable` "current writable serving
+  generation unavailable" (`cmd/kudurru/serving_settings_api.go`, the
+  command-path refusal that D399 left open).
+- `race05-standalone.log` (`-count=2`): the same failure once, and one pass.
+- `race07-exp-no-dhcp-probe.log`: an experiment with the `putDHCPSetup` probe
+  removed for that run only. Three of three standalone walks passed. The
+  probe records a refused attempt in the audit log. The first version of
+  this package then sent it after every other probe (`lateProbes`); the
+  review fixes below replaced that reordering with an explained answer.
+- `race08-root-late.log`: `-race -count=3` of the standalone, static and
+  Kubernetes walks with that order (superseded by `fix-08`): nine of nine
+  pass. Per walk:
+  - standalone: 200 operations, 17 refused, 29 stopped at validation, 40
+    answered 404;
+  - static: 93 refused, 7 at validation, 23 answered 404;
+  - Kubernetes: 41 refused, 29 at validation, 46 answered 404.
+- `e2e01-cut.log` (`KUDURRU_E2E=1`, no race):
+  `TestEnrolledClusterProcessesPartitionCatchupAndRestart` passed (209.2 s).
+  The primary walk had 200 operations: 24 refused, 29 at validation, 40
+  answered 404. The follower walk had 73 refused, 13 at validation, 31
+  answered 404. The background limit then stopped the run in the middle of
+  the promote test, after a long wait for the heavy lock. That cut is not a
+  test failure.
+- `e2e02.log`: `TestEnrolledClusterProcessesPromoteAndRejoin` passes
+  (233.2 s): the sign-in refusal holds, and the fenced walk has 200 of 200
+  answering `cluster_fenced`. `TestEnrolledProcessConflictResolution` passes
+  (127.7 s; 200 of 200 on each conflicted process).
+- `lint01.log`: golangci-lint v2.15.0 for `internal/api/...`,
+  `test/e2e/...` and `cmd/kudurru/...` reports 0 issues. `gofmt -l` is empty
+  and `go vet` is clean for the touched packages. The bench guards pass (14
+  tests). `TestOpenAPIDrift`, `TestRoutePermissionLint`,
+  `TestOpenAPIServedAndDocs` and `TestUnknownAPIPathIsEnvelope` pass. No
+  generated artifact changed, so there is no `chore(gen)` commit.
+
+Review fixes (four more source commits):
+
+- The command path's `503 unavailable` "current writable serving
+  generation unavailable" (`currentCommandAPIError` in
+  `cmd/kudurru/serving_settings_api.go`, answered when the node's writable
+  state changed while a command was admitted) now carries a hint: read the
+  current state, then send the request again if it is still needed
+  (`api.CommandStateChangedHint`). It still carries no `Retry-After`. A
+  command whose acknowledgment failed after its commit must not be
+  replayed blindly, so it is not a `generation_pending`. `lateProbes` is
+  gone, and every probe but the session-ending ones runs in path order
+  again. The walk now sends a probe again after this answer, as it does
+  after `generation_pending`, for at most a minute, and holds an answer that
+  lasts the minute to the inventory. `docs/deploy/capabilities.md` lists
+  the answer under `unavailable`.
+- `featureRefusalShapes` applies only on a Linux host (`hostOS`, which is
+  `runtime.GOOS`). On any other host no SQLite node opens the DHCP setup
+  manager, so the walks expect `putDHCPSetup` to answer `unavailable` on
+  every shape. `TestExpectedRefusalInheritance` holds both a Linux and a
+  darwin host.
+- A peer health read that reached the peer and failed (down, timeout,
+  refused credential, `unsupported` on an older version, invalid answer)
+  now carries `peerHealthHint`. The line `nodes.go nodeHealth: %s` left
+  `hintlessRefusals`.
+- `queryAction` joined `featureRefusals` under `FeatureCentralHistory`. A
+  probe can now fill `{id}`. Its probe names row 9007199254740991 with
+  `scope=cluster`, so every walk without a central database reaches the
+  hinted refusal; with one, the row is not found.
+
+Evidence of the review fixes, in the same directory:
+
+- `fix-01-walk-before.log`: with `walk.go` from before the fixes,
+  `TestProbeResendsAfterCommandStateChanged` fails (one send, the 503
+  observed), and `TestOperationsKeepDHCPSetupInPathOrder` fails ("putPolicies
+  putDHCPSetup logout"). `fix-02-walk-after.log`: all seven walk unit tests
+  pass.
+- `fix-03-cmd-before.log`: `TestCurrentCommandStateChangedExplainsItself`
+  fails with the hint removed from `currentCommandAPIError` (hint "" for
+  every cause).
+- `fix-04-hostos-before.log`: with the host condition removed,
+  `TestExpectedRefusalInheritance` fails for standalone, primary and
+  follower on a darwin host. `fix-05-hostos-after.log`: `TestExpectedRefusal*`
+  and `TestRefusal*` pass.
+- `fix-06-peerhint-before.log`: without the hint,
+  `TestNodeHealthPeerFailuresRedacted` and `TestNodeHealthUnreachable` fail.
+  `fix-07-peerhint-after.log`: they pass with `TestRefusalEmitter*`,
+  `TestRefusal*` and `TestExpectedRefusal*`.
+- `fix-08-mounted-race.log`: `-race -count=3` of
+  `TestRunServeRefusalInventory*`, `TestRootMemberRefusalInventoryClosedMembers`
+  and `TestCurrentCommandStateChangedExplainsItself`: all 15 pass (409.5 s),
+  with `putDHCPSetup` back in path order. Per walk: standalone 200
+  operations, 18 refused, 28 stopped at validation, 40 answered 404; static
+  93, 7, 23; Kubernetes 42, 28, 46; fenced and conflicted 200 of 200.
+  `queryAction` accounts for the extra refusal on standalone and
+  Kubernetes, one fewer at validation.
+- `fix-09-e2e.log` (`KUDURRU_E2E=1`, no race):
+  `TestEnrolledClusterProcessesPartitionCatchupAndRestart` (209.1 s; primary
+  25 refused, 28 at validation; follower 73, 13) and
+  `TestEnrolledClusterProcessesPromoteAndRejoin` pass (fenced 200 of 200).
+  The log holds two runs of the same command, both passing: a first
+  invocation was assumed lost and started again, and both wrote to it.
+- `fix-10-api-race.log`: `-race` of `TestNodeHealth*`, `TestRefusal*`,
+  `TestExpectedRefusal*`, `TestOpenAPIDrift`, `TestRoutePermissionLint`,
+  `TestDHCPSetup*` and `TestKubeDHCP*` in `internal/api` passes.
+  `fix-12-walk-race.log`: `-race` of `internal/api/refusalinventory` passes.
+- `fix-11-lint.log`: golangci-lint v2.15.0 for `internal/api/...` and
+  `cmd/kudurru/...` reports 0 issues. `gofmt -l` is empty and the bench
+  guards pass. No generated artifact changed, so there is no `chore(gen)`
+  commit. The full `-race ./internal/api/...` was not rerun after the
+  fixes (`race06-api.log` is from before them).
+
+What remains open:
+
+- `currentCommandAPIError` still gives one message and key to every
+  cause it groups (a commit that retired the request's publication, a new
+  writer term, a fence, a replaced dependency). A hint now explains that
+  answer, but it does not say which of them happened, and it does not
+  separate a refusal before the commit from an acknowledgment that failed
+  after it. Telling those apart, and answering `generation_pending` with
+  `Retry-After` for the first, belongs to the D399 / CMD-RECAPTURE work.
+  The static emitter check still does not cover `cmd/kudurru`; the unit
+  test covers this one site.
+
+- The table now matches this lane's HEAD. The integration branch may differ:
+  it documents Kubernetes integrations as available, as this lane does now.
+  After cherry-picking, rerun `TestRefusalInventoryNamesEveryOperation` and
+  the walks. Their messages say what to add.
+- Walks still stop at request validation for about 28 operations on the
+  standalone and Kubernetes nodes, because a valid body would change a shared
+  fixture (`createEdgeBlock`, `batchDeleteIntegrations` and others; 28 after
+  the review fixes). The counted static check covers those in
+  `internal/api` only. Handlers in `cmd/kudurru`, `internal/auth/stack` and
+  `internal/servinghttp` have no static check.
+- The `getClusterAnchors` hint on static and Kubernetes ("requires the
+  complete nonstatic SQLite runtime") is present but terse. It was not
+  changed.
+- The capabilities matrix row for background integrations on Kubernetes is
+  stale in this lane, but the integration branch has the current text. It was
+  not touched here, to avoid a conflict. The changelog draft of the
+  inventory package is still not in `CHANGELOG.md`; the tracker package
+  carries it.
+
+**Verification state at 7663c957.** Held, then re-applied by G21-REFUSAL-MERGE. Its verifier resolved three findings and left the major one unresolved because `ee5415ca` broke two existing tests (`TestServingBlockingCurrentRawScopeAndCanceledWriter`, `TestServingBlockingMissingCanonicalSingletonIsUnavailable`): in the blocking command path a hint on a 503 `unavailable` is the receipt of a committed, unacknowledged change. G21-REFUSAL-MERGE narrowed that change, so at this head "current writable serving generation unavailable" is unchanged and has no new hint (its draft's bullet about that hint is not in the changelog). New: `docs/deploy/sqlite-cluster.md` and `api-contracts.md` say nothing was applied after that answer while the dropped hint said to read the state first (the advice now stands as before); only a selection of `./cmd/kudurru` was run after the fixes.
+
+
+### G21-11 Refusal inventory on the pull request head — November 13, 2026 (no decision row)
+
+The refusal inventory of G21-REFUSAL-INVENTORY and G21-REFUSAL-OPEN now
+runs on the integrated head 606a53a8. The fourteen commits were
+cherry-picked one at a time, with no conflict except in
+`docs/deploy/capabilities.md` (from ee5415ca). The seven commits of the
+parent and child zone fix on the same branch were not brought.
+
+ee5415ca was narrowed. The command path's 503 unavailable "current writable
+serving generation unavailable" (`currentCommandAPIError` in
+`cmd/kudurru/serving_settings_api.go`) keeps its body without a hint. The
+cmd test that asserted a hint and the `capabilities.md` row change were
+dropped. `TestServingBlockingCurrentRawScopeAndCanceledWriter`,
+`TestServingBlockingMissingCanonicalSingletonIsUnavailable`,
+`docs/deploy/sqlite-cluster.md` and `docs/deploy/api-contracts.md` are
+unchanged, so D399-REDO keeps the meaning of that answer. The walk part of
+ee5415ca was kept:
+
+- The walk treats that answer as transient, as it treats
+  `generation_pending`: the probe is sent again for at most a minute.
+- The message is a constant of the walk, not of `internal/api`.
+- The DHCP setup probe is back in path order.
+
+The walks then asked for the operations that other lanes had added:
+
+- `updateLocalUser` and `deleteLocalUser`: `read_only` on static and
+  `user_management_unavailable` on Kubernetes.
+- The ServiceAccount and IdentityProvider commands and
+  `createServiceAccountToken` (D396): `read_only` on static and
+  `iam_management_unavailable` on Kubernetes. The new allowlist row points
+  to the new glossary anchor `docs/deploy/capabilities.md#iam_management_unavailable`.
+  That page also gained a capability row, and its local-user row now covers
+  changes and deletion.
+- `getServiceAccount`, `getIdentityProvider` and `listInventory` (D397):
+  no refusal on any shape.
+
+The emitter check found four new hintless 503s in `internal/api`:
+
+- Two authorizer errors (`authroutes.go me`, `authz.go listAllowed`) and a
+  serving inventory that could not be read are internal or transient
+  faults. They joined `hintlessRefusals`.
+- `listInventory` on a server without the client inventory now has a hint.
+
+The integration refusal's hint said "integrations run only on the SQLite
+store". That is no longer true: Kubernetes mounts the integration runtime.
+The hint now says that the server was started without the runtime.
+
+The enrolled process walks found a follower race. A forwarded probe
+(`putClientgroups`) answered 503 unavailable "the enrolled primary is
+unavailable; the write was not applied" while the primary was up. The
+follower had installed newer data, which the walk's own forwarded probes
+had caused, before it sent the command. The walk now sends a probe again,
+for at most a minute, after two follower answers that say nothing was
+sent: that one, and the documented "the follower's source changed". An
+answer that lasts the minute still fails the walk.
+
+The fenced walk and the final primary and follower walks run only in the
+plain variants of `testEnrolledProcessesWith`. The managed anchor variants
+(`enrolled_anchors_test.go`) count root acquisitions across that flow, so
+they do not walk.
+
+Evidence under `.context/v020-final-20261110/evidence/G21-REFUSAL-MERGE/`:
+
+- `api01-before.log`: a retained failure. Right after the cherry-picks,
+  `TestRefusalEmittersExplainThemselves` reported 4 hintless sites, and
+  `TestRefusalInventoryNamesEveryOperation` reported 12 operations without a
+  line.
+- `root01-dump.log`: a retained failure (no race, with dump; 75.7 s).
+  Standalone and the closed members pass. Static and Kubernetes fail for
+  the IAM writers above; Kubernetes also fails for the missing
+  `iam_management_unavailable` allowlist row.
+- `race02-root.log`: `-race` run of the standalone, static, Kubernetes and
+  closed-member walks, `TestLegacyAuthHandlerFallbackAndRefusals`,
+  `TestRunServeKubeForwardedAuthRoutesAnswerEnvelope` and the two blocking
+  tests that ee5415ca broke. All pass (170.0 s). Per walk:
+  - standalone: 212 operations, 18 refused, 28 stopped at validation, 42
+    answered 404;
+  - static: 102 refused, 7 at validation, 25 answered 404;
+  - Kubernetes: 51, 28, 48;
+  - fenced and conflicted: 212 of 212.
+- `race03-api.log`: `-race ./internal/api/...` passes: `internal/api`
+  334.9 s, `internal/api/refusalinventory` 1.8 s. This includes
+  `TestOpenAPIDrift` and `TestRoutePermissionLint`.
+- `e2e01.log`: a retained failure, not about the code. The linker was
+  killed (out of memory) while three heavy runs were building.
+- `e2e02.log`, `e2e03.log`: retained failures (`KUDURRU_E2E=1`).
+  - The conflict test passes (212 of 212 on each conflicted process).
+  - The promote test fails in its follower apply cut, before any walk; see
+    the base defect below.
+  - In e2e03, the partition test's follower walk failed for `putClientgroups`
+    with the follower race above. That led to the transient-answer table.
+- `e2e04-base.log`: the base 606a53a8 with `-count=3`. The partition test
+  passes 3 of 3. `TestEnrolledClusterProcessesPromoteAndRejoin` fails 3 of
+  3 with the same cut failure: "document 6 of 40 after the cut at 5 was not
+  refused as documented ... the enrolled primary is unavailable; the write
+  was not applied".
+- `e2e05.log`: the head with the transient-answer table, `-count=3` of the
+  three tests.
+  - `TestEnrolledProcessConflictResolution` passes 3 of 3.
+  - `TestEnrolledClusterProcessesPartitionCatchupAndRestart` passes 1 of 3.
+    The pass has both walks: primary 25 refused, 28 at validation, 42
+    answered 404; follower 82, 13, 33.
+  - `TestEnrolledClusterProcessesPromoteAndRejoin` passes 1 of 3. The pass
+    has the fenced walk with 212 of 212 answering `cluster_fenced`.
+  - Each of the four failures is the base cut defect, before any walk.
+- `lint01.log`: golangci-lint v2.15.0 for `internal/api/...`,
+  `test/e2e/...`, `cmd/kudurru/...`, `internal/auth/stack/...` and
+  `internal/servinghttp/...`. One issue, gosec G117 in
+  `cmd/kudurru/serve_inventory_mount_test.go:159`. That file is unchanged
+  since da0beb37, before this package. `gofmt -l` is empty for the touched
+  files, and the bench guards pass (14 tests).
+- `full01-cmd.log`, `full02-cmd-batches7-9.log`: the full
+  `python3 hack/go-test.py --timeout=30m .../cmd/kudurru` with `taskset -c
+  0-3` and `GOMAXPROCS=4` (870 tests in 9 batches). The first invocation
+  ran batches 1 to 6 and was stopped by the agent's two-hour limit in batch
+  7. Batches 7 to 9 and the norace timing tests then ran through the same
+  batching code (`/tmp/g21merge/rest.py`, which imports `hack/go-test.py`).
+  - Batches 5 and 9 and the norace tests pass.
+  - 22 tests failed once, on a machine that the other lanes also loaded
+    (load average 8 to 14). Each was then run three times at the head and
+    three times at the base; the numbers follow (`rerun01-head.log`,
+    `rerun02-head.log`, `rerun03-base.log`).
+
+| Test | Head, 3 reruns | Base, 3 reruns |
+| --- | --- | --- |
+| `TestIntegrationUniFiPushMirrorRecordsReviewed` | 3 (0 failed) | 2 (1 failed) |
+| `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` | 2 (1 failed) | 0 (3 failed) |
+| `TestRunServeSQLiteTOTPEnrollmentRestartRecovery` | 3 (0 failed) | 2 (1 failed) |
+| `TestRunServeWebhookRecordsFileIntegrationAndCLI` | 2 (1 failed) | 2 (1 failed) |
+| `TestServingNodeCommandActualRefusesStaleAuthorityAndFinalExpiry` | 3 (0 failed) | 3 (0 failed) |
+| `TestServingTSIGObserverQuietOriginalExpiry` | 3 (0 failed) | 1 (2 failed) |
+| `TestRunServeSQLiteCapturedBrowserBothOriginsAndRestart` | 2 (1 failed) | 1 (2 failed) |
+| `TestRunServeQuerylogClickHouseAndLokiSinks` | 2 (1 failed) | 3 (0 failed) |
+| `TestRunServeRefusalInventoryStandalone` | 3 (0 failed) | new test |
+| `TestRunServeSQLiteSourceEntriesRestart` | 3 (0 failed) | 3 (0 failed) |
+| `TestServingBlockingActualHTTPStatusNoopAndExpiry` | 3 (0 failed) | 3 (0 failed) |
+| `TestServingNodeCommandActualSQLFailureAndCommittedReadback` | 1 (2 failed) | 2 (1 failed) |
+| `TestIntegrationDeleteForgetsAHistoryOfSeveralStoredPages` | 2 (1 failed) | 1 (2 failed) |
+| `TestRunServeKubeUniFiSourcesTwoReplicasAndPartition` | 3 (0 failed) | 3 (0 failed) |
+| `TestServingHTTPFactorsRotationAndConcurrentConfirm` | 3 (0 failed) | 3 (0 failed) |
+| `TestServingHTTPRequestBudgetsAcrossAdaptersAndReplicaRestart` | 3 (0 failed) | 3 (0 failed) |
+| `TestServingMigrationCutWaitDoesNotBoundTheStepCommand` | 1 (2 failed) | 2 (1 failed) |
+| `TestOfflineCLIActualOwnershipPartialReport` | 3 (0 failed) | 3 (0 failed) |
+| `TestIntegrationWebhookHooksMountedZoneChangedOneSource` | 3 (0 failed) | 3 (0 failed) |
+| `TestRunServeUniFiHostnameHeldPublicationDeadline` | 2 (1 failed) | 2 (1 failed) |
+| `TestServingHTTPBrowserLogoutExpiredOrMismatchedHintStaysLocal` | 1 (2 failed) | 3 (0 failed) |
+| `TestRunServeUniFiHostnamePolicyLifecycle` | 3 (0 failed) | 3 (0 failed) |
+
+Of the 22 tests, 21 have a base number; the inventory walk is new. Of
+those 21:
+
+- 9 passed every rerun in both trees.
+- 7 failed at least once in both trees.
+- 3 failed only at the base.
+- 2 failed only at the head, and both were run five more times on each
+  tree (`rerun04-head.log`, `rerun05-base.log`):
+  - `TestServingHTTPBrowserLogoutExpiredOrMismatchedHintStaysLocal`: its
+    `expired` subtest waits 2.1 s for a short logout continuation. Head 6
+    of 8 in all (5 of 5 in the second set), base 8 of 8.
+  - `TestRunServeQuerylogClickHouseAndLokiSinks`: each failure was
+    `PATCH /settings: HTTP 503`. Head 6 of 8 in all (4 of 5 in the second
+    set), base 8 of 8.
+  - This package does not change either path. Its `cmd/kudurru` changes
+    add a hint or `NoRetryAfter` to refusal bodies and nothing else. The
+    integrator should still watch these two on the merged tree.
+
+`TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` failed 3 of 3
+at the base and 1 of 3 at the head ("managed recursive runtime did not
+become ready"). The other repeated failures are load or timing failures in
+both trees (`SQLITE_BUSY`, "original integration operation unavailable",
+a hostname policy deadline). Among them are the known base flakes
+`TestIntegrationDeleteForgetsAHistoryOfSeveralStoredPages` and
+`TestRunServeSQLiteCapturedBrowserBothOriginsAndRestart`.
+`TestCLIOIDCBrowserActualTLSProofRefusals` did not fail.
+
+`TestRunServeRefusalInventoryStandalone` failed once in `full01-cmd.log`
+with `oidcStart` answering `429 rate_limited`. Every send of provider
+sign-in is charged against its admission lane (five per minute for the
+start and CLI lanes, ten for the callback) and the charge is a commit. On
+a loaded node that takes longer than the 2 s capture wait to prepare the
+next generation, the operation's own charge leaves it pending again, so
+the walk's resends after `generation_pending` used up the lane. The walk
+now counts the charged sends of `oidcStart`, `oidcCallback` and
+`prepareCLILogin` (`admissionBudget` in
+`internal/api/refusalinventory/walk.go`). When the lane is full it waits
+one window before it sends again, at most twice, instead of sending a
+request the lane would refuse. A 429 is still judged by the inventory and
+fails the walk; it is not accepted as an answer.
+
+- `fix01-before.log`: a retained failure. The new
+  `TestProbeStaysWithinTheSignInAdmissionLimit` (a double that follows the
+  lane's rule and answers `generation_pending` to the first seven admitted
+  sends) fails before the change: "answer 429 rate_limited ... after 5
+  admitted sends".
+- `fix02-inventory.log`: `-race ./internal/api/refusalinventory` passes
+  with the change (3.0 s), the new test included.
+- `fix03-mounted.log`: `-race -count=3 -run TestRunServeRefusalInventory
+  ./cmd/kudurru` passes (147.8 s).
+- `fix05-mounted-2cpu.log`: the same, verbose, with `GOMAXPROCS=2` and
+  `taskset -c 0-1`: standalone, static and Kubernetes pass 3 of 3 each
+  (standalone 20.6 to 25.9 s; 212 operations, 18, 102 and 51 refused).
+  Two cores did not reproduce the starvation of the full run, so the
+  mounted runs show that the change breaks nothing; the unit test is what
+  shows the 429 is gone.
+- `fix04-lint.log`: golangci-lint for `internal/api/refusalinventory/...`
+  reports 0 issues. The bench guards pass (14 tests).
+
+`lint02.log`: golangci-lint for `internal/api/...` and `test/e2e/...` at
+the final head reports 0 issues. The drift and refusal tests of
+`internal/api` and the walk unit tests pass there too.
+
+What remains open:
+
+- The base defect that the promote test shows is not fixed here. A
+  forwarded write cut by the follower's own pull answers "the enrolled
+  primary is unavailable; the write was not applied" instead of the
+  documented "the follower's source changed". It fails
+  `TestEnrolledClusterProcessesPromoteAndRejoin` 3 of 3 at 606a53a8, and
+  intermittently the partition test too. The likely place is
+  `objectForwardError` in `cmd/kudurru/serving_member_objects.go`: an
+  unsent forward whose error is the local `serving.ErrPending` of a
+  superseded read lease (`withMemberForward`, `CheckReadLease`) falls into
+  the "primary unavailable" case. This belongs with the capture work
+  (D399-REDO) or the HA lane. The walk's resend of that message should be
+  removed once the follower answers correctly.
+- `currentCommandAPIError` still has no hint. Whether it gets one is left
+  to D399-REDO.
+- The G21-REFUSAL-OPEN changelog draft has a bullet that gives that answer
+  a hint. That bullet no longer applies.
+- The `cmd/kudurru` refusals still have no static emitter check; only the
+  walks check them.
+
+**Verification state at 7663c957.** Merged and pushed at `7663c957` (INTEGRATE-49 green; the walks reach 212 operations on primary, follower, fenced and conflicted shapes in e2e). Its verifier confirmed **none of the four findings resolved**: (major) the process-level fenced and follower walks are each proven by a single pass (the e2e tests fail earlier in the follower apply-cut step at base); (major) `TestRunServeRefusalInventoryStandalone` under load: the fix is right for the limiter's rule, but on one starved core the test failed 2 of 2 with "context deadline exceeded" at `oidcStart` after about 325 s, because the new 61 s lane waits can exhaust the walk's five-minute context; (minor) `followerUnsentMessage` is still tolerated as transient with its removal condition only in a comment; (minor) acceptance item 4, one green full `./cmd/kudurru` run, is not met. The verifier also found that the ledger draft did not contain several statements the fixer claimed it did (the e2e gap, item 4, a follow-up row); they are stated here instead. New: the lane waits make the loaded case about three times slower; the fix commit's trailer differs from the session's (cosmetic).
