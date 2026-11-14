@@ -2164,6 +2164,8 @@ Aliases: `record`, `rr`.
 
 Create or replace one endpoint (name, type and its targets) in a record set of the zone. The record set defaults to "api-&lt;zone&gt;" and is created on demand. Targets are in presentation format: an address for A/AAAA, a name for CNAME, "10 mail.example.com." for MX, a quoted string for TXT.
 
+--view stores the endpoint in a view (D403): "public" publishes it to integration sinks and never serves it, and the name of a ClientGroup in the record set's namespace serves it only to that group's clients, in place of the default data of the same name and type. A view is part of the endpoint's identity, so adding one never replaces the default data. Without --view the endpoint is the default data every client gets.
+
 ```text
 kudurru records add <zone> <name> <type> <target...> [flags]
 ```
@@ -2173,6 +2175,7 @@ Examples:
 ```sh
 kudurru records add home-example-com nas.home.example.com A 192.168.1.10 --ttl 300
 kudurru records add home-example-com home.example.com MX "10 mail.home.example.com."
+kudurru records add home-example-com nas.home.example.com A 10.9.0.20 --view lan -n kids
 ```
 
 Flags:
@@ -2182,6 +2185,8 @@ Flags:
       --record-set string       record set to write (default api-<zone>)
       --set-identifier string   external-dns set identifier
       --ttl int                 record TTL in seconds (default: the zone's defaultTTL)
+      --view string             view of the endpoint: "public" or a ClientGroup of the record
+                                set's namespace (default: the default data)
 ```
 
 ### kudurru records list
@@ -2196,7 +2201,9 @@ Aliases: `ls`.
 
 ### kudurru records rm
 
-Remove one name/type from a zone.
+Remove the endpoints of one name and type from the zone's record sets.
+
+Without --view every view of the name and type goes (the default data, public and each client-group view). --view - removes the default data only, --view public the publish-only endpoint, and --view &lt;group&gt; that client-group view only. A view names a ClientGroup of its record set's namespace: with -n the removal is limited to the record sets of that namespace, so -n kids --view lan leaves default/lan alone.
 
 ```text
 kudurru records rm <zone> <name> <type> [flags]
@@ -2204,11 +2211,21 @@ kudurru records rm <zone> <name> <type> [flags]
 
 Aliases: `remove`, `delete`.
 
+Examples:
+
+```sh
+kudurru records rm home-example-com nas.home.example.com A
+kudurru records rm home-example-com nas.home.example.com A --view -
+kudurru records rm home-example-com nas.home.example.com A --view lan -n kids
+```
+
 Flags:
 
 ```text
       --record-set string       only this record set (namespace/name or name)
       --set-identifier string   only the endpoint with this set identifier
+      --view string             only this view: "-" the default data, "public", or a
+                                ClientGroup name (default: every view)
 ```
 
 ## kudurru restore
