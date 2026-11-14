@@ -760,6 +760,65 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   SQLite HA primary through the authenticated API, with atomic audit and an
   explicit restart-required receipt.
 
+- Dashboard: the Nodes page of a SQLite node has a **Cluster membership** panel with three reviewed wizards: **Activate cluster** (a dormant standalone node becomes the first primary), **Invite a member** (the primary issues a one-time invitation for one name and internal address, shown exactly once with the `kudurru cluster join --offline` command and the Docker Compose changes for the new node) and **Review promotion** (a follower's eligibility, then a promotion confirmed by typing the node name). Each wizard sends exactly the review the operator confirmed (reading again or unticking requires a new confirmation, also when the stepper jumps to the last step), cannot be closed while its command is in flight, and sends its command once and never repeats it after a changed review or an unknown outcome. An invitation is valid for 2, 5 or 9 minutes, a minute below the primary's ten-minute maximum, and a 409 refusal names its possible causes (a changed primary, a member name or address already used, the primary's clock).
+- Dashboard: a **Root trust anchors** panel on the Nodes page shows this node's managed root trust-anchor state (`GET /cluster/anchors`) and, for each state that needs an operator (a refused adoption of the primary's state, a member fenced behind its term, quarantine, a retired or terminal member, a stopped updater), the documented action with a link to it.
+- Dashboard: **Block at edge** on every address row of **Clients** and on a client's page blocks the client at every dnsdist edge for a chosen time (one minute to seven days) with an optional reason. **Edge blocks** under the client list shows the active blocks with their expiry, reason and author, and **Revoke** lifts one early. The actions need `edgeblocks.write` and are disabled on an enrolled follower. When the outcome of a block or revoke is unknown, the dashboard says so and does not send the command again.
+- Dashboard: **Query-log sinks** on **Nodes** shows each `querylog.sinks` destination of the node: its type, queue and bound, accepted and dropped queries, failed attempts and last success. Raw dnstap sinks are marked. The panel never shows a sink address, credential or error text.
+- Dashboard: **New role binding** on **Access > Identity** creates a RoleBinding on the SQLite driver. Its scope picker offers the whole cluster, one zone or a zone group. When the server cannot say whether the binding was created, the dialog says so and does not send it again. API tokens can also be limited to a zone group.
+- Integrations can be created, replaced and deleted through the API and CLI on both SQLite and Kubernetes: `Integration` is now a kind of `/api/v1/objects/integrations`, `POST /api/v1/apply` and `POST /api/v1/integrations:batchDelete`, and `kudurru get|apply|delete integrations` work. Writes bind the exact `resourceVersion` (`If-Match`), refuse objects owned by files or other managers, and on SQLite commit with their audit row in one current command; an enrolled follower forwards them to its primary.
+- `GET /api/v1/integrations/manifests` and `kudurru integrations manifests` list the provider types of the build with their configuration schema, credential keys (and which are required), and what this node's integration host refuses (on Kubernetes: webhook instances, `spec.unifi.inventory`, Integrations outside the release namespace; UniFi push fields on both drivers), whether the license covers integrations, and which credential reference forms this node resolves.
+- Documentation: a "Managed root anchors (RFC 5011)" page (`docs/deploy/managed-root-anchors.md`) that covers requirements, seed choice, the enable order for standalone nodes, enrolled clusters and dnsdist edges, monitoring, and the places where kudurru departs from RFC 5011 (permanent revocation tombstones, hold-down credit only within one process, seeds fixed after the first bootstrap).
+- Managed root anchors are qualified against real authorities. Separate kudurru processes bootstrap from BIND 9 roots (RSA/SHA-256, ECDSA P-256, Ed25519) and from a Knot DNS root, and answer AD-validated recursion. They refuse wrong, revoked and expired trust, and they observe a real revocation. The RFC 5011 timeline is replayed on BIND- and Knot-signed wires. An opt-in check (`KUDURRU_LIVE_DNS=1 go test -run TestLiveRootManagedBootstrap ./cmd/kudurru`) runs the production acquisition against all 13 root servers.
+- Dashboard: a block list with RPZ feeds shows an "RPZ feeds on this node" section on its page. For each feed it shows the state the answering node reports (pending, serving, expired, unavailable), a plain SERVFAIL warning for every state but serving (pending included), the reason and message of the node's diagnosis, the next transfer attempt, serial, primary, last confirmation, expiry, last error, the compiled rules by trigger and action, and a table of ignored reasons with counts and example owners. It names the node, rereads the state after every list or source change and every few seconds while a feed is not serving (every 30 seconds otherwise), and flags a feed that answers SERVFAIL on this node beside the list's shared health badge.
+- Dashboard: the Lists page shows the worst RPZ feed state of each block list with feeds under its health.
+- Dashboard: RPZ feed sources can be added with **Add source → RPZ feed** on a block list's page and with **Add an RPZ feed** in the new-list wizard (policy zone, primaries in order, TCP or TLS, optional TSIG key name).
+- `hack/release-local-checks.sh` runs the release checks that no pull request
+  workflow runs (version check and its unit tests, the candidate tag,
+  `make check-generated`, `make release-manifests` with an image-tag
+  inspection, the real dashboard bundle with `make size`, `goreleaser check`,
+  the single-target and full goreleaser snapshots and, with `--live`, the
+  live-internet checks) on a clean tree, with one log per step and the commit
+  it ran on, and restores the tree afterwards. With `--full-snapshot` it checks
+  that both snapshot images print the snapshot version and removes them
+  afterwards. Nothing is published, signed, tagged or pushed.
+- `hack/live-recursive-node.sh` starts a throwaway node with a recursive
+  default group and checks against the real root servers that validated
+  answers carry the AD flag, a bogus zone answers SERVFAIL with EDE 6 (and its
+  data with `+cd`), and recursor timeouts stay low.
+- `TestLiveIANATrustAnchors` (with `KUDURRU_LIVE_DNS=1`) compares the built-in
+  root trust anchors with the DS records IANA's root-anchors.xml lists as valid
+  today.
+- IAM writers on the SQLite driver: change a local account's display name, groups or disabled state and delete it (`kudurru iam users update|delete`, `PATCH`/`DELETE /api/v1/iam/users/{name}`); create, replace and delete kudurru service accounts and issue their API tokens (`kudurru iam serviceaccounts`, `/api/v1/iam/serviceaccounts`); create, replace and delete IdentityProvider objects (`kudurru iam identityproviders`, `/api/v1/iam/identityproviders`). Every change needs the exact reviewed UID and resourceVersion and is never retried.
+- `kudurru iam users create` and `kudurru iam users reset-password` for the existing local-user API commands; passwords are read from a prompt or stdin.
+- `GET /api/v1/iam/serviceaccounts/{namespace}/{name}` and `GET /api/v1/iam/identityproviders/{name}` on both drivers, and `capabilities.iamObjectCommands` in `GET /api/v1/auth/status`.
+- UniFi optional writes, each off by default and run only as an explicit reviewed command (SQLite): `push.mirrorRecords` mirrors selected A and CNAME records into the site's DNS policies through a preview and a digest-bound `integrations sync --mode publish`, changes only policies the Integration itself created, never touches operator policies and reports drift; polling never writes.
+- UniFi `dhcp-dns-servers` action (`push.dhcpDNSServers` with `push.dnsServers` and `push.networks`): preview the DHCP DNS server override per network, then apply it once with the preview digest.
+- UniFi `block-client` and `unblock-client` actions (`push.clientActions`, requires `legacy: true`), each one legacy station command.
+- `integrations act` returns an acknowledged action's answer in `result`, and the action's audit row records the SHA-256 of its canonical parameters (the same request with other whitespace or key order gives the same digest).
+- Kubernetes external zones: a DNSZone of type `external` is filled from Ingresses, Gateway API HTTPRoutes, GRPCRoutes and TLSRoutes (through Gateways that accepted the route) and LoadBalancer Services, as its `spec.external` selects. Turn it on with the host setting `externalZones.enabled` (Helm value `externalZones.enabled`). The elected replica keeps one source-owned DNSRecordSet per source and zone, honors the external-dns `hostname`, `target` and `ttl` annotations (and their `alpha` forms), removes records when their source goes away and never changes the source objects. No license key is needed.
+- An external zone on a server without `externalZones.enabled` is reported `Degraded` with reason `SourcesNotRead`, so an empty zone is no longer silently `Ready`.
+- Helm: `externalZones.enabled` grants the ClusterRole read access to `ingresses` and the Gateway API `gateways`, `httproutes`, `grpcroutes` and `tlsroutes` only when it is set.
+- Dashboard: an Integrations page (System → Integrations) lists every Integration with the state the host reports for its stored revision, its deletion policy, last sync and manager, and links to a page per instance.
+- Dashboard: "New integration" is a wizard built from the node's provider manifests: the provider types of the build (a type the node does not run, such as a webhook on Kubernetes, is shown with the reason and cannot be chosen), the provider's settings from its configuration schema without the fields the node refuses (an optional group such as a Cloudflare zone's `adoptFrom` or the UniFi `inventory` is required to be complete only when one of its fields is set), and one credential reference (a granted file or environment name, never a value) per credential the provider reads.
+- Dashboard: an instance's page runs Check, Preview and "Publish this plan" (a sync bound to the reviewed plan's digest), "Sync now" for inventory providers and the provider's advertised actions; an expired or stale preview is shown as refused with nothing published, a preview made before the instance changed is withdrawn with a "Preview superseded" notice, and after a sync the provider did not acknowledge the page shows the outcome as unknown and offers no further sync of that instance until a Check or a Preview succeeds (the open page holds this; a reload does not).
+- Dashboard: an instance's configuration is edited in place (bound to the stored revision), deleted with a confirmation that explains its deletion policy, and while terminating shows what is left, what blocks and what is uncertain, with "Release without cleanup" for `integrations.release`.
+- `GET /api/v1/inventory` and `kudurru inventory` list every device the client inventory knows, including devices that never sent a DNS query: inventory-integration devices (UniFi, webhook) and the answering node's DHCP leases, with MACs, names, tags, expiry, a `stale` flag and the state of each address (assigned, expired, ambiguous, superseded, withdrawn). Filters: source, kind, stale and a text search; keyset pages. Requires the new `inventory.read` permission (auditor, operator and admin roles).
+- The built-in DHCP server now supplies the MAC address of a leased client, so `ClientGroup` `mac` matchers work without an inventory integration, in scopes with or without DNS registration, on both the SQLite and Kubernetes store drivers. An inventory integration's MAC for the same address takes precedence. On a SQLite cluster the lease MAC applies only to queries answered by the node whose DHCP server holds the lease; on Kubernetes every replica applies it.
+- Dashboard: the Identity tab of the Access page creates, edits, disables, enables, resets the password of and deletes local accounts, creates, edits and deletes service accounts and issues their tokens (the token is shown once and forgotten when the dialog closes), creates, edits and deletes identity providers with a client secret reference (never a value), and edits and deletes role bindings (an edit keeps the binding's labels and annotations; a binding with more than one subject or a scope the form does not offer is changed with `kudurru iam rolebindings replace`). Every change names the exact version you reviewed and is sent once; a refusal or an unknown outcome is shown and nothing is sent again.
+- Dashboard: the IAM dialogs state the permanent revocation record a disable, group change, password reset or delete keeps, and the cluster-wide limit at which deletes, disables and new sign-ins are refused.
+- Client-group record views (split horizon): an endpoint with `kudurru: { view: <ClientGroup> }` is now served only to clients of that ClientGroup (in the record set's namespace), replacing the default answer of the same name and type for them. Other clients keep the default answers, and view-only names do not exist for them. Works on the SQLite and Kubernetes drivers.
+- Dashboard: **Filtering > Inventory** lists every device the client inventory knows, including devices that never sent a query: devices reported by inventory integrations and the answering node's DHCP leases, with MACs, names, tags, observation and expiry, and the state of each address in words (assigned, expired, ambiguous, superseded, withdrawn). Filters for source, kind, staleness and a text search; each device links to the Integration or DHCP scope that reported it and to the client page of every address the query log knows. On a SQLite cluster member the page says that DHCP leases and lease MACs are the answering node's own, for every session that may read the inventory. Needs `inventory.read`; the Clients page links to it.
+- Dashboard record editor: "Served to" picks a record's view: every client (default data), published only (`public`), or a ClientGroup of the record set's namespace. For a group view the editor says that views are not served in a DNSSEC-signed zone, that transfers, exports, RFC 2136 UPDATE and integration sinks carry only the default data, and that the dnsdist edge bypasses its packet caches while any group view exists; types a view cannot hold (NS, DNAME, SOA, DNSSEC types, an apex CNAME) are refused before saving. Record lists show each record's view and link the group. Where the record list is the served zone (SQLite store driver), the page and the editor say that a public record, or a view the server refuses, is stored but not listed. A group of another namespace than the record set's is refused before saving.
+- `GET /api/v1/integrations` summaries carry `inventorySource`, the source ID the incarnation's devices carry in `GET /api/v1/inventory`.
+- `DELETE /api/v1/zones/{zone}/records/{name}/{type}` takes `?view=` (a ClientGroup name, `public`, or `-` for the default data) to delete one view only, and `?namespace=` to delete from the record sets of one namespace only.
+- `GET /api/v1/inventory` answers `nodeLocalLeases`: true when the answering node is one member of a SQLite cluster, so its DHCP leases and lease MACs are its own.
+- Metric `kudurru_root_anchor_updater_acquisitions_total{outcome}` counts the
+  root-anchor updater's queries to the root servers as `applied`, `raced` (an
+  ordinary write landed while the reply was in flight, so the node asked
+  again), `failed`, `refused` (the updater stopped for its term on the reply
+  or on a store error) or `canceled` (the writer term or the process ended
+  during the query).
+
 ### Changed
 
 - A zone that the SQLite image cannot serve is refused when it is written
@@ -967,6 +1026,61 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   instead of being refused until the lease expires; the client moves to it
   when it next renews or reconnects. **DHCP** > **Leases** has a **Reserve**
   action that prefills the reservation from a lease.
+
+- Dashboard: a fenced member (`503 cluster_fenced`) and a member in a promotion conflict (`503 cluster_conflict`) are named in error banners and on the sign-in page, with a link to the procedure that ends the state.
+- Dashboard: zone and zone-group grants from `/auth/me` now enable the matching record, NOTIFY, delete and settings actions on that zone's pages. Before, only cluster-wide permissions counted. **Zones** and a zone's page show the zone group.
+- Dashboard: where `/auth/status` reports that the driver has no authenticator management (Kubernetes), the sign-in page has no authenticator code field, the **Authenticator** section says that no authenticators are offered, and **Identity** has no authenticator recovery.
+- The `integrations.write`, `integrations.delete` and `integrations.secrets` permissions are now in use (previously reserved). A write that binds or changes an Integration's `spec.credentials` needs `integrations.secrets` in addition to `integrations.write`, because a reference can name any credential the node allowlists; so does changing the type, the UniFi endpoint or TLS pin, or the webhook endpoint of an Integration that has credentials, because that decides which server receives them. Reading an Integration (`integrations.read`) shows the credential reference names it uses, never values. Only the built-in `admin` role holds these permissions.
+- Creating an Integration needs a license that covers integrations (`402 license_required`); replacing, suspending and deleting an existing one do not.
+- `kudurru backup` and `kudurru export` without kinds still cover only the DNS objects and need no integration permission; `kudurru export integrations` exports Integrations.
+- `docs/deploy/dnssec-validation.md`: the statement that no RFC 5011 worker runs now applies only to forwarded validation, and the page links to managed root anchors for recursive groups.
+- The admin guide and the access architecture page now say that every change
+  of a zone's `kudurru.io/zonegroup` label through kudurru on Kubernetes
+  (adding, changing or removing it) takes the whole zone object over and
+  removes the fields that kubectl or a GitOps tool set and the change does
+  not contain.
+- CI runs the version-synchronization unit tests in the go job's test step with
+  the other `hack/` tests instead of in a separate helm-job step.
+- The README marks v0.2.0 as in development, lists the Cloudflare and UniFi integrations as part of it instead of planned, and links the enrolled SQLite cluster guide from the deployment table.
+- The capability matrix (`docs/deploy/capabilities.md`) and the architecture overview say that Cloudflare publication and UniFi inventory run on the Kubernetes store, on the replica that holds the Integration's Lease, and the `unavailable` error reference no longer lists integrations on Kubernetes.
+- The deployment index links the Enterprise custom branding page, and the maintenance chapter of the administrator guide points to the ordered upgrade notes for 0.1.x.
+- Disabling, deleting or changing the groups of a local account, and disabling or deleting a service account, now end its sessions and delete its API tokens in the same commit; enabling restores none. A service account token is shown once and only its hash is kept; it expires no later than the API token that issued it, and none is issued for the bootstrap account or for accounts another manager owns.
+- On Kubernetes the new commands answer `503 iam_management_unavailable` or `503 user_management_unavailable` with a hint; change those objects with `kubectl`. On an enrolled follower they answer `503 primary_required`.
+- Each deleted account or provider, and the first disable or group change of an account, keeps a permanent revocation record. These records share a limit of about 4,000 entries with active sessions; at the limit, deletes and new sign-ins answer `503 unavailable` and change nothing.
+- The integration manifests list no refused UniFi fields on SQLite; on Kubernetes an Integration that enables a UniFi write is refused with reason `UniFiPushUnsupportedOnKubernetes`.
+- A UniFi Integration now polls at the shorter of `spec.unifi.poll` and `spec.resync` (default ten minutes); `spec.resync` was ignored before, so a poll longer than ten minutes now runs every ten minutes unless `resync` is raised.
+- A review or command whose captured input still names a record set or zone deleted since answers `409` (review changed) instead of `404 integration not found`.
+- An integration intent whose acknowledged provider effects have all been removed, with the destination back at its baseline, is now settled at the next poll for publishers that cannot resume an intent (the UniFi record mirror), instead of staying pending.
+- An Integration that enables `push.dhcpDNSServers` must now name `dnsServers` and `networks`, and `push.mirrorRecords.enabled` requires `domains`; both were refused outright before.
+- An external zone serves only the records derived from its Kubernetes sources: the API refuses a DNSRecordSet for an external zone with `conflict`, and a record set written another way (kubectl) is reported `NotSelected` and not served. RFC 2136 UPDATE into an external zone is refused with `NOTAUTH`. The SQLite store still refuses the `external` type. Each source kind is read as a complete list of at most 4,096 objects and 32 MiB (every Service counts); a kind over the bound keeps its record sets but stops following its sources.
+- Dashboard: controls that release an Integration are disabled in static mode, as the API refuses them there.
+- UniFi: when two clients of one poll claim the same address with the same observation time, the inventory now lists that address as `ambiguous` on both devices instead of dropping it silently, and an older claim of another inventory source can no longer take over the address. Neither device identifies queries from it, and no DNS record is published for it, as before.
+- Kubernetes RBAC: the auditor and editor ClusterRoles (chart and kustomize) gain read access (`get`, `list`, `watch`) to the virtual resource `inventories`, which backs `inventory.read`.
+- The enrolled offline recovery acceptance (`anchors recover --offline` on the
+  stopped primary, the follower adopting the recovered image through scheduled
+  pulls) now runs in the default end-to-end suite in minutes instead of only as
+  an hour-long opt-in soak. Test binaries built with `-tags licensetest` accept
+  `KUDURRU_TEST_ANCHOR_UPDATER_AHEAD`; release binaries do not.
+- Dashboard: the identity actions are disabled with the reason on a follower, in static mode, without the permission, and on the Kubernetes driver (GET /auth/status capabilities).
+- Zone transfers, zone exports, RFC 2136 UPDATE and integration sinks (Cloudflare, UniFi) carry the default data only; client-group view records never leave the server through them. Cloudflare no longer selects endpoints that belong to a client-group view.
+- Any client-group view makes the dnsdist edge bypass both its authoritative and its resolver packet cache (`zone-client-view`), because the edge cache cannot tell clients' groups apart.
+- The `DNSRecordSet` schema now requires `kudurru.view` to be `public` or a valid ClientGroup name.
+- Views are not served in DNSSEC-signed zones, cannot hold NS, DNAME, SOA or DNSSEC records, and cannot sit at or below a delegation or DNAME (including, on SQLite, DNSSEC data or a delegation added by RFC 2136 UPDATE). A zone serves at most 16 views; the budget is shared by every record set of the zone, first come first served. On Kubernetes such endpoints are reported on their record set; on SQLite only when nothing else in the record set is served.
+- A client-group view may replace only default data of its own namespace: a view endpoint that would override another namespace's name and type is refused as `Duplicated`, as the same default endpoint would be. Views of one name in two namespaces refer to two different ClientGroups and do not conflict.
+- A view name (and the empty non-terminals it creates) suppresses a default wildcard for that group's clients, as any existing name does.
+- Integrations: a check, preview, sync or action reviewed just before the integration host wrote its own status now runs instead of answering `409` once the host has read that write back (within one capture interval, two seconds by default; until then a reread and one retry may still be needed), and `GET /integrations/{namespace}/{name}` keeps showing the status of a healthy running instance after such a write (`statusKnown` stays true). A change of the spec, labels, annotations or finalizers still makes the review stale.
+- Integrations: `GET /integrations/manifests` gains `fieldLimits`, one entry per spec field this node's host refuses (with the status reason and message) or accepts without effect (with the field it needs). On Kubernetes the refused UniFi record mirror field is now `spec.unifi.push.mirrorRecords.enabled`, and `spec.unifi.push.dnsServers`, `networks` and the record mirror's `types`, `domains`, `labels` and `exclude` are listed as inert.
+- Integrations: the UniFi `dnsServers` schema now gives the canonical dotted IPv4 pattern the provider accepts and names the addresses it refuses.
+- Integrations: the audit row of a UniFi `block-client` or `unblock-client` action names the client in lowercase (`for client 02:ab:cd:00:00:01`), whatever letter case was sent.
+- Refusals that waiting does not change no longer carry `Retry-After: 1`: the Kubernetes answers `cli_login_unavailable`, `provider_logout_unavailable`, `factor_management_unavailable`, `user_management_unavailable`, `sessions_unavailable`, `external_users_unavailable` and the last-fallback `unavailable` of the authentication routes, and the `unavailable` answers of cluster enrollment, invitations and promotion on a node that cannot have them (static, standalone, Kubernetes). Status codes and keys are unchanged.
+- The operator page `docs/deploy/capabilities.md` explains both meanings of
+  `501 not_implemented`: an integration provider without the command, and a
+  server started without the part of the runtime that the message names.
+- `docs/deploy/capabilities.md` lists the API service account, service
+  account token and identity provider commands, with the Kubernetes refusal
+  `503 iam_management_unavailable` and what to do instead (change the
+  `ServiceAccount` and `IdentityProvider` objects with `kubectl`). The local
+  user row now covers changing and deleting a user.
 
 ### Fixed
 
@@ -1275,6 +1389,156 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   The 0.1.0 image has no default command, so as shipped the container
   printed the CLI help, exited and restarted in a loop.
 
+- A zone keeps answering while a change to its own `DNSZone` (query ACL,
+  name servers, selector) is being applied. A primary zone answers its last
+  committed records under the new query access rules (zone transfers wait for
+  the new configuration), and a forward zone uses its new configuration.
+  Before, the zone answered SERVFAIL for up to about 0.3 seconds after each
+  such write.
+- A DNS query that arrives just before the node publishes a configuration
+  change now gets its answer from the data it arrived on. Before,
+  about one query in a few thousand around each publication got no reply
+  and the client timed out.
+- With managed root trust anchors, a freshly installed node no longer stops
+  its root anchor updater ("root anchor updater stopped for this writer
+  term: replication: authority changed") when its first-boot setup commits
+  while the updater starts. The updater now tries again a second later, so
+  the node keeps refreshing its anchors without a restart.
+- An invalid Integration document never repeats a value of its `spec.credentials` in the error (from `PUT`, `POST /apply` or a follower): a validation failure of a credential reference is answered with the field path only, so a credential value pasted into a `file` or `env` field by mistake, including one with a trailing newline, a quote or a backslash, is not echoed, relayed or logged.
+- Dashboard: a session without `cluster.read` no longer requests `GET /cluster` every 30 seconds (each refused read was written to the audit log as a denial on every node); it follows the node's role through the public `GET /auth/status`, and a `403` ends the poll for any session and is not retried on navigation or window focus. The Nodes page no longer reads `GET /cluster` without `cluster.read`; its Cluster panel says so instead.
+- Dashboard: the invitation of the "Invite a member" wizard can be closed with the close button, Escape or the backdrop (after the "Close the invitation?" prompt) also when the primary's answer took a moment; before, only "Done" closed it.
+- Dashboard: an `?add=` link to the Allowlist or Denylist no longer opens the add dialog briefly on a follower before the node's role is known, and the link is dropped from the address when the session cannot follow it.
+- Dashboard: on a follower, only a forwarded change (not a sign-in, a DNS query from Tools or a change the follower runs itself) schedules the second read of the page six seconds later.
+- Dashboard: the audit log renders a page of 100 events several times faster: its cells no longer each carry a right-click menu (rows still expand with a click, the chevron, Enter or Space).
+- A zone-group member or a zone admin whose `PUT` of a zone was in flight
+  while an administrator deleted that zone no longer creates the zone again
+  (with its group label) on Kubernetes. Creating a zone always needs
+  `zones.write` at cluster scope, and the write now decides this on the read
+  it is compare-and-swapped against.
+- Record set and zone lists, and `GET /auth/me`, answer `503` when the group
+  of a zone they need cannot be read, instead of `200` with that zone's items
+  or verbs left out.
+- With `auth.kubernetes.mode: impersonate`, only the apiserver's own
+  "cannot impersonate" refusal of kudurru's identity is reported as `503`
+  (kudurru lacks the verb). A refusal for a principal whose name contains
+  that phrase, or an admission webhook message that uses it, is the
+  principal's `403` again.
+- The Helm guide's kustomize impersonation example closes its code block, so
+  the rest of the page renders again.
+- Dashboard: an RPZ source is no longer shown as an inline source ("ConfigMap" or "0 inline entries", "inline, nothing to fetch"); the sources table names its zone and primaries and offers no entries browser for it. A list whose only fetched sources are RPZ feeds shows its last refresh as "per node" and no refresh interval, since feeds follow their zone's SOA timers.
+- A recursive upstream group set in the configuration file
+  (`default: { mode: recursive, timeout: 4s }`) no longer stops the first start
+  of a node on SQLite with "strategy: Unsupported value". A recursive group now
+  has no strategy in its settings.
+- A managed-anchor primary that was just restarted, promoted or chosen by
+  `cluster resolve`, and whose root-anchor refresh is not due, no longer
+  refuses writer commands with 503 "current writable serving generation
+  unavailable" while its anchor updater makes its first step: it starts its
+  writer services at once. A writer whose refresh is due (for example after a
+  long outage) still finishes that refresh first, so a root key revocation it
+  observes is committed instead of being lost to a startup write; such a node
+  can refuse writer commands for up to 30 seconds after it reports ready
+  (D369).
+- A root anchor capture that raced an ordinary commit now logs its own
+  consecutive count ("root anchor capture raced an ordinary commit; capturing
+  again") instead of the update-race count, and only at the first, second,
+  fourth, eighth and so on consecutive race, so a capture that keeps racing no
+  longer logs a warning every second.
+- Cluster members with managed root anchors no longer answer `SERVFAIL` to
+  validated recursion and zone queries while they persist a newly observed
+  fence, promotion conflict or divergence. DNS keeps answering from the served
+  publication and accepted trust until the DNS-only publication takes over;
+  writers and the HTTP API still close at once, and a fence that cannot be
+  written to disk still stops DNS as before.
+- Dashboard: after a sync with an unknown outcome, an Integration's page now holds further syncs until a Check reports the endpoint reachable and the credential accepted; a Check that reported either one failing used to lift the hold.
+- Endpoints whose `kudurru.view` named a ClientGroup were silently withheld from every client.
+- Through a follower, an item of `kudurru apply`, `kudurru restore` or a
+  dashboard multi-delete that the follower cut because its data changed now
+  says what to do: it names the enrolled primary and asks to send the items
+  that were not applied there, because running the file again through the
+  follower stops the same way (D375).
+- A forwarded write whose answer the primary sent, but which the follower
+  could not relay because its own data or membership changed during the
+  exchange, is now answered `503 completion_unknown` ("the write may have been
+  applied") instead of `503 unavailable` "cluster authority changed", which
+  claimed that nothing was made (D375).
+- A token caller's password change through a follower is always answered for
+  the caller's account, as on the primary, whether or not the calling token
+  still works afterwards, and it waits for the follower's next publication
+  instead of answering `503 committed_output_unavailable` while one is being
+  prepared; a browser session the follower could not issue after a committed
+  change now names the cause in its `committed_output_unavailable` answer
+  (D368).
+- A signed RFC 2136 UPDATE sent through an enrolled SQLite follower during a
+  burst is no longer answered SERVFAIL when the follower installs the
+  primary's previous commit just before it passes the update on: the follower
+  waits for its current publication and sends the update once. An UPDATE
+  through a follower still answers SERVFAIL when it could not be sent or
+  answered within the four-second forward bound (a slow publication on a
+  loaded primary counts here), when the follower cannot reach its primary or
+  is not admitted by it, when the primary committed the update but could not
+  publish it, or when the zone is retiring. The follower never sends an
+  update twice; retrying an idempotent update is safe.
+- A repeated delivery of the same forwarded UPDATE is answered with the
+  primary's retained answer even when the primary's publication changes at
+  that moment, instead of SERVFAIL.
+- A follower whose pull was canceled or timed out in the middle of an
+  install no longer refuses every later pull with "store/sqlite: anchor
+  lifecycle unavailable" until it is restarted.
+- A follower's pull right after a commit on the primary is no longer refused
+  and logged as "replica: unauthorized peer"; the primary reads the image
+  again.
+- A connection attempt to the primary that times out is reported as an
+  unknown outcome in every case, as documented, instead of sometimes as "not
+  applied".
+- Shutting down a node with managed root trust anchors no longer logs "root
+  anchor updater stopped for this writer term: sql: transaction has already
+  been committed or rolled back".
+- A primary zone and a primary child zone under it on one node (for example
+  `example.` and `child.example.`) no longer leave one or both answering
+  SERVFAIL until the process restarts. They converge in either order of
+  creation and across deletion and re-creation of the child, and the parent
+  keeps answering its own names while its child is being added.
+- A new zone, and in particular a new child zone, starts answering sooner on a
+  node with many zones: the zone driver now takes a zone that is being created
+  through its steps first instead of queuing each step behind every other
+  zone. Until its first publication, names under a new child zone answer
+  SERVFAIL (which resolvers retry within seconds), not the parent's negative
+  answer (which resolvers would cache for the parent's negative TTL).
+- Integrations: an instance whose provider setup failed (for example a provider that was briefly unreachable, or a setup cut short while a node was starting) is set up again with backoff (from one poll interval up to five minutes) instead of staying `ProvisionFailed` until its object changed. A setup whose peer offers no role the instance can take is not retried.
+- Integrations on Kubernetes: a `deletionPolicy: Delete` UniFi Integration that gained `spec.unifi.push.dhcpDNSServers` or `clientActions` is now cleaned up when deleted instead of staying Terminating until released; a refused push gets its own condition message.
+- Integrations: a refused Integration document no longer repeats a pasted secret used as a map key under `spec.credentials`; known credential names are still named.
+- External zones: on the SQLite store the `SourcesNotRead` message no longer points at `externalZones.enabled`, which that store refuses, and a zone already Degraded for a more specific reason (for example `Duplicated`) keeps that reason.
+- `POST /api/v1/zones/{zone}/records` with a `kudurru.view` replaced the default endpoint of the same name and type in the record set (and the reverse); the view is now part of the endpoint's identity, so a view is added beside the default data.
+- On the SQLite store driver, `GET /api/v1/zones/{zone}/records` (the served zone) did not list client-group view records; they are now listed with `kudurru.view` set to the ClientGroup's name and `namespace` set to its namespace.
+- The `mac` matcher help in the dashboard said that only an inventory integration supplies MACs; it now names the built-in DHCP server's leases and their node-local scope on a SQLite cluster.
+- Every `503` that a supported deployment answers now has a hint that says what to do: the Kubernetes session, authenticator, external-account and local-user refusals, cluster enrollment, invitations and promotion on a static or standalone node, an unknown or unready OIDC provider for browser and command-line login, DHCP reads on a node without DHCP, the VIP event stream on a node without a VRRP address, and integration administration on Kubernetes.
+- Every `501 not_implemented` now has a hint, and so do the `503 unavailable` answers for a server without the block page renderer or the DHCP setup manager, for query suggestions, status and actions without query history, and for cluster-wide query actions without a central database.
+- Rollup recovery evidence (`GET /querylog/rollup-evidence` and its `verify`)
+  on a node without a central database now answers `503 unavailable` with a
+  hint that names `database.dsn` and `database.querylog.ship`, instead of a
+  bare "central rollup recovery unavailable".
+- A DHCP setup write (`PUT /node/dhcp/v4/setup`) on a Kubernetes release with
+  DHCP off now says to set `dhcp.enabled` and `dhcp.serverAddress` in the Helm
+  values, as the setup read does. On a SQLite node that is not on Linux it
+  says that DHCP runs only on Linux, instead of asking for a setting that
+  does not help.
+- A node asked for a peer's health now explains a failure: without
+  internal credentials or a peer address it names the internal listener
+  settings, and when the peer is down, times out, refuses the credential or
+  runs a version without the route (`peer health: unsupported`) it says what
+  to check, or to read the health on that node itself. History and live-tail
+  reads that no requested node answered name the internal credentials, the
+  query log on each node, and `scope=node`.
+- `GET /integrations/manifests` on a server without the integration runtime
+  answers with the same hinted refusal as the other integration routes.
+- `GET /inventory` on a server started without the client inventory now
+  says where it is mounted and names `GET /api/v1/clients`, instead of a bare
+  "the client inventory is not mounted on this server".
+- An enrolled SQLite primary answers a forwarded signed dynamic update
+  `SERVFAIL` instead of `REFUSED` when its keyring changes under the update;
+  nothing is applied and the client sends it again.
+
 Stub zones and signed secondary serving are implemented on the development
 branch. Inbound NOTIFY verifies the primary source
 and configured TSIG, schedules bounded local refreshes, and fans authenticated
@@ -1364,6 +1628,43 @@ hints to peers so every replica transfers independently.
 
 ### Known limitations
 
+- Right after a node reports ready, and while it prepares a publication, a
+  sign-in, a cluster activation, a read or another command can be answered
+  `503 generation_pending` or `503 unavailable` ("current writable serving
+  generation unavailable") without effect; repeat the request.
+- A node may answer a DNS query from a configuration that was replaced up to
+  one second earlier (the data was committed and current when the query
+  arrived), and while a zone's own `DNSZone` change is applied a primary zone
+  answers its last committed records under the new query access rules
+  (D395).
+- Until a new primary child zone under a primary parent on the same node is
+  first published, names under it answer `SERVFAIL` (a few seconds on a
+  loaded node with many zones; resolvers retry). The parent keeps answering
+  its own names (D404).
+- A signed RFC 2136 UPDATE through an enrolled follower can still be
+  answered `SERVFAIL` when it cannot be sent or answered within the
+  four-second forward bound (a slow publication on a loaded or newly
+  promoted primary counts here), when the follower cannot reach its primary,
+  when the primary committed the update but could not publish it, or when
+  the zone is retiring; one test run also saw an early `SERVFAIL` whose cause
+  is not known. The follower never sends an update twice; retrying an
+  idempotent update is safe.
+- IAM writers on SQLite: every deleted account or provider, and the first
+  disable or group change of an account, keeps a permanent revocation
+  record. About 4,000 such records fill the security section shared with
+  active sessions; deletes and new sign-ins are then refused with
+  `503 unavailable` and no API command frees the space.
+- Integrations on SQLite: every integration capture reads the whole stored
+  configuration, so on a large store a capture that takes longer than
+  10 seconds stops every Integration job, and a `Delete` cleanup whose
+  commands take longer than 30 seconds does not finish; the store size at
+  which this starts is not measured. UniFi optional writes are refused on
+  Kubernetes, and a UniFi record-mirror create that failed partway is
+  recovered automatically only when the policies it created are gone.
+- Dashboard: **Edit** on a served client-group view record of a namespace
+  other than `default` (SQLite) saves the record into the `default`
+  namespace's group of the same name; use `kudurru apply` with the record
+  set of that namespace instead.
 - On SQLite, while a long multi-document request commits, DNS answers from
   the configuration published last, but on a heavily loaded node other API
   callers' reads can still be refused with `503 generation_pending`, and one
@@ -1403,36 +1704,15 @@ hints to peers so every replica transfers independently.
 - Managed root anchors behind managed edges: adding an empty follower behind
   dnsdist edges is tested against a real dnsdist only in an opt-in live test,
   not in CI.
-
-- Right after a node reports ready, a sign-in, a cluster activation or another
-  command can be answered `503 unavailable` without effect when a background
-  change of the node (such as a zone status write) is published first; repeat
-  the request.
-- After a configuration change is committed, a node can leave queries for its
-  authoritative zones unanswered for a fraction of a second (up to about
-  0.6 s measured; up to about 0.9 s, partly `SERVFAIL`, when the change
-  touches that zone or its records), and a forward zone whose own settings
-  changed can answer `SERVFAIL` for up to about 0.6 s. Measured with a mounted
-  test binary on a loaded machine for three kinds of write; clients that retry
-  recover (D383).
 - The pinned dnsdist 2.1.3 edge never answers a DoQ or DoH3 request whose QUIC
   end of stream (STREAM FIN) arrives in its own empty frame after the query
   data; the client waits until it times out and the query never reaches
   kudurru. Clients that send the FIN with the query are answered, and
   kudurru's own DoQ and DoH3 listeners answer both forms.
-- RFC 2136 UPDATEs sent back to back through an enrolled follower: once one is
-  answered `SERVFAIL` while the primary republishes its previous commit, the
-  rest of the burst fails as well (five or six of eight in one test run).
-  Those updates are not applied and are safe to retry; send bursts to the
-  primary.
 - Managed root anchors: a member whose own root check saw a key revocation
   that the root no longer publishes answers `SERVFAIL` for good, also as the
   primary, and while it is the primary no member's trust anchors are updated.
   Promote a member that serves and replace it.
-- Dashboard: every signed-in session that may not read `GET /api/v1/cluster`
-  (every built-in role except admin) requests it every 30 seconds, and each
-  request is answered 403 and recorded as a denied `cluster.read` in the audit
-  log.
 - Active Directory DNS replacement remains unfinished preview work. The owner
   deferred the remaining implementation and real Windows qualification to a
   future effort; no production AD replacement or Windows support matrix is
