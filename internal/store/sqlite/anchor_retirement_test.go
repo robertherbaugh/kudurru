@@ -111,12 +111,7 @@ func anchorTestBootstrapForCluster(t *testing.T, cluster string, dormant accepte
 	if err != nil {
 		t.Fatal(err)
 	}
-	key := &dns.DNSKEY{Hdr: dns.RR_Header{Name: ".", Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}, Flags: dns.ZONE | dns.SEP, Protocol: 3, Algorithm: dns.ECDSAP256SHA256}
-	private, err := key.Generate(256)
-	if err != nil {
-		t.Fatal(err)
-	}
-	signer := private.(crypto.Signer)
+	key, signer := anchorTestKey(t)
 	message := anchorTestSigned(t, key, signer, false)
 	state, observation, err := trustanchors.Bootstrap(trustanchors.Seed{ClusterID: cluster, PolicyID: "explicit-test-root", DS: []string{key.ToDS(dns.SHA256).String()}}, message, clock.Sample())
 	if err != nil {
@@ -127,6 +122,26 @@ func anchorTestBootstrapForCluster(t *testing.T, cluster string, dormant accepte
 		t.Fatal(err)
 	}
 	return anchorTestProof{next: next, state: state, observation: observation, clock: clock, key: key, signer: signer}
+}
+
+// anchorTestKey generates a root KSK whose key tag is not zero with or without
+// the REVOKE flag: RRSIG.Sign refuses a zero key tag ("dns: bad key"), and
+// about one random key in 65,536 has one, which made the anchor tests fail
+// at random.
+func anchorTestKey(t *testing.T) (*dns.DNSKEY, crypto.Signer) {
+	t.Helper()
+	for {
+		key := &dns.DNSKEY{Hdr: dns.RR_Header{Name: ".", Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}, Flags: dns.ZONE | dns.SEP, Protocol: 3, Algorithm: dns.ECDSAP256SHA256}
+		private, err := key.Generate(256)
+		if err != nil {
+			t.Fatal(err)
+		}
+		revoked := *key
+		revoked.Flags |= dns.REVOKE
+		if key.KeyTag() != 0 && revoked.KeyTag() != 0 {
+			return key, private.(crypto.Signer)
+		}
+	}
 }
 
 func anchorTestSigned(t *testing.T, key *dns.DNSKEY, signer crypto.Signer, revoke bool) *dns.Msg {

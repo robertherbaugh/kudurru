@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"context"
-	"crypto"
 	"errors"
 	"fmt"
 	"math"
@@ -845,11 +844,7 @@ func TestAnchorHistoryAdoptionKeepsIdentityAndRecoveryRefusals(t *testing.T) {
 		if err != nil || !lost.Inspect().Quarantined {
 			t.Fatal("fixture old primary is not quarantined", err)
 		}
-		key := &dns.DNSKEY{Hdr: dns.RR_Header{Name: ".", Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}, Flags: dns.ZONE | dns.SEP, Protocol: 3, Algorithm: dns.ECDSAP256SHA256}
-		private, err := key.Generate(256)
-		if err != nil {
-			t.Fatal(err)
-		}
+		key, signer := anchorTestKey(t)
 		clock, err := trustanchors.NewSessionClock()
 		if err != nil {
 			t.Fatal(err)
@@ -858,7 +853,7 @@ func TestAnchorHistoryAdoptionKeepsIdentityAndRecoveryRefusals(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		recovered, receipt, err := trustanchors.Recover(lost, []string{key.ToDS(dns.SHA256).String()}, anchorTestSigned(t, key, private.(crypto.Signer), false), clock.Sample())
+		recovered, receipt, err := trustanchors.Recover(lost, []string{key.ToDS(dns.SHA256).String()}, anchorTestSigned(t, key, signer, false), clock.Sample())
 		if err != nil {
 			t.Fatal(err)
 		}

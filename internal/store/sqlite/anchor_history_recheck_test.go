@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"context"
-	"crypto"
 	"errors"
 	"path/filepath"
 	"slices"
@@ -451,12 +450,8 @@ func (f anchorRecheckSingle) poll(t *testing.T, s *Store, revoke bool) accepted.
 // replacement key of a recovery.
 func anchorRecheckKey(t *testing.T) anchorTestProof {
 	t.Helper()
-	key := &dns.DNSKEY{Hdr: dns.RR_Header{Name: ".", Rrtype: dns.TypeDNSKEY, Class: dns.ClassINET, Ttl: 3600}, Flags: dns.ZONE | dns.SEP, Protocol: 3, Algorithm: dns.ECDSAP256SHA256}
-	private, err := key.Generate(256)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return anchorTestProof{key: key, signer: private.(crypto.Signer)}
+	key, signer := anchorTestKey(t)
+	return anchorTestProof{key: key, signer: signer}
 }
 
 // anchorRecheckRecover runs a real `anchors recover` transition on a
