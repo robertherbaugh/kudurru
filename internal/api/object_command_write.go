@@ -54,11 +54,14 @@ type recapturableCommandKey struct{}
 // withRecapturableCommand marks a whole-object write without If-Match: the
 // request carries the complete document and nothing it read from its first
 // capture, and the command reads, authorizes and admits the stored object in
-// its own transaction. Such a write may capture the current publication again
-// when another commit superseded its request's publication before its
-// transaction began (D399). A partial edit (a source entries PATCH), a
-// delete, a write with If-Match and every item of a multi-item request are not
-// marked: they keep the immediate refusal of D199 and D208.
+// its own transaction. The record upsert (POST /zones/{zone}/records) is
+// marked for the same reason: it sends one endpoint and the command reads and
+// merges the record set in its transaction. Such a write may capture the
+// current publication again when another commit superseded its request's
+// publication before its transaction began (D399). A partial edit (a source
+// entries PATCH), a delete (an object's or a record's), a write with If-Match,
+// a zone import and every item of a multi-item request are not marked: they
+// keep the immediate refusal of D199 and D208.
 func withRecapturableCommand(ctx context.Context) context.Context {
 	return context.WithValue(ctx, recapturableCommandKey{}, true)
 }

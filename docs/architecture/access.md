@@ -249,7 +249,12 @@ Captured again (marked):
   `DNSRecordSet`, `BlockList`, `ClientGroup`, `Policy` or `Integration`:
   the request is the whole document, and the command reads, authorizes and
   admits the stored object in its own transaction (for an `Integration`
-  that includes its secrets authorization and license check).
+  that includes its secrets authorization and license check);
+- a record upsert (`POST /zones/{zone}/records`): the request is one
+  endpoint, and the command reads the zone and the record set, merges the
+  endpoint and authorizes the result in its own transaction
+  (`TestServingCommandRecaptureZoneRecordSupersededBeforeDispatch`). A
+  record delete and a zone import are not marked.
 
 Never captured again (unmarked), each with the test that states it:
 
