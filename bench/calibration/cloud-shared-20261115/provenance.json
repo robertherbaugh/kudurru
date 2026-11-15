@@ -13,7 +13,11 @@
   "calibration_eligible": true,
   "calibration_manifest_sha256": "3b38bf0389bb04e2ed9b0546d79e276ffdbf70090ae8588afa7c5fb2a0bf7266",
   "approval": {
-    "decision": "pending"
+    "calibration_manifest_sha256": "3b38bf0389bb04e2ed9b0546d79e276ffdbf70090ae8588afa7c5fb2a0bf7266",
+    "decision": "accepted",
+    "reviewed_by": "Robert Herbaugh",
+    "reviewed_at": "2026-11-15T21:06:12.880847+00:00",
+    "review_evidence": "Workspace owner reply in Conductor on 2026-11-15: \"Approve these limits and run qualification\", replying to all138 bounds and exact manifest3b38bf0389bb04e2ed9b0546d79e276ffdbf70090ae8588afa7c5fb2a0bf7266 in review commit071cdbcb4c1fe1b29de66346d171d9bd5b846970."
   },
   "release_qualified": false,
   "formula": "upper median + max(20%, 25ns/op or64B/op noise); minima80% of median; zero loss/failure",
