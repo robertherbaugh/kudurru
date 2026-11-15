@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, expectRendered, env, main, settle, test } from './fixtures';
-import { adminApi } from './support/api';
+import { adminApi, sendBeforeAdmission } from './support/api';
 import { query } from './support/dns';
 import { REPO_DIR, startServer } from './support/kudurru';
 import type { DNSZone, ZoneSummary } from '../src/api/types';
@@ -29,7 +29,7 @@ test('a secondary is created, transferred, edited and expires on this node', asy
       apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSZone', metadata: { name },
       spec: { zoneName: apex, type: 'primary', nameservers: [`ns1.${apex}`], policy: { zoneTransfer: 'allowOnlyPrivate' }, soa: { mname: `ns1.${apex}`, refresh: 1, retry: 1, expire: 5 } },
     } })).ok()).toBe(true);
-    expect((await primaryApi.post(`/api/v1/zones/${name}/records`, { headers, data: { dnsName: `www.${name}`, recordType: 'A', targets: ['192.0.2.77'] } })).ok()).toBe(true);
+    await sendBeforeAdmission(() => primaryApi.post(`/api/v1/zones/${name}/records`, { headers, data: { dnsName: `www.${name}`, recordType: 'A', targets: ['192.0.2.77'] } }), `POST /zones/${name}/records`);
     // Each read is independent while the new primary generation is preparing.
     // Retry a refused/timed-out observation within the original convergence
     // bound; expect.poll aborts immediately when its async callback rejects.
