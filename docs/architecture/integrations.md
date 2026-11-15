@@ -849,9 +849,12 @@ frame. A changed source still cancels and joins the old job before replacement.
 This scheduling rule does not apply to outbound Publishers, explicit commands,
 canceled jobs or permanent provider errors (D284).
 
-A successful periodic or explicit sync schedules the next periodic sync one
-interval after it began, not after it returned, and starts it at once when the
-sync itself ran longer than the interval (D408). The time a source commit
+For an observer-only provider (UniFi inventory and groups), a successful
+periodic or explicit sync schedules the next periodic sync one interval after
+it began, not after it returned, and starts it at once when the sync itself
+ran longer than the interval (D408). Publishers, and providers with both
+roles, keep the next sync one interval after the previous one ended: their
+records carry no lifetime counted in polls. The time a source commit
 takes to acknowledge its publication therefore no longer delays the next
 observation: on a loaded node two serving preparations could take several
 seconds, and counted from the acknowledgment the gap between two UniFi

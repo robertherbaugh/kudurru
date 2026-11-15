@@ -229,8 +229,21 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 			fallbackTimer.Stop()
 		}
 	}
+	// Only a pure observer's evidence lives a fixed multiple of its interval
+	// from the observation, so only its polls are paced from their start;
+	// a publisher (or a provider with both roles) keeps its next sync one
+	// interval after the previous one ended, as before D408.
+	observing := false
+	if roles, err := providerRoles(provider); err == nil {
+		observing = roles.Observer && !roles.Publisher
+	}
 	scheduled := func(a answer, began time.Time) {
 		if timer == nil {
+			return
+		}
+		if !observing {
+			release()
+			reset(interval)
 			return
 		}
 		reset(nextSync(interval, began, time.Now()))
@@ -330,10 +343,10 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 	}
 }
 
-// nextSync is the wait after a successful sync that began at began and
-// ended at now: the next one begins interval after the previous one began,
-// or at once when that sync ran longer than interval (D408), and in either
-// case not on a frame older than the sync's own status write. An observer's
+// nextSync is an observer's wait after a successful sync that began at
+// began and ended at now: the next one begins interval after the previous
+// one began, or at once when that sync ran longer than interval (D408), and
+// in either case not on a frame older than the sync's own status write. An observer's
 // evidence lives a fixed multiple of its interval from its observation
 // (UniFi: three polls), so the gap between two observations must not grow
 // with the time the source commit and its publication take to acknowledge
