@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"strconv"
 	"testing"
 	"time"
 
@@ -124,13 +128,41 @@ func awaitMountedPrimarySettled(t *testing.T, cfg *config.Config, zoneObject, na
 	base := "http://" + cfg.Listeners.API.Address + api.BasePath
 	awaitMountedDNS(t, cfg, name, address)
 	controlMountedRequest(t, client, base, http.MethodPost, "/auth/login", "", api.LoginRequest{Username: "admin", Password: "mounted-test-password-1"}, http.StatusOK, nil)
+	deadline := time.Now().Add(time.Minute)
+	// read is one GET of the zone. The node's own status commits are what
+	// this wait orders the test after, so the GET may arrive while their
+	// newest generation is still being prepared and be refused at capture
+	// (503 generation_pending with Retry-After, before the request was
+	// read). It is asked again after Retry-After within the same one-minute
+	// bound; any other answer than 200 fails the test as before.
 	read := func() (string, bool) {
 		var zone public.DNSZone
-		controlMountedRequest(t, client, base, http.MethodGet, "/objects/dnszones/"+zoneObject, "", nil, http.StatusOK, &zone)
+		for {
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+"/objects/dnszones/"+zoneObject, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res, err := client.Do(req)
+			if err != nil {
+				t.Fatal("control HTTP transport failed", err)
+			}
+			raw, err := io.ReadAll(io.LimitReader(res.Body, 2<<20))
+			_ = res.Body.Close()
+			if err == nil && res.StatusCode == http.StatusOK {
+				if json.Unmarshal(raw, &zone) != nil {
+					t.Fatal("control HTTP response decode failed")
+				}
+				break
+			}
+			retry, _ := strconv.Atoi(res.Header.Get("Retry-After"))
+			if err != nil || res.StatusCode != http.StatusServiceUnavailable || retry < 1 || !bytes.Contains(raw, []byte(`"generation_pending"`)) || time.Now().After(deadline) {
+				t.Fatalf("control GET /objects/dnszones/%s: status=%d want=200: %s", zoneObject, res.StatusCode, raw)
+			}
+			time.Sleep(time.Duration(retry) * time.Second)
+		}
 		ready := meta.FindStatusCondition(zone.Status.Conditions, public.ConditionReady)
 		return zone.ResourceVersion, ready != nil && ready.Status == metav1.ConditionTrue && ready.ObservedGeneration == zone.Generation
 	}
-	deadline := time.Now().Add(time.Minute)
 	for {
 		before, ready := read()
 		if ready {
