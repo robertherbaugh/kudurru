@@ -35,6 +35,12 @@ database that is enrolled does not start with `cluster.role: static`. The
 compose files of this page are not set up for it, and its acceptance behind
 a keepalived VIP on separate machines has not been run.
 
+Independent two-VM VIP/failover production acceptance remains future work
+under D358. A passing local container or KIND/MetalLB check does not close it.
+During an upgrade, back up each stopped twin's volume and matching keys and
+configuration; rehearse restoring that backup with the old image. See the
+[0.1.x upgrade and rollback notes](runbooks.md#upgrading-from-01x).
+
 ## Prepare every host
 
 The dnsdist and keepalived containers need a license key that includes the

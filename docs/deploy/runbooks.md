@@ -587,7 +587,7 @@ restarts the service only if it was running.
 order before the first 0.2 process starts; the steps that do not apply to an
 installation say so.
 
-1. **Back up, because there is no way back.** The first 0.2 start migrates
+1. **Back up; rollback requires restoring the pre-upgrade data.** The first 0.2 start migrates
    `state.db` from schema 1 to 9, `querylog.db` from 2 to 3 and stamps
    `local.db` with 9. 0.1.0 then refuses every one of these files
    (`state.db was written by a newer kudurru`) and changes nothing, so a
@@ -595,6 +595,11 @@ installation say so.
    directory (Docker volume, PVC or `/var/lib/kudurru`). On Kubernetes also
    back up the release namespace's private Secrets and the `kudurru.io`
    objects ([iam-upgrade.md](iam-upgrade.md#prepare-an-offline-upgrade)).
+   Retain the matching encryption key, configuration and old artifact. Rehearse
+   restoration into an empty disposable volume, including DNS, credential
+   identity, query/audit history and restart checks. Do not overlay old files
+   onto upgraded databases. Writes made after the backup are absent after
+   rollback ([restore procedure](../guide/admin/11-maintenance.md#roll-back-to-010)).
 2. **SQLite (Docker, systemd, the chart's `standalone` mode): stored objects
    0.2 refuses stop the upgrade.** Before it migrates `state.db`, 0.2 checks
    every stored object and, if one fails, exits naming it and leaves the file

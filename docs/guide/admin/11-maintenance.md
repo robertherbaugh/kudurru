@@ -112,6 +112,12 @@ older data when it starts. A program refuses to start with data that a
 newer program wrote. You cannot go back to an older version after a
 change of the schema. Make a backup first.
 
+For a 0.1.0 to 0.2.0 upgrade, keep the complete **stopped** data volume,
+the matching encryption key, configuration and old executable or image.
+An object export does not include all credential, query-history and audit
+state. Rehearse restoration on a disposable copy before the upgrade window.
+Keep the backup protected as credentials.
+
 1. Read the release notes. Check for changes that need an action.
 2. Back up (see above).
 3. Pull the new image. Replace `<version>` with the new version:
@@ -145,6 +151,22 @@ go to the next.
 Before you upgrade from version 0.1 to version 0.2, read the
 [upgrade notes for 0.1.x](../../deploy/runbooks.md#upgrading-from-01x). They
 give the order of the steps.
+
+### Roll back to 0.1.0
+
+1. Stop every process that uses the upgraded data. Keep a separate copy of
+   that data if you need to investigate or recover later writes.
+2. Restore the complete pre-upgrade volume into an empty directory or volume.
+   Do not extract it over the upgraded database files or combine their WAL files.
+3. Restore the matching pre-upgrade configuration and encryption key. Start
+   the retained 0.1.0 executable or image against the restored volume.
+4. Check readiness, representative DNS answers, sign-in and API credentials,
+   query history and the audit trail. Restart once and check again.
+
+Writes made after the backup are absent after rollback. The old binary's
+refusal to open an upgraded database is expected; editing schema versions
+does not provide a rollback. Kubernetes IAM also needs its matching private
+identity state; follow the [offline migration procedure](../../deploy/iam-upgrade.md).
 
 ## Recover a lost admin password
 

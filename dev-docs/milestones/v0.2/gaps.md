@@ -1,5 +1,8 @@
 # v0.2.0 implementation and validation gaps
 
+Current follow-up status: [v0.2.0 final acceptance](final-acceptance.md).
+The dated entries below retain their original source and evidence scope.
+
 Current process and artifact results are in
 [local release and process acceptance](local-release-acceptance.md). The earlier
 [November 15 qualification entry](#release-qualification-november-15-2026) and

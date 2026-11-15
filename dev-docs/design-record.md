@@ -930,7 +930,7 @@ Resources × verbs (`read|write|delete` + extras): `zones{transfer,sign,share}`,
 | zones write (options) / delete / transfer / sign / share | | | | ✓ scoped (create needs cluster `zones.write`) | ✓ |
 | blocklists/policies/clientgroups/clients read | ✓ | ✓ | ✓ | | ✓ |
 | blocklists/policies/clientgroups/clients write, cache flush, blocking toggle | | | ✓ | | ✓ |
-| querylog read (with client IPs) | | ✓ | ✓ (`settings.operatorSeesQueryLog`, default true) | | ✓ |
+| querylog read (with client IPs) | | ✓ | ✓ | | ✓ |
 | querylog export / purge | | export | | | ✓ |
 | settings read (redacted) | ✓ | ✓ | ✓ | | ✓ |
 | settings write, node.config, integrations.*, cluster.*, edge.* | | | | | ✓ |

@@ -1358,6 +1358,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- TSIG observer tests retain their original expiry, cancellation, deadline and
+  publication assertions while isolating the quiet fixture from unrelated
+  provider retries and redundant publisher wakeups.
+
 - SQLite IAM revocation history compacts transactionally instead of exhausting
   sign-in and account deletion after about 4,000 historical changes. A checkpoint
   requires fresh proof from older OIDC tokens while preserving unaffected stored

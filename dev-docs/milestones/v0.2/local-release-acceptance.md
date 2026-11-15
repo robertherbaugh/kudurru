@@ -1,5 +1,8 @@
 # Local release and process acceptance, November 15, 2026
 
+Current follow-up status: [v0.2.0 final acceptance](final-acceptance.md).
+The dated entries below retain their original source and evidence scope.
+
 Source: `5e19a32bfb4d62f8524218f0e1cec3df6806eaa0`.
 
 The owner authorized disposable acceptance infrastructure and confirmed that

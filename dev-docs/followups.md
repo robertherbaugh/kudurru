@@ -1,5 +1,10 @@
 # Follow-ups
 
+The [current v0.2.0 reconciliation](milestones/v0.2/final-acceptance.md)
+supersedes specific historical allegations below and links remaining work to
+issues #122–#133. Original entries retain their historical evidence; issue
+creation does not waive release requirements.
+
 Open items that are not on the milestone exit criteria they came from. Each
 names its source (spike or milestone report) and the milestone where it should
 land. Close an item by deleting its row and citing the commit. Items that need
