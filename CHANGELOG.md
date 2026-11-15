@@ -1350,6 +1350,32 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- SQLite signed DNS UPDATEs no longer stop permanently after a zone's 256th
+  commit. Expired retry receipts are removed safely; the ledger now bounds
+  live signature windows to 1,024 receipts. Exact signed repeats retain their
+  original outcome across restart. A published descendant carrying the update's
+  receipt can acknowledge its commit.
+- A native signed UPDATE refused before admission by a superseded publication
+  can wait briefly for the same writer without extending its original signature
+  or request deadline. Applied or uncertain writes are never dispatched again.
+- Follower applies and batch deletions continue across a republication of the
+  same installed source. Scheduled replication waits for forwarded requests
+  within its existing 30-second bound; larger files should go to the primary.
+- API commands continue across republications of the same revision and
+  dependencies. Commands no longer request a redundant publication after their
+  own commit, and record upserts can recapture before dispatch.
+- UniFi observer polls count their interval from the previous poll's start and
+  wait for a frame captured after their own status write. A target zone's
+  status-only change no longer refuses an observation. SQLite integrations
+  start after the first complete serving publication.
+- DHCP MAC identification fills the lease at the call that identifies the
+  query, including after an earlier call found no policy index. Queries without
+  a MAC matcher still avoid lease reads.
+- Dashboard record edits retain served ownership and client-group namespaces;
+  unowned served rows explain why editing is unavailable. IAM account managers,
+  service account token revocation, multiple role-binding subjects, RPZ polling
+  backoff and integration batch deletion are available.
+
 - Cluster storage: retain original peer enrollment, certificate and request
   lifetimes through image/command admission and bounded output exclusion.
   Root HA routes and domain authorization mounting remain in progress.

@@ -19219,3 +19219,70 @@ What remains open:
   walks check them.
 
 **Verification state at 7663c957.** Merged and pushed at `7663c957` (INTEGRATE-49 green; the walks reach 212 operations on primary, follower, fenced and conflicted shapes in e2e). Its verifier confirmed **none of the four findings resolved**: (major) the process-level fenced and follower walks are each proven by a single pass (the e2e tests fail earlier in the follower apply-cut step at base); (major) `TestRunServeRefusalInventoryStandalone` under load: the fix is right for the limiter's rule, but on one starved core the test failed 2 of 2 with "context deadline exceeded" at `oidcStart` after about 325 s, because the new 61 s lane waits can exhaust the walk's five-minute context; (minor) `followerUnsentMessage` is still tolerated as transient with its removal condition only in a comment; (minor) acceptance item 4, one green full `./cmd/kudurru` run, is not met. The verifier also found that the ledger draft did not contain several statements the fixer claimed it did (the e2e gap, item 4, a follow-up row); they are stated here instead. New: the lane waits make the loaded case about three times slower; the fix commit's trailer differs from the session's (cosmetic).
+
+### Final integration resumed November 15, 2026 (D397, D399, D405–D409)
+
+This section supersedes the open package snapshots at 7663c957 and the
+unfinished-lane handoff at 329f26f4. Source through a5da2b0b includes the
+following completed integration work; final release qualification is tracked
+separately below. No application release has been published.
+
+- **Dashboard:** DASH-OPEN2-FINISH was already integrated through 2b425e25.
+  Served record ownership and namespaces, CLI views, account managers, token
+  revocation, multiple binding subjects, RPZ polling and integration batch
+  deletion are present. Its retained lane verification passed all 1,146 Vitest
+  tests, lint, type checking and build. Its full Playwright run had two failures
+  in the command/publication family; final-source hosted Playwright is required.
+- **Follower publication:** D406 at 97b353f3 fixes the D405 regression that cut
+  follower applies after a same-source republication. Hosted run 43670192606
+  at ae1d2a89 passed all seven enrolled-cluster process tests. That run failed
+  elsewhere and is not a green release result. HA-OPEN7-FINISH adds retained
+  replay refusal checks, once-sent UPDATE tests through rejoined members, an
+  accurate ended-request refusal, and documented 30-second apply limits.
+- **HTTP commands:** D399/D407 through d244327c keep recapture opt-in, admit a
+  same-cut republication without replacing the request, omit a redundant Wake
+  after the command's own commit, and mark record upserts for pre-dispatch
+  recapture. The preceding INTEGRATE-55 command selection passed with race
+  detection in 576.9 seconds and scoped lint reported zero issues.
+- **Inventory and UniFi:** six core commits through e472f6ea retain the MAC
+  query-path gate, fill a lease at the identifying call, pace observer-only
+  syncs from their start, refresh their frame after status writes, admit a
+  target zone changed only in status, and start SQLite integrations after the
+  first complete serving publication. The lane's 20 final mounted race runs
+  passed; startup and assignment bounds were not widened. Publishers keep
+  their prior interval after completion.
+- **Signed UPDATEs:** bb9496d4 removes the permanent 256-commit limit. Receipts
+  retain exact outcomes until the original signature deadline plus a one-minute
+  clock margin; only 1,024 simultaneously live receipts impose a capacity
+  refusal. Native retry identities now match exact signed messages, as on
+  followers. 0332f7ff acknowledges a committed update through a published
+  descendant carrying its own receipt. 37a4b254 completes the interrupted
+  native ingress work: one bounded recapture before admission, retaining the
+  original signature, dependencies, writer and request deadline. No result
+  from Apply permits another native dispatch.
+- **Transfer qualification:** the split-horizon EOF also occurred in the
+  predecessor baseline (3 of 25 at 2b425e25). Transfers intentionally require
+  current publication throughout, unlike ordinary retained DNS answers.
+  a5da2b0b restarts an EOF-interrupted read within ten seconds and checks every
+  received chunk, including partial transfers, for private-data leaks. Other
+  errors still fail immediately; partial records are discarded before retry.
+
+Fresh evidence is under `.context/release-resume-20261115/`:
+
+- `race-core.log`: complete publisher, identify and integration-host suites pass.
+- `race-update.log`: complete primary runtime, current guard, driver, network,
+  SQLite adapter, zone-state and serving-build suites pass with race detection.
+- `native-recapture-negative.log`: both new held-publication cases fail without
+  the native pre-admission change; `native-recapture-first.log` passes with it.
+- `race-native-update.log`: three repetitions of native UPDATE, keyring
+  replacement and actual output/refusal tests pass (66.9 seconds).
+- `e2e-views-after.log`: repeated real-process transfer acceptance, including
+  observed EOF restarts; final result is recorded in the release-check entry.
+
+Remaining limitations: the follower's original 30-second request and pull-hold
+limits remain; a large apply can return partial results under load. UniFi's
+assignment margin remains finite under sustained CPU starvation. Native UPDATEs
+can still fail after admission or when their bounded wait expires. Receipt
+retention assumes member clocks differ by no more than the documented margin.
+Original two-VM VIP acceptance, production licensing and promotion/publication
+checks remain owner gates; AD/Windows remains deferred preview (D353).
