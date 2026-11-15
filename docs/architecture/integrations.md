@@ -856,9 +856,14 @@ takes to acknowledge its publication therefore no longer delays the next
 observation: on a loaded node two serving preparations could take several
 seconds, and counted from the acknowledgment the gap between two UniFi
 observations reached 13 to 19 s against a 15 s assignment lifetime at a
-five-second poll. Syncs of one job still never overlap, so a provider sees at
-most one sync start per interval. Failed syncs keep their retry backoff,
-counted from the failure, and no observation's expiry changes.
+five-second poll. A sync ends with the job's own status write, which gives
+the stored Integration a resource version the job's frame lacks until the
+host captures it again, and root fences a sync on the older frame; so the
+next periodic sync also waits for a capture begun after that write, which
+the job requests at once (`Host.Wake`), and at most one interval after the
+sync ended, the old schedule. Syncs of one job still never overlap, so a
+provider sees at most one sync start per interval. Failed syncs keep their
+retry backoff, counted from the failure, and no observation's expiry changes.
 
 ## Cloudflare adapter
 

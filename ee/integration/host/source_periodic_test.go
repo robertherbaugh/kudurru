@@ -229,3 +229,109 @@ func TestPeriodicPollIntervalCountsFromThePreviousPoll(t *testing.T) {
 		t.Fatalf("poll after a %s acknowledgment began %s after the previous one, want at once after it (%s)", acks[1], second, acks[1])
 	}
 }
+
+// D408: a sync ends with the job's own status write, which gives the stored
+// instance a resource version its frame lacks until the host captures it
+// again; root fences a sync on the older frame. When the next periodic sync
+// is due at once (the previous one ran longer than the interval), it waits
+// for a capture begun after that write, which the job requests, instead of
+// running on the old frame and being fenced until the next interval.
+func TestPeriodicPollAfterStatusWriteUsesAFrameCapturedAfterIt(t *testing.T) {
+	const interval = time.Second
+	st := memory.New()
+	definition := webhook("status-frame")
+	definition.Spec.Resync = metav1.Duration{Duration: interval}
+	input := captureInput(t, definition)
+	repo, err := ledger.New(ledger.Options{Reader: st, Write: func(ctx context.Context, _ ledger.Guard, obj store.Object, options store.ApplyOptions) (store.Object, error) {
+		return st.Apply(ctx, obj, options)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	written := 0   // status writes so far
+	var seen []int // status writes the frame of each observation had captured
+	var h *Host
+	p := sourceOnlyObserver{Integration: &fakePublisher{}, observe: func(ctx context.Context) (SourceSnapshot, error) {
+		scope := ctx.Value(scopeKey{}).(requestScope)
+		resource, err := h.RequestResource(ctx, scope.g.Ledger)
+		if err != nil {
+			return SourceSnapshot{}, err
+		}
+		mu.Lock()
+		seen = append(seen, *resource.(*int))
+		mu.Unlock()
+		return SourceSnapshot{Complete: true}, nil
+	}}
+	h, err = New(Options{Capture: func(context.Context) (Input, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		captured := written
+		next := input
+		next.Resource = &captured
+		return next, nil
+	}, Factory: func(string) (integration.Integration, error) { return p, nil },
+		Elector: st.Elector, Fence: func(context.Context, ExecutionGuard) error { return nil }, Ledger: repo, Reader: st, Allowed: func() bool { return true },
+		BeforeObserve: func(ctx, _ context.Context, _ ExecutionGuard) (context.Context, func(), error) {
+			return ctx, func() {}, nil
+		},
+		ValidateSource: func(ExecutionGuard, SourceSnapshot) error { return nil },
+		CommitSource: func(ctx context.Context, _ ExecutionGuard, s SourceSnapshot) (*Result, error) {
+			// The acknowledgment outlasts the interval, so the next sync is due at once.
+			select {
+			case <-time.After(interval + 200*time.Millisecond):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return &Result{Clients: len(s.Clients), Source: &SourceOutcome{ReceiptID: "receipt", Committed: true, Published: true}}, nil
+		},
+		Status: func(context.Context, ExecutionGuard, InstanceStatus) error {
+			mu.Lock()
+			written++
+			mu.Unlock()
+			return nil
+		},
+		// Only a wake refreshes frames within this test's run.
+		PollInterval: time.Minute, OperationTimeout: 10 * time.Second, StopTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- h.Run(ctx) }()
+	defer func() {
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Error(err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Error("periodic source did not join")
+		}
+	}()
+	// The first sync runs on the job's first frame; its election and
+	// provisioning write status before it, which the frame may not have.
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		mu.Lock()
+		n, writes := len(seen), written
+		mu.Unlock()
+		if n >= 3 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("periodic polls stopped after %d observations and %d status writes", n, writes)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	// Each sync after the first must run on a frame captured after the
+	// status write that ended the sync before it.
+	for i := 1; i < 3; i++ {
+		if seen[i] <= seen[i-1] {
+			t.Fatalf("observation %d ran on a frame captured before the previous sync's status write: %v", i+1, seen)
+		}
+	}
+}

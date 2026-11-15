@@ -102,6 +102,7 @@ func (h *Host) Run(ctx context.Context) error {
 	}
 }
 func (h *Host) refresh(ctx context.Context) {
+	capture := h.captures.Add(1)
 	captureCtx, cancel := context.WithTimeout(ctx, h.opts.CaptureTimeout)
 	input, err := h.opts.Capture(captureCtx)
 	var instances []*Instance
@@ -207,6 +208,11 @@ func (h *Host) refresh(ctx context.Context) {
 			if j.active {
 				j.guard.IntegrationResourceVersion = i.definition.ResourceVersion
 			}
+			j.captured = max(j.captured, capture)
+			select {
+			case j.framed <- struct{}{}:
+			default:
+			}
 			if changed {
 				select {
 				case j.reconcile <- struct{}{}:
@@ -247,7 +253,7 @@ func (h *Host) refresh(ctx context.Context) {
 		}
 		nextInput := input
 		nextInput.BundleID = i.BundleID()
-		j := &job{key: key, mode: next.mode, refusal: h.refusalOf(i), frame: frame{i, nextInput}, sourceDigest: digest, ctx: jobCtx, cancel: cancel, done: make(chan struct{}), commands: make(chan command, 8), reconcile: make(chan struct{}, 1)}
+		j := &job{key: key, mode: next.mode, refusal: h.refusalOf(i), frame: frame{i, nextInput}, sourceDigest: digest, ctx: jobCtx, cancel: cancel, done: make(chan struct{}), commands: make(chan command, 8), reconcile: make(chan struct{}, 1), captured: capture, framed: make(chan struct{}, 1)}
 		h.jobs[key] = j
 		phase := "Waiting"
 		if next.mode != GuardNormal {

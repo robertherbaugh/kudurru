@@ -244,6 +244,9 @@ type Host struct {
 	sequence          atomic.Uint64
 	requestSequence   atomic.Uint64
 	sourceSequence    atomic.Uint64
+	// captures numbers refresh runs in the order they begin; a job's
+	// captured records the latest one that refreshed its frame (D408).
+	captures atomic.Uint64
 }
 type frame struct {
 	instance *Instance
@@ -281,6 +284,12 @@ type job struct {
 	// first (D384). A command reviewed at one of them reviewed the same
 	// spec and metadata, so it is not stale; any other change clears them.
 	statusPredecessors []string
+	// captured is the number (Host.captures) of the latest refresh that
+	// began before it refreshed this job's frame, and framed is signaled
+	// after each such refresh. A periodic sync after the job's own status
+	// write waits for a frame captured after that write (D408).
+	captured uint64
+	framed   chan struct{}
 }
 
 // maxStatusPredecessors bounds how many status-only writes a review
@@ -305,7 +314,10 @@ type answer struct {
 	// audit is the provider's ActionAuditor subject of an invocation, set
 	// before the provider is invoked so that it survives a failure.
 	audit string
-	err   error
+	// statusWritten reports that a sync published its status: the stored
+	// instance then has a resource version its frame does not have yet.
+	statusWritten bool
+	err           error
 }
 
 // New validates bounded execution dependencies without doing I/O.
