@@ -80,8 +80,11 @@ func TestCapturedZoneReadsSummaryRecordsExportAndOwnership(t *testing.T) {
 	if len(list.Items) != 1 || list.Items[0].Name != "example" || list.Items[0].Serial != 42 {
 		t.Fatal("list read the live store", list)
 	}
-	var records List[ZoneRecord]
+	var records ZoneRecordList
 	h.do(http.MethodGet, "/api/v1/zones/example/records", "viewer", nil).want(http.StatusOK).json(&records)
+	if records.Source != RecordSourceServed {
+		t.Fatalf("captured record list source %q, want served", records.Source)
+	}
 	var dynamic, soa bool
 	for _, row := range records.Items {
 		if row.RecordSet != "" || row.ManagedBy != "" || row.Kudurru != nil || row.Labels != nil {
