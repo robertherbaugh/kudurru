@@ -122,6 +122,27 @@ class GoTestBatches(unittest.TestCase):
         self.assertEqual(run.call_args.args[0],
                          ["go", "test", "-race", "-count=1", "-timeout=30m", "example.org/one"])
 
+    def test_security_failure_retains_all_packages_once_with_same_race_bound(self):
+        commands = []
+
+        def run(argv, **kwargs):
+            commands.append(argv)
+            self.assertEqual(kwargs["env"]["CGO_ENABLED"], "1")
+            if argv[1] == "list":
+                return subprocess.CompletedProcess(argv, 0,
+                    "example.org/one\n" + runner.SECURITY_PACKAGE + "\nexample.org/two\n")
+            self.assertEqual(argv[:5],
+                ["go", "test", "-race", "-count=1", "-timeout=30m"])
+            self.assertFalse(any(arg.startswith("-run") for arg in argv))
+            return subprocess.CompletedProcess(argv,
+                1 if runner.SECURITY_PACKAGE in argv else 0)
+
+        with patch.object(runner.subprocess, "run", side_effect=run), redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.execute(["./..."], "30m"), 1)
+        self.assertEqual(commands[1][5:], [runner.SECURITY_PACKAGE])
+        self.assertEqual(commands[2][5:], ["example.org/one", "example.org/two"])
+        self.assertEqual(len(commands), 3)
+
 
 if __name__ == "__main__":
     unittest.main()

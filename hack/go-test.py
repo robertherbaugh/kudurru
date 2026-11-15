@@ -4,6 +4,10 @@
 A few timing tests of the command package assert their strict bound only
 without the race detector, which slows publication about tenfold. They run a
 second time, without it, after the race batches (NORACE_TESTS).
+
+The security package includes 4,113 real IAM create/delete cycles. Run it in
+its own race process so other packages do not compete for its timeout budget.
+Its inventory, race instrumentation and per-process timeout stay unchanged.
 """
 
 import argparse
@@ -16,6 +20,7 @@ import sys
 
 
 COMMAND_PACKAGE = "github.com/robertherbaugh/kudurru/cmd/kudurru"
+SECURITY_PACKAGE = "github.com/robertherbaugh/kudurru/internal/auth/security"
 TEST_NAME = re.compile(r"(?:Test|Example|Fuzz)\w*\Z")
 MAX_BATCH_NAMES = 100
 # Command tests whose strict timing assertion is compiled in only without the
@@ -100,6 +105,12 @@ def execute(patterns, timeout):
         )
         failed = failed or result.returncode != 0
         packages.remove(COMMAND_PACKAGE)
+    if SECURITY_PACKAGE in packages:
+        print(SECURITY_PACKAGE + ": isolated race process for the complete "
+              "IAM churn regression", flush=True)
+        result = subprocess.run([*flags, SECURITY_PACKAGE], env=env, check=False)
+        failed = failed or result.returncode != 0
+        packages.remove(SECURITY_PACKAGE)
     if packages:
         result = subprocess.run([*flags, *packages], env=env, check=False)
         failed = failed or result.returncode != 0
