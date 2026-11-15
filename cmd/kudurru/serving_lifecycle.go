@@ -76,7 +76,7 @@ func (s *servingRuntime) Run(ctx context.Context) error {
 	if s.opts.TSIG != nil {
 		g.Go(func() error { return s.opts.TSIG.Run(ctx) })
 	}
-	g.Go(func() error { return s.integrations.host.Run(ctx) })
+	g.Go(func() error { return afterInitialized(ctx, s.publisher.Initialized(), s.integrations.host.Run) })
 	g.Go(func() error { return s.catalog.Watch(ctx, s.publisher.Wake) })
 	g.Go(func() error { return s.opts.Transferred.Watch(ctx, s.publisher.Wake) })
 	g.Go(func() error {
@@ -92,6 +92,23 @@ func (s *servingRuntime) Run(ctx context.Context) error {
 	})
 	g.Go(func() error { return s.observeHost(ctx) })
 	return g.Wait()
+}
+
+// afterInitialized runs run once initialized is closed, or returns nil if
+// ctx ends first. Integrations start with this node's first complete serving
+// publication, the one its readiness waits for (D408). A source commit is
+// acknowledged only by a complete publication, and every provider request of
+// an acquisition commits a budget reservation, a new generation that makes
+// the preparation in progress obsolete: an acquisition that began first held
+// readiness back for its whole duration and gained nothing, since its own
+// acknowledgment waited for that same publication.
+func afterInitialized(ctx context.Context, initialized <-chan struct{}, run func(context.Context) error) error {
+	select {
+	case <-initialized:
+	case <-ctx.Done():
+		return nil
+	}
+	return run(ctx)
 }
 
 // lifecycleCall only serializes root lifecycle operations. It precedes all
