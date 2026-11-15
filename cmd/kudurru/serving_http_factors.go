@@ -123,7 +123,7 @@ func (h *servingHTTP) factorCommand(r *http.Request, original auth.Principal, co
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	var locked *loginlimit.Locked
 	if errors.As(refused, &locked) {
 		return &auth.Error{Status: http.StatusTooManyRequests, Key: "rate_limited", Message: "too many failed attempts; try again later", RetryAfter: locked.RetryAfter}
@@ -189,7 +189,7 @@ func (h *servingHTTP) confirmTOTP(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	if err := h.clearCookie(w, r, ""); err != nil {
 		return err
 	}
@@ -216,7 +216,7 @@ func (h *servingHTTP) disableTOTP(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	if err := h.clearCookie(w, r, ""); err != nil {
 		return err
 	}
@@ -251,7 +251,7 @@ func (h *servingHTTP) recoverTOTP(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	if proof.Kind == servingauth.Cookie && p.Provider == "local" && p.Name == target.Name && p.AccountUID == target.UID {
 		if err := h.clearCookie(w, r, ""); err != nil {
 			return err

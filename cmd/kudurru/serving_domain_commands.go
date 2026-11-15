@@ -58,7 +58,7 @@ func (s *servingRuntime) DomainCommand(ctx context.Context, target api.DomainCom
 		return check(ctx)
 	})
 	if err == nil {
-		s.publisher.Wake()
+		s.wakeAfterCommand(ctx)
 	}
 	return currentCommandAPIError(err)
 }

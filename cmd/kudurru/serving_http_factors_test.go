@@ -320,7 +320,9 @@ func factorInstall(t *testing.T, f *servingHTTPFixture) *totp.Seed {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.s.publisher.Wake()
+	// The commit advanced the generation, which makes the publisher prepare
+	// it; a Wake on top would publish the same revision twice and supersede
+	// the next command's capture (D407).
 	factorWait(t, f, true)
 	return seed
 }

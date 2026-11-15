@@ -61,7 +61,7 @@ func (s *servingRuntime) ZoneCommand(ctx context.Context, target api.ZoneCommand
 		return check(ctx)
 	})
 	if err == nil {
-		s.publisher.Wake()
+		s.wakeAfterCommand(ctx)
 	}
 	return currentCommandAPIError(err)
 }

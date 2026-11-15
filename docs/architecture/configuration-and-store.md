@@ -2022,6 +2022,11 @@ answered by exactly one more preparation once it has published. That
 preparation publishes the same generation again, which supersedes the
 publication that HTTP requests captured; an enrolled follower's forwarded
 requests are bound to their source instead, so it does not cut them (D406).
+An HTTP command whose own commit advanced the generation does not Wake at all
+(D407): the generation change already schedules a preparation that reads a
+candidate after the commit, and a Wake arriving after that read only
+published the same revision again, superseding every request captured on the
+first publication.
 
 ```mermaid
 flowchart LR

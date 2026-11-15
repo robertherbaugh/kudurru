@@ -81,7 +81,7 @@ func (h *servingHTTP) createLocalUser(w http.ResponseWriter, r *http.Request) er
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	return servingHTTPJSON(w, http.StatusCreated, created)
 }
 
@@ -113,7 +113,7 @@ func (h *servingHTTP) resetLocalUserPassword(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	proof, err := servinghttp.Credential(r.Context())
 	if err != nil {
 		return err

@@ -57,7 +57,7 @@ func (s *servingRuntime) WriteSettings(ctx context.Context, next *config.Config,
 		return plan.Apply(ctx, tx)
 	})
 	if err == nil {
-		s.publisher.Wake()
+		s.wakeAfterCommand(ctx)
 	}
 	return currentCommandAPIError(err)
 }

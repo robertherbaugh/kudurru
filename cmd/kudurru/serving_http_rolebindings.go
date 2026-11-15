@@ -242,7 +242,7 @@ func (h *servingHTTP) mutateRoleBinding(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	if r.Method == http.MethodDelete {
 		w.WriteHeader(http.StatusNoContent)
 		return nil

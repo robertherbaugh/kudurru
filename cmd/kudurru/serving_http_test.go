@@ -50,7 +50,9 @@ func newServingHTTPFixture(t *testing.T, mustChange bool) *servingHTTPFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.s.publisher.Wake()
+	// The commit advanced the generation, which makes the publisher prepare
+	// it; a Wake on top would publish the same revision twice and supersede
+	// the next command's capture (D407).
 	awaitServingHTTPView(t, f.s, func(v *servingauth.View) bool {
 		objects, e := v.Objects("LocalUser")
 		if e != nil {
@@ -258,7 +260,9 @@ func TestServingHTTPSessionRevokeAndAccountIncarnation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.s.publisher.Wake()
+	// The commit advanced the generation, which makes the publisher prepare
+	// it; a Wake on top would publish the same revision twice and supersede
+	// the next command's capture (D407).
 	awaitServingHTTPView(t, f.s, func(v *servingauth.View) bool {
 		_, err := v.CookieSession(freshCookie.Value, time.Now())
 		return err != nil

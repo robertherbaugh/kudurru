@@ -67,7 +67,7 @@ func (s *servingRuntime) ObjectCommand(ctx context.Context, key store.Key, fn fu
 		return check(ctx)
 	})
 	if err == nil {
-		s.publisher.Wake()
+		s.wakeAfterCommand(ctx)
 	}
 	return currentCommandAPIError(err)
 }
