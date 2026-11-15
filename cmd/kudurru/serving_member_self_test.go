@@ -272,7 +272,12 @@ func TestRootMemberPasswordCommandActualHTTP(t *testing.T) {
 	}
 
 	// A token caller: committed, its exact duplicate answers the retained
-	// outcome without a second change.
+	// outcome without a second change. passwordChangedAt is stored to the
+	// second and an unchanged status writes nothing, so a change in the
+	// same second as the cookie caller's would leave one audit row, not the
+	// two this test requires of every committed change: the node's clock
+	// moves on a second first, as it would between two operators' changes.
+	h.f.offset.Add(int64(time.Second))
 	tokenChange := h.command("token-change", memberPassword, payload(second, third, security.ForwardedSession{}))
 	status, out = h.send(tokenChange)
 	if result := decodeSelf(t, out); status != http.StatusOK || !result.Committed || result.SessionID != "" {
