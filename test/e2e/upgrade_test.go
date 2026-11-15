@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -774,6 +775,12 @@ func TestUpgradeFromV01DataDirectory(t *testing.T) {
 	d.stop(t, old)
 	d.writeFixture(t, "state.db.gz")
 	spec := d.spec
+	// A rollback restores the entire stopped volume, including encryption
+	// material and private IAM state. An object export is not that backup.
+	backup := filepath.Join(t.TempDir(), "pre-upgrade-volume")
+	if err := os.CopyFS(backup, os.DirFS(spec.DataDir)); err != nil {
+		t.Fatal("copy stopped pre-upgrade volume:", err)
+	}
 
 	start := time.Now()
 	node := kudurrutest.StartReady(t, kudurruBin, spec, d.options())
@@ -1076,6 +1083,36 @@ func TestUpgradeFromV01DataDirectory(t *testing.T) {
 			t.Errorf("after the refused downgrade: %v", r)
 		}
 		again.Stop(20 * time.Second)
+	})
+	t.Run("BackupRestoresReleasedBinaryForRollback", func(t *testing.T) {
+		if err := os.RemoveAll(spec.DataDir); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.CopyFS(spec.DataDir, os.DirFS(backup)); err != nil {
+			t.Fatal("restore stopped pre-upgrade volume:", err)
+		}
+		if got := schemaVersions(t, spec.DataDir); !maps.Equal(got, v01Schemas) {
+			t.Fatalf("restored schemas=%v, want %v", got, v01Schemas)
+		}
+		n := kudurrutest.StartReady(t, d.previous, spec, kudurrutest.Options{Env: d.env, Args: []string{"serve", "--config", spec.Config}})
+		defer n.Stop(20 * time.Second)
+		got := answers(t, spec.Ports.DNS)
+		if !maps.Equal(got, d.answers) {
+			t.Fatal("restored release did not retain the original DNS answers")
+		}
+		for label, token := range map[string]string{"break-glass": d.breakGlass, "personal": d.personal, "bootstrap": d.bootstrap} {
+			if d.api(token).principal(t) != d.principals[label] {
+				t.Errorf("restored %s credential lost its original identity", label)
+			}
+		}
+		n.Stop(20 * time.Second)
+		ids, names := queryLogRows(t, spec.DataDir)
+		if len(ids) < len(d.queryIDs) || !reflect.DeepEqual(ids[:len(d.queryIDs)], d.queryIDs) || !reflect.DeepEqual(names[:len(d.queryNames)], d.queryNames) {
+			t.Fatal("restored volume lost pre-upgrade query history")
+		}
+		if rows := stateRows(t, spec.DataDir, `SELECT count(*) FROM audit`); rows < d.auditRows {
+			t.Fatal("restored volume lost pre-upgrade audit history")
+		}
 	})
 }
 
