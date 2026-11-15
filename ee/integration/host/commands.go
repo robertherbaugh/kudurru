@@ -206,10 +206,62 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 		}
 		timer.Reset(delay)
 	}
+	// After a sync that wrote this job's status, the stored instance has a
+	// resource version the frame lacks until the host captures it again, and
+	// a sync on the old frame is fenced. The next periodic sync waits for a
+	// refresh begun after that write (framed), at most one interval after the
+	// sync ended, as before D408 (fallback).
+	var framed <-chan struct{}
+	var fallback <-chan time.Time
+	var fallbackTimer *time.Timer
+	var mark uint64
+	defer func() {
+		if fallbackTimer != nil {
+			fallbackTimer.Stop()
+		}
+	}()
+	release := func() {
+		if timer != nil {
+			syncTick = timer.C
+		}
+		framed, fallback = nil, nil
+		if fallbackTimer != nil {
+			fallbackTimer.Stop()
+		}
+	}
+	scheduled := func(a answer, began time.Time) {
+		if timer == nil {
+			return
+		}
+		reset(nextSync(interval, began, time.Now()))
+		if !a.statusWritten {
+			release()
+			return
+		}
+		mark = h.captures.Load()
+		syncTick, framed = nil, j.framed
+		if fallbackTimer == nil {
+			fallbackTimer = time.NewTimer(interval)
+		} else {
+			fallbackTimer.Stop()
+			fallbackTimer.Reset(interval)
+		}
+		fallback = fallbackTimer.C
+		h.Wake()
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-framed:
+			h.mu.RLock()
+			current := j.captured > mark
+			h.mu.RUnlock()
+			if current {
+				release()
+			}
+		case <-fallback:
+			release()
 		case startErr := <-started:
 			if startErr != nil && ctx.Err() == nil {
 				h.setLocal(j, "Degraded", "StartFailed", Result{}, true)
@@ -226,10 +278,11 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 			c.reply <- a
 			if c.kind == "sync" && a.err == nil {
 				failures = 0
-				reset(nextSync(interval, began, time.Now()))
+				scheduled(a, began)
 			}
 		case <-j.reconcile:
 			failures = 0
+			release()
 			reset(0)
 		case <-eventTick:
 			operationCtx, operationCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
@@ -256,7 +309,7 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 			operationCancel()
 			if a.err == nil {
 				failures = 0
-				timer.Reset(nextSync(interval, began, time.Now()))
+				scheduled(a, began)
 			} else {
 				if failures < 32 {
 					failures++
@@ -278,8 +331,9 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 }
 
 // nextSync is the wait after a successful sync that began at began and
-// ended at now: the next one begins interval after the previous one BEGAN,
-// or at once when that sync ran longer than interval (D408). An observer's
+// ended at now: the next one begins interval after the previous one began,
+// or at once when that sync ran longer than interval (D408), and in either
+// case not on a frame older than the sync's own status write. An observer's
 // evidence lives a fixed multiple of its interval from its observation
 // (UniFi: three polls), so the gap between two observations must not grow
 // with the time the source commit and its publication take to acknowledge
@@ -478,8 +532,8 @@ func (h *Host) execute(ctx context.Context, j *job, c command) answer {
 			}
 			h.setLocal(j, phase, reason, *result, true)
 		}
-		_ = h.publishStatus(ctx, j, g)
-		return answer{result: result, err: err}
+		written := h.opts.Status != nil && h.publishStatus(ctx, j, g) == nil
+		return answer{result: result, err: err, statusWritten: written}
 	case "actions":
 		provider, ok := j.provider.(integration.ActionProvider)
 		if !ok {
