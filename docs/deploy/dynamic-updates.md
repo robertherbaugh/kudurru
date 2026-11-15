@@ -268,9 +268,12 @@ cause) and, when the primary decided it, on the primary too.
 In every case the follower sends the update at most once. An insert or
 delete of a whole RRset is idempotent, so a client's retry of it is safe; for
 any other change, send the same signed message again, or check the record
-first. An update sent to the primary directly does not wait: right after a
-commit it can still be answered `SERVFAIL` without being applied, and the
-client's retry is safe.
+first. A signed update sent directly to the primary can wait up to two seconds
+for a current publication when it was refused before admission. It keeps the
+original request deadline, verified key and writer; it cannot adopt a replaced
+keyring or writer. The update is admitted once on the new publication. A second
+stale refusal or a failure after admission still answers `SERVFAIL`; an unknown
+outcome never triggers another native dispatch.
 
 Static twins do not replicate: an update changes only the node that received
 it.

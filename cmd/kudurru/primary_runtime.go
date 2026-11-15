@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"time"
 
@@ -139,8 +140,15 @@ func newPrimaryRuntime(ctx context.Context, o primaryRuntimeOptions) (*primaryRu
 			}
 		}()
 		request := *req
-		request.Ctx = bound
+		marker := &nativeUpdateRecapture{}
+		request.Ctx = context.WithValue(bound, nativeUpdateRecaptureKey{}, marker)
 		response, err := update(&request)
+		if err == nil && response != nil && response.Msg != nil && response.Msg.Rcode == dns.RcodeServerFailure && marker.stale {
+			if again, ok := p.recaptureUpdate(&request, status.Writer, update); ok {
+				response.Close()
+				response = again
+			}
+		}
 		if response != nil {
 			// The original writer binding remains alive through actual output,
 			// including a committed command whose publication acknowledgment failed.
@@ -173,15 +181,17 @@ func (p *primaryRuntime) captureUpdate(req *pipeline.Request, apex string) (pr.V
 	}
 	target := serving.TermActivation{Term: fence.Term, Incarnation: fence.Incarnation}
 	forwarded, isForwarded := forwardedUpdateFrom(req.Ctx)
-	// stale rejects a forwarded UPDATE whose lease is no longer this node's
+	// stale rejects an UPDATE whose lease is no longer this node's
 	// current writer publication, or whose publication does not serve the
 	// zone for updates at this moment (its lifecycle is being realigned
 	// after a commit). Nothing has been admitted yet, so the member command
 	// may wait for the next publication and capture again within its bound
-	// (D381).
+	// (forwarded: D381; native: D409).
 	stale := func() (pr.VerifiedUpdate, error) {
 		if isForwarded {
 			forwarded.stale = true
+		} else if native, ok := req.Ctx.Value(nativeUpdateRecaptureKey{}).(*nativeUpdateRecapture); ok && native != nil {
+			native.stale = true
 		}
 		return reject(dns.RcodeServerFailure)
 	}
@@ -236,7 +246,7 @@ func (p *primaryRuntime) captureUpdate(req *pipeline.Request, apex string) (pr.V
 			return reject(dns.RcodeRefused)
 		}
 		if !current() {
-			return reject(dns.RcodeServerFailure) // the source changed under the request
+			return stale() // the source changed under the request
 		}
 		identity, ok := keys.Identity(native.Identity().Key)
 		if !ok || identity != native.Identity() {
@@ -285,4 +295,73 @@ func (p *primaryRuntime) captureNotify(ctx context.Context, fence pr.Publication
 	return network.NotifyCut{Identity: identity, Keys: keys, Release: lease.Release, Current: func() bool {
 		return ctx.Err() == nil && p.writer.current(t) && current() && owner.Primary().Admitted(member.Zone.Apex, time.Now()) && p.publisher.CheckWriterLease(ctx, lease, target) == nil
 	}}, nil
+}
+
+// nativeUpdateRecaptureBound bounds the wait of a native signed UPDATE for
+// the writer's next current publication after captureUpdate refused it as
+// stale (D409). The request's own deadline bounds it too.
+const nativeUpdateRecaptureBound = 2 * time.Second
+
+// nativeUpdateRecapture marks, on a native signed UPDATE of the ready writer,
+// that captureUpdate refused it only because its publication was no longer
+// the writer's current one (another commit of the node superseded it, or its
+// keyring was replaced), before anything was admitted or applied.
+type nativeUpdateRecapture struct{ stale bool }
+
+type nativeUpdateRecaptureKey struct{}
+
+// recaptureUpdate runs a native UPDATE that captureUpdate refused as stale
+// once more, on the writer's next current publication (D409). Nothing was
+// admitted, so this is not a replay: zone selection, the writer check, the
+// signature, key identity, grants and prerequisites are all decided again on
+// that publication, and the retry identity is the same signed request. It is
+// tried once, only while the original publication's dependencies (keys,
+// providers) are still current, because the answer is acknowledged against
+// the original request (D313): its writer, its verified key and the original
+// publication's dependencies. A second stale refusal is the answer.
+func (p *primaryRuntime) recaptureUpdate(request *pipeline.Request, writer pr.PublicationFence, update pipeline.Next) (*pipeline.Response, bool) {
+	if _, ok := dnsserver.VerifiedTSIGFor(request, time.Now()); !ok {
+		return nil, false
+	}
+	owner, err := servingdns.Component[*servingbuild.RuntimeOwner](request, "runtime")
+	if err != nil || !owner.DependenciesCurrent() {
+		return nil, false
+	}
+	wait, cancel := context.WithTimeout(request.Ctx, nativeUpdateRecaptureBound)
+	defer cancel()
+	target := serving.TermActivation{Term: writer.Term, Incarnation: writer.Incarnation}
+	var lease *serving.Lease
+	for lease == nil {
+		changed := p.publisher.Subscribe()
+		captured, err := p.publisher.CaptureHTTP(wait)
+		if err == nil {
+			err = p.publisher.CheckWriterLease(wait, captured, target)
+		}
+		if err == nil {
+			lease = captured
+			continue
+		}
+		captured.Release()
+		if !errors.Is(err, serving.ErrPending) {
+			return nil, false
+		}
+		select {
+		case <-wait.Done():
+			return nil, false
+		case <-changed:
+		}
+	}
+	again := *request
+	again.Ctx = context.WithValue(request.Ctx, nativeUpdateRecaptureKey{}, &nativeUpdateRecapture{})
+	again.Serving = servingdns.Wrap(lease)
+	response, err := update(&again)
+	if err != nil || response == nil {
+		if response != nil {
+			response.Close()
+		}
+		lease.Release()
+		return nil, false
+	}
+	response.AddCleanup(lease.Release)
+	return response, true
 }

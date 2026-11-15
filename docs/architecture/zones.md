@@ -818,8 +818,9 @@ The runtime returns SERVFAIL when a durable UPDATE commit has not reached the
 complete local publication boundary. Internal diagnostics distinguish this from
 a failed commit. Receipt replay and rejected requests still cross current
 admission. NOTIFY delivery is bounded and at least once: a crash after delivery
-but before acknowledgment can duplicate a notification. Receipts currently have
-a finite cap (256 by default), with no eviction until safe retention is defined.
+but before acknowledgment can duplicate a notification. UPDATE receipts have
+a finite cap of 1,024 live entries and expire after their signature deadline
+plus a clock margin, as described below (D409).
 
 The SQLite adapter now checks the complete desired/admitted roster, source
 UID/resourceVersion/intent, head and lifecycle in one `CommandTx`. Current
@@ -1062,6 +1063,17 @@ same signed message sent again after SERVFAIL, here or through a follower) is
 answered from the retained receipt and is not decided again; a message signed
 again is a new request (D409). Diagnostics cannot change the wire result even if
 their callback panics.
+
+Before admission, a native signed UPDATE whose ingress publication became
+stale may capture once more on the same writer (D409). It waits at most two
+seconds, also bounded by the original request deadline. The original signature
+must still be valid and the original publication's dependencies must still be
+current; a replaced keyring or writer is never adopted. Zone selection, key
+identity, grants and prerequisites are checked again on the new publication.
+Only `captureUpdate`'s pre-admission stale refusal permits this wait. An answer
+from `Apply`, including an uncertain commit or publication failure, is final;
+it never triggers a second native dispatch. Transport acknowledgment retains
+the original signature, dependency installations and writer binding.
 
 Each committed UPDATE adds one receipt to the zone's ledger, with the signature
 deadline of its request (`Receipt.NotAfter`, Unix seconds rounded up). No node

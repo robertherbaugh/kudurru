@@ -200,7 +200,7 @@ func newPrimaryNetworkFixtureWithOutput(t *testing.T, observer pipeline.Observer
 		t.Fatal(err)
 	}
 	capture := servingdns.Capture(f.publisher)
-	f.chain.SetCapture(func(req *pipeline.Request) (pipeline.ServingLease, error) {
+	captureRequest := func(req *pipeline.Request) (pipeline.ServingLease, error) {
 		lease, err := capture(req)
 		if err == nil && ((req.Msg.Opcode == dns.OpcodeUpdate && f.pause.CompareAndSwap(true, false)) || (req.Msg.Opcode == dns.OpcodeNotify && f.pauseNotify.CompareAndSwap(true, false))) {
 			f.entered <- struct{}{}
@@ -210,12 +210,13 @@ func newPrimaryNetworkFixtureWithOutput(t *testing.T, observer pipeline.Observer
 			}
 		}
 		return lease, err
-	})
+	}
+	f.chain.SetCapture(captureRequest)
 	logger := slog.New(slog.DiscardHandler)
 	handler := &dnsserver.Handler{Chain: f.chain, Logger: logger}
 	if observer != nil {
 		f.chain.Observe(observer)
-		handler.Capture, handler.Keys, handler.Output = capture, servingbuild.DNSKeys, captureRootAnchorOutput
+		handler.Capture, handler.Keys, handler.Output = captureRequest, servingbuild.DNSKeys, captureRootAnchorOutput
 	}
 	f.listeners, err = dnsserver.NewRegistry(dnsserver.Options{Handler: handler, Logger: logger, TSIG: f.keys, Sockets: 1})
 	if err != nil {
@@ -320,6 +321,64 @@ func TestPrimaryRuntimeNativeUpdateUsesCompletePublishedAuthority(t *testing.T) 
 		if answer == nil || answer.Rcode != tc.code || (err != nil && (tc.code != dns.RcodeNotAuth || !errors.Is(err, dns.ErrAuth))) {
 			t.Fatal("incorrect exact-apex/native rejection", answer, err, tc.code)
 		}
+	}
+}
+
+// A native UPDATE has not entered Apply when its ingress publication is
+// superseded. It can wait for the same writer with unchanged dependencies,
+// then admit its original signed request once. Exercise the real transport
+// output too: the answer must stay bound to the original signature and seal.
+func TestPrimaryRuntimeNativeUpdateWaitsForPublicationBeforeAdmission(t *testing.T) {
+	for _, mode := range []string{"same-source", "commit"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newPrimaryNetworkFixtureWithOutput(t, updateOutputObserver(func(*pipeline.Request, *pipeline.Response, error) {}))
+			f.pause.Store(true)
+			type result struct {
+				message *dns.Msg
+				err     error
+			}
+			done := make(chan result, 1)
+			go func() {
+				m := primaryUpdateMessage("example.", "waiting.example.", true)
+				rr, _ := dns.NewRR("waiting.example. 60 IN A 192.0.2.33")
+				m.NameNotUsed([]dns.RR{rr})
+				answer, err := f.exchange(m, true)
+				done <- result{answer, err}
+			}()
+			select {
+			case <-f.entered:
+			case <-time.After(5 * time.Second):
+				t.Fatal("native request did not capture its publication")
+			}
+			before := f.publisher.Status().Served
+			if mode == "commit" {
+				var settings public.Kudurru
+				if err := f.store.Get(t.Context(), store.Key{Kind: "Kudurru", Name: "default"}, &settings); err != nil {
+					t.Fatal(err)
+				}
+				settings.Annotations = map[string]string{"test.kudurru.io/publication": "next"}
+				if _, err := f.store.Apply(t.Context(), &settings, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				f.publisher.Wake()
+			}
+			f.wait(t, func() bool {
+				s := f.publisher.Status()
+				return s.ProtectedReady && s.Served.Publication > before.Publication
+			})
+			f.resume <- struct{}{}
+			got := <-done
+			if got.err != nil || got.message == nil || got.message.Rcode != dns.RcodeSuccess || got.message.IsTsig() == nil {
+				t.Fatalf("original signed UPDATE was not acknowledged: %v: %v", got.message, got.err)
+			}
+			query := new(dns.Msg)
+			query.SetQuestion("waiting.example.", dns.TypeA)
+			answer, err := f.exchange(query, true)
+			if err != nil || answer == nil || len(answer.Answer) != 1 {
+				t.Fatalf("acknowledged UPDATE is not served: %v: %v", answer, err)
+			}
+		})
 	}
 }
 
