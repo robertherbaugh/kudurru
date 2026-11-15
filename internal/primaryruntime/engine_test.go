@@ -77,7 +77,10 @@ func TestActualUpdatePublicationFailureReplayAndAuth(t *testing.T) {
 			request := h.request(l, "retry-1", "dynamic.example. 70 IN TYPE65200 \\# 3 ABCDEF", true)
 			h.publishFail = true
 			result := h.r.Apply(ctx, request)
-			if result.Rcode != dns.RcodeServerFailure || !result.Committed || result.Published {
+			// The commit's publication failed: the answer is SERVFAIL only for
+			// that, and running the same retry identity again reads the
+			// receipt (PublishFailed, D381).
+			if result.Rcode != dns.RcodeServerFailure || !result.Committed || result.Published || !result.PublishFailed {
 				t.Fatalf("commit/publication outcome %+v", result)
 			}
 			committed, err := h.repo.Read(ctx, l.Spec.HeadZone())
@@ -97,7 +100,7 @@ func TestActualUpdatePublicationFailureReplayAndAuth(t *testing.T) {
 			h.publishFail = false
 			before := h.admissions.Load()
 			again := h.r.Apply(ctx, request)
-			if again.Rcode != dns.RcodeSuccess || !again.Committed || !again.Published || !again.Deduplicated || h.admissions.Load() <= before {
+			if again.Rcode != dns.RcodeSuccess || !again.Committed || !again.Published || !again.Deduplicated || again.PublishFailed || h.admissions.Load() <= before {
 				t.Fatalf("cold dedup %+v", again)
 			}
 			after, err := h.repo.Read(ctx, l.Spec.HeadZone())
@@ -111,8 +114,18 @@ func TestActualUpdatePublicationFailureReplayAndAuth(t *testing.T) {
 			if out := h.r.Apply(ctx, changed); out.Rcode != dns.RcodeRefused {
 				t.Fatalf("retry ID reused %+v", out)
 			}
+			// The retained outcome whose publication fails is marked like the
+			// commit's own: only the publication failed.
+			h.publishFail = true
+			if out := h.r.Apply(ctx, request); out.Rcode != dns.RcodeServerFailure || !out.Deduplicated || out.Published || !out.PublishFailed {
+				t.Fatalf("dedup with a failed publication %+v", out)
+			}
+			h.publishFail = false
+			// A retained outcome whose admission refuses is Deduplicated and
+			// not Published, but no publication failed: the member path must
+			// not run it again (HA-OPEN7, item 2 of the 9397a519 review).
 			h.authFail = true
-			if out := h.r.Apply(ctx, request); out.Rcode != dns.RcodeServerFailure || out.Published {
+			if out := h.r.Apply(ctx, request); out.Rcode != dns.RcodeServerFailure || out.Published || !out.Deduplicated || out.PublishFailed {
 				t.Fatalf("revoked dedup %+v", out)
 			}
 			h.authFail = false
