@@ -409,9 +409,9 @@ func verifyMountedHTTP(t *testing.T, cfg *config.Config, restart int, token stri
 		t.Fatalf("mounted committed export missing actual records (status %d)", code)
 	}
 	code, raw := request(http.MethodGet, "/zones/home/records", "")
-	var records api.List[api.ZoneRecord]
-	if code != 200 || json.Unmarshal(raw, &records) != nil {
-		t.Fatal("mounted committed record listing failed", code)
+	var records api.ZoneRecordList
+	if code != 200 || json.Unmarshal(raw, &records) != nil || records.Source != api.RecordSourceServed {
+		t.Fatal("mounted committed record listing failed", code, records.Source)
 	}
 	found := false
 	for _, record := range records.Items {
