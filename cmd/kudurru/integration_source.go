@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"maps"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/miekg/dns"
@@ -18,6 +20,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/zone"
+	"k8s.io/apimachinery/pkg/api/equality"
 )
 
 const integrationSourceAnnotation = "kudurru.io/integration-source"
@@ -231,7 +234,7 @@ func (r *integrationRuntime) admitDesired(ctx context.Context, tx *sqlite.Comman
 		if err := tx.Get(ctx, store.KeyOf(z), &current); err != nil {
 			return err
 		}
-		if current.UID != z.UID || current.ResourceVersion != z.ResourceVersion || current.Spec.Type != public.ZoneTypePrimary || public.IsDisabled(&current) || !current.DeletionTimestamp.IsZero() {
+		if current.UID != z.UID || current.ResourceVersion != z.ResourceVersion && !zoneStatusOnly(z, &current) || current.Spec.Type != public.ZoneTypePrimary || public.IsDisabled(&current) || !current.DeletionTimestamp.IsZero() {
 			return ih.ErrFenced
 		}
 		selector, err := zone.NewRecordSetSelector(&current)
@@ -264,6 +267,22 @@ func (r *integrationRuntime) admitDesired(ctx context.Context, tx *sqlite.Comman
 		doc.Groups = append(doc.Groups, contribution)
 	}
 	return nil
+}
+
+// zoneStatusOnly reports whether next differs from captured, an earlier read
+// of the same zone, by nothing but its status and resource version: the same
+// UID, generation, spec, labels, annotations, finalizers, owners and
+// deletion. The zone driver writes a target zone's committed status after
+// every change of its records (D404), the previous observation's included,
+// and that write changes nothing an observation is admitted against, so it
+// does not fence the next one (D408). The target evidence still names the
+// zone as it is read in the commit.
+func zoneStatusOnly(captured, next *public.DNSZone) bool {
+	return captured != nil && next != nil && captured.UID == next.UID && captured.Namespace == next.Namespace && captured.Name == next.Name && captured.Generation == next.Generation &&
+		equality.Semantic.DeepEqual(captured.Spec, next.Spec) &&
+		maps.Equal(captured.Labels, next.Labels) && maps.Equal(captured.Annotations, next.Annotations) &&
+		slices.Equal(captured.Finalizers, next.Finalizers) && equality.Semantic.DeepEqual(captured.OwnerReferences, next.OwnerReferences) &&
+		captured.DeletionTimestamp.Equal(next.DeletionTimestamp) && equality.Semantic.DeepEqual(captured.DeletionGracePeriodSeconds, next.DeletionGracePeriodSeconds)
 }
 
 func (r *integrationRuntime) stageDesired(ctx context.Context, tx *sqlite.CommandTx, obs *integrationObservation, doc *inbound.Document) error {
