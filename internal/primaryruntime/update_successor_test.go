@@ -20,7 +20,7 @@ type includingCall struct {
 // installs and is published, and the first publication then reports that the
 // served member is newer than its own (as the complete publisher's exact
 // check does).
-func supersede(h *harness, l *zk.ZoneLifecycle, ctx context.Context) {
+func supersede(ctx context.Context, h *harness, l *zk.ZoneLifecycle) {
 	var first *Member
 	h.r.o.Publish = func(_ context.Context, _ Cut, m Member) error {
 		if first == nil && m.Version.CommitSequence > 0 {
@@ -61,7 +61,7 @@ func TestUpdateSupersededByLaterCommitIsAcknowledgedByItsSuccessor(t *testing.T)
 					return nil
 				}
 			}
-			supersede(h, l, ctx)
+			supersede(ctx, h, l)
 			out := h.r.Apply(ctx, h.request(l, "first", "first.example. 60 IN A 192.0.2.1", false))
 			v, err := h.repo.Read(ctx, l.Spec.HeadZone())
 			if err != nil {
@@ -139,7 +139,7 @@ func TestUpdateRecoveryReplansWhenTheHeadMovedOn(t *testing.T) {
 			}
 			h.publishFail = false
 			recovered := false
-			h.r.o.Publish = func(_ context.Context, _ Cut, m Member) error {
+			h.r.o.Publish = func(_ context.Context, _ Cut, _ Member) error {
 				if !recovered {
 					recovered = true
 					if moved {

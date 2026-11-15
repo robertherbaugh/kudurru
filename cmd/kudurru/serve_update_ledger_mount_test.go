@@ -115,6 +115,7 @@ func TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger(t *testing.T) {
 	if rcode, err := ledgerExchange(client(), address, short, time.Now().Add(2*time.Second)); rcode != dns.RcodeSuccess {
 		t.Fatalf("short-lived UPDATE: rcode %d: %v", rcode, err)
 	}
+	// #nosec G115 -- ledgerSigned sets this fixture timestamp from time.Now().Unix().
 	time.Sleep(time.Until(time.Unix(int64(short.IsTsig().TimeSigned)+2+1, 0)))
 	if answer, _, _ := client().Exchange(short.Copy(), address); answer == nil || answer.Rcode != dns.RcodeNotAuth || answer.IsTsig() == nil || answer.IsTsig().Error != dns.RcodeBadTime {
 		t.Fatalf("expired exact repeat was not refused with BADTIME: %v", answer)
