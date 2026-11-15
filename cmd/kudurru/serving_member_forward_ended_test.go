@@ -246,3 +246,47 @@ func TestRootMemberForwardAnswerNotRelayedIsUnknown(t *testing.T) {
 		t.Fatal("the write the primary answered is not on the primary", err)
 	}
 }
+
+// An item whose source the follower captured, but whose request lifetime
+// ends before the command is sent, names the lifetime: "the request's
+// 30-second forwarding lifetime ended before this write was sent; it was not
+// applied", as a capture after the lifetime does. Before, the ended context
+// surfaced from the forward as an unavailable primary or a changed cluster
+// authority (PUB-FOLLOWER review). Every later item of the same apply is
+// refused at capture with the same cause, and nothing reaches the primary.
+func TestRootMemberForwardLifetimeEndedBeforeSendNamesTheLifetime(t *testing.T) {
+	f := newMemberForwardHTTPFixture(t, true)
+	primary := f.primary.s.opts.Store
+	ctx, cancel := context.WithTimeout(t.Context(), memberForwardLifetime+30*time.Second)
+	defer cancel()
+	held := 0
+	f.follower.memberBeforeSend = func(scope context.Context) {
+		held++
+		if held == 1 {
+			<-scope.Done() // the request's lifetime ends before the first item is sent
+		}
+	}
+	got := f.exchange(ctx, http.MethodPost, "/apply", []any{memberForwardGroup("unsent-a", "192.0.2.94"), memberForwardGroup("unsent-b", "192.0.2.95")})
+	f.follower.memberBeforeSend = nil
+	if got.err != nil {
+		t.Fatal(got.err)
+	}
+	var applied api.List[api.ApplyResult]
+	if got.status != http.StatusOK || json.Unmarshal(got.body, &applied) != nil || len(applied.Items) != 2 {
+		t.Fatalf("apply whose lifetime ended before its first send: status=%d body=%s", got.status, got.body)
+	}
+	const cause, effect = "30-second forwarding lifetime ended before this write was sent", "not applied"
+	for i, item := range applied.Items {
+		if item.Result != api.ResultError || item.ErrorKey != api.KeyUnavailable || !strings.Contains(item.Error, cause) || !strings.Contains(item.Error, effect) || item.ResourceVersion != "" {
+			t.Errorf("item %d after the lifetime ended before its send: %+v", i, item)
+		}
+	}
+	if held != 1 {
+		t.Errorf("%d items reached the send, want only the first", held)
+	}
+	for _, name := range []string{"unsent-a", "unsent-b"} {
+		if err := primary.Get(t.Context(), store.Key{Kind: "ClientGroup", Namespace: "default", Name: name}, &public.ClientGroup{}); !errors.Is(err, store.ErrNotFound) {
+			t.Error("an item that was not sent reached the primary", name, err)
+		}
+	}
+}
