@@ -95,8 +95,12 @@ func TestRunServeSQLiteCompoundZoneCommands(t *testing.T) {
 		// Observe the deletion's actual DNS publication before inspecting the
 		// served-record diagnostic, both before and after server restart.
 		awaitMountedDNSAbsent(t, cfg, "removed.compound.test.")
-		var records api.List[api.ZoneRecord]
+		// The documented answer (strictly decoded): the served list says so.
+		var records api.ZoneRecordList
 		client.call(http.MethodGet, "/zones/compound/records", nil, http.StatusOK, &records)
+		if records.Source != api.RecordSourceServed {
+			t.Fatalf("mounted record list source %q, want served", records.Source)
+		}
 		for _, record := range records.Items {
 			if record.DNSName == "removed.compound.test" {
 				t.Fatal("deleted endpoint survived publication or restart")

@@ -177,8 +177,11 @@ func TestCapturedZoneRecordsListServedViews(t *testing.T) {
 		t.Fatalf("fixture model with a view did not build: %v", errs)
 	}
 	f.model = model
-	var records List[ZoneRecord]
+	var records ZoneRecordList
 	h.do(http.MethodGet, "/api/v1/zones/example/records", "viewer", nil).want(http.StatusOK).json(&records)
+	if records.Source != RecordSourceServed {
+		t.Fatalf("served view list source %q, want served", records.Source)
+	}
 	var got []string
 	for _, row := range records.Items {
 		if row.RecordType != "A" {
