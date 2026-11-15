@@ -202,16 +202,18 @@ the later one), and by the end of the request's own 30-second lifetime.
 
 Each document is its own exchange with the primary, and the primary commits
 each one before it answers, so how many documents fit the 30 seconds depends
-on how fast the primary commits one. In the process tests (HA-OPEN7-FINISH) a
-file of 200 DNS record sets through a follower took 11.9 seconds on the hosted
-CI runner and 17 to 26 seconds on a shared four-core machine; on that machine
-with four test runs at once the primary took 100 to 700 milliseconds for each
-record set, and the lifetime ended after 87 and after 152 documents (the
-document whose exchange it interrupted reports `completion_unknown`, every
-later one `unavailable`). Before the hold, a file of 40 documents was applied
-completely in 5 of 18 runs and a file of 160 in none, however fast the primary
-was. A file that may not fit 30 seconds, and every restore, goes to the
-primary, where `kudurru apply` and `kudurru restore` allow five minutes.
+on how fast the primary commits one; the follower's own work is under a
+millisecond for each document. In the process tests (HA-OPEN7-FINISH) a file
+of 200 DNS record sets through a follower took 10 to 12 seconds on the hosted
+CI runner. On a shared four-core machine running four test processes at once,
+the primary took 100 to 700 milliseconds for each record set: the file fit in
+17 to 30 seconds in about a third of the runs, and otherwise the lifetime
+ended after 87 to 197 documents (the document whose exchange it interrupted
+reports `completion_unknown`, every later one `unavailable`). Before the hold,
+a file of 40 documents was applied completely in 5 of 18 runs and a file of
+160 in none, however fast the primary was. A file that may not fit 30 seconds,
+and every restore, goes to the primary, where `kudurru apply` and `kudurru
+restore` allow five minutes.
 
 On the primary, and on a standalone node, `POST /api/v1/apply` and
 `:batchDelete` run one command for each document or name inside the one

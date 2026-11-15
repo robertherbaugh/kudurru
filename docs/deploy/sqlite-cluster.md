@@ -307,14 +307,15 @@ once in the dashboard works the same way, with a result for each name.
   scheduled pull until the request ends, so its data does not change under
   the request. How many documents fit the 30 seconds depends on how fast the
   primary commits one: in the release's process tests 200 record sets took
-  12 to 26 seconds, and on a heavily loaded machine the lifetime ended after
-  87 of them. The request is still cut, with `unavailable` ("the follower's
-  source changed"; the message names the primary to send the rest to) for
-  every later document and the documents before staying applied, when the
-  follower installs newer data anyway: after a sign-in, sign-out or settings
-  change through the same follower, or once the held pull has waited 30
-  seconds. A document whose exchange the end of the 30 seconds interrupts
-  reports `completion_unknown`, and every later one `unavailable`.
+  10 to 12 seconds on the hosted runner, and on a heavily loaded machine the
+  lifetime often ended after 87 to 197 of them. The request is still cut,
+  with `unavailable` ("the follower's source changed"; the message names the
+  primary to send the rest to) for every later document and the documents
+  before staying applied, when the follower installs newer data anyway:
+  after a sign-in, sign-out or settings change through the same follower, or
+  once the held pull has waited 30 seconds. A document whose exchange the
+  end of the 30 seconds interrupts reports `completion_unknown`, and every
+  later one `unavailable`.
 
 Send a file of many documents, and every restore, to the primary.
 
