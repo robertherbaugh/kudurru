@@ -1,0 +1,79 @@
+name: dedicated host benchmark preparation
+on:
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: Historical calibration or qualification after recorded owner review
+        type: choice
+        options: [calibrate, qualify]
+        required: true
+      recording:
+        description: Predeclared recording identifier; never reuse a failed attempt
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: dedicated-kudurru-benchmark
+  cancel-in-progress: false
+jobs:
+  record:
+    # Register only the reviewed disposable VM with this label. No PR trigger.
+    runs-on: [self-hosted, linux, x64, kudurru-benchmark]
+    timeout-minutes: 180
+    env:
+      GOTOOLCHAIN: go1.27.4
+      CGO_ENABLED: "0"
+      BENCH_PHASE: ${{ inputs.phase }}
+      BENCH_RECORDING: ${{ inputs.recording }}
+      BENCH_STATE: /var/lib/kudurru-benchmark
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: control
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: 0cc9565e9a878f8223fc1cee5201eb7eca8aacd2
+          path: reference
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: 9cc2ae0423070fc514c94a25ab5b92e3816889e7
+          path: later-reference
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: 1.27.4
+          cache: false
+      - name: Check controls without recording timings
+        working-directory: control
+        run: python3 -B -m unittest discover -s hack -p 'test_bench_*.py'
+      - name: Validate recording identifier and persistent host evidence
+        run: |
+          [[ "$BENCH_RECORDING" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$ ]]
+          test -f "$BENCH_STATE/host.json"
+          test -d "$BENCH_STATE/$BENCH_RECORDING"
+      - name: Measure once under the reviewed dedicated method
+        working-directory: control
+        run: |
+          if [[ "$BENCH_PHASE" == calibrate ]]; then
+            python3 -B hack/bench-dedicated.py calibrate \
+              --host-record "$BENCH_STATE/host.json" \
+              --reference ../reference --later-reference ../later-reference \
+              --output "$BENCH_STATE/$BENCH_RECORDING/calibration"
+          else
+            python3 -B hack/bench-dedicated.py qualify \
+              --host-record "$BENCH_STATE/host.json" --reference ../reference \
+              --calibration "$BENCH_STATE/$BENCH_RECORDING/calibration" \
+              --approval "$BENCH_STATE/$BENCH_RECORDING/approval.json" \
+              --output "$BENCH_STATE/$BENCH_RECORDING/qualification"
+          fi
+      - name: Retain all outcomes and review records
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dedicated-${{ inputs.phase }}-${{ github.sha }}-${{ github.run_id }}
+          path: /var/lib/kudurru-benchmark/
+          if-no-files-found: error
+          retention-days: 90
