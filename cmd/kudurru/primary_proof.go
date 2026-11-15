@@ -5,7 +5,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
 	zonekinds "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/dynamicupdate"
@@ -68,12 +67,24 @@ func (p *primaryUpdateIngress) capture(req *pipeline.Request, id zonekinds.ZoneI
 		return primaryruntime.VerifiedUpdate{}, err
 	}
 	key := proof.Identity()
+	// The retry identity of a native UPDATE is the exact signed request, as
+	// for one forwarded by a follower (memberUpdateCommandID): an exact
+	// repeat (a UDP retransmission, a client that got SERVFAIL and sends
+	// the same signed message again, here or through a follower) is
+	// answered from the retained outcome in the zone's receipt ledger and
+	// is never applied twice. A message signed again is a new request.
+	// The identity is matched only while the signature is valid, which is
+	// how long the receipt is retained (D409).
+	retryID, err := memberUpdateCommandID(key, req.Client.Proto.String(), proof.Message())
+	if err != nil {
+		return primaryruntime.VerifiedUpdate{}, primaryruntime.ErrInvalid
+	}
 	captured := *req
 	captured.Msg = proof.Message()
 	sealed := &primaryUpdateProof{issuer: p, request: captured, wire: bytes.Clone(wire), identity: primaryruntime.ProofIdentity{
 		Principal:       dynamicupdate.Principal{Key: key.Key, Version: key.CredentialVersion},
 		ProviderVersion: key.ProviderVersion, Algorithm: key.Algorithm, Transport: req.Client.Proto.String(),
-		Domain: primaryUpdateDomain(id), Subject: key.Key, RetryID: uuid.NewString(), SemanticDigest: digest,
+		Domain: primaryUpdateDomain(id), Subject: key.Key, RetryID: retryID, SemanticDigest: digest,
 		Term: authority.Term, AuthorityIncarnation: authority.Incarnation,
 		NotAfter: proof.Deadline(),
 	}}

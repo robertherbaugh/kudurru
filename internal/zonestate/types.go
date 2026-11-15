@@ -24,6 +24,20 @@ var (
 	ErrConflict = errors.New("zonestate: head conflict; re-read and re-plan")
 )
 
+// DefaultMaxReceipts bounds the receipts a zone's ledger holds at once. A
+// receipt leaves the ledger once it can no longer be matched (Receipt.Live),
+// so this bounds the UPDATEs a zone commits within one signature window, not
+// over its lifetime (D409).
+const DefaultMaxReceipts = 1024
+
+// ReceiptClockMargin is how long a receipt is kept after its NotAfter. Every
+// node admits a retry identity only before NotAfter on its own wall clock
+// (the signature deadline is checked again in the commit transaction), and
+// evicts it only at NotAfter plus this margin on its own clock, so an exact
+// repeat cannot be decided twice unless the clock of the node that commits
+// it lags the clock of the node that evicted the receipt by more than this.
+const ReceiptClockMargin = time.Minute
+
 // Limits bound expanded data, metadata and immutable preparations together.
 type Limits struct {
 	MaxRecords        int
@@ -48,7 +62,7 @@ func (l Limits) Defaults() Limits {
 		l.MaxChunks = 1024
 	}
 	if l.MaxReceipts <= 0 {
-		l.MaxReceipts = 256
+		l.MaxReceipts = DefaultMaxReceipts
 	}
 	return l
 }
@@ -87,6 +101,12 @@ type Policy struct {
 // Receipt IDs are internal one-operation retry IDs, not DNS IDs/content hashes.
 // No secret or MAC proof is persisted. The current credential/policy must be
 // checked even when returning a retained result.
+//
+// NotAfter is the signature deadline of the request that committed it, in
+// Unix seconds rounded up: no node admits the same retry identity at or after
+// it. A receipt is retained while Live and may be evicted afterwards by the
+// next UPDATE commit of the zone (D409). Zero is a receipt written before
+// D409 by a pre-release v0.2 build; it records no deadline and is evictable.
 type Receipt struct {
 	ID             string                  `json:"id"`
 	SemanticDigest string                  `json:"semanticDigest"`
@@ -96,6 +116,35 @@ type Receipt struct {
 	Serial         uint32                  `json:"serial"`
 	Rcode          int                     `json:"rcode"`
 	Changed        bool                    `json:"changed"`
+	NotAfter       int64                   `json:"notAfter,omitempty"`
+}
+
+// ReceiptNotAfter converts a signature deadline to Receipt.NotAfter, rounding
+// a fractional second up so that the receipt never expires earlier.
+func ReceiptNotAfter(deadline time.Time) int64 {
+	s := deadline.Unix()
+	if deadline.After(time.Unix(s, 0)) {
+		s++
+	}
+	return s
+}
+
+// Live reports whether the receipt can still be matched by a request that
+// some node admits at now: it is kept until ReceiptClockMargin after NotAfter.
+func (r Receipt) Live(now time.Time) bool {
+	return r.NotAfter > 0 && now.Before(time.Unix(r.NotAfter, 0).Add(ReceiptClockMargin))
+}
+
+// LiveReceipts returns, in order, the receipts that are Live at now: the ones
+// an UPDATE commit must keep. The others are the ones it may evict.
+func LiveReceipts(receipts []Receipt, now time.Time) []Receipt {
+	out := make([]Receipt, 0, len(receipts))
+	for _, r := range receipts {
+		if r.Live(now) {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // Aggregate contains the entire durable primary generation.

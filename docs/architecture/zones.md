@@ -1041,9 +1041,32 @@ the rest of the returned spec still require exact equality with admitted intent.
 Native UDP/TCP/DoT UPDATE callbacks use the original verified request, select the
 exact SOA apex, and return success only after complete publication. A committed
 mutation whose publication fails returns SERVFAIL; retrying the retained original
-proof can recover publication without repeating semantics. New native requests
-receive new retry identities, so this does not claim cross-request deduplication.
-Diagnostics cannot change the wire result even if their callback panics.
+proof can recover publication without repeating semantics. The retry identity of
+a native request is derived from the exact signed request, as for one forwarded
+by a follower (`memberUpdateCommandID`: key identity, transport and the whole
+message with its TSIG record), so an exact repeat (a UDP retransmission, or the
+same signed message sent again after SERVFAIL, here or through a follower) is
+answered from the retained receipt and is not decided again; a message signed
+again is a new request (D409). Diagnostics cannot change the wire result even if
+their callback panics.
+
+Each committed UPDATE adds one receipt to the zone's ledger, with the signature
+deadline of its request (`Receipt.NotAfter`, Unix seconds rounded up). No node
+admits a retry identity at or after that deadline: the TSIG time check, the
+forwarded signature deadline and the commit transaction's own deadline check
+all refuse it. A receipt is live until `zonestate.ReceiptClockMargin` (one
+minute) after its deadline, and the next UPDATE commit of the zone drops every
+receipt that is no longer live. The SQLite adapter accepts an UPDATE candidate
+only if it adds exactly its own receipt with its own deadline, keeps every
+other receipt unchanged, and drops only receipts that are not live on the
+adapter's clock. The ledger holds at most `zonestate.DefaultMaxReceipts`
+(1,024) receipts; only when that many are still live is an UPDATE refused,
+SERVFAIL without any effect, with the number of live receipts and the moment
+the earliest leaves its window in the logged cause. That bounds a zone to
+1,024 committed UPDATEs per signature window (about six minutes for the usual
+300-second TSIG fudge plus the margin), not over its lifetime. A receipt
+written by a pre-release v0.2 build has no deadline and is dropped by the next
+commit (D409).
 
 After that adapter returns, root binds its exact empty acknowledgment to the
 original writer, verified key, dependency installations and pre-command output

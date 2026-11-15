@@ -156,7 +156,7 @@ nothing is deleted.
 | `YXDOMAIN`, `NXDOMAIN`, `YXRRSET`, `NXRRSET` | A prerequisite of the update did not hold. Nothing changed. |
 | `NOTZONE` | A record of the update is outside the zone. |
 | `FORMERR` | The message is malformed or too large. |
-| `SERVFAIL` | The node could not store or publish the change. On SQLite, a signed update is also answered `SERVFAIL` when the zone does not allow updates, or when the node has the key but no grant of the zone names it (also `allow` without a grant). An update that was stored can answer `SERVFAIL` when its publication failed: query the name before you send the update again. |
+| `SERVFAIL` | The node could not store or publish the change. On SQLite, a signed update is also answered `SERVFAIL` when the zone does not allow updates, or when the node has the key but no grant of the zone names it (also `allow` without a grant). An update that was stored can answer `SERVFAIL` when its publication failed: send the same signed message again (it gets the original answer) or query the name before you sign a new one. On SQLite also: the zone committed 1,024 updates within the last signature window (`retry ledger full` in the log); nothing changed. |
 
 On SQLite, when every update of a client is answered `SERVFAIL`, compare the
 key name that the client uses with `tsigKeyRef` in the zone's grants before
@@ -180,6 +180,25 @@ together with the records compiled from record sets. They are not objects:
   a readable copy.
 - A change to a record set does not remove dynamic records, and they are still
   there after a restart.
+
+A SQLite primary recognizes an exact repeat of a signed update, the same
+signed message sent again (a UDP retransmission, or `nsupdate` sending the
+same message after `SERVFAIL` or a timeout): if the first one committed, the
+repeat is answered with its original `NOERROR` and nothing is applied again,
+also after a restart. A message that the client signs again (a new time or
+message ID) is a new update and is decided again. A repeat that arrives after
+its signature expired is answered `NOTAUTH` with the TSIG error `BADTIME`.
+
+The primary keeps one receipt for each committed update while its signature
+can still be valid (the time signed plus the fudge), and one minute longer to
+allow for clock differences between nodes, then drops it. A zone can
+therefore commit at most 1,024 updates within one such window, about six
+minutes with the usual fudge of 300 seconds (on average about three updates a
+second, in bursts up to 1,024). An update beyond that is answered `SERVFAIL`
+and changes nothing; the log line `retry ledger full` names the number of
+receipts still held and when the next one is dropped. A client that sends
+it again later succeeds. A client that uses a smaller fudge gets a smaller
+window.
 
 ### Enrolled SQLite cluster
 

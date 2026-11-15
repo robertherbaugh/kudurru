@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/miekg/dns"
 	zk "github.com/robertherbaugh/kudurru/api/zonekinds/v1alpha1"
@@ -187,19 +188,27 @@ func (r *Runtime) Apply(ctx context.Context, request VerifiedUpdate) UpdateOutco
 			}
 			continue
 		}
-		if len(v.Aggregate.Receipts) >= r.o.Limits.MaxReceipts {
+		// The ledger keeps every receipt that some node could still match:
+		// its retry identity is admitted only before its signature deadline,
+		// and it is kept for ReceiptClockMargin beyond it. This commit drops
+		// the others (D409). Only when the receipts that are still live fill
+		// the ledger is the UPDATE refused: a rate bound of MaxReceipts
+		// commits within one signature window, answered SERVFAIL without
+		// any effect, so the client may send it again later.
+		kept := zonestate.LiveReceipts(v.Aggregate.Receipts, r.o.Now())
+		if len(kept) >= r.o.Limits.MaxReceipts {
 			if _, err := r.admit(ctx, Command{Lifecycle: l, Expected: v.Expected, Proof: &proof, Reason: "update-capacity"}); conflicts(err) {
 				continue
 			} else if err != nil {
 				return outcome(err)
 			}
-			return outcome(fmt.Errorf("%w: retry ledger full", ErrCapacity))
+			return outcome(fmt.Errorf("%w: retry ledger full: %d updates of this zone are still within their signature window; the earliest leaves it at %s", ErrCapacity, len(kept), earliestReceiptExpiry(kept).UTC().Format(time.RFC3339)))
 		}
 		a, err := zonestate.ApplyResult(v.Aggregate, plan, proof.Principal)
 		if err != nil {
 			return outcome(err)
 		}
-		a.Receipts = append(a.Receipts, zonestate.Receipt{ID: id, SemanticDigest: semantic, Principal: proof.Principal, AuthEpoch: state.AuthEpoch, CommitSequence: v.Head.Spec.CommitSequence + 1, Serial: plan.Serial, Rcode: dns.RcodeSuccess, Changed: plan.Changed})
+		a.Receipts = append(kept, zonestate.Receipt{ID: id, SemanticDigest: semantic, Principal: proof.Principal, AuthEpoch: state.AuthEpoch, CommitSequence: v.Head.Spec.CommitSequence + 1, Serial: plan.Serial, Rcode: dns.RcodeSuccess, Changed: plan.Changed, NotAfter: zonestate.ReceiptNotAfter(proof.NotAfter)})
 		p, err := zonestate.Prepare(a, v.Head, r.o.Limits)
 		if err != nil {
 			return outcome(err)
@@ -223,6 +232,19 @@ func (r *Runtime) Apply(ctx context.Context, request VerifiedUpdate) UpdateOutco
 	}
 	return outcome(ErrConflict)
 }
+
+// earliestReceiptExpiry is when the first of the live receipts stops being
+// live, so that a refused client knows when the ledger has room again.
+func earliestReceiptExpiry(receipts []zonestate.Receipt) time.Time {
+	var earliest time.Time
+	for _, receipt := range receipts {
+		if at := time.Unix(receipt.NotAfter, 0).Add(zonestate.ReceiptClockMargin); earliest.IsZero() || at.Before(earliest) {
+			earliest = at
+		}
+	}
+	return earliest
+}
+
 func (r *Runtime) publishUpdate(ctx context.Context, l *zk.ZoneLifecycle, v *zonestate.View) UpdateOutcome {
 	out := UpdateOutcome{Rcode: dns.RcodeServerFailure, Committed: true, Version: version(v), Serial: v.Head.Spec.Serial}
 	failed := func(err error) UpdateOutcome {
