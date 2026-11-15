@@ -188,7 +188,9 @@ change the data the request is bound to, and every later document would then
 be refused. A pull that is installing when the request arrives is waited for
 first (at most five seconds), so the request is bound to the installed data.
 The scheduled pull waits for every forwarded request, but at most 30 seconds
-(the request's lifetime), and then installs anyway. The follower applies
+(the request's lifetime), and then installs anyway. The follower publishing the
+data it already has once more (it does so right after most pulls when it
+uses managed root anchors) does not cut the request (D406). The follower applies
 nothing itself and sends no document twice; reads on the follower only see
 the request's documents after that pull. So a file through a follower is
 applied completely when it fits the 30-second lifetime and no other change

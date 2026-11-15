@@ -1251,7 +1251,15 @@ document or name inside that single request and reports one result for each
 item. Every item captures the request's
 original source again, so an item is refused, not applied and not replayed once
 the lifetime has ended or the follower has installed a newer image; the
-refusal names which. A forwarded request holds the follower's scheduled pull
+refusal names which. The check is of the source, not of the exact
+publication (`Publisher.CheckSourceLease`, D406): the follower's authority,
+with its installed revision, must still be the one the request captured and
+that publication's dependencies must still be current, but a later
+publication of the same installed image does not cut the request. A follower
+publishes its image again without a new install when a `Wake` arrived while
+the install's own preparation ran (D405); with managed root anchors that
+happens after every pull. Reads and local commands keep the exact check
+(`CheckReadLease`). A forwarded request holds the follower's scheduled pull
 from before it captures its source until it ends (`holdMemberPulls`,
 `Coordinator.HoldPulls`, D375): the scheduled pull used to install the
 request's own earlier items and cut the rest. The scheduled pull waits for the
@@ -2010,7 +2018,10 @@ right after their commit, when the commit's own generation has already started
 a preparation, and canceling it made every commit cost two preparations and let
 a node that commits steadily go without publishing. The Wake count is noted
 before a preparation reads its candidate; Wakes that arrive after that are
-answered by exactly one more preparation once it has published.
+answered by exactly one more preparation once it has published. That
+preparation publishes the same generation again, which supersedes the
+publication that HTTP requests captured; an enrolled follower's forwarded
+requests are bound to their source instead, so it does not cut them (D406).
 
 ```mermaid
 flowchart LR
