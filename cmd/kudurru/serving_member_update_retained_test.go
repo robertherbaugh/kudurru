@@ -2,13 +2,17 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
+	"net/http"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/robertherbaugh/kudurru/internal/api"
+	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	pr "github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/serving"
@@ -180,5 +184,85 @@ func TestRootMemberFollowerUpdateRepeatIsAnsweredFromTheRetainedOutcome(t *testi
 	again, err := dnsf.exchange(build(), false)
 	if err != nil || memberUpdateRcode(again) != dns.RcodeYXDomain {
 		t.Fatalf("the UPDATE signed again answered rcode=%d err=%v, want YXDOMAIN", memberUpdateRcode(again), err)
+	}
+}
+
+// A forwarded UPDATE whose command ID the zone's receipt ledger already
+// holds, and whose admission then refuses, is answered SERVFAIL at once
+// (D381). Its cause does not clear by waiting for another publication, so
+// the primary does not run it again. The HA-OPEN6 rule that 9397a519 added
+// (Deduplicated && !Published) ran every such answer again and held it until
+// the command's bound ended without an answer; it was written only for the
+// retained outcome whose publication was superseded (memberUpdateRerun).
+// Here the zone stops allowing updates after the first one committed, so the
+// receipt is found and the admission of its retained answer refuses.
+func TestRootMemberUpdateReplayRefusedByAdmissionIsAnsweredAtOnce(t *testing.T) {
+	h, identity := newMemberUpdateHarness(t)
+	f := h.f
+	h.client.Timeout = 25 * time.Second
+	m := new(dns.Msg)
+	m.SetUpdate("example.")
+	const name = "replay-refused.example."
+	m.NameNotUsed([]dns.RR{&dns.ANY{Hdr: dns.RR_Header{Name: name}}})
+	m.Insert([]dns.RR{&dns.A{Hdr: dns.RR_Header{Name: name, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60}, A: []byte{192, 0, 2, 9}}})
+	wire, err := m.Pack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := func() clusterreplica.Command {
+		payload, err := json.Marshal(memberUpdate{Message: wire, Algorithm: identity.Algorithm, Transport: "udp", SignatureDeadline: time.Now().Add(time.Minute).UTC()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		now := time.Now().UTC()
+		return clusterreplica.Command{Format: clusterreplica.CommandFormat, Version: 1, ID: "replay-refused", ExpectedTerm: f.s.opts.Store.Authority().Term,
+			Hops: 1, IssuedAt: now, NotAfter: now.Add(20 * time.Second), Operation: memberDNSUpdate,
+			Subject: clusterreplica.SubjectRef{Kind: clusterreplica.SubjectTSIGKey, ID: identity.Key, Provider: "tsig", CredentialKind: clusterreplica.CredentialTSIG, CredentialID: identity.CredentialVersion, IssuedAt: now},
+			Payload: payload}
+	}
+	answer := func(c clusterreplica.Command) (int, time.Duration) {
+		t.Helper()
+		sent := time.Now()
+		status, out := h.send(c)
+		elapsed := time.Since(sent)
+		if status != http.StatusOK || out.Status != http.StatusOK {
+			t.Fatalf("forwarded UPDATE was not answered after %s: status=%d outcome=%d err=%v", elapsed, status, out.Status, *h.sendErr)
+		}
+		var result memberUpdateResult
+		if err := json.Unmarshal(out.Body, &result); err != nil {
+			t.Fatal(err)
+		}
+		return result.Rcode, elapsed
+	}
+	if rcode, _ := answer(command()); rcode != dns.RcodeSuccess {
+		t.Fatalf("forwarded UPDATE answered %s, want NOERROR", dns.RcodeToString[rcode])
+	}
+	committed := memberUpdateHead(t, f.s)
+
+	zone, err := json.Marshal(map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSZone", "metadata": map[string]any{"name": "home"},
+		"spec": map[string]any{"zoneName": "example.", "type": "primary", "nameservers": []any{"ns.example."},
+			"policy": map[string]any{"notify": "none", "update": "deny"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status, out := h.send(h.command("deny-home", memberObjectWrite, api.ForwardedObject{Operation: api.ForwardedWrite, Kind: "DNSZone", Name: "home", Document: zone})); status != http.StatusOK || out.Status != http.StatusOK {
+		t.Fatal("zone policy change refused", status, out.Status, string(out.Body))
+	}
+	awaitServingRuntime(t, f.s, func() bool {
+		head := memberUpdateHead(t, f.s)
+		return head.CommitSequence > committed.CommitSequence && f.s.primary.driver.Status().Ready
+	})
+	settled := memberUpdateHead(t, f.s)
+
+	rcode, elapsed := answer(command())
+	if rcode != dns.RcodeServerFailure {
+		t.Fatalf("a replayed command ID whose admission refused answered %s, want SERVFAIL", dns.RcodeToString[rcode])
+	}
+	// The command's bound is 20 seconds; the answer must not wait for it.
+	if elapsed > 5*time.Second {
+		t.Fatalf("a replayed command ID whose admission refused was answered after %s: it was run again until its bound", elapsed)
+	}
+	if after := memberUpdateHead(t, f.s); !memberUpdateSameData(after, settled) {
+		t.Fatal("a refused replay changed the zone", settled, after)
 	}
 }
