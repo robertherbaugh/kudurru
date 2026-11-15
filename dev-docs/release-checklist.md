@@ -160,14 +160,49 @@ goreleaser v2 (a downloaded release binary, checksum verified, or
       single-target and full snapshots, the live-internet checks) on a clean
       tree, writes one log per step and a `summary.txt` naming the commit,
       and restores the tree and removes `dist/` afterwards. With
-      `--full-snapshot` it needs Docker, syft and an estimated 14 GB free
-      (unverified: no full snapshot has succeeded on the shared sandbox),
+      `--full-snapshot` it needs Docker, syft and a conservative estimated
+      reserve of 14 GB free (cold builds can need more than a warm run),
       and `hack/snapshot-images.sh` fails the step unless both ko images
       that goreleaser loaded into the daemon
       (`goreleaser.ko.local:<snapshot version>` and `...-debug`) print the
       snapshot version from `dist/metadata.json`; it runs
       `hack/volume-check.sh` on them and removes the images the run
       created. Repeat it on the final release commit.
+
+### v0.2 preparation dry run, November 15, 2026
+
+Source `21018c6c` passed all 20 local release steps, including the full
+snapshot, live recursion and managed-root checks, and cleanup to a clean tree.
+The commands match `hack/release-local-checks.sh --full-snapshot --live`, using
+the checksum-verified GoReleaser 2.18.3 binary instead of installing it from
+source and limiting full-snapshot parallelism to two. Syft was 1.54.1 and Go
+was 1.27.3. Evidence is in
+`.context/release-resume-20261115/local-release/`.
+
+- Exact candidate manifests and all three distinct application/supervisor
+  image references carry `0.2.0-rc.1`.
+- The real dashboard bundle is embedded in the 85,639,328-byte binary, within
+  the 100,000,000-byte budget.
+- The full snapshot completed in 273 seconds: four cgo-free binaries for
+  Linux/macOS amd64/arm64, five archives, six deb/rpm/apk packages, SBOMs and
+  checksums. All 22 checksum entries and archive contents were checked.
+- Both local ko images print the snapshot version and source commit. The
+  snapshot version is `0.1.0-rc.5-SNAPSHOT-21018c6c`, derived from the reachable
+  tag; `VERSION` remains `0.2.0` and candidate manifests use `0.2.0-rc.1`.
+- Plain distroless snapshot bases have the documented nonfatal volume probe
+  failure. The source's hosted
+  [edge workflow](https://github.com/robertherbaugh/kudurru/actions/runs/43685572836)
+  passes the fresh-volume checks on all three application images and both
+  prepared release bases. Snapshot image versions and prepared-base volume
+  ownership are distinct checks.
+- Live checks pass IANA anchor validation, recursive resolution, bootstrap
+  against all 13 reachable IPv4 root endpoints, authenticated answers,
+  DNSSEC-bogus SERVFAIL with EDE 6, and checking-disabled resolution. The live
+  node records 18 outgoing queries and zero timeouts.
+
+This validates the named source and environment; repeat qualification for
+changes to release code. It does not satisfy production licensing, publication
+or the owner-deferred independent-VM and Windows gates.
 
 Historical dry runs made during v0.1.0-rc.1 preparation:
 

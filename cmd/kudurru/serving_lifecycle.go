@@ -259,6 +259,14 @@ func (s *servingRuntime) RunWriter(ctx context.Context) error {
 		return replication.ErrFenced
 	}
 	target := serving.TermActivation{Term: token.Term(), Incarnation: token.Incarnation()}
+	signalStartup := func() {}
+	if s.anchors != nil && s.anchors.admission != nil {
+		_, signalStartup, err = s.anchorWriterStartup(ctx)
+		if err != nil {
+			return err
+		}
+	}
+	defer signalStartup()
 	defer func() {
 		// Cancellation must not leave a pending activation usable. Its original
 		// context already denies immediately; this closes the local lifecycle.
@@ -272,7 +280,7 @@ func (s *servingRuntime) RunWriter(ctx context.Context) error {
 		}
 		h, err := s.resetWriter(ctx, target)
 		if err == nil {
-			err = s.writerEpisode(ctx, target, h)
+			err = s.writerEpisode(ctx, target, h, signalStartup)
 		}
 		if h.Release != nil {
 			h.Release()
@@ -288,13 +296,15 @@ func (s *servingRuntime) RunWriter(ctx context.Context) error {
 	}
 }
 
-func (s *servingRuntime) writerEpisode(ctx context.Context, target serving.TermActivation, host providercoordinator.HostCapture) error {
+func (s *servingRuntime) writerEpisode(ctx context.Context, target serving.TermActivation, host providercoordinator.HostCapture, signalStartup func()) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	g, ctx := errgroup.WithContext(ctx)
 	if s.anchors != nil && s.anchors.admission != nil {
 		ready := make(chan struct{})
-		g.Go(func() error { return s.runAnchorWriterReady(ctx, target, host, func() { close(ready) }) })
+		g.Go(func() error {
+			return s.runAnchorWriterReady(ctx, target, host, func() { close(ready); signalStartup() })
+		})
 		// The first anchor capture must precede unrelated elected startup
 		// writes whenever it may acquire: before the bootstrap and when the
 		// committed refresh is due (a REVOKE denial that a startup write

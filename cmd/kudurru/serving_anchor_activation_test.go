@@ -138,6 +138,10 @@ func TestDirectAnchorActualWriterBootstrapAndCompletePublication(t *testing.T) {
 		return reply(raw)
 	})
 	s, original := directAnchorRuntime(t, endpoint.String(), seed.DS)
+	legacyStarted, legacyDone := make(chan struct{}), make(chan error, 1)
+	go func() {
+		legacyDone <- s.afterAnchorStartup(original, func(context.Context) error { close(legacyStarted); return nil })
+	}()
 	stop := startDirectAnchorWriter(original, t, s)
 	select {
 	case <-requested:
@@ -147,7 +151,20 @@ func TestDirectAnchorActualWriterBootstrapAndCompletePublication(t *testing.T) {
 	if s.primary.driver.Status().Running {
 		t.Fatal("primary startup writes can race the original bootstrap capture")
 	}
+	select {
+	case <-legacyStarted:
+		t.Fatal("legacy elected startup can race the original bootstrap capture")
+	case <-time.After(100 * time.Millisecond):
+	}
 	unblock()
+	select {
+	case err := <-legacyDone:
+		if err != nil {
+			t.Fatal("legacy elected startup did not resume", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("legacy elected startup did not join the first anchor step")
+	}
 	awaitServingRuntime(t, s, func() bool { return s.publisher.Status().ProtectedReady })
 	owner := anchorOperationOwner(original, t, s)
 	if owner.Inspect().Phase != accepted.Managed || reads.Load() != 1 {

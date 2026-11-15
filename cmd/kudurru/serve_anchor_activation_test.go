@@ -2,11 +2,15 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
+	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,10 +20,81 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/license"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/trustanchors/accepted"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// The actual root assembly must hold its legacy elected writers as well as
+// its primary driver while the first root proof is in flight. A controller
+// status write used to roll this acquisition back and force another one.
+func TestRunServeManagedAnchorFirstAcquisitionPrecedesLeaderWrites(t *testing.T) {
+	cfg, _ := mountedTestConfig(t)
+	t.Setenv(license.EnvKey, "")
+	t.Setenv(license.EnvKeyFile, "")
+	cfg.Auth.IdentityProviders = nil
+	cfg.Blocking.Enabled = false
+	cfg.DNSSEC.Enabled = false
+	cfg.Cache.MaxEntries = 0
+	seed, reply := anchorWireSignedReply(t)
+	requested, release := make(chan struct{}), make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	var first sync.Once
+	endpoint, reads := anchorWireServer(t, "tcp", func(raw []byte) []byte {
+		first.Do(func() { close(requested); <-release })
+		return reply(raw)
+	})
+	cfg.Upstreams.Recursion.ManagedTopology = "direct"
+	cfg.Upstreams.Recursion.AnchorMode = config.RootAnchorsManaged
+	cfg.Upstreams.Recursion.DNSSEC = true
+	cfg.Upstreams.Recursion.TrustAnchors = seed.DS
+	cfg.Upstreams.Recursion.RootHints = []string{endpoint.String()}
+	cfg.Upstreams.Recursion.IPv6 = "off"
+	st, closeStore := tsigMountedStore(t, cfg)
+	zone := &public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "anchor"}, Spec: public.DNSZoneSpec{ZoneName: "anchor.test.", Type: public.ZoneTypePrimary, Nameservers: []string{"ns.anchor.test."}, Policy: public.ZonePolicy{Notify: public.NotifyNone}}}
+	if _, err := st.Apply(t.Context(), zone, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	record := &public.DNSRecordSet{ObjectMeta: metav1.ObjectMeta{Name: "answer", Namespace: "default"}, Spec: public.DNSRecordSetSpec{ZoneRef: public.ObjectRef{Name: "anchor"}, Endpoints: []public.Endpoint{{DNSName: "answer.anchor.test.", RecordType: "A", Targets: []string{"192.0.2.77"}}}}}
+	if _, err := st.Apply(t.Context(), record, store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	closeStore()
+	stop := tsigMountedStart(t, cfg)
+	select {
+	case <-requested:
+	case <-time.After(10 * time.Second):
+		t.Fatal("managed bootstrap did not acquire")
+	}
+	dsn := (&url.URL{Scheme: "file", Path: filepath.Join(cfg.Node.DataDir, sqlite.FileName), RawQuery: "mode=ro"}).String()
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	read := func() string {
+		t.Helper()
+		var authority string
+		if err := db.QueryRowContext(t.Context(), "SELECT value FROM meta WHERE key='replication_authority'").Scan(&authority); err != nil {
+			t.Fatal(err)
+		}
+		return authority
+	}
+	before := read()
+	for end := time.Now().Add(time.Second); time.Now().Before(end); time.Sleep(20 * time.Millisecond) {
+		if read() != before {
+			t.Fatal("a startup writer committed while the first managed acquisition was in flight")
+		}
+	}
+	unblock()
+	awaitMountedDNS(t, cfg, "answer.anchor.test.", "192.0.2.77")
+	stop()
+	if reads.Load() != 1 {
+		t.Fatal("bootstrap acquired more than once", reads.Load())
+	}
+}
 
 func TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled(t *testing.T) {
 	cfg, _ := mountedTestConfig(t)

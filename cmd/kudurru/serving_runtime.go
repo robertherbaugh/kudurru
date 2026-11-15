@@ -100,6 +100,7 @@ type servingRuntime struct {
 	anchorPin     currentguard.PinFunc
 	anchors       *rootAnchorOwner
 	anchorWriter  anchorWriterControl
+	anchorStartup anchorStartupGate
 	anchorStatus  anchorStatusBoard
 	status        *servingbuild.PrimaryStatus
 	integrations  *integrationRuntime

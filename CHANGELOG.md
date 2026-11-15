@@ -21,8 +21,7 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
   acquisition, and authority changes join old acquisitions. The host declaration
   rejects PROXYv2 ingress. Explicit edge topology now requires authenticated
   installed persistent cache bypass from every declared peer before startup;
-  edge/backend restarts retain managed trust without fallback. Full enrolled HA
-  orchestration and initial empty edge-follower installation remain separate.
+  edge/backend restarts retain managed trust without fallback.
 
 - Managed edges can expose a separate authenticated TLS observation listener
   with request-bound deployment, child and membership identities. Missing or
@@ -31,8 +30,8 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 - Kubernetes loads complete encrypted stored/file TSIG keys once at startup for
   native and encrypted DNS, secondary acquisition and NOTIFY. Unknown or invalid
   private sources refuse signed work without blocking unrelated unsigned saved
-  DNS. Failed preparation and credential changes require restart; Kubernetes
-  hot key management remains unavailable.
+  DNS. Stored-key management and hot reload are available on both drivers
+  through the API and CLI (D365, D394).
 
 - SQLite TSIG key administration exposes permission-checked metadata, creation,
   replacement, overlap removal and revocation. Commands retain original writer,
@@ -83,11 +82,13 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 - SQLite DNS: load encrypted stored TSIG keys into complete serving snapshots
   and secondary/RPZ acquisition, retaining each request's original key through
-  its response. Stored-key administration and Kubernetes rotation remain pending.
+  its response. Stored-key administration includes replacement, resealing,
+  overlap removal and revocation.
 
 - SQLite integrations: Tier-B webhook client inventory and declared actions,
   with original observation expiry, named TLS credentials and single-attempt
-  action outcomes. Hooks and remote record publication remain unmounted.
+  action outcomes. Hooks and remote record publication run on SQLite; these
+  provider roles are refused on Kubernetes (D379, D380, D384).
 
 - Recursive DNS: bounded RFC 8198 NSEC/NSEC3 proof reuse answers covered
   names and wildcard questions without another authority query. Original proof
@@ -218,8 +219,9 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 - SQLite integrations: mount licensed Cloudflare and UniFi background execution
   with per-instance election, original credential/writer fencing, atomic source
-  inventory and publication-qualified DNS/group updates. Retain is supported;
-  Kubernetes atomic-source execution and Delete cleanup remain pending.
+  inventory and publication-qualified DNS/group updates. Both Retain and Delete
+  cleanup are supported. Kubernetes mounts Cloudflare publication and UniFi
+  inventory/groups with its documented Lease and provider limits (D367, D384).
 
 - Recursive DNS: negotiate per-authority DNS cookies with bounded peer state,
   address-bound random client cookies, rotation and budgeted BADCOOKIE recovery.
@@ -1350,6 +1352,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Managed root anchors: sequence all elected SQLite startup workers behind the
+  first bounded anchor step. Controller status writes can no longer race the
+  bootstrap while provider and primary services are held (D411).
+
 - Kubernetes queries fail closed until a synced policy snapshot is available.
   A query arriving during startup can no longer skip a required RPZ feed when
   the zone snapshot becomes available after identification (D410).
@@ -1382,27 +1388,27 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 - Cluster storage: retain original peer enrollment, certificate and request
   lifetimes through image/command admission and bounded output exclusion.
-  Root HA routes and domain authorization mounting remain in progress.
 
 - Cluster storage: initial membership and Primary activation now share one
   authorized transaction with audit and final lifetime checks. Operator routes
-  and production HA assembly remain in progress.
+  mount reviewed activation, invitation issuance, join and promotion.
 
 - Add bounded member enrollment state and one-time invitation wire formats with
   key-possession proof, original expiry and permanent signing-key revocation.
   Schema 9 persists complete membership with atomic consumption, final admission
-  checks and irreversible replica history; join-token routes remain pending.
+  checks and irreversible replica history; the API and CLI use these persisted
+  invitations for enrollment.
 
 - The enrolled replication client verifies the original member identity before
   sending credentials or commands and retains original deadlines through result
   admission. TLS refusals do not count as primary network loss.
 
 - Add persistent, independent member TLS identity primitives for enrolled HA;
-  enrollment and production transport mounting remain pending.
+  enrollment, replication and typed member commands use the retained identity.
 
 - The HA promotion coordinator retains the original operator authorization
   through SQLite commit and idempotent success; late expiry, revocation or
-  cancellation rolls back the transition. Production enrollment remains pending.
+  cancellation rolls back the transition.
 
 - The managed-root writer adapter preserves terminal poll failures
   across host and cluster-runner restarts, including cancellation after a

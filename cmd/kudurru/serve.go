@@ -1570,6 +1570,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 		return err
 	}
 	add := func(name string, leaderOnly bool, fn func(context.Context) error) error {
+		if complete != nil && leaderOnly && name != "serving-writer" {
+			run := fn
+			fn = func(ctx context.Context) error { return complete.afterAnchorStartup(ctx, run) }
+		}
 		return runner.Add(name, leaderOnly, fn)
 	}
 	if kubeBlocking != nil {

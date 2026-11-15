@@ -1,5 +1,9 @@
 # v0.2.0 implementation and validation gaps
 
+Current integration and execution results are in the
+[November 15 qualification entry](#release-qualification-november-15-2026).
+Earlier tables retain their named-source findings and acceptance limits.
+
 ## Owner decision: independent-VM VIP acceptance deferred, November 9, 2026
 
 No disposable Linux VM pair is available. The owner explicitly moved F68c's
@@ -24659,3 +24663,96 @@ with no NOERROR for the listed name. The watch and its assertions are unchanged.
 Command-package lint reports zero issues; all 168 documentation link checks
 pass. Full hosted checks, paired performance measurement and release artifacts
 remain separate pending qualification at this entry.
+
+### Release qualification, November 15, 2026
+
+Qualification source: `21018c6cbf5b24b3d3e1cfb1315b6e14893ba934`
+(D410, including the D397/D399/D405–D409 integration above).
+
+- **Local release:** all 20 steps pass in
+  `.context/release-resume-20261115/local-release/summary.txt`. This includes
+  version synchronization, generated-file drift, candidate manifests and image
+  tags, the real dashboard bundle and Go tests, the 85,639,328-byte size check,
+  single-target and full GoReleaser snapshots, live DNS and clean-tree cleanup.
+  The checksum-verified GoReleaser 2.18.3 binary replaces only the script's
+  source installation; full-snapshot parallelism is two.
+- **Artifacts:** the full snapshot completes in 273 seconds. Inspection checks
+  all 22 checksum entries, five archives, six deb/rpm/apk packages and all four
+  cgo-free Linux/macOS amd64/arm64 binaries. Both local ko images print the
+  expected source and snapshot version. The snapshot uses the reachable tag,
+  `0.1.0-rc.5-SNAPSHOT-21018c6c`; separately staged candidate references use
+  `0.2.0-rc.1`. No application release is published.
+- **Image volumes:** the plain-base local snapshot retains its documented
+  informational volume probe failures. Hosted edge run 43685572836 passes
+  fresh named-volume writes for the plain, debug and hostnetwork application
+  images and both prepared release bases. It also passes supervisor checks.
+- **Live recursion:** IANA anchor checks and all 13 reachable IPv4 root endpoints
+  pass. The real node returns authenticated data, refuses DNSSEC-bogus data with
+  EDE 6 and returns it with checking disabled; 18 outgoing queries, no timeouts.
+- **Live sinks:** both documented ClickHouse table and Loki mapping probes pass
+  under the race detector with required real servers, no skips
+  (`live-sinks.log`). Containers and their volumes are removed afterward.
+- **Hosted source checks:** [CI run 43685572925](https://github.com/robertherbaugh/kudurru/actions/runs/43685572925)
+  covers this source; the final branch status is on [PR #54 checks](https://github.com/robertherbaugh/kudurru/pull/54/checks).
+  All nine companion GitHub workflows pass on this source: docs, security,
+  kind, Compose, edge, dev-image, website, license-server and AD preview.
+  The separate external Cloudflare docs check remains owner-excluded from
+  this work, as recorded in the completion plan.
+- **Paired benchmark: FAILED.** [Run 43685577680](https://github.com/robertherbaugh/kudurru/actions/runs/43685577680)
+  is the D383 measurement of record for this source on AMD Ryzen 9 7950X3D,
+  Go 1.27.4, six processors and five fresh processes per suite. All 60 native
+  commands and all ten reference/candidate absolute gates pass. Relative cache
+  and upstream comparisons pass. Blocking/zone fails on suffix-hit p99
+  (320 → 511 ns, +59.7%) and policy-hit average (226.8 → 361 ns, +59.2%).
+  Every report, numeric receipt and failure is retained. The cause is
+  unconfirmed; the unchanged original limits and baseline remain in force.
+  Local timing diagnostics cannot replace this failed hosted result.
+
+Evidence, checksums, source metadata and workflow logs are retained under
+`.context/release-resume-20261115/`. These are scoped execution results;
+predecessor evidence and historical package findings remain visible above.
+This execution record does not itself accept every original feature-package
+requirement or erase its individual open findings.
+Receipt clock assumptions, transient concurrent UPDATE refusals, the original
+30-second follower bound and documented driver limitations remain. Independent
+two-VM VIP acceptance and AD/Windows are owner-deferred (D358, D353). Production
+licensing, promotion and publication remain owner gates.
+
+### Managed-anchor elected startup, November 15, 2026 (D411)
+
+Local interoperability on `21018c6c` exposed a real root-assembly race:
+`TestKnotManagedRootBootstrap` acquired twice when the root controller's initial
+zone-status write superseded the first acquisition's original source. The
+original one-acquisition acceptance was retained.
+
+D411 extends the existing first-anchor-step sequencing to every legacy elected
+worker on complete SQLite runtimes. The gate uses the actual carried writer
+token and its original term/incarnation; it releases after the existing bounded
+first-step outcome, or immediately for accepted trust safely before refresh.
+Static and Kubernetes runtimes keep their existing startup. Waiting workers
+check cancellation and original writer currency before running, and an old
+callback can release only its own channel.
+
+Verification of this implementation:
+
+- The actual-writer bootstrap test holds the real wire reply and proves the
+  legacy worker cannot start before the first step ends. Bypassing only the
+  startup wait with a Go overlay makes that assertion fail
+  (`anchor-startup-overlay-negative.log`); the original acquisition and
+  publication checks are retained.
+- The focused startup and mounted-transport race selection passes (27.478 s).
+  The expanded anchor/updater/root/runtime race selection passes (162.240 s),
+  including not-due restart and terminal-writer behavior.
+- A real SQLite authority transition proves canceled waits join, missing and
+  retired writer tokens are refused, and the old release cannot open the new
+  incarnation's gate (`anchor-startup-terms-race-after.log`, 1.708 s).
+- Five unchanged real Knot bootstrap/restart repetitions pass (50.481 s), each
+  retaining exactly one acquisition. The live pinned dnsdist managed-anchor
+  restart passes under the race detector (22.158 s, one acquisition).
+- Command-package lint reports zero issues. All 168 documentation link checks
+  pass. Evidence is in `.context/release-resume-20261115/`.
+
+This product change requires a new source qualification below. It does not
+change any benchmarked package or supersede the failed paired run 43685577680;
+the D383 performance gate remains open. The historical package findings and
+owner-deferred acceptance remain as recorded above.

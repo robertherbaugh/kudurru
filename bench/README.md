@@ -237,13 +237,30 @@ cache fix of D348 has not yet been measured on an EPYC VM.
 | [42530394856](https://github.com/robertherbaugh/kudurru/actions/runs/42530394856) | paired | `b2d197d8` | EPYC 9454P | failed: reference failed its upstream limits (not comparable); candidate cache and upstream limits failed |
 | [42545184734](https://github.com/robertherbaugh/kudurru/actions/runs/42545184734) | paired | `73d4b057` | EPYC 9454P | failed: 18 relative regressions, cache and upstream absolute limits |
 | [42554034011](https://github.com/robertherbaugh/kudurru/actions/runs/42554034011) | paired | `9963dec2` | Ryzen 9 7950X3D | passed: 3 relative comparisons, 7 candidate and 3 reference absolute gates |
+| [43685577680](https://github.com/robertherbaugh/kudurru/actions/runs/43685577680) | paired | `21018c6c` | Ryzen 9 7950X3D | failed: suffix-hit p99 and policy-hit average; cache/upstream comparisons and all 10 absolute gates pass |
 
-Every paired run that passed blocking/zone and upstream ran on a Ryzen VM, and
-every EPYC paired run failed, twice with blocking, zone and upstream code that
-was byte-identical to a passing source. That points at host noise on the EPYC
-VMs, which a sequential recording (all reference samples, then all candidate
-samples) cannot cancel. It is an inference from identical-code runs, not a
-measured cause.
+Through source `9963dec2`, all paired runs that passed blocking/zone and
+upstream used Ryzen VMs, while every EPYC run failed, twice with blocking, zone
+and upstream code byte-identical to a passing source. Host variation was an
+inference from these results, not a measured cause.
+
+The November 15 measurement on `21018c6c` also fails on Ryzen. With Go 1.27.4,
+reference and candidate pass all 60 native processes and all ten absolute gates.
+The strict blocking/zone comparison fails exactly two metrics:
+
+| Metric | Reference median | Candidate median | Change |
+| --- | ---: | ---: | ---: |
+| `BenchmarkLatency/suffix-1M/hit` p99 | 320 ns | 511 ns | +59.7% |
+| `BenchmarkEvaluate/policy-3M/hit` average | 226.8 ns | 361 ns | +59.2% |
+
+Policy-hit averages span `[225.5, 224, 226.8, 229.7, 460.6]` ns in the
+reference and `[361, 231, 381, 241.7, 419.2]` ns in the candidate. Suffix-hit
+p99 spans `[321, 320, 311, 310, 351]` and `[511, 611, 311, 361, 671]` ns.
+The blocking production and benchmark implementation is unchanged from
+`9963dec2` (which used Go 1.27.3); one unrelated correctness test changed.
+Neither the spread nor source equality establishes the cause. The recording
+contains no CPU-affinity or topology evidence. The failed run remains the D383
+measurement of record, and the benchmark release gate remains open.
 
 ## Closure rule for the mixed runner pool (D383)
 

@@ -356,8 +356,12 @@ retains that exact admission through its lifetime. It mounts one elected updater
 and the complete managed builder only for that admitted owner. Initial provider
 readiness waits before the first anchor capture; it cannot retry a refused anchor
 operation. Whenever the first anchor step may acquire, the first bounded anchor
-attempt finishes before other elected provider/primary services start, so their
-startup writes cannot invalidate that initial capture or roll back its result.
+attempt finishes before other elected services start, including the controller,
+object loader, list fetcher, domain-list controller and unblock janitor as well
+as the provider and primary services. The root assembly's legacy workers share
+one gate for the actual elected term and incarnation (D411); an older term's
+completion cannot release its successor. This prevents their startup writes
+from invalidating that initial capture or rolling back its result.
 That covers the bootstrap (the node cannot publish yet, because managed mode
 fails closed) and a writer whose committed refresh is due, or due within a
 minute, by the updater's wall clock: that reply may be a REVOKE, and a
@@ -374,6 +378,18 @@ Every outcome releases those services; terminal refusal keeps
 only the anchor child parked. Successful preparation cancellation does not expire a published input.
 The pure `internal/trustanchors` state remains distinct from durable acceptance
 and root publication authority.
+
+```mermaid
+flowchart TD
+  W[Original elected writer term and incarnation] --> A[First anchor step]
+  A --> D{Committed refresh safely in the future?}
+  D -->|Yes| R[Release this term's startup gate immediately]
+  D -->|No| C[Join one bounded original acquisition or refusal]
+  C --> R
+  R --> P[Provider and primary services]
+  R --> L[Controller, objects and other elected workers]
+  C --> T[Retain original terminal or retry outcome]
+```
 
 Operators enable and monitor this with the
 [managed root anchors page](../deploy/managed-root-anchors.md), which also lists
