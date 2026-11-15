@@ -1,8 +1,9 @@
 # v0.2 follow-up evidence audit
 
-Current integration and execution results are in the
-[November 15 qualification entry](#release-qualification-november-15-2026).
-Earlier tables retain their named-source findings and acceptance limits.
+Current process and artifact results are in
+[local release and process acceptance](local-release-acceptance.md). The earlier
+[November 15 qualification entry](#release-qualification-november-15-2026) and
+tables retain their named-source findings and acceptance limits.
 
 ## Owner decision: independent-VM VIP acceptance deferred, November 9, 2026
 
@@ -21683,3 +21684,69 @@ through `release-benchmark-diagnostic`, using Go 1.27.4 and six processors on th
 selected runner. It retains timings/traces, source manifests and CPU pressure/
 throttling counters, with no gates or baseline read and `release_qualified: false`.
 This diagnostic does not supersede D412 or authorize a new formal retry.
+
+### Sandbox release and network IAM acceptance, November 15, 2026
+
+The owner authorized disposable infrastructure and confirmed use of the cloud
+sandbox. [Local release and process acceptance](local-release-acceptance.md)
+records exact source `5e19a32b`: a normal bundled release binary over verified
+HTTPS, plus two separate primary/follower processes with real member-mTLS
+replication using the synthetic license fixture. Original local cookies and
+ServiceAccount tokens work on both processes before revocation and are refused
+on both afterward. With the primary stopped, follower restart retains those
+refusals and the unrelated administrator session. All private process state is
+removed. No production Kudurru or homelab configuration was changed.
+
+All 20 local release steps pass on this source. The full snapshot takes 391 s;
+independent inspection verifies 22 checksums, five archives, six packages and
+four cgo-free platform binaries. Both local images report the expected snapshot
+version and are removed. The binary is 85,684,384 bytes, under the 100 MB limit.
+The initial disk-admission refusal remains alongside the complete successful
+repeat, which retains the default 14-GB guard and a 10.37-GiB measured minimum.
+KIND/MetalLB and the companion hosted workflows pass; source CI 43745021235
+subsequently passes all 22 jobs on the exact runtime source, including both race
+shards, e2e and `ci-ok`. Complete logs and metadata are retained.
+
+D383/D412 performance remains release-blocking. Additional analysis of the
+existing diagnostic follows exact exchange-worker lifetimes and validates
+iteration counts/state conservation; runnable delay alone does not account for
+the observed gap. This supplies no causal product fix or formal qualification.
+No formal recording was retried and no baseline, sample, limit or workload
+changed. GitHub review remains owner-excluded from this task; D353/D358
+deferrals and the Cloudflare exclusion remain. Scoped results do not accept all
+remaining individual package findings. Evidence is retained under
+`.context/release-local-final-20261115/`.
+
+### Live Authentik network proof and dedicated-host method preparation
+
+The supplemental [local acceptance report](local-release-acceptance.md) now
+records actual live Authentik password/TOTP authorization-code login through an
+automated browser HTTP client on standalone and two-process SQLite runtimes.
+Original cookies and personal tokens authenticate on both members before
+provider deletion and fail after actual member-mTLS replication. With the
+primary stopped, follower restart retains refusal and an unrelated administrator
+session. The cold-follower entitlement rule remains intact; active pre/post
+checks establish revocation. All disposable local state and exact remote
+resources are removed; the all-attempt audit verifies zero applications,
+providers, users and TOTP devices across both unique prefixes. This is not
+manual/visual UI, independent-host or production-license acceptance.
+
+The owner authorized preparing the dedicated-host performance method. The
+collector, protocol and manual-only workflow are isolated at
+[`7649ab67`](https://github.com/robertherbaugh/kudurru/commit/7649ab67);
+31 benchmark control tests and actionlint pass. No dedicated host or calibration
+values are accepted, and no fresh timing or formal run occurs. The method
+preserves original workloads, fixed product requirements, five samples, six
+processors, the 20% threshold, noise floors and full 60-command D412 sequence.
+A separate hardware profile must come exclusively from immutable historical
+versions and receive actual review before candidate measurement. Owner-installed
+SSH access now works; preparation creates only disposable VM 20027
+`kudurru-dev-test` on `hm-pve02`, with NAT and loopback-only SSH. Existing guests
+have unrestricted affinity, so physical CPU isolation remains unresolved. No
+existing VM or production Kudurru configuration is changed. D412
+performance remains release-blocking pending reviewed calibration and a passing
+final run. Independent GitHub review remains excluded from this task.
+
+Final source CI [43745021235](https://github.com/robertherbaugh/kudurru/actions/runs/43745021235)
+passes all 22 jobs on `5e19a32b`, including both race shards, end-to-end acceptance
+and `ci-ok`. Later PR commits in this acceptance update change documentation only.

@@ -14,6 +14,8 @@ as a limitation.
 | Local-user and ServiceAccount revocation on a serving follower | `TestServingHTTPIAMAccountTLSRevocationAndServingFollower` | Original cookie/token authenticates on primary and follower; PATCH/PUT disable or DELETE refuses it on primary, after validated replica install, and after follower database reopen; unrelated administrator token survives |
 | API-created provider browser credentials | `TestServingHTTPIAMAPIProviderTLSRevocationAndServingFollower` | Trusted TLS on router and discovery/JWKS/code endpoint; actual browser-code exchange through an API-created provider; original cookie and PAT work on primary/follower, then fail after provider replace/delete and replica install/restart |
 | Real external issuer | `TestServingHTTPIAMLiveAuthentikRevocation` | Fresh RS256 ID token from `auth.herbaughmanor.net` over normal public TLS; API-created provider; accepted on primary/follower, refused after provider DELETE and replica install/restart; unrelated local session survives |
+| Live external authorization-code flow | Supplemental `authentik-browser.py` process proof | Actual Authentik password and TOTP authentication, normal Kudurru OIDC callback, secure cookie and personal token; API provider deletion and real process restart reject both originals while the administrator session survives; exact disposable resources removed |
+| Live external code flow over network replication | Supplemental `authentik-network-browser.py` proof | Original live Authentik cookie/PAT work on both real processes; provider deletion replicates over member mTLS and rejects both credentials on both; follower restart with primary stopped retains refusal and unrelated administrator continuity; cold-follower entitlement rule preserved |
 | Own cookie clearing | `TestServingHTTPIAMOwnCookieClearedAfterUpdateAndDelete` | Ordinary API-managed administrator completes password change, then self-disables or self-deletes through TLS; response clears cookie, replay fails, other administrator session works |
 | Separate token permission | `TestServingHTTPIAMServiceAccountWriterWithoutTokensWrite` | Narrow test policy permits account creation but refuses token issuance with 403; entire image unchanged by refused issuance |
 | Concurrent writers | `TestServingHTTPIAMWritersConcurrentCreateAndReplace`, `TestServingHTTPIAMConcurrentTokenIssuance` | Local PATCH/DELETE, ServiceAccount create/replace/delete, provider create/replace/delete each commit one reviewed effect; independent successful token issues produce distinct credentials and exactly the committed token count |
@@ -60,9 +62,12 @@ whole-second floors, and only then issue the credentials. Authentication
 succeeds on the live follower before revocation. Restart refusal also observes
 the cold-start rule and is not by itself proof of retained-floor causality.
 
-The live Authentik test uses a disposable machine principal and
-`client_credentials` ID token. A human interactive login against live Authentik
-was not completed; browser-code/cookie/PAT coverage uses the TLS provider double.
+The committed live Authentik test uses a disposable machine principal and
+`client_credentials` ID token. The later [supplemental process proof](local-release-acceptance.md#live-authentik-authorization-code-flow)
+also completes real Authentik password/TOTP and authorization-code login through
+an automated browser HTTP client, including cookie/PAT revocation and restart.
+Manual or visual browser UI acceptance is not claimed. The trusted-TLS provider
+double remains complementary coverage.
 No TLS verification or JWT verification was disabled. No production Kudurru
 configuration or deployment was changed.
 
@@ -132,3 +137,26 @@ change must precede another formal recording; rerunning for a favorable VM,
 selecting samples or raising limits does not close this gate. Final-source CI,
 release artifacts and independent release review remain separate. AD/Windows
 and independent two-VM VIP acceptance retain their owner-deferred status. The external Cloudflare docs build is owner-excluded.
+
+## Supplemental process acceptance
+
+The later [local release and process acceptance](local-release-acceptance.md)
+adds an external normal release-binary check and two independently started
+primary/follower processes over real member-mTLS replication. It covers local
+cookie and ServiceAccount revocation, including follower restart while the
+primary is stopped. The two-process build uses the existing synthetic license
+fixture; it does not claim production licensing, independent-host behavior or
+manual browser UI acceptance. The separate live Authentik process proof also
+removes its uniquely owned application, provider, password user, TOTP factor and
+session, with verified zero remaining counts. It observes the existing
+whole-second enrollment/token boundary; an initial immediate 401 refusal and
+harness adaptation failures are retained. All disposable private state is removed.
+An additional two-process live-code proof passes with actual member-mTLS
+replication: both processes accept the originals before provider deletion and
+reject them after it. The cold follower's initial historical-entitlement refusal
+is retained; a real primary restart creates the next writer episode before the
+live login. Restart refusal is scoped by that same cold-start rule, so active
+pre/post checks establish revocation. The all-attempt cleanup audit finds zero
+applications, providers, users and TOTP devices across both disposable prefixes.
+The full exact-source 20-step release snapshot and all 22 jobs of source CI
+43745021235 also pass. Performance remains separately release-blocking.

@@ -43,13 +43,14 @@ does not bump versions or change the release workflow.
 
 ## Implementation progress
 
-**Current state (November 13, 2026).** The
-[feature package acceptance table](gaps.md#feature-package-acceptance-at-154a779a-november-13-2026) is the current statement for each of
-the 11 packages: none is accepted, hosted CI is not green, and the release
-is not ready. The paragraphs below are a dated progress record written as
-the work landed. Sentences that later work overtook are corrected in place
-with the decision that changed them; for anything else, the acceptance table
-and the [completion plan](completion-plan.md) take precedence.
+**Current state (November 15, 2026).** [Local release and process
+acceptance](local-release-acceptance.md) records the current-source snapshot,
+normal release-binary IAM and real primary/follower network proofs. Performance
+remains release-blocking; all 22 source CI jobs pass, and independent review
+remains separate. The older [feature package acceptance table](gaps.md#feature-package-acceptance-at-154a779a-november-13-2026)
+retains its named-source findings. Scoped green results do not automatically
+accept every historical package finding. The [completion plan](completion-plan.md)
+and later dated evidence entries take precedence over historical progress below.
 
 The current [implementation and validation gap ledger](gaps.md) tracks
 remaining work, the completed administration repair batches, and the evidence
