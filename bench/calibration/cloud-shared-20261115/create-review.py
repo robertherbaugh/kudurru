@@ -127,7 +127,7 @@ if eligible:
     (BASE/'provenance.json').write_text(json.dumps(provenance,indent=2)+'\n')
     (BASE/'profile-comparison-summary.json').write_text(json.dumps(movements,indent=2)+'\n')
     with (BASE/'profile-comparison.csv').open('w',newline='') as output:
-        writer=csv.DictWriter(output,fieldnames=list(comparisons[0]))
+        writer=csv.DictWriter(output,fieldnames=list(comparisons[0]),lineterminator='\n')
         writer.writeheader()
         writer.writerows(comparisons)
     marker='## Proposed hardware profiles'
