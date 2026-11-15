@@ -1263,8 +1263,11 @@ happens after every pull. Reads and local commands keep the exact check
 from before it captures its source until it ends (`holdMemberPulls`,
 `Coordinator.HoldPulls`, D375): the scheduled pull used to install the
 request's own earlier items and cut the rest. The scheduled pull waits for the
-holders at most `MaxPullHold` (the 30-second lifetime); an explicit pull after
-another forwarded sign-in, sign-out or settings change does not wait. A request that began on a follower stays a forward after its context has
+holders at most `MaxPullHold` (30 seconds, counted from when the pull was due);
+an explicit pull after another forwarded sign-in, sign-out or settings change
+does not wait. Each item is still one exchange in which the primary commits
+before it answers, so the 30-second lifetime, not the pull, bounds how many
+items a follower applies in one request. A request that began on a follower stays a forward after its context has
 ended: `ObjectForward` and `ZoneForward` answer that refusal themselves and
 never hand the item to the node's local command, whose credential check would
 report an expired session. A `zones.command` runs the primary's own zone route
