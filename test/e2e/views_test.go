@@ -125,28 +125,57 @@ func TestClientGroupViewsSplitHorizon(t *testing.T) {
 		}
 	}
 	// AXFR from a lan client carries the default data only.
+	private := []string{"10.0.0.", "10.9.0.", "nas.split", "tunnel"}
 	transfer := func(m *dns.Msg) []dns.RR {
 		t.Helper()
-		tr := &dns.Transfer{DialTimeout: 3 * time.Second, ReadTimeout: 3 * time.Second}
-		conn, err := (&net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.2")}}).DialContext(t.Context(), "tcp", spec.Ports.DNS)
-		if err != nil {
-			t.Fatal(err)
-		}
-		tr.Conn = &dns.Conn{Conn: conn}
-		envelopes, err := tr.In(m, spec.Ports.DNS)
-		if err != nil {
-			t.Fatal(err)
-		}
-		var records []dns.RR
-		for e := range envelopes {
-			if e.Error != nil {
-				t.Fatal(e.Error)
+		attempt := func() ([]dns.RR, error) {
+			tr := &dns.Transfer{DialTimeout: 3 * time.Second, ReadTimeout: 3 * time.Second}
+			conn, err := (&net.Dialer{LocalAddr: &net.TCPAddr{IP: net.ParseIP("127.0.0.2")}}).DialContext(t.Context(), "tcp", spec.Ports.DNS)
+			if err != nil {
+				return nil, err
 			}
-			records = append(records, e.RR...)
+			defer func() { _ = conn.Close() }()
+			tr.Conn = &dns.Conn{Conn: conn}
+			envelopes, err := tr.In(m, spec.Ports.DNS)
+			if err != nil {
+				return nil, err
+			}
+			var records []dns.RR
+			var transferErr error
+			for e := range envelopes {
+				if e.Error != nil {
+					transferErr = e.Error
+				}
+				for _, rr := range e.RR {
+					// Even a transfer interrupted by a publication change
+					// must never expose a private record before it ends.
+					for _, p := range private {
+						if strings.Contains(rr.String(), p) {
+							t.Errorf("transfer leaked client-group or publish-only data %q: %v", p, rr)
+						}
+					}
+				}
+				records = append(records, e.RR...)
+			}
+			return records, transferErr
 		}
-		return records
+		// Ordinary DNS may serve the last complete publication while the
+		// zone driver's status commits settle. Transfers require a current
+		// publication throughout (D313), so an intervening commit closes
+		// the stream. Retry the whole read, discarding any partial transfer.
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			records, err := attempt()
+			if err == nil {
+				return records
+			}
+			if err != io.EOF || !time.Now().Before(deadline) {
+				t.Fatalf("%s: %v", dns.TypeToString[m.Question[0].Qtype], err)
+			}
+			t.Logf("%s interrupted by publication change; restarting transfer", dns.TypeToString[m.Question[0].Qtype])
+			time.Sleep(20 * time.Millisecond)
+		}
 	}
-	private := []string{"10.0.0.", "10.9.0.", "nas.split", "tunnel"}
 	noGroupData := func(what, all string) {
 		t.Helper()
 		if !strings.Contains(all, "203.0.113.10") {
