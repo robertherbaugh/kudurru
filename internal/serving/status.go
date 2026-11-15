@@ -2,6 +2,7 @@ package serving
 
 import (
 	"context"
+	"errors"
 
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 )
@@ -85,6 +86,35 @@ func (p *Publisher) CheckWriterLease(ctx context.Context, lease *Lease, target T
 	bundle := lease.Bundle()
 	if bundle == nil || bundle != p.current.Load() || !eligible(bundle, a, blocked) {
 		return ErrPending
+	}
+	return nil
+}
+
+// CheckWriterCut is CheckWriterLease for a current HTTP command (D399): it
+// also admits a lease whose publication was replaced by a publication of the
+// same cut, that is the same installed generation (term, revision and
+// digest) with the same dependency identity, while the lease's own
+// dependency cursors are still current. Such a publication is the same
+// source prepared again after a Wake that arrived while its first
+// preparation ran (D405); every input of the publication is the one the
+// lease holds, so refusing the command as superseded protected nothing. A
+// new generation, an authority change, a changed dependency identity, a
+// lease whose dependencies were replaced and a DNS-only publication refuse
+// exactly as in CheckWriterLease. Background acknowledgments and the other
+// callers of CheckWriterLease keep the exact publication rule.
+func (p *Publisher) CheckWriterCut(ctx context.Context, lease *Lease, target TermActivation) error {
+	err := p.CheckWriterLease(ctx, lease, target)
+	if !errors.Is(err, ErrPending) {
+		return err
+	}
+	bundle, current := lease.Bundle(), p.current.Load()
+	if bundle == nil || current == nil || current == bundle || current.dnsOnly ||
+		!current.identity.Base.Same(bundle.identity.Base) || current.identity.Dependencies != bundle.identity.Dependencies {
+		return err
+	}
+	a, blocked := p.opts.Source.ServingAuthority()
+	if p.closed.Load() || !eligible(bundle, a, blocked) || !eligible(current, a, blocked) {
+		return err
 	}
 	return nil
 }

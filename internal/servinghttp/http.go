@@ -139,7 +139,9 @@ func CheckWriter(ctx context.Context, publisher *serving.Publisher, target servi
 	if lease == nil || lease.Bundle() == nil {
 		return serving.ErrReleased
 	}
-	return publisher.CheckWriterLease(ctx, lease, target)
+	// A later publication of the same cut does not refuse the command
+	// (serving.Publisher.CheckWriterCut, D399).
+	return publisher.CheckWriterCut(ctx, lease, target)
 }
 
 // CheckWriterAdvanced checks a LATER item of one multi-item request against

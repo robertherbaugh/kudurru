@@ -208,8 +208,9 @@ TOTP replay prevention. Public CLI preparation uses the complete SQLite path.
 Every HTTP request captures one complete publication before it
 authenticates, and a command is held to it (D199): the command's first
 check, and the same check again in its transaction before its body runs,
-require that publication to still be the current one in the request's
-elected writer incarnation (`servinghttp.CheckWriter`, D208). The node's own
+require that publication, or a later publication of the same cut, to still
+be the current one in the request's elected writer incarnation
+(`servinghttp.CheckWriter`, D208; the same-cut rule is below). The node's own
 work commits on its own schedule (zone status and lifecycle writes,
 admission, the anchor updater, signed UPDATEs), and each such commit retires
 the publication of every request that is in flight.
@@ -329,6 +330,16 @@ Rules of the recapture itself:
   command that committed nothing new, an item of a multi-item request and
   the other wakes (dependency watchers, cluster activation and promotion,
   node-local settings, TSIG keys, blocking, edge blocks) are unchanged.
+- A later publication of the same cut does not refuse a command at all,
+  marked or not (`Publisher.CheckWriterCut` in `servinghttp.CheckWriter`):
+  when the publication that replaced the request's has the same installed
+  generation (term, revision and digest) and the same dependency identity,
+  and the lease's own dependency cursors are current, the command keeps its
+  lease and is dispatched as if nothing had been published. Such a
+  publication is the same source prepared again after a Wake that arrived
+  during its first preparation (D405); other Wakes than a command's own
+  (provider coordinator, dependency watchers) still cause it. Background
+  acknowledgments keep the exact publication rule (`CheckWriterLease`).
 - A follower's early admission and its forwarded commands stay bound to the
   follower's captured publication. The primary's entry for forwarded
   commands is bound to the member request's authority, not to a
