@@ -267,7 +267,7 @@ func normalized(a *Aggregate, l Limits) (*Aggregate, string, uint32, error) {
 	out.Receipts = append([]Receipt(nil), a.Receipts...)
 	receipts := map[string]bool{}
 	for _, r := range out.Receipts {
-		if r.ID == "" || len(r.ID) > 512 || receipts[r.ID] || !zonekinds.ValidDigest(r.SemanticDigest) || r.Principal.Key == "" || r.Principal.Version == "" || len(r.Principal.Version) > 512 || r.CommitSequence == 0 || r.Rcode < 0 || r.Rcode > 15 {
+		if r.ID == "" || len(r.ID) > 512 || receipts[r.ID] || !zonekinds.ValidDigest(r.SemanticDigest) || r.Principal.Key == "" || r.Principal.Version == "" || len(r.Principal.Version) > 512 || r.CommitSequence == 0 || r.Rcode < 0 || r.Rcode > 15 || r.NotAfter < 0 {
 			return nil, "", 0, fmt.Errorf("%w: receipt", ErrInvalid)
 		}
 		receipts[r.ID] = true

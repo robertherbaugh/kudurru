@@ -75,6 +75,22 @@ type fixture struct {
 
 func setup(t *testing.T) *fixture {
 	t.Helper()
+	return setupAt(t, filepath.Join(t.TempDir(), "state.db"), fixtureOptions{})
+}
+
+// fixtureOptions changes what setupAt builds: Now is the clock of the
+// runtime and of the adapter's receipt eviction (D409), RuntimeNow replaces
+// it for the runtime alone, Limits are the zone limits of both.
+type fixtureOptions struct {
+	Now, RuntimeNow func() time.Time
+	Limits          zonestate.Limits
+}
+
+func setupAt(t *testing.T, path string, o fixtureOptions) *fixture {
+	t.Helper()
+	if o.RuntimeNow == nil {
+		o.RuntimeNow = o.Now
+	}
 	scheme := runtime.NewScheme()
 	if err := public.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
@@ -82,7 +98,6 @@ func setup(t *testing.T) *fixture {
 	if err := zk.AddToScheme(scheme); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "state.db")
 	s, err := sqlite.Open(path, sqlite.Options{Scheme: scheme})
 	if err != nil {
 		t.Fatal(err)
@@ -102,16 +117,16 @@ func setup(t *testing.T) *fixture {
 		return nil
 	}
 	f.keys.current.Policy = testPolicy
-	f.a, err = New(Options{Store: s, Background: testBackground{}, Credentials: f.keys, Policy: testPolicy})
+	f.a, err = New(Options{Store: s, Background: testBackground{}, Credentials: f.keys, Policy: testPolicy, Limits: o.Limits, Now: o.Now})
 	if err != nil {
 		t.Fatal(err)
 	}
-	backend, err := s.ZoneStateBackend(zonestate.Limits{})
+	backend, err := s.ZoneStateBackend(o.Limits)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.repo = zonestate.NewRepository(backend, zonestate.Limits{})
-	f.r, err = pr.New(pr.Options{Store: s, Repository: f.repo, Reader: primaryzone.NewReader(s, primaryzone.ReaderOptions{PageSize: 1, Policy: func(context.Context, *public.DNSZone) (*zonestate.Policy, error) { p := f.policy; return &p, nil }}), LifecycleCAS: f.a.LifecycleCAS, Admit: f.a.Admission, Proofs: issuer{}, Publish: func(context.Context, pr.Cut, pr.Member) error { return nil }})
+	f.repo = zonestate.NewRepository(backend, o.Limits)
+	f.r, err = pr.New(pr.Options{Store: s, Repository: f.repo, Reader: primaryzone.NewReader(s, primaryzone.ReaderOptions{PageSize: 1, Policy: func(context.Context, *public.DNSZone) (*zonestate.Policy, error) { p := f.policy; return &p, nil }}), LifecycleCAS: f.a.LifecycleCAS, Admit: f.a.Admission, Proofs: issuer{}, Publish: func(context.Context, pr.Cut, pr.Member) error { return nil }, Now: o.RuntimeNow, Limits: o.Limits})
 	if err != nil {
 		t.Fatal(err)
 	}

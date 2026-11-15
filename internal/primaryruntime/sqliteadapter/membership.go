@@ -227,25 +227,36 @@ func (a *Adapter) candidate(_ context.Context, _ *sqlite.CommandTx, all roster, 
 	if !reflect.DeepEqual(current.Aggregate.Config, next.Config) || !reflect.DeepEqual(current.Aggregate.Sources, next.Sources) || !reflect.DeepEqual(current.Aggregate.Reservations, next.Reservations) || !current.Aggregate.Expiry.Equal(next.Expiry) {
 		return pr.ErrInvalid
 	}
-	if len(next.Receipts) != len(current.Aggregate.Receipts)+1 {
-		return pr.ErrInvalid
-	}
+	// An UPDATE adds exactly one receipt, its own, with its own signature
+	// deadline, keeps every other receipt unchanged, and may drop only a
+	// receipt that is no longer live on this node's clock: no node admits
+	// its retry identity any more (D409).
 	prior := make(map[string]zonestate.Receipt, len(current.Aggregate.Receipts))
 	for _, receipt := range current.Aggregate.Receipts {
 		prior[receipt.ID] = receipt
 	}
+	added := 0
 	for _, receipt := range next.Receipts {
 		if old, ok := prior[receipt.ID]; ok {
 			if old != receipt {
 				return pr.ErrInvalid
 			}
 			delete(prior, receipt.ID)
-		} else if receipt.Principal != c.Proof.Principal || receipt.AuthEpoch != current.Head.Spec.AuthEpoch || receipt.CommitSequence != c.Prepared.Head.Spec.CommitSequence || receipt.Serial != c.Prepared.Head.Spec.Serial || receipt.Rcode != dns.RcodeSuccess {
+			continue
+		}
+		added++
+		if receipt.Principal != c.Proof.Principal || receipt.AuthEpoch != current.Head.Spec.AuthEpoch || receipt.CommitSequence != c.Prepared.Head.Spec.CommitSequence || receipt.Serial != c.Prepared.Head.Spec.Serial || receipt.Rcode != dns.RcodeSuccess || receipt.NotAfter != zonestate.ReceiptNotAfter(c.Proof.NotAfter) {
 			return pr.ErrInvalid
 		}
 	}
-	if len(prior) != 0 {
+	if added != 1 {
 		return pr.ErrInvalid
+	}
+	now := a.now()
+	for _, evicted := range prior {
+		if evicted.Live(now) {
+			return pr.ErrInvalid
+		}
 	}
 	rrs, err := next.RRs()
 	if err != nil {

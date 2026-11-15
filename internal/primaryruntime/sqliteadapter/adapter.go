@@ -79,10 +79,20 @@ type Options struct {
 	Credentials          CredentialGuard
 	Background           BackgroundGuard
 	Policy               PolicyGuard // optional additional check, never a replacement
+	// Now is the clock that decides whether an UPDATE may drop a receipt
+	// (zonestate.Receipt.Live). Nil is time.Now; only tests set it.
+	Now func() time.Time
 }
 
 // Adapter supplies the core's exact lifecycle/head callbacks.
 type Adapter struct{ o Options }
+
+func (a *Adapter) now() time.Time {
+	if a.o.Now != nil {
+		return a.o.Now()
+	}
+	return time.Now()
+}
 
 // New requires actual SQLite with every private object carrier registered.
 func New(o Options) (*Adapter, error) {
