@@ -8,6 +8,12 @@ D383/D412 remains release-blocking. The failed Ubicloud recordings and existing
 baseline, limits, workloads and regression thresholds remain unchanged. A new
 profile applies only after separate calibration review.
 
+The owner subsequently accepted the specific [cloud-sandbox amendment](cloud-sandbox-method.md)
+after VM 20027 failed its fixed zone-lookup gate. That amendment discloses the
+sandbox's opaque physical host and pinning. All workload and product bounds
+remain unchanged, with separate review of actual calibration limits still
+required before candidate timing. The failed homelab recording stays failed.
+
 ## Reserve and review the host
 
 Use one disposable Linux amd64 VM, provisioned as `kudurru-dev-test`, with at
