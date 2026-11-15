@@ -929,3 +929,61 @@ func other(v any) any {
 	cp := *(v.(*fixtureView))
 	return &cp
 }
+
+// A later publication of the same source does not refuse a lease captured on
+// the earlier one at CheckSourceLease, although CheckReadLease refuses it; a
+// new generation and a dependency change still refuse it (D406).
+func TestPublisherSourceLeaseSurvivesASameSourcePublicationOnly(t *testing.T) {
+	s := primary(t)
+	var changed atomic.Bool
+	p := runPublisher(t, Options{Source: s, Prepare: func(_ context.Context, c Candidate) (Prepared, error) {
+		parts, err := allComponents(c)
+		parts.Current = func() bool { return !changed.Load() }
+		return parts, err
+	}})
+	first := waitStatus(t, p, func(s Status) bool { return s.ProtectedReady })
+	lease, err := p.CaptureHTTP(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Release()
+	ctx := context.Background()
+	if err := p.CheckSourceLease(ctx, lease); err != nil {
+		t.Fatal("a current lease refused:", err)
+	}
+	// The same source published again, as a Wake's preparation does.
+	p.Wake()
+	again := waitStatus(t, p, func(s Status) bool { return s.ProtectedReady && s.Served.Publication > first.Served.Publication })
+	if !again.Served.Base.Same(first.Served.Base) {
+		t.Fatal("the Wake published a new source")
+	}
+	if err := p.CheckReadLease(ctx, lease); !errors.Is(err, ErrPending) {
+		t.Fatal("a read lease of the replaced publication was not refused:", err)
+	}
+	if err := p.CheckSourceLease(ctx, lease); err != nil {
+		t.Fatal("a later publication of the same source refused the lease:", err)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if err := p.CheckSourceLease(canceled, lease); !errors.Is(err, context.Canceled) {
+		t.Fatal("a canceled check was not refused:", err)
+	}
+	// A dependency of the lease's own publication changed.
+	changed.Store(true)
+	if err := p.CheckSourceLease(ctx, lease); !errors.Is(err, ErrPending) {
+		t.Fatal("a lease whose dependencies changed was not refused:", err)
+	}
+	changed.Store(false)
+	if err := p.CheckSourceLease(ctx, lease); err != nil {
+		t.Fatal(err)
+	}
+	// A new generation of the Store.
+	applyPair(t, s, "next")
+	if err := p.CheckSourceLease(ctx, lease); !errors.Is(err, ErrPending) {
+		t.Fatal("a lease of a superseded source was not refused:", err)
+	}
+	lease.Release()
+	if err := p.CheckSourceLease(ctx, lease); !errors.Is(err, ErrReleased) {
+		t.Fatal("a released lease was not refused:", err)
+	}
+}
