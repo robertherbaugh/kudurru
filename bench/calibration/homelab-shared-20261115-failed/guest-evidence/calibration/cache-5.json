@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "go",
+    "test",
+    "-run",
+    "^$",
+    "-bench",
+    "^Benchmark(Get|MakeKey|Set|Memory|Growth)$",
+    "-benchmem",
+    "-benchtime",
+    "1s",
+    "-count",
+    "1",
+    "-timeout",
+    "30m",
+    "./internal/cache"
+  ],
+  "child_exit_code": 0,
+  "stop_reason": null,
+  "minimum_free_bytes": 61520297984,
+  "pid": 27038,
+  "wall_seconds": 11.826483610999958,
+  "post_free_bytes": 61529178112,
+  "output_bytes": 808,
+  "group_reaped": true
+}

@@ -1,0 +1,8 @@
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkUDPSockets/sockets=1-6         	  439584	     23625 ns/op	         0 lost	     42327 q/s	    2310 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	  568447	      9615 ns/op	         0 lost	    104009 q/s	    2374 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	19.849s

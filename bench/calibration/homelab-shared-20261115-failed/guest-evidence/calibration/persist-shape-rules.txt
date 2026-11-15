@@ -1,0 +1,17 @@
+
+require ^BenchmarkPersist200k/gzip=false/restore$ B/op
+require ^BenchmarkPersist200k/gzip=false/restore$ allocs/op
+require ^BenchmarkPersist200k/gzip=false/restore$ ns/op
+require ^BenchmarkPersist200k/gzip=false/save$ B/op
+require ^BenchmarkPersist200k/gzip=false/save$ allocs/op
+require ^BenchmarkPersist200k/gzip=false/save$ bytes
+require ^BenchmarkPersist200k/gzip=false/save$ entries
+require ^BenchmarkPersist200k/gzip=false/save$ ns/op
+require ^BenchmarkPersist200k/gzip=true/restore$ B/op
+require ^BenchmarkPersist200k/gzip=true/restore$ allocs/op
+require ^BenchmarkPersist200k/gzip=true/restore$ ns/op
+require ^BenchmarkPersist200k/gzip=true/save$ B/op
+require ^BenchmarkPersist200k/gzip=true/save$ allocs/op
+require ^BenchmarkPersist200k/gzip=true/save$ bytes
+require ^BenchmarkPersist200k/gzip=true/save$ entries
+require ^BenchmarkPersist200k/gzip=true/save$ ns/op

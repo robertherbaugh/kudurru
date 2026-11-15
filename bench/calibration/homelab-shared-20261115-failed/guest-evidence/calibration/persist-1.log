@@ -1,0 +1,11 @@
+go: downloading golang.org/x/sync v0.24.0
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache/persist
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkPersist200k/gzip=true/save-6    	       1	2511937553 ns/op	   8928779 bytes	    197329 entries	202313752 B/op	  592473 allocs/op
+BenchmarkPersist200k/gzip=true/restore-6 	       1	4234341578 ns/op	224950920 B/op	 1315437 allocs/op
+BenchmarkPersist200k/gzip=false/save-6   	       1	3745192793 ns/op	  87331736 bytes	    197106 entries	515854432 B/op	  591632 allocs/op
+BenchmarkPersist200k/gzip=false/restore-6         	       1	3349655552 ns/op	378760928 B/op	 1278737 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache/persist	18.775s

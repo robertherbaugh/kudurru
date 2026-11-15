@@ -1,0 +1,10 @@
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache/persist
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkPersist200k/gzip=true/save-6    	       1	1515563319 ns/op	   8877057 bytes	    196926 entries	201973896 B/op	  591263 allocs/op
+BenchmarkPersist200k/gzip=true/restore-6 	       1	3025122284 ns/op	224520016 B/op	 1313554 allocs/op
+BenchmarkPersist200k/gzip=false/save-6   	       1	2757002662 ns/op	  87425468 bytes	    197319 entries	516080864 B/op	  592271 allocs/op
+BenchmarkPersist200k/gzip=false/restore-6         	       1	3154819982 ns/op	379155136 B/op	 1280003 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache/persist	13.382s

@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "go",
+    "run",
+    "./hack/benchgate",
+    "-samples",
+    "5",
+    "-procs",
+    "6",
+    "-strict-cpu",
+    "-threshold",
+    "20",
+    "-limits",
+    "/var/lib/kudurru-benchmark/v020-shared-20261115/calibration/blocking-zone-shape-rules.txt",
+    "/var/lib/kudurru-benchmark/v020-shared-20261115/calibration/blocking-zone.txt"
+  ],
+  "child_exit_code": 1,
+  "stop_reason": null,
+  "minimum_free_bytes": 61525069824,
+  "pid": 28140,
+  "wall_seconds": 0.6162825630003681,
+  "post_free_bytes": 61526831104,
+  "output_bytes": 402,
+  "group_reaped": true
+}

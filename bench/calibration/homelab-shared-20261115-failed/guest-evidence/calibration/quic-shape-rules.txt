@@ -1,0 +1,13 @@
+
+require ^BenchmarkQUICSockets/doh3/sockets=1$ B/op
+require ^BenchmarkQUICSockets/doh3/sockets=1$ allocs/op
+require ^BenchmarkQUICSockets/doh3/sockets=1$ ns/op
+require ^BenchmarkQUICSockets/doh3/sockets=4$ B/op
+require ^BenchmarkQUICSockets/doh3/sockets=4$ allocs/op
+require ^BenchmarkQUICSockets/doh3/sockets=4$ ns/op
+require ^BenchmarkQUICSockets/doq/sockets=1$ B/op
+require ^BenchmarkQUICSockets/doq/sockets=1$ allocs/op
+require ^BenchmarkQUICSockets/doq/sockets=1$ ns/op
+require ^BenchmarkQUICSockets/doq/sockets=4$ B/op
+require ^BenchmarkQUICSockets/doq/sockets=4$ allocs/op
+require ^BenchmarkQUICSockets/doq/sockets=4$ ns/op

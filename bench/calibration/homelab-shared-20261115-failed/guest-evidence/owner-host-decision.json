@@ -1,0 +1,9 @@
+{
+  "decision": "accepted",
+  "reviewed_by": "Robert Herbaugh",
+  "reviewed_at": "2026-11-15T20:06:42.055003+00:00",
+  "review_evidence": "Workspace owner decision in Conductor on 2026-11-15: \"Use the pinned VM with shared CPUs\" after review of VM20027, eight pinned vCPUs and unrestricted affinity of other guests.",
+  "scope": "Shared physical CPU placement and historical-only calibration on VM20027/hm-e-pve02.ssh. Calibration values/limits and candidate measurement remain unapproved.",
+  "method_source": "fef3a1fde4cf8b847ba833d9e1f0710e7ec3f998",
+  "recording": "v020-shared-20261115"
+}

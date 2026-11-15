@@ -1,0 +1,82 @@
+HISTORICAL_CALIBRATION_START 2026-11-15T20:08:00.244829+00:00
+START historical blocking-1
+COMPLETE historical blocking-1 0
+START historical zone-1
+COMPLETE historical zone-1 0
+START historical cache-1
+COMPLETE historical cache-1 0
+START historical upstream-1
+COMPLETE historical upstream-1 0
+START historical udp-1
+COMPLETE historical udp-1 0
+START historical dot-1
+COMPLETE historical dot-1 0
+START historical quic-1
+COMPLETE historical quic-1 0
+START historical persist-1
+COMPLETE historical persist-1 0
+START historical blocking-2
+COMPLETE historical blocking-2 0
+START historical zone-2
+COMPLETE historical zone-2 0
+START historical cache-2
+COMPLETE historical cache-2 0
+START historical upstream-2
+COMPLETE historical upstream-2 0
+START historical udp-2
+COMPLETE historical udp-2 0
+START historical dot-2
+COMPLETE historical dot-2 0
+START historical quic-2
+COMPLETE historical quic-2 0
+START historical persist-2
+COMPLETE historical persist-2 0
+START historical blocking-3
+COMPLETE historical blocking-3 0
+START historical zone-3
+COMPLETE historical zone-3 0
+START historical cache-3
+COMPLETE historical cache-3 0
+START historical upstream-3
+COMPLETE historical upstream-3 0
+START historical udp-3
+COMPLETE historical udp-3 0
+START historical dot-3
+COMPLETE historical dot-3 0
+START historical quic-3
+COMPLETE historical quic-3 0
+START historical persist-3
+COMPLETE historical persist-3 0
+START historical blocking-4
+COMPLETE historical blocking-4 0
+START historical zone-4
+COMPLETE historical zone-4 0
+START historical cache-4
+COMPLETE historical cache-4 0
+START historical upstream-4
+COMPLETE historical upstream-4 0
+START historical udp-4
+COMPLETE historical udp-4 0
+START historical dot-4
+COMPLETE historical dot-4 0
+START historical quic-4
+COMPLETE historical quic-4 0
+START historical persist-4
+COMPLETE historical persist-4 0
+START historical blocking-5
+COMPLETE historical blocking-5 0
+START historical zone-5
+COMPLETE historical zone-5 0
+START historical cache-5
+COMPLETE historical cache-5 0
+START historical upstream-5
+COMPLETE historical upstream-5 0
+START historical udp-5
+COMPLETE historical udp-5 0
+START historical dot-5
+COMPLETE historical dot-5 0
+START historical quic-5
+COMPLETE historical quic-5 0
+START historical persist-5
+COMPLETE historical persist-5 0
+CALIBRATION_FAILED_OR_HELD_NO_CANDIDATE_AUTHORIZED

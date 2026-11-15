@@ -1,0 +1,80 @@
+go: downloading github.com/prometheus/client_golang v1.25.0
+go: downloading golang.org/x/sync v0.23.0
+go: downloading github.com/knadh/koanf/parsers/yaml v1.1.1
+go: downloading github.com/knadh/koanf/providers/confmap v1.0.1
+go: downloading github.com/knadh/koanf/providers/file v1.2.1
+go: downloading github.com/knadh/koanf/v2 v2.3.8
+go: downloading github.com/fsnotify/fsnotify v1.9.0
+go: downloading github.com/knadh/koanf/maps v0.1.2
+go: downloading go.yaml.in/yaml/v3 v3.0.5
+go: downloading github.com/go-viper/mapstructure/v2 v2.4.0
+go: downloading github.com/mitchellh/copystructure v1.2.0
+go: downloading github.com/kylelemons/godebug v1.1.0
+go: downloading github.com/prometheus/client_model v0.6.3
+go: downloading github.com/prometheus/common v0.72.0
+go: downloading github.com/beorn7/perks v1.0.1
+go: downloading github.com/cespare/xxhash/v2 v2.3.0
+go: downloading github.com/prometheus/procfs v0.22.0
+go: downloading google.golang.org/protobuf v1.36.12
+go: downloading github.com/mitchellh/reflectwalk v1.0.2
+go: downloading github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkGet/hit-6   	 1402474	       845.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	 6022424	       204.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	 7982406	       152.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	18360903	        66.13 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	 1397742	       838.3 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       1	1553838076 ns/op	       292.7 bytes/entry	       173.8 overhead-bytes/entry	375203696 B/op	 4012168 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	8.518s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkGet/hit-6   	  807301	      1323 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	 6027318	       310.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	 8030995	       148.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	17393692	       129.7 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	  595498	      1900 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       1	1943896333 ns/op	       292.6 bytes/entry	       173.8 overhead-bytes/entry	375148992 B/op	 4012163 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	12.804s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkGet/hit-6   	  822265	      1305 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	 5978877	       197.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	 7615252	       152.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	18037036	        87.32 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	  574399	      2065 ns/op	     113 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       1	2265237552 ns/op	       292.5 bytes/entry	       173.6 overhead-bytes/entry	374930624 B/op	 4012147 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	10.198s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkGet/hit-6   	  828522	      1325 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	 6032182	       199.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	 7783392	       155.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	16959369	        84.58 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	 1322098	       922.6 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       1	1651598135 ns/op	       292.8 bytes/entry	       173.9 overhead-bytes/entry	375367360 B/op	 4012179 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	9.117s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkGet/hit-6   	 1676486	       716.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	 5436724	       261.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	 8905687	       170.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	18053754	       154.9 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	  918967	      1105 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       1	1648057812 ns/op	       292.7 bytes/entry	       173.8 overhead-bytes/entry	375312768 B/op	 4012175 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	10.939s

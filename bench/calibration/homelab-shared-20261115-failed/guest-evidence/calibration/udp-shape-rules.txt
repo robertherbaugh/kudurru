@@ -1,0 +1,11 @@
+
+require ^BenchmarkUDPSockets/sockets=1$ B/op
+require ^BenchmarkUDPSockets/sockets=1$ allocs/op
+require ^BenchmarkUDPSockets/sockets=1$ lost
+require ^BenchmarkUDPSockets/sockets=1$ ns/op
+require ^BenchmarkUDPSockets/sockets=1$ q/s
+require ^BenchmarkUDPSockets/sockets=6$ B/op
+require ^BenchmarkUDPSockets/sockets=6$ allocs/op
+require ^BenchmarkUDPSockets/sockets=6$ lost
+require ^BenchmarkUDPSockets/sockets=6$ ns/op
+require ^BenchmarkUDPSockets/sockets=6$ q/s

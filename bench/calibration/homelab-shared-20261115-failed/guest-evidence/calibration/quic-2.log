@@ -1,0 +1,11 @@
+2026/11/15 20:16:50 failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkQUICSockets/doq/sockets=1-6         	   21069	     54630 ns/op	   10041 B/op	     138 allocs/op
+BenchmarkQUICSockets/doq/sockets=4-6         	   10000	    119504 ns/op	   10045 B/op	     138 allocs/op
+BenchmarkQUICSockets/doh3/sockets=1-6        	    6652	    167645 ns/op	   18277 B/op	     263 allocs/op
+BenchmarkQUICSockets/doh3/sockets=4-6        	    8328	    163311 ns/op	   18268 B/op	     263 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	6.479s

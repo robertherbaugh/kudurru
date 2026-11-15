@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "go",
+    "run",
+    "./hack/benchgate",
+    "-samples",
+    "5",
+    "-procs",
+    "6",
+    "-strict-cpu",
+    "-threshold",
+    "20",
+    "-limits",
+    "/var/lib/kudurru-benchmark/v020-shared-20261115/calibration/udp-shape-rules.txt",
+    "/var/lib/kudurru-benchmark/v020-shared-20261115/calibration/udp.txt"
+  ],
+  "child_exit_code": 0,
+  "stop_reason": null,
+  "minimum_free_bytes": 61526761472,
+  "pid": 28376,
+  "wall_seconds": 0.21607589700033714,
+  "post_free_bytes": 61526761472,
+  "output_bytes": 65,
+  "group_reaped": true
+}

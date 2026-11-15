@@ -1,0 +1,20 @@
+Restart=no
+RuntimeMaxUSec=3h
+MainPID=9543
+Result=success
+ExecStart={ path=/usr/bin/python3 ; argv[]=/usr/bin/python3 -u /var/lib/kudurru-benchmark/v020-shared-20261115/run-historical-calibration.py ; ignore_errors=no ; start_time=[Sun 2026-11-15 20:08:00 UTC] ; stop_time=[n/a] ; pid=9543 ; code=(null) ; status=0/0 }
+ControlGroup=/system.slice/kudurru-benchmark.service
+MemoryPeak=2790182912
+CPUUsageNSec=954047468000
+CPUQuotaPerSecUSec=infinity
+AllowedCPUs=
+MemoryMax=infinity
+WorkingDirectory=/home/benchmark/kudurru/control
+User=benchmark
+Group=benchmark
+KillMode=control-group
+Id=kudurru-benchmark.service
+Description=/usr/bin/python3 -u /var/lib/kudurru-benchmark/v020-shared-20261115/run-historical-calibration.py
+ActiveState=active
+SubState=running
+ActiveEnterTimestamp=Sun 2026-11-15 20:08:00 UTC

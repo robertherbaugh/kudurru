@@ -1,0 +1,81 @@
+go: downloading golang.org/x/sys v0.49.0
+go: downloading golang.org/x/net v0.62.0
+go: downloading k8s.io/apiextensions-apiserver v0.37.1
+go: downloading github.com/insomniacslk/dhcp v0.0.0-20261014062924-c6bb46ad3f3a
+go: downloading modernc.org/sqlite v1.54.0
+go: downloading golang.org/x/text v0.43.0
+go: downloading golang.org/x/crypto v0.58.0
+go: downloading github.com/u-root/uio v0.0.0-20230220225925-ffce2a382923
+go: downloading github.com/fxamacker/cbor/v2 v2.9.2
+go: downloading k8s.io/api v0.37.1
+go: downloading k8s.io/client-go v0.37.1
+go: downloading github.com/josharian/native v1.1.0
+go: downloading github.com/pierrec/lz4/v4 v4.1.14
+go: downloading golang.org/x/term v0.47.0
+go: downloading golang.org/x/oauth2 v0.37.0
+go: downloading golang.org/x/time v0.15.0
+go: downloading gopkg.in/evanphx/json-patch.v4 v4.13.0
+go: downloading sigs.k8s.io/yaml v1.6.0
+go: downloading github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
+go: downloading github.com/google/gnostic-models v0.7.0
+go: downloading github.com/go-openapi/jsonreference v1.0.0
+go: downloading github.com/go-openapi/swag v0.27.1
+go: downloading github.com/go-openapi/jsonpointer v1.0.0
+go: downloading github.com/google/uuid v1.6.0
+go: downloading github.com/go-openapi/swag/cmdutils v0.27.1
+go: downloading github.com/go-openapi/swag/conv v0.27.1
+go: downloading github.com/go-openapi/swag/fileutils v0.27.1
+go: downloading github.com/go-openapi/swag/jsonutils v0.27.1
+go: downloading github.com/go-openapi/swag/loading v0.27.1
+go: downloading github.com/go-openapi/swag/mangling v0.27.1
+go: downloading github.com/go-openapi/swag/netutils v0.27.1
+go: downloading github.com/go-openapi/swag/stringutils v0.27.1
+go: downloading github.com/go-openapi/swag/typeutils v0.27.1
+go: downloading github.com/go-openapi/swag/yamlutils v0.27.1
+go: downloading github.com/emicklei/go-restful/v3 v3.13.0
+go: downloading github.com/go-openapi/swag/pools v0.27.1
+go: downloading modernc.org/libc v1.74.1
+go: downloading modernc.org/memory v1.11.0
+go: downloading github.com/dustin/go-humanize v1.0.1
+go: downloading modernc.org/mathutil v1.7.1
+go: downloading github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkUDPSockets/sockets=1-6         	  155835	     33636 ns/op	         0 lost	     29730 q/s	    2311 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	  566218	      9540 ns/op	         0 lost	    104823 q/s	    2373 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	15.305s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkUDPSockets/sockets=1-6         	  276156	     22155 ns/op	         0 lost	     45136 q/s	    2310 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	  572317	      9758 ns/op	         0 lost	    102477 q/s	    2370 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	25.146s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkUDPSockets/sockets=1-6         	  165919	     33673 ns/op	         0 lost	     29698 q/s	    2311 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	  639430	      9424 ns/op	         0 lost	    106107 q/s	    2370 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	20.664s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkUDPSockets/sockets=1-6         	  439584	     23625 ns/op	         0 lost	     42327 q/s	    2310 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	  568447	      9615 ns/op	         0 lost	    104009 q/s	    2374 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	19.849s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkUDPSockets/sockets=1-6         	  426628	     23639 ns/op	         0 lost	     42303 q/s	    2311 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	  566330	      9709 ns/op	         0 lost	    102999 q/s	    2364 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	20.083s

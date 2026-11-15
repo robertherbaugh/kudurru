@@ -1,0 +1,6 @@
+STATUS  BENCHMARK                     UNIT    BASELINE  CURRENT  DETAIL
+limit   BenchmarkLookup100k/hit       p99-ns  -         2430     median 2430 exceeds the limit 2000
+limit   BenchmarkLookup100k/cname     p99-ns  -         4761     median 4761 exceeds the limit 2000
+limit   BenchmarkLookup100k/wildcard  p99-ns  -         2634     median 2634 exceeds the limit 2000
+benchgate: FAIL
+exit status 1

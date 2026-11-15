@@ -1,0 +1,51 @@
+go: downloading golang.org/x/sync v0.24.0
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache/persist
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkPersist200k/gzip=true/save-6    	       1	2511937553 ns/op	   8928779 bytes	    197329 entries	202313752 B/op	  592473 allocs/op
+BenchmarkPersist200k/gzip=true/restore-6 	       1	4234341578 ns/op	224950920 B/op	 1315437 allocs/op
+BenchmarkPersist200k/gzip=false/save-6   	       1	3745192793 ns/op	  87331736 bytes	    197106 entries	515854432 B/op	  591632 allocs/op
+BenchmarkPersist200k/gzip=false/restore-6         	       1	3349655552 ns/op	378760928 B/op	 1278737 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache/persist	18.775s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache/persist
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkPersist200k/gzip=true/save-6    	       1	2560023219 ns/op	   8963120 bytes	    197070 entries	202017960 B/op	  591704 allocs/op
+BenchmarkPersist200k/gzip=true/restore-6 	       1	3570740341 ns/op	224736832 B/op	 1312464 allocs/op
+BenchmarkPersist200k/gzip=false/save-6   	       1	2641261328 ns/op	  87252816 bytes	    196927 entries	515700272 B/op	  591105 allocs/op
+BenchmarkPersist200k/gzip=false/restore-6         	       1	2626645804 ns/op	378429872 B/op	 1277552 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache/persist	16.019s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache/persist
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkPersist200k/gzip=true/save-6    	       1	2088629182 ns/op	   8973257 bytes	    197241 entries	202222968 B/op	  592196 allocs/op
+BenchmarkPersist200k/gzip=true/restore-6 	       1	2702854973 ns/op	224927480 B/op	 1314016 allocs/op
+BenchmarkPersist200k/gzip=false/save-6   	       1	2637282528 ns/op	  87351981 bytes	    197152 entries	515926192 B/op	  591780 allocs/op
+BenchmarkPersist200k/gzip=false/restore-6         	       1	2567212238 ns/op	378853568 B/op	 1279113 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache/persist	14.253s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache/persist
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkPersist200k/gzip=true/save-6    	       1	1515563319 ns/op	   8877057 bytes	    196926 entries	201973896 B/op	  591263 allocs/op
+BenchmarkPersist200k/gzip=true/restore-6 	       1	3025122284 ns/op	224520016 B/op	 1313554 allocs/op
+BenchmarkPersist200k/gzip=false/save-6   	       1	2757002662 ns/op	  87425468 bytes	    197319 entries	516080864 B/op	  592271 allocs/op
+BenchmarkPersist200k/gzip=false/restore-6         	       1	3154819982 ns/op	379155136 B/op	 1280003 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache/persist	13.382s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache/persist
+cpu: Intel(R) Xeon(R) CPU E5-2697 v2 @ 2.70GHz
+BenchmarkPersist200k/gzip=true/save-6    	       1	1589762369 ns/op	   8897999 bytes	    197083 entries	202073016 B/op	  591724 allocs/op
+BenchmarkPersist200k/gzip=true/restore-6 	       1	2640981861 ns/op	224723856 B/op	 1314269 allocs/op
+BenchmarkPersist200k/gzip=false/save-6   	       1	3036069745 ns/op	  87426000 bytes	    197320 entries	516048736 B/op	  592274 allocs/op
+BenchmarkPersist200k/gzip=false/restore-6         	       1	3088126246 ns/op	379149328 B/op	 1279833 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache/persist	13.230s

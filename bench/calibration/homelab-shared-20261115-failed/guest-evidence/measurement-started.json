@@ -1,0 +1,22 @@
+{
+  "at": "2026-11-15T20:08:00.241445+00:00",
+  "argv": [
+    "/usr/bin/python3",
+    "-B",
+    "/home/benchmark/kudurru/control/hack/bench-dedicated.py",
+    "calibrate",
+    "--host-record",
+    "/var/lib/kudurru-benchmark/host.json",
+    "--reference",
+    "/home/benchmark/kudurru/reference",
+    "--later-reference",
+    "/home/benchmark/kudurru/later-reference",
+    "--output",
+    "/var/lib/kudurru-benchmark/v020-shared-20261115/calibration"
+  ],
+  "method_source": "fef3a1fde4cf8b847ba833d9e1f0710e7ec3f998",
+  "orchestration_sha256": "a07b9b2170b6b7aea0084996d8ce183f7017ec668fb6b889839dd812b03ac56c",
+  "scope": "40 historical native commands, five samples, six processors; no candidate measurement",
+  "recording": "v020-shared-20261115",
+  "release_qualified": false
+}

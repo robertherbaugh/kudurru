@@ -1,0 +1,21 @@
+
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ B/op
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ allocs/op
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ failed
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ ns/op
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ q/s
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ B/op
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ allocs/op
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ failed
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ ns/op
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ q/s
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ B/op
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ allocs/op
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ failed
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ ns/op
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ q/s
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ B/op
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ allocs/op
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ failed
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ ns/op
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ q/s

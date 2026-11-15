@@ -1,0 +1,45 @@
+{
+  "manifest_sha256": "5e1d12269c7875a980aa3330960a39418959382ff7fb280dc2ede185c50a3f0f",
+  "files_verified": 114,
+  "source_paths_verified": {
+    "original": 406,
+    "later": 4636,
+    "control": 5348
+  },
+  "native_commands": 40,
+  "native_failures": [],
+  "minimum_disk_free_bytes": 61104390144,
+  "shape_product_gates": {
+    "blocking-zone": {
+      "exit_code": 1,
+      "metrics": 139
+    },
+    "cache": {
+      "exit_code": 0,
+      "metrics": 20
+    },
+    "upstream": {
+      "exit_code": 0,
+      "metrics": 60
+    },
+    "udp": {
+      "exit_code": 0,
+      "metrics": 10
+    },
+    "dot": {
+      "exit_code": 0,
+      "metrics": 20
+    },
+    "quic": {
+      "exit_code": 0,
+      "metrics": 12
+    },
+    "persist": {
+      "exit_code": 0,
+      "metrics": 16
+    }
+  },
+  "eligible_for_limit_review": false,
+  "exit_code": 1,
+  "release_qualified": false
+}
