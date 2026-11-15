@@ -1,5 +1,9 @@
 # Benchmark evidence
 
+The [dedicated-host method](dedicated-host-method.md) is prepared for separate
+host and historical-calibration review. It has not qualified v0.2 or replaced
+the failed Ubicloud gate or existing hardware profiles.
+
 `make bench` runs each blocking and zone sample in a fresh Go process, five
 processes per scope by default. It preserves native failures in the combined
 output and invokes `hack/benchgate` against the committed baseline and limits.
