@@ -148,3 +148,33 @@ func TestServingRuntimeFollowerFirstImageRecovery(t *testing.T) {
 		})
 	}
 }
+
+// D408: the integration host starts only with the node's first complete
+// serving publication, and a runtime that ends before it never starts it.
+func TestIntegrationsStartAfterServingInitialized(t *testing.T) {
+	initialized := make(chan struct{})
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- afterInitialized(t.Context(), initialized, func(context.Context) error { close(started); return nil })
+	}()
+	select {
+	case <-started:
+		t.Fatal("integrations started before the first complete serving publication")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(initialized)
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("integrations did not start after the first complete serving publication")
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := afterInitialized(ctx, make(chan struct{}), func(context.Context) error { t.Fatal("ran without a publication"); return nil }); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -864,6 +864,19 @@ the job requests at once (`Host.Wake`), and at most one interval after the
 sync ended, the old schedule. Syncs of one job still never overlap, so a
 provider sees at most one sync start per interval. Failed syncs keep their
 retry backoff, counted from the failure, and no observation's expiry changes.
+Starting sooner also exposed two waits that had hidden behind the old rest.
+The zone driver writes a UniFi target zone's committed status after every
+change of its records, the previous observation's included; that write
+changes only the zone's status and resource version, which the instance's
+authority digest already leaves out, so the next observation's admission
+accepts a target zone whose only change since its cut is status (same UID,
+generation, spec, labels, annotations, finalizers, owners and deletion) and
+still refuses any other change. And on the complete SQLite runtime the host
+starts with the node's first complete serving publication, the one readiness
+waits for: every provider request of an acquisition commits a budget
+reservation that makes the preparation in progress obsolete, so an
+acquisition that began first held readiness back for its whole duration,
+while its own acknowledgment waited for that same publication.
 
 ## Cloudflare adapter
 
