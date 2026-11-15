@@ -259,7 +259,12 @@ func (s *servingRuntime) withMemberForward(ctx context.Context, view *servingaut
 							if err := resources.CurrentAt(s.opts.Now()); err != nil {
 								return err
 							}
-							return s.publisher.CheckReadLease(scope, lease)
+							// The request's source, not its exact publication: a
+							// later publication of the same source (a Wake's,
+							// D405) does not cut a forward that captured the
+							// earlier one; an install or a dependency change
+							// still does (D406).
+							return s.publisher.CheckSourceLease(scope, lease)
 						}
 						if err := check(ctx); err != nil {
 							return err
