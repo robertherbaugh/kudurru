@@ -93,7 +93,7 @@ func newPrimaryRuntime(ctx context.Context, o primaryRuntimeOptions) (*primaryRu
 	if err != nil {
 		return nil, err
 	}
-	p.runtime, err = pr.New(pr.Options{Store: o.Store, Repository: zonestate.NewRepository(backend, o.Limits), Reader: primaryzone.NewReader(o.Store, primaryzone.ReaderOptions{Policy: guard.CapturePolicy}), LifecycleCAS: adapter.LifecycleCAS, Admit: adapter.Admission, Publish: p.publication.Publish, Proofs: p.ingress, Notify: sender, Limits: o.Limits, UpdateLimits: o.UpdateLimits})
+	p.runtime, err = pr.New(pr.Options{Store: o.Store, Repository: zonestate.NewRepository(backend, o.Limits), Reader: primaryzone.NewReader(o.Store, primaryzone.ReaderOptions{Policy: guard.CapturePolicy}), LifecycleCAS: adapter.LifecycleCAS, Admit: adapter.Admission, Publish: p.publication.Publish, PublishIncluding: p.publication.PublishIncluding, Proofs: p.ingress, Notify: sender, Limits: o.Limits, UpdateLimits: o.UpdateLimits})
 	if err != nil {
 		return nil, err
 	}

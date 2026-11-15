@@ -55,15 +55,27 @@ type Command struct {
 // acknowledged the exact lifecycle incarnation/head and routing cut supplied.
 type Publication func(context.Context, Cut, Member) error
 
+// PublicationIncluding acknowledges a committed UPDATE (D409): it returns
+// success once root's complete serving bundle serves either the exact member,
+// as Publication does, or a later head of the same zone incarnation whose
+// receipt ledger still carries the UPDATE's own receipt (ID receipt, commit
+// sequence committed). Receipts are carried unchanged from commit to commit
+// and are added only by the commit that made them, so that head descends from
+// the UPDATE's commit: the update is committed and served.
+type PublicationIncluding func(ctx context.Context, member Member, receipt string, committed uint64) error
+
 // Options supplies bounded background adapters; nil adapters disable writes.
 type Options struct {
-	Store                 store.Store
-	Repository            *zonestate.Repository
-	Reader                zonestate.DesiredReader
-	Compiler              zonestate.DesiredCompiler
-	LifecycleCAS          LifecycleCAS
-	Admit                 Admission
-	Publish               Publication
+	Store        store.Store
+	Repository   *zonestate.Repository
+	Reader       zonestate.DesiredReader
+	Compiler     zonestate.DesiredCompiler
+	LifecycleCAS LifecycleCAS
+	Admit        Admission
+	Publish      Publication
+	// PublishIncluding is optional; without it an UPDATE whose exact
+	// commit was superseded before its publication answers SERVFAIL.
+	PublishIncluding      PublicationIncluding
 	Now                   func() time.Time
 	Limits                zonestate.Limits
 	UpdateLimits          dynamicupdate.Limits
