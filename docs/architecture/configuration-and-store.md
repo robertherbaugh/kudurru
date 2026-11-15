@@ -625,6 +625,15 @@ canonical row replacement; accepted owner changes and local denial updates
 share the actual SQLite transaction. Uncertain commit completion closes local
 admission rather than granting rollback or mutation-replay credit.
 
+The version 5 authentication root also requires
+`auth-revocation-checkpoint-v1` (D413). Primary startup explicitly migrates complete
+version 1–4 auth manifests; ordinary reads and follower installation never invent
+or convert security history. The checkpoint and affected credential removals
+commit and replicate in the original IAM command. If the new manifest field
+cannot fit at the old byte bound, the admitted startup migration compacts eligible
+history in that same transaction. [Access](access.md#iam-writers-d396) describes
+which floors remain and which OIDC clients must authenticate again.
+
 Replica pulls retain one finite original context, committed receiver source,
 local evidence, authority and installed baseline before source reads or network
 acquisition. A higher authenticated term still fences the receiver, but cannot

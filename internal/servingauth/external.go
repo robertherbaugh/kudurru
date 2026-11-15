@@ -71,6 +71,12 @@ func (d ExternalSessionDecision) VerifiedProofExpiresAt() time.Time {
 	return d.evidence.Facts().ExpiresAt
 }
 
+// ProofAfterCheckpoint rechecks proof against history compacted after resolution
+// in the same command. Enrollment time cannot make an old JWT fresh.
+func (d ExternalSessionDecision) ProofAfterCheckpoint(at time.Time) bool {
+	return d.evidence != nil && AfterCheckpoint(at, d.evidence.Facts().IssuedAt)
+}
+
 // SealEvidence requires the exact existing account UID or a new independently generated UID.
 func (d ExternalSessionDecision) SealEvidence(k *oidccore.EvidenceKeyring, identityUID, sessionID string) (string, error) {
 	if d.evidence == nil || !externalUIDPattern.MatchString(identityUID) || d.existingUID != "" && identityUID != d.existingUID {
@@ -121,6 +127,9 @@ func ResolveExternalSessionCurrent(ctx context.Context, tx *sqlite.CommandTx, de
 	}
 	if len(grants) == 0 {
 		return ExternalSessionDecision{}, ErrDenied
+	}
+	if !AfterCheckpoint(v.cut.security.RevocationCheckpoint, token.Facts().IssuedAt) {
+		return ExternalSessionDecision{}, ErrCredentials
 	}
 	if err = v.externalFloors(provider, existing, grants, token.Facts().IssuedAt); err != nil {
 		return ExternalSessionDecision{}, err
@@ -278,6 +287,9 @@ func (v *View) verifyJWTWithValidity(ctx context.Context, proof Credential, now 
 	if err != nil || len(grants) == 0 {
 		return auth.Principal{}, credentialValidity{}, ErrDenied
 	}
+	if !AfterCheckpoint(v.cut.security.RevocationCheckpoint, token.Facts().IssuedAt) {
+		return auth.Principal{}, credentialValidity{}, ErrCredentials
+	}
 	if err = v.externalFloors(provider, existing, grants, token.Facts().IssuedAt); err != nil {
 		return auth.Principal{}, credentialValidity{}, err
 	}
@@ -342,6 +354,9 @@ func (v *View) loadExternal(p auth.Principal, now time.Time) (auth.Principal, er
 	grants, err := v.externalGrants(provider, identity, existing, true)
 	if err != nil {
 		return auth.Principal{}, err
+	}
+	if !AfterCheckpoint(v.cut.security.RevocationCheckpoint, evidence.Facts().IssuedAt) {
+		return auth.Principal{}, ErrCredentials
 	}
 	if err = v.externalFloors(provider, existing, grants, evidence.Facts().IssuedAt); err != nil {
 		return auth.Principal{}, err

@@ -82,6 +82,36 @@ func providerSpec() public.IdentityProviderSpec {
 	return public.IdentityProviderSpec{Issuer: "https://issuer.example/realm", ClientID: "browser", ClientSecretRef: &public.CredentialReference{Env: "SECURITY_PROVIDER_TEST"}}
 }
 
+func TestProviderRetirementAcceptsAtomicCompactedFloor(t *testing.T) {
+	st := openSecurityStoreValidator(t, filepath.Join(t.TempDir(), "state.db"), ValidateEntry, ValidateImage)
+	command(t, st, InitializeOwners)
+	at := time.Now().UTC()
+	command(t, st, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		return ReconcileProviderConfigs(ctx, tx, []providerregistry.DesiredConfig{{ID: "corp", Spec: providerSpec()}}, at)
+	})
+	state := ownerState(t, st)
+	fillGrantHistory(&state, compactHistoryRows-1, at)
+	seedHistory(t, st, state)
+	retiredAt := at.Add(time.Second)
+	command(t, st, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		return ReconcileProviderConfigs(ctx, tx, []providerregistry.DesiredConfig{}, retiredAt)
+	})
+	state = ownerState(t, st)
+	if !state.RevocationCheckpoint.Equal(retiredAt) || len(state.ProviderFloors) != 0 {
+		t.Fatal("provider retirement failed to fold exact floor")
+	}
+	command(t, st, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		r, err := currentProviderRegistry(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if len(r.ConfigSources()) != 0 {
+			t.Fatal("compacted provider plan did not withdraw the source")
+		}
+		return nil
+	})
+}
+
 func TestProviderChangesCommitFloorsAndReceiptsAtomically(t *testing.T) {
 	st := openSecurityStoreValidator(t, filepath.Join(t.TempDir(), "state.db"), ValidateEntry, ValidateImage)
 	command(t, st, InitializeOwners)

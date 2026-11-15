@@ -112,16 +112,17 @@ type AccountRef struct {
 
 // RootEntry is the required explicit owner manifest. Every set must be non-nil.
 type RootEntry struct {
-	FormatVersion      int      `json:"formatVersion"`
-	Epoch              uint64   `json:"epoch,string"`
-	GrantFloors        []string `json:"grantFloors"`
-	AccountFloors      []string `json:"accountFloors"`
-	ProviderFloors     []string `json:"providerFloors"`
-	Sessions           []string `json:"sessions"`
-	TOTP               []string `json:"totp"`
-	ExternalIdentities []string `json:"externalIdentities"`
-	ExternalSessions   []string `json:"externalSessions"`
-	BrowserAttempts    []string `json:"browserAttempts"`
+	RevocationCheckpoint time.Time `json:"revocationCheckpoint"`
+	FormatVersion        int       `json:"formatVersion"`
+	Epoch                uint64    `json:"epoch,string"`
+	GrantFloors          []string  `json:"grantFloors"`
+	AccountFloors        []string  `json:"accountFloors"`
+	ProviderFloors       []string  `json:"providerFloors"`
+	Sessions             []string  `json:"sessions"`
+	TOTP                 []string  `json:"totp"`
+	ExternalIdentities   []string  `json:"externalIdentities"`
+	ExternalSessions     []string  `json:"externalSessions"`
+	BrowserAttempts      []string  `json:"browserAttempts"`
 }
 
 // GrantFloor persists current behavior: issuedAt <= ValidAfter fails.
@@ -165,15 +166,16 @@ type SessionRecord struct {
 
 // Security is a detached writable command input; it is never a View's live map.
 type Security struct {
-	Epoch              uint64
-	GrantFloors        []GrantFloor
-	AccountFloors      []AccountFloor
-	ProviderFloors     []ProviderFloor
-	Sessions           []SessionRecord
-	TOTP               []totp.Record
-	ExternalIdentities []ExternalIdentity
-	ExternalSessions   []ExternalSessionRecord
-	BrowserAttempts    []BrowserAttempt
+	RevocationCheckpoint time.Time
+	Epoch                uint64
+	GrantFloors          []GrantFloor
+	AccountFloors        []AccountFloor
+	ProviderFloors       []ProviderFloor
+	Sessions             []SessionRecord
+	TOTP                 []totp.Record
+	ExternalIdentities   []ExternalIdentity
+	ExternalSessions     []ExternalSessionRecord
+	BrowserAttempts      []BrowserAttempt
 }
 
 // CurrentReader is implemented by sqlite.CommandTx. Root must pass only its

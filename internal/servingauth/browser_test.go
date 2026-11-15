@@ -110,6 +110,7 @@ func TestBrowserV3UpgradeIsExplicitAndAdvancesOnce(t *testing.T) {
 			if err := json.Unmarshal(rows[i].Data, &root); err != nil {
 				t.Fatal(err)
 			}
+			delete(root, "revocationCheckpoint")
 			delete(root, "browserAttempts")
 			root["formatVersion"] = json.RawMessage(`3`)
 			rows[i].Data, _ = json.Marshal(root)

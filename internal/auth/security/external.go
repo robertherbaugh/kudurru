@@ -85,6 +85,9 @@ func IssueExternal(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.D
 	if err := s.Commit(ctx); err != nil {
 		return Enrollment{}, err
 	}
+	if !d.ProofAfterCheckpoint(s.value.RevocationCheckpoint) {
+		return Enrollment{}, servingauth.ErrCredentials
+	}
 	enrollment := Enrollment{id: id, csrf: csrf}
 	if proof.Mode == oidccore.BrowserIDToken {
 		expiry := d.VerifiedProofExpiresAt()
@@ -177,6 +180,9 @@ func (s *State) enrollExternal(record servingauth.ExternalSessionRecord) error {
 	if err := s.capacity(); err != nil {
 		return err
 	}
+	if !servingauth.AfterCheckpoint(s.value.RevocationCheckpoint, record.IssuedAt) {
+		return servingauth.ErrCredentials
+	}
 	for _, old := range s.value.Sessions {
 		if old.ID == record.ID {
 			return ErrConflict
@@ -205,6 +211,7 @@ func (s *State) enrollExternal(record servingauth.ExternalSessionRecord) error {
 	record.FormatVersion, record.Epoch = servingauth.FormatVersion, s.value.Epoch+1
 	record.Grants = slices.Clone(record.Grants)
 	s.value.ExternalSessions = append(s.value.ExternalSessions, record)
+	s.recordIssuance(record.IssuedAt)
 	s.changed = true
 	return nil
 }

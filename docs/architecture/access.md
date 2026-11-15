@@ -414,8 +414,10 @@ missing kinds, a safe export, or missing security history cannot create a view.
 The required `auth/v1/root` row inventories every auth-owned security row and
 records a monotonic epoch. Sessions bind the exact account UID and issuance epoch
 to durable enrollment, expiry, grants, a CSRF verifier and revocation state.
-Account/provider floors also bind UIDs; normalized grant floors persist across
-deletion and regrant. Cookies issued at or before a floor are rejected. The new
+Account/provider floors also bind UIDs; normalized grant revocations survive
+deletion and regrant. Cookies issued at or before a retained floor are rejected.
+D413 compacts historical floors into a durable revocation checkpoint after
+materializing their effect on stored credentials, as described under IAM writers. The new
 version 2 cookie requires its matching enrollment, so activating this owner will
 require users of legacy sealed cookies to sign in again.
 
@@ -644,12 +646,18 @@ return 503 until equivalent current commands are available.
 SQLite startup initializes the explicit empty security manifest under its writer
 fence and validates owner rows on later writes/replica installation. Existing
 history is preserved; an absent root beside other auth rows is an error.
-Startup explicitly upgrades complete version 1, 2 or 3 manifests to version 4,
+Startup explicitly upgrades complete version 1, 2, 3 or 4 manifests to version 5,
 preserving every session, replay row and revocation floor and advancing the
 security epoch once. Version 3 introduced external identities and sessions;
-version 4 adds the mandatory pending browser-attempt inventory. Replication
-requires the `auth-browser-attempts-v1` feature, so receivers without this support
-reject these images. Coordinated upgrades must account for that compatibility
+version 4 adds the mandatory pending browser-attempt inventory, and version 5
+adds the required `revocationCheckpoint` time (initially zero). Migration preserves
+the full history before later admitted compaction, even at row capacity. If the
+new field would exceed an old database's byte budget, that same startup command
+materializes eligible revocations into the checkpoint before staging the new
+manifest; failure rolls back the complete migration.
+Replication requires both `auth-browser-attempts-v1` and
+`auth-revocation-checkpoint-v1`; receivers without these capabilities reject the
+image independently of its payload digest. Coordinated upgrades must account for that compatibility
 boundary. Version 1 or empty-state initialization rejects legacy account seeds
 without replay authority, including disabled accounts; the version 2 upgrade
 preserves supported active factors. Startup never silently adopts or clears a
@@ -1540,19 +1548,51 @@ sequenceDiagram
     H->>C: Original raw proof, review, desired state
     C->>C: Reauthorize, compare review and manager
     C->>C: Stage object + floor + token deletion + audit
+    opt Historical floors reach compaction trigger or section is full
+        C->>C: Remove affected enrollments and tokens; collect orphan factor rows
+        C->>C: Fold eligible floors into monotonic revocation checkpoint
+    end
     C-->>H: Commit or roll back everything
     H-->>A: Object, 204, or token shown once
 ```
 
-Account and provider floors are permanent, like grant floors: nothing prunes
-them, so each delete and the first disable or group change of a UID adds one
-row to the security section. That section is bounded at
-`servingauth.MaxRows` (4096) rows shared with sessions, TOTP records, external
-identities and browser attempts. At the bound, a command that needs a new floor
-or session fails with `ErrBounds` (`503 unavailable`) and commits nothing; an
-existing account, its tokens and reads are unaffected
-(`TestServingHTTPIAMWritersDeleteAtSecurityCapacity`). Pruning floors of UIDs
-that can no longer authenticate is open work.
+D413 replaces permanent historical floor growth with transactional compaction.
+At 256 retained floors, before admitting a row to a full section, or when an
+encoded write would exceed the byte budget, the writer
+materializes each floor's effect: it removes affected local/external session
+enrollments and pending browser attempts, deletes affected API tokens, and
+collects TOTP replay records whose exact local account UID no longer exists.
+Absent enrollments and attempts deny replay. New IDs come from the server's
+cryptographic random generator. Unaffected stored sessions and API tokens retain
+their original lifetime and identity; disabled-factor replay for a live UID stays.
+
+The same command folds eligible floors into the greatest historical revocation
+time in the root's monotonic checkpoint. Raw OIDC proof and previously sealed JWT
+request evidence must have an issue time strictly after that checkpoint; an older
+OIDC token requires fresh authentication, even if its provider gave it a much
+longer expiry. New enrollment times also must be strictly later. External issuance
+rechecks the original JWT after any compaction in its command; assigning a newer
+session timestamp cannot make old proof fresh. No arbitrary retention TTL or
+maximum OIDC token lifetime is assumed.
+
+External account floors remain because they bind administrative revisions and
+prevent missing tuples from silently reprovisioning. Exact provider floors remain
+while enrolled external proof still needs them: that proof's original issue time
+can precede the enrollment time. Provider plans accept a staged checkpoint at or
+after their required revocation time when compaction replaced their exact floor.
+The object change, affected-token deletion, session removal, checkpoint, manifest
+and audit share the original command's commit and rollback, and replicate together.
+A near-full database can recover on its next authorized IAM write.
+
+The section still has `servingauth.MaxRows` (4096) rows and a 4 MiB byte limit,
+shared with live sessions, factor state, external identities, browser attempts and
+other owners. Compaction preserves other owners and refuses malformed history.
+When genuinely retained state fills those bounds, a new admission returns
+`ErrBounds` (`503 unavailable`) and rolls back the entire command. The shared-state
+refusal and recovery from a full historical inventory have separate mounted API
+regressions; more than 4,096 real account create/enroll/delete cycles, restart,
+replica promotion, old proof rejection and unrelated credential continuity are
+covered by the security-owner tests.
 
 All of these operations are `primary` in the follower contract (D368). On
 Kubernetes they refuse as listed above; `GET /iam/serviceaccounts/{namespace}/{name}`

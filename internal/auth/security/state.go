@@ -46,6 +46,9 @@ func Initialize(ctx context.Context, tx *sqlite.CommandTx) error {
 		case servingauth.RootFormatVersion:
 			_, err := servingauth.DecodeSecurity(rows)
 			return err
+		case 4:
+			initial, err = servingauth.UpgradeSecurityV4(rows)
+			legacyFactors = false
 		case 3:
 			initial, err = servingauth.UpgradeSecurityV3(rows)
 			legacyFactors = false
@@ -66,19 +69,27 @@ func Initialize(ctx context.Context, tx *sqlite.CommandTx) error {
 			return err
 		}
 	}
-	encoded, err := servingauth.EncodeSecurity(initial)
+	encode := func(value servingauth.Security) ([]replication.Entry, error) {
+		encoded, err := servingauth.EncodeSecurity(value)
+		if err == nil {
+			err = validateCombined(rows, encoded)
+		}
+		return encoded, err
+	}
+	encoded, err := encode(initial)
+	if errors.Is(err, servingauth.ErrBounds) && len(owned(rows)) != 0 {
+		// The new root field itself must not strand a complete old database
+		// at its byte bound. Materialize history inside this same migration.
+		s := &State{ctx: ctx, tx: tx, value: initial}
+		if err := s.compact(); err != nil {
+			return err
+		}
+		encoded, err = encode(s.value)
+	}
 	if err != nil {
 		return err
 	}
-	if err := validateCombined(rows, encoded); err != nil {
-		return err
-	}
-	for _, row := range encoded {
-		if err := tx.PutSection(ctx, "security", row); err != nil {
-			return err
-		}
-	}
-	return nil
+	return replaceOwnedRows(ctx, tx, owned(rows), encoded)
 }
 
 func rejectLegacyFactors(ctx context.Context, tx *sqlite.CommandTx) error {
@@ -104,12 +115,15 @@ func rejectLegacyFactors(ctx context.Context, tx *sqlite.CommandTx) error {
 }
 
 // State is a transaction-bound edit. Its methods expose no mutable snapshot and
-// cannot lower floors, reuse session IDs or remove unexpired enrollments.
+// cannot lower revocation authority. Compaction can remove denied enrollments;
+// credential issuers must always generate fresh cryptographically random IDs.
 type State struct {
+	ctx       context.Context
 	tx        *sqlite.CommandTx
 	before    []replication.Entry
 	otherRows int
 	value     servingauth.Security
+	issuedAt  time.Time // Earliest enrollment added by this edit, not existing sessions.
 	changed   bool
 	finished  bool
 }
@@ -128,7 +142,7 @@ func Load(ctx context.Context, tx *sqlite.CommandTx) (*State, error) {
 		return nil, err
 	}
 	before := owned(rows)
-	return &State{tx: tx, before: before, otherRows: len(rows) - len(before), value: v}, nil
+	return &State{ctx: ctx, tx: tx, before: before, otherRows: len(rows) - len(before), value: v}, nil
 }
 
 func owned(rows []replication.Entry) []replication.Entry {
@@ -150,6 +164,9 @@ func (s *State) valid() error {
 }
 
 func (s *State) capacity() error {
+	if err := s.compactIfNeeded(); err != nil {
+		return err
+	}
 	if s.otherRows+len(s.value.GrantFloors)+len(s.value.AccountFloors)+len(s.value.ProviderFloors)+len(s.value.Sessions)+len(s.value.TOTP)+len(s.value.ExternalIdentities)+len(s.value.ExternalSessions)+len(s.value.BrowserAttempts) >= servingauth.MaxRows-1 {
 		return servingauth.ErrBounds
 	}
@@ -157,7 +174,7 @@ func (s *State) capacity() error {
 }
 
 // InvalidateGrant conservatively invalidates every older enrollment containing
-// this normalized grant. Floors persist after deletion and later regrant.
+// this normalized grant. Revocation survives deletion, regrant and compaction.
 func (s *State) InvalidateGrant(grant string, at time.Time) error {
 	if err := s.valid(); err != nil {
 		return err
@@ -247,6 +264,9 @@ func (s *State) Enroll(record servingauth.SessionRecord) (servingauth.SessionRec
 	if err := s.capacity(); err != nil {
 		return servingauth.SessionRecord{}, err
 	}
+	if !servingauth.AfterCheckpoint(s.value.RevocationCheckpoint, record.IssuedAt) {
+		return servingauth.SessionRecord{}, servingauth.ErrCredentials
+	}
 	for _, old := range s.value.Sessions {
 		if old.ID == record.ID {
 			return servingauth.SessionRecord{}, ErrConflict
@@ -271,13 +291,14 @@ func (s *State) Enroll(record servingauth.SessionRecord) (servingauth.SessionRec
 	record.Epoch = s.value.Epoch + 1
 	record.Grants = slices.Clone(record.Grants)
 	s.value.Sessions = append(s.value.Sessions, record)
+	s.recordIssuance(record.IssuedAt)
 	s.changed = true
 	record.Grants = slices.Clone(record.Grants)
 	return record, nil
 }
 
-// Revoke is an idempotent command. It retains the enrollment until its absolute
-// expiry so a retry cannot recreate it under the same identifier.
+// Revoke is an idempotent command. Compaction or absolute expiry can remove the
+// denied enrollment; missing enrollment always rejects the original cookie.
 func (s *State) Revoke(id string) error {
 	if err := s.valid(); err != nil {
 		return err
@@ -299,7 +320,8 @@ func (s *State) Revoke(id string) error {
 
 // CollectExpired removes enrollments and pending browser attempts whose absolute
 // lifetime has ended. Idle-expired and revoked sessions remain until then;
-// revocation floors remain. Missing attempts can never be consumed.
+// revocation floors remain until transactional compaction. Missing attempts can
+// never be consumed.
 func (s *State) CollectExpired(now time.Time) error {
 	if err := s.valid(); err != nil {
 		return err
@@ -334,6 +356,9 @@ func (s *State) Commit(ctx context.Context) error {
 	if !slices.EqualFunc(s.before, owned(current), func(a, b replication.Entry) bool { return a.Key == b.Key && bytes.Equal(a.Data, b.Data) }) {
 		return ErrConflict
 	}
+	if err := s.compactIfNeeded(); err != nil {
+		return err
+	}
 	if !s.changed {
 		_, err := servingauth.DecodeSecurity(current)
 		return err
@@ -343,22 +368,53 @@ func (s *State) Commit(ctx context.Context) error {
 	}
 	s.value.Epoch++
 	next, err := servingauth.EncodeSecurity(s.value)
+	if errors.Is(err, servingauth.ErrBounds) {
+		if err := s.compact(); err != nil {
+			return err
+		}
+		next, err = servingauth.EncodeSecurity(s.value)
+	}
 	if err != nil {
 		return err
 	}
 	if err := validateCombined(current, next); err != nil {
-		return err
-	}
-	keep := make(map[string]bool, len(next))
-	for _, row := range next {
-		keep[row.Key] = true
-		if err := s.tx.PutSection(ctx, "security", row); err != nil {
+		if !errors.Is(err, servingauth.ErrBounds) {
+			return err
+		}
+		if err := s.compact(); err != nil {
+			return err
+		}
+		next, err = servingauth.EncodeSecurity(s.value)
+		if err != nil {
+			return err
+		}
+		if err := validateCombined(current, next); err != nil {
 			return err
 		}
 	}
-	for _, row := range s.before {
+	if !s.issuedAt.IsZero() && !servingauth.AfterCheckpoint(s.value.RevocationCheckpoint, s.issuedAt) {
+		return servingauth.ErrCredentials
+	}
+	return replaceOwnedRows(ctx, s.tx, s.before, next)
+}
+
+func (s *State) recordIssuance(at time.Time) {
+	if s.issuedAt.IsZero() || at.Before(s.issuedAt) {
+		s.issuedAt = at
+	}
+}
+
+func replaceOwnedRows(ctx context.Context, tx *sqlite.CommandTx, before, next []replication.Entry) error {
+	keep := make(map[string]bool, len(next))
+	for _, row := range next {
+		keep[row.Key] = true
+		if err := tx.PutSection(ctx, "security", row); err != nil {
+			return err
+		}
+	}
+	for _, row := range before {
 		if !keep[row.Key] {
-			if err := s.tx.DeleteSection(ctx, "security", row.Key); err != nil {
+			if err := tx.DeleteSection(ctx, "security", row.Key); err != nil {
 				return err
 			}
 		}

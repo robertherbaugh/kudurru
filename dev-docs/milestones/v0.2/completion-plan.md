@@ -19430,3 +19430,74 @@ for all 168 documents (`interleaved-controls-final.log`, `interleaved-docs.log`)
 The next single hosted D412 run counts whatever its CPU or outcome; no pass is
 claimed here. It cannot explain or erase the sequential failures, establish a
 product speedup, or satisfy other release gates.
+
+### IAM revocation compaction and completed D412 recording, November 15, 2026 (D413)
+
+The owner explicitly kept the permanent IAM history limit release-blocking and
+approved a checkpoint that requires fresh authentication from older stateless OIDC
+tokens. D413 supersedes D396's permanent-floor policy. This is an implemented
+redesign, not acceptance of the old exhaustion behavior.
+
+The original IAM transaction materializes revoked stored credentials before folding
+eligible floors into a monotonic checkpoint, at 256 history rows, row capacity or
+encoded byte pressure. Unaffected local/external enrolled sessions and API tokens
+survive. Live external account revision/missing-tuple floors, required provider
+proof floors and live TOTP replay remain. Original OIDC proof is checked after
+all compaction, including the byte-bound fallback in commit. Complete auth root
+versions 1–4 explicitly migrate to version 5; a byte-full legacy database compacts
+inside its original migration if needed. The auth-revocation-checkpoint-v1 feature
+updates the complete D370 capability tuple. Allocation and other-owner bounds stay.
+
+Verification retained in `.context/iam-checkpoint/`:
+
+- 4,113 real local/service-account create/delete cycles cross the old shared
+  history cap, with representative enrollments, an unrelated retained cookie,
+  restart, old-cookie rejection and a successful subsequent password sign-in:
+  146.863 seconds without race. The preceding recording also passed in 155.825 s.
+- Complete security-owner race suite excluding that serial churn test passes in
+  115.370 s. It covers full history, byte-full version 4 migration, final-admission
+  rollback, affected/unaffected tokens, factor replay, provider-plan staging,
+  grant removal/regrant, retained provider evidence, raw/sealed JWT rejection,
+  fresh proof, and original-proof rejection after commit-stage byte compaction.
+- Separate same-name/new-UID cookie continuity and rejection through restart,
+  replica install, restart and promotion passes with race in 3.347 s.
+- Serving-auth, provider-registry and replication suites pass with race in
+  90.586/3.112/1.462 s; SQLite store/replication normal suites pass in
+  38.437/0.059 s. The required feature cannot be omitted from an image.
+- Mounted IAM writer selection, including local-user update/delete, concurrent
+  writes, final clock/cancellation, replica promotion, full history recovery,
+  subsequent password login and the separate other-owner capacity refusal,
+  passes with race and required envtest in 58.450 s.
+- Whole-repository vet and lint pass (zero lint issues); all 168 local documentation
+  link checks pass. Negative overlays fail the real full-history delete assertion
+  when compaction is disabled and the original-JWT assertion when its final proof
+  check is removed. The overlays never alter tracked production source.
+
+These proofs close the historical capacity implementation gap. They do not accept
+all IAM-WRITERS audit findings: actual TLS/per-writer mounted and live-follower
+router proofs, an API-created-provider session and the other separately listed
+acceptance requirements remain open. `tokens.write` acceptance is still separate.
+The full 20-step release snapshot recorded on 2c2d7121 is predecessor evidence,
+not qualification of the D413 source.
+
+The single predeclared D412 run 43690014307 has completed and FAILED. Its exact
+artifact is retained under
+`.context/release-resume-20261115/paired-2c2d7121/`. All 60 native commands completed
+successfully; all receipt output sizes, ten report hashes and the 406/5,333-path
+reference/candidate manifests agree with the predeclared plan. Go 1.27.4, six
+processors, AMD EPYC 9454P, allowed CPUs 0–7. Both the historical reference and
+candidate fail seven upstream absolute metrics; the other eight absolute gates
+pass. Relative comparisons are ineligible because the reference gate failed.
+No successful release qualification or causal hardware explanation is inferred;
+the earlier sequential failure remains retained, and the method was not retried.
+
+On predecessor 2c2d71211dd019d54e1ae07693390e8d3341a5e5, all 20 local release
+steps passed: 96-second full snapshot, 85,647,520-byte bundled binary, four cgo-free
+platform binaries, five archives, six packages, 22 verified checksums, live DNS and
+managed-root checks, and clean-tree cleanup. Detailed evidence remains in
+`.context/release-resume-20261115/final-2c2d7121/`. Hosted CI 43689998380 has no
+failure at this entry; e2e and shard 2/2 have passed and only Go shard 1/2 is still
+running. The necessary D413 product fix will require qualification on its new
+source. Performance, individual package findings and owner-deferred D353/D358
+acceptance remain open. The external Cloudflare docs build remains owner-excluded.
+No release promotion, tag push, merge, production deployment or publication occurred.

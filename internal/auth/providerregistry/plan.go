@@ -334,7 +334,10 @@ func (p *Plan) Stage(ctx context.Context, tx *sqlite.CommandTx) error {
 	}
 	for _, targets := range [][]ProviderIncarnation{p.retired, p.changed} {
 		for _, target := range targets {
-			found := false
+			// Compaction can replace an exact provider floor after materializing
+			// its effect on stored credentials. The durable checkpoint is then
+			// an equally strong floor for every stateless provider proof.
+			found := !auth.RevocationCheckpoint.IsZero() && !auth.RevocationCheckpoint.Before(p.at)
 			for _, f := range auth.ProviderFloors {
 				if f.Provider == target.ID && f.UID == target.UID && !f.ValidAfter.Before(p.at) {
 					found = true

@@ -79,7 +79,7 @@ func TestAnchorFormatGateTuple(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := tuple{Schema: store.SchemaVersion, Features: replication.FeatureNames(), Pure: trustanchors.FormatVersion, Recovery: trustanchors.RecoveryFormatVersion, Envelope: accepted.FormatVersion, LocalCarrier: local.record.Format, Row: replication.FormatVersion}
-	want := tuple{Schema: 9, Features: []string{"complete-set-v1", "singleton-settings-v1", "opaque-sections-v1", "provider-registry-v1", "inventory-state-v1", "auth-browser-attempts-v1", "managed-root-anchors-v1", "managed-root-runtime-v1", "member-enrollment-v1"},
+	want := tuple{Schema: 9, Features: []string{"complete-set-v1", "singleton-settings-v1", "opaque-sections-v1", "provider-registry-v1", "inventory-state-v1", "auth-browser-attempts-v1", "managed-root-anchors-v1", "managed-root-runtime-v1", "member-enrollment-v1", "auth-revocation-checkpoint-v1"},
 		Pure: 1, Recovery: 2, Envelope: 1, LocalCarrier: 1, Row: replication.FormatVersion}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("anchor format gate tuple changed without updating this tripwire and D370:\n got %+v\nwant %+v", got, want)

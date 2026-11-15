@@ -245,9 +245,9 @@ func TestServingHTTPIAMWritersDeleteFloorsSurviveReplicaPromotion(t *testing.T) 
 	}
 }
 
-// TestServingHTTPIAMWritersDeleteAtSecurityCapacity documents the bound of
-// D396: floors are permanent and share the security section's row cap. When
-// the section is full, a delete that needs a new floor is refused as
+// TestServingHTTPIAMWritersDeleteAtSecurityCapacity checks the shared live-state
+// bound: another owner's rows cannot be reclaimed by auth compaction. When
+// that inventory fills the section, a delete needing a floor is refused as
 // unavailable and commits nothing: the account, its token and the image stay
 // exactly as they were. Reads keep working.
 func TestServingHTTPIAMWritersDeleteAtSecurityCapacity(t *testing.T) {
@@ -297,6 +297,60 @@ func TestServingHTTPIAMWritersDeleteAtSecurityCapacity(t *testing.T) {
 	localUsersFresh(t, f)
 	serviceAccountResponse(t, f.call(t, "GET", "/iam/serviceaccounts/apps/full", "", f.token, nil, ""), http.StatusOK)
 	expectServingHTTPStatus(t, f.call(t, "GET", "/auth/me", "", issued.Token, nil, ""), http.StatusOK)
+}
+
+func TestServingHTTPIAMWritersDeleteRecoversFullRevocationHistory(t *testing.T) {
+	f := newServingHTTPFixture(t, false)
+	defer f.stop()
+	sa := serviceAccountResponse(t, f.call(t, "POST", "/iam/serviceaccounts", roleBindingBody(t, serviceAccountManifest("history")), f.token, nil, ""), http.StatusCreated)
+	localUsersFresh(t, f)
+	issued := issueServiceAccountToken(t, f, sa, http.StatusCreated)
+	localUsersFresh(t, f)
+	err := f.s.opts.Store.Command(t.Context(), f.s.opts.Store.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		rows, err := tx.ListSections(ctx, "security")
+		if err != nil {
+			return err
+		}
+		state, err := servingauth.DecodeSecurity(rows)
+		if err != nil {
+			return err
+		}
+		for n := range servingauth.MaxRows - len(rows) {
+			state.GrantFloors = append(state.GrantFloors, servingauth.GrantFloor{FormatVersion: 1, Grant: fmt.Sprintf("viewer@zone:retired-%d", n), ValidAfter: time.Now().Add(-time.Minute).UTC()})
+		}
+		encoded, err := servingauth.EncodeSecurity(state)
+		if err != nil {
+			return err
+		}
+		for _, row := range encoded {
+			if err := tx.PutSection(ctx, "security", row); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.s.publisher.Wake()
+	until := time.Now().Add(90 * time.Second)
+	for !servingHTTPFixturePublished(t, f) {
+		if time.Now().After(until) {
+			t.Fatal("full historical inventory never published")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	expectServingHTTPStatus(t, f.call(t, "DELETE", "/iam/serviceaccounts/apps/history", roleBindingBody(t, objectReview(&sa)), f.token, nil, ""), http.StatusNoContent)
+	localUsersFresh(t, f)
+	if state := localUsersState(t, f.s.opts.Store); state.RevocationCheckpoint.IsZero() || len(state.GrantFloors) != 0 {
+		t.Fatal("mounted delete failed to reclaim historical floors")
+	}
+	if ownedTokens(t, f.s.opts.Store, string(sa.UID)) != 0 {
+		t.Fatal("mounted delete left revoked token")
+	}
+	expectServingHTTPStatus(t, f.call(t, "POST", "/auth/login", `{"username":"root-command","password":"initial-password"}`, "", nil, ""), http.StatusOK)
+	expectServingHTTPStatus(t, f.call(t, "GET", "/auth/me", "", issued.Token, nil, ""), http.StatusUnauthorized)
+	expectServingHTTPStatus(t, f.call(t, "GET", "/auth/me", "", f.token, nil, ""), http.StatusOK)
 }
 
 // servingHTTPFixturePublished is the localUsersFresh condition as one sample.

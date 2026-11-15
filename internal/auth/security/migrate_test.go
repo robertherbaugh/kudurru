@@ -45,7 +45,10 @@ func legacySecurityVersion(t *testing.T, st *sqlite.Store, state servingauth.Sec
 					delete(root, "externalIdentities")
 					delete(root, "externalSessions")
 				}
-				delete(root, "browserAttempts")
+				delete(root, "revocationCheckpoint")
+				if version < 4 {
+					delete(root, "browserAttempts")
+				}
 				root["formatVersion"], _ = json.Marshal(version)
 				row.Data, err = json.Marshal(root)
 				if err != nil {
@@ -206,5 +209,86 @@ func TestInitializeRefusesLegacySeedBeforeSeedingOrUpgrading(t *testing.T) {
 				t.Fatal("failed migration mutated seed or security state")
 			}
 		})
+	}
+}
+
+func TestExplicitV4UpgradePreservesFullHistoryBeforeCompaction(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	st := openSecurityStoreValidator(t, path, nil)
+	before := servingauth.EmptySecurity(8)
+	// The other-owner row installed by the legacy fixture fills the last slot.
+	fillGrantHistory(&before, servingauth.MaxRows-2, time.Now().UTC())
+	legacySecurityVersion(t, st, before, 4)
+	_ = st.Close()
+	st = openSecurityStore(t, path)
+	old, _ := st.ReadGeneration(t.Context())
+	if _, err := servingauth.DecodeSecurity(old.Payload.Security); err == nil {
+		t.Fatal("ordinary read silently upgraded root v4")
+	}
+	fault := errors.New("outer command rejected migration")
+	err := st.Command(t.Context(), st.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		if err := Initialize(ctx, tx); err != nil {
+			return err
+		}
+		return fault
+	})
+	if !errors.Is(err, fault) {
+		t.Fatal("full database prevented explicit v4 migration", err)
+	}
+	after, _ := st.ReadGeneration(t.Context())
+	if !old.Generation().Same(after.Generation()) {
+		t.Fatal("failed v4 migration changed durable history")
+	}
+	command(t, st, Initialize)
+	before.Epoch++
+	wantRows, _ := servingauth.EncodeSecurity(before)
+	gotRows, _ := servingauth.EncodeSecurity(ownerState(t, st))
+	if !reflect.DeepEqual(gotRows, wantRows) {
+		t.Fatal("migration changed original revocation history")
+	}
+	first, _ := st.ReadGeneration(t.Context())
+	command(t, st, Initialize)
+	again, _ := st.ReadGeneration(t.Context())
+	if !first.Generation().Same(again.Generation()) {
+		t.Fatal("v4 migration ran twice")
+	}
+	command(t, st, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		s, err := Load(ctx, tx)
+		if err != nil {
+			return err
+		}
+		return s.Commit(ctx)
+	})
+	if got := ownerState(t, st); got.RevocationCheckpoint.IsZero() || len(got.GrantFloors) != 0 {
+		t.Fatal("full migrated history could not be reclaimed")
+	}
+}
+
+func TestV4MigrationAtByteCapacityCompactsInOriginalTransaction(t *testing.T) {
+	st := openSecurityStoreValidator(t, filepath.Join(t.TempDir(), "state.db"), nil)
+	state := servingauth.EmptySecurity(8)
+	floor := time.Now().UTC()
+	fillGrantHistory(&state, 1, floor)
+	legacySecurityVersion(t, st, state, 4)
+	padSecurityTo(t, st, servingauth.MaxSecurityBytes)
+	before, _ := st.ReadGeneration(t.Context())
+	fault := errors.New("reject byte-cap migration")
+	err := st.Command(t.Context(), st.Authority().Term, func(ctx context.Context, tx *sqlite.CommandTx) error {
+		if err := Initialize(ctx, tx); err != nil {
+			return err
+		}
+		return fault
+	})
+	if !errors.Is(err, fault) {
+		t.Fatal("byte-full history could not reach final migration admission", err)
+	}
+	after, _ := st.ReadGeneration(t.Context())
+	if !before.Generation().Same(after.Generation()) {
+		t.Fatal("byte-cap migration partially committed")
+	}
+	command(t, st, Initialize)
+	got := ownerState(t, st)
+	if !got.RevocationCheckpoint.Equal(floor) || len(got.GrantFloors) != 0 || got.Epoch != state.Epoch+1 {
+		t.Fatal("byte-cap migration lost revocation authority or advanced twice")
 	}
 }

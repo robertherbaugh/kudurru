@@ -1352,6 +1352,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- SQLite IAM revocation history compacts transactionally instead of exhausting
+  sign-in and account deletion after about 4,000 historical changes. A checkpoint
+  requires fresh proof from older OIDC tokens while preserving unaffected stored
+  sessions and API tokens. Full existing histories migrate without losing
+  revocations; live state and replication remain bounded (D413).
+
 - Managed root anchors: sequence all elected SQLite startup workers behind the
   first bounded anchor step. Controller status writes can no longer race the
   bootstrap while provider and primary services are held (D411).

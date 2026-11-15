@@ -27,6 +27,9 @@ func EmptySecurity(epoch uint64) Security {
 // EncodeSecurity returns deterministic owner rows including one mandatory root.
 // All counts are checked before allocations; caller-supplied input is detached.
 func EncodeSecurity(s Security) ([]replication.Entry, error) {
+	if !validCheckpoint(s.RevocationCheckpoint) {
+		return nil, ErrInvalid
+	}
 	if s.Epoch == 0 || s.GrantFloors == nil || s.AccountFloors == nil || s.ProviderFloors == nil || s.Sessions == nil || s.TOTP == nil || s.ExternalIdentities == nil || s.ExternalSessions == nil || s.BrowserAttempts == nil {
 		return nil, ErrManifest
 	}
@@ -36,7 +39,7 @@ func EncodeSecurity(s Security) ([]replication.Entry, error) {
 	}
 	entries := make([]replication.Entry, 0, count+1)
 	total := 0
-	root := RootEntry{FormatVersion: RootFormatVersion, Epoch: s.Epoch, GrantFloors: []string{}, AccountFloors: []string{}, ProviderFloors: []string{}, Sessions: []string{}, TOTP: []string{}, ExternalIdentities: []string{}, ExternalSessions: []string{}, BrowserAttempts: []string{}}
+	root := RootEntry{RevocationCheckpoint: s.RevocationCheckpoint.UTC(), FormatVersion: RootFormatVersion, Epoch: s.Epoch, GrantFloors: []string{}, AccountFloors: []string{}, ProviderFloors: []string{}, Sessions: []string{}, TOTP: []string{}, ExternalIdentities: []string{}, ExternalSessions: []string{}, BrowserAttempts: []string{}}
 	add := func(key string, value any, keys *[]string) error {
 		raw, err := json.Marshal(value)
 		if err != nil {
@@ -248,11 +251,20 @@ func decodeSecurity(rows []replication.Entry, version int) (Security, error) {
 			return Security{}, ErrInvalid
 		}
 		root = RootEntry{FormatVersion: old.FormatVersion, Epoch: old.Epoch, GrantFloors: old.GrantFloors, AccountFloors: old.AccountFloors, ProviderFloors: old.ProviderFloors, Sessions: old.Sessions, TOTP: old.TOTP, ExternalIdentities: old.ExternalIdentities, ExternalSessions: old.ExternalSessions, BrowserAttempts: []string{}}
+	} else if version == 4 {
+		var old rootV4Entry
+		if !strictOwner(raw, &old, MaxRootBytes) {
+			return Security{}, ErrInvalid
+		}
+		root = RootEntry{FormatVersion: old.FormatVersion, Epoch: old.Epoch, GrantFloors: old.GrantFloors, AccountFloors: old.AccountFloors, ProviderFloors: old.ProviderFloors, Sessions: old.Sessions, TOTP: old.TOTP, ExternalIdentities: old.ExternalIdentities, ExternalSessions: old.ExternalSessions, BrowserAttempts: old.BrowserAttempts}
 	} else if !strictOwner(raw, &root, MaxRootBytes) {
 		return Security{}, ErrInvalid
 	}
 	if root.FormatVersion != expectedVersion {
 		return Security{}, ErrVersion
+	}
+	if version >= 5 && !validRootCheckpoint(raw, root.RevocationCheckpoint) {
+		return Security{}, ErrInvalid
 	}
 	if !canonicalEpoch(raw) || root.Epoch == 0 || root.GrantFloors == nil || root.AccountFloors == nil || root.ProviderFloors == nil || root.Sessions == nil || root.TOTP == nil || root.ExternalIdentities == nil || root.ExternalSessions == nil || root.BrowserAttempts == nil {
 		return Security{}, ErrManifest
@@ -265,6 +277,7 @@ func decodeSecurity(rows []replication.Entry, version int) (Security, error) {
 		return Security{}, ErrManifest
 	}
 	s := EmptySecurity(root.Epoch)
+	s.RevocationCheckpoint = root.RevocationCheckpoint
 	seen := map[string]bool{RootKey: true}
 	read := func(key string, dst any) error {
 		if seen[key] {
@@ -400,6 +413,9 @@ func ValidateEntry(section string, row replication.Entry) error {
 		}
 		if r.FormatVersion != RootFormatVersion {
 			return ErrVersion
+		}
+		if !validRootCheckpoint(row.Data, r.RevocationCheckpoint) {
+			return ErrInvalid
 		}
 		if r.Epoch == 0 || !canonicalEpoch(row.Data) || r.GrantFloors == nil || r.AccountFloors == nil || r.ProviderFloors == nil || r.Sessions == nil || r.TOTP == nil || r.ExternalIdentities == nil || r.ExternalSessions == nil || r.BrowserAttempts == nil {
 			return ErrManifest
