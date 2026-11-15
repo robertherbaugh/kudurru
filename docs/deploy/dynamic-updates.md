@@ -206,10 +206,14 @@ record included). When a client sends the same signed message again after a
 `SERVFAIL` or a timeout, as `nsupdate` does, through the same follower or
 another one, the primary recognizes it: if the first one committed, the
 repeat is answered with the original `NOERROR` from the zone's receipt
-ledger and nothing is applied again. A message that the client signs again
-(a new time or message ID) is a new update and is decided again, as on any
-server. The primary keeps a receipt for each committed update in the zone's
-receipt ledger ([zones.md](../architecture/zones.md)).
+ledger and nothing is applied again. The repeat must use the same
+transport: the same message sent over TCP after a UDP attempt is a new
+update. A message that the client signs again (a new time or message ID) is
+a new update and is decided again, as on any server. The primary keeps a
+receipt for each committed update in the zone's receipt ledger
+([zones.md](../architecture/zones.md)); an update that was refused or whose
+prerequisite failed applied nothing and has no receipt, so its repeat is
+decided again on the current data.
 
 A forwarded update expires at most four seconds after the follower sends it,
 and the primary checks that against its own clock. If the primary's clock

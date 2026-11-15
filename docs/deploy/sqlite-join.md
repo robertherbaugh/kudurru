@@ -188,19 +188,28 @@ change the data the request is bound to, and every later document would then
 be refused. A pull that is installing when the request arrives is waited for
 first (at most five seconds), so the request is bound to the installed data.
 The scheduled pull waits for every forwarded request, but at most 30 seconds
-(the request's lifetime), and then installs anyway. The follower applies
+from the moment it was due, and then installs anyway. The follower applies
 nothing itself and sends no document twice; reads on the follower only see
 the request's documents after that pull. So a file through a follower is
 applied completely when it fits the 30-second lifetime and no other change
-lands on the follower meanwhile: a pull that another request starts at once
-(after a sign-in, a sign-out or a settings change through the same
-follower) still cuts it, and so does the scheduled pull once it has waited
-30 seconds. In the process tests on the release branch one file of 200 DNS
-record sets through a follower was applied completely in every run
-(HA-OPEN7; before the hold, a file of 40 documents was applied completely in
-5 of 18 runs and a file of 160 in none). Each document is its own exchange
-with the primary, so a file that does not fit 30 seconds, and every restore,
-goes to the primary.
+lands on the follower meanwhile. It is still cut by a pull that another
+request starts at once (after a sign-in, a sign-out or a settings change
+through the same follower), by the scheduled pull once it has waited 30
+seconds (with requests that overlap, this can come less than 30 seconds into
+the later one), and by the end of the request's own 30-second lifetime.
+
+Each document is its own exchange with the primary, and the primary commits
+each one before it answers, so how many documents fit the 30 seconds depends
+on how fast the primary commits one. In the process tests (HA-OPEN7-FINISH) a
+file of 200 DNS record sets through a follower took 11.9 seconds on the hosted
+CI runner and 17 to 26 seconds on a shared four-core machine; on that machine
+with four test runs at once the primary took 100 to 700 milliseconds for each
+record set, and the lifetime ended after 87 and after 152 documents (the
+document whose exchange it interrupted reports `completion_unknown`, every
+later one `unavailable`). Before the hold, a file of 40 documents was applied
+completely in 5 of 18 runs and a file of 160 in none, however fast the primary
+was. A file that may not fit 30 seconds, and every restore, goes to the
+primary, where `kudurru apply` and `kudurru restore` allow five minutes.
 
 On the primary, and on a standalone node, `POST /api/v1/apply` and
 `:batchDelete` run one command for each document or name inside the one
