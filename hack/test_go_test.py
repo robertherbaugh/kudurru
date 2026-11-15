@@ -1,6 +1,7 @@
 """Verify complete selection and failure propagation without running Go."""
 
 import importlib.util
+from collections import Counter
 from contextlib import redirect_stdout
 import io
 import json
@@ -28,6 +29,89 @@ def discovery(names, passed=True):
 
 
 class GoTestBatches(unittest.TestCase):
+    def test_six_ci_jobs_cover_every_compiled_target_and_package_once(self):
+        names = [f"TestCase{index}" for index in range(933)]
+        names += ["Example", "ExampleClient_read", "FuzzParse", "TestÜnicode"]
+        names += list(runner.NORACE_TESTS)
+        packages = [runner.COMMAND_PACKAGE, runner.SECURITY_PACKAGE,
+                    "example.org/one", "example.org/two"]
+        commands = []
+
+        def run(argv, **kwargs):
+            self.assertEqual(kwargs["env"]["CGO_ENABLED"], "1")
+            if argv[1] == "list":
+                return subprocess.CompletedProcess(argv, 0, "\n".join(packages) + "\n")
+            if "-json" in argv:
+                return subprocess.CompletedProcess(argv, 0, discovery(names))
+            commands.append(argv)
+            self.assertIn("-count=1", argv)
+            self.assertIn("-timeout=30m", argv)
+            return subprocess.CompletedProcess(argv, 0)
+
+        jobs = [("commands", (i, 4)) for i in range(1, 5)]
+        jobs += [("security", None), ("packages", None)]
+        with patch.object(runner.subprocess, "run", side_effect=run), redirect_stdout(io.StringIO()):
+            for suite, shard in jobs:
+                self.assertEqual(runner.execute(["./..."], "30m", suite=suite, shard=shard), 0)
+        targets = Counter()
+        package_counts = Counter()
+        timing = []
+        for argv in commands:
+            if "-race" not in argv:
+                timing.append(argv)
+            elif runner.COMMAND_PACKAGE in argv:
+                pattern = next(arg.removeprefix("-run=") for arg in argv if arg.startswith("-run="))
+                selected = [name for name in names if re.fullmatch(pattern, name)]
+                self.assertTrue(0 < len(selected) <= runner.MAX_BATCH_NAMES)
+                targets.update(selected)
+            else:
+                self.assertFalse(any(arg.startswith("-run") for arg in argv))
+                package_counts.update(argv[5:])
+        self.assertEqual(targets, Counter({name: 1 for name in names}))
+        self.assertEqual(package_counts, Counter({package: 1 for package in packages[1:]}))
+        self.assertEqual(timing, [["go", "test", "-count=1", "-timeout=30m",
+                                   "-run=^(" + "|".join(runner.NORACE_TESTS) + ")$",
+                                   runner.COMMAND_PACKAGE]])
+
+    def test_sharded_failure_runs_remaining_assigned_batches_and_counts(self):
+        names = [f"TestCase{index}" for index in range(933)] + list(runner.NORACE_TESTS)
+        commands = []
+
+        def run(argv, **kwargs):
+            if argv[1] == "list":
+                return subprocess.CompletedProcess(argv, 0, runner.COMMAND_PACKAGE + "\n")
+            if "-json" in argv:
+                return subprocess.CompletedProcess(argv, 0, discovery(names))
+            commands.append(argv)
+            return subprocess.CompletedProcess(argv, 1 if len(commands) == 1 else 0)
+
+        with patch.object(runner.subprocess, "run", side_effect=run), redirect_stdout(io.StringIO()):
+            self.assertEqual(runner.execute(["./..."], "30m", suite="commands", shard=(1, 4)), 1)
+        self.assertEqual(sum("-race" in argv for argv in commands), 3)
+        self.assertEqual(sum("-race" not in argv for argv in commands), 1)
+
+    def test_invalid_shard_or_scope_refuses_before_launch(self):
+        for value in ("", "0/4", "5/4", "1/0", "1", "1/4/2", "-1/4"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                runner.command_shard(value)
+        self.assertEqual(runner.command_shard("2/4"), (2, 4))
+        for options in ({"suite": "all", "shard": (1, 4)},
+                        {"suite": "unknown"},
+                        {"suite": "commands", "shard": (0, 4)},
+                        {"suite": "commands", "shard": (5, 4)}):
+            with self.subTest(options=options), patch.object(runner.subprocess, "run") as run:
+                with self.assertRaises(ValueError):
+                    runner.execute(["./..."], "30m", **options)
+                run.assert_not_called()
+
+    def test_missing_ci_package_inventory_refuses(self):
+        for suite in ("commands", "security", "packages"):
+            response = subprocess.CompletedProcess([], 0, "example.org/one\n")
+            with self.subTest(suite=suite), patch.object(runner.subprocess, "run", return_value=response) as run:
+                with self.assertRaises(ValueError):
+                    runner.execute(["./..."], "30m", suite=suite)
+                self.assertEqual(run.call_count, 1)
+
     def test_every_compiled_name_selected_once_including_examples_and_fuzz(self):
         names = [f"TestCase{index}" for index in range(237)]
         names += ["Example", "ExampleClient_read", "FuzzParse", "TestÜnicode"]

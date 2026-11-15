@@ -23,6 +23,7 @@ COMMAND_PACKAGE = "github.com/robertherbaugh/kudurru/cmd/kudurru"
 SECURITY_PACKAGE = "github.com/robertherbaugh/kudurru/internal/auth/security"
 TEST_NAME = re.compile(r"(?:Test|Example|Fuzz)\w*\Z")
 MAX_BATCH_NAMES = 100
+SUITES = ("all", "commands", "security", "packages")
 # Command tests whose strict timing assertion is compiled in only without the
 # race detector (cmd/kudurru/norace_test.go). Each must be in the inventory.
 NORACE_TESTS = ("TestRunServeSQLiteLongApplyKeepsServingDNSAndReads",
@@ -61,7 +62,20 @@ def batches(names):
     return [names[index::count] for index in range(count)]
 
 
-def execute(patterns, timeout):
+def command_shard(value):
+    if not re.fullmatch(r"[1-9][0-9]*/[1-9][0-9]*", value):
+        raise ValueError("command shard must be I/N with 1 <= I <= N")
+    index, count = map(int, value.split("/"))
+    if index > count:
+        raise ValueError("command shard must be I/N with 1 <= I <= N")
+    return index, count
+
+
+def execute(patterns, timeout, *, suite="all", shard=None):
+    if suite not in SUITES or (shard is not None and suite != "commands"):
+        raise ValueError("a command shard requires the commands suite")
+    if shard is not None and (len(shard) != 2 or not 1 <= shard[0] <= shard[1]):
+        raise ValueError("command shard must satisfy 1 <= I <= N")
     env = dict(os.environ, CGO_ENABLED="1")
     listed = subprocess.run(
         ["go", "list", *patterns], env=env, text=True, stdout=subprocess.PIPE,
@@ -70,6 +84,19 @@ def execute(patterns, timeout):
     packages = listed.stdout.splitlines()
     if not packages or len(set(packages)) != len(packages):
         raise ValueError("package inventory must be nonempty and unique")
+    if suite != "all":
+        required = [COMMAND_PACKAGE] if suite == "commands" else [SECURITY_PACKAGE]
+        if suite == "packages":
+            required = [COMMAND_PACKAGE, SECURITY_PACKAGE]
+        if any(package not in packages for package in required):
+            raise ValueError("CI suite requires the complete project package inventory")
+        if suite == "commands":
+            packages = [COMMAND_PACKAGE]
+        elif suite == "security":
+            packages = [SECURITY_PACKAGE]
+        else:
+            packages = [package for package in packages
+                        if package not in (COMMAND_PACKAGE, SECURITY_PACKAGE)]
     flags = ["go", "test", "-race", "-count=1", "-timeout=" + timeout]
     failed = False
     if COMMAND_PACKAGE in packages:
@@ -86,6 +113,8 @@ def execute(patterns, timeout):
         print(f"{COMMAND_PACKAGE}: {len(names)} compiled tests/examples/fuzz "
               f"targets in {len(groups)} disjoint batches", flush=True)
         for number, group in enumerate(groups, 1):
+            if shard is not None and (number - 1) % shard[1] != shard[0] - 1:
+                continue
             # Go identifiers contain no regexp metacharacters; anchored whole
             # top-level names also retain every nested subtest and fuzz seed.
             selection = "^(" + "|".join(group) + ")$"
@@ -96,14 +125,15 @@ def execute(patterns, timeout):
                 check=False,
             )
             failed = failed or result.returncode != 0
-        print("Command timing tests without the race detector: "
-              + ", ".join(NORACE_TESTS), flush=True)
-        result = subprocess.run(
-            ["go", "test", "-count=1", "-timeout=" + timeout,
-             "-run=^(" + "|".join(NORACE_TESTS) + ")$", COMMAND_PACKAGE],
-            env=env, check=False,
-        )
-        failed = failed or result.returncode != 0
+        if shard is None or shard[0] == 1:
+            print("Command timing tests without the race detector: "
+                  + ", ".join(NORACE_TESTS), flush=True)
+            result = subprocess.run(
+                ["go", "test", "-count=1", "-timeout=" + timeout,
+                 "-run=^(" + "|".join(NORACE_TESTS) + ")$", COMMAND_PACKAGE],
+                env=env, check=False,
+            )
+            failed = failed or result.returncode != 0
         packages.remove(COMMAND_PACKAGE)
     if SECURITY_PACKAGE in packages:
         print(SECURITY_PACKAGE + ": isolated race process for the complete "
@@ -120,10 +150,13 @@ def execute(patterns, timeout):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timeout", default="30m")
+    parser.add_argument("--suite", choices=SUITES, default="all")
+    parser.add_argument("--command-shard", default="")
     parser.add_argument("packages", nargs="*", default=["./..."])
     args = parser.parse_args()
     try:
-        return execute(args.packages, args.timeout)
+        shard = command_shard(args.command_shard) if args.command_shard else None
+        return execute(args.packages, args.timeout, suite=args.suite, shard=shard)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"Go test inventory/execution failed: {error}", file=sys.stderr)
         return 1

@@ -285,3 +285,47 @@ all 4,113 cycles, assertions, race instrumentation and its 30-minute timeout.
 All seven runner controls pass. An isolated native race invocation is active;
 hosted validation of that scheduling change remains pending. Runtime product
 code is unchanged by this correction.
+
+### Approved sandbox performance and forwarding CI correction, November 15, 2026
+
+The owner separately approves the disclosed eight-vCPU sandbox method and the
+actual historical calibration limits, binding manifest
+`3b38bf0389bb04e2ed9b0546d79e276ffdbf70090ae8588afa7c5fb2a0bf7266`.
+The one qualification on runtime `5e19a32b` completes at 21:34 UTC: all 60 native
+commands, ten absolute gates and three eligible relative comparisons pass.
+Independent verification checks all 165 artifact hashes, exact receipts/order,
+406 reference and 5,349 candidate source paths. The [complete passing recording](https://github.com/robertherbaugh/kudurru/blob/01271cef7338aaace70dbe7d3d53e759d2c66868/bench/calibration/cloud-shared-20261115/QUALIFICATION.md)
+retains every vector and the actual approval. Fixed product bounds, workloads,
+20% relative threshold and noise floors are unchanged. Opaque physical host,
+pinning, SMT placement and competing tenants are explicitly disclosed and
+owner-accepted. Earlier failed hosted and homelab recordings remain failed;
+VM 20027 and its exact seed ISO have been removed with cleanup receipts.
+
+Head CI 43758502191 subsequently fails its sole command assertion in
+`TestRootMemberForwardLifetimeEndedBeforeSendNamesTheLifetime`; 20 jobs pass,
+Go shard 1 and `ci-ok` fail. A child deadline can fire before the original
+request context reports its timer: the forward rejects the elapsed absolute
+deadline while its error mapper still sees a nil context error and reports
+changed authority. `017aab32` checks the same original absolute deadline when
+classifying an unsent failure. It preserves uncertain-outcome refusals, the
+30-second bound and every original live assertion. A deterministic regression
+fails both intended cases with the old predicate. The corrected six-test
+selection passes three repetitions under race in 208.095 seconds, including
+actual lifetime expiry, cancellation and an answered-but-unrelayed mutation;
+command-package lint passes. The extra earlier full security race invocation
+was interrupted without pass credit; this is a separate targeted proof.
+
+The two package shards are also replaced by six Go jobs: four partition the
+complete compiled command batches, one runs the entire security package, and
+one selects all other packages. Plain local `make test` remains complete.
+All 11 runner controls and workflow lint pass. An independent plan check against
+the actual workflow and compiled inventory accounts for all 938 command targets
+and 204 packages exactly once across the six jobs, plus each of the four extra
+non-race timing checks once. Race instrumentation, every IAM churn cycle,
+per-process timeout and failure propagation remain unchanged. Branch protection
+continues to require the existing `ci-ok` and `security-ok` aggregate checks.
+
+Full hosted validation of the corrected source is pending. The passing
+performance recording remains attributed to its exact earlier source; updated
+source qualification must be recorded separately. GitHub review stays outside
+the owner's requested work, and other documented scope/deferrals remain.

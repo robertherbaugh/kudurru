@@ -56,6 +56,12 @@ targets and runs them in disjoint batches of at most 100 top-level names. Every
 subtest and fuzz seed remains selected, with race detection and the same
 30-minute process timeout. Other packages keep their ordinary race invocation;
 a failed batch fails the suite without replaying it or omitting later batches.
+CI distributes these complete command batches across four runners, runs the
+complete IAM security package on its own runner, and sends every remaining
+package to a sixth runner. The four additional timing cases without the race
+detector run once on the first command runner. Plain `make test` still runs
+the complete suite locally; `TEST_SUITE` and `TEST_COMMAND_SHARD` select the
+same explicit CI partitions.
 
 The security scans (`.github/workflows/security.yml`, and publish.yml's scan of a release candidate's pushed images, `make trivy-published`) fail on a finding. Fix it, or, for a false positive, add a `// nosemgrep: <rule> -- <reason>` comment above the line or an entry with its reason to `.trivyignore.yaml`.
 

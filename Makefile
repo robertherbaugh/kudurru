@@ -74,8 +74,8 @@ run: build
 ## test: the race detector needs cgo, so the test run re-enables it; shipped
 ## binaries stay CGO_ENABLED=0 (`make build`). The kube store driver tests run
 ## when `make envtest` has installed the control-plane binaries and skip
-## otherwise. TEST_PKGS narrows the run (ci.yml passes one shard of
-## hack/go-test-shard.sh).
+## otherwise. TEST_PKGS narrows the run. CI selects TEST_SUITE and distributes
+## the command package's complete batches with TEST_COMMAND_SHARD=I/N.
 ## Some kube suites (internal/api, internal/auth/k8s, internal/cluster,
 ## internal/controller, internal/zonecache) read only KUBEBUILDER_ASSETS and
 ## never look in bin/k8s, so the recipe exports the newest installed version
@@ -87,6 +87,8 @@ run: build
 # bounds; each bounded batch retains the same 30-minute process deadline.
 TEST_PKGS ?= ./...
 TEST_TIMEOUT ?= 30m
+TEST_SUITE ?= all
+TEST_COMMAND_SHARD ?=
 ENVTEST_ASSETS ?= $(lastword $(sort $(wildcard $(CURDIR)/bin/k8s/*-$(shell go env GOOS)-$(shell go env GOARCH))))
 test:
 	@assets="$${KUBEBUILDER_ASSETS:-$(ENVTEST_ASSETS)}"; \
@@ -96,7 +98,7 @@ test:
 	fi; \
 	if [ -n "$$assets" ]; then export KUBEBUILDER_ASSETS="$$assets"; fi; \
 	echo "envtest assets: $${assets:-none, the kube suites skip}"; \
-	set -x; python3 hack/go-test.py --timeout=$(TEST_TIMEOUT) $(TEST_PKGS)
+	set -x; python3 hack/go-test.py --timeout="$(TEST_TIMEOUT)" --suite="$(TEST_SUITE)" $(if $(strip $(TEST_COMMAND_SHARD)),--command-shard="$(TEST_COMMAND_SHARD)") $(TEST_PKGS)
 
 ## test-short: no race detector, no cgo; what `go test` gives on a plain checkout
 test-short:

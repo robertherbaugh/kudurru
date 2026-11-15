@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # go-test-shard: print the packages of shard <i> of <n>, for
-# `make test TEST_PKGS="$(hack/go-test-shard.sh <i> <n>)"` (ci.yml's go job
-# runs one shard per runner). Every package of `go list ./...` lands in
+# `make test TEST_PKGS="$(hack/go-test-shard.sh <i> <n>)"`. CI now partitions
+# command batches separately with go-test.py; this optional package-only
+# splitter keeps each package indivisible. Every package of `go list ./...` lands in
 # exactly one shard. Packages are placed heaviest first on the lightest
 # shard, weighted by the seconds `go test -race` took on a 4-vCPU runner
 # (WEIGHTS below, from a go job's log; a package not listed counts 1 s), so
