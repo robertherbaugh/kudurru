@@ -42,6 +42,10 @@ corpora/durations, all process/source/artifact guards, disk/output/time bounds,
 and the exact fixed product rules. In particular, the 2-microsecond lookup p99,
 allocation limits, 150-MB memory and original five-second compile bounds remain.
 
+The collector's profile label is `shared-cloud-sandbox-v1` for this placement.
+That metadata distinguishes it from `dedicated-homelab-v1`; the collection,
+validation and limit-derivation implementation otherwise remains at `fef3a1fd`.
+
 Every failure remains retained. No new attempt, sample replacement, quieter
 host selection or baseline refresh is authorized after another failure.
 Only an eligible historical calibration may propose the separate hardware
