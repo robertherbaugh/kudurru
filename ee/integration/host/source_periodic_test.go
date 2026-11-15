@@ -132,3 +132,100 @@ func TestInventoryPeriodicPollAfterOriginalFrameFence(t *testing.T) {
 		})
 	}
 }
+
+// D408: the next periodic poll begins one interval after the previous poll
+// began, not one interval after its source commit acknowledged. An
+// observation's evidence lives a fixed multiple of the interval from the
+// observation (UniFi: three polls), so a slow acknowledgment (the complete
+// publication a loaded node prepares) must not push the next observation
+// later. A poll that runs longer than the interval is followed at once, never
+// overlapped.
+func TestPeriodicPollIntervalCountsFromThePreviousPoll(t *testing.T) {
+	const interval = 2 * time.Second
+	// The first acknowledgment is shorter than the interval, the second longer.
+	acks := []time.Duration{1500 * time.Millisecond, 3 * time.Second}
+	st := memory.New()
+	definition := webhook("cadence")
+	definition.Spec.Resync = metav1.Duration{Duration: interval}
+	input := captureInput(t, definition)
+	repo, err := ledger.New(ledger.Options{Reader: st, Write: func(ctx context.Context, _ ledger.Guard, obj store.Object, options store.ApplyOptions) (store.Object, error) {
+		return st.Apply(ctx, obj, options)
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var observed []time.Time
+	commits := 0
+	p := sourceOnlyObserver{Integration: &fakePublisher{}, observe: func(context.Context) (SourceSnapshot, error) {
+		mu.Lock()
+		observed = append(observed, time.Now())
+		mu.Unlock()
+		return SourceSnapshot{Complete: true}, nil
+	}}
+	h, err := New(Options{Capture: func(context.Context) (Input, error) { return input, nil }, Factory: func(string) (integration.Integration, error) { return p, nil },
+		Elector: st.Elector, Fence: func(context.Context, ExecutionGuard) error { return nil }, Ledger: repo, Reader: st, Allowed: func() bool { return true },
+		BeforeObserve: func(ctx, _ context.Context, _ ExecutionGuard) (context.Context, func(), error) {
+			return ctx, func() {}, nil
+		},
+		ValidateSource: func(ExecutionGuard, SourceSnapshot) error { return nil },
+		CommitSource: func(ctx context.Context, _ ExecutionGuard, s SourceSnapshot) (*Result, error) {
+			mu.Lock()
+			ack := time.Duration(0)
+			if commits < len(acks) {
+				ack = acks[commits]
+			}
+			commits++
+			mu.Unlock()
+			// The commit acknowledges only after its publication is prepared.
+			select {
+			case <-time.After(ack):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return &Result{Clients: len(s.Clients), Source: &SourceOutcome{ReceiptID: "receipt", Committed: true, Published: true}}, nil
+		},
+		PollInterval: 10 * time.Millisecond, OperationTimeout: 10 * time.Second, StopTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- h.Run(ctx) }()
+	defer func() {
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Error(err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Error("periodic source did not join")
+		}
+	}()
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		mu.Lock()
+		n := len(observed)
+		mu.Unlock()
+		if n >= 3 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("periodic polls stopped after %d observations", n)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	mu.Lock()
+	first, second := observed[1].Sub(observed[0]), observed[2].Sub(observed[1])
+	mu.Unlock()
+	// Counted from the acknowledgment, the gaps would be interval+acks[0]
+	// (3.5 s) and interval+acks[1] (5 s). Each bound below leaves one second
+	// for scheduling on a loaded race run.
+	if first < interval-50*time.Millisecond || first >= interval+time.Second {
+		t.Fatalf("poll after a %s acknowledgment began %s after the previous one, want %s", acks[0], first, interval)
+	}
+	if second < acks[1] || second >= acks[1]+time.Second {
+		t.Fatalf("poll after a %s acknowledgment began %s after the previous one, want at once after it (%s)", acks[1], second, acks[1])
+	}
+}

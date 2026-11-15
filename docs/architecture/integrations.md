@@ -493,9 +493,10 @@ stops. Every replica watches the heads, so it relists and installs a
 successor head within one watch delivery; the ten-second relist is only the
 backstop for a watch that is down, and a relist that finds a chunk already
 retired by the holder is repeated at once. An observation expires three
-polls after it was made, truncated to the second, so a non-holder's grant
-stays continuous only while one poll-and-commit cycle of the holder plus one
-watch delivery is shorter than about two polls: at the one-second minimum
+polls after it was made, truncated to the second, and the holder begins
+each poll one interval after the previous poll began (D408), so a
+non-holder's grant stays continuous only while one poll-and-commit cycle of
+the holder plus one watch delivery is shorter than about two polls: at the one-second minimum
 poll a slow cycle can let grants lapse until the next commit; two seconds or
 more is qualified.
 
@@ -847,6 +848,17 @@ acquisition stays refused; the next timer event captures and authorizes its own
 frame. A changed source still cancels and joins the old job before replacement.
 This scheduling rule does not apply to outbound Publishers, explicit commands,
 canceled jobs or permanent provider errors (D284).
+
+A successful periodic or explicit sync schedules the next periodic sync one
+interval after it began, not after it returned, and starts it at once when the
+sync itself ran longer than the interval (D408). The time a source commit
+takes to acknowledge its publication therefore no longer delays the next
+observation: on a loaded node two serving preparations could take several
+seconds, and counted from the acknowledgment the gap between two UniFi
+observations reached 13 to 19 s against a 15 s assignment lifetime at a
+five-second poll. Syncs of one job still never overlap, so a provider sees at
+most one sync start per interval. Failed syncs keep their retry backoff,
+counted from the failure, and no observation's expiry changes.
 
 ## Cloudflare adapter
 

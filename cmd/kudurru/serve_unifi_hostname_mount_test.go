@@ -306,8 +306,9 @@ func runServeUniFiHostnamePolicyLifecycle(t *testing.T, fullLifecycle bool) {
 		return uniFiHostnameExchange(t.Context(), cfg, secret, source, transport, name, authenticated)
 	}
 	// A verdict may withdraw before its source operation acknowledges the full
-	// primary publication. The next independent acquisition starts after that
-	// acknowledgment plus Poll. Bound observations by Poll + the existing host
+	// primary publication. The next independent acquisition starts Poll after
+	// the previous one began, or at that acknowledgment if it comes later
+	// (D408). Bound observations by Poll + the existing host
 	// operation limit, without extending any request or source deadline.
 	observationBound := controller.definition(paths[0]).Spec.UniFi.Poll.Duration + 30*time.Second
 	want := func(source, transport, name string, blocked bool) {
