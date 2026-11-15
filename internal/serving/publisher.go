@@ -495,6 +495,33 @@ func (p *Publisher) CheckReadLease(ctx context.Context, lease *Lease) error {
 	return nil
 }
 
+// CheckSourceLease refuses a lease whose source or dependencies are no longer
+// current: the Store's authority, with its installed revision, must still be
+// the lease's own, and the lease's dependency cursors must still be current.
+// Unlike CheckReadLease it does not require the lease to be the publication
+// served now, so a later publication of the same source with current
+// dependencies does not refuse it. Such a publication follows a Wake that
+// arrived while the source's own preparation ran (D405: the Wake no longer
+// cancels that preparation, one more follows its publication), on a follower
+// after every pull of a node with managed root anchors. It is for an enrolled
+// follower's forwarded commands (D406), whose effect only the primary
+// authorizes in its own transaction: the follower checks that it still serves
+// the source the request captured, never data read from it. It admits no
+// protected read and no local command, and no I/O or owner work runs.
+func (p *Publisher) CheckSourceLease(ctx context.Context, lease *Lease) error {
+	if ctx == nil || p == nil || lease == nil || lease.Bundle() == nil {
+		return ErrReleased
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	a, blocked := p.opts.Source.ServingAuthority()
+	if p.closed.Load() || !eligible(lease.bundle, a, blocked) {
+		return ErrPending
+	}
+	return nil
+}
+
 // AwaitHTTP marks one caller that is waiting for an eligible publication
 // before it owns a lease, until done is called. A request of several items
 // lets the node publish for such callers between its items (D378) instead of
