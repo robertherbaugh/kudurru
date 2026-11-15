@@ -1,0 +1,43 @@
+name: temporary upstream phase diagnostics
+on:
+  push:
+    branches: [codex/upstream-phase-diagnostic-20261115]
+permissions:
+  contents: read
+concurrency:
+  group: temporary-upstream-phase-20261115
+  cancel-in-progress: false
+jobs:
+  diagnostic:
+    runs-on: ubicloud-standard-8-ubuntu-2404
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          path: control
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: 0cc9565e9a878f8223fc1cee5201eb7eca8aacd2
+          path: reference
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: 1.27.4
+          cache: false
+      - name: Check existing process controls
+        working-directory: control
+        run: python3 -B -m unittest discover -s hack -p 'test_bench_*.py'
+      - name: Collect eight phase-aligned diagnostics without qualification
+        working-directory: control
+        env:
+          GOTOOLCHAIN: go1.27.4
+        run: python3 -B hack/bench-phase-diagnostic.py --checkout ../reference --output bin/upstream-phase
+      - name: Retain every result including failures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: upstream-phase-${{ github.sha }}-${{ github.run_id }}
+          path: control/bin/upstream-phase/
+          if-no-files-found: error
+          retention-days: 30
