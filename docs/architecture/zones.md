@@ -1039,7 +1039,20 @@ a failed transition after a successful CAS. All populated parent obligations and
 the rest of the returned spec still require exact equality with admitted intent.
 
 Native UDP/TCP/DoT UPDATE callbacks use the original verified request, select the
-exact SOA apex, and return success only after complete publication. A committed
+exact SOA apex, and return success only after complete publication: of the
+exact committed member, or of a later head of the same zone incarnation and
+head identity whose ledger still carries the update's own receipt with its own
+commit sequence (`PrimaryPublication.PublishIncluding`, D409). A receipt is
+added only by the commit that made it and carried unchanged by every later
+commit while it is live (longer than the request may run), so such a head
+descends from the update's commit: the answer still means committed and
+served. A head that does not carry it (another chain after a restore) never
+acknowledges. Before D409 a commit whose own publication lost to the next
+commit of the zone (another update, a record-set write, a lifecycle
+realignment) answered SERVFAIL. An update whose head is not published yet
+first publishes that head; when that fails because the head moved on
+meanwhile, nothing of the request is committed and it plans again on the new
+head. A committed
 mutation whose publication fails returns SERVFAIL; retrying the retained original
 proof can recover publication without repeating semantics. The retry identity of
 a native request is derived from the exact signed request, as for one forwarded

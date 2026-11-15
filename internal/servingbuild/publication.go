@@ -99,6 +99,92 @@ func (p *PrimaryPublication) Wait(ctx context.Context, writer primaryruntime.Pub
 	}
 }
 
+// PublishIncluding implements primaryruntime.PublicationIncluding for a
+// committed UPDATE (D409). Like Publish it needs the context's writer fence
+// and returns only once one protected complete lease of that writer serves
+// the result; it accepts the exact member, or a later head of the same zone
+// incarnation whose ledger carries the UPDATE's receipt (publishedIncluding).
+func (p *PrimaryPublication) PublishIncluding(ctx context.Context, member primaryruntime.Member, receipt string, committed uint64) error {
+	writer, ok := primaryruntime.PublicationFenceFrom(ctx)
+	if !ok {
+		return primaryruntime.ErrUnavailable
+	}
+	return p.WaitIncluding(ctx, writer, member, receipt, committed)
+}
+
+// WaitIncluding is Wait for a committed UPDATE: see PublishIncluding.
+func (p *PrimaryPublication) WaitIncluding(ctx context.Context, writer primaryruntime.PublicationFence, member primaryruntime.Member, receipt string, committed uint64) error {
+	if p == nil || p.publisher == nil || writer.Term.Validate() != nil || writer.Incarnation == 0 || member.Zone.ClusterID != writer.Term.ClusterID || member.Incarnation == 0 || member.Sequence == 0 ||
+		member.Phase != zk.PhaseActive || member.Type != public.ZoneTypePrimary || receipt == "" || committed == 0 || committed > member.Version.CommitSequence {
+		return primaryruntime.ErrInvalid
+	}
+	target := serving.TermActivation{Term: writer.Term, Incarnation: writer.Incarnation}
+	for {
+		changed := p.publisher.Subscribe()
+		authority := p.publisher.AuthorityChanges()
+		lease, err := p.publisher.CaptureHTTP(ctx)
+		if err == nil || errors.Is(err, serving.ErrPending) {
+			err = p.publisher.CheckWriterLease(ctx, lease, target)
+		}
+		if err == nil {
+			err = publishedIncluding(lease, member, receipt, committed, p.now())
+			if current := p.publisher.CheckWriterLease(ctx, lease, target); current != nil {
+				err = current
+			}
+		}
+		lease.Release()
+		if !errors.Is(err, serving.ErrPending) {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-changed:
+		case <-authority:
+		}
+	}
+}
+
+// publishedIncluding accepts the exact member (publishedMember), or the
+// served durable member of the same lifecycle source when it is the same
+// zone incarnation and head identity, active, at least as new in lifecycle
+// sequence and commit sequence, and its ledger carries the receipt with the
+// UPDATE's own commit sequence; that member must itself be served
+// (publishedMember on it, with every routing and source check; until it is,
+// the wait goes on). A receipt is
+// only ever added by the commit that made it and carried unchanged by every
+// later commit of the zone until it is no longer live, which is after the
+// UPDATE's own deadline, so such a head descends from the UPDATE's commit.
+// A head that does not carry it (another chain after a restore, an evicted
+// receipt) never acknowledges.
+func publishedIncluding(lease *serving.Lease, want primaryruntime.Member, receipt string, committed uint64, now time.Time) error {
+	err := publishedMember(lease, want, now)
+	if !errors.Is(err, serving.ErrSuperseded) {
+		return err
+	}
+	value, _ := lease.Bundle().Component("runtime")
+	runtime, ok := value.(*RuntimeOwner)
+	if !ok || runtime == nil || runtime.primary == nil {
+		return serving.ErrComponents
+	}
+	got, ok := runtime.primary.DurableMember(want.Zone)
+	if !ok || got.Zone != want.Zone || got.Type != want.Type || got.Incarnation != want.Incarnation || got.Phase != zk.PhaseActive || got.Sequence < want.Sequence ||
+		got.Version.Zone != want.Version.Zone || got.Version.CommitSequence < want.Version.CommitSequence {
+		return serving.ErrSuperseded
+	}
+	held, ok := runtime.primary.DurableReceipt(want.Zone, receipt)
+	if !ok || held.CommitSequence != committed {
+		return serving.ErrSuperseded
+	}
+	if err := publishedMember(lease, got, now); !errors.Is(err, serving.ErrSuperseded) {
+		return err
+	}
+	// The served descendant is not current yet (its lifecycle still waits
+	// for the driver to realign it with a newer desired source): wait for
+	// the next publication within the caller's deadline.
+	return serving.ErrPending
+}
+
 func publishedMember(lease *serving.Lease, want primaryruntime.Member, now time.Time) error {
 	bundle := lease.Bundle()
 	value, _ := bundle.Component("runtime")

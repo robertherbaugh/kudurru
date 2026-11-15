@@ -121,6 +121,24 @@ func (p *PreparedImage) DurableMember(id zk.ZoneID) (Member, bool) {
 	return m, true
 }
 
+// DurableReceipt returns the receipt with ID id from the ledger of the
+// durable head of the lifecycle source id names (as DurableMember does).
+func (p *PreparedImage) DurableReceipt(id zk.ZoneID, receipt string) (zonestate.Receipt, bool) {
+	if p == nil {
+		return zonestate.Receipt{}, false
+	}
+	e := p.durable[id]
+	if e == nil || e.view == nil || e.view.Aggregate == nil {
+		return zonestate.Receipt{}, false
+	}
+	for _, r := range e.view.Aggregate.Receipts {
+		if r.ID == receipt {
+			return r, true
+		}
+	}
+	return zonestate.Receipt{}, false
+}
+
 // SourceMatchesDesired reports whether the exact durable lifecycle source and
 // its frozen primary configuration still match this image's desired source.
 // False requires fresh reconciliation, not waiting for the old member to serve.

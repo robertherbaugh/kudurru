@@ -155,7 +155,7 @@ func (r *Runtime) Apply(ctx context.Context, request VerifiedUpdate) UpdateOutco
 			if _, pe := dynamicupdate.Plan(state, authTx, proof.Principal, r.o.Now(), r.o.UpdateLimits); pe != nil {
 				return UpdateOutcome{Rcode: pe.Rcode, Committed: true, Err: pe}
 			}
-			out := r.publishUpdate(ctx, l, checked)
+			out := r.publishUpdate(ctx, l, checked, &updateReceipt{id: prior.ID, committed: prior.CommitSequence})
 			out.Deduplicated = true
 			out.Serial = prior.Serial
 			return out
@@ -181,8 +181,15 @@ func (r *Runtime) Apply(ctx context.Context, request VerifiedUpdate) UpdateOutco
 			if err != nil {
 				return outcome(err)
 			}
-			out := r.publishUpdate(ctx, l, checked)
+			out := r.publishUpdate(ctx, l, checked, nil)
 			if out.Err != nil {
+				// Nothing of this request is committed. When the head
+				// moved on meanwhile (a concurrent UPDATE or source commit
+				// of the zone), the recovery target is obsolete: plan again
+				// against the new head, as after a lost compare-and-swap.
+				if current, err := r.o.Repository.Read(ctx, l.Spec.HeadZone()); err == nil && version(current) != version(checked) {
+					continue
+				}
 				out.Committed = false
 				return out
 			}
@@ -228,7 +235,7 @@ func (r *Runtime) Apply(ctx context.Context, request VerifiedUpdate) UpdateOutco
 		if err := modelizer.Install(ctx, committed, prebuilt); err != nil {
 			return UpdateOutcome{Rcode: dns.RcodeServerFailure, Committed: true, Version: version(committed), Serial: committed.Head.Spec.Serial, Err: err}
 		}
-		return r.publishUpdate(ctx, l, committed)
+		return r.publishUpdate(ctx, l, committed, &updateReceipt{id: id, committed: committed.Head.Spec.CommitSequence})
 	}
 	return outcome(ErrConflict)
 }
@@ -245,7 +252,21 @@ func earliestReceiptExpiry(receipts []zonestate.Receipt) time.Time {
 	return earliest
 }
 
-func (r *Runtime) publishUpdate(ctx context.Context, l *zk.ZoneLifecycle, v *zonestate.View) UpdateOutcome {
+// updateReceipt names the receipt of the UPDATE that publishUpdate
+// acknowledges and the commit that added it.
+type updateReceipt struct {
+	id        string
+	committed uint64
+}
+
+// publishUpdate acknowledges v only once the complete serving bundle serves
+// it. With receipt it also accepts a later published head of the same zone
+// incarnation that still carries that receipt (PublishIncluding, D409): a
+// node's next commit of the zone (another UPDATE, a record-set write, a
+// lifecycle realignment) is often published before this one is, and that
+// head contains this commit. Without receipt (the recovery publication of an
+// earlier commit) only the exact member acknowledges.
+func (r *Runtime) publishUpdate(ctx context.Context, l *zk.ZoneLifecycle, v *zonestate.View, receipt *updateReceipt) UpdateOutcome {
 	out := UpdateOutcome{Rcode: dns.RcodeServerFailure, Committed: true, Version: version(v), Serial: v.Head.Spec.Serial}
 	failed := func(err error) UpdateOutcome {
 		out.PublishFailed = true
@@ -256,15 +277,22 @@ func (r *Runtime) publishUpdate(ctx context.Context, l *zk.ZoneLifecycle, v *zon
 	if err != nil {
 		return failed(err)
 	}
-	if err := r.install(e); err != nil {
-		return failed(err)
+	err = r.install(e)
+	if err == nil {
+		err = r.publish(ctx, e)
 	}
-	if err := r.publish(ctx, e); err != nil {
-		return failed(err)
+	if err == nil {
+		if member, ok := r.Capture(r.o.Now()).Member(l.Spec.Zone.Apex); !ok || !member.Published || member.Version != version(v) {
+			err = ErrUnavailable
+		}
 	}
-	member, ok := r.Capture(r.o.Now()).Member(l.Spec.Zone.Apex)
-	if !ok || !member.Published || member.Version != version(v) {
-		return failed(ErrUnavailable)
+	if err != nil {
+		if receipt == nil || r.o.PublishIncluding == nil {
+			return failed(err)
+		}
+		if successor := r.o.PublishIncluding(ctx, e.member, receipt.id, receipt.committed); successor != nil {
+			return failed(fmt.Errorf("%w; no later published head carries the update: %w", err, successor))
+		}
 	}
 	out.Rcode = dns.RcodeSuccess
 	out.Published = true
