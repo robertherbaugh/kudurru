@@ -396,21 +396,29 @@ func (s *servingRuntime) forwardMemberCommand(ctx context.Context, token sqlite.
 		return err
 	})
 	if err != nil {
-		if !sent && !errors.Is(err, clusterreplica.ErrOutcomeUnknown) && ctx.Err() != nil {
-			// Nothing was sent, or the exchange ended before it began, and
-			// the request itself ended: its lifetime ran out, or it was
-			// canceled, after the source was captured. Name that cause, as
-			// a capture refusal does, instead of an unavailable primary or
-			// a changed authority, which is what the ended context makes
-			// the forward report (PUB-FOLLOWER review, HA-OPEN7-FINISH).
-			return memberCaptureError(ctx, ctx.Err())
-		}
-		return objectForwardError(err, sent)
+		return memberForwardFailure(ctx, err, sent)
 	}
 	if refusal != nil {
 		return refusal
 	}
 	return nil
+}
+
+func memberForwardFailure(ctx context.Context, err error, sent bool) error {
+	deadline, finite := ctx.Deadline()
+	if !sent && !errors.Is(err, clusterreplica.ErrOutcomeUnknown) &&
+		(ctx.Err() != nil || (finite && !time.Now().Before(deadline))) {
+		// Nothing was sent, or the exchange ended before it began, and
+		// the request itself ended: its lifetime ran out, or it was
+		// canceled, after the source was captured. Name that cause, as
+		// a capture refusal does, instead of an unavailable primary or
+		// a changed authority, which is what the ended context makes
+		// the forward report (PUB-FOLLOWER review, HA-OPEN7-FINISH).
+		// Equal-deadline child timers may fire before the original timer;
+		// the elapsed deadline is authoritative even while Err is nil.
+		return memberCaptureError(ctx, ctx.Err())
+	}
+	return objectForwardError(err, sent)
 }
 
 func objectForwardUnavailable(message string) error {

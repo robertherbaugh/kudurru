@@ -7,11 +7,49 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/internal/api"
+	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
 )
+
+// A child deadline can fire before the original context's timer is delivered.
+// The forward validates its absolute deadline independently of those timers.
+type memberDeadlineAwaitingTimer struct {
+	context.Context
+	deadline time.Time
+}
+
+func (c memberDeadlineAwaitingTimer) Deadline() (time.Time, bool) { return c.deadline, true }
+
+func TestMemberForwardFailureBeforeOriginalDeadlineTimer(t *testing.T) {
+	expired := memberDeadlineAwaitingTimer{Context: t.Context(), deadline: time.Now().Add(-time.Second)}
+	if expired.Err() != nil {
+		t.Fatal("the original context timer must not have delivered")
+	}
+	for _, tc := range []struct {
+		name string
+		err  error
+		sent bool
+		key  string
+		want string
+	}{
+		{"expired before send", clusterreplica.ErrExpired, false, api.KeyUnavailable, "30-second forwarding lifetime ended before this write was sent; it was not applied"},
+		{"source check after deadline", replication.ErrCAS, false, api.KeyUnavailable, "30-second forwarding lifetime ended before this write was sent; it was not applied"},
+		{"exchange might have begun", clusterreplica.ErrOutcomeUnknown, false, "completion_unknown", "inspect the object"},
+		{"primary already answered", replication.ErrCAS, true, "completion_unknown", "may have been applied"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var refusal *api.Error
+			if err := memberForwardFailure(expired, tc.err, tc.sent); !errors.As(err, &refusal) ||
+				refusal.Status != http.StatusServiceUnavailable || refusal.Body.Key != tc.key || !strings.Contains(refusal.Body.Message, tc.want) {
+				t.Fatalf("forwarding failure: %v", err)
+			}
+		})
+	}
+}
 
 // A follower whose own source or membership changed after the primary
 // answered cannot say whether the write was applied: completion_unknown, not
