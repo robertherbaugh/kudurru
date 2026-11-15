@@ -139,11 +139,12 @@ Those failures remain retained; the two artifacts are not a valid CPU-matched
 comparison.
 
 The `paired` workflow mode (or `release-benchmark-paired` label on an internal
-PR) runs the immutable original reference and exact candidate sequentially in
-one VM. It uses the existing collectors: twenty original-reference commands,
-forty candidate commands, and their original shape/absolute gates. Both complete
-source manifests and every numeric process receipt are retained. No failed
-sample is retried, replaced, or selected for its CPU or outcome.
+PR) runs the immutable original reference and exact candidate in one VM.
+It retains twenty original-reference commands, forty candidate commands, and
+their original shape/absolute gates. D412 below interleaves matched scopes;
+historical runs through 43685577680 recorded the entire reference first. Both
+complete source manifests and every numeric process receipt are retained. No
+failed sample is retried, replaced, or selected for its CPU or outcome.
 
 Only a complete reference with successful native commands and all three gates
 can enter the three original-scope comparisons. A failed reference still permits
@@ -284,6 +285,39 @@ interpreted after the fact:
   decision followed by a new run; the failed run stays in this table.
 - A source change in a benchmarked package after the run voids it for the
   final head. Documentation-only commits do not.
+
+### Interleaved recording decision (D412)
+
+Run 43685577680 remains failed. Its cause is unconfirmed: neither identical
+blocking production code at a previously passing source nor local diagnostics
+establish why it failed. Recording every reference process before every
+candidate process leaves elapsed host conditions confounded with source.
+D412 changes that order before the next hosted recording, without attributing
+the failure to a particular host condition.
+
+For sample numbers one through five, each original scope (blocking, zone,
+cache, upstream) runs its reference and candidate consecutively. Reference goes
+first when the sum of the one-based sample number and zero-based scope index
+is odd; candidate goes first otherwise. After all forty matched commands,
+the twenty candidate-only UDP, DoT, QUIC and persistence commands run in the
+existing sample/suite order. The original ten absolute gates and three eligible
+relative comparisons follow. The complete sequence, source manifests, Go
+version, Linux allowed CPU mask and CPU topology are recorded before timing.
+Completed native logs and receipts are hashed and checked throughout the run.
+
+All sixty native commands, benchmark bodies, corpora, durations, five-process
+sample counts, six-processor environment, immutable original reference,
+thresholds, noise floors and limits remain unchanged. Failed native commands
+continue through the declared sequence and fail their recording; resource
+stops, source changes and altered evidence hold the remaining work. There are
+no retries or replacement samples. `--order sequential` preserves the old
+method; the workflow explicitly selects `--order interleaved`.
+
+The next single hosted interleaved run is counted for this method whatever its
+CPU and outcome. A pass qualifies only the named source and CPU under D412;
+it does not erase the sequential failures or prove a product speedup. A failure
+keeps the release gate open. D383 still forbids a rerun just to obtain another
+VM or result. No baseline or acceptance limit is reset.
 
 
 ## Socket and persistence bounds

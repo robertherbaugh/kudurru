@@ -21542,3 +21542,30 @@ This product change requires a new source qualification below. It does not
 change any benchmarked package or supersede the failed paired run 43685577680;
 the D383 performance gate remains open. The historical package findings and
 owner-deferred acceptance remain as recorded above.
+
+### Interleaved benchmark protocol, November 15, 2026 (D412)
+
+The failed D383 recording 43685577680 remains retained and release-blocking.
+Its cause is unconfirmed. The prior collector runs the entire reference before
+any candidate sample; source and elapsed host conditions are therefore
+confounded. D383 explicitly permits a separately documented method change.
+
+D412 defines the next recording before its outcome: five samples of each
+original scope run as adjacent reference/candidate commands, reversing first
+source by sample/scope parity. Candidate-only suites follow. The workflow
+selects this explicit mode; historical sequential mode remains available.
+All sixty native commands, original corpora and benchmark bodies, durations,
+six processors, immutable reference, sample counts, ten absolute gates, three
+eligible comparisons, thresholds, noise floors and limits remain unchanged.
+The plan records the complete order, source manifests, Go version, CPU topology
+and allowed mask before timing. Completed native logs and numeric receipts are
+hashed through the final comparison. Failures cannot be retried or replaced.
+
+All 18 collector/control tests pass, including alternating adjacency, the
+complete sixty-command inventory, reference/candidate/gate/comparison failures,
+resource stops, source and toolchain changes, corpus overrides and artifact
+tampering both during native recording and after it. Documentation links pass
+for all 168 documents (`interleaved-controls-final.log`, `interleaved-docs.log`).
+The next single hosted D412 run counts whatever its CPU or outcome; no pass is
+claimed here. It cannot explain or erase the sequential failures, establish a
+product speedup, or satisfy other release gates.
