@@ -217,6 +217,7 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 			}
 			started = nil
 		case c := <-j.commands:
+			began := time.Now()
 			operationCtx, operationCancel := context.WithTimeout(c.ctx, h.opts.OperationTimeout)
 			stopLease := context.AfterFunc(ctx, operationCancel)
 			a := h.execute(operationCtx, j, c)
@@ -225,7 +226,7 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 			c.reply <- a
 			if c.kind == "sync" && a.err == nil {
 				failures = 0
-				reset(interval)
+				reset(nextSync(interval, began, time.Now()))
 			}
 		case <-j.reconcile:
 			failures = 0
@@ -249,12 +250,13 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 			}
 			operationCancel()
 		case <-syncTick:
+			began := time.Now()
 			operationCtx, operationCancel := context.WithTimeout(ctx, h.opts.OperationTimeout)
 			a := h.execute(operationCtx, j, command{kind: "sync"})
 			operationCancel()
 			if a.err == nil {
 				failures = 0
-				timer.Reset(interval)
+				timer.Reset(nextSync(interval, began, time.Now()))
 			} else {
 				if failures < 32 {
 					failures++
@@ -273,6 +275,18 @@ func (h *Host) runLease(leaseCtx context.Context, j *job) {
 			}
 		}
 	}
+}
+
+// nextSync is the wait after a successful sync that began at began and
+// ended at now: the next one begins interval after the previous one BEGAN,
+// or at once when that sync ran longer than interval (D408). An observer's
+// evidence lives a fixed multiple of its interval from its observation
+// (UniFi: three polls), so the gap between two observations must not grow
+// with the time the source commit and its publication take to acknowledge
+// on a loaded node. Syncs of one job never overlap, so a provider still sees
+// at most one sync start per interval.
+func nextSync(interval time.Duration, began, now time.Time) time.Duration {
+	return max(interval-now.Sub(began), 0)
 }
 
 // refuse reports a root refusal of an elected instance (Options.Refuse) and
