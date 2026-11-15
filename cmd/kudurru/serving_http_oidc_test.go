@@ -41,6 +41,11 @@ func newServingBrowserFixture(t *testing.T) *servingBrowserFixture {
 }
 func newServingBrowserFixtureConfigured(t *testing.T, configure func(*servingBrowserOP)) *servingBrowserFixture {
 	t.Helper()
+	return newServingBrowserFixturePolicy(t, configure, nil)
+}
+
+func newServingBrowserFixturePolicy(t *testing.T, configure func(*servingBrowserOP), policy func(*config.Config)) *servingBrowserFixture {
+	t.Helper()
 	op := newServingBrowserOP(t)
 	if configure != nil {
 		configure(op)
@@ -68,6 +73,11 @@ func newServingBrowserFixtureConfigured(t *testing.T, configure func(*servingBro
 		cfg.Auth.IdentityProviders[0]["cliClientID"] = "kudurru-cli"
 	}
 	cfg.Auth.ProviderResources = config.ProviderResources{AllowedOrigins: []string{op.Server.URL}, LocalOrigins: []string{op.Server.URL}, Algorithms: []string{"EdDSA"}, SystemTrust: false, CAFiles: []string{caFile}}
+	// Permit the same exact fixture credential for API-created provider proofs.
+	cfg.Credentials.AllowedFiles = []string{secretFile}
+	if policy != nil {
+		policy(cfg)
+	}
 	pub, key, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)

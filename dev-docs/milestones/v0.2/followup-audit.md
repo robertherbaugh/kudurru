@@ -21640,3 +21640,46 @@ running. The necessary D413 product fix will require qualification on its new
 source. Performance, individual package findings and owner-deferred D353/D358
 acceptance remain open. The external Cloudflare docs build remains owner-excluded.
 No release promotion, tag push, merge, production deployment or publication occurred.
+
+### IAM-WRITERS additional live evidence, November 15, 2026 (D414)
+
+This entry supersedes the specific missing-TLS, serving-follower, API-created
+provider credential, mounted local PATCH/DELETE, self-cookie, token permission
+and incomplete-concurrency evidence statements above to the extent shown in
+[the executable acceptance matrix](iam-live-acceptance.md). The owner explicitly
+accepts using `tokens.write` in v0.2 for ServiceAccount issuance alongside
+`serviceaccounts.write`; a narrow caller can create the account but cannot mint
+a token. D413 already supersedes permanent-history exhaustion with the approved
+checkpoint redesign; this entry does not accept the former limitation.
+
+The mounted/account-follower/permission/lifecycle selection passes under race
+(70.389 s). Provider TLS, live Authentik, final token checks, concurrency and
+self-cookie cases pass under race in the retained expanded run, which fails
+only its since-corrected account-create permission expectation. The actual live
+issuer proof uses a newly issued RS256 machine ID token over public TLS; browser
+cookies and PATs use the trusted-TLS provider double. Both establish initial
+primary/follower authentication before the revocation assertion. Follower images
+cross the real captured receiver, validation and installation boundaries; they
+are installed directly by the test, not through a new network-cluster setup.
+Cold follower admission is preserved, with a new actual writer episode before
+external credentials are issued. Disposable live resources and private files
+were removed after verified zero-count cleanup.
+
+The new final-time test exercises actual ServiceAccount token staging after the
+caller's final check, including deadline, rollback and cancellation. All
+27 individual writer TLS expiry/rollback/cancellation cases also pass under race
+with the strengthened token proof (77.884 s). An unset production command
+observer injects each fault after actual staging. Negative overlays fail the
+intended assertions with caller or issued-token final checks removed.
+KIND could not boot in this VM, and the Kubernetes runtime refuses D396 IAM
+commands by design. Performance remains release-blocking: D412 failed in both
+sources, the bounded local toolchain/scheduler diagnostic does not explain it,
+and no new formal recording, relaxed limits or baseline reset occurred. The
+matrix records the remaining CI/artifact qualification and owner-deferred
+external acceptance without blanket-closing IAM or the release.
+
+A separate predeclared six-command hosted upstream diagnostic is now available
+through `release-benchmark-diagnostic`, using Go 1.27.4 and six processors on the
+selected runner. It retains timings/traces, source manifests and CPU pressure/
+throttling counters, with no gates or baseline read and `release_qualified: false`.
+This diagnostic does not supersede D412 or authorize a new formal retry.

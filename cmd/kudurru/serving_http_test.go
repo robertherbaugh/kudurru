@@ -30,7 +30,12 @@ type servingHTTPFixture struct {
 
 func newServingHTTPFixture(t *testing.T, mustChange bool) *servingHTTPFixture {
 	t.Helper()
-	f := &servingHTTPFixture{servingCommandFixture: newServingCommandFixture(t)}
+	return newServingHTTPFixtureOn(t, newServingCommandFixture(t), mustChange)
+}
+
+func newServingHTTPFixtureOn(t *testing.T, command *servingCommandFixture, mustChange bool) *servingHTTPFixture {
+	t.Helper()
+	f := &servingHTTPFixture{servingCommandFixture: command}
 	f.clock.Set(time.Now)
 	hasher := users.NewHasher(1)
 	hash, err := hasher.Hash(t.Context(), "initial-password")
@@ -113,7 +118,13 @@ func (f *servingHTTPFixture) call(t *testing.T, method, path, body, token string
 func expectServingHTTPStatus(t *testing.T, w *httptest.ResponseRecorder, status int) {
 	t.Helper()
 	if w.Code != status {
-		t.Fatalf("HTTP status: got %d, want %d", w.Code, status)
+		var problem struct {
+			Error struct {
+				Key string `json:"key"`
+			} `json:"error"`
+		}
+		_ = json.Unmarshal(w.Body.Bytes(), &problem)
+		t.Fatalf("HTTP status: got %d, want %d (error key %q)", w.Code, status, problem.Error.Key)
 	}
 	if strings.Contains(w.Body.String(), "secretHash") || strings.Contains(w.Body.String(), "passwordHash") || strings.Contains(w.Body.String(), "csrfHash") || strings.Contains(w.Body.String(), "evidence") || strings.Contains(w.Body.String(), "totpSecret") {
 		t.Fatal("private owner material reached HTTP")

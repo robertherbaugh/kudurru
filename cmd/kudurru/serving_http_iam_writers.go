@@ -581,101 +581,112 @@ func (h *servingHTTP) createServiceAccountToken(w http.ResponseWriter, r *http.R
 	var created *internalv1.APIToken
 	var wire string
 	err = h.iamCommand(r, attrs, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, p auth.Principal, _ time.Time) error {
-		var sa publicv1.ServiceAccount
-		if err := tx.Get(ctx, key, &sa); err != nil {
-			return err
-		}
-		if string(sa.UID) != req.UID || sa.DeletionTimestamp != nil {
-			return store.ErrConflict
-		}
-		if err := serviceAccountAdministrable(ctx, tx, &sa); err != nil {
-			return err
-		}
-		if sa.Spec.Disabled {
-			return &auth.Error{Status: http.StatusConflict, Key: "disabled", Message: "the ServiceAccount is disabled; enable it before issuing a token"}
-		}
-		var settings publicv1.Kudurru
-		if err := tx.Get(ctx, store.Key{Kind: "Kudurru", Name: "default"}, &settings); err != nil {
-			return err
-		}
-		doc, err := servingSettingsDocument(&settings)
-		if err != nil {
-			return err
-		}
-		cfg, _, err := config.ApplyClusterDocument(h.opts.Runtime.opts.Config, doc)
-		if err != nil {
-			return err
-		}
-		duration := life
-		if maxLife := cfg.Auth.Tokens.MaxLifetime.Std(); maxLife > 0 {
-			if duration > maxLife {
-				return servingHTTPInvalid("expiresIn exceeds auth.tokens.maxLifetime")
-			}
-			if duration == 0 {
-				duration = maxLife
-			}
-		}
-		now := h.now()
-		var expires time.Time
-		if duration > 0 {
-			expires = now.Add(duration).Truncate(time.Second)
-		}
-		// As in createToken, a token never outlives the API token that
-		// issued it. A session caller is bounded by maxLifetime only.
-		if p.TokenID != "" {
-			var parent internalv1.APIToken
-			if err := tx.Get(ctx, store.Key{Kind: "APIToken", Name: p.TokenID}, &parent); err != nil {
-				return err
-			}
-			if !servingHTTPOwnsToken(p, &parent) {
-				return servingauth.ErrCredentials
-			}
-			if parent.Spec.ExpiresAt != nil && (expires.IsZero() || parent.Spec.ExpiresAt.Time.Before(expires)) {
-				expires = parent.Spec.ExpiresAt.Time
-			}
-		}
-		if !expires.IsZero() && !expires.After(now) {
-			return servingauth.ErrCredentials
-		}
-		var id string
-		wire, id = tokens.Generate()
-		t := &internalv1.APIToken{ObjectMeta: metav1.ObjectMeta{Name: id, CreationTimestamp: metav1.NewTime(now)}, Spec: internalv1.APITokenSpec{Owner: serviceAccountOwner(&sa), Description: req.Description, SecretHash: tokens.Hash(wire), Scopes: scopes}}
-		if !expires.IsZero() {
-			e := metav1.NewTime(expires)
-			t.Spec.ExpiresAt = &e
-		}
-		if err := t.Validate(); err != nil {
-			return servingHTTPInvalid("invalid token policy")
-		}
-		out, err := tx.Apply(ctx, t, store.ApplyOptions{Manager: store.ManagerSystem, CreateOnly: true})
-		if err != nil {
-			return err
-		}
-		created = out.(*internalv1.APIToken)
-		// Never return a token born revoked: it must authenticate from its
-		// persisted form against every current floor of this transaction.
-		issued, err := servingauth.AuthenticateCurrentWithClock(ctx, tx, deps, servingauth.Credential{Kind: servingauth.APIToken, Value: wire}, h.now)
-		if err != nil {
-			return err
-		}
-		if issued.AccountUID != string(sa.UID) || issued.Kind != auth.KindServiceAccount {
-			return servingauth.ErrCredentials
-		}
-		return tx.RequireCommitCheck(func(ctx context.Context) error {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-			if at := h.now(); at.Before(now) || !expires.IsZero() && !at.Before(expires) {
-				return servingauth.ErrCredentials
-			}
-			return nil
-		})
+		var err error
+		created, wire, err = h.stageServiceAccountToken(ctx, tx, deps, p, key, req, life, scopes)
+		return err
 	})
 	if err != nil {
 		return err
 	}
 	h.opts.Runtime.wakeAfterCommand(r.Context())
 	return servingHTTPJSON(w, http.StatusCreated, api.CreatedToken{TokenInfo: servingHTTPTokenInfo(created), Token: wire})
+}
+
+// stageServiceAccountToken performs the account, policy, parent-expiry and
+// born-valid checks within the caller's original IAM transaction. The wire
+// secret may be returned only after that transaction commits successfully.
+func (h *servingHTTP) stageServiceAccountToken(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies, p auth.Principal, key store.Key, req api.CreateServiceAccountTokenRequest, life time.Duration, scopes []string) (*internalv1.APIToken, string, error) {
+	var sa publicv1.ServiceAccount
+	if err := tx.Get(ctx, key, &sa); err != nil {
+		return nil, "", err
+	}
+	if string(sa.UID) != req.UID || sa.DeletionTimestamp != nil {
+		return nil, "", store.ErrConflict
+	}
+	if err := serviceAccountAdministrable(ctx, tx, &sa); err != nil {
+		return nil, "", err
+	}
+	if sa.Spec.Disabled {
+		return nil, "", &auth.Error{Status: http.StatusConflict, Key: "disabled", Message: "the ServiceAccount is disabled; enable it before issuing a token"}
+	}
+	var settings publicv1.Kudurru
+	if err := tx.Get(ctx, store.Key{Kind: "Kudurru", Name: "default"}, &settings); err != nil {
+		return nil, "", err
+	}
+	doc, err := servingSettingsDocument(&settings)
+	if err != nil {
+		return nil, "", err
+	}
+	cfg, _, err := config.ApplyClusterDocument(h.opts.Runtime.opts.Config, doc)
+	if err != nil {
+		return nil, "", err
+	}
+	duration := life
+	if maxLife := cfg.Auth.Tokens.MaxLifetime.Std(); maxLife > 0 {
+		if duration > maxLife {
+			return nil, "", servingHTTPInvalid("expiresIn exceeds auth.tokens.maxLifetime")
+		}
+		if duration == 0 {
+			duration = maxLife
+		}
+	}
+	now := h.now()
+	var expires time.Time
+	if duration > 0 {
+		expires = now.Add(duration).Truncate(time.Second)
+	}
+	// As in createToken, a token never outlives the API token that
+	// issued it. A session caller is bounded by maxLifetime only.
+	if p.TokenID != "" {
+		var parent internalv1.APIToken
+		if err := tx.Get(ctx, store.Key{Kind: "APIToken", Name: p.TokenID}, &parent); err != nil {
+			return nil, "", err
+		}
+		if !servingHTTPOwnsToken(p, &parent) {
+			return nil, "", servingauth.ErrCredentials
+		}
+		if parent.Spec.ExpiresAt != nil && (expires.IsZero() || parent.Spec.ExpiresAt.Time.Before(expires)) {
+			expires = parent.Spec.ExpiresAt.Time
+		}
+	}
+	if !expires.IsZero() && !expires.After(now) {
+		return nil, "", servingauth.ErrCredentials
+	}
+	wire, id := tokens.Generate()
+	t := &internalv1.APIToken{ObjectMeta: metav1.ObjectMeta{Name: id, CreationTimestamp: metav1.NewTime(now)}, Spec: internalv1.APITokenSpec{Owner: serviceAccountOwner(&sa), Description: req.Description, SecretHash: tokens.Hash(wire), Scopes: scopes}}
+	if !expires.IsZero() {
+		e := metav1.NewTime(expires)
+		t.Spec.ExpiresAt = &e
+	}
+	if err := t.Validate(); err != nil {
+		return nil, "", servingHTTPInvalid("invalid token policy")
+	}
+	out, err := tx.Apply(ctx, t, store.ApplyOptions{Manager: store.ManagerSystem, CreateOnly: true})
+	if err != nil {
+		return nil, "", err
+	}
+	created := out.(*internalv1.APIToken)
+	// Never return a token born revoked: it must authenticate from its
+	// persisted form against every current floor of this transaction.
+	issued, err := servingauth.AuthenticateCurrentWithClock(ctx, tx, deps, servingauth.Credential{Kind: servingauth.APIToken, Value: wire}, h.now)
+	if err != nil {
+		return nil, "", err
+	}
+	if issued.AccountUID != string(sa.UID) || issued.Kind != auth.KindServiceAccount {
+		return nil, "", servingauth.ErrCredentials
+	}
+	if err := tx.RequireCommitCheck(func(ctx context.Context) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if at := h.now(); at.Before(now) || !expires.IsZero() && !at.Before(expires) {
+			return servingauth.ErrCredentials
+		}
+		return nil
+	}); err != nil {
+		return nil, "", err
+	}
+	return created, wire, nil
 }
 
 // --- identity providers ---

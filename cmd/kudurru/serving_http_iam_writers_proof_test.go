@@ -32,7 +32,7 @@ import (
 // once; the loser gets a conflict, a pending publication or (for a delete) a
 // missing object, never a second effect.
 func TestServingHTTPIAMWritersConcurrentCreateAndReplace(t *testing.T) {
-	f := newServingHTTPFixture(t, false)
+	f := newServingHTTPFixtureOn(t, newServingCommandFixtureOn(t, newServingRuntimeFixtureProviders(t, false)), false)
 	defer f.stop()
 	race := func(method, path, body string, want int) {
 		t.Helper()
@@ -68,9 +68,19 @@ func TestServingHTTPIAMWritersConcurrentCreateAndReplace(t *testing.T) {
 	in := serviceAccountManifest("raced")
 	in.Spec.Description = "replaced"
 	race("PUT", "/iam/serviceaccounts/apps/raced", roleBindingBody(t, api.ReplaceServiceAccountCommand{ObjectReview: objectReview(&created), ServiceAccount: in}), http.StatusOK)
+	updated := serviceAccountResponse(t, f.call(t, "GET", "/iam/serviceaccounts/apps/raced", "", f.token, nil, ""), http.StatusOK)
+	race("DELETE", "/iam/serviceaccounts/apps/raced", roleBindingBody(t, objectReview(&updated)), http.StatusNoContent)
 	race("POST", "/iam/identityproviders", roleBindingBody(t, identityProviderManifest("raced")), http.StatusCreated)
 	provider := identityProviderResponse(t, f.call(t, "GET", "/iam/identityproviders/raced", "", f.token, nil, ""), http.StatusOK)
+	idp := identityProviderManifest("raced")
+	idp.Spec.DisplayName = "Replaced"
+	race("PUT", "/iam/identityproviders/raced", roleBindingBody(t, api.ReplaceIdentityProviderCommand{ObjectReview: objectReview(&provider), IdentityProvider: idp}), http.StatusOK)
+	provider = identityProviderResponse(t, f.call(t, "GET", "/iam/identityproviders/raced", "", f.token, nil, ""), http.StatusOK)
 	race("DELETE", "/iam/identityproviders/raced", roleBindingBody(t, objectReview(&provider)), http.StatusNoContent)
+	user := localUsersCreate(t, f, "raced-person")
+	race("PATCH", "/iam/users/raced-person", factorBody(t, map[string]any{"uid": user.UID, "resourceVersion": user.ResourceVersion, "disabled": true}), http.StatusOK)
+	final := localUsersRead(t, f.s.opts.Store, "raced-person")
+	race("DELETE", "/iam/users/raced-person", roleBindingBody(t, objectReview(&final)), http.StatusNoContent)
 }
 
 // TestServingHTTPIAMWritersOriginalFinalClockAndCancellation mirrors the D294

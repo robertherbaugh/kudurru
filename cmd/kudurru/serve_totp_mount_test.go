@@ -145,7 +145,7 @@ func mountedFactorRequest(t *testing.T, client *http.Client, base, method, path,
 	if method == http.MethodGet {
 		// Observe the committed successor after publication. These are fresh
 		// read requests only; factor mutations never use this retry transport.
-		reader.Transport = mountedRetryTransport{}
+		reader.Transport = mountedRetryTransport{Base: client.Transport}
 	}
 	response, err := reader.Do(req)
 	if err != nil {

@@ -19501,3 +19501,41 @@ running. The necessary D413 product fix will require qualification on its new
 source. Performance, individual package findings and owner-deferred D353/D358
 acceptance remain open. The external Cloudflare docs build remains owner-excluded.
 No release promotion, tag push, merge, production deployment or publication occurred.
+
+### IAM TLS and live issuer acceptance evidence, November 15, 2026 (D414)
+
+The owner accepts `tokens.write` for v0.2 ServiceAccount issuance with both
+account-write and token-write permission required. The executable matrix and
+limits are in [IAM acceptance evidence](iam-live-acceptance.md). New evidence
+covers all nine mounted D396 mutations over verified HTTPS, local and service
+account credential refusal on a serving follower, API-created provider browser
+cookies/PATs refused after replace/delete, self-cookie clearing, the independent
+token permission, concurrent writers and actual token final-time checks. The
+live Authentik RS256 ID token works on primary/follower before API provider
+DELETE and fails afterward and after restart. All disposable Authentik resources
+and private credential files were removed after verified zero-count cleanup.
+
+The corrected mounted/account-follower/permission/lifecycle regression selection
+passes under race (70.389 s). The earlier expanded race run passes the live
+issuer, TLS browser-provider, token-time, concurrency and self-cookie tests but
+exits nonzero on the permission test's since-corrected expectation that creating
+an account also needs token-write permission. That failed recording stays.
+All 27 per-writer TLS expiry/rollback/cancellation cases and the strengthened
+real token-staging proof pass under race (77.884 s); negative overlays fail the
+intended assertions when caller or issued-token final checks are removed. The
+matrix also distinguishes the live machine ID token from browser-code tests against a TLS double, and direct production replica
+installation from a new independently deployed network-cluster proof.
+
+KIND cannot boot in this VM's cgroup environment; its attempts were removed.
+Complete SQLite is the applicable IAM runtime because Kubernetes deliberately
+refuses these object commands. Local performance diagnostics on an Intel VM do
+not reproduce or explain D412's hosted failure. No new formal recording or
+limit/baseline/workload change occurred. Performance, final-source CI/artifact
+qualification and the remaining specifically scoped acceptance stay open;
+D353/D358 owner deferrals and the Cloudflare exclusion remain in force.
+
+A separate predeclared six-command hosted upstream diagnostic is now available
+through `release-benchmark-diagnostic`, using Go 1.27.4 and six processors on the
+selected runner. It retains timings/traces, source manifests and CPU pressure/
+throttling counters, with no gates or baseline read and `release_qualified: false`.
+This diagnostic does not supersede D412 or authorize a new formal retry.

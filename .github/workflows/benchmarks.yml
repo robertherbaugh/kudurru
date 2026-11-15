@@ -3,9 +3,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Record the candidate, original reference, or both on one VM
+        description: Record performance or collect diagnostics without qualification
         type: choice
-        options: [candidate, reference, paired]
+        options: [candidate, reference, paired, diagnostic]
         default: candidate
   # Allows an explicitly requested measurement before this workflow is merged
   # to the default branch (where GitHub registers workflow_dispatch).
@@ -19,6 +19,46 @@ concurrency:
   group: release-benchmark-measurements
   cancel-in-progress: false
 jobs:
+  diagnostic:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.mode == 'diagnostic') ||
+      (github.event.label.name == 'release-benchmark-diagnostic' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubicloud-standard-8-ubuntu-2404
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: control
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: 0cc9565e9a878f8223fc1cee5201eb7eca8aacd2
+          path: reference
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: 1.27.4
+          cache: false
+      - name: Check diagnostic and recording controls
+        working-directory: control
+        run: python3 -B -m unittest discover -s hack -p 'test_bench_*.py'
+      - name: Collect the predeclared diagnostics without qualification gates
+        working-directory: control
+        env:
+          GOTOOLCHAIN: go1.27.4
+        run: >-
+          python3 -B hack/bench-diagnostic.py --checkout ../reference
+          --output bin/upstream-diagnostic
+      - name: Retain every diagnostic result including failures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: upstream-diagnostic-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.run_id }}
+          path: control/bin/upstream-diagnostic/
+          if-no-files-found: error
+          retention-days: 30
   measure:
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.mode == 'candidate') ||

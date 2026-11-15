@@ -24854,3 +24854,41 @@ running. The necessary D413 product fix will require qualification on its new
 source. Performance, individual package findings and owner-deferred D353/D358
 acceptance remain open. The external Cloudflare docs build remains owner-excluded.
 No release promotion, tag push, merge, production deployment or publication occurred.
+
+### IAM live acceptance evidence and remaining performance gate (D414)
+
+The owner explicitly accepts ServiceAccount token issuance in v0.2 with both
+`serviceaccounts.write` and `tokens.write`. [The acceptance matrix](iam-live-acceptance.md)
+records trusted-TLS coverage of all nine mounted IAM mutations, local/account
+and provider credential revocation on an actual serving follower before and
+after replica installation/restart, API-created provider browser cookies/PATs,
+self-cookie clearing, missing token-write permission, concurrent commands and
+new-token final-time/cancellation checks. The corrected regression selection
+passes under race (70.389 s); provider TLS, live Authentik, token-time, concurrency
+and self-cookie cases pass in the earlier expanded race recording, whose
+incorrect account-create permission expectation failed and was corrected.
+
+Live Authentik on `auth.herbaughmanor.net` issued a fresh signed ID token over
+normally verified public TLS. It authenticated on primary/follower, then failed
+after API provider deletion and replica installation/restart; unrelated local
+session continuity passed. The one disposable application/provider, two users
+and associated session were deleted, zero remaining counts verified, and private
+credential files removed. Shared Authentik resources were retained.
+
+All 27 per-writer TLS final-clock/cancellation cases and the strengthened token
+staging proof pass under race (77.884 s); negative overlays fail the intended
+assertions with caller or issued-token final checks removed. The matrix limits
+credit precisely: live machine ID token, browser-code TLS double and direct real
+replica-install boundary; no new independently deployed cluster proof is claimed. KIND failed at node systemd
+cgroup creation; its nodes and diagnostic bridge were removed. Kubernetes is
+not the D396 IAM command implementation. The local six-command performance
+diagnostic cannot qualify D412's failed hosted recording; a causal fix or
+reviewed method change must precede another formal run. Final-source CI and
+release artifacts, remaining package findings and owner-deferred D353/D358
+acceptance remain open. Cloudflare docs remains owner-excluded.
+
+A separate predeclared six-command hosted upstream diagnostic is now available
+through `release-benchmark-diagnostic`, using Go 1.27.4 and six processors on the
+selected runner. It retains timings/traces, source manifests and CPU pressure/
+throttling counters, with no gates or baseline read and `release_qualified: false`.
+This diagnostic does not supersede D412 or authorize a new formal retry.

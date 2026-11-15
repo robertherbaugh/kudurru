@@ -190,11 +190,13 @@ func (e notDispatchedError) Unwrap() error { return e.err }
 // commandHooks are test observers of current commands. beforeCheck runs in
 // every dispatch attempt after the writer binding and before the first
 // publication check; afterRecapture runs after a pre-dispatch recapture.
-// dispatch runs when an attempt's transaction body begins.
+// dispatch runs when an attempt's transaction body begins. afterStage runs
+// after a successful callback, before the transaction's final commit checks.
 type commandHooks struct {
 	beforeCheck    func(ctx context.Context)
 	afterRecapture func(ctx context.Context)
 	dispatch       func(ctx context.Context)
+	afterStage     func(ctx context.Context)
 }
 
 func (s *servingRuntime) dispatchHook(ctx context.Context) {
@@ -266,7 +268,13 @@ func (s *servingRuntime) currentAuthCommandOnce(ctx context.Context, fn func(con
 		if err := tx.RequireCommitCheck(check); err != nil {
 			return err
 		}
-		return fn(ctx, tx, deps)
+		if err := fn(ctx, tx, deps); err != nil {
+			return err
+		}
+		if hooks := s.commandHooks.Load(); hooks != nil && hooks.afterStage != nil {
+			hooks.afterStage(ctx)
+		}
+		return nil
 	})
 	if err != nil {
 		return false, err

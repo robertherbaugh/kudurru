@@ -165,12 +165,16 @@ func mountedTestConfig(t *testing.T) (*config.Config, string) {
 // retains the original proof and correctly refuses the stale attempt. These
 // fixture requests tolerate duplicate enrollment after an ambiguous 503 and
 // claim no cross-request deduplication.
-type mountedRetryTransport struct{}
+type mountedRetryTransport struct{ Base http.RoundTripper }
 
-func (mountedRetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (transport mountedRetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := transport.Base
+	if base == nil {
+		base = http.DefaultTransport
+	}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		response, err := http.DefaultTransport.RoundTrip(req)
+		response, err := base.RoundTrip(req)
 		if err != nil || response.StatusCode != http.StatusServiceUnavailable || !time.Now().Before(deadline) {
 			return response, err
 		}

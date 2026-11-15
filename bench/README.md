@@ -351,3 +351,22 @@ The newer retained candidate recording 42522360297 passes all four actual Go
 scope gates; this does not erase its separate cache comparison failure. New
 current-source measurements remain required. Never replace a failing sample,
 raise a bound, or recalibrate from a failing candidate to clear a gate.
+
+## Upstream diagnostics after D412
+
+The failed interleaved run remains the measurement of record. The separate
+`diagnostic` mode (or `release-benchmark-diagnostic` label on an internal PR)
+collects six predeclared native processes on the same selected runner class,
+Go 1.27.4 and six processors. It runs the original fast/slow-first strict and
+RTT-weighted cases: reference/candidate, candidate/reference, then a trace for
+each source. The trace is instrumented; its timings are not qualification data.
+
+`hack/bench-diagnostic.py` writes the full plan before timing and preserves two
+unprofiled processes plus one trace per source, complete source manifests,
+receipts and CPU pressure/throttling counters before/after each process. It
+reuses the existing disk/log/deadline/process-group controls and holds remaining
+work on source changes or resource stops. Native failures are retained without
+retry. It reads no baseline, runs no qualification gate and always records
+`release_qualified: false`. A diagnostic success cannot close D383/D412, reset a
+baseline or supersede a failed formal recording. A causal fix or a separately
+reviewed method change remains necessary before another formal measurement.

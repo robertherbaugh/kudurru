@@ -181,6 +181,13 @@ func TestRunServeKubeUniFiCommandOutcomesAndRefusedCleanup(t *testing.T) {
 		reviewedRevision = revision
 		return known && revision == current.ResourceVersion
 	})
+	// Kubernetes serializes metav1.Time at whole-second precision. Two
+	// otherwise identical successful syncs within that second can produce an
+	// identical status and correctly leave resourceVersion unchanged. This
+	// proof needs a real status change to exercise the earlier review.
+	kubeAwait(t, 5*time.Second, "a distinct persisted sync timestamp", func() bool {
+		return current.Status.LastSyncTime != nil && time.Now().Truncate(time.Second).After(current.Status.LastSyncTime.Time)
+	})
 	if status, body := sync(env.token); status != http.StatusOK {
 		t.Fatal("observe sync", status, body)
 	}
