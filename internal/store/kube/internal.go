@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"sort"
 	"strings"
@@ -27,8 +28,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
 )
 
-// Internal kinds (Options.InternalKinds: LocalUser, APIToken, ServiceAccount,
-// RoleBinding, IdentityProvider from api/internalkinds/v1alpha1) are not
+// Internal kinds (Options.InternalKinds: LocalUser, APIToken, PrincipalState
+// from api/internalkinds/v1alpha1) are not
 // CRDs (D26: password and token hashes stay out of `kubectl get`). The
 // driver keeps each object as one Secret in Options.Namespace:
 //
@@ -123,6 +124,9 @@ func InternalSecretName(kind store.Kind, namespace, name string) string {
 
 type selfValidating interface{ Validate() error }
 
+// Credential carriers opt into strict failure rather than skipped legacy rows.
+type boundedPrivateCarrier interface{ PrivateCarrierLimit() int }
+
 // fieldErrorer is implemented by the validation error of the internal kinds
 // (internalkinds.ValidationError), matched structurally so the driver does
 // not depend on the identity layer's API package.
@@ -168,7 +172,20 @@ func decodeSecret(ki *kindInfo, sec *corev1.Secret) (store.Object, error) {
 		return nil, fmt.Errorf("store/kube: secret %s/%s has no %q key", sec.Namespace, sec.Name, InternalObjectKey)
 	}
 	obj := ki.newObject()
-	if err := json.Unmarshal(raw, obj); err != nil {
+	if bounded, strict := obj.(boundedPrivateCarrier); strict {
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if sec.Type != InternalSecretType || len(raw) > bounded.PrivateCarrierLimit() || decoder.Decode(obj) != nil || decoder.Decode(new(any)) != io.EOF || obj.GetObjectKind().GroupVersionKind() != ki.gvk || InternalSecretName(ki.kind, obj.GetNamespace(), obj.GetName()) != sec.Name || sec.UID == "" {
+			return nil, errors.New("store/kube: invalid bounded private carrier")
+		}
+		validator, ok := obj.(selfValidating)
+		if !ok {
+			return nil, errors.New("store/kube: bounded private object lacks validation")
+		}
+		if err := validator.Validate(); err != nil {
+			return nil, errors.New("store/kube: invalid bounded private object")
+		}
+	} else if err := json.Unmarshal(raw, obj); err != nil {
 		return nil, fmt.Errorf("store/kube: secret %s/%s: decode %s: %w", sec.Namespace, sec.Name, ki.kind, err)
 	}
 	obj.SetResourceVersion(sec.ResourceVersion)
@@ -268,10 +285,16 @@ func (s *Store) listInternal(ctx context.Context, ki *kindInfo, opts store.ListO
 	out := store.ObjectList{Items: make([]store.Object, 0, len(list.Items)), Continue: list.Continue}
 	for i := range list.Items {
 		if list.Items[i].Type != InternalSecretType {
+			if _, strict := ki.newObject().(boundedPrivateCarrier); strict {
+				return store.ObjectList{}, errors.New("store/kube: invalid bounded private carrier type")
+			}
 			continue
 		}
 		obj, err := decodeSecret(ki, &list.Items[i])
 		if err != nil {
+			if _, strict := ki.newObject().(boundedPrivateCarrier); strict {
+				return store.ObjectList{}, err
+			}
 			s.log.Warn("skipping undecodable internal object", "secret", list.Items[i].Name, "err", err)
 			continue
 		}
@@ -335,6 +358,9 @@ func (s *Store) applyInternal(ctx context.Context, ki *kindInfo, obj store.Objec
 			}
 			delete(next, "status") // Apply never writes status (D70)
 		} else {
+			if opts.CreateOnly {
+				return nil, fmt.Errorf("%w: %s already exists", store.ErrConflict, key)
+			}
 			if prev, err = decodeSecret(ki, sec); err != nil {
 				return nil, err
 			}
@@ -394,7 +420,7 @@ func (s *Store) applyInternal(ctx context.Context, ki *kindInfo, obj store.Objec
 				return nil, writeError("update", key, err)
 			}
 		}
-		if opts.ExpectedResourceVersion != "" || attempt >= applyRetries {
+		if opts.CreateOnly || opts.ExpectedResourceVersion != "" || attempt >= applyRetries {
 			return nil, fmt.Errorf("%w: %s changed during apply", store.ErrConflict, key)
 		}
 	}
@@ -413,6 +439,9 @@ func (s *Store) deleteInternal(ctx context.Context, ki *kindInfo, key store.Key,
 		if err != nil {
 			return err
 		}
+		if err := store.CheckDeletePreconditions(prev, opts); err != nil {
+			return err
+		}
 		if owner := store.ManagedBy(prev); owner != "" && opts.Manager != "" && owner != opts.Manager && !opts.Force {
 			return &store.ErrManagedBy{Key: key, Owner: owner}
 		}
@@ -425,7 +454,7 @@ func (s *Store) deleteInternal(ctx context.Context, ki *kindInfo, key store.Key,
 		case !apierrors.IsConflict(err):
 			return fmt.Errorf("store/kube: delete %s: %w", key, err)
 		}
-		if attempt >= applyRetries {
+		if opts.ExpectedUID != "" || opts.ExpectedResourceVersion != "" || attempt >= applyRetries {
 			return fmt.Errorf("%w: %s changed during delete", store.ErrConflict, key)
 		}
 	}

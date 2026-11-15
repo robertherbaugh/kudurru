@@ -41,8 +41,8 @@ func (s *Server) openStreamSource(ctx context.Context, p cluster.Peer, after uin
 	if p.Self {
 		if s.opts.Tail != nil {
 			source.events = s.opts.Tail.Subscribe(ctx)
-		} else if s.opts.Querylog != nil {
-			source.events = s.opts.Querylog.Subscribe(ctx)
+		} else if s.localQuerylog() != nil {
+			source.events = s.localQuerylog().Subscribe(ctx)
 		} else {
 			source.err = fmt.Errorf("live tail unavailable")
 		}
@@ -140,7 +140,7 @@ func (s *Server) scopedQueryStream(ctx context.Context, in *streamInput, peers [
 	if available == 0 {
 		cancel()
 		<-s.streams
-		return nil, errUnavailable("live tail unavailable on the requested nodes")
+		return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "live tail unavailable on the requested nodes", peerTailHint)
 	}
 	return &huma.StreamResponse{Body: func(hctx huma.Context) {
 		defer func() {

@@ -206,6 +206,25 @@ func (s *Service) Listen() error {
 	return nil
 }
 
+// ListenWith binds every scope through open instead of its interface socket:
+// a caller-owned socket such as a loopback socket in process-level tests. The
+// packet handling, lease stores and lifetimes are those of Listen.
+func (s *Service) ListenWith(open func(Config) (net.PacketConn, error)) error {
+	if open == nil {
+		return errors.New("dhcp: nil socket opener")
+	}
+	s.mu.Lock()
+	if !s.listening {
+		for _, listener := range s.listeners {
+			listener.mu.Lock()
+			listener.listen = open
+			listener.mu.Unlock()
+		}
+	}
+	s.mu.Unlock()
+	return s.Listen()
+}
+
 // Run supervises all bounded serial listeners. Failure of one cancels the rest.
 func (s *Service) Run(ctx context.Context) error {
 	s.mu.Lock()

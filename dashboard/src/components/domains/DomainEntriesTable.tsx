@@ -22,13 +22,14 @@ import type { DomainEntry, DomainEntryType } from '../../api/types';
 import { formatDateTime, formatRelative } from '../../lib/format';
 import { actorName, ORIGIN_LABEL, refPath, shortRef, TYPE_LABEL } from '../../lib/domains';
 import { TextField } from '../fields/TextField';
+import { RegexImpactDialog } from './RegexImpactDialog';
 
 const TYPE_COLOR: Record<DomainEntryType, 'default' | 'blue' | 'purple'> = { exact: 'default', wildcard: 'blue', regex: 'purple' };
 
 /** Why the row's controls are disabled ("" when they are not). */
-export function lockReason(e: DomainEntry, canWrite: boolean): string {
+export function lockReason(e: DomainEntry, canWrite: boolean, writeReason = 'Needs blocklists.write'): string {
   if (e.readOnly) return e.readOnlyReason || 'Managed outside the dashboard';
-  if (!canWrite) return 'Needs blocklists.write';
+  if (!canWrite) return writeReason;
   return '';
 }
 
@@ -45,6 +46,8 @@ export interface DomainEntriesTableProps {
   /** The combined view shows the action of each row. */
   showAction?: boolean;
   canWrite: boolean;
+  /** Why the rows are locked while canWrite is false (default: the missing permission). */
+  writeReason?: string;
   selected: Set<string>;
   setSelected: Dispatch<SetStateAction<Set<string>>>;
   /** Ids whose switch is saving. */
@@ -57,13 +60,13 @@ export interface DomainEntriesTableProps {
   emptyText: string;
 }
 
-export function DomainEntriesTable({ entries, showAction, canWrite, selected, setSelected, pending, onToggle, onComment, onEdit, onDelete, label, emptyText }: DomainEntriesTableProps) {
+export function DomainEntriesTable({ entries, showAction, canWrite, writeReason, selected, setSelected, pending, onToggle, onComment, onEdit, onDelete, label, emptyText }: DomainEntriesTableProps) {
   const { selectionConfig } = useTableSelectionState({
     data: entries,
     idKey: 'id',
     selectedKeys: selected,
     setSelectedKeys: setSelected,
-    getIsItemEnabled: (e) => !lockReason(e, canWrite),
+    getIsItemEnabled: (e) => !lockReason(e, canWrite, writeReason),
   });
   const selection = useTableSelection({ ...selectionConfig, getRowLabel: (e: DomainEntry) => e.value });
 
@@ -108,7 +111,7 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
       key: 'comment',
       header: 'Comment',
       width: proportional(1.75, { minWidth: 130 }),
-      renderCell: (e) => <CommentCell e={e} locked={e.kind === 'exception' || !!lockReason(e, canWrite)} onSave={(c) => onComment(e, c)} />,
+      renderCell: (e) => <CommentCell e={e} locked={e.kind === 'exception' || !!lockReason(e, canWrite, writeReason)} onSave={(c) => onComment(e, c)} />,
     },
     {
       key: 'created',
@@ -121,7 +124,7 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
       header: 'On',
       width: pixel(64),
       renderCell: (e) => {
-        const why = lockReason(e, canWrite);
+        const why = lockReason(e, canWrite, writeReason);
         return (
           <Switch
             label={e.kind === 'exception' ? `${e.value} switched off in ${shortRef(e.lists[0]?.list ?? '', e.namespace)}` : `${e.value} enabled`}
@@ -141,7 +144,7 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
       header: 'Actions',
       width: pixel(96),
       renderCell: (e) => {
-        const why = lockReason(e, canWrite);
+        const why = lockReason(e, canWrite, writeReason);
         return (
           <HStack gap={0.5}>
             {e.kind === 'exception' ? null : (
@@ -179,11 +182,18 @@ export function DomainEntriesTable({ entries, showAction, canWrite, selected, se
 
 /** The value, what the entry overrides and why it is read-only. */
 function DomainCell({ e }: { e: DomainEntry }) {
+  const [inspect, setInspect] = useState(false);
   return (
     <VStack gap={0.5}>
       <Text type="code" wordBreak="break-all" hasStrikethrough={!e.enabled}>
         {e.value}
       </Text>
+      {e.type === 'regex' && e.kind !== 'exception' ? (
+        <>
+          <Button label="Test a domain" size="sm" variant="ghost" onClick={() => setInspect(true)} />
+          {inspect ? <RegexImpactDialog entry={e} onClose={() => setInspect(false)} /> : null}
+        </>
+      ) : null}
       {e.kind === 'exception' ? (
         e.stillMatchedBy.length ? (
           <Text type="supporting" size="sm">

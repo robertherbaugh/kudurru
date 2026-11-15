@@ -22,8 +22,10 @@
 //
 // Routes:
 //
+//	GET /internal/health          {node, ready, health:<local /healthz document>}
 //	GET /internal/status          {node, version, leader, state, lists:[{name, digests}]}
 //	GET /internal/lists/{digest}  the cached list body whose sha256 is digest
+//	GET /internal/edge/blocks     active operator edge blocks {owner, revision, blocks:[{id, prefix, until}]} (D388)
 //
 // GET /internal/querylog?q=<JSON> reads local query-log/stats shards, including
 // bounded distinct sketches and additive latency histograms. It never fans

@@ -12,7 +12,7 @@
 #      - becomes healthy through the file's own healthcheck, as uid 65532;
 #      - answers a zone from objects.d/ and a forwarded name over UDP and TCP;
 #      - a zone created through the API answers; a settings change through
-#        the API lands in KUDURRU_SETTINGS_FILE on the data volume;
+#        the API persists in the canonical SQLite settings on the data volume;
 #      - the query log and the audit log have the queries and the change;
 #      - `docker compose stop` drains within stop_grace_period and exits 0;
 #      - after `docker compose down` and `up` on the same volume the zone,
@@ -27,8 +27,11 @@
 # (9.18 or later for DoT and DoH) on PATH; runs on GitHub's runners
 # (.github/workflows/compose.yml). KEEP=1 keeps the projects and volumes for
 # debugging; FORWARD_CHECK=0 skips the forwarded query (no internet access
-# to 1.1.1.1/9.9.9.9); EDGE=0 skips part 2. The jq filters are
-# single-quoted on purpose: $name is a jq variable.
+# to 1.1.1.1/9.9.9.9); EDGE=0 skips part 2; BUILD=0 with IMAGE=<reference>
+# (and DNSDIST_IMAGE for part 2) tests prebuilt -tags licensetest images
+# instead of building them. The log names the image and the binary inside it
+# either way. The jq filters are single-quoted on purpose: $name is a jq
+# variable.
 # shellcheck disable=SC2016
 set -euo pipefail
 
@@ -262,6 +265,10 @@ if [ "$BUILD" = 1 ]; then
     docker build -q -t "$DNSDIST_IMAGE" --build-arg KUDURRU_IMAGE="$IMAGE" "$ROOT/images/dnsdist"
   fi
 fi
+# The artifact under test, for the record of the run (BUILD=0 IMAGE=... tests
+# a prebuilt one).
+docker run --rm --network none "$IMAGE" version
+docker image inspect --format 'image {{.Id}}' "$IMAGE"
 TOKEN=$(docker run --rm "$IMAGE" token generate)
 # The audit trail and the edge supervisor need a license key: the test key,
 # which the licensetest images trust (the compose files read
@@ -300,9 +307,9 @@ create_zone api-probe
 eventually 60 "the zone created through the API answers" authoritative -p "$DNS_PORT" api-probe.example
 api PATCH /settings '{"cache":{"maxEntries":123457}}' >/dev/null
 eventually 30 "the settings change is served" has_setting 123457
-compose single cp kudurru:/var/lib/kudurru/settings.yaml "$WORK/settings.yaml"
-grep -q 123457 "$WORK/settings.yaml"
-echo "ok the change is in KUDURRU_SETTINGS_FILE on the data volume"
+# SQLite persists cluster settings in its canonical Kudurru singleton. The
+# restart below verifies durable storage through the actual API; settings.yaml
+# is only the legacy/Kubernetes settings path.
 send_queries before -p "$DNS_PORT"
 eventually 90 "the query log has the queries" queries_have before
 eventually 60 "the audit log has the change" audit_has api-probe

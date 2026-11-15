@@ -8,7 +8,8 @@
 // gives the same answer whichever replica serves it, and the events
 // survive pod restarts. The leader deletes batches older than the
 // retention (Prune). Each batch carries its events' hash chain and an
-// HMAC seal keyed from the cluster encryption key (Verify).
+// independent Ed25519 signature; historical HMAC seals require explicit
+// retained trust and cutoff admission (Verify).
 package auditlog
 
 import (
@@ -77,7 +78,7 @@ func fromEvent(node string, ev audit.Event, stub bool) auditv1.AuditLogEvent {
 // encryption key.
 const SealKeyInfo = "kudurru/audit-seal/v1"
 
-// SealKey derives the key of batch seals from the cluster encryption key,
+// SealKey derives historical HMAC verification material for explicit import,
 // which every node shares; nil for an empty key (batches are not sealed).
 func SealKey(encryptionKey []byte) ([]byte, error) {
 	if len(encryptionKey) == 0 {

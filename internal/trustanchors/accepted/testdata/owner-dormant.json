@@ -1,0 +1,6 @@
+[
+  {
+    "key": "trustanchors/v1/root",
+    "data": "{\"chunks\":[],\"clusterID\":\"cluster\",\"formatVersion\":1,\"generation\":\"1\",\"historyID\":\"0123456789abcdef0123456789abcdef\",\"initializedAt\":\"2026-11-01T00:00:00Z\",\"observationUntil\":\"0001-01-01T00:00:00Z\",\"phase\":\"dormant\",\"policyID\":\"\",\"previous\":{\"digest\":\"\",\"generation\":\"0\",\"pure\":{\"digest\":\"\",\"generation\":\"0\"}},\"pure\":{\"digest\":\"\",\"generation\":\"0\"},\"seedDigest\":\"\",\"stateBytes\":0,\"trustPoint\":\".\",\"updatedAt\":\"2026-11-01T00:00:00Z\"}"
+  }
+]

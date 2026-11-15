@@ -13,7 +13,7 @@ import (
 // Brand assets: downscaled copies of branding/assets
 // (kudurru-logo-mixed{,-paper}.png as dashboard/src/assets has them, and
 // favicon.ico), written by dashboard/scripts/brand-assets.py. The logos are
-// inlined as data: URIs so the page makes no request but /favicon.ico.
+// inlined as data: URIs together with the favicon so the page makes no asset requests.
 var (
 	//go:embed assets/logo-light.png
 	logoLight []byte
@@ -32,8 +32,11 @@ const (
 // Page is what one rendering shows. Every string is plain text: the
 // template escapes it for its context (element text, attribute, URL).
 type Page struct {
-	Title   string
-	Message string
+	// Branding is already prepared presentation data, selected by the caller.
+	// Nil keeps the built-in appearance; this renderer performs no licensing.
+	Branding *Branding
+	Title    string
+	Message  string
 	// Domain is the blocked name from the Host header (or TLS SNI); empty
 	// when the request named no valid domain (an IP literal, garbage).
 	Domain string
@@ -62,7 +65,7 @@ type Page struct {
 }
 
 // css is the page's only style sheet, inlined and allowed by its hash in
-// the Content-Security-Policy (no 'unsafe-inline'). The colours are the
+// the Content-Security-Policy (no 'unsafe-inline'). The colors are the
 // brand tokens of branding/tokens.css.
 const css = `:root{--ink:#182522;--clay:#B65C3A;--paper:#F7F3EA;--stone:#D9D1C2;--bg:var(--paper);--fg:var(--ink);--card:#FFFFFF;--muted:#4A5552;--line:var(--stone);--accent:#9A4A2C;color-scheme:light dark}
 @media (prefers-color-scheme:dark){:root{--bg:#101917;--fg:var(--paper);--card:var(--ink);--muted:#B9B3A6;--line:#2E3B38;--accent:#E08A66}}
@@ -70,7 +73,7 @@ const css = `:root{--ink:#182522;--clay:#B65C3A;--paper:#F7F3EA;--stone:#D9D1C2;
 html,body{margin:0;padding:0}
 body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);color:var(--fg);font:16px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px}
 main{width:100%;max-width:640px;background:var(--card);border:1px solid var(--line);border-top:4px solid var(--clay);border-radius:12px;padding:32px}
-.logo img{display:block;width:180px;height:60px;margin:0 0 24px -6px}
+.logo img{display:block;width:180px;height:60px;object-fit:contain;margin:0 0 24px -6px}
 h1{font-size:1.6rem;line-height:1.25;margin:0 0 12px}
 p{margin:0 0 16px}
 .domain{font:600 1.05rem/1.4 "JetBrains Mono",ui-monospace,SFMono-Regular,Consolas,monospace;word-break:break-all;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin:0 0 20px}
@@ -153,6 +156,7 @@ func safeURL(u string) string {
 }
 
 func renderString(p Page) string {
+	brand := actualBranding(p.Branding)
 	if p.Title == "" {
 		p.Title = DefaultTitle
 	}
@@ -163,7 +167,7 @@ func renderString(p Page) string {
 		p.Time = time.Now()
 	}
 	var b strings.Builder
-	b.Grow(len(head) + len(css) + len(logoLightURL) + len(logoDarkURL) + 4096)
+	b.Grow(len(head) + len(brand.css) + len(brand.light) + len(brand.dark) + len(brand.iconURL) + 4096)
 	w := func(parts ...string) {
 		for _, s := range parts {
 			b.WriteString(s)
@@ -173,9 +177,9 @@ func renderString(p Page) string {
 	if p.Domain != "" {
 		w(": ", esc(p.Domain))
 	}
-	w("</title>\n<link rel=\"icon\" href=\"/favicon.ico\">\n<style>", css, "</style>\n</head>\n<body>\n<main>\n")
-	w(`<div class="logo"><picture><source media="(prefers-color-scheme: dark)" srcset="`, logoDarkURL, `"><img src="`, logoLightURL,
-		`" width="180" height="60" alt="kudurru"></picture></div>`, "\n")
+	w("</title>\n<link rel=\"icon\" href=\"", brand.iconURL, "\">\n<style>", brand.css, "</style>\n</head>\n<body>\n<main>\n")
+	w(`<div class="logo"><picture><source media="(prefers-color-scheme: dark)" srcset="`, brand.dark, `"><img src="`, brand.light,
+		`" width="180" height="60" alt="`, esc(brand.name), `"></picture></div>`, "\n")
 	if p.Preview {
 		w(`<div class="preview">Preview</div>`, "\n")
 	}
@@ -216,9 +220,9 @@ func renderString(p Page) string {
 		w("<p>Ask your administrator if you think this is a mistake.</p>\n")
 	}
 	if u := safeURL(p.DashboardURL); p.ShowDetails && u != "" {
-		w(`<p>Administrator? <a href="`, esc(u), `" rel="noreferrer">See this name in the kudurru query log</a>.</p>`, "\n")
+		w(`<p>Administrator? <a href="`, esc(u), `" rel="noreferrer">See this name in the `, esc(brand.name), ` query log</a>.</p>`, "\n")
 	}
-	w("<p>Blocked by kudurru DNS.</p>\n</footer>\n</main>\n</body>\n</html>\n")
+	w("<p>Blocked by ", esc(brand.name), " DNS.</p>\n</footer>\n</main>\n</body>\n</html>\n")
 	return b.String()
 }
 
@@ -260,4 +264,15 @@ func renderRequest(b *strings.Builder, rq *RequestView) {
 // RenderBytes is Render into a buffer.
 func RenderBytes(p Page) ([]byte, error) {
 	return []byte(renderString(p)), nil
+}
+
+// RenderDocument binds the exact rendered CSS and matching restrictive CSP.
+// It never reads files, callbacks, request context, license or network state.
+func RenderDocument(p Page) (Document, error) {
+	brand := actualBranding(p.Branding)
+	policy := brand.csp
+	if p.Preview {
+		policy = brand.previewCSP
+	}
+	return Document{Body: []byte(renderString(p)), CSP: policy}, nil
 }

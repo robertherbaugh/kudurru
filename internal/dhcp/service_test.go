@@ -331,3 +331,60 @@ func TestServiceRejectsConflictingEffectiveTopologies(t *testing.T) {
 		})
 	}
 }
+
+// ListenWith binds every interface listener through the caller's opener and
+// keeps Listen's all-or-nothing contract; Run then serves those sockets.
+func TestServiceListenWithCallerSockets(t *testing.T) {
+	a := protocolConfig()
+	b := relayConfig()
+	b.Subnet = netip.MustParsePrefix("203.0.113.0/24")
+	b.RangeStart, b.RangeEnd, b.Router = netip.MustParseAddr("203.0.113.10"), netip.MustParseAddr("203.0.113.20"), netip.MustParseAddr("203.0.113.1")
+	b.TrustedRelays[0].GatewayIP = b.Router
+	svc := serviceForTest(t, a, b)
+	if err := svc.ListenWith(nil); err == nil {
+		t.Fatal("nil opener accepted")
+	}
+	var opened []*serverConn
+	if err := svc.ListenWith(func(Config) (net.PacketConn, error) {
+		c := newServerConn()
+		opened = append(opened, c)
+		return c, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(opened) != 2 {
+		t.Fatalf("opened %d sockets", len(opened))
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- svc.Run(ctx) }()
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range opened {
+		select {
+		case <-c.closed:
+		default:
+			t.Fatal("caller socket survived shutdown")
+		}
+	}
+	svc = serviceForTest(t, a, b)
+	injected := errors.New("bind failure")
+	first := newServerConn()
+	calls := 0
+	if err := svc.ListenWith(func(Config) (net.PacketConn, error) {
+		calls++
+		if calls == 2 {
+			return nil, injected
+		}
+		return first, nil
+	}); !errors.Is(err, injected) {
+		t.Fatal(err)
+	}
+	select {
+	case <-first.closed:
+	default:
+		t.Fatal("partial ListenWith left a socket open")
+	}
+}

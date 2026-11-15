@@ -9,6 +9,77 @@ import (
 	"testing/iotest"
 )
 
+func TestRegexModifierCIDRDelimiter(t *testing.T) {
+	for _, tc := range []struct {
+		name, pattern, tail string
+		exception           bool
+		modifiers           []Modifier
+	}{
+		{"ipv4", `/^client[.]example$/`, "client=192.0.2.0/24,dnstype=AAAA", false, []Modifier{{"client", "192.0.2.0/24"}, {"dnstype", "AAAA"}}},
+		{"exception", `/^client[.]example$/`, "client=192.0.2.0/24,dnstype=AAAA", true, []Modifier{{"client", "192.0.2.0/24"}, {"dnstype", "AAAA"}}},
+		{"ipv6", `/^client[.]example$/`, "client=2001:db8::/32,dnstype=AAAA", false, []Modifier{{"client", "2001:db8::/32"}, {"dnstype", "AAAA"}}},
+		{"mixed", `/^client[.]example$/`, "client=192.0.2.0/24|2001:db8::/32,dnstype=AAAA", false, []Modifier{{"client", "192.0.2.0/24|2001:db8::/32"}, {"dnstype", "AAAA"}}},
+		{"badfilter", `/^client[.]example$/`, "dnstype=AAAA,client=192.0.2.0/24,badfilter", false, []Modifier{{"dnstype", "AAAA"}, {"client", "192.0.2.0/24"}, {"badfilter", ""}}},
+		{"quoted-client", `/^client[.]example$/`, "client='room/24'", false, []Modifier{{"client", "'room/24'"}}},
+		{"quoted-delimiter", `/^client[.]example$/`, "client='room/$floor'", false, []Modifier{{"client", "'room/$floor'"}}},
+		{"escaped-slash", `/^a\/b$/`, "client=192.0.2.0/24", false, []Modifier{{"client", "192.0.2.0/24"}}},
+		{"class-slash", `/^a[/]b$/`, "client=192.0.2.0/24", false, []Modifier{{"client", "192.0.2.0/24"}}},
+		{"class-delimiter", `/^a[/$]b$/`, "client=192.0.2.0/24", false, []Modifier{{"client", "192.0.2.0/24"}}},
+		{"class-literal-bracket", `/^a[]/$]b$/`, "client=192.0.2.0/24", false, []Modifier{{"client", "192.0.2.0/24"}}},
+		{"negated-class-literal-bracket", `/^a[^]/$]b$/`, "client=192.0.2.0/24", false, []Modifier{{"client", "192.0.2.0/24"}}},
+		{"posix-class", `/^a[[:alpha:]/$]b$/`, "client=192.0.2.0/24", false, []Modifier{{"client", "192.0.2.0/24"}}},
+		{"quoted-pattern", `/^\Qa/$b\E$/`, "client=192.0.2.0/24", false, []Modifier{{"client", "192.0.2.0/24"}}},
+		{"escaped-delimiter", `/^a\/$/`, "client=192.0.2.0/24", false, []Modifier{{"client", "192.0.2.0/24"}}},
+		{"internal-slash", `/^a/b$/`, "client=192.0.2.0/24", false, []Modifier{{"client", "192.0.2.0/24"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			line := tc.pattern + "$" + tc.tail
+			if tc.exception {
+				line = "@@" + line
+			}
+			for _, format := range []Format{FormatAdblock, FormatAuto} {
+				calls := 0
+				result, err := Parse(strings.NewReader(line), Options{Format: format, EmitSlow: func(rule UnsupportedRule) error {
+					calls++
+					if rule.Text != line || rule.Pattern != tc.pattern || rule.Exception != tc.exception || rule.Reason != ReasonModifiers || !reflect.DeepEqual(rule.Modifiers, tc.modifiers) {
+						t.Fatalf("lost original rule or modifier boundary: %+v", rule)
+					}
+					return nil
+				}}, func(Rule) error { t.Fatal("contextual rule entered fast parser"); return nil })
+				if err != nil || calls != 1 || result.Rules != 1 || result.Invalid != 0 || result.Unsupported != 0 {
+					t.Fatalf("format %s: calls=%d result=%+v err=%v", format, calls, result, err)
+				}
+				if (result.Exceptions == 1) != tc.exception {
+					t.Fatal("exception accounting changed")
+				}
+				_, result = parseAll(t, line, Options{Format: format})
+				if result.Rules != 0 || result.Invalid != 0 || result.Unsupported != 1 || result.UnsupportedReasons[ReasonModifiers] != 1 {
+					t.Fatalf("default parser classification: %+v", result)
+				}
+			}
+		})
+	}
+}
+
+func TestRegexDelimiterGrammar(t *testing.T) {
+	for _, pattern := range []string{`/ads$/`, `/^a\/b$/`, `/^a[/]b$/`, `/^a[/$]b$/`, `/^a[]/$]b$/`, `/^a[[:alpha:]/$]b$/`, `/^\Qa/$b\E$/`, `/^a/b$/`} {
+		rules, result := parseAll(t, pattern, Options{Format: FormatAdblock})
+		if result.Invalid != 0 || result.Unsupported != 0 || len(rules) != 1 || rules[0].String() != pattern {
+			t.Fatalf("bare expression %q changed: rules=%+v result=%+v", pattern, rules, result)
+		}
+	}
+	for _, tc := range []struct{ line, reason string }{
+		{"/", ReasonInvalidRegex}, {"//", ReasonInvalidRegex}, {"/ads", ReasonInvalidRegex}, {"/(/", ReasonInvalidRegex},
+		{"/ads/banner.js", ReasonURL}, {"/ads/$script", ReasonUnknownModifier}, {"/ads/$", ReasonMalformedModifiers},
+		{"/ads/$client='unterminated/24", ReasonMalformedModifiers},
+	} {
+		rules, result := parseAll(t, tc.line, Options{Format: FormatAdblock})
+		if len(rules) != 0 || result.Rules != 0 || result.Unsupported != 0 || result.Invalid != 1 || result.InvalidReasons[tc.reason] != 1 {
+			t.Fatalf("invalid input %q changed category: %+v", tc.line, result)
+		}
+	}
+}
+
 // parseAll parses src and returns the emitted rules and the result.
 func parseAll(t *testing.T, src string, opts Options) ([]Rule, *Result) {
 	t.Helper()

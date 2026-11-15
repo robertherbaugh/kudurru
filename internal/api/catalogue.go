@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -12,11 +13,14 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/listdata/catalogue"
 )
 
-// CatalogueSource is the blocked-services and safe-search catalogue in
+// CatalogueSource is the blocked-services and safe-search catalog in
 // service (catalogue.Holder); Status, when set, reports the runtime
 // refresh of blocking.catalogue.url and ImportStatus the opt-in AdGuard
 // import of blocking.catalogue.adguardServicesURL.
 type CatalogueSource struct {
+	// Read, when set, reads only the original request's immutable catalog.
+	// Failure never falls back to Holder or live refresh status.
+	Read         func(context.Context) (*catalogue.Catalogue, error)
 	Holder       *catalogue.Holder
 	Status       func() catalogue.Status
 	ImportStatus func() catalogue.Status
@@ -183,28 +187,56 @@ type catalogueSafeSearchOutput struct{ Body *List[SafeSearchEngine] }
 
 func (s *Server) catalogue() *catalogue.Catalogue { return s.opts.Catalogue.Holder.Current() }
 
+func (s *Server) catalogueFor(ctx context.Context) (*catalogue.Catalogue, error) {
+	read := s.opts.Catalogue.Read
+	if read == nil {
+		return s.catalogue(), nil
+	}
+	unavailable := func() error {
+		return newError(http.StatusServiceUnavailable, KeyUnavailable, "original catalog unavailable", "")
+	}
+	if ctx == nil || ctx.Err() != nil {
+		return nil, unavailable()
+	}
+	c, err := read(ctx)
+	if err != nil || c == nil || ctx.Err() != nil {
+		return nil, unavailable()
+	}
+	return c, nil
+}
+
 // registerCatalogue declares the read-only catalogue routes (D60). They
 // need policies.read: the catalogue is what a Policy's blockedServices and
 // safeSearch refer to.
 func (s *Server) registerCatalogue() {
 	p := perm{resource: "policies", verb: "read"}
 	register(s, operation(http.MethodGet, "/catalogue", "getCatalogue", "The blocked-services and safe-search catalogue in service", "catalogue"), p,
-		func(context.Context, *struct{}) (*catalogueInfoOutput, error) {
-			c := s.catalogue()
+		func(ctx context.Context, _ *struct{}) (*catalogueInfoOutput, error) {
+			c, err := s.catalogueFor(ctx)
+			if err != nil {
+				return nil, err
+			}
 			info := &CatalogueInfo{
 				SchemaVersion: c.SchemaVersion, Version: c.Version, License: c.License, Homepage: c.Homepage,
 				Origin: c.Origin(), Digest: c.Digest(), Services: len(c.Services), Categories: len(c.Categories), SafeSearchEngines: len(c.SafeSearch),
 			}
-			if st := s.opts.Catalogue.Status; st != nil {
-				info.Refresh = catalogueRefresh(st())
+			if s.opts.Catalogue.Read != nil {
+				info.Sources = capturedCatalogueSources(c)
+			} else {
+				if st := s.opts.Catalogue.Status; st != nil {
+					info.Refresh = catalogueRefresh(st())
+				}
+				info.Sources = s.catalogueSources(c)
 			}
-			info.Sources = s.catalogueSources(c)
 			return &catalogueInfoOutput{Body: info}, nil
 		})
 	register(s, operation(http.MethodGet, "/catalogue/services", "listCatalogueServices", "Services Policy.spec.blockedServices can block", "catalogue"), p,
-		func(_ context.Context, in *catalogueServicesInput) (*catalogueServicesOutput, error) {
+		func(ctx context.Context, in *catalogueServicesInput) (*catalogueServicesOutput, error) {
 			var items []CatalogueService
-			c := s.catalogue()
+			c, err := s.catalogueFor(ctx)
+			if err != nil {
+				return nil, err
+			}
 			for _, svc := range c.Services {
 				if in.Category != "" && svc.Category != in.Category {
 					continue
@@ -214,8 +246,11 @@ func (s *Server) registerCatalogue() {
 			return &catalogueServicesOutput{Body: newList(items, "")}, nil
 		})
 	register(s, operation(http.MethodGet, "/catalogue/categories", "listCatalogueCategories", "Categories Policy.spec.blockedCategories can block", "catalogue"), p,
-		func(context.Context, *struct{}) (*catalogueCategoriesOutput, error) {
-			c := s.catalogue()
+		func(ctx context.Context, _ *struct{}) (*catalogueCategoriesOutput, error) {
+			c, err := s.catalogueFor(ctx)
+			if err != nil {
+				return nil, err
+			}
 			items := make([]CatalogueCategory, 0, len(c.Categories))
 			for _, k := range c.Categories {
 				ids, _ := c.CategoryServices(k.ID)
@@ -224,13 +259,14 @@ func (s *Server) registerCatalogue() {
 			return &catalogueCategoriesOutput{Body: newList(items, "")}, nil
 		})
 	register(s, operation(http.MethodGet, "/catalogue/safesearch", "listCatalogueSafeSearch", "Search engines Policy.spec.safeSearch rewrites", "catalogue"), p,
-		func(context.Context, *struct{}) (*catalogueSafeSearchOutput, error) {
+		func(ctx context.Context, _ *struct{}) (*catalogueSafeSearchOutput, error) {
+			c, err := s.catalogueFor(ctx)
+			if err != nil {
+				return nil, err
+			}
 			var items []SafeSearchEngine
-			for _, e := range s.catalogue().SafeSearch {
-				items = append(items, SafeSearchEngine{
-					ID: e.ID, Name: e.Name, List: catalogue.SafeSearchPrefix + e.ID, Target: e.Target, ModerateTarget: e.ModerateTarget,
-					Addresses: e.Addresses, Domains: len(e.Domains), Source: e.Source, IconRef: iconRef(e.IconSlug()),
-				})
+			for _, e := range c.SafeSearch {
+				items = append(items, catalogueSafeSearch(e))
 			}
 			return &catalogueSafeSearchOutput{Body: newList(items, "")}, nil
 		})
@@ -274,19 +310,37 @@ func (s *Server) registerCatalogue() {
 	})
 }
 
-// catalogueService is the API form of svc; license is the catalogue
-// document's licence.
+// catalogueService is the detached API form of svc; license is the catalog
+// document's license.
 func catalogueService(svc *catalogue.Service, license string) CatalogueService {
 	out := CatalogueService{
 		ID: svc.ID, Name: svc.Name, Category: svc.Category, List: catalogue.ListName(svc.ID),
 		Rules: len(svc.Rules), Domains: append([]string{}, svc.Rules...), Source: svc.Source,
-		Origin: svc.Origin(), License: license, Requires: svc.Requires, Related: svc.Related, Note: svc.Note,
+		Origin: svc.Origin(), License: license, Requires: slices.Clone(svc.Requires), Related: slices.Clone(svc.Related), Note: svc.Note,
 		IconRef: iconRef(svc.IconSlug()),
 	}
 	if out.Origin == catalogue.OriginAdGuard {
 		out.License = catalogue.AdGuardLicense
 	}
 	return out
+}
+
+func catalogueSafeSearch(e catalogue.Engine) SafeSearchEngine {
+	return SafeSearchEngine{
+		ID: e.ID, Name: e.Name, List: catalogue.SafeSearchPrefix + e.ID, Target: e.Target, ModerateTarget: e.ModerateTarget,
+		Addresses: slices.Clone(e.Addresses), Domains: len(e.Domains), Source: e.Source, IconRef: iconRef(e.IconSlug()),
+	}
+}
+
+// capturedCatalogueSources projects only actual acquired provenance, without
+// consulting configured refreshers or reporting their live attempt state.
+func capturedCatalogueSources(c *catalogue.Catalogue) []CatalogueSourceInfo {
+	out := []CatalogueSourceInfo{{ID: catalogue.OriginKudurru, Name: "kudurru catalogue", License: c.License, Origin: c.Origin(), Digest: c.Digest(), Loaded: true}}
+	if imp, shadowed := c.Imported(); imp != nil {
+		out = append(out, CatalogueSourceInfo{ID: catalogue.OriginAdGuard, Name: "AdGuard HostlistsRegistry services (opt-in)", License: catalogue.AdGuardLicense,
+			Origin: imp.Origin(), Digest: imp.Digest(), Loaded: true, Shadowed: shadowed, Skipped: imp.Skipped, DroppedRules: imp.DroppedRules})
+	}
+	return countSources(c, out)
 }
 
 func catalogueRefresh(rs catalogue.Status) *CatalogueRefresh {

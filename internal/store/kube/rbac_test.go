@@ -18,7 +18,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
-var kudurruResources = []string{"dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies", "unblockrequests", "dhcpscopes"}
+var kudurruResources = []string{"dnszones", "dnsrecordsets", "blocklists", "clientgroups", "policies", "unblockrequests", "dhcpscopes", "identityproviders", "integrations", "kudurrus", "rolebindings", "serviceaccounts"}
 
 // TestKudurruResourcesCoverEveryKind keeps the least-privilege rules in step
 // with the kinds the driver informs: a kind missing here has informers that
@@ -69,6 +69,13 @@ var driverLeaseRules = []rbacv1.PolicyRule{
 // driver authenticated as that user.
 func grant(t *testing.T, user string, cluster []rbacv1.PolicyRule) *Store {
 	t.Helper()
+	return grantWith(t, user, cluster, Options{})
+}
+
+// grantWith is grant with extra driver options (Identity and the lease
+// timings are set here).
+func grantWith(t *testing.T, user string, cluster []rbacv1.PolicyRule, opts Options) *Store {
+	t.Helper()
 	ctx := context.Background()
 	au, err := shared.env.AddUser(envtest.User{Name: user, Groups: []string{"system:authenticated"}}, nil)
 	if err != nil {
@@ -93,10 +100,9 @@ func grant(t *testing.T, user string, cluster []rbacv1.PolicyRule) *Store {
 		}
 		t.Cleanup(func() { _ = shared.admin.Delete(context.Background(), o) })
 	}
-	return newStoreOn(t, au.Config(), Options{
-		Identity:      name,
-		LeaseDuration: testLeaseDuration, RenewDeadline: testRenewDeadline, RetryPeriod: testRetryPeriod,
-	})
+	opts.Identity = name
+	opts.LeaseDuration, opts.RenewDeadline, opts.RetryPeriod = testLeaseDuration, testRenewDeadline, testRetryPeriod
+	return newStoreOn(t, au.Config(), opts)
 }
 
 // TestLeastPrivilegeRole runs every driver operation as a user holding only

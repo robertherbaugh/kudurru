@@ -32,6 +32,9 @@ type settingsYAMLOutput struct{ Body *settingsYAMLBody }
 func (s *Server) registerSettingsOwnership() {
 	register(s, operation(http.MethodPost, "/settings/sections/{section}/ownership/{action}", "changeSettingsOwnership", "Adopt or release a settings section using its reviewed revision", "settings"),
 		perm{resource: "settings", verb: "write"}, func(ctx context.Context, in *ownershipInput) (*settingsOutput, error) {
+			if s.opts.CanonicalSettings != nil {
+				return nil, canonicalSettingsOwnership("change them with `kudurru settings set` or PATCH " + s.prefix + BasePath + "/settings; there is no file ownership to adopt or release")
+			}
 			if s.opts.SettingsOwnership == nil {
 				return nil, errInvalid("settings ownership requires persistent settings storage")
 			}
@@ -45,13 +48,16 @@ func (s *Server) registerSettingsOwnership() {
 			if err != nil {
 				return nil, ownershipError(err)
 			}
-			out := s.settingsBody(config.ScopeCluster, nil, nil)
+			out := s.settingsBody(s.config(), config.ScopeCluster, nil, nil)
 			yes := true
 			out.Body.Persisted = &yes
 			return out, nil
 		})
 	register(s, operation(http.MethodPost, "/settings/sections/{section}/yaml", "exportSettingsSectionYAML", "Generate Helm values for the current or proposed complete section without writing", "settings"),
 		perm{resource: "settings", verb: "read"}, func(ctx context.Context, in *settingsYAMLInput) (*settingsYAMLOutput, error) {
+			if s.opts.CanonicalSettings != nil {
+				return nil, canonicalSettingsOwnership("read them with `kudurru settings get` or GET " + s.prefix + BasePath + "/settings")
+			}
 			if s.opts.SettingsOwnership == nil {
 				return nil, errInvalid("settings ownership requires persistent settings storage")
 			}
@@ -61,4 +67,13 @@ func (s *Server) registerSettingsOwnership() {
 			}
 			return &settingsYAMLOutput{Body: &settingsYAMLBody{YAML: text, Revision: revision}}, nil
 		})
+}
+
+// canonicalSettingsOwnership refuses the file/UI ownership routes on a runtime
+// whose cluster settings are one canonical database document (complete
+// SQLite). Ownership is not pending there; it does not exist, so the hint names
+// what to use instead.
+func canonicalSettingsOwnership(instead string) *Error {
+	return newError(http.StatusServiceUnavailable, KeyUnavailable, "canonical settings do not use legacy ownership storage",
+		"this server stores cluster settings in its database: "+instead)
 }

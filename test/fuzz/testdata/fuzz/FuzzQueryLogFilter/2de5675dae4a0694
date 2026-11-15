@@ -1,0 +1,10 @@
+go test fuzz v1
+string("")
+string("*\x00")
+string("")
+string("")
+string("")
+string("")
+uint16(0)
+string("")
+int(0)

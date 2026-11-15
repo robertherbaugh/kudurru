@@ -24,7 +24,8 @@ var nodesClient = func() (corev1client.NodesGetter, error) {
 }
 
 // nodePeers resolves --peers-from: it lists the selected Nodes, sets
-// f.peers and, unless --priority-index was given, f.priorityIndex from
+// f.peers and, unless priorityIndex was set in a file, environment or flag,
+// f.priorityIndex from
 // this node's place among them. With writeFile (vip run) the peers go to
 // <run dir>/vrrp-peers, which becomes the watched --peers-file. It
 // returns nil when --peers-from is unset.
@@ -58,7 +59,7 @@ func (f *vipFlags) nodePeers(c *cobra.Command, writeFile bool) (*keepalived.Node
 	if len(set.Peers) == 0 {
 		return nil, nil, fmt.Errorf("--peers-from %s: no other node with an address of the VIP's family matches", f.peersFrom)
 	}
-	if !c.Flags().Changed("priority-index") {
+	if !c.Flags().Changed("priority-index") && !f.priorityConfigured {
 		f.priorityIndex = set.Index
 	}
 	if writeFile {

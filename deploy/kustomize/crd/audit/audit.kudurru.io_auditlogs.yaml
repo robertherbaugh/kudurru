@@ -196,8 +196,8 @@ spec:
                 type: string
               seal:
                 description: |-
-                  Seal is an HMAC-SHA256 over the batch keyed from the cluster
-                  encryption key, so an edit made without that key is detected.
+                  Seal is a versioned independent Ed25519 batch signature. Historical
+                  HMAC-SHA256 seals require explicit retained trust and cutover admission.
                 type: string
               source:
                 description: |-

@@ -22,6 +22,10 @@ func (LuaRenderer) Main() string { return "dnsdist.conf" }
 
 // Render implements Renderer.
 func (r LuaRenderer) Render(in *edge.Topology) ([]File, error) {
+	return r.render(in, nil)
+}
+
+func (r LuaRenderer) render(in *edge.Topology, initialDown map[string]bool) ([]File, error) {
 	t, err := prepare(in)
 	if err != nil {
 		return nil, err
@@ -69,7 +73,11 @@ func (r LuaRenderer) Render(in *edge.Topology) ([]File, error) {
 		case edge.DoT:
 			w("addTLSLocal(%s, %s, %s, {minTLSVersion=\"tls1.2\"})", luaString(bd.Address), luaString(bd.CertFile), luaString(bd.KeyFile))
 		case edge.DoH:
-			w("addDOHLocal(%s, %s, %s, %s, {minTLSVersion=\"tls1.2\"})", luaString(bd.Address), luaString(bd.CertFile), luaString(bd.KeyFile), luaStrings(bd.DoHPaths))
+			opts := "minTLSVersion=\"tls1.2\""
+			if t.ClientIDs.Paths {
+				opts += ", exactPathMatching=false" // /<path>/<id> reaches the client-ID rule
+			}
+			w("addDOHLocal(%s, %s, %s, %s, {%s})", luaString(bd.Address), luaString(bd.CertFile), luaString(bd.KeyFile), luaStrings(bd.DoHPaths), opts)
 		case edge.DoQ:
 			w("addDOQLocal(%s, %s, %s)", luaString(bd.Address), luaString(bd.CertFile), luaString(bd.KeyFile))
 		case edge.DoH3:
@@ -92,14 +100,25 @@ func (r LuaRenderer) Render(in *edge.Topology) ([]File, error) {
 		w("-- health-check response validators (dnsdist 2.1)")
 		b.WriteString(v)
 	}
+	if t.ManagedCacheBypass {
+		w("%s", luaManagedCacheBypass)
+	}
+	if v := luaClientID(t); v != "" {
+		w("")
+		b.WriteString(v)
+	}
 	w("")
 	w("-- backends")
 	hc := t.HealthCheck
 	for _, be := range t.Backends {
+		mode := "auto"
+		if initialDown[be.ID] {
+			mode = "down"
+		}
 		w("do")
-		w("  local s = newServer({address=%s, id=%s, name=%s, pool=%s, useProxyProtocol=%t, weight=%d, order=%d, sockets=%d, healthCheckMode=\"auto\", checkName=%s, checkType=%s, checkInterval=%d, checkTimeout=%d, maxCheckFailures=%d, rise=%d, mustResolve=%t})",
+		w("  local s = newServer({address=%s, id=%s, name=%s, pool=%s, useProxyProtocol=%t, weight=%d, order=%d, sockets=%d, healthCheckMode=%s, checkName=%s, checkType=%s, checkInterval=%d, checkTimeout=%d, maxCheckFailures=%d, rise=%d, mustResolve=%t})",
 			luaString(be.Address), luaString(be.ID), luaString(be.DisplayName()), luaStrings(be.Pools), be.ProxyProtocol,
-			be.Weight, be.Order, be.Sockets, luaString(hc.QName), luaString(hc.QType), hc.Interval, hc.Timeout, hc.MaxFailures, hc.Rise, hc.MustResolve)
+			be.Weight, be.Order, be.Sockets, luaString(mode), luaString(hc.QName), luaString(hc.QType), hc.Interval, hc.Timeout, hc.MaxFailures, hc.Rise, hc.MustResolve)
 		if fn := validatorName(t, be); fn != "" {
 			w("  s:setHealthCheckResponseValidator(%s)", fn)
 		}
@@ -120,11 +139,31 @@ func (r LuaRenderer) Render(in *edge.Topology) ([]File, error) {
 		w("addAction(AllRule(), SetAdditionalProxyProtocolValueAction(%d, %s), {name=%s, uuid=%s})",
 			edge.ProxyTLVSecret, luaString(t.ProxyProtocolSecret), luaString(ruleProxySecret), luaString(ruleUUID(ruleProxySecret)))
 	}
+	if t.ClientIDs.Enabled() {
+		w("addAction(AllRule(), LuaAction(%s), {name=%s, uuid=%s})", luaClientIDFunction, luaString(ruleClientID), luaString(ruleUUID(ruleClientID)))
+	}
+	w("addAction(QNameRule(%s), SetSkipCacheAction(), {name=%s, uuid=%s})",
+		luaString(t.HealthCheck.QName), luaString(ruleHealthNoCache), luaString(ruleUUID(ruleHealthNoCache)))
+	if t.ManagedCacheBypass {
+		w("addAction(AllRule(), SetSkipCacheAction(), {name=%s, uuid=%s})", luaString(ruleManagedNoCache), luaString(ruleUUID(ruleManagedNoCache)))
+	}
 	if len(t.Rules.AuthoritativeZones) > 0 {
 		w("addAction(QNameSuffixRule(%s), PoolAction(%s), {name=%s, uuid=%s})",
 			luaStrings(t.Rules.AuthoritativeZones), luaString(edge.PoolAuthoritative), luaString(ruleAuthoritative), luaString(ruleUUID(ruleAuthoritative)))
 	}
 	w("addAction(AllRule(), PoolAction(%s), {name=%s, uuid=%s})", luaString(edge.PoolResolver), luaString(ruleResolver), luaString(ruleUUID(ruleResolver)))
+	if d := t.Dnstap; d != nil {
+		transport, address, _ := d.Transport() // validated by prepare
+		w("")
+		w("-- dnstap of the answers dnsdist gives without a backend (D372)")
+		if transport == "unix" {
+			w("local kudurru_dnstap = newFrameStreamUnixLogger(%s)", luaString(address))
+		} else {
+			w("local kudurru_dnstap = newFrameStreamTcpLogger(%s)", luaString(address))
+		}
+		w("addCacheHitResponseAction(AllRule(), DnstapLogResponseAction(%s, kudurru_dnstap), {name=%s, uuid=%s})", luaString(d.Identity), luaString(ruleDnstapCacheHit), luaString(ruleUUID(ruleDnstapCacheHit)))
+		w("addSelfAnsweredResponseAction(AllRule(), DnstapLogResponseAction(%s, kudurru_dnstap), {name=%s, uuid=%s})", luaString(d.Identity), luaString(ruleDnstapSelfAnswered), luaString(ruleUUID(ruleDnstapSelfAnswered)))
+	}
 	if t.EBPF.Enabled {
 		w("")
 		w("-- eBPF socket filter (opt-in; DynBlocks drops are pushed into it)")

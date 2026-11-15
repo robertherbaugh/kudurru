@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -105,5 +106,54 @@ func TestCacheFlusherBlockingChanged(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	if n := rec.count(); n != 5 {
 		t.Errorf("%d flushes after Stop, want 5", n)
+	}
+}
+
+func TestCacheFlusherCoalescesHeldPublicationChanges(t *testing.T) {
+	var calls, active, peak atomic.Int32
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	t.Cleanup(unblock)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		n := active.Add(1)
+		defer active.Add(-1)
+		for p := peak.Load(); n > p; p = peak.Load() {
+			if peak.CompareAndSwap(p, n) {
+				break
+			}
+		}
+		if calls.Add(1) == 1 {
+			close(entered)
+			<-release
+		}
+		_, _ = io.WriteString(w, `{"count":"1","status":"purged"}`)
+	}))
+	t.Cleanup(srv.Close)
+	f := &CacheFlusher{API: &APIClient{BaseURL: srv.URL, Key: "fixture"}, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	t.Cleanup(func() { unblock(); f.Stop() })
+	f.BlockResponsesChanged()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("flush did not reach hold")
+	}
+	for range 1000 {
+		f.BlockResponsesChanged()
+	}
+	if calls.Load() != 1 || peak.Load() != 1 {
+		t.Fatal("publication callbacks spawned concurrent flushes")
+	}
+	unblock()
+	deadline := time.Now().Add(5 * time.Second)
+	for calls.Load() < 2 {
+		if time.Now().After(deadline) {
+			t.Fatal("coalesced pending publication was lost")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	f.Stop()
+	if calls.Load() != 2 || peak.Load() != 1 || active.Load() != 0 {
+		t.Fatal("flush coalescing or shutdown escaped bounds")
 	}
 }

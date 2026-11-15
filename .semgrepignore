@@ -29,3 +29,11 @@ license-server/dev/
 internal/testutil/
 internal/central/centraltest/
 hack/kind/
+
+# Retained upstream development assets, not Kudurru workflows or shipped
+# applications. Keep the QUIC runtime (including http3/) in the scan.
+third_party/quic-go/.github/
+third_party/quic-go/example/
+third_party/quic-go/integrationtests/
+third_party/quic-go/interop/
+third_party/quic-go/metrics/dashboards/

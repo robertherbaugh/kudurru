@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -353,6 +354,42 @@ upstreams:
 		if _, err := Load(path, nil); err == nil {
 			t.Errorf("accepted %s", bad)
 		}
+	}
+}
+
+// TestRecursiveGroupSeedOmitsStrategy: the documented file configuration of
+// a recursive default group (docs/guide/admin/07-zones-and-upstreams.md)
+// seeds cluster settings without a strategy. An empty strategy in the seed
+// fails the Kudurru CRD's enum, which stopped a first boot on SQLite.
+func TestRecursiveGroupSeedOmitsStrategy(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "kudurru.yaml")
+	if err := os.WriteFile(path, []byte(`
+upstreams:
+  groups:
+    default: { mode: recursive, timeout: 4s }
+    router: { servers: ["192.168.1.1:53"] }
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(ClusterSeed(cfg)["upstreams"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seeded struct {
+		Groups map[string]map[string]any `json:"groups"`
+	}
+	if err := json.Unmarshal(raw, &seeded); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := seeded.Groups["default"]["strategy"]; ok {
+		t.Fatalf("recursive group seeds strategy %#v: %s", got, raw)
+	}
+	if got := seeded.Groups["router"]["strategy"]; got != DefaultUpstreamStrategy {
+		t.Fatalf("forwarding group seeds strategy %#v, want %q: %s", got, DefaultUpstreamStrategy, raw)
 	}
 }
 

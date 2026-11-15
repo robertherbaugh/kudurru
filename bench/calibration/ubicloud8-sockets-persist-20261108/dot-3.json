@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "go",
+    "test",
+    "-run",
+    "^$",
+    "-bench",
+    "^BenchmarkDoTSockets$",
+    "-benchmem",
+    "-benchtime",
+    "1s",
+    "-count",
+    "1",
+    "-timeout",
+    "30m",
+    "./internal/dnsserver"
+  ],
+  "child_exit_code": 0,
+  "stop_reason": null,
+  "minimum_free_bytes": 138063699968,
+  "pid": 14106,
+  "wall_seconds": 8.965630443999999,
+  "post_free_bytes": 138104078336,
+  "output_bytes": 787,
+  "group_reaped": true
+}

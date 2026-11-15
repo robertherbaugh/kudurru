@@ -20,18 +20,22 @@ const FileName = "querylog.db"
 //  1. v0.1 (dev-docs/design-record.md §11.2)
 //  2. query.policy and dict_policy: the deciding policy per row; rows
 //     written before the upgrade keep policy NULL
-const SchemaVersion = 2
+//  3. exact retained-fact domain/hour index (D269)
+const SchemaVersion = 3
 
 // ErrSchemaTooNew is returned by Open for a database written by a newer
 // kudurru.
 var ErrSchemaTooNew = errors.New("sqlitelog: querylog.db schema is newer than this binary")
 
-// Pragmas are the connection settings of dev-docs/design-record.md §11.2, applied
-// on every connection open. The writer connection opens before the schema
-// is created, so auto_vacuum=INCREMENTAL takes effect on a fresh file (it
-// cannot change once tables exist without a VACUUM).
+// Pragmas are the connection settings of dev-docs/design-record.md §11.2. The
+// writer connection opens before the schema is created, so
+// auto_vacuum=INCREMENTAL takes effect on a fresh file (it cannot change
+// once tables exist without a VACUUM). The mode is then kept in the file
+// header, and dsn leaves autoVacuumPragma out for an existing file: setting
+// it writes the header on every open, so a start that refuses a newer file
+// would otherwise change it.
 var Pragmas = []string{
-	"auto_vacuum(INCREMENTAL)",
+	autoVacuumPragma,
 	"journal_mode(WAL)",
 	"synchronous(NORMAL)",
 	"wal_autocheckpoint(2000)",
@@ -40,12 +44,17 @@ var Pragmas = []string{
 	"temp_store(MEMORY)",
 }
 
+const autoVacuumPragma = "auto_vacuum(INCREMENTAL)"
+
 // dsn builds the modernc.org/sqlite URI. The writer begins every
 // transaction IMMEDIATE so the write lock is taken up front; readers are
-// query_only.
-func dsn(path string, writer bool) string {
+// query_only. fresh is true for a file that has no database yet.
+func dsn(path string, writer, fresh bool) string {
 	q := url.Values{}
 	for _, p := range Pragmas {
+		if p == autoVacuumPragma && !fresh {
+			continue
+		}
 		q.Add("_pragma", p)
 	}
 	if writer {
@@ -251,6 +260,7 @@ const createDictPolicy = `CREATE TABLE dict_policy   (id INTEGER PRIMARY KEY, na
 // transaction. Every step is additive (new tables, nullable columns), so
 // existing rows stay valid and no table is rewritten.
 var migrations = map[int][]string{
+	2: domainHourSchema,
 	1: {createDictPolicy, `ALTER TABLE query ADD COLUMN policy INTEGER REFERENCES dict_policy`},
 }
 
@@ -288,7 +298,7 @@ func migrate(ctx context.Context, db *sql.DB) (created bool, err error) {
 		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	for _, stmt := range schema {
+	for _, stmt := range append(append([]string{}, schema...), domainHourSchema...) {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
 			return false, fmt.Errorf("sqlitelog: create schema: %w\n%s", err, stmt)
 		}

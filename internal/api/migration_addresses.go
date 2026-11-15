@@ -19,6 +19,13 @@ import (
 // Generated records are additive and scoped to the run, zone and address set.
 // Existing records are never adopted or overwritten implicitly.
 func (s *Server) migrationAddressRecordSet(ctx context.Context, run *internal.MigrationRun, z *v1alpha1.DNSZone, ips []string, sets []*v1alpha1.DNSRecordSet) (*v1alpha1.DNSRecordSet, error) {
+	reader, err := s.migrationReader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.migrationAddressesFrom(ctx, reader, run, z, ips, sets, true)
+}
+func (s *Server) migrationAddressesFrom(ctx context.Context, reader migrationRead, run *internal.MigrationRun, z *v1alpha1.DNSZone, ips []string, sets []*v1alpha1.DNSRecordSet, authorize bool) (*v1alpha1.DNSRecordSet, error) {
 	if z.Spec.RecordSetSelector != nil {
 		return nil, errInvalid("Zone %s has a record-set selector; use explicit nameserver DNS names", z.Name)
 	}
@@ -32,7 +39,7 @@ func (s *Server) migrationAddressRecordSet(ctx context.Context, run *internal.Mi
 		Spec:       v1alpha1.DNSRecordSetSpec{ZoneRef: v1alpha1.ObjectRef{Name: z.Name}, Endpoints: endpoints},
 	}
 	var existing v1alpha1.DNSRecordSet
-	err = s.opts.Store.Get(ctx, store.Key{Kind: "DNSRecordSet", Namespace: rs.Namespace, Name: rs.Name}, &existing)
+	err = reader.Get(ctx, store.Key{Kind: "DNSRecordSet", Namespace: rs.Namespace, Name: rs.Name}, &existing)
 	if err == nil {
 		if existing.Annotations[migrationRunAnnotation] != run.Name || !reflect.DeepEqual(existing.Spec, rs.Spec) || store.ManagedBy(&existing) != store.ManagerAPI {
 			return nil, errConflict("Generated nameserver record set was changed", "Use explicit DNS names or review the address records")
@@ -57,7 +64,7 @@ func (s *Server) migrationAddressRecordSet(ctx context.Context, run *internal.Mi
 	}
 	k, _ := kindByKind("DNSRecordSet")
 	body, err := objectMap(k, rs)
-	if err == nil {
+	if err == nil && authorize {
 		err = s.authorizeWrite(ctx, k, writeRequest{kind: k, body: body})
 	}
 	return rs, err

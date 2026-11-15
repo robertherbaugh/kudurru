@@ -25,8 +25,8 @@ var (
 const maxLimiterKeys = 100_000
 
 // Limiter counts failures per key (a client IP or a username). It is safe
-// for concurrent use and lives in memory: every replica limits on its own,
-// which still caps a single attacker's rate per replica.
+// for concurrent use and lives in memory. Kubernetes password login mounts
+// loginlimit's shared admission instead; other callers retain local limits.
 type Limiter struct {
 	policy LimitPolicy
 	now    func() time.Time

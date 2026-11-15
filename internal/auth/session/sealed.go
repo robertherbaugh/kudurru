@@ -120,10 +120,11 @@ func (st *Sealed) IdleTimeout() time.Duration { return st.opts.IdleTimeout }
 func (st *Sealed) CookieName() string { return st.opts.CookieName }
 
 type principalV1 struct {
-	Kind     auth.PrincipalKind `json:"kind"`
-	ID       string             `json:"id"`
-	Name     string             `json:"name,omitempty"`
-	Provider string             `json:"provider,omitempty"`
+	Kind       auth.PrincipalKind `json:"kind"`
+	ID         string             `json:"id"`
+	Name       string             `json:"name,omitempty"`
+	Provider   string             `json:"provider,omitempty"`
+	AccountUID string             `json:"accountUID,omitempty"`
 }
 
 // sessionV1 is the sealed payload. Field names follow §8.2 so a decrypted
@@ -192,10 +193,11 @@ func (st *Sealed) seal(s auth.Session) (string, error) {
 		V:   payloadV1,
 		SID: s.ID,
 		Principal: principalV1{
-			Kind:     s.Principal.Kind,
-			ID:       s.Principal.ID,
-			Name:     s.Principal.Name,
-			Provider: s.Principal.Provider,
+			Kind:       s.Principal.Kind,
+			ID:         s.Principal.ID,
+			Name:       s.Principal.Name,
+			Provider:   s.Principal.Provider,
+			AccountUID: s.Principal.AccountUID,
 		},
 		RolesSnapshot: s.RolesSnapshot,
 		IDP:           s.IDP,
@@ -233,10 +235,11 @@ func (st *Sealed) Load(_ context.Context, cookieValue string) (auth.Session, err
 	s := auth.Session{
 		ID: p.SID,
 		Principal: auth.Principal{
-			Kind:     p.Principal.Kind,
-			ID:       p.Principal.ID,
-			Name:     p.Principal.Name,
-			Provider: p.Principal.Provider,
+			Kind:       p.Principal.Kind,
+			ID:         p.Principal.ID,
+			Name:       p.Principal.Name,
+			Provider:   p.Principal.Provider,
+			AccountUID: p.Principal.AccountUID,
 		},
 		RolesSnapshot: p.RolesSnapshot,
 		IDP:           p.IDP,

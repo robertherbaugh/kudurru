@@ -6,7 +6,7 @@ import { Table, type TableColumn } from '@astryxdesign/core/Table';
 import { Text } from '@astryxdesign/core/Text';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { useApi, useCan } from '../api/context';
+import { useApi, useCan, usePrimaryOnly } from '../api/context';
 import type { MigrationRun } from '../api/types';
 import { ErrorBanner, Loading } from '../components/Feedback';
 import { SelectField } from '../components/fields/SelectField';
@@ -33,6 +33,7 @@ export default function MigrationRunPage({ params }: PageProps) {
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const id = params.id ?? '';
+  const cutoverTip = usePrimaryOnly()('previewMigrationDecommission');
   const query = useQuery({ queryKey: ['migration-runs', id], queryFn: () => api.imports.run(id), enabled: can('settings', 'write'), refetchInterval: (q) => q.state.data?.data.status === 'running' ? 1000 : false });
   const run = query.data;
   const status = run?.data.status;
@@ -75,7 +76,7 @@ export default function MigrationRunPage({ params }: PageProps) {
     {run.data.zones.length ? <Panel title="Zone authority" headingId="migration-authority" description="Last recorded authority. The decommission preview checks live zones before changing them.">
       <Table<Zone> aria-label="Tracked zone authority" data={run.data.zones} columns={zoneColumns} idKey="name" density="compact" />
       {updated ? <Banner status="success" title="Nameservers updated" description="Validate DNS answers and parent delegations before retiring the source." /> : null}
-      <Button label="Decommission source nameservers" isDisabled={running} onClick={() => { setCutover(true); setUpdated(false); }} />
+      <Button label="Decommission source nameservers" isDisabled={running || !!cutoverTip} tooltip={cutoverTip} onClick={() => { setCutover(true); setUpdated(false); }} />
     </Panel> : null}
     {run.data.warnings.length ? <Banner status="warning" title={`Migration warnings (${run.data.warnings.length})`}><VStack gap={2}>{run.data.warnings.map((warning, i) => <Text as="p" key={i}>{warning}</Text>)}</VStack></Banner> : null}
     {run.data.cutovers.map((attempt, i) => <Panel key={i} title={`Cutover ${i + 1}: ${attempt.status}`} description={`${new Date(attempt.startedAt).toLocaleString()} by ${attempt.actor}`}>

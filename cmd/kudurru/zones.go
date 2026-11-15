@@ -16,21 +16,25 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/apiclient"
+	"github.com/robertherbaugh/kudurru/internal/apiclient/openapi"
 	"github.com/robertherbaugh/kudurru/internal/cli"
+	"github.com/robertherbaugh/kudurru/internal/importers"
 )
 
 // zoneSummary is one item of GET /zones (and the body of GET
 // /zones/{zone}): "type, serial, recordCount, ready, managedBy". The
 // object name is "name"; the zone apex is read from "zoneName" or "zone".
 type zoneSummary struct {
-	Name        string `json:"name"`
-	ZoneName    string `json:"zoneName,omitempty"`
-	Zone        string `json:"zone,omitempty"`
-	Type        string `json:"type"`
-	Serial      uint32 `json:"serial"`
-	RecordCount int    `json:"recordCount"`
-	Ready       any    `json:"ready"`
-	ManagedBy   string `json:"managedBy,omitempty"`
+	Name             string                    `json:"name"`
+	ZoneName         string                    `json:"zoneName,omitempty"`
+	Zone             string                    `json:"zone,omitempty"`
+	Type             string                    `json:"type"`
+	Serial           uint32                    `json:"serial"`
+	RecordCount      int                       `json:"recordCount"`
+	Ready            any                       `json:"ready"`
+	ManagedBy        string                    `json:"managedBy,omitempty"`
+	SecondaryRuntime *openapi.SecondaryRuntime `json:"secondaryRuntime,omitempty"`
+	StubRuntime      *openapi.StubRuntime      `json:"stubRuntime,omitempty"`
 }
 
 func (z zoneSummary) apex() string { return firstNonEmpty(z.ZoneName, z.Zone) }
@@ -54,13 +58,55 @@ func readyString(v any) string {
 
 func zoneTable(zs []zoneSummary) *cli.Table {
 	t := &cli.Table{Headers: []string{"NAME", "ZONE", "TYPE", "SERIAL", "RECORDS", "READY", "MANAGED-BY"}}
+	local := false
 	for _, z := range zs {
-		t.Add(z.Name, firstNonEmpty(z.apex(), "-"), z.Type, strconv.FormatUint(uint64(z.Serial), 10), strconv.Itoa(z.RecordCount), readyString(z.Ready), firstNonEmpty(z.ManagedBy, "-"))
+		if z.Type == "secondary" || z.Type == "stub" {
+			local = true
+			break
+		}
+	}
+	if local {
+		t.Headers = append(t.Headers, "NODE")
+	}
+	for _, z := range zs {
+		serial, count, state, node := strconv.FormatUint(uint64(z.Serial), 10), strconv.Itoa(z.RecordCount), readyString(z.Ready), "-"
+		if z.Type == "secondary" {
+			serial, count, state = "-", "-", "Unknown"
+			if rt := z.SecondaryRuntime; rt != nil {
+				state, node = string(rt.State), rt.Node
+				if rt.Serial != nil {
+					serial = strconv.FormatInt(int64(*rt.Serial), 10)
+				}
+				if rt.RecordCount != nil {
+					count = strconv.FormatInt(*rt.RecordCount, 10)
+				}
+				if rt.State != openapi.SecondaryRuntimeStateServing && rt.Serial != nil {
+					serial += " (last)"
+				}
+			}
+		}
+		if z.Type == "stub" {
+			serial, count, state = "-", "-", "Unknown"
+			if rt := z.StubRuntime; rt != nil {
+				state, node = string(rt.State), rt.Node
+				if rt.Serial != nil {
+					serial = strconv.FormatInt(*rt.Serial, 10)
+					if rt.State != openapi.StubRuntimeStateRouting {
+						serial += " (last)"
+					}
+				}
+			}
+		}
+		row := []string{z.Name, firstNonEmpty(z.apex(), "-"), z.Type, serial, count, state, firstNonEmpty(z.ManagedBy, "-")}
+		if local {
+			row = append(row, node)
+		}
+		t.Add(row...)
 	}
 	return t
 }
 
-// newZonesCmd is `kudurru zones list|get|import|export|notify|delete`.
+// newZonesCmd is `kudurru zones list|get|options|import|export|notify|delete`.
 func newZonesCmd(o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{Use: "zones", Aliases: []string{"zone"}, Short: "List, import, export, notify and delete zones"}
 	list := &cobra.Command{
@@ -99,7 +145,7 @@ func newZonesCmd(o *cliOpts) *cobra.Command {
 			return o.render(cmd, raw, func(bool) (*cli.Table, error) { return zoneTable([]zoneSummary{z}), nil })
 		},
 	}
-	cmd.AddCommand(list, get, newZoneImportCmd(o, "import <zone> -f file.zone"), newZoneExportCmd(o), newZoneNotifyCmd(o), newZoneDeleteCmd(o))
+	cmd.AddCommand(list, get, newZoneOptionsCmd(o), newZoneImportCmd(o, "import <zone> -f file.zone"), newZoneExportCmd(o), newZoneNotifyCmd(o), newZoneDeleteCmd(o))
 	return cmd
 }
 
@@ -346,6 +392,23 @@ type recordItem struct {
 	Kudurru       *v1alpha1.EndpointExt `json:"kudurru,omitempty"`
 }
 
+// recordViewText is the VIEW column of `records list -o wide`: public, or
+// a client-group view as ns/name when the row names its group's namespace.
+func recordViewText(r recordItem) string {
+	v := r.Kudurru.View
+	switch {
+	case v == "":
+		return "-"
+	case v == "public":
+		return v
+	case r.Namespace != "" && r.Namespace != "default":
+		return r.Namespace + "/" + v
+	case r.Namespace == "" && strings.Contains(r.RecordSet, "/") && !strings.HasPrefix(r.RecordSet, "default/"):
+		return r.RecordSet[:strings.Index(r.RecordSet, "/")] + "/" + v
+	}
+	return v
+}
+
 // newRecordsCmd is `kudurru records list|add|rm`.
 func newRecordsCmd(o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{Use: "records", Aliases: []string{"record", "rr"}, Short: "List, add and remove records in a zone"}
@@ -367,7 +430,7 @@ func newRecordsCmd(o *cliOpts) *cobra.Command {
 			return o.render(cmd, raws, func(wide bool) (*cli.Table, error) {
 				t := &cli.Table{Headers: []string{"NAME", "TYPE", "TTL", "TARGETS", "RECORDSET"}}
 				if wide {
-					t.Headers = append(t.Headers, "SET-ID", "DISABLED", "COMMENT")
+					t.Headers = append(t.Headers, "SET-ID", "VIEW", "DISABLED", "COMMENT")
 				}
 				for _, r := range items {
 					ttl := "-"
@@ -376,12 +439,13 @@ func newRecordsCmd(o *cliOpts) *cobra.Command {
 					}
 					row := []string{r.DNSName, r.RecordType, ttl, strings.Join(r.Targets, ","), firstNonEmpty(r.RecordSet, "-")}
 					if wide {
-						disabled, comment := "false", "-"
+						disabled, comment, view := "false", "-", "-"
 						if r.Kudurru != nil {
 							disabled = strconv.FormatBool(r.Kudurru.Disabled)
 							comment = firstNonEmpty(r.Kudurru.Comment, "-")
+							view = recordViewText(r)
 						}
-						row = append(row, firstNonEmpty(r.SetIdentifier, "-"), disabled, comment)
+						row = append(row, firstNonEmpty(r.SetIdentifier, "-"), view, disabled, comment)
 					}
 					t.Add(row...)
 				}
@@ -394,6 +458,7 @@ func newRecordsCmd(o *cliOpts) *cobra.Command {
 		recordSet string
 		comment   string
 		setID     string
+		view      string
 	)
 	add := &cobra.Command{
 		Use:   "add <zone> <name> <type> <target...>",
@@ -401,9 +466,17 @@ func newRecordsCmd(o *cliOpts) *cobra.Command {
 		Long: `Create or replace one endpoint (name, type and its targets) in a record set of
 the zone. The record set defaults to "api-<zone>" and is created on demand.
 Targets are in presentation format: an address for A/AAAA, a name for CNAME,
-"10 mail.example.com." for MX, a quoted string for TXT.`,
+"10 mail.example.com." for MX, a quoted string for TXT.
+
+--view stores the endpoint in a view (D403): "public" publishes it to
+integration sinks and never serves it, and the name of a ClientGroup in the
+record set's namespace serves it only to that group's clients, in place of
+the default data of the same name and type. A view is part of the endpoint's
+identity, so adding one never replaces the default data. Without --view the
+endpoint is the default data every client gets.`,
 		Example: `  kudurru records add home-example-com nas.home.example.com A 192.168.1.10 --ttl 300
-  kudurru records add home-example-com home.example.com MX "10 mail.home.example.com."`,
+  kudurru records add home-example-com home.example.com MX "10 mail.home.example.com."
+  kudurru records add home-example-com nas.home.example.com A 10.9.0.20 --view lan -n kids`,
 		Args:              cobra.MinimumNArgs(4),
 		ValidArgsFunction: o.completeZones,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -411,9 +484,12 @@ Targets are in presentation format: an address for A/AAAA, a name for CNAME,
 			if err != nil {
 				return err
 			}
+			if view == "-" {
+				return fmt.Errorf("--view %q names no view: leave --view out for the default data", view)
+			}
 			ep := v1alpha1.Endpoint{DNSName: args[1], RecordType: strings.ToUpper(args[2]), Targets: args[3:], RecordTTL: ttl, SetIdentifier: setID}
-			if comment != "" {
-				ep.Kudurru = &v1alpha1.EndpointExt{Comment: comment}
+			if comment != "" || view != "" {
+				ep.Kudurru = &v1alpha1.EndpointExt{Comment: comment, View: view}
 			}
 			q := url.Values{}
 			if recordSet != "" {
@@ -430,7 +506,15 @@ Targets are in presentation format: an address for A/AAAA, a name for CNAME,
 			if f.Structured() {
 				return cli.WriteStructured(cmd.OutOrStdout(), f, res)
 			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s %s set in zone %s (record set %s)\n", ep.DNSName, ep.RecordType, args[0], firstNonEmpty(recordSet, "api-"+args[0]))
+			served := ""
+			switch view {
+			case "":
+			case "public":
+				served = ", published only (view public)"
+			default:
+				served = ", served to client group " + view
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "%s %s set in zone %s (record set %s%s)\n", ep.DNSName, ep.RecordType, args[0], firstNonEmpty(recordSet, "api-"+args[0]), served)
 			return err
 		},
 	}
@@ -438,11 +522,23 @@ Targets are in presentation format: an address for A/AAAA, a name for CNAME,
 	add.Flags().StringVar(&recordSet, "record-set", "", "record set to write (default api-<zone>)")
 	add.Flags().StringVar(&comment, "comment", "", "comment stored with the record")
 	add.Flags().StringVar(&setID, "set-identifier", "", "external-dns set identifier")
-	var rmSet, rmSetID string
+	add.Flags().StringVar(&view, "view", "", `view of the endpoint: "public" or a ClientGroup of the record set's namespace (default: the default data)`)
+	var rmSet, rmSetID, rmView string
 	rm := &cobra.Command{
-		Use:               "rm <zone> <name> <type>",
-		Aliases:           []string{"remove", "delete"},
-		Short:             "Remove one name/type from a zone",
+		Use:     "rm <zone> <name> <type>",
+		Aliases: []string{"remove", "delete"},
+		Short:   "Remove one name/type from a zone",
+		Long: `Remove the endpoints of one name and type from the zone's record sets.
+
+Without --view every view of the name and type goes (the default data,
+public and each client-group view). --view - removes the default data only,
+--view public the publish-only endpoint, and --view <group> that client-group
+view only. A view names a ClientGroup of its record set's namespace: with -n
+the removal is limited to the record sets of that namespace, so -n kids
+--view lan leaves default/lan alone.`,
+		Example: `  kudurru records rm home-example-com nas.home.example.com A
+  kudurru records rm home-example-com nas.home.example.com A --view -
+  kudurru records rm home-example-com nas.home.example.com A --view lan -n kids`,
 		Args:              cobra.ExactArgs(3),
 		ValidArgsFunction: o.completeZones,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -457,6 +553,14 @@ Targets are in presentation format: an address for A/AAAA, a name for CNAME,
 			if rmSetID != "" {
 				q.Set("setIdentifier", rmSetID)
 			}
+			if rmView != "" {
+				q.Set("view", rmView)
+			}
+			// Only an explicit -n narrows the removal; the default stays
+			// every namespace, as before --view existed.
+			if f := cmd.Flag("namespace"); f != nil && f.Changed && o.namespace != "" {
+				q.Set("namespace", o.namespace)
+			}
 			path := "/zones/" + apiclient.Seg(args[0]) + "/records/" + apiclient.Seg(args[1]) + "/" + apiclient.Seg(strings.ToUpper(args[2]))
 			if err := c.Delete(cmd.Context(), path, q); err != nil {
 				return err
@@ -467,14 +571,16 @@ Targets are in presentation format: an address for A/AAAA, a name for CNAME,
 	}
 	rm.Flags().StringVar(&rmSet, "record-set", "", "only this record set (namespace/name or name)")
 	rm.Flags().StringVar(&rmSetID, "set-identifier", "", "only the endpoint with this set identifier")
+	rm.Flags().StringVar(&rmView, "view", "", `only this view: "-" the default data, "public", or a ClientGroup name (default: every view)`)
 	cmd.AddCommand(list, add, rm)
 	return cmd
 }
 
-// newImportCmd includes file-based BIND imports and live API migrations.
+// newImportCmd includes offline file conversions and tracked API migrations.
 func newImportCmd(o *cliOpts) *cobra.Command {
 	cmd := &cobra.Command{Use: "import", Short: "Import data from other DNS servers"}
 	cmd.AddCommand(newZoneImportCmd(o, "bind <zone> -f file.zone"))
+	cmd.AddCommand(newOfflineMigrationCmd(o, "adguard", importers.PreviewAdGuard), newOfflineMigrationCmd(o, "blocky", importers.PreviewBlocky), newOfflineMigrationCmd(o, "coredns", importers.PreviewCoreDNS))
 	cmd.AddCommand(newMigrationCmd(o, "pihole"), newMigrationCmd(o, "technitium"), newMigrationRunsCmd(o), newMigrationDecommissionCmd(o), newMigrationTrackCmd(o))
 	return cmd
 }

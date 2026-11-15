@@ -2,8 +2,11 @@ package listfetcher
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -235,5 +238,106 @@ func TestFetcherConcurrencyAndSharedURL(t *testing.T) {
 	}
 	if a, b := getList(t, fx.st, "a").Status.Sources[0].Digest, getList(t, fx.st, "b").Status.Sources[0].Digest; a == "" || a != b {
 		t.Errorf("digests %q %q", a, b)
+	}
+}
+
+// TestReconcilePublishesEachSourceWhenItsDownloadEnds: a URL that accepts
+// the connection and never answers holds its own download, but the status
+// (the published digest) of another list whose download finished is
+// written at once, not when the whole pass ends (D373). Before, every list
+// waited for the slowest download of the pass, for up to the fetcher's
+// HTTP timeout times its attempts.
+func TestReconcilePublishesEachSourceWhenItsDownloadEnds(t *testing.T) {
+	fx := newFixture(t)
+	f, err := New(Options{Store: fx.st, Objects: newStoreObjects(fx.st), Cache: fx.cache, Downloader: fx.dl, Logger: quiet(), Now: fx.clk.Now, Registerer: prometheus.NewRegistry()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	var once sync.Once
+	t.Cleanup(func() { once.Do(func() { close(release) }) })
+	silent := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(silent.Close)
+	fast := newListServer(t, hostsV1)
+	applyList(t, fx.st, "silent", v1alpha1.ListSource{URL: silent.URL + "/hosts"})
+	applyList(t, fx.st, "fast", v1alpha1.ListSource{URL: fast.URL + "/hosts"})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); f.Reconcile(ctx) }()
+	t.Cleanup(func() { cancel(); once.Do(func() { close(release) }); <-done })
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		s := getList(t, fx.st, "fast").Status
+		if len(s.Sources) == 1 && s.Sources[0].Digest == sha([]byte(hostsV1)) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the finished download was not published while another URL is silent: %+v", s)
+		}
+	}
+	select {
+	case <-done:
+		t.Fatal("the pass ended although a URL never answered")
+	default:
+	}
+}
+
+// signalingObjects is storeObjects whose Subscribe receives on demand.
+type signalingObjects struct {
+	*storeObjects
+	changed chan struct{}
+}
+
+func (o *signalingObjects) Subscribe() <-chan struct{} { return o.changed }
+
+// TestRunDownloadsAListAddedWhileAURLIsSilent: a list added while another
+// list's URL accepts the connection and never answers gets its first
+// download and its status at once, not when the silent download gives up
+// (D373). Before, the fetcher's pass waited for every download it had
+// started before it looked at the lists again.
+func TestRunDownloadsAListAddedWhileAURLIsSilent(t *testing.T) {
+	fx := newFixture(t)
+	objects := &signalingObjects{storeObjects: newStoreObjects(fx.st), changed: make(chan struct{}, 1)}
+	f, err := New(Options{Store: fx.st, Objects: objects, Cache: fx.cache, Downloader: fx.dl, Logger: quiet(), Now: fx.clk.Now, Registerer: prometheus.NewRegistry()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	asked := make(chan struct{})
+	var once sync.Once
+	silent := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		once.Do(func() { close(asked) })
+		<-r.Context().Done()
+	}))
+	t.Cleanup(silent.Close)
+	applyList(t, fx.st, "silent", v1alpha1.ListSource{URL: silent.URL + "/hosts"})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- f.Run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Run: %v", err)
+		}
+	})
+	select {
+	case <-asked:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the silent URL was never asked")
+	}
+	fast := newListServer(t, hostsV1)
+	applyList(t, fx.st, "added", v1alpha1.ListSource{URL: fast.URL + "/hosts"})
+	objects.changed <- struct{}{}
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		s := getList(t, fx.st, "added").Status
+		if len(s.Sources) == 1 && s.Sources[0].Digest == sha([]byte(hostsV1)) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("a list added while a URL is silent was not downloaded: %+v", s)
+		}
 	}
 }

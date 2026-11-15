@@ -19,8 +19,13 @@ import (
 // A failed dashboard setup leaves DNS and the management UI available so an
 // administrator can correct it. File-owned startup failures remain fatal.
 func prepareDHCP(cfg *config.Config, logger *slog.Logger) (*config.Config, *dhcpsetup.Manager, *dhcp.Service, string, func(), error) {
-	return prepareDHCPWithListener(cfg, logger, (*dhcp.Service).Listen)
+	return prepareDHCPWithListener(cfg, logger, listenDHCPService)
 }
+
+// listenDHCPService binds the node-local DHCP service of serve. Process-level
+// tests replace it with (*dhcp.Service).ListenWith on a loopback socket, since
+// binding UDP 67 on an interface needs privileges.
+var listenDHCPService = (*dhcp.Service).Listen
 
 func prepareDHCPWithListener(cfg *config.Config, logger *slog.Logger, listen func(*dhcp.Service) error) (*config.Config, *dhcpsetup.Manager, *dhcp.Service, string, func(), error) {
 	cleanup := func() {}

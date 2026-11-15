@@ -85,6 +85,9 @@ const (
 	TLVTypeSSL       uint8 = 0x20
 	TLVTypeNetNS     uint8 = 0x30
 	TLVTypeSecret    uint8 = 0xE0
+	// TLVTypeClientID carries a normalized original client policy selector.
+	// It is accepted only after peer+shared-secret authentication.
+	TLVTypeClientID uint8 = 0xE1
 )
 
 // Parse errors. Every error Parse returns wraps exactly one of them.

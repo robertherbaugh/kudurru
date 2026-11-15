@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { FEATURES, GRACE_SECONDS, licenseState, type LicenseState } from '../../shared/catalog';
 import { addDays, expFor, graceEndsOn } from '../../shared/dates';
 import { claimsFor, type KeyTerms } from '../licensing/claims';
-import { base64url, encodeHeader, importSigningKey, verify, VerifyError } from '../licensing/jws';
+import { base64url, encodeClaims, encodeHeader, importSigningKey, verify, VerifyError } from '../licensing/jws';
 import { loadSigning } from '../licensing/keyring';
 import type { Signer } from '../licensing/types';
 import { silentLogger } from '../log';
@@ -66,10 +66,16 @@ describe.skipIf(!GO)('Go node oracle', () => {
   });
 
   const signedAt = new Date('2026-10-12T09:30:00Z');
+  const standardFeatures = FEATURES.filter((f) => f.key !== 'branding').map((f) => f.key);
+  const allFeatures = FEATURES.map((f) => f.key);
   const keys: { name: string; terms: KeyTerms; features: string[] }[] = [
-    { name: 'personal', terms: { licensee: 'Homelab Hank', plan: 'personal', nodes: 3, features: null, expiresOn: addDays('2026-10-12', 365) }, features: FEATURES.map((f) => f.key) },
+    { name: 'personal', terms: { licensee: 'Homelab Hank', plan: 'personal', nodes: 3, features: null, expiresOn: addDays('2026-10-12', 365) }, features: standardFeatures },
     { name: 'business subset', terms: { licensee: 'AT&T <Labs>', plan: 'business', nodes: 25, features: ['rbac', 'oidc'], expiresOn: '2028-02-29' }, features: ['oidc', 'rbac'] },
-    { name: 'trial', terms: { licensee: 'Zo\u00eb \u6771\u4eac', plan: 'trial', nodes: 1, features: null, expiresOn: addDays('2026-10-12', 60) }, features: FEATURES.map((f) => f.key) },
+    { name: 'business unrestricted', terms: { licensee: 'Business', plan: 'business', nodes: 25, features: null, expiresOn: '2028-02-29' }, features: standardFeatures },
+    { name: 'enterprise unrestricted', terms: { licensee: 'Enterprise', plan: 'enterprise', nodes: 25, features: null, expiresOn: '2028-02-29' }, features: allFeatures },
+    { name: 'enterprise branding', terms: { licensee: 'Enterprise', plan: 'enterprise', nodes: 25, features: ['branding'], expiresOn: '2028-02-29' }, features: ['branding'] },
+    { name: 'enterprise subset', terms: { licensee: 'Enterprise', plan: 'enterprise', nodes: 25, features: ['oidc'], expiresOn: '2028-02-29' }, features: ['oidc'] },
+    { name: 'trial', terms: { licensee: 'Zo\u00eb \u6771\u4eac', plan: 'trial', nodes: 1, features: null, expiresOn: addDays('2026-10-12', 60) }, features: standardFeatures },
   ];
 
   test(
@@ -109,6 +115,32 @@ describe.skipIf(!GO)('Go node oracle', () => {
       expect(results[1]!.state).toBe('active');
       expect(results[2]!.state).toBe('grace');
       expect(results[4]!.state).toBe('expired');
+    },
+    180_000,
+  );
+
+  test(
+    'imported explicit branding never grants it to Personal, Business or Trial',
+    async () => {
+      // A raw token bypasses the portal's signing policy to test the node's
+      // independent entitlement gate and compatibility of imported keys.
+      const key = await importSigningKey(new Uint8Array(Buffer.from(GOLDEN.seed, 'base64')));
+      const cases: { key: string; now: number }[] = [];
+      const exp = expFor('2026-11-12');
+      for (const plan of ['personal', 'business', 'trial'] as const) {
+        const claims = claimsFor('lic_IMPORTbranding', { licensee: plan, plan, nodes: 1, features: ['branding', 'oidc'], expiresOn: '2026-11-12' }, signedAt);
+        const input = `${base64url(encodeHeader(GOLDEN.kid))}.${base64url(encodeClaims(claims))}`;
+        const token = `${input}.${base64url(new Uint8Array(await crypto.subtle.sign('Ed25519', key, new TextEncoder().encode(input))))}`;
+        expect((await verify(token, new Map([[GOLDEN.kid, GOLDEN.publicKey]]))).claims.features).toEqual(['branding', 'oidc']);
+        for (const now of [Math.floor(signedAt.getTime() / 1000), exp, exp + GRACE_SECONDS]) cases.push({ key: token, now });
+      }
+      const results = await nodeStatus(cases);
+      expect(results).toHaveLength(cases.length);
+      results.forEach((r, i) => {
+        expect(r.setError).toBeUndefined();
+        expect(r.state).toBe((['active', 'grace', 'expired'] as const)[i % 3]!);
+        expect(r.features).toEqual(i % 3 === 2 ? [] : ['oidc']);
+      });
     },
     180_000,
   );

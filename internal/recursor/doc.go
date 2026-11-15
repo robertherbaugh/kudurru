@@ -37,6 +37,9 @@
 //   - The chain of trust is built lazily, only for zones whose data is
 //     validated: DS records from referrals are kept and checked when the
 //     zone's keys are first needed; otherwise DS is queried at the parent.
+//   - Bounded RFC 8198 reuse of validated NSEC/NSEC3 bundles for new names
+//     and types, including wildcard synthesis. Original trust/flush identity,
+//     proof deadlines and query work bounds remain; CD bypasses synthesis.
 //   - Positive answers, wildcard expansions, NXDOMAIN and NODATA (NSEC and
 //     NSEC3, opt-out) are proven; unsigned data below a secure zone is
 //     insecure only when a delegation without DS is proven, else bogus.

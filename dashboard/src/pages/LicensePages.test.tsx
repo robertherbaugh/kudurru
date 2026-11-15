@@ -27,7 +27,7 @@ function watch(path: string): { count: () => number } {
 }
 
 describe('LicensePage', () => {
-  it('shows the key, the limits and every feature as included', async () => {
+  it('shows the personal key, its limits and the Enterprise branding exclusion', async () => {
     renderWithApp(<LicensePage />, { route: '/license' });
     expect(await screen.findByRole('heading', { level: 1, name: 'License' })).toBeInTheDocument();
     expect(await screen.findByText('Personal / nonprofit (free)')).toBeInTheDocument();
@@ -38,6 +38,8 @@ describe('LicensePage', () => {
     for (const f of ['rbac', 'oidc', 'audit', 'longterm', 'requests', 'edge', 'integrations']) {
       expect(screen.getByTestId(`feature-${f}`)).toHaveTextContent('Included');
     }
+    expect(screen.getByTestId('feature-branding')).toHaveTextContent('Needs a key');
+    expect(screen.getByText(/Enterprise only: organization name/)).toBeInTheDocument();
     expect(screen.getByText('hello@kudurru.io').closest('a')).toHaveAttribute('href', 'mailto:hello@kudurru.io');
     expect(document.body.textContent).not.toMatch(/undefined|NaN|\[object Object\]/);
   });

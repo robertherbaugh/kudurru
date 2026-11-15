@@ -1,0 +1,25 @@
+# Calibrated on original 0cc9565e, Ubicloud 8-core Ubuntu 24.04, GOMAXPROCS=6.
+# Provenance and every five-value vector: calibration/ubicloud8-20261108/provenance.json.
+# Per metric: original median + max(20% of median, original noise floor).
+# This scope passed native/shape checks; the full reference failed the separate CNAME limit.
+# These ceilings supplement strict relative comparison; no baseline or old limit is replaced.
+limit ^BenchmarkGet/hit$ B/op 64
+limit ^BenchmarkGet/hit$ allocs/op 0
+limit ^BenchmarkGet/hit$ ns/op 638.88
+limit ^BenchmarkGet/hit\-parallel$ B/op 64
+limit ^BenchmarkGet/hit\-parallel$ allocs/op 0
+limit ^BenchmarkGet/hit\-parallel$ ns/op 156.48
+limit ^BenchmarkGet/miss$ B/op 64
+limit ^BenchmarkGet/miss$ allocs/op 0
+limit ^BenchmarkGet/miss$ ns/op 110.53
+limit ^BenchmarkMakeKey$ B/op 88
+limit ^BenchmarkMakeKey$ allocs/op 1.2
+limit ^BenchmarkMakeKey$ ns/op 89.1
+limit ^BenchmarkMemory/1000k$ B/op 450277104
+limit ^BenchmarkMemory/1000k$ allocs/op 4814602.8
+limit ^BenchmarkMemory/1000k$ bytes/entry 351.36
+limit ^BenchmarkMemory/1000k$ ns/op 1046852116.8
+limit ^BenchmarkMemory/1000k$ overhead-bytes/entry 208.68
+limit ^BenchmarkSet$ B/op 176
+limit ^BenchmarkSet$ allocs/op 1.2
+limit ^BenchmarkSet$ ns/op 706.92

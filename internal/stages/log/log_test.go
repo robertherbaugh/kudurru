@@ -9,6 +9,7 @@ import (
 
 	"github.com/miekg/dns"
 
+	"github.com/robertherbaugh/kudurru/internal/nodehealth"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
@@ -86,6 +87,37 @@ func TestObserverEvent(t *testing.T) {
 	}
 }
 
+func TestObserverUsesValidationProvenance(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		origin   pipeline.ResponseOrigin
+		state    pipeline.ValidationState
+		modified bool
+		ad       bool
+		want     querylog.DNSSECState
+	}{
+		{"DO off", pipeline.OriginForwarded, pipeline.ValidationSecure, false, false, querylog.DNSSECSecure},
+		{"untrusted AD", pipeline.OriginForwarded, pipeline.ValidationUnknown, false, true, querylog.DNSSECUnknown},
+		{"unsigned", pipeline.OriginForwarded, pipeline.ValidationInsecure, false, false, querylog.DNSSECInsecure},
+		{"bogus", pipeline.OriginFailure, pipeline.ValidationBogus, false, false, querylog.DNSSECBogus},
+		{"indeterminate", pipeline.OriginFailure, pipeline.ValidationIndeterminate, false, false, querylog.DNSSECIndeterminate},
+		{"modified", pipeline.OriginForwarded, pipeline.ValidationSecure, true, false, querylog.DNSSECUnknown},
+		{"local alias", pipeline.OriginMixed, pipeline.ValidationSecure, false, false, querylog.DNSSECUnknown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := &recorder{}
+			o := &Observer{Collector: rec}
+			req := request("example.", dns.TypeA)
+			m := reply(req, dns.RcodeSuccess)
+			m.AuthenticatedData = tc.ad
+			o.Observe(req, &pipeline.Response{Msg: m, Origin: tc.origin, Security: pipeline.Security{State: tc.state}, Modified: tc.modified}, nil, time.Millisecond)
+			if len(rec.events) != 1 || rec.events[0].DNSSEC != tc.want {
+				t.Fatal("recorded wire flags or modified data as validated")
+			}
+		})
+	}
+}
+
 // TestObserverPolicy: the deciding policy of the identify stage's
 // decision reaches the event; no decision leaves it empty.
 func TestObserverPolicy(t *testing.T) {
@@ -143,7 +175,9 @@ func TestObserverReplyTypes(t *testing.T) {
 func TestObserverSkipsHealthName(t *testing.T) {
 	rec := &recorder{}
 	o := &Observer{Node: "n", Collector: rec}
-	o.Observe(request(ingress.HealthName, dns.TypeTXT), nil, nil, time.Millisecond)
+	for _, name := range []string{ingress.HealthName, nodehealth.Target("n"), nodehealth.Target("wrong-owner"), "malformed." + nodehealth.Namespace, "x.v2." + nodehealth.Namespace} {
+		o.Observe(request(name, dns.TypeTXT), nil, nil, time.Millisecond)
+	}
 	if len(rec.events) != 0 {
 		t.Error("health probe was logged")
 	}
@@ -183,5 +217,20 @@ func TestObserverDNSSEC(t *testing.T) {
 		if got := rec.events[0].DNSSEC; got != querylog.DNSSECState(sec) || got.String() != [...]string{"unknown", "secure", "insecure", "bogus"}[sec] {
 			t.Fatalf("%d: logged %v", sec, got)
 		}
+	}
+}
+
+func TestObserverCapturedOwnerFailureNeverUsesLiveCollector(t *testing.T) {
+	live, original := &recorder{}, &recorder{}
+	req := request("original.example.", dns.TypeA)
+	response := &pipeline.Response{Msg: reply(req, dns.RcodeSuccess), Status: pipeline.StatusForwarded}
+	o := &Observer{Collector: live, Capture: func(*pipeline.Request) (querylog.Collector, error) { return original, nil }}
+	o.Observe(req, response, nil, time.Millisecond)
+	o.Capture = func(*pipeline.Request) (querylog.Collector, error) {
+		return nil, errors.New("missing captured logging")
+	}
+	o.Observe(req, response, nil, time.Millisecond)
+	if len(live.events) != 0 || len(original.events) != 1 {
+		t.Fatal("missing original logging owner fell back to live collector")
 	}
 }

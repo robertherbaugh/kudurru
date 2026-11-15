@@ -242,7 +242,7 @@ func TestUnsyncedWithoutSnapshot(t *testing.T) {
 				return len(msgs) == 2
 			})
 			ok, msgs := c.Ready()
-			if ok || !strings.Contains(msgs[0], "waiting for the initial sync of BlockList, ClientGroup, DNSRecordSet, DNSZone, Policy") || msgs[1] != tc.why {
+			if ok || !strings.Contains(msgs[0], "waiting for the initial sync of BlockList, ClientGroup, DNSRecordSet, DNSZone, Integration, Kudurru, Policy") || msgs[1] != tc.why {
 				t.Fatalf("Ready() = %v %q", ok, msgs)
 			}
 			snap := c.Snapshot()
@@ -354,5 +354,43 @@ func TestSnapshotWriteFailure(t *testing.T) {
 	}
 	if ok, msgs := c.Ready(); !ok || len(msgs) != 1 {
 		t.Fatalf("a failing local.db must not cost readiness: %v %v", ok, msgs)
+	}
+}
+
+// Falling back to local.db changes the state before the next debounced
+// rebuild publishes the snapshot built from it. Until then the served
+// snapshot is the empty unsynced one, whose policy index has no references
+// to wait for, so the cache must not report ready (D390).
+func TestColdStartReadyOnlyOncePublished(t *testing.T) {
+	db, _ := openDB(t)
+	if err := db.Write(context.Background(), &localdb.Snapshot{
+		Objects:   []store.Object{zone("home", "home.example."), policy("apps", "kids", "ads")},
+		WrittenAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	st := newFakeStore()
+	st.holdBookmarks()
+	c := newCache(t, st, Options{LocalDB: db, StartupTimeout: 10 * time.Millisecond, Debounce: 500 * time.Millisecond})
+	startCache(t, c)
+	select {
+	case <-c.Initialized():
+	case <-time.After(5 * time.Second):
+		t.Fatal("not initialized from local.db")
+	}
+	if snap := c.Snapshot(); snap.State != FromSnapshot {
+		ok, msgs := c.Ready()
+		if ok || len(msgs) == 0 || msgs[0] != "waiting for the local.db snapshot to be published" {
+			t.Fatalf("Ready() before the local.db snapshot is published = %v %v", ok, msgs)
+		}
+	} else {
+		t.Fatal("published within the debounce window; the test proves nothing")
+	}
+	snap := waitState(t, c, FromSnapshot)
+	if snap.Objects.Count(KindPolicy) != 1 {
+		t.Fatalf("published snapshot lacks the policy: %d", snap.Objects.Count(KindPolicy))
+	}
+	if ok, msgs := c.Ready(); !ok {
+		t.Fatalf("Ready() once published = %v %v", ok, msgs)
 	}
 }

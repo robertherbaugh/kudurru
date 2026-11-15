@@ -1,3 +1,16 @@
+-- trigger query_domain_delete
+CREATE TRIGGER query_domain_delete AFTER DELETE ON query BEGIN
+ UPDATE query_domain_hour SET total=total-1,blocked=blocked-(OLD.status BETWEEN 16 AND 23)
+ WHERE ts=(OLD.ts/3600000000)*3600 AND node=OLD.node AND domain=OLD.domain;
+ DELETE FROM query_domain_hour WHERE ts=(OLD.ts/3600000000)*3600 AND node=OLD.node AND domain=OLD.domain AND total=0;
+ END;
+
+-- trigger query_domain_insert
+CREATE TRIGGER query_domain_insert AFTER INSERT ON query BEGIN
+ INSERT INTO query_domain_hour VALUES((NEW.ts/3600000000)*3600,NEW.node,NEW.domain,1,NEW.status BETWEEN 16 AND 23,NEW.ts,NEW.ts)
+ ON CONFLICT(ts,node,domain) DO UPDATE SET total=total+1,blocked=blocked+excluded.blocked,first_ts=min(first_ts,excluded.first_ts),last_ts=max(last_ts,excluded.last_ts);
+ END;
+
 -- table dict_client
 CREATE TABLE dict_client   (id INTEGER PRIMARY KEY, ip TEXT NOT NULL, name TEXT, grp TEXT, first_seen INTEGER, last_seen INTEGER, UNIQUE(ip,name));
 
@@ -48,6 +61,13 @@ CREATE TABLE query (
   answer      TEXT,
   policy      INTEGER REFERENCES dict_policy
 );
+
+-- table query_domain_hour
+CREATE TABLE query_domain_hour (
+ ts INTEGER NOT NULL, node INTEGER NOT NULL REFERENCES dict_node,
+ domain INTEGER NOT NULL REFERENCES dict_domain, total INTEGER NOT NULL,
+ blocked INTEGER NOT NULL, first_ts INTEGER NOT NULL, last_ts INTEGER NOT NULL,
+ PRIMARY KEY(ts,node,domain)) WITHOUT ROWID;
 
 -- table rollup_1d
 CREATE TABLE rollup_1d (

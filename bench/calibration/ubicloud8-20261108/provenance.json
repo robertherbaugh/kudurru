@@ -1,0 +1,1164 @@
+{
+  "runner_class": "ubicloud-standard-8-ubuntu-2404",
+  "cpu": "AMD EPYC 9224 24-Core Processor",
+  "go_version": "go version go1.27.3 linux/amd64",
+  "procs": 6,
+  "samples": 5,
+  "source": "0cc9565e9a878f8223fc1cee5201eb7eca8aacd2",
+  "control_source": "86a3ff911fb5b7a28daee457d75bb08029d7c944",
+  "run_url": "https://github.com/robertherbaugh/kudurru/actions/runs/42517712186",
+  "full_reference_exit": 1,
+  "full_reference_qualified": false,
+  "full_reference_failure": "blocking-zone CNAME p99 2090ns exceeds unchanged 2000ns; original report retained separately",
+  "formula": "median + max(0.20 * median, original per-unit noise floor)",
+  "scopes": {
+    "cache": {
+      "report_sha256": "e6b4ae75c149e9ef0b29e350dd069198d75f9b510ebc04c1d0d728094a743ba6",
+      "receipts": {
+        "cache-1.json": "f9df00360b4db75e16e595cc9a6ad912a8690f7324ecf2594058fc81c907f556",
+        "cache-2.json": "30f48e87fa1026880d10b1d5930a737f3736acdc24b0b89831c40d2fd8dac800",
+        "cache-3.json": "fa75a60d1eba3e03a7164204256b60f3c02152d00c0997e3c024147aa65f184b",
+        "cache-4.json": "984e2a9853667084f0250648f688bba3792fc91c966b8d864aa0df93e0bc3f42",
+        "cache-5.json": "2417e0fd1354b55d7dd3420d5b9c3cb5c1d997bd7a410f4b36b3e4080cb037dc",
+        "cache-gate.json": "2cd579781fe577da46c35644d42e7102fdbc5992c15a9e6fe39229befe344357"
+      },
+      "limits_sha256": "2e17333212a9889e6567de96d96802f2df74410e7b25521126651b6a6de0f426",
+      "metrics": [
+        {
+          "name": "BenchmarkGet/hit",
+          "unit": "B/op",
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "noise_floor": 64,
+          "limit": 64.0
+        },
+        {
+          "name": "BenchmarkGet/hit",
+          "unit": "allocs/op",
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "noise_floor": 0,
+          "limit": 0.0
+        },
+        {
+          "name": "BenchmarkGet/hit",
+          "unit": "ns/op",
+          "values": [
+            583.7,
+            561.2,
+            532.4,
+            435.9,
+            385.5
+          ],
+          "median": 532.4,
+          "noise_floor": 25,
+          "limit": 638.88
+        },
+        {
+          "name": "BenchmarkGet/hit-parallel",
+          "unit": "B/op",
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "noise_floor": 64,
+          "limit": 64.0
+        },
+        {
+          "name": "BenchmarkGet/hit-parallel",
+          "unit": "allocs/op",
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "noise_floor": 0,
+          "limit": 0.0
+        },
+        {
+          "name": "BenchmarkGet/hit-parallel",
+          "unit": "ns/op",
+          "values": [
+            142.2,
+            129.4,
+            134.2,
+            116.3,
+            130.4
+          ],
+          "median": 130.4,
+          "noise_floor": 25,
+          "limit": 156.48
+        },
+        {
+          "name": "BenchmarkGet/miss",
+          "unit": "B/op",
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "noise_floor": 64,
+          "limit": 64.0
+        },
+        {
+          "name": "BenchmarkGet/miss",
+          "unit": "allocs/op",
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "noise_floor": 0,
+          "limit": 0.0
+        },
+        {
+          "name": "BenchmarkGet/miss",
+          "unit": "ns/op",
+          "values": [
+            85.73,
+            84.66,
+            82.62,
+            85.53,
+            86.09
+          ],
+          "median": 85.53,
+          "noise_floor": 25,
+          "limit": 110.53
+        },
+        {
+          "name": "BenchmarkMakeKey",
+          "unit": "B/op",
+          "values": [
+            24.0,
+            24.0,
+            24.0,
+            24.0,
+            24.0
+          ],
+          "median": 24.0,
+          "noise_floor": 64,
+          "limit": 88.0
+        },
+        {
+          "name": "BenchmarkMakeKey",
+          "unit": "allocs/op",
+          "values": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "median": 1.0,
+          "noise_floor": 0,
+          "limit": 1.2
+        },
+        {
+          "name": "BenchmarkMakeKey",
+          "unit": "ns/op",
+          "values": [
+            51.78,
+            64.94,
+            64.1,
+            66.93,
+            59.54
+          ],
+          "median": 64.1,
+          "noise_floor": 25,
+          "limit": 89.1
+        },
+        {
+          "name": "BenchmarkMemory/1000k",
+          "unit": "B/op",
+          "values": [
+            375230920.0,
+            375340056.0,
+            375312816.0,
+            375148984.0,
+            375176504.0
+          ],
+          "median": 375230920.0,
+          "noise_floor": 64,
+          "limit": 450277104.0
+        },
+        {
+          "name": "BenchmarkMemory/1000k",
+          "unit": "allocs/op",
+          "values": [
+            4012169.0,
+            4012177.0,
+            4012175.0,
+            4012163.0,
+            4012167.0
+          ],
+          "median": 4012169.0,
+          "noise_floor": 0,
+          "limit": 4814602.8
+        },
+        {
+          "name": "BenchmarkMemory/1000k",
+          "unit": "bytes/entry",
+          "values": [
+            292.8,
+            292.8,
+            292.8,
+            292.6,
+            292.6
+          ],
+          "median": 292.8,
+          "noise_floor": 0,
+          "limit": 351.36
+        },
+        {
+          "name": "BenchmarkMemory/1000k",
+          "unit": "ns/op",
+          "values": [
+            872376764.0,
+            906031789.0,
+            897999024.0,
+            812144777.0,
+            752512686.0
+          ],
+          "median": 872376764.0,
+          "noise_floor": 25,
+          "limit": 1046852116.8
+        },
+        {
+          "name": "BenchmarkMemory/1000k",
+          "unit": "overhead-bytes/entry",
+          "values": [
+            173.9,
+            173.9,
+            173.9,
+            173.8,
+            173.8
+          ],
+          "median": 173.9,
+          "noise_floor": 0,
+          "limit": 208.68
+        },
+        {
+          "name": "BenchmarkSet",
+          "unit": "B/op",
+          "values": [
+            112.0,
+            112.0,
+            112.0,
+            112.0,
+            112.0
+          ],
+          "median": 112.0,
+          "noise_floor": 64,
+          "limit": 176.0
+        },
+        {
+          "name": "BenchmarkSet",
+          "unit": "allocs/op",
+          "values": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "median": 1.0,
+          "noise_floor": 0,
+          "limit": 1.2
+        },
+        {
+          "name": "BenchmarkSet",
+          "unit": "ns/op",
+          "values": [
+            632.5,
+            639.1,
+            589.1,
+            470.1,
+            456.4
+          ],
+          "median": 589.1,
+          "noise_floor": 25,
+          "limit": 706.92
+        }
+      ]
+    },
+    "upstream": {
+      "report_sha256": "5370739f7e81c20ce763147a6a9470eb0d59b2f8e6b2152bd07eeff4c65f55f8",
+      "receipts": {
+        "upstream-1.json": "579bd8537d4bb34d2bed9bd65ec8d9878a6d0c5362e2b2cce4846294288e790c",
+        "upstream-2.json": "3c287f7c69efd419cbea65018e082edce59c3eeca0fd203e8bdbd47cb424b474",
+        "upstream-3.json": "1fd1e72f0075de431b684e1a74a381be8d618f23241715fd7c2e922a6f6bd2d7",
+        "upstream-4.json": "b5abd5f8be92df3b38c516d33cfe3a4574bbfd329d6a28e7139ee987c826a30e",
+        "upstream-5.json": "b0951c3166b2d5134fda12bf77296a3163ba5f2075a587166e07a929da6dafc1",
+        "upstream-gate.json": "578cde9f4275d8a54d01bfbfd55306f7b13ee7f580abfe1226705d4cb4864eb5"
+      },
+      "limits_sha256": "e1a4dbe123389c4a62567a0a87f4b523dfb60242f397aeefbc977f88f432afb6",
+      "metrics": [
+        {
+          "name": "BenchmarkStrategies/fast/parallel_best",
+          "unit": "B/op",
+          "values": [
+            12983.0,
+            12984.0,
+            12987.0,
+            12984.0,
+            12979.0
+          ],
+          "median": 12984.0,
+          "noise_floor": 64,
+          "limit": 15580.8
+        },
+        {
+          "name": "BenchmarkStrategies/fast/parallel_best",
+          "unit": "allocs/op",
+          "values": [
+            202.0,
+            202.0,
+            202.0,
+            202.0,
+            202.0
+          ],
+          "median": 202.0,
+          "noise_floor": 0,
+          "limit": 242.4
+        },
+        {
+          "name": "BenchmarkStrategies/fast/parallel_best",
+          "unit": "ns/op",
+          "values": [
+            122495.0,
+            135412.0,
+            127667.0,
+            121875.0,
+            120089.0
+          ],
+          "median": 122495.0,
+          "noise_floor": 25,
+          "limit": 146994.0
+        },
+        {
+          "name": "BenchmarkStrategies/fast/parallel_best",
+          "unit": "p50-us",
+          "values": [
+            116.0,
+            122.0,
+            118.0,
+            114.0,
+            115.0
+          ],
+          "median": 116.0,
+          "noise_floor": 0,
+          "limit": 139.2
+        },
+        {
+          "name": "BenchmarkStrategies/fast/parallel_best",
+          "unit": "p99-us",
+          "values": [
+            316.0,
+            324.0,
+            353.0,
+            291.0,
+            272.0
+          ],
+          "median": 316.0,
+          "noise_floor": 0,
+          "limit": 379.2
+        },
+        {
+          "name": "BenchmarkStrategies/fast/random",
+          "unit": "B/op",
+          "values": [
+            6251.0,
+            6251.0,
+            6250.0,
+            6252.0,
+            6245.0
+          ],
+          "median": 6251.0,
+          "noise_floor": 64,
+          "limit": 7501.2
+        },
+        {
+          "name": "BenchmarkStrategies/fast/random",
+          "unit": "allocs/op",
+          "values": [
+            101.0,
+            101.0,
+            101.0,
+            101.0,
+            101.0
+          ],
+          "median": 101.0,
+          "noise_floor": 0,
+          "limit": 121.2
+        },
+        {
+          "name": "BenchmarkStrategies/fast/random",
+          "unit": "ns/op",
+          "values": [
+            111064.0,
+            118152.0,
+            120387.0,
+            102261.0,
+            103942.0
+          ],
+          "median": 111064.0,
+          "noise_floor": 25,
+          "limit": 133276.8
+        },
+        {
+          "name": "BenchmarkStrategies/fast/random",
+          "unit": "p50-us",
+          "values": [
+            95.0,
+            101.0,
+            101.0,
+            91.0,
+            92.0
+          ],
+          "median": 95.0,
+          "noise_floor": 0,
+          "limit": 114.0
+        },
+        {
+          "name": "BenchmarkStrategies/fast/random",
+          "unit": "p99-us",
+          "values": [
+            274.0,
+            285.0,
+            360.0,
+            255.0,
+            260.0
+          ],
+          "median": 274.0,
+          "noise_floor": 0,
+          "limit": 328.8
+        },
+        {
+          "name": "BenchmarkStrategies/fast/rtt_weighted",
+          "unit": "B/op",
+          "values": [
+            6273.0,
+            6275.0,
+            6276.0,
+            6270.0,
+            6275.0
+          ],
+          "median": 6275.0,
+          "noise_floor": 64,
+          "limit": 7530.0
+        },
+        {
+          "name": "BenchmarkStrategies/fast/rtt_weighted",
+          "unit": "allocs/op",
+          "values": [
+            102.0,
+            102.0,
+            102.0,
+            102.0,
+            102.0
+          ],
+          "median": 102.0,
+          "noise_floor": 0,
+          "limit": 122.4
+        },
+        {
+          "name": "BenchmarkStrategies/fast/rtt_weighted",
+          "unit": "ns/op",
+          "values": [
+            103347.0,
+            114982.0,
+            123452.0,
+            100984.0,
+            119801.0
+          ],
+          "median": 114982.0,
+          "noise_floor": 25,
+          "limit": 137978.4
+        },
+        {
+          "name": "BenchmarkStrategies/fast/rtt_weighted",
+          "unit": "p50-us",
+          "values": [
+            91.0,
+            95.0,
+            104.0,
+            91.0,
+            96.0
+          ],
+          "median": 95.0,
+          "noise_floor": 0,
+          "limit": 114.0
+        },
+        {
+          "name": "BenchmarkStrategies/fast/rtt_weighted",
+          "unit": "p99-us",
+          "values": [
+            240.0,
+            297.0,
+            288.0,
+            236.0,
+            294.0
+          ],
+          "median": 288.0,
+          "noise_floor": 0,
+          "limit": 345.6
+        },
+        {
+          "name": "BenchmarkStrategies/fast/strict",
+          "unit": "B/op",
+          "values": [
+            6235.0,
+            6241.0,
+            6240.0,
+            6240.0,
+            6236.0
+          ],
+          "median": 6240.0,
+          "noise_floor": 64,
+          "limit": 7488.0
+        },
+        {
+          "name": "BenchmarkStrategies/fast/strict",
+          "unit": "allocs/op",
+          "values": [
+            101.0,
+            101.0,
+            101.0,
+            101.0,
+            101.0
+          ],
+          "median": 101.0,
+          "noise_floor": 0,
+          "limit": 121.2
+        },
+        {
+          "name": "BenchmarkStrategies/fast/strict",
+          "unit": "ns/op",
+          "values": [
+            100793.0,
+            127204.0,
+            126958.0,
+            102013.0,
+            104033.0
+          ],
+          "median": 104033.0,
+          "noise_floor": 25,
+          "limit": 124839.6
+        },
+        {
+          "name": "BenchmarkStrategies/fast/strict",
+          "unit": "p50-us",
+          "values": [
+            90.0,
+            105.0,
+            102.0,
+            91.0,
+            92.0
+          ],
+          "median": 92.0,
+          "noise_floor": 0,
+          "limit": 110.4
+        },
+        {
+          "name": "BenchmarkStrategies/fast/strict",
+          "unit": "p99-us",
+          "values": [
+            244.0,
+            285.0,
+            374.0,
+            244.0,
+            241.0
+          ],
+          "median": 244.0,
+          "noise_floor": 0,
+          "limit": 292.8
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/parallel_best",
+          "unit": "B/op",
+          "values": [
+            13175.0,
+            13174.0,
+            13177.0,
+            13169.0,
+            13180.0
+          ],
+          "median": 13175.0,
+          "noise_floor": 64,
+          "limit": 15810.0
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/parallel_best",
+          "unit": "allocs/op",
+          "values": [
+            204.0,
+            204.0,
+            204.0,
+            204.0,
+            205.0
+          ],
+          "median": 204.0,
+          "noise_floor": 0,
+          "limit": 244.8
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/parallel_best",
+          "unit": "ns/op",
+          "values": [
+            1837706.0,
+            1977437.0,
+            1920720.0,
+            1932228.0,
+            1880920.0
+          ],
+          "median": 1920720.0,
+          "noise_floor": 25,
+          "limit": 2304864.0
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/parallel_best",
+          "unit": "p50-us",
+          "values": [
+            1482.0,
+            1542.0,
+            1546.0,
+            1545.0,
+            1490.0
+          ],
+          "median": 1542.0,
+          "noise_floor": 0,
+          "limit": 1850.4
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/parallel_best",
+          "unit": "p99-us",
+          "values": [
+            3622.0,
+            3777.0,
+            3724.0,
+            3715.0,
+            3686.0
+          ],
+          "median": 3715.0,
+          "noise_floor": 0,
+          "limit": 4458.0
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/random",
+          "unit": "B/op",
+          "values": [
+            6323.0,
+            6335.0,
+            6340.0,
+            6330.0,
+            6331.0
+          ],
+          "median": 6331.0,
+          "noise_floor": 64,
+          "limit": 7597.2
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/random",
+          "unit": "allocs/op",
+          "values": [
+            102.0,
+            102.0,
+            102.0,
+            102.0,
+            102.0
+          ],
+          "median": 102.0,
+          "noise_floor": 0,
+          "limit": 122.4
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/random",
+          "unit": "ns/op",
+          "values": [
+            2412814.0,
+            2422138.0,
+            2382319.0,
+            2361743.0,
+            2399060.0
+          ],
+          "median": 2399060.0,
+          "noise_floor": 25,
+          "limit": 2878872.0
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/random",
+          "unit": "p50-us",
+          "values": [
+            2431.0,
+            2528.0,
+            2513.0,
+            2483.0,
+            2489.0
+          ],
+          "median": 2489.0,
+          "noise_floor": 0,
+          "limit": 2986.8
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/random",
+          "unit": "p99-us",
+          "values": [
+            4757.0,
+            3723.0,
+            3675.0,
+            3604.0,
+            3603.0
+          ],
+          "median": 3675.0,
+          "noise_floor": 0,
+          "limit": 4410.0
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/rtt_weighted",
+          "unit": "B/op",
+          "values": [
+            6356.0,
+            6351.0,
+            6371.0,
+            6345.0,
+            6367.0
+          ],
+          "median": 6356.0,
+          "noise_floor": 64,
+          "limit": 7627.2
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/rtt_weighted",
+          "unit": "allocs/op",
+          "values": [
+            103.0,
+            103.0,
+            103.0,
+            103.0,
+            103.0
+          ],
+          "median": 103.0,
+          "noise_floor": 0,
+          "limit": 123.6
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/rtt_weighted",
+          "unit": "ns/op",
+          "values": [
+            2442938.0,
+            2389854.0,
+            2345961.0,
+            2400737.0,
+            2360064.0
+          ],
+          "median": 2389854.0,
+          "noise_floor": 25,
+          "limit": 2867824.8
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/rtt_weighted",
+          "unit": "p50-us",
+          "values": [
+            2428.0,
+            2514.0,
+            2493.0,
+            2477.0,
+            2478.0
+          ],
+          "median": 2478.0,
+          "noise_floor": 0,
+          "limit": 2973.6
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/rtt_weighted",
+          "unit": "p99-us",
+          "values": [
+            4672.0,
+            3673.0,
+            3654.0,
+            3715.0,
+            3605.0
+          ],
+          "median": 3673.0,
+          "noise_floor": 0,
+          "limit": 4407.6
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/strict",
+          "unit": "B/op",
+          "values": [
+            6330.0,
+            6316.0,
+            6333.0,
+            6318.0,
+            6328.0
+          ],
+          "median": 6328.0,
+          "noise_floor": 64,
+          "limit": 7593.6
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/strict",
+          "unit": "allocs/op",
+          "values": [
+            102.0,
+            102.0,
+            102.0,
+            102.0,
+            102.0
+          ],
+          "median": 102.0,
+          "noise_floor": 0,
+          "limit": 122.4
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/strict",
+          "unit": "ns/op",
+          "values": [
+            2397781.0,
+            2368577.0,
+            2360006.0,
+            2391758.0,
+            2432977.0
+          ],
+          "median": 2391758.0,
+          "noise_floor": 25,
+          "limit": 2870109.6
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/strict",
+          "unit": "p50-us",
+          "values": [
+            2458.0,
+            2509.0,
+            2485.0,
+            2491.0,
+            2493.0
+          ],
+          "median": 2491.0,
+          "noise_floor": 0,
+          "limit": 2989.2
+        },
+        {
+          "name": "BenchmarkStrategies/jitter/strict",
+          "unit": "p99-us",
+          "values": [
+            3928.0,
+            3660.0,
+            3666.0,
+            3650.0,
+            3622.0
+          ],
+          "median": 3660.0,
+          "noise_floor": 0,
+          "limit": 4392.0
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/parallel_best",
+          "unit": "B/op",
+          "values": [
+            13053.0,
+            13058.0,
+            13056.0,
+            13055.0,
+            13054.0
+          ],
+          "median": 13055.0,
+          "noise_floor": 64,
+          "limit": 15666.0
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/parallel_best",
+          "unit": "allocs/op",
+          "values": [
+            203.0,
+            203.0,
+            203.0,
+            203.0,
+            203.0
+          ],
+          "median": 203.0,
+          "noise_floor": 0,
+          "limit": 243.6
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/parallel_best",
+          "unit": "ns/op",
+          "values": [
+            137043.0,
+            140718.0,
+            131032.0,
+            124515.0,
+            126550.0
+          ],
+          "median": 131032.0,
+          "noise_floor": 25,
+          "limit": 157238.4
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/parallel_best",
+          "unit": "p50-us",
+          "values": [
+            120.0,
+            127.0,
+            122.0,
+            116.0,
+            116.0
+          ],
+          "median": 120.0,
+          "noise_floor": 0,
+          "limit": 144.0
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/parallel_best",
+          "unit": "p99-us",
+          "values": [
+            422.0,
+            342.0,
+            317.0,
+            306.0,
+            322.0
+          ],
+          "median": 322.0,
+          "noise_floor": 0,
+          "limit": 386.4
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/random",
+          "unit": "B/op",
+          "values": [
+            6276.0,
+            6266.0,
+            6266.0,
+            6267.0,
+            6266.0
+          ],
+          "median": 6266.0,
+          "noise_floor": 64,
+          "limit": 7519.2
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/random",
+          "unit": "allocs/op",
+          "values": [
+            101.0,
+            101.0,
+            101.0,
+            101.0,
+            101.0
+          ],
+          "median": 101.0,
+          "noise_floor": 0,
+          "limit": 121.2
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/random",
+          "unit": "ns/op",
+          "values": [
+            962444.0,
+            1008984.0,
+            985915.0,
+            1016064.0,
+            966480.0
+          ],
+          "median": 985915.0,
+          "noise_floor": 25,
+          "limit": 1183098.0
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/random",
+          "unit": "p50-us",
+          "values": [
+            229.0,
+            294.0,
+            284.0,
+            291.0,
+            281.0
+          ],
+          "median": 284.0,
+          "noise_floor": 0,
+          "limit": 340.8
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/random",
+          "unit": "p99-us",
+          "values": [
+            3018.0,
+            2596.0,
+            2597.0,
+            2629.0,
+            2592.0
+          ],
+          "median": 2597.0,
+          "noise_floor": 0,
+          "limit": 3116.4
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/rtt_weighted",
+          "unit": "B/op",
+          "values": [
+            6274.0,
+            6270.0,
+            6276.0,
+            6270.0,
+            6275.0
+          ],
+          "median": 6274.0,
+          "noise_floor": 64,
+          "limit": 7528.8
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/rtt_weighted",
+          "unit": "allocs/op",
+          "values": [
+            102.0,
+            102.0,
+            102.0,
+            102.0,
+            102.0
+          ],
+          "median": 102.0,
+          "noise_floor": 0,
+          "limit": 122.4
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/rtt_weighted",
+          "unit": "ns/op",
+          "values": [
+            168342.0,
+            289594.0,
+            192057.0,
+            186502.0,
+            293918.0
+          ],
+          "median": 192057.0,
+          "noise_floor": 25,
+          "limit": 230468.4
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/rtt_weighted",
+          "unit": "p50-us",
+          "values": [
+            92.0,
+            200.0,
+            109.0,
+            105.0,
+            198.0
+          ],
+          "median": 109.0,
+          "noise_floor": 0,
+          "limit": 130.8
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/rtt_weighted",
+          "unit": "p99-us",
+          "values": [
+            2305.0,
+            2496.0,
+            2368.0,
+            2314.0,
+            2480.0
+          ],
+          "median": 2368.0,
+          "noise_floor": 0,
+          "limit": 2841.6
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/strict",
+          "unit": "B/op",
+          "values": [
+            6330.0,
+            6316.0,
+            6317.0,
+            6317.0,
+            6320.0
+          ],
+          "median": 6317.0,
+          "noise_floor": 64,
+          "limit": 7580.4
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/strict",
+          "unit": "allocs/op",
+          "values": [
+            102.0,
+            102.0,
+            102.0,
+            102.0,
+            102.0
+          ],
+          "median": 102.0,
+          "noise_floor": 0,
+          "limit": 122.4
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/strict",
+          "unit": "ns/op",
+          "values": [
+            2470078.0,
+            2509488.0,
+            2509255.0,
+            2424074.0,
+            2439165.0
+          ],
+          "median": 2470078.0,
+          "noise_floor": 25,
+          "limit": 2964093.6
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/strict",
+          "unit": "p50-us",
+          "values": [
+            2481.0,
+            2532.0,
+            2533.0,
+            2451.0,
+            2467.0
+          ],
+          "median": 2481.0,
+          "noise_floor": 0,
+          "limit": 2977.2
+        },
+        {
+          "name": "BenchmarkStrategies/slow-first/strict",
+          "unit": "p99-us",
+          "values": [
+            3070.0,
+            2667.0,
+            2777.0,
+            2623.0,
+            2581.0
+          ],
+          "median": 2667.0,
+          "noise_floor": 0,
+          "limit": 3200.4
+        }
+      ]
+    }
+  }
+}

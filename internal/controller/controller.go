@@ -102,6 +102,19 @@ type Options struct {
 	// ServicesChanged re-queues every Policy when the catalogue changes at
 	// runtime (catalogue.Holder.Subscribe); nil leaves it to the resync.
 	ServicesChanged <-chan struct{}
+	// CommittedPrimaryStatus replaces the primary serial/hash/readiness stamper
+	// with exact committed status admission. Nil preserves legacy behavior.
+	CommittedPrimaryStatus CommittedPrimaryStatus
+	// ExternalZoneSources reports that the Kubernetes source adapter of
+	// external zones runs (the host setting externalZones.enabled). When
+	// false, every DNSZone of type external is Degraded{SourcesNotRead}:
+	// it is served, but only from record sets derived earlier, and no
+	// source change reaches it.
+	ExternalZoneSources bool
+	// ExternalZoneSourcesUnsupported reports that this store cannot run
+	// that adapter at all (it is not the Kubernetes store), so the
+	// SourcesNotRead message does not point at externalZones.enabled.
+	ExternalZoneSourcesUnsupported bool
 	// ReconcileHook, if set, is called after every reconcile with its
 	// duration and outcome (tracing and measurements).
 	ReconcileHook func(key store.Key, took time.Duration, wroteStatus bool, err error)
@@ -221,6 +234,10 @@ func (c *Controller) Run(ctx context.Context) error {
 		if ch := c.opts.ServicesChanged; ch != nil {
 			wg.Add(1)
 			go func() { defer wg.Done(); c.requeuePolicies(ctx, ch) }()
+		}
+		if capability := c.opts.CommittedPrimaryStatus; capability != nil {
+			wg.Add(1)
+			go func() { defer wg.Done(); c.requeueCommittedPrimaries(ctx, capability) }()
 		}
 	}
 	<-ctx.Done()

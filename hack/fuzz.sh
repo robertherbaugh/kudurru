@@ -40,6 +40,8 @@ TARGETS=(
 	"./test/fuzz FuzzTSIGVerify"
 	"./test/fuzz FuzzQueryLogFilter"
 	"./test/fuzz FuzzQueryLogNames"
+	"./test/fuzz FuzzDnstapEncode"
+	"./test/fuzz FuzzFrameStreamRead"
 	"./test/fuzz FuzzDnsmasqImport"
 	"./test/fuzz FuzzKeepalivedRender"
 	"./test/fuzz FuzzKeepalivedFIFOLine"

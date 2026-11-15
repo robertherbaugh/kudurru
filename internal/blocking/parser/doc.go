@@ -6,7 +6,7 @@
 //
 // The adblock grammar is implemented from the public AdGuard DNS filtering
 // syntax specification (https://adguard-dns.io/kb/general/dns-filtering-syntax/)
-// and from the behaviour of common lists. No code from AdGuard Home or
+// and from the behavior of common lists. No code from AdGuard Home or
 // urlfilter (both GPL-3.0) was read or used; see CONTRIBUTING.md.
 //
 // # Grammar and decisions
@@ -43,15 +43,19 @@
 //     apply.
 //   - Only 0.0.0.0, ::, 127.0.0.0/8 and ::1 make a hosts line a block. Any
 //     other address is a rewrite in AdGuard Home's semantics and is counted
-//     as unsupported (ReasonHostsRewrite) until rewrites land in v0.2.
+//     as unsupported (ReasonHostsRewrite); typed dnsrewrite rules are the
+//     supported rewrite syntax.
 //     Standard hosts-file boilerplate (localhost, broadcasthost,
 //     ip6-allnodes, ...) is counted as ignored rather than blocked.
 //   - Every rule with modifiers ($important, $badfilter, $dnstype,
 //     $dnsrewrite, $client, $ctag, $denyallow, $respgeo) and every pattern
-//     with a mid-pattern wildcard or unanchored start is parsed, kept with
-//     its tokenised modifiers in Result.UnsupportedRules, and counted as
-//     unsupported rather than dropped silently. A rule with a modifier the
-//     specification does not define is invalid and ignored as a whole, so
+//     with a mid-pattern wildcard or unanchored start is streamed through
+//     Options.EmitSlow without diagnostic caps. Without that callback it is
+//     counted as unsupported and sampled in Result.UnsupportedRules. The
+//     blocking compiler accepts supported candidates, reports semantic errors
+//     as invalid, and retains unsupported geolocation/hosts/CIDR diagnostics.
+//     A rule with a modifier the specification does not define is invalid and
+//     ignored as a whole, so
 //     browser lists such as EasyList cannot block by accident.
 //   - Cosmetic and HTML-filtering rules (##, #@#, $$, ...), URL rules with a
 //     path and malformed lines are counted as invalid with a reason.
@@ -63,6 +67,6 @@
 // Parse streams rules to a callback, so a multi-million-line list never
 // exists as a slice of rules. It refuses HTML pages and binary bodies
 // (ErrHTML, ErrBinary), extracts "! Title:" and "# Title:" headers, and
-// computes the CRC-32 of the normalised rule lines, which Checksum computes
+// computes the CRC-32 of the normalized rule lines, which Checksum computes
 // without parsing so that unchanged lists can skip recompilation.
 package parser

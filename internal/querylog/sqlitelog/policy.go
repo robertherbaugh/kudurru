@@ -52,18 +52,6 @@ var blockedIn = func() string {
 	return "(" + b.String() + ")"
 }()
 
-// The policy statistics read the fact table through query_ts (a range of
-// the window) and filter by policy: the column has no index of its own
-// (§11.2 keeps four).
-var (
-	policyCountsSQL = `SELECT count(*), coalesce(sum(CASE WHEN status IN ` + blockedIn + ` THEN 1 ELSE 0 END),0) FROM query
-		WHERE ts>=?2 AND ts<?3 AND policy=?1`
-	//nolint:gosec // blockedIn is built from the status constants; values are bound parameters
-	policyTopBlockedSQL = `SELECT d.name, count(*) AS c FROM query q JOIN dict_domain d ON d.id=q.domain
-		WHERE q.ts>=?2 AND q.ts<?3 AND q.policy=?1 AND q.status IN ` + blockedIn + `
-		GROUP BY d.id, d.name ORDER BY c DESC, d.name LIMIT ?4`
-)
-
 // PolicyStats counts the queries policy ("namespace/name") decided in w
 // (default: the last 24 hours) and ranks its n most blocked domains and
 // busiest clients (default 10, at most MaxTopN).
@@ -75,9 +63,10 @@ func (r *Reader) PolicyStats(ctx context.Context, policy string, w Window, n int
 	}
 	n = min(n, MaxTopN)
 	out := &PolicyStats{Window: w, Policy: policy, TopBlocked: []PolicyDomain{}, TopClients: []PolicyClient{}}
-	err := r.read(ctx, false, func(tx *rtx, _ *snapshot) error {
+	scope, err := r.readScoped(ctx, false, start, func(tx *rtx, _ *snapshot) error {
 		var id int64
-		err := tx.QueryRowContext(ctx, `SELECT id FROM dict_policy WHERE name=?`, policy).Scan(&id)
+		args := []any{policy}
+		err := tx.QueryRowContext(ctx, `SELECT id FROM dict_policy WHERE name=?`+tx.dictionaryWhere("dict_policy", "dict_policy.", &args), args...).Scan(&id)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
@@ -85,10 +74,14 @@ func (r *Reader) PolicyStats(ctx context.Context, policy string, w Window, n int
 			return fmt.Errorf("sqlitelog: policy id: %w", err)
 		}
 		from, until := w.From.UnixMicro(), w.Until.UnixMicro()
-		if err := tx.QueryRowContext(ctx, policyCountsSQL, id, from, until).Scan(&out.Queries, &out.Blocked); err != nil {
+		args = []any{from, until, id}
+		if err := tx.QueryRowContext(ctx, `SELECT count(*),coalesce(sum(CASE WHEN status IN `+blockedIn+` THEN 1 ELSE 0 END),0) FROM query WHERE ts>=? AND ts<? AND policy=?`+tx.nodeWhere("", &args), args...).Scan(&out.Queries, &out.Blocked); err != nil {
 			return fmt.Errorf("sqlitelog: policy counts: %w", err)
 		}
-		rows, err := tx.QueryContext(ctx, policyTopBlockedSQL, id, from, until, n)
+		args = []any{from, until, id}
+		blockedWhere := tx.nodeWhere("q.", &args)
+		args = append(args, n)
+		rows, err := tx.QueryContext(ctx, `SELECT d.name,count(*) AS c FROM query q JOIN dict_domain d ON d.id=q.domain WHERE q.ts>=? AND q.ts<? AND q.policy=? AND q.status IN `+blockedIn+blockedWhere+` GROUP BY d.id,d.name ORDER BY c DESC,d.name LIMIT ?`, args...)
 		if err != nil {
 			return fmt.Errorf("sqlitelog: policy top blocked: %w", err)
 		}
@@ -104,9 +97,12 @@ func (r *Reader) PolicyStats(ctx context.Context, policy string, w Window, n int
 		if err := rows.Err(); err != nil {
 			return err
 		}
+		args = []any{from, until, id}
+		clientWhere := tx.nodeWhere("q.", &args)
+		args = append(args, n)
 		rows, err = tx.QueryContext(ctx, `SELECT c.ip, coalesce(c.name,''), count(*) AS n FROM query q JOIN dict_client c ON c.id=q.client
-			WHERE q.ts>=?2 AND q.ts<?3 AND q.policy=?1
-			GROUP BY c.id, c.ip, c.name ORDER BY n DESC, c.ip, c.name LIMIT ?4`, id, from, until, n)
+			WHERE q.ts>=? AND q.ts<? AND q.policy=?`+clientWhere+`
+			GROUP BY c.id, c.ip, c.name ORDER BY n DESC, c.ip, c.name LIMIT ?`, args...)
 		if err != nil {
 			return fmt.Errorf("sqlitelog: policy top clients: %w", err)
 		}
@@ -126,7 +122,7 @@ func (r *Reader) PolicyStats(ctx context.Context, policy string, w Window, n int
 	if err != nil {
 		return nil, err
 	}
-	out.Scope = r.scope(start)
+	out.Scope = scope
 	return out, nil
 }
 
@@ -138,8 +134,11 @@ func (r *Reader) PolicyStats(ctx context.Context, policy string, w Window, n int
 func (r *Reader) ClientsSeenByGroup(ctx context.Context, since time.Time) (map[string]int, error) {
 	out := map[string]int{}
 	err := r.read(ctx, false, func(tx *rtx, _ *snapshot) error {
+		args := []any{}
+		seen := tx.clientSeen("dict_client.", &args)
+		args = append(args, since.Unix())
 		rows, err := tx.QueryContext(ctx, `SELECT grp, count(DISTINCT CASE WHEN ip<>'' THEN ip ELSE name END) FROM dict_client
-			WHERE grp IS NOT NULL AND grp<>'' AND coalesce(last_seen,0) >= ? GROUP BY grp`, since.Unix())
+ WHERE grp IS NOT NULL AND grp<>'' AND `+seen+` >= ?`+tx.dictionaryWhere("dict_client", "dict_client.", &args)+` GROUP BY grp`, args...)
 		if err != nil {
 			return fmt.Errorf("sqlitelog: clients by group: %w", err)
 		}

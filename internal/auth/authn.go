@@ -41,8 +41,12 @@ type Error struct {
 	// Hint is a string or a JSON-encodable object (403 carries
 	// {"missing":{"resource","verb","scope"}}).
 	Hint any
-	// RetryAfter sets the Retry-After header (429).
+	// RetryAfter sets the Retry-After header (429 and 503).
 	RetryAfter time.Duration
+	// NoRetryAfter omits Retry-After from a 503 whose cause does not end by
+	// waiting: an enrolled follower's primary_required, a fenced or
+	// conflicted member.
+	NoRetryAfter bool
 	// Err is the internal cause; it is logged, never sent.
 	Err error
 }
@@ -88,7 +92,8 @@ type errorDetail struct {
 
 // WriteError writes e as {error:{key,message,hint}, took_ms}. took_ms is
 // measured from the start recorded by Middleware (0 without it). 401
-// responses carry WWW-Authenticate, 429 responses Retry-After.
+// responses carry WWW-Authenticate, 429 and 503 responses Retry-After
+// unless the error says that waiting does not help (NoRetryAfter).
 func WriteError(w http.ResponseWriter, r *http.Request, e *Error) {
 	h := w.Header()
 	h.Set("Content-Type", "application/json")
@@ -96,9 +101,11 @@ func WriteError(w http.ResponseWriter, r *http.Request, e *Error) {
 	switch e.Status {
 	case http.StatusUnauthorized:
 		h.Set("WWW-Authenticate", `Bearer realm="kudurru"`)
-	case http.StatusTooManyRequests:
-		secs := int64((e.RetryAfter + time.Second - 1) / time.Second)
-		h.Set("Retry-After", strconv.FormatInt(max(secs, 1), 10))
+	case http.StatusTooManyRequests, http.StatusServiceUnavailable:
+		if !e.NoRetryAfter {
+			secs := int64((e.RetryAfter + time.Second - 1) / time.Second)
+			h.Set("Retry-After", strconv.FormatInt(max(secs, 1), 10))
+		}
 	}
 	w.WriteHeader(e.Status)
 	_ = json.NewEncoder(w).Encode(errorBody{Error: errorDetail{Key: e.Key, Message: e.Message, Hint: e.Hint}, TookMS: TookMS(r)})

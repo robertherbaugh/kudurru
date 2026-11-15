@@ -3,6 +3,7 @@ package zone
 import (
 	"fmt"
 	"net/netip"
+	"regexp"
 	"strings"
 
 	"github.com/miekg/dns"
@@ -72,6 +73,52 @@ func compileNotify(p v1alpha1.ZonePolicy, path *field.Path) (v1alpha1.NotifyMode
 	return mode, targets, errs
 }
 
+// ParseNotifyKeyRef validates an explicit NOTIFY key reference. Empty is a
+// compatibility fallback at the caller, never an explicit unsigned override.
+func ParseNotifyKeyRef(ref string) (string, error) {
+	if len(strings.TrimSuffix(ref, ".")) > 253 || !notifyKeyRef.MatchString(ref) {
+		return "", fmt.Errorf("must be a TSIG key name such as notify-key.example")
+	}
+	name := KeyName(ref)
+	if _, ok := dns.IsDomainName(name); !ok || name == "." {
+		return "", fmt.Errorf("must be a TSIG key name such as notify-key.example")
+	}
+	return name, nil
+}
+
+var notifyKeyRef = regexp.MustCompile(`^([A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.)*[A-Za-z0-9_]([A-Za-z0-9_-]{0,61}[A-Za-z0-9_])?\.?$`)
+
+// ParseNotifySource accepts only an explicit, unscoped unicast source address.
+// Empty inherits the global source at the sender, never after a bind failure.
+func ParseNotifySource(raw string) (netip.Addr, error) {
+	addr, err := netip.ParseAddr(raw)
+	if err != nil || addr.Zone() != "" || addr.Is4In6() || (!addr.IsGlobalUnicast() && !addr.IsLoopback() && !addr.IsLinkLocalUnicast()) {
+		return netip.Addr{}, fmt.Errorf("must be an unscoped unicast IPv4 or IPv6 address")
+	}
+	return addr, nil
+}
+
+func compileNotifyOptions(p v1alpha1.ZonePolicy, path *field.Path) (string, netip.Addr, field.ErrorList) {
+	var key string
+	var source netip.Addr
+	var errs field.ErrorList
+	if p.NotifyTSIGKeyRef != "" {
+		var err error
+		key, err = ParseNotifyKeyRef(p.NotifyTSIGKeyRef)
+		if err != nil {
+			errs = append(errs, field.Invalid(path.Child("notifyTSIGKeyRef"), p.NotifyTSIGKeyRef, err.Error()))
+		}
+	}
+	if p.NotifySource != "" {
+		var err error
+		source, err = ParseNotifySource(p.NotifySource)
+		if err != nil {
+			errs = append(errs, field.Invalid(path.Child("notifySource"), p.NotifySource, err.Error()))
+		}
+	}
+	return key, source, errs
+}
+
 // ParseNotifyTarget parses one notifyTargets entry: an IP address, or an
 // address and port ("192.0.2.1:5353", "[2001:db8::1]:5353"). The port
 // defaults to DefaultNotifyPort.
@@ -88,9 +135,9 @@ func ParseNotifyTarget(s string) (netip.AddrPort, error) {
 }
 
 // claim records the identity of an endpoint that is not served (disabled,
-// expired or view-scoped) so a later object cannot take it over. Endpoints
+// expired or publish-only) so a later object cannot take it over. Endpoints
 // whose owner or type does not parse claim nothing.
-func (b *Builder) claim(source string, ep *v1alpha1.Endpoint) {
+func (b *Builder) claim(namespace, source string, ep *v1alpha1.Endpoint) {
 	owner, err := OwnerName(b.z.name, ep.DNSName)
 	if err != nil {
 		return
@@ -104,6 +151,10 @@ func (b *Builder) claim(source string, ep *v1alpha1.Endpoint) {
 		return
 	}
 	id := identity{key, t, ep.SetIdentifier}
+	if view := GroupView(ep); view != "" {
+		b.claimView(viewIdentity{id, ViewGroupID(namespace, view)}, source)
+		return
+	}
 	if _, ok := b.owners[id]; !ok {
 		b.owners[id] = source
 	}

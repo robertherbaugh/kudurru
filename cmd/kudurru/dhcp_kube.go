@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net/netip"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -53,8 +54,14 @@ func openDHCPKube(cfg *config.Config, st store.Store, restCfg *rest.Config, logg
 		Store: st, Leases: &dhcpkube.ClientLeases{Client: c, Namespace: ns}, Pods: pods,
 		Elector: st.Elector(dhcpkube.ElectionName), PodName: cfg.Node.Name,
 		Interface: iface, ServerIdentifier: server, DataDir: cfg.Node.DataDir, Logger: logger,
+		Listen: listenDHCPService, LocalAddress: dhcpKubeLocalAddress,
 	})
 }
+
+// dhcpKubeLocalAddress resolves dhcp.interface to the replica's IPv4 address;
+// nil is the runtime's interface lookup. Process-level tests set it, because
+// the test host has no interface with a usable unicast address.
+var dhcpKubeLocalAddress func(iface string) (netip.Addr, error)
 
 // releaseSelector returns the release labels of this pod, so the serving
 // replica clears the DHCP label only from its own release's pods. Without

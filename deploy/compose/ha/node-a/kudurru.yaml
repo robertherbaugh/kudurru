@@ -5,6 +5,12 @@ node:
   dataDir: /var/lib/kudurru
 store:
   driver: sqlite
+cluster:
+  role: static
+  peers:
+    - {name: node-a, address: "10.0.0.11:8082"}
+    - {name: node-b, address: "10.0.0.12:8082"}
+    - {name: node-c, address: "10.0.0.13:8082"}
 listeners:
   dns:
     - address: "0.0.0.0:5353"          # dnsdist owns :53 (and the VIP)

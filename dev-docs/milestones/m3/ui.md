@@ -34,7 +34,8 @@ Bun 1.4.3 + Vite 8 (rolldown) + React 19.3 + TypeScript 6 strict
 (`@astryxdesign/core`; the Kudurru brand theme and neutral, stone and the
 fun y2k as local themes in `dashboard/src/themes`, built with `astryx theme build`
 and wired through the generated `src/astryx-themes.ts`; prebuilt CSS, built
-themes only, pinned exactly) + TanStack Query 5 / Table 8 / Virtual 3 +
+themes for shipped styles, pinned exactly; Enterprise custom accents use
+Astryx runtime child themes that preserve the selected theme and status colors) + TanStack Query 5 / Table 8 / Virtual 3 +
 uPlot 1.6.32 + ECharts 6.1 (tree-shaken, dynamically imported) + lucide icons.
 No CDN, no inline script, relative asset URLs.
 

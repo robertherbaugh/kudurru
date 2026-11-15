@@ -1,7 +1,7 @@
 // Writes through the API with the signed-in admin's session (storage
 // state) for specs that need objects of their own: the CSRF token comes
 // from GET /auth/me like the SPA's.
-import { expect, type Page } from '@playwright/test';
+import { expect, type APIResponse, type Page } from '@playwright/test';
 
 export interface Api {
   put: (path: string, body: unknown) => Promise<void>;
@@ -51,4 +51,32 @@ export function object(kind: 'BlockList' | 'ClientGroup' | 'Policy', name: strin
 export async function hasListSourcesAPI(api: Api): Promise<boolean> {
   const r = await api.get('/blocklists/default/e2e-ads/sources/inline-0/entries?limit=1');
   return r.status === 200;
+}
+
+/**
+ * Sends one write and repeats it only after the exact refusal that comes
+ * before the request is read: 503 generation_pending with Retry-After, which
+ * the node answers while it prepares the publication of a commit it just made
+ * (the zone write before a record upsert, for example). Nothing ran, so this
+ * is not a replay. Any other answer, including a 503 from a command, is
+ * returned as is; the bound is the caller's usual ten seconds. The failure
+ * message names the status and error key, never a body.
+ */
+export async function sendBeforeAdmission(send: () => Promise<APIResponse>, what: string): Promise<APIResponse> {
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    const response = await send();
+    if (response.ok()) return response;
+    let key: unknown;
+    const bytes = await response.body();
+    if (bytes.length <= 4096) {
+      try { key = (JSON.parse(bytes.toString()) as { error?: { key?: unknown } }).error?.key; } catch { /* No raw body diagnostics. */ }
+    }
+    const retry = Number(response.headers()['retry-after']);
+    if (response.status() !== 503 || key !== 'generation_pending' || !(retry >= 1) || Date.now() + retry * 1000 > deadline) {
+      throw new Error(`${what}: HTTP ${response.status()} ${typeof key === 'string' ? key : ''}`);
+    }
+    console.log(`${what}: 503 generation_pending, asked again after Retry-After ${retry}s`);
+    await new Promise((resolve) => setTimeout(resolve, retry * 1000));
+  }
 }

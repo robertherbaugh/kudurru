@@ -33,7 +33,7 @@ import (
 type Local interface {
 	SourceID(ctx context.Context) (string, error)
 	Export(ctx context.Context, after int64, limit int) ([]sqlitelog.ExportRow, error)
-	ExportRollup(ctx context.Context, t sqlitelog.RollupTable, from, until int64) ([]sqlitelog.RollupRow, error)
+	ExportRollups(ctx context.Context, tables []sqlitelog.RollupTable, from, until int64) ([][]sqlitelog.RollupRow, int64, error)
 	RollupProgress() (hourDone, dayDone int64)
 	SetShippedThrough(f func() int64)
 }
@@ -43,9 +43,9 @@ var _ Local = (*sqlitelog.Writer)(nil)
 // Streams of ship_cursor.
 const (
 	streamFacts  = "query"
-	streamMinute = "rollup_1m"
-	streamHour   = "rollup_1h"
-	streamDay    = "rollup_1d"
+	streamMinute = "source_rollup_1m"
+	streamHour   = "source_rollup_1h"
+	streamDay    = "source_rollup_1d"
 )
 
 // Shipper defaults.
@@ -196,6 +196,13 @@ func (s *Shipper) tx(ctx context.Context, fn func(tx pgx.Tx, sid int32) error) e
 		if err != nil {
 			return err
 		}
+		factsEnabled := s.Facts
+		if privacy, ok := s.Local.(interface{ FactsAvailable() bool }); ok {
+			factsEnabled = factsEnabled && privacy.FactsAvailable()
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO rollup_source_state(source,facts_enabled,legacy_before) VALUES ($1,$2,(SELECT value::bigint FROM kudurru_meta WHERE key='rollup_legacy_before')) ON CONFLICT(source) DO UPDATE SET facts_enabled=excluded.facts_enabled,input_partial=rollup_source_state.input_partial OR NOT rollup_source_state.facts_enabled AND excluded.facts_enabled`, sid, factsEnabled); err != nil {
+			return err
+		}
 		return fn(tx, sid)
 	})
 }
@@ -246,6 +253,11 @@ func (s *Shipper) shipFacts(ctx context.Context) (more bool, err error) {
 		}
 		if len(batch) > 0 {
 			if err := s.insertFacts(ctx, tx, sid, batch); err != nil {
+				return err
+			}
+		}
+		if len(keep) < len(rows) || rows[0].ID > after+1 {
+			if _, err := tx.Exec(ctx, `UPDATE rollup_source_state SET input_partial=true WHERE source=$1`, sid); err != nil {
 				return err
 			}
 		}
@@ -346,34 +358,95 @@ func (s *Shipper) shipRollupRange(ctx context.Context, res int64, stream string,
 			tables = append(tables, t)
 		}
 	}
-	exported := make([][]sqlitelog.RollupRow, len(tables))
-	newest := cur
 	n := 0
-	for i, t := range tables {
-		rows, err := s.Local.ExportRollup(ctx, t, from, until)
-		if err != nil {
-			return 0, cur, err
-		}
-		exported[i] = rows
-		n += len(rows)
-		for _, r := range rows {
-			newest = max(newest, r.TS)
-		}
-	}
-	next := until
-	if stream == streamMinute {
-		next = newest
-	}
+	next := cur
 	err := s.tx(ctx, func(tx pgx.Tx, sid int32) error {
-		for i, t := range tables {
-			if len(exported[i]) == 0 {
-				continue
-			}
-			if err := s.upsertRollup(ctx, tx, t, exported[i]); err != nil {
+		actual, err := central.Cursor(ctx, tx, s.source, stream)
+		if err != nil {
+			return err
+		}
+		if actual != cur {
+			return errStaleRollup
+		}
+		var legacy int64
+		if err := tx.QueryRow(ctx, `SELECT legacy_before FROM rollup_source_state WHERE source=$1`, sid).Scan(&legacy); err != nil {
+			return err
+		}
+		start := max(from, ceilBucket(legacy, res))
+		if start >= until {
+			return nil
+		} // the explicit legacy gate retains this input
+		next = until
+		if stream == streamMinute {
+			next = actual
+		}
+		var oldMinutes map[int64]string
+		if res == 60 {
+			oldMinutes, err = minuteVersions(ctx, tx, sid, start, until)
+			if err != nil {
 				return err
 			}
 		}
-		return central.SetCursor(ctx, tx, sid, stream, next)
+		exports, exportHead, err := s.Local.ExportRollups(ctx, tables, start, until)
+		if err != nil {
+			return err
+		}
+		for i, t := range tables {
+			rows := exports[i]
+			// Export happens while this exact source is locked. A stale export cannot
+			// replace a newer committed contribution with an unchanged watermark.
+			if _, err := tx.Exec(ctx, `DELETE FROM `+t.Name+` WHERE source=$1 AND ts>=$2 AND ts<$3`, sid, start, until); err != nil {
+				return err
+			}
+			if err := s.upsertRollup(ctx, tx, sid, t, rows); err != nil {
+				return err
+			}
+			n += len(rows)
+			for _, r := range rows {
+				if stream == streamMinute {
+					next = max(next, r.TS)
+				}
+			}
+		}
+		if res == 60 {
+			current, err := minuteVersions(ctx, tx, sid, start, until)
+			if err != nil {
+				return err
+			}
+			for h := range current {
+				if _, ok := oldMinutes[h]; !ok {
+					oldMinutes[h] = ""
+				}
+			}
+			for h, old := range oldMinutes {
+				if old == current[h] {
+					continue
+				}
+				if _, err := tx.Exec(ctx, `INSERT INTO rollup_input_hour(source,ts,revision) VALUES($1,$2,1) ON CONFLICT(source,ts) DO UPDATE SET revision=rollup_input_hour.revision+1`, sid, h); err != nil {
+					return err
+				}
+				if _, err := tx.Exec(ctx, `UPDATE rollup_source_state SET hour_done=least(hour_done,$2),day_done=least(day_done,$3) WHERE source=$1`, sid, h, h/86400*86400); err != nil {
+					return err
+				}
+				// Fact-free streams can prove only the already shipped minute families.
+				if _, err := tx.Exec(ctx, `UPDATE rollup_bucket SET origin='pending',error_key='source_input_changed' WHERE source=$1 AND EXISTS(SELECT 1 FROM rollup_source_state WHERE source=$1 AND NOT facts_enabled) AND ((resolution=3600 AND ts=$2) OR (resolution=86400 AND ts=$3))`, sid, h, h/86400*86400); err != nil {
+					return err
+				}
+			}
+		}
+		if res != 60 {
+			if _, err := tx.Exec(ctx, `INSERT INTO rollup_bucket(source,resolution,ts,revision,head,origin)
+    SELECT source,$2,(ts/$2)*$2,max(revision),$5,'official' FROM rollup_input_hour WHERE source=$1 AND ts>=$3 AND ts<$4 GROUP BY source,(ts/$2)*$2
+    ON CONFLICT(source,resolution,ts) DO UPDATE SET origin='official',revision=excluded.revision,head=excluded.head,error_key='',retained=true`, sid, res, start, until, exportHead); err != nil {
+				return err
+			}
+			if res == 3600 {
+				if err := rebuildDays(ctx, tx, sid, start, until, s.Now()); err != nil {
+					return err
+				}
+			}
+		}
+		return central.SetCursor(ctx, tx, sid, stream, max(actual, next))
 	})
 	if err != nil {
 		return 0, cur, err
@@ -381,14 +454,26 @@ func (s *Shipper) shipRollupRange(ctx context.Context, res int64, stream string,
 	return n, next, nil
 }
 
-// upsertRollup replaces the node's rows of t: the node's local row is the
-// whole truth for its (ts, node, key), so a resend is idempotent.
-func (s *Shipper) upsertRollup(ctx context.Context, tx pgx.Tx, t sqlitelog.RollupTable, rows []sqlitelog.RollupRow) error {
+var errStaleRollup = errors.New("pgquerylog: stale rollup export; recapture source")
+
+func ceilBucket(ts, res int64) int64 {
+	if ts == 0 {
+		return 0
+	}
+	return (ts + res - 1) / res * res
+}
+
+// upsertRollup replaces one file's contribution. Other files using the same
+// node name keep their own rows, including during an empty replacement.
+func (s *Shipper) upsertRollup(ctx context.Context, tx pgx.Tx, sid int32, t sqlitelog.RollupTable, rows []sqlitelog.RollupRow) error {
+	if len(rows) == 0 {
+		return nil
+	}
 	ids, err := s.dicts.resolveRollup(ctx, tx, t.Key, rows, s.Now().Unix())
 	if err != nil {
 		return err
 	}
-	cols := []string{"ts", "node"}
+	cols := []string{"ts", "node", "source"}
 	if t.Key != "" {
 		cols = append(cols, t.Key)
 	}
@@ -399,7 +484,7 @@ func (s *Shipper) upsertRollup(ctx context.Context, tx pgx.Tx, t sqlitelog.Rollu
 	}
 	data := make([][]any, 0, len(rows))
 	for _, r := range rows {
-		row := []any{r.TS, ids.node[r.Node]}
+		row := []any{r.TS, ids.node[r.Node], sid}
 		switch t.Key {
 		case "":
 		case "qtype":
@@ -421,7 +506,7 @@ func (s *Shipper) upsertRollup(ctx context.Context, tx pgx.Tx, t sqlitelog.Rollu
 	if _, err := tx.CopyFrom(ctx, pgx.Identifier{tmp}, cols, pgx.CopyFromRows(data)); err != nil {
 		return fmt.Errorf("pgquerylog: %s: %w", t.Name, err)
 	}
-	pk := "ts, node"
+	pk := "ts, node, source"
 	if t.Key != "" {
 		pk += ", " + t.Key
 	}
@@ -449,16 +534,29 @@ func (s *Shipper) upsertRollup(ctx context.Context, tx pgx.Tx, t sqlitelog.Rollu
 
 // ensurePartitions creates the daily partitions the rows fall in.
 func (s *Shipper) ensurePartitions(ctx context.Context, rows []sqlitelog.ExportRow) error {
+
 	days := map[int64]bool{}
 	s.partsMu.Lock()
 	for _, r := range rows {
 		d := floorDay(r.TS)
-		if !s.parts[d] {
-			days[d] = true
-		}
+		days[d] = s.parts[d]
 	}
 	s.partsMu.Unlock()
-	for d := range days {
+	pool, err := s.DB.Pool()
+	if err != nil {
+		return err
+	}
+
+	for d, cached := range days {
+		if cached {
+			var exists bool
+			if err := pool.QueryRow(ctx, `SELECT to_regclass($1) IS NOT NULL`, PartitionName(d)).Scan(&exists); err != nil {
+				return err
+			}
+			if exists {
+				continue
+			}
+		}
 		if err := EnsurePartition(ctx, s.DB, d); err != nil {
 			return err
 		}
@@ -526,4 +624,22 @@ func newMetrics(reg prometheus.Registerer) *metrics {
 		}
 	}
 	return m
+}
+
+func minuteVersions(ctx context.Context, tx pgx.Tx, sid int32, from, until int64) (map[int64]string, error) {
+	rows, err := tx.Query(ctx, `SELECT (ts/3600)*3600,md5(string_agg(to_jsonb(r)::text,',' ORDER BY ts,node)) FROM rollup_1m r WHERE source=$1 AND ts>=$2 AND ts<$3 GROUP BY (ts/3600)*3600`, sid, from, until)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[int64]string{}
+	for rows.Next() {
+		var h int64
+		var v string
+		if err := rows.Scan(&h, &v); err != nil {
+			return nil, err
+		}
+		out[h] = v
+	}
+	return out, rows.Err()
 }

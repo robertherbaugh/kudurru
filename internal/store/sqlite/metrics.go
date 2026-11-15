@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -11,7 +12,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store/validator"
 )
 
-// Metrics are the kudurru_store_* instruments of the driver
+// Metrics are the kudurru_store_* and kudurru_cluster_fenced instruments of the driver
 // (dev-docs/design-record.md §11.1). Create them once per process with
 // NewMetrics and pass them in Options.Metrics; nil disables them.
 type Metrics struct {
@@ -31,6 +32,11 @@ type Metrics struct {
 	Catchups *prometheus.CounterVec
 	// Watchers is the number of open watches.
 	Watchers prometheus.Gauge
+	// ClusterFenced reports an authority fence, including a failed durable
+	// fence. Healthy followers and unenrolled mirrors are not fenced. This
+	// is not a DNS availability or writable-readiness signal.
+	ClusterFenced prometheus.GaugeFunc
+	boundStore    atomic.Pointer[Store]
 }
 
 // Store operations (the op label).
@@ -66,8 +72,17 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Help: "Open store watches.",
 		}),
 	}
+	m.ClusterFenced = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "kudurru_cluster_fenced",
+		Help: "Whether the SQLite member is fenced by replication authority or a failed durable fence (1 fenced, 0 otherwise); not DNS or write readiness.",
+	}, func() float64 {
+		if s := m.boundStore.Load(); s != nil && s.Info().Fenced {
+			return 1
+		}
+		return 0
+	})
 	if reg != nil {
-		reg.MustRegister(m.Operations, m.Duration, m.Catchups, m.Watchers)
+		reg.MustRegister(m.Operations, m.Duration, m.Catchups, m.Watchers, m.ClusterFenced)
 	}
 	return m
 }

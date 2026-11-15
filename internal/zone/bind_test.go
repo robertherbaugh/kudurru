@@ -55,8 +55,10 @@ func TestBINDRoundTrip(t *testing.T) {
 			if !errs.Empty() {
 				t.Fatalf("rebuild: %v %v", errs.Zone, errs.RecordSets)
 			}
-			if z2.ContentHash() != z.ContentHash() || z2.RecordCount() != z.RecordCount() {
-				t.Fatalf("content changed: %s/%d vs %s/%d\n%s", z2.ContentHash(), z2.RecordCount(), z.ContentHash(), z.RecordCount(), first)
+			// An export carries the default data only; client-group views
+			// never leave the server through it (D403).
+			if z2.HasViews() || z2.ContentHash() != contentHash(z) || z2.RecordCount() != z.RecordCount() {
+				t.Fatalf("content changed: %s/%d vs %s/%d\n%s", z2.ContentHash(), z2.RecordCount(), contentHash(z), z.RecordCount(), first)
 			}
 			if second := export(t, z2); !bytes.Equal(first, second) {
 				t.Fatalf("export is not a fixed point:\n--- first\n%s\n--- second\n%s", first, second)

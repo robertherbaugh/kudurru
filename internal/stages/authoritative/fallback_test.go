@@ -196,9 +196,10 @@ func TestFallbackResolverGroupsAndCache(t *testing.T) {
 				t.Cleanup(func() { _ = set.Close() })
 				h := fallbackSource(t, build(t, fallbackZone(group)))
 				c := cache.New(cache.Options{MaxEntries: 128})
-				cs := cacheStage.New(c, cacheStage.Settings{NegativeTTL: time.Minute}, nil)
+				us := upstreamstage.NewStage(set)
+				cs := cacheStage.New(c, cacheStage.Settings{NegativeTTL: time.Minute}, us)
 				t.Cleanup(cs.Wait)
-				chain := pipeline.MustNew(New(h), cs, upstreamstage.NewStage(set))
+				chain := pipeline.MustNew(New(h), cs, us)
 				ask := func(name string, typ uint16) *pipeline.Response {
 					t.Helper()
 					req := (&Case{Qname: name, Qtype: typ}).request()

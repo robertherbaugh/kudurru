@@ -1,7 +1,8 @@
 // New list, in a WizardDialog over the Lists page (?new=1): Type → Sources
 // → Options → Review. Sources are URL rows (format detected from the URL),
-// pasted entries, or well-known public lists the user opts into (names and
-// URLs only; kudurru embeds none of them). The finished list is created
+// pasted entries, well-known public lists the user opts into (names and
+// URLs only; kudurru embeds none of them) and, for a block list, an RPZ
+// feed every node transfers from its primaries. The finished list is created
 // with POST /objects/blocklists and, when policies are chosen, referenced
 // from them so it takes effect; then the dialog closes and the list's page
 // opens.
@@ -26,12 +27,14 @@ import { ObjectRefPicker } from '../fields/ObjectRefPicker';
 import { SelectField } from '../fields/SelectField';
 import { SwitchField, TextAreaField, TextField } from '../fields/TextField';
 import { errorText, useNotify } from '../Feedback';
+import { RPZFields } from '../lists/RPZFields';
 import { slugName, suggestName } from '../lists/SourceDialog';
 import { Wizard, WizardDialog } from '../Wizard';
 import { applyable } from '../YamlDialog';
 import { formatExact } from '../../lib/format';
 import { BLP_LICENCE_NOTE } from '../../lib/contentCategories';
-import { CURATED_LISTS, entriesProblem, FORMAT_OPTIONS, formatLabel, guessFormat, isHTTPURL, listPath, parseEntries, RESPONSE_OPTIONS } from '../../lib/lists';
+import { CURATED_LISTS, entriesProblem, FORMAT_OPTIONS, formatLabel, guessFormat, isHTTPURL, isRPZSource, listPath, parseEntries, RESPONSE_OPTIONS } from '../../lib/lists';
+import { EMPTY_RPZ, rpzDraftError, rpzSourceOf, rpzSummary, type RPZDraft } from '../../lib/rpz';
 import { COMMENT, ENABLED, objectOwnership } from '../../lib/managedBy';
 import { durationError, nameError } from '../../lib/objectSchemas';
 import { useNavigate } from '../../lib/router';
@@ -59,6 +62,9 @@ export interface WizardState {
   urls: UrlRow[];
   paste: string;
   pasteFormat: ListFormat;
+  /** An RPZ feed source (block lists only). */
+  rpzOn: boolean;
+  rpz: RPZDraft;
   name: string;
   /** False while the name follows the suggestion. */
   nameTouched: boolean;
@@ -78,6 +84,8 @@ const EMPTY: WizardState = {
   urls: [],
   paste: '',
   pasteFormat: 'auto',
+  rpzOn: false,
+  rpz: EMPTY_RPZ,
   name: '',
   nameTouched: false,
   namespace: 'default',
@@ -103,13 +111,18 @@ export function wizardSources(s: WizardState): ListSource[] {
   }
   const entries = parseEntries(s.paste);
   if (entries.length) out.push({ name: slugName('custom', taken()), inline: entries, format: s.pasteFormat });
+  if (s.mode === 'block' && s.rpzOn) {
+    // rpz.vendor.example. → rpz-vendor-example (also a valid list name).
+    const zone = s.rpz.zoneName.trim().replace(/\.$/, '').replace(/\./g, '-');
+    out.push({ name: slugName(zone || 'rpz', taken()), format: 'rpz', rpz: rpzSourceOf(s.rpz) });
+  }
   return out;
 }
 
 /** A name suggestion: the only curated list's source name, else "<mode>-list". */
 function suggestListName(s: WizardState): string {
   const src = wizardSources(s);
-  if (src.length === 1 && src[0]?.name && src[0].url) return src[0].name;
+  if (src.length === 1 && src[0]?.name && (src[0].url || isRPZSource(src[0]))) return src[0].name;
   return s.mode === 'allow' ? 'my-allow-list' : 'my-block-list';
 }
 
@@ -164,6 +177,8 @@ function ListWizard({ onClose }: ListWizardProps) {
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<WizardState>) => setS((prev) => ({ ...prev, ...patch }));
   const urlsId = useId();
+  const rpzId = useId();
+  const [showRpzErrors, setShowRpzErrors] = useState(false);
   const lists = useQuery({ queryKey: qk.objects('blocklists'), queryFn: () => api.objects.list<BlockList>('blocklists') });
   const policies = useQuery({ queryKey: qk.objects('policies'), queryFn: () => api.objects.list<Policy>('policies') });
 
@@ -183,7 +198,12 @@ function ListWizard({ onClose }: ListWizardProps) {
   const setUrl = (id: number, patch: Partial<UrlRow>) => set({ urls: s.urls.map((r) => (r.id === id ? { ...r, ...patch } : r)) });
 
   const validateSources = () => {
-    if (!sources.length) return 'Add at least one source: pick a well-known list, add a URL or paste entries.';
+    if (!sources.length) return 'Add at least one source: pick a well-known list, add a URL, paste entries or add an RPZ feed.';
+    if (s.mode === 'block' && s.rpzOn) {
+      setShowRpzErrors(true);
+      const e = rpzDraftError(s.rpz);
+      if (e) return `RPZ feed: ${e}`;
+    }
     const bad = s.urls.find((r) => r.url.trim() && !isHTTPURL(r.url));
     if (bad) return `"${bad.url}" is not an http(s) URL.`;
     const urls = sources.flatMap((x) => (x.url ? [x.url] : []));
@@ -333,6 +353,20 @@ function ListWizard({ onClose }: ListWizardProps) {
         />
         {pasteEntries.length ? <SelectField label="Format of the pasted entries" value={s.pasteFormat} options={FORMAT_OPTIONS} onChange={(v) => set({ pasteFormat: v as ListFormat })} /> : null}
       </VStack>
+      {s.mode === 'block' ? (
+        <VStack gap={2} role="group" aria-labelledby={rpzId}>
+          <Heading level={4} id={rpzId}>
+            RPZ feed
+          </Heading>
+          <SwitchField
+            label="Add an RPZ feed"
+            help="A response policy zone from a threat-intelligence vendor or another resolver, transferred with AXFR/IXFR by every node."
+            value={s.rpzOn}
+            onChange={(v) => set({ rpzOn: v })}
+          />
+          {s.rpzOn ? <RPZFields value={s.rpz} onChange={(patch) => set({ rpz: { ...s.rpz, ...patch } })} showErrors={showRpzErrors} /> : null}
+        </VStack>
+      ) : null}
       <Text type="supporting" role="status">
         {sources.length ? `${sources.length} ${sources.length === 1 ? 'source' : 'sources'} chosen.` : 'No source chosen yet.'}
       </Text>
@@ -401,7 +435,7 @@ function ListWizard({ onClose }: ListWizardProps) {
         aria-label="Sources to create"
         density="compact"
         idKey="name"
-        data={obj.spec.sources.map((x) => ({ name: x.name ?? '', from: x.url ?? `${formatExact(x.inline?.length ?? 0)} inline entries`, format: formatLabel(x.format) }))}
+        data={obj.spec.sources.map((x) => ({ name: x.name ?? '', from: isRPZSource(x) ? rpzSummary(x) : (x.url ?? `${formatExact(x.inline?.length ?? 0)} inline entries`), format: formatLabel(x.format) }))}
         columns={[
           { key: 'name', header: 'Source', renderCell: (r) => <Text type="code">{r.name}</Text> },
           { key: 'from', header: 'From', width: proportional(3), renderCell: (r) => <Text type="code" size="sm" wordBreak="break-all">{r.from}</Text> },

@@ -11,7 +11,7 @@ Key `blocking` · week-1 spike · 2026-10-11 · architecture §7.1 step 7, §7.2
 | p99 lookup, 1 M-entry suffix set, single-threaded | < 2 µs | hit **1179 ns**, miss **705 ns** (synthetic); hit 1055 ns, miss 655 ns (953 k real entries) | pass |
 | RSS holding 3 M entries | < 150 MB | **90.3 MB** steady state (peak during the build 138.2 MB); 89.8 MB for 3.85 M real entries | pass |
 | Compile 1 M entries | < 5 s | **0.84 s** adblock, 0.76 s hosts (parse + compile from text) | pass |
-| +20 % regression fails the build | — | `make bench` + `internal/blocking/benchgate`; catches a removed bit filter (+124 to +286 %) and passes against itself | in place |
+| +20 % regression fails the build | — | `make bench` + `hack/benchgate`; catches a removed bit filter (+124 to +286 %) and passes against itself | in place |
 
 The p99 figures include about 22-38 ns of timer overhead (`BenchmarkLatency/timer`).
 
@@ -27,7 +27,7 @@ All code is in `internal/blocking` (≈6.7 k lines including tests; coverage 94-
 | `blocking/parser` | Clean-room parser for `auto/hosts/domains/adblock/regex`. Includes format detection, HTML/binary refusal, `! Title:`/`# Title:` extraction, CRC-32 of normalised rule lines, and `Checksum` without parsing. Modifiers are tokenised and kept (`UnsupportedRule.Modifiers`). Has a fuzz target. |
 | `blocking` | `List` (three matchers plus an IP set, mode block/allow, and an exception chain for in-list `@@`); `Compile` with the CRC-32 skip; immutable `Snapshot` with `Contains(name) → map[list]rule`, `ContainsAllow`, `Rebuild` (keeps the old list on failure); `Selection.Evaluate` / `EvaluateResponse` returning a zero-allocation `Decision` that maps onto `pipeline.Status`; `SpecFromAPI` / `SelectPolicy` glue to `api/v1alpha1`. |
 | `blocking/internal/synth` | Seeded generator of realistic names (23.2 B average) and regex shapes. |
-| `blocking/benchgate` | The regression gate (median of runs, +20 %, per-unit noise floors, absolute limits). |
+| `hack/benchgate` | The regression gate (median of runs, +20 %, per-unit noise floors, absolute limits); moved out of runtime packages in the v0.2 follow-up pass. Historical captured output below retains its original path. |
 | `bench/` | `baseline.txt` (recorded with `make bench-baseline`) and `limits.txt` (the §7.3 limits). |
 
 ### Seams for the M2 stage

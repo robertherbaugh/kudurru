@@ -94,7 +94,7 @@ func (e *Engine) Authorize(ctx context.Context, p Principal, a Attributes) (Deci
 
 func (e *Engine) grantsAllow(grants []Grant, a Attributes) bool {
 	for _, g := range grants {
-		if g.Scope.Covers(a.Scope) && e.perms.Grants(g.Role, a.Resource, a.Verb) {
+		if g.Scope.Admits(a) && e.perms.Grants(g.Role, a.Resource, a.Verb) {
 			return true
 		}
 	}

@@ -1,0 +1,10 @@
+# Opt-in override; paths in the base file stay relative to that base file.
+# Stop and migrate an existing querylog.db before enabling; no automatic move.
+services:
+  kudurru:
+    environment:
+      KUDURRU_NODE__QUERYLOGDIR: /var/lib/kudurru-querylog
+    volumes:
+      - kudurru-querylog:/var/lib/kudurru-querylog
+volumes:
+  kudurru-querylog: {}

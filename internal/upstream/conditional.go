@@ -1,11 +1,11 @@
 package upstream
 
 import (
-	"bufio"
 	"fmt"
 	"io"
-	"net"
 	"strings"
+
+	"github.com/robertherbaugh/kudurru/internal/config"
 )
 
 // suffixMap routes a query name to a group by longest matching suffix on
@@ -127,6 +127,8 @@ func (sm *suffixMap) lookup(qname string) (string, bool) {
 // Import is the result of ImportDnsmasq: groups and conditional entries to
 // merge into a Config.
 type Import struct {
+	// Issues reports rules with no supported forwarding representation.
+	Issues []config.DnsmasqIssue
 	// Groups holds one strict group per distinct server list, named
 	// "dnsmasq-1", "dnsmasq-2", ... in order of first appearance.
 	Groups map[string]GroupConfig
@@ -145,89 +147,27 @@ type Import struct {
 //
 // "#" as the server means "use the default group". Plain server lines
 // ("server=1.1.1.1" or "tls://1.1.1.1") become Default. Blank lines and
-// lines starting with "#" are ignored; dnsmasq's "local=/x/" and
-// "server=/x/" (answer locally) have no forwarding meaning and are skipped.
+// lines starting with "#" are ignored. Unsupported directives, including
+// local-answer rules, are reported in Issues and prevent Merge.
 func ImportDnsmasq(r io.Reader) (*Import, error) {
-	imp := &Import{Groups: map[string]GroupConfig{}, Conditional: map[string]string{}}
-	byServers := map[string]string{}
-	sc := bufio.NewScanner(r)
-	lineNo := 0
-	for sc.Scan() {
-		lineNo++
-		line := strings.TrimSpace(sc.Text())
-		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "local=") {
-			continue
-		}
-		var domains, servers []string
-		switch {
-		case strings.HasPrefix(line, "server="):
-			v := strings.TrimPrefix(line, "server=")
-			if !strings.HasPrefix(v, "/") {
-				imp.Default = append(imp.Default, dnsmasqServer(v))
-				continue
-			}
-			last := strings.LastIndexByte(v, '/')
-			if last == 0 {
-				return nil, fmt.Errorf("upstream: dnsmasq line %d: unterminated domain list", lineNo)
-			}
-			ds, _, err := parseBracket("[" + v[:last+1] + "]")
-			if err != nil {
-				return nil, fmt.Errorf("upstream: dnsmasq line %d: %w", lineNo, err)
-			}
-			domains = ds
-			if s := strings.TrimSpace(v[last+1:]); s != "" {
-				servers = []string{dnsmasqServer(s)}
-			}
-		case strings.HasPrefix(line, "[/"):
-			ds, rest, err := parseBracket(line)
-			if err != nil {
-				return nil, fmt.Errorf("upstream: dnsmasq line %d: %w", lineNo, err)
-			}
-			domains, servers = ds, strings.Fields(rest)
-		default:
-			imp.Default = append(imp.Default, strings.Fields(line)...)
-			continue
-		}
-		if len(servers) == 0 {
-			continue // answer-locally rule; nothing to forward
-		}
-		group := DefaultGroup
-		if len(servers) != 1 || servers[0] != "#" {
-			key := strings.Join(servers, " ")
-			g, ok := byServers[key]
-			if !ok {
-				g = fmt.Sprintf("dnsmasq-%d", len(byServers)+1)
-				byServers[key] = g
-				imp.Groups[g] = GroupConfig{Servers: servers, Strategy: Strict}
-			}
-			group = g
-		}
-		for _, d := range domains {
-			imp.Conditional[d] = group
-		}
-	}
-	if err := sc.Err(); err != nil {
+	parsed, err := config.ParseDnsmasq(r)
+	if err != nil {
 		return nil, err
 	}
-	return imp, nil
-}
-
-// dnsmasqServer turns dnsmasq's ip#port into ip:port; "#" alone is kept.
-func dnsmasqServer(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "#" || strings.Contains(s, "://") {
-		return s
+	out := &Import{Groups: map[string]GroupConfig{}, Conditional: parsed.Conditional, Default: parsed.Default, Issues: parsed.Issues}
+	for name, group := range parsed.Groups {
+		out.Groups[name] = GroupConfig{Servers: group.Servers, Strategy: Strategy(group.Strategy)}
 	}
-	if host, port, ok := strings.Cut(s, "#"); ok && host != "" {
-		return net.JoinHostPort(host, port)
-	}
-	return s
+	return out, nil
 }
 
 // Merge adds the import to c: groups (an existing group of the same name is
 // an error), conditional entries and, when c has no default group yet, a
 // parallel_best default group from Default.
 func (imp *Import) Merge(c *Config) error {
+	if len(imp.Issues) > 0 {
+		return fmt.Errorf("upstream: import has %d unsupported directives; no rules applied", len(imp.Issues))
+	}
 	if c.Groups == nil {
 		c.Groups = map[string]GroupConfig{}
 	}

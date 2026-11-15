@@ -116,7 +116,7 @@ func TestLoginFailures(t *testing.T) {
 	}{
 		{"bad token", []string{"login", "--server", h.api.URL(), "--token", "kdr_nope_nope"}, "", "unauthenticated: invalid token"},
 		{"bad password", []string{"login", "--server", h.api.URL(), "-u", "admin", "-p", "wrong"}, "", "invalid username or password"},
-		{"no credentials", []string{"login", "--server", h.api.URL()}, "", "pass --token"},
+		{"no credentials", []string{"login", "--server", h.api.URL()}, "", "requires an HTTPS API"},
 		{"no server", []string{"login", "--token", fakeToken}, "", "--server is required"},
 		{"both", []string{"login", "--server", h.api.URL(), "--token", fakeToken, "-u", "admin"}, "", "not both"},
 		{"empty stdin", []string{"login", "--server", h.api.URL(), "-u", "admin", "--password-stdin"}, "", "empty password"},

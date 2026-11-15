@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
@@ -23,6 +24,9 @@ func TestRateLimitThroughPROXYv2(t *testing.T) {
 		t.Fatal(err)
 	}
 	var drops, slips atomic.Int64
+	if got := testutil.ToFloat64(lim.SlipCollector()); got != 0 {
+		t.Fatalf("initial slip counter = %v, want 0", got)
+	}
 	lim.SetHook(func(v ingress.Verdict) {
 		if v == ingress.VerdictDrop {
 			drops.Add(1)
@@ -75,6 +79,15 @@ func TestRateLimitThroughPROXYv2(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkA(t, resp)
+	if got := testutil.ToFloat64(lim.SlipCollector()); got != 2 {
+		t.Fatalf("slip counter = %v, want 2 UDP TC responses; allow/drop/TCP must not count", got)
+	}
+	if err := lim.Reconfigure(nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := testutil.ToFloat64(lim.SlipCollector()); got != 2 {
+		t.Fatalf("disabling the limiter reset the cumulative slip counter: %v", got)
+	}
 }
 
 // runRegistry binds and runs reg with specs until the test ends.

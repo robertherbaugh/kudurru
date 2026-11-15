@@ -1,0 +1,29 @@
+apiVersion: kudurru.io/v1alpha1
+kind: DNSZone
+metadata:
+  name: home-example-com
+spec:
+  zoneName: home.example.com.
+  type: primary
+  soa:
+    mname: ns1.home.example.com.
+    rname: hostmaster.example.com.
+    refresh: 3600
+    retry: 900
+    expire: 1209600
+    minimum: 300
+  nameservers: [ns1.home.example.com., ns2.home.example.com.]
+  policy:
+    queryAccess: allow
+    zoneTransfer: useNetworkACL
+    transferACL: ["10.0.0.0/8"]
+    notify: zoneNameServers
+    update: deny
+  recordSetSelector:
+    namespaces: [dns, apps]
+  # v0.2 split-horizon: publish labelled records to a Cloudflare sink.
+  # publish:
+  #   - integrationRef: { name: cf-public, namespace: dns }
+  #     selector: { matchLabels: { kudurru.io/publish: cloudflare } }
+  #     types: [A, AAAA, CNAME, TXT, MX, SRV, CAA]
+  #     policy: sync

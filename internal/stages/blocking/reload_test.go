@@ -8,6 +8,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/policy"
 )
 
 func TestReconfigureAppliesDefaults(t *testing.T) {
@@ -28,4 +29,30 @@ func TestReconfigureAppliesDefaults(t *testing.T) {
 	if resp.Status == pipeline.StatusBlockedList || c.stage.Enabled() {
 		t.Fatalf("blocking.enabled false must pass: %v", resp.Status)
 	}
+}
+
+func TestReconfigureDegradedReadiness(t *testing.T) {
+	s, err := New(Options{Index: policy.Static{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, allow := range []bool{false, true, false} {
+		s.Reconfigure(Options{AllowDegraded: allow})
+		if ready, _ := s.Ready(); ready != allow {
+			t.Fatal("readiness retained startup degraded setting")
+		}
+	}
+	// Readiness and replacement can run concurrently; neither may mutate the
+	// original policy index or any query's captured response settings.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 100 {
+			_, _ = s.Ready()
+		}
+	}()
+	for range 100 {
+		s.Reconfigure(Options{AllowDegraded: true})
+	}
+	<-done
 }

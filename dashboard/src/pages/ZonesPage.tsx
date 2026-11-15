@@ -17,6 +17,8 @@ import type { ZoneSummary } from '../api/types';
 import { ErrorBanner, Loading } from '../components/Feedback';
 import { Page, PageHeader } from '../components/layout/Page';
 import { ManagedBadge } from '../components/ManagedBadge';
+import { SecondaryAvailability } from '../components/SecondaryRuntime';
+import { StubAvailability } from '../components/StubRuntime';
 import { ZoneWizardDialog } from '../components/wizards/ZoneWizard';
 import { ZoneDeleteDialog } from '../components/ZoneDeleteDialog';
 import { ZoneImportDialog } from '../components/ZoneImportDialog';
@@ -27,6 +29,10 @@ import { useNewParam, useSearchParams } from '../lib/router';
 const outcome = (ok: boolean) => ({ color: ok ? 'var(--q-permitted)' : 'var(--q-blocked)' });
 
 export function TransferCell({ z }: { z: ZoneSummary }) {
+  if (z.type === 'secondary') {
+    return <Text size="sm">{z.secondaryRuntime?.primary ? `AXFR/IXFR from ${z.secondaryRuntime.primary}` : 'AXFR/IXFR'}</Text>;
+  }
+  if (z.type === 'stub') return <Text color="secondary">No zone transfers</Text>;
   const t = z.transfer;
   if (!t) return <Text color="secondary">–</Text>;
   return (
@@ -66,6 +72,7 @@ const baseColumns: TableColumn<Row>[] = [
           </Text>
         </Link>
         {z.fallback ? <Text type="supporting">Public fallback</Text> : null}
+        {z.zoneGroup ? <Text type="supporting">Zone group {z.zoneGroup}</Text> : null}
       </VStack>
     ),
   },
@@ -75,20 +82,26 @@ const baseColumns: TableColumn<Row>[] = [
     header: 'Serial',
     align: 'end',
     width: pixel(120),
-    renderCell: (z) => <Text type="code" size="sm">{z.serial}</Text>,
+    renderCell: (z) => (
+      <VStack gap={0.5}>
+        <Text type="code" size="sm">{z.type === 'secondary' ? z.secondaryRuntime?.serial ?? '–' : z.type === 'stub' ? z.stubRuntime?.serial ?? '–' : z.serial}</Text>
+        {z.type === 'secondary' && z.secondaryRuntime?.serial !== undefined && z.secondaryRuntime.state !== 'serving' ? <Text type="supporting">last snapshot</Text> : null}
+        {z.type === 'stub' && z.stubRuntime?.serial !== undefined ? <Text type="supporting">last observed</Text> : null}
+      </VStack>
+    ),
   },
   {
     key: 'recordCount',
     header: 'Records',
     align: 'end',
     width: pixel(100),
-    renderCell: (z) => <Text hasTabularNumbers>{formatExact(z.recordCount)}</Text>,
+    renderCell: (z) => <Text hasTabularNumbers>{formatExact(z.type === 'secondary' ? z.secondaryRuntime?.recordCount : z.type === 'stub' ? undefined : z.recordCount)}</Text>,
   },
   {
     key: 'ready',
-    header: 'Ready',
+    header: 'Availability',
     width: pixel(110),
-    renderCell: (z) => (z.ready ? <Badge variant="success" label="Ready" /> : <Badge variant="error" label="Not ready" />),
+    renderCell: (z) => z.type === 'secondary' ? <SecondaryAvailability runtime={z.secondaryRuntime} /> : z.type === 'stub' ? <StubAvailability runtime={z.stubRuntime} /> : (z.ready ? <Badge variant="success" label="Ready" /> : <Badge variant="error" label="Not ready" />),
   },
   { key: 'transfer', header: 'Transfers', width: proportional(1.75, { minWidth: 140 }), renderCell: (z) => <TransferCell z={z} /> },
   { key: 'managedBy', header: 'Managed by', width: proportional(1.5, { minWidth: 120 }), renderCell: (z) => <ManagedBadge owner={z.managedBy} inColumn /> },
@@ -115,13 +128,13 @@ export default function ZonesPage() {
           size="sm"
           variant="ghost"
           aria-label={`Delete zone ${z.zoneName}`}
-          isDisabled={!!z.deleteRefusal || !can('zones', 'delete')}
+          isDisabled={!!z.deleteRefusal || !can('zones', 'delete', { zone: z.name, zoneGroup: z.zoneGroup })}
           tooltip={
             z.deleteRefusal === 'default_zone'
               ? 'The root zone routes every other name; edit its settings on its page'
               : z.deleteRefusal === 'managed_by'
                 ? 'The zone or some of its records are managed elsewhere'
-                : !can('zones', 'delete')
+                : !can('zones', 'delete', { zone: z.name, zoneGroup: z.zoneGroup })
                   ? 'Needs zones.delete'
                   : undefined
           }
@@ -134,7 +147,7 @@ export default function ZonesPage() {
     <Page>
       <PageHeader
         title="Zones"
-        description="Authoritative and forward zones. Zones managed by a file or Kubernetes are read-only here."
+        description="Primary, secondary, forward and stub zones. Secondary and stub availability is shown for the responding node. Zones managed by a file or Kubernetes are read-only here."
         actions={
           <>
             <Button

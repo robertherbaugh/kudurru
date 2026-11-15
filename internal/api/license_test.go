@@ -109,7 +109,7 @@ func TestLicenseInfoStates(t *testing.T) {
 
 	h = newHarness(t, func(o *Options) { o.License = licenseManager(t, 3) })
 	h.do(http.MethodGet, "/api/v1/license", "viewer", nil).want(http.StatusOK).json(&info)
-	if info.State != license.StateActive || info.Plan != license.PlanPersonal || info.Nodes != 3 || len(info.Features) != len(license.Features()) {
+	if info.State != license.StateActive || info.Plan != license.PlanPersonal || info.Nodes != 3 || len(info.Features) != len(license.Features())-1 || info.Allows(license.FeatureBranding) {
 		t.Errorf("personal info = %+v", info)
 	}
 }

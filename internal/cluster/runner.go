@@ -74,6 +74,11 @@ type Options struct {
 	// after cancelling it; a runnable that ignores its context is reported
 	// and abandoned after this. Default DefaultShutdownTimeout.
 	ShutdownTimeout time.Duration
+	// JoinShutdown keeps waiting after ShutdownTimeout has reported a stalled
+	// group. Use it when runnables borrow resources that the caller closes after
+	// Run returns; abandoning a worker would allow use after those resources
+	// close. The timeout remains the diagnostic interval, not a release signal.
+	JoinShutdown bool
 	// RestartBackoff and MaxRestartBackoff bound the exponential backoff
 	// between restarts of a failing leader-only runnable within one term.
 	RestartBackoff    time.Duration
@@ -281,12 +286,19 @@ func (r *Runner) Run(ctx context.Context) error {
 
 // wait blocks until done or ShutdownTimeout, logging stragglers.
 func (r *Runner) wait(what string, done <-chan struct{}) {
-	t := time.NewTimer(r.opts.ShutdownTimeout)
+	t := time.NewTicker(r.opts.ShutdownTimeout)
 	defer t.Stop()
-	select {
-	case <-done:
-	case <-t.C:
-		r.log.Error("did not stop within the shutdown timeout; abandoning it", "group", what, "timeout", r.opts.ShutdownTimeout, "status", r.Status())
+	for {
+		select {
+		case <-done:
+			return
+		case <-t.C:
+			if !r.opts.JoinShutdown {
+				r.log.Error("did not stop within the shutdown timeout; abandoning it", "group", what, "timeout", r.opts.ShutdownTimeout, "status", r.Status())
+				return
+			}
+			r.log.Error("waiting for workers before releasing shared resources", "group", what, "timeout", r.opts.ShutdownTimeout, "status", r.Status())
+		}
 	}
 }
 
@@ -401,13 +413,18 @@ func (r *Runner) invoke(ctx context.Context, rn *runnable) (err error) {
 	rn.mu.Unlock()
 	r.metrics.active.WithLabelValues(rn.name).Set(1)
 	defer func() {
-		if p := recover(); p != nil {
+		p := recover()
+		if p != nil {
 			err = fmt.Errorf("panic: %v", p)
 			r.log.Error("runnable panicked", "role", rn.name, "panic", p, "stack", string(debug.Stack()))
 		}
 		rn.mu.Lock()
 		rn.active = false
-		if err != nil && !errors.Is(err, context.Canceled) {
+		// An error returned after ctx ended (a leader-only writer whose term
+		// is over answers ErrUnavailable or ErrFenced) is the end of the
+		// term or of the process, not a failure: superviseLeader and
+		// runAlways do not count it either. A panic is always a bug.
+		if err != nil && (p != nil || ctx.Err() == nil) && !errors.Is(err, context.Canceled) {
 			rn.lastErr = err.Error()
 		}
 		rn.mu.Unlock()

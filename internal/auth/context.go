@@ -16,9 +16,13 @@ func WithPrincipal(ctx context.Context, p Principal) context.Context {
 	return context.WithValue(ctx, principalKey, p)
 }
 
-// PrincipalFrom returns the principal set by WithPrincipal.
+// PrincipalFrom returns the principal set by WithPrincipal while any private
+// verified credential time bounds still hold. No store or network read occurs.
 func PrincipalFrom(ctx context.Context) (Principal, bool) {
 	p, ok := ctx.Value(principalKey).(Principal)
+	if ok && !p.credentialCurrent() {
+		return Principal{}, false
+	}
 	return p, ok
 }
 
@@ -32,4 +36,13 @@ func WithSession(ctx context.Context, s Session) context.Context {
 func SessionFrom(ctx context.Context) (Session, bool) {
 	s, ok := ctx.Value(sessionKey).(Session)
 	return s, ok
+}
+
+// PrincipalPresent reports whether WithPrincipal set a principal on ctx,
+// whether or not its credential bounds still hold. It lets a writer that acts
+// as the principal (the kube driver's impersonation, D386) refuse a request
+// whose credential has expired instead of writing as itself.
+func PrincipalPresent(ctx context.Context) bool {
+	_, ok := ctx.Value(principalKey).(Principal)
+	return ok
 }

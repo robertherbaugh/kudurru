@@ -30,8 +30,9 @@ func KnownModifier(name string) bool {
 
 // ParseModifiers splits the text after '$' into modifiers. Commas separate
 // modifiers unless escaped with '\' or inside a quoted value element; a
-// quote opens only at the start of a value element (after '=', '|' or '~'),
-// so an apostrophe inside a $dnsrewrite TXT value is literal.
+// single quotes open only at a value element's start (after '=', '|' or '~').
+// Double quotes also delimit DNS RDATA inside dnsrewrite, so quoted TXT
+// commas are preserved and an unquoted apostrophe remains literal.
 func ParseModifiers(s string) ([]Modifier, error) {
 	if s == "" {
 		return nil, ErrMalformedModifiers
@@ -45,6 +46,9 @@ func ParseModifiers(s string) ([]Modifier, error) {
 			c := s[i]
 			switch {
 			case c == '\\':
+				if i+1 == len(s) {
+					return nil, ErrMalformedModifiers
+				}
 				i++
 				prev = 0
 				continue
@@ -54,7 +58,7 @@ func ParseModifiers(s string) ([]Modifier, error) {
 				}
 				prev = c
 				continue
-			case (c == '\'' || c == '"') && (prev == '=' || prev == '|' || prev == '~'):
+			case (c == '\'' || c == '"') && (prev == '=' || prev == '|' || prev == '~') || c == '"' && strings.HasPrefix(LowerASCII(s[start:i]), "dnsrewrite="):
 				quote = c
 				prev = c
 				continue

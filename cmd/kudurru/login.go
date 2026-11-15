@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -17,12 +18,16 @@ import (
 
 // newLoginCmd is `kudurru login`: verify credentials against a server and
 // save them as a context.
-func newLoginCmd(o *cliOpts) *cobra.Command {
+func newLoginCmd(o *cliOpts) *cobra.Command { return newLoginCmdWithOIDC(o, defaultLoginOIDC()) }
+
+func newLoginCmdWithOIDC(o *cliOpts, oidc loginOIDCOptions) *cobra.Command {
 	var (
 		name          string
 		username      string
 		password      string
 		passwordStdin bool
+		totpPrompt    bool
+		totpStdin     bool
 		tokenStdin    bool
 		tokenName     string
 		expiresIn     string
@@ -34,18 +39,39 @@ func newLoginCmd(o *cliOpts) *cobra.Command {
 		Long: `Log in to a kudurru API server and save the endpoint as a named context in
 ~/.config/kudurru/config.yaml.
 
+Without local or token credentials, login uses the configured public OIDC client,
+a loopback callback on port 8000 or 18000 and S256 PKCE. The original OP ID token
+is stored as bearer; no Kudurru token or browser session is created. This mode
+requires verified HTTPS for the API and OP. Select --provider when necessary;
+--oidc-ca-file configures OP trust separately from the API --ca-file.
+Use --device for RFC8628 device login on a headless machine. Approve only a
+request you initiated, checking the provider, client and displayed user code.
+Device approval never creates a Kudurru session or replacement token.
+
 With --token the API token is verified (GET /auth/me) and stored. With
 --username the local password is exchanged for a session (POST /auth/login),
 which then mints an API token for the CLI (POST /auth/tokens). Tokens go to
 the OS keyring; when no keyring is available (headless Linux, containers) they
 are kept in the config file, which is written with mode 0600. Set
-KUDURRU_KEYRING=file to skip the keyring.`,
+KUDURRU_KEYRING=file to skip the keyring.
+
+For an enrolled authenticator, add --totp for a hidden terminal prompt, or
+--password-stdin --totp-stdin to read password and code as two lines. Codes
+must contain six ASCII digits. Login is attempted once, without redirects
+or automatic retries.`,
 		Example: `  kudurru login --server https://dns.example --token kdr_abc123def456_…
   kudurru login --server https://dns.example --username admin
   kudurru login --server https://dns.example --token-stdin < token.txt
   echo "$PW" | kudurru login --server http://127.0.0.1:8080 --username admin --password-stdin --name local`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if (oidc.provider != "" || oidc.device) && (o.token != "" || username != "" || password != "" || passwordStdin || tokenStdin || totpPrompt || totpStdin || tokenName != "" || expiresIn != "") {
+				return errors.New("OIDC provider selection cannot be combined with local or API-token options")
+			}
+			factor := loginFactorOptions{username: username, password: password, token: o.token, passwordStdin: passwordStdin, tokenStdin: tokenStdin, prompt: totpPrompt, stdin: totpStdin}
+			if err := factor.validate(); err != nil {
+				return err
+			}
 			cfg, err := o.loadConfig()
 			if err != nil {
 				return err
@@ -105,12 +131,13 @@ KUDURRU_KEYRING=file to skip the keyring.`,
 					return errors.New("empty token on stdin")
 				}
 			}
-			if token == "" && username == "" {
+			if token == "" && username == "" && oidc.provider == "" && !oidc.device {
 				token = o.getenv(cli.EnvToken)
 			}
 			errOut := cmd.ErrOrStderr()
 
 			var me *apiclient.Me
+			var oidcExpiry time.Time
 			switch {
 			case token != "" && username != "":
 				return errors.New("use either --token or --username, not both")
@@ -124,16 +151,24 @@ KUDURRU_KEYRING=file to skip the keyring.`,
 					return fmt.Errorf("token rejected by %s: %w", server, err)
 				}
 			case username != "":
-				pw, err := o.readPassword(cmd, password, passwordStdin, username)
+				pw, code, err := o.readLoginProof(cmd, factor)
 				if err != nil {
 					return err
 				}
 				c, err := o.newClient(r)
 				if err != nil {
-					return err
+					return loginStageError("configure login transport", err)
 				}
-				if _, err := c.Login(cmd.Context(), username, pw); err != nil {
-					return fmt.Errorf("login to %s: %w", server, err)
+				// An enrolled follower forwards the login, the token creation and
+				// the sign-out below to its primary (D368), so no role check
+				// precedes the proof.
+				if totpPrompt || totpStdin {
+					_, err = c.LoginWithTOTP(cmd.Context(), username, pw, code)
+				} else {
+					_, err = c.Login(cmd.Context(), username, pw)
+				}
+				if err != nil {
+					return loginStageError("login", err)
 				}
 				if tokenName == "" {
 					host, _ := os.Hostname()
@@ -141,30 +176,55 @@ KUDURRU_KEYRING=file to skip the keyring.`,
 				}
 				tok, err := c.CreateToken(cmd.Context(), apiclient.CreateTokenRequest{Description: tokenName, ExpiresIn: expiresIn})
 				if err != nil {
-					return fmt.Errorf("mint a CLI token: %w", err)
+					return loginStageError("mint a CLI token", err)
 				}
 				_ = c.Logout(cmd.Context()) // the session is no longer needed
 				token = tok.Secret
 				c.SetToken(token)
 				c.SetCSRF("")
 				if me, err = c.Me(cmd.Context()); err != nil {
-					return fmt.Errorf("verify the new token: %w", err)
+					return loginStageError("verify the new token", err)
 				}
 			default:
-				return errors.New("pass --token kdr_… or --username (and --password, --password-stdin, or a prompt)")
+				if password != "" || passwordStdin || tokenName != "" || expiresIn != "" {
+					return errors.New("local password or token options require the matching credential mode")
+				}
+				if oidc.device {
+					token, me, oidcExpiry, err = o.deviceLogin(cmd, r, oidc)
+				} else {
+					token, me, oidcExpiry, err = o.browserLogin(cmd, r, oidc)
+				}
+				if err != nil {
+					return err
+				}
 			}
 
+			if !oidcExpiry.IsZero() && (cmd.Context().Err() != nil || !o.now().Before(oidcExpiry)) {
+				return errors.New("OIDC login proof expired before storage")
+			}
 			if prev, ok := cfg.Context(name); ok {
 				o.credentials().Forget(prev)
 			}
 			ctx.User = me.Principal.Name
 			where, warn := o.credentials().Store(&ctx, token)
 			if warn != nil {
-				_, _ = fmt.Fprintln(errOut, "warning:", warn)
+				if username != "" || me != nil && token != "" && strings.Count(token, ".") == 2 {
+					// A credential-store error may reflect the token it was given.
+					_, _ = fmt.Fprintln(errOut, "warning: OS keyring unavailable; token stored in the 0600 config file")
+				} else {
+					_, _ = fmt.Fprintln(errOut, "warning:", warn)
+				}
+			}
+			if !oidcExpiry.IsZero() && (cmd.Context().Err() != nil || !o.now().Before(oidcExpiry)) {
+				o.credentials().Forget(&ctx)
+				return errors.New("OIDC login proof expired during storage")
 			}
 			cfg.Upsert(ctx)
 			cfg.CurrentContext = name
 			if err := cfg.Save(); err != nil {
+				if username != "" || strings.Count(token, ".") == 2 {
+					return loginStageError("save login context", err)
+				}
 				return err
 			}
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Logged in to %s as %s (%s); context %q saved to %s (token in %s).\n",
@@ -173,10 +233,15 @@ KUDURRU_KEYRING=file to skip the keyring.`,
 		},
 	}
 	f := cmd.Flags()
+	f.BoolVar(&oidc.device, "device", false, "use the public OIDC device authorization flow without a loopback listener")
+	f.StringVar(&oidc.provider, "provider", "", "configured public OIDC provider (default: the only eligible provider)")
+	f.StringVar(&oidc.caFile, "oidc-ca-file", "", "additional PEM roots for the OP, separate from API TLS")
 	f.StringVar(&name, "name", "", "context name (default: the server host)")
 	f.StringVarP(&username, "username", "u", "", "local account to log in with")
 	f.StringVarP(&password, "password", "p", "", "password (prefer the prompt or --password-stdin)")
 	f.BoolVar(&passwordStdin, "password-stdin", false, "read the password from stdin")
+	f.BoolVar(&totpPrompt, "totp", false, "prompt for a six-digit authenticator code without echo")
+	f.BoolVar(&totpStdin, "totp-stdin", false, "read the authenticator code from stdin (after the password with --password-stdin)")
 	f.BoolVar(&tokenStdin, "token-stdin", false, "read the API token from stdin (keeps it out of the process list)")
 	f.StringVar(&tokenName, "token-name", "", "name of the token minted for the CLI (default kudurru-cli@<hostname>)")
 	f.StringVar(&expiresIn, "token-expires-in", "", "lifetime of the minted token, e.g. 720h (default: the server's)")
@@ -205,6 +270,7 @@ func (o *cliOpts) readPassword(cmd *cobra.Command, password string, fromStdin bo
 	}
 	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Password for %s: ", user)
 	b, err := term.ReadPassword(int(f.Fd())) //nolint:gosec // file descriptors fit in int
+	defer clear(b)
 	_, _ = fmt.Fprintln(cmd.ErrOrStderr())
 	if err != nil {
 		return "", err

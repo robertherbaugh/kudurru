@@ -1,5 +1,4 @@
-Leading wildcards compile into the suffix set; mid-pattern wildcards are
-parsed and counted as unsupported (v0.2 slow path).
+Leading wildcards keep suffix semantics; mid-pattern wildcards compile.
 
 -- list w block adblock --
 *.cdn.example
@@ -9,7 +8,7 @@ parsed and counted as unsupported (v0.2 slow path).
 *.*.example
 ||example.*^
 -- counts w --
-rules=3 unsupported=3 invalid=0 entries=3
+rules=6 unsupported=0 invalid=0 entries=6
 -- expect --
 cdn.example          block w *.cdn.example       # deviation: *.x also matches x (blocky semantics)
 img.cdn.example      block w *.cdn.example
@@ -18,5 +17,5 @@ mycdn.example        pass
 x.track.example      block w *.track.example
 ads.example          block w ||*.ads.example^    # deviation: as above
 x.ads.example        block w ||*.ads.example^
-adserver.example     pass                        # mid-pattern wildcard: unsupported in v0.1
-example.com          pass
+adserver.example     block w ||ad*.example^
+example.com          block w ||example.*^

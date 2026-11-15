@@ -203,7 +203,8 @@ func TestPasswordChangeRevokesSessions(t *testing.T) {
 		if va := u.ValidAfter(PrincipalID("bob")); !va.IsZero() {
 			t.Fatalf("fresh user has sessionsValidAfter %v", va)
 		}
-		p, err := u.LoadPrincipal(ctx, auth.Principal{Kind: auth.KindUser, ID: PrincipalID("bob"), Name: "bob", Provider: Provider, AuthMethod: "cookie", Grants: []string{"admin"}})
+		bob, _ := u.Get("bob")
+		p, err := u.LoadPrincipal(ctx, auth.Principal{Kind: auth.KindUser, ID: PrincipalID("bob"), Name: "bob", Provider: Provider, AccountUID: string(bob.UID), AuthMethod: "cookie", Grants: []string{"admin"}})
 		if err != nil || !p.MustChangePassword || p.Grants != nil || p.AuthMethod != "cookie" {
 			t.Fatalf("LoadPrincipal = %+v, %v", p, err)
 		}
@@ -226,6 +227,29 @@ func TestPasswordChangeRevokesSessions(t *testing.T) {
 		}
 		if u.ValidAfter("oidc:dex:x:y") != (time.Time{}) {
 			t.Fatal("non-local principals have no sessionsValidAfter")
+		}
+	})
+}
+
+func TestAccountUIDRejectsSameTimestampReplacementAndLegacy(t *testing.T) {
+	authtest.Drivers(t, func(t *testing.T, st store.Store) {
+		ctx := context.Background()
+		u := newUsers(t, st, &clock{t: time.Unix(1_800_000_000, 0)})
+		original, err := u.Create(ctx, CreateOptions{Name: "alice", Password: "alice-password"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		p := Principal(original)
+		p.AuthMethod = auth.MethodCookie
+		p.CredentialIssuedAt = original.CreationTimestamp.Time
+		if _, err := u.LoadPrincipal(ctx, p); err != nil {
+			t.Fatal(err)
+		}
+		for _, uid := range []string{"", "deleted-account-uid"} {
+			p.AccountUID = uid
+			if _, err := u.LoadPrincipal(ctx, p); err == nil {
+				t.Fatal("credential rebound to an account by name and timestamp")
+			}
 		}
 	})
 }

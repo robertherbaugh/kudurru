@@ -20,6 +20,10 @@ var (
 	ErrHTML          = errors.New("parser: source is an HTML or XML page, not a list")
 	ErrBinary        = errors.New("parser: source is binary, not a text list")
 	ErrUnknownFormat = errors.New("parser: unknown format")
+	// ErrUnsupportedSlow leaves a streamed candidate in diagnostic counters.
+	ErrUnsupportedSlow = errors.New("parser: unsupported slow rule")
+	// ErrInvalidSlow ignores the entire candidate and counts it as invalid.
+	ErrInvalidSlow = errors.New("parser: invalid slow rule")
 )
 
 const (
@@ -39,6 +43,12 @@ var (
 
 // Options control parsing of one source.
 type Options struct {
+	// EmitSlow receives EVERY non-fast candidate synchronously, independent
+	// of diagnostic sample limits. Values alias the read buffer until return.
+	// Nil preserves unsupported counting. A nil callback error accepts the
+	// rule; ErrUnsupportedSlow keeps it unsupported, ErrInvalidSlow marks it
+	// invalid, and any other error stops parsing.
+	EmitSlow func(UnsupportedRule) error
 	// Format of the source; empty means FormatAuto.
 	Format Format
 	// HostsSubdomains makes hosts and plain-domain entries match their
@@ -57,8 +67,32 @@ type Options struct {
 // non-nil error from emit stops parsing and is returned. emit may be nil to
 // only count. Rule.Pattern is valid only until emit returns.
 func Parse(r io.Reader, opts Options, emit func(Rule) error) (*Result, error) {
+	res := &Result{UnsupportedReasons: map[string]int{}, InvalidReasons: map[string]int{}}
+	if err := parseInto(r, opts, emit, res, false); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// Fingerprint returns the same normalized CRC as Parse, including its format
+// detection, source sniffing and read errors. Only lines containing a literal
+// dollar sign undergo rule classification and may call opts.EmitSlow. Both
+// modifier attachment paths require that byte, so every actual badfilter still
+// reaches the original parser and callback. Other rules are not validated here;
+// callers must use Parse when building a changed list. Diagnostic limits are
+// ignored because this pass does not expose partial classification counters.
+func Fingerprint(r io.Reader, opts Options) (uint32, error) {
+	opts.KeepUnsupported, opts.KeepInvalid = -1, -1
+	var res Result
+	if err := parseInto(r, opts, nil, &res, true); err != nil {
+		return 0, err
+	}
+	return res.CRC32, nil
+}
+
+func parseInto(r io.Reader, opts Options, emit func(Rule) error, res *Result, modifierCandidatesOnly bool) error {
 	if !opts.Format.Valid() {
-		return nil, fmt.Errorf("%w %q", ErrUnknownFormat, opts.Format)
+		return fmt.Errorf("%w %q", ErrUnknownFormat, opts.Format)
 	}
 	if opts.Format == "" {
 		opts.Format = FormatAuto
@@ -68,16 +102,14 @@ func Parse(r io.Reader, opts Options, emit func(Rule) error) (*Result, error) {
 
 	br := bufio.NewReaderSize(r, maxLineLen)
 	if err := sniffReader(br); err != nil {
-		return nil, err
+		return err
 	}
 	p := &state{
-		opts:   opts,
-		emit:   emit,
-		format: opts.Format,
-		res: &Result{
-			UnsupportedReasons: map[string]int{},
-			InvalidReasons:     map[string]int{},
-		},
+		opts:                   opts,
+		emit:                   emit,
+		format:                 opts.Format,
+		modifierCandidatesOnly: modifierCandidatesOnly,
+		res:                    res,
 	}
 
 	detecting := opts.Format == FormatAuto
@@ -97,7 +129,7 @@ func Parse(r io.Reader, opts Options, emit func(Rule) error) (*Result, error) {
 	for n := 1; ; n++ {
 		raw, tooLong, err := readLine(br)
 		if err != nil && !errors.Is(err, io.EOF) {
-			return nil, fmt.Errorf("parser: read: %w", err)
+			return fmt.Errorf("parser: read: %w", err)
 		}
 		atEOF := err != nil
 		if atEOF && len(raw) == 0 && !tooLong {
@@ -113,11 +145,11 @@ func Parse(r io.Reader, opts Options, emit func(Rule) error) (*Result, error) {
 			}
 			if sampled >= detectSampleLines {
 				if err := flush(); err != nil {
-					return nil, err
+					return err
 				}
 			}
 		} else if err := p.process(n, raw, tooLong); err != nil {
-			return nil, err
+			return err
 		}
 		if atEOF {
 			break
@@ -125,12 +157,12 @@ func Parse(r io.Reader, opts Options, emit func(Rule) error) (*Result, error) {
 	}
 	if detecting {
 		if err := flush(); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	p.res.Format = p.format
-	p.res.CRC32 = p.crc
-	return p.res, nil
+	res.Format = p.format
+	res.CRC32 = p.crc
+	return nil
 }
 
 // Checksum returns the CRC-32 (IEEE) of the normalised rule lines of r:
@@ -198,11 +230,12 @@ func isCommentLine(t []byte) bool {
 }
 
 type state struct {
-	opts   Options
-	emit   func(Rule) error
-	format Format
-	res    *Result
-	crc    uint32
+	opts                   Options
+	emit                   func(Rule) error
+	format                 Format
+	res                    *Result
+	crc                    uint32
+	modifierCandidatesOnly bool
 }
 
 func (p *state) process(n int, raw []byte, tooLong bool) error {
@@ -223,6 +256,9 @@ func (p *state) process(n int, raw []byte, tooLong bool) error {
 	}
 	p.crc = crc32.Update(p.crc, crc32.IEEETable, t)
 	p.crc = crc32.Update(p.crc, crc32.IEEETable, newline)
+	if p.modifierCandidatesOnly && bytes.IndexByte(t, '$') < 0 {
+		return nil
+	}
 	line := bufferString(t)
 	if p.format == FormatRegex {
 		return p.regexLine(n, line)
@@ -231,7 +267,7 @@ func (p *state) process(n int, raw []byte, tooLong bool) error {
 }
 
 func (p *state) title(t []byte) {
-	if p.res.Title != "" {
+	if p.modifierCandidatesOnly || p.res.Title != "" {
 		return
 	}
 	s := strings.TrimLeft(string(t[1:]), " \t!#")
@@ -290,8 +326,7 @@ func (p *state) ruleLine(n int, line string) error {
 			p.invalid(n, line, c.invalid, c.detail)
 			return nil
 		}
-		p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonModifiers, Exception: exception, Pattern: pat, Modifiers: ms})
-		return nil
+		return p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonModifiers, Exception: exception, Pattern: pat, Modifiers: ms})
 	}
 	switch {
 	case c.invalid != "":
@@ -299,7 +334,7 @@ func (p *state) ruleLine(n int, line string) error {
 	case c.ignored:
 		p.res.Ignored++
 	case c.unsupported != "":
-		p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: c.unsupported, Exception: exception, Pattern: pat})
+		return p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: c.unsupported, Exception: exception, Pattern: pat})
 	default:
 		return p.rule(Rule{Kind: c.kind, Syntax: c.syntax, Pattern: c.pattern, Addr: c.addr, Exception: exception, Line: n})
 	}
@@ -427,7 +462,9 @@ func (p *state) hostsLine(n int, line string, addr netip.Addr, rest string) erro
 		case hostsBoilerplate[d]:
 			p.res.Ignored++
 		case !sink:
-			p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonHostsRewrite, Pattern: d, Addr: addr})
+			if err := p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonHostsRewrite, Pattern: d, Addr: addr}); err != nil {
+				return err
+			}
 		default:
 			if err := p.rule(Rule{Kind: kind, Syntax: SyntaxHosts, Pattern: d, Line: n}); err != nil {
 				return err
@@ -438,7 +475,7 @@ func (p *state) hostsLine(n int, line string, addr netip.Addr, rest string) erro
 
 // regexRule handles "/re/" and "/re/$modifiers" in adblock-style lists.
 func (p *state) regexRule(n int, line, s string, exception bool) error {
-	last := strings.LastIndexByte(s, '/')
+	last := regexDelimiter(s)
 	if last <= 1 {
 		p.invalid(n, line, ReasonInvalidRegex, "empty or unterminated /regex/")
 		return nil
@@ -468,10 +505,62 @@ func (p *state) regexRule(n int, line, s string, exception bool) error {
 		return nil
 	}
 	if mods != nil {
-		p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonModifiers, Exception: exception, Pattern: s[:last+1], Modifiers: mods})
-		return nil
+		return p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonModifiers, Exception: exception, Pattern: s[:last+1], Modifiers: mods})
 	}
 	return p.rule(Rule{Kind: KindRegex, Syntax: SyntaxRegex, Pattern: re, Exception: exception, Line: n})
+}
+
+// regexDelimiter finds the modifier boundary before inspecting modifier values,
+// which may themselves contain slashes (CIDRs and quoted client selectors).
+// Escapes, character classes and RE2 literal quoting keep /$ inside the pattern.
+// Bare expressions retain their existing final-slash delimiter and validation.
+func regexDelimiter(s string) int {
+	inClass, quoted := false, false
+	classFirst := 0
+	for i := 1; i+1 < len(s); i++ {
+		if quoted {
+			if s[i] == '\\' && s[i+1] == 'E' {
+				quoted = false
+				i++
+			}
+			continue
+		}
+		if s[i] == '\\' {
+			if !inClass && s[i+1] == 'Q' {
+				quoted = true
+			}
+			i++
+			continue
+		}
+		if inClass {
+			if s[i] == ']' && i > classFirst {
+				inClass = false
+			} else if s[i] == '[' && s[i+1] == ':' {
+				// A POSIX class's closing bracket does not close its outer class.
+				end := strings.Index(s[i+2:], ":]")
+				if end < 0 {
+					// Leave malformed classes to syntax.Parse without rescanning
+					// this suffix for each further opening bracket.
+					return strings.LastIndexByte(s, '/')
+				}
+				i += end + 3
+			}
+			continue
+		}
+		switch s[i] {
+		case '[':
+			inClass = true
+			classFirst = i + 1
+			if s[classFirst] == '^' {
+				classFirst++
+			}
+		case '/':
+			if s[i+1] == '$' {
+				return i
+			}
+		}
+	}
+	return strings.LastIndexByte(s, '/')
 }
 
 // regexExtensions are Pi-hole regex-list options that change the meaning
@@ -492,8 +581,7 @@ func (p *state) regexLine(n int, line string) error {
 	}
 	for _, ext := range regexExtensions {
 		if strings.Contains(s, ext) {
-			p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonRegexExtension, Pattern: s})
-			return nil
+			return p.unsupported(UnsupportedRule{Line: n, Text: line, Reason: ReasonRegexExtension, Pattern: s})
 		}
 	}
 	if _, err := syntax.Parse(s, syntax.Perl); err != nil {
@@ -516,7 +604,26 @@ func (p *state) rule(r Rule) error {
 
 // unsupported counts u and retains a copy that no longer aliases the read
 // buffer.
-func (p *state) unsupported(u UnsupportedRule) {
+func (p *state) unsupported(u UnsupportedRule) error {
+	if p.opts.EmitSlow != nil {
+		err := p.opts.EmitSlow(u)
+		switch {
+		case err == nil:
+			p.res.Rules++
+			if u.Exception {
+				p.res.Exceptions++
+			}
+			return nil
+		case errors.Is(err, ErrInvalidSlow):
+			p.invalid(u.Line, u.Text, "invalid-modifier", err.Error())
+			return nil
+		case !errors.Is(err, ErrUnsupportedSlow):
+			return err
+		}
+	}
+	if p.modifierCandidatesOnly {
+		return nil
+	}
 	p.res.Unsupported++
 	p.res.UnsupportedReasons[u.Reason]++
 	if len(p.res.UnsupportedRules) < p.opts.KeepUnsupported {
@@ -527,9 +634,13 @@ func (p *state) unsupported(u UnsupportedRule) {
 		}
 		p.res.UnsupportedRules = append(p.res.UnsupportedRules, u)
 	}
+	return nil
 }
 
 func (p *state) invalid(n int, text, reason, detail string) {
+	if p.modifierCandidatesOnly {
+		return
+	}
 	p.res.Invalid++
 	p.res.InvalidReasons[reason]++
 	if len(p.res.InvalidSamples) < p.opts.KeepInvalid {

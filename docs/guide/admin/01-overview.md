@@ -10,7 +10,7 @@ dashboard.
 |---|---|
 | Node | One running kudurru server. A network can have more than one node. |
 | Client | A device that sends queries to kudurru, for example a laptop or a television. |
-| Client group | A set of clients. In version 0.1, a group matches clients by address or address range. |
+| Client group | A set of clients. A group matches clients by address or address range. It can also match a client ID or a MAC address (Chapter 5). |
 | Block list | A list of names that kudurru blocks. |
 | Allow list | A list of names that kudurru never blocks. |
 | Policy | The rules for one or more client groups: which lists and services apply, how kudurru answers a blocked query, and when. |
@@ -66,7 +66,7 @@ person. Table 1 shows what each role can do in the dashboard.
 |---|---|---|
 | Viewer | Statistics, zones, records, lists, policies, groups, clients, settings | Nothing. A viewer can make API tokens for itself. |
 | Auditor | Everything that a viewer reads, and the query log, the access requests and the audit log | Nothing |
-| Operator | Everything that an auditor reads, except the audit log | Records, lists, policies, groups, clients, the blocking switch, the cache, the access requests |
+| Operator | Everything that an auditor reads, except the audit log; no query-log export | Records, lists, policies, groups, clients, the blocking switch, the cache, the access requests |
 | Zone admin | Statistics, and the zones and records in its scope | The zones and records in its scope |
 | Admin | Everything | Everything, including settings |
 

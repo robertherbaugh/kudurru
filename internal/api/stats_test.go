@@ -133,11 +133,16 @@ func TestQueryLogRoutes(t *testing.T) {
 	}
 	h.do(http.MethodGet, "/api/v1/queries?status=nope", "operator", nil).want(http.StatusBadRequest)
 	h.do(http.MethodGet, "/api/v1/queries?cursor=abc", "operator", nil).want(http.StatusBadRequest)
+	// A NUL would truncate the SQLite LIKE pattern to "*" and match every row.
+	for _, q := range []string{"domain=*%00", "client=ph*%00", "zone=home.lan%00", "scope=cluster&domain=*%00"} {
+		h.do(http.MethodGet, "/api/v1/queries?"+q, "operator", nil).want(http.StatusBadRequest)
+	}
 	var sug SuggestionsBody
 	h.do(http.MethodGet, "/api/v1/queries/suggestions?field=domain&prefix=a", "operator", nil).want(http.StatusOK).json(&sug)
 	if len(sug.Values) != 2 {
 		t.Fatalf("suggestions %+v", sug)
 	}
+	h.do(http.MethodGet, "/api/v1/queries/suggestions?field=domain&prefix=a%00", "operator", nil).want(http.StatusBadRequest)
 	var status QuerylogStatusBody
 	h.do(http.MethodGet, "/api/v1/querylog/status", "operator", nil).want(http.StatusOK).json(&status)
 	if status.Rows != 4 {

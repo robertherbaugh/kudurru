@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "go",
+    "test",
+    "-run",
+    "^$",
+    "-bench",
+    "^BenchmarkUDPSockets$",
+    "-benchmem",
+    "-benchtime",
+    "5s",
+    "-count",
+    "1",
+    "-timeout",
+    "30m",
+    "./internal/dnsserver"
+  ],
+  "child_exit_code": 0,
+  "stop_reason": null,
+  "minimum_free_bytes": 138063814656,
+  "pid": 13286,
+  "wall_seconds": 12.436393597000006,
+  "post_free_bytes": 138104176640,
+  "output_bytes": 470,
+  "group_reaped": true
+}

@@ -132,6 +132,12 @@ function AuditDetails({ event }: { event: AuditRow }) {
  * plugin's own transformColumns (no dependency on plugin order) and finds the
  * column by Astryx's internal key "__expansion"; AuditPage.test pins the
  * rendered width, so a renamed key fails there instead of silently.
+ *
+ * The plugin also gives every body cell a right-click "Expand row" action,
+ * which wraps each cell in its own ContextMenu with a layer anchor: seven per
+ * row, 700 for a page of 100 events, and they made rendering a page take
+ * seconds. A click on the row, the chevron, Enter and Space already expand a
+ * row, so this drops that action and the cells render plain.
  */
 export const CHEVRON_COLUMN_WIDTH = 56;
 function withWideChevron<T extends Record<string, unknown>>(expansion: TablePlugin<T>): TablePlugin<T> {
@@ -139,6 +145,10 @@ function withWideChevron<T extends Record<string, unknown>>(expansion: TablePlug
     ...expansion,
     transformColumns: (columns) =>
       (expansion.transformColumns?.(columns) ?? columns).map((c) => (c.key === '__expansion' ? { ...c, width: pixel(CHEVRON_COLUMN_WIDTH) } : c)),
+    transformBodyCell: (props, column, item, index, columns) => {
+      const next = expansion.transformBodyCell ? expansion.transformBodyCell(props, column, item, index, columns) : props;
+      return { ...next, contextMenuActions: props.contextMenuActions };
+    },
   };
 }
 

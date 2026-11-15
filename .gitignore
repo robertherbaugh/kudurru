@@ -25,6 +25,7 @@ coverage.*
 *.db-wal
 *.db-shm
 /hack/.cache/
+__pycache__/
 
 # editors
 .idea/

@@ -15,7 +15,8 @@ func FromEntry(r sqlite.AuditEntry) Event {
 	return Event{
 		ID: r.ID, Time: r.Time, Actor: actor, Action: r.Action,
 		Resource: Resource{Kind: string(r.Key.Kind), Namespace: r.Key.Namespace, Name: r.Key.Name},
-		Result:   r.Result, Reason: r.Reason, Before: r.Before, After: r.After,
+		Result:   r.Result, Reason: r.Reason, Authz: r.Authz, Before: r.Before, After: r.After,
+		Request: Request{ID: r.RequestID, IP: r.ClientIP, UA: r.UserAgent, Method: r.RequestMethod, Path: r.RequestPath}, ResourceVersion: r.ResourceVersion,
 		Manager: r.Manager, Hash: r.Hash, PrevHash: r.PrevHash,
 	}
 }

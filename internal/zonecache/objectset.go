@@ -34,6 +34,9 @@ type ObjectSet struct {
 	changed      map[store.Kind]bool
 	allChanged   bool
 	listsChanged bool
+	// inputs are the named external inputs last given to Cache.SetInput.
+	inputs        map[string]any
+	inputsChanged map[string]bool
 }
 
 // index holds the per-kind indexes. Kind indexes of unchanged kinds are
@@ -286,6 +289,14 @@ func typedOf[T store.Object](ki *kindIndex) []T {
 // Lists returns the compiled blocking lists last given to Cache.SetLists,
 // or nil before the first call.
 func (s ObjectSet) Lists() *blocking.Snapshot { return s.lists }
+
+// Input returns the named external input last given to Cache.SetInput, or
+// nil before the first call. The value is shared and must not be modified.
+func (s ObjectSet) Input(name string) any { return s.inputs[name] }
+
+// InputChanged reports whether Input(name) may differ from the previous
+// snapshot's.
+func (s ObjectSet) InputChanged(name string) bool { return s.allChanged || s.inputsChanged[name] }
 
 // Now is the time the set was assembled. Builders that honour
 // endpoint expiresAt (§4.2) compare against Now rather than the wall clock,

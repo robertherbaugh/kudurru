@@ -1,7 +1,6 @@
 // Disable blocking with a countdown (§10 principle 7): 10 s / 30 s / 5 min
-// / indefinite, or a longer duration picked from presets (custom allowed). POST /dns/blocking toggles the node-local switch
-// today and the cluster-wide Publisher once replication lands; the UI
-// only shows what the server reports back.
+// / indefinite, or a longer duration picked from presets (custom allowed).
+// A forwarded commit keeps the observed local state until GET reports publication.
 import { Button } from '@astryxdesign/core/Button';
 import { HStack } from '@astryxdesign/core/HStack';
 import { Link } from '@astryxdesign/core/Link';
@@ -203,7 +202,7 @@ export function BlockingControl({ compact }: { compact?: boolean }) {
       onExpire={() => void q.refetch()}
       onSet={(v) =>
         set.mutate(v, {
-          onSuccess: (s) => notify.success(s.blocking ? 'Blocking enabled' : 'Blocking disabled'),
+          onSuccess: (s) => notify.success('publication' in s ? 'Change saved; waiting for this node to apply it' : s.blocking ? 'Blocking enabled' : 'Blocking disabled'),
           onError: (err) => notify.error(err, 'Could not change blocking'),
         })
       }

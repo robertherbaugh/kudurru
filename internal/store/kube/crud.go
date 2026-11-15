@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	metav1validation "k8s.io/apimachinery/pkg/apis/meta/v1/validation"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -24,12 +26,21 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/validator"
 )
+
+// Reuse the embedded structural schemas for typed SSA decode normalization.
+// CRD schema/CEL admission still runs on the actual apiserver.
+var applyValidator = sync.OnceValues(validator.New)
 
 // writeError wraps a failed apiserver write. A refusal for size (413, or
 // etcd's "request is too large" passed through by the apiserver) wraps
 // store.ErrTooLarge, as the sqlite driver reports past MaxObjectBytes.
 func writeError(op string, key store.Key, err error) error {
+	if invalid, ok := validator.FromStatusError(err); ok {
+		invalid.Namespace = key.Namespace
+		return fmt.Errorf("store/kube: %s %s: %w", op, key, invalid)
+	}
 	if apierrors.IsRequestEntityTooLargeError(err) || strings.Contains(err.Error(), "request is too large") {
 		return fmt.Errorf("%w: store/kube: %s %s: %w", store.ErrTooLarge, op, key, err)
 	}
@@ -81,6 +92,10 @@ func (s *Store) Get(ctx context.Context, key store.Key, into store.Object) error
 // Continue map to the list call's limit and continue token. An expired
 // token (HTTP 410) is returned as an error; callers restart the listing.
 func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOptions) (store.ObjectList, error) {
+	return s.list(ctx, kind, opts, nil)
+}
+
+func (s *Store) list(ctx context.Context, kind store.Kind, opts store.ListOptions, selector labels.Selector) (store.ObjectList, error) {
 	if s.isClosed() {
 		return store.ObjectList{}, store.ErrClosed
 	}
@@ -104,6 +119,9 @@ func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOption
 	}
 	if len(opts.LabelSelector) > 0 {
 		lo = append(lo, client.MatchingLabels(opts.LabelSelector))
+	}
+	if selector != nil {
+		lo = append(lo, client.MatchingLabelsSelector{Selector: selector})
 	}
 	if opts.Limit > 0 {
 		lo = append(lo, client.Limit(int64(opts.Limit)))
@@ -145,6 +163,15 @@ func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOption
 //   - The managedBy check and the write are made atomic by sending the
 //     observed resourceVersion as an SSA precondition; if the object changed
 //     in between, the check is repeated.
+//   - Reserved finalizers are not decided by the caller's document
+//     (store.ReconcileReservedFinalizers, D367). This driver has no
+//     admission of its own and never arms one. It carries
+//     store.IntegrationCleanupFinalizer in the body while the stored
+//     Integration has it and the spec still says Delete, so a Force takeover
+//     cannot strip the cleanup obligation the elected host armed with
+//     UpdateFinalizer. A body whose spec says Retain stops asserting it:
+//     Force then removes it, and without Force the host's own field
+//     ownership keeps it until the host clears it.
 func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOptions) (store.Object, error) {
 	if opts.Manager == "" {
 		return nil, errors.New("store: ApplyOptions.Manager is required")
@@ -169,6 +196,10 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 	if err := s.checkScope(ki, key); err != nil {
 		return nil, err
 	}
+	wctx, im, err := s.writeContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	applyOpts := []client.ApplyOption{client.FieldOwner(fieldManagerFor(opts.Manager))}
 	if opts.Force {
 		applyOpts = append(applyOpts, client.ForceOwnership)
@@ -178,9 +209,19 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 		if err != nil {
 			return nil, err
 		}
+		// Rebuilt from every observation: a retry may see another object.
+		desired := obj.DeepCopyObject().(store.Object)
+		if cur != nil {
+			store.ReconcileReservedFinalizers(desired, cur, false)
+		} else {
+			store.ReconcileReservedFinalizers(desired, nil, false)
+		}
 		precondition := ""
 		switch {
 		case cur != nil:
+			if opts.CreateOnly {
+				return nil, fmt.Errorf("%w: %s already exists", store.ErrConflict, key)
+			}
 			if opts.ExpectedResourceVersion != "" && opts.ExpectedResourceVersion != cur.ResourceVersion {
 				return nil, fmt.Errorf("%w: %s is at %s, expected %s", store.ErrConflict, key, cur.ResourceVersion, opts.ExpectedResourceVersion)
 			}
@@ -189,8 +230,11 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 			}
 			precondition = cur.ResourceVersion
 			if opts.Force {
-				rv, err := s.takeOver(ctx, ki, key, cur, fieldManagerFor(opts.Manager))
+				rv, err := s.takeOver(wctx, ki, key, cur, desired, opts.Manager)
 				if err != nil {
+					if refused := s.impersonationRefusal(im, "take over", key, err); refused != nil {
+						return nil, refused
+					}
 					if !apierrors.IsConflict(err) && !apierrors.IsNotFound(err) {
 						return nil, fmt.Errorf("store/kube: take over %s: %w", key, err)
 					}
@@ -204,13 +248,38 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 		case opts.ExpectedResourceVersion != "":
 			return nil, fmt.Errorf("%w: %s does not exist, expected %s", store.ErrConflict, key, opts.ExpectedResourceVersion)
 		}
-		u, err := applyPayload(ki, obj, opts.Manager, precondition)
+		u, err := applyPayload(ki, desired, opts.Manager, precondition)
 		if err != nil {
 			return nil, err
 		}
-		err = s.c.Apply(ctx, client.ApplyConfigurationFromUnstructured(u), applyOpts...)
+		if opts.CreateOnly {
+			// SSA can update an object created after the GET. POST is the
+			// apiserver's atomic absence precondition, including equal specs.
+			if err := s.c.Create(wctx, u, client.FieldOwner(fieldManagerFor(opts.Manager))); err != nil {
+				if refused := s.impersonationRefusal(im, "create", key, err); refused != nil {
+					return nil, refused
+				}
+				if apierrors.IsAlreadyExists(err) {
+					return nil, fmt.Errorf("%w: %s already exists", store.ErrConflict, key)
+				}
+				return nil, writeError("create", key, err)
+			}
+			return fromUnstructured(ki, u)
+		}
+		capturedOpts := append([]client.ApplyOption(nil), applyOpts...)
+		if !opts.Force && cur != nil && store.ManagedBy(cur) == opts.Manager && sameManagerUpdateFields(cur, fieldManagerFor(opts.Manager)) {
+			// POST/CreateOnly records Update ownership. Kubernetes treats that
+			// as distinct from Apply ownership even for the same manager. Only
+			// migrate an exclusively self-owned object, using this exact RV.
+			// A foreign field owner or an intervening edit prevents migration.
+			capturedOpts = append(capturedOpts, client.ForceOwnership)
+		}
+		err = s.c.Apply(wctx, client.ApplyConfigurationFromUnstructured(u), capturedOpts...)
 		if err == nil {
 			return fromUnstructured(ki, u)
+		}
+		if refused := s.impersonationRefusal(im, "apply", key, err); refused != nil {
+			return nil, refused
 		}
 		if managers := conflictingManagers(err); len(managers) > 0 {
 			return nil, s.managedByError(ctx, ki, key, opts.Manager, managers)
@@ -232,11 +301,18 @@ func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOpt
 // an object with finalizers stays visible with a deletionTimestamp until
 // they are removed.
 func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOptions) error {
+	return s.delete(ctx, key, opts, applyRetries)
+}
+
+func (s *Store) delete(ctx context.Context, key store.Key, opts store.DeleteOptions, attempts int) error {
 	if s.isClosed() {
 		return store.ErrClosed
 	}
 	if ki, ok := s.internal.get(key.Kind); ok {
 		return s.deleteInternal(ctx, ki, key, opts)
+	}
+	if opts.ExpectedUID != "" || opts.ExpectedResourceVersion != "" {
+		attempts = 1
 	}
 	ki, err := s.kinds.get(key.Kind)
 	if err != nil {
@@ -247,6 +323,10 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 	} else if !ok {
 		return fmt.Errorf("%w: %s", store.ErrNotFound, key)
 	}
+	wctx, im, err := s.writeContext(ctx)
+	if err != nil {
+		return err
+	}
 	for attempt := 1; ; attempt++ {
 		cur, err := s.getMeta(ctx, ki, key)
 		if err != nil {
@@ -255,6 +335,9 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 		if cur == nil {
 			return fmt.Errorf("%w: %s", store.ErrNotFound, key)
 		}
+		if err := store.CheckDeletePreconditions(cur, opts); err != nil {
+			return err
+		}
 		if owner := store.ManagedBy(cur); owner != "" && opts.Manager != "" && owner != opts.Manager && !opts.Force {
 			return &store.ErrManagedBy{Key: key, Owner: owner}
 		}
@@ -262,13 +345,16 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 		target.SetNamespace(key.Namespace)
 		target.SetName(key.Name)
 		uid, rv := cur.UID, cur.ResourceVersion
-		err = s.c.Delete(ctx, target, client.Preconditions{UID: &uid, ResourceVersion: &rv})
+		err = s.c.Delete(wctx, target, client.Preconditions{UID: &uid, ResourceVersion: &rv})
+		if refused := s.impersonationRefusal(im, "delete", key, err); refused != nil {
+			return refused
+		}
 		switch {
 		case err == nil:
 			return nil
 		case apierrors.IsNotFound(err):
 			return fmt.Errorf("%w: %s", store.ErrNotFound, key)
-		case apierrors.IsConflict(err) && attempt < applyRetries:
+		case apierrors.IsConflict(err) && attempt < attempts:
 			continue
 		case apierrors.IsConflict(err):
 			return fmt.Errorf("%w: %s changed during delete", store.ErrConflict, key)
@@ -276,6 +362,95 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 			return fmt.Errorf("store/kube: delete %s: %w", key, err)
 		}
 	}
+}
+
+// finalizerFieldManager owns the finalizers UpdateFinalizer writes. It is
+// distinct from every object manager, so a manager's ordinary apply, which
+// does not list the finalizer, leaves it in place.
+const finalizerFieldManager = "kudurru-finalizer"
+
+// UpdateFinalizer implements store.FinalizerWriter with a merge patch of
+// metadata.finalizers alone under finalizerFieldManager. The object is read
+// once; a UID or resourceVersion other than the caller's is
+// store.ErrConflict, and the observed resourceVersion travels in the patch
+// as the apiserver's optimistic lock, so a change in between is
+// store.ErrConflict too and nothing is retried on a newer object (a
+// resourceVersion identifies one incarnation, so the UID check holds
+// through the write). Spec, status, labels, annotations and generation are
+// not in the patch. The apiserver removes an object that is being deleted
+// when its last finalizer goes; the returned object is then the removed
+// one (store.Terminated). The runtime kinds this driver carries inside
+// other objects have no finalizers.
+func (s *Store) UpdateFinalizer(ctx context.Context, key store.Key, opts store.FinalizerOptions) (store.Object, error) {
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+	if s.isClosed() {
+		return nil, store.ErrClosed
+	}
+	if _, ok := s.internal.get(key.Kind); ok {
+		return nil, fmt.Errorf("store/kube: UpdateFinalizer %s: runtime kinds have no finalizers", key)
+	}
+	ki, err := s.kinds.get(key.Kind)
+	if err != nil {
+		return nil, err
+	}
+	if ok, err := s.scopeMatches(ki, key.Namespace); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
+	}
+	cur := ki.newObject()
+	if err := s.c.Get(ctx, client.ObjectKey{Namespace: key.Namespace, Name: key.Name}, cur); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
+		}
+		return nil, fmt.Errorf("store/kube: get %s: %w", key, err)
+	}
+	finalizers, changed, err := store.PlanFinalizer(cur, opts)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", err, key)
+	}
+	if !changed {
+		normalize(ki, cur)
+		return cur, nil
+	}
+	patch, err := json.Marshal(map[string]any{"metadata": map[string]any{
+		"resourceVersion": cur.GetResourceVersion(), "finalizers": finalizers,
+	}})
+	if err != nil {
+		return nil, err
+	}
+	err = s.c.Patch(ctx, cur, client.RawPatch(types.MergePatchType, patch), client.FieldOwner(finalizerFieldManager))
+	switch {
+	case err == nil:
+		normalize(ki, cur)
+		return cur, nil
+	case apierrors.IsNotFound(err):
+		return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
+	case apierrors.IsConflict(err):
+		return nil, fmt.Errorf("%w: %s changed during the finalizer update", store.ErrConflict, key)
+	default:
+		return nil, writeError("update finalizer", key, err)
+	}
+}
+
+// sameManagerUpdateFields allows the Update-to-Apply transition of an atomic
+// POST without taking fields from another manager. Status ownership is separate.
+func sameManagerUpdateFields(obj metav1.Object, manager string) bool {
+	found := false
+	for _, entry := range obj.GetManagedFields() {
+		if entry.Subresource != "" {
+			continue
+		}
+		if entry.Manager != manager {
+			return false
+		}
+		if entry.Operation == metav1.ManagedFieldsOperationUpdate {
+			found = true
+		}
+	}
+	return found
 }
 
 // UpdateStatus implements store.Store through the status subresource, which
@@ -340,7 +515,8 @@ func (s *Store) UpdateStatus(ctx context.Context, obj store.Object) error {
 // forced apply that follows then removes whatever fm does not specify.
 // Status (subresource) ownership is untouched. It returns the
 // resourceVersion to use as the apply's precondition.
-func (s *Store) takeOver(ctx context.Context, ki *kindInfo, key store.Key, cur *metav1.PartialObjectMetadata, fm string) (string, error) {
+func (s *Store) takeOver(ctx context.Context, ki *kindInfo, key store.Key, cur *metav1.PartialObjectMetadata, obj store.Object, manager string) (string, error) {
+	fm := fieldManagerFor(manager)
 	gv := ki.gvk.GroupVersion().String()
 	keep := make([]metav1.ManagedFieldsEntry, 0, len(cur.ManagedFields)+1)
 	owned := fieldpath.NewSet()
@@ -361,6 +537,9 @@ func (s *Store) takeOver(ctx context.Context, ki *kindInfo, key store.Key, cur *
 	}
 	if !others {
 		return cur.ResourceVersion, nil
+	}
+	if err := s.validateTakeOver(ctx, ki, key, cur, obj, manager); err != nil {
+		return "", err
 	}
 	raw, err := owned.ToJSON()
 	if err != nil {
@@ -385,6 +564,52 @@ func (s *Store) takeOver(ctx context.Context, ki *kindInfo, key store.Key, cur *
 		return "", err
 	}
 	return target.ResourceVersion, nil
+}
+
+// validateTakeOver admits the replacement before any durable managedFields
+// change. A dry-run PATCH uses the same CRD/CEL and patch permission as the
+// eventual write; its resourceVersion precondition binds validation to cur.
+// It does not make the later two-request takeover atomic against outages or
+// later concurrent changes. Those still return their original refusal.
+func (s *Store) validateTakeOver(ctx context.Context, ki *kindInfo, key store.Key, cur *metav1.PartialObjectMetadata, obj store.Object, manager string) error {
+	next, err := applyPayload(ki, obj, manager, cur.ResourceVersion)
+	if err != nil {
+		return err
+	}
+	next.SetUID(cur.UID)
+	next.SetCreationTimestamp(cur.CreationTimestamp)
+	next.SetGeneration(cur.Generation)
+	next.SetDeletionTimestamp(cur.DeletionTimestamp)
+	next.SetDeletionGracePeriodSeconds(cur.DeletionGracePeriodSeconds)
+	// The status subresource restores stored status during admission.
+	data, err := json.Marshal(next.Object)
+	if err != nil {
+		return err
+	}
+	// Dry-run requests never reach etcd's size check. Bound the replacement
+	// explicitly before transferring ownership, as SQLite bounds its writes.
+	if len(data) > store.MaxObjectBytes {
+		return fmt.Errorf("%w: %s", store.ErrTooLarge, key)
+	}
+	patch, err := json.Marshal([]map[string]any{
+		{"op": "replace", "path": "", "value": next.Object},
+	})
+	if err != nil {
+		return err
+	}
+	if err := s.c.Patch(ctx, next, client.RawPatch(types.JSONPatchType, patch), client.FieldOwner(fieldManagerFor(manager)), client.DryRunAll); err != nil {
+		return writeError("validate takeover", key, err)
+	}
+	// Admission restores stored status and applies defaults. Include those
+	// bytes before allowing the separate ownership mutation too.
+	data, err = json.Marshal(next.Object)
+	if err != nil {
+		return err
+	}
+	if len(data) > store.MaxObjectBytes {
+		return fmt.Errorf("%w: %s", store.ErrTooLarge, key)
+	}
+	return nil
 }
 
 // getMeta reads the object's metadata only, returning (nil, nil) when it
@@ -467,6 +692,13 @@ func applyPayload(ki *kindInfo, obj store.Object, manager, resourceVersion strin
 	u.SetAnnotations(ann)
 	if resourceVersion != "" {
 		u.SetResourceVersion(resourceVersion)
+	}
+	v, err := applyValidator()
+	if err != nil {
+		return nil, err
+	}
+	if err := v.PruneApplyNulls(u); err != nil {
+		return nil, err
 	}
 	return u, nil
 }

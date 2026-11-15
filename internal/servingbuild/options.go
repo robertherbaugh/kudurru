@@ -1,0 +1,95 @@
+package servingbuild
+
+import (
+	"context"
+	"time"
+
+	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/auth/providerresources"
+	"github.com/robertherbaugh/kudurru/internal/config"
+	"github.com/robertherbaugh/kudurru/internal/dnsserver"
+	"github.com/robertherbaugh/kudurru/internal/listfetcher"
+	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
+	"github.com/robertherbaugh/kudurru/internal/querylog"
+	"github.com/robertherbaugh/kudurru/internal/rpz"
+	"github.com/robertherbaugh/kudurru/internal/secondary"
+	"github.com/robertherbaugh/kudurru/internal/servingauth"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
+	"github.com/robertherbaugh/kudurru/internal/stub"
+	"github.com/robertherbaugh/kudurru/internal/upstream"
+	"github.com/robertherbaugh/kudurru/internal/zonestate"
+)
+
+// Dependencies is one immutable host/runtime cut. Capture returns an owned
+// reference even on failure; the builder releases it exactly once. Current must
+// be a cheap thread-safe memory cursor, with no Store/network I/O or side effects.
+// Nil runtime snapshots explicitly mean no acquired data, preserving coverage.
+type Dependencies struct {
+	Identity string
+	Host     *config.Config
+	Catalog  CatalogResource
+	Auth     servingauth.Dependencies
+	// Browser selects an exchange capability from this same retained provider
+	// cut. Nil denies browser login; it never triggers live provider acquisition.
+	Browser func(servingauth.ProviderRef, string) (*providerresources.Browser, error)
+	CLI     func(servingauth.ProviderRef, string) (*providerresources.CLI, error)
+	Keys    *dnsserver.StaticKeyring
+	// KeyringIdentity names the local installation that supplied Keys, from the
+	// same KeyringCut. Equal key bytes after replacement do not reuse this ID.
+	KeyringIdentity string
+	// TSIG retains original provisioning inputs; nil is unsupported. Its narrow
+	// lifetime is not a replacement for complete Current or command admission.
+	TSIG      *TSIGManagement
+	Secondary *secondary.Snapshot
+	Stub      *stub.Snapshot
+	RPZ       *rpz.Snapshot
+	Current   func() bool
+	// DNSCurrent covers only the installations that DNS answers are computed
+	// from: the root lifetime, the DNS keyring and the transferred and catalog
+	// zone data. It leaves out the provider host, the license cut and the
+	// provider resource sets, which only HTTP authentication uses, so that
+	// replacing one of those never withholds DNS answers of a publication
+	// that is still served (D378). Nil makes DNS output use Current. It
+	// grants no read or write admission.
+	DNSCurrent func() bool
+	Release    func()
+}
+
+// requireCurrent adds an installation that DNS answers are computed from to
+// both Current and DNSCurrent.
+func (d *Dependencies) requireCurrent(extra func() bool) {
+	current := d.Current
+	d.Current = func() bool { return current() && extra() }
+	if dns := d.DNSCurrent; dns != nil {
+		d.DNSCurrent = func() bool { return dns() && extra() }
+	}
+}
+
+// Options supplies local infrastructure and a complete dependency capture.
+// Capture receives an immutable candidate and must bind its resources to this
+// candidate's configuration. Authority reads only the store's in-memory cursor.
+type Options struct {
+	Schema     *Schema
+	Lists      *listfetcher.DiskCache
+	Namespace  string
+	Capture    func(context.Context, *replication.Image) (Dependencies, error)
+	Authority  func() (replication.Authority, bool)
+	Now        func() time.Time
+	Upstreams  upstream.Options
+	ZoneLimits zonestate.Limits
+	MaxZones   int
+	// AnchorStore supplies original committed managed input for this candidate.
+	// Nil permits only never-managed static history. The publisher must bound
+	// its original preparation context before reading the candidate. This does
+	// not install root output/cache exclusion or activate an updater.
+	AnchorStore *sqlite.Store
+	// PrepareLogging binds an immutable collector to this candidate's exact
+	// settings. Local sink preparation must honor cancellation and never adopt
+	// the candidate operationally. Nil is explicit no logging infrastructure.
+	PrepareLogging func(context.Context, config.Querylog) (*querylog.Captured, error)
+	// PrepareIntegrations is a pure root-owned complete-image adapter. It may
+	// suppress ineligible source claims and overlay granted private MAC members;
+	// it must never acquire resources, perform I/O or confer write authority.
+	PrepareIntegrations func(context.Context, *replication.Image, *primaryruntime.PreparedImage, time.Time) (*InventoryOwner, []*public.ClientGroup, error)
+}

@@ -26,6 +26,22 @@ type openAPIOperation struct {
 	// Permission is {resource, verb, scope} or the string "public" or
 	// "authenticated".
 	Permission json.RawMessage `json:"x-kudurru-permission"`
+	// Follower is the follower class of a changing operation: forwarded,
+	// local or primary. Reading operations carry none.
+	Follower string `json:"x-kudurru-follower"`
+}
+
+// follower renders the x-kudurru-follower extension. A class this generator
+// does not know is shown as the refusal: that is what a follower answers for
+// an operation nobody classified.
+func (op openAPIOperation) follower() string {
+	switch op.Follower {
+	case "":
+		return "-"
+	case "forwarded", "local":
+		return op.Follower
+	}
+	return "refused"
 }
 
 // permission renders the x-kudurru-permission extension.
@@ -101,7 +117,9 @@ func endpointReference(file string) ([]byte, error) {
 	out.WriteString(frontMatter("Endpoint index", "Every route of the REST API with the permission it checks.", 20))
 	out.WriteString(generatedNote(openAPIFile))
 	fmt.Fprintf(&out, "Every operation of %s %s, generated from `%s`. Paths include the\nbase path %s. The permission is the RBAC check of the route (`resource.verb` and the scope it\n"+
-		"is evaluated in), `authenticated` (any signed-in caller) or `public` (no credentials).\nThe [API explorer](explorer.md) shows the request and response schemas.\n",
+		"is evaluated in), `authenticated` (any signed-in caller) or `public` (no credentials).\nThe [API explorer](explorer.md) shows the request and response schemas.\n\n"+
+		"The last column says what an enrolled SQLite follower does with a changing request: it is\n`forwarded` to the primary, it runs as a `local` command of the node, or it is `refused` with\n"+
+		"`503 primary_required`, which names the primary. Reading routes show `-`; a follower answers\nthem from its own copy.\n",
 		doc.Info.Title, doc.Info.Version, openAPIFile, code(base))
 	for _, t := range tags {
 		rows := groups[t]
@@ -111,9 +129,9 @@ func endpointReference(file string) ([]byte, error) {
 			}
 			return methodOrder[rows[i].method] < methodOrder[rows[j].method]
 		})
-		fmt.Fprintf(&out, "\n## %s\n\n| Method | Path | Summary | Permission |\n|---|---|---|---|\n", t)
+		fmt.Fprintf(&out, "\n## %s\n\n| Method | Path | Summary | Permission | On a follower |\n|---|---|---|---|---|\n", t)
 		for _, r := range rows {
-			fmt.Fprintf(&out, "| %s | %s | %s | %s |\n", strings.ToUpper(r.method), code(base+r.path), text(r.op.Summary), r.op.permission())
+			fmt.Fprintf(&out, "| %s | %s | %s | %s | %s |\n", strings.ToUpper(r.method), code(base+r.path), text(r.op.Summary), r.op.permission(), r.op.follower())
 		}
 	}
 	return []byte(out.String()), nil

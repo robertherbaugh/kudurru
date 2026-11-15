@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/netip"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -226,5 +227,25 @@ func TestKubeDHCPOffInTheChart(t *testing.T) {
 	h.do(http.MethodGet, BasePath+dhcpBase+"/setup", "admin", nil).want(http.StatusOK).json(&setup)
 	if setup.Mode != "kubernetes" || setup.Available || setup.UnavailableReason == "" {
 		t.Fatalf("setup = %+v", setup)
+	}
+	// A setup write says what turns DHCP on in this release, as the read
+	// does, and not what a SQLite node's file would need.
+	refusal := h.do(http.MethodPut, BasePath+dhcpBase+"/setup", "admin", DHCPSetupRequest{Scopes: []DHCPSetupScope{}, ScopeRevisions: map[string]string{}},
+		"If-Match", setup.ETag).want(http.StatusServiceUnavailable)
+	hint, _ := refusal.m()["error"].(map[string]any)["hint"].(string)
+	if refusal.errKey() != KeyUnavailable || !strings.Contains(hint, "Helm values") || !strings.Contains(hint, "dhcp.serverAddress") || strings.Contains(hint, "node's file") || refusal.Header().Get("Retry-After") != "" {
+		t.Fatalf("setup write with DHCP off on Kubernetes: %s", refusal.Body.String())
+	}
+}
+
+// On a SQLite node, runServe opens the setup manager on Linux whether DHCP is
+// on or off; a node without one is not on Linux, and no setting changes that.
+func TestDHCPSetupWithoutManagerOnSQLite(t *testing.T) {
+	h := newHarness(t)
+	refusal := h.do(http.MethodPut, BasePath+dhcpBase+"/setup", "admin", DHCPSetupRequest{Scopes: []DHCPSetupScope{}, ScopeRevisions: map[string]string{}},
+		"If-Match", `"any"`).want(http.StatusServiceUnavailable)
+	hint, _ := refusal.m()["error"].(map[string]any)["hint"].(string)
+	if refusal.errKey() != KeyUnavailable || !strings.Contains(hint, "Linux") || strings.Contains(hint, "Helm") || strings.Contains(hint, "set dhcp.enabled") || refusal.Header().Get("Retry-After") != "" {
+		t.Fatalf("setup write without a setup manager: %s", refusal.Body.String())
 	}
 }

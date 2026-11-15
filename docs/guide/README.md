@@ -31,5 +31,5 @@ permissions, maintenance and the command line.
 Use the [deployment guides](../deploy/README.md) for Docker, Kubernetes and high availability.
 The [architecture tour](../architecture/README.md) explains how kudurru works.
 
-This guide describes v0.1.0 ("stone"). See the [changelog](../../CHANGELOG.md)
+This guide describes v0.2.0 ("clay copies"). See the [changelog](../../CHANGELOG.md)
 for release changes. Contributors can read the [writing rules](style.md).

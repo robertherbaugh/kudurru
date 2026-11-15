@@ -320,3 +320,48 @@ func TestEngineNeedsALicense(t *testing.T) {
 		t.Errorf("licensed bound admin: %+v", d)
 	}
 }
+
+// TestBindingSourceZoneGroupSessionGrants: a cookie session's frozen
+// zonegroup grant is honored on member zones only, and only while a live
+// binding still provides it (D385, D48). Removing the binding revokes it;
+// moving a zone out of the group (its attribute group changes) denies at once.
+func TestBindingSourceZoneGroupSessionGrants(t *testing.T) {
+	p := mustPerms(t)
+	now := time.Unix(1_800_000_000, 0)
+	src, err := NewBindingSource(p, nil, SourceOptions{Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	group := rbac.Scope{Kind: rbac.ScopeZoneGroup, Name: "prod"}
+	src.SetObjects(map[string]rbac.Binding{"dns/prod": {Role: "zone-admin", Scope: group, Subjects: []rbac.Subject{{Kind: rbac.SubjectGroup, Name: "corp:/prod"}}}})
+	grant := rbac.Grant{Role: "zone-admin", Scope: group}
+	sess := rbac.Principal{Name: "corp:erin", Grants: []rbac.Grant{grant}, GrantsIssuedAt: now.Add(-time.Minute)}
+	if got := src.GrantsFor(rbac.Principal{Name: "corp:erin", Groups: []string{"corp:/prod"}}); len(got) != 1 || got[0] != grant {
+		t.Fatalf("login resolves %v, want the group grant", got)
+	}
+	ctx := context.Background()
+	write := func(zone, zoneGroup string) bool {
+		d, err := src.Authorize(ctx, sess, rbac.Attributes{Resource: "records", Verb: "write", Scope: rbac.Scope{Kind: rbac.ScopeZone, Name: zone}, ZoneGroup: zoneGroup})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d.Allowed
+	}
+	if !write("a", "prod") {
+		t.Fatal("frozen group grant denied on a member zone")
+	}
+	if write("a", "") || write("b", "dev") {
+		t.Fatal("frozen group grant allowed outside the group")
+	}
+	// The same grant at another group is never honored without its binding.
+	forged := sess
+	forged.Grants = []rbac.Grant{{Role: "zone-admin", Scope: rbac.Scope{Kind: rbac.ScopeZoneGroup, Name: "dev"}}}
+	if d, _ := src.Authorize(ctx, forged, rbac.Attributes{Resource: "records", Verb: "write", Scope: rbac.Scope{Kind: rbac.ScopeZone, Name: "b"}, ZoneGroup: "dev"}); d.Allowed {
+		t.Fatal("group grant without a binding honored")
+	}
+	now = now.Add(time.Minute)
+	src.SetObjects(nil)
+	if write("a", "prod") {
+		t.Fatal("revoked group grant still honored")
+	}
+}

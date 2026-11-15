@@ -1,0 +1,373 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: blocklists.kudurru.io
+spec:
+  group: kudurru.io
+  names:
+    kind: BlockList
+    listKind: BlockListList
+    plural: blocklists
+    shortNames:
+    - blocklist
+    singular: blocklist
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.mode
+      name: MODE
+      type: string
+    - jsonPath: .status.entries
+      name: ENTRIES
+      type: integer
+    - jsonPath: .status.lastFetched
+      name: LAST-FETCH
+      type: date
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: READY
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: BlockList is a named, refreshable set of block or allow entries.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: BlockListSpec defines a set of sources compiled into one
+              matcher chain.
+            properties:
+              customIP:
+                description: CustomIP is the answer for BlockResponse customIP.
+                properties:
+                  v4:
+                    type: string
+                  v6:
+                    type: string
+                type: object
+              mode:
+                default: block
+                description: ListMode says whether entries block or allow.
+                enum:
+                - block
+                - allow
+                type: string
+              refreshInterval:
+                default: 24h
+                type: string
+              response:
+                description: |-
+                  BlockResponse is how a blocked query is answered: nxdomain, zeroIP
+                  (0.0.0.0 / ::), refused, customIP (the customIP addresses) or blockPage
+                  (the addresses of the block page listener, blockPage.ipv4/ipv6, so
+                  browsers show why the name is blocked).
+                enum:
+                - nxdomain
+                - zeroIP
+                - refused
+                - customIP
+                - blockPage
+                type: string
+              sources:
+                items:
+                  description: |-
+                    ListSource is one place a BlockList reads entries from. Exactly one of
+                    URL, Inline, ConfigMapRef or Entries is set.
+                  properties:
+                    configMapRef:
+                      description: |-
+                        ObjectRef points at another kudurru object. Namespace is omitted for
+                        cluster-scoped kinds and for same-namespace references.
+                      properties:
+                        name:
+                          minLength: 1
+                          type: string
+                        namespace:
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    enabled:
+                      description: |-
+                        Enabled false switches this one source off without removing it, like
+                        Pi-hole's per-adlist switch: it is not fetched and not compiled, its
+                        cached body and status digest are kept, and status.sources[] reports
+                        it with enabled: false. Omitted means true. The kudurru.io/enabled
+                        annotation switches the whole list off.
+                      type: boolean
+                    entries:
+                      description: |-
+                        Entries are structured entries (value, type, switch, comment,
+                        provenance), as the dashboard's Allowlist and Denylist write them.
+                        They compile as adblock rules; format and subdomains do not apply.
+                      items:
+                        description: |-
+                          ListEntry is one structured entry of a list: the dashboard's Allowlist
+                          and Denylist keep their domains as entries of the lists ui-allow,
+                          ui-deny, ui-allow-<group> and ui-deny-<group>, each with its own switch,
+                          comment and provenance (Pi-hole's Domains page).
+                        properties:
+                          comment:
+                            maxLength: 500
+                            type: string
+                          created:
+                            format: date-time
+                            type: string
+                          createdBy:
+                            description: CreatedBy is the actor that added the entry
+                              ("user:alice").
+                            maxLength: 300
+                            type: string
+                          enabled:
+                            description: |-
+                              Enabled false keeps the entry without applying it. Omitted means
+                              true.
+                            type: boolean
+                          modified:
+                            format: date-time
+                            type: string
+                          origin:
+                            description: EntryOrigin records how a structured entry
+                              was added.
+                            enum:
+                            - manual
+                            - querylog
+                            - unblock
+                            - api
+                            - migrated
+                            type: string
+                          request:
+                            description: |-
+                              Request is the UnblockRequest ("namespace/name") whose approval
+                              added the entry.
+                            maxLength: 300
+                            type: string
+                          type:
+                            default: exact
+                            description: EntryType is how a structured list entry
+                              matches.
+                            enum:
+                            - exact
+                            - wildcard
+                            - regex
+                            type: string
+                          value:
+                            description: |-
+                              Value is the canonical form for Type: "ads.example.com" (exact),
+                              "*.example.com" (wildcard) or the RE2 expression without slashes
+                              (regex).
+                            maxLength: 1024
+                            minLength: 1
+                            type: string
+                        required:
+                        - value
+                        type: object
+                      maxItems: 10000
+                      type: array
+                    exclude:
+                      description: |-
+                        Exclude switches off single entries of this source without editing
+                        it, also for URL and ConfigMap sources: each value is a rule as the
+                        source's format normalises it ("ads.example.com" for a hosts line
+                        "0.0.0.0 ads.example.com", "||ads.example.com^", "/regex/"), as
+                        GET /blocklists/{namespace}/{name}/sources/{source}/entries lists
+                        them. Excluded rules are not compiled; the exclusions survive
+                        refreshes, and values that match nothing in the current body are
+                        reported in status.sources[].staleExcludes.
+                      items:
+                        type: string
+                      maxItems: 10000
+                      type: array
+                      x-kubernetes-list-type: set
+                    format:
+                      default: auto
+                      description: ListFormat is the syntax of a blocklist source.
+                      enum:
+                      - auto
+                      - hosts
+                      - domains
+                      - adblock
+                      - regex
+                      type: string
+                    inline:
+                      items:
+                        type: string
+                      type: array
+                    name:
+                      type: string
+                    subdomains:
+                      description: |-
+                        Subdomains makes the hosts and plain-domain entries of this source
+                        match their subdomains too, for lists published as "domains with
+                        subdomains". Adblock and wildcard rules are not affected.
+                      type: boolean
+                    url:
+                      type: string
+                  type: object
+                  x-kubernetes-validations:
+                  - message: exactly one of url, inline, configMapRef or entries must
+                      be set
+                    rule: '[has(self.url), has(self.inline), has(self.configMapRef),
+                      has(self.entries)].filter(x, x).size() == 1'
+                maxItems: 256
+                minItems: 1
+                type: array
+            required:
+            - sources
+            type: object
+            x-kubernetes-validations:
+            - message: response customIP requires the customIP block
+              rule: '!has(self.response) || self.response != ''customIP'' || has(self.customIP)'
+          status:
+            description: BlockListStatus is the observed state of a block list.
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              entries:
+                type: integer
+              invalid:
+                type: integer
+              lastFetched:
+                format: date-time
+                type: string
+              observedGeneration:
+                format: int64
+                type: integer
+              ruleCount:
+                type: integer
+              sources:
+                items:
+                  description: SourceStatus reports the last fetch of one source.
+                  properties:
+                    digest:
+                      description: |-
+                        Digest is the sha256 of the fetched body; replicas pull by digest
+                        from the leader (decision D15).
+                      type: string
+                    enabled:
+                      description: |-
+                        Enabled is false for a source switched off with
+                        spec.sources[].enabled and absent otherwise. A disabled source keeps
+                        the digest, etag, lastFetched and counts of its last fetch and
+                        reports no error; status.entries leaves it out.
+                      type: boolean
+                    entries:
+                      type: integer
+                    error:
+                      type: string
+                    etag:
+                      type: string
+                    excluded:
+                      description: |-
+                        Excluded counts the entries of this source that are switched off
+                        (spec.sources[].exclude hits, or entries with enabled: false); they
+                        are not in Entries.
+                      type: integer
+                    invalid:
+                      type: integer
+                    lastFetched:
+                      format: date-time
+                      type: string
+                    name:
+                      type: string
+                    staleExcludes:
+                      description: |-
+                        StaleExcludes are spec.sources[].exclude values that match no rule
+                        of the current body (at most 50): the list dropped the entry, or the
+                        value is not written the way the source's format normalises it.
+                      items:
+                        type: string
+                      type: array
+                  required:
+                  - name
+                  type: object
+                type: array
+              unsupported:
+                description: |-
+                  Unsupported counts valid rules this version parses but does not
+                  apply: modifiers such as $important and $badfilter, mid-pattern
+                  wildcards, hosts rewrites.
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

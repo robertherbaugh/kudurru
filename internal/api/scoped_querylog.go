@@ -28,10 +28,22 @@ type scopedQuerylog struct {
 }
 
 func (s *Server) scopedReader(ctx context.Context, scope, node string) (*scopedQuerylog, error) {
-	// With a central database every node's rows are in one place: no
-	// scatter-gather (D161).
-	if scope == "cluster" && node == "" && s.opts.CentralQuerylog != nil {
-		return &scopedQuerylog{s: s, cluster: true, central: s.opts.CentralQuerylog}, nil
+	if scope != "" && scope != "node" && scope != "cluster" {
+		return nil, errInvalid("scope: expected node or cluster")
+	}
+	if scope == "cluster" && node != "" {
+		return nil, errInvalid("node is only valid with scope=node")
+	}
+	if c := s.opts.CentralQuerylog; c != nil {
+		if scope == "cluster" {
+			return &scopedQuerylog{s: s, cluster: true, central: c}, nil
+		}
+		if node != "" && node != s.opts.NodeName {
+			if selected := c.ForNode(node); selected != nil {
+				return &scopedQuerylog{s: s, central: selected}, nil
+			}
+			return nil, errUnavailable("central node history unavailable")
+		}
 	}
 	peers, err := s.queryPeers(ctx, scope, node)
 	if err != nil {
@@ -80,7 +92,9 @@ func (s *Server) queryPeers(ctx context.Context, scope, node string) ([]cluster.
 	return peers, nil
 }
 
-func (r *scopedQuerylog) localOnly() bool { return !r.cluster && r.peers[0].Self }
+func (r *scopedQuerylog) localOnly() bool {
+	return r.central == nil && !r.cluster && len(r.peers) > 0 && r.peers[0].Self
+}
 
 // direct is the reader that answers the whole request by itself: the
 // central database for a cluster request, this node's log for this node;
@@ -90,7 +104,7 @@ func (r *scopedQuerylog) direct() *sqlitelog.Reader {
 		return r.central
 	}
 	if r.localOnly() {
-		return r.s.opts.Querylog
+		return r.s.localQuerylog()
 	}
 	return nil
 }
@@ -136,9 +150,9 @@ func (r *scopedQuerylog) gather(ctx context.Context, q internalapi.QuerylogReque
 			var out *internalapi.QuerylogResponse
 			var err error
 			if p.Self {
-				out, err = internalapi.ReadLocalQuerylog(peerCtx, r.s.opts.Querylog, req)
-				if err == nil && req.Kind == "upstreams" && r.s.opts.Upstreams != nil {
-					out.Servers = r.s.opts.Upstreams.Status()
+				out, err = internalapi.ReadLocalQuerylog(peerCtx, r.s.localQuerylog(), req)
+				if err == nil && req.Kind == "upstreams" {
+					out.Servers, err = r.s.upstreamStates(peerCtx)
 				}
 			} else if r.s.opts.InternalClient == nil || p.Address == "" {
 				err = fmt.Errorf("peer transport is unavailable")
@@ -167,10 +181,22 @@ func (r *scopedQuerylog) gather(ctx context.Context, q internalapi.QuerylogReque
 		}
 	}
 	if len(successful) == 0 {
-		return nil, scope, errUnavailable("query log unavailable on the requested nodes")
+		return nil, scope, newError(http.StatusServiceUnavailable, KeyUnavailable, "query log unavailable on the requested nodes", peerQuerylogHint)
 	}
 	return successful, scope, nil
 }
+
+// peerQuerylogHint explains a history read that no requested node answered,
+// and peerTailHint a live tail that no requested node opened. This node reads
+// its peers over the internal listener, and a peer's history needs its own
+// SQLite query log, so each cause is a setting or a peer that is down; the
+// server log names each node's error.
+const (
+	peerTransportHint = "this node reaches its peers over the internal listener, which needs KUDURRU_ENCRYPTION_KEY or listeners.internal.tokenFile here and a running peer that announces its internal address"
+	peerQuerylogHint  = "each requested node needs querylog.enabled: true with querylog.sink: sqlite, and " + peerTransportHint + "; ask one node with scope=node, or read cluster history from a central database (docs/deploy/postgres.md)"
+	peerTailHint      = peerTransportHint + "; ask one node with scope=node"
+)
+
 func validShard(out *internalapi.QuerylogResponse, kind, name string) bool {
 	var scope sqlitelog.Scope
 	if out == nil {
@@ -390,7 +416,14 @@ func (r *scopedQuerylog) upstreams(ctx context.Context, q sqlitelog.TopQuery) (*
 		// The central database holds traffic, not live server health:
 		// that is this node's.
 		out, err := d.TopUpstreams(ctx, q)
-		return out, r.s.upstreamServers(), err
+		if err != nil {
+			return nil, nil, err
+		}
+		if r.central != nil && !r.cluster {
+			return out, []UpstreamServer{}, nil
+		}
+		servers, err := r.s.upstreamServers(ctx)
+		return out, servers, err
 	}
 	n := limitN(q.N)
 	candidates := n
@@ -588,7 +621,7 @@ func (r *scopedQuerylog) Queries(ctx context.Context, f sqlitelog.QueryFilter) (
 	}
 	if !r.cluster {
 		if r.localOnly() {
-			return r.s.opts.Querylog.Queries(ctx, f)
+			return r.s.localQuerylog().Queries(ctx, f)
 		}
 		shards, scope, err := r.gather(ctx, internalapi.QuerylogRequest{Kind: "queries", Filter: f}, nil)
 		if err != nil {

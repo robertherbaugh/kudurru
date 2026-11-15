@@ -65,7 +65,8 @@ import (
 // Validator validates kudurru objects against the embedded CRDs. It is safe
 // for concurrent use; build one per process with New and share it.
 type Validator struct {
-	kinds map[store.Kind]*kindSchema
+	kinds  map[store.Kind]*kindSchema
+	stored storedValidationCache
 }
 
 // New builds a Validator from the CRDs compiled into the binary.
@@ -122,6 +123,14 @@ func (v *Validator) GroupVersionKind(kind store.Kind) (gvk schema.GroupVersionKi
 		return schema.GroupVersionKind{}, false, false
 	}
 	return ks.gvk, ks.namespaced, true
+}
+
+// HasStatusSubresource reports whether the registered CRD serves /status.
+// Complete-image validation uses this to validate status only where the main
+// resource validator deliberately leaves it to a separate admission path.
+func (v *Validator) HasStatusSubresource(kind store.Kind) bool {
+	ks, ok := v.kinds[kind]
+	return ok && ks.hasStatus
 }
 
 // Validate checks a write of obj, the whole object a caller passes to
@@ -210,6 +219,24 @@ func (v *Validator) ValidateStatus(ctx context.Context, obj, old store.Object) e
 		return newError(ks.gvk.GroupKind(), metaString(merged, "namespace"), metaString(merged, "name"), errs)
 	}
 	return setStatus(obj, merged)
+}
+
+// PruneApplyNulls removes non-nullable, defaultless null fields from a private
+// SSA payload, matching the decode normalization used by Validate. Kubernetes
+// SSA type-checks its apply configuration before normal CRD decode pruning; a
+// typed nil slice would otherwise report TypeInvalid/null instead of Required.
+// Nullable values, list elements, schema defaults and validation remain the
+// destination's responsibility. The caller must pass its own payload copy.
+func (v *Validator) PruneApplyNulls(obj *unstructured.Unstructured) error {
+	if obj == nil {
+		return fmt.Errorf("validator: nil object")
+	}
+	ks, ok := v.kinds[store.Kind(obj.GetKind())]
+	if !ok || obj.GroupVersionKind() != ks.gvk {
+		return fmt.Errorf("%w: %s", ErrUnknownKind, obj.GroupVersionKind())
+	}
+	structuraldefaulting.PruneNonNullableNullsWithoutDefaults(obj.Object, ks.structural)
+	return nil
 }
 
 // ValidateUnstructured is Validate for decoded YAML or JSON (the API, `kudurru

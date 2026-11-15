@@ -337,7 +337,7 @@ export interface MyLicense {
   licensee: string;
   plan: Plan;
   nodes: number;
-  /** null: every feature, including ones added later. Keys imported from licensegen may name features this build does not know. */
+  /** null: all features available to the plan, including ones added later. Keys imported from licensegen may name features this build does not know. */
   features: string[] | null;
   expiresOn: ExpiresOn;
   state: LicenseState;
@@ -515,7 +515,7 @@ export interface LicenseSummary {
   licensee: string;
   plan: Plan;
   nodes: number;
-  /** null: every feature, including ones added later. */
+  /** null: all features available to the plan, including ones added later. */
   features: string[] | null;
   /** The current key's expiry. */
   expiresOn: ExpiresOn;
@@ -583,7 +583,7 @@ interface IssueLicenseFields {
   licensee: string;
   plan: Plan;
   nodes: number;
-  /** null: every feature, including ones added later; otherwise a non-empty list of known features. Never []. */
+  /** null: all features available to the plan, including ones added later; otherwise a non-empty list of known features. Never []. */
   features: Feature[] | null;
   /** Tomorrow at the earliest; within the plan's term limits (Policy). */
   expiresOn: ExpiresOn;

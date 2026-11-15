@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"net"
 	"path/filepath"
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/robertherbaugh/kudurru/ee/branding"
 	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/blockpage"
 	"github.com/robertherbaugh/kudurru/internal/config"
@@ -14,6 +16,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
+	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 	"github.com/robertherbaugh/kudurru/internal/unblock"
 )
 
@@ -48,6 +52,22 @@ func newUnblockBook(st store.Store, reload *config.Reloadable, namespace, node s
 	}), nil
 }
 
+// unblockRequestsUnavailable reports, for the block page, whether this SQLite
+// node can store a new unblock request. Only a standalone node or the primary
+// writes the store. An enrolled follower, or a member that is fenced or in
+// conflict, says so on its page instead of showing a form whose post would
+// fail. The message is shown to any client of the block page, so it names no
+// node. The authority is a local observation; it reads no database.
+func unblockRequestsUnavailable(st *sqlite.Store) func() string {
+	return func() string {
+		authority, blocked := st.ServingAuthority()
+		if !blocked && (authority.Mode == replication.Standalone || authority.Mode == replication.Primary) {
+			return ""
+		}
+		return "This server cannot take a request for access right now. Ask your administrator."
+	}
+}
+
 // Self-signed block page certificate under <node.dataDir>/keys/ when
 // listeners.blockPage.https has no tls.certFile.
 const (
@@ -61,23 +81,42 @@ const (
 // Reasons come from the query log (live tail, then querylog.db) and, when
 // it has none, from the client's current policy. ql is the query log's
 // collector (nil when it is off); it names the client's pseudonym.
+// requestsUnavailable (may be nil) returns a message while this node cannot
+// store an unblock request.
 func newBlockPage(cfg *config.Config, reload *config.Reloadable, src blockpage.IndexSource, tail *querylog.Tail, reader *sqlitelog.Reader,
-	ql *querylog.Async, book *unblock.Service, lic *license.Manager, reg prometheus.Registerer, logger *slog.Logger) (*blockpage.Server, error) {
+	ql *querylog.Async, readerSource func() *sqlitelog.Reader, book *unblock.Service, lic *license.Manager, reg prometheus.Registerer, logger *slog.Logger, requestsUnavailable func() string, brandSource ...func(context.Context) (*blockpage.Branding, error)) (*blockpage.Server, error) {
 	pf := blockpage.PolicyFinder{Source: src}
 	qf := &blockpage.QuerylogFinder{
-		Tail: tail, Reader: reader, Disabled: !cfg.Querylog.Enabled,
+		Tail: tail, Reader: reader, ReaderSource: readerSource, Disabled: !cfg.Querylog.Enabled,
 		Privacy: querylogPrivacy(reload),
 	}
 	if ql != nil {
 		qf.Pseudonym = ql.Pseudonym
+		qf.Enabled, qf.Privacy = ql.Enabled, ql.PrivacySetting
 	}
 	o := blockpage.Options{
 		Node: cfg.Node.Name, Finder: blockpage.Chain{qf, pf}, Policy: pf.Policy, Membership: pf.Membership,
 		Settings: blockpage.SettingsFrom(cfg), Registerer: reg, Logger: logger,
 	}
+	var brandCache branding.PageCache
+	o.Branding = func(ctx context.Context) (*blockpage.Branding, error) {
+		cut := lic.Capture()
+		if !cut.Status().Allows(license.FeatureBranding) || !cut.Current() {
+			return nil, nil
+		}
+		prepared, err := brandCache.Prepare(ctx, reload.Current().Branding)
+		if err != nil || !cut.Current() {
+			return nil, err
+		}
+		return prepared, nil
+	}
+	if len(brandSource) != 0 {
+		o.Branding = brandSource[0]
+	}
 	if book != nil {
 		o.Requests = book
 		o.RequestsAllowed = func() bool { return lic.Allows(license.FeatureRequests) }
+		o.RequestsUnavailable = requestsUnavailable
 	}
 	if cfg.BlockPage.Enabled {
 		l := cfg.Listeners.BlockPage

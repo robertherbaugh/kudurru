@@ -19,7 +19,7 @@ import (
 // Options configure a Service.
 type Options struct {
 	// Store holds the lists and policies; required.
-	Store store.Store
+	Store Objects
 	// Now is the clock; default time.Now.
 	Now    func() time.Time
 	Logger *slog.Logger

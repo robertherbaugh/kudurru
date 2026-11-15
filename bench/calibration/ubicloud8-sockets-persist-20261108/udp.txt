@@ -1,0 +1,64 @@
+go: downloading k8s.io/api v0.37.1
+go: downloading k8s.io/client-go v0.37.1
+go: downloading gopkg.in/evanphx/json-patch.v4 v4.13.0
+go: downloading sigs.k8s.io/yaml v1.6.0
+go: downloading golang.org/x/term v0.47.0
+go: downloading golang.org/x/oauth2 v0.37.0
+go: downloading golang.org/x/time v0.15.0
+go: downloading github.com/google/gnostic-models v0.7.0
+go: downloading github.com/go-openapi/jsonreference v1.0.0
+go: downloading github.com/go-openapi/swag v0.27.1
+go: downloading github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
+go: downloading github.com/emicklei/go-restful/v3 v3.13.0
+go: downloading github.com/go-openapi/jsonpointer v1.0.0
+go: downloading github.com/go-openapi/swag/conv v0.27.1
+go: downloading github.com/go-openapi/swag/cmdutils v0.27.1
+go: downloading github.com/go-openapi/swag/fileutils v0.27.1
+go: downloading github.com/go-openapi/swag/jsonutils v0.27.1
+go: downloading github.com/go-openapi/swag/loading v0.27.1
+go: downloading github.com/go-openapi/swag/mangling v0.27.1
+go: downloading github.com/go-openapi/swag/netutils v0.27.1
+go: downloading github.com/go-openapi/swag/stringutils v0.27.1
+go: downloading github.com/go-openapi/swag/typeutils v0.27.1
+go: downloading github.com/go-openapi/swag/yamlutils v0.27.1
+go: downloading github.com/go-openapi/swag/pools v0.27.1
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: AMD EPYC 9454P 48-Core Processor               
+BenchmarkUDPSockets/sockets=1-6         	  587932	      8822 ns/op	         0 lost	    113355 q/s	    2310 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	 1000000	      5690 ns/op	         0 lost	    175738 q/s	    2359 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	11.116s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: AMD EPYC 9454P 48-Core Processor               
+BenchmarkUDPSockets/sockets=1-6         	  587966	      8778 ns/op	         0 lost	    113919 q/s	    2310 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	 1000000	      5771 ns/op	         0 lost	    173273 q/s	    2369 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	11.163s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: AMD EPYC 9454P 48-Core Processor               
+BenchmarkUDPSockets/sockets=1-6         	  658585	      8771 ns/op	         0 lost	    114015 q/s	    2310 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	 1000000	      5691 ns/op	         0 lost	    175705 q/s	    2371 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	11.710s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: AMD EPYC 9454P 48-Core Processor               
+BenchmarkUDPSockets/sockets=1-6         	  693708	      8671 ns/op	         0 lost	    115326 q/s	    2310 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	 1000000	      5516 ns/op	         0 lost	    181281 q/s	    2359 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	15.902s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: AMD EPYC 9454P 48-Core Processor               
+BenchmarkUDPSockets/sockets=1-6         	  694754	      8667 ns/op	         0 lost	    115381 q/s	    2310 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	 1000000	      5535 ns/op	         0 lost	    180685 q/s	    2371 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	15.524s

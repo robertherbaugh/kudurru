@@ -22,6 +22,13 @@ type Component struct {
 // ReadyFunc is a live readiness source (e.g. the DNS listener registry).
 type ReadyFunc func() (ok bool, unready []string)
 
+// Details are local operational observations, not write authority. Empty
+// fields mean no leader is known or no saved snapshot is currently served.
+type Details struct {
+	Leader      string
+	SnapshotAge string
+}
+
 // Checker aggregates component readiness and serves the probes.
 type Checker struct {
 	mu         sync.RWMutex
@@ -31,11 +38,21 @@ type Checker struct {
 	lameduck   bool
 	lastLive   time.Time
 	info       map[string]any
+	details    func() Details
 }
 
 // New returns an empty checker.
 func New(info map[string]any) *Checker {
 	return &Checker{components: map[string]Component{}, funcs: map[string]ReadyFunc{}, lastLive: time.Now(), info: info}
+}
+
+// SetDetails supplies current human-probe detail. The callback must read only
+// local state without network or disk work. It runs outside the checker lock
+// and does not affect readiness, liveness or startup.
+func (c *Checker) SetDetails(fn func() Details) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.details = fn
 }
 
 // Register adds a live readiness source evaluated on every probe.
@@ -174,7 +191,13 @@ func (c *Checker) Handler() http.Handler {
 		for k, v := range c.info {
 			body[k] = v
 		}
+		detailFn := c.details
 		c.mu.RUnlock()
+		var details Details
+		if detailFn != nil {
+			details = detailFn()
+		}
+		body["leader"], body["snapshotAge"] = details.Leader, details.SnapshotAge
 		w.Header().Set("Content-Type", "application/json")
 		if !ok {
 			w.WriteHeader(http.StatusServiceUnavailable)

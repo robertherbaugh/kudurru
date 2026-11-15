@@ -153,7 +153,7 @@ function ApproveWizard({ request: r, onClose }: { request: LicenseRequest; onClo
     {
       id: 'key',
       label: 'Key',
-      description: renews ? `A renewal of ${renews.licenseId}: ${PERSONAL_MAX_NODES} nodes, every feature.` : `A personal key: ${PERSONAL_MAX_NODES} nodes, every feature.`,
+      description: renews ? `A renewal of ${renews.licenseId}: ${PERSONAL_MAX_NODES} nodes, all features available to Personal.` : `A personal key: ${PERSONAL_MAX_NODES} nodes, all features available to Personal.`,
       content: (
         <VStack gap={4}>
           {renews ? (

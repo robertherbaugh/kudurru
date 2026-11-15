@@ -1,10 +1,33 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getSelector, pick } from '../test/controls';
-import { renderWithApp } from '../test/utils';
-import { BlockingPanel, resumeAt } from './BlockingControl';
+import { API, renderWithApp } from '../test/utils';
+import { server } from '../test/setup';
+import { qk } from '../api/context';
+import { BlockingControl, BlockingPanel, resumeAt } from './BlockingControl';
 
 const T0 = Date.UTC(2026, 9, 10, 18, 0, 0);
+
+it('keeps observed local state after a forwarded commit and refetches without replay', async () => {
+  let reads = 0;
+  let writes = 0;
+  server.use(
+    http.get(`${API}/dns/blocking`, () => { reads++; return HttpResponse.json({ blocking: true, configured: true, scope: 'cluster', node: 'receiver' }); }),
+    http.post(`${API}/dns/blocking`, () => {
+      writes++;
+      return HttpResponse.json({ committed: true, settingsUID: 'settings', resourceVersion: 'v2', disabled: true, publication: 'pending' }, { status: 202 });
+    }),
+  );
+  const { client } = renderWithApp(<BlockingControl />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Disable blocking' }));
+  fireEvent.click(screen.getByRole('button', { name: '30 seconds' }));
+  expect(await screen.findByText('Change saved; waiting for this node to apply it')).toBeInTheDocument();
+  await waitFor(() => expect(reads).toBeGreaterThanOrEqual(2));
+  expect(writes).toBe(1);
+  expect(client.getQueryData(qk.blocking)).toMatchObject({ blocking: true, node: 'receiver' });
+  expect(screen.getByText('Blocking enabled')).toBeInTheDocument();
+});
 
 describe('resumeAt', () => {
   it('prefers until, falls back to timer from the fetch time, and is empty while blocking', () => {

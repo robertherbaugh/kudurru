@@ -1,14 +1,15 @@
 // The portal's issue policy (design spec §0.3-0.4, §6 "Admin license
 // actions"): what it agrees to sign, shared by issue, renew, change, request
 // approval and the personal flow so the rules cannot drift apart. The nodes
-// know none of these rules (a key is checked for shape and dates only), so
-// this is the one place they are enforced:
+// also enforce their own plan-specific feature rules. This is the portal's
+// shared policy for terms before signing:
 //
 // - licensee: the public form's name rules (1-200 UTF-16 code units after
 //   Go's TrimSpace, not blank, no control characters, no lone surrogates);
 // - nodes 1 to MAX_NODES; personal at most PERSONAL_MAX_NODES;
-// - features null (every feature, including later ones) or a non-empty list
-//   of known, distinct features; personal always null;
+// - features null (all available to the plan, including later ones) or a
+//   non-empty list of known, distinct features; personal always null;
+//   explicit branding requires enterprise;
 // - expiresOn tomorrow at the earliest and at most MAX_TERM_DAYS ahead;
 //   personal at most PERSONAL_TERM_DAYS + RENEW_WINDOW_DAYS ahead; trial at
 //   most TRIAL_MAX_DAYS ahead;
@@ -35,7 +36,7 @@ export interface KeyTerms {
   licensee: string;
   plan: Plan;
   nodes: number;
-  /** null: every feature, including ones added later. */
+  /** null: all features available to the plan, including ones added later. */
   features: readonly string[] | null;
   expiresOn: ExpiresOn;
 }
@@ -76,8 +77,9 @@ export function policyIssues(terms: KeyTerms, now: Date): PolicyIssue[] {
   }
 
   if (terms.features !== null) {
-    if (terms.plan === 'personal') issues.push({ field: 'features', message: 'A personal key always grants every feature.' });
-    else if (terms.features.length === 0) issues.push({ field: 'features', message: 'Choose at least one feature, or grant every feature.' });
+    if (terms.plan !== 'enterprise' && terms.features.includes('branding')) issues.push({ field: 'features', message: 'Custom branding requires the Enterprise plan.' });
+    else if (terms.plan === 'personal') issues.push({ field: 'features', message: 'A personal key always grants all features available to Personal.' });
+    else if (terms.features.length === 0) issues.push({ field: 'features', message: 'Choose at least one feature, or grant all features available to the plan.' });
     else if (!terms.features.every(isFeature)) {
       const unknown = terms.features.filter((f) => !isFeature(f));
       issues.push({ field: 'features', message: `This portal does not know the feature ${unknown.join(', ')}: choose from the known features.` });

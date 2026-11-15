@@ -1,0 +1,10 @@
+apiVersion: kudurru.io/v1alpha1
+kind: ClientGroup
+metadata:
+  name: kids
+  namespace: dns
+spec:
+  clients:
+    - cidr: 10.0.20.0/24
+      name: Kids VLAN
+    - hostname: "ps5*"

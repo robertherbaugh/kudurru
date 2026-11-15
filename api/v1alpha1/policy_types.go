@@ -18,18 +18,41 @@ type Schedule struct {
 	TZ string `json:"tz,omitempty"`
 }
 
-// Rewrite rewrites answers for matching names (v0.2).
+// Rewrite replaces forwarded answers for an exact name or descendant-only
+// *.suffix. Type is a DNS RR type; omitted, address targets infer A or AAAA.
+// CNAME is an alternative to Type CNAME with one target. CNAME responses
+// return an alias that the client follows through the ordinary query path.
+// +kubebuilder:validation:XValidation:rule="has(self.cname) && size(self.cname) > 0 ? (!has(self.targets) || size(self.targets) == 0) && (!has(self.type) || size(self.type) == 0 || self.type == 'CNAME') : has(self.targets) && size(self.targets) > 0",message="provide either a CNAME or targets, not both"
 type Rewrite struct {
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
 	Name string `json:"name"`
+	// +kubebuilder:validation:Enum="";A;AAAA;CNAME;PTR;TXT;MX;SRV;HTTPS;SVCB;CAA;NS;NAPTR
 	// +optional
 	Type string `json:"type,omitempty"`
+	// +kubebuilder:validation:MaxItems=16
+	// +kubebuilder:validation:items:MaxLength=4096
 	// +optional
 	Targets []string `json:"targets,omitempty"`
 	// +optional
 	CNAME string `json:"cname,omitempty"`
 }
 
-// PolicySpec binds client groups to lists and resolver behaviour.
+// PolicyResponse overrides selected global response processing for clients.
+// Each field uses the highest-priority policy that explicitly sets it.
+type PolicyResponse struct {
+	// DNS64Prefix overrides response.dns64.prefix. An explicit empty string
+	// disables inherited DNS64; omitted inherits the next policy or global value.
+	// +kubebuilder:validation:MaxLength=64
+	// +kubebuilder:validation:XValidation:rule="size(self) == 0 || (isCIDR(self) && cidr(self).ip().family() == 6 && cidr(self).ip().isGlobalUnicast() && cidr(self).prefixLength() in [32, 40, 48, 56, 64, 96] && cidr(self) == cidr(self).masked())",message="must be empty or a canonical IPv6 /32, /40, /48, /56, /64 or /96 prefix"
+	// +optional
+	DNS64Prefix *string `json:"dns64Prefix,omitempty"`
+	// FilterAAAA overrides response.filterAAAA. False explicitly disables it.
+	// +optional
+	FilterAAAA *bool `json:"filterAAAA,omitempty"`
+}
+
+// PolicySpec binds client groups to lists and resolver behavior.
 type PolicySpec struct {
 	// +optional
 	ClientGroupRefs []string `json:"clientGroupRefs,omitempty"`
@@ -55,8 +78,11 @@ type PolicySpec struct {
 	// Priority breaks ties when several policies match; highest wins.
 	// +optional
 	Priority int `json:"priority,omitempty"`
+	// +kubebuilder:validation:MaxItems=128
 	// +optional
 	Rewrites []Rewrite `json:"rewrites,omitempty"`
+	// +optional
+	Response *PolicyResponse `json:"response,omitempty"`
 	// BlockedServices names services of the blocked-services catalogue
 	// (GET /api/v1/catalogue/services: youtube, tiktok, ...) whose domains
 	// this policy blocks like a block list; the query log names the

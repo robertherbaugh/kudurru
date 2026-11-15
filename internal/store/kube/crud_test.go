@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -342,6 +343,262 @@ func TestDeleteHonoursFinalizers(t *testing.T) {
 	}
 	eventually(t, 10*time.Second, "finalized object to disappear", func() bool {
 		return errors.Is(s.Get(ctx, key, &got), store.ErrNotFound)
+	})
+}
+
+func cleanupIntegration(name, policy string) *v1alpha1.Integration {
+	return &v1alpha1.Integration{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "apps"},
+		Spec: v1alpha1.IntegrationSpec{
+			Type:           "unifi",
+			Credentials:    map[string]v1alpha1.CredentialReference{"apiKey": {SecretRef: &v1alpha1.CredentialSecretRef{Name: "unifi", Key: "token"}}},
+			UniFi:          &v1alpha1.UniFiIntegration{Endpoint: "https://network.example"},
+			DeletionPolicy: policy,
+		},
+	}
+}
+
+// finalizerOwners returns the main-resource field managers that own the
+// cleanup finalizer of an Integration in the "apps" namespace.
+func finalizerOwners(t *testing.T, name string) []string {
+	t.Helper()
+	u := &unstructured.Unstructured{}
+	u.SetGroupVersionKind(v1alpha1.GroupVersion.WithKind("Integration"))
+	if err := shared.admin.Get(context.Background(), client.ObjectKey{Namespace: "apps", Name: name}, u); err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, e := range u.GetManagedFields() {
+		if e.Subresource == "" && e.FieldsV1 != nil && strings.Contains(e.FieldsV1.GetRawString(), store.IntegrationCleanupFinalizer) {
+			out = append(out, e.Manager+"/"+string(e.Operation))
+		}
+	}
+	return out
+}
+
+// TestReservedIntegrationFinalizerSurvivesApply: the apiserver has no
+// kudurru admission, so the driver never arms the cleanup finalizer of a
+// Delete-policy Integration itself; once the host armed it (D367), neither a
+// manager's server-side apply nor a Force takeover removes it while the spec
+// says Delete, and a Force takeover to Retain is the release.
+func TestReservedIntegrationFinalizerSurvivesApply(t *testing.T) {
+	requireEnv(t)
+	purge(t, shared.admin)
+	s := newTestStore(t, Options{})
+	ctx := context.Background()
+	const reserved = store.IntegrationCleanupFinalizer
+	file := store.ManagerFile("integrations.yaml")
+	key := store.Key{Kind: "Integration", Namespace: "apps", Name: "cleanup"}
+	get := func() *v1alpha1.Integration {
+		t.Helper()
+		var got v1alpha1.Integration
+		if err := s.Get(ctx, key, &got); err != nil {
+			t.Fatal(err)
+		}
+		return &got
+	}
+
+	claimed := cleanupIntegration("cleanup", "Delete")
+	claimed.Finalizers = []string{reserved} // a document cannot arm it either
+	created, err := s.Apply(ctx, claimed, store.ApplyOptions{Manager: file})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created.GetFinalizers()) != 0 {
+		t.Fatalf("Apply armed a finalizer nothing on this driver would clear: %v", created.GetFinalizers())
+	}
+	armed, err := s.UpdateFinalizer(ctx, key, store.FinalizerOptions{Finalizer: reserved, ExpectedUID: string(created.GetUID()), ExpectedResourceVersion: created.GetResourceVersion()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !store.HasFinalizer(armed, reserved) || armed.GetResourceVersion() == created.GetResourceVersion() {
+		t.Fatalf("arming: %+v", armed.GetFinalizers())
+	}
+	if owners := finalizerOwners(t, "cleanup"); len(owners) != 1 || owners[0] != finalizerFieldManager+"/Update" {
+		t.Fatalf("the finalizer must be owned by the driver's finalizer manager alone: %v", owners)
+	}
+
+	// Non-Force server-side apply by the object's manager, without and with
+	// a spec change: carried, never stripped.
+	if _, err := s.Apply(ctx, cleanupIntegration("cleanup", "Delete"), store.ApplyOptions{Manager: file}); err != nil {
+		t.Fatal(err)
+	}
+	edited := cleanupIntegration("cleanup", "Delete")
+	edited.Spec.Suspend = true
+	if _, err := s.Apply(ctx, edited, store.ApplyOptions{Manager: file}); err != nil {
+		t.Fatal(err)
+	}
+	if got := get(); !store.HasFinalizer(got, reserved) || !got.Spec.Suspend {
+		t.Fatalf("non-Force apply: finalizers=%v", got.Finalizers)
+	}
+	// A foreign field manager that never lists the finalizer (kubectl apply).
+	u := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": v1alpha1.GroupVersion.String(), "kind": "Integration",
+		"metadata": map[string]any{"name": "cleanup", "namespace": "apps", "labels": map[string]any{"owner": "ops"}},
+	}}
+	if err := shared.admin.Apply(ctx, client.ApplyConfigurationFromUnstructured(u), client.FieldOwner("kubectl")); err != nil {
+		t.Fatal(err)
+	}
+	if got := get(); !store.HasFinalizer(got, reserved) || got.Labels["owner"] != "ops" {
+		t.Fatalf("foreign apply: finalizers=%v labels=%v", got.Finalizers, got.Labels)
+	}
+
+	// Force is a whole-object takeover: the label and suspend go, the
+	// cleanup obligation stays.
+	if _, err := s.Apply(ctx, cleanupIntegration("cleanup", "Delete"), store.ApplyOptions{Manager: store.ManagerAPI, Force: true}); err != nil {
+		t.Fatal(err)
+	}
+	taken := get()
+	if !store.HasFinalizer(taken, reserved) || taken.Labels["owner"] != "" || taken.Spec.Suspend || store.ManagedBy(taken) != store.ManagerAPI {
+		t.Fatalf("Force takeover: finalizers=%v labels=%v suspend=%v managedBy=%q", taken.Finalizers, taken.Labels, taken.Spec.Suspend, store.ManagedBy(taken))
+	}
+	if owners := finalizerOwners(t, "cleanup"); len(owners) != 1 || owners[0] != store.ManagerAPI+"/Apply" {
+		t.Fatalf("after the takeover the new manager carries the finalizer: %v", owners)
+	}
+	// The new sole owner's ordinary apply still carries it.
+	if _, err := s.Apply(ctx, cleanupIntegration("cleanup", "Delete"), store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	if got := get(); !store.HasFinalizer(got, reserved) {
+		t.Fatalf("apply after takeover stripped the finalizer: %v", got.Finalizers)
+	}
+
+	// Being deleted: applies, Force included, neither finalize nor revive.
+	if err := s.Delete(ctx, key, store.DeleteOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	for _, force := range []bool{false, true} {
+		redeclared := cleanupIntegration("cleanup", "Delete")
+		redeclared.Spec.Suspend = !force
+		if _, err := s.Apply(ctx, redeclared, store.ApplyOptions{Manager: store.ManagerAPI, Force: force}); err != nil {
+			t.Fatal(err)
+		}
+		if got := get(); got.DeletionTimestamp == nil || !store.HasFinalizer(got, reserved) || got.UID != created.GetUID() {
+			t.Fatalf("apply during deletion (force=%v): deletionTimestamp=%v finalizers=%v", force, got.DeletionTimestamp, got.Finalizers)
+		}
+	}
+	// The spec change to Retain by the manager that carries the finalizer
+	// releases the object with no cleanup.
+	if _, err := s.Apply(ctx, cleanupIntegration("cleanup", "Retain"), store.ApplyOptions{Manager: store.ManagerAPI}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, 10*time.Second, "released Integration to disappear", func() bool {
+		return errors.Is(s.Get(ctx, key, &v1alpha1.Integration{}), store.ErrNotFound)
+	})
+
+	// Without a takeover, the host's own field ownership keeps the finalizer
+	// through a manager's change to Retain; the host clears it.
+	kept, err := s.Apply(ctx, cleanupIntegration("kept", "Delete"), store.ApplyOptions{Manager: file})
+	if err != nil {
+		t.Fatal(err)
+	}
+	keptKey := store.Key{Kind: "Integration", Namespace: "apps", Name: "kept"}
+	if _, err := s.UpdateFinalizer(ctx, keptKey, store.FinalizerOptions{Finalizer: reserved, ExpectedUID: string(kept.GetUID()), ExpectedResourceVersion: kept.GetResourceVersion()}); err != nil {
+		t.Fatal(err)
+	}
+	retained, err := s.Apply(ctx, cleanupIntegration("kept", "Retain"), store.ApplyOptions{Manager: file})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !store.HasFinalizer(retained, reserved) || retained.(*v1alpha1.Integration).Spec.DeletionPolicy != "Retain" {
+		t.Fatalf("non-Force Retain: finalizers=%v", retained.GetFinalizers())
+	}
+	cleared, err := s.UpdateFinalizer(ctx, keptKey, store.FinalizerOptions{Finalizer: reserved, Remove: true, ExpectedUID: string(kept.GetUID()), ExpectedResourceVersion: retained.GetResourceVersion()})
+	if err != nil || len(cleared.GetFinalizers()) != 0 || cleared.GetDeletionTimestamp() != nil {
+		t.Fatalf("host disarm of a live object: %v %v", err, cleared)
+	}
+}
+
+// TestUpdateFinalizerIsMetadataOnlyAndExact: the patch primitive changes
+// metadata.finalizers alone, only on the exact UID and resourceVersion the
+// caller observed, and the apiserver removes an object being deleted when
+// its last finalizer goes.
+func TestUpdateFinalizerIsMetadataOnlyAndExact(t *testing.T) {
+	requireEnv(t)
+	purge(t, shared.admin)
+	s := newTestStore(t, Options{})
+	ctx := context.Background()
+	const reserved = store.IntegrationCleanupFinalizer
+	file := store.ManagerFile("integrations.yaml")
+	key := store.Key{Kind: "Integration", Namespace: "apps", Name: "exact"}
+	labeled := cleanupIntegration("exact", "Delete")
+	labeled.Labels = map[string]string{"team": "infra"}
+	labeled.Annotations = map[string]string{"example.com/note": "kept"}
+	created, err := s.Apply(ctx, labeled, store.ApplyOptions{Manager: file})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withStatus := created.DeepCopyObject().(*v1alpha1.Integration)
+	withStatus.Status.Clients = 7
+	if err := s.UpdateStatus(ctx, withStatus); err != nil {
+		t.Fatal(err)
+	}
+	var live v1alpha1.Integration
+	if err := s.Get(ctx, key, &live); err != nil {
+		t.Fatal(err)
+	}
+	opts := func(uid, rv string, remove bool, name string) store.FinalizerOptions {
+		return store.FinalizerOptions{Finalizer: name, Remove: remove, ExpectedUID: uid, ExpectedResourceVersion: rv}
+	}
+	if _, err := s.UpdateFinalizer(ctx, key, opts(string(live.UID), created.GetResourceVersion(), false, reserved)); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("stale resourceVersion: got %v, want ErrConflict", err)
+	}
+	if _, err := s.UpdateFinalizer(ctx, key, opts("another-incarnation", live.ResourceVersion, false, reserved)); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("wrong UID: got %v, want ErrConflict", err)
+	}
+	if _, err := s.UpdateFinalizer(ctx, key, opts(string(live.UID), "", false, reserved)); err == nil || errors.Is(err, store.ErrConflict) {
+		t.Fatalf("missing resourceVersion: got %v, want a validation error", err)
+	}
+	if _, err := s.UpdateFinalizer(ctx, store.Key{Kind: "Integration", Namespace: "apps", Name: "absent"}, opts("uid", "1", false, reserved)); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("missing object: %v", err)
+	}
+	if _, err := s.UpdateFinalizer(ctx, store.Key{Kind: "Integration", Name: "exact"}, opts("uid", "1", false, reserved)); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("key without the namespace of a namespaced kind: %v", err)
+	}
+	var unchanged v1alpha1.Integration
+	if err := s.Get(ctx, key, &unchanged); err != nil || unchanged.ResourceVersion != live.ResourceVersion {
+		t.Fatalf("a refused finalizer change wrote: %v", err)
+	}
+
+	armed, err := s.UpdateFinalizer(ctx, key, opts(string(live.UID), live.ResourceVersion, false, reserved))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := live.DeepCopy()
+	want.Finalizers = []string{reserved}
+	want.ResourceVersion = armed.GetResourceVersion()
+	var stored v1alpha1.Integration
+	if err := s.Get(ctx, key, &stored); err != nil {
+		t.Fatal(err)
+	}
+	if !equality.Semantic.DeepEqual(&stored, want) || !equality.Semantic.DeepEqual(armed.(*v1alpha1.Integration), want) || armed.GetResourceVersion() == live.ResourceVersion {
+		t.Fatalf("the patch changed more than metadata.finalizers:\n got %+v\nwant %+v", stored, *want)
+	}
+	// Already present: no request changes the object.
+	again, err := s.UpdateFinalizer(ctx, key, opts(string(live.UID), armed.GetResourceVersion(), false, reserved))
+	if err != nil || again.GetResourceVersion() != armed.GetResourceVersion() {
+		t.Fatalf("no-op add: %v", err)
+	}
+
+	if err := s.Delete(ctx, key, store.DeleteOptions{Manager: file}); err != nil {
+		t.Fatal(err)
+	}
+	var deleting v1alpha1.Integration
+	if err := s.Get(ctx, key, &deleting); err != nil || deleting.DeletionTimestamp == nil {
+		t.Fatalf("armed object must survive Delete: %v", err)
+	}
+	if _, err := s.UpdateFinalizer(ctx, key, opts(string(deleting.UID), deleting.ResourceVersion, false, "kudurru.io/late")); !errors.Is(err, store.ErrTerminating) {
+		t.Fatalf("adding during deletion: got %v, want ErrTerminating", err)
+	}
+	if _, err := s.UpdateFinalizer(ctx, key, opts(string(deleting.UID), armed.GetResourceVersion(), true, reserved)); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("stale release: got %v, want ErrConflict", err)
+	}
+	removed, err := s.UpdateFinalizer(ctx, key, opts(string(deleting.UID), deleting.ResourceVersion, true, reserved))
+	if err != nil || !store.Terminated(removed) || removed.(*v1alpha1.Integration).Status.Clients != 7 {
+		t.Fatalf("release: %v %+v", err, removed)
+	}
+	eventually(t, 10*time.Second, "released Integration to disappear", func() bool {
+		return errors.Is(s.Get(ctx, key, &v1alpha1.Integration{}), store.ErrNotFound)
 	})
 }
 

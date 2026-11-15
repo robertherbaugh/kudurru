@@ -13,7 +13,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { ApiError } from '../api/client';
-import { qk, useApi, useCan } from '../api/context';
+import { qk, useApi, useCan, useClusterInfo } from '../api/context';
 import type { SettingsBody, UpstreamItem, UpstreamServer } from '../api/types';
 import { formatExact, formatMS, formatRelative } from '../lib/format';
 import {
@@ -243,7 +243,7 @@ export function useUpstreams() {
   const qc = useQueryClient();
   const notify = useNotify();
   const settings = useQuery({ queryKey: qk.settings, queryFn: () => api.settings.get(), refetchInterval: 10_000 });
-  const cluster = useQuery({ queryKey: qk.cluster, queryFn: () => api.cluster.info(), enabled: can('cluster', 'read') });
+  const cluster = useClusterInfo();
   const stats = useQuery({
     queryKey: qk.stats('upstreams', CLUSTER_SCOPE, '24h'),
     queryFn: () => api.stats.upstreams(CLUSTER_SCOPE, '24h'),

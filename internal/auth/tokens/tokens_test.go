@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/authtest"
@@ -66,6 +68,9 @@ func (c *clock) add(d time.Duration) {
 
 func newTokens(t *testing.T, st store.Store, c *clock, maxLife time.Duration) *Tokens {
 	t.Helper()
+	if _, err := st.Apply(context.Background(), &internalv1.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: "alice"}}, store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
+		t.Fatal(err)
+	}
 	tk, err := New(Options{Store: st, MaxLifetime: maxLife, Now: c.now})
 	if err != nil {
 		t.Fatal(err)
@@ -206,6 +211,46 @@ func TestServiceAccountTokens(t *testing.T) {
 	})
 }
 
+func TestCreateBindsCurrentAccountAndRejectsStaleCredential(t *testing.T) {
+	authtest.Drivers(t, func(t *testing.T, st store.Store) {
+		ctx := context.Background()
+		tk := newTokens(t, st, &clock{t: time.Now()}, 0)
+		_, old, err := tk.Create(ctx, CreateOptions{Owner: alice()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if old.Spec.Owner.UID == "" {
+			t.Fatal("local token lacks account UID")
+		}
+		if err := st.Delete(ctx, store.Key{Kind: internalv1.KindLocalUser, Name: "alice"}, store.DeleteOptions{Manager: store.ManagerSystem}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.Apply(ctx, &internalv1.LocalUser{ObjectMeta: metav1.ObjectMeta{Name: "alice"}}, store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := tk.Create(ctx, CreateOptions{Owner: old.Spec.Owner}); !errors.Is(err, ErrInvalidOwner) {
+			t.Fatal("stale authenticated principal minted a token for a new account")
+		}
+
+		sa, err := tk.EnsureServiceAccount(ctx, "dns", "ci", "", false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		owner := internalv1.TokenOwner{Kind: internalv1.OwnerServiceAccount, Name: "ci", Namespace: "dns", UID: string(sa.UID)}
+		if err := st.Delete(ctx, saKey("dns", "ci"), store.DeleteOptions{Manager: store.ManagerSystem}); err != nil {
+			t.Fatal(err)
+		}
+		// Leave the old account in the cache to exercise the creation-time
+		// store read. Authentication publication is a separate owner.
+		if _, err := st.Apply(ctx, &internalv1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "ci", Namespace: "dns"}}, store.ApplyOptions{Manager: store.ManagerSystem}); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := tk.Create(ctx, CreateOptions{Owner: owner}); !errors.Is(err, ErrInvalidOwner) {
+			t.Fatal("stale service account cache authorized token creation")
+		}
+	})
+}
+
 // TestRecreatedServiceAccountDoesNotInheritTokens is the service-account
 // half of the M5 finding S2: a token of a deleted service account must not
 // act for a later service account with the same namespace and name (which
@@ -227,7 +272,6 @@ func TestRecreatedServiceAccountDoesNotInheritTokens(t *testing.T) {
 			t.Fatal(err)
 		}
 		tk.ServiceAccounts().Remove(key)
-		time.Sleep(1100 * time.Millisecond) // creation timestamps have one-second resolution
 		if _, err := tk.EnsureServiceAccount(ctx, "dns", "ci", "re-created", true); err != nil {
 			t.Fatal(err)
 		}

@@ -90,6 +90,12 @@ type ListOpener interface {
 
 // ServerOptions configures a Server.
 type ServerOptions struct {
+	// Enrolled optionally mounts separately authenticated member routes on the
+	// same socket. Legacy shared credentials never select these routes.
+	Enrolled *EnrolledListener
+	// Event queues an authenticated peer hint without rebroadcasting it.
+	// False reports an inapplicable generation or a full queue.
+	Event func(Event) bool
 	// Querylog serves local-only query-log and stats reads behind the peer guard.
 	Querylog func(context.Context, QuerylogRequest) (*QuerylogResponse, error)
 	// QueryTail returns the privacy-transformed live tail.
@@ -100,12 +106,23 @@ type ServerOptions struct {
 	Credentials *Credentials
 	// Status fills GET /internal/status; nil serves an empty status.
 	Status func(ctx context.Context) Status
+	// Health fills GET /internal/health with local operational readiness; nil answers 404.
+	Health func(context.Context) (Health, error)
+	// EdgeBypass observes an actually installed retained edge policy. Nil
+	// disables the route. The requested deployment must match the local owner.
+	EdgeBypass func(context.Context, string) (EdgeBypassState, error)
+	// EdgeBlocks fills GET /internal/edge/blocks with the operator edge blocks
+	// this node serves (D388); nil answers 404.
+	EdgeBlocks func(context.Context) (*EdgeBlockList, error)
 	// Lists serves GET /internal/lists/{digest}; nil answers 404.
 	Lists ListOpener
 	// Zones fills GET /internal/zones (the primary and secondary zones
 	// this node serves with their serials); nil answers 404, which
 	// Client.Zones reports as ErrZonesUnsupported.
 	Zones func(ctx context.Context) ZoneList
+	// ServingZones projects zones and resolver metadata from one protected cut.
+	// Errors return 503; nil results explicitly select the legacy Zones path.
+	ServingZones func(context.Context) (*ZoneList, error)
 	// Catalogue serves GET /internal/catalogue (the blocked-services and
 	// safe-search catalogue in service); nil answers 404.
 	Catalogue func() CatalogueBody
@@ -150,6 +167,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	if opts.Credentials == nil {
 		return nil, errors.New("internalapi: server needs credentials")
 	}
+	if opts.EdgeBypass != nil && opts.Credentials.nodeName == "" {
+		return nil, errors.New("internalapi: managed edge observation needs a node identity")
+	}
 	if opts.Address == "" {
 		opts.Address = DefaultAddress
 	}
@@ -185,6 +205,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		}
 	}
 	mux := http.NewServeMux()
+	if opts.Event != nil {
+		mux.HandleFunc("POST "+PathEvents, s.handleEvent)
+	}
 	if opts.Querylog != nil {
 		mux.HandleFunc("GET "+PathQuerylog, s.handleQuerylog)
 	}
@@ -192,8 +215,17 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		mux.HandleFunc("GET "+PathQuerylogStream, s.handleQuerylogStream)
 	}
 	mux.HandleFunc("GET "+PathStatus, s.handleStatus)
+	if opts.Health != nil {
+		mux.HandleFunc("GET "+PathHealth, s.handleHealth)
+	}
+	if opts.EdgeBypass != nil {
+		mux.HandleFunc("GET "+PathEdgeBypass, s.handleEdgeBypass)
+	}
+	if opts.EdgeBlocks != nil {
+		mux.HandleFunc("GET "+PathEdgeBlocks, s.handleEdgeBlocks)
+	}
 	mux.HandleFunc("GET "+PathLists+"{digest}", s.handleList)
-	if opts.Zones != nil {
+	if opts.Zones != nil || opts.ServingZones != nil {
 		mux.HandleFunc("GET "+PathZones, s.handleZones)
 	}
 	if opts.Catalogue != nil {
@@ -203,11 +235,14 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		mux.HandleFunc("GET "+PathCatalogueAdGuard, s.handleCatalogueImport)
 	}
 	s.handler = s.guard(mux)
+	if opts.Enrolled != nil {
+		s.handler = opts.Enrolled.routes(s.handler)
+	}
 	return s, nil
 }
 
-// Handler returns the routes behind the rate limiter and the token check,
-// without TLS (for tests and embedding).
+// Handler returns the legacy guarded routes and optional enrolled TLS dispatch.
+// Embedded member requests still require actual authenticated TLS state.
 func (s *Server) Handler() http.Handler { return s.handler }
 
 // Run listens on Address with TLS and serves until ctx ends. It is an
@@ -223,9 +258,13 @@ func (s *Server) Run(ctx context.Context) error {
 
 // Serve serves TLS on ln until ctx ends, then shuts down gracefully.
 func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
+	tlsConfig := s.opts.Credentials.ServerTLS()
+	if s.opts.Enrolled != nil {
+		tlsConfig = s.opts.Enrolled.tlsConfig(tlsConfig)
+	}
 	srv := &http.Server{
 		Handler:           s.handler,
-		TLSConfig:         s.opts.Credentials.ServerTLS(),
+		TLSConfig:         tlsConfig,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		IdleTimeout:       60 * time.Second,
@@ -257,8 +296,8 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	}
 }
 
-// guard applies, in order: the per-address rate limit, the no-body rule
-// and the bearer token.
+// guard applies the per-address rate limit, route-specific body rule and
+// bearer token. Only the bounded peer-event POST accepts a request body.
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		route := routeOf(r.URL.Path)
@@ -269,7 +308,8 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			http.Error(rw, "rate limited", http.StatusTooManyRequests)
 			return
 		}
-		if r.ContentLength != 0 || len(r.TransferEncoding) > 0 {
+		bodyAllowed := s.opts.Event != nil && r.Method == http.MethodPost && r.URL.Path == PathEvents
+		if !bodyAllowed && (r.ContentLength != 0 || len(r.TransferEncoding) > 0) {
 			http.Error(rw, "request bodies are not accepted", http.StatusBadRequest)
 			return
 		}
@@ -285,10 +325,18 @@ func (s *Server) guard(next http.Handler) http.Handler {
 
 func routeOf(p string) string {
 	switch {
+	case p == PathEvents:
+		return "events"
 	case p == PathQuerylog, p == PathQuerylogStream:
 		return "querylog"
 	case p == PathStatus:
 		return "status"
+	case p == PathHealth:
+		return "health"
+	case p == PathEdgeBypass:
+		return "edge-managed-bypass"
+	case p == PathEdgeBlocks:
+		return "edge-blocks"
 	case p == PathZones:
 		return "zones"
 	case p == PathCatalogue, p == PathCatalogueAdGuard:
@@ -368,7 +416,33 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleZones(w http.ResponseWriter, r *http.Request) {
 	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(statusWriteTimeout))
-	zl := s.opts.Zones(r.Context())
+	nonce := r.URL.Query().Get("resolverNonce")
+	if nonce != "" && !ValidDigest(nonce) {
+		http.Error(w, "invalid resolver challenge", http.StatusBadRequest)
+		return
+	}
+	var projected *ZoneList
+	if s.opts.ServingZones != nil {
+		var err error
+		projected, err = s.opts.ServingZones(r.Context())
+		if err != nil || r.Context().Err() != nil {
+			http.Error(w, "complete serving publication unavailable", http.StatusServiceUnavailable)
+			return
+		}
+	}
+	var zl ZoneList
+	if projected != nil {
+		zl = *projected
+	} else if s.opts.Zones != nil {
+		zl = s.opts.Zones(r.Context())
+	}
+	if zl.Resolver != nil {
+		if zl.Resolver.Node != zl.Node {
+			http.Error(w, "serving source mismatch", http.StatusServiceUnavailable)
+			return
+		}
+		zl.ResolverNonce = nonce
+	}
 	if zl.Zones == nil {
 		zl.Zones = []Zone{}
 	}

@@ -105,23 +105,25 @@ Repository settings the pipeline relies on (once):
       explicitly moved to the next one.
 - [ ] The [final v0.1 feature review](milestones/m5/features-v0.1.md) has no remaining
       product blocker, and its deployment acceptance checks have passed.
-- [ ] Version strings agree:
-  - `VERSION` holds the version being released (the Makefile's
-    `RELEASE_VERSION`, what a build without a reachable tag reports, reads
-    it);
-  - `version` and `appVersion` in `deploy/helm/kudurru/Chart.yaml` and
-    `deploy/helm/kudurru-crds/Chart.yaml` (the release workflow re-stamps both
-    from the tag when packaging, the committed values are what `helm
-    install ./deploy/helm/kudurru` from a checkout uses);
-  - after changing the charts: `make deploy-assets` (the kustomize bases
-    carry `app.kubernetes.io/version`) and `make rbac-manifests` if
-    `internal/rbac/permissions.yaml` changed;
-  - the image tags in `deploy/compose/**/docker-compose.yml`
-    (`kudurru:<version>`, `kudurru-dnsdist:<dnsdist>-k<version>`,
-    `kudurru-keepalived:<keepalived>-k<version>`); for a release candidate
-    keep the GA tags and say so in the release notes.
-- [ ] CHANGELOG.md: the section for the version, with the date on the GA
-      release.
+- [ ] Set `VERSION` to `MAJOR.MINOR.PATCH` and run `make version-sync`, or
+      use `python3 hack/sync-version.py --version <version>` for both steps.
+      This needs Python 3.9+, Git, Go and Helm. Review its chart versions,
+      generated Kustomize manifests, Compose images, supervisor defaults and
+      install examples, then run `make version-check` (read-only; also in CI).
+      The Makefile uses a reachable tag for this version, falling back to
+      `VERSION` when none exists. Run `make rbac-manifests` separately if
+      `internal/rbac/permissions.yaml` changed.
+- [ ] Review CHANGELOG.md's section for the version and add the date on the
+      GA release. Synchronization adds a missing unreleased heading; release
+      notes and feature/roadmap prose remain editorial, and historical links,
+      API/CRD versions, dependencies, digest pins and development tags remain
+      unchanged.
+- [ ] Inspect exact-tag artifacts with `make release-manifests
+      RELEASE_ARTIFACT_VERSION=<version>-rc.<N>`. GoReleaser passes its actual
+      version to this target: both GA and RC manifests and Compose images
+      match the published tag. Staging uses only tracked deployment files,
+      writes `bin/release` and leaves source files unchanged. kustomize is
+      installed at the Makefile's pinned version if needed.
 - [ ] The distroless bases are pinned by digest (`tag@sha256:<index digest>`)
       in `.goreleaser.yaml` (the `base_image` fallbacks), images/base/Dockerfile,
       the Dockerfile and images/hostnetwork/Dockerfile, the same digests
@@ -138,8 +140,10 @@ goreleaser v2 (a downloaded release binary, checksum verified, or
 - [ ] `goreleaser check` validates `.goreleaser.yaml`.
 - [ ] `goreleaser build --snapshot --single-target --clean`, then
       `./dist/kudurru_linux_amd64_v1/kudurru version`. Without a tag the
-      snapshot is `0.0.0-SNAPSHOT-<commit>`; the before hook also runs
-      `make release-manifests` (kustomize into `bin/release/`).
+      snapshot is `0.0.0-SNAPSHOT-<commit>`; with a reachable tag, its version
+      prefixes `-SNAPSHOT-<commit>`. The before hook also runs
+      `make release-manifests RELEASE_ARTIFACT_VERSION=<snapshot version>`
+      (manifests and Compose into `bin/release/`).
 - [ ] With Docker available: `goreleaser release --snapshot --clean
       --skip=publish,sign` (archives, deb/rpm/apk, SBOMs, ko images into the
       local daemon).
@@ -147,6 +151,58 @@ goreleaser v2 (a downloaded release binary, checksum verified, or
       Bun on `PATH`; `git checkout dashboard/dist/index.html` afterwards restores
       the committed placeholder.
 - [ ] `rm -rf dist` afterwards.
+- [ ] `hack/release-local-checks.sh --full-snapshot --live` runs the local
+      checks of sections 1 to 3 that no pull request workflow runs
+      (version-check and its unit tests, `hack/release-tag.sh rc`,
+      `make check-generated`, `make release-manifests` with an image-tag
+      inspection of `bin/release`, the real dashboard bundle with
+      `go test ./dashboard/...` and `make size`, `goreleaser check`, the
+      single-target and full snapshots, the live-internet checks) on a clean
+      tree, writes one log per step and a `summary.txt` naming the commit,
+      and restores the tree and removes `dist/` afterwards. With
+      `--full-snapshot` it needs Docker, syft and a conservative estimated
+      reserve of 14 GB free (cold builds can need more than a warm run),
+      and `hack/snapshot-images.sh` fails the step unless both ko images
+      that goreleaser loaded into the daemon
+      (`goreleaser.ko.local:<snapshot version>` and `...-debug`) print the
+      snapshot version from `dist/metadata.json`; it runs
+      `hack/volume-check.sh` on them and removes the images the run
+      created. Repeat it on the final release commit.
+
+### v0.2 preparation dry run, November 15, 2026
+
+Source `21018c6c` passed all 20 local release steps, including the full
+snapshot, live recursion and managed-root checks, and cleanup to a clean tree.
+The commands match `hack/release-local-checks.sh --full-snapshot --live`, using
+the checksum-verified GoReleaser 2.18.3 binary instead of installing it from
+source and limiting full-snapshot parallelism to two. Syft was 1.54.1 and Go
+was 1.27.3. Evidence is in
+`.context/release-resume-20261115/local-release/`.
+
+- Exact candidate manifests and all three distinct application/supervisor
+  image references carry `0.2.0-rc.1`.
+- The real dashboard bundle is embedded in the 85,639,328-byte binary, within
+  the 100,000,000-byte budget.
+- The full snapshot completed in 273 seconds: four cgo-free binaries for
+  Linux/macOS amd64/arm64, five archives, six deb/rpm/apk packages, SBOMs and
+  checksums. All 22 checksum entries and archive contents were checked.
+- Both local ko images print the snapshot version and source commit. The
+  snapshot version is `0.1.0-rc.5-SNAPSHOT-21018c6c`, derived from the reachable
+  tag; `VERSION` remains `0.2.0` and candidate manifests use `0.2.0-rc.1`.
+- Plain distroless snapshot bases have the documented nonfatal volume probe
+  failure. The source's hosted
+  [edge workflow](https://github.com/robertherbaugh/kudurru/actions/runs/43685572836)
+  passes the fresh-volume checks on all three application images and both
+  prepared release bases. Snapshot image versions and prepared-base volume
+  ownership are distinct checks.
+- Live checks pass IANA anchor validation, recursive resolution, bootstrap
+  against all 13 reachable IPv4 root endpoints, authenticated answers,
+  DNSSEC-bogus SERVFAIL with EDE 6, and checking-disabled resolution. The live
+  node records 18 outgoing queries and zero timeouts.
+
+This validates the named source and environment; repeat qualification for
+changes to release code. It does not satisfy production licensing, publication
+or the owner-deferred independent-VM and Windows gates.
 
 Historical dry runs made during v0.1.0-rc.1 preparation:
 
@@ -164,6 +220,12 @@ Historical dry runs made during v0.1.0-rc.1 preparation:
   cosign needs the GitHub OIDC token).
 
 ## 3. Checks before GA (CI and the owner's hardware)
+
+For the current v0.2 completion pass, the owner deferred independent two-VM
+keepalived acceptance to follow-up on November 9, 2026 (D358). No VM pair is
+available. The original hardware criteria below remain unpassed; the existing
+container keepalived and kind/MetalLB results qualify only those environments.
+The separate AD/Windows deferral is D353.
 
 These gate the GA release (an rc may ship without them, listed as known
 gaps in the notes).
@@ -231,7 +293,12 @@ On the owner's hardware:
       dns` moves the VIP within the `fall`/down timer; (3) powering off the
       MASTER moves the VIP; record failover times. `kudurru doctor` reports
       `vrrp: OK` (no `--legacy`).
-- [ ] dnsdist spikes (a) console directives under YAML and (b) PROXYv2 +
+- [x] dnsdist spike (a), console directives under YAML: dnsdist 2.1.3 passes
+      the disposable [capability runner](../hack/labs/dnsdist-console/README.md),
+      including live DNS, certificate rotation/refusal and unchanged PID.
+      Existing DoT backend-selection limitations are recorded; production
+      supervisor acceptance remains separate.
+- [ ] dnsdist spike (b), PROXYv2 +
       chashed against a real dnsdist, with `kdig +quic/+tls/+https` through
       the edge.
 - [ ] **Recursive groups against the real root servers** (D170):
@@ -239,9 +306,26 @@ On the owner's hardware:
       passes, and on a node with `upstreams.groups.default.mode: recursive`
       `dig +dnssec example.com` has the AD flag, `dig dnssec-failed.org`
       answers SERVFAIL with EDE 6 (`+cd` returns the data) and
-      `kudurru_recursor_outgoing_queries_total{result="timeout"}` stays low.
-      Check that the built-in trust anchors still match IANA's
-      root-anchors.xml.
+      `kudurru_recursor_outgoing_queries_total{result="timeout"}` stays low
+      (`hack/live-recursive-node.sh bin/kudurru` starts such a node on
+      loopback ports with a scratch data directory and checks all four).
+      The built-in trust anchors still match IANA's root-anchors.xml:
+      `KUDURRU_LIVE_DNS=1 go test -run '^(TestLiveInternet|TestLiveIANATrustAnchors)$' ./internal/recursor`
+      runs both (the anchor test fetches the file over HTTPS and compares
+      the DS records valid today; it does not check the CMS signature).
+      `hack/release-local-checks.sh` runs these with the other local checks.
+- [ ] **Managed root anchors against the real root servers** (D398):
+      `KUDURRU_LIVE_DNS=1 go test -count=1 -v -run TestLiveRootManagedBootstrap ./cmd/kudurru`
+      passes: every reachable root address gives a reply the strict
+      bootstrap parser accepts, and the log names the shipped seeds that
+      authenticate the root DNSKEY set (November 13, 2026: 38696 on all 13
+      IPv4 addresses; 20326 published but not signing). Record that line in
+      the release notes, and check that the seed advice in
+      docs/deploy/managed-root-anchors.md still matches it.
+- [ ] **Managed root anchors against Knot DNS** (D398), with the pinned image
+      on a private daemon: `hack/test-knot-managed-root.sh` passes unskipped
+      (`TestKnotManagedRootBootstrap` and the generated
+      `TestRFC5011RolloverFromKnotWires`).
 
 ## 4. Promote and publish
 
@@ -341,7 +425,8 @@ publish.yml does not change its result), or, for a scan finding, fix it on
 - [ ] Announce with the CHANGELOG section and the known gaps.
 - [ ] For a release candidate: collect issues, fix on `main`, merge `main`
       into `release-candidate` again for the next `-rc.<N>`, or promote the
-      candidate to `release`. For the release: bump `VERSION` on `main` to
-      the next version (for example `0.2.0`) and the chart versions with it;
+      candidate to `release`. For the release: run
+      `python3 hack/sync-version.py --version <next-version>` on `main` and
+      review the synchronized files and new changelog heading;
       the next promotion into `release-candidate` fails until `VERSION` is
       bumped.

@@ -79,6 +79,15 @@ func newError(gk schema.GroupKind, namespace, name string, errs field.ErrorList)
 	return e
 }
 
+// NewInvalid is the validation failure of one object for field errors found
+// outside the CRD schema, in the form every other rejection has. The SQLite
+// driver uses it for the rules of its complete serving image (a zone
+// configuration that cannot be served, a zone name that another DNSZone
+// already has), so that the API answers them like any invalid object.
+func NewInvalid(gk schema.GroupKind, namespace, name string, errs field.ErrorList) *Error {
+	return newError(gk, namespace, name, errs)
+}
+
 // newUnknownFieldsError reports fields the schema does not declare, the
 // apiserver's "strict decoding error" under fieldValidation=Strict.
 func newUnknownFieldsError(gk schema.GroupKind, namespace, name string, paths []string) *Error {

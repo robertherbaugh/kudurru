@@ -42,3 +42,34 @@ func TestAuditStore(t *testing.T) {
 		t.Fatalf("short retention: %v", err)
 	}
 }
+
+func TestAuditKeySecretHostOnly(t *testing.T) {
+	cfg, err := Load("", nil)
+	if err != nil || cfg.Audit.KeySecret != "kudurru-audit-keys" {
+		t.Fatal("independent ring default")
+	}
+	for _, name := range []string{"", "Wrong", "bad/name"} {
+		cfg.Audit.KeySecret = name
+		if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "audit.keySecret") {
+			t.Fatal("invalid Secret accepted")
+		}
+	}
+	for _, name := range []string{"audit-trust", "release.audit-keys"} {
+		cfg.Audit.KeySecret = name
+		if err := cfg.Validate(); err != nil {
+			t.Fatal("valid Secret rejected")
+		}
+	}
+	found := false
+	for _, field := range Schema {
+		if field.Path == "audit.keySecret" {
+			found = true
+			if !field.HostOnly || !field.RestartRequired {
+				t.Fatal("audit trust location is remotely mutable")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("missing key schema")
+	}
+}

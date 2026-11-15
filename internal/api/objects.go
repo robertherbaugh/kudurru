@@ -14,6 +14,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"k8s.io/apimachinery/pkg/util/yaml"
 
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -24,7 +25,7 @@ type Object = map[string]any
 
 // listObjectsInput are the filters of GET /objects/{kind}.
 type listObjectsInput struct {
-	Kind          string `path:"kind" doc:"Lower-case plural kind: dnszones, dnsrecordsets, blocklists, clientgroups, policies."`
+	Kind          string `path:"kind" doc:"Lower-case plural kind: dnszones, dnsrecordsets, blocklists, clientgroups, policies, dhcpscopes, integrations."`
 	Namespace     string `query:"namespace" doc:"Only objects in this namespace (namespaced kinds)."`
 	LabelSelector string `query:"labelSelector" doc:"Equality selector, e.g. app=web,tier=edge."`
 	Limit         int    `query:"limit" minimum:"0" maximum:"1000" doc:"Page size (default 500)."`
@@ -283,9 +284,15 @@ func (s *Server) listObjects(ctx context.Context, in *listObjectsInput) (*object
 	if !st.clusterAllowed && !k.zoneScoped() {
 		return nil, s.require(ctx, k.resource, "read", clusterScope, "")
 	}
+	if s.opts.ObjectReads != nil && (len(in.LabelSelector) > 4096 || len(in.Namespace) > 1024) {
+		return nil, errInvalid("object list query is too large")
+	}
 	sel, err := parseLabelSelector(in.LabelSelector)
 	if err != nil {
 		return nil, err
+	}
+	if s.opts.ObjectReads != nil {
+		return s.listCapturedObjects(ctx, k, in, sel)
 	}
 	cont, err := decodeCursor(in.Continue)
 	if err != nil {
@@ -301,8 +308,16 @@ func (s *Server) listObjects(ctx context.Context, in *listObjectsInput) (*object
 	}
 	items := make([]Object, 0, len(page.Items))
 	for _, obj := range page.Items {
-		if !st.clusterAllowed && !s.allowed(ctx, k.resource, "read", objectScope(k, obj)) {
-			continue
+		if z, ok := obj.(*v1alpha1.DNSZone); ok {
+			// Decide each listed zone on the object shown (D385).
+			stateFrom(ctx).noteZoneGroup(z.Name, v1alpha1.ZoneGroupOf(z))
+		}
+		if !st.clusterAllowed {
+			if ok, err := s.listAllowed(ctx, k.resource, "read", objectScope(k, obj)); err != nil {
+				return nil, err
+			} else if !ok {
+				continue
+			}
 		}
 		m, err := objectMap(k, obj)
 		if err != nil {
@@ -317,6 +332,9 @@ func (s *Server) getObjectRoute(ctx context.Context, plural, namespace, name str
 	k, err := s.kindParamScoped(plural, namespaced)
 	if err != nil {
 		return nil, err
+	}
+	if s.opts.ObjectReads != nil {
+		return s.getCapturedObject(ctx, k, namespace, name)
 	}
 	obj, err := s.getObject(ctx, k, namespace, name)
 	if err != nil {
@@ -377,9 +395,15 @@ func objectURL(k kindInfo, namespace, name string) string {
 // authorizeWrite checks resource.write for a whole-object write at the
 // scope of the new document and of the stored object it replaces: a zone
 // update needs zones.write on the zone, a zone create needs it at cluster
-// scope (§8.5), a record set needs records.write on its zone (and on the
-// zone it moves away from).
+// scope (§8.5), and so does a zone update that adds, changes or removes the
+// zone's kudurru.io/zonegroup label (D385: group membership is access
+// control); a record set needs records.write on its zone (and on the zone it
+// moves away from).
 func (s *Server) authorizeWrite(ctx context.Context, k kindInfo, req writeRequest) error {
+	if s.opts.ObjectCommand != nil {
+		// The command authorizes both exact current scopes from its own read.
+		return nil
+	}
 	name := req.name
 	if name == "" {
 		name, _ = nestedString(req.body, "metadata", "name")
@@ -401,7 +425,7 @@ func (s *Server) authorizeWrite(ctx context.Context, k kindInfo, req writeReques
 	switch k.plural {
 	case "dnszones":
 		sc := clusterScope
-		if existing != nil {
+		if existing != nil && !zoneGroupChanged(req.body, existing) {
 			sc = rbac.Scope{Kind: rbac.ScopeZone, Name: name}
 		}
 		return s.require(ctx, k.resource, "write", sc, name)
@@ -437,6 +461,12 @@ func (s *Server) deleteObjectRoute(ctx context.Context, plural, namespace, name,
 	k, err := s.kindParamScoped(plural, namespaced)
 	if err != nil {
 		return nil, err
+	}
+	if s.opts.ObjectCommand != nil {
+		if err := s.commandDeleteObject(ctx, k, keyFor(k, namespace, name), ifMatch); err != nil {
+			return nil, err
+		}
+		return &emptyOutput{}, nil
 	}
 	obj, err := s.getObject(ctx, k, namespace, name)
 	if err != nil {
@@ -561,6 +591,7 @@ func (s *Server) apply(ctx context.Context, in *applyInput) (*applyOutput, error
 		return nil, err
 	}
 	results := make([]ApplyResult, 0, len(docs))
+	ctx = s.objectItems(ctx)
 	for _, d := range docs {
 		results = append(results, s.applyOne(ctx, d))
 	}
@@ -625,10 +656,19 @@ func (s *Server) batchDelete(ctx context.Context, k kindInfo, in *batchDeleteInp
 	if k.namespaced && ns == "" {
 		ns = s.opts.DefaultNamespace
 	}
+	ctx = s.objectItems(ctx)
 	for _, name := range in.Body.Names {
 		label := name
 		if k.namespaced {
 			label = ns + "/" + name
+		}
+		if s.opts.ObjectCommand != nil {
+			if err := s.commandDeleteObject(ctx, k, keyFor(k, ns, name), ""); err != nil {
+				out.fail(label, err)
+			} else {
+				out.ok(label)
+			}
+			continue
 		}
 		obj, err := s.getObject(ctx, k, ns, name)
 		if err == nil {

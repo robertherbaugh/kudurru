@@ -1,0 +1,54 @@
+# Original synthetic configuration; no upstream project data.
+schema_version: 29
+users:
+  - name: admin
+    password: secret-auth-marker
+tls:
+  private_key_path: /secret-key-marker
+http:
+  address: 0.0.0.0:80
+dns:
+  upstream_dns: [192.0.2.53]
+  upstream_mode: load_balance
+  bootstrap_dns: [192.0.2.54]
+  bind_hosts: [0.0.0.0]
+filtering:
+  protection_enabled: true
+  filtering_enabled: true
+  blocking_mode: nxdomain
+  blocked_response_ttl: 30
+  parental_enabled: true
+  rewrites:
+    - domain: printer.home.arpa
+      answer: 192.0.2.20
+    - domain: alias.home.arpa
+      answer: printer.home.arpa
+    - domain: '*.external.test'
+      answer: A
+filters:
+  - id: 10
+    name: Synthetic test list
+    url: https://lists.example.test/deny.txt
+    enabled: true
+  - id: 11
+    url: https://user:secret-url-marker@lists.example.test/deny.txt
+    enabled: false
+whitelist_filters:
+  - id: 12
+    url: https://lists.example.test/allow.txt
+    enabled: false
+user_rules:
+  - '||ads.example.test^'
+  - '@@||allowed.example.test^'
+  - '||redacted.test^$client=secret-rule-marker'
+clients:
+  persistent:
+    - name: printer
+      ids: [192.0.2.20]
+      use_global_settings: false
+      filtering_enabled: false
+      ignore_querylog: true
+      upstreams: [192.0.2.55]
+      tags: [device_printer]
+  runtime_sources:
+    rdns: true

@@ -1,0 +1,110 @@
+package main
+
+import (
+	"context"
+	"sync/atomic"
+
+	"github.com/miekg/dns"
+	"github.com/robertherbaugh/kudurru/internal/dnsserver"
+	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/serving"
+	"github.com/robertherbaugh/kudurru/internal/servingdns"
+)
+
+// rootAnchorOutput never reacquires a publication. Each transfer continuation
+// keeps this exact private component and the original request cancellation.
+type rootAnchorOutput struct {
+	ctx   context.Context
+	seal  *recursiveRootSeal
+	read  *recursiveRootRead
+	state atomic.Uint32
+	ack   *rootUpdateAcknowledgment
+	bound bool
+	// Only a bound ordinary recursive/policy response uses retained DNS data.
+	// Unbound output, authoritative data and transfer continuations stay strict.
+	query       bool
+	retainedDNS bool
+	// servedDNS marks any other bound ordinary query response: it may use
+	// the data of the publication that is still served (D378).
+	servedDNS bool
+}
+
+const (
+	anchorOutputReady uint32 = iota
+	anchorOutputBusy
+	anchorOutputWritten
+	anchorOutputTerminal
+)
+
+func captureRootAnchorOutput(req *pipeline.Request) (dnsserver.Output, error) {
+	seal, err := servingdns.Component[*recursiveRootSeal](req, recursiveRootComponent)
+	if err != nil {
+		return nil, err
+	}
+	read, err := seal.captureReadCurrent(req.Ctx, seal.dnsCurrent)
+	if err != nil {
+		return nil, err
+	}
+	return &rootAnchorOutput{ctx: req.Ctx, seal: seal, read: read,
+		query: req.Msg != nil && req.Msg.Opcode == dns.OpcodeQuery && len(req.Msg.Question) == 1 &&
+			req.Question().Qtype != dns.TypeAXFR && req.Question().Qtype != dns.TypeIXFR}, nil
+}
+
+// Emit holds mode/R only around the synchronous actual transport handoff.
+func (o *rootAnchorOutput) Emit(fn func() error) error {
+	if o == nil || fn == nil || !o.state.CompareAndSwap(anchorOutputReady, anchorOutputBusy) {
+		return serving.ErrDependency
+	}
+	completed := false
+	defer func() {
+		// Panic or incomplete callback cannot mint another output attempt.
+		if !completed {
+			o.state.Store(anchorOutputTerminal)
+		}
+	}()
+	current := o.seal.current
+	if o.retainedDNS {
+		current = o.seal.dnsCurrent
+	} else if o.servedDNS {
+		current = o.seal.servedCurrent
+	}
+	if o.ack != nil {
+		if !o.bound {
+			return serving.ErrDependency
+		}
+		current = o.ack.current
+	}
+	err := o.seal.withReadCurrent(o.read, current, func(check func() error) error {
+		if err := check(); err != nil {
+			return err
+		}
+		return fn()
+	})
+	if err != nil {
+		return err
+	}
+	completed = true
+	o.state.Store(anchorOutputWritten)
+	return nil
+}
+
+// Next precedes the next iterator pull. Failure never rescues an old frame.
+func (o *rootAnchorOutput) Next() error {
+	if o == nil || o.ack != nil || o.retainedDNS || o.servedDNS || !o.state.CompareAndSwap(anchorOutputWritten, anchorOutputBusy) {
+		return serving.ErrDependency
+	}
+	completed := false
+	defer func() {
+		if !completed {
+			o.state.Store(anchorOutputTerminal)
+		}
+	}()
+	read, err := o.seal.captureRead(o.ctx)
+	if err != nil {
+		return err
+	}
+	o.read = read
+	completed = true
+	o.state.Store(anchorOutputReady)
+	return nil
+}

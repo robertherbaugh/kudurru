@@ -86,6 +86,11 @@ type DiskCache struct {
 	byKey    map[string]Entry
 	byDigest map[string]string // digest -> key
 	locks    map[string]*sync.Mutex
+	// awaited are keys a complete preparation found without a body and
+	// compiled empty (AwaitBody); awaitedHook is called once a body for
+	// one of them is stored, so the preparation runs again (D373).
+	awaited     map[string]bool
+	awaitedHook func()
 }
 
 // FileName returns the cache file name of key: hex(sha256(key)).
@@ -104,7 +109,7 @@ func OpenDiskCache(dir string, log *slog.Logger) (*DiskCache, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("listfetcher: lists dir: %w", err)
 	}
-	c := &DiskCache{dir: dir, log: log, byKey: map[string]Entry{}, byDigest: map[string]string{}, locks: map[string]*sync.Mutex{}}
+	c := &DiskCache{dir: dir, log: log, byKey: map[string]Entry{}, byDigest: map[string]string{}, locks: map[string]*sync.Mutex{}, awaited: map[string]bool{}}
 	des, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("listfetcher: lists dir: %w", err)
@@ -356,12 +361,54 @@ func (c *DiskCache) Remove(key string) {
 
 func (c *DiskCache) store(e Entry) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if old, ok := c.byKey[e.Key]; ok && old.Digest != e.Digest && c.byDigest[old.Digest] == e.Key {
 		delete(c.byDigest, old.Digest)
 	}
 	c.byKey[e.Key] = e
 	c.byDigest[e.Digest] = e.Key
+	var hook func()
+	awaited := c.awaited[e.Key]
+	if awaited {
+		delete(c.awaited, e.Key)
+		hook = c.awaitedHook
+	}
+	c.mu.Unlock()
+	if awaited {
+		c.log.Info("listfetcher: awaited body stored; the list source blocks on this node again", "source", redact(e.Key), "digest", e.Digest)
+	}
+	if hook != nil {
+		hook()
+	}
+}
+
+// AwaitBody reports whether the cache holds no body for key. When it holds
+// none, key is recorded atomically with that answer, and the hook set with
+// OnAwaitedBody is called once a body for key is stored: a preparation
+// that compiled the source empty for want of its body then runs again.
+// The source does not block on this node meanwhile, so the wait is logged
+// once when it starts and once when the body is stored.
+func (c *DiskCache) AwaitBody(key string) bool {
+	c.mu.Lock()
+	if _, ok := c.byKey[key]; ok {
+		c.mu.Unlock()
+		return false
+	}
+	first := !c.awaited[key]
+	c.awaited[key] = true
+	c.mu.Unlock()
+	if first {
+		c.log.Warn("listfetcher: list source has a published digest but this node holds no body for it; it is served empty, awaiting its body, and does not block on this node until the body is stored", "source", redact(key))
+	}
+	return true
+}
+
+// OnAwaitedBody sets the function called when a body for a key AwaitBody
+// recorded is stored (the serving publisher's Wake); nil removes it. The
+// function must not block.
+func (c *DiskCache) OnAwaitedBody(fn func()) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.awaitedHook = fn
 }
 
 func (c *DiskCache) writeMeta(e Entry) error {

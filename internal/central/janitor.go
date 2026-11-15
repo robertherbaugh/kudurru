@@ -13,7 +13,10 @@ import (
 // many rows it removed.
 type Job struct {
 	Name string
-	Run  func(ctx context.Context, tx pgx.Tx, now time.Time) (int64, error)
+	// Timeout bounds the whole transaction, including acquisition and commit.
+	// Zero retains the caller's deadline (bulk jobs lift statement_timeout).
+	Timeout time.Duration
+	Run     func(ctx context.Context, tx pgx.Tx, now time.Time) (int64, error)
 }
 
 // Janitor is the leader-only runnable that runs Jobs once at start and
@@ -46,22 +49,30 @@ func (j *Janitor) Run(ctx context.Context) error {
 	log = log.With("component", "central")
 	run := func() {
 		for _, job := range j.Jobs {
+			jobCtx := ctx
+			cancel := func() {}
+			if job.Timeout > 0 {
+				jobCtx, cancel = context.WithTimeout(ctx, job.Timeout)
+			}
 			var n int64
-			err := j.DB.Tx(ctx, func(tx pgx.Tx) error {
+			err := j.DB.Tx(jobCtx, func(tx pgx.Tx) error {
 				// Housekeeping on a large database outlasts the pool's
 				// statement_timeout, which is meant for reads.
-				if err := NoStatementTimeout(ctx, tx); err != nil {
+				if err := NoStatementTimeout(jobCtx, tx); err != nil {
 					return err
 				}
 				var err error
-				n, err = job.Run(ctx, tx, now())
+				n, err = job.Run(jobCtx, tx, now())
 				return err
 			})
+			cancel()
 			switch {
 			case errors.Is(err, ErrUnavailable) || errors.Is(err, ErrIncompatible):
 				return // Run logs the database's state
-			case err != nil && ctx.Err() == nil:
-				log.Warn("central housekeeping failed", "job", job.Name, "err", err)
+			case err != nil:
+				if ctx.Err() == nil {
+					log.Warn("central housekeeping failed", "job", job.Name, "err", err)
+				}
 			case n > 0:
 				log.Info("central housekeeping", "job", job.Name, "rows", n)
 			}

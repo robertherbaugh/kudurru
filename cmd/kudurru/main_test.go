@@ -65,6 +65,11 @@ func TestErrorHint(t *testing.T) {
 		{&apiclient.Error{StatusCode: 401, Key: "unauthenticated"}, "kudurru login"},
 		{&apiclient.Error{StatusCode: 403, Key: "forbidden"}, "RoleBinding"},
 		{fmt.Errorf("wrapped: %w", &apiclient.Error{StatusCode: 503, Key: "read_only"}), "ha-static"},
+		{&apiclient.Error{StatusCode: 503, Key: "primary_required"}, "run it against the primary"},
+		{&apiclient.Error{StatusCode: 503, Key: "completion_unknown"}, "inspect the current state"},
+		{&apiclient.Error{StatusCode: 503, Key: "cluster_fenced"}, "newer primary"},
+		{&apiclient.Error{StatusCode: 503, Key: "cluster_conflict"}, "cluster resolve --offline"},
+		{&apiclient.Error{StatusCode: 503, Key: "generation_pending"}, ""},
 		{&apiclient.Error{StatusCode: 404, Key: "not_found"}, ""},
 		{errors.New("plain"), ""},
 	}

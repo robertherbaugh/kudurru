@@ -1,0 +1,80 @@
+go: downloading github.com/prometheus/client_golang v1.25.0
+go: downloading golang.org/x/sync v0.23.0
+go: downloading github.com/knadh/koanf/parsers/yaml v1.1.1
+go: downloading github.com/knadh/koanf/providers/confmap v1.0.1
+go: downloading github.com/knadh/koanf/providers/file v1.2.1
+go: downloading github.com/knadh/koanf/v2 v2.3.8
+go: downloading github.com/knadh/koanf/maps v0.1.2
+go: downloading github.com/fsnotify/fsnotify v1.9.0
+go: downloading go.yaml.in/yaml/v3 v3.0.5
+go: downloading github.com/mitchellh/copystructure v1.2.0
+go: downloading github.com/go-viper/mapstructure/v2 v2.4.0
+go: downloading github.com/mitchellh/reflectwalk v1.0.2
+go: downloading github.com/kylelemons/godebug v1.1.0
+go: downloading github.com/beorn7/perks v1.0.1
+go: downloading github.com/prometheus/common v0.72.0
+go: downloading github.com/prometheus/client_model v0.6.3
+go: downloading github.com/cespare/xxhash/v2 v2.3.0
+go: downloading github.com/prometheus/procfs v0.22.0
+go: downloading google.golang.org/protobuf v1.36.12
+go: downloading github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: AMD EPYC 9224 24-Core Processor                
+BenchmarkGet/hit-6   	 2044369	       583.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	14276622	        85.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	 8525446	       142.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	37605613	        51.78 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	 1833272	       632.5 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       2	 872376764 ns/op	       292.8 bytes/entry	       173.9 overhead-bytes/entry	375230920 B/op	 4012169 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	9.104s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: AMD EPYC 9224 24-Core Processor                
+BenchmarkGet/hit-6   	 2104838	       561.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	11878052	        84.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	 8777808	       129.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	37027370	        64.94 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	 1871668	       639.1 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       2	 906031789 ns/op	       292.8 bytes/entry	       173.9 overhead-bytes/entry	375340056 B/op	 4012177 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	9.439s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: AMD EPYC 9224 24-Core Processor                
+BenchmarkGet/hit-6   	 2208529	       532.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	14465113	        82.62 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	 9872424	       134.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	38220381	        64.10 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	 1960804	       589.1 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       2	 897999024 ns/op	       292.8 bytes/entry	       173.9 overhead-bytes/entry	375312816 B/op	 4012175 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	9.770s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: AMD EPYC 9224 24-Core Processor                
+BenchmarkGet/hit-6   	 2654746	       435.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	13885921	        85.53 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	10342604	       116.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	30167557	        66.93 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	 2768316	       470.1 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       2	 812144777 ns/op	       292.6 bytes/entry	       173.8 overhead-bytes/entry	375148984 B/op	 4012163 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	9.051s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: AMD EPYC 9224 24-Core Processor                
+BenchmarkGet/hit-6   	 3081522	       385.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	13867250	        86.09 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	10007402	       130.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	33887944	        59.54 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	 2676666	       456.4 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       2	 752512686 ns/op	       292.6 bytes/entry	       173.8 overhead-bytes/entry	375176504 B/op	 4012167 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	8.927s

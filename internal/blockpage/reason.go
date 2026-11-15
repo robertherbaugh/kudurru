@@ -138,7 +138,8 @@ type QuerylogFinder struct {
 	// Tail is the live tail; nil skips it.
 	Tail *querylog.Tail
 	// Reader is the querylog.db reader; nil skips it (sink slog).
-	Reader *sqlitelog.Reader
+	Reader       *sqlitelog.Reader
+	ReaderSource func() *sqlitelog.Reader
 	// Privacy returns the current querylog.privacy and querylog.anonymize
 	// settings; nil means full.
 	Privacy func() (mode querylog.Mode, pseudonym bool)
@@ -148,6 +149,7 @@ type QuerylogFinder struct {
 	Pseudonym func(client netip.Addr) string
 	// Disabled is true when querylog.enabled is false.
 	Disabled bool
+	Enabled  func() bool
 }
 
 // Notes shown instead of a reason.
@@ -161,7 +163,7 @@ const (
 
 // Find implements Finder.
 func (f *QuerylogFinder) Find(ctx context.Context, client netip.Addr, domain string, now time.Time) (Reason, bool, string) {
-	if f.Disabled {
+	if f.Disabled && f.Enabled == nil || f.Enabled != nil && !f.Enabled() {
 		return Reason{}, false, noteDisabled
 	}
 	mode, pseudonym := querylog.PrivacyFull, false
@@ -196,12 +198,16 @@ func (f *QuerylogFinder) Find(ctx context.Context, client netip.Addr, domain str
 			return r, true, ""
 		}
 	}
-	if f.Reader != nil {
+	reader := f.Reader
+	if f.ReaderSource != nil {
+		reader = f.ReaderSource()
+	}
+	if reader != nil {
 		filter := sqlitelog.QueryFilter{Domain: domain, Status: pageStatuses, Since: since, Limit: 1, Client: name}
 		if match.IsValid() {
 			filter.Client = match.String()
 		}
-		page, err := f.Reader.Queries(ctx, filter)
+		page, err := reader.Queries(ctx, filter)
 		if err == nil && len(page.Queries) > 0 {
 			row := page.Queries[0]
 			st, _ := pageStatus(row.Status)

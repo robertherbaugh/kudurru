@@ -1,0 +1,28 @@
+# A DHCPv4 scope served in Kubernetes (dhcp.enabled in the chart). The
+# router relays DHCP for 192.168.30.0/24 to the chart's dhcp.serverAddress;
+# its source address and giaddr are trusted below. Annotate a scope you
+# manage in Git with kudurru.io/managed-by (e.g. gitops:argocd) so the
+# dashboard shows it read-only.
+apiVersion: kudurru.io/v1alpha1
+kind: DHCPScope
+metadata:
+  name: iot
+  annotations:
+    kudurru.io/managed-by: gitops:argocd
+spec:
+  subnet: 192.168.30.0/24
+  rangeStart: 192.168.30.100
+  rangeEnd: 192.168.30.199
+  router: 192.168.30.1
+  dnsServers: [192.168.10.53]
+  domainName: iot.home.arpa
+  leaseDuration: 12h
+  registerDNS: true
+  dnsTTL: 30s
+  trustedRelays:
+    - sourceIP: 192.168.30.1
+      gatewayIP: 192.168.30.1
+  reservations:
+    - mac: "02:42:ac:11:00:02"
+      ip: 192.168.30.10
+      hostname: thermostat

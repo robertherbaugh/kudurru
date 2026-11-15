@@ -119,7 +119,7 @@ func (a *arena) add(rec string, tag uint8) {
 // added more than once the tag of the first addition wins, which keeps the
 // result independent of sort stability. It returns the bucket and the number
 // of unique records, and releases the arena.
-func (a *arena) build(w int) (bucket, int) {
+func (a *arena) build(w int, mergeTags ...bool) (bucket, int) {
 	n := len(a.tags)
 	if n == 0 || w == 0 {
 		return bucket{}, 0
@@ -148,6 +148,9 @@ func (a *arena) build(w int) (bucket, int) {
 		o := int(i) * w
 		rec := data[o : o+w]
 		if k > 0 && bytes.Equal(rec, prev) {
+			if len(mergeTags) > 0 && mergeTags[0] {
+				tags[len(tags)-1] |= a.tags[i]
+			}
 			continue
 		}
 		sb.Write(rec)

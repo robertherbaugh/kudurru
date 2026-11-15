@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -27,6 +28,7 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/cluster"
 	"github.com/robertherbaugh/kudurru/internal/health"
+	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/sqlite"
 )
 
@@ -94,7 +96,7 @@ func TestNodesAndCluster(t *testing.T) {
 	if nh.Ready || nh.Health["components"] == nil {
 		t.Fatalf("health %+v", nh)
 	}
-	h.do(http.MethodGet, "/api/v1/nodes/node-b/health", "admin", nil).want(http.StatusNotImplemented)
+	h.do(http.MethodGet, "/api/v1/nodes/node-b/health", "admin", nil).want(http.StatusServiceUnavailable)
 	h.do(http.MethodGet, "/api/v1/nodes/node-z/health", "admin", nil).want(http.StatusNotFound)
 	var ci ClusterInfo
 	h.do(http.MethodGet, "/api/v1/cluster", "admin", nil).want(http.StatusOK).json(&ci)
@@ -340,7 +342,7 @@ func TestMeWithBearerRoles(t *testing.T) {
 		t.Fatalf("me %+v", me)
 	}
 	h.do(http.MethodGet, "/api/v1/auth/me", "admin", nil).want(http.StatusOK).json(&me)
-	if len(me.Permissions) != 25 {
+	if len(me.Permissions) != 28 { // one entry per resource; inventory joined in D397
 		t.Fatalf("admin permissions %d: %v", len(me.Permissions), me.Permissions)
 	}
 }
@@ -497,6 +499,34 @@ func TestStoreErrorNotStored(t *testing.T) {
 	var e *Error
 	if !errors.As(storeError(audit.ErrNotStored), &e) || e.GetStatus() != http.StatusServiceUnavailable {
 		t.Fatalf("storeError(ErrNotStored) = %v", storeError(audit.ErrNotStored))
+	}
+}
+
+// D386: a Kubernetes RBAC refusal of an impersonated write is 403 forbidden,
+// not an internal error.
+func TestStoreErrorImpersonationForbidden(t *testing.T) {
+	var e *Error
+	err := storeError(fmt.Errorf("%w: apply DNSZone/home as \"kudurru:user:alice\": denied", store.ErrForbidden))
+	if !errors.As(err, &e) || e.GetStatus() != http.StatusForbidden || e.Body.Key != KeyForbidden || !strings.Contains(e.Body.Message, "kudurru:user:alice") {
+		t.Fatalf("storeError(ErrForbidden) = %#v", err)
+	}
+	if hint, _ := e.Body.Hint.(string); strings.Contains(hint, "kudurru:group:") || !strings.Contains(hint, "for the reason it gives") {
+		t.Fatalf("ErrForbidden hint assumes a cause: %q", hint)
+	}
+}
+
+// D386: an impersonated write whose credential ended during the request is
+// an authentication failure, and kudurru lacking the impersonate verb is a
+// deployment fault that does not blame the caller.
+func TestStoreErrorImpersonationIdentity(t *testing.T) {
+	var e *Error
+	if err := storeError(fmt.Errorf("%w: credential ended", store.ErrNoIdentity)); !errors.As(err, &e) ||
+		e.GetStatus() != http.StatusUnauthorized || e.Body.Key != KeyUnauthenticated || e.GetHeaders().Get("WWW-Authenticate") == "" {
+		t.Fatalf("storeError(ErrNoIdentity) = %#v", err)
+	}
+	if err := storeError(fmt.Errorf("%w: apply DNSZone/home could not be sent as \"kudurru:user:alice\"", store.ErrImpersonationDenied)); !errors.As(err, &e) ||
+		e.GetStatus() != http.StatusServiceUnavailable || e.Body.Key != KeyUnavailable {
+		t.Fatalf("storeError(ErrImpersonationDenied) = %#v", err)
 	}
 }
 

@@ -1,0 +1,34 @@
+First-party selector, precedence, wildcard and response grammar cases.
+
+-- context --
+dnstype=AAAA clientIP=192.0.2.5 clientID=fixture tags=device_pc|user_child
+-- list m block adblock --
+||typed.example^$dnstype=AAAA,client=192.0.2.0/24,ctag=device_pc
+||excluded.example^$client=192.0.2.0/24|~192.0.2.5
+||tagged.example^$ctag=user_child|~device_pc
+||important.example^$important
+@@||important.example^
+||both.example^$important
+@@||both.example^$important
+||cancel.example^$dnstype=AAAA
+||cancel.example^$badfilter,dnstype=AAAA
+||ads*.wild.example^$ctag=device_pc
+||denyallow.example^$denyallow=good.denyallow.example
+||192.0.2.66^$client=192.0.2.5,dnstype=AAAA
+||allow.example^$important
+-- list explicit allow adblock --
+||allow.example^$ctag=user_child
+-- expect --
+typed.example          block m ||typed.example^$dnstype=AAAA,client=192.0.2.0/24,ctag=device_pc
+excluded.example       pass
+tagged.example         pass
+important.example      block m ||important.example^$important
+both.example           allow m @@||both.example^$important
+cancel.example         pass
+ads123.wild.example    block m ||ads*.wild.example^$ctag=device_pc
+notads.wild.example    pass
+denyallow.example      block m ||denyallow.example^$denyallow=good.denyallow.example
+good.denyallow.example pass
+allow.example          allow explicit ||allow.example^$ctag=user_child
+cname:typed.example    block m ||typed.example^$dnstype=AAAA,client=192.0.2.0/24,ctag=device_pc
+ip:192.0.2.66          block m ||192.0.2.66^$client=192.0.2.5,dnstype=AAAA

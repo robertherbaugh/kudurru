@@ -11,6 +11,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
+	zonemodel "github.com/robertherbaugh/kudurru/internal/zone"
 )
 
 func TestBuildZoneView(t *testing.T) {
@@ -315,5 +316,33 @@ func TestValidateEndpoint(t *testing.T) {
 				t.Fatalf("err = %v, want %q", err, tt.want)
 			}
 		})
+	}
+}
+
+// D402: in an external zone only the record sets the Kubernetes source
+// adapter maintains are served; every other record set that names the zone
+// is NotSelected, and the build hashes only the adapter's records.
+func TestBuildZoneViewExternalZoneSelectsAdapterRecordSets(t *testing.T) {
+	z := zoneObj("ext", "ext.example.")
+	z.Spec.Type = v1alpha1.ZoneTypeExternal
+	z.Spec.External = &v1alpha1.ExternalSpec{Ingress: true}
+	owned := rrsetObj("apps", "external-ingress-a", "ext", 0, ep("web.ext.example", "A", "192.0.2.1"))
+	owned.Labels = map[string]string{zonemodel.ExternalSourceLabel: "ingress"}
+	owned.Annotations = map[string]string{zonemodel.ExternalSourceUIDAnnotation: "uid-a", zonemodel.ExternalSourceNameAnnotation: "web", v1alpha1.ManagedByAnnotation: zonemodel.ExternalSourceManager("uid-a")}
+	owned.OwnerReferences = []metav1.OwnerReference{{APIVersion: "networking.k8s.io/v1", Kind: "Ingress", Name: "web", UID: "uid-a"}}
+	manual := rrsetObj("apps", "manual", "ext", time.Minute, ep("manual.ext.example", "A", "192.0.2.2"))
+	v := buildZoneView(z, []*v1alpha1.DNSRecordSet{owned, manual}, nil)
+	if got := v.Verdicts[store.KeyOf(owned)]; got.Blocked != "" || got.Kept != 1 {
+		t.Fatalf("adapter record set verdict %+v", got)
+	}
+	if got := v.Verdicts[store.KeyOf(manual)]; got.Blocked != ReasonNotSelected || !strings.Contains(got.BlockedMsg, "external zone") {
+		t.Fatalf("foreign record set verdict %+v", got)
+	}
+	build := buildZone(z, []*v1alpha1.DNSRecordSet{owned, manual})
+	if only := buildZone(z, []*v1alpha1.DNSRecordSet{owned}); build.ZoneErr != nil || build.RecordCount != 1 || build.Hash != only.Hash {
+		t.Fatalf("external zone build %+v, adapter records only %+v", build, only)
+	}
+	if verdict := zoneVerdict(z, v, build); verdict.ReadyReason == ReasonUnsupported {
+		t.Fatalf("external zone reported unsupported: %+v", verdict)
 	}
 }

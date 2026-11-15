@@ -1,5 +1,5 @@
 // Chapter: the System section (Nodes, Settings, Tools, Diagnosis).
-import { choose, dialog, fresh, getPage, go, group, scroll, settle, shot, main } from './lib.mjs';
+import { choose, dialog, fresh, getPage, go, group, scroll, settle, shot, main, toTop } from './lib.mjs';
 
 export default async function () {
   await group('system', async () => {
@@ -33,7 +33,10 @@ export default async function () {
     await page.getByRole('textbox', { name: 'Description' }).fill('home-assistant');
     await page.getByRole('button', { name: 'Create token' }).click();
     await settle(1000);
+    // The API tokens panel is below the Authenticator and Browser sessions panels.
+    await scroll(460);
     await shot('access-token-created');
+    await toTop();
     await page.getByText('Identity', { exact: true }).first().click();
     await settle(1000);
     await shot('access-identity');

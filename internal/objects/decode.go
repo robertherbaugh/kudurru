@@ -136,7 +136,16 @@ func (d *decoded) add(source string, index *int, v any) {
 	}
 	u := &unstructured.Unstructured{Object: m}
 	if u.IsList() {
-		items, _ := m["items"].([]any)
+		items, ok := m["items"].([]any)
+		if !ok && m["items"] != nil {
+			*index++
+			d.broken = true
+			d.diags = append(d.diags, Diagnosis{
+				Severity: SeverityError, Reason: ReasonNotAnObject, Source: source, Document: *index,
+				Message: "List items must be an array of object mappings",
+			})
+			return
+		}
 		for _, it := range items {
 			d.add(source, index, it)
 		}

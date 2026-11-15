@@ -6,6 +6,7 @@ import (
 	"iter"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/miekg/dns"
@@ -26,7 +27,18 @@ type Handler struct {
 	// QueryTimeout bounds the pipeline for one query; zero means
 	// DefaultQueryTimeout.
 	QueryTimeout time.Duration
+	// Capture acquires a complete publication BEFORE signature verification.
+	// Keys selects only that request's immutable provider. Configure once before
+	// listeners start. Keys alone supports a startup-only immutable credential
+	// source without claiming a complete Serving lease. Both nil retain legacy
+	// fixed-provider mode. A failed selector never falls back to listener keys.
+	Capture pipeline.Capture
+	Keys    func(*pipeline.Request) (*StaticKeyring, error)
+	// Output is the root-owned final write guard, captured before work.
+	Output CaptureOutput
 }
+
+func (h *Handler) capturesTransport() bool { return h.Capture != nil || h.Keys != nil }
 
 func (h *Handler) logger() *slog.Logger {
 	if h.Logger != nil {
@@ -56,7 +68,14 @@ func (h *Handler) timeout() time.Duration {
 // and doh/doh3 abort the HTTP exchange. Resolve itself, which must return
 // a message, answers SERVFAIL.
 func (h *Handler) Resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) *dns.Msg {
-	if m, _ := h.resolve(ctx, r, client); m != nil {
+	// A returned message has no synchronous serialization handoff. Guarded
+	// callers must use a transport that completes emission under its scope.
+	if h.Output != nil {
+		return servfail(r)
+	}
+	m, _, cleanup := h.resolve(ctx, r, client)
+	defer cleanup()
+	if m != nil {
 		return m
 	}
 	return servfail(r)
@@ -80,41 +99,72 @@ func servfail(r *dns.Msg) *dns.Msg {
 // (pipeline.Response.Transfer, an AXFR/IXFR stream). When the stream is
 // non-nil it yields every message of the answer, starting with the
 // returned one, and the caller writes those instead.
-func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) (*dns.Msg, iter.Seq[*dns.Msg]) {
-	timeout := h.timeout()
+func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Client) (*dns.Msg, iter.Seq[*dns.Msg], func()) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	req := &pipeline.Request{Ctx: ctx, Msg: r, Received: time.Now(), Client: client}
-	req.Deadline = req.Received.Add(timeout)
+	req, _ := ctx.Value(transportRequestKey{}).(*pipeline.Request)
+	cancel := func() {}
+	if req == nil {
+		timeout := h.timeout()
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		received := time.Now()
+		req = &pipeline.Request{Ctx: ctx, Msg: r, Received: received, Deadline: received.Add(timeout), Client: client}
+	} else {
+		// Reuse the SAME pre-verification publication and absolute deadline.
+		req.Ctx, req.Msg, req.Client = ctx, r, client
+	}
+	handedOff := false
+	defer func() {
+		if !handedOff {
+			cancel()
+		}
+	}()
 
 	resp, err := h.Chain.Serve(req)
+	var once sync.Once
+	cleanup := func() {
+		once.Do(func() {
+			cancel()
+			resp.Close()
+		})
+	}
+	handedOff = true
 	if (err == nil && IsDrop(resp)) || errors.Is(err, pipeline.ErrDrop) {
-		return nil, nil
+		return nil, nil, cleanup
 	}
 	if err != nil || resp == nil || resp.Msg == nil {
 		if err != nil && !errors.Is(err, pipeline.ErrNoAnswer) {
 			h.logger().Debug("pipeline error", "err", err, "q", req.Question().Name, "proto", client.Proto.String())
 		}
-		return servfail(r), nil
+		return servfail(r), nil, cleanup
+	}
+	if output, ok := CapturedOutput(req).(ResponseOutput); ok {
+		if err := output.BindResponse(resp); err != nil {
+			return nil, nil, cleanup
+		}
+	}
+	if retained, _ := ctx.Value(transportResponseKey{}).(*transportResponse); retained != nil {
+		retained.security = resp.Security
 	}
 	m := resp.Msg
 	m.Id = r.Id
 	if resp.Transfer == nil {
-		return m, nil
+		return m, nil, cleanup
 	}
 	id := r.Id
 	return m, func(yield func(*dns.Msg) bool) {
+		defer cleanup()
 		for x := range resp.Transfer {
+			if ctx.Err() != nil {
+				return
+			}
 			x.Id = id
 			if !yield(x) {
 				return
 			}
 		}
-	}
+	}, cleanup
 }
 
 // resolveFreshID is Resolve for transports whose clients send a fixed
@@ -129,7 +179,8 @@ func (h *Handler) resolve(ctx context.Context, r *dns.Msg, client pipeline.Clien
 func (h *Handler) resolveFreshID(ctx context.Context, r *dns.Msg, client pipeline.Client) *dns.Msg {
 	orig := r.Id
 	r.Id = dns.Id()
-	m, _ := h.resolve(ctx, r, client)
+	m, _, cleanup := h.resolve(ctx, r, client)
+	defer cleanup()
 	r.Id = orig
 	if m != nil {
 		m.Id = orig
@@ -142,9 +193,16 @@ func (h *Handler) resolveFreshID(ctx context.Context, r *dns.Msg, client pipelin
 // proxy that sent it becomes ProxiedFrom.
 func clientFrom(addr net.Addr, proto pipeline.Proto) pipeline.Client {
 	c := pipeline.Client{Proto: proto}
+	if frame, ok := addr.(*nativeFrame); ok {
+		addr = frame.Addr
+	}
+	if session, ok := addr.(*nativeSession); ok {
+		addr = session.Addr
+	}
 	if pa, ok := addr.(*proxyproto.Addr); ok {
 		c.Addr = pa.Client
 		c.ProxiedFrom = proxyproto.AddrPort(pa.Proxy).Addr()
+		c.ClientID = pa.ClientID
 		return c
 	}
 	c.Addr = proxyproto.AddrPort(addr)

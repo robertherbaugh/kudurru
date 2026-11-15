@@ -2,12 +2,14 @@ package policy
 
 import (
 	"net/netip"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/blocking"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/responsepolicy"
 )
 
 // Decision is the merged policy that applies to one client at one moment.
@@ -43,12 +45,21 @@ type Decision struct {
 	SafeSearch *bool
 	// SafeSearchMode is strict, moderate or empty (strict).
 	SafeSearchMode string
+	// Rewrites are ordered by policy priority, then specificity within each
+	// policy. Response overrides inherit each highest-priority explicit field.
+	Rewrites []*responsepolicy.Rewrite
+	Response *responsepolicy.Overrides
+	// ResponseInvalid fails recursive queries closed until invalid response configuration is corrected.
+	ResponseInvalid bool
 
 	// Selection holds the policy's lists resolved against the compiled
 	// lists of the same snapshot; nil when no policy applies.
 	Selection *blocking.Selection
-	filters   bool
-	lists     map[string]*ListInfo
+	// pending are referenced BlockLists that are not compiled yet, by
+	// object ID; see PendingBlockLists.
+	pending []string
+	filters bool
+	lists   map[string]*ListInfo
 }
 
 // SafeSearchOn reports whether safe search is enforced (d may be nil).
@@ -58,10 +69,23 @@ func (d *Decision) SafeSearchOn() bool { return d != nil && d.SafeSearch != nil 
 func (d *Decision) Applies() bool { return d != nil && d.Policy != "" }
 
 // Filters reports whether the decision can block or rewrite anything: a
-// policy applies and it names at least one list or blocked service, is
-// allow-only, or enforces safe search. The blocking stage skips decisions
+// policy applies and it names at least one list or blocked service (a
+// referenced list that is not compiled yet counts), is allow-only, or
+// enforces safe search. The blocking stage skips decisions
 // that do not filter.
 func (d *Decision) Filters() bool { return d != nil && d.filters }
+
+// PendingBlockLists returns the blockListRefs of the applied policies that
+// exist but are not compiled yet ("namespace/name"), in priority order. They
+// are not in Selection. An RPZ feed does not need the list resolver, so the
+// RPZ selectors require these lists' feeds at once; otherwise a just-started
+// node would forward unfiltered until the list is compiled (D390).
+func (d *Decision) PendingBlockLists() []string {
+	if d == nil {
+		return nil
+	}
+	return slices.Clone(d.pending)
+}
 
 // List returns what the Index knows about the compiled list name (a name
 // from a blocking.Decision); nil for an unknown list.
@@ -74,6 +98,12 @@ func (d *Decision) List(name string) *ListInfo {
 
 // ListInfo describes one BlockList as the blocking stage needs it.
 type ListInfo struct {
+	// groups is copied namespace-qualified scope from the accepted object.
+	// Empty permits every membership. Only private policy-set identities use it.
+	groups []string
+	// object is the accepted BlockList this entry was built from (D390).
+	object *v1alpha1.BlockList
+
 	// Name is the list's name in the compiled blocking.Snapshot.
 	Name string
 	// Object is the BlockList, "namespace/name".
@@ -88,6 +118,17 @@ type ListInfo struct {
 	// Inline is true when every source is inline: the user's own list,
 	// whose exact and suffix hits are reported as blocked_exact.
 	Inline bool
+}
+
+// BlockList returns the accepted BlockList the Index compiled this entry
+// from, so a request can bind transferred RPZ feeds to exactly the
+// configuration its own policy decision came from (D390). The object is
+// shared with the configuration snapshot: callers must not modify it.
+func (l *ListInfo) BlockList() *v1alpha1.BlockList {
+	if l == nil {
+		return nil
+	}
+	return l.object
 }
 
 // FromRequest returns the decision the identify stage stored in
@@ -109,6 +150,12 @@ type compiledPolicy struct {
 	// allow and block are the resolved snapshot names of allowListRefs and
 	// blockListRefs.
 	allow, block []string
+	// pending are the blockListRefs ("namespace/name") that exist but are
+	// not compiled yet (Index.NotLoaded).
+	pending         []string
+	rewrites        []*responsepolicy.Rewrite
+	response        *responsepolicy.Overrides
+	responseInvalid bool
 }
 
 // maxEagerSched bounds the scheduled policies of one set whose
@@ -122,12 +169,13 @@ const maxLazySched = 63
 // policySet is the ordered candidate policies of one group set plus the
 // precomputed decisions for every combination of its scheduled policies.
 type policySet struct {
-	pols     []*compiledPolicy // priority desc, id asc
-	sched    []int             // indexes into pols of scheduled policies
-	eager    []*Decision       // by mask, when len(sched) <= maxEagerSched
-	lazy     sync.Map          // uint64 mask -> *Decision
-	merge    func(active []*compiledPolicy, fallback bool) *Decision
-	fallback bool
+	pols       []*compiledPolicy // priority desc, id asc
+	sched      []int             // indexes into pols of scheduled policies
+	eager      []*Decision       // by mask, when len(sched) <= maxEagerSched
+	lazy       sync.Map          // uint64 mask -> *Decision
+	merge      func(active []*compiledPolicy, fallback bool) *Decision
+	fallback   bool
+	defaultSet *policySet // fallback bound to this same original membership
 }
 
 func newPolicySet(pols []*compiledPolicy, fallback bool, merge func([]*compiledPolicy, bool) *Decision) *policySet {

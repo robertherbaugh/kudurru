@@ -19,6 +19,7 @@ package control
 import (
 	"net/netip"
 	"slices"
+	"sync/atomic"
 
 	"github.com/miekg/dns"
 
@@ -67,24 +68,16 @@ func (a Action) String() string {
 
 // Stage implements pipeline.Stage.
 type Stage struct {
-	opts Options
+	live atomic.Pointer[View]
+	// Capture reads only the request's original complete serving component.
+	Capture func(*pipeline.Request) (*View, error)
 }
 
 // New returns the stage. Prefixes are masked; invalid ones are ignored.
 func New(opts Options) *Stage {
-	nets := make([]netip.Prefix, 0, len(opts.AllowedNetworks))
-	for _, p := range opts.AllowedNetworks {
-		if !p.IsValid() {
-			continue
-		}
-		if p.Addr().Is4In6() && p.Bits() >= 96 {
-			p = netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
-		}
-		nets = append(nets, p.Masked())
-	}
-	opts.AllowedNetworks = nets
-	opts.BlockedQTypes = slices.Clone(opts.BlockedQTypes)
-	return &Stage{opts: opts}
+	s := &Stage{}
+	s.live.Store(viewOf(opts))
+	return s
 }
 
 // Name implements pipeline.Stage.
@@ -92,23 +85,32 @@ func (s *Stage) Name() string { return "control" }
 
 // Decide applies the rules to req.
 func (s *Stage) Decide(req *pipeline.Request) Action {
+	v, err := s.pin(req)
+	if err != nil {
+		return DropSilently
+	}
+	return v.Decide(req)
+}
+
+// Decide applies this immutable view's rules to a request.
+func (v *View) Decide(req *pipeline.Request) Action {
 	m := req.Msg
 	if m == nil {
 		return DropSilently
 	}
-	if !s.opts.KeepMalformed && malformed(m) {
+	if !v.opts.KeepMalformed && malformed(m) {
 		return DropSilently
 	}
-	if len(s.opts.AllowedNetworks) > 0 && !s.allowed(req.Client.Addr.Addr()) {
+	if len(v.opts.AllowedNetworks) > 0 && !v.allowed(req.Client.Addr.Addr()) {
 		return Refuse
 	}
-	if len(s.opts.BlockedQTypes) > 0 && len(m.Question) > 0 && slices.Contains(s.opts.BlockedQTypes, m.Question[0].Qtype) {
+	if len(v.opts.BlockedQTypes) > 0 && len(m.Question) > 0 && slices.Contains(v.opts.BlockedQTypes, m.Question[0].Qtype) {
 		return Refuse
 	}
 	return Allow
 }
 
-func (s *Stage) allowed(a netip.Addr) bool {
+func (v *View) allowed(a netip.Addr) bool {
 	if !a.IsValid() {
 		return false
 	}
@@ -116,7 +118,7 @@ func (s *Stage) allowed(a netip.Addr) bool {
 	if a.IsLoopback() {
 		return true
 	}
-	for _, p := range s.opts.AllowedNetworks {
+	for _, p := range v.opts.AllowedNetworks {
 		if p.Contains(a) {
 			return true
 		}
@@ -143,7 +145,11 @@ func malformed(m *dns.Msg) bool {
 
 // Serve implements pipeline.Stage.
 func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Response, error) {
-	switch s.Decide(req) {
+	v, err := s.pin(req)
+	if err != nil {
+		return nil, err
+	}
+	switch v.Decide(req) {
 	case DropSilently:
 		return nil, pipeline.ErrDrop
 	case Refuse:

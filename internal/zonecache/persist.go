@@ -41,7 +41,7 @@ func (c *Cache) startupFallback(ctx context.Context) {
 	}
 	if err := c.checkSnapshotCluster(snap); err != nil {
 		c.setNoSnapshot("local.db snapshot rejected: " + err.Error())
-		c.log.Error("store not synced within the startup timeout and the local.db snapshot is from another cluster; not ready until it syncs", "err", err)
+		c.log.Error("store not synced within the startup timeout and the local.db snapshot identity could not be verified; not ready until it syncs", "err", err)
 		return
 	}
 	if !c.serveSnapshot(snap) {
@@ -138,10 +138,17 @@ func (c *Cache) persistLoop(ctx context.Context) {
 // refreshes the stored timestamp when the last confirmation is older than
 // RefreshInterval. It does nothing unless live.
 func (c *Cache) persistOnce(ctx context.Context) error {
+	info := c.st.Info()
 	c.mu.Lock()
 	if c.state != Live {
 		c.mu.Unlock()
 		return nil
+	}
+	if info.Driver == "kube" && info.ClusterID == "" {
+		c.mu.Unlock()
+		// Never create or refresh an identity-free Kubernetes saved image.
+		// Keep it dirty until authenticated discovery has a cluster UID.
+		return errors.New("kubernetes cluster identity is unknown; snapshot persistence deferred")
 	}
 	if !c.persistDirty {
 		last := c.lastConfirm
@@ -186,7 +193,7 @@ func (c *Cache) persistOnce(ctx context.Context) error {
 
 	start := time.Now()
 	now := c.confirmedAt()
-	snap := &localdb.Snapshot{Objects: objs, ResourceVersions: rvs, ClusterID: c.st.Info().ClusterID, WrittenAt: now}
+	snap := &localdb.Snapshot{Objects: objs, ResourceVersions: rvs, ClusterID: info.ClusterID, WrittenAt: now}
 	if err := c.opts.LocalDB.Write(ctx, snap); err != nil {
 		c.mu.Lock()
 		c.persistDirty = true

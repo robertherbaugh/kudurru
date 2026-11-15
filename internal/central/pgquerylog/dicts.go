@@ -3,6 +3,7 @@ package pgquerylog
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
@@ -17,8 +18,8 @@ const dictCacheMax = 65536
 const clientTouch = 60
 
 // dicts maps dictionary values onto the database's ids, caching them.
-// Ids never change once assigned, so a cached id stays valid; a value
-// another node inserted is found by the same upsert.
+// IDs are never reassigned, but retention can delete an unreferenced entry.
+// Every cache hit is revalidated and locked in the shipping transaction.
 type dicts struct {
 	mu      sync.Mutex
 	byTable map[string]map[string]int64
@@ -44,9 +45,9 @@ type ids struct {
 	byKey map[string]int64
 }
 
-// names resolves name-only dictionary values (dict_node, dict_upstream,
-// dict_zone, dict_list, dict_policy, dict_domain) in one round trip for
-// the uncached ones.
+// names resolves names and holds each dictionary row through the fact/rollup
+// commit. A cache hit is only a hint: pruning or a rolled-back insert may have
+// removed the ID since it was cached.
 func (d *dicts) names(ctx context.Context, tx pgx.Tx, table, col string, values map[string]bool, etld map[string]*string, now int64) (map[string]int64, error) {
 	out := make(map[string]int64, len(values))
 	d.mu.Lock()
@@ -55,17 +56,46 @@ func (d *dicts) names(ctx context.Context, tx pgx.Tx, table, col string, values 
 		cache = map[string]int64{}
 		d.byTable[table] = cache
 	}
-	var missing []string
+	var cached []int64
 	for v := range values {
 		if id, ok := cache[v]; ok {
+			cached = append(cached, id)
 			out[v] = id
-		} else {
-			missing = append(missing, v)
 		}
 	}
 	d.mu.Unlock()
+	found := map[string]int64{}
+	if len(cached) > 0 {
+		//nolint:gosec // table and col are package constants
+		rows, err := tx.Query(ctx, `SELECT id, `+col+` FROM `+table+` WHERE id = ANY($1::bigint[]) ORDER BY id FOR KEY SHARE`, cached)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id int64
+			var v string
+			if err := rows.Scan(&id, &v); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			if out[v] == id {
+				found[v] = id
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	var missing []string
+	for v := range values {
+		if _, ok := found[v]; !ok {
+			missing = append(missing, v)
+		}
+	}
+	sort.Strings(missing)
 	if len(missing) == 0 {
-		return out, nil
+		return found, nil
 	}
 	var err error
 	if table == "dict_domain" {
@@ -82,12 +112,13 @@ func (d *dicts) names(ctx context.Context, tx pgx.Tx, table, col string, values 
 	if err != nil {
 		return nil, fmt.Errorf("pgquerylog: %s: %w", table, err)
 	}
+	// This is a new READ COMMITTED snapshot after INSERT's conflict check.
+	// Lock the rows through commit, including those inserted by another shipper.
 	//nolint:gosec // table and col are package constants
-	rows, err := tx.Query(ctx, `SELECT id, `+col+` FROM `+table+` WHERE `+col+` = ANY($1)`, missing)
+	rows, err := tx.Query(ctx, `SELECT id, `+col+` FROM `+table+` WHERE `+col+` = ANY($1) ORDER BY id FOR KEY SHARE`, missing)
 	if err != nil {
-		return nil, fmt.Errorf("pgquerylog: %s: %w", table, err)
+		return nil, err
 	}
-	found := map[string]int64{}
 	for rows.Next() {
 		var id int64
 		var v string
@@ -101,13 +132,17 @@ func (d *dicts) names(ctx context.Context, tx pgx.Tx, table, col string, values 
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if len(found) != len(values) {
+		// A prune can win between the conflict check and the SELECT. Refuse the
+		// entire batch: never use a missing map entry as a zero dictionary ID.
+		return nil, fmt.Errorf("pgquerylog: %s: incomplete dictionary resolution", table)
+	}
 	d.mu.Lock()
 	for v, id := range found {
 		cache[v] = id
-		out[v] = id
 	}
 	d.mu.Unlock()
-	return out, nil
+	return found, nil
 }
 
 // client is one client entry of a batch.
@@ -129,22 +164,55 @@ func (d *dicts) clients(ctx context.Context, tx pgx.Tx, entries map[string]clien
 		d.byTable["dict_client"] = cache
 		d.touched = map[string]int64{}
 	}
+	var cached []int64
+	for k := range entries {
+		if id, ok := cache[k]; ok && now-d.touched[k] < clientTouch {
+			cached = append(cached, id)
+			out[k] = id
+		}
+	}
+	d.mu.Unlock()
+	valid := map[string]int64{}
+	if len(cached) > 0 {
+		rows, err := tx.Query(ctx, `SELECT id, ip, name FROM dict_client WHERE id = ANY($1::bigint[]) ORDER BY id FOR KEY SHARE`, cached)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id int64
+			var ip string
+			var name *string
+			if err := rows.Scan(&id, &ip, &name); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			k := clientKey(ip, name)
+			if out[k] == id {
+				valid[k] = id
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	out = valid
+	var keys []string
+	for k := range entries {
+		if _, ok := out[k]; !ok {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	if len(keys) == 0 {
+		return out, nil
+	}
 	var ips []string
 	var names, grps []*string
 	var seen []int64
-	var keys []string
-	for k, c := range entries {
-		id, ok := cache[k]
-		if ok && now-d.touched[k] < clientTouch {
-			out[k] = id
-			continue
-		}
-		keys = append(keys, k)
+	for _, k := range keys {
+		c := entries[k]
 		ips, names, grps, seen = append(ips, c.ip), append(names, c.name), append(grps, c.grp), append(seen, c.lastSeenAt)
-	}
-	d.mu.Unlock()
-	if len(keys) == 0 {
-		return out, nil
 	}
 	rows, err := tx.Query(ctx, `INSERT INTO dict_client (ip, name, grp, first_seen, last_seen)
 		SELECT ip, name, grp, seen, seen FROM unnest($1::text[], $2::text[], $3::text[], $4::bigint[]) AS t(ip, name, grp, seen)
@@ -167,7 +235,13 @@ func (d *dicts) clients(ctx context.Context, tx pgx.Tx, entries map[string]clien
 		k := clientKey(ip, name)
 		cache[k], d.touched[k], out[k] = id, now, id
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) != len(entries) {
+		return nil, fmt.Errorf("pgquerylog: dict_client: incomplete dictionary resolution")
+	}
+	return out, nil
 }
 
 // resolveFacts resolves every dictionary value of a batch of fact rows.

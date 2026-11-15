@@ -40,9 +40,9 @@ RUN case "$DHCP_CAPABILITIES" in \
     esac \
  && setcap "$file_caps" /out/kudurru \
  && test "$(getcap /out/kudurru)" = "/out/kudurru $file_caps" \
- && mkdir -p /out/var/lib/kudurru /out/run/kudurru \
- && chmod 0755 /out/var/lib/kudurru && chmod 1777 /out/run/kudurru \
- && chown 65532:65532 /out/var/lib/kudurru /out/run/kudurru
+ && mkdir -p /out/var/lib/kudurru /out/var/lib/kudurru-querylog /out/var/lib/kudurru-local /out/run/kudurru \
+ && chmod 0755 /out/var/lib/kudurru /out/var/lib/kudurru-querylog /out/var/lib/kudurru-local && chmod 1777 /out/run/kudurru \
+ && chown 65532:65532 /out/var/lib/kudurru /out/var/lib/kudurru-querylog /out/var/lib/kudurru-local /out/run/kudurru
 
 # The distroless digest of images/base/Dockerfile, with the same writable
 # directories (a fresh named volume takes their owner; hack/volume-check.sh).

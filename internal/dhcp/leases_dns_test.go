@@ -2,6 +2,7 @@ package dhcp
 
 import (
 	"context"
+	"net/netip"
 	"testing"
 	"time"
 )
@@ -73,5 +74,49 @@ func TestLeaseManagedShorterDurationPreservesLostACKSafety(t *testing.T) {
 	now = now.Add(2 * time.Minute)
 	if _, err := s.Offer(context.Background(), leaseTestClient(2), bound.Address); err == nil {
 		t.Fatal("lost ACK allowed early address reuse")
+	}
+}
+
+// D397: every bound lease publishes its MAC identity, including a lease with
+// no hostname in a scope that does not register DNS. Old snapshots never change.
+func TestLeaseBoundIdentityWithoutDNSRegistration(t *testing.T) {
+	s, _ := leaseTestOpen(t, leaseTestConfig())
+	c := Client{MAC: "02:00:00:00:aa:01"}
+	offer := leaseTestOffer(t, s, c, netip.Addr{})
+	if _, ok := s.DNS().Bound(offer.Address); ok {
+		t.Fatal("an offer published a bound identity")
+	}
+	l := leaseTestBind(t, s, c)
+	before := s.DNS()
+	if before.Enabled() {
+		t.Fatal("fixture scope registers DNS")
+	}
+	got, ok := before.Bound(l.Address)
+	if !ok || got.MAC != c.MAC || got.Hostname != "" || !got.ExpiresAt.Equal(l.ExpiresAt) {
+		t.Fatalf("bound identity: %+v %v", got, ok)
+	}
+	if _, ok := before.Address(l.Address); ok {
+		t.Fatal("a nameless lease became a DNS candidate")
+	}
+	other := leaseTestBind(t, s, leaseTestClient(2))
+	count := 0
+	s.DNS().ForBound(func(BoundLease) { count++ })
+	if count != 2 {
+		t.Fatalf("bound leases enumerated: %d", count)
+	}
+	if _, ok := before.Bound(other.Address); ok {
+		t.Fatal("published snapshot mutated by a later binding")
+	}
+	if err := s.Release(context.Background(), c, l.Address); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := s.DNS().Bound(l.Address); ok {
+		t.Fatal("released lease kept its identity")
+	}
+	if _, ok := before.Bound(l.Address); !ok {
+		t.Fatal("release mutated an older snapshot")
+	}
+	if _, ok := s.DNS().Bound(netip.MustParseAddr("2001:db8::1")); ok {
+		t.Fatal("IPv6 lookup answered")
 	}
 }

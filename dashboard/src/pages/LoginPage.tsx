@@ -8,18 +8,21 @@ import { Card } from '@astryxdesign/core/Card';
 import { Center } from '@astryxdesign/core/Center';
 import { Divider } from '@astryxdesign/core/Divider';
 import { Heading } from '@astryxdesign/core/Heading';
+import { Link } from '@astryxdesign/core/Link';
 import { VStack } from '@astryxdesign/core/Stack';
 import { Text } from '@astryxdesign/core/Text';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ApiError } from '../api/client';
-import { qk, useApi, useApiContext } from '../api/context';
+import { qk, useApi, useApiContext, useSignOutNotice } from '../api/context';
+import { useBranding } from '../lib/branding';
 import { BrandLogo } from '../components/BrandLogo';
-import { errorText } from '../components/Feedback';
+import { clusterStateDocs, errorText, errorTitle } from '../components/Feedback';
 import { TextField } from '../components/fields/TextField';
 import { useLocation } from '../lib/router';
 
 export function LoginPage() {
+  const brand = useBranding();
   const api = useApi();
   const { setCsrf } = useApiContext();
   const qc = useQueryClient();
@@ -27,9 +30,14 @@ export function LoginPage() {
   const status = useQuery({ queryKey: qk.authStatus, queryFn: () => api.auth.status(), retry: 1 });
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [totpCode, setTotpCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const oidcError = loc.search.get('error');
+  const signOutNotice = useSignOutNotice();
+  const follower = status.data?.role === 'follower';
+  // D387: a driver without authenticator management takes no code at login.
+  const codes = status.data?.capabilities?.factorManagement !== false;
 
   const localEnabled = status.data ? status.data.localLogin && status.data.localLoginMode !== 'disabled' : true;
   const providers = status.data?.providers ?? [];
@@ -39,16 +47,23 @@ export function LoginPage() {
       setError('Enter a username and password');
       return;
     }
+    if (totpCode && !/^[0-9]{6}$/.test(totpCode)) {
+      setError('Enter the six-digit authenticator code');
+      return;
+    }
     setBusy(true);
     setError(undefined);
     try {
-      const me = await api.auth.login(username, password);
+      const me = await api.auth.login(username, password, totpCode || undefined);
+      setPassword('');
       setCsrf(me.csrf);
+      qc.setQueryData(qk.signOutNotice, null);
       qc.setQueryData(qk.me, me);
       await qc.invalidateQueries({ queryKey: qk.authStatus });
     } catch (err) {
       setError(errorText(err));
     } finally {
+      setTotpCode('');
       setBusy(false);
     }
   };
@@ -58,7 +73,7 @@ export function LoginPage() {
       <Card width="100%" maxWidth={420} padding={6}>
         <VStack gap={4}>
           <VStack gap={2}>
-            <BrandLogo tagline alt="kudurru: authority over every zone." />
+            <BrandLogo tagline alt={brand.name === 'kudurru' ? 'kudurru: authority over every zone.' : brand.name} />
             <Heading level={1}>Sign in</Heading>
           </VStack>
           {status.data?.hasDefaultCredentials ? (
@@ -68,12 +83,23 @@ export function LoginPage() {
               description="The bootstrap admin still has its first-boot password. Sign in and change it, or run `kudurru admin reset-password` on the host."
             />
           ) : null}
+          {signOutNotice ? (
+            <Banner status="warning" title="Sign-out not confirmed" description={signOutNotice} isDismissable onDismiss={() => qc.setQueryData(qk.signOutNotice, null)} />
+          ) : null}
+          {follower ? (
+            <Banner
+              status="info"
+              title="Single sign-on runs on the primary"
+              description={`This node is a follower${status.data?.primary ? ` of ${status.data.primary}` : ''} and offers local sign-in only. To sign in with an identity provider, open the dashboard on ${status.data?.primary ?? 'the primary'}.`}
+            />
+          ) : null}
           {oidcError ? <Banner status="error" title="Single sign-on failed" description={oidcError} /> : null}
           {status.isError ? (
             <Banner
               status="error"
-              title={status.error instanceof ApiError && status.error.status === 0 ? 'The kudurru API is unreachable' : 'Sign-in options could not be loaded'}
+              title={status.error instanceof ApiError && status.error.status === 0 ? 'The kudurru API is unreachable' : clusterStateDocs(status.error) ? `${errorTitle(status.error)}: its API is closed` : 'Sign-in options could not be loaded'}
               description={errorText(status.error)}
+              endContent={clusterStateDocs(status.error) ? <Link href={clusterStateDocs(status.error)} isExternalLink>What to do</Link> : undefined}
             />
           ) : null}
           {localEnabled ? (
@@ -94,6 +120,16 @@ export function LoginPage() {
                 autoComplete="current-password"
                 isRequired
               />
+              {codes ? (
+                <TextField
+                  label="Authenticator code"
+                  value={totpCode}
+                  onChange={setTotpCode}
+                  autoComplete="one-time-code"
+                  isOptional
+                  help="Enter the six-digit code if you have enabled an authenticator."
+                />
+              ) : null}
               {/* An error Banner is role="alert": announced, and what the e2e looks for. */}
               {error ? <Banner status="error" title={error} /> : null}
               <Button type="submit" label="Sign in" variant="primary" isLoading={busy} width="100%" />

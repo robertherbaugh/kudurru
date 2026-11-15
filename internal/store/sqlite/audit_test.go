@@ -143,7 +143,7 @@ func TestAuditDiffCap(t *testing.T) {
 	// A big object through the store.
 	s := openTemp(t)
 	rs := recordSet("apps", "big", nil)
-	for i := 0; i < 60; i++ {
+	for i := 0; i < 600; i++ {
 		rs.Spec.Endpoints[0].Targets = append(rs.Spec.Endpoints[0].Targets, "10.0.1."+strings.Repeat("1", 1+i%3))
 	}
 	rs.Annotations = map[string]string{"note": strings.Repeat("n", 5000)}

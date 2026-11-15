@@ -23,7 +23,10 @@ func TestCentralQuerylogTwoNodes(t *testing.T) {
 	kudurrutest.RequireE2E(t)
 	dsn := centraltest.DSN(t)
 	dir := t.TempDir()
-	env := []string{"KUDURRU_DATABASE__DSN=" + dsn}
+	env := []string{
+		"KUDURRU_DATABASE__DSN=" + dsn,
+		"KUDURRU_ADMIN_PASSWORD=querylog-e2e-password-1", // synthetic fixture; avoid generated credentials in failure logs
+	}
 	var nodes []*kudurrutest.Node
 	tokens := map[string]string{}
 	for _, name := range []string{"node-a", "node-b"} {
@@ -38,13 +41,19 @@ func TestCentralQuerylogTwoNodes(t *testing.T) {
 		tokens[name] = strings.TrimSpace(string(out))
 	}
 	// Each node answers a query for its own name (forwarded to the
-	// discard port: SERVFAIL, logged all the same).
+	// discard port: SERVFAIL, logged all the same). The token created just
+	// before is a configuration commit; the node answers all the same
+	// (TestUpstreamFailureAnsweredAcrossCommits).
 	c := &dns.Client{Timeout: 5 * time.Second}
 	for _, n := range nodes {
 		m := new(dns.Msg)
 		m.SetQuestion(n.Name+".central-e2e.example.", dns.TypeA)
-		if _, _, err := c.Exchange(m, n.Ports.DNS); err != nil {
+		r, _, err := c.Exchange(m, n.Ports.DNS)
+		if err != nil {
 			t.Fatalf("query %s: %v", n.Name, err)
+		}
+		if r.Rcode != dns.RcodeServerFailure {
+			t.Fatalf("query %s: %s, want SERVFAIL from the discard port", n.Name, dns.RcodeToString[r.Rcode])
 		}
 	}
 	type page struct {

@@ -1,7 +1,7 @@
 # DHCPv4 server
 
 Use kudurru to assign IPv4 addresses and publish local names for your devices.
-DHCP is included in v0.1.0, disabled by default, and runs on Linux.
+DHCP has been included since v0.1.0, is disabled by default, and runs on Linux.
 Keep IPv6 router and DNS advertisements on your router; DHCPv6 is not supported.
 
 ## Set up DHCP step by step

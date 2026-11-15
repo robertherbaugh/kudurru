@@ -1,7 +1,7 @@
-// What a key unlocks (design spec §0.3, §7): two choices, "All features,
+// What a key unlocks (design spec §0.3, §7): two choices, "All features available to the plan,
 // including ones added later" (the key carries no features claim) or
 // "Only these features" with a list of the catalog's features. An explicit
-// list is never empty: an empty one would mean every feature to a node
+// list is never empty: an empty one would mean all features available to the plan
 // while reading as none here, so the field reports it and featuresError
 // blocks the form. Ticking every feature shows that the list is fixed
 // (features added in later releases are not included).
@@ -59,11 +59,11 @@ export function FeaturesField({ value, onChange, lockedAllReason, showErrors, he
         help={lockedAllReason ?? help}
         error={error}
         choices={[
-          { value: 'all', label: ALL_FEATURES_LABEL, description: 'The key carries no features list, so nodes grant every feature their release knows, including later ones.' },
+          { value: 'all', label: ALL_FEATURES_LABEL, description: 'The key carries no features list, so nodes grant all features available to its plan, including later ones. Custom branding requires Enterprise.' },
           {
             value: 'only',
             label: 'Only these features',
-            description: 'The key names its features; nodes grant those and nothing added later.',
+            description: 'The key names its features; nodes grant those available to its plan and nothing added later. Custom branding requires Enterprise.',
             isDisabled: lockedAllReason !== undefined,
           },
         ]}

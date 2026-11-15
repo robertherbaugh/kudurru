@@ -1,0 +1,27 @@
+{
+  "signer": "BIND dnssec-signzone",
+  "authority": "BIND 9.18.50 (Extended Support Version) \u003cid:\u003e",
+  "t0": "2026-11-13T08:28:50Z",
+  "captured": "2026-11-13T08:28:51Z",
+  "seedDS": ". IN DS 57622 13 2 6B29927D503B2B200F260A1CBCFE90FC7DB9D0FCC4BB08F33C7D00D3CD42D121",
+  "steps": [
+    "dnssec-keygen -q -a ECDSAP256SHA256 -f KSK .",
+    "dnssec-keygen -q -a ECDSAP256SHA256 -f KSK .",
+    "dnssec-keygen -q -a ECDSAP256SHA256 .",
+    "dnssec-revoke K.+013+57622.key",
+    "dnssec-dsfromkey -2 K.+013+57622.key",
+    "dnssec-signzone -x -s 20261112082850 -e 20270211082850 -o . -f s1.signed s1.zone K.+013+57622 K.+013+08071",
+    "dnssec-signzone -x -s 20261112082850 -e 20270211082850 -o . -f s2.signed s2.zone K.+013+57622 K.+013+08071",
+    "dnssec-signzone -x -s 20261112082850 -e 20270211082850 -o . -f s3.signed s3.zone K.+013+48733 K.+013+08071",
+    "dnssec-signzone -x -s 20261112082850 -e 20270211082850 -o . -f s4.signed s4.zone K.+013+48733 K.+013+08071",
+    "dnssec-signzone -x -s 20261112082850 -e 20270211082850 -o . -f s5.signed s5.zone K.+013+57750 K.+013+48733 K.+013+08071",
+    "named serves each stage on loopback; the reply to the managed acquisition request (RD clear, EDNS 1232 with DO) over TCP is kept as \u003cstage\u003e.wire; DNSKEY TTL 172800; stages: s1 {K1,ZSK} by K1; s2 {K1,K2,ZSK} by K1; s3 {K1,K2,ZSK} by K2; s4 {K2,ZSK} by K2; s5 {K1+REVOKE,K2,ZSK} by K1+REVOKE and K2"
+  ],
+  "files": {
+    "s1.wire": "2c0ecc10bf44402f0b571d422081fd2cf375ab4528a48e03f08e5a6a9ff6c12b",
+    "s2.wire": "fa2fcc0bcc1c0c6bf33fb594f78552d5cde65cd64732376dac47986b7a38199b",
+    "s3.wire": "02fad2111e283f637dd3dc68733c46fd04cebcdac48b9b4fab3fec2c8c37e970",
+    "s4.wire": "fb735267cebf0d91430857024b2946073203d3cb7f7fd0e84234c101ee3e7e09",
+    "s5.wire": "19da78cf6f3634efd52f1e832225020e9b403d5ead7c0830c5bbf4e112cd0c54"
+  }
+}

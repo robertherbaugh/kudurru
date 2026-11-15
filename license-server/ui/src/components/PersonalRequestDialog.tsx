@@ -77,7 +77,7 @@ function PersonalRequestForm({ onClose }: { onClose: () => void }) {
       </>
     }>
       <Text as="p">
-        A free personal key covers up to {PERSONAL_MAX_NODES} nodes and every feature for {PERSONAL_TERM_DAYS} days, for non-commercial use: a home, a homelab, study, a charity or a school.{' '}
+        A free personal key covers up to {PERSONAL_MAX_NODES} nodes and all features available to Personal for {PERSONAL_TERM_DAYS} days, for non-commercial use: a home, a homelab, study, a charity or a school.{' '}
         {catalog.data?.approvalRequired === false ? 'We mail it' : 'A license admin approves each request; then we mail the key'} to {me.user.email ?? 'your verified address'} and show it here.
       </Text>
       {!verified || (m.error instanceof ApiError && m.error.key === 'email_unverified') ? (

@@ -1,0 +1,954 @@
+{
+  "source": "9cc2ae0423070fc514c94a25ab5b92e3816889e7",
+  "runner_class": "ubicloud-standard-8-ubuntu-2404",
+  "go_version": "go version go1.27.3 linux/amd64",
+  "procs": 6,
+  "samples": 5,
+  "run_url": "https://github.com/robertherbaugh/kudurru/actions/runs/42514599389",
+  "qualification": false,
+  "selection": "First complete hosted recording on the owner-selected class, retained before the current cache change; no replacement samples. Original cache/blocking/strategy failures remain separate.",
+  "source_files_verified": 4636,
+  "workload_files": {
+    "internal/dnsserver/socket_test.go": "1488c832f5c90bc6ddfc7e731025e1781e9c38927f135fb75b3f49355e528e01",
+    "internal/dnsserver/dot_socket_test.go": "aff7817b00070d6bb823f9c7913bf6fee60c79c3ac7ca817e95d796141c726a8",
+    "internal/dnsserver/quic_socket_test.go": "4b09d31a1ac5ee61d898185cd91b5dd9491d8825fcfd59c5ff0cd3d4870fa9cf",
+    "internal/cache/persist/persist_test.go": "1ea3a0ff0c7d3fec0daae5584a9f47815b4037630a53697e43fe211c5a719e05"
+  },
+  "formula": "upper median + max(20%, existing unit noise); throughput/entry lower median - 20%; every loss/failure sample zero",
+  "scopes": {
+    "udp": {
+      "cpu": "AMD EPYC 9454P 48-Core Processor",
+      "report_sha256": "23a022efc686fd69b03a2e05a157e1f6ba0682b34a78ef42bd0c79f3e217a295",
+      "limits_sha256": "0eeaac42825d17a2a9b11c551f55604d20b75ec55a9ecc5caaa30c112b93e3f4",
+      "receipts": {
+        "udp-1.json": "e984ab78f232cdfb9470f246f8f65d8e0501e723b631fb693ea33338bac2e042",
+        "udp-2.json": "03a587b121bf2a967ae1ab291d47f87211970526c78a254ab2f607c98c77da7e",
+        "udp-3.json": "e67855cb476fc208c04ae4425b9d039e602408287adc49badae3fea45564d2db",
+        "udp-4.json": "23d9d03d68f19e57768514d5cd8398c73f19b2a94e78f047acd6f2539a59b2aa",
+        "udp-5.json": "9944322bcb229bb2602a36f7dfdff845f118bedc7ed45bd4cc61be6f4a9a0759",
+        "udp-gate.json": "7bf814520e03ec62a5a37adc50041a52c2860973ec478b50c743efd2bc4be117"
+      },
+      "metrics": [
+        {
+          "name": "BenchmarkUDPSockets/sockets=1",
+          "unit": "B/op",
+          "values": [
+            2310.0,
+            2310.0,
+            2310.0,
+            2310.0,
+            2310.0
+          ],
+          "median": 2310.0,
+          "rule": "limit",
+          "noise_floor": 64,
+          "bound": 2772.0
+        },
+        {
+          "name": "BenchmarkUDPSockets/sockets=1",
+          "unit": "allocs/op",
+          "values": [
+            33.0,
+            33.0,
+            33.0,
+            33.0,
+            33.0
+          ],
+          "median": 33.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 39.6
+        },
+        {
+          "name": "BenchmarkUDPSockets/sockets=1",
+          "unit": "lost",
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "rule": "zero",
+          "noise_floor": 0,
+          "bound": 0.0
+        },
+        {
+          "name": "BenchmarkUDPSockets/sockets=1",
+          "unit": "ns/op",
+          "values": [
+            8822.0,
+            8778.0,
+            8771.0,
+            8671.0,
+            8667.0
+          ],
+          "median": 8771.0,
+          "rule": "limit",
+          "noise_floor": 25,
+          "bound": 10525.2
+        },
+        {
+          "name": "BenchmarkUDPSockets/sockets=1",
+          "unit": "q/s",
+          "values": [
+            113355.0,
+            113919.0,
+            114015.0,
+            115326.0,
+            115381.0
+          ],
+          "median": 114015.0,
+          "rule": "minimum",
+          "noise_floor": 0,
+          "bound": 91212.0
+        },
+        {
+          "name": "BenchmarkUDPSockets/sockets=6",
+          "unit": "B/op",
+          "values": [
+            2359.0,
+            2369.0,
+            2371.0,
+            2359.0,
+            2371.0
+          ],
+          "median": 2369.0,
+          "rule": "limit",
+          "noise_floor": 64,
+          "bound": 2842.8
+        },
+        {
+          "name": "BenchmarkUDPSockets/sockets=6",
+          "unit": "allocs/op",
+          "values": [
+            33.0,
+            33.0,
+            33.0,
+            33.0,
+            33.0
+          ],
+          "median": 33.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 39.6
+        },
+        {
+          "name": "BenchmarkUDPSockets/sockets=6",
+          "unit": "lost",
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "rule": "zero",
+          "noise_floor": 0,
+          "bound": 0.0
+        },
+        {
+          "name": "BenchmarkUDPSockets/sockets=6",
+          "unit": "ns/op",
+          "values": [
+            5690.0,
+            5771.0,
+            5691.0,
+            5516.0,
+            5535.0
+          ],
+          "median": 5690.0,
+          "rule": "limit",
+          "noise_floor": 25,
+          "bound": 6828.0
+        },
+        {
+          "name": "BenchmarkUDPSockets/sockets=6",
+          "unit": "q/s",
+          "values": [
+            175738.0,
+            173273.0,
+            175705.0,
+            181281.0,
+            180685.0
+          ],
+          "median": 175738.0,
+          "rule": "minimum",
+          "noise_floor": 0,
+          "bound": 140590.4
+        }
+      ],
+      "cases": 2
+    },
+    "dot": {
+      "cpu": "AMD EPYC 9454P 48-Core Processor",
+      "report_sha256": "e7d61dd21f66109f16aec0a2387b3bfe73805cd927b3b8e0941ea69ecc4bf9fc",
+      "limits_sha256": "41aaa9e570a278f9326407c570b61f522906fb1cf4818ec7b03bab8ca71aafc8",
+      "receipts": {
+        "dot-1.json": "0edc9e8604f80b47b1b4d69c4ac298b4601209bda4edbbc8c85515ca411042c9",
+        "dot-2.json": "3a4851e2d82a4bdba2d1c0f2aab994a6befc3757afb43630cfbcc17b781bcca2",
+        "dot-3.json": "9b524e916183c35af84331e1a708b5ca096f778122aa572b728974aa4576e761",
+        "dot-4.json": "38787b18ff940021be4803f20b1a6aaded06565dcd78fb05d1356a51b485be00",
+        "dot-5.json": "2898e3487e006bd2bc6413dfa06e4d02e686ab00e6f06759bc71208343e915e3",
+        "dot-gate.json": "6b28446348e928ec7b7f5bbbf3d7710cf8ce636aac982eca7d313d9099a9153b"
+      },
+      "metrics": [
+        {
+          "name": "BenchmarkDoTSockets/sockets=1/churn=false",
+          "unit": "B/op",
+          "values": [
+            2376.0,
+            2371.0,
+            2371.0,
+            2371.0,
+            2371.0
+          ],
+          "median": 2371.0,
+          "rule": "limit",
+          "noise_floor": 64,
+          "bound": 2845.2
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=1/churn=false",
+          "unit": "allocs/op",
+          "values": [
+            34.0,
+            34.0,
+            34.0,
+            34.0,
+            34.0
+          ],
+          "median": 34.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 40.8
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=1/churn=false",
+          "unit": "failed",
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "rule": "zero",
+          "noise_floor": 0,
+          "bound": 0.0
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=1/churn=false",
+          "unit": "ns/op",
+          "values": [
+            7821.0,
+            6888.0,
+            6849.0,
+            6759.0,
+            6799.0
+          ],
+          "median": 6849.0,
+          "rule": "limit",
+          "noise_floor": 25,
+          "bound": 8218.8
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=1/churn=false",
+          "unit": "q/s",
+          "values": [
+            127867.0,
+            145186.0,
+            145999.0,
+            147959.0,
+            147087.0
+          ],
+          "median": 145999.0,
+          "rule": "minimum",
+          "noise_floor": 0,
+          "bound": 116799.20000000001
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=1/churn=true",
+          "unit": "B/op",
+          "values": [
+            129603.0,
+            129628.0,
+            129625.0,
+            129617.0,
+            130487.0
+          ],
+          "median": 129625.0,
+          "rule": "limit",
+          "noise_floor": 64,
+          "bound": 155550.0
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=1/churn=true",
+          "unit": "allocs/op",
+          "values": [
+            919.0,
+            919.0,
+            919.0,
+            919.0,
+            920.0
+          ],
+          "median": 919.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 1102.8
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=1/churn=true",
+          "unit": "failed",
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "rule": "zero",
+          "noise_floor": 0,
+          "bound": 0.0
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=1/churn=true",
+          "unit": "ns/op",
+          "values": [
+            255593.0,
+            259906.0,
+            244660.0,
+            248922.0,
+            245230.0
+          ],
+          "median": 248922.0,
+          "rule": "limit",
+          "noise_floor": 25,
+          "bound": 298706.4
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=1/churn=true",
+          "unit": "q/s",
+          "values": [
+            3912.0,
+            3848.0,
+            4087.0,
+            4017.0,
+            4078.0
+          ],
+          "median": 4017.0,
+          "rule": "minimum",
+          "noise_floor": 0,
+          "bound": 3213.6000000000004
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=6/churn=false",
+          "unit": "B/op",
+          "values": [
+            2372.0,
+            2372.0,
+            2372.0,
+            2372.0,
+            2370.0
+          ],
+          "median": 2372.0,
+          "rule": "limit",
+          "noise_floor": 64,
+          "bound": 2846.4
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=6/churn=false",
+          "unit": "allocs/op",
+          "values": [
+            34.0,
+            34.0,
+            34.0,
+            34.0,
+            34.0
+          ],
+          "median": 34.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 40.8
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=6/churn=false",
+          "unit": "failed",
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "rule": "zero",
+          "noise_floor": 0,
+          "bound": 0.0
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=6/churn=false",
+          "unit": "ns/op",
+          "values": [
+            6734.0,
+            6654.0,
+            7736.0,
+            6751.0,
+            6902.0
+          ],
+          "median": 6751.0,
+          "rule": "limit",
+          "noise_floor": 25,
+          "bound": 8101.2
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=6/churn=false",
+          "unit": "q/s",
+          "values": [
+            148490.0,
+            150296.0,
+            129265.0,
+            148120.0,
+            144894.0
+          ],
+          "median": 148120.0,
+          "rule": "minimum",
+          "noise_floor": 0,
+          "bound": 118496.0
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=6/churn=true",
+          "unit": "B/op",
+          "values": [
+            129595.0,
+            129613.0,
+            129596.0,
+            129597.0,
+            129606.0
+          ],
+          "median": 129597.0,
+          "rule": "limit",
+          "noise_floor": 64,
+          "bound": 155516.4
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=6/churn=true",
+          "unit": "allocs/op",
+          "values": [
+            919.0,
+            919.0,
+            919.0,
+            919.0,
+            919.0
+          ],
+          "median": 919.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 1102.8
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=6/churn=true",
+          "unit": "failed",
+          "values": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "median": 0.0,
+          "rule": "zero",
+          "noise_floor": 0,
+          "bound": 0.0
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=6/churn=true",
+          "unit": "ns/op",
+          "values": [
+            252982.0,
+            249304.0,
+            265590.0,
+            242330.0,
+            242453.0
+          ],
+          "median": 249304.0,
+          "rule": "limit",
+          "noise_floor": 25,
+          "bound": 299164.8
+        },
+        {
+          "name": "BenchmarkDoTSockets/sockets=6/churn=true",
+          "unit": "q/s",
+          "values": [
+            3953.0,
+            4011.0,
+            3765.0,
+            4127.0,
+            4125.0
+          ],
+          "median": 4011.0,
+          "rule": "minimum",
+          "noise_floor": 0,
+          "bound": 3208.8
+        }
+      ],
+      "cases": 4
+    },
+    "quic": {
+      "cpu": "AMD EPYC 9454P 48-Core Processor",
+      "report_sha256": "89353e6a9ddfb4d6e6865c5128a7d79b43ce09b62b4b4c96213af5a6c6bdbfe8",
+      "limits_sha256": "e27d58714e40e4be3bc8c0ee1052ec508ea8aaea0705a5795e2dfe196035ec5d",
+      "receipts": {
+        "quic-1.json": "e536a046a2cbb9aee77f2fa811f74d6293f2fa7e42678fbe2c64f70a9eb9659a",
+        "quic-2.json": "a2605a813f6fc6e3dbb5f6f3f860388e3832c62a593bcb83252070c9963bbae2",
+        "quic-3.json": "5492c9660364023747357bd0e5bc2b242b92706d5f186b944a311deb5f9f0e6a",
+        "quic-4.json": "fb8d1f2a299ff45fd746d7e20e02792cf9ab1d48e327938080b2d27e8b77be0b",
+        "quic-5.json": "e153c6ade0dd60adcffd09ca750ac676ea2800f6305921d2bb5c457e44924a27",
+        "quic-gate.json": "ade26768ef78802333eb2900e9c6ea10ce3b91dfad7abc28d862c13d9d141c60"
+      },
+      "metrics": [
+        {
+          "name": "BenchmarkQUICSockets/doh3/sockets=1",
+          "unit": "B/op",
+          "values": [
+            18242.0,
+            18230.0,
+            18248.0,
+            18237.0,
+            18233.0
+          ],
+          "median": 18237.0,
+          "rule": "limit",
+          "noise_floor": 64,
+          "bound": 21884.4
+        },
+        {
+          "name": "BenchmarkQUICSockets/doh3/sockets=1",
+          "unit": "allocs/op",
+          "values": [
+            262.0,
+            262.0,
+            262.0,
+            262.0,
+            262.0
+          ],
+          "median": 262.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 314.4
+        },
+        {
+          "name": "BenchmarkQUICSockets/doh3/sockets=1",
+          "unit": "ns/op",
+          "values": [
+            37664.0,
+            37116.0,
+            38153.0,
+            36882.0,
+            37922.0
+          ],
+          "median": 37664.0,
+          "rule": "limit",
+          "noise_floor": 25,
+          "bound": 45196.8
+        },
+        {
+          "name": "BenchmarkQUICSockets/doh3/sockets=4",
+          "unit": "B/op",
+          "values": [
+            18233.0,
+            18233.0,
+            18218.0,
+            18211.0,
+            18225.0
+          ],
+          "median": 18225.0,
+          "rule": "limit",
+          "noise_floor": 64,
+          "bound": 21870.0
+        },
+        {
+          "name": "BenchmarkQUICSockets/doh3/sockets=4",
+          "unit": "allocs/op",
+          "values": [
+            262.0,
+            262.0,
+            262.0,
+            262.0,
+            262.0
+          ],
+          "median": 262.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 314.4
+        },
+        {
+          "name": "BenchmarkQUICSockets/doh3/sockets=4",
+          "unit": "ns/op",
+          "values": [
+            38021.0,
+            35413.0,
+            35934.0,
+            35202.0,
+            35503.0
+          ],
+          "median": 35503.0,
+          "rule": "limit",
+          "noise_floor": 25,
+          "bound": 42603.6
+        },
+        {
+          "name": "BenchmarkQUICSockets/doq/sockets=1",
+          "unit": "B/op",
+          "values": [
+            10073.0,
+            10039.0,
+            10081.0,
+            10033.0,
+            10038.0
+          ],
+          "median": 10039.0,
+          "rule": "limit",
+          "noise_floor": 64,
+          "bound": 12046.8
+        },
+        {
+          "name": "BenchmarkQUICSockets/doq/sockets=1",
+          "unit": "allocs/op",
+          "values": [
+            138.0,
+            138.0,
+            138.0,
+            138.0,
+            138.0
+          ],
+          "median": 138.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 165.6
+        },
+        {
+          "name": "BenchmarkQUICSockets/doq/sockets=1",
+          "unit": "ns/op",
+          "values": [
+            31097.0,
+            29078.0,
+            31135.0,
+            28675.0,
+            29146.0
+          ],
+          "median": 29146.0,
+          "rule": "limit",
+          "noise_floor": 25,
+          "bound": 34975.2
+        },
+        {
+          "name": "BenchmarkQUICSockets/doq/sockets=4",
+          "unit": "B/op",
+          "values": [
+            10029.0,
+            10026.0,
+            10031.0,
+            10030.0,
+            10029.0
+          ],
+          "median": 10029.0,
+          "rule": "limit",
+          "noise_floor": 64,
+          "bound": 12034.8
+        },
+        {
+          "name": "BenchmarkQUICSockets/doq/sockets=4",
+          "unit": "allocs/op",
+          "values": [
+            138.0,
+            138.0,
+            138.0,
+            138.0,
+            138.0
+          ],
+          "median": 138.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 165.6
+        },
+        {
+          "name": "BenchmarkQUICSockets/doq/sockets=4",
+          "unit": "ns/op",
+          "values": [
+            25978.0,
+            26240.0,
+            26686.0,
+            25960.0,
+            26416.0
+          ],
+          "median": 26240.0,
+          "rule": "limit",
+          "noise_floor": 25,
+          "bound": 31488.0
+        }
+      ],
+      "cases": 4
+    },
+    "persist": {
+      "cpu": "AMD EPYC 9454P 48-Core Processor",
+      "report_sha256": "51791a2643efce302634cbda8bb5215cd00840389cb91a19b4be0132104486b6",
+      "limits_sha256": "0c8c3b02f30e8e3dd801229878e40f110e6421b0793451b11c57eda8bc937f51",
+      "receipts": {
+        "persist-1.json": "5988419d3c8cb56e0f6028c3d702116930e2f3b0c56fc28c25a8dd39114a5a7e",
+        "persist-2.json": "7ff55d57b89d625119367693cd2153708b863f7b34ad9253b2ece933a1e42a89",
+        "persist-3.json": "31e60518aa4d781e22d8b6496bd064efc6c9459c4e160c84882d50daca28a530",
+        "persist-4.json": "60600df7b430344e6e530eff3f264515eb44afb7d88f01a86aee9b9230af7122",
+        "persist-5.json": "803973e8e9e0db96581203aa20db0656d5276a2c1c0d3e31895fc42a25c3450c",
+        "persist-gate.json": "b2f25ad2697b8a830d7cdc4795611f5766b24ebf608efcf1dc611479a0fbf038"
+      },
+      "metrics": [
+        {
+          "name": "BenchmarkPersist200k/gzip=false/restore",
+          "unit": "B/op",
+          "values": [
+            379157720.0,
+            378784360.0,
+            378521200.0,
+            378482208.0,
+            378577692.0
+          ],
+          "median": 378577692.0,
+          "rule": "limit",
+          "noise_floor": 64,
+          "bound": 454293230.4
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=false/restore",
+          "unit": "allocs/op",
+          "values": [
+            1280017.0,
+            1278762.0,
+            1277856.0,
+            1277566.0,
+            1278004.0
+          ],
+          "median": 1278004.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 1533604.8
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=false/restore",
+          "unit": "ns/op",
+          "values": [
+            884480529.0,
+            871089020.0,
+            896231295.0,
+            925079381.0,
+            899883330.0
+          ],
+          "median": 896231295.0,
+          "rule": "limit",
+          "noise_floor": 25,
+          "bound": 1075477554.0
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=false/save",
+          "unit": "B/op",
+          "values": [
+            516089456.0,
+            515839160.0,
+            515733992.0,
+            515671472.0,
+            515727800.0
+          ],
+          "median": 515733992.0,
+          "rule": "limit",
+          "noise_floor": 64,
+          "bound": 618880790.4
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=false/save",
+          "unit": "allocs/op",
+          "values": [
+            592319.0,
+            591677.0,
+            591262.0,
+            591162.0,
+            591347.0
+          ],
+          "median": 591347.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 709616.4
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=false/save",
+          "unit": "bytes",
+          "values": [
+            87428663.0,
+            87336559.0,
+            87275451.0,
+            87261523.0,
+            87288482.0
+          ],
+          "median": 87288482.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 104746178.4
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=false/save",
+          "unit": "entries",
+          "values": [
+            197328.0,
+            197117.0,
+            196978.0,
+            196946.0,
+            197007.0
+          ],
+          "median": 197007.0,
+          "rule": "minimum",
+          "noise_floor": 0,
+          "bound": 157605.6
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=false/save",
+          "unit": "ns/op",
+          "values": [
+            2378285806.0,
+            1150359608.0,
+            1294169762.0,
+            1105064756.0,
+            1085709355.0
+          ],
+          "median": 1150359608.0,
+          "rule": "limit",
+          "noise_floor": 25,
+          "bound": 1380431529.6
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=true/restore",
+          "unit": "B/op",
+          "values": [
+            224617616.0,
+            224715936.0,
+            224569776.0,
+            224787800.0,
+            224991640.0
+          ],
+          "median": 224715936.0,
+          "rule": "limit",
+          "noise_floor": 64,
+          "bound": 269659123.2
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=true/restore",
+          "unit": "allocs/op",
+          "values": [
+            1318864.0,
+            1318723.0,
+            1318239.0,
+            1320333.0,
+            1321271.0
+          ],
+          "median": 1318864.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 1582636.8
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=true/restore",
+          "unit": "ns/op",
+          "values": [
+            1062436348.0,
+            1013908466.0,
+            1004669790.0,
+            1034210188.0,
+            1108318748.0
+          ],
+          "median": 1034210188.0,
+          "rule": "limit",
+          "noise_floor": 25,
+          "bound": 1241052225.6
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=true/save",
+          "unit": "B/op",
+          "values": [
+            202015404.0,
+            202153988.0,
+            202065928.0,
+            202231420.0,
+            202377596.0
+          ],
+          "median": 202153988.0,
+          "rule": "limit",
+          "noise_floor": 64,
+          "bound": 242584785.6
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=true/save",
+          "unit": "allocs/op",
+          "values": [
+            591549.0,
+            591922.0,
+            591443.0,
+            592095.0,
+            592665.0
+          ],
+          "median": 591922.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 710306.4
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=true/save",
+          "unit": "bytes",
+          "values": [
+            8693074.0,
+            8713460.0,
+            8691655.0,
+            8688376.0,
+            8704403.0
+          ],
+          "median": 8693074.0,
+          "rule": "limit",
+          "noise_floor": 0,
+          "bound": 10431688.8
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=true/save",
+          "unit": "entries",
+          "values": [
+            197048.0,
+            197179.0,
+            197008.0,
+            197235.0,
+            197425.0
+          ],
+          "median": 197179.0,
+          "rule": "minimum",
+          "noise_floor": 0,
+          "bound": 157743.2
+        },
+        {
+          "name": "BenchmarkPersist200k/gzip=true/save",
+          "unit": "ns/op",
+          "values": [
+            732913856.0,
+            608380428.0,
+            679701337.0,
+            671263532.0,
+            591025830.0
+          ],
+          "median": 671263532.0,
+          "rule": "limit",
+          "noise_floor": 25,
+          "bound": 805516238.4
+        }
+      ],
+      "cases": 4
+    }
+  }
+}

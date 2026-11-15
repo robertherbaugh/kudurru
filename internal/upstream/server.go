@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/robertherbaugh/kudurru/internal/recursor"
+	"github.com/robertherbaugh/kudurru/internal/tracing"
 )
 
 // server is one configured upstream with its health state.
@@ -26,6 +27,10 @@ type server struct {
 	hc       HealthConfig
 	now      func() time.Time // backoff clock
 	onChange func(label string, healthy bool)
+	// propagate adds the query's TRACEPARENT to what this server is sent
+	// (the group's tracePropagation, D382).
+	propagate bool
+	traceCode uint16
 
 	// Pre-resolved metric children; nil when metrics are off.
 	mHealthy   prometheus.Gauge
@@ -117,7 +122,7 @@ type attempt struct {
 	msg *dns.Msg
 	err error
 	rtt time.Duration
-	sec recursor.Security
+	sec recursor.Validation
 }
 
 // errRcode marks a response whose rcode makes it unusable (SERVFAIL,
@@ -132,6 +137,47 @@ func (e errRcode) Error() string { return "upstream answered " + dns.RcodeToStri
 // cancelled because another server won the race, or the query deadline
 // passing) are not held against the server.
 func (s *server) exchange(parent context.Context, m *dns.Msg, timeout time.Duration) attempt {
+	tr, under := tracing.FromContext(parent)
+	if tr == nil {
+		return s.exchangeOnce(parent, m, timeout, nil)
+	}
+	span := tr.Start(under, "kudurru.upstream.exchange", tracing.KindClient, time.Now())
+	tr.SetStr(span, "kudurru.upstream", s.label)
+	tr.SetStr(span, "network.protocol.name", s.proto)
+	var option []byte
+	// The receiver takes the option's presence as this hop's sampling
+	// decision (D382, as kudurru itself reads a trusted edge's option), so
+	// only a sampled trace sends it. A trace kept later by the tail rule
+	// (failed or slow) still records the attempt but has no downstream link.
+	if s.propagate && span != 0 && tr.Sampled() {
+		option = tracing.AppendOption(make([]byte, 0, 27), tr.ID(), tr.SpanID(span), tracing.FlagSampled)
+		tr.SetInt(span, "kudurru.traceparent_sent", 1)
+	}
+	a := s.exchangeOnce(parent, m, timeout, option)
+	failure := ""
+	var rc errRcode
+	switch {
+	case a.err == nil && a.msg != nil:
+		tr.SetStr(span, "dns.response.code", dns.RcodeToString[a.msg.Rcode])
+	case parent.Err() != nil:
+		// Another server won the race, or the query ended: not a failure
+		// of this server.
+		tr.SetStr(span, "kudurru.outcome", "canceled")
+	case errors.As(a.err, &rc):
+		tr.SetStr(span, "dns.response.code", dns.RcodeToString[rc.rcode])
+		failure = dns.RcodeToString[rc.rcode]
+	case errors.Is(a.err, ErrTimeout):
+		failure = "timeout"
+	default:
+		failure = "network error"
+	}
+	tr.End(span, time.Now(), failure)
+	return a
+}
+
+// exchangeOnce is exchange without tracing. option, when set, is sent as a
+// TRACEPARENT option.
+func (s *server) exchangeOnce(parent context.Context, m *dns.Msg, timeout time.Duration, option []byte) attempt {
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	if s.mRequests != nil {
@@ -139,7 +185,7 @@ func (s *server) exchange(parent context.Context, m *dns.Msg, timeout time.Durat
 		s.mInflight.Inc()
 	}
 	start := time.Now()
-	resp, sec, err := s.do(ctx, m)
+	resp, sec, err := s.do(ctx, m, option)
 	if err == nil && resp != nil && resp.Rcode == dns.RcodeRefused && s.proto == "dot" && ctx.Err() == nil {
 		// Some DoT servers limit each connection: Cloudflare's 1.1.1.1
 		// answers a burst of about 30 queries on one TLS connection, then
@@ -151,7 +197,7 @@ func (s *server) exchange(parent context.Context, m *dns.Msg, timeout time.Durat
 			s.mRequests.Inc()
 		}
 		_ = s.u.Close()
-		resp, sec, err = s.do(ctx, m)
+		resp, sec, err = s.do(ctx, m, option)
 	}
 	rtt := time.Since(start)
 	if s.mInflight != nil {
@@ -168,7 +214,14 @@ func (s *server) exchange(parent context.Context, m *dns.Msg, timeout time.Durat
 		a.msg = nil
 		if parent.Err() != nil {
 			// The race was decided or the client gave up: not the server's fault.
-			a.err = fmt.Errorf("%s: %w", s.name, parent.Err())
+			// A native admission refusal keeps its mark, so a query that
+			// ended as the node refused it is still not counted as asked
+			// (D377).
+			if recursor.IsAdmission(a.err) {
+				a.err = fmt.Errorf("%s: %w: %w", s.name, parent.Err(), a.err)
+			} else {
+				a.err = fmt.Errorf("%s: %w", s.name, parent.Err())
+			}
 			return a
 		}
 		reason := reasonNetwork
@@ -223,9 +276,9 @@ func (s *server) countResponse(rcode int) {
 //
 // The recursive resolver honors ctx itself and reports the DNSSEC state
 // of its answer.
-func (s *server) do(ctx context.Context, m *dns.Msg) (*dns.Msg, recursor.Security, error) {
+func (s *server) do(ctx context.Context, m *dns.Msg, option []byte) (*dns.Msg, recursor.Validation, error) {
 	if r, ok := s.u.(*recursor.Resolver); ok {
-		return r.ExchangeValidated(ctx, m)
+		return r.ExchangeWithValidation(ctx, m)
 	}
 	type result struct {
 		msg *dns.Msg
@@ -233,15 +286,20 @@ func (s *server) do(ctx context.Context, m *dns.Msg) (*dns.Msg, recursor.Securit
 	}
 	ch := make(chan result, 1)
 	q := m.Copy() // dnsproxy may modify the request (dns.Client does)
+	if option != nil {
+		if opt := q.IsEdns0(); opt != nil {
+			opt.Option = append(opt.Option, &dns.EDNS0_LOCAL{Code: s.traceCode, Data: option})
+		}
+	}
 	go func() {
 		resp, err := s.u.Exchange(ctx, q)
 		ch <- result{resp, err}
 	}()
 	select {
 	case r := <-ch:
-		return r.msg, recursor.SecUnknown, r.err
+		return r.msg, recursor.Validation{}, r.err
 	case <-ctx.Done():
-		return nil, recursor.SecUnknown, ctx.Err()
+		return nil, recursor.Validation{}, ctx.Err()
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/metrics"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/querylog"
 )
 
 // TestDropsCountRcodeNone: rate-limit and control drops send nothing, so
@@ -39,5 +40,24 @@ func TestDropsCountRcodeNone(t *testing.T) {
 		if got := testutil.ToFloat64(m.Responses.WithLabelValues("dot", c.rcode, c.status)); got != c.want {
 			t.Errorf("responses{rcode=%s,status=%s} = %v, want %v", c.rcode, c.status, got, c.want)
 		}
+	}
+}
+
+func TestRPZDropRetainsPolicyDiagnostic(t *testing.T) {
+	m := metrics.NewDNS(prometheus.NewRegistry())
+	rec := &recorder{}
+	o := &Observer{Node: "n", Metrics: m, Collector: rec}
+	req := request("a.example.", dns.TypeA)
+	out := &pipeline.Response{Status: pipeline.StatusBlockedRPZ, List: "dns/feed", Rule: "a.policy.test. drop"}
+	o.Observe(req, out, pipeline.ErrDrop, time.Millisecond)
+	if len(rec.events) != 1 {
+		t.Fatal("missing drop event")
+	}
+	ev := rec.events[0]
+	if ev.Status != pipeline.StatusBlockedRPZ || ev.List != out.List || ev.Rule != out.Rule || ev.ReplyType != querylog.ReplyNone || ev.Answers != 0 {
+		t.Fatalf("lost drop diagnostic: %+v", ev)
+	}
+	if got := testutil.ToFloat64(m.Responses.WithLabelValues("dot", RcodeNone, "blocked_rpz")); got != 1 {
+		t.Fatalf("drop metric=%v", got)
 	}
 }

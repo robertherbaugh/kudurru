@@ -42,6 +42,25 @@ func TestPermissionsTableIsConsistent(t *testing.T) {
 	}
 }
 
+// TestReservedPermissionsAreValidated: a reservation names a declared
+// <resource>.<verb> and starts with its target release (D393).
+func TestReservedPermissionsAreValidated(t *testing.T) {
+	base := "resources:\n  zones: [read, sign]\nroles: {}\nreserved:\n"
+	for entry, ok := range map[string]bool{
+		`  zones.sign: "v1.0: signing"`:   true,
+		`  zones.fly: "v1.0: flying"`:     false,
+		`  dragons.read: "v1.0: dragons"`: false,
+		`  zones: "v1.0: no verb"`:        false,
+		`  zones.sign: "someday"`:         false,
+		`  zones.sign: "v1.0:"`:           false,
+	} {
+		_, err := parsePermissions([]byte(base + entry + "\n"))
+		if (err == nil) != ok {
+			t.Errorf("%s: err %v, want ok %v", entry, err, ok)
+		}
+	}
+}
+
 func TestBindingAuthorizer(t *testing.T) {
 	p, err := LoadPermissions()
 	if err != nil {

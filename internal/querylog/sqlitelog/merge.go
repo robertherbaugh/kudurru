@@ -152,16 +152,20 @@ type UpstreamShard struct {
 }
 
 func (r *Reader) summaryDistinct(ctx context.Context, tx *rtx, s *snapshot, win Window, out *SummaryShard) error {
+	clientExpr := "ip || char(0) || coalesce(name,'')"
+	if r.d == dialectPostgres {
+		clientExpr = "convert_to(ip,'UTF8') || decode('00','hex') || convert_to(coalesce(name,''),'UTF8')"
+	}
 	for _, dim := range []struct {
 		src  keyedSource
 		dict string
 		col  string
 		dst  *Distinct
 	}{
-		{r.clientSource(s), "dict_client", "ip || char(0) || coalesce(name,'')", &out.ActiveClients},
+		{r.clientSource(s), "dict_client", clientExpr, &out.ActiveClients},
 		{r.domainSource(s), "dict_domain", "name", &out.Domains},
 	} {
-		rows, _, _, err := r.keyed(ctx, tx, s, dim.src, win.From.Unix(), win.Until.Unix(), 0, "a > 0", "", 0, false)
+		rows, _, _, err := r.keyed(ctx, tx, s, dim.src, win.From.Unix(), win.Until.Unix(), 0, "sum(a) > 0", "", 0, false)
 		if err != nil {
 			return err
 		}
@@ -181,7 +185,13 @@ func (r *Reader) summaryDistinct(ctx context.Context, tx *rtx, s *snapshot, win 
 		}
 		dim.dst.finish()
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT ip || char(0) || coalesce(name,'') FROM dict_client`)
+	args := []any{}
+	// PostgreSQL text cannot contain NUL; retain the byte string as bytea.
+	expr := "ip || char(0) || coalesce(name,'')"
+	if r.d == dialectPostgres {
+		expr = "convert_to(ip,'UTF8') || decode('00','hex') || convert_to(coalesce(name,''),'UTF8')"
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT `+expr+` FROM dict_client WHERE 1=1`+tx.dictionaryWhere("dict_client", "dict_client.", &args), args...)
 	if err != nil {
 		return err
 	}

@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -27,6 +26,8 @@ import (
 	"time"
 
 	"sigs.k8s.io/yaml"
+
+	"github.com/robertherbaugh/kudurru/internal/testutil/testport"
 )
 
 // EnvE2E enables the end-to-end tests.
@@ -86,24 +87,14 @@ func Build(dir string) (string, error) {
 	if p := os.Getenv(EnvBinary); p != "" {
 		return filepath.Abs(p)
 	}
-	root, err := ModuleRoot()
-	if err != nil {
-		return "", err
-	}
-	out := filepath.Join(dir, "kudurru")
-	cmd := exec.Command("go", "build", "-trimpath", "-o", out, "./cmd/kudurru") //nolint:gosec // fixed arguments
-	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
-	if b, err := cmd.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("kudurrutest: go build: %w\n%s", err, b)
-	}
-	return out, nil
+	return goBuild(filepath.Join(dir, "kudurru"))
 }
 
 // MainBuild is the TestMain helper of the end-to-end packages: when
 // KUDURRU_E2E is set it builds the binary into a temporary directory and
 // stores its path in *bin; it then runs the tests and removes the
-// directory.
+// directory. It prints what Describe says about the binary, built or
+// prebuilt, so the log of a run names the artifact.
 func MainBuild(m *testing.M, bin *string) int {
 	if !Enabled() {
 		return m.Run()
@@ -120,31 +111,28 @@ func MainBuild(m *testing.M, bin *string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	fmt.Fprintf(os.Stderr, "kudurrutest: built %s in %s\n", p, time.Since(start).Round(time.Millisecond))
+	if os.Getenv(EnvBinary) != "" {
+		fmt.Fprintf(os.Stderr, "kudurrutest: %s names the prebuilt %s\n", EnvBinary, p)
+	} else {
+		fmt.Fprintf(os.Stderr, "kudurrutest: built %s in %s\n", p, time.Since(start).Round(time.Millisecond))
+	}
+	id, err := Describe(p)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Fprintf(os.Stderr, "kudurrutest: binary %s\n", id)
 	*bin = p
 	return m.Run()
 }
 
-// FreePort returns a loopback port that is free for both TCP and UDP at the
-// time of the call.
+// FreePort returns a loopback port that is free for both TCP and UDP and
+// stays reserved for the test until its cleanup runs, so no other test or
+// process can take it before the node (or child process) binds it
+// (internal/testutil/testport).
 func FreePort(t testing.TB) int {
 	t.Helper()
-	for range 50 {
-		l, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatalf("free port: %v", err)
-		}
-		port := l.Addr().(*net.TCPAddr).Port
-		u, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", port))
-		_ = l.Close()
-		if err != nil {
-			continue
-		}
-		_ = u.Close()
-		return port
-	}
-	t.Fatal("free port: no port free for tcp and udp")
-	return 0
+	return testport.Reserve(t)
 }
 
 // Ports are the listener addresses of one node.

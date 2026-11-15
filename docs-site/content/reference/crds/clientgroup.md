@@ -36,6 +36,7 @@ ClientGroupSpec defines which clients belong to the group.
 | `spec.clients[].mac` | `string` | MAC matches through an inventory source such as UniFi (v0.2). |
 | `spec.clients[].name` | `string` |  |
 | `spec.clients[].nameGlob` | `string` |  |
+| `spec.rateLimitExempt` | `boolean` | RateLimitExempt skips UDP per-prefix rate limiting for clients selected into this group by the winning identification tier. A true value in any tied group wins; groups in lower tiers do not contribute. This does not grant authentication or bypass DNS policy, ACLs or message validation. Typed writes include false so SSA can clear the last spec field without turning the required spec object into null. |
 | `spec.sources` | `object` | ClientGroupSources lets an integration add members (v0.2). |
 | `spec.sources.integrationRef` | `object` | ObjectRef points at another kudurru object. Namespace is omitted for cluster-scoped kinds and for same-namespace references. |
 | `spec.sources.integrationRef.name` | `string` | **Required.**<br>Length: at least 1 |

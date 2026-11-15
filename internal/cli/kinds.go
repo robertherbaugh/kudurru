@@ -24,6 +24,12 @@ type Kind struct {
 	Namespaced bool
 	// Aliases are accepted on the command line besides Resource.
 	Aliases []string
+	// NoBackup keeps the kind out of `kudurru backup` and of an export that
+	// names no kinds: an
+	// Integration needs integrations.read, which an operator who backs up
+	// the DNS objects may not hold, and binds node-local credential
+	// references (D400). `kudurru export integrations` exports it.
+	NoBackup bool
 	// columns returns the headers and a row function for tables.
 	columns func(wide bool) ([]string, func(obj json.RawMessage, now time.Time) ([]string, error))
 }
@@ -36,6 +42,7 @@ var Kinds = []Kind{
 	{Resource: "blocklists", Kind: "BlockList", Namespaced: true, Aliases: []string{"blocklist", "list", "lists", "bl"}, columns: blocklistColumns},
 	{Resource: "clientgroups", Kind: "ClientGroup", Namespaced: true, Aliases: []string{"clientgroup", "cg", "cgs"}, columns: clientgroupColumns},
 	{Resource: "policies", Kind: "Policy", Namespaced: true, Aliases: []string{"policy", "pol", "pols"}, columns: policyColumns},
+	{Resource: "integrations", Kind: "Integration", Namespaced: true, Aliases: []string{"integration", "intg"}, NoBackup: true, columns: integrationColumns},
 }
 
 // LookupKind resolves a resource name, alias or CamelCase kind
@@ -255,6 +262,28 @@ func policyColumns(wide bool) ([]string, func(json.RawMessage, time.Time) ([]str
 		r := []string{joinOrDash(p.Spec.ClientGroupRefs), itoa(p.Spec.Priority), ReadyStatus(p.Status.Conditions), Age(p.CreationTimestamp, now)}
 		if wide {
 			r = append(r, joinOrDash(p.Spec.BlockListRefs), joinOrDash(p.Spec.AllowListRefs), dash(p.Spec.UpstreamGroup), ManagedBy(p.ObjectMeta))
+		}
+		return r, nil
+	}
+}
+
+func integrationColumns(wide bool) ([]string, func(json.RawMessage, time.Time) ([]string, error)) {
+	h := []string{"TYPE", "SUSPENDED", "POLICY", "READY", "AGE"}
+	if wide {
+		h = append(h, "TERMINATING", "MANAGED-BY")
+	}
+	return h, func(raw json.RawMessage, now time.Time) ([]string, error) {
+		var i v1alpha1.Integration
+		if err := json.Unmarshal(raw, &i); err != nil {
+			return nil, err
+		}
+		policy := i.Spec.DeletionPolicy
+		if policy == "" {
+			policy = v1alpha1.IntegrationDeletionRetain
+		}
+		r := []string{i.Spec.Type, strconv.FormatBool(i.Spec.Suspend), policy, ReadyStatus(i.Status.Conditions), Age(i.CreationTimestamp, now)}
+		if wide {
+			r = append(r, strconv.FormatBool(i.DeletionTimestamp != nil), ManagedBy(i.ObjectMeta))
 		}
 		return r, nil
 	}

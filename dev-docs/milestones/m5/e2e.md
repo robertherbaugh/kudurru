@@ -19,9 +19,24 @@ Files: `internal/testutil/kudurrutest` (new), `test/e2e`, `test/interop`,
   - `MainBuild` (TestMain) builds `./cmd/kudurru` once per package into a
     temp dir, with `CGO_ENABLED=0` as shipped. `KUDURRU_E2E_BINARY`
     substitutes a prebuilt binary.
+  - The multi-node fixtures of `test/e2e` that need a license key (audit,
+    static and enrolled clusters) use a second binary built with
+    `-tags licensetest`, once per run (`BuildLicensed`).
+    `KUDURRU_E2E_LICENSED_BINARY` substitutes a prebuilt one, for example
+    the release build flags plus the tag; a binary without the tag is
+    refused before any node starts, because it could not trust the test
+    key.
+  - `Describe` puts one line per binary in the log, built or prebuilt: the
+    `kudurru version` output, the SHA-256 of the file, and the build tags,
+    cgo setting and commit recorded by the Go toolchain. `MainBuild` prints
+    it once per package and every licensed test logs it, so a recorded run
+    names the artifact it exercised.
   - `NewNodeSpec` allocates free loopback ports (DNS udp+tcp on one port,
-    API, ops, metrics, internal) and a data dir, and writes the base
-    config: sqlite, plain-HTTP API, one socket per listener, the admin
+    API, ops, metrics, internal) and a data dir. The ports come from
+    `internal/testutil/testport`: a window outside the kernel's ephemeral
+    port range, each port held by a cross-process file lock until the
+    test's cleanup, so nothing else can take a port between allocation and
+    the child's bind. It writes the base config: sqlite, plain-HTTP API, one socket per listener, the admin
     socket inside the data dir, and the default upstream group on the
     discard port so nothing leaves the host.
   - `Start` / `StartReady` run the binary and poll `/healthz/ready` every
@@ -35,7 +50,36 @@ Files: `internal/testutil/kudurrutest` (new), `test/e2e`, `test/interop`,
   before; it still replays every fuzz seed corpus.
 - **`make e2e`** runs `go test -race -v ./test/e2e/ ./test/interop/`.
   **`make interop`** runs only the BIND tests. Both skip cleanly without
-  `named`; `KUDURRU_NAMED` points at a non-standard binary.
+  `named`; `KUDURRU_NAMED` points at a non-standard binary (a path that is
+  not an executable fails the test).
+- **`make interop-internal`** runs the BIND tests that live beside the code
+  they qualify: `TestBINDRPZ*` (`internal/rpz`),
+  `TestBINDSignedSecondaryThroughListeners` (`internal/stages/authoritative`)
+  and `TestBINDStubThroughListenersAndDurableOfflineReferral`
+  (`internal/zoneview`).
+- **Skips that fail on request.** A test that needs an external program or
+  service skips without it, and fails instead when the matching variable is
+  set (the `KUDURRU_REQUIRE_POSTGRES` rule, D158):
+  - `KUDURRU_REQUIRE_BIND`: `named` and the BIND 9 tools (`dnssec-keygen`,
+    `dnssec-signzone`, `dnssec-verify`, `dnssec-dsfromkey`), in
+    `test/interop` and the three internal packages (`kudurrutest.Named`,
+    `kudurrutest.BINDTool`).
+  - `KUDURRU_REQUIRE_POSTGRES`: the server named by
+    `KUDURRU_TEST_POSTGRES_DSN`, for `TestCentralAuditTwoNodes` and
+    `TestCentralQuerylogTwoNodes`.
+  - `KUDURRU_REQUIRE_ENVTEST`: kube-apiserver and etcd (`make envtest` or
+    `KUBEBUILDER_ASSETS`), for `TestKubeAuditAcrossReplicas`.
+  - `KUDURRU_REQUIRE_PREVIOUS_RELEASE`: the binary of the previous release
+    (0.1.0) for the upgrade tests `TestUpgradeFromV01DataDirectory` and
+    `TestUpgradeFromV01RefusesLegacyObjects`. `kudurrutest.Previous` builds
+    it once per run from the `v0.1.0` tag of the clone, in a temporary
+    directory outside the working tree, or takes the file
+    `KUDURRU_E2E_PREVIOUS_BINARY` names (the published release binary); a
+    binary that does not report version 0.1.0 is refused. A shallow clone
+    has no tags: `git fetch origin tag v0.1.0`.
+
+  `TestKnotCatalogConsumer` stays opt-in (`hack/test-knot-catalog.sh`, a
+  private Docker daemon).
 - **`make fuzz`** runs `hack/fuzz.sh` (`FUZZTIME` default 60s,
   `FUZZ_JOBS`, `FUZZ_PARALLEL`). The script has four modes:
   - `--list`: the target list (one place, also the CI matrix).
@@ -46,8 +90,11 @@ Files: `internal/testutil/kudurrutest` (new), `test/e2e`, `test/interop`,
 - **CI**:
   - The `e2e` job installs `bind9` and stops its service. It unloads the
     `usr.sbin.named` AppArmor profile, which would deny a named reading its
-    config from `$TMPDIR`. It then runs `make e2e` and `make
-    test-auth-e2e` (dex, cached under `bin/`).
+    config from `$TMPDIR`. It then runs `make e2e`, `make interop-internal`
+    and `make test-auth-e2e` (dex, cached under `bin/`). The job also has
+    the PostgreSQL service and the envtest binaries of the `go` job, fetches
+    the `v0.1.0` tag and sets the four `KUDURRU_REQUIRE_*` variables, so
+    none of those tests can pass there as a skip.
   - `fuzz-targets` emits `hack/fuzz.sh --list` as JSON.
   - `fuzz` is a `fail-fast: false` matrix that runs each target for 60 s in
     parallel and uploads `testdata/fuzz/` and the logs on failure.
@@ -91,9 +138,11 @@ the five skipped tests above.
 
 Gaps recorded as follow-ups rather than bugs:
 
-- **E2E-2.** The sqlite driver's membership is hard-coded to
-  `cluster.Self`, so two sqlite nodes cannot be configured to pull list
-  bodies from each other, and each reports itself as leader.
+- **E2E-2 (original finding; static mode implemented November 8).** SQLite
+  originally used only `cluster.Self`. D300 adds configured static peers;
+  the separate-process acceptance below covers status and body reads. Each
+  static twin intentionally remains its own leader. Enrolled primary/follower
+  replication and promotion remain separate requirements.
 - **Admin socket.** The default `/run/kudurru/kudurru.sock` is host-global:
   a second instance on the same host dies at startup. That is how the
   first two-node run failed.
@@ -155,8 +204,8 @@ data dirs and ports, the sqlite driver, and one
 `KUDURRU_ENCRYPTION_KEY`. Both carry a BlockList whose source is an
 adblock list on a local `httptest` server, plus a Policy using it.
 
-serve.go fixes the sqlite membership to `cluster.Self` (E2E-2). The test
-therefore plays node B's resolver against node A's internal listener. It
+This original test uses default `cluster.Self` membership. It
+plays node B's resolver against node A's internal listener. It
 uses `internalapi.NewCredentials` from the shared key and the same
 `internalapi.Client` the resolver uses:
 
@@ -176,6 +225,22 @@ uses `internalapi.NewCredentials` from the shared key and the same
   A client holding another key cannot complete the TLS handshake (the
   derived CA does not match), and plain HTTP gets nothing.
 - **BothNodesBlock.** Both nodes block the listed name.
+
+`TestStaticClusterProcessesReadOnlyPeerLossRestart` in `static_cluster_test.go`
+adds two actual server processes with `cluster.role: static`, configured peers,
+isolated databases and the existing synthetic ten-node license. It verifies
+UDP/TCP DNS, both local leaders and distinct database identities, authenticated
+peer status/list bodies, read-only object/settings refusals and one node-local
+blocking command. Stopping A leaves B serving; A remains listed without claimed
+readiness. Restarting A from its original config/database preserves its identity
+and session. Each mutation is sent once with an original five-second deadline;
+only read readiness observations poll.
+
+The November 8 frozen-source run passed with the race-enabled test harness
+(server binaries use the existing CGO-disabled fixture build), child/wrapper
+exit 0, 56.499s wall and no skips. Package vet also passed. Receipts are under
+`.context/ha-static-process-20261108/`. This is static deployment acceptance,
+not enrolled replication, promotion, partition/rejoin or release qualification.
 
 ## 3. Serve-level resilience (`test/e2e/serve_test.go`)
 
@@ -289,7 +354,29 @@ did 1.4k execs). `hack/fuzz.sh` passes `-fuzzminimizetime 5s`
 mock OP) now runs in the `e2e` CI job. The separate `auth-e2e` job is gone,
 so it does not run twice. Locally, with the cached dex build, `TestDexEndToEnd` (17 subtests) and `TestMockOPEndToEnd` passed in 12 s.
 
-## Not done here
+## 6. AdGuard Home grammar conformance
+
+`make test-adguard` downloads the official AdGuard Home v0.107.79 executable
+for Linux amd64 or arm64, verifies its pinned SHA-256, and runs
+`TestAdGuardBlackBox` under the Go race detector. It runs in the `e2e` CI job.
+The executable and temporary configuration are removed afterward; neither its
+copyleft implementation nor its rule data is vendored or included in artifacts.
+The corpus is first-party data written from the public grammar. It checks
+modifiers, exception precedence, rewrites and returned-answer inspection over
+loopback DNS with a local stub upstream, without public resolver dependencies.
+
+The test records two known v0.107.79 differences: bare `NOERROR` precedence
+against address rewrites and combined client/type selectors on returned CNAMEs.
+These explicit assertions remain reviewable; a version update must review them
+and update the two archive hashes in `hack/test-adguard.sh`. This gate does not
+claim complete list-corpus compatibility or performance qualification.
+
+Other hosts can run the existing test directly with
+`KUDURRU_ADGUARD_BINARY=/absolute/path/to/AdGuardHome go test -race -count=1 -v -run '^TestAdGuardBlackBox$' ./internal/blocking`.
+An unset binary skips the ordinary unit-suite comparator; the Make target always
+downloads the pinned executable and fails on download, checksum or test errors.
+
+## Remaining external acceptance
 
 All recorded in followups:
 
@@ -297,7 +384,6 @@ All recorded in followups:
 - the apiserver-outage test (kill the control plane, restart a pod, answer
   from local.db);
 - the 2-VM keepalived failover;
-- the AdGuard Home black-box corpus;
 - the Knot catalog consumer.
 
 They need Docker, kind or VMs. The `kudurrutest` harness is ready for a

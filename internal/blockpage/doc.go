@@ -4,12 +4,12 @@
 // spec.blockMode or blocking.defaultResponse) the blocking stage answers
 // blocked A and AAAA queries with blockPage.ipv4/ipv6, the address of this
 // listener. A browser that follows the answer lands here and gets a
-// self-contained, kudurru-branded page: the blocked name (the Host header,
+// self-contained page with built-in or caller-selected branding: the blocked name (the Host header,
 // or the TLS server name), why it was blocked (looked up in the recent query
 // log by client address and name, else evaluated against the client's
 // current policy), the client address, the node, the time and the
 // administrator contact. Every value is plain text, HTML-escaped by Render;
-// the page loads nothing but its favicon (the logos are inlined data: URIs,
+// the page loads no external assets (the logos and favicon are inlined data: URIs,
 // the style sheet is allowed by its hash), runs no script and cannot be
 // framed.
 //

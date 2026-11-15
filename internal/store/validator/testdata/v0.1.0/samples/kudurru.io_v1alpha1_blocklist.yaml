@@ -1,0 +1,11 @@
+apiVersion: kudurru.io/v1alpha1
+kind: BlockList
+metadata:
+  name: default-ads
+  namespace: dns
+spec:
+  mode: block
+  sources:
+    - url: https://big.oisd.nl/
+      format: auto
+  refreshInterval: 24h

@@ -19,7 +19,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
-	internalkinds "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
 
@@ -160,6 +160,10 @@ func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOption
 	if s.isClosed() {
 		return store.ObjectList{}, store.ErrClosed
 	}
+	return s.list(ctx, s.rq, kind, opts)
+}
+
+func (s *Store) list(ctx context.Context, q queryer, kind store.Kind, opts store.ListOptions) (store.ObjectList, error) {
 	ki, err := s.kinds.get(kind)
 	if err != nil {
 		return store.ObjectList{}, err
@@ -193,7 +197,7 @@ func (s *Store) List(ctx context.Context, kind store.Kind, opts store.ListOption
 		b.WriteString(` LIMIT ?`)
 		args = append(args, opts.Limit+1)
 	}
-	rows, err := s.rq.QueryContext(ctx, b.String(), args...)
+	rows, err := q.QueryContext(ctx, b.String(), args...)
 	if err != nil {
 		return store.ObjectList{}, fmt.Errorf("store/sqlite: list %s: %w", kind, err)
 	}
@@ -234,6 +238,9 @@ type mutation struct {
 	action  string // audit verb: create, update, status, delete, finalize
 	reason  string
 	noop    bool // nothing changed; result is prev
+	// apex is the canonical zone name of a DNSZone that this mutation
+	// creates: writeMutation refuses it when another DNSZone has the name.
+	apex string
 }
 
 // mutate prepares and commits a write. plan reads the current row and
@@ -242,6 +249,11 @@ type mutation struct {
 // caller passed a resourceVersion precondition) such a race is
 // store.ErrConflict instead.
 func (s *Store) mutate(ctx context.Context, strict bool, plan func(q queryer) (*mutation, error)) (store.Object, error) {
+	var err error
+	ctx, err = s.writeContext(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for attempt := 1; ; attempt++ {
 		locked := attempt > optimisticAttempts
 		if locked {
@@ -249,6 +261,15 @@ func (s *Store) mutate(ctx context.Context, strict bool, plan func(q queryer) (*
 		}
 		m, err := plan(s.rq)
 		if err != nil || m.noop {
+			if err == nil {
+				if !locked {
+					s.wmu.Lock()
+				}
+				_, err = s.checkWriter(ctx, s.rq)
+				if !locked {
+					s.wmu.Unlock()
+				}
+			}
 			if locked {
 				s.wmu.Unlock()
 			}
@@ -297,6 +318,10 @@ func (s *Store) commitAllLocked(ctx context.Context, ms []*mutation) ([]store.Ob
 	}
 	defer func() { _ = tx.Rollback() }()
 	q := cachedTx{tx: tx, c: s.ws}
+	a, err := s.checkWriter(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
 
 	rvs := make([]uint64, len(ms))
 	for i, m := range ms {
@@ -305,6 +330,9 @@ func (s *Store) commitAllLocked(ctx context.Context, ms []*mutation) ([]store.Ob
 		}
 	}
 	rv := rvs[len(rvs)-1]
+	if err := advanceRevision(ctx, tx, &a); err != nil {
+		return nil, err
+	}
 
 	compactTo := uint64(0)
 	s.sinceCompacted += len(ms)
@@ -325,6 +353,8 @@ func (s *Store) commitAllLocked(ctx context.Context, ms []*mutation) ([]store.Ob
 		s.sinceCompacted = 0
 	}
 	s.head.Store(rv)
+	s.publishAuthorityLocked(a)
+	s.publishGenerationLocked()
 	out := make([]store.Object, len(ms))
 	for i, m := range ms {
 		s.bus.publish(change{seq: rvs[i], typ: m.typ, key: m.key, obj: m.obj})
@@ -350,6 +380,11 @@ func (s *Store) writeMutation(ctx context.Context, q cachedTx, m *mutation) (uin
 	default:
 		if m.prev == nil || uint64(curRV) != m.prev.rv { // #nosec G115 -- resourceVersions are positive
 			return 0, errRaced
+		}
+	}
+	if m.apex != "" {
+		if err := s.admitZoneName(ctx, q, m); err != nil {
+			return 0, err
 		}
 	}
 
@@ -420,26 +455,10 @@ func (s *Store) writeMutation(ctx context.Context, q cachedTx, m *mutation) (uin
 	if m.typ != store.Deleted {
 		entry.After = json.RawMessage(data)
 	}
-	if m.key.Kind == internalkinds.KindAPIToken {
-		entry.Before, entry.After = tokenAuditDocument(entry.Before), tokenAuditDocument(entry.After)
-	} else if internalkinds.IsInternal(string(m.key.Kind)) {
-		entry.Before, entry.After = nil, nil
-	}
 	if err := insertAudit(ctx, q, &entry); err != nil {
 		return 0, err
 	}
 	return rv, nil
-}
-
-func tokenAuditDocument(data json.RawMessage) json.RawMessage {
-	if data == nil {
-		return nil
-	}
-	var tok internalkinds.APIToken
-	if err := json.Unmarshal(data, &tok); err != nil {
-		return nil
-	}
-	return tok.AuditDocument()
 }
 
 // compactFeed drops change-feed rows at or below seq.
@@ -471,6 +490,15 @@ func compactFeed(ctx context.Context, tx txQueryer, seq uint64) error {
 //     re-apply writes nothing and returns the stored object.
 //   - An object being deleted (deletionTimestamp set) whose finalizers the
 //     apply clears is removed.
+//   - Reserved finalizers are decided here, not by the caller's document
+//     (store.ReconcileReservedFinalizers, D367): an Integration whose
+//     defaulted spec.deletionPolicy is Delete is armed with
+//     store.IntegrationCleanupFinalizer in the same write, keeps it through
+//     any manager's whole-object apply, Force included, and through an apply
+//     while it is being deleted; only a change to Retain or UpdateFinalizer
+//     removes it. A document that omits deletionPolicy is a change to
+//     Retain. The audit row of an apply that removes it carries the reason
+//     (store.ReservedFinalizerDropReason).
 //
 // obj is not modified.
 func (s *Store) Apply(ctx context.Context, obj store.Object, opts store.ApplyOptions) (_ store.Object, err error) {
@@ -525,6 +553,9 @@ func (s *Store) planApply(ctx context.Context, ki *kindInfo, key store.Key, obj 
 		m.typ, m.action = store.Added, "create"
 	} else {
 		p := prev.obj
+		if opts.CreateOnly {
+			return nil, fmt.Errorf("%w: %s already exists", store.ErrConflict, key)
+		}
 		if opts.ExpectedResourceVersion != "" && opts.ExpectedResourceVersion != p.GetResourceVersion() {
 			return nil, fmt.Errorf("%w: %s is at %s, expected %s", store.ErrConflict, key, p.GetResourceVersion(), opts.ExpectedResourceVersion)
 		}
@@ -551,6 +582,18 @@ func (s *Store) planApply(ctx context.Context, ki *kindInfo, key store.Key, obj 
 	if err := s.validate(ctx, next, old); err != nil {
 		return nil, err
 	}
+	// Admission decides reserved finalizers from the defaulted spec in the
+	// same write, before the no-op comparison and the finalize check below.
+	if prev != nil {
+		store.ReconcileReservedFinalizers(next, prev.obj, true)
+		// The audit row of a write that drops the cleanup obligation says so
+		// and why: no cleanup ran, the applied policy ended it (D239).
+		if dropped := store.ReservedFinalizerDropReason(prev.obj, next); dropped != "" {
+			m.reason = strings.TrimPrefix(m.reason+"; "+dropped, "; ")
+		}
+	} else {
+		store.ReconcileReservedFinalizers(next, nil, true)
+	}
 	// Apply writes the main resource only (D70).
 	if prev != nil {
 		if err := copyStatus(next, prev.obj.DeepCopyObject().(store.Object)); err != nil {
@@ -570,6 +613,17 @@ func (s *Store) planApply(ctx context.Context, ki *kindInfo, key store.Key, obj 
 		}
 	} else if err := copyStatus(next, ki.newObject()); err != nil {
 		return nil, err
+	}
+	// A zone that is being removed is never refused: its last writes clear
+	// finalizers.
+	if dz, ok := next.(*v1alpha1.DNSZone); ok && m.typ != store.Deleted && next.GetDeletionTimestamp() == nil {
+		apex, err := s.admitZone(ki, key, dz)
+		if err != nil {
+			return nil, err
+		}
+		if prev == nil {
+			m.apex = apex
+		}
 	}
 	m.obj = next
 	return m, nil
@@ -604,7 +658,7 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 	if err != nil {
 		return err
 	}
-	_, err = s.mutate(ctx, false, func(q queryer) (*mutation, error) {
+	_, err = s.mutate(ctx, opts.ExpectedUID != "" || opts.ExpectedResourceVersion != "", func(q queryer) (*mutation, error) {
 		prev, err := s.load(ctx, q, ki, key)
 		if err != nil {
 			return nil, err
@@ -620,6 +674,9 @@ func (s *Store) Delete(ctx context.Context, key store.Key, opts store.DeleteOpti
 // planDelete prepares the delete of the stored object prev: the managedBy
 // check, then a tombstone, or a deletionTimestamp while finalizers remain.
 func (s *Store) planDelete(ki *kindInfo, key store.Key, prev *stored, opts store.DeleteOptions) (*mutation, error) {
+	if err := store.CheckDeletePreconditions(prev.obj, opts); err != nil {
+		return nil, err
+	}
 	manager := opts.Manager
 	m := &mutation{ki: ki, key: key, prev: prev, manager: manager, action: "delete"}
 	if owner := store.ManagedBy(prev.obj); owner != "" && manager != "" && owner != manager {
@@ -649,6 +706,67 @@ func (s *Store) planDelete(ki *kindInfo, key store.Key, prev *stored, opts store
 	return m, nil
 }
 
+// UpdateFinalizer implements store.FinalizerWriter: one finalizer is added
+// to or removed from the exact object named by the required UID and
+// resourceVersion (a mismatch, or a change between the read and the commit,
+// is store.ErrConflict; nothing is retried on a newer object). Manager,
+// labels, annotations, spec, status and generation are kept. Removing the
+// last finalizer of an object that is being deleted removes it (a Deleted
+// event, audited as <kind>.finalize); any other change is a Modified event
+// audited as <kind>.finalizer. A finalizer already in the requested state
+// writes nothing.
+func (s *Store) UpdateFinalizer(ctx context.Context, key store.Key, opts store.FinalizerOptions) (_ store.Object, err error) {
+	defer s.observe(opApply, time.Now(), &err)
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+	if s.isClosed() {
+		return nil, store.ErrClosed
+	}
+	ki, err := s.kinds.get(key.Kind)
+	if err != nil {
+		return nil, err
+	}
+	return s.mutate(ctx, true, func(q queryer) (*mutation, error) {
+		prev, err := s.load(ctx, q, ki, key)
+		if err != nil {
+			return nil, err
+		}
+		if prev == nil {
+			return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
+		}
+		return s.planFinalizer(ki, key, prev, opts)
+	})
+}
+
+// planFinalizer prepares the metadata-only finalizer change of prev.
+func (s *Store) planFinalizer(ki *kindInfo, key store.Key, prev *stored, opts store.FinalizerOptions) (*mutation, error) {
+	finalizers, changed, err := store.PlanFinalizer(prev.obj, opts)
+	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			return nil, fmt.Errorf("%w: %s is uid %s at %s, expected uid %s at %s", store.ErrConflict, key,
+				prev.obj.GetUID(), prev.obj.GetResourceVersion(), opts.ExpectedUID, opts.ExpectedResourceVersion)
+		}
+		return nil, fmt.Errorf("%w: %s", err, key)
+	}
+	m := &mutation{ki: ki, key: key, prev: prev, manager: store.ManagedBy(prev.obj), typ: store.Modified, action: "finalizer"}
+	if !changed {
+		m.noop = true
+		return m, nil
+	}
+	next := prev.obj.DeepCopyObject().(store.Object)
+	next.SetFinalizers(finalizers)
+	m.obj = next
+	m.reason = "added " + opts.Finalizer
+	if opts.Remove {
+		m.reason = "removed " + opts.Finalizer
+	}
+	if store.Terminated(next) {
+		m.typ, m.action = store.Deleted, "finalize"
+	}
+	return m, nil
+}
+
 // DeleteMany implements store.MultiDeleter: every request is planned like
 // Delete while the write lock is held and the deletes are committed in one
 // transaction (one change-feed row and audit row each), so all of them
@@ -657,6 +775,10 @@ func (s *Store) DeleteMany(ctx context.Context, reqs []store.DeleteRequest) (err
 	defer s.observe(opDelete, time.Now(), &err)
 	if s.isClosed() {
 		return store.ErrClosed
+	}
+	ctx, err = s.writeContext(ctx)
+	if err != nil {
+		return err
 	}
 	s.wmu.Lock()
 	defer s.wmu.Unlock()
@@ -687,7 +809,8 @@ func (s *Store) DeleteMany(ctx context.Context, reqs []store.DeleteRequest) (err
 		}
 	}
 	if len(ms) == 0 {
-		return nil
+		_, err := s.checkWriter(ctx, s.rq)
+		return err
 	}
 	if _, err := s.commitAllLocked(ctx, ms); err != nil {
 		if errors.Is(err, errRaced) {
@@ -723,30 +846,35 @@ func (s *Store) UpdateStatus(ctx context.Context, obj store.Object) (err error) 
 		if err != nil {
 			return nil, err
 		}
-		if prev == nil {
-			return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
-		}
-		if callerRV != "" && callerRV != prev.obj.GetResourceVersion() {
-			return nil, fmt.Errorf("%w: %s is at %s, expected %s", store.ErrConflict, key, prev.obj.GetResourceVersion(), callerRV)
-		}
-		in := obj.DeepCopyObject().(store.Object)
-		in.GetObjectKind().SetGroupVersionKind(ki.gvk)
-		if err := s.validateStatus(ctx, in, prev.obj); err != nil {
-			return nil, err
-		}
-		next := prev.obj.DeepCopyObject().(store.Object)
-		if err := copyStatus(next, in); err != nil {
-			return nil, err
-		}
-		m := &mutation{ki: ki, key: key, prev: prev, manager: store.ManagedBy(prev.obj), typ: store.Modified, obj: next, action: "status"}
-		if same, err := identical(next, prev); err != nil {
-			return nil, err
-		} else if same {
-			m.noop = true
-		}
-		return m, nil
+		return s.planStatus(ctx, ki, key, obj, prev)
 	})
 	return err
+}
+
+func (s *Store) planStatus(ctx context.Context, ki *kindInfo, key store.Key, obj store.Object, prev *stored) (*mutation, error) {
+	callerRV := obj.GetResourceVersion()
+	if prev == nil {
+		return nil, fmt.Errorf("%w: %s", store.ErrNotFound, key)
+	}
+	if callerRV != "" && callerRV != prev.obj.GetResourceVersion() {
+		return nil, fmt.Errorf("%w: %s is at %s, expected %s", store.ErrConflict, key, prev.obj.GetResourceVersion(), callerRV)
+	}
+	in := obj.DeepCopyObject().(store.Object)
+	in.GetObjectKind().SetGroupVersionKind(ki.gvk)
+	if err := s.validateStatus(ctx, in, prev.obj); err != nil {
+		return nil, err
+	}
+	next := prev.obj.DeepCopyObject().(store.Object)
+	if err := copyStatus(next, in); err != nil {
+		return nil, err
+	}
+	m := &mutation{ki: ki, key: key, prev: prev, manager: store.ManagedBy(prev.obj), typ: store.Modified, obj: next, action: "status"}
+	if same, err := identical(next, prev); err != nil {
+		return nil, err
+	} else if same {
+		m.noop = true
+	}
+	return m, nil
 }
 
 // storedTime is t as a stored document decodes it: metav1.Time encodes

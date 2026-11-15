@@ -12,6 +12,7 @@ import (
 	jose "github.com/go-jose/go-jose/v4"
 
 	internalv1 "github.com/robertherbaugh/kudurru/api/internalkinds/v1alpha1"
+	publicv1 "github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/auth"
 	"github.com/robertherbaugh/kudurru/internal/auth/session"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
@@ -173,9 +174,11 @@ func TestFromIdentityProviderDefaults(t *testing.T) {
 	if _, err := ParseConfigEntry(map[string]any{"id": "corp", "issuer": "https://sso.example", "clientID": "k", "clientSecretFiel": "x"}); err == nil {
 		t.Fatal("a typo in an identity provider key must be an error")
 	}
-	secret := func(_ context.Context, name, key string) (string, error) { return name + "/" + key, nil }
+	secret := func(_ context.Context, ref publicv1.CredentialReference) (string, error) {
+		return ref.SecretRef.Name + "/" + ref.SecretRef.Key, nil
+	}
 	obj := &internalv1.IdentityProvider{Spec: internalv1.IdentityProviderSpec{Issuer: "https://sso.example", ClientID: "k",
-		ClientSecretRef: &internalv1.SecretKeyRef{Name: "oidc", Key: "secret"}}}
+		ClientSecretRef: &publicv1.CredentialReference{SecretRef: &publicv1.CredentialSecretRef{Name: "oidc", Key: "secret"}}}}
 	obj.Name = "sso"
 	cfg, err := FromIdentityProvider(context.Background(), obj, secret)
 	if err != nil {

@@ -128,7 +128,10 @@ func View[T any](s *Snapshot, name string) (T, bool) {
 // snapshot. It is false while Unsynced and while serving a local.db
 // snapshot older than MaxAge; the authoritative stage then answers
 // SERVFAIL (never NXDOMAIN) for names in primary zones while forwarding
-// continues (§4.4).
+// continues (§4.4). On Kubernetes the RPZ selector treats a
+// non-authoritative snapshot as unavailable feed configuration, so clients
+// whose policy selects an RPZ list get SERVFAIL for every recursive query
+// instead (D390).
 func (s *Snapshot) Authoritative() bool {
 	switch s.State {
 	case Live:

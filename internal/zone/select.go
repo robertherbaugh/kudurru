@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -87,15 +88,24 @@ func (s *RecordSetSelector) Admits(rs *v1alpha1.DNSRecordSet) bool {
 // out entirely, as the apiserver would have rejected it; Build then
 // decides endpoint by endpoint (OutsideZone, Duplicated, CNAME and DNAME
 // conflicts). sets is not modified. A recordSetSelector that does not
-// compile admits nothing.
+// compile admits nothing. An external zone additionally admits only the
+// record sets the Kubernetes source adapter maintains (ExternalSourceOwned).
 func ServedRecordSets(dz *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet) []*v1alpha1.DNSRecordSet {
+	return ServedRecordSetsCached(dz, sets, nil, time.Time{})
+}
+
+// ServedRecordSetsCached applies the same selection with optional parsed reuse.
+func ServedRecordSetsCached(dz *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet, cache *RecordCache, now time.Time) []*v1alpha1.DNSRecordSet {
+	if now.IsZero() {
+		now = time.Now()
+	}
 	sel, err := NewRecordSetSelector(dz)
 	if err != nil {
 		return nil
 	}
 	out := make([]*v1alpha1.DNSRecordSet, 0, len(sets))
 	for _, rs := range sets {
-		if sel.Admits(rs) && RecordSetValid(rs) {
+		if sel.Admits(rs) && externalSelected(dz, rs) && cache.RecordSetValid(dz, rs, now) {
 			out = append(out, rs)
 		}
 	}
@@ -106,23 +116,32 @@ func ServedRecordSets(dz *v1alpha1.DNSZone, sets []*v1alpha1.DNSRecordSet) []*v1
 // RecordSetValid reports whether every endpoint of rs passes
 // ValidateEndpoint and no two endpoints share an identity.
 func RecordSetValid(rs *v1alpha1.DNSRecordSet) bool {
-	seen := make(map[string]struct{}, len(rs.Spec.Endpoints))
+	return RecordSetError(rs) == nil
+}
+
+// RecordSetError is why RecordSetValid refuses rs: the first endpoint that
+// fails ValidateEndpoint, or the first endpoint whose identity an earlier
+// endpoint of the set already has. It is nil exactly when RecordSetValid
+// holds.
+func RecordSetError(rs *v1alpha1.DNSRecordSet) error {
+	seen := make(map[string]int, len(rs.Spec.Endpoints))
 	for i := range rs.Spec.Endpoints {
 		ep := &rs.Spec.Endpoints[i]
-		if ValidateEndpoint(*ep) != nil {
-			return false
+		if err := ValidateEndpoint(*ep); err != nil {
+			return fmt.Errorf("spec.endpoints[%d]: %w", i, err)
 		}
 		id := EndpointIdentity(*ep)
-		if _, dup := seen[id]; dup {
-			return false
+		if first, dup := seen[id]; dup {
+			return fmt.Errorf("spec.endpoints[%d]: %s %s has the identity of spec.endpoints[%d] (the same name, type and setIdentifier)", i, ep.DNSName, ep.RecordType, first)
 		}
-		seen[id] = struct{}{}
+		seen[id] = i
 	}
-	return true
+	return nil
 }
 
 // EndpointIdentity returns the duplicate-detection key of an endpoint as
-// text: the canonical owner, the upper-case type and the set identifier.
+// text: the canonical owner, the upper-case type, the set identifier and,
+// for a client-group view, the view (D403).
 // Two endpoints with the same identity in one record set make it invalid;
 // across record sets the later one is Duplicated.
 func EndpointIdentity(ep v1alpha1.Endpoint) string {
@@ -130,5 +149,11 @@ func EndpointIdentity(ep v1alpha1.Endpoint) string {
 	if k, err := canonicalKey(owner); err == nil {
 		owner = nameFromKey(k)
 	}
-	return owner + " " + strings.ToUpper(strings.TrimSpace(ep.RecordType)) + " " + ep.SetIdentifier
+	id := owner + " " + strings.ToUpper(strings.TrimSpace(ep.RecordType)) + " " + ep.SetIdentifier
+	if view := GroupView(&ep); view != "" {
+		// A client-group view's RRset is distinct from the default one of
+		// the same name and type (D403).
+		id += " view=" + view
+	}
+	return id
 }

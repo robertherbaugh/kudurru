@@ -90,7 +90,7 @@ export class SignRefusedError extends Error {
 /**
  * Throws SignRefusedError unless the portal may sign `c`: Go's Validate,
  * plus whole safe-integer numbers, no nbf (spec §0.4), features absent or a
- * non-empty list of known, distinct features (§0.3), and no lone
+ * non-empty list of known, distinct features (§0.3), Enterprise for branding, and no lone
  * surrogates in any string.
  */
 export function assertSignable(kid: string, c: Claims): void {
@@ -102,9 +102,10 @@ export function assertSignable(kid: string, c: Claims): void {
   }
   if (c.nbf !== undefined) refuse('nbf is never set (a future nbf breaks a node that installs the key early)');
   if (c.features !== undefined) {
-    if (c.features.length === 0) refuse('features is never empty (omit it to grant every feature)');
+    if (c.features.length === 0) refuse('features is never empty (omit it to grant all features available to the plan)');
     if (!c.features.every(isFeature)) refuse('features names an unknown feature');
     if (new Set(c.features).size !== c.features.length) refuse('features has duplicates');
+    if (c.plan !== 'enterprise' && c.features.includes('branding')) refuse('custom branding requires the Enterprise plan');
   }
   for (const s of [kid, c.jti, c.iss, c.sub, c.plan]) if (hasLoneSurrogate(s)) refuse('a string has an unpaired surrogate');
   if (kid === '') refuse('the kid is empty');

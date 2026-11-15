@@ -35,14 +35,38 @@ func (s *Server) registerBlockPage() {
 	op.Description = "The same HTML the block page listener serves, marked as a preview. It renders whether or not blockPage.enabled is set."
 	register(s, op, perm{resource: "settings", verb: "read"}, func(ctx context.Context, in *blockPagePreviewInput) (*blockPagePreviewOutput, error) {
 		if s.opts.BlockPage == nil {
-			return nil, errUnavailable("the block page is not available on this node")
+			return nil, newError(http.StatusServiceUnavailable, KeyUnavailable, "the block page is not available on this node",
+				"this server was started without the block page renderer; a complete kudurru serve node provides it")
+		}
+		var document blockpage.Document
+		switch preview := s.opts.BlockPage.(type) {
+		case interface {
+			CapturedPreview(context.Context, string, netip.Addr) (blockpage.Document, error)
+		}:
+			var err error
+			document, err = preview.CapturedPreview(ctx, in.Domain, ClientIP(ctx))
+			if err != nil {
+				return nil, storeError(err)
+			}
+		case interface {
+			PreviewDocument(context.Context, string, netip.Addr) blockpage.Document
+		}:
+			if s.opts.CanonicalSettings != nil {
+				return nil, errUnavailable("captured block-page preview unavailable")
+			}
+			document = preview.PreviewDocument(ctx, in.Domain, ClientIP(ctx))
+		default:
+			if s.opts.CanonicalSettings != nil {
+				return nil, errUnavailable("captured block-page preview unavailable")
+			}
+			document = blockpage.Document{Body: preview.Preview(ctx, in.Domain, ClientIP(ctx)), CSP: blockpage.PreviewCSP}
 		}
 		return &blockPagePreviewOutput{
 			ContentType:  "text/html; charset=utf-8",
-			CSP:          blockpage.PreviewCSP,
+			CSP:          document.CSP,
 			FrameOptions: "SAMEORIGIN",
 			CacheControl: "no-store",
-			Body:         s.opts.BlockPage.Preview(ctx, in.Domain, ClientIP(ctx)),
+			Body:         document.Body,
 		}, nil
 	})
 }

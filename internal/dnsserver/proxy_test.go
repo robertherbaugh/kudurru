@@ -16,6 +16,7 @@ import (
 
 	"github.com/robertherbaugh/kudurru/internal/dnsserver/proxyproto"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
+	"github.com/robertherbaugh/kudurru/internal/stages/ingress"
 )
 
 var (
@@ -113,9 +114,21 @@ func tcpFrom(t *testing.T, src, server string, prefix, wire []byte, wrapTLS *tls
 // and DoT sockets: 127.0.0.2 plays a non-loopback dnsdist (it is not one of
 // the two exempt loopback addresses), 127.0.0.3 a neighbour that is not in
 // proxyProtocolFrom.
-func TestProxyProtocolEndToEnd(t *testing.T) {
+func TestProxyProtocolEndToEnd(t *testing.T)         { testProxyProtocolEndToEnd(t, false) }
+func TestCapturedProxyProtocolEndToEnd(t *testing.T) { testProxyProtocolEndToEnd(t, true) }
+func testProxyProtocolEndToEnd(t *testing.T, captured bool) {
 	policy := mustPolicy(t, []string{"127.0.0.2/32"}, proxySecret)
-	f := startFixture(t, fixtureOpts{specs: []Spec{{Protocol: ProtoUDP}, {Protocol: ProtoTCP}, {Protocol: ProtoDoT}}, proxy: policy})
+	options := fixtureOpts{specs: []Spec{{Protocol: ProtoUDP}, {Protocol: ProtoTCP}, {Protocol: ProtoDoT}}, proxy: policy}
+	capturedRecorder := new(recorder)
+	if captured {
+		options.stages = []pipeline.Stage{&ingress.Stage{}, capturedRecorder, localAnswer{}}
+		keys, _ := NewStaticKeyring()
+		options.handler = fixedTransportCapture(keys)
+	}
+	f := startFixture(t, options)
+	if captured {
+		f.rec = capturedRecorder
+	}
 	if f.reg.Proxy() != policy {
 		t.Fatal("Registry.Proxy must expose the policy for metrics")
 	}

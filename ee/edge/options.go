@@ -28,10 +28,15 @@ type Options struct {
 	// PoolResolver and PoolAuthoritative are the pool policies; default
 	// chashed and leastOutstanding.
 	PoolResolver, PoolAuthoritative string
-	// ResolverCacheSize is the resolver packet cache size; default 200000.
+	// ResolverCacheSize sizes a supervised, qualified resolver cache; default
+	// 200000. Static rendering has no original proof and leaves it uncached.
 	ResolverCacheSize int
-	// AuthoritativeCache enables a short cache on the authoritative pool
-	// with AuthoritativeCacheTTL seconds of max TTL (default 30).
+	// ManagedCacheBypass permanently bypasses both shared caches for every
+	// child of this supervisor. It must precede managed backend activation.
+	ManagedCacheBypass bool
+	// AuthoritativeCache requests supervised qualification of a short cache
+	// with AuthoritativeCacheTTL seconds of max TTL (default 30). Static
+	// rendering has no original publication proof and leaves this pool uncached.
 	AuthoritativeCache    bool
 	AuthoritativeCacheTTL int
 	// API and Console are loopback host:port; default 127.0.0.1:8083 and
@@ -47,6 +52,11 @@ type Options struct {
 	EBPF               EBPF
 	// Threads is the Do53 listener thread count; default 2.
 	Threads int
+	// Dnstap sends the answers dnsdist gives itself to a kudurru dnstap
+	// listener; nil sends none. An empty identity uses ServerID.
+	Dnstap *Dnstap
+	// ClientIDs propagates transport client IDs to the backends (D389).
+	ClientIDs ClientIDs
 }
 
 // Build returns the Topology for o, the given backends and credentials.
@@ -85,6 +95,7 @@ func Build(o Options, backends []Backend, creds Credentials) (*Topology, error) 
 		o.Threads = 2
 	}
 	t := &Topology{
+		ManagedCacheBypass:  o.ManagedCacheBypass,
 		ServerID:            o.ServerID,
 		ACL:                 o.ACL,
 		Console:             Console{Address: o.Console},
@@ -94,6 +105,14 @@ func Build(o Options, backends []Backend, creds Credentials) (*Topology, error) 
 		DynBlocks:           o.DynBlocks,
 		EBPF:                o.EBPF,
 		ProxyProtocolSecret: o.ProxyProtocolSecret,
+		ClientIDs:           o.ClientIDs,
+	}
+	if o.Dnstap != nil {
+		d := *o.Dnstap
+		if d.Identity == "" {
+			d.Identity = o.ServerID
+		}
+		t.Dnstap = &d
 	}
 	creds.Apply(t)
 	for _, p := range o.Protocols {
@@ -115,14 +134,10 @@ func Build(o Options, backends []Backend, creds Credentials) (*Topology, error) 
 			t.Binds = append(t.Binds, b)
 		}
 	}
-	resolver := DefaultResolverCache()
-	if o.ResolverCacheSize > 0 {
-		resolver.Size = o.ResolverCacheSize
-	}
-	t.Pools = []Pool{{Name: PoolResolver, Policy: o.PoolResolver, Cache: resolver}, {Name: PoolAuthoritative, Policy: o.PoolAuthoritative}}
-	if o.AuthoritativeCache {
-		t.Pools[1].Cache = AuthoritativeCache(o.AuthoritativeCacheTTL)
-	}
+	// Only the supervisor's original, time-bounded publication proof can
+	// authorize a shared cache. Persisted startup/render targets remain
+	// uncached even when the operator requests that qualification.
+	t.Pools = []Pool{{Name: PoolResolver, Policy: o.PoolResolver}, {Name: PoolAuthoritative, Policy: o.PoolAuthoritative}}
 	for _, b := range backends {
 		b.ProxyProtocol = true
 		t.Backends = append(t.Backends, b)

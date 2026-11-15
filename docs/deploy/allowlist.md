@@ -154,6 +154,35 @@ default (decision D84), switching an entry off takes the list over (managed
 by the API from then on), so a later objects.d declaration of `starter` is
 reported as a conflict instead of silently dropping your exclusions.
 
+## Checking disabled rules
+
+**Is it allowed?** displays disabled rules returned by the same built-in query
+that produced the verdict. The server uses the question's captured lists,
+client identity and selected policies; the browser does not fetch a later list
+or run its own regular expressions. A disabled rule does not mean the whole
+list allows the name: another source or rule can still block it. The displayed
+verdict remains the actual pipeline result.
+
+`POST /api/v1/dns/query` includes optional `exclusions` entries with `list`,
+`source` (zero-based compiled source index, excluding RPZ sources), `rule` and
+`effect` (`block`, `allow`, `exception` or `rewrite`). These entries require
+`blocklists.read` in addition to the query's `stats.read`; otherwise the normal
+query result omits them. Only actual source rules removed by an exclusion or
+disabled structured entry are reported. Stale exclusions, unselected lists,
+disabled filtering and rules after an earlier authoritative/local answer do
+not contribute evidence. This describes the original question; response-address
+and alias-target exclusions are outside this diagnostic.
+
+Evidence is bounded: compilation retains at most 1,024 distinct source/rule
+pairs and 1 MiB of rule text per list, at most 4,096 bytes per rule and 64 regex
+or contextual patterns. Each diagnostic inspects at most 4,096 lists/rules and
+returns at most 64 matches. `exclusionsTruncated: true` means a bound, unsupported
+excluded pattern or cancellation made the evidence incomplete. The UI says
+some matching disabled rules may be omitted. These limits affect explanations
+only; filtering still excludes every configured matching source rule. Ordinary
+DNS traffic does not perform the diagnostic scan. Older servers show the
+verdict without exclusion details.
+
 ## Migration from 0.1 lists
 
 Before structured entries, the Domains page, the query log and unblock

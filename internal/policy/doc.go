@@ -8,14 +8,14 @@
 // Identify walks fixed tiers and stops at the first tier with a match:
 //
 //  1. exact IP (ClientMatcher.ip)
-//  2. MAC (ClientMatcher.mac) against pipeline.Client.MACs; nothing fills
-//     MACs before the v0.2 inventory integrations, so this is the slot
+//  2. MAC (ClientMatcher.mac) against the captured inventory MACs; all
+//     matching MAC groups join, independent of address ordering
 //  3. longest-prefix CIDR (ClientMatcher.cidr), IPv4 and IPv6 separately
 //  4. hostname (ClientMatcher.hostname, exact, case-insensitive), then
 //     nameGlob (path.Match syntax; a hostname containing *, ? or [ is a
 //     glob too, as in the "ps5*" example of §4.1), against the names a
-//     HostnameResolver knows for the address; without a resolver (v0.1)
-//     this tier never matches and the Index says so in a Diagnosis
+//     captured inventory knows for the address. Standalone embedders can
+//     instead provide a memory-only HostnameResolver
 //  5. clientID (DoT SNI / DoH path identifiers, ClientMatcher.clientID)
 //  6. catch-all CIDRs 0.0.0.0/0 and ::/0. They rank below every specific
 //     matcher, so the bootstrap ClientGroup "default" (which lists both)

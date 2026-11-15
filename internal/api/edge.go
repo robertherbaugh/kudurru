@@ -141,6 +141,10 @@ func aggregateSupervisors(items []EdgeSupervisorStatus, vip bool) EdgeComponent 
 
 func (s *Server) getEdge(ctx context.Context, _ *struct{}) (*edgeOutput, error) {
 	out := &EdgeInfo{Node: s.opts.NodeName, Backends: []EdgeBackend{}, VIPs: []EdgeVIP{}, Supervisors: []EdgeSupervisorStatus{}}
+	if s.opts.VIPObservation != nil {
+		snapshot := s.opts.VIPObservation()
+		out.Observation = &snapshot
+	}
 	if s.opts.EdgeSupervisors == nil {
 		return &edgeOutput{Body: out}, nil
 	}

@@ -15,12 +15,20 @@ container.
 | Kubernetes | kube (CRDs) | every replica (Deployment ≥ 2) | Lease holder | `deploy/helm/kudurru`, `deploy/kustomize/` |
 | Kubernetes standalone | sqlite on a PVC | 1 (StatefulSet) | itself | `deploy/helm/kudurru` `mode: standalone` |
 | Compose HA (static twins) | sqlite on each node | every node, behind dnsdist, one VIP | each node for itself | `deploy/compose/ha/node-{a,b,c}` |
+| Enrolled SQLite primary and followers | sqlite on each member; followers install the primary's complete image | every member | the enrolled primary | no shipped example; [join guide](../deploy/sqlite-join.md) |
 
 Operator docs: [deploy/](../deploy/README.md). This page shows how the
 pieces talk to each other.
 
-The v0.1.0 [DHCPv4 server](dhcp.md) is opt-in, runs on Linux with either
-store, and independent allocators must never share a pool. On the Kubernetes
+`kudurru cluster status` reads the connected node's authenticated `/cluster`
+observation: driver, reported leader, member count and read-only mode. Wide
+output includes its cluster ID and epoch; JSON/YAML retain the API response.
+Static twins intentionally report separate database identities and local
+leaders. This status is not a quorum or promotion-eligibility check; use
+`kudurru nodes` to inspect individual readiness.
+
+The [DHCPv4 server](dhcp.md), included since v0.1.0, is opt-in and runs on
+Linux with either store, and independent allocators must never share a pool. On the Kubernetes
 store, scopes are `DHCPScope` objects, leases are `DHCPLease` objects, and
 the holder of the `kudurru-dhcp` Lease serves clients that a router relays
 to a LoadBalancer address (`dhcp.enabled`, `dhcp.serverAddress`); see
@@ -50,10 +58,11 @@ and the supervisors refuse a first start without a key that covers the edge
 
 With the edge, dnsdist owns :53, :853 and :443 and kudurru listens on
 `127.0.0.1:5353`. Because both share one network namespace, kudurru accepts
-PROXYv2 only from `127.0.0.1` and needs no shared secret. When the lists or
-the blocking toggle change, kudurru flushes dnsdist's packet cache through
-the dnsdist API, whose key the supervisor writes to the shared
-`/run/kudurru` volume.
+PROXYv2 only from `127.0.0.1` and needs no shared secret. Each accepted complete
+publication, including list, regex and timed blocking changes, requests a
+bounded local cache flush through the dnsdist API. Its key lives in the shared
+`/run/kudurru` volume. Shared edge caches also require the original authenticated
+backend eligibility described below; a flush alone cannot isolate client policy.
 
 ## Kubernetes
 
@@ -101,37 +110,255 @@ identical, file-managed configuration that you distribute (Git, Ansible,
 rsync). keepalived decides who holds the VIP; every dnsdist sends to every
 kudurru with PROXYv2 plus the shared TLV secret.
 
+### Host supervisor configuration
+
+The explicit `edge render|run` and `vip render|run` commands accept typed
+`edge.*` and `vip.*` sections from the selected node configuration. Every key
+is node-scoped, host-only and restart-required; neither settings API can write
+or reset one. These sections do not start a supervisor from `serve`. Secrets
+remain file references, and `--out` remains an invocation-only output location.
+
+Precedence is schema defaults, then node file, then environment, then flags
+explicitly supplied on that invocation. Explicit false, zero, empty strings and
+empty/replacement collections retain their meaning. Only an explicitly overridden
+supervisor key skips parsing its lower environment value or `_FILE` input;
+unrelated invalid environment still fails. `--readiness-address` aliases
+`edge.healthAddress`, and `--node-name` aliases `vip.routerID`. YAML/Lua renderer
+aliases and protocol casing retain their existing behavior.
+
+`vip.vips` is a list of `{name, address, interface, vrid}` records, and
+`vip.preemptDelay` maps VIP names to integer seconds. Only those two new keys
+accept structured JSON environment values. VRIDs remain operator-assigned and
+cannot change through a remote write. A configured `priorityIndex: 0` retains
+its source provenance during Kubernetes node discovery; only an omitted
+priority derives from the node's discovered position. All existing credential,
+frontend-address, source and renderer refusals still apply to the effective
+configuration. The [generated reference](../../docs-site/content/reference/configuration.md)
+lists the exact keys and constraints.
+
 ### The edge supervisor (`kudurru edge run`)
 
 ```mermaid
 flowchart TD
-    START(["container start"]) --> MEM["backends: --backends list,<br/>or an EndpointSlice (ready endpoints)"]
+    START(["explicit edge run"]) --> HOST["defaults → node file → environment<br/>→ explicitly supplied flags"]
+    HOST --> MEM["backends: configured list,<br/>or an EndpointSlice (ready endpoints)"]
     MEM --> CRED["new console key, API key,<br/>dashboard password (per start)"]
-    CRED --> REN["render dnsdist.yml:<br/>pool resolver (chashed, packet cache)<br/>pool authoritative (leastOutstanding, no cache)<br/>add TLV 0xE0, refuse XFR/NOTIFY/UPDATE<br/>health check TXT health.kudurru.internal."]
+    CRED --> REN["render dnsdist.yml:<br/>resolver and authoritative pools uncached<br/>add TLV 0xE0 (and the client ID in TLV 0xE1 when enabled),<br/>refuse XFR/NOTIFY/UPDATE<br/>health check TXT health.kudurru.internal."]
     REN --> CHK{"dnsdist --check-config"}
     CHK -- "fails" --> KEEP["keep the running config"]
     CHK -- "ok" --> SWAP["swap files atomically,<br/>write the API key to /run/kudurru"]
     SWAP --> EXEC["start dnsdist --supervised"]
     EXEC --> LOOP{"event<br/>(debounced 5 s)"}
-    LOOP -- "backends, zones or<br/>certificates changed" --> REN2["re-render"]
-    REN2 --> DIFF{"bytes changed?"}
-    DIFF -- "no" --> LOOP
-    DIFF -- "yes" --> RST["readiness 503 for 1 s,<br/>stop dnsdist, start it again"]
+    EXEC --> MODE{"immutable managed-cache bypass?"}
+    MODE -- "no" --> PULL["bounded authenticated backend pulls<br/>original publication and cache eligibility"]
+    MODE -- "yes" --> FIXED["global skip-cache rule<br/>both pools stay detached"]
+    FIXED --> ACK["bounded console acknowledgment<br/>exact running child and source fence"]
+    ACK -- "unknown" --> RETIRE["retire captured child<br/>replacement starts with bypass"]
+    RETIRE --> FIXED
+    PULL --> CACHE{"all original proofs current?"}
+    CACHE -- "eligible pool" --> FRESH["attach fresh cache with configured limits"]
+    CACHE -- "missing, changed or unsafe" --> BYPASS["detach affected cache; report bypass"]
+    FRESH --> PULL
+    BYPASS --> PULL
+    LOOP -- "certificate changed" --> TLS["validate private immutable pair<br/>reload and verify every fresh TLS leaf"]
+    TLS --> LOOP
+    LOOP -- "backends or zones changed" --> REN2["render and validate target"]
+    REN2 --> DIFF{"supported runtime diff?"}
+    DIFF -- "removal or anonymous addition" --> APPLY["qualify private-pool automatic health<br/>persist target, promote, drain and remove"]
+    APPLY --> LOOP
+    DIFF -- "new named validator or other change" --> RST["validated staged restart<br/>retain original identity checks"]
     RST --> LOOP
+    APPLY -- "uncertain acknowledgment" --> RECOVER["readiness false until validated<br/>restart target and fresh status converge"]
+    RECOVER --> LOOP
     LOOP -- "dnsdist exited" --> BO["restart with backoff<br/>0.5 s .. 30 s"]
     BO --> LOOP
 ```
 
-Readiness on `:8084/healthz/ready` is "dnsdist runs and at least one backend
-is up". The supervisor also polls every backend's `/internal/zones` on
-`:8082` and flushes the authoritative pool's cache when a zone serial
-changes (when that pool is cached). The poll needs the internal credentials
+Readiness on `:8084/healthz/ready` requires a running dnsdist and a healthy
+backend, with no unresolved runtime mutation. The supervisor polls every
+backend's `/internal/zones` on `:8082`. The poll needs the internal credentials
 (`KUDURRU_ENCRYPTION_KEY[_FILE]` or `--internal-token-file`); the shipped
 chart, Kustomize and Compose files mount the backend's encryption key into
 the edge for this.
-Membership changes restart dnsdist in
-v0.1: invisible behind a VIP or a LoadBalancer with two edge replicas, a
-sub-second gap for a lone edge.
+
+Both pools start uncached, including standalone rendered configurations and
+supervisor restarts. Configured cache sizes request supervised qualification.
+Each bounded authenticated response contains an original complete-publication
+observation with a fresh challenge, runtime identity, publication sequence and
+original expiry. One serial controller replaces or detaches only the two fixed
+local pool caches. Missing, legacy, failed or expired evidence causes visible
+bypass; a resolver grant never implies an authoritative grant. Unconfigured
+polling and Kubernetes backends without this complete evidence remain uncached.
+
+`edge.managedCacheBypass` (`--managed-cache-bypass`) is a host-only startup
+option for edges that can reach managed root-anchor backends. It fixes bypass
+for every child of that supervisor: both renderers emit an unconditional
+`SetSkipCache` rule after transfer refusal and PROXY setup, before all pool
+routes. Topology validation rejects cache attachments. The sole cache worker
+ignores remote eligibility in this mode, including queued old observations,
+and cannot attach either pool. Zone discovery continues independently.
+
+Every supervisor exclusively locks its configuration directory before credential
+preparation or rendering, and holds that ownership until its workers and child
+have stopped. On the first managed start it creates a private
+`managed-cache-bypass.state` file with a random deployment identity. File and
+directory sync finish before any child starts. Subsequent starts retain that
+identity and refuse to disable bypass. Incomplete, malformed, linked or
+nonprivate state refuses startup without replacement or repair; even a later
+credential or child-start failure retains the policy.
+
+Managed edges therefore require a persistent configuration directory. Treat it
+as deployment state: do not delete, replace, restore an older copy or share it
+between edge deployments. The lock excludes cooperating supervisors; it does
+not fence filesystem rollback, an independently launched dnsdist or an orphan
+outside the supported PID-1 container lifecycle. Replacing that deployment
+cannot reuse its eventual backend admission. There is no online bypass-reset
+operation. Standalone rendered configurations do not create this retained state.
+
+Readiness additionally requires a bounded console acknowledgment of the loaded
+managed marker and synchronous detachment of both pools. It binds the exact
+running child and source epoch; source loss, replacement, restart or unknown
+completion cannot retain it. Unknown acknowledgment retires only the captured
+child. `/status` distinguishes configured and installed bypass and exposes the
+retained deployment identity separately. The durable file alone never proves
+that a child is running or that either cache was detached. These local
+observations are not backend activation grants: an edge-backed managed backend
+activates only through its own startup admission, which authenticates every
+declared edge's installed bypass and exact membership (D319).
+The separate `upstreams.recursion.managedTopology: direct` host declaration
+permits only standalone SQLite listeners with no caching proxy or configured
+PROXYv2 ingress; it must never be used for a backend behind these edges.
+An existing eligibility lease or eventual flush cannot replace that gate.
+
+`edge.managedObservationAddress` (`--managed-observation-address`, empty by
+default) adds a separate internal TLS listener for
+`GET /internal/edge/managed-bypass`. It requires retained bypass and the existing
+internal credentials. The listener and backend polling share one captured
+credential source. Listener startup failures cancel and join the supervisor and
+its other listener; shutdown joins all three lifetimes.
+
+The exchange uses a fresh challenge, a two-second total client/server bound and
+a 128 KiB response cap. The caller supplies the expected node and durable edge
+deployment identity before sending. The response carries that identity, a fresh
+supervisor incarnation, the actually acknowledged source/child epochs and a
+detached bounded backend list. Wrong identities, empty or duplicate membership,
+malformed responses, redirects and expired acquisition refuse without retrying
+the observation. The observer takes the same supervisor lock as installed-state
+changes and performs no console, filesystem or network acquisition inside it.
+The authenticated node name is the supervisor host name used for its internal
+credentials; it is independent of dnsdist's configurable `serverID`.
+
+This endpoint exposes an authenticated observation, not a backend activation
+permit. It cannot prove an exhaustive deployment topology or replace the
+backend's original local policy/writer/publication admission; the backend's
+startup admission checks those boundaries itself (D319).
+
+The private root fleet collector validates every explicit peer requirement before
+contacting any edge. It captures one detached nonempty fleet and a finite original
+attempt, checks this backend's exact name/DNS/internal address tuple in each
+response, and retains only a complete result. Partial failure does not retry
+earlier peers or contact later ones. Runtime cancellation interrupts acquisition;
+the result remains bound to its original deadline and issued object identity.
+This collector still has no configuration mount or activation lifetime adoption.
+
+Shared packet caching is eligible only when the captured served model proves
+client-independent behavior. Per-client rate limits (including the default),
+group/list/RPZ restrictions, zone ACLs, client names and unproven dynamic inputs
+conservatively bypass caching. Served zone ACLs gate both pools, including a
+committed primary whose policy differs from desired configuration. Authoritative
+eligibility covers proven static primary/forward data; signatures, acquired or
+expiring data and client views remain uncached. This does not partition caches
+by PROXYv2 client.
+
+Publication, source or child replacement requires a fresh cache; late responses
+cannot refill the replacement through a retired cache reference. Ordinary
+acknowledged changes retain the daemon PID. An uncertain console acknowledgment
+retires only its matching child, then starts the accepted uncached configuration;
+connections may be interrupted. Remote invalidation is asynchronous, bounded by
+original source deadlines, pulls and acknowledged convergence. It does not
+provide atomic ACL cutover across nodes or a zero stale interval.
+
+Runtime removal and qualified backend addition use bounded acknowledged console
+commands. New entries stay in private pools until original automatic health
+checks succeed; removal first marks the old backend down, then waits the purge
+delay before removal. Named backends qualify the first-party v1 targeted-health
+contract with exact-owner and random wrong-owner probes using original PROXYv2
+authentication. Ongoing probes address a name derived from the exact node ID;
+the captured ingress owner refuses wrong identities and preserves lameduck
+failure. Qualified named additions retain the running PID. Legacy generic-only
+backends, same-UUID replacements and structural routing changes retain a
+validated restart path; dnsdist 2.1.3 cannot install the original response
+validator at runtime. Readiness stays false after uncertain runtime
+changes until a validated restart and fresh status converge. Established DNS
+connections may return SERVFAIL after their selected backend is removed; the
+supervisor does not replay queries or promise connection migration.
+
+Certificate rotation uses bounded, valid matching pairs in private immutable
+snapshots and an atomic active selection. `reloadAllCertificates()` must receive
+an acknowledgment and fresh DoT/DoH/DoQ/DoH3 handshakes must present the exact
+candidate leaf before acceptance. Half rotations and invalid material retain the
+accepted snapshot, including after child restart. The external console client
+reads credentials from private configuration; keys never appear in command
+arguments or returned diagnostics. The actual pinned dnsdist acceptance also
+qualifies held DoT through successful rotation and uncertain-mutation recovery.
+
+### Operator edge blocks
+
+An operator can drop one client address or prefix at every edge for a
+bounded time (D388): `POST /api/v1/edge/blocks` (permission
+`edgeblocks.write`, granted to the operator and admin roles), the CLI
+`kudurru edge block <prefix> [duration]`, `kudurru edge blocks` and
+`kudurru edge unblock <id>`. A block covers an IPv4 /16 or longer or an IPv6
+/32 or longer, lasts one minute to seven days and has an absolute expiry; at
+most 256 are active. A second block on an active prefix is refused (revoke the
+first). The operator's reason and identity stay in the list and the audit
+trail; edges receive only the ID, prefix and expiry.
+
+```mermaid
+flowchart LR
+    OP(["API or CLI<br/>edgeblocks.write"]) --> CMD{"driver"}
+    CMD -- "SQLite" --> ROW["one runtime row + audit row<br/>in the original current command<br/>(primary only; replicated)"]
+    CMD -- "Kubernetes" --> CM["kudurru-runtime ConfigMap key<br/>one CAS write, API audit"]
+    ROW --> PUB["every member serves its current<br/>publication's set"]
+    CM --> OBS["every replica refreshes<br/>its observation every 2 s"]
+    PUB --> INT["GET /internal/edge/blocks<br/>(internal TLS + cluster token)"]
+    OBS --> INT
+    INT --> SUP["edge supervisor pulls every backend<br/>every 5 s; newest revision per owner,<br/>remembered across pulls"]
+    SUP --> FILE["edge-blocks.json in the<br/>configuration directory"]
+    SUP --> CON["console: addDynamicBlock with the<br/>remaining seconds (Drop)"]
+    FILE -- "supervisor restart,<br/>no backend reachable" --> CON
+    CON --> DD["dnsdist drops the prefix<br/>and expires the entry itself"]
+```
+
+The supervisor keeps, per owner (the cluster ID, or the ConfigMap UID), the
+copy with the highest revision, and remembers that revision across pulls and
+restarts (it is stored in `edge-blocks.json` with the set). A backend that
+serves a lower revision than one already applied is ignored, so a lagging
+follower cannot bring back a revoked block or wipe a new one, also while the
+newer backend misses pulls. Only when every pull that reports the owner has
+shown a lower revision for five minutes (`BlockRestoreHold`) does the edge
+take it as a deliberate step back, such as a restored backup or a promoted
+follower that had lagged; a primary that stays unreachable that long while a
+follower serves an older revision therefore brings that revision back after
+five minutes, still bounded by each block's expiry. An owner's revision is
+remembered for seven days and one hour after it was first applied (longer
+than any block a lower revision can carry), and at most eight owners that no
+backend reports any more are kept. Independent static twins are separate
+owners and their sets are combined; only owners reported in a pull
+contribute blocks. When no backend answers, the last set stays in force and
+is still expired locally. A failed write of `edge-blocks.json` is retried on
+every pull until it succeeds. A new dnsdist child gets the whole set; an addition
+adds only the new entry; a revoke or a changed expiry clears the dynamic
+block table and reinstalls the rest, because dnsdist has no per-entry
+removal and only ever extends an entry. Clearing also drops blocks the
+`--dynblocks` rate rules added; they return if the client keeps exceeding
+the rate. An unacknowledged console statement is reported in `/status`
+(`edgeBlocks.error`) and the whole set is resent; it never makes the edge
+unready, because a missing abuse block must not take DNS out of service.
+`/status` reports counts only, never prefixes, and `kudurru_edge_blocks`
+counts the installed entries. Edges converge asynchronously, within a few
+seconds of a backend's publication; the API response does not wait for them.
+An enrolled follower refuses the commands with `primary_required`.
 
 ### The VIP (`kudurru vip run`)
 
@@ -146,6 +373,15 @@ VIP names, addresses and VRIDs must be unique. Keepalived tracks both the
 VRRP interface and each VIP's address interface; loss of either link faults
 the instance and withdraws its address. Gratuitous ARP uses the address
 interface ([Helm guide](../deploy/helm.md)).
+
+The Helm chart selects either the original shared HMAC Secret or an exact
+VRID-to-Secret-key mapping (`vip.keepalived.hmacKeySecrets`). Only selected
+keys enter a bounded root init copy into private memory files, mode 0600, so
+the edge's fsGroup cannot make keepalived's runtime keys group-readable.
+The source projection is init-only; the private mount is keepalived-only.
+The existing `{vrid}` CLI substitution binds each instance to its selected
+file, with no shared-key fallback. Key changes require coordinated restart;
+see [key placement and rotation](../deploy/vrrp-keys.md).
 
 The supervisor renders `keepalived.conf` (VRRPv3 unicast, `state BACKUP`,
 `nopreempt`, `auth_hmac`, priority `200 - 10 × index`), checks it, and runs
@@ -202,11 +438,130 @@ In Kubernetes without a VIP, the Service follows readiness on `:8081`, the
 lameduck `preStop` drains a pod before it stops, and the edge re-renders
 within 5 s of an EndpointSlice change.
 
-## Not built yet
+## Twins, enrolled members and what is not built
 
 `kudurru serve` does not write the keepalived weight file itself (only
 `kudurru vip drain` and `vip rebalance` do), so "prefer-not" (weight 60) is
-unused. The compose twins have no read-only mode, and a zone transfer from
-twins should name one node, because each twin stamps its own serials. The
-follower driver (v0.2) and raft (v1.0) replace twins with one writable
-primary.
+unused.
+
+Static twins (`cluster.role: static`) are read-only through the API: object,
+cluster-setting, credential and provider mutations answer `503 read_only`, and
+configuration changes arrive through the files distributed to every node.
+A zone transfer from twins should name one node, because each twin keeps its
+own database and stamps its own serials.
+
+An enrolled SQLite cluster is the alternative with one writable primary:
+followers install the primary's complete image over member mutual TLS and
+answer DNS from it, a follower forwards a fixed set of typed commands to the
+primary, and promotion is a reviewed operator command, never automatic
+([SQLite replication](configuration-and-store.md#sqlite-replication-foundation),
+[join guide](../deploy/sqlite-join.md)). A fenced or conflicted member keeps
+answering DNS from its last good image while its API stays closed. There is no
+`raft` store driver.
+
+```mermaid
+flowchart LR
+    subgraph twins["Static twins"]
+        direction TB
+        Files["Identical distributed files"] --> TwinA["Node A: own state.db, own leader"]
+        Files --> TwinB["Node B: own state.db, own leader"]
+        TwinWrite["API write"] --> ReadOnly["503 read_only"]
+    end
+    subgraph enrolled["Enrolled SQLite cluster"]
+        direction TB
+        FollowerWrite["Forwarded API command on a follower"] --> Typed["Typed command, member mTLS"]
+        Typed --> Primary["Primary: commit + audit"]
+        Primary --> Image["Complete image"]
+        Image --> Followers["Followers install and answer DNS"]
+        Operator["Operator: reviewed promotion"] --> Followers
+    end
+```
+
+### Service-provider annotations
+
+For `vip.provider: kube-vip` or `metallb`, the chart requires the DNS Service
+(type `LoadBalancer`) and renders the selected provider's address request on
+each mixed or split DNS Service. MetalLB additionally receives the configured
+pool and, for split UDP/TCP Services, the release's shared-IP key. kube-vip does
+not acquire MetalLB sharing annotations implicitly. Existing explicitly supplied
+annotations remain; selected provider values override matching address/pool keys.
+For compatibility, split Services with `provider: none` retain their historical
+MetalLB sharing key for externally managed address allocation.
+
+The named chart annotation helper is checked against the Go ServiceProvider
+annotation contract across direct, sidecar, separate Deployment and DaemonSet
+edge topologies. These annotations request allocation; they do not prove which
+node currently announces an address. Owner observation is the separate
+read-only path described next.
+
+### Read-only Service VIP ownership
+
+`serve` can observe an explicitly selected Kubernetes VIP provider through
+host-only `vip.observation.*` settings. The default provider is `none`; selecting
+`kube-vip` or `metallb` does not launch a supervisor or change a Service/Lease:
+
+```yaml
+vip:
+  observation:
+    provider: metallb
+    services:
+      - name: dns
+        address: 192.0.2.53
+        namespace: dns
+        service: kudurru-dns
+    announcerNamespace: metallb-system
+    interval: 5s
+    timeout: 2s
+    maxAge: 15s
+```
+
+The Service list is file-only structured configuration. API writes/resets are
+refused. Scalar environment values retain normal host precedence. Observation
+uses the installed Kubernetes credentials and transport, including impersonation;
+operators must grant the exact source reads. Both providers need `get` Services
+and Nodes. kube-vip needs `get` its namespace-local `kubevip-<service>` Lease.
+MetalLB needs `list/get` ServiceL2Status and `get` speaker Pods in the announcer
+namespace, plus `get` speaker Node Leases in `kube-node-lease`.
+
+`GET /api/v1/edge` includes optional `observation` under existing `edge.read`.
+An allocated address is only a prerequisite. kube-vip per-Service ARP ownership
+requires an unexpired Lease matching the Service's `vipHost` and a Ready Node.
+MetalLB L2 evidence requires matching status, a live Ready speaker Pod with the
+original UID, and a Ready Node whose fresh Lease has that exact Node UID as
+owner. Replacement/deletion, ambiguity, unreadable sources and expiry clear the
+owner. BGP and global kube-vip election do not establish a single current owner.
+
+Each acquisition is bounded to 32 bindings, 64 MetalLB status objects, 2 MiB per
+response and a total timeout of 100 ms–5 s. Original Lease and local acquisition
+deadlines bound observation age. MetalLB status has no provider heartbeat:
+`createdAt`, UID and resource version retain its original age; `livenessAt`
+is separately the Node Lease renewal. This reports provider state and does not
+certify physical ARP/BGP ownership or create writer authority.
+
+### Local keepalived notifications
+
+Set host-only `vip.observation.provider: keepalived` and
+`vip.observation.runDir` to the existing Consumer's run directory. Explicit
+`node.name` and up to 32 `vip.vips` mappings bind observed names to operator VRIDs.
+The Consumer writes its state atomically with mode 0600; the serving UID must
+already be able to read it. Observation does not broaden permissions, open a
+second FIFO reader, launch a supervisor or expose track-file writers.
+
+The additive state format retains a random source session and the latest 64
+sequenced transitions. Its `updated` timestamp remains the last transition,
+not a heartbeat. Startup baselines the current head without replay. Original
+transition age bounds audit and delivery, even across queue delays. Legacy files
+remain readable by existing consumers but cannot provide sequenced notifications.
+Source restart, regression, gaps, malformed/foreign files and failed acquisition
+close active streams; new streams return 503 until valid acquisition recovers.
+This availability means journal acquisition, never DNS or physical VIP readiness.
+
+`GET /api/v1/edge/vip/stream` requires `edge.read` and emits
+`vip.master_changed` with node, VIP, VRID, previous/state, original time and
+session/sequence. Source diagnostics use `vip.observation_status`. The stream
+has no replay or cursor support; limits are 16 subscriptions and 32 queued events
+per subscription, with bounded writes and cancellation. Every emission rechecks
+the original request credential, authorizer and time evidence. Slow consumers
+are disconnected. The existing audit recorder receives the same typed evidence;
+audit refusal/timeout closes streams without retrying the transition. Neither
+notifications nor provider observations grant allocation or writer authority.

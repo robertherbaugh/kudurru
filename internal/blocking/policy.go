@@ -39,6 +39,8 @@ type SelectOptions struct {
 type Selection struct {
 	block, allow []*List
 	opts         SelectOptions
+	contextual   bool
+	badfilters   map[string]bool
 }
 
 // BlockLists returns the names of the block-mode lists in evaluation order.
@@ -70,6 +72,8 @@ const (
 	ActionAllow
 	// ActionBlock: synthesise the policy's block response.
 	ActionBlock
+	// ActionRewrite is an explicit typed replacement, never a raw-cache entry.
+	ActionRewrite
 )
 
 func (a Action) String() string {
@@ -80,6 +84,8 @@ func (a Action) String() string {
 		return "allow"
 	case ActionBlock:
 		return "block"
+	case ActionRewrite:
+		return "rewrite"
 	}
 	return "unknown"
 }
@@ -119,8 +125,9 @@ func (r Reason) String() string {
 // Decision is the result of evaluating a name. The zero value is "pass".
 // Its strings point into the snapshot, so a Decision costs no allocation.
 type Decision struct {
-	Action Action
-	Reason Reason
+	Rewrite *Rewrite
+	Action  Action
+	Reason  Reason
 	// List is the deciding list; empty for ReasonAllowOnly.
 	List string
 	// Match is the deciding rule; zero for ReasonAllowOnly.
@@ -163,6 +170,9 @@ func (d Decision) Status() pipeline.Status {
 // each block list's deny rules unless an exception cancels them. It never
 // allocates for an already lower-case name.
 func (sel *Selection) Evaluate(qname string) Decision {
+	if sel.contextual {
+		return sel.EvaluateContext(Context{Name: qname, Type: 1, Class: 1})
+	}
 	n := NormalizeName(qname)
 	h := matcher.Hash(n)
 	for _, l := range sel.allow {
@@ -184,6 +194,9 @@ func (sel *Selection) Evaluate(qname string) Decision {
 // not apply: the question was already allowed. The stage skips this call
 // when Evaluate returned ReasonAllowList for the question.
 func (sel *Selection) EvaluateResponse(names []string, addrs []netip.Addr) Decision {
+	if sel.contextual {
+		return sel.EvaluateResponseContext(Context{Type: 1, Class: 1}, names, addrs)
+	}
 nameLoop:
 	for _, raw := range names {
 		n := NormalizeName(raw)

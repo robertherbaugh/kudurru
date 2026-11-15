@@ -18,7 +18,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { Toolbar } from '@astryxdesign/core/Toolbar';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { qk, useApi, useCan } from '../../api/context';
+import { qk, useApi, useCan, useClusterRoleKnown, usePrimaryOnly } from '../../api/context';
 import type { BlockList, ClientGroup, DomainAction, DomainEntriesPage, DomainEntriesQuery, DomainEntry, DomainListInfo, DomainUnattached } from '../../api/types';
 import { ACTION_LABEL, ACTION_OPTIONS, actionPath, ENABLED_OPTIONS, entriesWord, KIND_OPTIONS, refField, refPath, shortRef, TYPE_OPTIONS, uiListAction } from '../../lib/domains';
 import { formatExact } from '../../lib/format';
@@ -58,7 +58,11 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
   const qc = useQueryClient();
   const notify = useNotify();
   const invalidate = useInvalidateDomains();
-  const canWrite = can('blocklists', 'write');
+  const primaryOnly = usePrimaryOnly();
+  // Every change on this page is an allow/deny command, which an enrolled
+  // follower does not forward (D368).
+  const writeTip = can('blocklists', 'write') ? primaryOnly('patchAllowlistEntry') : 'Needs blocklists.write';
+  const canWrite = !writeTip;
   const [sp, setParams] = useSearchParams();
   const key = action ?? 'all';
 
@@ -116,7 +120,15 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
   const [adding, setAdding] = useState(false);
   // ?add=<domain> (the query log's "Allow" / "Deny"): the add dialog, prefilled.
   const addParam = sp.get('add');
-  const addOpen = adding || addParam !== null;
+  // Not on a follower or without blocklists.write: the deep link would only
+  // open a form the server refuses. It waits for the node's role, so a
+  // follower does not show the form until its role arrives and then close it,
+  // and a link it cannot follow is dropped from the URL.
+  const roleKnown = useClusterRoleKnown();
+  const addOpen = canWrite && (adding || (addParam !== null && roleKnown));
+  useEffect(() => {
+    if (roleKnown && !canWrite && addParam !== null) setParams({ add: null });
+  }, [roleKnown, canWrite, addParam, setParams]);
   const [attaching, setAttaching] = useState<DomainUnattached | null>(null);
   const [editing, setEditing] = useState<DomainEntry | null>(null);
   const [deleting, setDeleting] = useState<DomainEntry[] | null>(null);
@@ -254,7 +266,6 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
   const unattached = q.data?.unattached ?? [];
   const offLists = lists.filter((l) => !l.enabled);
   const first = page * PAGE + 1;
-  const writeTip = canWrite ? undefined : 'Needs blocklists.write';
 
   return (
     <Page>
@@ -351,6 +362,7 @@ export function DomainEntriesView({ action }: DomainEntriesViewProps) {
           entries={items}
           showAction={!action}
           canWrite={canWrite}
+          writeReason={writeTip}
           selected={selected}
           setSelected={setSelected}
           pending={pending}

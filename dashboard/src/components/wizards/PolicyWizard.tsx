@@ -19,6 +19,7 @@ import { errorText, useNotify } from '../Feedback';
 import { TextField } from '../fields/TextField';
 import { cleanPolicySpec, ContentCategoryFields, HowFields, howError, SafeSearchFields, ServicesFields, WhatFields, WhenFields, whenError, WhoFields, whoError } from '../PolicyFields';
 import { ServiceIcon } from '../ServiceIcon';
+import { ResponsePolicyFields, responsePolicyError, responsePolicySummary } from '../ResponsePolicyFields';
 import { useCatalogueCategories, useCatalogueServices } from '../ServiceGrid';
 import { ReviewRow, Wizard, WizardDialog, type WizardStep } from '../Wizard';
 import { contentCategoryOfList, ensureContentLists } from '../../lib/contentCategories';
@@ -157,7 +158,7 @@ function PolicyWizard({ onClose, namespace: ns, groups }: PolicyWizardProps) {
       ),
     },
     { id: 'safesearch', label: 'Safe search', isOptional: true, content: <SafeSearchFields {...props} /> },
-    { id: 'how', label: 'How', isOptional: true, description: 'What blocked clients get back and where allowed queries go.', content: <HowFields {...props} />, validate: () => howError(spec) },
+    { id: 'how', label: 'How', isOptional: true, description: 'How queries are answered and where allowed queries go.', content: <VStack gap={5}><HowFields {...props} /><ResponsePolicyFields {...props} /></VStack>, validate: () => howError(spec) ?? responsePolicyError(spec) },
     { id: 'when', label: 'When', isOptional: true, content: <WhenFields {...props} />, validate: () => whenError(spec) },
     {
       id: 'review',
@@ -251,6 +252,7 @@ function Review({ name, namespace, comment, spec }: { name: string; namespace: s
       <ReviewRow label="When" step="when" what="schedule">
         {scheduleSummary(spec.schedule)}
       </ReviewRow>
+      <ReviewRow label="Response processing" step="how" what="response processing">{responsePolicySummary(spec)}</ReviewRow>
     </MetadataList>
   );
 }

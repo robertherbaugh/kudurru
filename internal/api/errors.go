@@ -32,19 +32,23 @@ const (
 	KeyDefaultZone = "default_zone"
 	// KeyZoneNotEmpty is the 409 of deleting a DNSZone that DNSRecordSets
 	// still reference through the object routes (D148).
-	KeyZoneNotEmpty   = "zone_not_empty"
-	KeyPrecondition   = "precondition_failed"
-	KeyUnprocessable  = "unprocessable"
-	KeyTooLarge       = "too_large"
-	KeyRateLimited    = "rate_limited"
-	KeyReadOnly       = "read_only"
-	KeyHostOnly       = "host_only"
-	KeyEnvLocked      = "env_locked"
-	KeyNotImplemented = "not_implemented"
-	KeyUnavailable    = "unavailable"
-	KeyInternal       = "internal"
-	KeyNotAcceptable  = "not_acceptable"
-	KeyMethod         = "method_not_allowed"
+	KeyZoneNotEmpty  = "zone_not_empty"
+	KeyPrecondition  = "precondition_failed"
+	KeyUnprocessable = "unprocessable"
+	KeyTooLarge      = "too_large"
+	KeyRateLimited   = "rate_limited"
+	KeyReadOnly      = "read_only"
+	// KeyPrimaryRequired is the 503 of a mutation that an enrolled SQLite
+	// follower neither forwards to its primary nor runs on its own (D368).
+	KeyPrimaryRequired = "primary_required"
+	KeyHostOnly        = "host_only"
+	KeyEnvLocked       = "env_locked"
+	KeyHostLocked      = "host_locked"
+	KeyNotImplemented  = "not_implemented"
+	KeyUnavailable     = "unavailable"
+	KeyInternal        = "internal"
+	KeyNotAcceptable   = "not_acceptable"
+	KeyMethod          = "method_not_allowed"
 	// KeyPasswordChange is the 403 of a local user who must change the
 	// password first (auth.Authorize answers the same key).
 	KeyPasswordChange = "password_change_required"
@@ -138,8 +142,12 @@ func errNotFound(what string) *Error {
 	return newError(http.StatusNotFound, KeyNotFound, what+" not found", "")
 }
 
+// errNotImplemented refuses an operation whose part of the runtime this
+// server was started without. A complete kudurru serve node wires every one
+// of them, so the answer names that, never a request to retry.
 func errNotImplemented(what string) *Error {
-	return newError(http.StatusNotImplemented, KeyNotImplemented, what+" is not available on this node", "")
+	return newError(http.StatusNotImplemented, KeyNotImplemented, what+" is not available on this node",
+		"this server was started without that part of the runtime; a complete kudurru serve node provides it (see docs/deploy/capabilities.md)")
 }
 
 func errUnauthenticated() *Error {
@@ -209,6 +217,22 @@ func storeError(err error) error {
 	case errors.Is(err, store.ErrConflict):
 		return newError(http.StatusConflict, KeyConflict, "the object changed since it was read (resourceVersion mismatch)",
 			"read the object again and retry with its current resourceVersion")
+	case errors.Is(err, store.ErrForbidden):
+		// auth.kubernetes.mode impersonate (D386): kudurru allowed the
+		// write and sent it as the principal; the apiserver refused it.
+		// Nothing was written. The reason is the apiserver's: usually
+		// Kubernetes RBAC, but an admission webhook or a terminating
+		// namespace answers the same way.
+		return newError(http.StatusForbidden, KeyForbidden, err.Error(),
+			"auth.kubernetes.mode is impersonate: Kubernetes refused the write sent as the name above, for the reason it gives. If Kubernetes RBAC does not allow that name, ask a cluster administrator to bind it to a ClusterRole or Role that does")
+	case errors.Is(err, store.ErrNoIdentity):
+		e := newError(http.StatusUnauthorized, KeyUnauthenticated, err.Error(),
+			"auth.kubernetes.mode is impersonate and the write is sent as you, but your credential ended during the request; sign in again or use a fresh token")
+		e.GetHeaders().Set("WWW-Authenticate", `Bearer realm="kudurru"`)
+		return e
+	case errors.Is(err, store.ErrImpersonationDenied):
+		return newError(http.StatusServiceUnavailable, KeyUnavailable, err.Error(),
+			"kudurru's Kubernetes identity lacks the impersonate verb that auth.kubernetes.mode impersonate needs; a cluster administrator must grant it (the server log has the apiserver's reason) or set the mode back to sar")
 	case errors.Is(err, store.ErrTooLarge):
 		return newError(http.StatusRequestEntityTooLarge, KeyTooLarge, err.Error(), "split it into several objects")
 	case errors.Is(err, objects.ErrStaticReadOnly):

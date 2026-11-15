@@ -8,6 +8,7 @@
 | [`longterm/`](longterm/) | `longterm`: statistics windows older than 24 hours | `internal/api` (`window()`), on every request |
 | [`edge/`](edge/) | `edge`: the dnsdist and keepalived supervisors, the VIP providers | `kudurru edge run` and `kudurru vip run` (`cmd/kudurru/license.go`, `Manager.RequireStart`), once at start; refuses only a start with no key that ever covered the edge |
 | [`integration/`](integration/) | `integrations`: the integration framework and the external-dns webhook | `cmd/kudurru/serve.go`, at start |
+| [`branding/`](branding/) | `branding`: organization name, logos, browser icon and accent color | Enterprise plan only; settings commands and every public presentation check entitlement and its original deadline |
 
 Two more features have no code of their own to move, so they have no
 directory here: `requests` (the unblock request workflow; `internal/blockpage`
@@ -26,6 +27,8 @@ the [Community License](../LICENSE). Business and government production use
 requires an accepted [commercial agreement](../COMMERCIAL_LICENSE_AGREEMENT.md)
 and an Order Form authorizing the Enterprise plan or named modules.
 A Commercial Core purchase alone does not unlock `ee/`.
+Custom branding is an exception to the general community feature entitlement:
+it requires an Enterprise key, even if another plan explicitly lists `branding`.
 
 The code builds into the same binary as the core; keys are checked at run
 time. How keys work, and the design that preserves DNS answering when a key

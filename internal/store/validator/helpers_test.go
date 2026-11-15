@@ -40,13 +40,18 @@ func testValidator(t testing.TB) *Validator {
 
 // Sample files under deploy/kustomize/samples, by kind.
 var sampleFiles = map[store.Kind]string{
-	"DNSZone":        "kudurru.io_v1alpha1_dnszone.yaml",
-	"DNSRecordSet":   "kudurru.io_v1alpha1_dnsrecordset.yaml",
-	"BlockList":      "kudurru.io_v1alpha1_blocklist.yaml",
-	"ClientGroup":    "kudurru.io_v1alpha1_clientgroup.yaml",
-	"Policy":         "kudurru.io_v1alpha1_policy.yaml",
-	"UnblockRequest": "kudurru.io_v1alpha1_unblockrequest.yaml",
-	"DHCPScope":      "kudurru.io_v1alpha1_dhcpscope.yaml",
+	"DNSZone":          "kudurru.io_v1alpha1_dnszone.yaml",
+	"DNSRecordSet":     "kudurru.io_v1alpha1_dnsrecordset.yaml",
+	"BlockList":        "kudurru.io_v1alpha1_blocklist.yaml",
+	"ClientGroup":      "kudurru.io_v1alpha1_clientgroup.yaml",
+	"Policy":           "kudurru.io_v1alpha1_policy.yaml",
+	"UnblockRequest":   "kudurru.io_v1alpha1_unblockrequest.yaml",
+	"Integration":      "kudurru.io_v1alpha1_integration.yaml",
+	"Kudurru":          "kudurru.io_v1alpha1_kudurru.yaml",
+	"IdentityProvider": "kudurru.io_v1alpha1_identityprovider.yaml",
+	"RoleBinding":      "kudurru.io_v1alpha1_rolebinding.yaml",
+	"ServiceAccount":   "kudurru.io_v1alpha1_serviceaccount.yaml",
+	"DHCPScope":        "kudurru.io_v1alpha1_dhcpscope.yaml",
 }
 
 func readSample(t testing.TB, kind store.Kind) []byte {
@@ -76,6 +81,16 @@ func newTyped(t testing.TB, kind store.Kind) store.Object {
 		return &v1alpha1.UnblockRequest{}
 	case "DHCPScope":
 		return &v1alpha1.DHCPScope{}
+	case "Integration":
+		return &v1alpha1.Integration{}
+	case "Kudurru":
+		return &v1alpha1.Kudurru{}
+	case "IdentityProvider":
+		return &v1alpha1.IdentityProvider{}
+	case "RoleBinding":
+		return &v1alpha1.RoleBinding{}
+	case "ServiceAccount":
+		return &v1alpha1.ServiceAccount{}
 	}
 	t.Fatalf("no Go type for %s", kind)
 	return nil

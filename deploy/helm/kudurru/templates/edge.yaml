@@ -69,6 +69,45 @@ spec:
           - name: net.ipv4.ip_unprivileged_port_start
             value: "0"
         {{- end }}
+      {{- if $keepalived }}
+      {{- $k := .Values.vip.keepalived }}
+      # fsGroup can make projected Secret files group-readable. keepalived
+      # requires private HMAC files; only this init and keepalived see them.
+      initContainers:
+        - name: vrrp-keys
+          image: {{ include "kudurru.keepalived.image" . }}
+          imagePullPolicy: {{ $k.image.pullPolicy }}
+          command: ["/usr/bin/timeout", "30", "/bin/sh", "-ec"]
+          args:
+            - |
+              umask 077
+              chmod 0700 /vrrp-private
+              for key_file in {{ include "kudurru.keepalived.hmacFiles" . | fromYamlArray | join " " }}; do
+                head -c 4097 "/vrrp-source/$key_file" > "/vrrp-private/$key_file"
+                if [ ! -s "/vrrp-private/$key_file" ] || [ "$(wc -c < "/vrrp-private/$key_file")" -gt 4096 ]; then
+                  echo "HMAC key file must contain 1-4096 bytes" >&2
+                  exit 1
+                fi
+                chmod 0600 "/vrrp-private/$key_file"
+              done
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            runAsGroup: 0
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests: {cpu: 10m, memory: 8Mi}
+            limits: {cpu: 100m, memory: 32Mi}
+          volumeMounts:
+            - name: vrrp-source
+              mountPath: /vrrp-source
+              readOnly: true
+            - name: vrrp
+              mountPath: /vrrp-private
+      {{- end }}
       containers:
         {{- include "kudurru.edge.container" (dict "root" . "sidecar" false) | nindent 8 }}
         {{- if $keepalived }}
@@ -90,7 +129,11 @@ spec:
             {{- end }}
             - --node-name=$(NODE_NAME)
             - --peers-from=nodes:{{ include "kudurru.labelSelector" $k.nodeSelector }}
+            {{- if $k.hmacKeySecrets }}
+            - "--hmac-key-file=/etc/kudurru/secrets/vrrp/vrrp_hmac_{vrid}"
+            {{- else }}
             - --hmac-key-file=/etc/kudurru/secrets/vrrp/vrrp-hmac
+            {{- end }}
             - --track-dnsdist-api=http://127.0.0.1:8083
             - --dnsdist-api-key-file=/run/kudurru/dnsdist-api.key
             - --require-backends=1
@@ -115,7 +158,7 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: [ALL]
-              add: [NET_ADMIN, NET_RAW, NET_BROADCAST]
+              add: [NET_ADMIN, NET_RAW, NET_BROADCAST, SETUID, SETGID]
           resources:
             {{- toYaml $k.resources | nindent 12 }}
           volumeMounts:
@@ -163,9 +206,31 @@ spec:
         - name: keepalived-config
           emptyDir: {}
         - name: vrrp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 2Mi
+        - name: vrrp-source
+          {{- if .Values.vip.keepalived.hmacKeySecrets }}
+          projected:
+            defaultMode: 0400
+            sources:
+              {{- range .Values.vip.keepalived.hmacKeySecrets }}
+              - secret:
+                  name: {{ .secretName | quote }}
+                  optional: false
+                  items:
+                    - key: {{ .key | quote }}
+                      path: {{ printf "vrrp_hmac_%d" (int .vrid) | quote }}
+              {{- end }}
+          {{- else }}
           secret:
             secretName: {{ include "kudurru.vrrpSecret" . }}
             defaultMode: 0400
+            optional: false
+            items:
+              - key: vrrp-hmac
+                path: vrrp-hmac
+          {{- end }}
         {{- end }}
       {{- $nodeSelector := $e.nodeSelector -}}
       {{- if $keepalived }}{{ $nodeSelector = merge (deepCopy ($e.nodeSelector | default dict)) .Values.vip.keepalived.nodeSelector }}{{ end }}

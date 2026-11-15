@@ -3,11 +3,13 @@ package cache
 import (
 	"context"
 	"hash/maphash"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -38,9 +40,8 @@ const (
 type Options struct {
 	// MaxEntries bounds the cache; entries beyond it are evicted least
 	// recently used first. It must be positive. The bound is enforced per
-	// shard (MaxEntries/shards each, up to 256 shards of at least 64
-	// entries), so it is never exceeded but a full cache holds slightly
-	// fewer entries (about 0.5 % fewer at 200 k) and LRU order is per shard.
+	// shard (up to 256 shards, targeting at least 64 entries each), so it
+	// is never exceeded. LRU order is per shard.
 	MaxEntries int
 	// StaleTTL is how long past expiry an entry is kept and may be served
 	// stale (RFC 8767); 0 drops entries when they expire.
@@ -66,6 +67,7 @@ const (
 
 // Lookup is a hit returned by Get.
 type Lookup struct {
+	Metadata Metadata
 	// Wire is the stored message; it is shared and must not be modified.
 	Wire []byte
 	Kind Kind
@@ -85,18 +87,37 @@ type Lookup struct {
 // accounting and in-flight coalescing. It stores packed messages as bytes
 // and knows nothing about DNS beyond the key.
 type Cache struct {
-	shards    []shard
-	mask      uint64
-	seed      maphash.Seed
-	staleTTL  atomic.Int64
-	threshold atomic.Uint32
-	window    atomic.Int64
-	now       func() time.Time
-	m         *Metrics
-	flight    singleflight.Group
+	// topology lets persistence keep a stable shard slice across writer I/O.
+	// Resize takes it before publication, so a blocked dump never queues a
+	// publication writer that would stop new queries or current commands.
+	topology sync.RWMutex
+	// publication protects the shard topology and invalidation epoch for
+	// mutations and inspections. Acquire it before shard locks; insert and
+	// shard require it. Query lookup uses the descriptor checked by lockLookup.
+	publication sync.RWMutex
+	// lookup publishes immutable shard addressing for query readers. Writers
+	// suspend it before changing the complete cache view; racing lookups fall
+	// back to publication rather than joining its shared reader counter.
+	lookup     atomic.Pointer[lookupTopology]
+	generation atomic.Uint64
+	shards     []shard
+	mask       uint64
+	seed       maphash.Seed
+	staleTTL   atomic.Int64
+	threshold  atomic.Uint32
+	window     atomic.Int64
+	now        func() time.Time
+	m          *Metrics
+	flight     singleflight.Group
+}
+
+type lookupTopology struct {
+	shards []shard
+	mask   uint64
 }
 
 type entry struct {
+	metadata    *Metadata // immutable; nil is exactly zero Metadata
 	key         Key
 	wire        []byte
 	stored      int64 // unix nanoseconds
@@ -107,8 +128,48 @@ type entry struct {
 	hits        uint32
 	kind        Kind
 	prefetching bool
+	restored    bool // keep flags together rather than padding every entry
 	prev, next  *entry
 }
+
+// Metadata accompanies raw wire data through hits and restart.
+type Metadata struct {
+	Scope    pipeline.CacheScope
+	Security pipeline.Security
+	Upstream string
+}
+
+// Entries without provenance need no space for empty scope/security fields.
+// Nonzero metadata shares ONE allocation with its entry and remains immutable:
+// dump snapshots may retain its pointer after releasing the shard lock.
+func newEntry(metadata Metadata) *entry {
+	if metadata == (Metadata{}) {
+		return &entry{}
+	}
+	value := &struct {
+		entry
+		metadata Metadata
+	}{metadata: metadata}
+	value.entry.metadata = &value.metadata
+	return &value.entry
+}
+
+func (e *entry) provenance() Metadata {
+	if e.metadata == nil {
+		return Metadata{}
+	}
+	return *e.metadata
+}
+
+func (e *entry) securityAvailable(now int64) bool {
+	return e.metadata == nil || e.metadata.Security.AvailableAt(time.Unix(0, now))
+}
+
+// Now returns this cache's configured clock.
+func (c *Cache) Now() time.Time { return c.now() }
+
+// Generation identifies the current cache invalidation epoch.
+func (c *Cache) Generation() uint64 { return c.generation.Load() }
 
 type shard struct {
 	mu         sync.Mutex
@@ -121,12 +182,7 @@ type shard struct {
 // New returns an empty cache.
 func New(opts Options) *Cache {
 	maxEntries := max(opts.MaxEntries, 1)
-	// Enough shards to spread lock contention, few enough that each keeps a
-	// meaningful LRU (at least 64 entries per shard).
-	n := 1
-	for n < 256 && maxEntries/(n*2) >= 64 {
-		n *= 2
-	}
+	n := shardCount(maxEntries)
 	c := &Cache{
 		shards: make([]shard, n),
 		mask:   uint64(n - 1), //nolint:gosec // n is a small power of two
@@ -138,11 +194,11 @@ func New(opts Options) *Cache {
 		c.now = time.Now
 	}
 	c.setLimits(opts)
-	per := (maxEntries + n - 1) / n
 	for i := range c.shards {
 		c.shards[i].m = make(map[Key]*entry)
-		c.shards[i].capacity = per
+		c.shards[i].capacity = shardCapacity(maxEntries, n, i)
 	}
+	c.lookup.Store(&lookupTopology{shards: c.shards, mask: c.mask})
 	return c
 }
 
@@ -152,38 +208,143 @@ func (c *Cache) setLimits(opts Options) {
 	c.window.Store(int64(opts.PrefetchWindow))
 }
 
-// Reconfigure applies new limits without dropping the cache (settings hot
-// reload): the stale window and prefetch rules apply to entries stored
-// from now on, and MaxEntries resizes every shard, evicting the least
-// recently used entries beyond the new bound at once. The shard count
-// chosen by New stays, so a much larger bound means larger shards.
-// MaxEntries <= 0 keeps the current size (the cache stage bypasses a
-// disabled cache instead). Now and Metrics are ignored.
+// shardCount spreads lock contention while retaining meaningful per-shard LRUs.
+func shardCount(maxEntries int) int {
+	n := 1
+	for n < 256 && maxEntries/(n*2) >= 64 {
+		n *= 2
+	}
+	return n
+}
+
+func shardCapacity(maxEntries, n, i int) int {
+	capacity := maxEntries / n
+	if i < maxEntries%n {
+		capacity++
+	}
+	return capacity
+}
+
+// Reconfigure applies limits without dropping the cache. Stale and prefetch
+// rules apply to future stores. Resize also adjusts the shard count to the new
+// capacity. Now and Metrics are ignored; a nonpositive capacity preserves size.
 func (c *Cache) Reconfigure(opts Options) {
 	c.setLimits(opts)
-	if opts.MaxEntries <= 0 {
+	c.Resize(opts.MaxEntries)
+}
+
+// Resize changes storage capacity and shard count without replacing captured
+// policy, invalidation epochs or entry deadlines. A nonpositive bound preserves
+// capacity; the captured stage controls bypass. Resharding pauses cache access
+// while moving existing entries, without copying keys, wire data or metadata.
+func (c *Cache) Resize(maxEntries int) {
+	if maxEntries <= 0 {
 		return
 	}
-	n := len(c.shards)
-	per := max((opts.MaxEntries+n-1)/n, 1)
+	c.topology.Lock()
+	defer c.topology.Unlock()
+	original := c.lockPublication()
+	defer c.unlockPublication()
+	// A fast lookup that entered before suspension may still hold an old
+	// shard. Drain those readers before moving any entry or changing capacity.
+	for i := range original.shards {
+		original.shards[i].mu.Lock()
+	}
+	defer func() {
+		for i := range original.shards {
+			original.shards[i].mu.Unlock()
+		}
+	}()
+	n := shardCount(maxEntries)
+	// Rebuild after a substantial shrink too, so retained map buckets follow
+	// the smaller bound even when the number of shards stays the same.
+	if n != len(c.shards) || c.shards[0].capacity/2 > shardCapacity(maxEntries, n, 0) {
+		old := c.shards
+		c.shards = make([]shard, n)
+		c.mask = uint64(n - 1) //nolint:gosec // bounded power of two
+		for i := range c.shards {
+			c.shards[i].m = make(map[Key]*entry)
+			c.shards[i].capacity = shardCapacity(maxEntries, n, i)
+		}
+		for i := range old {
+			// Iterate oldest first so each split LRU retains its original order.
+			for e := old[i].tail; e != nil; {
+				previous := e.prev
+				old[i].remove(e)
+				sh := c.shard(e.key)
+				sh.m[e.key] = e
+				sh.pushFront(e)
+				// Bound the destination maps during a large shrink as well as
+				// afterward; evicting only at the end retains oversized maps.
+				c.trim(sh)
+				e = previous
+			}
+			// Waiting lookups retain only the old addressing, not its map capacity.
+			old[i].m = nil
+		}
+	}
 	for i := range c.shards {
 		sh := &c.shards[i]
-		var evicted [2]int
-		sh.mu.Lock()
-		sh.capacity = per
-		for len(sh.m) > sh.capacity && sh.tail != nil {
-			evicted[sh.tail.kind]++
-			sh.remove(sh.tail)
-		}
-		sh.mu.Unlock()
-		for kind, k := range evicted {
-			c.m.evictedN(ReasonCapacity, Kind(kind), k) //nolint:gosec // 0 or 1
-		}
+		sh.capacity = shardCapacity(maxEntries, n, i)
+		c.trim(sh)
+	}
+}
+
+// trim requires publication exclusion; no shard access can run concurrently.
+func (c *Cache) trim(sh *shard) {
+	var evicted [2]int
+	for len(sh.m) > sh.capacity && sh.tail != nil {
+		evicted[sh.tail.kind]++
+		sh.remove(sh.tail)
+	}
+	for kind, k := range evicted {
+		c.m.evictedN(ReasonCapacity, Kind(kind), k) //nolint:gosec // 0 or 1
 	}
 }
 
 func (c *Cache) shard(k Key) *shard {
 	return &c.shards[maphash.String(c.seed, string(k))&c.mask]
+}
+
+// lockPublication suspends fast lookup admission under the existing writer
+// gate. Other cache writers retain their publication -> shard lock order.
+func (c *Cache) lockPublication() *lookupTopology {
+	c.publication.Lock()
+	return c.lookup.Swap(nil)
+}
+
+func (c *Cache) unlockPublication() {
+	// Each publication gets a new identity, even without resharding. A
+	// delayed lookup must refresh its clock after flush/rebind as well.
+	c.lookup.Store(&lookupTopology{shards: c.shards, mask: c.mask})
+	c.publication.Unlock()
+}
+
+// lockLookup returns a locked current shard and the original lookup clock.
+// A descriptor is usable only after validation under its selected shard lock.
+// Resize drains all old shard locks before moving entries. Every complete-view
+// writer suspends fast admission; a racing lookup releases its shard before
+// taking publication, so it cannot invert the existing writer lock order.
+func (c *Cache) lockLookup(k Key) (*shard, int64) {
+	if topology := c.lookup.Load(); topology != nil {
+		now := c.nanos()
+		sh := &topology.shards[maphash.String(c.seed, string(k))&topology.mask]
+		sh.mu.Lock()
+		if c.lookup.Load() == topology {
+			// nosemgrep: trailofbits.go.missing-unlock-before-return.missing-unlock-before-return -- ownership transfers to Get, the sole caller, which unlocks every hit/miss/stale branch
+			return sh, now
+		}
+		sh.mu.Unlock()
+	}
+	c.publication.RLock()
+	// Refresh the clock after waiting for a complete publication, before
+	// acquiring the shard. The injected clock is never called under a shard.
+	now := c.nanos()
+	sh := c.shard(k)
+	sh.mu.Lock()
+	c.publication.RUnlock()
+	// nosemgrep: trailofbits.go.missing-unlock-before-return.missing-unlock-before-return -- ownership transfers to Get, the sole caller, which unlocks every hit/miss/stale branch
+	return sh, now
 }
 
 func (c *Cache) nanos() int64 { return c.now().UnixNano() }
@@ -194,17 +355,15 @@ func (c *Cache) nanos() int64 { return c.now().UnixNano() }
 // CountStaleHit once it knows it served the stale data (a successful
 // refresh makes it a miss). A fresh hit moves the entry to the front of the
 // LRU and feeds the prefetch accounting.
-func (c *Cache) Get(k Key) (Lookup, bool) {
+func (c *Cache) Get(k Key) (l Lookup, ok bool) {
 	c.m.request()
-	now := c.nanos()
-	sh := c.shard(k)
-	sh.mu.Lock()
+	sh, now := c.lockLookup(k)
 	e := sh.m[k]
 	if e == nil {
 		sh.mu.Unlock()
 		return Lookup{}, false
 	}
-	if now >= e.staleUntil {
+	if now >= e.staleUntil || now < e.stored || !e.securityAvailable(now) {
 		kind := e.kind
 		sh.remove(e)
 		sh.mu.Unlock()
@@ -212,7 +371,13 @@ func (c *Cache) Get(k Key) (Lookup, bool) {
 		return Lookup{}, false
 	}
 	sh.moveFront(e)
-	l := Lookup{Wire: e.wire, Kind: e.kind, Age: time.Duration(now - e.stored), TTL: time.Duration(e.expires - e.stored)}
+	// Fill the return value directly; an entry with no provenance needs no
+	// temporary Metadata value or copy of its empty fields.
+	if e.metadata != nil {
+		l.Metadata = *e.metadata
+	}
+	l.Wire, l.Kind = e.wire, e.kind
+	l.Age, l.TTL = time.Duration(now-e.stored), time.Duration(e.expires-e.stored)
 	if now < e.expires {
 		l.State = Fresh
 		if threshold := c.threshold.Load(); threshold > 0 {
@@ -246,16 +411,23 @@ func (c *Cache) CountPrefetch() { c.m.Prefetched() }
 // accounting, no LRU movement, no prefetch claim and no expiry removal.
 // Entries past their stale window are reported absent. It is meant for
 // debugging APIs and tests.
-func (c *Cache) Peek(k Key) (Lookup, bool) {
+func (c *Cache) Peek(k Key) (l Lookup, ok bool) {
+	c.publication.RLock()
+	defer c.publication.RUnlock()
 	now := c.nanos()
 	sh := c.shard(k)
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 	e := sh.m[k]
-	if e == nil || now >= e.staleUntil {
+	if e == nil || now >= e.staleUntil || now < e.stored || !e.securityAvailable(now) {
 		return Lookup{}, false
 	}
-	l := Lookup{Wire: e.wire, Kind: e.kind, Age: time.Duration(now - e.stored), TTL: time.Duration(e.expires - e.stored), State: Fresh}
+	if e.metadata != nil {
+		l.Metadata = *e.metadata
+	}
+	l.Wire, l.Kind = e.wire, e.kind
+	l.Age, l.TTL = time.Duration(now-e.stored), time.Duration(e.expires-e.stored)
+	l.State = Fresh
 	if now >= e.expires {
 		l.State = Stale
 		l.Hold = now < e.holdUntil
@@ -266,12 +438,59 @@ func (c *Cache) Peek(k Key) (Lookup, bool) {
 // Set stores wire under k for ttl and takes ownership of wire. An existing
 // entry is replaced (and its prefetch claim released).
 func (c *Cache) Set(k Key, wire []byte, kind Kind, ttl time.Duration) {
-	if ttl <= 0 {
+	c.SetWithMetadata(k, wire, kind, ttl, Metadata{})
+}
+
+// SetWithMetadata stores raw wire data and its provenance in the current epoch.
+func (c *Cache) SetWithMetadata(k Key, wire []byte, kind Kind, ttl time.Duration, metadata Metadata) {
+	c.SetIfGeneration(k, wire, kind, ttl, metadata, c.Generation())
+}
+
+// SetIfGeneration fences Flush/delete against detached writes.
+func (c *Cache) SetIfGeneration(k Key, wire []byte, kind Kind, ttl time.Duration, metadata Metadata, generation uint64) {
+	c.setAtIfGeneration(k, wire, kind, ttl, metadata, generation, time.Time{})
+}
+
+// SetAtIfGeneration preserves the original TTL origin when final admission
+// waits before insertion. A future origin or already expired entry is refused.
+func (c *Cache) SetAtIfGeneration(k Key, wire []byte, kind Kind, ttl time.Duration, metadata Metadata, generation uint64, stored time.Time) {
+	if stored.IsZero() {
 		return
 	}
-	now := c.nanos()
-	exp := now + int64(ttl)
-	c.insert(&entry{key: k, wire: wire, kind: kind, stored: now, expires: exp, staleUntil: exp + c.staleTTL.Load(), windowStart: now})
+	c.setAtIfGeneration(k, wire, kind, ttl, metadata, generation, stored)
+}
+
+func (c *Cache) setAtIfGeneration(k Key, wire []byte, kind Kind, ttl time.Duration, metadata Metadata, generation uint64, stored time.Time) {
+	c.publication.RLock()
+	defer c.publication.RUnlock()
+	if generation != c.Generation() || ttl <= 0 {
+		return
+	}
+	// Use one clock observation for security and the TTL origin. Both remain
+	// inside publication exclusion, after the original generation check.
+	sampled := c.now()
+	if !metadata.Security.AvailableAt(sampled) {
+		return
+	}
+	now := sampled.UnixNano()
+	origin := now
+	if !stored.IsZero() {
+		origin = stored.UnixNano()
+		if origin > now || now-origin >= int64(ttl) {
+			return
+		}
+	}
+	exp := origin + int64(ttl)
+	stale := exp + c.staleTTL.Load()
+	if !metadata.Security.ValidUntil.IsZero() {
+		deadline := metadata.Security.ValidUntil.UnixNano()
+		exp = min(exp, deadline)
+		stale = min(stale, deadline)
+	}
+	e := newEntry(metadata)
+	e.key, e.wire, e.kind = k, wire, kind
+	e.stored, e.expires, e.staleUntil, e.windowStart = origin, exp, stale, now
+	c.insert(e)
 }
 
 // insert adds or replaces e and evicts beyond capacity.
@@ -288,7 +507,10 @@ func (c *Cache) insert(e *entry) {
 	}
 	sh.m[e.key] = e
 	sh.pushFront(e)
-	now := c.nanos()
+	var now int64
+	if len(sh.m) > sh.capacity && sh.tail != nil {
+		now = c.nanos()
+	}
 	for len(sh.m) > sh.capacity && sh.tail != nil {
 		victim := sh.tail
 		if now >= victim.staleUntil {
@@ -314,6 +536,8 @@ func (c *Cache) insert(e *entry) {
 // ReleasePrefetch gives up a prefetch claim without storing (the refresh
 // failed); the next qualifying hit may claim it again.
 func (c *Cache) ReleasePrefetch(k Key) {
+	c.publication.RLock()
+	defer c.publication.RUnlock()
 	sh := c.shard(k)
 	sh.mu.Lock()
 	if e := sh.m[k]; e != nil {
@@ -326,6 +550,8 @@ func (c *Cache) ReleasePrefetch(k Key) {
 // upstream just failed, so for a while stale data is served immediately
 // instead of waiting on upstreams again (RFC 8767 §4, failure recheck).
 func (c *Cache) MarkRefreshFailed(k Key, d time.Duration) {
+	c.publication.RLock()
+	defer c.publication.RUnlock()
 	until := c.nanos() + int64(d)
 	sh := c.shard(k)
 	sh.mu.Lock()
@@ -338,6 +564,9 @@ func (c *Cache) MarkRefreshFailed(k Key, d time.Duration) {
 
 // Delete removes k.
 func (c *Cache) Delete(k Key) {
+	c.lockPublication()
+	defer c.unlockPublication()
+	c.generation.Add(1)
 	sh := c.shard(k)
 	sh.mu.Lock()
 	e := sh.m[k]
@@ -352,6 +581,16 @@ func (c *Cache) Delete(k Key) {
 
 // Flush removes every entry.
 func (c *Cache) Flush() {
+	c.FlushCount()
+}
+
+// FlushCount removes every entry and returns the number actually removed.
+// It fences earlier detached fills even when the cache is already empty.
+func (c *Cache) FlushCount() int {
+	c.lockPublication()
+	defer c.unlockPublication()
+	c.generation.Add(1)
+	total := 0
 	for i := range c.shards {
 		sh := &c.shards[i]
 		sh.mu.Lock()
@@ -364,8 +603,52 @@ func (c *Cache) Flush() {
 		sh.mu.Unlock()
 		for kind, n := range counts {
 			c.m.evictedN(ReasonFlush, Kind(kind), n) //nolint:gosec // 0 or 1
+			total += n
 		}
 	}
+	return total
+}
+
+// FlushName removes the exact name across all scopes, types, classes, flags and
+// ECS subnets, including stale entries. Case and a final dot are normalized;
+// root means only root, and an empty name does nothing. Valid no-op names still
+// fence earlier detached fills. Like FlushZone, this rare action scans the cache.
+func (c *Cache) FlushName(name string) int {
+	if name == "" {
+		return 0
+	}
+	// Match MakeKey's ASCII-only folding; other DNS label bytes are opaque.
+	normalized := []byte(name)
+	for i, b := range normalized {
+		if b >= 'A' && b <= 'Z' {
+			normalized[i] = b + ('a' - 'A')
+		}
+	}
+	if normalized[len(normalized)-1] != '.' {
+		normalized = append(normalized, '.')
+	}
+	name = string(normalized)
+	c.lockPublication()
+	defer c.unlockPublication()
+	c.generation.Add(1)
+	total := 0
+	for i := range c.shards {
+		sh := &c.shards[i]
+		var counts [2]int
+		sh.mu.Lock()
+		for key, e := range sh.m {
+			if parts, ok := key.Parts(); ok && parts.Name == name {
+				counts[e.kind]++
+				sh.remove(e)
+			}
+		}
+		sh.mu.Unlock()
+		for kind, n := range counts {
+			c.m.evictedN(ReasonFlush, Kind(kind), n) //nolint:gosec // 0 or 1
+			total += n
+		}
+	}
+	return total
 }
 
 // FlushZone removes every entry whose name is apex or below it (any type,
@@ -373,6 +656,9 @@ func (c *Cache) Flush() {
 // name, folded to lower case; "." matches every entry. It walks the whole
 // cache, so it is for rare operator actions such as deleting a zone.
 func (c *Cache) FlushZone(apex string) int {
+	c.lockPublication()
+	defer c.unlockPublication()
+	c.generation.Add(1)
 	apex = strings.ToLower(apex)
 	if !strings.HasSuffix(apex, ".") {
 		apex += "."
@@ -403,6 +689,8 @@ func (c *Cache) FlushZone(apex string) int {
 
 // Len returns the number of entries, including stale ones.
 func (c *Cache) Len() int {
+	c.publication.RLock()
+	defer c.publication.RUnlock()
 	n := 0
 	for i := range c.shards {
 		sh := &c.shards[i]
@@ -415,6 +703,8 @@ func (c *Cache) Len() int {
 
 // Sweep removes entries past their stale window and returns how many.
 func (c *Cache) Sweep() int {
+	c.publication.RLock()
+	defer c.publication.RUnlock()
 	now := c.nanos()
 	total := 0
 	for i := range c.shards {
@@ -458,7 +748,7 @@ func (c *Cache) Run(ctx context.Context, interval time.Duration) error {
 // should be bounded by its own deadline: callers may stop waiting early,
 // but fn runs to completion.
 func (c *Cache) Coalesce(k Key, fn func() (any, error)) <-chan singleflight.Result {
-	return c.flight.DoChan(string(k), fn)
+	return c.flight.DoChan(strconv.FormatUint(c.Generation(), 10)+":"+string(k), fn)
 }
 
 // List operations; the shard lock is held.

@@ -65,7 +65,8 @@ The supplied wordmark and tagline remain image artwork; their original fonts
 are unknown. Inter is the recommended UI font, with system sans serif
 fallbacks. JetBrains Mono is the recommendation for commands and DNS
 records, with system monospace fallbacks. The website self-hosts these
-fonts; the dashboard themes use system fonts. The branding kit itself
+fonts, as does the dashboard’s Kudurru theme; the other dashboard themes
+use system fonts. The branding kit itself
 includes no font files.
 
 ## Usage

@@ -45,6 +45,8 @@ type rrsetVerdict struct {
 	// survive (served, or disabled on purpose).
 	Endpoints int
 	Kept      int
+	// kept holds the indexes of the endpoints Kept counts.
+	kept []int
 }
 
 // conflict is one endpoint the zone model refused.
@@ -141,11 +143,17 @@ type zoneBuild struct {
 // buildZone builds zone from rrsets with the zone model. A nil zone has
 // an empty build.
 func buildZone(zone *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet) *zoneBuild {
+	return buildZoneCached(zone, rrsets, nil)
+}
+
+func buildZoneCached(zone *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet, records *zonemodel.RecordCache) *zoneBuild {
 	b := &zoneBuild{}
 	if zone == nil {
 		return b
 	}
-	z, errs := ZoneContentHash(zone, rrsets, time.Time{})
+	now := time.Now()
+	records.Prune(zone, rrsets)
+	z, errs := zonemodel.Build(zone, zonemodel.ServedRecordSetsCached(zone, rrsets, records, now), zonemodel.BuildOptions{Now: now, Records: records})
 	if z != nil {
 		b.Hash, b.RecordCount, b.NextExpiry = z.ContentHash(), z.RecordCount(), z.NextExpiry()
 	} else {
@@ -217,18 +225,24 @@ func conflictOf(rs *v1alpha1.DNSRecordSet, e *field.Error) (conflict, bool) {
 // conflictsChanged returns the record sets whose conflicts differ between
 // two builds of a zone (prev may be nil).
 func conflictsChanged(prev, next *zoneBuild) []store.Key {
-	var out []store.Key
 	var before map[store.Key][]conflict
 	if prev != nil {
 		before = prev.Conflicts
 	}
-	for k, cs := range next.Conflicts {
+	return changedConflicts(before, next.Conflicts)
+}
+
+// changedConflicts returns the record sets whose conflicts differ between
+// two maps of them.
+func changedConflicts(before, after map[store.Key][]conflict) []store.Key {
+	var out []store.Key
+	for k, cs := range after {
 		if !slices.Equal(before[k], cs) {
 			out = append(out, k)
 		}
 	}
 	for k := range before {
-		if _, ok := next.Conflicts[k]; !ok {
+		if _, ok := after[k]; !ok {
 			out = append(out, k)
 		}
 	}
@@ -318,13 +332,19 @@ func buildZoneView(zone *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet, vali
 			verdict.Blocked = ReasonNotSelected
 			verdict.BlockedMsg = fmt.Sprintf("DNSZone %q does not admit record sets from namespace %q with these labels (spec.recordSetSelector)", zone.Name, rs.Namespace)
 			continue
+		case zone.Spec.Type == v1alpha1.ZoneTypeExternal && !zonemodel.ExternalSourceOwned(rs):
+			// D402: an external zone serves only what its Kubernetes
+			// sources say (zone.ServedRecordSets applies the same rule).
+			verdict.Blocked = ReasonNotSelected
+			verdict.BlockedMsg = fmt.Sprintf("DNSZone %q is an external zone: it serves only the record sets kudurru derives from Ingresses, Gateway API routes and LoadBalancer Services", zone.Name)
+			continue
 		}
 		if msg := invalid(rs, validate); msg != "" {
 			verdict.Blocked = v1alpha1.ReasonInvalid
 			verdict.BlockedMsg = msg
 			continue
 		}
-		for _, ep := range rs.Spec.Endpoints {
+		for i, ep := range rs.Spec.Endpoints {
 			name := canonicalName(ep.DNSName)
 			if !inZone(name, v.Origin) {
 				verdict.Outside = append(verdict.Outside, describe(ep))
@@ -337,6 +357,7 @@ func buildZoneView(zone *v1alpha1.DNSZone, rrsets []*v1alpha1.DNSRecordSet, vali
 			}
 			owner[id] = rs
 			verdict.Kept++
+			verdict.kept = append(verdict.kept, i)
 			if ep.Kudurru != nil && ep.Kudurru.Disabled {
 				continue
 			}

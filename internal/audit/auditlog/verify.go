@@ -10,6 +10,7 @@ import (
 
 	auditv1 "github.com/robertherbaugh/kudurru/api/audit/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/audit"
+	"github.com/robertherbaugh/kudurru/internal/audit/auditkeys"
 )
 
 // Verify checks every batch in the namespace: each event's hash (stubs
@@ -21,6 +22,10 @@ import (
 // one removed from the end of a source does not (the "log":"audit" lines
 // are the copy to compare against).
 func Verify(ctx context.Context, c client.Reader, namespace string, keys [][]byte) error {
+	return verifyWithRing(ctx, c, namespace, keys, nil)
+}
+
+func verifyWithRing(ctx context.Context, c client.Reader, namespace string, keys [][]byte, ring *auditkeys.Ring) error {
 	var list auditv1.AuditLogList
 	if err := c.List(ctx, &list, client.InNamespace(namespace)); err != nil {
 		return fmt.Errorf("auditlog: list batches: %w", err)
@@ -38,6 +43,15 @@ func Verify(ctx context.Context, c client.Reader, namespace string, keys [][]byt
 	for _, batches := range bySource {
 		sort.Slice(batches, func(i, j int) bool { return batches[i].Spec.FirstID < batches[j].Spec.FirstID })
 		for i, b := range batches {
+			if ring != nil {
+				if err := ring.Verify(b.Spec, b.CreationTimestamp.Time); err != nil {
+					if errors.Is(err, auditkeys.ErrIntegrity) {
+						err = audit.ErrTampered
+					}
+					errs = append(errs, err)
+					continue
+				}
+			}
 			if err := verifyBatch(b, sealed, keys); err != nil {
 				errs = append(errs, err)
 				continue

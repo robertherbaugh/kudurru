@@ -12,6 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/objects"
 	"github.com/robertherbaugh/kudurru/internal/rbac"
 	"github.com/robertherbaugh/kudurru/internal/store"
 )
@@ -53,6 +54,9 @@ type writeResult struct {
 
 // readOnly returns the 503 read_only error in the ha-static shape.
 func (s *Server) readOnly() error {
+	if s.opts.Config.Cluster.Static() {
+		return storeError(objects.ErrStaticReadOnly)
+	}
 	if s.opts.Objects == nil {
 		return nil
 	}
@@ -60,6 +64,10 @@ func (s *Server) readOnly() error {
 		return storeError(err)
 	}
 	return nil
+}
+
+func (s *Server) staticMode() bool {
+	return s.opts.Config.Cluster.Static() || s.opts.Objects != nil && s.opts.Objects.APIReadOnly()
 }
 
 // objectScope is the RBAC scope that guards obj: zone:<name> for zones and
@@ -136,62 +144,22 @@ func sanitizeDocument(u *unstructured.Unstructured) {
 // "unchanged" and not written. Objects managed by another writer answer
 // 409 managed_by with the owner as hint; first-boot defaults (manager
 // "bootstrap") are taken over.
-func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult, error) {
+func (s *Server) writeObject(ctx context.Context, req writeRequest) (result writeResult, err error) {
+	defer func() { err = redactIntegrationEcho(req.kind, req.body, err) }()
 	if err := s.readOnly(); err != nil {
 		return writeResult{}, err
 	}
-	manager := req.manager
-	if manager == "" {
-		manager = store.ManagerAPI
+	manager, u, key, err := s.normalizeWrite(req)
+	if err != nil {
+		return writeResult{}, err
+	}
+	if s.opts.ObjectCommand != nil {
+		return s.commandWriteObject(ctx, req, manager, u, key)
 	}
 	k := req.kind
-	if req.body == nil {
-		return writeResult{}, errInvalid("body: an api/v1alpha1 object is required")
+	if err := s.refuseExternalZoneRecords(ctx, k, u); err != nil {
+		return writeResult{}, err
 	}
-	u := &unstructured.Unstructured{Object: normalizeNumbers(runtime.DeepCopyJSONValue(toJSONValue(req.body))).(map[string]any)}
-	if raw, err := json.Marshal(u.Object); err == nil && len(raw) > MaxObjectBytes {
-		return writeResult{}, newError(http.StatusRequestEntityTooLarge, KeyTooLarge,
-			fmt.Sprintf("the object is %d bytes; the limit is %d (the etcd request cap)", len(raw), MaxObjectBytes), "split it into several objects")
-	}
-	if u.GetAPIVersion() == "" {
-		u.SetAPIVersion(v1alpha1.GroupVersion.String())
-	}
-	if u.GetKind() == "" {
-		u.SetKind(string(k.kind))
-	}
-	if u.GetKind() != string(k.kind) {
-		return writeResult{}, errInvalid("kind: %q does not match the URL kind %s", u.GetKind(), k.kind)
-	}
-	if gv := u.GetAPIVersion(); gv != v1alpha1.GroupVersion.String() {
-		return writeResult{}, errInvalid("apiVersion: %q is not served (want %s)", gv, v1alpha1.GroupVersion.String())
-	}
-	if req.name != "" {
-		switch u.GetName() {
-		case "":
-			u.SetName(req.name)
-		case req.name:
-		default:
-			return writeResult{}, errInvalid("metadata.name: %q does not match the URL name %q", u.GetName(), req.name)
-		}
-	}
-	if u.GetName() == "" {
-		return writeResult{}, errInvalid("metadata.name: required")
-	}
-	if k.namespaced {
-		ns := req.namespace
-		switch {
-		case u.GetNamespace() == "" && ns != "":
-			u.SetNamespace(ns)
-		case u.GetNamespace() == "":
-			u.SetNamespace(s.opts.DefaultNamespace)
-		case ns != "" && u.GetNamespace() != ns:
-			return writeResult{}, errInvalid("metadata.namespace: %q does not match the URL namespace %q", u.GetNamespace(), ns)
-		}
-	} else if u.GetNamespace() != "" {
-		return writeResult{}, errInvalid("metadata.namespace: %s is cluster-scoped and takes no namespace", k.kind)
-	}
-	sanitizeDocument(u)
-	key := keyFor(k, u.GetNamespace(), u.GetName())
 
 	existing := k.newObject()
 	if err := s.opts.Store.Get(ctx, key, existing); errors.Is(err, store.ErrNotFound) {
@@ -216,6 +184,43 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult
 		}
 	} else if req.ifMatch != "" {
 		return writeResult{}, errPrecondition(req.ifMatch, "")
+	}
+	zone, _ := existing.(*v1alpha1.DNSZone)
+	groupChange := zone != nil && zoneGroupChanged(u.Object, zone)
+	if k.kind == "DNSZone" && existing == nil {
+		// Creating a zone needs zones.write at cluster scope (§8.5), decided
+		// on this read too (D385): a zone deleted after the caller's
+		// authorization read is created again only by a cluster-scope writer,
+		// never through a zone or zone-group binding of the deleted zone.
+		if err := s.require(ctx, k.resource, "write", clusterScope, key.Name); err != nil {
+			return writeResult{}, err
+		}
+	}
+	if zone != nil {
+		// The zone-group rule (D385) is decided on this read, the one the
+		// write below is compare-and-swapped against, not on the caller's
+		// earlier read: a label removed in between cannot be put back by a
+		// member of the group it left.
+		sc := rbac.Scope{Kind: rbac.ScopeZone, Name: zone.Name}
+		if groupChange {
+			sc = clusterScope
+		}
+		if err := s.requireGroup(ctx, k.resource, "write", sc, zone.Name, storedZoneGroup(zone)); err != nil {
+			return writeResult{}, err
+		}
+		if groupChange {
+			// The document decides the label. Server-side apply keeps a label
+			// another field manager (kubectl, a GitOps tool) also owns when
+			// the document omits it, so a removal would answer success and
+			// leave the zone in its group. The write takes the zone over as
+			// a whole-object PUT, as for a bootstrap default.
+			force = true
+		}
+	}
+	if integrationKind(k) {
+		if err := s.checkIntegrationWrite(ctx, key, u.Object, existing); err != nil {
+			return writeResult{}, err
+		}
 	}
 
 	var old *unstructured.Unstructured
@@ -252,20 +257,116 @@ func (s *Server) writeObject(ctx context.Context, req writeRequest) (writeResult
 			return writeResult{}, err
 		}
 	}
-	opts := store.ApplyOptions{Manager: manager, Force: force}
+	opts := store.ApplyOptions{Manager: manager, Force: force, CreateOnly: req.createOnly}
 	if existing != nil {
 		// Optimistic concurrency between the read above and the write.
 		opts.ExpectedResourceVersion = existing.GetResourceVersion()
 	}
 	written, err := s.opts.Store.Apply(ctx, obj, opts)
+	if zone != nil {
+		stateFrom(ctx).forgetZoneGroup(zone.Name)
+	}
 	if err != nil {
 		return writeResult{}, storeError(err)
+	}
+	if groupChange {
+		want, _ := nestedString(u.Object, "metadata", "labels", v1alpha1.ZoneGroupLabel)
+		got := written.GetLabels()[v1alpha1.ZoneGroupLabel]
+		if got != want {
+			return writeResult{}, newError(http.StatusConflict, KeyConflict,
+				fmt.Sprintf("%s was written but its %s label is %q, not %q: another writer keeps it", key, v1alpha1.ZoneGroupLabel, got, want),
+				"change the label where it is managed (kubectl or the GitOps source), then read the zone again")
+		}
 	}
 	res := ResultUpdated
 	if existing == nil {
 		res = ResultCreated
 	}
 	return writeResult{obj: written, result: res, key: key}, nil
+}
+
+// refuseExternalZoneRecords refuses a DNSRecordSet document for an external
+// zone (D402). Such a zone serves only the record sets the Kubernetes source
+// adapter derives from Ingresses, routes and Services; the zone model would
+// leave an API-written one out, so the write is refused instead of stored
+// and silently ignored.
+func (s *Server) refuseExternalZoneRecords(ctx context.Context, k kindInfo, u *unstructured.Unstructured) error {
+	if k.kind != "DNSRecordSet" {
+		return nil
+	}
+	name, _ := nestedString(u.Object, "spec", "zoneRef", "name")
+	if name == "" {
+		return nil
+	}
+	var z v1alpha1.DNSZone
+	if err := s.opts.Store.Get(ctx, store.Key{Kind: "DNSZone", Name: name}, &z); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil
+		}
+		return storeError(err)
+	}
+	if z.Spec.Type == v1alpha1.ZoneTypeExternal {
+		return errConflict(fmt.Sprintf("DNSZone %s is an external zone: its records come from Kubernetes Ingresses, Gateway API routes and LoadBalancer Services", name),
+			"change the source object (or its external-dns annotations) instead")
+	}
+	return nil
+}
+
+// normalizeWrite builds the sanitized canonical document and key of one write.
+// A forwarded write repeats it on the primary; follower output is never trusted.
+func (s *Server) normalizeWrite(req writeRequest) (string, *unstructured.Unstructured, store.Key, error) {
+	manager := req.manager
+	if manager == "" {
+		manager = store.ManagerAPI
+	}
+	k := req.kind
+	if req.body == nil {
+		return "", nil, store.Key{}, errInvalid("body: an api/v1alpha1 object is required")
+	}
+	u := &unstructured.Unstructured{Object: normalizeNumbers(runtime.DeepCopyJSONValue(toJSONValue(req.body))).(map[string]any)}
+	if raw, err := json.Marshal(u.Object); err == nil && len(raw) > MaxObjectBytes {
+		return "", nil, store.Key{}, newError(http.StatusRequestEntityTooLarge, KeyTooLarge,
+			fmt.Sprintf("the object is %d bytes; the limit is %d (the etcd request cap)", len(raw), MaxObjectBytes), "split it into several objects")
+	}
+	if u.GetAPIVersion() == "" {
+		u.SetAPIVersion(v1alpha1.GroupVersion.String())
+	}
+	if u.GetKind() == "" {
+		u.SetKind(string(k.kind))
+	}
+	if u.GetKind() != string(k.kind) {
+		return "", nil, store.Key{}, errInvalid("kind: %q does not match the URL kind %s", u.GetKind(), k.kind)
+	}
+	if gv := u.GetAPIVersion(); gv != v1alpha1.GroupVersion.String() {
+		return "", nil, store.Key{}, errInvalid("apiVersion: %q is not served (want %s)", gv, v1alpha1.GroupVersion.String())
+	}
+	if req.name != "" {
+		switch u.GetName() {
+		case "":
+			u.SetName(req.name)
+		case req.name:
+		default:
+			return "", nil, store.Key{}, errInvalid("metadata.name: %q does not match the URL name %q", u.GetName(), req.name)
+		}
+	}
+	if u.GetName() == "" {
+		return "", nil, store.Key{}, errInvalid("metadata.name: required")
+	}
+	if k.namespaced {
+		ns := req.namespace
+		switch {
+		case u.GetNamespace() == "" && ns != "":
+			u.SetNamespace(ns)
+		case u.GetNamespace() == "":
+			u.SetNamespace(s.opts.DefaultNamespace)
+		case ns != "" && u.GetNamespace() != ns:
+			return "", nil, store.Key{}, errInvalid("metadata.namespace: %q does not match the URL namespace %q", u.GetNamespace(), ns)
+		}
+	} else if u.GetNamespace() != "" {
+		return "", nil, store.Key{}, errInvalid("metadata.namespace: %s is cluster-scoped and takes no namespace", k.kind)
+	}
+	sanitizeDocument(u)
+	return manager, u, keyFor(k, u.GetNamespace(), u.GetName()), nil
 }
 
 // deleteObject deletes one object as manager "api" (bootstrap defaults
@@ -276,6 +377,9 @@ func (s *Server) deleteObject(ctx context.Context, k kindInfo, existing store.Ob
 	}
 	key := store.KeyOf(existing)
 	key.Kind = k.kind
+	if s.opts.ObjectCommand != nil {
+		return s.commandDeleteObject(ctx, k, key, ifMatch)
+	}
 	owner := store.ManagedBy(existing)
 	if !apiMayDelete(owner) {
 		return errManagedBy(key, owner)
@@ -413,4 +517,17 @@ func toJSONValue(v any) any {
 		return f
 	}
 	return v
+}
+
+// zoneGroupChanged reports whether the DNSZone document body puts the zone
+// in another zone group than the stored zone existing (D385). Who holds a
+// zone only through a group binding may edit the zone but not move it into
+// or out of a group: that needs zones.write at cluster scope.
+func zoneGroupChanged(body map[string]any, existing store.Object) bool {
+	z, ok := existing.(*v1alpha1.DNSZone)
+	if !ok {
+		return false
+	}
+	next, _ := nestedString(body, "metadata", "labels", v1alpha1.ZoneGroupLabel)
+	return next != v1alpha1.ZoneGroupOf(z)
 }

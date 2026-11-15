@@ -297,3 +297,42 @@ func TestResolverConcurrentSnapshotReaders(t *testing.T) {
 	close(done)
 	wg.Wait()
 }
+
+// D397: lease MACs come from every scope, DNS registration or not; colliding
+// live leases fill nothing, and expiry uses the caller's request time.
+func TestResolverLeaseMACsAndListing(t *testing.T) {
+	plain := dnsTestConfig()
+	plain.Name, plain.RegisterDNS, plain.DomainName = "lan", false, ""
+	a, _ := dnsTestStore(t, plain)
+	l := dnsTestBind(t, a, dnsTestClient(1, ""))
+	r := New(map[string]*dhcp.LeaseStore{"lan": a})
+	at := l.ExpiresAt.Add(-time.Second)
+	if mac, ok := r.LeaseMAC(netip.AddrFrom16(l.Address.As16()), at); !ok || mac != "02:00:00:00:00:01" {
+		t.Fatalf("lease MAC of a scope without DNS: %q %v", mac, ok)
+	}
+	if _, ok := r.LeaseMAC(l.Address, l.ExpiresAt); ok {
+		t.Fatal("expired lease filled a MAC")
+	}
+	if names := r.Hostnames(l.Address); names != nil {
+		t.Fatalf("nameless lease supplied hostnames: %v", names)
+	}
+	other := dnsTestConfig()
+	other.Name = "shadow"
+	b, _ := dnsTestStore(t, other)
+	collision := dnsTestBind(t, b, dnsTestClient(2, "shadow"))
+	if collision.Address != l.Address {
+		t.Fatalf("fixture did not collide: %s %s", collision.Address, l.Address)
+	}
+	both := New(map[string]*dhcp.LeaseStore{"lan": a, "shadow": b})
+	if mac, ok := both.LeaseMAC(l.Address, at); ok {
+		t.Fatalf("colliding leases filled %q", mac)
+	}
+	leases := both.Leases()
+	if len(leases) != 2 || leases[0].Scope != "lan" || leases[1].Scope != "shadow" || leases[1].Hostname != "shadow" {
+		t.Fatalf("lease listing: %+v", leases)
+	}
+	var none *Resolver
+	if _, ok := none.LeaseMAC(l.Address, at); ok || none.Leases() != nil {
+		t.Fatal("nil resolver answered")
+	}
+}

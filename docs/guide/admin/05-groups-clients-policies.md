@@ -98,17 +98,34 @@ A matcher has a kind and a value.
 |---|---|---|
 | **IP address** | `192.168.1.30` | One device |
 | **CIDR range** | `192.168.1.0/24` | Each address in the range |
-| **Client ID** | A name that the device sends | Reserved: the v0.1.0 listeners do not receive client IDs |
-| **MAC address** | `aa:bb:cc:dd:ee:ff` | Reserved: the v0.1.0 listeners do not receive MAC addresses |
+| **Client ID** | `kids-tablet` | A device that sends this ID on an encrypted DNS connection |
+| **MAC address** | `aa:bb:cc:dd:ee:ff` | A device that an inventory source reports with this address, or that has a lease from the kudurru DHCP server |
 
 To add a client that you already see, click **Add** next to the client in
 the list **Seen in the last 24 hours**. To add many values, click **Paste
 many**.
 
-CAUTION: Version 0.1.0 does not receive client IDs, MAC addresses or hostnames
-from its DNS listeners. Use an IP address or a range for device groups.
-If queries arrive from the router's address, all devices using that router
-share its group. See [Clients shows only the router or gateway](12-troubleshooting.md#filtering).
+An IP address and a CIDR range match on every node. The other two kinds
+match only when kudurru gets that identity from a source:
+
+- **Client ID:** The device uses DoT, DoQ or DoH and sends the ID in the
+  server name or in the path. For example, it connects to
+  `kids-tablet.dot.example.com`. An administrator turns this on for each
+  listener in the configuration file. A client ID is not a password: a
+  device can send the ID of another device.
+- **MAC address:** A DNS query does not contain a MAC address. kudurru gets
+  the MAC address of a device from an inventory source, for example a UniFi
+  integration, or from the device's current lease when the kudurru DHCP
+  server gave it its address. Without such a source for the device, the
+  matcher matches nothing. `kudurru inventory` lists the devices and MAC
+  addresses that kudurru knows.
+
+Not every installation has these sources. Read [Client identity and transport
+IDs](../../deploy/client-identity.md) before you use these kinds.
+
+CAUTION: If queries arrive from the address of the router, all the devices
+behind that router share one group. An address matcher and a MAC matcher
+cannot separate them. See [Clients shows only the router or gateway](12-troubleshooting.md#filtering).
 
 NOTE: Give a fixed address to each client that you put in a group.
 Use a DHCP reservation. If the address changes, the client leaves the group.

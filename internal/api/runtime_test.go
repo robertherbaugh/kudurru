@@ -138,6 +138,25 @@ func TestDNSQuery(t *testing.T) {
 	h.do(http.MethodPost, "/api/v1/dns/query", "viewer", map[string]any{"name": "x", "client": "nope"}).want(http.StatusBadRequest)
 }
 
+type rpzDropStage struct{ closed *int }
+
+func (rpzDropStage) Name() string { return "blocking" }
+func (s rpzDropStage) Serve(*pipeline.Request, pipeline.Next) (*pipeline.Response, error) {
+	out := &pipeline.Response{Status: pipeline.StatusBlockedRPZ, List: "dns/feed", Rule: "a.policy.test. drop"}
+	out.AddCleanup(func() { *s.closed++ })
+	return out, pipeline.ErrDrop
+}
+
+func TestDNSQueryRPZDrop(t *testing.T) {
+	closed := 0
+	h := newHarness(t, func(o *Options) { o.Chain = pipeline.MustNew(rpzDropStage{closed: &closed}) })
+	var res DNSQueryResult
+	h.do(http.MethodPost, "/api/v1/dns/query", "viewer", map[string]any{"name": "a.example"}).want(http.StatusOK).json(&res)
+	if res.Rcode != "none" || res.Status != "blocked_rpz" || res.StatusClass != "blocked" || res.List != "dns/feed" || res.Rule != "a.policy.test. drop" || closed != 1 {
+		t.Fatalf("lost RPZ drop diagnostic or cleanup: %+v closed=%d", res, closed)
+	}
+}
+
 // syntheticStage records whether the pipeline saw a synthetic request.
 type syntheticStage struct{ seen *bool }
 

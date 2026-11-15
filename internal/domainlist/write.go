@@ -130,8 +130,13 @@ type provenance map[string]string
 // and origin "migrated", or "unblock" with the request when prov knows the
 // approval that added the line. It reports whether bl changed.
 func migrateList(bl *v1alpha1.BlockList, prov provenance) bool {
-	if _, _, ok := ParseListName(bl.Name); !ok {
+	_, group, ok := ParseListName(bl.Name)
+	if !ok {
 		return false
+	}
+	scopeChanged := group != "" && !slices.Equal(bl.Spec.ClientGroupRefs, []string{group})
+	if scopeChanged {
+		bl.Spec.ClientGroupRefs = []string{group}
 	}
 	var created *metav1.Time
 	if !bl.CreationTimestamp.IsZero() {
@@ -183,7 +188,7 @@ func migrateList(bl *v1alpha1.BlockList, prov provenance) bool {
 		}
 	}
 	if !changed {
-		return false
+		return scopeChanged
 	}
 	if idx >= 0 {
 		for i := range sources {

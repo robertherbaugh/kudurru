@@ -10,7 +10,7 @@ import { Text } from '@astryxdesign/core/Text';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { KeyRound, LogOut } from 'lucide-react';
 import { useState } from 'react';
-import { qk, useApiContext, useSession, useSignOut } from '../api/context';
+import { qk, useApiContext, useSession, useSignOut, useStaticMode } from '../api/context';
 import type { Me } from '../api/types';
 import { errorText, useNotify } from './Feedback';
 import { CheckboxField, TextField } from './fields/TextField';
@@ -63,17 +63,21 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [totpCode, setTotpCode] = useState('');
   const [revokeTokens, setRevokeTokens] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const reset = () => {
     setCurrent('');
     setNext('');
     setConfirm('');
+    setTotpCode('');
     setRevokeTokens(false);
     setErrors({});
   };
   const m = useMutation({
-    mutationFn: () => api.auth.changePassword({ currentPassword: current, newPassword: next, ...(revokeTokens ? { revokeTokens: true } : {}) }),
+    mutationFn: () => api.auth.changePassword({ currentPassword: current, newPassword: next, ...(totpCode ? { totpCode } : {}), ...(revokeTokens ? { revokeTokens: true } : {}) }),
+    retry: false,
+    onSettled: () => setTotpCode(''),
     onSuccess: (me) => {
       // Every other session is revoked; this one comes back re-issued.
       if (me && typeof me === 'object' && 'principal' in me) {
@@ -93,6 +97,7 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
   });
   const submit = () => {
     const e = passwordProblems(current, next, confirm);
+    if (totpCode && !/^[0-9]{6}$/.test(totpCode)) e.totpCode = 'Enter the six-digit authenticator code';
     setErrors(e);
     if (!Object.keys(e).length) m.mutate();
   };
@@ -113,7 +118,7 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
       onSubmit={submit}
       footer={
         <>
-          {forced ? <Button label="Sign out" variant="ghost" onClick={() => void signOut()} /> : <Button label="Cancel" variant="ghost" onClick={close} />}
+          {forced ? <Button label="Sign out" variant="ghost" onClick={() => signOut().catch((err: unknown) => notify.error(err, 'Sign-out failed'))} /> : <Button label="Cancel" variant="ghost" onClick={close} />}
           <Button type="submit" label="Change password" variant="primary" isLoading={m.isPending} />
         </>
       }
@@ -129,6 +134,15 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
         error={errors.next}
       />
       <TextField label="Confirm password" type="password" autoComplete="new-password" value={confirm} onChange={setConfirm} error={errors.confirm} />
+      <TextField
+        label="Authenticator code"
+        value={totpCode}
+        onChange={setTotpCode}
+        autoComplete="one-time-code"
+        isOptional
+        help="Enter the six-digit code if you have enabled an authenticator."
+        error={errors.totpCode}
+      />
       <CheckboxField
         label="Also revoke my API tokens"
         value={revokeTokens}
@@ -146,6 +160,7 @@ export function ChangePasswordDialog({ isOpen, onClose, forced = false }: { isOp
 /** A "Change password" button with its dialog; nothing for non-local principals. */
 export function ChangePasswordButton({ iconOnly = false }: { iconOnly?: boolean }) {
   const { data } = useSession();
+  const readOnly = useStaticMode();
   const [open, setOpen] = useState(false);
   if (!isLocalUser(data)) return null;
   return (
@@ -155,18 +170,21 @@ export function ChangePasswordButton({ iconOnly = false }: { iconOnly?: boolean 
         variant={iconOnly ? 'ghost' : 'secondary'}
         size="sm"
         isIconOnly={iconOnly}
+        isDisabled={readOnly}
         icon={iconOnly ? <KeyRound size={16} aria-hidden="true" /> : undefined}
-        tooltip={iconOnly ? 'Change password' : undefined}
+        tooltip={readOnly ? 'Credentials are managed outside the API in static mode' : iconOnly ? 'Change password' : undefined}
         onClick={() => setOpen(true)}
       />
-      <ChangePasswordDialog isOpen={open} onClose={() => setOpen(false)} />
+      <ChangePasswordDialog isOpen={open && !readOnly} onClose={() => setOpen(false)} />
     </>
   );
 }
 
 export function AccountMenu() {
   const { data } = useSession();
+  const readOnly = useStaticMode();
   const signOut = useSignOut();
+  const notify = useNotify();
   if (!data) return null;
   return (
     <HStack gap={1} vAlign="center">
@@ -181,9 +199,11 @@ export function AccountMenu() {
         isIconOnly
         icon={<LogOut size={16} aria-hidden="true" />}
         tooltip="Sign out"
-        onClick={() => void signOut()}
+        onClick={() => signOut().catch((err: unknown) => notify.error(err, 'Sign-out failed'))}
       />
-      {data.mustChangePassword && isLocalUser(data) ? <ChangePasswordDialog isOpen onClose={() => undefined} forced /> : null}
+      {data.mustChangePassword && isLocalUser(data) ? readOnly
+        ? <Banner status="warning" title="Account setup required" description="Ask the host administrator to provision your password before enabling static mode." />
+        : <ChangePasswordDialog isOpen onClose={() => undefined} forced /> : null}
     </HStack>
   );
 }

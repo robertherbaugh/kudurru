@@ -12,7 +12,8 @@ resources:
   policies: [read, write, delete]
   clientgroups: [read, write, delete]
   clients: [read, write]
-  querylog: [read, export, purge]
+  inventory: [read]
+  querylog: [read, export, purge, raw]
   stats: [read]
   cache: [read, flush]
   blocking: [read, toggle]
@@ -26,9 +27,11 @@ resources:
   tokens: [read, write, delete, own]
   identityproviders: [read, write, delete]
   rolebindings: [read, write, delete]
-  integrations: [read, write, delete, sync, check, secrets, act]
+  tsigkeys: [read, write, delete]
+  integrations: [read, write, delete, sync, check, secrets, act, release]
   cluster: [read, join, promote, drain]
   edge: [read, write]
+  edgeblocks: [read, write]
   audit: [read, export]
   unblockrequests: [read, decide, delete]
 
@@ -60,10 +63,12 @@ roles:
     - dhcp.read
     - dhcpleases.read
     - dhcpleases.export
+    - inventory.read
     - querylog.read
     - querylog.export
     - audit.read
     - unblockrequests.read
+    - edgeblocks.read
     - tokens.own
   operator:
     - zones.read
@@ -82,8 +87,10 @@ roles:
     - dhcp.read
     - dhcpleases.read
     - dhcpleases.export
+    - inventory.read
     - querylog.read
     - unblockrequests.*
+    - edgeblocks.*
     - tokens.own
   zone-admin:
     - zones.read
@@ -116,3 +123,22 @@ kubernetes:
   auditor: {clusterRole: auditor}
   operator: {clusterRole: editor, aggregateTo: edit}
   admin: {clusterRole: admin, aggregateTo: admin}
+
+# Declared verbs that no route or handler checks yet, each with the release
+# that is to use it (D393). TestPermissionVerbsAreUsedOrReserved fails for a
+# declared verb that is neither checked nor listed here, and for an entry
+# here that a route or handler already checks: remove the entry in the
+# change that starts using the verb. Built-in roles may already grant a
+# reserved verb; holding it allows nothing until it is used. The v0.2
+# entries are surfaces the v0.2 tracker still requires (design record
+# section 10 lists CRUD /iam/* as v0.2); they stay here
+# until their lane lands or the owner retargets them.
+reserved:
+  zones.sign: "v1.0: DNSSEC signing on the leader (design record 13.3, D14)"
+  zones.share: "v1.0: delegating a zone to other principals from the API"
+  clients.write: "v1.0: naming and editing client inventory entries"
+  groups.read: "v0.2: local group administration, CRUD /iam/groups (IAM write API, G12)"
+  groups.write: "v0.2: local group administration, CRUD /iam/groups (IAM write API, G12)"
+  groups.delete: "v0.2: local group administration, CRUD /iam/groups (IAM write API, G12)"
+  cluster.drain: "v1.0: draining a member from the API (today only kudurru vip drain)"
+  edge.write: "v1.0: edge configuration from the API (edge blocks use edgeblocks.*)"

@@ -15,8 +15,8 @@ Two charts (dev-docs/design-record.md §5.1, §5.2, §5.7). Minimum Kubernetes 1
 ```sh
 kubectl create namespace kudurru-system
 kubectl label namespace kudurru-system pod-security.kubernetes.io/enforce=restricted
-helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.1.0
-helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.1.0 \
+helm install kudurru-crds oci://ghcr.io/robertherbaugh/charts/kudurru-crds --version 0.2.0
+helm install kudurru oci://ghcr.io/robertherbaugh/charts/kudurru --version 0.2.0 \
   --namespace kudurru-system --set replicaCount=1
 ```
 
@@ -36,6 +36,25 @@ but changes through the API and the dashboard answer `402 license_required`
 until you add a key (a free personal key covers 3 nodes) or set
 `replicaCount=1`. Changes with `kubectl` are not affected. See
 [License key](#license-key).
+
+### AuditLog trust
+
+When using the Kubernetes AuditLog store (`audit.store: auto` without a central
+database, or `audit.store: auditlog`), provision the independent
+`kudurru-audit-keys` Secret in the release namespace using the
+[AuditLog key runbook](runbooks.md#auditlog-key-provisioning-and-upgrades).
+Helm does not generate or rotate this trust root. Without it, DNS starts and
+local audit spooling continues, but cluster audit shipping and verification are
+unavailable. Existing installations must follow the legacy-cutover procedure
+before upgrading; session encryption keys no longer determine new audit seals.
+
+### Upgrading from 0.1.x
+
+An installation of 0.1.x is upgraded offline when it holds private IAM
+Secrets (it almost always does: 0.1.0 creates the `break-glass` account):
+upgrade `kudurru-crds`, run the [Kubernetes IAM upgrade](iam-upgrade.md),
+provision the AuditLog trust above, then upgrade this chart. The ordered list
+is [Upgrading from 0.1.x](runbooks.md#upgrading-from-01x).
 
 ### First login
 
@@ -167,6 +186,13 @@ switch the Deployment to a StatefulSet so every replica gets its own claim
 DaemonSet cannot have per-pod claims; use `extraVolumes` with a `hostPath`
 there.
 
+For independent `querylog.db` and `local.db` mounts, opt into
+`persistence.querylog.separate` / `persistence.local.separate`. Existing
+`enabled` values keep their shared `data` claim behavior. See
+[separate SQLite storage](sqlite-storage.md) for claim combinations and the
+required offline migration; changing StatefulSet claim templates is not a
+rolling file move.
+
 ### Audit log
 
 Events are always recorded and shipped; reading them (the Audit tab,
@@ -285,7 +311,9 @@ networking are outside Baseline).
 
 `vip.provider=keepalived` runs dnsdist and keepalived in one hostNetwork
 DaemonSet on the nodes labelled `kudurru.io/vip=true`. keepalived needs
-`NET_ADMIN`, `NET_RAW` and `NET_BROADCAST` as root: label the namespace
+`NET_ADMIN`, `NET_RAW` and `NET_BROADCAST` as root, plus `SETUID` and
+`SETGID` to run its existing health scripts as UID/GID 953. All other
+capabilities remain dropped. Label the namespace
 `pod-security.kubernetes.io/enforce=privileged`.
 
 For two VIPs with separate VRRP and address interfaces:
@@ -331,6 +359,12 @@ interface, so loss of either link puts its instance into FAULT and
 withdraws the address. Gratuitous ARP stays on the VIP's interface.
 Before migration, withdraw each address from MetalLB or kube-vip; only one
 provider may advertise an address at a time.
+
+For explicit keys per VRID, use `vip.keepalived.hmacKeySecrets` with one
+`{vrid, secretName, key}` reference for every VIP. The empty list keeps the
+existing shared key; partial or mixed shared/per-VRID choices refuse render.
+See [VRRP HMAC key files](vrrp-keys.md) for private mounts, limits and the
+required coordinated restart procedure for migration and rotation.
 
 The Nodes page's Edge panel polls supervisor readiness, backend health,
 and each node's VIP states every ten seconds. Separate edge workloads
@@ -503,6 +537,101 @@ RoleBinding deletion delete Secrets) and `configmaps`
 `<release>-auditor` (aggregated nowhere: it reads the query log). They are
 generated from `internal/rbac/permissions.yaml` by `make rbac-manifests`
 into `templates/rbac-aggregated.yaml`.
+
+### Impersonation (`auth.kubernetes.mode`)
+
+`auth.kubernetes.mode: sar` (the default) authorizes Kubernetes
+ServiceAccount tokens with SubjectAccessReview and writes every object as the
+kudurru ServiceAccount. `auth.kubernetes.mode: impersonate` (D386) keeps that
+authorization and additionally sends each API write of a `kudurru.io` object
+as the signed-in principal, so Kubernetes RBAC decides it too and the apiserver
+audit log records the principal as `impersonatedUser`:
+
+| Principal | Kubernetes name |
+| --- | --- |
+| Kubernetes ServiceAccount | `system:serviceaccount:<namespace>:<name>` with its token's groups |
+| Local user | `kudurru:user:<name>`, groups `kudurru:group:<group>` |
+| OIDC user with a bearer JWT | `kudurru:user:<idp>:<name>`, groups `kudurru:group:<idp>:<group>` from the token |
+| OIDC user on a dashboard session or personal API token | `kudurru:user:<idp>:<name>`, no groups |
+| Kudurru service account (and its tokens) | `kudurru:serviceaccount:<namespace>:<name>` |
+
+Dashboard sessions and personal API tokens do not keep an OIDC user's
+identity-provider groups (D48), so bind OIDC users who sign in to the
+dashboard by user name; a binding to their `kudurru:group:` name only matches
+their bearer-JWT requests. Kudurru RoleBindings, ServiceAccounts and
+IdentityProviders are `kudurru.io` objects, so writing them through the API
+needs Kubernetes RBAC on those resources too.
+
+Only with this value does the ClusterRole gain `impersonate` on `users`,
+`groups` and `serviceaccounts`. Kubernetes cannot restrict that verb to the
+`kudurru:` names, so a compromised kudurru pod becomes cluster-admin-equivalent
+(D55). Set the value in `auth.kubernetes.mode`, not in `config.node` or
+`config.settings` (the chart refuses those, because they would enable the mode
+without the grant). Before switching, bind Kubernetes RBAC to every name that
+writes, for example:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: {name: kudurru-admin-user}
+roleRef: {apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: kudurru-admin}
+subjects:
+  - {apiGroup: rbac.authorization.k8s.io, kind: User, name: "kudurru:user:admin"}
+```
+
+Server-side apply needs `create` and `patch`, and deletes need `delete`.
+A Kubernetes refusal answers `403 forbidden` with the apiserver's reason and
+writes nothing. If kudurru itself lacks the `impersonate` verb, writes answer
+`503 unavailable` and the server log carries the apiserver's reason.
+
+The kustomize bases (`deploy/kustomize`) never grant `impersonate`. To use the
+mode there, set `auth.kubernetes.mode: impersonate` in the node configuration
+and add this rule to the kudurru ClusterRole yourself (same D55 caveat):
+
+```yaml
+- apiGroups: [""]
+  resources: [users, groups, serviceaccounts]
+  verbs: [impersonate]
+```
+
+Reads, status updates, internal Secrets, the audit log and
+writes without a signed-in principal (controllers, RFC 2136 UPDATE, the
+external-dns webhook, integrations) stay on the kudurru ServiceAccount, and
+so does the `kudurru admin` socket.
+
+### External zones (`externalZones.enabled`)
+
+`externalZones.enabled: true` (D402) turns on the source adapter that fills
+DNSZones of type `external` from Ingresses, Gateway API routes and
+LoadBalancer Services ([external zones](../architecture/zones.md#external-zones-on-kubernetes)).
+Only with this value does the ClusterRole gain `get`, `list` and `watch` on
+`networking.k8s.io` `ingresses` and on `gateway.networking.k8s.io`
+`gateways`, `httproutes`, `grpcroutes` and `tlsroutes`; Services are already
+readable. The adapter never writes those objects. Set the value here, not in
+`config.node` or `config.settings` (the chart refuses those, because they
+would enable the adapter without the grant). The Gateway API CRDs are
+optional: a kind the API server does not serve is skipped.
+
+```yaml
+externalZones:
+  enabled: true
+```
+
+With the kustomize bases, set `externalZones.enabled: true` in the node
+configuration and add the two rules above to the kudurru ClusterRole.
+
+Operational limits: each source kind is read as one complete list of at most
+4,096 objects and 32 MiB (pages of 64 objects, each response at most 4 MiB).
+Every Service in the cluster counts toward the Service bound, whatever its
+type. A kind over a bound is skipped on every pass with the warning
+`external zone reconciliation incomplete`; its record sets are kept as they
+were but no longer follow their sources. An external zone on a server where
+`externalZones.enabled` is off is reported `Degraded`, reason
+`SourcesNotRead`.
+
+The server keeps one Secret of its own in the release namespace that the chart
+does not create or remove: `kudurru-grant-floors`, the record of removed role
+binding grants ([role bindings on Kubernetes](rolebindings.md#kubernetes)).
 
 ## Values
 

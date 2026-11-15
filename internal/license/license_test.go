@@ -250,8 +250,8 @@ func TestFeatureList(t *testing.T) {
 	if !m.Allows(FeatureOIDC) || m.Allows(FeatureEdge) {
 		t.Errorf("features = %v", m.Status().Features)
 	}
-	// An empty list grants every feature this build knows.
-	if err := m.Set(f.key(t, nil), "test"); err != nil {
+	// An empty Enterprise list grants every feature this build knows.
+	if err := m.Set(f.key(t, func(c *Claims) { c.Plan = PlanEnterprise }), "test"); err != nil {
 		t.Fatal(err)
 	}
 	for _, ft := range Features() {

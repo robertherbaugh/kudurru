@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/robertherbaugh/kudurru/ee/edge/keepalived"
+	"github.com/robertherbaugh/kudurru/internal/api"
 	"github.com/robertherbaugh/kudurru/internal/apiclient"
 	"github.com/robertherbaugh/kudurru/internal/central"
 	"github.com/robertherbaugh/kudurru/internal/cli"
@@ -47,8 +48,10 @@ func (r *doctorReport) fail(check, format string, args ...any) {
 
 func newDoctorCmd(configPath *string, o *cliOpts) *cobra.Command {
 	var (
-		skipAPI, skipPorts bool
-		vipRunDir, kaConf  string
+		skipAPI, skipPorts      bool
+		vipRunDir, kaConf       string
+		selfNotify              bool
+		notifyTarget, notifyKey string
 	)
 	cmd := &cobra.Command{
 		Use:   "doctor",
@@ -62,10 +65,15 @@ func newDoctorCmd(configPath *string, o *cliOpts) *cobra.Command {
   api        the API server answers (the CLI context, --server, or the local
              listeners.api.address)
   token      the CLI token is accepted (GET /auth/me)
+  anchors    with upstreams.recursion.anchorMode managed: the node's root
+             trust-anchor status (GET /cluster/anchors); fails on lost trust
+             or terminal local output, warns on each status warning
   diagnoses  configuration diagnoses reported by the server (GET /info/messages)
   database   with database.dsn set: the central database answers, runs
              PostgreSQL 16 or newer and has a schema this binary can use;
              warns about sslmode=disable to another host
+  notify     with --notify: authenticated UDP self-NOTIFY to the DNS health
+             listener; reports the source address observed by that listener
   vrrp       warns when ` + "`kudurru vip run --legacy`" + ` renders keepalived without
              auth_hmac (unauthenticated VRRP adverts); silent on nodes
              without keepalived
@@ -101,6 +109,9 @@ Exits non-zero when a check fails.`,
 			checkDataDir(rep, cfg.Node.DataDir)
 			checkDatabase(c.Context(), rep, cfg)
 			checkVRRP(rep, vipRunDir, kaConf)
+			if selfNotify || notifyTarget != "" || notifyKey != "" {
+				checkSelfNotify(c.Context(), rep, cfg, notifyTarget, notifyKey)
+			}
 
 			var serverUp bool
 			if !skipAPI {
@@ -116,6 +127,9 @@ Exits non-zero when a check fails.`,
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&selfNotify, "notify", false, "perform an authenticated self-NOTIFY using local tsigKeys and notify.source")
+	cmd.Flags().StringVar(&notifyTarget, "notify-target", "", "UDP host:port reachable from this node (defaults to its first UDP DNS listener)")
+	cmd.Flags().StringVar(&notifyKey, "notify-key", "", "configured tsigKeys name for self-NOTIFY (defaults to the first entry; no key fallback)")
 	cmd.Flags().BoolVar(&skipAPI, "skip-api", false, "do not contact the API server")
 	cmd.Flags().BoolVar(&skipPorts, "skip-ports", false, "do not test whether listener ports can be bound")
 	cmd.Flags().StringVar(&vipRunDir, "vip-run-dir", keepalived.DefaultRunDir, "run directory shared with `kudurru vip run` (legacy-mode marker)")
@@ -259,6 +273,8 @@ func (o *cliOpts) checkAPI(ctx context.Context, rep *doctorReport, cfg *config.C
 	}
 	rep.ok("token", "%s %s, roles %s", me.Principal.Kind, firstNonEmpty(me.Principal.Name, me.Principal.ID), firstNonEmpty(strings.Join(me.Roles, ","), "none"))
 
+	checkAnchors(ctx, rep, c, cfg)
+
 	ds, err := diagnoses(ctx, c)
 	if err != nil {
 		if apiclient.IsStatus(err, 403) {
@@ -268,10 +284,13 @@ func (o *cliOpts) checkAPI(ctx context.Context, rep *doctorReport, cfg *config.C
 		}
 		return true
 	}
-	errs := 0
+	errs, warns := 0, 0
 	for _, d := range ds {
-		if severityRank(d.Severity) == 0 {
+		switch severityRank(d.Severity) {
+		case 0:
 			errs++
+		case 1:
+			warns++
 		}
 	}
 	switch {
@@ -279,6 +298,8 @@ func (o *cliOpts) checkAPI(ctx context.Context, rep *doctorReport, cfg *config.C
 		rep.ok("diagnoses", "none")
 	case errs > 0:
 		rep.fail("diagnoses", "%d messages, %d errors", len(ds), errs)
+	case warns == 0:
+		rep.ok("diagnoses", "%d messages, none a warning", len(ds))
 	default:
 		rep.warn("diagnoses", "%d messages", len(ds))
 	}
@@ -421,4 +442,37 @@ func checkDatabase(ctx context.Context, rep *doctorReport, cfg *config.Config) {
 func atoi(s string) int {
 	n, _ := strconv.Atoi(s)
 	return n
+}
+
+// checkAnchors reports managed root trust-anchor status (D369). anchorMode is
+// a cluster setting: a joined member takes it from the primary's image, so its
+// own file may not set it. The check therefore asks the node and decides from
+// the effective mode the node reports; the host file decides only when the
+// node does not say. A node without the route is a warning when the host
+// declares managed anchors, and silent otherwise.
+func checkAnchors(ctx context.Context, rep *doctorReport, c *apiclient.Client, cfg *config.Config) {
+	hostManaged := cfg.Upstreams.Recursion.AnchorMode == config.RootAnchorsManaged
+	var status api.RootAnchorStatus
+	if err := c.Get(ctx, "/cluster/anchors", nil, &status); err != nil {
+		if hostManaged {
+			rep.warn("anchors", "status unavailable: %v", err)
+		}
+		return
+	}
+	if status.AnchorMode != string(config.RootAnchorsManaged) && (status.AnchorMode != "" || !hostManaged) {
+		return
+	}
+	switch {
+	case status.Owner.Quarantined:
+		rep.fail("anchors", "every trusted root key is lost (generation %d)", status.Owner.Generation)
+	case status.Local != nil && status.Local.Terminal:
+		rep.fail("anchors", "root-anchor output is terminal on this member")
+	case len(status.Warnings) > 0:
+		rep.warn("anchors", "%s, %d keys, updater %s, supervisor %s", status.Owner.Phase, len(status.Owner.Keys), status.Updater.State, status.Supervisor.State)
+	default:
+		rep.ok("anchors", "%s, %d keys, updater %s, supervisor %s", status.Owner.Phase, len(status.Owner.Keys), status.Updater.State, status.Supervisor.State)
+	}
+	for _, w := range status.Warnings {
+		rep.say("  WARNING anchors: %s\n", w)
+	}
 }

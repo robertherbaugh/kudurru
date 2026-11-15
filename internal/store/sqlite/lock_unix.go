@@ -16,7 +16,7 @@ import (
 type fileLock struct{ f *os.File }
 
 func acquireLock(path string) (*fileLock, error) {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) // #nosec G304 -- derived from the operator-supplied data path
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) // #nosec G304 G703 -- derived only from the operator-supplied database path, never request input
 	if err != nil {
 		return nil, fmt.Errorf("store/sqlite: open lock %s: %w", path, err)
 	}

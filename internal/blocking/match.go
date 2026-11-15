@@ -1,6 +1,7 @@
 package blocking
 
 import (
+	"math/bits"
 	"net/netip"
 
 	"github.com/robertherbaugh/kudurru/internal/blocking/matcher"
@@ -23,6 +24,8 @@ func NormalizeName(qname string) string {
 // entries. Rendering the rule text is deferred to Rule so lookups do not
 // allocate.
 type Match struct {
+	// Text preserves the full slow-rule syntax and modifiers for provenance.
+	Text      string
 	Kind      parser.Kind
 	Syntax    parser.Syntax
 	Pattern   string
@@ -32,6 +35,9 @@ type Match struct {
 // Rule renders the matched rule as list text, e.g. "||ads.example^" or
 // "@@*.cdn.example"; it is empty for the zero Match.
 func (m Match) Rule() string {
+	if m.Text != "" {
+		return m.Text
+	}
 	if m.Kind == 0 {
 		return ""
 	}
@@ -50,13 +56,13 @@ type chain struct {
 // match checks a normalised name with h == matcher.Hash(name).
 func (c *chain) match(name string, h uint64) (Match, bool) {
 	if tag, ok := c.exact.MatchHash(name, h); ok {
-		return Match{Kind: parser.KindExact, Syntax: parser.Syntax(tag), Pattern: name, Exception: c.exception}, true
+		return Match{Kind: parser.KindExact, Syntax: firstSyntax(tag), Pattern: name, Exception: c.exception}, true
 	}
 	if base, tag, ok := c.suffix.MatchHash(name, h); ok {
-		return Match{Kind: parser.KindSuffix, Syntax: parser.Syntax(tag), Pattern: base, Exception: c.exception}, true
+		return Match{Kind: parser.KindSuffix, Syntax: firstSyntax(tag), Pattern: base, Exception: c.exception}, true
 	}
 	if src, tag, ok := c.regex.Match(name); ok {
-		return Match{Kind: parser.KindRegex, Syntax: parser.Syntax(tag), Pattern: src, Exception: c.exception}, true
+		return Match{Kind: parser.KindRegex, Syntax: firstSyntax(tag), Pattern: src, Exception: c.exception}, true
 	}
 	return Match{}, false
 }
@@ -66,7 +72,7 @@ func (c *chain) matchIP(a netip.Addr) (Match, bool) {
 	if !ok {
 		return Match{}, false
 	}
-	return Match{Kind: parser.KindIP, Syntax: parser.Syntax(tag), Pattern: a.Unmap().WithZone("").String(), Exception: c.exception}, true
+	return Match{Kind: parser.KindIP, Syntax: firstSyntax(tag), Pattern: a.Unmap().WithZone("").String(), Exception: c.exception}, true
 }
 
 func (c *chain) entries() int {
@@ -75,4 +81,11 @@ func (c *chain) entries() int {
 
 func (c *chain) bytes() int {
 	return c.exact.Bytes() + c.suffix.Bytes() + c.regex.Bytes() + c.ips.Bytes()
+}
+
+// Syntax tags are bitsets so collapsing equivalent fast entries cannot erase
+// an uncanceled alternate spelling when another selected list has badfilter.
+func syntaxMask(s parser.Syntax) uint8 { return 1 << (s - 1) }
+func firstSyntax(mask uint8) parser.Syntax {
+	return parser.Syntax(bits.TrailingZeros8(mask) + 1) //nolint:gosec // nonzero uint8 masks give a syntax in [1,8]
 }

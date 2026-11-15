@@ -21,7 +21,11 @@ type migrationAdoptInput struct {
 
 func (s *Server) registerMigrationAdoption() {
 	register(s, operation(http.MethodGet, "/imports/existing", "listExistingImports", "Find previous API imports without a migration run", "imports"), perm{resource: "settings", verb: "write"}, func(ctx context.Context, _ *struct{}) (*migrationExistingOutput, error) {
-		list, err := s.opts.Store.List(ctx, "DNSZone", store.ListOptions{})
+		reader, err := s.migrationReader(ctx)
+		if err != nil {
+			return nil, err
+		}
+		list, err := reader.List(ctx, "DNSZone", store.ListOptions{})
 		if err != nil {
 			return nil, storeError(err)
 		}
@@ -36,11 +40,18 @@ func (s *Server) registerMigrationAdoption() {
 			if err := s.authorizeWrite(ctx, k, writeRequest{kind: k, body: body}); err != nil {
 				continue
 			}
-			items = append(items, MigrationAuthorityChange{Name: z.Name, Namespace: z.Namespace, ZoneName: z.Spec.ZoneName, ResourceVersion: z.ResourceVersion, Nameservers: append([]string{}, z.Spec.Nameservers...), Primary: zonePrimary(z)})
+			items = append(items, MigrationAuthorityChange{Name: z.Name, UID: string(z.UID), Namespace: z.Namespace, ZoneName: z.Spec.ZoneName, ResourceVersion: z.ResourceVersion, Nameservers: append([]string{}, z.Spec.Nameservers...), Primary: zonePrimary(z)})
 		}
 		return &migrationExistingOutput{Body: newList(items, "")}, nil
 	})
 	register(s, operation(http.MethodPost, "/imports/adopt", "adoptExistingImports", "Track reviewed previous imports without reimporting records", "imports"), perm{resource: "settings", verb: "write"}, func(ctx context.Context, in *migrationAdoptInput) (*importApplyOutput, error) {
+		if s.currentMigrations() {
+			result, err := s.adoptCurrentMigration(ctx, in.Body.Zones)
+			if err != nil {
+				return nil, err
+			}
+			return &importApplyOutput{Body: result}, nil
+		}
 		if err := s.readOnly(); err != nil {
 			return nil, err
 		}

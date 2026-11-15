@@ -35,20 +35,26 @@ const watchBuffer = 256
 // initial Added events include every write that completed before Watch was
 // called, as with the other drivers.
 //
-// opts.ResourceVersion is accepted but the informer always replays its
-// current state as Added: consumers treat Added as an upsert (level-
-// triggered, compaction-safe). Informer resyncs (same resourceVersion) are
-// not forwarded. The watch ends on Stop, when ctx is done, or on Close.
+// A nonempty ResourceVersion instead resumes exact server event history
+// through a direct watch (watch_resume.go), without replaying current objects.
+// Informer resyncs (same resourceVersion) are not forwarded. The watch ends
+// on Stop, when ctx is done, or on Close.
 func (s *Store) Watch(ctx context.Context, kind store.Kind, opts store.WatchOptions) (store.Watcher, error) {
 	if s.isClosed() {
 		return nil, store.ErrClosed
 	}
 	if ki, ok := s.internal.get(kind); ok {
+		if opts.ResourceVersion != "" {
+			return s.resumeWatch(ctx, ki, opts, true)
+		}
 		return s.watchInternal(ctx, ki, opts)
 	}
 	ki, err := s.kinds.get(kind)
 	if err != nil {
 		return nil, err
+	}
+	if opts.ResourceVersion != "" {
+		return s.resumeWatch(ctx, ki, opts, false)
 	}
 	inf, err := s.cache.GetInformer(ctx, ki.newObject(), cache.BlockUntilSynced(false))
 	if err != nil {
@@ -202,6 +208,7 @@ type watcher struct {
 
 	mu      sync.RWMutex
 	stopped bool
+	err     error
 	once    sync.Once
 }
 
@@ -281,4 +288,21 @@ func (w *watcher) OnDelete(obj any) {
 		obj = t.Obj
 	}
 	w.emit(store.Deleted, obj)
+}
+
+// Err reports a terminal server/decoding error for a direct resumed watch.
+// It is stable after ResultChan closes; explicit Stop and cancellation are nil.
+func (w *watcher) Err() error {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.err
+}
+
+func (w *watcher) fail(err error) {
+	w.mu.Lock()
+	if !w.stopped {
+		w.err = err
+	}
+	w.mu.Unlock()
+	w.Stop()
 }

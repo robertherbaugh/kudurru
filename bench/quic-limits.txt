@@ -1,0 +1,27 @@
+# Initial socket/persistence calibration: first five-process Ubicloud recording.
+# Source 9cc2ae0423070fc514c94a25ab5b92e3816889e7; procs 6; see calibration/ubicloud8-sockets-persist-20261108/.
+# Original limits/baselines unchanged. Required metrics cannot disappear.
+require ^BenchmarkQUICSockets/doh3/sockets=1$ B/op
+limit ^BenchmarkQUICSockets/doh3/sockets=1$ B/op 21884.400000000001
+require ^BenchmarkQUICSockets/doh3/sockets=1$ allocs/op
+limit ^BenchmarkQUICSockets/doh3/sockets=1$ allocs/op 314.39999999999998
+require ^BenchmarkQUICSockets/doh3/sockets=1$ ns/op
+limit ^BenchmarkQUICSockets/doh3/sockets=1$ ns/op 45196.800000000003
+require ^BenchmarkQUICSockets/doh3/sockets=4$ B/op
+limit ^BenchmarkQUICSockets/doh3/sockets=4$ B/op 21870
+require ^BenchmarkQUICSockets/doh3/sockets=4$ allocs/op
+limit ^BenchmarkQUICSockets/doh3/sockets=4$ allocs/op 314.39999999999998
+require ^BenchmarkQUICSockets/doh3/sockets=4$ ns/op
+limit ^BenchmarkQUICSockets/doh3/sockets=4$ ns/op 42603.599999999999
+require ^BenchmarkQUICSockets/doq/sockets=1$ B/op
+limit ^BenchmarkQUICSockets/doq/sockets=1$ B/op 12046.799999999999
+require ^BenchmarkQUICSockets/doq/sockets=1$ allocs/op
+limit ^BenchmarkQUICSockets/doq/sockets=1$ allocs/op 165.59999999999999
+require ^BenchmarkQUICSockets/doq/sockets=1$ ns/op
+limit ^BenchmarkQUICSockets/doq/sockets=1$ ns/op 34975.199999999997
+require ^BenchmarkQUICSockets/doq/sockets=4$ B/op
+limit ^BenchmarkQUICSockets/doq/sockets=4$ B/op 12034.799999999999
+require ^BenchmarkQUICSockets/doq/sockets=4$ allocs/op
+limit ^BenchmarkQUICSockets/doq/sockets=4$ allocs/op 165.59999999999999
+require ^BenchmarkQUICSockets/doq/sockets=4$ ns/op
+limit ^BenchmarkQUICSockets/doq/sockets=4$ ns/op 31488

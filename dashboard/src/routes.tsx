@@ -6,6 +6,7 @@ import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import {
   Activity,
   BookLock,
+  Boxes,
   Gauge,
   Globe,
   History,
@@ -14,6 +15,7 @@ import {
   Monitor,
   MonitorSmartphone,
   Network,
+  Plug,
   Router,
   Scale,
   ScrollText,
@@ -67,6 +69,7 @@ const Policies = lazy(() => import('./pages/PoliciesPage'));
 const PolicyDetail = lazy(() => import('./pages/PolicyDetailPage'));
 const GroupDetail = lazy(() => import('./pages/GroupDetailPage'));
 const ClientDetail = lazy(() => import('./pages/ClientDetailPage'));
+const Inventory = lazy(() => import('./pages/InventoryPage'));
 const Zones = lazy(() => import('./pages/ZonesPage'));
 const ZoneDetail = lazy(() => import('./pages/ZoneDetailPage'));
 const Upstreams = lazy(() => import('./pages/UpstreamsPage'));
@@ -82,6 +85,8 @@ const Messages = lazy(() => import('./pages/MessagesPage'));
 const Access = lazy(() => import('./pages/AccessPage'));
 const Audit = lazy(() => import('./pages/AuditPage'));
 const License = lazy(() => import('./pages/LicensePage'));
+const Integrations = lazy(() => import('./pages/IntegrationsPage'));
+const IntegrationDetail = lazy(() => import('./pages/IntegrationDetailPage'));
 const Requests = lazy(() => import('./pages/RequestsPage'));
 const RequestDetail = lazy(() => import('./pages/RequestDetailPage'));
 
@@ -99,6 +104,7 @@ export const ROUTES: RouteDef[] = [
   { path: '/groups/new', navKey: 'groups', label: 'New group', section: 'Filtering', icon: Users, page: newRedirect('/groups'), hidden: true },
   { path: '/groups/:ns/:name', navKey: 'groups', label: 'Group', section: 'Filtering', icon: Users, page: GroupDetail, hidden: true },
   { path: '/clients', navKey: 'clients', label: 'Clients', section: 'Filtering', icon: Monitor, page: Clients, scoped: true },
+  { path: '/inventory', navKey: 'inventory', label: 'Inventory', section: 'Filtering', icon: Boxes, page: Inventory },
   { path: '/clients/:key', navKey: 'clients', label: 'Client', section: 'Filtering', icon: Monitor, page: ClientDetail, scoped: true, hidden: true },
   { path: '/policies', navKey: 'policies', label: 'Policies', section: 'Filtering', icon: Scale, page: Policies },
   { path: '/policies/new', navKey: 'policies', label: 'New policy', section: 'Filtering', icon: Scale, page: newRedirect('/policies'), hidden: true },
@@ -113,6 +119,8 @@ export const ROUTES: RouteDef[] = [
   { path: '/dhcp/:scope', navKey: 'dhcp', label: 'DHCP scope', section: 'DHCP', icon: Router, page: DHCPScope, hidden: true },
   { path: '/leases', navKey: 'leases', label: 'Leases', section: 'DHCP', icon: MonitorSmartphone, page: DHCPLeases },
   { path: '/nodes', navKey: 'nodes', label: 'Nodes', section: 'System', icon: Server, page: Nodes },
+  { path: '/integrations', navKey: 'integrations', label: 'Integrations', section: 'System', icon: Plug, page: Integrations },
+  { path: '/integrations/:ns/:name', navKey: 'integrations', label: 'Integration', section: 'System', icon: Plug, page: IntegrationDetail, hidden: true },
   { path: '/settings', navKey: 'settings', label: 'Settings', section: 'System', icon: Settings, page: SettingsPage },
   { path: '/tools', navKey: 'tools', label: 'Tools', section: 'System', icon: Wrench, page: Tools },
   { path: '/tools/migrations/:id', navKey: 'tools', label: 'Migration run', section: 'System', icon: Wrench, page: MigrationRun, hidden: true },

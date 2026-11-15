@@ -9,10 +9,16 @@ import { CONTENT_CATEGORIES, contentListName, contentURL } from './contentCatego
 import { formatExact } from './format';
 import { listEntryError } from './objectSchemas';
 
-/** entries: the structured entries of the dashboard's allow and deny lists (ui-*). */
-export type SourceKind = 'url' | 'inline' | 'configMap' | 'entries';
+/** entries: the structured entries of the dashboard's allow and deny lists (ui-*); rpz: an RPZ feed each node transfers. */
+export type SourceKind = 'url' | 'inline' | 'configMap' | 'entries' | 'rpz';
+
+/** An RPZ feed source: an rpz block or format rpz (blocking.IsRPZSource, so a malformed one still counts). */
+export function isRPZSource(src: ListSource): boolean {
+  return !!src.rpz || src.format === 'rpz';
+}
 
 export function sourceKind(src: ListSource): SourceKind {
+  if (isRPZSource(src)) return 'rpz';
   if (src.url) return 'url';
   if (src.configMapRef) return 'configMap';
   if (src.entries) return 'entries';
@@ -29,10 +35,12 @@ export function enabledEntriesText(st: Pick<SourceStatus, 'entries' | 'excluded'
 
 /**
  * The name status.sources and the entries API use for source i: its name,
- * else its URL, else configmap/<name>, else inline-<i> (blocking.SourceName).
+ * else rpz-<i> for an RPZ feed, else its URL, else configmap/<name>, else
+ * inline-<i> (blocking.SourceName).
  */
 export function sourceName(i: number, src: ListSource): string {
   if (src.name) return src.name;
+  if (isRPZSource(src)) return `rpz-${i}`;
   if (src.url) return src.url;
   if (src.configMapRef) return `configmap/${src.configMapRef.name}`;
   return `inline-${i}`;
@@ -110,6 +118,7 @@ export const RESPONSE_OPTIONS: EnumOption[] = [
 
 /** Labels of a format value for tables. */
 export function formatLabel(f: ListFormat | undefined): string {
+  if (f === 'rpz') return 'RPZ';
   return FORMAT_OPTIONS.find((o) => o.value === (f ?? 'auto'))?.label ?? f ?? 'auto';
 }
 

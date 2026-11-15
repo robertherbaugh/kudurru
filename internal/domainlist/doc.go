@@ -6,7 +6,10 @@
 // The entries live on BlockLists, as structured entries of the source "ui"
 // (spec.sources[].entries): ui-allow and ui-deny hold the entries for
 // everyone, ui-allow-<group> and ui-deny-<group> those scoped to one
-// ClientGroup (in the group's namespace). An everyone list is referenced
+// ClientGroup (in the group's namespace). Group lists also record explicit
+// spec.clientGroupRefs; policy selection enforces that original winning
+// membership independently of attachment, including shared policies and legacy
+// group-list names. An everyone list is referenced
 // from every policy of its namespace kudurru may edit, a group list from
 // the policies whose clientGroupRefs name the group (allowListRefs for
 // allow, blockListRefs for deny), as unblock approvals did before; a

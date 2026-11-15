@@ -80,7 +80,6 @@ const (
 type Privacy struct {
 	mode      Mode
 	pseudonym bool
-	clock     clock.PassiveClock
 
 	excludeExact  map[string]struct{}
 	excludeSuffix []string // ".example.com" for "*.example.com"
@@ -89,7 +88,14 @@ type Privacy struct {
 	excludeNames  map[string]struct{}
 	sudn          bool
 
+	keys *pseudonymKeys
+}
+
+// pseudonymKeys is process-local daily identity shared only by reloads that
+// preserve the privacy transform. It is never persisted or exported.
+type pseudonymKeys struct {
 	mu       sync.Mutex
+	clock    clock.PassiveClock
 	keyDay   int64
 	dailyKey []byte
 }
@@ -119,13 +125,13 @@ func NewPrivacy(o PrivacyOptions) (*Privacy, error) {
 	p := &Privacy{
 		mode:         o.Mode,
 		pseudonym:    o.Pseudonym,
-		clock:        o.Clock,
+		keys:         &pseudonymKeys{clock: o.Clock},
 		excludeExact: map[string]struct{}{},
 		excludeNames: map[string]struct{}{},
 		sudn:         o.ExcludeSUDN,
 	}
-	if p.clock == nil {
-		p.clock = clock.RealClock{}
+	if p.keys.clock == nil {
+		p.keys.clock = clock.RealClock{}
 	}
 	for _, d := range o.ExcludeDomains {
 		d = strings.TrimSpace(d)
@@ -297,15 +303,16 @@ func (p *Privacy) Pseudonym(a netip.Addr) string {
 // pseudonymFor returns "anon-" and 12 hex digits of HMAC-SHA256(daily key,
 // address); the key rotates at UTC midnight.
 func (p *Privacy) pseudonymFor(a netip.Addr) string {
-	day := p.clock.Now().UTC().Unix() / 86400
-	p.mu.Lock()
-	if p.dailyKey == nil || day != p.keyDay {
+	state := p.keys
+	state.mu.Lock()
+	day := state.clock.Now().UTC().Unix() / 86400
+	if state.dailyKey == nil || day != state.keyDay {
 		k := make([]byte, 32)
 		_, _ = rand.Read(k) // crypto/rand.Read never fails (Go 1.24+)
-		p.dailyKey, p.keyDay = k, day
+		state.dailyKey, state.keyDay = k, day
 	}
-	mac := hmac.New(sha256.New, p.dailyKey)
-	p.mu.Unlock()
+	mac := hmac.New(sha256.New, state.dailyKey)
+	state.mu.Unlock()
 	b := a.As16()
 	mac.Write(b[:])
 	return PseudonymPrefix + hex.EncodeToString(mac.Sum(nil)[:6])

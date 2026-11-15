@@ -51,7 +51,7 @@ func newCache(t testing.TB, st store.Store, opts Options) *Cache {
 var _ health.ReadyFunc = (*Cache)(nil).Ready
 
 func TestDefaultKinds(t *testing.T) {
-	want := []store.Kind{"BlockList", "ClientGroup", "DNSRecordSet", "DNSZone", "Policy"}
+	want := []store.Kind{"BlockList", "ClientGroup", "DNSRecordSet", "DNSZone", "Integration", "Kudurru", "Policy"}
 	if got := DefaultKinds(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("DefaultKinds() = %v, want %v", got, want)
 	}
@@ -537,5 +537,53 @@ func TestStateString(t *testing.T) {
 		if s.String() != want {
 			t.Errorf("%d.String() = %q", s, s.String())
 		}
+	}
+}
+
+// SetInput hands builders a named external input (D384): it triggers a
+// rebuild, the builder sees the value and InputChanged for that name only,
+// and a later rebuild for another reason reports it unchanged.
+func TestSetInput(t *testing.T) {
+	st := memory.New()
+	c := newCache(t, st, Options{Debounce: time.Millisecond})
+	type view struct {
+		value          any
+		changed, other bool
+	}
+	var mu sync.Mutex
+	var seen []view
+	if err := c.Register(NewBuilder("inputs", func(s ObjectSet) (any, error) {
+		mu.Lock()
+		seen = append(seen, view{s.Input("grants"), s.InputChanged("grants"), s.InputChanged("other")})
+		mu.Unlock()
+		return s.Input("grants"), nil
+	})); err != nil {
+		t.Fatal(err)
+	}
+	startCache(t, c)
+	waitState(t, c, Live)
+	eventually(t, 5*time.Second, "the first build", func() bool { mu.Lock(); defer mu.Unlock(); return len(seen) > 0 })
+	c.SetInput("grants", []string{"a"})
+	eventually(t, 5*time.Second, "the input", func() bool {
+		v, ok := View[[]string](c.Snapshot(), "inputs")
+		return ok && len(v) == 1 && v[0] == "a"
+	})
+	mu.Lock()
+	last := seen[len(seen)-1]
+	mu.Unlock()
+	if !last.changed || last.other {
+		t.Fatal("InputChanged on the rebuild SetInput caused", last)
+	}
+	apply(t, st, policy("apps", "kids", "ads"))
+	eventually(t, 5*time.Second, "a rebuild for another reason", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		l := seen[len(seen)-1]
+		return len(seen) > 2 && !l.changed
+	})
+	mu.Lock()
+	defer mu.Unlock()
+	if v, _ := seen[len(seen)-1].value.([]string); len(v) != 1 || v[0] != "a" {
+		t.Fatal("the input was not kept across rebuilds", seen[len(seen)-1])
 	}
 }

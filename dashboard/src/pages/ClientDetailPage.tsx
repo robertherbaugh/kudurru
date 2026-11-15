@@ -4,7 +4,7 @@
 // default group), which policy decides for it right now and why (priority,
 // schedule, enabled, the fallback policy), its recent queries with per-row
 // allow/deny, and typed shortcuts: add it to a group, allow or deny a
-// domain.
+// domain, and block the address at every dnsdist edge until an expiry (D388).
 import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
@@ -20,9 +20,10 @@ import { Tooltip } from '@astryxdesign/core/Tooltip';
 import { VStack } from '@astryxdesign/core/VStack';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { qk, useApi, useCan, useScopeParams } from '../api/context';
+import { qk, useApi, useCan, usePrimaryOnly, useScopeParams } from '../api/context';
 import type { ClientGroup, QueryRow } from '../api/types';
 import { writeSummary } from '../components/domains/DomainEntryDialogs';
+import { EdgeBlockButton } from '../components/EdgeBlocks';
 import { ErrorBanner, Loading, useNotify } from '../components/Feedback';
 import { matcherFor } from '../components/fields/MatchersField';
 import { ObjectRefPicker } from '../components/fields/ObjectRefPicker';
@@ -32,7 +33,7 @@ import { QueryLogTable } from '../components/QueryLogTable';
 import { ScopeNote } from '../components/ScopeSelector';
 import { formatDateTime, formatExact, formatPercent, formatRelative } from '../lib/format';
 import { objectOwnership } from '../lib/managedBy';
-import { listEntryError } from '../lib/objectSchemas';
+import { ipError, listEntryError } from '../lib/objectSchemas';
 import { identifyClient, objectHref, refOfObject, scheduleSummary, selectPolicy, shortRef, splitRef, TIER_TEXT, type Selection } from '../lib/policies';
 import { useDeriveContext } from '../lib/usePolicyData';
 import type { PageProps } from '../routes';
@@ -113,7 +114,9 @@ export default function ClientDetailPage({ params }: PageProps) {
 
   const writableGroups = ctx.groups.filter((g) => objectOwnership(g).editable && !membership.groups.includes(refOfObject(g)));
   const domainErr = domain.trim() ? listEntryError(domain.trim()) : null;
-  const canLists = can('blocklists', 'write');
+  const primaryOnly = usePrimaryOnly();
+  const listsTip = can('blocklists', 'write') ? primaryOnly('createAllowlistEntries') : 'Needs blocklists.write';
+  const canLists = !listsTip;
   const blockedPct = c && c.count ? (c.blocked / c.count) * 100 : undefined;
 
   return (
@@ -121,7 +124,12 @@ export default function ClientDetailPage({ params }: PageProps) {
       <PageHeader
         title={display ?? key}
         back={{ href: '/clients', label: 'Clients' }}
-        actions={clients.data?.scope ? <ScopeNote scope={clients.data} /> : null}
+        actions={
+          <>
+            {clients.data?.scope ? <ScopeNote scope={clients.data} /> : null}
+            {key && ipError(key) === null ? <EdgeBlockButton address={key} name={display} size="md" variant="secondary" /> : null}
+          </>
+        }
         meta={
           <>
             {display ? <Code size="inherit">{key}</Code> : null}
@@ -222,8 +230,8 @@ export default function ClientDetailPage({ params }: PageProps) {
         <VStack as="form" gap={2} onSubmit={(e: FormEvent) => e.preventDefault()}>
           <TextField label="Domain" value={domain} onChange={setDomain} placeholder="ads.example.com" mono error={domainErr ?? undefined} />
           <HStack gap={2} wrap="wrap">
-            <Button label="Allow" variant="secondary" isDisabled={!domain.trim() || !!domainErr || !canLists} tooltip={canLists ? undefined : 'Needs blocklists.write'} onClick={() => quick.mutate({ action: 'allow', domain: domain.trim() })} />
-            <Button label="Deny" variant="secondary" isDisabled={!domain.trim() || !!domainErr || !canLists} tooltip={canLists ? undefined : 'Needs blocklists.write'} onClick={() => quick.mutate({ action: 'deny', domain: domain.trim() })} />
+            <Button label="Allow" variant="secondary" isDisabled={!domain.trim() || !!domainErr || !canLists} tooltip={listsTip} onClick={() => quick.mutate({ action: 'allow', domain: domain.trim() })} />
+            <Button label="Deny" variant="secondary" isDisabled={!domain.trim() || !!domainErr || !canLists} tooltip={listsTip} onClick={() => quick.mutate({ action: 'deny', domain: domain.trim() })} />
           </HStack>
         </VStack>
       </Panel>
@@ -239,7 +247,7 @@ export default function ClientDetailPage({ params }: PageProps) {
         </HStack>
         {recent.error ? <ErrorBanner error={recent.error} title="The query log could not be read" /> : null}
         {recent.isLoading ? <Loading /> : null}
-        {recent.data ? <QueryLogTable rows={recent.data.queries} hasMore={false} loadingMore={false} onLoadMore={() => undefined} canAct={canLists} onAction={(row, a) => rowAction.mutate({ row, action: a })} /> : null}
+        {recent.data ? <QueryLogTable rows={recent.data.queries} hasMore={false} loadingMore={false} onLoadMore={() => undefined} canAct={canLists} actReason={listsTip} onAction={(row, a) => rowAction.mutate({ row, action: a })} /> : null}
       </VStack>
     </Page>
   );

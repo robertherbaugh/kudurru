@@ -1,0 +1,9 @@
+# Opt-in override; stop and migrate existing local.db before enabling.
+services:
+  kudurru:
+    environment:
+      KUDURRU_NODE__LOCALDIR: /var/lib/kudurru-local
+    volumes:
+      - kudurru-local:/var/lib/kudurru-local
+volumes:
+  kudurru-local: {}

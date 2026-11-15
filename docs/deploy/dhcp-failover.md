@@ -103,6 +103,13 @@ before restarting it. The failed replica stops voting; the remaining two can
 continue. A node with lost Raft state and a persisted initialized identity
 refuses automatic bootstrap. Do not erase that guard.
 
+A successful peer connection or heartbeat does not prove state has caught up.
+After a sustained outage, the current Raft implementation can wait up to 10.24
+seconds between log-replication attempts; snapshot transfer and durable apply
+take additional time. The individual command timeout is not a voter-recovery
+deadline. Verify applied/committed indexes and retained lease state before
+declaring the restarted voter synchronized.
+
 Changing shared topology or voter identity requires a coordinated migration:
 stop all old allocators, retain complete backups and export current leases,
 prepare compatible scopes on fresh directories with a new cluster ID, and

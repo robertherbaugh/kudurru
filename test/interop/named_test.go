@@ -28,19 +28,11 @@ type named struct {
 	done chan struct{}
 }
 
-// namedBinary returns the named executable or skips the test.
+// namedBinary returns the named executable or skips the test; with
+// KUDURRU_REQUIRE_BIND the test fails instead (kudurrutest.Named).
 func namedBinary(t *testing.T) string {
 	t.Helper()
-	for _, p := range []string{os.Getenv("KUDURRU_NAMED"), "named", "/usr/sbin/named", "/usr/local/sbin/named"} {
-		if p == "" {
-			continue
-		}
-		if path, err := exec.LookPath(p); err == nil {
-			return path
-		}
-	}
-	t.Skip("named (BIND 9) is not installed: dnf install bind / apt-get install bind9")
-	return ""
+	return kudurrutest.Named(t)
 }
 
 // namedOptions is the options block every test instance shares: one
@@ -87,7 +79,8 @@ func startNamed(t *testing.T, bin, dir, conf string, port int) *named {
 	}
 	if err == nil {
 		if out, err := exec.Command(check, path).CombinedOutput(); err != nil { //nolint:gosec // test binary
-			t.Fatalf("named-checkconf: %v\n%s\n%s", err, out, conf)
+			// The configuration can contain TSIG secrets; never print it.
+			t.Fatalf("named-checkconf: %v\n%s", err, out)
 		}
 	}
 	n := &named{dir: dir, addr: fmt.Sprintf("127.0.0.1:%d", port), log: &lockedBuffer{}, done: make(chan struct{})}

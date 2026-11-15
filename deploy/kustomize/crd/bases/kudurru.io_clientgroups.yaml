@@ -83,6 +83,15 @@ spec:
                       == 1'
                 maxItems: 1000
                 type: array
+              rateLimitExempt:
+                description: |-
+                  RateLimitExempt skips UDP per-prefix rate limiting for clients selected
+                  into this group by the winning identification tier. A true value in any
+                  tied group wins; groups in lower tiers do not contribute. This does not
+                  grant authentication or bypass DNS policy, ACLs or message validation.
+                  Typed writes include false so SSA can clear the last spec field without
+                  turning the required spec object into null.
+                type: boolean
               sources:
                 description: ClientGroupSources lets an integration add members (v0.2).
                 properties:

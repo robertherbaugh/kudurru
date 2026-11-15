@@ -7,6 +7,7 @@ import { Badge } from '@astryxdesign/core/Badge';
 import { Banner } from '@astryxdesign/core/Banner';
 import { Button } from '@astryxdesign/core/Button';
 import { Code } from '@astryxdesign/core/Code';
+import { CheckboxInput } from '@astryxdesign/core/CheckboxInput';
 import { Link } from '@astryxdesign/core/Link';
 import { HStack, VStack } from '@astryxdesign/core/Stack';
 import { proportional, Table, type TableColumn } from '@astryxdesign/core/Table';
@@ -145,6 +146,19 @@ export default function GroupDetailPage({ params }: PageProps) {
         onSave={async (d) => {
           await put({ ...group, spec: { ...group.spec, clients: cleanMatchers(d) } });
           notify.success(`Saved the members of ${name}`);
+        }}
+      />
+
+      <EditableSection<boolean>
+        title="UDP rate limit"
+        description="When several groups match at the winning identification tier, an exemption in any of them applies. DNS policies and access rules still apply."
+        value={group.spec.rateLimitExempt ?? false}
+        readOnlyReason={roReason}
+        view={<Text>{group.spec.rateLimitExempt ? 'Members are exempt from the UDP query rate limit.' : 'Members follow the configured UDP query rate limit and global exemptions.'}</Text>}
+        edit={(draft, setDraft) => <CheckboxInput label="Exempt members from the UDP rate limit" value={draft} onChange={setDraft} />}
+        onSave={async (rateLimitExempt) => {
+          await put({ ...group, spec: { ...group.spec, rateLimitExempt } });
+          notify.success(`Saved the UDP rate limit for ${name}`);
         }}
       />
 
@@ -299,7 +313,7 @@ function MatchersView({ matchers }: { matchers: ClientMatcher[] }) {
           <HStack gap={1} vAlign="center" wrap="wrap">
             <Text>{kindLabel(kind)}</Text>
             {kind === 'mac' || kind === 'hostname' || kind === 'nameGlob' ? (
-              <Tooltip content={kind === 'mac' ? 'Matches only when the transport supplies MAC addresses (inventory integrations: v0.2).' : 'No hostname source in this version: never matches.'}>
+              <Tooltip content={kind === 'mac' ? 'Matches only when an inventory integration, such as UniFi, or the built-in DHCP server’s lease of the client’s address supplies this MAC address. On a SQLite cluster a lease MAC counts only on the node whose DHCP server holds the lease.' : 'Matches only when a name source knows the device: the built-in DHCP server, an inventory integration or reverse-PTR lookup.'}>
                 <Badge variant="warning" label="limited" />
               </Tooltip>
             ) : null}

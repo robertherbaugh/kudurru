@@ -21,8 +21,13 @@ type EndpointExt struct {
 	// ExpiresAt removes the record from service after this time.
 	// +optional
 	ExpiresAt *metav1.Time `json:"expiresAt,omitempty"`
-	// View is "public" (published to sinks, never served) or a ClientGroup
-	// name (served only to that group). v0.2.
+	// View is "public" (published to sinks, never served) or the name of a
+	// ClientGroup in the record set's namespace: the endpoint is then served
+	// only to that group's clients, replacing the default RRset of the same
+	// name and type for them, and is never transferred, exported or
+	// published (D403).
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	// +optional
 	View string `json:"view,omitempty"`
 }

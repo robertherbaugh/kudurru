@@ -109,7 +109,7 @@ test.describe('a node without a key', () => {
     expect(refused.status()).toBe(402);
     const body = (await refused.json()) as { error: { key: string; message: string } };
     expect(body.error.key).toBe('license_required');
-    expect(body.error.message).toContain('only the policy default/default can be created');
+    expect(body.error.message).toBe('the current license does not permit creating this Policy');
     // Editing the default is not creating a policy.
     expect((await put('default')).status()).toBe(200);
     expect(await names()).toEqual(['default']);

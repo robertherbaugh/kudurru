@@ -1,0 +1,26 @@
+apiVersion: kudurru.io/v1alpha1
+kind: DNSRecordSet
+metadata:
+  name: nas
+  namespace: apps
+  labels:
+    kudurru.io/publish: cloudflare
+spec:
+  zoneRef:
+    name: home-example-com
+  endpoints:
+    - dnsName: nas.home.example.com
+      recordType: A
+      targets: ["10.0.0.20"]
+      recordTTL: 300
+      kudurru:
+        comment: Synology
+    - dnsName: nas.home.example.com
+      recordType: HTTPS
+      targets: ["1 . alpn=h2,h3"]
+    # v0.2: published to Cloudflare, never served internally.
+    # - dnsName: nas.home.example.com
+    #   recordType: CNAME
+    #   targets: [tunnel-7f3a.cfargotunnel.com]
+    #   providerSpecific: [{ name: cloudflare/proxied, value: "true" }]
+    #   kudurru: { view: public }

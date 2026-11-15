@@ -14,6 +14,14 @@ test('migration history cuts over served NS and SOA through the dashboard', asyn
   });
   expect(result.items[0]?.result).toBe('created');
   try {
+    // Review the settled primary's original RV. Its initial Ready status write
+    // is a real object change and correctly invalidates an earlier preview.
+    await expect.poll(async () => {
+      const zone = await api.get<DNSZone>(`/objects/dnszones/${name}`);
+      if (zone.status !== 200) return false;
+      const { metadata, status } = zone.body;
+      return status?.observedGeneration === metadata.generation && status?.conditions?.some((c) => c.type === 'Ready' && c.status === 'True' && c.observedGeneration === metadata.generation) === true;
+    }).toBe(true);
     await page.goto('/tools'); await settle(page);
     await page.getByRole('button', { name: `Review migration ${result.runID}` }).click();
     await page.getByRole('button', { name: 'Decommission source nameservers' }).click();
@@ -28,9 +36,17 @@ test('migration history cuts over served NS and SOA through the dashboard', asyn
     await expect(dialog).toContainText('dns1.kudurru.test.');
     const screenshots = path.resolve('..', '.context'); fs.mkdirSync(screenshots, { recursive: true });
     await page.screenshot({ path: path.join(screenshots, 'migration-cutover.png') });
+    let cutoverRequests = 0;
+    const cutoverPath = `/api/v1/imports/runs/${result.runID}/decommission`;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === cutoverPath) cutoverRequests++;
+    });
+    const committed = page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === cutoverPath);
     await dialog.getByRole('checkbox', { name: 'I reviewed the nameserver changes' }).check();
     await dialog.getByRole('button', { name: 'Update nameservers' }).click();
+    expect((await committed).status()).toBe(200);
     await expect(page.getByText('Nameservers updated', { exact: true })).toBeVisible();
+    expect(cutoverRequests, 'the original reviewed cutover is submitted exactly once').toBe(1);
     const zone = await api.get<DNSZone>(`/objects/dnszones/${name}`);
     expect(zone.body.spec.nameservers).toEqual(['dns1.kudurru.test.', 'dns2.kudurru.test.']);
     expect(zone.body.spec.soa?.mname).toBe('dns1.kudurru.test.');
@@ -46,7 +62,7 @@ test('migration history cuts over served NS and SOA through the dashboard', asyn
 });
 
 
-test('VIP cutover creates and serves generated nameserver addresses', async ({ page }) => {
+test('VIP cutover creates and serves generated nameserver addresses', async ({ page, pendingReadPaths }) => {
   const api = await adminApi(page);
   const name = `migration-vip-${suffix()}`;
   const domain = `${name}.test.`;
@@ -55,6 +71,14 @@ test('VIP cutover creates and serves generated nameserver addresses', async ({ p
     objects: [{ apiVersion: 'kudurru.io/v1alpha1', kind: 'DNSZone', metadata: { name }, spec: { zoneName: domain, type: 'primary', nameservers: ['old.test.'], soa: { mname: 'old.test.', rname: 'hostmaster.test.' } } }],
   });
   try {
+    // Finish the seed primary's status publication before reviewing its RV.
+    // A later Ready status update correctly invalidates an earlier cutover plan.
+    await expect.poll(async () => {
+      const zone = await api.get<DNSZone>(`/objects/dnszones/${name}`);
+      if (zone.status !== 200) return false;
+      const { metadata, status } = zone.body;
+      return status?.observedGeneration === metadata.generation && status?.conditions?.some((c) => c.type === 'Ready' && c.status === 'True' && c.observedGeneration === metadata.generation) === true;
+    }).toBe(true);
     await page.route('**/api/v1/edge', (route) => route.fulfill({ json: { vips: [{ address: '192.0.2.53/24' }, { address: '2001:db8::53/64' }] } }));
     await page.goto('/tools'); await settle(page);
     await page.getByRole('button', { name: `Review migration ${result.runID}` }).click();
@@ -66,9 +90,30 @@ test('VIP cutover creates and serves generated nameserver addresses', async ({ p
     await expect(dialog.getByRole('table', { name: 'Generated nameserver addresses' })).toContainText(ns);
     await expect(dialog.getByRole('table', { name: 'Generated nameserver addresses' })).toContainText('A 192.0.2.53');
     await page.screenshot({ path: path.resolve('..', '.context', 'migration-vip-cutover.png') });
+    // Cutover commits before the complete serving publication. A subsequent
+    // read can receive the explicit pre-handler generation_pending refusal.
+    // The UI must recover by reading the committed report; never replay cutover.
+    pendingReadPaths.add(`/api/v1/imports/runs/${result.runID}`);
+    let pendingInjected = false;
+    await page.route(new URL(`/api/v1/imports/runs/${result.runID}`, page.url()).href, async (route) => {
+      if (route.request().method() !== 'GET' || pendingInjected) return route.continue();
+      pendingInjected = true;
+      // Deterministically exercise the same pre-handler refusal seen in CI;
+      // every subsequent read reaches the real server and its committed journal.
+      await route.fulfill({ status: 503, contentType: 'application/json', headers: { 'Retry-After': '1' }, json: {
+        error: { key: 'generation_pending', message: 'complete serving generation unavailable' }, took_ms: 0,
+      } });
+    });
+    let cutoverRequests = 0;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === `/api/v1/imports/runs/${result.runID}/decommission`) cutoverRequests++;
+    });
     await dialog.getByRole('checkbox', { name: 'I reviewed the nameserver changes' }).check();
     await dialog.getByRole('button', { name: 'Update nameservers' }).click();
     await expect(page.getByText('Nameservers updated', { exact: true })).toBeVisible();
+    await expect(page.getByText('Cutover 1: completed', { exact: true })).toBeVisible();
+    expect(pendingInjected, 'exercise publication refusal before report recovery').toBe(true);
+    expect(cutoverRequests, 'the committed cutover must never be replayed').toBe(1);
     for (const [record, type, target] of [[domain, 'NS', ns], [domain, 'SOA', ns], [ns, 'A', '192.0.2.53'], [`ns-20010db8000000000000000000000053.${domain}`, 'AAAA', '2001:db8::53']]) {
       await expect.poll(async () => {
         const dns = await api.post<{ answer: string[] }>('/dns/query', { name: record, type });
@@ -78,7 +123,7 @@ test('VIP cutover creates and serves generated nameserver addresses', async ({ p
   } finally { await api.del(`/zones/${name}`); }
 });
 
-test('wizard starts a selected background import with a durable partial-success report', async ({ page }) => {
+test('wizard starts a selected background import with a durable partial-success report', async ({ page, pendingReadPaths }) => {
   const api = await adminApi(page);
   const name = `background-${suffix()}`;
   const skipped = `${name}-skip`;
@@ -101,12 +146,37 @@ test('wizard starts a selected background import with a durable partial-success 
     await expect(dialog).toContainText('2 of 3 objects and 1 settings section selected.');
     await page.screenshot({ path: path.resolve('..', '.context', 'migration-selection.png') });
     await dialog.getByRole('checkbox', { name: 'I reviewed the configuration and migration warnings' }).check();
-    const started = page.waitForResponse((r) => r.url().endsWith('/api/v1/imports/start') && r.request().method() === 'POST');
+    let startRequests = 0;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname === '/api/v1/imports/start') startRequests++;
+    });
+    const listTarget = '/api/v1/imports/runs?limit=25';
+    pendingReadPaths.add(listTarget);
+    const started = page.waitForResponse((r) => r.url().endsWith('/api/v1/imports/start') && r.request().method() === 'POST').then(async (response) => {
+      expect(response.status()).toBe(202);
+      expect(response.request().postData()).not.toContain('transient-source-token');
+      const run = await response.json() as MigrationRun;
+      pendingReadPaths.add(`/api/v1/imports/runs/${run.id}`);
+      return run;
+    });
+    const refusedReads = new Set<string>();
+    for (const pattern of [new URL(listTarget, page.url()).href, '**/api/v1/imports/runs/*']) {
+      await page.route(pattern, async (route) => {
+        if (route.request().method() !== 'GET') return route.continue();
+        // The real start response identifies the original report before either
+        // read is refused. Further reads reach the actual committed journal.
+        await started;
+        const url = new URL(route.request().url());
+        const target = url.pathname + url.search;
+        if (!pendingReadPaths.has(target) || refusedReads.has(target)) return route.continue();
+        refusedReads.add(target);
+        await route.fulfill({ status: 503, contentType: 'application/json', headers: { 'Retry-After': '1' }, json: {
+          error: { key: 'generation_pending', message: 'complete serving generation unavailable' }, took_ms: 0,
+        } });
+      });
+    }
     await dialog.getByRole('button', { name: 'Import configuration' }).click();
-    const response = await started;
-    expect(response.status()).toBe(202);
-    expect(response.request().postData()).not.toContain('transient-source-token');
-    const run = await response.json() as MigrationRun;
+    const run = await started;
     await expect(page).toHaveURL(new RegExp(`/tools/migrations/${run.id}$`));
     await expect(dialog).not.toBeVisible();
     await expect(page.getByText('Import completed with errors', { exact: true })).toBeVisible();
@@ -123,6 +193,8 @@ test('wizard starts a selected background import with a durable partial-success 
     await page.reload(); await settle(page);
     await expect(page.getByText('Import completed with errors', { exact: true })).toBeVisible();
     await expect(page.getByText(/1 succeeded, 1 failed, 0 unconfirmed, 1 not applied, 1 not selected/)).toBeVisible();
+    expect([...refusedReads].sort(), 'exercise both publication gates before durable report recovery').toEqual([...pendingReadPaths].sort());
+    expect(startRequests, 'the background import must be started exactly once').toBe(1);
     await page.setViewportSize({ width: 1280, height: 1400 });
     await page.screenshot({ path: path.resolve('..', '.context', 'migration-results.png'), fullPage: true });
   } finally { await api.del(`/zones/${name}`); }

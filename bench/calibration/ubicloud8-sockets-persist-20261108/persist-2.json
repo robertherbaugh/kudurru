@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "go",
+    "test",
+    "-run",
+    "^$",
+    "-bench",
+    "^BenchmarkPersist200k$",
+    "-benchmem",
+    "-benchtime",
+    "1s",
+    "-count",
+    "1",
+    "-timeout",
+    "30m",
+    "./internal/cache/persist"
+  ],
+  "child_exit_code": 0,
+  "stop_reason": null,
+  "minimum_free_bytes": 137910419456,
+  "pid": 13527,
+  "wall_seconds": 6.825950766000062,
+  "post_free_bytes": 138104152064,
+  "output_bytes": 704,
+  "group_reaped": true
+}

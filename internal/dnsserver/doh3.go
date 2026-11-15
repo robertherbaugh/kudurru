@@ -24,9 +24,7 @@ type doh3Listener struct {
 	qcfg    *quic.Config
 
 	mu    sync.Mutex
-	pc    net.PacketConn
-	tr    *quic.Transport
-	ln    *quic.EarlyListener
+	ln    *quicSockets
 	srv   *http3.Server
 	ready atomic.Bool
 }
@@ -39,7 +37,7 @@ func newDoH3Listener(spec Spec, e *env) (Listener, error) {
 	l := &doh3Listener{
 		spec:    spec,
 		env:     e,
-		handler: &dohHandler{h: e.handler, path: spec.Path, proto: ProtoDoH3.Pipeline(), maxBody: lim.MaxBodyBytes},
+		handler: &dohHandler{h: e.handler, env: e, path: spec.Path, clientIDs: spec.ClientIDs, proto: ProtoDoH3.Pipeline(), maxBody: lim.MaxBodyBytes},
 		qcfg: &quic.Config{
 			MaxIdleTimeout:     lim.QUICIdleTimeout,
 			MaxIncomingStreams: lim.QUICMaxStreams,
@@ -64,10 +62,19 @@ func (l *doh3Listener) Ready() bool { return l.ready.Load() }
 func (l *doh3Listener) Addr() net.Addr {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.pc == nil {
+	if l.ln == nil {
 		return nil
 	}
-	return l.pc.LocalAddr()
+	return l.ln.Addr()
+}
+
+func (l *doh3Listener) Sockets() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.ln == nil {
+		return 0
+	}
+	return len(l.ln.packets)
 }
 
 func (l *doh3Listener) Bind() error {
@@ -75,20 +82,17 @@ func (l *doh3Listener) Bind() error {
 	if err != nil {
 		return err
 	}
-	pc, err := net.ListenPacket("udp", l.spec.Address)
-	if err != nil {
-		return err
-	}
-	tr := &quic.Transport{Conn: pc}
 	// ConfigureTLSConfig sets ALPN h3; the clone keeps GetCertificate, so
 	// rotations still flow through the shared reloader.
-	ln, err := tr.ListenEarly(http3.ConfigureTLSConfig(r.TLSConfig()), l.qcfg)
+	tls := http3.ConfigureTLSConfig(r.TLSConfig())
+	ln, err := listenQUICSockets(l.spec.Address, l.env.sockets, func(tr *quic.Transport) (quicAcceptor, error) {
+		return tr.ListenEarly(tls, l.qcfg)
+	})
 	if err != nil {
-		_ = pc.Close()
 		return err
 	}
 	l.mu.Lock()
-	l.pc, l.tr, l.ln = pc, tr, ln
+	l.ln = ln
 	l.mu.Unlock()
 	return nil
 }
@@ -96,13 +100,11 @@ func (l *doh3Listener) Bind() error {
 func (l *doh3Listener) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.pc == nil {
+	if l.ln == nil {
 		return nil
 	}
-	_ = l.ln.Close()
-	_ = l.tr.Close()
-	err := l.pc.Close()
-	l.pc = nil
+	err := l.ln.closeSockets()
+	l.ln = nil
 	return err
 }
 
@@ -124,6 +126,7 @@ func (l *doh3Listener) Serve(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
+		l.ready.Store(false)
 		sctx, cancel := context.WithTimeout(context.Background(), l.env.limits.ShutdownTimeout)
 		defer cancel()
 		_ = l.srv.Shutdown(sctx)

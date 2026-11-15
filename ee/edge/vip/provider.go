@@ -44,6 +44,8 @@ type VIP struct {
 type Event struct {
 	VIP      string
 	Node     string
+	VRID     int
+	Previous State
 	State    State
 	Priority int
 	At       time.Time

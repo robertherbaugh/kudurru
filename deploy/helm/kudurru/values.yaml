@@ -241,6 +241,16 @@ vip:
     hmacSecret: ""
     # -- Existing Secret with the key vrrp-hmac.
     existingSecret: ""
+    # -- Explicit per-VRID Secret references (release namespace, at most 255).
+    # Nonempty requires EXACT coverage of every VIP VRID and forbids shared
+    # existingSecret/hmacSecret. Only selected keys are mounted, never values.
+    # Key material must be 1-4096 bytes; keepalived validates its syntax.
+    # Changes require coordinated restart, not seamless live key rotation.
+    hmacKeySecrets: []
+    # Example (create these Secrets separately):
+    # hmacKeySecrets:
+    #   - {vrid: 53, secretName: vrrp-a, key: hmac}
+    #   - {vrid: 54, secretName: vrrp-b, key: hmac}
     resources:
       requests:
         cpu: 10m
@@ -326,18 +336,25 @@ probes:
     failureThreshold: 3
 
 persistence:
-  # -- querylog.db on a PVC (never RWX/NFS: SQLite WAL). mode=kubernetes
-  # allows it only with replicaCount=1 because a Deployment's pods would share
-  # the claim; standalone uses a volumeClaimTemplate.
+  # -- enabled always retains the legacy shared data claim in Kubernetes
+  # mode. separate opts into a dedicated querylog directory/volume. Claims are
+  # per-pod StatefulSet templates, including with multiple Kubernetes replicas.
+  # SQLite requires compatible local/block storage, never RWX/NFS.
   querylog:
     enabled: false
+    # -- Opt in to /var/lib/kudurru-querylog. enabled=false uses an emptyDir;
+    # enabled=true adds its own claim without removing data. No files move.
+    separate: false
     storageClass: ""
     size: 10Gi
     accessModes: [ReadWriteOnce]
-  # -- local.db (last-good snapshot) on a PVC for "DNS before the control
-  # plane" clusters; same one-replica rule as querylog.
+  # -- local.db (last-good snapshot and cache) persistence. Legacy enabled
+  # selects data; separate opts into its own per-pod directory/volume.
   local:
     enabled: false
+    # -- Opt in to /var/lib/kudurru-local; enabled controls PVC vs emptyDir.
+    # Changing claim layout requires an offline migration, not a rolling move.
+    separate: false
     storageClass: ""
     size: 1Gi
     accessModes: [ReadWriteOnce]
@@ -444,6 +461,20 @@ auth:
     #      clientSecretRef: {name: kudurru-oidc, key: client-secret},
     #      redirectURL: https://dns.example.com/api/v1/auth/oidc/corp/callback}
     providers: []
+  kubernetes:
+    # -- How kudurru works with Kubernetes RBAC (auth.kubernetes.mode). sar
+    # (default): Kubernetes service accounts are authorized with a
+    # SubjectAccessReview and every write runs as the kudurru ServiceAccount.
+    # impersonate: API writes of kudurru.io objects are also sent as the
+    # signed-in principal (kudurru:user:<name>, kudurru:group:<group> for
+    # local users and OIDC bearer JWTs only, since dashboard sessions and
+    # personal tokens of OIDC users carry no groups (D48),
+    # kudurru:serviceaccount:<namespace>:<name>, or the Kubernetes service
+    # account itself), so Kubernetes RBAC must allow them and the apiserver
+    # audit log names that principal. The ClusterRole then gains the
+    # impersonate verb on users, groups and serviceaccounts, which makes a
+    # compromised kudurru pod cluster-admin-equivalent (D55, D386).
+    mode: sar
 
 # -- serviceMonitor or podMonitor with edge.enabled also render the
 # <fullname>-edge PodMonitor on the supervisors' :8084 (and :8085 with
@@ -539,6 +570,14 @@ blockPage:
     # -- Annotations, e.g. metallb.io/loadBalancerIPs or
     # kube-vip.io/loadbalancerIPs naming ipv4.
     annotations: {}
+
+externalZones:
+  # -- Fill DNSZones of type external from Kubernetes Ingresses, Gateway API
+  # routes and LoadBalancer Services (D402; config externalZones.enabled).
+  # Only then does the ClusterRole grant read access (get, list, watch) to
+  # networking.k8s.io ingresses and gateway.networking.k8s.io gateways,
+  # httproutes, grpcroutes and tlsroutes. Needs mode kubernetes.
+  enabled: false
 
 externalDNS:
   webhook:

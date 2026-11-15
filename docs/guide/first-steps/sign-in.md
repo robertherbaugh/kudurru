@@ -11,9 +11,10 @@
 2. Check that the address belongs to your node before you accept its certificate.
 3. Enter `admin` in **Username**.
 4. Enter the password in **Password**.
-5. Click **Sign in**.
+5. Keep **Authenticator code** empty on a new node.
+6. Click **Sign in**.
 
-![The sign-in page with Username and Password fields and the Sign in button.](../images/signin.png)
+![The sign-in page with Username, Password and Authenticator code fields and the Sign in button.](../images/signin.png)
 
 *Figure 1. Sign in with the local account.*
 

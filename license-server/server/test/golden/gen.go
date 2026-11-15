@@ -50,7 +50,12 @@ func main() {
 			c.Plan = license.PlanTrial
 		})},
 		{Name: "enterprise, every feature listed", Claims: with(base, func(c *license.Claims) {
-			c.Plan, c.Nodes, c.Features = license.PlanEnterprise, 100000, license.Features()
+			// This is the original v0.1 signing vector. Keep its claims fixed as
+			// the catalog grows; branding-policy and node-oracle tests cover new
+			// entitlements without rewriting existing signed compatibility data.
+			c.Plan, c.Nodes = license.PlanEnterprise, 100000
+			c.Features = []license.Feature{license.FeatureOIDC, license.FeatureEdge, license.FeatureIntegrations,
+				license.FeatureRBAC, license.FeatureAudit, license.FeatureLongTerm, license.FeatureRequests}
 		})},
 	}
 	for i := range cases {

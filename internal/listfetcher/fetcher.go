@@ -8,9 +8,9 @@ import (
 	"log/slog"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"golang.org/x/sync/errgroup"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -104,7 +104,30 @@ type Fetcher struct {
 	metered map[string]bool
 	forced  map[string]bool // cache keys RefreshNow asked for
 
-	kick chan struct{}
+	// inflight are cache keys whose download runs; a later pass skips
+	// them. slots bounds concurrent downloads across passes; publishing
+	// serializes status writes.
+	inflight   map[string]bool
+	slots      chan struct{}
+	publishing sync.Mutex
+	workers    sync.WaitGroup
+
+	kick    chan struct{}
+	refresh atomic.Int64 // default interval; each pass pins one value
+}
+
+// Reconfigure updates only default fetch scheduling. Existing downloads keep
+// their source, downloader, context and cooldown; Run recomputes deadlines from
+// the last successful fetch instead of renewing them from settings adoption.
+func (f *Fetcher) Reconfigure(refresh time.Duration) {
+	if refresh <= 0 {
+		refresh = DefaultRefreshInterval
+	}
+	f.refresh.Store(int64(max(refresh, f.opts.MinRefreshInterval)))
+	select {
+	case f.kick <- struct{}{}:
+	default:
+	}
 }
 
 // ErrUnknownList is returned by RefreshNow for a BlockList the fetcher
@@ -129,7 +152,7 @@ func (f *Fetcher) RefreshNow(namespace, name string) error {
 	if found == nil {
 		return fmt.Errorf("%w: %s/%s", ErrUnknownList, namespace, name)
 	}
-	pl := plan(found, f.opts.RefreshInterval, f.opts.MinRefreshInterval)
+	pl := plan(found, time.Duration(f.refresh.Load()), f.opts.MinRefreshInterval)
 	f.mu.Lock()
 	for _, ps := range pl.sources {
 		if ps.key != "" && !ps.disabled {
@@ -181,11 +204,14 @@ func New(opts Options) (*Fetcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Fetcher{
+	f := &Fetcher{
 		opts: opts, log: opts.Logger.With("component", "listfetcher"), m: m,
 		state: map[string]*sourceState{}, stats: map[string]listStats{}, metered: map[string]bool{},
 		forced: map[string]bool{}, kick: make(chan struct{}, 1),
-	}, nil
+		inflight: map[string]bool{}, slots: make(chan struct{}, opts.Concurrency),
+	}
+	f.refresh.Store(int64(opts.RefreshInterval))
+	return f, nil
 }
 
 // NeedLeaderElection marks the Fetcher as leader-only.
@@ -205,8 +231,10 @@ func (f *Fetcher) Run(ctx context.Context) error {
 	case <-f.opts.Objects.Initialized():
 	}
 	changes := f.opts.Objects.Subscribe()
+	// Downloads may outlive the pass that started them; Run joins them.
+	defer f.workers.Wait()
 	for {
-		next := f.Reconcile(ctx)
+		next := f.reconcile(ctx, changes)
 		wait := max(next.Sub(f.opts.Now()), time.Second)
 		t := time.NewTimer(wait)
 		select {
@@ -233,13 +261,28 @@ type keyPlan struct {
 // concurrency), then publish the owned status fields of every list whose
 // view changed. It returns when the next source is due.
 func (f *Fetcher) Reconcile(ctx context.Context) time.Time {
+	return f.reconcile(ctx, nil)
+}
+
+// reconcile is Reconcile. When yield receives (a BlockList changed) while
+// downloads of this pass still run, it returns at once, and Run starts the
+// next pass after its one-second floor: the downloads go on, publish their
+// lists when they end and are skipped by later passes until then, so a URL
+// that never answers does not keep a list added or changed meanwhile from
+// its first download (D373). A kick (RefreshNow, or a download that ended)
+// does not end the pass; Run reads it when the pass returns.
+func (f *Fetcher) reconcile(ctx context.Context, yield <-chan struct{}) time.Time {
 	now := f.opts.Now()
+	if ctx.Err() != nil {
+		return now
+	}
+	refresh := time.Duration(f.refresh.Load())
 	next := now.Add(maxIdle)
 	var plans []plannedList
 	keys := map[string]*keyPlan{}
 	var order []string
 	for _, bl := range f.opts.Objects.BlockLists() {
-		pl := plan(bl, f.opts.RefreshInterval, f.opts.MinRefreshInterval)
+		pl := plan(bl, refresh, f.opts.MinRefreshInterval)
 		plans = append(plans, pl)
 		for i := range pl.sources {
 			ps := &pl.sources[i]
@@ -263,6 +306,12 @@ func (f *Fetcher) Reconcile(ctx context.Context) time.Time {
 	var due []string
 	for _, key := range order {
 		kp := keys[key]
+		f.mu.Lock()
+		running := f.inflight[key]
+		f.mu.Unlock()
+		if running {
+			continue
+		}
 		at := f.dueAt(key, kp, now)
 		if !at.After(now) {
 			due = append(due, key)
@@ -272,16 +321,66 @@ func (f *Fetcher) Reconcile(ctx context.Context) time.Time {
 	}
 
 	if len(due) > 0 {
-		g, gctx := errgroup.WithContext(ctx)
-		g.SetLimit(f.opts.Concurrency)
+		// The status of the lists of a source is published as soon as its
+		// download ends, not when the whole pass ends: a URL that accepts
+		// the connection and never answers holds its own attempt for the
+		// HTTP timeout, but not the published bodies of every other list
+		// (D373). A pass that is not ended by a BlockList change still
+		// publishes every list at its end.
+		index := map[string]int{}
+		for i := range plans {
+			index[plans[i].name] = i
+		}
+		finished := make(chan struct{}, len(due))
 		for _, key := range due {
 			kp := keys[key]
-			g.Go(func() error {
-				f.fetch(gctx, kp)
-				return nil
-			})
+			f.mu.Lock()
+			f.inflight[key] = true
+			f.mu.Unlock()
+			f.workers.Add(1)
+			go func() {
+				defer f.workers.Done()
+				defer func() {
+					f.mu.Lock()
+					delete(f.inflight, key)
+					f.mu.Unlock()
+					finished <- struct{}{}
+					select {
+					case f.kick <- struct{}{}:
+					default:
+					}
+				}()
+				select {
+				case f.slots <- struct{}{}:
+				case <-ctx.Done():
+					return
+				}
+				f.fetch(ctx, kp)
+				<-f.slots
+				if ctx.Err() != nil {
+					return
+				}
+				f.publishing.Lock()
+				defer f.publishing.Unlock()
+				for _, name := range kp.lists {
+					if i, ok := index[name]; ok {
+						if err := f.publish(ctx, &plans[i]); err != nil && ctx.Err() == nil {
+							f.log.Warn("listfetcher: status write failed", "list", name, "err", err)
+						}
+					}
+				}
+			}()
 		}
-		_ = g.Wait()
+		for range due {
+			select {
+			case <-finished:
+				continue
+			case <-ctx.Done():
+			case <-yield:
+				return now
+			}
+			break
+		}
 		if ctx.Err() != nil {
 			return next
 		}
@@ -293,6 +392,8 @@ func (f *Fetcher) Reconcile(ctx context.Context) time.Time {
 	}
 
 	seen := map[string]bool{}
+	f.publishing.Lock()
+	defer f.publishing.Unlock()
 	for i := range plans {
 		seen[plans[i].name] = true
 		if err := f.publish(ctx, &plans[i]); err != nil && ctx.Err() == nil {
@@ -427,13 +528,22 @@ func (f *Fetcher) publish(ctx context.Context, pl *plannedList) error {
 	var owned ownedStatus
 	fp := &fpBuilder{}
 	fp.add(string(pl.mode))
-	spec := blocking.Spec{Name: pl.name, Mode: pl.mode}
+	spec := blocking.Spec{Name: pl.name, Mode: pl.mode, ExternalPolicy: pl.externalPolicy()}
 	var opened openedSources
 	defer opened.close()
 	stale := false
 	f.mu.Lock()
 	for i := range pl.sources {
 		ps := &pl.sources[i]
+		if ps.external {
+			owned.Sources = append(owned.Sources, externalStatus(ps))
+			if ps.disabled {
+				fp.add(ps.name, "disabled")
+			} else {
+				fp.add(ps.name, "rpz")
+			}
+			continue
+		}
 		if ps.disabled {
 			owned.Sources = append(owned.Sources, disabledStatus(ps))
 			fp.add(ps.name, "disabled")
@@ -538,10 +648,19 @@ func (f *Fetcher) listStats(pl *plannedList, fp string, spec blocking.Spec, cach
 }
 
 // statsFromStatus reuses the published counts when every source digest in
-// the status equals the current one.
+// the status equals the current one. Counts with unsupported rules need one
+// fresh compile per term: status has no compiler version, and a software
+// upgrade can support previously unsupported rules without changing a digest.
 func statsFromStatus(pl *plannedList, fp string) (listStats, bool) {
+	for _, ps := range pl.sources {
+		if ps.external {
+			// Shared counts may describe an older source kind or a different
+			// node's transfers. Only ordinary compiler statistics are ours.
+			return listStats{}, false
+		}
+	}
 	st := &pl.obj.Status
-	if len(st.Sources) != len(pl.sources) || st.RuleCount == 0 {
+	if len(st.Sources) != len(pl.sources) || st.RuleCount == 0 || st.Unsupported != 0 {
 		return listStats{}, false
 	}
 	check := &fpBuilder{}

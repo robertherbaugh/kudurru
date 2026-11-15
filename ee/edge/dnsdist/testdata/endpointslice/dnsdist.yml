@@ -113,6 +113,13 @@ query_rules:
       type: SetAdditionalProxyProtocolValue
       proxy_type: 224
       value: 6b75647572752d70726f78792d7365637265742d676f6c64656e2d3332627974
+  - name: kudurru-health-no-cache
+    uuid: 7174a85a-b857-5f36-baa9-f3371abb096d
+    selector:
+      type: QName
+      qname: health.kudurru.internal.
+    action:
+      type: SetSkipCache
   - name: kudurru-resolver-default
     uuid: 40a262c5-193e-5831-bc4e-7ce38a11e394
     selector:
