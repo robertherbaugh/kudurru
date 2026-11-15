@@ -22,6 +22,10 @@ func (s *servingRuntime) ZoneCommand(ctx context.Context, target api.ZoneCommand
 	if err != nil {
 		return currentCommandAPIError(err)
 	}
+	if target.Action == api.ZoneCommandUpsertRecord && api.RecapturableCommand(ctx) {
+		// One endpoint, read and merged in the transaction (D399).
+		ctx = servinghttp.WithRecapture(ctx)
+	}
 	err = s.currentAuthCommand(ctx, func(ctx context.Context, tx *sqlite.CommandTx, deps servingauth.Dependencies) error {
 		var completed atomic.Bool
 		check := func(context.Context) error {

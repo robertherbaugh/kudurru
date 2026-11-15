@@ -308,7 +308,12 @@ func (s *Server) commandUpsertZoneRecord(ctx context.Context, in *upsertRecordIn
 	target := ZoneCommandTarget{Zone: in.Zone, Action: ZoneCommandUpsertRecord}
 	var out *recordOutput
 	var responseErr error
-	err := s.runZoneCommand(ctx, target, func(ctx context.Context, tx *sqlite.CommandTx) (*ZoneCommandPlan, error) {
+	// The request is one endpoint, not a reviewed record set: the zone, the
+	// record set and its endpoints are read, authorized and merged in the
+	// command's own transaction, so it may capture again when another
+	// commit superseded its request's publication before the transaction
+	// began (D399), like a whole-object write without If-Match.
+	err := s.runZoneCommand(withRecapturableCommand(ctx), target, func(ctx context.Context, tx *sqlite.CommandTx) (*ZoneCommandPlan, error) {
 		attrs := []rbac.Attributes{zoneRequirement(target, "records", "write")}
 		z, err := currentZoneObject(ctx, tx, in.Zone)
 		if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -629,5 +630,52 @@ func TestServingObjectWriteUnavailableIsEffectFree(t *testing.T) {
 				t.Fatalf("audit rows of a refused write: %d", len(rows))
 			}
 		})
+	}
+}
+
+// A record upsert (POST /zones/{zone}/records) sends one endpoint; the
+// command reads and merges the record set in its transaction. Superseded
+// before dispatch, it captures again and is applied once (D399): the
+// dashboard's stub test answered it 503 right after the zone write, when the
+// zone's own status commit superseded the request. A record delete is not
+// marked and keeps its immediate refusal.
+func TestServingCommandRecaptureZoneRecordSupersededBeforeDispatch(t *testing.T) {
+	f := newServingCommandFixture(t)
+	srv, err := api.New(api.Options{Store: f.s.opts.Store, Validator: f.s.opts.Validator, Config: f.s.opts.Config,
+		ObjectCommand: f.s.ObjectCommand, ZoneCommand: f.s.ZoneCommand, Authenticate: f.http.Middleware, Authorizer: f.http,
+		Logger: slog.New(slog.DiscardHandler)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zone := map[string]any{"apiVersion": "kudurru.io/v1alpha1", "kind": "DNSZone", "metadata": map[string]any{"name": "recaptured"},
+		"spec": map[string]any{"zoneName": "recaptured.example.", "type": "primary", "nameservers": []string{"ns.recaptured.example."}}}
+	if w := servingObjectRequest(t, f, srv, http.MethodPut, "/api/v1/objects/dnszones/recaptured", zone, ""); w.Code != http.StatusCreated {
+		t.Fatalf("zone: %d %s", w.Code, w.Body)
+	}
+	awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
+	record := map[string]any{"dnsName": "www.recaptured.example", "recordType": "A", "targets": []string{"192.0.2.81"}}
+	probe := supersedeCommand(t, f.s, otherCommit(f.s, "record-concurrent"))
+	w := servingObjectRequest(t, f, srv, http.MethodPost, "/api/v1/zones/recaptured/records", record, "")
+	f.s.commandHooks.Store(nil)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("recaptured record upsert: %d: %s", w.Code, w.Body)
+	}
+	probe.want(t, 2, 1, 1)
+	var set public.DNSRecordSet
+	if err := f.s.opts.Store.Get(t.Context(), store.Key{Kind: "DNSRecordSet", Namespace: "default", Name: "api-recaptured"}, &set); err != nil || len(set.Spec.Endpoints) != 1 {
+		t.Fatalf("record set after the recaptured upsert: %v %+v", err, set.Spec.Endpoints)
+	}
+	if rows := auditRows(t, f.s, sqlite.AuditQuery{Kind: "DNSRecordSet", Namespace: "default", Name: "api-recaptured"}); len(rows) != 1 {
+		t.Fatalf("audit rows of the recaptured upsert: %d, want 1", len(rows))
+	}
+
+	awaitServingRuntime(t, f.s, func() bool { return f.s.publisher.Status().ProtectedReady })
+	probe = supersedeCommand(t, f.s, otherCommit(f.s, "record-delete-concurrent"))
+	w = servingObjectRequest(t, f, srv, http.MethodDelete, "/api/v1/zones/recaptured/records/www/A", nil, "")
+	f.s.commandHooks.Store(nil)
+	expectRefusedOnce(t, w)
+	probe.want(t, 1, 0, 0)
+	if err := f.s.opts.Store.Get(t.Context(), store.Key{Kind: "DNSRecordSet", Namespace: "default", Name: "api-recaptured"}, &set); err != nil || len(set.Spec.Endpoints) != 1 {
+		t.Fatalf("a refused record delete was applied: %v %+v", err, set.Spec.Endpoints)
 	}
 }
