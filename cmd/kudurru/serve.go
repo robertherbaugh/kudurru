@@ -968,6 +968,9 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	post := &postprocess.Stage{}
 	post.SetSettings(responseSettings)
 	idStage := identify.New(polSrc, nil)
+	if kubeFeeds != nil {
+		idStage.Capture = kubeFeeds.capturePolicy
+	}
 	idStage.Inventory = clientInventory
 	if kubeSources != nil {
 		idStage.Inventory = kubeSources

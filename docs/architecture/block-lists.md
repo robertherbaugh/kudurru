@@ -389,8 +389,14 @@ binding is rebuilt only when the configuration snapshot, the feed snapshot or
 the ring changes, and every input is an in-memory atomic read: no store read,
 no leader and no network work on the DNS path. A feed that is missing, rotated
 to a new credential, unbound or expired stays selected as an unavailable
-sentinel and fails closed (SERVFAIL with EDE "not ready"); a stale or unsynced
-configuration snapshot does the same. Unlike primary zones, where a `local.db`
+sentinel and fails closed (SERVFAIL with EDE "not ready"); a stale
+configuration snapshot does the same. Before Kubernetes identification, a
+capture guard reads the state and policy index from one zone-cache snapshot.
+An unsynced snapshot, or one without a policy index, fails capture with SERVFAIL
+before any forwarding, even when a later stage would see a synced zone snapshot
+(D410). This includes an unsynced snapshot with an already built empty index.
+Once configuration is available, clients without a selected feed forward
+normally. Unlike primary zones, where a `local.db`
 snapshot older than `store.kube.snapshot.maxAge` stops only authoritative
 answers, this stops forwarding too for every client whose policy selects an RPZ
 list, unsigned feeds with an unexpired copy included. An RPZ feed does not wait
@@ -413,7 +419,9 @@ changes, so an edge-cached answer can outlive a feed update by its TTL.
 flowchart LR
     KManager["rpz.Manager<br/>(every Kubernetes replica)"] --> KSnap["Feed snapshot"]
     Ring["Stored TSIG ring<br/>(startup + hot replacement)"] --> KManager
-    Zc["zone cache snapshot"] --> Index["Policy index<br/>(ListInfo keeps the BlockList)"]
+    Zc["zone cache snapshot"] --> Guard{"Synced configuration<br/>and policy index?"}
+    Guard -- "no" --> Closed["SERVFAIL before forwarding"]
+    Guard -- "yes" --> Index["Policy index<br/>(ListInfo keeps the BlockList)"]
     Index --> Decision["Request policy decision<br/>(compiled and pending lists)"]
     KSnap --> Bind["kubeRPZ binding<br/>(rebuilt on change only)"]
     Ring --> Bind

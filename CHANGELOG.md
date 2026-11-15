@@ -1350,6 +1350,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- Kubernetes queries fail closed until a synced policy snapshot is available.
+  A query arriving during startup can no longer skip a required RPZ feed when
+  the zone snapshot becomes available after identification (D410).
+
 - SQLite signed DNS UPDATEs no longer stop permanently after a zone's 256th
   commit. Expired retry receipts are removed safely; the ledger now bounds
   live signature windows to 1,024 receipts. Exact signed repeats retain their

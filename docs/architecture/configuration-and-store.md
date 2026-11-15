@@ -740,7 +740,10 @@ for every recursive query ([block lists](block-lists.md#transferred-rpz-foundati
 An unsigned feed's unexpired copy is reused. The zone cache reports ready from
 `local.db` only once the snapshot built from it is published, so the policy
 index that readiness checks is the restored one, never the empty unsynced one
-(D390).
+(D390). Kubernetes policy capture also rejects the unsynced snapshot before
+identification, whether its index is absent or built but empty. This prevents a
+query from selecting no policy and then forwarding through a newer, synced zone
+snapshot before its required RPZ feeds are selected (D410).
 
 Startup reads for the policy namespace, default-object seeding and identity
 caches have bounded deadlines. An apiserver availability failure defers

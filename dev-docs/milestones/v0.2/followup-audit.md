@@ -21425,3 +21425,23 @@ can still fail after admission or when their bounded wait expires. Receipt
 retention assumes member clocks differ by no more than the documented margin.
 Original two-VM VIP acceptance, production licensing and promotion/publication
 checks remain owner gates; AD/Windows remains deferred preview (D353).
+
+### Kubernetes startup policy capture — November 15, 2026 (D410)
+
+The final command regression selection found one remaining failure in
+`TestRunServeKubeRPZFeeds`: a listed name briefly resolved NOERROR during an
+online restart. Identification could read the empty unsynced policy index,
+then authority read the newly synced zone snapshot and forward the query.
+Kubernetes now captures policy and configuration state from one snapshot and
+refuses an unsynced snapshot or missing index before forwarding. Stale saved
+policies still select their feeds, and synced clients without a selected feed
+retain normal forwarding.
+
+Evidence in `.context/release-resume-20261115/`: the deterministic startup test
+passes with the guard and both cases fail without its state check
+(`rpz-startup-negative.log`). Three mounted envtest repetitions pass under the
+race detector (`rpz-startup-mounted.log`), including all nine restart watches
+with no NOERROR for the listed name. The watch and its assertions are unchanged.
+Command-package lint reports zero issues; all 168 documentation link checks
+pass. Full hosted checks, paired performance measurement and release artifacts
+remain separate pending qualification at this entry.

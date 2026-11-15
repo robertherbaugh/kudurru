@@ -55,6 +55,24 @@ func newKubeRPZ(config kubeRPZConfig, feeds *rpz.Manager, keys func() *dnsserver
 	return &kubeRPZ{config: config, feeds: feeds, keys: keys, unsigned: unsigned}, nil
 }
 
+// capturePolicy rejects the empty startup configuration before identification.
+// Otherwise identification can select no policy from an Unsynced snapshot and
+// authoritative can read a newly synced snapshot in the same request, letting
+// the first recursive query bypass its required feeds. Read the state and index
+// from one snapshot; stale saved configurations still identify their clients so
+// capture can fail only their selected feeds closed.
+func (k *kubeRPZ) capturePolicy(*pipeline.Request) (*policy.Index, error) {
+	snap := k.config.Snapshot()
+	if snap == nil || snap.State == zonecache.Unsynced {
+		return nil, pipeline.ErrServingCapture
+	}
+	ix, _ := zonecache.View[*policy.Index](snap, policy.ViewName)
+	if ix == nil {
+		return nil, pipeline.ErrServingCapture
+	}
+	return ix, nil
+}
+
 // capture implements blockingstage.Options.RPZ. The stage pins the result once
 // per request and inherits it for synthesized targets.
 func (k *kubeRPZ) capture(req *pipeline.Request) (*rpz.Selection, error) {
