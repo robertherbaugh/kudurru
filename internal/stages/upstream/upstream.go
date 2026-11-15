@@ -2,7 +2,7 @@
 // §7.1 step 11). It forwards over the groups of internal/upstream: the
 // group is Request.UpstreamGroup when the authoritative stage set it, else
 // the longest conditional-forwarding suffix, else "default". Answers from
-// the default group are Cacheable; conditional ones are not (blocky rule).
+// the default group are Cacheable; other groups must opt in with cache: true.
 package upstream
 
 import (

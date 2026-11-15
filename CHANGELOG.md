@@ -10,6 +10,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Optional response caching for non-default upstream groups (`cache: true`),
+  including conditional forwarding, forward zones and Policy routes. The
+  group editor saves the Cache answers toggle immediately. Entries stay
+  isolated by group and routing/trust configuration, retain upstream labels,
+  and use the normal TTL, prefetch and serve-stale rules (#94).
+
 - Offline `anchors status` and `anchors recover` for complete managed-root loss,
   with explicit replacement trust, retained revocations and recovery history,
   exact expected-version checks, and an audit committed with the recovery.

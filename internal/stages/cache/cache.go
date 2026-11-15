@@ -2,8 +2,8 @@
 // §3.3 "internal/cache", §7.1 step 9). It sits after blocking and before
 // dnssec/upstream, so blocked and locally answered queries never reach it,
 // and it only stores responses the later stages mark Cacheable (forwarded
-// through the default group; never local, authoritative or conditional
-// answers).
+// through the default group or another group with cache enabled; never local
+// or authoritative answers).
 //
 // On a fresh hit it answers with TTLs counted down (status cached) and, when
 // the entry is hot and about to expire, starts a background refresh (status
@@ -158,11 +158,11 @@ func (s *Stage) Serve(req *pipeline.Request, next pipeline.Next) (*pipeline.Resp
 			return nil, pipeline.ErrServingCapture
 		}
 	}
-	// A forward-zone hint to a group of its own routes around the cache:
-	// those answers are never cached, and an entry stored for the name
-	// before the zone existed must not shadow it. A hint to the default
-	// group (the bootstrap root zone) is ordinary forwarding.
-	if view.disabled || (req.UpstreamGroup != "" && req.UpstreamGroup != upstream.DefaultGroup) || !cacheable(req.Msg) {
+	// A non-default hint requires a bound plan: only that plan can authorize
+	// reuse in the selected group's cache partition. Legacy callers without a
+	// route binder keep bypassing these answers.
+	_, planned := req.Resolution.(*upstream.QueryPlan)
+	if view.disabled || (!planned && req.UpstreamGroup != "" && req.UpstreamGroup != upstream.DefaultGroup) || !cacheable(req.Msg) {
 		return next(req)
 	}
 	k, ecsBits := s.key(req)

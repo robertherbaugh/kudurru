@@ -62,6 +62,7 @@ export const ECS_MODES = [
 ] as const;
 
 export interface UpstreamGroupConfig {
+  cache?: boolean;
   mode: UpstreamMode;
   servers: string[];
   strategy: string;
@@ -106,6 +107,7 @@ export function upstreamsOf(body: SettingsBody | undefined): UpstreamsConfig {
   for (const [name, g] of Object.entries(record(u.groups))) {
     const r = record(g);
     groups[name] = {
+      ...(typeof r.cache === 'boolean' ? { cache: r.cache } : {}),
       mode: r.mode === 'recursive' ? 'recursive' : 'forward',
       servers: strings(r.servers),
       strategy: typeof r.strategy === 'string' ? r.strategy : '',

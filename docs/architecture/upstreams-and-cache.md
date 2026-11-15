@@ -14,7 +14,7 @@ Code: `internal/upstream` (groups, strategies, health, ECS),
 `internal/stages/upstream` (the DNS rules on top), `cmd/kudurru/reload.go`
 (hot reload).
 
-![Where a forwarded query goes: the cache in front of the routing decision, then one of the upstream groups](diagrams/upstreams.excalidraw.svg)
+![Where a forwarded query goes: the cache binds the routing decision before lookup, then one of the upstream groups](diagrams/upstreams.excalidraw.svg)
 
 ## Settings ownership
 
@@ -74,10 +74,10 @@ flowchart TD
     POL -- "no" --> R
     PG --> R{"hint set and<br/>not default?"}
     R -- "yes" --> KNOWN{"group exists?"}
-    KNOWN -- "yes" --> USE["use the hinted group<br/>answer not cacheable"]
+    KNOWN -- "yes" --> USE["use the hinted group<br/>cache only with cache: true"]
     KNOWN -- "no" --> SF["SERVFAIL, EDE 23<br/>never falls back to public resolvers"]
     R -- "no" --> COND{"longest suffix in<br/>upstreams.conditional?"}
-    COND -- "maps to a group" --> CG["use that group<br/>answer not cacheable"]
+    COND -- "maps to a group" --> CG["use that group<br/>cache only with cache: true"]
     COND -- "maps to default<br/>(dnsmasq # exception)" --> DEF
     COND -- "no match" --> DEF["use the default group<br/>answer cacheable"]
 ```
@@ -93,6 +93,30 @@ The bootstrap root zone `.` is a forward zone to `default`, so on a fresh
 install every name that no other zone claims takes the default path and
 still consults the conditional map. A Policy beats that root zone, but not a
 forward zone with a group of its own.
+
+## Cache answers from another group
+
+The `default` group always uses the response cache. Other groups skip it by
+default. Enable `upstreams.groups.<name>.cache: true` to reuse answers from a
+conditional rule, a forward zone or a Policy that selects that group. In
+**DNS > Upstreams**, open the group and enable **Cache answers**; it saves
+immediately. The flag has no effect on the default group. `cache.maxEntries: 0`
+still disables the response cache globally.
+
+The cache binds the immutable resolution plan before lookup. Its key includes
+the resolved group, routing configuration and trust context, so two client
+policies resolving the same name through different groups cannot share answers.
+TTL clamps, prefetch and serve-stale use the normal cache settings. Cache hits
+retain the original upstream label in the query log. Changing a group's cache
+flag or a conditional rule flushes cached answers and fences old fills.
+
+```yaml
+upstreams:
+  groups:
+    default: { servers: ["1.1.1.1:53"] }
+    gateway: { servers: ["10.30.50.1:53"], cache: true }
+  conditional: { "herbaugh.network.": gateway }
+```
 
 ## Inside a group
 
@@ -1298,7 +1322,7 @@ to `127.0.0.1` and only derives the configured ECS partition. The response says
 whether the raw default route is cacheable and whether that exact entry exists,
 with positive/negative kind, fresh/stale state, age, original and remaining TTL,
 wire size and validation state. Missing, expired and mismatched entries return
-`found: false`; disabled caching and conditional routes return `cacheable: false`.
+`found: false`; disabled caching and non-default groups without `cache: true` return `cacheable: false`.
 
 The bounded single-key read uses the original HTTP request's resolver and cache
 incarnations. It does not query upstreams, refresh data, count a hit, change LRU

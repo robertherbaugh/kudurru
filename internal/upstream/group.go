@@ -86,6 +86,7 @@ func IsTimeout(err error) bool {
 
 // Group is a named set of servers with a strategy.
 type Group struct {
+	cache    bool
 	name     string
 	strategy Strategy
 	timeout  time.Duration

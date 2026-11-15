@@ -10,7 +10,7 @@ import UpstreamGroupPage from './UpstreamGroupPage';
 import UpstreamsPage from './UpstreamsPage';
 import { UpstreamWizardDialog } from '../components/wizards/UpstreamWizard';
 
-type SavedGroup = { mode?: string; servers?: string[] | null; strategy?: string; timeout?: string };
+type SavedGroup = { mode?: string; servers?: string[] | null; strategy?: string; timeout?: string; cache?: boolean };
 
 function groups(): Record<string, SavedGroup> {
   return (mockDB().settings.upstreams as { groups: Record<string, SavedGroup> }).groups;
@@ -142,6 +142,31 @@ describe('UpstreamsPage', () => {
 });
 
 describe('UpstreamGroupPage', () => {
+  it('opts a non-default group into caching immediately and preserves the choice when editing its settings', async () => {
+    renderWithApp(<UpstreamGroupPage params={{ group: 'filtered' }} />, { route: '/upstreams/filtered' });
+    const cache = await screen.findByRole('switch', { name: 'Cache answers' });
+    expect(cache).not.toBeChecked();
+    fireEvent.click(cache);
+    await waitFor(() => expect(groups().filtered?.cache).toBe(true));
+    await waitFor(() => expect(cache).toBeChecked());
+    pick(getSelector('Timeout'), '5 seconds');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(groups().filtered?.timeout).toBe('5s'));
+    expect(groups().filtered?.cache).toBe(true);
+    fireEvent.click(cache);
+    await waitFor(() => expect(groups().filtered?.cache).toBe(false));
+  });
+
+  it('keeps the default group cache enabled and explains why its toggle is disabled', async () => {
+    renderWithApp(<UpstreamGroupPage params={{ group: 'default' }} />, { route: '/upstreams/default' });
+    const cache = await screen.findByRole('switch', { name: 'Cache answers' });
+    expect(cache).toBeChecked();
+    expect(cache).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(cache);
+    expect(groups().default?.cache).toBeUndefined();
+    expect(screen.getByText('The default group always uses the response cache.')).toBeInTheDocument();
+  });
+
   it('shows the servers with health and RTT, saves typed settings and lists the users', async () => {
     renderWithApp(<UpstreamGroupPage params={{ group: 'default' }} />, { route: '/upstreams/default' });
     const cf = (await screen.findByText('cloudflare')).closest('tr')!;

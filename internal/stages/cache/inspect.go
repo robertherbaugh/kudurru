@@ -22,7 +22,7 @@ func (s *Stage) Inspect(req *pipeline.Request) (value cache.Lookup, found, eligi
 	if !ok {
 		return value, false, false, pipeline.ErrServingCapture
 	}
-	if view.disabled || !cacheable(req.Msg) || !plan.Cacheable() || (req.UpstreamGroup != "" && req.UpstreamGroup != upstream.DefaultGroup) {
+	if view.disabled || !cacheable(req.Msg) || !plan.Cacheable() {
 		return value, false, false, nil
 	}
 	// Inspection cannot create new scope mappings. A missing mapping means no

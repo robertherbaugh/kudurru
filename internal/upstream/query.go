@@ -103,8 +103,9 @@ func (p *QueryPlan) RawResponse() bool { return p.raw }
 // Validates reports whether forwarded-answer validation is enabled.
 func (p *QueryPlan) Validates() bool { return p.validate }
 
-// Cacheable excludes conditional routes from the shared response cache.
-func (p *QueryPlan) Cacheable() bool { return !p.conditional }
+// Cacheable uses the captured group's opt-in policy. Scope partitions entries
+// by the resolved group and complete routing/trust configuration before lookup.
+func (p *QueryPlan) Cacheable() bool { return p.set.GroupCaches(p.group) }
 
 // Recursive reports whether this route uses the native validating resolver.
 func (p *QueryPlan) Recursive() bool {

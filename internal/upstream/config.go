@@ -83,6 +83,9 @@ type HealthConfig struct {
 
 // GroupConfig is one named group.
 type GroupConfig struct {
+	// Cache opts non-default groups into the partitioned response cache.
+	// The default group always caches, independent of this flag.
+	Cache bool `json:",omitempty"`
 	// Servers are addresses in dnsproxy syntax: ip[:port], udp://, tcp://,
 	// tls://, https://, quic://, h3:// and sdns:// stamps. An entry may be
 	// prefixed with a display name, "cloudflare=tls://1.1.1.1"; the name
@@ -143,6 +146,7 @@ func ConfigFrom(c config.Upstreams) Config {
 	}
 	for name, g := range c.Groups {
 		out.Groups[name] = GroupConfig{
+			Cache:     g.Cache,
 			Servers:   append([]string(nil), g.Servers...),
 			Strategy:  Strategy(g.Strategy),
 			Timeout:   g.Timeout.Std(),

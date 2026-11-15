@@ -309,6 +309,9 @@ type CacheServeStale struct {
 
 // UpstreamGroup is a named set of servers with a strategy.
 type UpstreamGroup struct {
+	// Cache opts non-default groups into the response cache. The default
+	// group always uses the cache, regardless of this field.
+	Cache bool `koanf:"cache" json:"cache,omitempty"`
 	// Mode is forward (the default: ask Servers) or recursive (resolve
 	// from the root servers with the built-in resolver; no Servers).
 	Mode    string   `koanf:"mode" json:"mode,omitempty"`

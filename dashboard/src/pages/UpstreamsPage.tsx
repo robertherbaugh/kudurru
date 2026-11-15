@@ -168,7 +168,7 @@ function ConditionalPanel({ cfg, canWrite, onSave }: { cfg: UpstreamsConfig; can
       title="Conditional forwarding"
       description={
         <>
-          Queries under a domain suffix go to a group (the longest suffix wins; answers are not cached). A rule may list several suffixes in dnsmasq form,{' '}
+          Queries under a domain suffix go to a group (the longest suffix wins). Enable Cache answers in that group to cache its answers. A rule may list several suffixes in dnsmasq form,{' '}
           <Code size="inherit">[/corp.example/10.in-addr.arpa/]</Code>.
         </>
       }

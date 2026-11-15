@@ -11,6 +11,7 @@ import { Link } from '@astryxdesign/core/Link';
 import { List, ListItem } from '@astryxdesign/core/List';
 import { HStack } from '@astryxdesign/core/Stack';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
+import { Switch } from '@astryxdesign/core/Switch';
 import { Text } from '@astryxdesign/core/Text';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -204,6 +205,22 @@ export default function UpstreamGroupPage({ params }: PageProps) {
       </Panel>
 
       <Panel title="Settings">
+        <Switch
+          label="Cache answers"
+          description={name === DEFAULT_GROUP ? 'The default group always uses the response cache.' : 'Cache this group’s answers using the normal TTL, prefetch and serve-stale settings. Changes apply immediately.'}
+          value={name === DEFAULT_GROUP || !!g.cache}
+          isDisabled={!u.canWrite || name === DEFAULT_GROUP}
+          disabledMessage={name === DEFAULT_GROUP ? 'The default group always uses the response cache' : u.readOnlyReason ?? undefined}
+          changeAction={async (cache) => {
+            setSaveErr(undefined);
+            try {
+              await u.save({ groups: { [name]: { cache } } }, `Group ${name}`);
+            } catch (err) {
+              setSaveErr(errorText(err));
+              throw err;
+            }
+          }}
+        />
         <GroupFields value={draft} onChange={setDraft} errors={errors} isDisabled={!u.canWrite} />
         {draft.mode === 'recursive' ? (
           <Text as="p" type="supporting">
