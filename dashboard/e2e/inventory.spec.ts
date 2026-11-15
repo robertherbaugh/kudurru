@@ -179,7 +179,12 @@ test('a client-group view is added beside the default data, listed and deleted a
     await viewRow.getByRole('button', { name: 'Delete' }).click();
     const confirm = page.getByRole('alertdialog');
     await expect(confirm).toContainText(`served to client group ${group} in record set default/api-${name}`);
+    // Wait for the DELETE's answer before rereading the page: a reload
+    // while it is in flight cancels the request, so the delete may never
+    // commit and the row stays listed.
+    const deleted = page.waitForResponse((r) => r.request().method() === 'DELETE' && new URL(r.url()).pathname.startsWith(`/api/v1/zones/${name}/records/`));
     await confirm.getByRole('button', { name: 'Delete record' }).click();
+    expect((await deleted).status()).toBe(204);
     await expect.poll(async () => {
       await page.reload();
       await settle(page);
@@ -264,7 +269,13 @@ test('a view of a non-default namespace is edited in its own record set and dele
     await kidsRow.getByRole('button', { name: 'Delete' }).click();
     const confirm = page.getByRole('alertdialog');
     await expect(confirm).toContainText(`served to client group kids/${group} in record set kids/${kidsSet}`);
+    const deleted = page.waitForResponse((r) => r.request().method() === 'DELETE' && new URL(r.url()).pathname.startsWith(`/api/v1/zones/${name}/records/`));
     await confirm.getByRole('button', { name: 'Delete record' }).click();
+    const answer = await deleted;
+    expect(answer.status()).toBe(204);
+    // Only the kids record set, and only that view.
+    expect(new URL(answer.url()).searchParams.get('recordSet')).toBe(`kids/${kidsSet}`);
+    expect(new URL(answer.url()).searchParams.get('view')).toBe(group);
     await expect.poll(async () => (await kidsEndpoints()).status, { timeout: 15_000 }).toBe(404);
     await expect.poll(async () => {
       await page.reload();
