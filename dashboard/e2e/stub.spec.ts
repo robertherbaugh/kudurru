@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, expectRendered, env, main, settle, test } from './fixtures';
-import { adminApi } from './support/api';
+import { adminApi, sendBeforeAdmission } from './support/api';
 import { query } from './support/dns';
 import { REPO_DIR, startServer } from './support/kudurru';
 import type { DNSZone, ZoneSummary } from '../src/api/types';
@@ -29,7 +29,7 @@ test('a stub discovers authorities, routes queries, edits and expires', async ({
       spec: { zoneName: apex, type: 'primary', nameservers: [`ns.${apex}`], soa: { mname: `ns.${apex}`, refresh: 1, retry: 1, expire: 5 } },
     } })).ok()).toBe(true);
     for (const [host, target] of [['ns', '127.0.0.1'], ['www', '192.0.2.81']]) {
-      expect((await primaryApi.post(`/api/v1/zones/${name}/records`, { headers, data: { dnsName: `${host}.${name}`, recordType: 'A', targets: [target] } })).ok()).toBe(true);
+      await sendBeforeAdmission(() => primaryApi.post(`/api/v1/zones/${name}/records`, { headers, data: { dnsName: `${host}.${name}`, recordType: 'A', targets: [target] } }), `POST /zones/${name}/records ${host}`);
     }
     // Independent observations may be refused while the new generation prepares.
     // Keep the original ten-second bound, including rejected DNS queries.
