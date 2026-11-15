@@ -1,0 +1,416 @@
+{
+ "key": "g21-route-and-contract-sweep",
+ "item": "Gate G21, \"Production wiring and public contracts\" (gaps.md:110, completion-plan.md:220, followup-audit.md:318). Read-only static sweep of the main checkout at HEAD 33ee04bc; nothing was built or run. All paths below are relative to /home/vercel-sandbox/kudurru.",
+ "summary": "The generated contract layer looks consistent: api/openapi.json and api/openapi-3.0.json carry the same 190 operationIds, each with an x-kudurru-permission extension written by internal/api/routes.go:42-88; the Go client, dashboard/src/api/generated.ts and docs-site/content/reference/api/endpoints.md cover them, and no file under internal/api changed after the last regeneration commit 1a78bb92. The runtime has two shapes: the \"complete\" SQLite runtime (cmd/kudurru/serve.go:1091-1175) and the Kubernetes legacy auth Stack (serve.go:1083-1090), plus role states on SQLite (static, enrolled follower, fenced/conflicted). Most 501/503 answers are intended and documented: static read_only (internal/api/static.go:28-33), SQLite-only RoleBinding/cluster/external-user/user commands (internal/api/rolebindings.go:88-91, cluster_enrollment.go:80-85, internal/auth/stack/routes.go:107-109,627-629, cmd/kudurru/serving_users_legacy.go:12-19), integrations on Kubernetes (internal/api/integrations.go:153-155, docs/deploy/integrations.md:11-17) and node-config 501 (internal/api/settings.go:505-506). Four refusal classes are not explained to the caller: (1) on Kubernetes six forwarded routes are not registered on the legacy mux and fall through to Go's plain-text 404 (internal/api/authcli.go:30-32, authroutes.go:106-107, rolebindings.go:107 versus internal/auth/stack/routes.go:77-105); (2) on an enrolled follower every non-forwarded mutation answers the generic 503 \"current writable serving generation unavailable\" (cmd/kudurru/serving_settings_api.go:109-112) and GET /cluster exposes no role (internal/api/nodes.go:55-64); (3) fenced/conflicted nodes answer 503 generation_pending with Retry-After 1s for a durable state (internal/servinghttp/http.go:150); (4) the vestigial gate in cmd/kudurru/serving_routes.go:16-63 still answers 503 current_command_unavailable for unregistered unsafe paths. Architecture pages do describe the D355-D366 flows (docs/architecture/configuration-and-store.md:1033-1085, 1238-1262, 1809-2137; access.md:1059-1069; zones.md:739-746, 887-927) but about a dozen \"remains unfinished\" statements now contradict the code. Operator docs still declare v0.1.0 (docs/guide/README.md:34, docs-site/content/_index.md:19) and have no page for RFC 2136, TOTP, session inventory or the Kubernetes grant-floor Secret. The permission lint is one-directional: about 18 declared verbs have no route, and GET /queries/export uses querylog.read although querylog.export exists (internal/api/query_export.go:26, internal/rbac/permissions.yaml:15,65). I found no G21 blocker that needs the owner.",
+ "alreadyDone": [
+  "[a: tracker-open, code done] Route permission lint and OpenAPI declaration check exist and cover every operation: internal/api/routes_test.go:20-47 (TestRoutePermissionLint), :80 (TestOpenAPIDrift); SAR mapping covers newer resources (ee/rbac/sar.go:55-61).",
+  "[a] Generated artifacts agree by inspection: 190 operationIds in both OpenAPI files; every one has a method in internal/apiclient/openapi/zz_generated.client.go (importZone as ImportZoneWithBody, line 8613) and an entry in dashboard/src/api/generated.ts; new routes (/tsigkeys, /cluster/promote, /cluster/join-token, /cache/inspect, /queries/export) appear in docs-site/content/reference/api/endpoints.md; `git log 1a78bb92..HEAD -- internal/api` is empty.",
+  "[a] CLI reference contains the recent command families: cluster activate/enrollment/join/join-reconcile/join-token/promote/promotion/resolution/resolve/status, iam rolebindings, iam external-users, integrations, audit verify, zones options (docs-site/content/reference/cli.md, last regenerated 6c86f581; guarded by cmd/kudurru/clireference_test.go:23).",
+  "[a] gaps.md:52-56 baseline `503 current_command_unavailable` failures: every registered zone/unblock/import/source-entry mutation is now exempt (cmd/kudurru/serving_routes.go:36-60); only unregistered paths still hit the gate (see G21-05).",
+  "[a] F33 remote node health no longer answers 501: internal/api/nodes.go:204-223 has only transient 503s. docs/architecture/README.md:116 still says 501 (doc is stale, code is done).",
+  "[a] TSIG management is mounted on both drivers (cmd/kudurru/serve.go:1173-1178, 614-629); the 501 'durable stored TSIG key management is unavailable for this storage driver' (cmd/kudurru/serving_tsig.go:308-310) is now a defensive nil branch. Operator doc: docs/deploy/tsig-keys.md:79-88.",
+  "[intended, documented, surfaced] Static twins: 503 read_only with hint (internal/api/static.go:28-33, errors.go:214-217); docs/deploy/compose-ha.md:79-91; dashboard capability useStaticMode (dashboard/src/api/context.tsx:115-134).",
+  "[intended, surfaced] PATCH /node/config without a durable writer (Kubernetes): 501 read_only 'node configuration is read-only on this server' with hint (internal/api/settings.go:185,431,505-506); per-key readOnly capability in the schema (settings.go:318) drives the UI. Kubernetes PATCH /settings answers a managed-by-ConfigMap refusal with hint (cmd/kudurru/reload.go:213-217).",
+  "[intended, documented] RoleBinding write API is SQLite-only: 503 unavailable, hint 'requires the complete SQLite runtime' (internal/api/rolebindings.go:88-91); docs/deploy/rolebindings.md:46; completion-plan.md:1918-1919 (D294).",
+  "[intended, documented, surfaced] External account administration on Kubernetes: 503 external_users_unavailable (internal/auth/stack/routes.go:627-629); docs/guide/dashboard/access.md:48; dashboard/src/components/access/ExternalUsers.tsx:101 (D289). Session inventory: 503 sessions_unavailable (routes.go:107-109); dashboard/src/components/access/Sessions.tsx:39; decision D54 (design-record.md:1648).",
+  "[intended, documented] API local-user create/reset on Kubernetes: 503 user_management_unavailable (cmd/kudurru/serving_users_legacy.go:12-19); docs/guide/admin/09-people-and-tokens.md:115.",
+  "[intended, documented] Cluster activate/join-token/enrollment/promote/promotion outside nonstatic or enrolled SQLite: 503 unavailable with hint (internal/api/cluster_enrollment.go:80-85, cluster_promotion.go:60-65); docs/deploy/sqlite-join.md.",
+  "[intended, documented; tracker row still open] Integrations on Kubernetes: host not started (cmd/kudurru/serve.go:1084), every /integrations route 503 'complete integration administration unavailable' (internal/api/integrations.go:153-155,165-167,193-195); per-provider 501 'integration capability is not implemented' (cmd/kudurru/integration_admin.go:38-39). Documented at docs/deploy/integrations.md:11-17,219-220. Closing it is F09b/F60c work, not a G21 docs fix.",
+  "[intended, documented] Follower forwarding for /objects writes, four zone commands, blocking and local login, including 503 completion_unknown and the primary-only remainder: docs/deploy/sqlite-join.md:92-124; conflict recovery and generation_pending: sqlite-join.md:139-172.",
+  "[intended] Optional-component refusals carry hints: query log off (internal/api/stats.go:253-254), live tail (stats.go:830), audit not stored (authroutes.go:348-349), no leader for list fetch (lists.go:158), central database (errors.go:204-205). DHCP/VIP/block page disabled answer plain 503 messages (dhcp.go:272, dhcp_setup.go:225, vip_events.go:128, blockpage.go:38).",
+  "[unreachable in production] errNotImplemented branches guard nil options that runServe always sets (serve.go:1345-1375): internal/api/zones.go:1186, lists.go:140, stats.go:664, runtime.go:211,268,307, authroutes.go:194, tsigkeys_command.go:35,71.",
+  "[a] Architecture pages already describe the recent flows: first-primary activation, invitation, acquisition, promotion, join, join-reconcile, peer observation (docs/architecture/configuration-and-store.md:1809-2137); typed forwarding of objects, zone commands and follower login with a sequence diagram (:1033-1085); DNS-only last-good and offline conflict resolution with a diagram (:1238-1262); Kubernetes grant floors (access.md:1059-1069); Kubernetes TSIG management (zones.md:739-746); Kubernetes RFC 2136 with a diagram (zones.md:887-927)."
+ ],
+ "remaining": [
+  {
+   "id": "G21-01",
+   "title": "Kubernetes: forwarded auth/IAM routes fall through to a plain-text 404",
+   "kind": "implementation",
+   "size": "S",
+   "detail": "On the Kubernetes driver the auth handler is a bare http.ServeMux holding only Stack routes plus two refusal sets (cmd/kudurru/serve.go:1085-1089). Six API routes are forwarded to it without a capability check and have no pattern there: GET /iam/rolebindings/{namespace}/{name} (internal/api/rolebindings.go:107), GET /auth/cli/providers, POST /auth/cli/{idp}/prepare, POST /auth/cli/{idp}/verify (internal/api/authcli.go:30-32), GET /auth/oidc/{idp}/logout and /logout/callback (internal/api/authroutes.go:106-107). The Stack route table is internal/auth/stack/routes.go:77-105. By static reading these answer Go's default text/plain '404 page not found', not the JSON envelope; `kudurru login` in its default OIDC mode and `kudurru iam rolebindings get` reach them. Fix: (1) serve GET rolebinding item from the Stack (a read, same data as the list); (2) register explicit envelope refusals for the CLI-login and logout-continuation routes in the style of registerUnavailableTOTP (cmd/kudurru/serving_totp_legacy.go:12-24) with a stable key and a hint, or implement provider advertisement on the Stack; (3) add a catch-all on the legacy mux that returns the envelope. Record the choice in the decision log. Confirm the 404 with a mounted envtest first; this finding is from reading only.",
+   "acceptance": "gaps.md:110 ('No unexplained 501/503 remains in supported workflows'); followup-audit.md:231 (F61a provider/client selection). Proof: envtest mounted test in cmd/kudurru (next to serve_tsig_kube_management_test.go) that requests each of the six routes on a Kubernetes runServe and asserts Content-Type application/json, an envelope key and a hint; CLI test that `kudurru login` against that server prints the refusal; TestOpenAPIDrift and TestRoutePermissionLint still pass.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serve.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serving_totp_legacy.go",
+    "/home/vercel-sandbox/kudurru/internal/auth/stack/routes.go",
+    "/home/vercel-sandbox/kudurru/internal/api/authcli.go",
+    "/home/vercel-sandbox/kudurru/internal/api/rolebindings.go"
+   ],
+   "dependsOn": [],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-02",
+   "title": "Explicit role-aware refusals for followers, fenced and conflicted nodes, with a capability surface",
+   "kind": "implementation",
+   "size": "M",
+   "detail": "currentCommandAPIError maps replication.ErrReadOnly, ErrFenced and a dozen transient errors to one message, 503 unavailable 'current writable serving generation unavailable', with no hint (cmd/kudurru/serving_settings_api.go:109-112). An enrolled follower therefore answers that for PATCH /settings, /allowlist, /denylist, /domains, /queries/{id}/actions, unblock decisions, imports, IAM writes and TSIG commands; OIDC browser login answers 503 'captured browser provider login unavailable' (cmd/kudurru/serving_http_oidc.go:87). A fenced or conflicted node answers 503 generation_pending with Retry-After 1s (internal/servinghttp/http.go:150,156) although only `cluster resolve --offline` changes that state. GET /cluster has no role or authority field (internal/api/nodes.go:55-64) and the dashboard gates only static mode (dashboard/src/api/context.tsx:115-134). Work: distinct keys and hints (follower: names the primary and says the command is primary-only; fenced/conflict: names the offline commands and drops Retry-After); add role/authority to ClusterInfo; dashboard banner and disabled controls for non-forwarded domains; CLI prints the hint; regenerate OpenAPI and clients; update docs/deploy/sqlite-join.md and api-contracts.md.",
+   "acceptance": "README.md:382 (V2-HA: 'Read-only/fenced status, metrics, and forwarding failures are explicit'); gaps.md:110. Proof: extend test/e2e/enrolled_cluster_test.go and enrolled_conflict_test.go to assert key, hint and absent Retry-After per state; root member tests for the mapping; dashboard vitest for the banner and disabled actions; TestOpenAPIDrift after `make openapi client-go` and `bun run gen:api`.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serving_settings_api.go",
+    "/home/vercel-sandbox/kudurru/internal/servinghttp/http.go",
+    "/home/vercel-sandbox/kudurru/internal/api/nodes.go",
+    "/home/vercel-sandbox/kudurru/dashboard/src/api/context.tsx",
+    "/home/vercel-sandbox/kudurru/dashboard/src/pages/NodesPage.tsx",
+    "/home/vercel-sandbox/kudurru/docs/deploy/sqlite-join.md"
+   ],
+   "dependsOn": [],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-03",
+   "title": "Forward the remaining dashboard-critical mutation domains from enrolled followers, or record each as primary-only",
+   "kind": "implementation",
+   "size": "L",
+   "detail": "Forwarded today: /objects writes and deletes, four zone commands (internal/api/zones.go:632,813,925,1006; object_command_write.go:22,181), blocking, local login. Not forwarded: domain convenience commands, unblock approve/deny/delete, settings PATCH, token mint and password change (so `kudurru login --username` cannot finish on a follower), TOTP, OIDC browser/device login, source-entry PATCH, manual NOTIFY, TSIG, imports, integrations. The tracker lists this as remaining (completion-plan.md:1777-1778, 1859-1860). Add typed member commands for the domains a dashboard behind a VIP uses daily (domain commands, unblock decisions, settings, own tokens/password) following the D357/D362/D363 pattern; for domains kept primary-only write one decision-log entry and rely on G21-02 for the explicit refusal.",
+   "acceptance": "README.md:382 (V2-HA write forwarding); gaps.md:85 (G11 write forwarding). Proof: per-domain root member tests over member mTLS like TestRootMemberObjectCommandActualHTTP (commit, one audit row, dedup, retained refusals, revoked credential) and new steps in TestEnrolledClusterProcessesPartitionCatchupAndRestart.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serving_member_command.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serving_member_forward.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serving_domain_commands.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serving_unblock_commands.go",
+    "/home/vercel-sandbox/kudurru/internal/api/domain_command.go",
+    "/home/vercel-sandbox/kudurru/internal/api/unblock.go"
+   ],
+   "dependsOn": [
+    "F60b",
+    "G11",
+    "G21-02"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-04",
+   "title": "RFC 2136 UPDATE on an enrolled SQLite follower answers SERVFAIL",
+   "kind": "implementation",
+   "size": "M",
+   "detail": "The SQLite UPDATE handler answers SERVFAIL when the local primary driver is not running/ready or the writer cannot be bound (cmd/kudurru/primary_runtime.go:110-117); there is no routing to the primary. The package text requires it: README.md:399-401 ('Once follower mode is enabled, UPDATE also needs primary routing and fenced-writer tests'); docs/architecture/zones.md:692 says HA forwarding 'remains in progress'. Either add a typed member command that carries the verified UPDATE to the primary, or decide that followers refuse (NOTAUTH or REFUSED rather than SERVFAIL, clients use the SOA MNAME) and document it. Both are engineer decisions; record a D-number.",
+   "acceptance": "README.md:377 (V2-UPDATE on both drivers), :399-401. Proof: two-process test in test/e2e/enrolled_cluster_test.go sending a TSIG-signed UPDATE to the follower: committed on the primary and visible on both, or the chosen rcode with no write; fenced-writer case after promotion.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/primary_runtime.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serving_member_command.go",
+    "/home/vercel-sandbox/kudurru/docs/architecture/zones.md"
+   ],
+   "dependsOn": [
+    "F12a",
+    "G06",
+    "F60b"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-05",
+   "title": "Small contract cleanups: vestigial 503 gate, undeclared 501, unhelpful messages",
+   "kind": "implementation",
+   "size": "S",
+   "detail": "(1) servingMutationRoutes still answers 503 current_command_unavailable for any unsafe request to an unlisted path under /zones, /unblockrequests or source entries (cmd/kudurru/serving_routes.go:16-63); every registered route is exempt, so only unregistered paths such as POST /api/v1/zones hit it and get 503 instead of 404/405. Remove it or reduce it to a test that the exemption list equals the registered routes. (2) PATCH /node/config can answer 501 read_only (internal/api/settings.go:185,431,505) but its operation declares only 503 (settings.go:196); add 501 with addErrorResponses and regenerate. (3) POST /settings/sections/{section}/ownership|yaml on SQLite answers 503 'canonical settings do not use legacy ownership storage' with no hint (internal/api/settings_ownership.go:35-37,58-60) while `kudurru settings adopt|release|ownership|yaml` exist; add a hint. (4) The Authenticators panel shows a generic 'Authenticator status is unavailable' on Kubernetes (dashboard/src/components/access/Authenticators.tsx:130); key it on factor_management_unavailable as Sessions.tsx:39 does. (5) Delete or comment the now-dead tsigKeyUnsupported message.",
+   "acceptance": "gaps.md:110. Proof: API test that POST /api/v1/zones answers the 405 envelope on the complete runtime; TestOpenAPIDrift after regeneration; vitest case for the Authenticators message; CLI golden for settings ownership refusal text.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serving_routes.go",
+    "/home/vercel-sandbox/kudurru/internal/api/settings.go",
+    "/home/vercel-sandbox/kudurru/internal/api/settings_ownership.go",
+    "/home/vercel-sandbox/kudurru/dashboard/src/components/access/Authenticators.tsx",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serving_tsig.go"
+   ],
+   "dependsOn": [],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-06",
+   "title": "Permission table reconciliation and a reverse lint",
+   "kind": "implementation",
+   "size": "S",
+   "detail": "The lint checks routes against permissions.yaml only. Verbs with no route and no handler check: zones.sign, zones.share, clients.write, querylog.export, groups.read/write/delete, serviceaccounts.write/delete, identityproviders.write/delete, users.delete, integrations.write/delete/secrets, cluster.drain, edge.write (internal/rbac/permissions.yaml:9-34; grep over internal/api, internal/auth, cmd/kudurru finds no use). Suspicious points: (a) GET /queries/export requires querylog.read (internal/api/query_export.go:26; documented by D258 and docs/architecture/observability.md:107-108) while design-record.md:934 gives export to auditor and not operator; pick one and make table, role file and route agree. (b) POST /queries/{id}/actions requires only blocklists.write although it reads a query-log row by ID (internal/api/stats.go:244-245). (c) GET /imports/existing|runs|runs/{id} require settings.write for reads (internal/api/migration_runs.go:107,126); keep, but say so in the role table. (d) design-record.md:932 mentions settings.operatorSeesQueryLog, which does not exist in code. Add a test that every resource.verb is used by a route, a handler check, or an explicit 'reserved' list with the target release.",
+   "acceptance": "design-record.md:922-938 (D31 single source); gaps.md:110 ('permission rules'). Proof: new TestPermissionVerbsAreUsedOrReserved in internal/api/routes_test.go; role-matrix test for auditor/operator on /queries/export; `make rbac-manifests` then TestAggregatedRolesDrift if the yaml changes.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/internal/rbac/permissions.yaml",
+    "/home/vercel-sandbox/kudurru/internal/api/routes_test.go",
+    "/home/vercel-sandbox/kudurru/internal/api/query_export.go",
+    "/home/vercel-sandbox/kudurru/internal/api/stats.go",
+    "/home/vercel-sandbox/kudurru/dev-docs/design-record.md"
+   ],
+   "dependsOn": [],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-07",
+   "title": "CLI for stored TSIG keys",
+   "kind": "implementation",
+   "size": "S",
+   "detail": "/tsigkeys has five routes on both drivers (internal/api/tsigkeys.go:20-45) and an operator page that tells the reader to keep secrets out of arguments (docs/deploy/tsig-keys.md:8-10), but no command: docs-site/content/reference/cli.md has no tsig family and cmd/kudurru has no client code for it. Add `kudurru tsigkeys list|create|replace|reseal|revoke` with --secret-file / stdin, exact --uid/--resource-version, 201/200/202 receipt rendering and no retry.",
+   "acceptance": "README.md:370-372 (each package includes its API, CLI, UI and docs); followup-audit.md:78 (F07a rotation). Proof: real-router CLI test in the style of cmd/kudurru/cli_router_contract_test.go:95; TestCLIReferenceDrift after `make docs-gen`.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/cli.go",
+    "/home/vercel-sandbox/kudurru/internal/apiclient/generated.go",
+    "/home/vercel-sandbox/kudurru/docs/deploy/tsig-keys.md",
+    "/home/vercel-sandbox/kudurru/docs-site/content/reference/cli.md"
+   ],
+   "dependsOn": [],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-08",
+   "title": "IAM write surfaces: dashboard RoleBinding and local-user actions, CLI for local users",
+   "kind": "implementation",
+   "size": "M",
+   "detail": "V2-IAM asks for 'IAM write API/UI' (README.md:383). RoleBinding writes have API and CLI but the dashboard only lists (dashboard/src/api/endpoints.ts:290). POST /iam/users and POST /iam/users/{name}/password (internal/api/authroutes.go:131-136) have neither a CLI command nor a UI. The planned CRUD for groups, service accounts and identity providers (design-record.md:1209) has no routes; that part belongs to G12. Build create/replace/delete RoleBinding dialogs and create/reset user actions on AccessPage with exact uid/resourceVersion, gated by a server capability so Kubernetes shows them disabled; add `kudurru iam users create|reset-password`. Not building these needs an owner retarget (followups.md:14-15), so treat as implementation.",
+   "acceptance": "README.md:383; gaps.md:86 (G12 'remaining administrative writers'). Proof: AccessPage vitest cases plus a Playwright spec in dashboard/e2e; real-router CLI tests; look up Astryx components first per dashboard/AGENTS.md.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/dashboard/src/pages/AccessPage.tsx",
+    "/home/vercel-sandbox/kudurru/dashboard/src/api/endpoints.ts",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/rolebindings.go",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/cli.go"
+   ],
+   "dependsOn": [
+    "G12"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-09",
+   "title": "Integrations administration UI and Integration object writes",
+   "kind": "implementation",
+   "size": "L",
+   "detail": "The dashboard has no integrations page (dashboard/src/routes.tsx:89-124) and no hand-written client call for /integrations; Integration is not an /objects kind (internal/api/kinds.go:21-28), so instances can only be created from files, and integrations.write/delete/secrets are unused. The package requires 'manifest-driven forms, check/sync/preview, inventory, and zone/record publication conditions' (README.md:403-405) and gaps.md:83 lists 'administration UI'. docs/deploy/integrations.md:15-16 itself says the management UI remains.",
+   "acceptance": "README.md:380, 403-405; gaps.md:83. Proof: API tests for Integration create/replace/delete under current-command admission; dashboard vitest and e2e for form, check, preview, sync with reviewed uid/revision; explicit disabled state on Kubernetes until F09b lands.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/internal/api/integrations.go",
+    "/home/vercel-sandbox/kudurru/internal/api/kinds.go",
+    "/home/vercel-sandbox/kudurru/dashboard/src/routes.tsx",
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/integration_admin.go"
+   ],
+   "dependsOn": [
+    "F09b",
+    "F60c",
+    "G09"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-10",
+   "title": "Cluster membership in the dashboard: enrollment review, join-token issuance, promotion review",
+   "kind": "implementation",
+   "size": "M",
+   "detail": "G11 lists 'join tokens/wizard/CLI' (gaps.md:85; README.md:382 'join tokens/wizard and cluster CLI'). The five /cluster/* command routes exist with CLI only; the dashboard uses GET /cluster and /nodes alone. Joining itself is an offline host command (D355), so the UI part is: show enrollment and role, issue a reviewed invitation with expiry and show it once, and show promotion eligibility with the reviewed promote action. An engineer may instead record that these stay CLI-only because every command needs a separately reviewed identity (D345, D347, D354); that needs a decision-log entry and the docs to say so.",
+   "acceptance": "README.md:382; gaps.md:85. Proof: NodesPage vitest for the three views; e2e against the two-process harness for issue-token; never-replay behavior on lost responses asserted.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/dashboard/src/pages/NodesPage.tsx",
+    "/home/vercel-sandbox/kudurru/dashboard/src/api/endpoints.ts",
+    "/home/vercel-sandbox/kudurru/internal/api/cluster_enrollment.go"
+   ],
+   "dependsOn": [
+    "F60b",
+    "G21-02"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-11",
+   "title": "Refusal inventory test across every runtime shape",
+   "kind": "qualification",
+   "size": "M",
+   "detail": "Nothing proves the gate sentence mechanically. Add one table-driven mounted test that walks every operation of the served OpenAPI document with an admin credential on each shape (complete SQLite standalone, static twin, enrolled primary, enrolled follower, fenced node, Kubernetes via envtest) and asserts: the response is the JSON envelope; every 501/503 has a key from a checked-in allowlist with a non-empty hint; the allowlist row names the operator doc anchor that explains it. The allowlist file then is the classified list this sweep produced, kept current by the test.",
+   "acceptance": "gaps.md:110 ('No unexplained 501/503 remains in supported workflows'); completion-plan.md:220. Proof: the test itself in cmd/kudurru (SQLite and envtest shapes) and test/e2e (follower/fenced, reusing enrolled_cluster_test.go and enrolled_conflict_test.go); it must fail on today's tree for the G21-01 routes and the G21-02 messages.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/cmd/kudurru/serve_contract_test.go",
+    "/home/vercel-sandbox/kudurru/test/e2e/enrolled_cluster_test.go",
+    "/home/vercel-sandbox/kudurru/test/e2e/enrolled_conflict_test.go"
+   ],
+   "dependsOn": [
+    "G21-01",
+    "G21-02",
+    "G21-05"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-12",
+   "title": "Final-head generated-artifact and drift qualification",
+   "kind": "qualification",
+   "size": "S",
+   "detail": "Drift tests were last evidenced at 1a78bb92 (completion-plan.md:1953-1956: root selection with OpenAPI/CLI-reference, 134 passes). HEAD 33ee04bc has no recorded hosted result, and any G21 fix above changes routes or descriptions. On the final head run `make check-generated` (controller-gen plus docs-gen, Makefile:177-185), the four drift tests, `make rbac-manifests` if permissions.yaml changed, dashboard lint/typecheck/test, and `make docs-check-links`; record commands and outcomes in the ledger. The Cloudflare docs check is excluded by the user (completion-plan.md:37).",
+   "acceptance": "gaps.md:110 ('generated schemas/clients'); release-checklist.md:100-103. Proof: clean `git diff --exit-code` after generation; hosted CI green on the final SHA.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/Makefile",
+    "/home/vercel-sandbox/kudurru/api/openapi.json",
+    "/home/vercel-sandbox/kudurru/internal/apiclient/openapi/zz_generated.client.go",
+    "/home/vercel-sandbox/kudurru/dashboard/src/api/generated.ts",
+    "/home/vercel-sandbox/kudurru/docs-site/content/reference/cli.md"
+   ],
+   "dependsOn": [
+    "G21-01",
+    "G21-02",
+    "G21-05",
+    "G21-06",
+    "G21-07"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-13",
+   "title": "Operator page: what works on which deployment shape, and the error-key glossary",
+   "kind": "docs",
+   "size": "M",
+   "detail": "Limits are scattered over six pages and several keys appear in no operator doc: current_command_unavailable, factor_management_unavailable, factor_unavailable, user_management_unavailable, sessions_unavailable, external_users_unavailable (architecture only, access.md:1132), integration_uncertain, committed_output_unavailable, not_implemented/read_only for node config. Write one page (extend docs/deploy/api-contracts.md or add a sibling) with a matrix of capability by shape (SQLite standalone, static, enrolled primary, follower, fenced/conflicted, Kubernetes) covering TOTP, session inventory, external accounts, API user commands, RoleBinding writes, CLI OIDC/device login, RP-initiated logout (Kubernetes keeps local logout only, internal/auth/stack/routes.go:83-85), auth hot reload (Kubernetes restart-bound, completion-plan F26e row), cluster commands, integrations, node config, settings ownership, TSIG, RFC 2136, blocking; then the glossary with status, key, meaning and next action.",
+   "acceptance": "gaps.md:110 ('operator docs'; 'No unexplained 501/503'). Proof: the G21-11 allowlist links to anchors on this page; docs link check passes.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/docs/deploy/api-contracts.md",
+    "/home/vercel-sandbox/kudurru/docs/deploy/README.md"
+   ],
+   "dependsOn": [
+    "G21-01",
+    "G21-02"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-14",
+   "title": "Missing and stale operator pages for shipped v0.2 features",
+   "kind": "docs",
+   "size": "M",
+   "detail": "No operator page exists for RFC 2136 dynamic updates: enabling spec.policy.update, key x owner x type grants, the Kubernetes rfc2136-<zone> object and its dns-update manager, SERVFAIL after eight lost CAS attempts, follower behavior (only docs/architecture/zones.md and the CRD reference mention it). TOTP setup/disable/recovery and session inventory have no guide text (docs/guide/admin/10-command-line.md:56-63 covers only `login --totp`). CLI browser/device login is described in docs/guide/dashboard/access.md:96-107 but not in the command-line chapter. The kudurru-grant-floors Secret (D364) appears only in docs/architecture/access.md:1063. Stale lines: docs/deploy/rolebindings.md:58 ('Kubernetes durable accepted-authority work remains open'), docs/deploy/tsig-keys.md:58-59 and :63-64 ('once at startup' beside the hot-reload text), docs/guide/admin/09-people-and-tokens.md:59-61 ('Read-only in this release', a label the dashboard no longer has).",
+   "acceptance": "gaps.md:110 ('operator docs'); README.md:370-372. Proof: review against the cited code; docs link check; guide style rules in docs/guide/style.md.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/docs/deploy/rolebindings.md",
+    "/home/vercel-sandbox/kudurru/docs/deploy/tsig-keys.md",
+    "/home/vercel-sandbox/kudurru/docs/guide/admin/09-people-and-tokens.md",
+    "/home/vercel-sandbox/kudurru/docs/guide/admin/10-command-line.md",
+    "/home/vercel-sandbox/kudurru/docs/guide/admin/07-zones-and-upstreams.md",
+    "/home/vercel-sandbox/kudurru/docs/deploy/kubernetes-service-account-auth.md"
+   ],
+   "dependsOn": [
+    "G21-04"
+   ],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-15",
+   "title": "Retarget operator guides and migration comparisons from v0.1.0 to v0.2.0",
+   "kind": "docs",
+   "size": "L",
+   "detail": "44 statements outside the generated reference still describe v0.1.0. Headline ones: docs/guide/README.md:34 and docs-site/content/_index.md:19 ('These guides describe v0.1.0'); docs-site/content/migrate/_index.md:43,57,64-65 (comparison column 'kudurru v0.1.0', 'secondary/stub/catalog zones, RFC 2136 updates ... are not implemented'); migrate/technitium.md:104 ('RFC 2136 dynamic updates | Deferred'); migrate/pihole.md:91 ('Pause is node-local in v0.1.0'); migrate/adguard-home.md:10,22,58,226; migrate/cutover.md:20,94; docs/guide/admin/05-groups-clients-policies.md:101-102 (client ID and MAC 'Reserved'); 07-zones-and-upstreams.md:161,488 ('on the v0.2 development branch', 'no list of exceptions'). Rewrite each against the code and keep AD as preview (D353).",
+   "acceptance": "gaps.md:110 ('operator docs'); gaps.md:115 (G25 status consistency). Proof: `grep -rn 'v0\\.1\\.0' docs docs-site/content` leaves only historical or DHCP-introduction statements that are still true; docs link check.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/docs/guide/README.md",
+    "/home/vercel-sandbox/kudurru/docs-site/content/_index.md",
+    "/home/vercel-sandbox/kudurru/docs-site/content/migrate/_index.md",
+    "/home/vercel-sandbox/kudurru/docs-site/content/migrate/technitium.md",
+    "/home/vercel-sandbox/kudurru/docs-site/content/migrate/pihole.md",
+    "/home/vercel-sandbox/kudurru/docs-site/content/migrate/adguard-home.md",
+    "/home/vercel-sandbox/kudurru/docs-site/content/migrate/cutover.md",
+    "/home/vercel-sandbox/kudurru/docs/guide/admin/05-groups-clients-policies.md",
+    "/home/vercel-sandbox/kudurru/docs/guide/admin/07-zones-and-upstreams.md"
+   ],
+   "dependsOn": [],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-16",
+   "title": "Architecture pages: remove statements the code has overtaken and refresh the index",
+   "kind": "docs",
+   "size": "M",
+   "detail": "The flows are written up, but these lines now contradict them. docs/architecture/README.md:3 (v0.1.0 tour), :114 (no follower driver), :116 (/nodes/{other}/health returns 501), :117 (blocking disable per node, in memory), :119 (dynamic UPDATE in progress), and the tour table at :24-36 omits integrations.md. configuration-and-store.md:368-369 (Integration host and Kudurru serving 'in progress'), :794-795 and :843-844 and :1121-1122 and :1933 (forwarding unfinished), :1070-1071 keep as the true remainder, :1754 ('Kubernetes management and hot rotation remain unavailable'), :2135-2137 (conflicting promotions 'remain separate requirements'). access.md:253 ('Kubernetes durable revocation remains open'); access.md has no follower-login section (D363 is only in configuration-and-store.md:1064-1071), add a short one with a diagram or a link. zones.md:692 and :721. deployment.md:381-388 (twins have no read-only mode). integrations.md:376 (lease-loss qualification, passed on November 9). block-lists.md:350 and policies-and-blocking.md:109 say the RPZ adapter is not wired while serve.go:669-675,1094,1457 mounts rpz.Manager; verify the pipeline path, then correct.",
+   "acceptance": "gaps.md:110 ('architecture updates'); CLAUDE.md rule to keep docs/architecture in step with the code. Proof: each edited sentence cites the code path in the review; Mermaid blocks render in `make docs-site`.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/docs/architecture/README.md",
+    "/home/vercel-sandbox/kudurru/docs/architecture/configuration-and-store.md",
+    "/home/vercel-sandbox/kudurru/docs/architecture/access.md",
+    "/home/vercel-sandbox/kudurru/docs/architecture/zones.md",
+    "/home/vercel-sandbox/kudurru/docs/architecture/deployment.md",
+    "/home/vercel-sandbox/kudurru/docs/architecture/integrations.md",
+    "/home/vercel-sandbox/kudurru/docs/architecture/block-lists.md",
+    "/home/vercel-sandbox/kudurru/docs/architecture/policies-and-blocking.md"
+   ],
+   "dependsOn": [],
+   "ownerQuestion": ""
+  },
+  {
+   "id": "G21-17",
+   "title": "Ledger reconciliation for the G21 row",
+   "kind": "docs",
+   "size": "S",
+   "detail": "gaps.md:110 still describes G21 by the 1f3b0a4 captured GETs only. Replace it with the classified refusal list and the closure evidence. dev-docs/followups.md keeps 43 rows targeted v0.2 although its rule is to delete a closed row and cite the commit (followups.md:3-5), and release-checklist.md:104-105 requires every such row closed or moved. CHANGELOG.md has both '[Unreleased]' (line 7) and '[0.2.0] - unreleased' (line 133). Add the decision-log entries created by G21-01, -02, -03, -04, -06 and -10 (next free number is D367).",
+   "acceptance": "gaps.md:115 (G25); release-checklist.md:104-105, 116-120. Proof: review; no test.",
+   "files": [
+    "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/gaps.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/completion-plan.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/followup-audit.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/followups.md",
+    "/home/vercel-sandbox/kudurru/CHANGELOG.md",
+    "/home/vercel-sandbox/kudurru/dev-docs/design-record.md"
+   ],
+   "dependsOn": [
+    "G21-11",
+    "G21-12"
+   ],
+   "ownerQuestion": ""
+  }
+ ],
+ "recommendation": "Close G21 in this order. First G21-01 and G21-05: small, self-contained, and they remove the only responses that are plainly wrong (plain-text 404 on Kubernetes, 503 for unregistered paths, undeclared 501). Then G21-02, because explicit follower/fenced/conflict refusals are needed whatever is later forwarded: a partitioned or conflicted node will always refuse, and README.md:382 asks for that to be explicit. Then G21-11, so the allowlist becomes the maintained definition of \"explained\", and G21-13 as its documentation target. Run G21-12 last on the final SHA.\n\nFor the driver split, follow existing decisions instead of building parity: D54 keeps server-side session state on SQLite in v0.2, D364 lists per-session state on Kubernetes as a rejected alternative, D289 and D294 already ship SQLite-only administration with explicit refusals. Record one new decision that TOTP management, session inventory, external-account administration, API user commands and RoleBinding writes are SQLite-only in v0.2, each with a keyed refusal, a UI capability and a line in the matrix. That is an engineer decision, not an owner blocker.\n\nFor followers, follow D357/D362/D363: typed member commands that rerun the public route body on the primary, never a generic proxy (D362 rejects one). Forward the domains a dashboard behind a VIP uses (domain commands, unblock decisions, settings, own tokens and password); keep TSIG, imports, integrations and IAM administration primary-only with the G21-02 hint and one decision entry. For UPDATE on followers (G21-04) either choice is defensible; the tracker text prefers routing.\n\nThe surface items G21-08, -09 and -10 are real builds owned by G12, G09 and G11. They cannot be closed by documentation: followups.md:14-15 says requirements stay in scope unless the owner retargets them. The docs packages G21-14, -15 and -16 have no code dependency and can run in parallel now.",
+ "sharedSeams": [
+  "/home/vercel-sandbox/kudurru/cmd/kudurru/serve.go",
+  "/home/vercel-sandbox/kudurru/cmd/kudurru/serving_settings_api.go",
+  "/home/vercel-sandbox/kudurru/cmd/kudurru/serving_member_command.go",
+  "/home/vercel-sandbox/kudurru/internal/api/authroutes.go",
+  "/home/vercel-sandbox/kudurru/internal/api/errors.go",
+  "/home/vercel-sandbox/kudurru/internal/api/nodes.go",
+  "/home/vercel-sandbox/kudurru/internal/api/routes.go",
+  "/home/vercel-sandbox/kudurru/internal/auth/stack/routes.go",
+  "/home/vercel-sandbox/kudurru/internal/rbac/permissions.yaml",
+  "/home/vercel-sandbox/kudurru/deploy/helm/kudurru/templates/rbac-aggregated.yaml",
+  "/home/vercel-sandbox/kudurru/api/openapi.json",
+  "/home/vercel-sandbox/kudurru/api/openapi-3.0.json",
+  "/home/vercel-sandbox/kudurru/internal/apiclient/openapi/zz_generated.client.go",
+  "/home/vercel-sandbox/kudurru/internal/apiclient/openapi/zz_generated.dispatch.go",
+  "/home/vercel-sandbox/kudurru/dashboard/src/api/generated.ts",
+  "/home/vercel-sandbox/kudurru/dashboard/src/api/endpoints.ts",
+  "/home/vercel-sandbox/kudurru/dashboard/src/api/context.tsx",
+  "/home/vercel-sandbox/kudurru/dashboard/src/pages/AccessPage.tsx",
+  "/home/vercel-sandbox/kudurru/dashboard/src/pages/NodesPage.tsx",
+  "/home/vercel-sandbox/kudurru/docs-site/content/reference/cli.md",
+  "/home/vercel-sandbox/kudurru/docs-site/content/reference/api/endpoints.md",
+  "/home/vercel-sandbox/kudurru/docs/architecture/configuration-and-store.md",
+  "/home/vercel-sandbox/kudurru/docs/architecture/access.md",
+  "/home/vercel-sandbox/kudurru/docs/architecture/zones.md",
+  "/home/vercel-sandbox/kudurru/docs/architecture/README.md",
+  "/home/vercel-sandbox/kudurru/docs/deploy/sqlite-join.md",
+  "/home/vercel-sandbox/kudurru/docs/deploy/api-contracts.md",
+  "/home/vercel-sandbox/kudurru/dev-docs/design-record.md",
+  "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/completion-plan.md",
+  "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/gaps.md",
+  "/home/vercel-sandbox/kudurru/dev-docs/milestones/v0.2/followup-audit.md",
+  "/home/vercel-sandbox/kudurru/dev-docs/followups.md",
+  "/home/vercel-sandbox/kudurru/CHANGELOG.md"
+ ],
+ "testInfra": "Generators: `make openapi` (go run ./internal/api/openapigen -dir api), `make client-go` (oapi-codegen v2.8.0, then go run ./hack/clientdispatch), `cd dashboard && bun run gen:api` (openapi-typescript 7.13.0 into src/api/generated.ts), `make docs-gen` (go run ./hack/docsgen -root . and TestCLIReferenceDrift -update-cli-reference), `make rbac-manifests`, `make check-generated` (Makefile:122-185, 341-343).\n\nDrift and lint tests (seconds each): `go test -count=1 ./internal/api -run 'TestRoutePermissionLint|TestLintRoutesCatchesMissingDeclaration|TestOpenAPIDrift|TestOpenAPIServedAndDocs|TestUnknownAPIPathIsEnvelope|TestGeneratedClient'`; `go test -count=1 ./cmd/kudurru -run '^TestCLIReferenceDrift$'`; `go test -count=1 ./hack/docsgen -run TestReferenceDrift`; `go test -count=1 ./ee/rbac -run TestAggregatedRolesDrift`.\n\nHarnesses to extend: real-router CLI tests cmd/kudurru/cli_router_contract_test.go:95-207 and serve_contract_test.go; Kubernetes mounted envtest tests cmd/kudurru/serve_tsig_kube_management_test.go:32 (18.2 s), serve_kube_update_test.go:32, kube_login_limit_test.go:30; legacy refusal mounts serve_users_mount_test.go and serve_totp_mount_test.go; multi-process test/e2e/enrolled_cluster_test.go, enrolled_conflict_test.go, static_cluster_test.go (three enrolled scenarios 30.9 s, 49.8 s, 68.2 s; 2m41s wall with builds, completion-plan.md:1753-1755). envtest assets are found under bin/k8s/1.37.0-linux-amd64 or via KUBEBUILDER_ASSETS (Makefile:91-95); tests skip when they are missing. PostgreSQL-backed tests skip without a DSN.\n\nPrior durations: full `go test -race ./internal/api/...` 646 passes, 3 environmental skips, root package 196 s (.context/object-forward-20261109/api-race02.json); cmd/kudurru affected race selection with envtest 267 s package time, 4m31s wall (.context/kube-tsig-management-20261109/root-race01). Dashboard: `make dashboard-lint dashboard-test` (eslint, tsc, vitest), `make dashboard-e2e` (Playwright). Docs: `make docs-site`, `make docs-check-links`. None of these were run in this pass.",
+ "risks": [
+  "This sweep is static. The Kubernetes plain-text 404 (G21-01), the follower message mapping and the SERVFAIL on follower UPDATE come from reading code paths, not from a run; confirm each with a mounted test before fixing.",
+  "Any route, description or status change regenerates five artifacts (two OpenAPI files, Go client and dispatch, dashboard generated.ts, endpoints.md, possibly cli.md). Parallel packages touching routes will conflict there; land route changes serially and regenerate once.",
+  "Decision-log numbering: several packages here add entries starting at D367; parallel work on other gates will collide in dev-docs/design-record.md and the three ledger files.",
+  "HEAD 33ee04bc has no hosted CI result in the ledger, and the hosted failure of TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled is recorded as unexplained and open (completion-plan.md:1768-1775). G21 cannot be signed off on a red or unknown head.",
+  "G21 is worded as 'every feature'. V2-OBS items (dnstap, OTel/TRACEPARENT, ClickHouse/Loki) have no code under internal/, cmd/ or ee/ and no F row, only gaps.md:87; integrations on Kubernetes (F09b) and the IAM CRUD planned at design-record.md:1209 are also unbuilt. G21 stays open until those are built or the owner retargets them (followups.md:14-15); documentation alone cannot close them.",
+  "Dashboard changes must follow dashboard/AGENTS.md and the Astryx lookup rule in CLAUDE.md; the working tree has a modified dashboard/dist/index.html that must not be committed (release-checklist.md:103).",
+  "The docs retarget (G21-15) is large and editorial; statements about AD must stay 'preview' (D353) and two-VM VIP acceptance must stay 'deferred, not passed' (D358).",
+  "Making refusals explicit changes error keys that scripts may match on (for example 'unavailable' becoming a follower-specific key); note it in the changelog and keep HTTP status 503."
+ ],
+ "designOptions": [
+  {
+   "name": "A. Explicit refusals and documentation only",
+   "description": "Keep today's forwarding set and driver split. Add role-aware keys and hints, a role field on GET /cluster, UI capability gating, the capability matrix and the inventory test (G21-01, -02, -05, -11, -13).",
+   "pros": "Smallest change; needed in every option; closes the literal '501/503 explained' sentence; no new replication surface.",
+   "cons": "A dashboard reached through a VIP on a follower still cannot edit allowlists, approve requests, change settings or sign in with OIDC; the tracker lists that forwarding as remaining (completion-plan.md:1777-1778)."
+  },
+  {
+   "name": "B. Option A plus typed forwarding for dashboard-critical domains",
+   "description": "Add member commands for domain convenience commands, unblock decisions, settings PATCH and own tokens/password, following D357/D362/D363; record TSIG, imports, integrations and IAM administration as primary-only.",
+   "pros": "Makes the HA dashboard workflow usable on any member; reuses a proven pattern and its test harness; leaves a short, justified primary-only list.",
+   "cons": "Large; each domain needs its own reauthorization, dedup and rollback tests; depends on F60b/G11 work in the same files."
+  },
+  {
+   "name": "C. Full parity",
+   "description": "Forward every mutation domain and OIDC login from followers, and build Kubernetes equivalents for TOTP, sessions, external accounts, user commands and RoleBinding writes.",
+   "pros": "No driver or role limits left to document.",
+   "cons": "Contradicts D54 and the alternative rejected in D364 (server-side session state on Kubernetes); very large; multi-object atomicity on Kubernetes would need a new design per feature as D365/D366 did."
+  }
+ ]
+}

@@ -1,0 +1,251 @@
+{
+ "key": "f60b-f46-follower-forwarding",
+ "item": "F60b/F46: enrolled SQLite follower write forwarding for the remaining domains (settings, IAM/self-service, OIDC/CLI login, TSIG, integrations, imports, unblock, allow/deny convenience, node-local commands)",
+ "summary": "The member-command framework is complete and closed: a follower sends one typed clusterreplica.Command (internal/cluster/replica/command.go:41-56) through EnrolledForwarder.Capture/Forward (internal/cluster/replica/enrolled_forward.go:35-88), and the primary runs it in executeMemberCommand, whose switch admits only version-1 auth.login and version-2 blocking.toggle, objects.write, objects.delete and zones.command (cmd/kudurru/serving_member_command.go:37-43, 112-122). Of the 93 mutating OpenAPI operations, 11 are forwarded and covered by the two-process test (POST /dns/blocking, five /objects writes/deletes, four zone convenience commands, POST /auth/login; test/e2e/enrolled_cluster_test.go:321-378). Sixteen more (POST /apply, the /blocklists, /clientgroups and /policies kind routes, six :batchDelete routes) reach the same ObjectForward seam (internal/api/object_command_write.go:21-33, 177-186) but fail on a follower: CaptureMemberForward refuses any deadline over 30 s (internal/store/sqlite/member_forward.go:38-42), boundMemberObjectWrites installs that bound only under /objects/ and /zones/ (cmd/kudurru/serving_member_objects.go:38-41), and the caller reports a misleading 503 \"the follower's source changed\" (ibid. 146-149). D362, CHANGELOG.md:33-38 and docs/deploy/sqlite-join.md:99-101 say `kudurru apply` is forwarded, but it posts to /apply (internal/apiclient/objects.go:126) and no test covers it. Every other store mutation funnels through currentAuthCommandThen/currentAuthCommandOutput, which return replication.ErrFenced when the local primary driver is not running (cmd/kudurru/serving_command.go:78-81, serving_command_output.go:21-24) and surface as the generic `503 unavailable` \"current writable serving generation unavailable\" (cmd/kudurru/serving_settings_api.go:109-112), not a typed primary-only refusal. Beyond \"not forwarded\" there are real defects: sign-out on a follower fails with 503 and leaves the cookie and durable session valid while the dashboard shows the login page (cmd/kudurru/serving_http_sessions.go:303-350, serving_http_oidc_logout.go:81-84, dashboard/src/api/context.tsx:152-171); `kudurru login --username` logs in and then fails at POST /auth/tokens (cmd/kudurru/login.go:165-174); list refresh answers 202 with no effect because membership is cluster.Self (cmd/kudurru/serve.go:542, servewire.go:28-39) while the fetcher is leader-only (serve.go:1565); cache flush and node log configuration are refused because they use the local writer (serving_cache.go:49, serving_node.go:116); and the public block-page unblock form fails generically (internal/blockpage/request.go:284-289). The dashboard has no notion of an enrolled follower: GET /cluster exposes only the static `readOnly` flag and reports this node as leader (internal/api/nodes.go:249-260, internal/cluster/membership.go:50-57), useCan gates on static mode only (dashboard/src/api/context.tsx:116-135) and errors render as \"Something went wrong\" (dashboard/src/components/Feedback.tsx:35-44). For F46 there are no follower-local shared counters left to share: local login is admitted by the primary (D363), and password change, TOTP, OIDC start/callback and CLI prepare all need the local writer (cmd/kudurru/serving_http_request_limit.go:70-82), so what remains is explicit refusal or forwarding plus evidence. Nothing in this item needs the owner.",
+ "alreadyDone": [
+  "Local-login forwarding is mounted and tested, but two documents still say it is not: dev-docs/followups.md:114 ('enrolled-replica forwarding remains') and docs/architecture/access.md:144-146 ('Enrolled-replica request forwarding remains unmounted'). Evidence: cmd/kudurru/serving_member_login.go:63-126 (follower), 130-204 (primary domain), TestRootMemberLoginCommandActualHTTP at cmd/kudurru/serving_member_objects_test.go:327, test/e2e/enrolled_cluster_test.go:324-344.",
+  "Object and zone forwarding is mounted, but docs/architecture/configuration-and-store.md:794-795 ('Public forwarding beyond the blocking toggle ... remain unfinished') and :1420 ('Other public mutation domains remain closed on followers') still describe the D357 state. Evidence: cmd/kudurru/serving_member_objects.go:100-128, serving_member_zones.go:43-66, tests at serving_member_objects_test.go:134 and :273.",
+  "F46 on followers: no shared lockout or request-budget counter can diverge on a follower today. Local login charges the primary's counters (security.IssueForwardedLocalWithAdmission, internal/auth/security/issue_forwarded.go:43-59); password change, TOTP and OIDC/CLI lanes cannot commit on a follower at all (cmd/kudurru/serving_http_password.go:62, serving_http_factors.go:112, serving_http_request_limit.go:70-82). The tracker's 'OIDC/browser/device logins on followers ... remain' (completion-plan.md:166) therefore needs a recorded decision and evidence, not new counter code.",
+  "The forward seam for /apply, the kind routes and :batchDelete already exists: they call commandWriteObject/commandDeleteObject, which call ObjectForward (internal/api/write.go:155-156, internal/api/objects.go:454-455 and 652-653, internal/api/lists.go:108-123). Only the 30-second capture bound is missing, so closing D362's claim is a small fix, not a new domain.",
+  "Cluster lifecycle routes already answer by role: POST /cluster/promote is follower-local and passes in the process test (test/e2e/enrolled_cluster_test.go:431-437); POST /cluster/activate and /cluster/join-token return a typed 409 on the wrong role (cmd/kudurru/serving_http_cluster.go:52-54 and 159, serving_http_join_token.go:65-66 and 136-138).",
+  "DHCP management and query-log purge are node-local by design and do not touch the enrolled store: DHCP uses its own dhcp.db (cmd/kudurru/dhcp.go:121) and purge uses the local query-log writer (internal/api/stats.go:662-687). They are not forwarding work; they only need one follower assertion in the process test."
+ ],
+ "remaining": [
+  {
+   "id": "FWD-BOUND",
+   "title": "Fix object forwarding for /apply, kind routes and :batchDelete on a follower",
+   "kind": "implementation",
+   "size": "S",
+   "detail": "POST /apply, POST/PUT/DELETE /blocklists|/clientgroups|/policies and POST /{plural}:batchDelete reach ObjectForward but fail at Capture because no 30-second lifetime is installed (cmd/kudurru/serving_member_objects.go:38-41; internal/store/sqlite/member_forward.go:38-42). Kind routes return 503; /apply and batch return 200 with a per-item 503. Replace the two-prefix test in boundMemberObjectWrites with one predicate for every forward-capable route (the same table FWD-REFUSAL uses). Make forwardMemberCommand distinguish 'no bounded lifetime' from 'source changed' instead of collapsing every Capture error (serving_member_objects.go:146-149). Decide and record the multi-document rule for /apply: each document is one member exchange with a new member client (internal/cluster/replica/enrolled_forward.go:72-77) inside the single 30-second bound, so either cap documents per follower request with a typed 413 or document partial per-item results.",
+   "acceptance": "D362 as recorded: completion-plan.md:1786-1800 and docs/deploy/sqlite-join.md:99-101 ('including kudurru apply and the dashboard object editors'); V2-HA 'write forwarding' README.md:382. Tests: extend testEnrolledProcesses (test/e2e/enrolled_cluster_test.go:345-378) with POST /apply of two documents, PUT and DELETE /blocklists/default/x, POST /dnsrecordsets:batchDelete through the follower, each converging on both nodes, plus the same calls during partition returning 503 without later replay. Add a follower-side in-process test on the fixture at cmd/kudurru/serving_member_forward_test.go:60.",
+   "files": [
+    "cmd/kudurru/serving_member_objects.go",
+    "cmd/kudurru/serving_http.go",
+    "test/e2e/enrolled_cluster_test.go",
+    "cmd/kudurru/serving_member_forward_test.go"
+   ],
+   "dependsOn": []
+  },
+  {
+   "id": "FWD-REFUSAL",
+   "title": "Typed primary_required refusal for every unforwarded mutation, and correct role reporting",
+   "kind": "implementation",
+   "size": "M",
+   "detail": "(1) At the three places that turn 'not the writer' into ErrFenced (cmd/kudurru/serving_command.go:78-81, serving_command_output.go:21-24, serving_migrations.go:32-35), return a typed error when Store.ServingAuthority() is an unblocked Follower; fenced and conflict keep today's behavior. Map it in currentCommandAPIError (serving_settings_api.go:101-116) to `503 primary_required` (new key next to KeyReadOnly, internal/api/errors.go:40) with a hint naming Authority().Term.PrimaryName (internal/store/sqlite/sqlite.go:427-437), no Retry-After. Apply the same mapping in the private mappers: tsigKeyAPIError (serving_tsig.go:324-325), integrationAdminError (cmd/kudurru/integration_admin.go:25-46), the request-admission lane for OIDC start/callback and CLI prepare (serving_http_request_limit.go:70-82), and keep the key in apiclient.safeAuthError's allow list (internal/apiclient/auth.go:195). (2) Add role, primary and fenced to ClusterInfo (internal/api/nodes.go:53-63, 249-260) and replace cluster.Self with an authority-aware membership on enrolled SQLite (cmd/kudurru/serve.go:542), so /cluster stops naming the follower as leader and listRefresher answers the existing ErrNotLeader 409 naming the primary (internal/api/lists.go:156-162) instead of a false 202. (3) Add role/primary to GET /auth/status so the login page can explain why OIDC is absent. (4) Block page: hide the unblock form on a follower with a message, as static mode does (internal/blockpage/server.go:49), since Submit writes the read-only store (internal/unblock/service.go:386-433). (5) POST /zones/{zone}/notify, PATCH /node/config and TSIG, integration, import, unblock, IAM and TOTP routes all get the typed refusal through (1). Record as D367.",
+   "acceptance": "V2-HA 'Read-only/fenced status, metrics, and forwarding failures are explicit' (README.md:382); F60b 'Required to close' (followup-audit.md:228); tracker 'still require the primary' (completion-plan.md:1859-1860); precedent D300 typed 503 read_only reflected in UI capabilities (design-record.md:1907). Tests: a route-classification lint beside TestRoutePermissionLint (internal/api/routes_test.go:20) that walks Server.Routes() (internal/api/api.go:617) and fails for any unsafe route not classified forwarded, primary_required or node-local; a root test on a follower fixture asserting status, key and primary name for one route per group and no durable effect; an assertion that /blocklists/{ns}/{name}/refresh no longer returns 202 on a follower.",
+   "files": [
+    "cmd/kudurru/serving_command.go",
+    "cmd/kudurru/serving_command_output.go",
+    "cmd/kudurru/serving_settings_api.go",
+    "cmd/kudurru/serving_migrations.go",
+    "cmd/kudurru/serving_tsig.go",
+    "cmd/kudurru/integration_admin.go",
+    "cmd/kudurru/serving_http_request_limit.go",
+    "cmd/kudurru/serve.go",
+    "cmd/kudurru/servewire.go",
+    "internal/api/errors.go",
+    "internal/api/nodes.go",
+    "internal/api/authtypes.go",
+    "internal/apiclient/auth.go",
+    "internal/blockpage/server.go",
+    "internal/cluster/membership.go"
+   ],
+   "dependsOn": []
+  },
+  {
+   "id": "FWD-LOGOUT",
+   "title": "Forward sign-out and own-session revocation (auth.logout)",
+   "kind": "implementation",
+   "size": "M",
+   "detail": "Today POST /auth/logout, POST /auth/logout/browser and DELETE /auth/sessions/{id} return 503 on a follower; the cookie is not cleared and the session stays valid (cmd/kudurru/serving_http_sessions.go:303-350, 390-420; serving_http_oidc_logout.go:81-84), while the dashboard still switches to the login page (dashboard/src/api/context.tsx:152-171). Add a version-2 auth.logout command carrying the raw cookie or token proof. Follower: CSRF check, then Capture and Forward directly under a 30-second bound, as forwardLogin does (serving_member_login.go:72-112). Primary Authorize: AuthenticateCurrentWithClock on the raw proof plus the SubjectRef equality check used by the object domain (serving_member_objects.go:256-268). Execute: the existing bodies (security.Load, state.Revoke, state.Commit; owner check servingHTTPSessionOwner; 404 as a retained refusal). The primary must derive the session from the verified cookie, never from a claimed ID, which needs a small tx-level helper in internal/servingauth. Output runs under the command scope only, as login does (serving_member_login.go:140-144), because the command revokes its own credential. The follower then pulls best-effort and clears cookies. No RP-initiated continuation on a follower. Decide and record what an unreachable primary means: recommended is clear the local cookie and answer 503 saying the session was not revoked.",
+   "acceptance": "F46/F60b 'IAM/login admission ... remain open' (completion-plan.md:184, 1859-1860); V2-IAM 'login/logout flows' and 'revocation across restarts' (README.md:383). Tests: TestRootMemberLogoutCommandActualHTTP on newRootMemberHarness (cmd/kudurru/serving_member_objects_test.go:41-132) covering commit, session revoked in the durable image, dedup replay, forged subject, foreign session 404, API-token caller no-op; process test: log in through the follower, sign out through the follower, then /auth/me is 401 on both nodes; partition case.",
+   "files": [
+    "cmd/kudurru/serving_member_command.go",
+    "cmd/kudurru/serving_member_login.go",
+    "cmd/kudurru/serving_http_sessions.go",
+    "cmd/kudurru/serving_http_oidc_logout.go",
+    "internal/servingauth/http.go",
+    "cmd/kudurru/serving_member_objects_test.go",
+    "test/e2e/enrolled_cluster_test.go"
+   ],
+   "dependsOn": [
+    "FWD-REFUSAL"
+   ]
+  },
+  {
+   "id": "FWD-SETTINGS",
+   "title": "Forward cluster settings PATCH (settings.patch)",
+   "kind": "implementation",
+   "size": "M",
+   "detail": "PATCH /settings on a follower reaches WriteSettings and returns the generic 503 (cmd/kudurru/serving_settings_api.go:40-57). Add api.Options.SettingsForward beside ObjectForward/ZoneForward (internal/api/api.go:348-353) and call it at the top of the canonical cluster branch of patchSettingsExpected (internal/api/settings.go:376-395); node scope is never forwarded. Payload: the merge patch, the optional If-Match, and a random nonce because write-only keys may carry low-entropy secrets (D363 fingerprint rule). Envelope: version 2 with attrs settings/write at cluster scope and a Kudurru/default resourceVersion precondition from the follower's view, as the blocking forward does (serving_member_forward.go:149-152); a stale version is a retained 409. Primary Execute: PrepareCanonicalSettingsPatch in the member transaction (internal/api/settings_current.go:60), branding entitlement from the transaction's deps.License rather than the HTTP view (today checkSettingsBranding reads the view, serving_settings_api.go:72-85; pattern at serving_unblock_commands.go:56-68), plan.Apply, a settings.write audit row with write-only values redacted, and the route's own SettingsBody as the result. Clean 4xx (invalid key or value, env_locked, host_only, license) go through refusalOutcome (serving_member_objects.go:331-342). Add the route to the FWD-BOUND predicate. The legacy ownership and YAML routes are already unavailable on every complete SQLite node (internal/api/settings_ownership.go:35-37, 58-60) and stay so.",
+   "acceptance": "Tracker names settings first among open domains (completion-plan.md:184, 1827-1828); V2-HA 'Replication contract and shared settings ownership' and 'write forwarding' (README.md:382); design 'writes on a follower are forwarded' (design-record.md:415, 430). Tests: TestRootMemberSettingsCommandActualHTTP (commit with one audit row, dedup replay, retained 400 and 409, stale precondition, forged subject, branding refusal, write-only value absent from the durable image); process test: PATCH /settings through the follower converges on both nodes, partition returns 503 with no later replay; internal/api seam test like object_forward_test.go:13.",
+   "files": [
+    "internal/api/api.go",
+    "internal/api/settings.go",
+    "internal/api/settings_current.go",
+    "cmd/kudurru/serving_member_command.go",
+    "cmd/kudurru/serving_settings_api.go",
+    "cmd/kudurru/serving_member_objects.go",
+    "cmd/kudurru/serve.go",
+    "cmd/kudurru/serving_member_objects_test.go",
+    "test/e2e/enrolled_cluster_test.go"
+   ],
+   "dependsOn": [
+    "FWD-BOUND",
+    "FWD-REFUSAL"
+   ]
+  },
+  {
+   "id": "FWD-SELF",
+   "title": "Forward self-service password change and personal token create/delete (recommended, separable)",
+   "kind": "implementation",
+   "size": "L",
+   "detail": "Two dead ends follow from D363. A user who must change the password and logs in on a follower gets 403 password_change_required everywhere (internal/api/errors.go:48-50) and POST /auth/password returns 503 (cmd/kudurru/serving_http_password.go:62). `kudurru login --username` succeeds at /auth/login, then fails at POST /auth/tokens and leaves an orphan session (cmd/kudurru/login.go:165-174; serving_http_tokens.go:146). auth.password (version 2): payload has current password, factor code, the new-password hash computed on the follower, revokeTokens, client key, a follower-prepared session ID and CSRF hash, and a nonce; the primary runs a ChangeForwardedLocalPasswordWithAdmission mirroring internal/auth/security/issue_forwarded.go:43-59 and password_change.go:78, with credential and lockout refusals retained and counters committed; the follower pulls and seals with sealEnrollmentWithin. auth.tokens (version 2): the follower generates the secret (tokens.Generate, serving_http_tokens.go:219) and forwards only the ID and hash, because plainCodec refuses sensitive outcomes (internal/cluster/replica/command.go:137-143); the primary runs the existing ownership, scope-subset, maxLifetime and parent-expiry body (serving_http_tokens.go:146-262) with a hash-level self-check; delete forwards the ID with a retained 404. If this item is cut, FWD-REFUSAL covers both routes and the CLI must say to log in against the primary.",
+   "acceptance": "F46 'Self-service password changes share counters' must stay true on followers (completion-plan.md:166; followup-audit.md:190); F60b 'IAM/login admission' (completion-plan.md:184). Tests: TestRootMemberPasswordCommandActualHTTP and TestRootMemberTokenCommandActualHTTP (commit, retained 401 with counters, lockout 429, token secret and password absent from the durable image, forged subject or session); process test: a must-change user changes the password through the follower and the new cookie works on both nodes; `kudurru login --username` against the follower yields a working token.",
+   "files": [
+    "cmd/kudurru/serving_http_password.go",
+    "cmd/kudurru/serving_http_tokens.go",
+    "cmd/kudurru/serving_member_command.go",
+    "cmd/kudurru/serving_member_login.go",
+    "internal/auth/security/issue_forwarded.go",
+    "internal/auth/security/password_change.go",
+    "cmd/kudurru/login.go",
+    "test/e2e/enrolled_cluster_test.go"
+   ],
+   "dependsOn": [
+    "FWD-LOGOUT"
+   ]
+  },
+  {
+   "id": "FWD-NODELOCAL",
+   "title": "Make node-local cache flush work on a follower",
+   "kind": "implementation",
+   "size": "S",
+   "detail": "POST /cache/flush is node-local by design ('Forwarding would flush the wrong node', cmd/kudurru/serving_cache.go:18-19) but runs through currentAuthCommandThen only to reauthorize (ibid. 49-52), so a follower refuses it. On a follower, authorize the raw credential against the leased view (as forwardBlocking's early admission does, serving_member_forward.go:60-71) and flush the local cache with no transaction. PATCH /node/config persists log settings in the store (serving_node.go:116-121), which a follower cannot write: keep it refused through FWD-REFUSAL with a hint to use the node file or environment.",
+   "acceptance": "D300 keeps runtime controls node-local (design-record.md:1907); V2-HA explicit failures (README.md:382). Tests: follower fixture test that cache flush returns the flushed count without any store write and still enforces cache.flush permission and CSRF; node config on a follower returns the typed refusal.",
+   "files": [
+    "cmd/kudurru/serving_cache.go",
+    "cmd/kudurru/serving_node.go"
+   ],
+   "dependsOn": [
+    "FWD-REFUSAL"
+   ]
+  },
+  {
+   "id": "FWD-UI",
+   "title": "Dashboard and CLI: show follower role, gate primary-only actions, explain refusals",
+   "kind": "implementation",
+   "size": "M",
+   "detail": "Dashboard: add useClusterRole next to useStaticMode (dashboard/src/api/context.tsx:130-135) reading the new /cluster fields; a persistent banner on a follower naming the primary and what is forwarded; extend useCan (ibid. 116-127) to disable primary-only resources with a tooltip; special-case primary_required and completion_unknown in errorText/ErrorBanner (dashboard/src/components/Feedback.tsx:28-44); show role and primary on NodesPage (dashboard/src/pages/NodesPage.tsx:172, 202, 230); make useSignOut keep the session when sign-out fails (context.tsx:152-171). Forwarded object, zone and settings writes are read back from the follower before its next pull (default 5 s, internal/cluster/replica/coordinator.go:84-86): either add a best-effort member.Pull after a committed forward (precedent serving_member_login.go:123) or delay the refetch as BlockingControl does (dashboard/src/api/hooks.ts:27-41). Follow dashboard/AGENTS.md and look up each Astryx component first. CLI: add primary_required and completion_unknown hints to errorHint (cmd/kudurru/main.go:35-48) and ROLE and PRIMARY columns to `cluster status` (cmd/kudurru/cluster.go:41-49).",
+   "acceptance": "Design record diagnosis item 'fenced/follower read-only' (design-record.md:1154); D357 precedent that dashboard and CLI distinguish receipts (design-record.md:2027); V2-HA explicit status (README.md:382). Tests: vitest modeled on dashboard/src/api/static-mode.test.tsx for the banner, gating and error text; typecheck and scoped ESLint; cmd/kudurru/cluster_cli_test.go for the new columns and the CLI reference test.",
+   "files": [
+    "dashboard/src/api/context.tsx",
+    "dashboard/src/api/types.ts",
+    "dashboard/src/components/Feedback.tsx",
+    "dashboard/src/pages/NodesPage.tsx",
+    "dashboard/src/api/hooks.ts",
+    "cmd/kudurru/main.go",
+    "cmd/kudurru/cluster.go",
+    "cmd/kudurru/serving_member_objects.go"
+   ],
+   "dependsOn": [
+    "FWD-REFUSAL"
+   ]
+  },
+  {
+   "id": "FWD-E2E",
+   "title": "Two-process qualification of the full follower route table",
+   "kind": "qualification",
+   "size": "M",
+   "detail": "Extend testEnrolledProcesses so the real follower process is exercised for every group: forwarded routes (existing plus /apply, kind routes, batchDelete, settings, sign-out and, if built, password and tokens) converge on both nodes; one representative per primary-only group (IAM admin, TOTP, TSIG, integrations, imports, unblock decision, allow/deny convenience, zone NOTIFY, node config) returns 503 primary_required naming the primary with no effect on either node; node-local routes (cache flush, query-log purge, a DHCP read/write if enabled) behave locally; /cluster on the follower reports role follower and the primary's name; during partition forwarded routes return 503 unavailable and nothing is replayed; after promotion the same routes run locally on the new primary. Re-run the conflict and static scenarios unchanged. Keep evidence under a new .context/follower-routes-<date>/ directory with frozen-source hashes as in the D362 evidence.",
+   "acceptance": "F60b 'partition/rejoin acceptance' (followup-audit.md:228); G11 and G22 (completion-plan.md:217-221; followup-audit.md:308); V2-HA multi-node tests (README.md:382). Pass criteria: all three enrolled process scenarios plus the static twin scenario pass with zero skips; root affected selection and full internal/api and internal/auth default-race runs pass; scoped lint and the pinned Semgrep scan report zero findings.",
+   "files": [
+    "test/e2e/enrolled_cluster_test.go",
+    "test/e2e/enrolled_conflict_test.go",
+    "cmd/kudurru/serving_member_objects_test.go",
+    "internal/api/routes_test.go"
+   ],
+   "dependsOn": [
+    "FWD-BOUND",
+    "FWD-REFUSAL",
+    "FWD-LOGOUT",
+    "FWD-SETTINGS",
+    "FWD-NODELOCAL",
+    "FWD-UI"
+   ]
+  },
+  {
+   "id": "FWD-DOCS",
+   "title": "Documentation, generated contracts and tracker reconciliation",
+   "kind": "docs",
+   "size": "S",
+   "detail": "Replace the prose in docs/deploy/sqlite-join.md:85-124 with the per-route table (forwarded, primary-only, node-local) and correct the `kudurru apply` sentence at :99-101 to match the code. Fix the stale statements at docs/architecture/access.md:144-146 and docs/architecture/configuration-and-store.md:794-795, 1073-1075 and 1420, and update the diagrams the project instructions require to stay in step. Regenerate OpenAPI, both generated clients, the dashboard types and the CLI reference if route descriptions or ClusterInfo/AuthStatus change. Add D367 to dev-docs/design-record.md section 16 (typed primary_required, forwarded set, primary-only set for v0.2, OIDC and VIP-on-follower limitation). Update the F60b and F46 rows (completion-plan.md:166, 184), add dated evidence sections to completion-plan.md, gaps.md and followup-audit.md, update dev-docs/followups.md:114 and CHANGELOG.md.",
+   "acceptance": "G25 'Keep this plan, audit closures, gap ledger, changelog and PR consistent with exact commits/results' (completion-plan.md:225); G21 'API/CLI/UI/schema/permissions/docs' (completion-plan.md:220). Checks: `make openapi`, `make client-go`, `bun run --cwd dashboard gen:api` leave no diff; TestForwardedShapes (cmd/kudurru/serve_contract_test.go:33) and the CLI reference test pass.",
+   "files": [
+    "docs/deploy/sqlite-join.md",
+    "docs/architecture/configuration-and-store.md",
+    "docs/architecture/access.md",
+    "dev-docs/design-record.md",
+    "dev-docs/milestones/v0.2/completion-plan.md",
+    "dev-docs/milestones/v0.2/gaps.md",
+    "dev-docs/milestones/v0.2/followup-audit.md",
+    "dev-docs/followups.md",
+    "CHANGELOG.md",
+    "api/openapi.json"
+   ],
+   "dependsOn": [
+    "FWD-E2E"
+   ]
+  }
+ ],
+ "recommendation": "Take option B below: fix the D362 bound gap, make every unforwarded mutation a typed and documented primary-only refusal that the dashboard and CLI surface, and add only three new typed domains (auth.logout, settings.patch, and the separable auth.password/auth.tokens). Everything else stays primary-only in v0.2 and is recorded as D367. No owner decision is needed.\n\nWHY THIS SET. The V2-HA acceptance text asks for \"write forwarding\" and that \"forwarding failures are explicit\" (README.md:382); it does not enumerate domains. D362 already rejected a generic reverse proxy and forwarding settings or IAM \"without their own typed domains\" (design-record.md:2037), and D300 is the precedent for a typed refusal reflected in UI capabilities (design-record.md:1907). So a typed primary-only refusal is an acceptable v0.2 outcome for any domain, provided it is typed, documented and surfaced. Sign-out is the exception: D363 lets sessions be created on a follower, and today they cannot be ended there, which is a correctness defect rather than a missing feature. Settings is one route with a ready transaction-level seam and is the first domain the tracker names (completion-plan.md:184).\n\nHOW A TYPED COMMAND IS ADDED (D357/D362/D363 pattern).\n1. API seam: an api.Options hook returning (result, handled, err), called before the local command (internal/api/api.go:348-353; object_command_write.go:22-33; zone_forward.go:30-50), plus a Forwarded<X>Command re-entry that rebuilds the route's own command body for the primary (object_forward.go:65-121; zone_forward.go:65-110).\n2. Follower bound: the 30-second lifetime must start before body read (serving_member_objects.go:36-52), because Capture refuses anything longer (internal/store/sqlite/member_forward.go:38-42).\n3. Follower send: forwardMemberCommand (serving_member_objects.go:134-194) captures the source, takes the forward pins in withMemberForward (publication, resources, host, keyrings, catalog, transferred; serving_member_forward.go:182-244), admits the credential early (AuthorizeOriginalTransition), builds the version-2 envelope with CredentialProof and SubjectRef, and sends once. Self-service auth commands skip the pins and call Capture/Forward directly (serving_member_login.go:72-112).\n4. Wire: Command JSON validated on both sides (command.go:164-213: hops 1, lifetime at most 10 minutes, version 1 without credential, version 2 with one); typed payloads decoded with DisallowUnknownFields.\n5. Primary: add the operation to the closed switch and memberCommandDomain (serving_member_command.go:37-43, 112-122). Authorize decodes the payload, reauthorizes the raw credential (ReauthorizeCurrentForOutput) and checks SubjectRef equality (serving_member_objects.go:248-268). Execute runs the route body in the member transaction with exact-scope reauthorization and RequireCommitCheck (ibid. 280-326).\n6. Transaction: WithMemberCommandOutput then StageSQLite put effect, audit and dedup in one commit (internal/auth/providercoordinator/member_command.go:26; internal/cluster/replica/sqlite.go:52-59; command.go:232-322). Clean 4xx are retained through refusalOutcome (serving_member_objects.go:331-342); any other primary error aborts the exchange (member_server.go:268-274) and the follower reports unavailable or `503 completion_unknown` (serving_member_objects.go:202-216).\n7. Tests: TestRootMember<X>CommandActualHTTP on newRootMemberHarness for the primary side, testEnrolledProcesses for the follower side, internal/api seam tests.\n\nROUTE TABLE ON AN ENROLLED FOLLOWER (93 mutating OpenAPI operations, then other flows). G means the generic `503 unavailable` \"current writable serving generation unavailable\".\n- Forwarded, working (11): POST /dns/blocking (blocking.toggle, 202 receipt); POST /objects/{kind}, PUT and DELETE /objects/{kind}/{name} and /objects/{kind}/{namespace}/{name} (objects.write/objects.delete for DNSZone, DNSRecordSet, BlockList, ClientGroup, Policy; DHCPScope answers 503 \"this object kind cannot be written through a follower\", serving_member_objects.go:111-114); POST /zones/{zone}/records, DELETE /zones/{zone}/records/{name}/{type}, POST /zones/{zone}/import, DELETE /zones/{zone} (zones.command); POST /auth/login (auth.login).\n- Forward seam reached but broken by the missing bound (16): POST /apply; POST, PUT, DELETE on /blocklists, /clientgroups, /policies (9); POST :batchDelete for dnszones, dnsrecordsets, blocklists, clientgroups, policies, dhcpscopes (6). Fix in FWD-BOUND.\n- Allow/deny convenience (11), G: POST /allowlist, PATCH and DELETE /allowlist/{id}, POST /allowlist:batch, the same four for /denylist, POST /domains/{action}/{kind}, POST /queries/{id}/actions (DomainCommand, serving_domain_commands.go:26), PATCH /blocklists/{ns}/{name}/sources/{source}/entries (ObjectCommand directly, internal/api/source_command.go:28). v0.2: primary-only; the same edit is possible through the forwarded BlockList object write.\n- Settings (3): PATCH /settings is G; forward it (FWD-SETTINGS). The ownership and YAML routes are unavailable on every complete SQLite node.\n- IAM administration (9), G: POST /iam/users, /iam/users/{name}/password, /iam/users/{name}/totp/recover; POST /iam/external-users/{name}/disable|enable|logout; POST, PUT, DELETE /iam/rolebindings (serving_http_users.go:139; serving_http_factors.go:248; serving_http_rolebindings.go:264). v0.2: primary-only.\n- Self-service (9), G: POST /auth/logout, /auth/logout/browser, DELETE /auth/sessions/{id} (forward, FWD-LOGOUT); POST /auth/password, POST and DELETE /auth/tokens (forward, FWD-SELF, or typed refusal); POST /auth/totp/setup|confirm|disable (primary-only).\n- CLI/OIDC login (2 plus GET flows): POST /auth/cli/{idp}/prepare and GET /auth/oidc/{idp}/start|callback are refused before capture with `503 unavailable` \"captured browser provider login unavailable\" (serving_http_request_limit.go:70-82); POST /auth/cli/{idp}/verify writes nothing and depends on provider resources (not traced further). v0.2: primary-only, typed, with the login page saying so.\n- TSIG (4): POST /tsigkeys and /tsigkeys/{keyName}/replace|reseal|revoke return 503 \"original TSIG command authority or source unavailable\" (serving_tsig.go:324-325). v0.2: primary-only; sealing is bound to the node's encryption identity.\n- Integrations (4): POST check, preview, sync, actions/{action} return generic 503 or 409 (integration_admin.go:25-46). v0.2: primary-only; provider I/O is a leader-only job.\n- Imports (6): POST /imports/preview, apply, start, adopt and the two decommission routes; MigrationCommand is G (serving_migrations.go:32-35; preview not traced). v0.2: primary-only.\n- Unblock (3), G: approve, deny, delete (serving_unblock_commands.go:33). v0.2: primary-only.\n- Zone NOTIFY (1), G: POST /zones/{zone}/notify (serving_zone_notify.go:52). v0.2: primary-only.\n- Cluster (3): activate and join-token return typed 409 on a follower; promote is follower-local and works.\n- Node-local (6): POST /cache/flush and PATCH /node/config are G (defect and refusal respectively, FWD-NODELOCAL); POST /blocklists/{ns}/{name}/refresh returns a false 202 (FWD-REFUSAL); DELETE /querylog, POST /querylog/rollup-evidence/verify and POST /dns/query are local and work.\n- DHCP (5): PUT scope config, PUT and DELETE reservation, POST lease import, PUT setup; node-local dhcp.db.\n- Outside OpenAPI: the block-page unblock form fails generically (FWD-REFUSAL); the host admin socket writes the local store and will fail on a follower (not traced to the exact error); /healthz/lameduck is in-memory and local; member routes are peer-only. internal/auth/stack/routes.go is the legacy/Kubernetes mux; an enrolled SQLite node mounts servingHTTP instead (cmd/kudurru/serve.go:1124-1138).\n\nORDER. FWD-BOUND and FWD-REFUSAL first (independent, small, and they make every later failure legible), then FWD-LOGOUT, FWD-SETTINGS and FWD-NODELOCAL in parallel, FWD-UI once the /cluster fields exist, FWD-SELF if time allows, then FWD-E2E and FWD-DOCS. Use 503 for primary_required to mirror `503 read_only`; every non-GET operation already documents 503 (internal/api/routes.go:79-85), so the key alone needs no schema change.",
+ "designOptions": [
+  {
+   "name": "A. Explicit-refusal baseline",
+   "description": "FWD-BOUND, FWD-REFUSAL, FWD-NODELOCAL, FWD-UI, FWD-E2E and FWD-DOCS only. No new forwarded domain; sign-out, settings, password and tokens become typed primary_required refusals.",
+   "pros": "Smallest change; satisfies the literal acceptance text ('forwarding failures are explicit'); one central seam; no new wire payloads carrying secrets.",
+   "cons": "A session created on a follower through D363 still cannot be revoked there, so the dashboard must at least clear the cookie locally and say the session survives. The settings page and upstream editing are read-only on a follower. `kudurru login --username` against a follower stays unsupported."
+  },
+  {
+   "name": "B. Baseline plus session lifecycle and settings (recommended)",
+   "description": "Option A plus auth.logout and settings.patch, with auth.password and auth.tokens as a separable follow-on (FWD-SELF).",
+   "pros": "Closes the sign-out defect and the first domain the tracker names; each new domain copies an existing one (login for self-service, blocking/objects for settings); the rest is honestly primary-only.",
+   "cons": "Three to five new payload types to review; settings and password payloads carry secrets and need the D363 nonce rule; adds a second touch of cmd/kudurru/serving_member_command.go that parallel work may also edit."
+  },
+  {
+   "name": "C. Full forwarding parity",
+   "description": "Option B plus typed domains for IAM administration, TOTP, TSIG, allow/deny convenience (domains.command, same plan shape as zones.command), unblock decisions and block-page submission, and proxies for integrations, imports and OIDC.",
+   "pros": "Matches the design record's 'writes on a follower are forwarded' (design-record.md:415, 430) without exceptions; the VIP may sit on any node.",
+   "cons": "Very large. TSIG sealing is tied to the node's encryption identity, integration and import commands do provider I/O under primary authority for up to ten minutes (beyond the 30-second member bound), and OIDC redirect URIs are bound to one origin. High risk for v0.2 with little acceptance text requiring it."
+  }
+ ],
+ "sharedSeams": [
+  "cmd/kudurru/serving_member_command.go (closed operation switch and memberCommandDomain; every new domain edits it)",
+  "cmd/kudurru/serving_member_objects.go (forwardMemberCommand, boundMemberObjectWrites, objectForwardError, refusalOutcome)",
+  "cmd/kudurru/serving_member_login.go and serving_http_sessions.go (self-service auth forwards)",
+  "cmd/kudurru/serving_command.go, serving_command_output.go, serving_settings_api.go (central not-writer seam and currentCommandAPIError)",
+  "cmd/kudurru/serving_http.go (middleware chain) and serving_http_helpers.go (servingHTTPError)",
+  "cmd/kudurru/serve.go (api.Options wiring near lines 1065-1170 and 1351; membership at 542)",
+  "internal/api/api.go (Options), errors.go (error keys), settings.go, nodes.go (ClusterInfo), authtypes.go, routes_test.go",
+  "api/openapi.json, api/openapi-3.0.json, internal/apiclient/openapi/zz_generated.client.go, dashboard/src/api/generated.ts, docs-site/public/reference/api/openapi.json and the CLI reference",
+  "dashboard/src/api/context.tsx, types.ts, hooks.ts, components/Feedback.tsx, pages/NodesPage.tsx",
+  "cmd/kudurru/main.go (errorHint) and cluster.go (cluster status)",
+  "test/e2e/enrolled_cluster_test.go (single shared scenario function) and cmd/kudurru/serving_member_objects_test.go (shared harness)",
+  "docs/deploy/sqlite-join.md, docs/architecture/configuration-and-store.md, docs/architecture/access.md, CHANGELOG.md",
+  "dev-docs/design-record.md section 16 (next free number is D367), dev-docs/milestones/v0.2/completion-plan.md, gaps.md, followup-audit.md, dev-docs/followups.md"
+ ],
+ "testInfra": "I ran no tests in this pass; commands and durations below come from recorded evidence.\n\nPrimary side over real member mTLS (cmd/kudurru): TestRootMemberBlockingCommandActualHTTP (serving_member_command_test.go:108), TestRootMemberObjectCommandActualHTTP, TestRootMemberZoneCommandActualHTTP, TestRootMemberLoginCommandActualHTTP (serving_member_objects_test.go:134, 273, 327) on newRootMemberHarness (ibid. 41-132). `go test -race -count=1 ./cmd/kudurru -run '^(TestRootMemberObjectCommandActualHTTP|TestRootMemberZoneCommandActualHTTP)$'` took 5.4 s and the login test 2.9 s (.context/object-forward-20261109/root-race06.log, login-root01.log).\n\nFollower side in process (blocking only today): TestRootMemberForward* (serving_member_forward_test.go:184, 239, 290; fixture at :60). `go test -json -race -count=1 -timeout=4m ./cmd/kudurru -run '^(TestRootMemberForward|TestBlockingCLIPending)'` took 68.6 s wall (.context/member-forward-20261109/race09.json).\n\nReal processes: TestEnrolledClusterProcessesPartitionCatchupAndRestart and TestEnrolledClusterProcessesPromoteAndRejoin (test/e2e/enrolled_cluster_test.go:197-203, body 205-466) and TestEnrolledProcessConflictResolution (test/e2e/enrolled_conflict_test.go:79). They need KUDURRU_E2E=1 (internal/testutil/kudurrutest/kudurrutest.go:33-44) and build CGO-disabled child binaries that are not race-instrumented. `go test -json -race -count=1 -timeout=8m ./test/e2e -run '^TestEnrolledClusterProcessesPartitionCatchupAndRestart$'` took 100 s wall including builds, 63-71 s for the test (.context/enrolled-process-20261109/process02.json; object-forward-20261109/process02.log). All enrolled, conflict and static process scenarios together took 3m58s (object-forward-20261109/process03).\n\nCompatibility selections: root affected default-race selection 10m40s with 419 passes and one skip (root-race07); with the login/session set 10m56s with 410 passes (root-race08); full ./internal/api/... 3m51s with 646 passes (api-race02); full ./internal/auth/... 1m40s with 833 passes (auth-race01). The D357 multi-package command is recorded verbatim in .context/member-forward-20261109/compat-race20.json (133.5 s, 254 entries).\n\nAPI seam and lint tests to extend: internal/api/object_forward_test.go:13 and :49, TestRoutePermissionLint (internal/api/routes_test.go:20), TestServingMutationRoutesDomainAliasesAndSourceCommand (cmd/kudurru/serving_routes_test.go:9), TestForwardedShapes (cmd/kudurru/serve_contract_test.go:33).\n\nDashboard: `bun run --cwd dashboard test <file>` (8 s for one file), `bun run --cwd dashboard typecheck` (15 s), scoped `bun x eslint --max-warnings 0 <files>` run from inside dashboard/ (8 s; the earlier invocation from the repository root failed); model new tests on dashboard/src/api/static-mode.test.tsx.\n\nGeneration: `make openapi`, `make client-go` (30 s), `bun run --cwd dashboard gen:api` (3 s). Scoped golangci-lint over cmd/kudurru, internal/store/sqlite, internal/cluster/replica and internal/api took 102 s; the pinned Semgrep 1.181.0 scan took about 9 s.",
+ "risks": [
+  "The /apply and kind-route failure on a follower is established by reading the code (missing 30-second bound), not by running it; confirm with the first new process-test assertion before changing the tracker wording.",
+  "POST /apply through a follower sends one member exchange per document, each building a new member client (internal/cluster/replica/enrolled_forward.go:72-77), inside one 30-second bound. Large restores will partly apply with per-item 503s unless capped or documented.",
+  "Read-after-write lag: a follower installs forwarded writes at its next pull (default 5 s, coordinator.go:84-86); only login pulls explicitly (serving_member_login.go:123). The dashboard can show the old value or a 404 right after a forwarded create.",
+  "Primary-side authorization failures abort the member exchange (member_server.go:268-274), so a follower whose view is older than the primary's grants reports unavailable or completion_unknown instead of 403. New domains must return clean refusals as retained outcomes.",
+  "Secrets in payloads: the dedup record keeps a fingerprint of the whole command, so low-entropy secrets (passwords, write-only settings) need the unstored nonce used by D363; plainCodec refuses sensitive outcomes (command.go:137-143), so token secrets must be generated on the follower.",
+  "If the VIP lands on a follower, OIDC sign-in and every primary-only administration route are unavailable through the VIP until it moves or the follower is promoted. Independent two-VM acceptance is deferred (D358), so this will not be exercised before release; it must be documented.",
+  "Audit placement is unverified: forwarded commands write their audit row on the primary, I found no audit reference in the replica image code (internal/store/sqlite/replication.go, internal/store/replication), and Store.RecordAudit has no authority check (internal/store/sqlite/audit.go:217-246), so follower-side recordAction events appear to land in a follower-local chain. Check before claiming cluster-wide attributed audit.",
+  "Adjacent and untracked outside the AD-deferred F12d row: RFC 2136 UPDATE on a SQLite follower answers SERVFAIL (cmd/kudurru/primary_runtime.go:110-113), while README.md:399-401 requires 'primary routing and fenced-writer tests' once follower mode exists.",
+  "Adjacent: V2-HA scope lists 'join tokens/wizard' (README.md:382), but the dashboard has no enrollment, join or promotion UI (no such calls in dashboard/src/api/endpoints.ts); the tracker treats F60b as API and CLI only.",
+  "The unexplained hosted failure of TestRunServeDirectAnchorsBootstrapTransportsRestartAndDisabled (completion-plan.md:1771-1775) lives in cmd/kudurru and can block hosted qualification of these changes.",
+  "Parallel items that add member domains or error keys will conflict in cmd/kudurru/serving_member_command.go, internal/api/errors.go, api/openapi.json and test/e2e/enrolled_cluster_test.go; land FWD-REFUSAL first and rebase the others on it."
+ ]
+}

@@ -1,0 +1,372 @@
+{
+ "key": "f28-trust-anchors",
+ "item": "F28: RFC 5011 automatic trust-anchor updates (managed root anchors). Open tail of inventory row dev-docs/milestones/v0.2/completion-plan.md:138: \"Fleet mixed-version acceptance, initial empty edge-follower installation, full enrolled HA orchestration, RFC interoperability and final gates remain open\".",
+ "summary": "Read-only mapping at HEAD 33ee04bc; no tests or builds were run, so the two defects below are predictions from code reading that the first new tests should confirm.\n\nF28 is implemented and mounted for SQLite only. The pure state machine is in internal/trustanchors (state.go:17-32 constants, state.go:230-369 Advance, observation.go, codec.go, recovery.go). Storage is schema 7/8 (internal/store/sqlite/schema.go:43-44), now under schema 9 (internal/store/store.go:27). Runtime mounts are startup admission (cmd/kudurru/serving_runtime.go:139-145, serving_anchor_activation.go:46-116), the elected updater (serving_lifecycle.go:277-288, serving_anchor_updater.go:149-192), the deny-only follower supervisor (serving_lifecycle.go:71-74, serving_anchor_follower_supervisor.go:92-155), edge-fleet admission (serving_anchor_edge.go:50-133) and offline recovery (cmd/kudurru/anchors.go:40-221).\n\nNone of the four open items has coverage in the enrolled cluster path from D345-D363. No test in test/e2e/enrolled_*.go, cmd/kudurru/cluster_*_test.go, serving_member_*_test.go or internal/cluster/** enables managed anchors; existing follower tests use fixture-level Store.Enroll/InstallReplica/Promote (cmd/kudurru/serve_anchor_follower_test.go:83-103).\n\nPredicted defect 1: a managed node that becomes Fenced or Conflict stops answering all DNS and cannot restart. directAnchorRole admits only writable or Follower (serving_anchor_activation.go:42-44); that gates startup (:56-59), managed preparation (serving_anchor_bundle.go:176-179) and every output capture (serving_anchor_bundle.go:97-102, serving_anchor_output.go:36-48). D360's fix is only tested in static mode.\n\nPredicted defect 2: a replica install or conflict resolution refuses a managed anchor owner whose generation is not strictly greater (internal/store/sqlite/anchor_command.go:505, called from anchor_install.go:293). A rejoining old primary or a losing conflict branch with an equal or higher anchor generation cannot install the successor until the new primary's next refresh.\n\nMixed-version is mostly evidence work. The only released predecessor is v0.1.0 (schema 1, no SQLite replication, no managed edge bypass), and every schema-9 binary decodes recovery format 2 behind the exact schema and feature gate (internal/store/replication/codec.go:226-260).\n\nRFC interoperability has no real-authority evidence. Every root authority in tests is an in-process miekg/dns fixture; the BIND and Knot harnesses under test/interop are not used for F28. Hold-down uses production constants with no clock seam outside the pure package (state.go:17-22, 56-87), so nothing above the pure package reaches AddPending to Valid.\n\nNo item needs the owner.",
+ "alreadyDone": [
+  "Hosted managed-anchor DoH/DoH3 failure. Tracker still says 'unexplained and open' (gaps.md:6849-6858 and :7068; completion-plan.md:1553-1562 and :1770-1775). Commit a7e70b22 (2026-11-09 14:36, in HEAD) identified the cause (a startup DNSZone status write retires in-flight answers by design, D313/D332) and fixed the fixture ordering in cmd/kudurru/serve_anchor_activation_test.go. Hosted ci run 42736964083 and kind run 42736964167 on HEAD 33ee04bc are green. The ci failure on 19bfecc4 (run 42659413588) was TestServingHTTPAuthCookieFactorAndPasswordClears and TestSupervisorLifecycle, not anchors. Only the tracker text needs updating.",
+  "First-image installation for a new follower (the mechanism behind 'initial empty edge-follower installation'). D355 landed after D319: `cluster join --offline` creates an Unenrolled receiver, binds the anchor lifecycle and installs term, complete image and local anchor carrier atomically (cmd/kudurru/cluster_join.go:180-216; internal/store/sqlite/initial_join.go:66-90 and :245-270). `serve` never creates an empty Follower (cmd/kudurru/serve.go:178-182 opens with no InitialMode; Store.Enroll has no production caller). The first-install rule for a managed image exists (anchor_command.go:489-493; anchor_install.go:156-172). What remains is qualification with edges topology and a clearer refusal, not a new install lane.",
+  "Mixed-version rejection at store and transport level. Schema and feature gates are exact-match (internal/store/replication/codec.go:226-260), tested in internal/store/replication/trustanchors_test.go:9-90. An actual schema-6 follower upgrade, old-image refusal (ErrIncompatible) and incompatible-higher-term fencing are in internal/store/sqlite/trustanchors_upgrade_test.go:151-300. Schema 7 to 8 and 8 to 9 migrations with downgrade refusal are in anchor_runtime_migration_test.go:78-174 and enrollment_migration_test.go:30-72. A newer-schema image over the member transport is refused in internal/cluster/replica/transport_test.go:86-88.",
+  "Recovery format 2 follower behavior. A follower installs recovered history and refuses a rewrite of its accepted recovery prefix (internal/trustanchors/recovery.go:128-145; anchor_command.go:520-522; internal/trustanchors/persistence/recovery_test.go:113-215).",
+  "Old-edge refusal at client and fleet level. A peer without the observation route returns ErrEdgeBypassUnsupported (internal/cluster/internalapi/edge_bypass.go:141-144; edge_bypass_test.go:62). Any fleet error refuses startup with no partial grant (cmd/kudurru/serving_anchor_edge.go:106-124; serving_anchor_edge_test.go:128).",
+  "RFC 5011 pure semantics with real signatures and a synthetic clock (internal/trustanchors/state_test.go:133-608): 30-day or TTL hold-down with a fresh post-threshold observation, restart credit, clock jump, Missing stays trusted, self-revocation, all-anchor-loss quarantine. Refresh and retry follow RFC 5011 section 2.3 (state.go:209-216; codec_test.go:113).",
+  "Safe operator recovery (followup-audit.md:147). `anchors status|recover --offline` is mounted (cmd/kudurru/anchors.go:40-221) with tests at cmd/kudurru/anchors_test.go:142-324 and a runbook at docs/deploy/runbooks.md:4-48."
+ ],
+ "remaining": [
+  {
+   "id": "F28-HA-1",
+   "title": "Managed mode: keep last-good DNS on Fenced/Conflict nodes and allow their restart",
+   "kind": "implementation",
+   "detail": "Predicted defect, not yet run. rootAnchorAdmission.current() needs directAnchorRole, which is writable or Follower only (cmd/kudurru/serving_anchor_activation.go:31-44). With anchorMode managed, a node that becomes Fenced or Conflict therefore:\n- fails managed preparation (serving_anchor_bundle.go:176-179), so the DNS-only bundle from D360 is never built;\n- fails inputCurrent() (serving_anchor_bundle.go:97-102), so captureRootAnchorOutput refuses every answer, authoritative included (serving_anchor_output.go:36-48);\n- cannot restart, because admitAnchors returns errAnchorPolicy (serving_anchor_activation.go:56-59) and admitAnchorEdges refuses a DNS-only token (:86).\nThe D360 regression (serving_anchor_dnsonly_test.go:15) uses a static fixture.\n\nFix: split serving admission from updater/poller admission. Serving admission should accept Fenced and Conflict for the same member, publish through the existing DNSOnly token path (serving_anchor_bundle.go:204) with the last accepted managed owner and local denial, and start no updater. Decide and record whether the deny-only supervisor keeps polling on Fenced/Conflict (serving_anchor_follower_supervisor.go:122 and serving_anchor_follower.go:45,109 require Follower); recommended yes. Check that the managed registration apply in internal/store/sqlite/anchor_publication.go accepts PublicationOptions{DNSOnly:true}.",
+   "acceptance": "Tracker: README.md:382 (V2-HA: existing DNS continues during loss of the primary; promotion, partition/rejoin, conflicting promotions); D360 (design-record.md:2033); G22 (completion-plan.md:221).\nTests:\n- TestRootAnchorManagedPreparationPublishesFencedDNSOnly: mirror serving_anchor_dnsonly_test.go with managed/direct config after a real bootstrap. Must fail before the fix, then show dns_only status, authoritative answers over UDP/TCP and protected HTTP closed.\n- TestRunServeDirectAnchorsFencedAndConflictRestart: physical close and reopen of a Fenced and a Conflict database; runServe starts, serves last-good DNS and makes no root acquisition as writer.\n- An edges variant: a DNS-only token is admitted only with a complete fleet observation.\n- A revocation observed while Fenced still retires output (if supervision is extended).",
+   "files": [
+    "cmd/kudurru/serving_anchor_activation.go",
+    "cmd/kudurru/serving_anchor_bundle.go",
+    "cmd/kudurru/serving_anchor_follower_supervisor.go",
+    "cmd/kudurru/serving_anchor_follower.go",
+    "internal/store/sqlite/anchor_publication.go",
+    "cmd/kudurru/serving_anchor_dnsonly_test.go",
+    "dev-docs/design-record.md"
+   ],
+   "size": "M",
+   "dependsOn": []
+  },
+  {
+   "id": "F28-HA-2",
+   "title": "Managed anchor history across promotion, rejoin and conflict resolution (divergent owner generations)",
+   "kind": "implementation",
+   "detail": "Predicted defect, not yet run. Every authenticated poll increments the owner generation (internal/trustanchors/state.go:266). InstallReplica and resolveConflict both call prepareInstall (internal/store/sqlite/replication.go:355; authority_transition.go:198), which runs anchorSuccessor(install=true) (anchor_install.go:293). That returns ErrCAS unless the incoming owner is identical or has strictly greater envelope and pure generation and a non-earlier UpdatedAt (anchor_command.go:496-507). Previous-linkage is not checked for installs (:508).\n\nFailing scenarios:\n- Old primary committed generation G+1 that the follower never pulled, or polls on restart before learning it is fenced (the first anchor step runs before other writer services, serving_lifecycle.go:277-288). The promoted primary is at G or G+1', so the old primary cannot install the successor until the new primary reaches G+2 (about one refresh; one day at the real root).\n- After `cluster resolve --offline` (D361), a losing member with an equal or higher anchor generation cannot adopt the kept branch.\nWith F28-HA-1 unfixed, that node also serves nothing meanwhile. Existing divergence tests use static owners with a 'foreign/branch' row only (anchor_install_test.go:228-330).\n\nFix (decision plus code): order managed owners by (authority term, generation) for installs performed under a higher term or an audited resolve. Still require the same ClusterID, HistoryID, InitializedAt, PolicyID, SeedDigest and DomainID, plus RetainsRecoveryHistory. Never lose a revocation: carry any locally revoked key missing from the incoming owner in the node-local deny carrier (anchor_local.go Denied/RetiredThrough) so it stays denied until the canonical branch also revokes it. Keep same-term installs strict.",
+   "acceptance": "Tracker: G22 (completion-plan.md:221: promotion, partition and rejoin); README.md:382; followup-audit.md:147 (durable state transitions, revoked keys).\nStore tests in internal/store/sqlite (real signed fixtures, as in internal/trustanchors/persistence/transaction_test.go:278-330):\n- Old primary at G+1 installs promoted branch at G and at G+1'.\n- Losing branch with a higher generation installs after ResolveAudited.\n- Losing branch holding a revocation the kept branch lacks keeps that key denied locally and never serves it.\n- A same-term lower or equal generation is still ErrCAS.\n- Recovery-prefix rewrite is still refused.\nIn-process cmd/kudurru test: two runtimes, explicit captureAnchorOperation().run() on both sides of a promotion (pattern at serving_anchor_follower_supervisor_test.go:179-200), then a scheduled-style install converges and publishes.",
+   "files": [
+    "internal/store/sqlite/anchor_command.go",
+    "internal/store/sqlite/anchor_install.go",
+    "internal/store/sqlite/anchor_local.go",
+    "internal/store/sqlite/authority_transition.go",
+    "internal/store/sqlite/replication.go",
+    "internal/store/sqlite/anchor_install_test.go",
+    "dev-docs/design-record.md"
+   ],
+   "size": "L",
+   "dependsOn": [
+    "F28-HA-1"
+   ]
+  },
+  {
+   "id": "F28-HA-3",
+   "title": "Separate-process enrolled acceptance with managed anchors (join, follower supervision, partition, promotion, rejoin, conflict, restart)",
+   "kind": "qualification",
+   "detail": "The enrolled process harness (test/e2e/enrolled_cluster_test.go:204-470; enrolled_conflict_test.go:79) runs static anchors only. Add managed variants with anchorMode managed (cluster scope), per-node managedTopology direct (host-only, internal/config/schema.go:372-373), and trustAnchors/rootHints pointing at a signed in-test root.\n\nPrerequisite: move the signed-root fixtures (anchorWireSignedReply/anchorWireServer in cmd/kudurru/serving_anchor_acquire_test.go; anchorOperationServer in serving_anchor_operation_test.go) into a shared package such as internal/testutil/anchortest, with a mode that switches to a self-signed REVOKE.\n\nFlow, through public APIs and the offline CLI only:\n1. Standalone primary bootstraps managed trust, then is activated and restarted (also proves activation over existing managed history).\n2. Invitation and offline join of a receiver whose first image has a managed owner.\n3. Follower starts with direct topology; the supervisor polls independently and the follower serves.\n4. Partition: the follower keeps serving.\n5. Root starts serving REVOKE: the follower retires output locally and its canonical image is unchanged.\n6. Stop primary, promote follower: old acquisition joined, writer updater mounted, no terminal error, no rebootstrap.\n7. Old primary restarts, is fenced, installs the successor and becomes follower.\n8. Three-node conflicting promotions and `cluster resolve --offline` in managed mode, including a restart of a conflicted member.\n\nLimit: MinRefresh is one hour (state.go:22; updater waits for the committed NextRefresh, serving_anchor_updater.go:96-104), so a second scheduled writer poll cannot occur in a short process test. Divergent-poll cases stay in F28-HA-2's store and in-process tests.",
+   "acceptance": "Tracker: F28 row 'full enrolled HA orchestration' (completion-plan.md:138); gaps.md:4951-4952, :5068-5069; CHANGELOG.md:193-194; G22 (completion-plan.md:221).\nPass criteria: new TestEnrolledManagedAnchors* tests pass under default race with zero skips. Root TCP fetch counts are exact (one bootstrap; none on restart, join or promotion). The owner version is identical on all members after convergence. Member identity hashes are unchanged. UDP/TCP DNS never returns SERVFAIL on a Follower, Fenced or Conflict node holding valid trust.",
+   "files": [
+    "test/e2e/enrolled_cluster_test.go",
+    "test/e2e/enrolled_conflict_test.go",
+    "internal/testutil/kudurrutest/kudurrutest.go",
+    "cmd/kudurru/serving_anchor_acquire_test.go",
+    "cmd/kudurru/serving_anchor_operation_test.go"
+   ],
+   "size": "L",
+   "dependsOn": [
+    "F28-HA-1",
+    "F28-HA-2"
+   ]
+  },
+  {
+   "id": "F28-HA-4",
+   "title": "Offline recovery inside an enrolled cluster",
+   "kind": "qualification",
+   "detail": "`anchors recover` needs a writer token (cmd/kudurru/anchors.go:141), so it runs only on the stopped primary; followers must then adopt format-2 history through scheduled pulls. The runbook says so (docs/deploy/runbooks.md:9-14), but only store-level proof exists (internal/trustanchors/persistence/recovery_test.go:113). Follower supervisors that stopped on confirmed denial stay terminal for the term (serving_anchor_follower_poller.go:108-113; supervisor :144-147), so verify that publication resumes after the recovered image installs, and decide whether deny-only polling should resume without a restart.",
+   "acceptance": "Tracker: followup-audit.md:147 (safe operator recovery); gaps.md:5163-5164 ('not full enrolled HA ... acceptance').\nTest: two processes; the sole anchor is revoked and both nodes quarantine. Stop the primary, run `anchors status` and `anchors recover --offline`, restart. The follower installs the recovered image through scheduled member TLS, both serve AD-validated answers, tombstones and the recovery record are identical on both, and exactly one recovery TCP fetch occurred. Running recover on the follower database is refused with no mutation.",
+   "files": [
+    "test/e2e/enrolled_cluster_test.go",
+    "cmd/kudurru/anchors_test.go",
+    "cmd/kudurru/serving_anchor_follower_supervisor.go",
+    "docs/deploy/runbooks.md"
+   ],
+   "size": "M",
+   "dependsOn": [
+    "F28-HA-3"
+   ]
+  },
+  {
+   "id": "F28-HA-5",
+   "title": "Small clock skew between members must not silently end supervision or the updater for a whole term",
+   "kind": "implementation",
+   "detail": "The follower poller returns terminal ErrClock when local time is before the installed checkpoint wall time (cmd/kudurru/serving_anchor_follower_poller.go:83-86). The updater does the same after promotion (serving_anchor_updater.go:93-95). The pure package's 5-minute ClockTolerance (state.go:25) is not applied there. A follower whose clock trails the primary by more than the pull delay loses independent revocation polling until a term change or restart, with only a log line. Change both to wait until the checkpoint is reached (bounded by ClockTolerance) and go terminal only beyond it.",
+   "acceptance": "Tracker: followup-audit.md:147 (restart/time rollback).\nTests: a poller step with a checkpoint 2 s ahead waits and then polls once. A checkpoint more than 5 minutes ahead stays terminal ErrClock. No hold-down credit is granted across the wait (existing TestClockJumpCannotCreditCandidateAndBackwardTimeRefuses at state_test.go:209 keeps passing).",
+   "files": [
+    "cmd/kudurru/serving_anchor_follower_poller.go",
+    "cmd/kudurru/serving_anchor_updater.go",
+    "cmd/kudurru/serving_anchor_follower_poller_test.go",
+    "cmd/kudurru/serving_anchor_updater_test.go"
+   ],
+   "size": "S",
+   "dependsOn": []
+  },
+  {
+   "id": "F28-EF-1",
+   "title": "Qualify a newly joined follower starting with managedTopology edges",
+   "kind": "qualification",
+   "detail": "Every edges test uses a writable standalone node (cmd/kudurru/serving_anchor_edge_activation_test.go:33-140; serve_anchor_edge_live_test.go:33). Prove the supported order:\n1. Add the new backend to every edge's static --backends (cmd/kudurru/edge.go:73); the edge child restarts with its retained bypass identity.\n2. Run the offline join; the first image may be dormant or managed.\n3. Start the follower with edges topology. admitAnchorEdges captures the joined follower's token (serving_anchor_activation.go:82-88), observes the whole fleet, each edge listing this backend exactly once (serving_anchor_edge.go:114-122), and adopts under PublishIfCurrent (:102-115).\n4. The follower supervisor runs and the follower serves through the edge with zero cache entries.\n5. A follower restart re-authenticates the fleet without recapture.\nAlso extend the opt-in pinned-dnsdist test to two backends (primary plus joined follower).",
+   "acceptance": "Tracker: F28 row 'initial empty edge-follower installation' (completion-plan.md:138); gaps.md:5065-5066, :5088; D319 (design-record.md:1926); docs/architecture/upstreams-and-cache.md:325-326.\nTests:\n- TestAnchorEdgeActivationJoinedFollower in cmd/kudurru: real CreateJoinReceiver/JoinReceiver via the cluster_join_test.go harness plus the anchorEdgePeer fixture; assert admission.edges is set, the supervisor child started and the fetch count.\n- TestRunServeManagedEdgePinnedDaemonFollower (KUDURRU_ANCHOR_EDGE_LIVE=1): both pools over UDP/TCP against the follower backend, edge restart, follower restart, no cached answers.\nBoth unskipped on the final head (G23, completion-plan.md:222).",
+   "files": [
+    "cmd/kudurru/serving_anchor_edge_activation_test.go",
+    "cmd/kudurru/serve_anchor_edge_live_test.go",
+    "cmd/kudurru/cluster_join_test.go"
+   ],
+   "size": "M",
+   "dependsOn": []
+  },
+  {
+   "id": "F28-EF-2",
+   "title": "Actionable refusal and runbook for a receiver with no installed image",
+   "kind": "implementation",
+   "detail": "Today an Unenrolled receiver (incomplete join, D356) or any node with no image, started with direct or edges topology, fails with the generic errAnchorPolicy 'root anchor policy unavailable or changed' (serving_anchor_activation.go:56-59), or with a raw ReadServingCandidate error in the edges lane (:82-85). Keep the refusal, as D319 requires: no edge contact and no recapture. Return a distinct error naming the remedy (`cluster join` or `cluster join-reconcile` first). Add 'adding a follower behind managed edges' to the runbooks. Record in the decision log that the join CLI is the only first-image lane, so no waiting lane exists for edges.",
+   "acceptance": "Tracker: gaps.md:5065-5066; D319 rejected alternative 'retry or recapture after remote input' (design-record.md:1926).\nTests: table test over an Unenrolled store, an incomplete-join store and a fixture-only empty Follower, for edges and direct. Zero edge observations and zero root fetches, a specific error text, and store authority and bytes unchanged. After `cluster join-reconcile` the same data directory starts.",
+   "files": [
+    "cmd/kudurru/serving_anchor_activation.go",
+    "cmd/kudurru/serving_anchor_edge_activation_test.go",
+    "docs/deploy/runbooks.md",
+    "docs/architecture/upstreams-and-cache.md"
+   ],
+   "size": "S",
+   "dependsOn": []
+  },
+  {
+   "id": "F28-MV-1",
+   "title": "In-tree compatibility guards for the anchor formats (pure format 1/2, accepted envelope, local carrier)",
+   "kind": "qualification",
+   "detail": "The only 'pre-change codec' proof (old be4446fc decoder keeps format-1 bytes and rejects format 2) lives in gitignored .context/anchor-recovery-20261108/ (compatibility_export_test.go, old-codec/, format1.json, format2.json); nothing in tree pins the bytes. Add:\n- committed golden documents for pure format 1 and format 2, an accepted root plus chunk rows (accepted.FormatVersion 1) and a managed local-carrier record;\n- tests that Decode then Encode is byte-identical and the version digests are stable;\n- unknown pure format 3 and unknown accepted or local format refused, with the store image unchanged on install;\n- a tripwire pinning the tuple (store.SchemaVersion=9, replication.FeatureNames(), trustanchors.FormatVersion=1, RecoveryFormatVersion=2, accepted.FormatVersion=1), so a future format change must come with a schema or feature bump.",
+   "acceptance": "Tracker: gaps.md:5127-5133 (codec checked, operational mixed-version open); G22 'mixed-version rejection' (completion-plan.md:221).\nTests: TestCodecGoldenFormatsAreByteStable, TestCodecRejectsUnknownFormat, TestOwnerGoldenRowsAreByteStable, TestAnchorFormatGateTuple. All pass under race with no skips.",
+   "files": [
+    "internal/trustanchors/codec_test.go",
+    "internal/trustanchors/recovery_test.go",
+    "internal/trustanchors/accepted/codec_test.go",
+    "internal/store/sqlite/anchor_local_test.go",
+    "internal/store/replication/trustanchors_test.go"
+   ],
+   "size": "S",
+   "dependsOn": []
+  },
+  {
+   "id": "F28-MV-2",
+   "title": "Actual released-binary mixed-version acceptance (v0.1.0 with HEAD)",
+   "kind": "qualification",
+   "detail": "v0.1.0 (main) is schema 1 with no internal/store/replication and no --managed-cache-bypass edge flag, so the real matrix is small:\n(a) HEAD opens a real v0.1.0 state.db: migrations 2-9 leave a dormant owner sentinel and an awaiting local carrier, static serving is unchanged, `anchors status --offline` reads dormant, and enabling managed/direct then bootstraps once.\n(b) The v0.1.0 binary refuses the upgraded database (schema too new) without changing bytes.\n(c) A HEAD backend with edges topology refuses to start when a declared edge lacks the observation route.\n(d) Carry a recovered (format 2) owner through follower install and restart on HEAD binaries.\nUse a committed v0.1.0-created fixture database with recorded provenance, or a KUDURRU_PREVIOUS_BIN opt-in. No harness exists today: the legacy fixtures are hand-built schema-6 databases (internal/store/sqlite/trustanchors_migration_test.go:19-33).",
+   "acceptance": "Tracker: F28 row 'fleet mixed-version acceptance' (completion-plan.md:138); gaps.md:5164; G22 (completion-plan.md:221); docs/architecture/upstreams-and-cache.md:384.\nTests:\n- TestAnchorUpgradeFromReleasedV010 (test/e2e, KUDURRU_E2E=1) covering (a) and (b).\n- TestAnchorEdgeActivationRefusesUnsupportedPeer (cmd/kudurru) covering (c).\n- (d) folded into F28-HA-4.\nNo skips credited.",
+   "files": [
+    "test/e2e/serve_test.go",
+    "internal/store/sqlite/trustanchors_upgrade_test.go",
+    "cmd/kudurru/serving_anchor_edge_activation_test.go"
+   ],
+   "size": "M",
+   "dependsOn": [
+    "F28-MV-1"
+   ]
+  },
+  {
+   "id": "F28-MV-3",
+   "title": "Record the mixed-version decision and correct operator text",
+   "kind": "docs",
+   "detail": "Recovery format 2 was added at c4b39bd9 on schema 8 with no new feature name; schema 9 and member-enrollment-v1 followed at 9fd961e3. Every binary that can exchange a v0.2.0 image decodes format 2, so no format-1-only daemon can sit in a released fleet. Record this as a decision, with the rule that any later pure, accepted or local format change needs a schema or RequiredFeatures bump. Then rewrite runbook step 2 (docs/deploy/runbooks.md:13-15) and the help text 'All replicas must support recovery format 2' (cmd/kudurru/anchors.go:53-54) to say what an operator must check (all members on v0.2.0 or later). Replace 'Full mixed-version fleet operational acceptance remains separate' (docs/architecture/upstreams-and-cache.md:384) with the evidence.",
+   "acceptance": "Tracker: G25 (completion-plan.md:224, plan/audit/ledger/changelog consistent); gaps.md:5132-5133.\nChecks: CLI reference drift test (TestCLIReferenceDrift) and docs generator pass; a decision-log entry cites F28-MV-1 and F28-MV-2 results.",
+   "files": [
+    "dev-docs/design-record.md",
+    "docs/deploy/runbooks.md",
+    "docs/architecture/upstreams-and-cache.md",
+    "cmd/kudurru/anchors.go",
+    "dev-docs/milestones/v0.2/gaps.md",
+    "dev-docs/milestones/v0.2/completion-plan.md"
+   ],
+   "size": "S",
+   "dependsOn": [
+    "F28-MV-1",
+    "F28-MV-2"
+   ]
+  },
+  {
+   "id": "F28-RFC-1",
+   "title": "Live interop: BIND and Knot as the root authority for managed bootstrap and validated recursion",
+   "kind": "qualification",
+   "detail": "Extend the existing harness (test/interop/named_test.go:32-131 runs a local named; dnssec_test.go:113 uses dnssec-keygen and dnssec-signzone; knot_catalog_test.go:48-200 is the docker Knot fixture). Serve a signed root zone from named with a KSK for each supported algorithm (8 RSA-2048, 13, 15), plus a ZSK. Run a kudurru node with anchorMode managed, managedTopology direct, the KSK DS as trustAnchors and the numeric authority as rootHints.\n\nProve bootstrap over the production TCP acquisition and AD-validated recursion through a named-signed child.\n\nNegative cases against the real server: wrong DS; a key with REVOKE set and self-signed, via dnssec-revoke; an unsupported algorithm; an expired RRSIG.\n\nThis also tests the strict wire assumptions against real servers: RD=0, EDNS 1232 with DO, TCP (cmd/kudurru/serving_anchor_acquire.go:77-80; serving_anchor_operation.go:114); NSCOUNT must be 0 and ARCOUNT at most 1, or the complete reply is terminal for the writer term (serving_anchor_operation.go:348-351; internal/trustanchors/observation.go:217). Record server versions. If a server adds authority or additional data, add its minimal-responses setting to the fixture and document it.",
+   "acceptance": "Tracker: F28 row 'RFC interoperability'; followup-audit.md:147 (revoked/unsupported keys; G23); G23 (completion-plan.md:222: actual BIND/Knot results, no skipped comparator credited).\nTests: TestBINDManagedRootBootstrap and TestBINDManagedRootRevocation in test/interop (KUDURRU_E2E=1, KUDURRU_NAMED set), and TestKnotManagedRootBootstrap via docker. All unskipped, with exact fetch counts and the AD bit on all answers.",
+   "files": [
+    "test/interop/dnssec_test.go",
+    "test/interop/named_test.go",
+    "test/interop/knot_catalog_test.go",
+    ".github/workflows/ci.yml",
+    "Makefile"
+   ],
+   "size": "M",
+   "dependsOn": []
+  },
+  {
+   "id": "F28-RFC-2",
+   "title": "Rollover interop with real authority data on a 30-day-plus timeline",
+   "kind": "qualification",
+   "detail": "A full add hold-down cannot be driven above the pure package. AddHoldDown is 30 days (max with TTL), MinRefresh is 1 h and both are production constants (state.go:17-23, 204-206). SessionClock reads time.Now and Sample fields are private (state.go:56-87), so only in-package tests can fabricate time (state_test.go:37-39). Nothing above the pure package ever takes a key from AddPending to Valid; AddHoldDown appears only in state_test.go.\n\nRecommended (no production change): an in-package test in internal/trustanchors. Generate a rollover with real tools using explicit signature windows (dnssec-keygen, dnssec-settime, dnssec-revoke, dnssec-signzone -s/-e; Knot keymgr for a second signer). Have named serve each stage and capture the actual TCP wire. Feed those bytes to Bootstrap/Verify/Advance with synthetic samples at T0, +15 d, +30 d, +30 d+1 h, the revoke stage, and a restart mid-hold (new session).\n\nAssert the RFC 5011 outcomes:\n- AddPending until hold-down plus a fresh observation; then Valid.\n- The old key stays Missing but trusted when removed.\n- Revocation is immediate and permanent.\n- Revoking the only trusted key before the new one is Valid quarantines.\n- A restart loses only uncheckpointed credit.\nThen push the final state through accepted.ProposeManaged and resolverstate.Project to assert the effective DS set.",
+   "acceptance": "Tracker: followup-audit.md:147 (durable state transitions, restart/time rollback, revoked keys; G23); gaps.md:5088-5089 ('complete RFC interoperability/hold-down').\nTests: TestRFC5011RolloverFromBINDWires and TestRFC5011RolloverFromKnotWires. Fixtures are generated at test time when tools are present, plus a committed capture with provenance so CI without the tools still replays real bytes; the generated path runs unskipped once on the final head.\nOptional real-time soak (KUDURRU_ANCHOR_SOAK=1, about 2 h 10 min): runServe against named observing two scheduled refreshes at the 1-hour minimum, proving the scheduler loop.",
+   "files": [
+    "internal/trustanchors/state_test.go",
+    "internal/trustanchors/resolverstate/projection_test.go",
+    "test/interop/dnssec_test.go"
+   ],
+   "size": "M",
+   "dependsOn": [
+    "F28-RFC-1"
+   ]
+  },
+  {
+   "id": "F28-RFC-3",
+   "title": "Opt-in live check against the real root servers",
+   "kind": "qualification",
+   "detail": "Follow the existing precedent (internal/recursor/resolver_test.go:630, KUDURRU_LIVE_DNS=1; dev-docs/release-checklist.md:252-259). For every address in recursor.DefaultRootHints(), run the production wire plan and unpack (captureAnchorWirePlan, acquireAnchorWire, unpackAnchorBootstrap), then trustanchors.Bootstrap with the shipped IANA DS records (internal/recursor/roots.go:50-51: KSK-2017 tag 20326 and KSK-2024 tag 38696). This checks the empty-authority and single-OPT assumptions on all 13 letters during the live KSK rollover. Report which seeds authenticate today and add the result line to the release checklist.",
+   "acceptance": "Tracker: G23/G24 (completion-plan.md:222-223); dev-docs/release-checklist.md:252-259.\nTest: TestLiveRootManagedBootstrap (skips without KUDURRU_LIVE_DNS=1): every reachable root endpoint yields a complete response accepted by the strict parser, and at least one shipped seed authenticates the RRset. Run once from a CI runner with egress and record the output.",
+   "files": [
+    "cmd/kudurru/serving_anchor_acquire_test.go",
+    "internal/recursor/resolver_test.go",
+    "dev-docs/release-checklist.md"
+   ],
+   "size": "S",
+   "dependsOn": []
+  },
+  {
+   "id": "F28-RFC-4",
+   "title": "Decide and document timer testability and RFC 5011 deviations",
+   "kind": "docs",
+   "detail": "Record a decision on how hold-down is qualified (see designOptions). Document the deviations and operational consequences:\n- Revoked keys are permanent tombstones; no 30-day removal (state.go:44-45; RemoveHoldDown is unused).\n- Hold-down credit accrues only within one process session (state.go:250-263), and each writer run creates a new session (serving_anchor_updater.go:153). A node restarted more often than the refresh interval (one day at the real root) accrues no credit and can end in quarantine when the old key is revoked.\n- Seeds must include a key that currently signs the root DNSKEY RRset, and changing seeds after bootstrap is refused (serving_anchor_operation.go:107-109).\n- Enabling managed needs every node's host-only managedTopology set first.\nThere is no operator page for enabling managed mode.",
+   "acceptance": "Tracker: G21 (completion-plan.md:220: docs agree with behavior); G25.\nChecks: a new decision-log entry; docs/deploy page 'Managed root anchors (RFC 5011)' covering enable order for standalone, enrolled and edges, monitoring and recovery; docs lint (hack/guide-lint.py) and the docs generator pass.",
+   "files": [
+    "dev-docs/design-record.md",
+    "docs/deploy/dnssec-validation.md",
+    "docs/architecture/upstreams-and-cache.md",
+    "docs/deploy/runbooks.md"
+   ],
+   "size": "S",
+   "dependsOn": [
+    "F28-RFC-2"
+   ]
+  },
+  {
+   "id": "F28-GATE-1",
+   "title": "Refuse anchorMode managed on the Kubernetes driver instead of silently running static",
+   "kind": "implementation",
+   "detail": "Managed anchors are consumed only by the SQLite complete runtime (cmd/kudurru/serve.go:1091-1099; internal/servingbuild/semantic.go:190-196). Topology validation rejects direct and edges for non-SQLite stores (internal/config/recursive_anchors.go:42-48), but anchorMode: managed with topology disabled validates on kube (internal/config/config.go:1053), and the legacy path builds the recursor from the configured seeds as plain static anchors (internal/upstream/config.go:161). The setting promises RFC 5011 and does nothing. Add a validation error for store.driver kube with anchorMode managed, and state the SQLite-only scope in the schema help and docs.",
+   "acceptance": "Tracker: G21 (completion-plan.md:220: per-feature production wiring; a model's existence does not mount a feature).\nTests: config table case kube plus managed gives a validation error (internal/config/recursive_anchors_test.go); settings reload on kube refuses the change and keeps the previous value; config reference regenerated with drift tests passing.",
+   "files": [
+    "internal/config/recursive_anchors.go",
+    "internal/config/config.go",
+    "internal/config/schema.go",
+    "internal/config/recursive_anchors_test.go",
+    "dashboard/src/mocks/data/settings-schema.json"
+   ],
+   "size": "S",
+   "dependsOn": []
+  },
+  {
+   "id": "F28-GATE-2",
+   "title": "Reconcile tracker and stale documentation for F28",
+   "kind": "docs",
+   "detail": "- Close the hosted DoH investigation with a7e70b22 and CI run 42736964083 (gaps.md:6849-6858, :7068; completion-plan.md:1553-1562, :1770-1775).\n- Remove stale architecture text that says recovery is not mounted and edge backend activation is pending (docs/architecture/upstreams-and-cache.md:606-620), contradicted by D319 and D321.\n- docs/deploy/dnssec-validation.md:30-33 says no RFC 5011 worker runs; scope that to forwarded validation and link to managed recursion.\n- Update the F28 inventory row, the followup-audit F28 closure and CHANGELOG.md:193-194 as items land.\n- Keep docs/architecture diagrams in step if HA-1 or HA-2 change flows (CLAUDE.md rule).",
+   "acceptance": "Tracker: G25 (completion-plan.md:224).\nChecks: every remaining 'open' phrase for F28 maps to a result or an explicit follow-up; docs lint passes.",
+   "files": [
+    "dev-docs/milestones/v0.2/completion-plan.md",
+    "dev-docs/milestones/v0.2/gaps.md",
+    "dev-docs/milestones/v0.2/followup-audit.md",
+    "docs/architecture/upstreams-and-cache.md",
+    "docs/deploy/dnssec-validation.md",
+    "CHANGELOG.md"
+   ],
+   "size": "S",
+   "dependsOn": []
+  },
+  {
+   "id": "F28-GATE-3",
+   "title": "Final-head F28 qualification run",
+   "kind": "qualification",
+   "detail": "After the above, rerun on the final commit:\n- the storage suite (1,026 entries, 280 s on Nov 8; needs -timeout=10m);\n- the composed command suite with the pinned dnsdist test enabled (133 entries, 167 s);\n- follower (27 entries, 256 s) and offline recovery (8 entries, 66 s);\n- enrolled process scenarios including the new managed variants;\n- interop with named and Knot;\n- full configured lint and hosted CI.\nThe pinned dnsdist test is opt-in and never runs in hosted CI (serve_anchor_edge_live_test.go:34-36), so its unskipped local result must be recorded for G23.",
+   "acceptance": "Tracker: G21-G24 (completion-plan.md:220-223); 'final gates remain open' (completion-plan.md:138).\nPass criteria: zero failures and zero skips in the F28 selections (other than documented opt-in live root); source fingerprints frozen; hosted ci and kind green on the final head.",
+   "files": [
+    "dev-docs/milestones/v0.2/completion-plan.md",
+    "dev-docs/milestones/v0.2/gaps.md"
+   ],
+   "size": "M",
+   "dependsOn": [
+    "F28-HA-3",
+    "F28-HA-4",
+    "F28-EF-1",
+    "F28-MV-2",
+    "F28-RFC-1",
+    "F28-RFC-2",
+    "F28-GATE-1"
+   ]
+  },
+  {
+   "id": "F28-GATE-4",
+   "title": "Operator-visible managed-anchor status (recommended; not one of the four named items)",
+   "kind": "implementation",
+   "detail": "There is no online view of managed trust. No API route, metric or doctor check mentions anchors (grep of internal/api, internal/metrics and cmd/kudurru/doctor*.go finds only tests). Readiness reports a generic 'prepare_failed' (internal/serving/publisher.go:302; cmd/kudurru/serving_mount.go:18). A terminal updater or follower supervisor is parked until the next term with one log line (serving_anchor_writer.go:95-96; serving_anchor_follower_supervisor.go:131-132, 147-149). An operator cannot see key states, hold-down remaining, next refresh or a parked updater before a rollover fails.\n\nAdd a read-only projection (key tag, status, firstSeen, elapsed/hold-down, nextRefresh, quarantined, recoveries, updater/supervisor state) on a protected GET, plus gauges and a doctor check. No mutation and no change to admission.",
+   "acceptance": "Tracker: G21 (completion-plan.md:220: API/CLI/UI/schema/permissions/docs agree).\nTests: the route returns the committed owner's projection on primary and follower with RBAC enforced; the terminal state is visible after an injected invalid complete reply; OpenAPI and generated clients are regenerated; metrics are registered once.",
+   "files": [
+    "internal/api",
+    "cmd/kudurru/serving_http_cluster.go",
+    "cmd/kudurru/serving_anchor_writer.go",
+    "cmd/kudurru/serving_anchor_follower_supervisor.go",
+    "internal/metrics"
+   ],
+   "size": "M",
+   "dependsOn": []
+  }
+ ],
+ "recommendation": "Do the enrolled HA work first; it is the only part with predicted defects, and the rest is evidence, docs and small fixes.\n\n1. Start F28-HA-1 with the failing managed-mode copy of TestRootAnchorPreparationPublishesFencedDNSOnly. Record the decision as an extension of D360 (fenced and conflicted nodes keep last-good DNS) and D318 (deny-only supervision, no follower trust grants): Fenced and Conflict nodes serve DNS-only with their last accepted managed owner and never run the updater.\n2. Then F28-HA-2, with store-level divergent-branch tests first. Use term-ordered adoption that preserves local revocations. This keeps D297's rules (no restored revoked trust, no default fallback) and D361's rule (other members adopt the resolved branch only through scheduled pulls).\n3. In parallel, since they touch no production path:\n   - F28-MV-1 and F28-MV-2. Close mixed-version by decision (F28-MV-3): schema 9 and the exact feature list already gate every exchange, and no format-1-only binary was released.\n   - F28-EF-1 and F28-EF-2. Keep D319's rule that an image-less node never enters the edge lane; D355's offline join is the only first-image path.\n   - F28-RFC-1, F28-RFC-3, F28-GATE-1, F28-GATE-2, F28-HA-5.\n4. Then F28-HA-3 and F28-HA-4 (process acceptance), F28-RFC-2 and F28-RFC-4, and finally F28-GATE-3.\n\nFor timers, take design option A (layered proof with real BIND/Knot wires and a synthetic clock inside the pure package, plus an optional real-time soak). It follows D297 ('production values, not accelerated test parameters'; evidence 'not a 30-day live soak') and changes no audited production code. Record that choice as a decision. Option C is the better long-term black-box tool and can follow after v0.2.0.\n\nNothing here needs the owner: no hardware, credentials or product decision. An owner decision would arise only if HA-1 or HA-2 were cut and managed anchors had to ship scoped to standalone/direct, which I do not recommend.\n\nNew decisions should take numbers after D366; allocate them centrally because parallel work also appends to the log.",
+ "designOptions": [
+  {
+   "name": "A. Layered proof, no clock seam (recommended)",
+   "description": "Keep production constants. Prove RFC 5011 timing in the pure package with real BIND/Knot-signed wires and synthetic samples (F28-RFC-2). Prove wire, signature, revocation and bootstrap live against named and Knot (F28-RFC-1) and the real root (F28-RFC-3). Prove runtime composition with explicitly invoked operations and process tests. Optionally add a 2-hour real-time soak for two scheduled refreshes.",
+   "pros": "No change to the audited core. Consistent with D297 and existing evidence practice. Real authority data. Cheap and deterministic in CI.",
+   "cons": "No single end-to-end run takes a key from AddPending to Valid through SQLite CAS, replication, publication and the resolver; that transition stays proven only at the pure and projection level. The soak is slow."
+  },
+  {
+   "name": "B. Test-binary clock injection guarded by testing.Testing()",
+   "description": "Give SessionClock an injectable now() that can only be constructed in test binaries, and thread one anchor clock through the updater, follower poller, persistence and SQLite lifetime checks, which read time.Now() today (serving_anchor_updater.go:79, serving_anchor_follower_poller.go:84, persistence/transaction.go:88, sqlite/anchor_install.go:52-56).",
+   "pros": "In-process runServe tests could run a complete rollover, including the scheduler and durable Valid transition, in seconds.",
+   "cons": "Touches about eight heavily reviewed files. Real-binary e2e and interop still cannot use it. Tested and shipped clock paths can drift. Contradicts the wording of D297 and needs a superseding decision."
+  },
+  {
+   "name": "C. Build-tag accelerated timers (as BIND does with -T mkeytimers)",
+   "description": "Move AddHoldDown/MinRefresh/MaxRefresh behind a build tag (for example anchortimers) that scales them, build a non-release binary for interop, and add a CI check that release artifacts exclude the tag.",
+   "pros": "True black-box rollover against BIND/Knot in minutes, including enrolled failover with both sides polling. Comparable to how BIND, Unbound and Knot Resolver test RFC 5011.",
+   "cons": "The binary under test is not the release binary. Constants become variables or split files. Needs release-pipeline enforcement and a decision entry. Larger than A."
+  },
+  {
+   "name": "HA-2 alternative: wait for successor generation",
+   "description": "Keep anchorSuccessor strict and document that a rejoining or losing member installs once the authoritative primary's anchor generation exceeds its own; surface the waiting state.",
+   "pros": "No change to store admission rules.",
+   "cons": "Rejoin can stall for a refresh interval (about a day at the real root), or indefinitely if the primary's updater is terminal for the term. Combined with F28-HA-1 unfixed, that node serves no DNS. A revocation known only to the stalled node still blocks the install."
+  }
+ ],
+ "sharedSeams": [
+  "cmd/kudurru/serving_runtime.go, serving_lifecycle.go and serve.go (enrolled HA and other runtime mounts)",
+  "cmd/kudurru/serving_anchor_activation.go and serving_anchor_bundle.go (D360 DNS-only path; any publication change)",
+  "internal/store/sqlite/anchor_command.go, anchor_install.go, authority_transition.go and replication.go (HA install, promotion and resolve work)",
+  "test/e2e/enrolled_cluster_test.go and enrolled_conflict_test.go (F60b/G11 scenarios share helpers and wall time)",
+  "test/interop/named_test.go and dnssec_test.go (other G23 interop rows F17-F31)",
+  "internal/testutil/kudurrutest (shared process harness)",
+  "internal/config/recursive_anchors.go, config.go and schema.go, plus generated config reference and dashboard/src/mocks/data/settings-schema.json",
+  "docs/architecture/upstreams-and-cache.md, docs/deploy/runbooks.md, docs/deploy/dnssec-validation.md, CHANGELOG.md",
+  "dev-docs/design-record.md (decision numbers after D366 will collide across parallel work), dev-docs/milestones/v0.2/completion-plan.md, gaps.md, followup-audit.md",
+  ".github/workflows/ci.yml and Makefile (interop/e2e targets)",
+  "internal/api OpenAPI and generated clients (only if F28-GATE-4 is taken)"
+ ],
+ "testInfra": "Nothing was run for this mapping. Commands and durations are from prior evidence files.\n\nPure and storage\n- `go test -race -count=1 -timeout=10m ./internal/trustanchors/... ./internal/store/sqlite ./internal/runtimeowners`: 1,026 entries, 280 s (.context/anchor-recovery-command-20261108/composed-storage-race-02.json). The default 5-minute package timeout failed earlier (gaps.md:5116-5118), so keep -timeout=10m.\n- Pure package alone: 62 entries, 1.3 s (gaps.md:2591).\n\nCommand package (in-process runServe and fixtures)\n- Composed anchors: `KUDURRU_ANCHOR_EDGE_LIVE=1 KUDURRU_ANCHOR_EDGE_WORKDIR=<absolute scratch dir> go test -race -count=1 -timeout=6m -run '^(Test.*Anchor|TestManagedTopology|TestManagedEdges|TestServingRuntime)' ./cmd/kudurru ./internal/config`: 133 entries, 167 s. The live case needs docker on unix:///tmp/kudurru-lab-docker.sock and the pinned dnsdist 2.1.3 image sha256:89c7f196... (cmd/kudurru/serve_anchor_edge_live_test.go:34-78); it skips without the env var and takes 24 s alone.\n- Follower: `go test -race -count=1 -timeout=3m -run '^TestAnchorFollower' ./cmd/kudurru`: 27 entries, 256 s cold.\n- Offline recovery: `go test -race -count=1 -timeout=4m -run '^TestOfflineAnchor' ./cmd/kudurru`: 8 entries, 66 s.\n- Fenced DNS-only regression to mirror: cmd/kudurru/serving_anchor_dnsonly_test.go.\n- Signed-root fixtures to reuse or move: anchorWireSignedReply and anchorWireServer (serving_anchor_acquire_test.go), anchorOperationServer (serving_anchor_operation_test.go), anchorRecursiveServer (serve_anchor_recursive_test.go:39-122, needs a non-loopback IPv4 interface), anchorEdgePeer (serving_anchor_edge_test.go).\n\nSeparate-process enrolled cluster\n- `KUDURRU_E2E=1 go test -race -count=1 -timeout=8m ./test/e2e -run '^TestEnrolledClusterProcesses(PartitionCatchupAndRestart|PromoteAndRejoin)$'`: 165 s. With TestEnrolledProcessConflictResolution, all three took 2 m 41 s (30.9 s, 49.8 s, 68.2 s). The harness builds a licensetest binary with CGO disabled (test/e2e/auditfixture_test.go:16-28) and uses the TCP relay for partitions (enrolled_cluster_test.go:27-109).\n\nInterop\n- `make interop` runs `CGO_ENABLED=1 KUDURRU_E2E=1 go test -v ./test/interop/` (Makefile:223-225). It needs named (KUDURRU_NAMED=/usr/sbin/named), dnssec-keygen and dnssec-signzone, and skips when they are missing (named_test.go:32-45; dnssec_test.go:115-120). CI installs BIND and runs it (.github/workflows/ci.yml:305-317). Knot runs in docker (knot_catalog_test.go:48-200; hack/test-knot-catalog.sh).\n- Live root precedent: `KUDURRU_LIVE_DNS=1 go test -run TestLiveInternet ./internal/recursor` (dev-docs/release-checklist.md:252-259).\n\nStatic checks\n- Full configured golangci-lint: about 115 s for the full repo, 24-30 s for the command package warm.\n- Docs generator and CLI reference drift: TestCLIReferenceDrift.",
+ "risks": [
+  "The two HA findings (F28-HA-1, F28-HA-2) come from code reading only. If the first tests do not fail as predicted, those packages shrink to qualification; if they do fail, the fix touches the most heavily reviewed admission code and the release's largest test suites.",
+  "Managed mode is fail-closed for the whole node, not only recursion. All-anchor loss, a missing host topology on any member, or a policy/seed mismatch refuses every publication, authoritative data included (serving_anchor_bundle.go:176-198). Enabling anchorMode managed (cluster scope) before every member has managedTopology set (host-only, restart required) takes those members down. The enable order must be documented and tested.",
+  "A complete but unexpected root reply is terminal for the whole writer term. NSCOUNT must be 0 and ARCOUNT at most 1 (serving_anchor_operation.go:348-351; observation.go:217). A real authority or root letter answering DNSKEY with authority or additional records would park the updater until the next term or restart. Unverified against real servers until F28-RFC-1 and F28-RFC-3 run.",
+  "Hold-down liveness. Credit accrues only within one process session and each writer run starts a new session (state.go:250-263; serving_anchor_updater.go:153). Nodes restarted more often than the refresh interval never complete a 30-day hold-down and reach quarantine when the old key is revoked. KSK-2017 is still published and its revocation is expected in early 2027 (from memory; confirm against IANA), so seed choice and restart cadence matter in practice.",
+  "Seeds are immutable after bootstrap (serving_anchor_operation.go:107-109) and must include a key that currently signs the root DNSKEY RRset, or bootstrap fails with ErrProof (observation.go:147-161). A wrong first seed set needs a new database or the quarantine recovery path.",
+  "Process tests cannot produce a second scheduled poll (one-hour minimum), so 'both sides polled during a partition' is provable only at store or in-process level unless a timer seam (option B or C) is adopted.",
+  "The pinned dnsdist edge test is opt-in and outside hosted CI. Edge regressions for managed mode can land unnoticed unless F28-GATE-3 reruns it, or it is wired into the edge workflow.",
+  "Each follower polls the root over TCP hourly (serving_anchor_follower_poller.go:100-105). Large fleets multiply that load, and followers need direct egress to the root hints; a blocked follower retries on the accepted retry interval without affecting serving.",
+  "No online status exists for managed anchors (F28-GATE-4). Without it, a parked updater or a stalled hold-down is discovered only when a rollover fails.",
+  "Merge risk: F28-HA-1 and F28-HA-2 edit files that concurrent HA, Kubernetes and docs work also touches (see sharedSeams), including the decision log numbering."
+ ]
+}

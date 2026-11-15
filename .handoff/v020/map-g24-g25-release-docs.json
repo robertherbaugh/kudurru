@@ -1,0 +1,318 @@
+{
+ "key": "g24-g25-release-docs",
+ "item": "Gates G24 (deployment and release qualification) and G25 (status and evidence consistency) for kudurru v0.2.0, PR #54 at HEAD 33ee04bc",
+ "summary": "G24 and G25 are both still open in the tracker (dev-docs/milestones/v0.2/completion-plan.md:223-224; closure rules in gaps.md:113-114), and almost all of what remains is evidence recording and documentation, not product code. Version sync is done: VERSION is 0.2.0, both charts are 0.2.0 (deploy/helm/kudurru/Chart.yaml:5-6, deploy/helm/kudurru-crds/Chart.yaml:5-6), Compose/kustomize images are 0.2.0, and `make version-check` printed PASS when I ran it at 33ee04bc. All 10 hosted PR workflows are green on the current head 33ee04bc (ci 42736964083, compose 42736963783, kind 42736964167, edge 42736964064, security 42736963918, docs 42736963880, license-server 42736964088, dev-image 42736963883, website, ad-dns; only the owner-excluded Cloudflare \"Workers Builds: kudurru-docs\" fails), but the tracker records none of this: its newest hosted entry is the failed CI 42568583609 on ffd18d41 and it still says final-source hosted checks remain (completion-plan.md:1763-1779). The tracker has no recorded result at all for compose-e2e, kind-e2e, helm-check, edge-check, release-manifests, goreleaser or version-check (zero grep hits in completion-plan.md, gaps.md and followup-audit.md); `make size` is recorded only for 19d6c729 (completion-plan.md:235-236), while the hosted build job on 33ee04bc measured 81,146,016 bytes with the placeholder dashboard. CHANGELOG.md has a `## [0.2.0] - unreleased` section (line 133), but the D355-D366 entries sit in a separate `## [Unreleased]` section above it (lines 7-131), the 0.2.0 section has two `### Fixed` blocks (135, 466), many stale \"remains pending\" clauses, a stray paragraph (510-513), no upgrade notes or known limitations, and no entries for a long list of landed features. The PR #54 body contradicts itself and the code in at least five places (for example it says Kubernetes RFC 2136 \"needs an owner decision\" although D366 shipped in 33ee04bc). Operator docs exist for most new flows (docs/deploy/sqlite-join.md, tsig-keys.md, compose-ha.md, runbooks.md, integrations.md) but are not linked from docs/deploy/README.md, lack first-primary activation and promotion steps, lack an RFC 2136 operator page, and several pages still state v0.1-era limits. The uncommitted dashboard/dist/index.html is a locally built dashboard index (output of `make dashboard-build`); it must never be committed and should be restored to the placeholder with `git checkout -- dashboard/dist/index.html`. This sandbox has no Docker daemon (`docker info` fails), no kind, goreleaser, kustomize or golangci-lint on PATH, so Compose/kind/edge/image checks can only be qualified through hosted runs.",
+ "alreadyDone": [
+  "Version sync (release-checklist.md:108-115): VERSION=0.2.0; charts version/appVersion 0.2.0 (deploy/helm/kudurru/Chart.yaml:5-6, deploy/helm/kudurru-crds/Chart.yaml:5-6); Compose images 0.2.0 / 2.1.3-k0.2.0 / 2.4.3-k0.2.0 (deploy/compose/single/docker-compose.yml:9, deploy/compose/ha/node-a/docker-compose.yml:18,63,98); kustomize manager image 0.2.0 (deploy/kustomize/manager/manager.yaml:244). `make version-check` (Makefile:34-35) printed PASS locally at 33ee04bc; hosted ci `helm` job also runs it (.github/workflows/ci.yml:444-445). No v0.2* tag exists (`git tag --list 'v0.2*'` is empty), so the first candidate would be v0.2.0-rc.1.",
+  "Final-source hosted checks (G04 'repeat on integrated final head', completion-plan.md:216; 'final-source hosted CI/security' listed as remaining at completion-plan.md:1777-1779): all green on 33ee04bc. ci 42736964083 (22 jobs, 46m37s wall: go test 1/2 45m21s, go test 2/2 11m56s, build 3m33s incl. check-generated-code and make size, helm 2m24s incl. helm-check, version-check, deploy-assets drift and goreleaser check, licenses 1m34s, lint 4m54s, e2e 9m14s, dashboard 2m35s, dashboard-e2e 6m06s, 7 fuzz shards), compose 42736963783 (2m43s), kind 42736964167 (9m07s), edge 42736964064 (4m08s: edge-check, hostnetwork-check, volume-check), security 42736963918 (sast, vulncheck, trivy-fs, trivy-images, trivy-license-server), docs 42736963880 (3m19s), license-server 42736964088, dev-image 42736963883. Only recording is missing.",
+  "The managed-anchor hosted DoH/DoH3 INTERNAL_ERROR failure is explained and fixed in a7e70b22 (test ordering: a startup DNSZone status write after first readiness retires the publication; 22/22 passes on 1-2 CPUs per its commit message) with the sibling fix dfa01388, and the test passes on 33ee04bc. The tracker still says it 'remains unexplained and open' (completion-plan.md:1771-1774) and the PR body says its cause 'remains under investigation' (PR body line 20). Neither commit hash appears in any tracker file.",
+  "CHANGELOG.md has the 0.2.0 section marked unreleased (line 133) and already has entries for D355-D366: Kubernetes RFC 2136 (17-21), Kubernetes TSIG management (23-26), follower login (28-31), follower object/zone forwarding (33-38), offline conflict resolution (40-45), peer term exchange (47-50), blocking forwarding (52-55), join and join-reconcile (57-62), promotion (64-66), follower acquisition (68-69), join-token (71-73), activation (75-77), grant floors (88-91), fenced DNS-only publication (93-96).",
+  "Decision log is current through D366 (dev-docs/design-record.md:2017-2045 for D353-D366). Next free number is D367.",
+  "Operator documentation that already exists for landed v0.2 flows: join, join-reconcile, follower forwarding and its limits, old-primary rejoin and conflicting-promotion recovery (docs/deploy/sqlite-join.md:1-172); stored TSIG API including Kubernetes hot reload and two-phase create (docs/deploy/tsig-keys.md:64-88); static twins (docs/deploy/compose-ha.md:23,40-43,81-91); managed root anchor recovery (docs/deploy/runbooks.md:4-57); integrations on SQLite, DNSEndpoint and webhook sidecar (docs/deploy/integrations.md); architecture text and diagram for Kubernetes RFC 2136 (docs/architecture/zones.md:887-925) and grant floors (docs/architecture/access.md:1059-1069); generated CLI reference for cluster, anchors, iam, integrations (docs-site/content/reference/cli.md:102-134, 335-489, 968-1107, 1378-1476). Hosted docs workflow (generated-reference drift, Hugo build, htmltest, wrangler dry run) is green on 33ee04bc.",
+  "No chart change is needed for the new Kubernetes objects: the namespaced Role already grants full verbs on secrets (deploy/helm/kudurru/templates/rbac.yaml:80-82), which covers the kudurru-grant-floors Secret (internal/store/kube/grant_floors.go:18-19), and hosted kind-e2e passes on 33ee04bc.",
+  "Release inputs unchanged or consistent: trusted license keyring unchanged versus main (`git diff origin/main...HEAD -- internal/license/keys` is empty); distroless digests pinned identically (Dockerfile:44,63; images/base/Dockerfile:23; images/hostnetwork/Dockerfile:49; .goreleaser.yaml:85,118) and guarded by TestDockerfile in `make test`; NOTICE updated for fonts, cloudflare-go and the patched quic-go (NOTICE:25-27,44,96-98); `goreleaser check` runs hosted at v2.18.3 (.github/workflows/ci.yml:450-455).",
+  "Temporary diagnostics are fully gone: `git diff 6c86f581 c50adc9f` is empty (d47c9fc0 plus its revert net to zero), no TEMPDIAG string remains in Go sources, and HEAD's dashboard/dist/index.html is the placeholder (contains `kudurru:placeholder`).",
+  "Owner deferrals are already reflected: D358 two-VM note in release-checklist.md:172-176, completion-plan.md:3-12, followups.md:166-168; D353 AD preview in completion-plan.md:14-25, CHANGELOG.md:9-13, README.md:107, docs/enterprise.md:35-58.",
+  "origin/main (d2811234) is an ancestor of HEAD and remote main has not moved, so the PR body's 'includes the fetched main at d281123' is still true; the '190 operations' claim matches api/openapi.json (190 operations, 153 paths)."
+ ],
+ "remaining": [
+  {
+   "id": "G24-HOSTED",
+   "title": "Record final-source hosted qualification for every release-checklist check that only CI can run",
+   "kind": "qualification",
+   "size": "S",
+   "detail": "Nothing to implement. After the last code-changing commit C is pushed, wait for the 10 PR workflows and save the run list next to prior evidence (precedent: .context/hosted-cb939ff1-20261109/runs.json, which exists but was never written into the ledger). Record run IDs, job names, durations and the `make size` byte count from the build job log. For 33ee04bc the numbers are already known (see alreadyDone) and can be recorded immediately if no further code lands. This covers release-checklist section 1 'main is green' (lines 100-103: make test, lint, check-generated, helm-check, dashboard lint/test/build plus go test ./dashboard/..., size) and section 3 edge-check (183-190), kind (191-210) and compose (211-224). These cannot run in this sandbox: the Docker daemon is unavailable. A docs-only final commit still triggers the full suite because hack/ci-changes.sh diffs PR base to PR head for pull_request events (hack/ci-changes.sh:47-50). Transient 504 download failures have precedent (completion-plan.md:1697-1702, 1763-1765): rerun the failed job and record both attempts; never waive.",
+   "acceptance": "G24 closure rule gaps.md:113 and completion-plan.md:223; G04 completion-plan.md:216. Proof: `gh run list --commit <C> --json databaseId,workflowName,conclusion,headSha` shows success for ci, compose, kind, edge, security, docs, license-server, dev-image, website, ad-dns; ci-ok and security-ok jobs succeed; build job log line 'bin/kudurru: <n> bytes, budget 100000000 bytes'.",
+   "files": [
+    ".context/hosted-<sha>-<date>/runs.json",
+    "dev-docs/milestones/v0.2/completion-plan.md",
+    "dev-docs/milestones/v0.2/gaps.md",
+    "dev-docs/milestones/v0.2/followup-audit.md"
+   ],
+   "dependsOn": []
+  },
+  {
+   "id": "G24-LOCAL",
+   "title": "Run and record the local artifact checks that no PR workflow covers",
+   "kind": "qualification",
+   "size": "M",
+   "detail": "Checklist steps with no hosted pre-promotion coverage and no tracker record: (1) `make release-manifests RELEASE_ARTIFACT_VERSION=0.2.0-rc.1` (release-checklist.md:121-126, Makefile:413-415; needs helm, python3 and kustomize from `make deploy-tools`; writes only bin/release; hosted CI runs it only inside publish.yml through the goreleaser before hook, .goreleaser.yaml:20). Inspect that every image reference in bin/release/install.yaml and bin/release/compose is 0.2.0-rc.1, 2.1.3-k0.2.0-rc.1 or 2.4.3-k0.2.0-rc.1 and that `git status --short` is unchanged. (2) `make size` against the real dashboard bundle: the hosted build job measures the placeholder build only (ci.yml:149-152); run `make dashboard-build && go test -count=1 ./dashboard/... && make size` and record the bytes (D138 budget 100,000,000, Makefile:62-69). (3) goreleaser single-target snapshot (release-checklist.md:141-146): `go run github.com/goreleaser/goreleaser/v2@v2.18.3 build --snapshot --single-target --clean`, then `./dist/kudurru_linux_amd64_v1/kudurru version`, then `git checkout -- dashboard/dist/index.html && rm -rf dist` (150-153). Needs Bun (installed) but no Docker. (4) `hack/release-tag.sh rc` dry run (read-only, hack/release-tag.sh:1-20); expect tag=v0.2.0-rc.1. (5) `python3 -B -m unittest discover -s hack -p test_sync_version.py` (not run by any workflow, see G24-SYNCTEST). (6) full `make check-generated` (Makefile:177-185) as one local confirmation; hosted covers its two halves separately (ci.yml:147-148 and docs.yml:31-35).",
+   "acceptance": "release-checklist.md:108-126 and 135-153; G24 'artifact validation' gaps.md:113. Proof: command exit codes and outputs saved under .context/release-checks-<date>/, recorded in the ledger with the commit hash; bin/release contains crds.yaml, install.yaml and compose/ at the rc tag; `kudurru version` from the snapshot prints a -SNAPSHOT-<commit> version; tree clean except nothing staged.",
+   "files": [
+    "Makefile",
+    "hack/sync-version.py",
+    "hack/release-tag.sh",
+    ".goreleaser.yaml",
+    "dev-docs/milestones/v0.2/completion-plan.md"
+   ],
+   "dependsOn": [
+    "G24-TREE"
+   ]
+  },
+  {
+   "id": "G24-SNAPSHOT",
+   "title": "Full goreleaser snapshot (archives, deb/rpm/apk, SBOMs, ko images) on a Docker host",
+   "kind": "qualification",
+   "size": "M",
+   "detail": "release-checklist.md:147-149 asks for `goreleaser release --snapshot --clean --skip=publish,sign` with Docker and syft. This is the only real validation of the packaged artifacts before a candidate is published, it has no v0.2 record, it cannot run in this sandbox (no Docker daemon, no syft), and no PR workflow runs it (publish.yml is promotion-only). The release pipeline files changed little on this branch (.goreleaser.yaml 6 lines, Dockerfile 7, images/base/Dockerfile 10, images/hostnetwork/Dockerfile 6 versus origin/main), and the Dockerfile image path is already exercised hosted by dev-image, edge (volume-check on both base images, .github/workflows/edge.yml:47-51) and security trivy-images. See designOptions for how to close it; my recommendation is a small label-triggered dry-run workflow modeled on benchmarks.yml:10-13.",
+   "acceptance": "release-checklist.md:147-149 and the historical record format at 159-168; G24 gaps.md:113. Proof: exit 0, list of produced archives/packages/SBOMs/checksums, both ko images loaded with `kudurru version` printing the snapshot version, `hack/volume-check.sh` on the result (D154), dist removed afterwards.",
+   "files": [
+    ".goreleaser.yaml",
+    ".github/workflows/release-dry-run.yml (new, only if option B is chosen)",
+    "dev-docs/release-checklist.md"
+   ],
+   "dependsOn": [
+    "G24-LOCAL"
+   ]
+  },
+  {
+   "id": "G24-LIVE",
+   "title": "Live-internet recursion check and IANA trust-anchor comparison",
+   "kind": "qualification",
+   "size": "S",
+   "detail": "release-checklist.md:252-259 (D170): `KUDURRU_LIVE_DNS=1 go test -run TestLiveInternet ./internal/recursor` (gate at internal/recursor/resolver_test.go:630-631) and a comparison of the built-in anchors (internal/recursor/roots.go:47-51, key tags 20326 and 38696; internal/dnssec/options.go:46) with IANA root-anchors.xml. The tracker explicitly says this acceptance is not inferred (gaps.md:3431-3432). It needs outbound UDP and TCP port 53 and HTTPS to data.iana.org, nothing owner-specific; try it here first and fall back to any network that allows port 53 egress. The on-node `dig +dnssec` half (254-257) needs a running node with a recursive group and can use the same environment. It is a GA gate per release-checklist.md:178-179, so if it cannot run before merge it is recorded as a known gap, not as passed.",
+   "acceptance": "release-checklist.md:252-259. Proof: unskipped TestLiveInternet pass output; the two DS digests match the current IANA file; result recorded with date, since anchors are time-sensitive.",
+   "files": [
+    "internal/recursor/resolver_test.go",
+    "internal/recursor/roots.go",
+    "internal/dnssec/options.go"
+   ],
+   "dependsOn": []
+  },
+  {
+   "id": "G24-SYNCTEST",
+   "title": "Run the version-sync unit tests in CI",
+   "kind": "implementation",
+   "size": "S",
+   "correction": "Added November 10, 2026 by the QUAL-CI fix pass after review: the premise of this entry is false. hack/test_sync_version.py already runs in every hosted go job and in the test job of publish.yml, because deploy/release_test.go:340-346 (TestVersionSyncScript) executes it and fails on any failing Python test; hosted run 42736964083 shows `ok github.com/robertherbaugh/kudurru/deploy`. The grep in `detail` missed the Go caller. The step that QUAL-CI added to the helm job (python3 -B -m unittest discover -s hack -p test_sync_version.py) is a second, visible run of the same five tests, kept only for its own log line; it closes no coverage gap.",
+   "detail": "hack/test_sync_version.py is referenced by no workflow, Makefile target or script (repo-wide grep finds no reference), while its siblings run in the ci go job (.github/workflows/ci.yml:107-108: test_go_test.py and test_bench_*.py). The script it tests rewrites charts, Compose, kustomize, docs references and the CHANGELOG heading (hack/sync-version.py:112-131) and stages release artifacts (176-198). Add one line next to ci.yml:107: `python3 -B -m unittest discover -s hack -p test_sync_version.py` (it needs Go, Git and Helm; if Helm is not on the go job runner, put it in the helm job after ci.yml:445 instead).",
+   "acceptance": "G24 'artifact validation' gaps.md:113; release-checklist.md:108-115. Proof: the step appears and passes in the hosted ci run on the final head.",
+   "files": [
+    ".github/workflows/ci.yml",
+    "hack/test_sync_version.py"
+   ],
+   "dependsOn": []
+  },
+  {
+   "id": "G24-TREE",
+   "title": "Restore the built dashboard index to the committed placeholder",
+   "kind": "qualification",
+   "size": "S",
+   "detail": "`git diff dashboard/dist/index.html` replaces the placeholder (marker `<!-- kudurru:placeholder -->`, dashboard/embed.go:45) with a Vite-built index that references ./assets/index-CI8jxBgG.js and about 20 other hashed files. Those files exist locally (121 files in dashboard/dist/assets) but are gitignored (.gitignore:13-14). It is the output of `make dashboard-build`. d47c9fc0 committed it by mistake together with TEMPDIAG diagnostics and c50adc9f reverted both 13 minutes later. Committing it would break CI: TestIndexAssetsPresent fails when index.html references files that are not embedded (dashboard/embed_test.go:45-60), and the checklist says not to commit it (release-checklist.md:103). It should be reverted, not committed: `git checkout -- dashboard/dist/index.html` (release-checklist.md:150-152). The tracker calls it a 'protected pre-existing' modification (completion-plan.md:1490, 1761) and the PR body mentions it (line 34), so restoring it is a one-line ledger note plus removing that sentence from the PR body. It is harmless while unstaged (all drift checks are path-scoped: Makefile:179,185; ci.yml:449), but any `git add -A` or `git commit -a` would re-create the d47c9fc0 mistake, and non-snapshot goreleaser refuses a dirty tree (.goreleaser.yaml:15-17). It is regenerated by `make dashboard-build` whenever a real-bundle test is wanted. Run `make clean` as well if a placeholder-only build is needed, since leftover assets are still embedded (dashboard/embed.go:29-30, `all:dist`).",
+   "acceptance": "release-checklist.md:103 and 150-152. Proof: `git status --short` prints nothing; `git show HEAD:dashboard/dist/index.html | grep -c kudurru:placeholder` is 1.",
+   "files": [
+    "dashboard/dist/index.html"
+   ],
+   "dependsOn": []
+  },
+  {
+   "id": "G25-LEDGER",
+   "title": "Reconcile the three ledgers with exact commits and final results",
+   "kind": "docs",
+   "size": "M",
+   "detail": "completion-plan.md, gaps.md and followup-audit.md carry mirrored sections (every recent feature commit touches all three), and sections written inside a commit cannot cite that commit's hash, so D355-D366 are cited by D-number only. Needed: (1) a commit map for closures since 9963dec2: D345 4677ce33, D347 7e0bad61, D349 9963dec2, D350 ee0755ab, D351 00d66b9f, D352 64cee7ac, D353 cd97be98, D354 0a1a44cb, D355 78bfc02b, D356 3ffee87f, D357 e6d23877, D358 436d45d6, D359 57128ac7 (+ ffd18d41 tests), D360 e93041b8, D361 6c86f581, D362 e6a9586b, D363 d52ba353, F35a lease-loss cb939ff1, D364 f8dd33d3, D365 1a78bb92, D366 19bfecc4 (decision) and 33ee04bc (implementation), fixture fixes 5d25cda4, a7e70b22, dfa01388, and the net-zero pair d47c9fc0/c50adc9f. (2) Replace 'remains unexplained and open' (completion-plan.md:1771-1774) with the a7e70b22 explanation and the green result. (3) Replace the stale 'Remaining:' paragraph (completion-plan.md:1776-1780, mirrored at gaps.md:7074 and followup-audit.md:3923), which still lists Kubernetes TSIG/RFC 2136 and enrolled login as open. (4) Update gate rows: G04 (216) with head run IDs, G16-G19 (218) to 'deferred preview (D353)', G24 (223) with per-step results, G25 (224). (5) F60b row (184) still says 'IAM/login admission ... remain open' although D363 landed (F46 row 166 has it). (6) Record the G24 results from G24-HOSTED, G24-LOCAL, G24-SNAPSHOT, G24-LIVE with commands, exit codes and evidence paths. (7) Add a short 'v0.2 pass' pointer in dev-docs/release-checklist.md:106-107, which still names the v0.1 feature review as the product-blocker source. Keep retained failures; the ledger convention is never to delete failed evidence.",
+   "acceptance": "G25 closure rule gaps.md:114 ('exact implementation commits, commands, outcomes and remaining limits') and completion-plan.md:224. Proof: every hash in `git log --format=%h origin/main..HEAD` that implements an F row or D decision since 9963dec2 greps in completion-plan.md; no 'unexplained and open' or 'needs an owner decision' text remains for closed items; the three ledgers' mirrored sections are identical where mirrored.",
+   "files": [
+    "dev-docs/milestones/v0.2/completion-plan.md",
+    "dev-docs/milestones/v0.2/gaps.md",
+    "dev-docs/milestones/v0.2/followup-audit.md",
+    "dev-docs/release-checklist.md"
+   ],
+   "dependsOn": [
+    "G24-HOSTED",
+    "G24-LOCAL"
+   ]
+  },
+  {
+   "id": "G25-PACKAGES",
+   "title": "Explicit acceptance table for the 11 feature packages",
+   "kind": "docs",
+   "size": "M",
+   "detail": "G25 forbids claiming feature completion without explicit acceptance of all 11 packages, and the only package table is the baseline one with stale 'Recorded:' text (gaps.md:73-88; completion-plan.md:217 says all 11 remain open). Write one table, V2-ZONE through V2-OPS, against the acceptance criteria in dev-docs/milestones/v0.2/README.md:376-386: accepted or not accepted, F rows, evidence directories, commits, and remaining limits. From read-only greps for this map, at least these README-listed scope items have no implementation and must appear as 'not accepted / remaining' unless other work lands them: dnstap, OTel tracing and ClickHouse/Loki sinks (V2-OBS, README.md:384; zero non-test Go files mention dnstap, OpenTelemetry appears only as indirect modules in go.mod:127-135), the `external` zone type (V2-INTEGRATIONS, README.md:380; ZoneTypeExternal is declared at api/v1alpha1/dnszone_types.go:17 but no controller references it), a dashboard join wizard (V2-HA, README.md:382; dashboard/src has no join or promotion page), an Integrations admin page (no page in dashboard/src/pages), and a CoreDNS Corefile importer (V2-OPS, README.md:386; no 'corefile' in Go sources). This package only writes the table; the acceptance content comes from the items that own G05-G15.",
+   "acceptance": "gaps.md:114 last sentence; dev-docs/milestones/v0.2/README.md:368-411. Proof: 11 rows, each with an explicit verdict and a tracker or code citation; no row says 'complete' while its F rows say 'final gates open'.",
+   "files": [
+    "dev-docs/milestones/v0.2/completion-plan.md",
+    "dev-docs/milestones/v0.2/gaps.md"
+   ],
+   "dependsOn": [
+    "all G05-G15 package items"
+   ]
+  },
+  {
+   "id": "G25-CHANGELOG",
+   "title": "Restructure and complete the 0.2.0 changelog section",
+   "kind": "docs",
+   "size": "M",
+   "detail": "Structure: fold `## [Unreleased]` content (CHANGELOG.md:9-131, including main's DHCP 'Changed' 81-84 and Docker 'Fixed' 129-131) into `## [0.2.0] - unreleased` and leave an empty `## [Unreleased]` heading above it (hack/sync-version.py:126-130 only inserts the version heading when it is missing, so this is safe); merge the two `### Fixed` blocks (135 and 466) and order Added/Changed/Fixed/Security; move the stray paragraph at 510-513 into Added entries for stub zones and signed-secondary serving; keep the date as 'unreleased' (the date is added at GA, release-checklist.md:116-117). Remove or rewrite stale progress clauses that are now false: 122, 139, 143, 148, 155, 159, 163, 168, 178, 194, 198, 203-204 ('Kubernetes hot key management remains unavailable' versus 23-26), 255, 259, 391, 62. Missing Added entries for features that exist in code: SQLite RFC 2136 UPDATE itself (internal/dynamicupdate; only the Kubernetes entry 17-21 and a Fixed note 170-173 exist); DNSSEC validation of forwarded answers with trust anchors and forwarded NTAs (internal/dnssec/validate.go, F29a/F30); response processing: policy rewrites, DNS64, AAAA filtering, NXDOMAIN handling, rebinding protection (internal/responsepolicy/); RPZ feed import (internal/rpz/); adblock modifiers including $important/$badfilter (internal/blocking/modifier.go, F17) and the lazy-DFA regex engine (F20d); client identification by MAC/hostname inventory and DoT/DoH client IDs (internal/clientid/, F22d) and the UniFi hostname source (F18c); IAM: public IdentityProvider/RoleBinding/ServiceAccount, Kudurru and Integration CRDs (deploy/kustomize/crd/bases/), TOTP (cmd/kudurru/login_totp.go), session listing/revocation, external identity administration (F45), autoProvision never and syncGroups (F48a), RP-initiated logout (F48b), auth settings hot reload (F26e), /auth/me scoped permissions (F34), SQLite RoleBinding API/CLI (D294); CLI browser PKCE and device-code login (cmd/kudurru/login_oidc.go, login_device.go, F61); `--transport kubernetes` direct CRD verbs (F59); `externaldns-webhook` sidecar (F35b); Enterprise custom branding (ee/branding, docs/deploy/custom-branding.md; no 'brand' in either release section); SQLite durable replicated blocking toggle (F19a; only Kubernetes 244-246 is listed); edge resolver-cache invalidation local and remote (F39a/b, F54b) and certificate reload without restart (F43b); object lists from the live snapshot (F36); Policy/default fallback (F10b); Kubernetes doctor NOTIFY diagnostic (D331; 338-340 says SQLite only); public catalog repository kudurru-data (F23/D333). Missing sections compared with 0.1.0 (745-781): a headline paragraph, 'Installation and upgrade notes' (ServiceAccount token projection is breaking, 424-427; AuditLog key provisioning, 355-358; central schema 6 upgrade locks, 302-305; one-way SQLite schema 9, 147; Kubernetes IAM offline migration, docs/deploy/iam-upgrade.md; CRD chart first), and 'Known limitations' (AD preview; two-VM VIP unqualified, D358; manual promotion is not consensus; follower forwarding covers only blocking, objects, zone commands and local login, completion-plan.md:1859-1860; Kubernetes RoleBinding write API is SQLite-only, 1917-1919; grant-floor removal is unobserved while no replica runs; encrypted transports cannot authorize UPDATE/NOTIFY, 318-319; plus whatever G25-PACKAGES leaves not accepted).",
+   "acceptance": "release-checklist.md:116-120; gaps.md:114. Proof: exactly one `## [0.2.0] - unreleased` heading and one each of Added/Changed/Fixed/Security under it; `make version-check` still PASS; hosted docs workflow green (CHANGELOG is mounted as /project/changelog); each inventory row marked Integrated/Implemented in completion-plan.md:80-209 that is user-visible has a changelog line; no 'remains pending' clause contradicts a later entry.",
+   "files": [
+    "CHANGELOG.md"
+   ],
+   "dependsOn": [
+    "G25-PACKAGES"
+   ]
+  },
+  {
+   "id": "G25-PRBODY",
+   "title": "Rewrite the PR #54 description to match the final head",
+   "kind": "docs",
+   "size": "S",
+   "detail": "Stale or contradictory text in the current body (fetched with `gh pr view 54 --json body`): line 8 ends 'Kubernetes hot management remains open' but line 13 says stored TSIG keys are managed on Kubernetes (D365); line 10 ends 'Remaining public forwarding is still open' but line 12 describes D362/D363 forwarding; line 13 says 'Kubernetes RFC 2136 needs an owner decision on cross-object atomicity' although D366 is implemented in 33ee04bc; line 7 'Kubernetes atomic administration remains separately tracked' is partly superseded by D364-D366; line 20 cites CI 42553837447 on 9963dec2 and the failed 42559340879 on 0a1a44cb with 'cause remains under investigation' although a7e70b22 explains it and the head is green; lines 24 and 26 narrate local runs for older tranches; line 32 lists 'remaining typed/public forwarding, Kubernetes accepted-authority and atomic management' as open; line 34 mentions the dashboard index (drop after G24-TREE). Still correct: 'not yet feature-complete or release-qualified' (line 3) until G25-PACKAGES says otherwise, main at d281123, 190 operations, the paired Ubicloud run on 9963dec2 as a predecessor result (no paired run exists for the head), and the kudurru-data commit. The final head's hosted run IDs go here because a commit cannot contain its own results. Keep the `<!-- conductor-workspace-link -->` block and footer. Apply with `gh pr edit 54 --body-file <file>`; no bare @mentions.",
+   "acceptance": "gaps.md:114 ('PR description with exact implementation commits, commands, outcomes and remaining limits'). Proof: every run ID in the body belongs to the head SHA shown by `gh pr view 54 --json headRefOid`; no sentence contradicts completion-plan.md's gate table.",
+   "files": [
+    "PR #54 description (not a repository file)"
+   ],
+   "dependsOn": [
+    "G25-LEDGER",
+    "G24-HOSTED"
+   ]
+  },
+  {
+   "id": "G25-ROADMAP",
+   "title": "Refresh roadmap and progress statements",
+   "kind": "docs",
+   "size": "M",
+   "detail": "README.md: line 22 says 'The Cloudflare split-horizon sink and UniFi inventory source are planned for v0.2' although both are mounted on SQLite (CHANGELOG.md:388-391, docs/deploy/integrations.md); line 58 lists 'Compose HA, follower mode' for v0.2 with no guide link; line 107's v0.2.0 row promises 'dnstap and tracing', for which no code exists (see G25-PACKAGES and the owner item); line 127 describes the v0.2 plan as grouping 'the remaining work'. Lines 10, 12 and 24 frame the project as v0.1.0, which is correct until GA and is an editorial change at promotion. dev-docs/milestones/v0.2/README.md 'Implementation progress' (40-272) stale claims: 92-94 native-recursive NTAs still need acceptance (F29b integrated ddc5f2d); 105-106 'Peer transition exclusion, remaining public adapters and multi-node partition/rejoin acceptance remain open' (D355-D363); 140-141 'Kubernetes barriers and authenticated forwarding remain in progress' (D362, D366); 172 query-log allow/deny 'remain gated' (restored, CHANGELOG.md:491-494); 177 'follower-local administration is open'; 198 'browser/device CLI sign-in remains open' (F61a/b); 203-206 node-local log changes 'remain memory-only' (F32, ffcf20e); 221-222 RPZ publication/UI 'in progress'; 249-250 'CLI login ... remain open'; 267-269 'Production source transactions, durable allocation storage ... and the dashboard remain open' (F09b SQLite mount 687371f); 20-38 baseline text about v0.1.0-rc.4, PR #50 and PR #49. docs/architecture/README.md 'Built and not built' (106-121): line 114 'kube and sqlite only' (enrolled SQLite follower mode exists), 115 '/nodes/{other}/health returns 501' (implemented, internal/api/nodes.go:119), 116 cluster-wide blocking disable 'per node, in memory' (F19a/b), 117 and 119 'remain(s) in progress' for identity and dynamic UPDATE; line 3 'A visual tour of kudurru v0.1.0'. Also docs/architecture/deployment.md:385 'The compose twins have no read-only mode' (F65) and docs/architecture/policies-and-blocking.md:100-101 'rewrites is ignored (planned for v0.2)' (internal/responsepolicy/rewrites.go). design-record.md section 13.2 (around line 1509) keeps the original scope sentence; add a one-line pointer to the acceptance table rather than editing history.",
+   "acceptance": "gaps.md:114 ('current roadmap progress'); CLAUDE.md rule to keep docs/architecture in step with the code. Proof: `grep -n \"planned for v0.2\\|remain in progress\\|returns 501\\|have no read-only mode\" README.md docs/architecture/*.md` returns nothing false; hosted docs workflow green; American spelling on touched lines (docs/architecture/README.md has 'Colours' near line 138 if that block is touched).",
+   "files": [
+    "README.md",
+    "dev-docs/milestones/v0.2/README.md",
+    "docs/architecture/README.md",
+    "docs/architecture/deployment.md",
+    "docs/architecture/policies-and-blocking.md",
+    "dev-docs/design-record.md"
+   ],
+   "dependsOn": [
+    "G25-PACKAGES"
+   ]
+  },
+  {
+   "id": "G25-OPDOCS",
+   "title": "Fill and correct operator documentation for landed v0.2 features",
+   "kind": "docs",
+   "size": "L",
+   "detail": "Missing pages or sections: (1) Enrolled SQLite HA end to end. docs/deploy/sqlite-join.md covers join, reconcile, forwarding, rejoin and conflict recovery but not first-primary activation (`cluster enrollment` then `cluster activate`, D345) or promotion (`cluster promotion` then `cluster promote`, D354); those appear only in docs/architecture/configuration-and-store.md and the generated CLI reference (cli.md:339, 428, 445). The page is linked from one place only (docs/architecture/configuration-and-store.md:2063); link it from docs/deploy/README.md, docs/deploy/compose-ha.md and README.md:58. deploy/compose/ha/README.md:28-29 still says 'Follower replication and enrollment are separate work'. (2) An operator page for RFC 2136 dynamic updates: there is none under docs/deploy (only docs/architecture/zones.md:461, 883-925). Cover `spec.policy.update`, key x owner x type grants, TSIG requirement, UDP/TCP/DoT only, and on Kubernetes the `rfc2136-<zone>` DNSRecordSet (do not hand-edit, manager dns-update, SERVFAIL after eight lost CAS attempts, backup). (3) docs/deploy/rolebindings.md: line 58 'Kubernetes durable accepted-authority work remains open' is stale; add the Kubernetes behavior from D364 (kudurru-grant-floors Secret, never delete or edit, frozen grants refused until first merge, removal unobserved while no replica runs, RoleBindings managed as CRs because the write API stays SQLite-only, line 46). (4) docs/deploy/tsig-keys.md:57-59 'Full supported-driver rotation qualification remains separate from this SQLite management surface' no longer matches lines 64-88. (5) docs/deploy/dnssec-validation.md:31-33 says 'This version does not run an RFC 5011 trust-anchor update worker'; add an operator section for managed root anchors (`upstreams.recursion.anchorMode: managed`, `managedTopology`, `managedEdges`, `edge.managedCacheBypass`), which is documented only in docs/architecture/upstreams-and-cache.md:300-317. (6) docs/enterprise.md:31-34 says Cloudflare and UniFi integrations 'are planned; they are not current capabilities'. (7) docs/deploy/README.md index (lines 6-22) links none of sqlite-join.md, tsig-keys.md, rolebindings.md, integrations.md, dnssec-validation.md, dns-controls.md, client-identity.md, sqlite-storage.md, vrrp-keys.md, iam-upgrade.md, response-processing.md. (8) Version-pinned statements that v0.2 changes: docs/guide/admin/07-zones-and-upstreams.md:160-162 ('on the v0.2 development branch') and 488-489 ('v0.1.0 has no list of exceptions'); docs/guide/admin/05-groups-clients-policies.md:101-102, 108 ('v0.1.0 listeners do not receive client IDs / MAC addresses'); docs-site/content/migrate/_index.md:64-65, technitium.md:101-103 (secondary/stub and RFC 2136 'Deferred'), pihole.md:91 ('Pause is node-local in v0.1.0'), cutover.md:20; docs/guide/README.md:34 and docs-site/content/_index.md:19 ('describe v0.1.0'). The guide and site framing sentences flip at GA because docs.kudurru.io deploys from the `release` branch; feature facts should be corrected now. (9) docs/guide/admin/10-command-line.md has no mention of cluster, anchors, integrations, iam or `login --device`. (10) Upgrade runbooks (docs/deploy/runbooks.md:366-406, docs/guide/admin/11-maintenance.md:108-144) have no 0.1.0 to 0.2.0 notes. The Cloudflare 'Workers Builds: kudurru-docs' check is excluded by the owner; the hosted `docs` workflow is the gate.",
+   "acceptance": "G21 closure rule gaps.md:110 (operator docs and architecture updates) as it feeds G25; dev-docs/milestones/v0.2/README.md:370-372. Proof: `make docs-gen` leaves no diff; `make docs-site` and `make docs-check-links` pass (unresolved links fail the build); `python3 hack/guide-lint.py` passes for docs/guide edits (docs/guide/style.md:15); `make version-check` PASS (sync rewrites image references in docs/deploy, docs/guide, docs-site/content/start and README, hack/sync-version.py:104-108); each of cluster activate, cluster promote, rfc2136-, kudurru-grant-floors and anchorMode greps in at least one docs/deploy page.",
+   "files": [
+    "docs/deploy/sqlite-join.md",
+    "docs/deploy/README.md",
+    "docs/deploy/compose-ha.md",
+    "docs/deploy/rolebindings.md",
+    "docs/deploy/tsig-keys.md",
+    "docs/deploy/dnssec-validation.md",
+    "docs/deploy/runbooks.md",
+    "docs/deploy/dynamic-updates.md (new)",
+    "docs/enterprise.md",
+    "docs/guide/admin/05-groups-clients-policies.md",
+    "docs/guide/admin/07-zones-and-upstreams.md",
+    "docs/guide/admin/10-command-line.md",
+    "docs/guide/admin/11-maintenance.md",
+    "docs-site/content/migrate/_index.md",
+    "docs-site/content/migrate/technitium.md",
+    "docs-site/content/migrate/pihole.md",
+    "docs-site/content/migrate/cutover.md",
+    "deploy/compose/ha/README.md",
+    "docs-site/hugo.yaml"
+   ],
+   "dependsOn": []
+  },
+  {
+   "id": "G25-FOLLOWUPS",
+   "title": "Close or retarget every v0.2 row in dev-docs/followups.md",
+   "kind": "docs",
+   "size": "M",
+   "detail": "release-checklist.md:104-105 requires every followups.md row targeted at this release to be closed or explicitly moved, and the file's own rule is 'Close an item by deleting its row and citing the commit' (followups.md:5). About 50 rows still carry a v0.2 target (72 'v0.2' matches). Many are still in their original open wording although the inventory marks them integrated, for example: WatchOptions.ResourceVersion (followups.md:27, F03), $important/$badfilter (F17), RFC 8198, RFC 5011, NTAs, forwarded validation (79-82; F27-F30), PATCH /node/config (F32), /auth/me (F34), DNSEndpoint and sidecar (F35), object lists (F36), generated client (F37), remote edge flush, edge/vip keys, ServiceProvider, console diff-apply (100-106; F39-F43), binding revocation persistence (F44), OIDC identities (F45), httpsOnly (F51), group scope, regex information, entries index, record-delete dialog and export (F53-F58), section 3.5 verbs, browser/device login, CLI conformance (F60-F62), bench job (F63), cluster.role static (F65), E2E-2 (F67), retired-node reads, partial-hour rollups, AuditLog key lifecycle (F69, F71, F73), 100k-name stats (F16). Delete closed rows and extend the 'Closed rows from this pass' list (followups.md:17-20) with commits from the inventory table; keep AD rows (43-55) and the owner-hardware row (164-171) with their D353/D358 notes; rows whose package is not accepted stay, with the remaining part restated. Retargeting a row to a later release is the owner's call per followups.md:13-15; do not retarget silently.",
+   "acceptance": "release-checklist.md:104-105; dev-docs/milestones/v0.2/README.md:502-505. Proof: `grep -c 'v0\\.2' dev-docs/followups.md` drops to rows that are genuinely open or deferred, each naming its F row or D decision; every deleted row's commit appears in the closed list.",
+   "files": [
+    "dev-docs/followups.md"
+   ],
+   "dependsOn": [
+    "G25-PACKAGES"
+   ]
+  },
+  {
+   "id": "G24-OWNER-GA",
+   "title": "Promotion-time checklist items that need the owner's credentials, hardware or repository settings",
+   "kind": "owner",
+   "size": "S",
+   "detail": "None of these blocks merging PR #54, and the checklist itself says they gate GA while a candidate may ship with them listed as known gaps (release-checklist.md:178-179). They must be recorded as 'not run, GA gate', not as passed: licensing gates (20-31): a key issued by the production signing key accepted by the release binary via `kudurru license verify` (the private key is in Infisical; the repository only has a test key, internal/license/testdata, and `cmd/kudurru/license_test.go:66` covers the test key), a monitored contact address, no pre-license-change artifacts published; repository settings (71-96): branch protection, merge-commit promotion, CODEOWNERS review, tag and branch rulesets, the Workers Builds project, ghcr package access; client identity through the published DNS path from two devices on every VIP (228-237); two-VM keepalived (238-243, already deferred by D358); dnsdist spike (b) with kdig through a real edge (249-251, listed under owner hardware in followups.md:170); sections 4-6 promote, publish, verify, announce (261-363), including dating the changelog (116-117).",
+   "acceptance": "release-checklist.md:20-31, 71-96, 226-259, 261-363; completion-plan.md:223 ('no release publication implied'). Proof for this pass: the ledger and CHANGELOG 'Known limitations' list each as unqualified with its checklist line.",
+   "files": [
+    "dev-docs/release-checklist.md",
+    "dev-docs/milestones/v0.2/completion-plan.md",
+    "CHANGELOG.md"
+   ],
+   "dependsOn": [],
+   "ownerQuestion": "No decision is needed to merge PR #54. At GA promotion you will need to: issue a test key from the production signing key and confirm the release binary accepts it, confirm the repository settings in release-checklist.md:71-96, and run the two-device client-identity check and the kdig-through-dnsdist check on your network. Until then they are recorded as open GA gates."
+  },
+  {
+   "id": "G25-OWNER-SCOPE",
+   "title": "Conditional: retarget v0.2 scope that has no implementation",
+   "kind": "owner",
+   "size": "S",
+   "detail": "Only applies if the owning items do not implement them before the final pass. Read-only greps for this map found no implementation of dnstap, OTel tracing or ClickHouse/Loki sinks (V2-OBS), no controller for the `external` zone type, no dashboard join wizard or Integrations page, and no CoreDNS Corefile importer. The tracker's rule is that requirements stay in scope 'unless explicitly retargeted by the owner' (followups.md:13-15; dev-docs/milestones/v0.2/README.md:502-503), so an engineer cannot move them out of v0.2. Without a retarget, G25 can still close honestly, but only with 'v0.2 is not feature-complete' in the ledger, CHANGELOG and PR body, and README.md:107 keeps promising 'dnstap and tracing' for v0.2.0.",
+   "acceptance": "gaps.md:114 last sentence; dev-docs/milestones/v0.2/README.md:384 (V2-OBS), 380, 382, 386. Proof: either implementation evidence from the owning items, or a dated owner decision in design-record.md section 16 (next free number D367) and matching edits to README.md:107, design-record.md section 13 and followups.md.",
+   "files": [
+    "README.md",
+    "dev-docs/design-record.md",
+    "dev-docs/followups.md",
+    "dev-docs/milestones/v0.2/completion-plan.md"
+   ],
+   "dependsOn": [
+    "G25-PACKAGES"
+   ],
+   "ownerQuestion": "If dnstap, OTel tracing, the ClickHouse/Loki sinks, the `external` zone type, the dashboard join wizard and Integrations page, and the Corefile importer are not implemented in this PR, do you move them to a later release (so the v0.2.0 roadmap row and changelog stop listing them), or does v0.2.0 stay marked not feature-complete until they land?"
+  }
+ ],
+ "recommendation": "Treat G24/G25 as one final pass that runs after the other items stop changing code, and do it in two commits plus one PR-body edit. The order matters because a commit cannot contain its own hosted results.\n\nRunbook:\n1. Preconditions. `git status --short` shows only ` M dashboard/dist/index.html`. Stage explicit paths only; never `git add -A` or `git commit -a` (that is how d47c9fc0 happened). Commits need `Signed-off-by` (CONTRIBUTING.md:25) and American English (CLAUDE.md).\n2. Optional small code commit first: wire hack/test_sync_version.py into ci.yml (G24-SYNCTEST) and, if chosen, the label-triggered release dry-run workflow (G24-SNAPSHOT option B). Push. This is the code head C.\n3. Local checks at C that need no Docker (save output under .context/release-checks-<date>/): `make version-check` (expect PASS); `python3 -B -m unittest discover -s hack -p test_sync_version.py`; `hack/release-tag.sh rc` (expect tag=v0.2.0-rc.1); `make check-generated` (no diff; docs-gen took 41 s in gaps.md:6833); `make deploy-tools && make release-manifests RELEASE_ARTIFACT_VERSION=0.2.0-rc.1` then inspect bin/release image tags; `make dashboard-build && go test -count=1 ./dashboard/... && make size` (record bytes against the 100,000,000 budget); `go run github.com/goreleaser/goreleaser/v2@v2.18.3 build --snapshot --single-target --clean` and `./dist/kudurru_linux_amd64_v1/kudurru version`; then `git checkout -- dashboard/dist/index.html && rm -rf dist` and confirm `git status --short` is empty (G24-TREE; the built index is reproducible, so restoring it loses nothing).\n4. Try `KUDURRU_LIVE_DNS=1 go test -run TestLiveInternet ./internal/recursor` and compare the two root DS records with IANA; if port 53 egress is blocked, record it as an open GA gate.\n5. Wait for the 10 hosted workflows on C (about 47 minutes; go test 1/2 is the long pole at 45 minutes). Save `gh run list --commit <C> --json databaseId,workflowName,conclusion,headSha` to .context/hosted-<C>-<date>/runs.json. Rerun and record any transient download failure.\n6. One docs commit: ledgers with the commit map and C's results (G25-LEDGER), package acceptance table (G25-PACKAGES), CHANGELOG (G25-CHANGELOG), README and progress text (G25-ROADMAP), operator docs (G25-OPDOCS), followups (G25-FOLLOWUPS). Before committing: `make docs-gen` (no diff), `make docs-site`, `make docs-check-links`, `python3 hack/guide-lint.py`, `make version-check`.\n7. Push the docs commit. It re-runs the full suite because the change filter diffs the whole PR. When green, put the final head's run IDs in the PR description with `gh pr edit 54 --body-file` (G25-PRBODY); this creates no commit, so nothing re-runs.\n8. Do not tag, push release-candidate or release, publish, or date the changelog.\n\nDesign choices I would make without asking the owner, recorded as D367 onward: keep `## [0.2.0] - unreleased` and fold `[Unreleased]` into it (follows release-checklist.md:116-120 and the sync script's own heading logic); classify the owner-hardware checklist items as open GA gates using the checklist's own rule (178-179) and the D353/D358 precedent of recording deferrals as 'unqualified, not passed'; close the full goreleaser snapshot with a label-triggered workflow, following the benchmarks.yml precedent of a `pull_request: types: [labeled]` trigger so it can run before the workflow reaches the default branch (.github/workflows/benchmarks.yml:10-13); and restore the dashboard index rather than keep carrying a 'protected' dirty file. The D366 pattern (record the decision in one commit, 19bfecc4, then implement, 33ee04bc) is the model for any of these that change behavior. D138/D75 govern the size record and D154 the volume check on the snapshot images.",
+ "designOptions": [
+  {
+   "name": "A. Partial local dry run, full snapshot at candidate time",
+   "description": "Run `goreleaser check` (already hosted), the single-target snapshot build and `make release-manifests` locally without Docker; record the full `goreleaser release --snapshot` as not run and leave it to the first release candidate publish.",
+   "pros": "No new code; matches the M5 historical record that the checklist accepts for an rc (release-checklist.md:157-158); pipeline files barely changed on this branch.",
+   "cons": "G24 asks for artifact validation; archives, deb/rpm/apk, SBOMs and ko images stay unvalidated until something is published, which is exactly when a failure is most expensive."
+  },
+  {
+   "name": "B. Label-triggered release dry-run workflow (recommended)",
+   "description": "Add .github/workflows/release-dry-run.yml with `workflow_dispatch` and `pull_request: types: [labeled]` (label `release-dry-run`), running goreleaser v2.18.3 `release --snapshot --clean --skip=publish,sign` with Bun and syft v1.54.1, `kudurru version` in both ko images, hack/volume-check.sh on them, and uploading the artifact listing. No registry login, read-only token.",
+   "pros": "Real artifact validation on a Docker runner before merge; repeatable for every later release; follows the benchmarks.yml labeled-trigger precedent; publishes nothing.",
+   "cons": "One more workflow to maintain and pin (TestWorkflowActionsPinned applies); adds a code commit and one more full hosted cycle to the final pass; signing is still not exercised (needs the release-branch OIDC identity)."
+  },
+  {
+   "name": "C. Manual run on a Docker-capable machine",
+   "description": "Someone with Docker, goreleaser and syft runs the snapshot by hand at the frozen head and pastes the result into the ledger, as in the v0.1 fix round (release-checklist.md:159-168).",
+   "pros": "No repository change; exact precedent.",
+   "cons": "Not possible in this sandbox (no Docker daemon); depends on another machine and is not reproducible by reviewers."
+  }
+ ],
+ "sharedSeams": [
+  "CHANGELOG.md (every feature item appends entries; G25-CHANGELOG restructures the whole 0.2.0 section, so it must run last or rebase carefully)",
+  "dev-docs/milestones/v0.2/completion-plan.md, gaps.md and followup-audit.md (every feature commit appends a mirrored dated section to all three and edits inventory rows at completion-plan.md:80-209 and gate rows 211-225)",
+  "dev-docs/design-record.md section 16 (D-number allocation; next free is D367, parallel items will collide)",
+  "dev-docs/followups.md",
+  "README.md (roadmap row line 107, deployment shapes 52-59)",
+  "dev-docs/milestones/v0.2/README.md (Implementation progress 40-272)",
+  "docs/deploy/sqlite-join.md, docs/deploy/tsig-keys.md, docs/deploy/rolebindings.md, docs/deploy/integrations.md, docs/deploy/README.md, docs/deploy/runbooks.md",
+  "docs/architecture/README.md, configuration-and-store.md, zones.md, access.md, deployment.md",
+  "docs-site/content/reference/* and api/openapi*.json (generated; any API, CLI or settings change in another item regenerates them and `make docs-gen` drift fails CI)",
+  ".github/workflows/ci.yml (if G24-SYNCTEST or other items add steps)",
+  "PR #54 description (single shared text; last writer wins)",
+  "dashboard/dist/index.html (dirty in the shared working tree; any broad `git add` by a parallel worker commits it)"
+ ],
+ "testInfra": "Per checklist step (dev-docs/release-checklist.md), how it runs and what is recorded:\n- Licensing gates (20-31): promotion-time, owner. Hosted proxies on every PR: ci `licenses` job, `go-licenses check ./... --disallowed_types=forbidden,restricted` (ci.yml:456-467, 1m34s) and the license-server workflow. No v0.2 tracker record.\n- Repository settings (71-96): owner, one-time, not verifiable from the tree.\n- Section 1 'main is green' (100-103): pre-merge. `make test` (Makefile:84; `python3 hack/go-test.py --timeout=30m ./...`, race, envtest via `make envtest`; hosted go test 1/2 45m21s and 2/2 11m56s using `make test TEST_PKGS=\"$(hack/go-test-shard.sh N 2)\"`); `make lint` (hosted lint job 4m54s; golangci-lint is not installed locally); `make check-generated` (Makefile:177-185; hosted as check-generated-code in the build job, ci.yml:147-148, plus docs.yml:31-35); `make helm-check` (Makefile:402-404, env KUDURRU_KUBECONFORM=1 KUBECONFORM_CACHE=bin/kubeconform-cache; hosted helm job 2m24s); dashboard lint/typecheck/test/build and `go test -count=1 ./dashboard/...` on the real bundle (ci.yml:218-233, 2m35s); `make size` (Makefile:62-69; hosted on the placeholder build only). Tracker: no result on the head; last all-green hosted sources recorded are d9cc74ed (completion-plan.md:1074-1077) and 9963dec2 (1439); size recorded at 19d6c729 (235-236).\n- Followups rows (104-105): pre-merge docs; not done.\n- VERSION sync (108-115): `make version-check` = `python3 hack/sync-version.py --check`; PASS locally at 33ee04bc in a few seconds; hosted in the helm job (ci.yml:444-445). Not recorded in the tracker.\n- CHANGELOG review (116-120): pre-merge editorial; date only at GA.\n- `make release-manifests RELEASE_ARTIFACT_VERSION=0.2.0-rc.1` (121-126; Makefile:413-415): local, no Docker; hosted only inside publish.yml. No tracker record.\n- Distroless pins (127-133): TestDockerfile in `make test`; hosted green.\n- Section 2 goreleaser (135-153): `check` hosted at v2.18.3 (ci.yml:450-455); single-target snapshot local (needs Bun); full snapshot needs Docker and syft, not hosted, not possible here. No v0.2 record.\n- Section 3 edge-check (183-190): `make edge-check`, `make hostnetwork-check`, `make volume-check` (edge.yml:47-51), hosted 4m08s green on 33ee04bc. kind (191-210): `hack/kind-e2e.sh` (kind.yml:69), 9m07s green. compose (211-224): `hack/compose-e2e.sh` (compose.yml:60), 2m43s green. None runnable locally here; none recorded for the head.\n- Owner hardware (226-259): client identity (owner, GA gate); two VMs (deferred D358); dnsdist spike (a) done (244-248); spike (b) open; live recursion: `KUDURRU_LIVE_DNS=1 go test -run TestLiveInternet ./internal/recursor` (needs port 53 egress).\n- Sections 4-6 (261-363): promotion-time only, out of scope.\n\nOther harnesses on the same hosted run: `make e2e` with KUDURRU_NAMED=/usr/sbin/named (9m14s, includes `KUDURRU_RECURSOR_BIND=1 GOMAXPROCS=2 go test -race -p 2 ./internal/recursor -run '^TestAggressiveBIND$' -count=1 -timeout=90s`, `make test-auth-e2e`, `make test-adguard`); postgres jobs (`go test -count=1 ./internal/central/...`, about 4m20s each); security (`make sast` 1m55s, `make vulncheck`, `make trivy-fs`, `make trivy-images` 2m38s, `make trivy-license-server`); docs (`make docs-gen`, `make docs-site`, `make docs-check-links`, `make docs-check-workers`, 3m19s). Docs edits: `python3 hack/guide-lint.py`. Fixed-runner performance (G23, not this item) is label-triggered: label `release-benchmarks` on the PR (benchmarks.yml:22-26); no run exists for the head.\n\nLocal tool state in this sandbox: Go 1.27.3, helm, kubectl, bun, python3, bin/hugo-0.167.0, bin/trivy-0.76.0 and envtest binaries are present; Docker daemon unavailable; kind, kustomize, goreleaser, syft, cosign, semgrep and golangci-lint are not on PATH (kustomize and kubeconform install through `make deploy-tools`); 19 GB free disk, 8 CPUs.",
+ "risks": [
+  "A commit cannot record its own hosted results: the ledger can only cite the last code head, and the final head's run IDs must live in the PR description. If any code lands after the ledger commit, the recorded qualification is stale again.",
+  "The three ledgers mirror each other and every parallel item appends to all of them plus CHANGELOG.md and the decision log; the G25 restructuring will conflict with any item still in flight. D-number collisions are likely (next free D367).",
+  "G25 cannot claim feature completion while any of the 11 packages is unaccepted. Greps for this map found no code for dnstap, OTel tracing, ClickHouse/Loki sinks, the `external` zone type, a dashboard join wizard or Integrations page, or a Corefile importer; README.md:107 currently promises 'dnstap and tracing' for v0.2.0. These were surface greps, not a full audit of those packages.",
+  "The managed-anchor hosted failure was fixed by reordering the test (a7e70b22). Its commit message describes real behavior: a startup DNSZone status write after first readiness makes the zone briefly unavailable and drops in-flight answers from the retired publication, by design under D313/D332. If that is recorded only as a fixture fix, a user-visible startup window goes undocumented; it belongs in the ledger and probably in Known limitations.",
+  "No Docker in this sandbox: Compose, kind, edge, image scans and the full goreleaser snapshot depend entirely on hosted runs. Hosted tool downloads have returned 504 before (completion-plan.md:1697-1702, 1763-1765), so reruns may be needed and must be recorded, not treated as passes.",
+  "go test shard 1/2 takes 45 minutes against 12 for shard 2/2; each final-pass iteration costs about 47 minutes of wall time, and the shard weights in hack/go-test-shard.sh are from October.",
+  "The dirty dashboard/dist/index.html can be committed by accident with a broad `git add`; that fails TestIndexAssetsPresent in CI. While it is present, local `make build` and `make size` embed the real bundle, so local size numbers differ from the hosted placeholder figure (81,146,016 bytes on 33ee04bc).",
+  "Binary size grew from 57,991,328 bytes at v0.1 (Makefile:56-58) to about 81 MB. It is inside the 100,000,000 budget, but D138 expects growth to be explained; the real-bundle size at the head is unrecorded.",
+  "`make version-check` also verifies image references inside README, docs/deploy, docs/guide and docs-site/content/start (hack/sync-version.py:104-108); new or edited doc pages with image tags must use 0.2.0 or the helm job fails. Prose that says 'v0.1.0' is not touched by the sync and needs manual editing.",
+  "docs.kudurru.io deploys from the `release` branch through Cloudflare Workers Builds, whose check currently fails and is excluded by the owner. The hosted `docs` workflow (including `wrangler deploy --dry-run`) is green, but if the Cloudflare failure is a real build problem, corrected operator docs will not publish at promotion.",
+  "Pages scoped to 'v0.1.0' (docs/guide/README.md:34, docs-site/content/_index.md:19, migrate pages) describe the published release; changing the framing before GA would misdescribe what users can install, while leaving feature facts stale misdescribes the branch. The split between 'fix facts now' and 'flip framing at GA' needs to be applied consistently.",
+  "followups.md rows may only be retargeted by the owner (followups.md:13-15); closing rows whose package is not accepted would overstate completion.",
+  "The PR body contains a Conductor workspace footer block; overwriting the body without it may break the workspace link."
+ ]
+}

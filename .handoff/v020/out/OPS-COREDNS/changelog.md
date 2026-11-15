@@ -1,0 +1,4 @@
+### Added
+
+- `kudurru import coredns --file Corefile` previews a CoreDNS Corefile offline and, with `--apply`, imports it through the tracked migration. Forwarders become upstream groups and conditional routes, inline hosts entries and exact name rewrites become `Policy/default` rewrites, and the root block's cache and access rules become cache and control settings. The preview states the Corefile syntax it reads (CoreDNS 1.12), names every plugin it does not convert, lists `file` and `auto` zones for `kudurru import bind`, and never reads referenced files or includes their paths or secret values. Like CoreDNS, it applies a server block's hosts, rewrite and PTR answers only to names that the longest-matching server block receives, and reports the rest.
+- Migration guide "From CoreDNS" in the documentation.

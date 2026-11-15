@@ -1,0 +1,9 @@
+### Added
+
+- Opt-in Kubernetes impersonation: with `auth.kubernetes.mode: impersonate` (Helm value `auth.kubernetes.mode`, Kubernetes driver only), every API write of a kudurru.io object is also sent to the apiserver as the signed-in principal (`kudurru:user:<name>`, `kudurru:serviceaccount:<namespace>:<name>`, or the Kubernetes ServiceAccount itself, with `kudurru:group:<group>` for the groups of local users and of OIDC bearer JWTs; OIDC users on dashboard sessions or personal API tokens carry no groups, so bind them by user name). Kubernetes RBAC must then allow the write too, a refusal answers 403 `forbidden` with the apiserver's reason, and the apiserver audit log names the principal. A credential that expires mid-request answers 401, and a kudurru that lacks the `impersonate` verb answers 503 and logs why. The kustomize bases do not grant `impersonate`; add the rule yourself if you use the mode there. SubjectAccessReview (`sar`) stays the default. The chart grants kudurru the `impersonate` verb only in this mode; that grant makes a compromised kudurru pod cluster-admin-equivalent, so enable it only when you need the apiserver to decide and record each write.
+- `GET /auth/status` reports `capabilities.factorManagement` and `capabilities.localUserCommands`, so clients can hide authenticator (TOTP) and local-user controls where they are not offered.
+
+### Changed
+
+- On Kubernetes, authenticator apps (TOTP) and the local-user create and password-reset commands are not offered: use your identity provider's second factor. The routes keep answering 503 `factor_management_unavailable` and `user_management_unavailable`, and `/auth/status` now says so up front.
+- The Helm chart refuses `auth.kubernetes.mode` set through `config.node` or `config.settings` (use the `auth.kubernetes.mode` value, which also renders the RBAC), and refuses `impersonate` with `mode: standalone`. kudurru refuses `impersonate` with `store.driver: sqlite`.
