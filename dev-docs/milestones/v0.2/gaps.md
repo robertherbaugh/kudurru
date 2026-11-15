@@ -24940,22 +24940,27 @@ resources are removed; the all-attempt audit verifies zero applications,
 providers, users and TOTP devices across both unique prefixes. This is not
 manual/visual UI, independent-host or production-license acceptance.
 
-The owner authorized preparing the dedicated-host performance method. The
-collector, protocol and manual-only workflow are isolated at
-[`7649ab67`](https://github.com/robertherbaugh/kudurru/commit/7649ab67);
-31 benchmark control tests and actionlint pass. No dedicated host or calibration
-values are accepted, and no fresh timing or formal run occurs. The method
-preserves original workloads, fixed product requirements, five samples, six
-processors, the 20% threshold, noise floors and full 60-command D412 sequence.
-A separate hardware profile must come exclusively from immutable historical
-versions and receive actual review before candidate measurement. Owner-installed
-SSH access now works; preparation creates only disposable VM 20027
-`kudurru-dev-test` on `hm-pve02`, with NAT and loopback-only SSH. Existing guests
-have unrestricted affinity, so physical CPU isolation remains unresolved. No
-existing VM or production Kudurru configuration is changed. D412
-performance remains release-blocking pending reviewed calibration and a passing
-final run. Independent GitHub review remains excluded from this task.
+The owner accepted the pinned disposable VM with disclosed physical CPU sharing:
+"Use the pinned VM with shared CPUs." The amended method is
+[`fef3a1fd`](https://github.com/robertherbaugh/kudurru/commit/fef3a1fd), with
+31 passing controls. One historical-only calibration runs on VM 20027,
+`kudurru-dev-test`, on `hm-pve02` from 20:08:00 to 20:26:31 UTC. All 40 native
+commands pass; six shape gates pass, but the blocking/zone product gate fails.
+Historical zone lookup p99 medians are 2,430 ns (hit), 4,761 ns (CNAME) and
+2,634 ns (wildcard), above the unchanged 2,000-ns requirement. The calibration
+is ineligible; no profile, approval template or candidate timing is produced.
+All 114 artifact hashes and the 406/4,636/5,348-path source manifests verify;
+host/VM configuration matches before and after. The [complete failed recording](https://github.com/robertherbaugh/kudurru/blob/ca93be17c6ebe24fbdf52751eb562fd71c6a9c75/bench/calibration/homelab-shared-20261115-failed/REPORT.md)
+is retained separately. No sample or limit is replaced. Another attempt requires
+a diagnosed fix or separately reviewed method change. Performance stays
+release-blocking; GitHub review remains excluded from this task.
 
-Final source CI [43745021235](https://github.com/robertherbaugh/kudurru/actions/runs/43745021235)
-passes all 22 jobs on `5e19a32b`, including both race shards, end-to-end acceptance
-and `ci-ok`. Later PR commits in this acceptance update change documentation only.
+Source CI [43745021235](https://github.com/robertherbaugh/kudurru/actions/runs/43745021235)
+passes all 22 jobs on runtime source `5e19a32b`. The later documentation-head
+run 43754407458 times out its security race package at 30 minutes during the
+4,113-cycle IAM test; the earlier identical-runtime package passed in 1,501
+seconds. The test runner now executes the complete security package separately
+from other packages, retaining every cycle, race instrumentation and the same
+30-minute timeout. All seven runner controls pass; isolated native and hosted
+validation remain pending. This CI scheduling change does not alter runtime
+code, benchmark rules or performance eligibility.

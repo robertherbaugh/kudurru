@@ -219,36 +219,45 @@ Evidence is under `vector-analysis/`; its initial exploration without the rules
 is retained separately and is not credited because it included the informational
 p99.9 metric that the original rules ignore.
 
-The owner subsequently authorized preparation of a dedicated-host method, while
-retaining performance as release-blocking pending separate calibration review
-and a passing final run. The prepared collector, protocol, manual-only workflow
-and 31 passing control tests are isolated at
-[`7649ab67`](https://github.com/robertherbaugh/kudurru/commit/7649ab67),
-on `codex/dedicated-benchmark-method-20261115`; no performance source or rule in
-this release branch changes. It preserves the 60-command D412 qualification,
-original workloads, fixed product requirements, five samples, six processors,
-20% thresholds and noise floors. A separate hardware profile can be derived
-only from immutable `0cc9565e` and `9cc2ae04` historical calibration, with host
-and exact calibration-manifest review required before candidate measurement.
-No host, calibration values or method acceptance is inferred from authorization
-to prepare it. No fresh timing or formal run has occurred.
+The owner authorized the dedicated-host method and then accepted VM 20027's
+pinned CPUs with disclosed physical sharing. The amended method and collector
+are isolated at [`fef3a1fd`](https://github.com/robertherbaugh/kudurru/commit/fef3a1fd).
+All 31 controls pass. The owner decision accepts placement and historical
+calibration; unseen limits and candidate measurement still require separate
+review. Other guests retain unrestricted affinity. Existing VMs, production
+Kudurru and cluster networking are not changed.
 
-The owner permits any accessible `hm-e-pve0*.ssh` node and installed a new
-dedicated public key. SSH now works on nodes 02, 03 and 04. Inventory confirms
-the endpoint aliases map to physical hostnames `hm-pve02` through `hm-pve04`;
-the earlier inference that the panel inventory represented another cluster was
-incorrect. The panel credentials are scoped to its customer pool and are not
-used for provisioning. Node 01 refuses connections.
+One historical-only calibration on `kudurru-dev-test` / `hm-pve02` runs from
+20:08:00 to 20:26:31 UTC. Go 1.27.4, six processors, five fresh processes per
+scope, original corpora/durations and all fixed product bounds are preserved.
+All 40 native commands succeed with no resource stop or unreaped descendants.
+Six shape gates pass; the blocking/zone product gate fails these immutable
+historical-reference metrics:
 
-Preparation selects `hm-pve02` for a disposable `kudurru-dev-test` VM with eight
-vCPUs, 16 GiB RAM and a 64 GiB local disk, QEMU NAT and loopback-only forwarded
-SSH. Existing VMs have no CPU affinity restrictions, so limiting this guest's
-affinity does not establish exclusive physical CPUs. Provisioning and image
-verification are recorded locally; calibration remains held pending an actual
-host/isolation review. No existing VM, production Kudurru or cluster network is
-reconfigured. The local `performance-method-proposal.md` records preparation
-authorization and pending host/calibration decisions; controls and workflow
-lint pass without running benchmarks.
+| Zone lookup p99 | Five values, ns | Median, ns | Fixed maximum, ns |
+| --- | --- | ---: | ---: |
+| Hit | 2626, 1213, 2405, 3508, 2430 | 2430 | 2000 |
+| CNAME | 2998, 4194, 4761, 4907, 10335 | 4761 | 2000 |
+| Wildcard | 2609, 2586, 9103, 2634, 8443 | 2634 | 2000 |
+
+The other fixed product metrics pass. The six passing shape gates do not claim
+that old hardware ceilings passed. Calibration is ineligible: no proposed limit
+files, approval template or candidate timing are produced. Original failed D412
+and this recording remain failed. No sample is replaced, measurement repeated,
+or bound relaxed. These observations do not establish a cause of the latency
+misses.
+
+Independent verification checks all 114 calibration artifact hashes, 40 exact
+command receipts with distinct process IDs, and source manifests against Git
+archives: 406 original, 4,636 later and 5,348 control paths. Physical host and VM
+configuration match before/after; guest and hypervisor contention counters and
+service properties are retained. The calibration manifest SHA256 is
+`5e1d12269c7875a980aa3330960a39418959382ff7fb280dc2ede185c50a3f0f`.
+The [durable failed evidence and report](https://github.com/robertherbaugh/kudurru/blob/ca93be17c6ebe24fbdf52751eb562fd71c6a9c75/bench/calibration/homelab-shared-20261115-failed/REPORT.md)
+are committed separately at `ca93be17`; local working evidence is under
+`.context/release-shared-calibration-20261115/`. Private SSH material is outside
+that evidence directory. The benchmark service is finished, with no candidate
+measurement authorized by this failed calibration.
 
 A causal implementation fix or a justified, reviewed measurement-method change
 is still required before another formal recording under D383/D412. This report
@@ -265,3 +274,14 @@ passes all 22 jobs on exact runtime source `5e19a32b`, including both Go race
 shards, end-to-end acceptance and the final `ci-ok` job. Complete result metadata
 and logs are retained in `source-ci-result.json` and `source-ci-final.log`. These scoped proofs do not
 automatically accept every historical feature-package finding.
+
+The documentation-head CI run 43754407458 separately times out
+`TestIAMChurnCrossesFormerHistoryCapacity` in its security package at the
+unchanged 30-minute bound. The identical runtime package passed in 1,501 seconds
+in 43745021235; the failing stack shows active SQLite work, with no assertion
+failure or race report. This is not a passing head check. The runner now isolates
+the complete security package from concurrently executed packages while retaining
+all 4,113 cycles, assertions, race instrumentation and its 30-minute timeout.
+All seven runner controls pass. An isolated native race invocation is active;
+hosted validation of that scheduling change remains pending. Runtime product
+code is unchanged by this correction.
