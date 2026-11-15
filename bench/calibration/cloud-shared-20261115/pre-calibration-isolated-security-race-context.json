@@ -1,0 +1,23 @@
+{
+  "observed_at": "2026-11-15T20:46:31.560363+00:00",
+  "go_argv": [
+    "go",
+    "test",
+    "-race",
+    "-count=1",
+    "-timeout=30m",
+    "github.com/robertherbaugh/kudurru/internal/auth/security"
+  ],
+  "test_argv": [
+    "/tmp/go-build2172160145/b001/security.test",
+    "-test.paniconexit0",
+    "-test.count=1",
+    "-test.timeout=30m0s"
+  ],
+  "go_version": "go1.27.4",
+  "race": true,
+  "cgo_enabled": 1,
+  "package_filtered": false,
+  "runner_sha256": "bf78e8ca6bcf3749b551b37d07fa1aa55053134f1a765de254f592d2cbdcafe7",
+  "note": "Observed actual complete-package race process; no test-name filter, full churn retained."
+}

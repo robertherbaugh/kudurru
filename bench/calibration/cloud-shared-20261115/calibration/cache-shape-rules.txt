@@ -1,0 +1,21 @@
+
+require ^BenchmarkGet/hit$ B/op
+require ^BenchmarkGet/hit$ allocs/op
+require ^BenchmarkGet/hit$ ns/op
+require ^BenchmarkGet/hit\-parallel$ B/op
+require ^BenchmarkGet/hit\-parallel$ allocs/op
+require ^BenchmarkGet/hit\-parallel$ ns/op
+require ^BenchmarkGet/miss$ B/op
+require ^BenchmarkGet/miss$ allocs/op
+require ^BenchmarkGet/miss$ ns/op
+require ^BenchmarkMakeKey$ B/op
+require ^BenchmarkMakeKey$ allocs/op
+require ^BenchmarkMakeKey$ ns/op
+require ^BenchmarkMemory/1000k$ B/op
+require ^BenchmarkMemory/1000k$ allocs/op
+require ^BenchmarkMemory/1000k$ bytes/entry
+require ^BenchmarkMemory/1000k$ ns/op
+require ^BenchmarkMemory/1000k$ overhead-bytes/entry
+require ^BenchmarkSet$ B/op
+require ^BenchmarkSet$ allocs/op
+require ^BenchmarkSet$ ns/op

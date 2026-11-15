@@ -1,0 +1,25 @@
+# Dedicated host: historical calibration only; human review required.
+require ^BenchmarkQUICSockets/doh3/sockets=1$ B/op
+limit ^BenchmarkQUICSockets/doh3/sockets=1$ B/op 21894
+require ^BenchmarkQUICSockets/doh3/sockets=1$ allocs/op
+limit ^BenchmarkQUICSockets/doh3/sockets=1$ allocs/op 314.4
+require ^BenchmarkQUICSockets/doh3/sockets=1$ ns/op
+limit ^BenchmarkQUICSockets/doh3/sockets=1$ ns/op 42934.8
+require ^BenchmarkQUICSockets/doh3/sockets=4$ B/op
+limit ^BenchmarkQUICSockets/doh3/sockets=4$ B/op 21876
+require ^BenchmarkQUICSockets/doh3/sockets=4$ allocs/op
+limit ^BenchmarkQUICSockets/doh3/sockets=4$ allocs/op 314.4
+require ^BenchmarkQUICSockets/doh3/sockets=4$ ns/op
+limit ^BenchmarkQUICSockets/doh3/sockets=4$ ns/op 43441.2
+require ^BenchmarkQUICSockets/doq/sockets=1$ B/op
+limit ^BenchmarkQUICSockets/doq/sockets=1$ B/op 12055.2
+require ^BenchmarkQUICSockets/doq/sockets=1$ allocs/op
+limit ^BenchmarkQUICSockets/doq/sockets=1$ allocs/op 165.6
+require ^BenchmarkQUICSockets/doq/sockets=1$ ns/op
+limit ^BenchmarkQUICSockets/doq/sockets=1$ ns/op 31962
+require ^BenchmarkQUICSockets/doq/sockets=4$ B/op
+limit ^BenchmarkQUICSockets/doq/sockets=4$ B/op 12036
+require ^BenchmarkQUICSockets/doq/sockets=4$ allocs/op
+limit ^BenchmarkQUICSockets/doq/sockets=4$ allocs/op 165.6
+require ^BenchmarkQUICSockets/doq/sockets=4$ ns/op
+limit ^BenchmarkQUICSockets/doq/sockets=4$ ns/op 31546.8

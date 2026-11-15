@@ -1,0 +1,36 @@
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/blocking
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkLatency/suffix-1M/hit-6         	 1314367	       908.0 ns/op	       776.0 p50-ns	      1516 p99-ns	      2427 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/suffix-1M/miss-6        	 2916014	       399.2 ns/op	       273.0 p50-ns	       959.0 p99-ns	      1506 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/exact-1M/hit-6          	 1463743	       823.0 ns/op	       696.0 p50-ns	      1287 p99-ns	      2917 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/exact-1M/miss-6         	 3904604	       280.9 ns/op	       190.0 p50-ns	       711.0 p99-ns	      1325 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/policy-3M/hit-6         	  983398	      1244 ns/op	      1085 p50-ns	      2156 p99-ns	      3232 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/policy-3M/miss-6        	  614852	      2061 ns/op	      1790 p50-ns	      4171 p99-ns	     16331 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/stevenblack/hit-6       	 4211703	       281.1 ns/op	       216.0 p50-ns	       341.0 p99-ns	       538.0 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/stevenblack/miss-6      	 5352361	       223.6 ns/op	       116.0 p50-ns	       504.0 p99-ns	       764.0 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/regex-100/miss-6        	  679290	      1707 ns/op	      1406 p50-ns	      3603 p99-ns	     16405 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/regex-500/miss-6        	  228567	      5309 ns/op	      4785 p50-ns	     14415 p99-ns	     25198 p999-ns	       2 B/op	       0 allocs/op
+BenchmarkLatency/regex-1000/miss-6       	  132067	      8964 ns/op	      8494 p50-ns	     21972 p99-ns	     33448 p999-ns	      24 B/op	       0 allocs/op
+BenchmarkLatency/timer-6                 	14807722	        80.38 ns/op	        29.00 p50-ns	        45.00 p99-ns	        59.00 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkEvaluate/suffix-1M/hit-6        	 1679294	       718.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEvaluate/suffix-1M/miss-6       	 5525918	       216.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEvaluate/exact-1M/hit-6         	 1781533	       663.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEvaluate/exact-1M/miss-6        	 7858947	       160.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEvaluate/policy-3M/hit-6        	 1000000	      1039 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEvaluate/policy-3M/miss-6       	  630136	      1821 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompile/adblock-1M-6            	       1	1034955820 ns/op	  26.16 MB/s	   1000000 entries	121457184 B/op	  141141 allocs/op
+BenchmarkCompile/hosts-1M-6              	       2	 959716954 ns/op	  33.42 MB/s	   1000000 entries	152875424 B/op	    2706 allocs/op
+BenchmarkCompile/unchanged-1M-6          	      15	  73627188 ns/op	 367.76 MB/s	   65668 B/op	       8 allocs/op
+BenchmarkMemory/3M-6                     	       1	3005302011 ns/op	         8.754 base-rss-MB	         2.985 compile-s	        24.31 engine-B/entry	   3000000 entries	        78.27 heap-MB	       137.0 peak-rss-MB	        90.10 rss-MB	   43072 B/op	      56 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/blocking	40.674s
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/blocking/benchgate	0.005s
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/blocking/internal/synth	0.003s
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/blocking/matcher	0.003s
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/blocking/parser	0.005s

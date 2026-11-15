@@ -1,0 +1,24 @@
+{
+  "at": "2026-11-15T20:49:52.740611+00:00",
+  "argv": [
+    "/usr/bin/python3",
+    "-B",
+    "/home/vercel-sandbox/kudurru/.context/cloud-benchmark-method/hack/bench-dedicated.py",
+    "calibrate",
+    "--host-record",
+    "/home/vercel-sandbox/kudurru/.context/release-cloud-calibration-20261115/host-reviewed.json",
+    "--reference",
+    "/home/vercel-sandbox/kudurru/.context/benchmark-reference-0cc9565e",
+    "--later-reference",
+    "/home/vercel-sandbox/kudurru/.context/benchmark-later-reference-9cc2ae04",
+    "--output",
+    "/home/vercel-sandbox/kudurru/.context/release-cloud-calibration-20261115/calibration"
+  ],
+  "method_source": "3ff60b9f21f9d2abe114eed418b2179d6f28032d",
+  "collector_base": "fef3a1fde4cf8b847ba833d9e1f0710e7ec3f998",
+  "collector_delta": "Profile class metadata only: shared-cloud-sandbox-v1.",
+  "orchestration_sha256": "aaab22e7158e5c8dbfdf6b77762c139a5c08b18a50420af0ed9b7e3cc6a215bb",
+  "scope": "40 historical native commands, five samples, six processors; no candidate measurement",
+  "recording": "v020-cloud-shared-20261115",
+  "release_qualified": false
+}

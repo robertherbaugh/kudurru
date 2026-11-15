@@ -1,0 +1,13 @@
+{
+  "decision": "accepted",
+  "reviewed_by": "Robert Herbaugh",
+  "reviewed_at": "2026-11-15T20:40:17.946075+00:00",
+  "review_evidence": "Workspace owner reply in Conductor on 2026-11-15: \"Approve the disclosed sandbox method\", replying to the exact cloud-sandbox amendment question.",
+  "proposal_sha256": "f5c0adb561870354852292ebac2fbbfb19567e14e7dfcc1cb8ad67c838ed0562",
+  "scope": "This named eight-vCPU cloud sandbox, shared physical CPUs and unavailable physical-host/pinning information; one historical-only calibration. Fixed bounds unchanged. Actual vectors/limits require separate review before candidate timing.",
+  "collector_source": "fef3a1fde4cf8b847ba833d9e1f0710e7ec3f998",
+  "recording": "v020-cloud-shared-20261115",
+  "release_qualified": false,
+  "method_source": "3ff60b9f21f9d2abe114eed418b2179d6f28032d",
+  "runner_class": "shared-cloud-sandbox-v1"
+}

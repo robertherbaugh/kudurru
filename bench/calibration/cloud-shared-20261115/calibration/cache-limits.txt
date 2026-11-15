@@ -1,0 +1,41 @@
+# Dedicated host: historical calibration only; human review required.
+require ^BenchmarkGet/hit$ B/op
+limit ^BenchmarkGet/hit$ B/op 64
+require ^BenchmarkGet/hit$ allocs/op
+limit ^BenchmarkGet/hit$ allocs/op 0
+require ^BenchmarkGet/hit$ ns/op
+limit ^BenchmarkGet/hit$ ns/op 867.12
+require ^BenchmarkGet/hit\-parallel$ B/op
+limit ^BenchmarkGet/hit\-parallel$ B/op 64
+require ^BenchmarkGet/hit\-parallel$ allocs/op
+limit ^BenchmarkGet/hit\-parallel$ allocs/op 0
+require ^BenchmarkGet/hit\-parallel$ ns/op
+limit ^BenchmarkGet/hit\-parallel$ ns/op 182.76
+require ^BenchmarkGet/miss$ B/op
+limit ^BenchmarkGet/miss$ B/op 64
+require ^BenchmarkGet/miss$ allocs/op
+limit ^BenchmarkGet/miss$ allocs/op 0
+require ^BenchmarkGet/miss$ ns/op
+limit ^BenchmarkGet/miss$ ns/op 165.96
+require ^BenchmarkMakeKey$ B/op
+limit ^BenchmarkMakeKey$ B/op 88
+require ^BenchmarkMakeKey$ allocs/op
+limit ^BenchmarkMakeKey$ allocs/op 1.2
+require ^BenchmarkMakeKey$ ns/op
+limit ^BenchmarkMakeKey$ ns/op 73.63
+require ^BenchmarkMemory/1000k$ B/op
+limit ^BenchmarkMemory/1000k$ B/op 450309964.8
+require ^BenchmarkMemory/1000k$ allocs/op
+limit ^BenchmarkMemory/1000k$ allocs/op 4814606.4
+require ^BenchmarkMemory/1000k$ bytes/entry
+limit ^BenchmarkMemory/1000k$ bytes/entry 351.24
+require ^BenchmarkMemory/1000k$ ns/op
+limit ^BenchmarkMemory/1000k$ ns/op 1616540130
+require ^BenchmarkMemory/1000k$ overhead-bytes/entry
+limit ^BenchmarkMemory/1000k$ overhead-bytes/entry 208.56
+require ^BenchmarkSet$ B/op
+limit ^BenchmarkSet$ B/op 176
+require ^BenchmarkSet$ allocs/op
+limit ^BenchmarkSet$ allocs/op 1.2
+require ^BenchmarkSet$ ns/op
+limit ^BenchmarkSet$ ns/op 902.16

@@ -1,0 +1,177 @@
+# Benchmark gate rules for `make bench` (hack/benchgate).
+#
+#   limit  <benchmark name regexp>  <unit>  <max>   absolute ceiling on the median
+#   ignore <benchmark name regexp>  <unit>          not compared with bench/baseline.txt
+#
+# Every other metric in bench/baseline.txt fails the gate when its median is
+# more than 20 % worse (and worse by more than the per-unit noise floor).
+
+# dev-docs/design-record.md §7.3 performance gate.
+limit  ^BenchmarkLatency/suffix-1M/(hit|miss)$  p99-ns   2000
+limit  ^BenchmarkMemory/3M$                     rss-MB   150
+limit  ^BenchmarkCompile/(adblock|hosts)-1M$    ns/op    5e9
+# Lookups must stay allocation-free.
+limit  ^BenchmarkEvaluate/                      allocs/op  0
+
+# The memory benchmark's ns/op and allocations are those of spawning the
+# child process; compile time is reported as compile-s instead.
+ignore ^BenchmarkMemory/                        ns/op
+ignore ^BenchmarkMemory/                        B/op
+ignore ^BenchmarkMemory/                        allocs/op
+# Informational counters.
+ignore .                                        entries
+ignore ^BenchmarkMemory/                        base-rss-MB
+# p99.9 of a ~1 s run is a handful of samples: too noisy for a 20 % gate on
+# shared runners. It is still recorded for the report.
+ignore ^BenchmarkLatency/                       p999-ns
+# The timer benchmark only documents measurement overhead.
+ignore ^BenchmarkLatency/timer$                 ns/op
+ignore ^BenchmarkLatency/timer$                 p50-ns
+ignore ^BenchmarkLatency/timer$                 p99-ns
+
+# Zone lookups (dev-docs/milestones/m1/zone.md, dev-docs/milestones/m2/xfr.md): a 100k-record zone answers
+# every result kind in well under 2 µs at p99 with at most three
+# allocations (wildcard synthesis).
+limit  ^BenchmarkLookup100k/                    p99-ns     2000
+limit  ^BenchmarkLookup100k/                    allocs/op  3
+# B/op is the benchmark's own latency recorder growing, not the lookup.
+ignore ^BenchmarkLookup100k/                    B/op
+
+require ^BenchmarkCompile/adblock\-1M$ B/op
+require ^BenchmarkCompile/adblock\-1M$ MB/s
+require ^BenchmarkCompile/adblock\-1M$ allocs/op
+require ^BenchmarkCompile/adblock\-1M$ entries
+require ^BenchmarkCompile/adblock\-1M$ ns/op
+require ^BenchmarkCompile/hosts\-1M$ B/op
+require ^BenchmarkCompile/hosts\-1M$ MB/s
+require ^BenchmarkCompile/hosts\-1M$ allocs/op
+require ^BenchmarkCompile/hosts\-1M$ entries
+require ^BenchmarkCompile/hosts\-1M$ ns/op
+require ^BenchmarkCompile/unchanged\-1M$ B/op
+require ^BenchmarkCompile/unchanged\-1M$ MB/s
+require ^BenchmarkCompile/unchanged\-1M$ allocs/op
+require ^BenchmarkCompile/unchanged\-1M$ ns/op
+require ^BenchmarkEvaluate/exact\-1M/hit$ B/op
+require ^BenchmarkEvaluate/exact\-1M/hit$ allocs/op
+require ^BenchmarkEvaluate/exact\-1M/hit$ ns/op
+require ^BenchmarkEvaluate/exact\-1M/miss$ B/op
+require ^BenchmarkEvaluate/exact\-1M/miss$ allocs/op
+require ^BenchmarkEvaluate/exact\-1M/miss$ ns/op
+require ^BenchmarkEvaluate/policy\-3M/hit$ B/op
+require ^BenchmarkEvaluate/policy\-3M/hit$ allocs/op
+require ^BenchmarkEvaluate/policy\-3M/hit$ ns/op
+require ^BenchmarkEvaluate/policy\-3M/miss$ B/op
+require ^BenchmarkEvaluate/policy\-3M/miss$ allocs/op
+require ^BenchmarkEvaluate/policy\-3M/miss$ ns/op
+require ^BenchmarkEvaluate/suffix\-1M/hit$ B/op
+require ^BenchmarkEvaluate/suffix\-1M/hit$ allocs/op
+require ^BenchmarkEvaluate/suffix\-1M/hit$ ns/op
+require ^BenchmarkEvaluate/suffix\-1M/miss$ B/op
+require ^BenchmarkEvaluate/suffix\-1M/miss$ allocs/op
+require ^BenchmarkEvaluate/suffix\-1M/miss$ ns/op
+require ^BenchmarkLatency/exact\-1M/hit$ B/op
+require ^BenchmarkLatency/exact\-1M/hit$ allocs/op
+require ^BenchmarkLatency/exact\-1M/hit$ ns/op
+require ^BenchmarkLatency/exact\-1M/hit$ p50-ns
+require ^BenchmarkLatency/exact\-1M/hit$ p99-ns
+require ^BenchmarkLatency/exact\-1M/hit$ p999-ns
+require ^BenchmarkLatency/exact\-1M/miss$ B/op
+require ^BenchmarkLatency/exact\-1M/miss$ allocs/op
+require ^BenchmarkLatency/exact\-1M/miss$ ns/op
+require ^BenchmarkLatency/exact\-1M/miss$ p50-ns
+require ^BenchmarkLatency/exact\-1M/miss$ p99-ns
+require ^BenchmarkLatency/exact\-1M/miss$ p999-ns
+require ^BenchmarkLatency/policy\-3M/hit$ B/op
+require ^BenchmarkLatency/policy\-3M/hit$ allocs/op
+require ^BenchmarkLatency/policy\-3M/hit$ ns/op
+require ^BenchmarkLatency/policy\-3M/hit$ p50-ns
+require ^BenchmarkLatency/policy\-3M/hit$ p99-ns
+require ^BenchmarkLatency/policy\-3M/hit$ p999-ns
+require ^BenchmarkLatency/policy\-3M/miss$ B/op
+require ^BenchmarkLatency/policy\-3M/miss$ allocs/op
+require ^BenchmarkLatency/policy\-3M/miss$ ns/op
+require ^BenchmarkLatency/policy\-3M/miss$ p50-ns
+require ^BenchmarkLatency/policy\-3M/miss$ p99-ns
+require ^BenchmarkLatency/policy\-3M/miss$ p999-ns
+require ^BenchmarkLatency/regex\-100/miss$ B/op
+require ^BenchmarkLatency/regex\-100/miss$ allocs/op
+require ^BenchmarkLatency/regex\-100/miss$ ns/op
+require ^BenchmarkLatency/regex\-100/miss$ p50-ns
+require ^BenchmarkLatency/regex\-100/miss$ p99-ns
+require ^BenchmarkLatency/regex\-100/miss$ p999-ns
+require ^BenchmarkLatency/regex\-1000/miss$ B/op
+require ^BenchmarkLatency/regex\-1000/miss$ allocs/op
+require ^BenchmarkLatency/regex\-1000/miss$ ns/op
+require ^BenchmarkLatency/regex\-1000/miss$ p50-ns
+require ^BenchmarkLatency/regex\-1000/miss$ p99-ns
+require ^BenchmarkLatency/regex\-1000/miss$ p999-ns
+require ^BenchmarkLatency/regex\-500/miss$ B/op
+require ^BenchmarkLatency/regex\-500/miss$ allocs/op
+require ^BenchmarkLatency/regex\-500/miss$ ns/op
+require ^BenchmarkLatency/regex\-500/miss$ p50-ns
+require ^BenchmarkLatency/regex\-500/miss$ p99-ns
+require ^BenchmarkLatency/regex\-500/miss$ p999-ns
+require ^BenchmarkLatency/stevenblack/hit$ B/op
+require ^BenchmarkLatency/stevenblack/hit$ allocs/op
+require ^BenchmarkLatency/stevenblack/hit$ ns/op
+require ^BenchmarkLatency/stevenblack/hit$ p50-ns
+require ^BenchmarkLatency/stevenblack/hit$ p99-ns
+require ^BenchmarkLatency/stevenblack/hit$ p999-ns
+require ^BenchmarkLatency/stevenblack/miss$ B/op
+require ^BenchmarkLatency/stevenblack/miss$ allocs/op
+require ^BenchmarkLatency/stevenblack/miss$ ns/op
+require ^BenchmarkLatency/stevenblack/miss$ p50-ns
+require ^BenchmarkLatency/stevenblack/miss$ p99-ns
+require ^BenchmarkLatency/stevenblack/miss$ p999-ns
+require ^BenchmarkLatency/suffix\-1M/hit$ B/op
+require ^BenchmarkLatency/suffix\-1M/hit$ allocs/op
+require ^BenchmarkLatency/suffix\-1M/hit$ ns/op
+require ^BenchmarkLatency/suffix\-1M/hit$ p50-ns
+require ^BenchmarkLatency/suffix\-1M/hit$ p99-ns
+require ^BenchmarkLatency/suffix\-1M/hit$ p999-ns
+require ^BenchmarkLatency/suffix\-1M/miss$ B/op
+require ^BenchmarkLatency/suffix\-1M/miss$ allocs/op
+require ^BenchmarkLatency/suffix\-1M/miss$ ns/op
+require ^BenchmarkLatency/suffix\-1M/miss$ p50-ns
+require ^BenchmarkLatency/suffix\-1M/miss$ p99-ns
+require ^BenchmarkLatency/suffix\-1M/miss$ p999-ns
+require ^BenchmarkLatency/timer$ B/op
+require ^BenchmarkLatency/timer$ allocs/op
+require ^BenchmarkLatency/timer$ ns/op
+require ^BenchmarkLatency/timer$ p50-ns
+require ^BenchmarkLatency/timer$ p99-ns
+require ^BenchmarkLatency/timer$ p999-ns
+require ^BenchmarkLookup100k/cname$ B/op
+require ^BenchmarkLookup100k/cname$ allocs/op
+require ^BenchmarkLookup100k/cname$ ns/op
+require ^BenchmarkLookup100k/cname$ p50-ns
+require ^BenchmarkLookup100k/cname$ p99-ns
+require ^BenchmarkLookup100k/hit$ B/op
+require ^BenchmarkLookup100k/hit$ allocs/op
+require ^BenchmarkLookup100k/hit$ ns/op
+require ^BenchmarkLookup100k/hit$ p50-ns
+require ^BenchmarkLookup100k/hit$ p99-ns
+require ^BenchmarkLookup100k/nodata$ B/op
+require ^BenchmarkLookup100k/nodata$ allocs/op
+require ^BenchmarkLookup100k/nodata$ ns/op
+require ^BenchmarkLookup100k/nodata$ p50-ns
+require ^BenchmarkLookup100k/nodata$ p99-ns
+require ^BenchmarkLookup100k/nxdomain$ B/op
+require ^BenchmarkLookup100k/nxdomain$ allocs/op
+require ^BenchmarkLookup100k/nxdomain$ ns/op
+require ^BenchmarkLookup100k/nxdomain$ p50-ns
+require ^BenchmarkLookup100k/nxdomain$ p99-ns
+require ^BenchmarkLookup100k/wildcard$ B/op
+require ^BenchmarkLookup100k/wildcard$ allocs/op
+require ^BenchmarkLookup100k/wildcard$ ns/op
+require ^BenchmarkLookup100k/wildcard$ p50-ns
+require ^BenchmarkLookup100k/wildcard$ p99-ns
+require ^BenchmarkMemory/3M$ B/op
+require ^BenchmarkMemory/3M$ allocs/op
+require ^BenchmarkMemory/3M$ base-rss-MB
+require ^BenchmarkMemory/3M$ compile-s
+require ^BenchmarkMemory/3M$ engine-B/entry
+require ^BenchmarkMemory/3M$ heap-MB
+require ^BenchmarkMemory/3M$ ns/op
+require ^BenchmarkMemory/3M$ peak-rss-MB
+require ^BenchmarkMemory/3M$ rss-MB

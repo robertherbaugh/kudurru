@@ -1,0 +1,13 @@
+diff --git a/hack/bench-dedicated.py b/hack/bench-dedicated.py
+index 90845c2e..3dbb285c 100644
+--- a/hack/bench-dedicated.py
++++ b/hack/bench-dedicated.py
+@@ -27,7 +27,7 @@ paired = importlib.util.module_from_spec(spec)
+ spec.loader.exec_module(paired)
+ reference, runner = paired.reference, paired.runner
+ LATER = "9cc2ae0423070fc514c94a25ab5b92e3816889e7"
+-CLASS = "dedicated-homelab-v1"
++CLASS = "shared-cloud-sandbox-v1"
+ CALIBRATED = ("cache", "upstream", "udp", "dot", "quic", "persist")
+ 
+ 

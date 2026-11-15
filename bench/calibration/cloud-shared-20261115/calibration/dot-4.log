@@ -1,0 +1,10 @@
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkDoTSockets/sockets=1/churn=false-6         	  225123	      5252 ns/op	         0 failed	    190393 q/s	    2367 B/op	      34 allocs/op
+BenchmarkDoTSockets/sockets=1/churn=true-6          	    4123	    260107 ns/op	         0 failed	      3845 q/s	  129618 B/op	     919 allocs/op
+BenchmarkDoTSockets/sockets=6/churn=false-6         	  227733	      5174 ns/op	         0 failed	    193291 q/s	    2367 B/op	      34 allocs/op
+BenchmarkDoTSockets/sockets=6/churn=true-6          	    4867	    356718 ns/op	         0 failed	      2803 q/s	  129578 B/op	     919 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	8.500s

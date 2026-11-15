@@ -1,0 +1,41 @@
+# Dedicated host: historical calibration only; human review required.
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ B/op
+limit ^BenchmarkDoTSockets/sockets=1/churn=false$ B/op 2841.6
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ allocs/op
+limit ^BenchmarkDoTSockets/sockets=1/churn=false$ allocs/op 40.8
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ failed
+zero ^BenchmarkDoTSockets/sockets=1/churn=false$ failed
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ ns/op
+limit ^BenchmarkDoTSockets/sockets=1/churn=false$ ns/op 6465.6
+require ^BenchmarkDoTSockets/sockets=1/churn=false$ q/s
+minimum ^BenchmarkDoTSockets/sockets=1/churn=false$ q/s 148481.6
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ B/op
+limit ^BenchmarkDoTSockets/sockets=1/churn=true$ B/op 155541.6
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ allocs/op
+limit ^BenchmarkDoTSockets/sockets=1/churn=true$ allocs/op 1102.8
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ failed
+zero ^BenchmarkDoTSockets/sockets=1/churn=true$ failed
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ ns/op
+limit ^BenchmarkDoTSockets/sockets=1/churn=true$ ns/op 299452.8
+require ^BenchmarkDoTSockets/sockets=1/churn=true$ q/s
+minimum ^BenchmarkDoTSockets/sockets=1/churn=true$ q/s 3205.6
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ B/op
+limit ^BenchmarkDoTSockets/sockets=6/churn=false$ B/op 2842.8
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ allocs/op
+limit ^BenchmarkDoTSockets/sockets=6/churn=false$ allocs/op 40.8
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ failed
+zero ^BenchmarkDoTSockets/sockets=6/churn=false$ failed
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ ns/op
+limit ^BenchmarkDoTSockets/sockets=6/churn=false$ ns/op 6766.8
+require ^BenchmarkDoTSockets/sockets=6/churn=false$ q/s
+minimum ^BenchmarkDoTSockets/sockets=6/churn=false$ q/s 141864
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ B/op
+limit ^BenchmarkDoTSockets/sockets=6/churn=true$ B/op 155511.6
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ allocs/op
+limit ^BenchmarkDoTSockets/sockets=6/churn=true$ allocs/op 1102.8
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ failed
+zero ^BenchmarkDoTSockets/sockets=6/churn=true$ failed
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ ns/op
+limit ^BenchmarkDoTSockets/sockets=6/churn=true$ ns/op 341462.4
+require ^BenchmarkDoTSockets/sockets=6/churn=true$ q/s
+minimum ^BenchmarkDoTSockets/sockets=6/churn=true$ q/s 2811.2

@@ -1,0 +1,121 @@
+# Dedicated host: historical calibration only; human review required.
+require ^BenchmarkStrategies/fast/parallel_best$ B/op
+limit ^BenchmarkStrategies/fast/parallel_best$ B/op 15588
+require ^BenchmarkStrategies/fast/parallel_best$ allocs/op
+limit ^BenchmarkStrategies/fast/parallel_best$ allocs/op 242.4
+require ^BenchmarkStrategies/fast/parallel_best$ ns/op
+limit ^BenchmarkStrategies/fast/parallel_best$ ns/op 110428.8
+require ^BenchmarkStrategies/fast/parallel_best$ p50-us
+limit ^BenchmarkStrategies/fast/parallel_best$ p50-us 103.2
+require ^BenchmarkStrategies/fast/parallel_best$ p99-us
+limit ^BenchmarkStrategies/fast/parallel_best$ p99-us 249.6
+require ^BenchmarkStrategies/fast/random$ B/op
+limit ^BenchmarkStrategies/fast/random$ B/op 7500
+require ^BenchmarkStrategies/fast/random$ allocs/op
+limit ^BenchmarkStrategies/fast/random$ allocs/op 121.2
+require ^BenchmarkStrategies/fast/random$ ns/op
+limit ^BenchmarkStrategies/fast/random$ ns/op 100764
+require ^BenchmarkStrategies/fast/random$ p50-us
+limit ^BenchmarkStrategies/fast/random$ p50-us 93.6
+require ^BenchmarkStrategies/fast/random$ p99-us
+limit ^BenchmarkStrategies/fast/random$ p99-us 182.4
+require ^BenchmarkStrategies/fast/rtt_weighted$ B/op
+limit ^BenchmarkStrategies/fast/rtt_weighted$ B/op 7528.8
+require ^BenchmarkStrategies/fast/rtt_weighted$ allocs/op
+limit ^BenchmarkStrategies/fast/rtt_weighted$ allocs/op 122.4
+require ^BenchmarkStrategies/fast/rtt_weighted$ ns/op
+limit ^BenchmarkStrategies/fast/rtt_weighted$ ns/op 98379.6
+require ^BenchmarkStrategies/fast/rtt_weighted$ p50-us
+limit ^BenchmarkStrategies/fast/rtt_weighted$ p50-us 91.2
+require ^BenchmarkStrategies/fast/rtt_weighted$ p99-us
+limit ^BenchmarkStrategies/fast/rtt_weighted$ p99-us 176.4
+require ^BenchmarkStrategies/fast/strict$ B/op
+limit ^BenchmarkStrategies/fast/strict$ B/op 7485.6
+require ^BenchmarkStrategies/fast/strict$ allocs/op
+limit ^BenchmarkStrategies/fast/strict$ allocs/op 121.2
+require ^BenchmarkStrategies/fast/strict$ ns/op
+limit ^BenchmarkStrategies/fast/strict$ ns/op 95994
+require ^BenchmarkStrategies/fast/strict$ p50-us
+limit ^BenchmarkStrategies/fast/strict$ p50-us 88.8
+require ^BenchmarkStrategies/fast/strict$ p99-us
+limit ^BenchmarkStrategies/fast/strict$ p99-us 176.4
+require ^BenchmarkStrategies/jitter/parallel_best$ B/op
+limit ^BenchmarkStrategies/jitter/parallel_best$ B/op 15800.4
+require ^BenchmarkStrategies/jitter/parallel_best$ allocs/op
+limit ^BenchmarkStrategies/jitter/parallel_best$ allocs/op 244.8
+require ^BenchmarkStrategies/jitter/parallel_best$ ns/op
+limit ^BenchmarkStrategies/jitter/parallel_best$ ns/op 2101983.6
+require ^BenchmarkStrategies/jitter/parallel_best$ p50-us
+limit ^BenchmarkStrategies/jitter/parallel_best$ p50-us 1564.8
+require ^BenchmarkStrategies/jitter/parallel_best$ p99-us
+limit ^BenchmarkStrategies/jitter/parallel_best$ p99-us 4162.8
+require ^BenchmarkStrategies/jitter/random$ B/op
+limit ^BenchmarkStrategies/jitter/random$ B/op 7606.8
+require ^BenchmarkStrategies/jitter/random$ allocs/op
+limit ^BenchmarkStrategies/jitter/random$ allocs/op 122.4
+require ^BenchmarkStrategies/jitter/random$ ns/op
+limit ^BenchmarkStrategies/jitter/random$ ns/op 2658866.4
+require ^BenchmarkStrategies/jitter/random$ p50-us
+limit ^BenchmarkStrategies/jitter/random$ p50-us 2750.4
+require ^BenchmarkStrategies/jitter/random$ p99-us
+limit ^BenchmarkStrategies/jitter/random$ p99-us 4126.8
+require ^BenchmarkStrategies/jitter/rtt_weighted$ B/op
+limit ^BenchmarkStrategies/jitter/rtt_weighted$ B/op 7635.6
+require ^BenchmarkStrategies/jitter/rtt_weighted$ allocs/op
+limit ^BenchmarkStrategies/jitter/rtt_weighted$ allocs/op 123.6
+require ^BenchmarkStrategies/jitter/rtt_weighted$ ns/op
+limit ^BenchmarkStrategies/jitter/rtt_weighted$ ns/op 2697946.8
+require ^BenchmarkStrategies/jitter/rtt_weighted$ p50-us
+limit ^BenchmarkStrategies/jitter/rtt_weighted$ p50-us 2776.8
+require ^BenchmarkStrategies/jitter/rtt_weighted$ p99-us
+limit ^BenchmarkStrategies/jitter/rtt_weighted$ p99-us 4137.6
+require ^BenchmarkStrategies/jitter/strict$ B/op
+limit ^BenchmarkStrategies/jitter/strict$ B/op 7593.6
+require ^BenchmarkStrategies/jitter/strict$ allocs/op
+limit ^BenchmarkStrategies/jitter/strict$ allocs/op 122.4
+require ^BenchmarkStrategies/jitter/strict$ ns/op
+limit ^BenchmarkStrategies/jitter/strict$ ns/op 2652212.4
+require ^BenchmarkStrategies/jitter/strict$ p50-us
+limit ^BenchmarkStrategies/jitter/strict$ p50-us 2743.2
+require ^BenchmarkStrategies/jitter/strict$ p99-us
+limit ^BenchmarkStrategies/jitter/strict$ p99-us 4110
+require ^BenchmarkStrategies/slow\-first/parallel_best$ B/op
+limit ^BenchmarkStrategies/slow\-first/parallel_best$ B/op 15672
+require ^BenchmarkStrategies/slow\-first/parallel_best$ allocs/op
+limit ^BenchmarkStrategies/slow\-first/parallel_best$ allocs/op 243.6
+require ^BenchmarkStrategies/slow\-first/parallel_best$ ns/op
+limit ^BenchmarkStrategies/slow\-first/parallel_best$ ns/op 112676.4
+require ^BenchmarkStrategies/slow\-first/parallel_best$ p50-us
+limit ^BenchmarkStrategies/slow\-first/parallel_best$ p50-us 104.4
+require ^BenchmarkStrategies/slow\-first/parallel_best$ p99-us
+limit ^BenchmarkStrategies/slow\-first/parallel_best$ p99-us 262.8
+require ^BenchmarkStrategies/slow\-first/random$ B/op
+limit ^BenchmarkStrategies/slow\-first/random$ B/op 7525.2
+require ^BenchmarkStrategies/slow\-first/random$ allocs/op
+limit ^BenchmarkStrategies/slow\-first/random$ allocs/op 121.2
+require ^BenchmarkStrategies/slow\-first/random$ ns/op
+limit ^BenchmarkStrategies/slow\-first/random$ ns/op 977600.4
+require ^BenchmarkStrategies/slow\-first/random$ p50-us
+limit ^BenchmarkStrategies/slow\-first/random$ p50-us 146.4
+require ^BenchmarkStrategies/slow\-first/random$ p99-us
+limit ^BenchmarkStrategies/slow\-first/random$ p99-us 2824.8
+require ^BenchmarkStrategies/slow\-first/rtt_weighted$ B/op
+limit ^BenchmarkStrategies/slow\-first/rtt_weighted$ B/op 7524
+require ^BenchmarkStrategies/slow\-first/rtt_weighted$ allocs/op
+limit ^BenchmarkStrategies/slow\-first/rtt_weighted$ allocs/op 122.4
+require ^BenchmarkStrategies/slow\-first/rtt_weighted$ ns/op
+limit ^BenchmarkStrategies/slow\-first/rtt_weighted$ ns/op 165627.6
+require ^BenchmarkStrategies/slow\-first/rtt_weighted$ p50-us
+limit ^BenchmarkStrategies/slow\-first/rtt_weighted$ p50-us 99.6
+require ^BenchmarkStrategies/slow\-first/rtt_weighted$ p99-us
+limit ^BenchmarkStrategies/slow\-first/rtt_weighted$ p99-us 2700
+require ^BenchmarkStrategies/slow\-first/strict$ B/op
+limit ^BenchmarkStrategies/slow\-first/strict$ B/op 7596
+require ^BenchmarkStrategies/slow\-first/strict$ allocs/op
+limit ^BenchmarkStrategies/slow\-first/strict$ allocs/op 122.4
+require ^BenchmarkStrategies/slow\-first/strict$ ns/op
+limit ^BenchmarkStrategies/slow\-first/strict$ ns/op 2755647.6
+require ^BenchmarkStrategies/slow\-first/strict$ p50-us
+limit ^BenchmarkStrategies/slow\-first/strict$ p50-us 2748
+require ^BenchmarkStrategies/slow\-first/strict$ p99-us
+limit ^BenchmarkStrategies/slow\-first/strict$ p99-us 2911.2

@@ -1,0 +1,60 @@
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkGet/hit-6   	 1558462	       762.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	 8744170	       136.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	 7290255	       164.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	18878305	        57.52 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	 1450677	       831.3 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       1	1347116775 ns/op	       292.7 bytes/entry	       173.8 overhead-bytes/entry	375203568 B/op	 4012167 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	8.039s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkGet/hit-6   	 1819788	       654.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	 8442621	       138.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	 8026641	       152.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	22918350	        48.63 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	 1583814	       741.0 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       1	1301381247 ns/op	       292.7 bytes/entry	       173.8 overhead-bytes/entry	375312768 B/op	 4012175 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	7.880s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkGet/hit-6   	 1624078	       711.2 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	 8764526	       137.8 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	 7762929	       152.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	24903862	        46.56 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	 1592967	       747.7 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       1	1300227496 ns/op	       292.6 bytes/entry	       173.8 overhead-bytes/entry	375148992 B/op	 4012163 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	7.945s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkGet/hit-6   	 1375372	       897.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	 8065870	       138.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	 7083439	       157.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	23743288	        50.46 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	 1489410	       794.7 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       1	1385770697 ns/op	       292.8 bytes/entry	       173.9 overhead-bytes/entry	375421952 B/op	 4012183 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	9.024s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkGet/hit-6   	 1665166	       722.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	 8861038	       144.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	 7580838	       150.5 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	24369224	        48.17 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	 1612894	       751.8 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       1	1539402095 ns/op	       292.7 bytes/entry	       173.8 overhead-bytes/entry	375258304 B/op	 4012172 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	8.344s

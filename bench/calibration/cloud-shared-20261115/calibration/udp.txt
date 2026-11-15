@@ -1,0 +1,40 @@
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkUDPSockets/sockets=1-6         	  820728	      6467 ns/op	         0 lost	    154632 q/s	    2310 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	 1406433	      4256 ns/op	         0 lost	    234954 q/s	    2360 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	15.763s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkUDPSockets/sockets=1-6         	  943996	      6836 ns/op	         0 lost	    146281 q/s	    2311 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	 1338507	      4327 ns/op	         0 lost	    231131 q/s	    2362 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	16.924s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkUDPSockets/sockets=1-6         	  903628	      6938 ns/op	         0 lost	    144126 q/s	    2311 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	 1465140	      4170 ns/op	         0 lost	    239782 q/s	    2371 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	16.674s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkUDPSockets/sockets=1-6         	  843025	      6904 ns/op	         0 lost	    144834 q/s	    2310 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	 1420152	      4236 ns/op	         0 lost	    236059 q/s	    2370 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	16.270s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkUDPSockets/sockets=1-6         	  865195	      7218 ns/op	         0 lost	    138546 q/s	    2310 B/op	      33 allocs/op
+BenchmarkUDPSockets/sockets=6-6         	 1267532	      4429 ns/op	         0 lost	    225801 q/s	    2370 B/op	      33 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	16.792s

@@ -1,0 +1,1046 @@
+.START historical blocking-1
+.START historical blocking-1
+COMPLETE historical blocking-1 0
+START historical zone-1
+COMPLETE historical zone-1 0
+START historical cache-1
+COMPLETE historical cache-1 0
+START historical upstream-1
+COMPLETE historical upstream-1 0
+START historical udp-1
+COMPLETE historical udp-1 0
+START historical dot-1
+COMPLETE historical dot-1 0
+START historical quic-1
+COMPLETE historical quic-1 0
+START historical persist-1
+COMPLETE historical persist-1 0
+START historical blocking-2
+COMPLETE historical blocking-2 0
+START historical zone-2
+COMPLETE historical zone-2 0
+START historical cache-2
+COMPLETE historical cache-2 0
+START historical upstream-2
+COMPLETE historical upstream-2 0
+START historical udp-2
+COMPLETE historical udp-2 0
+START historical dot-2
+COMPLETE historical dot-2 0
+START historical quic-2
+COMPLETE historical quic-2 0
+START historical persist-2
+COMPLETE historical persist-2 0
+START historical blocking-3
+COMPLETE historical blocking-3 0
+START historical zone-3
+COMPLETE historical zone-3 0
+START historical cache-3
+COMPLETE historical cache-3 0
+START historical upstream-3
+COMPLETE historical upstream-3 0
+START historical udp-3
+COMPLETE historical udp-3 0
+START historical dot-3
+COMPLETE historical dot-3 0
+START historical quic-3
+COMPLETE historical quic-3 0
+START historical persist-3
+COMPLETE historical persist-3 0
+START historical blocking-4
+COMPLETE historical blocking-4 0
+START historical zone-4
+COMPLETE historical zone-4 0
+START historical cache-4
+COMPLETE historical cache-4 0
+START historical upstream-4
+COMPLETE historical upstream-4 0
+START historical udp-4
+COMPLETE historical udp-4 0
+START historical dot-4
+COMPLETE historical dot-4 0
+START historical quic-4
+COMPLETE historical quic-4 0
+START historical persist-4
+COMPLETE historical persist-4 0
+START historical blocking-5
+COMPLETE historical blocking-5 0
+START historical zone-5
+COMPLETE historical zone-5 0
+START historical cache-5
+COMPLETE historical cache-5 0
+START historical upstream-5
+COMPLETE historical upstream-5 0
+START historical udp-5
+COMPLETE historical udp-5 0
+START historical dot-5
+COMPLETE historical dot-5 0
+START historical quic-5
+COMPLETE historical quic-5 0
+START historical persist-5
+COMPLETE historical persist-5 0
+START historical blocking-1
+COMPLETE historical blocking-1 0
+START historical zone-1
+COMPLETE historical zone-1 0
+START historical cache-1
+COMPLETE historical cache-1 0
+START historical upstream-1
+COMPLETE historical upstream-1 1
+START historical udp-1
+COMPLETE historical udp-1 0
+START historical dot-1
+COMPLETE historical dot-1 0
+START historical quic-1
+COMPLETE historical quic-1 0
+START historical persist-1
+COMPLETE historical persist-1 0
+START historical blocking-2
+COMPLETE historical blocking-2 0
+START historical zone-2
+COMPLETE historical zone-2 0
+START historical cache-2
+COMPLETE historical cache-2 0
+START historical upstream-2
+COMPLETE historical upstream-2 0
+START historical udp-2
+COMPLETE historical udp-2 0
+START historical dot-2
+COMPLETE historical dot-2 0
+START historical quic-2
+COMPLETE historical quic-2 0
+START historical persist-2
+COMPLETE historical persist-2 0
+START historical blocking-3
+COMPLETE historical blocking-3 0
+START historical zone-3
+COMPLETE historical zone-3 0
+START historical cache-3
+COMPLETE historical cache-3 0
+START historical upstream-3
+COMPLETE historical upstream-3 0
+START historical udp-3
+COMPLETE historical udp-3 0
+START historical dot-3
+COMPLETE historical dot-3 0
+START historical quic-3
+COMPLETE historical quic-3 0
+START historical persist-3
+COMPLETE historical persist-3 0
+START historical blocking-4
+COMPLETE historical blocking-4 0
+START historical zone-4
+COMPLETE historical zone-4 0
+START historical cache-4
+COMPLETE historical cache-4 0
+START historical upstream-4
+COMPLETE historical upstream-4 0
+START historical udp-4
+COMPLETE historical udp-4 0
+START historical dot-4
+COMPLETE historical dot-4 0
+START historical quic-4
+COMPLETE historical quic-4 0
+START historical persist-4
+COMPLETE historical persist-4 0
+START historical blocking-5
+COMPLETE historical blocking-5 0
+START historical zone-5
+COMPLETE historical zone-5 0
+START historical cache-5
+COMPLETE historical cache-5 0
+START historical upstream-5
+COMPLETE historical upstream-5 0
+START historical udp-5
+COMPLETE historical udp-5 0
+START historical dot-5
+COMPLETE historical dot-5 0
+START historical quic-5
+COMPLETE historical quic-5 0
+START historical persist-5
+COMPLETE historical persist-5 0
+.........START reference-1
+COMPLETE reference-1 1
+START candidate-1
+COMPLETE candidate-1 0
+START candidate-2
+COMPLETE candidate-2 0
+START reference-2
+COMPLETE reference-2 0
+START reference-trace
+COMPLETE reference-trace 0
+START candidate-trace
+COMPLETE candidate-trace 0
+.START reference-1
+COMPLETE reference-1 0
+START candidate-1
+COMPLETE candidate-1 0
+START candidate-2
+COMPLETE candidate-2 0
+START reference-2
+COMPLETE reference-2 0
+START reference-trace
+COMPLETE reference-trace 0
+START candidate-trace
+COMPLETE candidate-trace 0
+.START reference-1
+COMPLETE reference-1 0
+START reference-1
+COMPLETE reference-1 0
+.START reference blocking-1
+COMPLETE reference blocking-1 0
+START candidate blocking-1
+COMPLETE candidate blocking-1 0
+START candidate zone-1
+COMPLETE candidate zone-1 0
+START reference zone-1
+COMPLETE reference zone-1 0
+START reference cache-1
+COMPLETE reference cache-1 0
+START candidate cache-1
+COMPLETE candidate cache-1 0
+START candidate upstream-1
+COMPLETE candidate upstream-1 0
+START reference upstream-1
+COMPLETE reference upstream-1 0
+START candidate blocking-2
+COMPLETE candidate blocking-2 0
+START reference blocking-2
+COMPLETE reference blocking-2 0
+START reference zone-2
+COMPLETE reference zone-2 0
+START candidate zone-2
+COMPLETE candidate zone-2 0
+START candidate cache-2
+COMPLETE candidate cache-2 0
+START reference cache-2
+COMPLETE reference cache-2 0
+START reference upstream-2
+COMPLETE reference upstream-2 0
+START candidate upstream-2
+COMPLETE candidate upstream-2 0
+START reference blocking-3
+COMPLETE reference blocking-3 0
+START candidate blocking-3
+COMPLETE candidate blocking-3 0
+START candidate zone-3
+COMPLETE candidate zone-3 0
+START reference zone-3
+COMPLETE reference zone-3 0
+START reference cache-3
+COMPLETE reference cache-3 0
+START candidate cache-3
+COMPLETE candidate cache-3 0
+START candidate upstream-3
+COMPLETE candidate upstream-3 0
+START reference upstream-3
+COMPLETE reference upstream-3 0
+START candidate blocking-4
+COMPLETE candidate blocking-4 0
+START reference blocking-4
+COMPLETE reference blocking-4 0
+START reference zone-4
+COMPLETE reference zone-4 0
+START candidate zone-4
+COMPLETE candidate zone-4 0
+START candidate cache-4
+COMPLETE candidate cache-4 0
+START reference cache-4
+COMPLETE reference cache-4 0
+START reference upstream-4
+COMPLETE reference upstream-4 0
+START candidate upstream-4
+COMPLETE candidate upstream-4 0
+START reference blocking-5
+COMPLETE reference blocking-5 0
+START candidate blocking-5
+COMPLETE candidate blocking-5 0
+START candidate zone-5
+COMPLETE candidate zone-5 0
+START reference zone-5
+COMPLETE reference zone-5 0
+START reference cache-5
+COMPLETE reference cache-5 0
+START candidate cache-5
+COMPLETE candidate cache-5 0
+START candidate upstream-5
+COMPLETE candidate upstream-5 0
+START reference upstream-5
+COMPLETE reference upstream-5 0
+START candidate udp-1
+COMPLETE candidate udp-1 0
+START candidate dot-1
+COMPLETE candidate dot-1 0
+START candidate quic-1
+COMPLETE candidate quic-1 0
+START candidate persist-1
+COMPLETE candidate persist-1 0
+START candidate udp-2
+COMPLETE candidate udp-2 0
+START candidate dot-2
+COMPLETE candidate dot-2 0
+START candidate quic-2
+COMPLETE candidate quic-2 0
+START candidate persist-2
+COMPLETE candidate persist-2 0
+START candidate udp-3
+COMPLETE candidate udp-3 0
+START candidate dot-3
+COMPLETE candidate dot-3 0
+START candidate quic-3
+COMPLETE candidate quic-3 0
+START candidate persist-3
+COMPLETE candidate persist-3 0
+START candidate udp-4
+COMPLETE candidate udp-4 0
+START candidate dot-4
+COMPLETE candidate dot-4 0
+START candidate quic-4
+COMPLETE candidate quic-4 0
+START candidate persist-4
+COMPLETE candidate persist-4 0
+START candidate udp-5
+COMPLETE candidate udp-5 0
+START candidate dot-5
+COMPLETE candidate dot-5 0
+START candidate quic-5
+COMPLETE candidate quic-5 0
+START candidate persist-5
+COMPLETE candidate persist-5 0
+..START reference blocking-1
+COMPLETE reference blocking-1 1
+START candidate blocking-1
+COMPLETE candidate blocking-1 0
+START candidate zone-1
+COMPLETE candidate zone-1 0
+START reference zone-1
+COMPLETE reference zone-1 0
+START reference cache-1
+COMPLETE reference cache-1 0
+START candidate cache-1
+COMPLETE candidate cache-1 0
+START candidate upstream-1
+COMPLETE candidate upstream-1 0
+START reference upstream-1
+COMPLETE reference upstream-1 0
+START candidate blocking-2
+COMPLETE candidate blocking-2 0
+START reference blocking-2
+COMPLETE reference blocking-2 0
+START reference zone-2
+COMPLETE reference zone-2 0
+START candidate zone-2
+COMPLETE candidate zone-2 0
+START candidate cache-2
+COMPLETE candidate cache-2 0
+START reference cache-2
+COMPLETE reference cache-2 0
+START reference upstream-2
+COMPLETE reference upstream-2 0
+START candidate upstream-2
+COMPLETE candidate upstream-2 0
+START reference blocking-3
+COMPLETE reference blocking-3 0
+START candidate blocking-3
+COMPLETE candidate blocking-3 0
+START candidate zone-3
+COMPLETE candidate zone-3 0
+START reference zone-3
+COMPLETE reference zone-3 0
+START reference cache-3
+COMPLETE reference cache-3 0
+START candidate cache-3
+COMPLETE candidate cache-3 0
+START candidate upstream-3
+COMPLETE candidate upstream-3 0
+START reference upstream-3
+COMPLETE reference upstream-3 0
+START candidate blocking-4
+COMPLETE candidate blocking-4 0
+START reference blocking-4
+COMPLETE reference blocking-4 0
+START reference zone-4
+COMPLETE reference zone-4 0
+START candidate zone-4
+COMPLETE candidate zone-4 0
+START candidate cache-4
+COMPLETE candidate cache-4 0
+START reference cache-4
+COMPLETE reference cache-4 0
+START reference upstream-4
+COMPLETE reference upstream-4 0
+START candidate upstream-4
+COMPLETE candidate upstream-4 0
+START reference blocking-5
+COMPLETE reference blocking-5 0
+START candidate blocking-5
+COMPLETE candidate blocking-5 0
+START candidate zone-5
+COMPLETE candidate zone-5 0
+START reference zone-5
+COMPLETE reference zone-5 0
+START reference cache-5
+COMPLETE reference cache-5 0
+START candidate cache-5
+COMPLETE candidate cache-5 0
+START candidate upstream-5
+COMPLETE candidate upstream-5 0
+START reference upstream-5
+COMPLETE reference upstream-5 0
+START candidate udp-1
+COMPLETE candidate udp-1 0
+START candidate dot-1
+COMPLETE candidate dot-1 0
+START candidate quic-1
+COMPLETE candidate quic-1 0
+START candidate persist-1
+COMPLETE candidate persist-1 0
+START candidate udp-2
+COMPLETE candidate udp-2 0
+START candidate dot-2
+COMPLETE candidate dot-2 0
+START candidate quic-2
+COMPLETE candidate quic-2 0
+START candidate persist-2
+COMPLETE candidate persist-2 0
+START candidate udp-3
+COMPLETE candidate udp-3 0
+START candidate dot-3
+COMPLETE candidate dot-3 0
+START candidate quic-3
+COMPLETE candidate quic-3 0
+START candidate persist-3
+COMPLETE candidate persist-3 0
+START candidate udp-4
+COMPLETE candidate udp-4 0
+START candidate dot-4
+COMPLETE candidate dot-4 0
+START candidate quic-4
+COMPLETE candidate quic-4 0
+START candidate persist-4
+COMPLETE candidate persist-4 0
+START candidate udp-5
+COMPLETE candidate udp-5 0
+START candidate dot-5
+COMPLETE candidate dot-5 0
+START candidate quic-5
+COMPLETE candidate quic-5 0
+START candidate persist-5
+COMPLETE candidate persist-5 0
+START reference blocking-1
+COMPLETE reference blocking-1 0
+START candidate blocking-1
+COMPLETE candidate blocking-1 0
+START candidate zone-1
+COMPLETE candidate zone-1 1
+START reference zone-1
+COMPLETE reference zone-1 0
+START reference cache-1
+COMPLETE reference cache-1 0
+START candidate cache-1
+COMPLETE candidate cache-1 0
+START candidate upstream-1
+COMPLETE candidate upstream-1 0
+START reference upstream-1
+COMPLETE reference upstream-1 0
+START candidate blocking-2
+COMPLETE candidate blocking-2 0
+START reference blocking-2
+COMPLETE reference blocking-2 0
+START reference zone-2
+COMPLETE reference zone-2 0
+START candidate zone-2
+COMPLETE candidate zone-2 0
+START candidate cache-2
+COMPLETE candidate cache-2 0
+START reference cache-2
+COMPLETE reference cache-2 0
+START reference upstream-2
+COMPLETE reference upstream-2 0
+START candidate upstream-2
+COMPLETE candidate upstream-2 0
+START reference blocking-3
+COMPLETE reference blocking-3 0
+START candidate blocking-3
+COMPLETE candidate blocking-3 0
+START candidate zone-3
+COMPLETE candidate zone-3 0
+START reference zone-3
+COMPLETE reference zone-3 0
+START reference cache-3
+COMPLETE reference cache-3 0
+START candidate cache-3
+COMPLETE candidate cache-3 0
+START candidate upstream-3
+COMPLETE candidate upstream-3 0
+START reference upstream-3
+COMPLETE reference upstream-3 0
+START candidate blocking-4
+COMPLETE candidate blocking-4 0
+START reference blocking-4
+COMPLETE reference blocking-4 0
+START reference zone-4
+COMPLETE reference zone-4 0
+START candidate zone-4
+COMPLETE candidate zone-4 0
+START candidate cache-4
+COMPLETE candidate cache-4 0
+START reference cache-4
+COMPLETE reference cache-4 0
+START reference upstream-4
+COMPLETE reference upstream-4 0
+START candidate upstream-4
+COMPLETE candidate upstream-4 0
+START reference blocking-5
+COMPLETE reference blocking-5 0
+START candidate blocking-5
+COMPLETE candidate blocking-5 0
+START candidate zone-5
+COMPLETE candidate zone-5 0
+START reference zone-5
+COMPLETE reference zone-5 0
+START reference cache-5
+COMPLETE reference cache-5 0
+START candidate cache-5
+COMPLETE candidate cache-5 0
+START candidate upstream-5
+COMPLETE candidate upstream-5 0
+START reference upstream-5
+COMPLETE reference upstream-5 0
+START candidate udp-1
+COMPLETE candidate udp-1 0
+START candidate dot-1
+COMPLETE candidate dot-1 0
+START candidate quic-1
+COMPLETE candidate quic-1 0
+START candidate persist-1
+COMPLETE candidate persist-1 0
+START candidate udp-2
+COMPLETE candidate udp-2 0
+START candidate dot-2
+COMPLETE candidate dot-2 0
+START candidate quic-2
+COMPLETE candidate quic-2 0
+START candidate persist-2
+COMPLETE candidate persist-2 0
+START candidate udp-3
+COMPLETE candidate udp-3 0
+START candidate dot-3
+COMPLETE candidate dot-3 0
+START candidate quic-3
+COMPLETE candidate quic-3 0
+START candidate persist-3
+COMPLETE candidate persist-3 0
+START candidate udp-4
+COMPLETE candidate udp-4 0
+START candidate dot-4
+COMPLETE candidate dot-4 0
+START candidate quic-4
+COMPLETE candidate quic-4 0
+START candidate persist-4
+COMPLETE candidate persist-4 0
+START candidate udp-5
+COMPLETE candidate udp-5 0
+START candidate dot-5
+COMPLETE candidate dot-5 0
+START candidate quic-5
+COMPLETE candidate quic-5 0
+START candidate persist-5
+COMPLETE candidate persist-5 0
+START reference blocking-1
+COMPLETE reference blocking-1 0
+START candidate blocking-1
+COMPLETE candidate blocking-1 0
+START candidate zone-1
+COMPLETE candidate zone-1 0
+START reference zone-1
+COMPLETE reference zone-1 0
+START reference cache-1
+COMPLETE reference cache-1 0
+START candidate cache-1
+COMPLETE candidate cache-1 0
+START candidate upstream-1
+COMPLETE candidate upstream-1 0
+START reference upstream-1
+COMPLETE reference upstream-1 0
+START candidate blocking-2
+COMPLETE candidate blocking-2 0
+START reference blocking-2
+COMPLETE reference blocking-2 0
+START reference zone-2
+COMPLETE reference zone-2 0
+START candidate zone-2
+COMPLETE candidate zone-2 0
+START candidate cache-2
+COMPLETE candidate cache-2 0
+START reference cache-2
+COMPLETE reference cache-2 0
+START reference upstream-2
+COMPLETE reference upstream-2 0
+START candidate upstream-2
+COMPLETE candidate upstream-2 0
+START reference blocking-3
+COMPLETE reference blocking-3 0
+START candidate blocking-3
+COMPLETE candidate blocking-3 0
+START candidate zone-3
+COMPLETE candidate zone-3 0
+START reference zone-3
+COMPLETE reference zone-3 0
+START reference cache-3
+COMPLETE reference cache-3 0
+START candidate cache-3
+COMPLETE candidate cache-3 0
+START candidate upstream-3
+COMPLETE candidate upstream-3 0
+START reference upstream-3
+COMPLETE reference upstream-3 0
+START candidate blocking-4
+COMPLETE candidate blocking-4 0
+START reference blocking-4
+COMPLETE reference blocking-4 0
+START reference zone-4
+COMPLETE reference zone-4 0
+START candidate zone-4
+COMPLETE candidate zone-4 0
+START candidate cache-4
+COMPLETE candidate cache-4 0
+START reference cache-4
+COMPLETE reference cache-4 0
+START reference upstream-4
+COMPLETE reference upstream-4 0
+START candidate upstream-4
+COMPLETE candidate upstream-4 0
+START reference blocking-5
+COMPLETE reference blocking-5 0
+START candidate blocking-5
+COMPLETE candidate blocking-5 0
+START candidate zone-5
+COMPLETE candidate zone-5 0
+START reference zone-5
+COMPLETE reference zone-5 0
+START reference cache-5
+COMPLETE reference cache-5 0
+START candidate cache-5
+COMPLETE candidate cache-5 0
+START candidate upstream-5
+COMPLETE candidate upstream-5 0
+START reference upstream-5
+COMPLETE reference upstream-5 0
+START candidate udp-1
+COMPLETE candidate udp-1 0
+START candidate dot-1
+COMPLETE candidate dot-1 0
+START candidate quic-1
+COMPLETE candidate quic-1 0
+START candidate persist-1
+COMPLETE candidate persist-1 0
+START candidate udp-2
+COMPLETE candidate udp-2 0
+START candidate dot-2
+COMPLETE candidate dot-2 0
+START candidate quic-2
+COMPLETE candidate quic-2 0
+START candidate persist-2
+COMPLETE candidate persist-2 0
+START candidate udp-3
+COMPLETE candidate udp-3 0
+START candidate dot-3
+COMPLETE candidate dot-3 0
+START candidate quic-3
+COMPLETE candidate quic-3 0
+START candidate persist-3
+COMPLETE candidate persist-3 0
+START candidate udp-4
+COMPLETE candidate udp-4 0
+START candidate dot-4
+COMPLETE candidate dot-4 0
+START candidate quic-4
+COMPLETE candidate quic-4 0
+START candidate persist-4
+COMPLETE candidate persist-4 0
+START candidate udp-5
+COMPLETE candidate udp-5 0
+START candidate dot-5
+COMPLETE candidate dot-5 0
+START candidate quic-5
+COMPLETE candidate quic-5 0
+START candidate persist-5
+COMPLETE candidate persist-5 0
+START reference blocking-1
+COMPLETE reference blocking-1 0
+START candidate blocking-1
+COMPLETE candidate blocking-1 0
+START candidate zone-1
+COMPLETE candidate zone-1 0
+START reference zone-1
+COMPLETE reference zone-1 0
+START reference cache-1
+COMPLETE reference cache-1 0
+START candidate cache-1
+COMPLETE candidate cache-1 0
+START candidate upstream-1
+COMPLETE candidate upstream-1 0
+START reference upstream-1
+COMPLETE reference upstream-1 0
+START candidate blocking-2
+COMPLETE candidate blocking-2 0
+START reference blocking-2
+COMPLETE reference blocking-2 0
+START reference zone-2
+COMPLETE reference zone-2 0
+START candidate zone-2
+COMPLETE candidate zone-2 0
+START candidate cache-2
+COMPLETE candidate cache-2 0
+START reference cache-2
+COMPLETE reference cache-2 0
+START reference upstream-2
+COMPLETE reference upstream-2 0
+START candidate upstream-2
+COMPLETE candidate upstream-2 0
+START reference blocking-3
+COMPLETE reference blocking-3 0
+START candidate blocking-3
+COMPLETE candidate blocking-3 0
+START candidate zone-3
+COMPLETE candidate zone-3 0
+START reference zone-3
+COMPLETE reference zone-3 0
+START reference cache-3
+COMPLETE reference cache-3 0
+START candidate cache-3
+COMPLETE candidate cache-3 0
+START candidate upstream-3
+COMPLETE candidate upstream-3 0
+START reference upstream-3
+COMPLETE reference upstream-3 0
+START candidate blocking-4
+COMPLETE candidate blocking-4 0
+START reference blocking-4
+COMPLETE reference blocking-4 0
+START reference zone-4
+COMPLETE reference zone-4 0
+START candidate zone-4
+COMPLETE candidate zone-4 0
+START candidate cache-4
+COMPLETE candidate cache-4 0
+START reference cache-4
+COMPLETE reference cache-4 0
+START reference upstream-4
+COMPLETE reference upstream-4 0
+START candidate upstream-4
+COMPLETE candidate upstream-4 0
+START reference blocking-5
+COMPLETE reference blocking-5 0
+START candidate blocking-5
+COMPLETE candidate blocking-5 0
+START candidate zone-5
+COMPLETE candidate zone-5 0
+START reference zone-5
+COMPLETE reference zone-5 0
+START reference cache-5
+COMPLETE reference cache-5 0
+START candidate cache-5
+COMPLETE candidate cache-5 0
+START candidate upstream-5
+COMPLETE candidate upstream-5 0
+START reference upstream-5
+COMPLETE reference upstream-5 0
+START candidate udp-1
+COMPLETE candidate udp-1 0
+START candidate dot-1
+COMPLETE candidate dot-1 0
+START candidate quic-1
+COMPLETE candidate quic-1 0
+START candidate persist-1
+COMPLETE candidate persist-1 0
+START candidate udp-2
+COMPLETE candidate udp-2 0
+START candidate dot-2
+COMPLETE candidate dot-2 0
+START candidate quic-2
+COMPLETE candidate quic-2 0
+START candidate persist-2
+COMPLETE candidate persist-2 0
+START candidate udp-3
+COMPLETE candidate udp-3 0
+START candidate dot-3
+COMPLETE candidate dot-3 0
+START candidate quic-3
+COMPLETE candidate quic-3 0
+START candidate persist-3
+COMPLETE candidate persist-3 0
+START candidate udp-4
+COMPLETE candidate udp-4 0
+START candidate dot-4
+COMPLETE candidate dot-4 0
+START candidate quic-4
+COMPLETE candidate quic-4 0
+START candidate persist-4
+COMPLETE candidate persist-4 0
+START candidate udp-5
+COMPLETE candidate udp-5 0
+START candidate dot-5
+COMPLETE candidate dot-5 0
+START candidate quic-5
+COMPLETE candidate quic-5 0
+START candidate persist-5
+COMPLETE candidate persist-5 0
+.START reference blocking-1
+COMPLETE reference blocking-1 0
+START reference blocking-1
+COMPLETE reference blocking-1 0
+START reference blocking-1
+COMPLETE reference blocking-1 0
+START candidate blocking-1
+COMPLETE candidate blocking-1 0
+START reference blocking-1
+COMPLETE reference blocking-1 0
+START candidate blocking-1
+COMPLETE candidate blocking-1 0
+START candidate zone-1
+COMPLETE candidate zone-1 0
+START reference zone-1
+COMPLETE reference zone-1 0
+START reference cache-1
+COMPLETE reference cache-1 0
+START candidate cache-1
+COMPLETE candidate cache-1 0
+START candidate upstream-1
+COMPLETE candidate upstream-1 0
+START reference upstream-1
+COMPLETE reference upstream-1 0
+START candidate blocking-2
+COMPLETE candidate blocking-2 0
+START reference blocking-2
+COMPLETE reference blocking-2 0
+START reference zone-2
+COMPLETE reference zone-2 0
+START candidate zone-2
+COMPLETE candidate zone-2 0
+START candidate cache-2
+COMPLETE candidate cache-2 0
+START reference cache-2
+COMPLETE reference cache-2 0
+START reference upstream-2
+COMPLETE reference upstream-2 0
+START candidate upstream-2
+COMPLETE candidate upstream-2 0
+START reference blocking-3
+COMPLETE reference blocking-3 0
+START candidate blocking-3
+COMPLETE candidate blocking-3 0
+START candidate zone-3
+COMPLETE candidate zone-3 0
+START reference zone-3
+COMPLETE reference zone-3 0
+START reference cache-3
+COMPLETE reference cache-3 0
+START candidate cache-3
+COMPLETE candidate cache-3 0
+START candidate upstream-3
+COMPLETE candidate upstream-3 0
+START reference upstream-3
+COMPLETE reference upstream-3 0
+START candidate blocking-4
+COMPLETE candidate blocking-4 0
+START reference blocking-4
+COMPLETE reference blocking-4 0
+START reference zone-4
+COMPLETE reference zone-4 0
+START candidate zone-4
+COMPLETE candidate zone-4 0
+START candidate cache-4
+COMPLETE candidate cache-4 0
+START reference cache-4
+COMPLETE reference cache-4 0
+START reference upstream-4
+COMPLETE reference upstream-4 0
+START candidate upstream-4
+COMPLETE candidate upstream-4 0
+START reference blocking-5
+COMPLETE reference blocking-5 0
+START candidate blocking-5
+COMPLETE candidate blocking-5 0
+START candidate zone-5
+COMPLETE candidate zone-5 0
+START reference zone-5
+COMPLETE reference zone-5 0
+START reference cache-5
+COMPLETE reference cache-5 0
+START candidate cache-5
+COMPLETE candidate cache-5 0
+START candidate upstream-5
+COMPLETE candidate upstream-5 0
+START reference upstream-5
+COMPLETE reference upstream-5 0
+START candidate udp-1
+COMPLETE candidate udp-1 0
+START candidate dot-1
+COMPLETE candidate dot-1 0
+START candidate quic-1
+COMPLETE candidate quic-1 0
+START candidate persist-1
+COMPLETE candidate persist-1 0
+START candidate udp-2
+COMPLETE candidate udp-2 0
+START candidate dot-2
+COMPLETE candidate dot-2 0
+START candidate quic-2
+COMPLETE candidate quic-2 0
+START candidate persist-2
+COMPLETE candidate persist-2 0
+START candidate udp-3
+COMPLETE candidate udp-3 0
+START candidate dot-3
+COMPLETE candidate dot-3 0
+START candidate quic-3
+COMPLETE candidate quic-3 0
+START candidate persist-3
+COMPLETE candidate persist-3 0
+START candidate udp-4
+COMPLETE candidate udp-4 0
+START candidate dot-4
+COMPLETE candidate dot-4 0
+START candidate quic-4
+COMPLETE candidate quic-4 0
+START candidate persist-4
+COMPLETE candidate persist-4 0
+START candidate udp-5
+COMPLETE candidate udp-5 0
+START candidate dot-5
+COMPLETE candidate dot-5 0
+START candidate quic-5
+COMPLETE candidate quic-5 0
+START candidate persist-5
+COMPLETE candidate persist-5 0
+.....START blocking-1
+COMPLETE blocking-1 0
+START zone-1
+COMPLETE zone-1 0
+START cache-1
+COMPLETE cache-1 0
+START upstream-1
+COMPLETE upstream-1 0
+START blocking-2
+COMPLETE blocking-2 0
+START zone-2
+COMPLETE zone-2 0
+START cache-2
+COMPLETE cache-2 0
+START upstream-2
+COMPLETE upstream-2 0
+START blocking-3
+COMPLETE blocking-3 0
+START zone-3
+COMPLETE zone-3 0
+START cache-3
+COMPLETE cache-3 0
+START upstream-3
+COMPLETE upstream-3 0
+START blocking-4
+COMPLETE blocking-4 0
+START zone-4
+COMPLETE zone-4 0
+START cache-4
+COMPLETE cache-4 0
+START upstream-4
+COMPLETE upstream-4 0
+START blocking-5
+COMPLETE blocking-5 0
+START zone-5
+COMPLETE zone-5 0
+START cache-5
+COMPLETE cache-5 0
+START upstream-5
+COMPLETE upstream-5 0
+.START blocking-1
+COMPLETE blocking-1 0
+START zone-1
+COMPLETE zone-1 0
+START cache-1
+COMPLETE cache-1 0
+START upstream-1
+COMPLETE upstream-1 0
+START blocking-2
+COMPLETE blocking-2 0
+START zone-2
+COMPLETE zone-2 1
+START cache-2
+COMPLETE cache-2 0
+START upstream-2
+COMPLETE upstream-2 0
+START blocking-3
+COMPLETE blocking-3 0
+START zone-3
+COMPLETE zone-3 0
+START cache-3
+COMPLETE cache-3 0
+START upstream-3
+COMPLETE upstream-3 0
+START blocking-4
+COMPLETE blocking-4 0
+START zone-4
+COMPLETE zone-4 0
+START cache-4
+COMPLETE cache-4 0
+START upstream-4
+COMPLETE upstream-4 0
+START blocking-5
+COMPLETE blocking-5 0
+START zone-5
+COMPLETE zone-5 0
+START cache-5
+COMPLETE cache-5 0
+START upstream-5
+COMPLETE upstream-5 0
+START blocking-1
+COMPLETE blocking-1 0
+START zone-1
+COMPLETE zone-1 0
+START cache-1
+COMPLETE cache-1 0
+START upstream-1
+COMPLETE upstream-1 0
+START blocking-2
+COMPLETE blocking-2 0
+START zone-2
+COMPLETE zone-2 0
+START cache-2
+COMPLETE cache-2 0
+START upstream-2
+COMPLETE upstream-2 0
+START blocking-3
+COMPLETE blocking-3 0
+START zone-3
+COMPLETE zone-3 0
+START cache-3
+COMPLETE cache-3 0
+START upstream-3
+COMPLETE upstream-3 0
+START blocking-4
+COMPLETE blocking-4 0
+START zone-4
+COMPLETE zone-4 0
+START cache-4
+COMPLETE cache-4 0
+START upstream-4
+COMPLETE upstream-4 0
+START blocking-5
+COMPLETE blocking-5 0
+START zone-5
+COMPLETE zone-5 0
+START cache-5
+COMPLETE cache-5 0
+START upstream-5
+COMPLETE upstream-5 0
+.START blocking-1
+COMPLETE blocking-1 0
+START blocking-1
+COMPLETE blocking-1 0
+.......
+----------------------------------------------------------------------
+Ran 31 tests in 4.037s
+
+OK

@@ -1,0 +1,40 @@
+{
+  "at": "2026-11-15T20:49:37.593721+00:00",
+  "outcome": "interrupted_no_pass_credit",
+  "reason": "Additional local full-package validation duplicates the active required hosted CI check; free this sandbox for its newly owner-approved historical calibration. No test assertion, cycle count or timeout was relaxed.",
+  "go_argv": [
+    "go",
+    "test",
+    "-race",
+    "-count=1",
+    "-timeout=30m",
+    "github.com/robertherbaugh/kudurru/internal/auth/security"
+  ],
+  "process_group": 479188,
+  "members": [
+    {
+      "pid": 479188,
+      "parent": 1503,
+      "command": "bash"
+    },
+    {
+      "pid": 479189,
+      "parent": 479188,
+      "command": "python3"
+    },
+    {
+      "pid": 479206,
+      "parent": 479189,
+      "command": "go"
+    },
+    {
+      "pid": 491851,
+      "parent": 479206,
+      "command": "security.test"
+    }
+  ],
+  "owned_test_state_roots": [
+    "/tmp/TestIAMChurnCrossesFormerHistoryCapacity2445798727"
+  ],
+  "release_qualified": false
+}
