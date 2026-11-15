@@ -124,7 +124,7 @@ func TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger(t *testing.T) {
 	// request replacing one of 16 names; a SERVFAIL (an ingress refusal, a
 	// commit whose own publication was superseded, or the ledger's rate
 	// bound) is followed by a newly signed request for the same change.
-	const workers = 4
+	const workers = 16
 	var next, noerror, servfail, other atomic.Int64
 	var wg sync.WaitGroup
 	errs := make(chan error, workers)
