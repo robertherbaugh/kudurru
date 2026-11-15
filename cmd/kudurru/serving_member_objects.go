@@ -357,6 +357,9 @@ func (s *servingRuntime) forwardMemberCommand(ctx context.Context, token sqlite.
 	var refusal *api.Error
 	sent := false
 	err = s.withMemberForward(ctx, view, raw, attrs, func(ctx context.Context, principal auth.Principal, _ *servingauth.CredentialLifetime, current func(context.Context) error) error {
+		if s.memberBeforeSend != nil {
+			s.memberBeforeSend(ctx)
+		}
 		proof, err := clusterreplica.NewCredentialProof(raw)
 		if err != nil {
 			return err
@@ -393,6 +396,15 @@ func (s *servingRuntime) forwardMemberCommand(ctx context.Context, token sqlite.
 		return err
 	})
 	if err != nil {
+		if !sent && !errors.Is(err, clusterreplica.ErrOutcomeUnknown) && ctx.Err() != nil {
+			// Nothing was sent, or the exchange ended before it began, and
+			// the request itself ended: its lifetime ran out, or it was
+			// canceled, after the source was captured. Name that cause, as
+			// a capture refusal does, instead of an unavailable primary or
+			// a changed authority, which is what the ended context makes
+			// the forward report (PUB-FOLLOWER review, HA-OPEN7-FINISH).
+			return memberCaptureError(ctx, ctx.Err())
+		}
 		return objectForwardError(err, sent)
 	}
 	if refusal != nil {
