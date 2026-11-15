@@ -145,6 +145,11 @@ type servingRuntime struct {
 	// relays the answer; tests only. Nil does nothing.
 	memberRelay func(context.Context)
 
+	// memberBeforeSend runs on a follower inside a forwarded write's member
+	// scope, right before the command is sent to the primary; tests only.
+	// Nil does nothing.
+	memberBeforeSend func(context.Context)
+
 	// memberUpdateAnswered runs on the primary after a forwarded UPDATE was
 	// decided and before its answer is acknowledged to the follower; tests
 	// only. Nil does nothing.
