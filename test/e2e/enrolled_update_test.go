@@ -162,15 +162,12 @@ func enrolledAwaitDyn(t *testing.T, node *kudurrutest.Node, name, ip string, rco
 }
 
 // enrolledForwardBound is the follower's four-second forward bound
-// (memberForwardUpdateTimeout in cmd/kudurru), less the client side's
-// scheduling slack. A forwarded UPDATE answered SERVFAIL this late was not
-// sent, or not answered, within the bound: its outcome is unknown.
-const enrolledForwardBound = 3900 * time.Millisecond
-
-// enrolledBoundRepeats caps how often enrolledFollowerUpdate sends the same
-// signed message again after a SERVFAIL at the forward bound, for one
-// update and for one enrolledFollowerUpdates call.
-const enrolledBoundRepeats = 2
+// (memberForwardUpdateTimeout in cmd/kudurru). A forwarded UPDATE answered
+// SERVFAIL this late was not sent, or not answered, within the bound: its
+// outcome is unknown. Every forwarded UPDATE of these tests is sent once and
+// must get the primary's answer, so such an answer fails the test; the
+// slowest answer of each call is logged to show the margin.
+const enrolledForwardBound = 4 * time.Second
 
 // enrolledSignedUpdate builds one signed UPDATE and returns its exact wire
 // bytes and MAC, so that the same message can be sent again byte for byte.
@@ -221,18 +218,14 @@ func enrolledSendWire(t *testing.T, addr, secret string, tcp bool, wire []byte, 
 	return answer, nil
 }
 
-// enrolledFollowerUpdate sends one signed UPDATE through a follower and
-// requires rcode. With repeats nil the update is sent exactly once and any
-// other answer fails. Otherwise a SERVFAIL at the forward bound
-// (enrolledForwardBound or later), whose outcome is unknown, is logged and
-// the same signed message is sent again, byte for byte, as an RFC 2136
-// client does; it carries the same command ID, so the primary answers it
-// from the retained outcome of the first one (D381). Each committing update
-// requires its name to be unused, so a repeat that the primary ran again
-// would answer YXDOMAIN and fail here. *repeats counts those repeats and
-// may not exceed enrolledBoundRepeats; a SERVFAIL before the bound, and any
-// other rcode, fails at once.
-func enrolledFollowerUpdate(t *testing.T, follower *kudurrutest.Node, secret string, tcp bool, rcode int, repeats *int, build func(*dns.Msg)) {
+// enrolledFollowerUpdate sends one signed UPDATE through a follower, once,
+// and requires rcode: the primary's answer (D381). Any other answer fails,
+// SERVFAIL included. A SERVFAIL at the forward bound says that the outcome is
+// unknown; a client would send the same signed message again and get the
+// retained outcome (TestRootMemberFollowerUpdateRepeatIsAnsweredFromTheRetainedOutcome
+// in cmd/kudurru proves that), but the process tests require that a once-sent
+// update is answered (HA-OPEN7). slowest records the longest answer.
+func enrolledFollowerUpdate(t *testing.T, follower *kudurrutest.Node, secret string, tcp bool, rcode int, slowest *time.Duration, build func(*dns.Msg)) {
 	t.Helper()
 	var owner string
 	wire, mac := enrolledSignedUpdate(t, secret, func(m *dns.Msg) {
@@ -241,26 +234,22 @@ func enrolledFollowerUpdate(t *testing.T, follower *kudurrutest.Node, secret str
 			owner = m.Ns[len(m.Ns)-1].Header().Name
 		}
 	})
-	for attempt := 1; ; attempt++ {
-		sent := time.Now()
-		answer, err := enrolledSendWire(t, follower.Ports.DNS, secret, tcp, wire, mac)
-		elapsed := time.Since(sent)
-		switch {
-		case err != nil:
-			t.Fatal("signed UPDATE exchange failed", follower.Name, err, elapsed)
-		case answer.Opcode == dns.OpcodeUpdate && answer.Rcode == rcode:
-			if attempt > 1 {
-				t.Logf("UPDATE on %s (update of %s): the same signed message answered %s from the retained outcome after %s", follower.Name, owner, dns.RcodeToString[rcode], elapsed)
-			}
-			return
-		case repeats != nil && *repeats < enrolledBoundRepeats && answer.Opcode == dns.OpcodeUpdate && answer.Rcode == dns.RcodeServerFailure && elapsed >= enrolledForwardBound:
-			*repeats++
-			t.Logf("UPDATE on %s sent at %s answered SERVFAIL at the forward bound after %s (update of %s, tcp=%t); sending the same signed message again (%d of %d)",
-				follower.Name, sent.UTC().Format(time.RFC3339Nano), elapsed, owner, tcp, *repeats, enrolledBoundRepeats)
-		default:
-			t.Fatalf("UPDATE on %s sent at %s answered %s after %s, want %s (update of %s, tcp=%t, attempt %d)", follower.Name, sent.UTC().Format(time.RFC3339Nano),
-				dns.RcodeToString[answer.Rcode], elapsed, dns.RcodeToString[rcode], owner, tcp, attempt)
+	sent := time.Now()
+	answer, err := enrolledSendWire(t, follower.Ports.DNS, secret, tcp, wire, mac)
+	elapsed := time.Since(sent)
+	if err != nil {
+		t.Fatal("signed UPDATE exchange failed", follower.Name, err, elapsed)
+	}
+	if elapsed > *slowest {
+		*slowest = elapsed
+	}
+	if answer.Opcode != dns.OpcodeUpdate || answer.Rcode != rcode {
+		bound := ""
+		if answer.Rcode == dns.RcodeServerFailure && elapsed >= enrolledForwardBound-100*time.Millisecond {
+			bound = " at the forward bound (outcome unknown)"
 		}
+		t.Fatalf("UPDATE on %s sent at %s answered %s%s after %s, want %s (update of %s, tcp=%t)", follower.Name, sent.UTC().Format(time.RFC3339Nano),
+			dns.RcodeToString[answer.Rcode], bound, elapsed, dns.RcodeToString[rcode], owner, tcp)
 	}
 }
 
@@ -278,54 +267,45 @@ func enrolledInsertUnused(owner, ip string) func(*dns.Msg) {
 // prerequisite and an ungranted type are the primary's own answers and write
 // nothing. Every answer is signed by the follower. A follower that installed
 // a newer commit before it sent the update waits for its current publication
-// and sends it then, so no SERVFAIL before the forward bound remains: any
-// other rcode, REFUSED and SERVFAIL included, fails at once (HA-OPEN6).
-//
-// atBound accepts, at most enrolledBoundRepeats times for the whole call, a
-// SERVFAIL at the four-second bound, whose outcome is unknown, and then sends
-// the same signed message again, which must get the expected answer from
-// the retained outcome (enrolledFollowerUpdate, D381). The rejoined member
-// needs it: on the newly promoted primary a forwarded commit took 1.1 to 3.5
-// seconds to be published in the HA-OPEN6 diagnostic run (fix-diag01), and
-// the follower can spend seconds waiting for its own current publication
-// first, so a commit can complete after the bound. The first follower sends
-// every update once and accepts no SERVFAIL.
-func enrolledFollowerUpdates(t *testing.T, primary, follower *kudurrutest.Node, secret, name, ip string, atBound bool) {
+// and sends it then, so no SERVFAIL remains: each update is sent once, and
+// any other rcode, REFUSED and SERVFAIL included, fails at once. This holds
+// for the first follower and for the rejoined former primary forwarding to
+// the newly promoted one; HA-OPEN6 and HA-OPEN7 still accepted a SERVFAIL at
+// the four-second bound there and sent the same signed message again, but
+// none was needed in the HA-OPEN7 and HA-OPEN7-FINISH runs (HA-OPEN7-FINISH).
+func enrolledFollowerUpdates(t *testing.T, primary, follower *kudurrutest.Node, secret, name, ip string) {
 	t.Helper()
-	var repeats *int
-	if atBound {
-		repeats = new(int)
-		defer func() {
-			t.Logf("UPDATEs through %s: %d sent again after a SERVFAIL at the forward bound", follower.Name, *repeats)
-		}()
-	}
+	slowest := new(time.Duration)
+	defer func() {
+		t.Logf("UPDATEs through %s, each sent once: the slowest answer took %s (forward bound %s)", follower.Name, *slowest, enrolledForwardBound)
+	}()
 	for i, tcp := range []bool{false, true} {
 		owner := []string{name + "-udp.dyn.test.", name + "-tcp.dyn.test."}[i]
-		enrolledFollowerUpdate(t, follower, secret, tcp, dns.RcodeSuccess, repeats, enrolledInsertUnused(owner, ip))
+		enrolledFollowerUpdate(t, follower, secret, tcp, dns.RcodeSuccess, slowest, enrolledInsertUnused(owner, ip))
 		enrolledAwaitDyn(t, primary, owner, ip, dns.RcodeSuccess)
 		enrolledAwaitDyn(t, follower, owner, ip, dns.RcodeSuccess)
 	}
 	// The prerequisite "this RRset exists" fails on the primary's data.
 	prereq := name + "-prereq.dyn.test."
-	enrolledFollowerUpdate(t, follower, secret, false, dns.RcodeNXRrset, repeats, func(m *dns.Msg) {
+	enrolledFollowerUpdate(t, follower, secret, false, dns.RcodeNXRrset, slowest, func(m *dns.Msg) {
 		m.RRsetUsed([]dns.RR{&dns.A{Hdr: dns.RR_Header{Name: "absent.dyn.test.", Rrtype: dns.TypeA, Class: dns.ClassANY}}})
 		m.Insert([]dns.RR{enrolledUpdateA(prereq, "192.0.2.199")})
 	})
 	// The key is granted A records only.
 	ungranted := name + "-txt.dyn.test."
-	enrolledFollowerUpdate(t, follower, secret, true, dns.RcodeRefused, repeats, func(m *dns.Msg) {
+	enrolledFollowerUpdate(t, follower, secret, true, dns.RcodeRefused, slowest, func(m *dns.Msg) {
 		m.Insert([]dns.RR{&dns.TXT{Hdr: dns.RR_Header{Name: ungranted, Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 60}, Txt: []string{"refused"}}})
 	})
 	// A third update on the same follower proves that the refused ones changed
 	// nothing the primary then serves.
 	marker := name + "-after.dyn.test."
-	enrolledFollowerUpdate(t, follower, secret, false, dns.RcodeSuccess, repeats, enrolledInsertUnused(marker, ip))
+	enrolledFollowerUpdate(t, follower, secret, false, dns.RcodeSuccess, slowest, enrolledInsertUnused(marker, ip))
 	for _, node := range []*kudurrutest.Node{primary, follower} {
 		enrolledAwaitDyn(t, node, marker, ip, dns.RcodeSuccess)
 		enrolledAbsent(t, node, prereq, dns.TypeA)
 		enrolledAbsent(t, node, ungranted, dns.TypeTXT)
 	}
-	enrolledFollowerBurst(t, primary, follower, secret, name, ip, repeats)
+	enrolledFollowerBurst(t, primary, follower, secret, name, ip, slowest)
 }
 
 // enrolledFollowerBurst sends committing UPDATEs to the follower back to
@@ -337,15 +317,15 @@ func enrolledFollowerUpdates(t *testing.T, primary, follower *kudurrutest.Node, 
 // it with SERVFAIL in its writer check before any admission, and most of a
 // burst failed. The primary now waits for its current publication within the
 // command's four-second bound and captures again only when the writer check
-// was all that refused the update. repeats is enrolledFollowerUpdate's.
-func enrolledFollowerBurst(t *testing.T, primary, follower *kudurrutest.Node, secret, name, ip string, repeats *int) {
+// was all that refused the update. slowest is enrolledFollowerUpdate's.
+func enrolledFollowerBurst(t *testing.T, primary, follower *kudurrutest.Node, secret, name, ip string, slowest *time.Duration) {
 	t.Helper()
 	const burst = 8
 	var owners []string
 	started := time.Now()
 	for i := range burst {
 		owner := fmt.Sprintf("%s-burst%d.dyn.test.", name, i)
-		enrolledFollowerUpdate(t, follower, secret, false, dns.RcodeSuccess, repeats, enrolledInsertUnused(owner, ip))
+		enrolledFollowerUpdate(t, follower, secret, false, dns.RcodeSuccess, slowest, enrolledInsertUnused(owner, ip))
 		owners = append(owners, owner)
 	}
 	t.Logf("burst of %d UPDATEs on %s: all NOERROR in %s", burst, follower.Name, time.Since(started))

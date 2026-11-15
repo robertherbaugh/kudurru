@@ -431,7 +431,7 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 	// A signed RFC 2136 UPDATE sent to the follower commits once on the
 	// primary, which also answers its refusals (D381).
 	enrolledAwaitDyn(t, follower, "seed.dyn.test.", "192.0.2.100", dns.RcodeSuccess)
-	enrolledFollowerUpdates(t, primary, follower, updateSecret, "via-follower", "192.0.2.101", false)
+	enrolledFollowerUpdates(t, primary, follower, updateSecret, "via-follower", "192.0.2.101")
 	var forwarded api.BlockingCommandReceipt
 	apiB.request(t, http.MethodPost, "/dns/blocking", map[string]any{"blocking": false}, http.StatusAccepted, &forwarded)
 	if !forwarded.Committed || forwarded.Publication != "pending" || !forwarded.Disabled {
@@ -985,7 +985,7 @@ func testEnrolledProcessesWith(t *testing.T, promote bool, anchors *enrolledAnch
 		enrolledEventuallyUpdate(t, follower, updateSecret, func(m *dns.Msg) {
 			m.Insert([]dns.RR{enrolledUpdateA("promoted.dyn.test.", "192.0.2.104")})
 		})
-		enrolledFollowerUpdates(t, follower, primary, updateSecret, "via-rejoined", "192.0.2.105", true)
+		enrolledFollowerUpdates(t, follower, primary, updateSecret, "via-rejoined", "192.0.2.105")
 		enrolledAwaitDyn(t, primary, "promoted.dyn.test.", "192.0.2.104", dns.RcodeSuccess)
 		enrolledNeverApplied(t, "fenced-update.dyn.test.", primary, follower)
 		awaitDNS(primary, "later", "192.0.2.43", dns.RcodeSuccess)
