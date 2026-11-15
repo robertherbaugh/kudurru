@@ -2010,7 +2010,12 @@ right after their commit, when the commit's own generation has already started
 a preparation, and canceling it made every commit cost two preparations and let
 a node that commits steadily go without publishing. The Wake count is noted
 before a preparation reads its candidate; Wakes that arrive after that are
-answered by exactly one more preparation once it has published.
+answered by exactly one more preparation once it has published. An HTTP
+command whose own commit advanced the generation does not Wake at all
+(D407): the generation change already schedules a preparation that reads a
+candidate after the commit, and a Wake arriving after that read only
+published the same revision again, superseding every request captured on the
+first publication.
 
 ```mermaid
 flowchart LR

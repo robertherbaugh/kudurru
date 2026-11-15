@@ -159,6 +159,23 @@ func (s *servingRuntime) recaptureCommand(ctx context.Context, attempt func(bega
 	}
 }
 
+// wakeAfterCommand wakes the publisher after a successful current command of
+// an HTTP request, unless the command's commit advanced the generation past
+// the publication it was admitted on (servinghttp.CommittedPast, D407). Such a
+// commit already makes the publisher prepare a candidate read after it; a
+// Wake on top of it only made the publisher publish the same revision a
+// second time once it arrived after that preparation read its candidate
+// (D405), and that second publication refused, as superseded, every command
+// captured on the first one. A command that committed nothing new (a
+// deduplicated or unchanged result), an item of a multi-item request (its
+// lease is an earlier item's) and a request without a lease wake as before.
+func (s *servingRuntime) wakeAfterCommand(ctx context.Context) {
+	if ctx != nil && requestItemsFrom(ctx) == nil && servinghttp.CommittedPast(ctx, s.publisher) {
+		return
+	}
+	s.publisher.Wake()
+}
+
 // notDispatchedError is a current command's serving.ErrPending refusal
 // returned before any transaction body of its request began (D399): nothing
 // was applied, so the API answer may carry Retry-After. A refusal from inside

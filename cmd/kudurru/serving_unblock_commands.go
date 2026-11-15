@@ -36,7 +36,7 @@ func (s *servingRuntime) UnblockCommand(ctx context.Context, target unblock.Targ
 		return err
 	})
 	if err == nil {
-		s.publisher.Wake()
+		s.wakeAfterCommand(ctx)
 	}
 	return out, currentCommandAPIError(err)
 }

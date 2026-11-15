@@ -319,6 +319,16 @@ Rules of the recapture itself:
   chunks no head references. A preparation that outlasts the capture wait
   (one to three seconds under the race detector on a loaded machine) still
   refuses requests at capture; that limit stays open.
+- A command does not wake the publisher after its own commit advanced the
+  generation (D407, `servinghttp.CommittedPast`): that commit already makes
+  the publisher prepare a candidate read after it. With D405's coalescing,
+  a Wake that arrived after that preparation had read its candidate made
+  the publisher publish the same revision a second time, and that second
+  publication refused as superseded every command captured on the first
+  one, marked or not (the next command of the same client, typically). A
+  command that committed nothing new, an item of a multi-item request and
+  the other wakes (dependency watchers, cluster activation and promotion,
+  node-local settings, TSIG keys, blocking, edge blocks) are unchanged.
 - A follower's early admission and its forwarded commands stay bound to the
   follower's captured publication. The primary's entry for forwarded
   commands is bound to the member request's authority, not to a

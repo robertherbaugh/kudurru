@@ -251,7 +251,7 @@ func (h *servingHTTP) updateLocalUser(w http.ResponseWriter, r *http.Request) er
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	if err := h.clearOwnCookie(w, r, self); err != nil {
 		return err
 	}
@@ -289,7 +289,7 @@ func (h *servingHTTP) deleteLocalUser(w http.ResponseWriter, r *http.Request) er
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	if err := h.clearOwnCookie(w, r, self); err != nil {
 		return err
 	}
@@ -529,7 +529,7 @@ func (h *servingHTTP) mutateServiceAccount(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	if r.Method == http.MethodDelete {
 		w.WriteHeader(http.StatusNoContent)
 		return nil
@@ -674,7 +674,7 @@ func (h *servingHTTP) createServiceAccountToken(w http.ResponseWriter, r *http.R
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	return servingHTTPJSON(w, http.StatusCreated, api.CreatedToken{TokenInfo: servingHTTPTokenInfo(created), Token: wire})
 }
 
@@ -824,7 +824,7 @@ func (h *servingHTTP) mutateIdentityProvider(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	if r.Method == http.MethodDelete {
 		w.WriteHeader(http.StatusNoContent)
 		return nil

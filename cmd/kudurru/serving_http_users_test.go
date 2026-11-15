@@ -65,7 +65,9 @@ func localUsersStage(t *testing.T, f *servingHTTPFixture, fn func(context.Contex
 	if err := f.s.opts.Store.Command(t.Context(), f.s.opts.Store.Authority().Term, fn); err != nil {
 		t.Fatal(err)
 	}
-	f.s.publisher.Wake()
+	// The commit advanced the generation, which makes the publisher prepare
+	// it; a Wake on top would publish the same revision twice and supersede
+	// the next command's capture (D407).
 	localUsersFresh(t, f)
 }
 

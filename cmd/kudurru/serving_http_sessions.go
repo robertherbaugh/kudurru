@@ -150,7 +150,7 @@ func (h *servingHTTP) login(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	if refused != nil {
 		var locked *loginlimit.Locked
 		if errors.As(refused, &locked) {
@@ -211,7 +211,7 @@ func (h *servingHTTP) sealEnrollment(w http.ResponseWriter, r *http.Request, e s
 // sealEnrollmentWithin waits up to limit for a complete view containing the
 // committed enrollment. A follower waits for its own installation of it.
 func (h *servingHTTP) sealEnrollmentWithin(w http.ResponseWriter, r *http.Request, e security.Enrollment, limit time.Duration) error {
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	ctx, cancel := context.WithTimeout(r.Context(), limit)
 	defer cancel()
 	for {
@@ -342,7 +342,7 @@ func (h *servingHTTP) commitLogoutCurrent(r *http.Request) (func() bool, error) 
 	if err != nil {
 		return nil, err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	return responseCurrent, nil
 }
 
@@ -458,7 +458,7 @@ func (h *servingHTTP) revokeSession(w http.ResponseWriter, r *http.Request) erro
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	w.WriteHeader(204)
 	return nil
 }

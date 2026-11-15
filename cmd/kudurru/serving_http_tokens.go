@@ -179,7 +179,7 @@ func (h *servingHTTP) createToken(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	return servingHTTPJSON(w, 201, api.CreatedToken{TokenInfo: servingHTTPTokenInfo(created), Token: intent.Wire})
 }
 
@@ -323,7 +323,7 @@ func (h *servingHTTP) deleteToken(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	w.WriteHeader(204)
 	return nil
 }

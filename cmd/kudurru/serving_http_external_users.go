@@ -164,7 +164,7 @@ func (h *servingHTTP) externalUserCommand(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		return err
 	}
-	h.opts.Runtime.publisher.Wake()
+	h.opts.Runtime.wakeAfterCommand(r.Context())
 	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
