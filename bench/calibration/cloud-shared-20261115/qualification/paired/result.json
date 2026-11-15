@@ -1,0 +1,14 @@
+{
+  "mode": "paired",
+  "measurement_complete": true,
+  "release_qualified": false,
+  "exit_code": 0,
+  "reference_exit": 0,
+  "candidate_exit": 0,
+  "comparison_eligible": true,
+  "comparisons": {
+    "blocking-zone": 0,
+    "cache": 0,
+    "upstream": 0
+  }
+}

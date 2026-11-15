@@ -1,0 +1,18 @@
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/upstream
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkStrategies/fast/parallel_best-6         	   13053	     93299 ns/op	        86.00 p50-us	       204.0 p99-us	   12989 B/op	     202 allocs/op
+BenchmarkStrategies/fast/strict-6                	   15034	     79558 ns/op	        74.00 p50-us	       145.0 p99-us	    6238 B/op	     101 allocs/op
+BenchmarkStrategies/fast/random-6                	   15277	     78750 ns/op	        74.00 p50-us	       139.0 p99-us	    6249 B/op	     101 allocs/op
+BenchmarkStrategies/fast/rtt_weighted-6          	   14473	     81734 ns/op	        76.00 p50-us	       149.0 p99-us	    6275 B/op	     102 allocs/op
+BenchmarkStrategies/slow-first/parallel_best-6   	   12247	     96543 ns/op	        90.00 p50-us	       226.0 p99-us	   13052 B/op	     203 allocs/op
+BenchmarkStrategies/slow-first/strict-6          	     524	   2301718 ns/op	      2296 p50-us	      2410 p99-us	    6329 B/op	     102 allocs/op
+BenchmarkStrategies/slow-first/random-6          	    1490	    841465 ns/op	       137.0 p50-us	      2377 p99-us	    6273 B/op	     101 allocs/op
+BenchmarkStrategies/slow-first/rtt_weighted-6    	    9619	    144010 ns/op	        85.00 p50-us	      2269 p99-us	    6278 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/parallel_best-6       	     667	   1759224 ns/op	      1301 p50-us	      3458 p99-us	   13169 B/op	     204 allocs/op
+BenchmarkStrategies/jitter/strict-6              	     558	   2219176 ns/op	      2300 p50-us	      3425 p99-us	    6327 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/random-6              	     522	   2267565 ns/op	      2322 p50-us	      3452 p99-us	    6339 B/op	     102 allocs/op
+BenchmarkStrategies/jitter/rtt_weighted-6        	     559	   2189712 ns/op	      2322 p50-us	      3476 p99-us	    6359 B/op	     103 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/upstream	14.933s

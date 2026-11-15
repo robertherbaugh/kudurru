@@ -1,0 +1,110 @@
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/blocking
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkLatency/suffix-1M/hit-6         	 1343950	       896.8 ns/op	       772.0 p50-ns	      1609 p99-ns	      2506 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/suffix-1M/miss-6        	 2269812	       478.2 ns/op	       322.0 p50-ns	      1226 p99-ns	      2163 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/exact-1M/hit-6          	 1245180	       947.7 ns/op	       830.0 p50-ns	      1478 p99-ns	      1943 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/exact-1M/miss-6         	 3497702	       351.2 ns/op	       238.0 p50-ns	       813.0 p99-ns	      1516 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/policy-3M/hit-6         	  994732	      1244 ns/op	      1080 p50-ns	      2255 p99-ns	     12331 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/policy-3M/miss-6        	 1000000	      1090 ns/op	       898.0 p50-ns	      2120 p99-ns	     12143 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/stevenblack/hit-6       	 3996709	       289.7 ns/op	       222.0 p50-ns	       403.0 p99-ns	       588.0 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/stevenblack/miss-6      	 4899481	       232.4 ns/op	       108.0 p50-ns	       567.0 p99-ns	       892.0 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/regex-100/miss-6        	 1915652	       624.3 ns/op	       523.0 p50-ns	       996.0 p99-ns	      1586 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/regex-500/miss-6        	 1653934	       735.9 ns/op	       597.0 p50-ns	      1503 p99-ns	      3790 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/regex-1000/miss-6       	 1419950	       848.3 ns/op	       692.0 p50-ns	      2240 p99-ns	      8611 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkLatency/timer-6                 	14716869	        83.17 ns/op	        29.00 p50-ns	        47.00 p99-ns	        61.00 p999-ns	       0 B/op	       0 allocs/op
+BenchmarkEvaluate/suffix-1M/hit-6        	 1353012	       853.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEvaluate/suffix-1M/miss-6       	 4022241	       289.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEvaluate/exact-1M/hit-6         	 1673167	       709.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEvaluate/exact-1M/miss-6        	 4965351	       242.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEvaluate/policy-3M/hit-6        	 1029952	      1229 ns/op	       0 B/op	       0 allocs/op
+BenchmarkEvaluate/policy-3M/miss-6       	 1000000	      1133 ns/op	       0 B/op	       0 allocs/op
+BenchmarkCompile/adblock-1M-6            	       1	1136853494 ns/op	  23.82 MB/s	   1000000 entries	121457792 B/op	  141144 allocs/op
+BenchmarkCompile/hosts-1M-6              	       2	1059071622 ns/op	  30.29 MB/s	   1000000 entries	152876000 B/op	    2709 allocs/op
+BenchmarkCompile/unchanged-1M-6          	      13	  84376722 ns/op	 320.91 MB/s	   65984 B/op	       8 allocs/op
+BenchmarkMemory/3M-6                     	       1	3152554450 ns/op	        11.52 base-rss-MB	         3.130 compile-s	        24.31 engine-B/entry	   3000000 entries	        78.60 heap-MB	       141.3 peak-rss-MB	        92.84 rss-MB	   42592 B/op	      55 allocs/op
+BenchmarkModifiers/host9999.example-6    	  997533	      1316 ns/op	       0 B/op	       0 allocs/op
+BenchmarkModifiers/unrelated.invalid-6   	 3179455	       400.1 ns/op	       0 B/op	       0 allocs/op
+BenchmarkModifiers/dense-1500-6          	   20361	     62541 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/blocking	45.144s
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/blocking/internal/synth	0.004s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/blocking/matcher
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkLazyDFA/unindexed-50/warm-6  	 3175226	       355.6 ns/op	    476496 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFA/unindexed-50/saturated-6         	   92832	     11296 ns/op	    476496 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFA/unindexed-50/cold-6              	   94618	     11988 ns/op	    476496 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFA/unindexed-100/warm-6             	 1654972	       845.1 ns/op	   1019328 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFA/unindexed-100/saturated-6        	   47497	     23738 ns/op	   1019328 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFA/unindexed-100/cold-6             	   43396	     28463 ns/op	   1019328 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFA/unindexed-500/warm-6             	  519801	      2359 ns/op	   6889491 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFA/unindexed-500/saturated-6        	   10000	    109769 ns/op	   6889491 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFA/unindexed-500/cold-6             	    8894	    132077 ns/op	   6889491 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFA/unindexed-1000/warm-6            	  254510	      4964 ns/op	  18581618 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFA/unindexed-1000/saturated-6       	    4641	    248862 ns/op	  18581618 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFA/unindexed-1000/cold-6            	    3080	    406742 ns/op	  18581618 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkUnindexedRegexpReference/50-6            	  126091	      9377 ns/op	       0 B/op	       0 allocs/op
+BenchmarkUnindexedRegexpReference/100-6           	   62202	     19516 ns/op	       0 B/op	       0 allocs/op
+BenchmarkUnindexedRegexpReference/500-6           	   10000	    109460 ns/op	       0 B/op	       0 allocs/op
+BenchmarkUnindexedRegexpReference/1000-6          	    4700	    251774 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLazyDFAParallel/saturated=false-6        	  577666	      1992 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLazyDFAParallel/saturated=true-6         	   14115	     86700 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-50/miss/warm-6        	 2350633	       513.7 ns/op	    562004 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-50/miss/cold-6        	   86364	     12276 ns/op	    562004 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-50/miss/saturated-6   	  129211	      9508 ns/op	    562004 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-50/early-hit/warm-6   	 1849208	       640.1 ns/op	    562004 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-50/early-hit/cold-6   	   71126	     17132 ns/op	    562004 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-50/early-hit/saturated-6         	   95806	     12496 ns/op	    562004 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-50/late-hit/warm-6               	 2005552	       613.3 ns/op	    562004 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-50/late-hit/cold-6               	   75564	     15239 ns/op	    562004 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-50/late-hit/saturated-6          	  100092	     12361 ns/op	    562004 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-100/miss/warm-6                  	 1904865	       632.3 ns/op	   1123944 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-100/miss/cold-6                  	   41602	     25007 ns/op	   1123944 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-100/miss/saturated-6             	   67930	     18071 ns/op	   1123944 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-100/early-hit/warm-6             	 2191518	       548.0 ns/op	   1123944 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-100/early-hit/cold-6             	   58422	     20098 ns/op	   1123944 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-100/early-hit/saturated-6        	   78841	     15191 ns/op	   1123944 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-100/late-hit/warm-6              	 1571426	       763.2 ns/op	   1123944 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-100/late-hit/cold-6              	   40874	     29010 ns/op	   1123944 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-100/late-hit/saturated-6         	   48412	     23058 ns/op	   1123944 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-500/miss/warm-6                  	  704484	      1695 ns/op	   5487384 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-500/miss/cold-6                  	    9999	    119856 ns/op	   5487384 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-500/miss/saturated-6             	   13617	     88686 ns/op	   5487384 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-500/early-hit/warm-6             	 2294032	       522.9 ns/op	   5487384 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-500/early-hit/cold-6             	   43974	     25366 ns/op	   5487384 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-500/early-hit/saturated-6        	   78645	     15527 ns/op	   5487384 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-500/late-hit/warm-6              	  587970	      2039 ns/op	   5487384 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-500/late-hit/cold-6              	    8470	    134901 ns/op	   5487384 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-500/late-hit/saturated-6         	   12069	     99637 ns/op	   5487384 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-1000/miss/warm-6                 	  370941	      3189 ns/op	  10974704 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-1000/miss/cold-6                 	    4218	    285985 ns/op	  10974704 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-1000/miss/saturated-6            	    5472	    222841 ns/op	  10974704 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-1000/early-hit/warm-6            	 2212534	       535.0 ns/op	  10974704 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-1000/early-hit/cold-6            	   35146	     32456 ns/op	  10974704 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-1000/early-hit/saturated-6       	   79735	     15132 ns/op	  10974704 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-1000/late-hit/warm-6             	  327462	      3928 ns/op	  10974704 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-1000/late-hit/cold-6             	    3742	    316746 ns/op	  10974704 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFADense/rules-1000/late-hit/saturated-6        	    5035	    232153 ns/op	  10974704 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFALongInput/bytes-256/warm-6                   	  454408	      2614 ns/op	  97.92 MB/s	    311198 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFALongInput/bytes-256/cold-6                   	   24043	     50921 ns/op	   5.03 MB/s	    311198 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFALongInput/bytes-256/saturated-6              	    1413	    903858 ns/op	   0.28 MB/s	    311198 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFALongInput/bytes-4096/warm-6                  	   31623	     37932 ns/op	 107.98 MB/s	    311198 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFALongInput/bytes-4096/cold-6                  	   12634	     93056 ns/op	  44.02 MB/s	    311198 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFALongInput/bytes-4096/saturated-6             	      82	  14463343 ns/op	   0.28 MB/s	    311198 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFALongInput/bytes-16384/warm-6                 	    7952	    155292 ns/op	 105.50 MB/s	    311198 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFALongInput/bytes-16384/cold-6                 	    5932	    208790 ns/op	  78.47 MB/s	    311198 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFALongInput/bytes-16384/saturated-6            	      21	  55237564 ns/op	   0.30 MB/s	    311198 reserved-B	       0 B/op	       0 allocs/op
+BenchmarkLazyDFAStateGrowth/cache-512/cold-to-saturation-6   	     456	   2622093 ns/op	      2048 names/op	      3488 reserved-B	         3.000 transitions/op	       0 B/op	       0 allocs/op
+BenchmarkLazyDFAStateGrowth/cache-512/saturated-6            	     445	   2657793 ns/op	      2048 names/op	      3488 reserved-B	         0 transitions/op	       0 B/op	       0 allocs/op
+BenchmarkLazyDFAStateGrowth/cache-4096/cold-to-saturation-6  	     438	   2679523 ns/op	      2048 names/op	      7072 reserved-B	        55.00 transitions/op	       0 B/op	       0 allocs/op
+BenchmarkLazyDFAStateGrowth/cache-4096/saturated-6           	     466	   2573714 ns/op	      2048 names/op	      7072 reserved-B	         0 transitions/op	       0 B/op	       0 allocs/op
+BenchmarkLazyDFAStateGrowth/cache-65536/cold-to-saturation-6 	     469	   2653928 ns/op	      2048 names/op	     68512 reserved-B	       762.0 transitions/op	       0 B/op	       0 allocs/op
+BenchmarkLazyDFAStateGrowth/cache-65536/saturated-6          	     520	   2282812 ns/op	      2048 names/op	     68512 reserved-B	         0 transitions/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/blocking/matcher	84.428s
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/blocking/parser	0.003s

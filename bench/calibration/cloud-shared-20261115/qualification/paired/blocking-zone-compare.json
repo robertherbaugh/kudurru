@@ -1,0 +1,27 @@
+{
+  "argv": [
+    "go",
+    "run",
+    "./hack/benchgate",
+    "-samples",
+    "5",
+    "-procs",
+    "6",
+    "-strict-cpu",
+    "-threshold",
+    "20",
+    "-limits",
+    "/home/vercel-sandbox/kudurru/.context/cloud-benchmark-method/bench/limits.txt",
+    "-baseline",
+    "/home/vercel-sandbox/kudurru/.context/release-cloud-calibration-20261115/qualification/paired/reference/blocking-zone.txt",
+    "/home/vercel-sandbox/kudurru/.context/release-cloud-calibration-20261115/qualification/paired/candidate/blocking-zone.txt"
+  ],
+  "child_exit_code": 0,
+  "stop_reason": null,
+  "minimum_free_bytes": 11262124032,
+  "pid": 645772,
+  "wall_seconds": 0.20437194400074077,
+  "post_free_bytes": 11262124032,
+  "output_bytes": 51432,
+  "group_reaped": true
+}

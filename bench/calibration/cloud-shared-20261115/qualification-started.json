@@ -1,0 +1,22 @@
+{
+  "at": "2026-11-15T21:08:23.237223+00:00",
+  "method_source": "3ff60b9f21f9d2abe114eed418b2179d6f28032d",
+  "argv": [
+    "/usr/bin/python3",
+    "-B",
+    "/home/vercel-sandbox/kudurru/.context/cloud-benchmark-method/hack/bench-dedicated.py",
+    "qualify",
+    "--host-record",
+    "/home/vercel-sandbox/kudurru/.context/release-cloud-calibration-20261115/host-reviewed.json",
+    "--reference",
+    "/home/vercel-sandbox/kudurru/.context/benchmark-reference-0cc9565e",
+    "--calibration",
+    "/home/vercel-sandbox/kudurru/.context/release-cloud-calibration-20261115/calibration",
+    "--approval",
+    "/home/vercel-sandbox/kudurru/.context/release-cloud-calibration-20261115/approval.json",
+    "--output",
+    "/home/vercel-sandbox/kudurru/.context/release-cloud-calibration-20261115/qualification"
+  ],
+  "orchestration_sha256": "d08e349d47cd05dae9f41d097827785a0039d78cd15cffc2f2b93c7c0546f9d9",
+  "release_qualified": false
+}

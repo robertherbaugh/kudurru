@@ -1,0 +1,11 @@
+{
+  "mode": "reference-interleaved",
+  "measurement_complete": true,
+  "release_qualified": false,
+  "exit_code": 0,
+  "reports": {
+    "blocking-zone": "6e5514972e55484f0f10a226173e0e55b7c90a24be7479e540ababa6aa3eb57f",
+    "cache": "14e6c05306c0af9a872f139b4469acfffa3223feaad429fcf6cbabe13cb4d9b3",
+    "upstream": "cf0965d839c59e72becb4854eb19e1a8d855dc8213646850ca8a3f2cb2317b51"
+  }
+}

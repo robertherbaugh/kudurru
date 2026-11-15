@@ -1,0 +1,632 @@
+[
+  {
+    "role": "reference",
+    "name": "BenchmarkLatency/suffix-1M/hit",
+    "unit": "p99-ns",
+    "values": [
+      1383.0,
+      1415.0,
+      1580.0,
+      1395.0,
+      1909.0
+    ],
+    "median": 1415.0,
+    "limit": 2000.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkLatency/suffix-1M/miss",
+    "unit": "p99-ns",
+    "values": [
+      853.0,
+      780.0,
+      932.0,
+      845.0,
+      1042.0
+    ],
+    "median": 853.0,
+    "limit": 2000.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkMemory/3M",
+    "unit": "rss-MB",
+    "values": [
+      90.2,
+      90.0,
+      89.56,
+      90.0,
+      90.14
+    ],
+    "median": 90.0,
+    "limit": 150.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkCompile/adblock-1M",
+    "unit": "ns/op",
+    "values": [
+      1038166706.0,
+      1086262076.0,
+      1021739093.0,
+      1066151348.0,
+      1207744479.0
+    ],
+    "median": 1066151348.0,
+    "limit": 5000000000.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkCompile/hosts-1M",
+    "unit": "ns/op",
+    "values": [
+      1004991138.0,
+      1001329450.0,
+      966329484.0,
+      984916018.0,
+      1027806509.0
+    ],
+    "median": 1001329450.0,
+    "limit": 5000000000.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkEvaluate/exact-1M/hit",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 0.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkEvaluate/exact-1M/miss",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 0.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkEvaluate/policy-3M/hit",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 0.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkEvaluate/policy-3M/miss",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 0.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkEvaluate/suffix-1M/hit",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 0.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkEvaluate/suffix-1M/miss",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 0.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkLookup100k/cname",
+    "unit": "p99-ns",
+    "values": [
+      1294.0,
+      1842.0,
+      1496.0,
+      1458.0,
+      1962.0
+    ],
+    "median": 1496.0,
+    "limit": 2000.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkLookup100k/hit",
+    "unit": "p99-ns",
+    "values": [
+      800.0,
+      831.0,
+      849.0,
+      804.0,
+      822.0
+    ],
+    "median": 822.0,
+    "limit": 2000.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkLookup100k/nodata",
+    "unit": "p99-ns",
+    "values": [
+      589.0,
+      678.0,
+      664.0,
+      610.0,
+      594.0
+    ],
+    "median": 610.0,
+    "limit": 2000.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkLookup100k/nxdomain",
+    "unit": "p99-ns",
+    "values": [
+      569.0,
+      662.0,
+      510.0,
+      468.0,
+      520.0
+    ],
+    "median": 520.0,
+    "limit": 2000.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkLookup100k/wildcard",
+    "unit": "p99-ns",
+    "values": [
+      1321.0,
+      1594.0,
+      1422.0,
+      1349.0,
+      1311.0
+    ],
+    "median": 1349.0,
+    "limit": 2000.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkLookup100k/cname",
+    "unit": "allocs/op",
+    "values": [
+      2.0,
+      2.0,
+      2.0,
+      2.0,
+      2.0
+    ],
+    "median": 2.0,
+    "limit": 3.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkLookup100k/hit",
+    "unit": "allocs/op",
+    "values": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "median": 1.0,
+    "limit": 3.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkLookup100k/nodata",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 3.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkLookup100k/nxdomain",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 3.0,
+    "pass": true
+  },
+  {
+    "role": "reference",
+    "name": "BenchmarkLookup100k/wildcard",
+    "unit": "allocs/op",
+    "values": [
+      3.0,
+      3.0,
+      3.0,
+      3.0,
+      3.0
+    ],
+    "median": 3.0,
+    "limit": 3.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkLatency/suffix-1M/hit",
+    "unit": "p99-ns",
+    "values": [
+      1359.0,
+      1304.0,
+      1609.0,
+      1690.0,
+      1561.0
+    ],
+    "median": 1561.0,
+    "limit": 2000.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkLatency/suffix-1M/miss",
+    "unit": "p99-ns",
+    "values": [
+      845.0,
+      677.0,
+      1226.0,
+      993.0,
+      893.0
+    ],
+    "median": 893.0,
+    "limit": 2000.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkMemory/3M",
+    "unit": "rss-MB",
+    "values": [
+      93.16,
+      92.86,
+      92.84,
+      93.13,
+      93.38
+    ],
+    "median": 93.13,
+    "limit": 150.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkCompile/adblock-1M",
+    "unit": "ns/op",
+    "values": [
+      1041044033.0,
+      1034131774.0,
+      1136853494.0,
+      1033640600.0,
+      1069153612.0
+    ],
+    "median": 1041044033.0,
+    "limit": 5000000000.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkCompile/hosts-1M",
+    "unit": "ns/op",
+    "values": [
+      1004399470.0,
+      965367060.0,
+      1059071622.0,
+      1268815356.0,
+      1131469340.0
+    ],
+    "median": 1059071622.0,
+    "limit": 5000000000.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkEvaluate/exact-1M/hit",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 0.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkEvaluate/exact-1M/miss",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 0.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkEvaluate/policy-3M/hit",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 0.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkEvaluate/policy-3M/miss",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 0.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkEvaluate/suffix-1M/hit",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 0.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkEvaluate/suffix-1M/miss",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 0.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkLookup100k/cname",
+    "unit": "p99-ns",
+    "values": [
+      1503.0,
+      1369.0,
+      1473.0,
+      1485.0,
+      1363.0
+    ],
+    "median": 1473.0,
+    "limit": 2000.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkLookup100k/hit",
+    "unit": "p99-ns",
+    "values": [
+      838.0,
+      789.0,
+      806.0,
+      815.0,
+      792.0
+    ],
+    "median": 806.0,
+    "limit": 2000.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkLookup100k/nodata",
+    "unit": "p99-ns",
+    "values": [
+      771.0,
+      567.0,
+      574.0,
+      729.0,
+      616.0
+    ],
+    "median": 616.0,
+    "limit": 2000.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkLookup100k/nxdomain",
+    "unit": "p99-ns",
+    "values": [
+      616.0,
+      526.0,
+      470.0,
+      608.0,
+      456.0
+    ],
+    "median": 526.0,
+    "limit": 2000.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkLookup100k/wildcard",
+    "unit": "p99-ns",
+    "values": [
+      1411.0,
+      1274.0,
+      1308.0,
+      1543.0,
+      1406.0
+    ],
+    "median": 1406.0,
+    "limit": 2000.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkLookup100k/cname",
+    "unit": "allocs/op",
+    "values": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "median": 1.0,
+    "limit": 3.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkLookup100k/hit",
+    "unit": "allocs/op",
+    "values": [
+      1.0,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "median": 1.0,
+    "limit": 3.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkLookup100k/nodata",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 3.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkLookup100k/nxdomain",
+    "unit": "allocs/op",
+    "values": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "median": 0.0,
+    "limit": 3.0,
+    "pass": true
+  },
+  {
+    "role": "candidate",
+    "name": "BenchmarkLookup100k/wildcard",
+    "unit": "allocs/op",
+    "values": [
+      3.0,
+      3.0,
+      3.0,
+      3.0,
+      3.0
+    ],
+    "median": 3.0,
+    "limit": 3.0,
+    "pass": true
+  }
+]

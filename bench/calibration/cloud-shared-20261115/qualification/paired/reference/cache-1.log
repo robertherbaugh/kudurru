@@ -1,0 +1,12 @@
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkGet/hit-6   	 1816329	       671.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/miss-6  	 7433632	       136.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkGet/hit-parallel-6         	 6133760	       191.3 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMakeKey-6                  	24263100	        47.97 ns/op	      24 B/op	       1 allocs/op
+BenchmarkSet-6                      	 1788079	       703.8 ns/op	     112 B/op	       1 allocs/op
+BenchmarkMemory/1000k-6             	       1	1317538568 ns/op	       292.8 bytes/entry	       173.9 overhead-bytes/entry	375476544 B/op	 4012187 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache	8.020s

@@ -1,0 +1,414 @@
+STATUS    BENCHMARK                                                   UNIT            BASELINE    CURRENT     DETAIL
+ok        BenchmarkLatency/suffix-1M/hit                              B/op            0           0           +0.0%
+ok        BenchmarkLatency/suffix-1M/hit                              allocs/op       0           0           +0.0%
+ok        BenchmarkLatency/suffix-1M/hit                              ns/op           846.9       894.3       +5.6%
+ok        BenchmarkLatency/suffix-1M/hit                              p50-ns          715         769         +7.6%
+ok        BenchmarkLatency/suffix-1M/hit                              p99-ns          1415        1561        +10.3%
+ok        BenchmarkLatency/suffix-1M/miss                             B/op            0           0           +0.0%
+ok        BenchmarkLatency/suffix-1M/miss                             allocs/op       0           0           +0.0%
+ok        BenchmarkLatency/suffix-1M/miss                             ns/op           365.8       372.8       +1.9%
+ok        BenchmarkLatency/suffix-1M/miss                             p50-ns          251         255         +1.6%
+ok        BenchmarkLatency/suffix-1M/miss                             p99-ns          853         893         +4.7%
+ok        BenchmarkLatency/exact-1M/hit                               B/op            0           0           +0.0%
+ok        BenchmarkLatency/exact-1M/hit                               allocs/op       0           0           +0.0%
+ok        BenchmarkLatency/exact-1M/hit                               ns/op           789.2       766         -2.9%
+ok        BenchmarkLatency/exact-1M/hit                               p50-ns          669         665         -0.6%
+ok        BenchmarkLatency/exact-1M/hit                               p99-ns          1203        1203        +0.0%
+ok        BenchmarkLatency/exact-1M/miss                              B/op            0           0           +0.0%
+ok        BenchmarkLatency/exact-1M/miss                              allocs/op       0           0           +0.0%
+ok        BenchmarkLatency/exact-1M/miss                              ns/op           271.6       297.8       +9.6%
+ok        BenchmarkLatency/exact-1M/miss                              p50-ns          190         185         -2.6%
+ok        BenchmarkLatency/exact-1M/miss                              p99-ns          660         701         +6.2%
+ok        BenchmarkLatency/policy-3M/hit                              B/op            0           0           +0.0%
+ok        BenchmarkLatency/policy-3M/hit                              allocs/op       0           0           +0.0%
+ok        BenchmarkLatency/policy-3M/hit                              ns/op           1135        1204        +6.1%
+ok        BenchmarkLatency/policy-3M/hit                              p50-ns          988         1048        +6.1%
+ok        BenchmarkLatency/policy-3M/hit                              p99-ns          1852        2118        +14.4%
+ok        BenchmarkLatency/policy-3M/miss                             B/op            0           0           +0.0%
+ok        BenchmarkLatency/policy-3M/miss                             allocs/op       0           0           +0.0%
+improved  BenchmarkLatency/policy-3M/miss                             ns/op           2017        1051        -47.9% (consider refreshing the baseline)
+improved  BenchmarkLatency/policy-3M/miss                             p50-ns          1769        871         -50.8% (consider refreshing the baseline)
+improved  BenchmarkLatency/policy-3M/miss                             p99-ns          4085        1954        -52.2% (consider refreshing the baseline)
+ok        BenchmarkLatency/stevenblack/hit                            B/op            0           0           +0.0%
+ok        BenchmarkLatency/stevenblack/hit                            allocs/op       0           0           +0.0%
+ok        BenchmarkLatency/stevenblack/hit                            ns/op           294.9       287.9       -2.4%
+ok        BenchmarkLatency/stevenblack/hit                            p50-ns          217         221         +1.8%
+ok        BenchmarkLatency/stevenblack/hit                            p99-ns          404         422         +4.5%
+ok        BenchmarkLatency/stevenblack/miss                           B/op            0           0           +0.0%
+ok        BenchmarkLatency/stevenblack/miss                           allocs/op       0           0           +0.0%
+ok        BenchmarkLatency/stevenblack/miss                           ns/op           203.5       201         -1.2%
+ok        BenchmarkLatency/stevenblack/miss                           p50-ns          108         107         -0.9%
+ok        BenchmarkLatency/stevenblack/miss                           p99-ns          440         441         +0.2%
+ok        BenchmarkLatency/regex-100/miss                             B/op            0           0           +0.0%
+ok        BenchmarkLatency/regex-100/miss                             allocs/op       0           0           +0.0%
+improved  BenchmarkLatency/regex-100/miss                             ns/op           1467        625.3       -57.4% (consider refreshing the baseline)
+improved  BenchmarkLatency/regex-100/miss                             p50-ns          1331        524         -60.6% (consider refreshing the baseline)
+improved  BenchmarkLatency/regex-100/miss                             p99-ns          2322        998         -57.0% (consider refreshing the baseline)
+ok        BenchmarkLatency/regex-500/miss                             B/op            0           0           +0.0%
+ok        BenchmarkLatency/regex-500/miss                             allocs/op       0           0           +0.0%
+improved  BenchmarkLatency/regex-500/miss                             ns/op           5004        700.9       -86.0% (consider refreshing the baseline)
+improved  BenchmarkLatency/regex-500/miss                             p50-ns          4712        586         -87.6% (consider refreshing the baseline)
+improved  BenchmarkLatency/regex-500/miss                             p99-ns          10520       1371        -87.0% (consider refreshing the baseline)
+ok        BenchmarkLatency/regex-1000/miss                            B/op            21          0           -100.0%
+ok        BenchmarkLatency/regex-1000/miss                            allocs/op       0           0           +0.0%
+improved  BenchmarkLatency/regex-1000/miss                            ns/op           9346        833         -91.1% (consider refreshing the baseline)
+improved  BenchmarkLatency/regex-1000/miss                            p50-ns          8542        683         -92.0% (consider refreshing the baseline)
+improved  BenchmarkLatency/regex-1000/miss                            p99-ns          25876       2153        -91.7% (consider refreshing the baseline)
+ok        BenchmarkLatency/timer                                      B/op            0           0           +0.0%
+ok        BenchmarkLatency/timer                                      allocs/op       0           0           +0.0%
+ok        BenchmarkEvaluate/suffix-1M/hit                             B/op            0           0           +0.0%
+ok        BenchmarkEvaluate/suffix-1M/hit                             allocs/op       0           0           +0.0%
+ok        BenchmarkEvaluate/suffix-1M/hit                             ns/op           761.1       767.6       +0.9%
+ok        BenchmarkEvaluate/suffix-1M/miss                            B/op            0           0           +0.0%
+ok        BenchmarkEvaluate/suffix-1M/miss                            allocs/op       0           0           +0.0%
+ok        BenchmarkEvaluate/suffix-1M/miss                            ns/op           247.2       234.8       -5.0%
+ok        BenchmarkEvaluate/exact-1M/hit                              B/op            0           0           +0.0%
+ok        BenchmarkEvaluate/exact-1M/hit                              allocs/op       0           0           +0.0%
+ok        BenchmarkEvaluate/exact-1M/hit                              ns/op           689.2       663.4       -3.7%
+ok        BenchmarkEvaluate/exact-1M/miss                             B/op            0           0           +0.0%
+ok        BenchmarkEvaluate/exact-1M/miss                             allocs/op       0           0           +0.0%
+ok        BenchmarkEvaluate/exact-1M/miss                             ns/op           173.7       174.8       +0.6%
+ok        BenchmarkEvaluate/policy-3M/hit                             B/op            0           0           +0.0%
+ok        BenchmarkEvaluate/policy-3M/hit                             allocs/op       0           0           +0.0%
+ok        BenchmarkEvaluate/policy-3M/hit                             ns/op           1027        983.6       -4.2%
+ok        BenchmarkEvaluate/policy-3M/miss                            B/op            0           0           +0.0%
+ok        BenchmarkEvaluate/policy-3M/miss                            allocs/op       0           0           +0.0%
+improved  BenchmarkEvaluate/policy-3M/miss                            ns/op           1874        912.3       -51.3% (consider refreshing the baseline)
+ok        BenchmarkCompile/adblock-1M                                 B/op            121457184   121457792   +0.0%
+ok        BenchmarkCompile/adblock-1M                                 MB/s            25.4        26.01       +2.4%
+ok        BenchmarkCompile/adblock-1M                                 allocs/op       141141      141144      +0.0%
+ok        BenchmarkCompile/adblock-1M                                 ns/op           1066151348  1041044033  -2.4%
+ok        BenchmarkCompile/hosts-1M                                   B/op            152875416   152876000   +0.0%
+ok        BenchmarkCompile/hosts-1M                                   MB/s            32.03       30.29       -5.4%
+ok        BenchmarkCompile/hosts-1M                                   allocs/op       2706        2709        +0.1%
+ok        BenchmarkCompile/hosts-1M                                   ns/op           1001329450  1059071622  +5.8%
+ok        BenchmarkCompile/unchanged-1M                               B/op            65668       65984       +0.5%
+ok        BenchmarkCompile/unchanged-1M                               MB/s            362.8       327.1       -9.8%
+ok        BenchmarkCompile/unchanged-1M                               allocs/op       8           8           +0.0%
+ok        BenchmarkCompile/unchanged-1M                               ns/op           74644398    82780181    +10.9%
+ok        BenchmarkMemory/3M                                          compile-s       3.041       2.957       -2.8%
+ok        BenchmarkMemory/3M                                          engine-B/entry  24.31       24.31       +0.0%
+ok        BenchmarkMemory/3M                                          heap-MB         78.12       78.7        +0.7%
+ok        BenchmarkMemory/3M                                          peak-rss-MB     138         142.5       +3.3%
+ok        BenchmarkMemory/3M                                          rss-MB          90          93.13       +3.5%
+ok        BenchmarkLookup100k/hit                                     allocs/op       1           1           +0.0%
+ok        BenchmarkLookup100k/hit                                     ns/op           541.5       531.1       -1.9%
+ok        BenchmarkLookup100k/hit                                     p50-ns          435         430         -1.1%
+ok        BenchmarkLookup100k/hit                                     p99-ns          822         806         -1.9%
+improved  BenchmarkLookup100k/cname                                   allocs/op       2           1           -50.0% (consider refreshing the baseline)
+ok        BenchmarkLookup100k/cname                                   ns/op           885.3       862.1       -2.6%
+ok        BenchmarkLookup100k/cname                                   p50-ns          763         744         -2.5%
+ok        BenchmarkLookup100k/cname                                   p99-ns          1496        1473        -1.5%
+ok        BenchmarkLookup100k/wildcard                                allocs/op       3           3           +0.0%
+ok        BenchmarkLookup100k/wildcard                                ns/op           704.8       705.5       +0.1%
+ok        BenchmarkLookup100k/wildcard                                p50-ns          568         564         -0.7%
+ok        BenchmarkLookup100k/wildcard                                p99-ns          1349        1406        +4.2%
+ok        BenchmarkLookup100k/nodata                                  allocs/op       0           0           +0.0%
+ok        BenchmarkLookup100k/nodata                                  ns/op           446.3       434.1       -2.7%
+ok        BenchmarkLookup100k/nodata                                  p50-ns          349         340         -2.6%
+ok        BenchmarkLookup100k/nodata                                  p99-ns          610         616         +1.0%
+ok        BenchmarkLookup100k/nxdomain                                allocs/op       0           0           +0.0%
+ok        BenchmarkLookup100k/nxdomain                                ns/op           387.7       380.7       -1.8%
+ok        BenchmarkLookup100k/nxdomain                                p50-ns          298         292         -2.0%
+ok        BenchmarkLookup100k/nxdomain                                p99-ns          520         526         +1.2%
+new       BenchmarkModifiers/host9999.example                         B/op            -           0           no baseline yet
+new       BenchmarkModifiers/host9999.example                         allocs/op       -           0           no baseline yet
+new       BenchmarkModifiers/host9999.example                         ns/op           -           1270        no baseline yet
+new       BenchmarkModifiers/unrelated.invalid                        B/op            -           0           no baseline yet
+new       BenchmarkModifiers/unrelated.invalid                        allocs/op       -           0           no baseline yet
+new       BenchmarkModifiers/unrelated.invalid                        ns/op           -           374.5       no baseline yet
+new       BenchmarkModifiers/dense-1500                               B/op            -           0           no baseline yet
+new       BenchmarkModifiers/dense-1500                               allocs/op       -           0           no baseline yet
+new       BenchmarkModifiers/dense-1500                               ns/op           -           49950       no baseline yet
+new       BenchmarkLazyDFA/unindexed-50/warm                          B/op            -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-50/warm                          allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-50/warm                          ns/op           -           342.7       no baseline yet
+new       BenchmarkLazyDFA/unindexed-50/warm                          reserved-B      -           476496      no baseline yet
+new       BenchmarkLazyDFA/unindexed-50/saturated                     B/op            -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-50/saturated                     allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-50/saturated                     ns/op           -           9001        no baseline yet
+new       BenchmarkLazyDFA/unindexed-50/saturated                     reserved-B      -           476496      no baseline yet
+new       BenchmarkLazyDFA/unindexed-50/cold                          B/op            -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-50/cold                          allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-50/cold                          ns/op           -           11823       no baseline yet
+new       BenchmarkLazyDFA/unindexed-50/cold                          reserved-B      -           476496      no baseline yet
+new       BenchmarkLazyDFA/unindexed-100/warm                         B/op            -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-100/warm                         allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-100/warm                         ns/op           -           597.5       no baseline yet
+new       BenchmarkLazyDFA/unindexed-100/warm                         reserved-B      -           1019328     no baseline yet
+new       BenchmarkLazyDFA/unindexed-100/saturated                    B/op            -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-100/saturated                    allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-100/saturated                    ns/op           -           20695       no baseline yet
+new       BenchmarkLazyDFA/unindexed-100/saturated                    reserved-B      -           1019328     no baseline yet
+new       BenchmarkLazyDFA/unindexed-100/cold                         B/op            -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-100/cold                         allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-100/cold                         ns/op           -           25586       no baseline yet
+new       BenchmarkLazyDFA/unindexed-100/cold                         reserved-B      -           1019328     no baseline yet
+new       BenchmarkLazyDFA/unindexed-500/warm                         B/op            -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-500/warm                         allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-500/warm                         ns/op           -           2359        no baseline yet
+new       BenchmarkLazyDFA/unindexed-500/warm                         reserved-B      -           6889491     no baseline yet
+new       BenchmarkLazyDFA/unindexed-500/saturated                    B/op            -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-500/saturated                    allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-500/saturated                    ns/op           -           105563      no baseline yet
+new       BenchmarkLazyDFA/unindexed-500/saturated                    reserved-B      -           6889491     no baseline yet
+new       BenchmarkLazyDFA/unindexed-500/cold                         B/op            -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-500/cold                         allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-500/cold                         ns/op           -           137109      no baseline yet
+new       BenchmarkLazyDFA/unindexed-500/cold                         reserved-B      -           6889491     no baseline yet
+new       BenchmarkLazyDFA/unindexed-1000/warm                        B/op            -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-1000/warm                        allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-1000/warm                        ns/op           -           4795        no baseline yet
+new       BenchmarkLazyDFA/unindexed-1000/warm                        reserved-B      -           18581618    no baseline yet
+new       BenchmarkLazyDFA/unindexed-1000/saturated                   B/op            -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-1000/saturated                   allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-1000/saturated                   ns/op           -           267571      no baseline yet
+new       BenchmarkLazyDFA/unindexed-1000/saturated                   reserved-B      -           18581618    no baseline yet
+new       BenchmarkLazyDFA/unindexed-1000/cold                        B/op            -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-1000/cold                        allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFA/unindexed-1000/cold                        ns/op           -           346377      no baseline yet
+new       BenchmarkLazyDFA/unindexed-1000/cold                        reserved-B      -           18581618    no baseline yet
+new       BenchmarkUnindexedRegexpReference/50                        B/op            -           0           no baseline yet
+new       BenchmarkUnindexedRegexpReference/50                        allocs/op       -           0           no baseline yet
+new       BenchmarkUnindexedRegexpReference/50                        ns/op           -           9377        no baseline yet
+new       BenchmarkUnindexedRegexpReference/100                       B/op            -           0           no baseline yet
+new       BenchmarkUnindexedRegexpReference/100                       allocs/op       -           0           no baseline yet
+new       BenchmarkUnindexedRegexpReference/100                       ns/op           -           19400       no baseline yet
+new       BenchmarkUnindexedRegexpReference/500                       B/op            -           0           no baseline yet
+new       BenchmarkUnindexedRegexpReference/500                       allocs/op       -           0           no baseline yet
+new       BenchmarkUnindexedRegexpReference/500                       ns/op           -           109554      no baseline yet
+new       BenchmarkUnindexedRegexpReference/1000                      B/op            -           0           no baseline yet
+new       BenchmarkUnindexedRegexpReference/1000                      allocs/op       -           0           no baseline yet
+new       BenchmarkUnindexedRegexpReference/1000                      ns/op           -           251774      no baseline yet
+new       BenchmarkLazyDFAParallel/saturated=false                    B/op            -           0           no baseline yet
+new       BenchmarkLazyDFAParallel/saturated=false                    allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFAParallel/saturated=false                    ns/op           -           2207        no baseline yet
+new       BenchmarkLazyDFAParallel/saturated=true                     B/op            -           0           no baseline yet
+new       BenchmarkLazyDFAParallel/saturated=true                     allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFAParallel/saturated=true                     ns/op           -           79391       no baseline yet
+new       BenchmarkLazyDFADense/rules-50/miss/warm                    B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/miss/warm                    allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/miss/warm                    ns/op           -           513.7       no baseline yet
+new       BenchmarkLazyDFADense/rules-50/miss/warm                    reserved-B      -           562004      no baseline yet
+new       BenchmarkLazyDFADense/rules-50/miss/cold                    B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/miss/cold                    allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/miss/cold                    ns/op           -           12276       no baseline yet
+new       BenchmarkLazyDFADense/rules-50/miss/cold                    reserved-B      -           562004      no baseline yet
+new       BenchmarkLazyDFADense/rules-50/miss/saturated               B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/miss/saturated               allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/miss/saturated               ns/op           -           9508        no baseline yet
+new       BenchmarkLazyDFADense/rules-50/miss/saturated               reserved-B      -           562004      no baseline yet
+new       BenchmarkLazyDFADense/rules-50/early-hit/warm               B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/early-hit/warm               allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/early-hit/warm               ns/op           -           635.7       no baseline yet
+new       BenchmarkLazyDFADense/rules-50/early-hit/warm               reserved-B      -           562004      no baseline yet
+new       BenchmarkLazyDFADense/rules-50/early-hit/cold               B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/early-hit/cold               allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/early-hit/cold               ns/op           -           16479       no baseline yet
+new       BenchmarkLazyDFADense/rules-50/early-hit/cold               reserved-B      -           562004      no baseline yet
+new       BenchmarkLazyDFADense/rules-50/early-hit/saturated          B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/early-hit/saturated          allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/early-hit/saturated          ns/op           -           12737       no baseline yet
+new       BenchmarkLazyDFADense/rules-50/early-hit/saturated          reserved-B      -           562004      no baseline yet
+new       BenchmarkLazyDFADense/rules-50/late-hit/warm                B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/late-hit/warm                allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/late-hit/warm                ns/op           -           622         no baseline yet
+new       BenchmarkLazyDFADense/rules-50/late-hit/warm                reserved-B      -           562004      no baseline yet
+new       BenchmarkLazyDFADense/rules-50/late-hit/cold                B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/late-hit/cold                allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/late-hit/cold                ns/op           -           15824       no baseline yet
+new       BenchmarkLazyDFADense/rules-50/late-hit/cold                reserved-B      -           562004      no baseline yet
+new       BenchmarkLazyDFADense/rules-50/late-hit/saturated           B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/late-hit/saturated           allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-50/late-hit/saturated           ns/op           -           12361       no baseline yet
+new       BenchmarkLazyDFADense/rules-50/late-hit/saturated           reserved-B      -           562004      no baseline yet
+new       BenchmarkLazyDFADense/rules-100/miss/warm                   B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/miss/warm                   allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/miss/warm                   ns/op           -           653.3       no baseline yet
+new       BenchmarkLazyDFADense/rules-100/miss/warm                   reserved-B      -           1123944     no baseline yet
+new       BenchmarkLazyDFADense/rules-100/miss/cold                   B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/miss/cold                   allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/miss/cold                   ns/op           -           23840       no baseline yet
+new       BenchmarkLazyDFADense/rules-100/miss/cold                   reserved-B      -           1123944     no baseline yet
+new       BenchmarkLazyDFADense/rules-100/miss/saturated              B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/miss/saturated              allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/miss/saturated              ns/op           -           18416       no baseline yet
+new       BenchmarkLazyDFADense/rules-100/miss/saturated              reserved-B      -           1123944     no baseline yet
+new       BenchmarkLazyDFADense/rules-100/early-hit/warm              B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/early-hit/warm              allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/early-hit/warm              ns/op           -           575.9       no baseline yet
+new       BenchmarkLazyDFADense/rules-100/early-hit/warm              reserved-B      -           1123944     no baseline yet
+new       BenchmarkLazyDFADense/rules-100/early-hit/cold              B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/early-hit/cold              allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/early-hit/cold              ns/op           -           20355       no baseline yet
+new       BenchmarkLazyDFADense/rules-100/early-hit/cold              reserved-B      -           1123944     no baseline yet
+new       BenchmarkLazyDFADense/rules-100/early-hit/saturated         B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/early-hit/saturated         allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/early-hit/saturated         ns/op           -           15591       no baseline yet
+new       BenchmarkLazyDFADense/rules-100/early-hit/saturated         reserved-B      -           1123944     no baseline yet
+new       BenchmarkLazyDFADense/rules-100/late-hit/warm               B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/late-hit/warm               allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/late-hit/warm               ns/op           -           763.2       no baseline yet
+new       BenchmarkLazyDFADense/rules-100/late-hit/warm               reserved-B      -           1123944     no baseline yet
+new       BenchmarkLazyDFADense/rules-100/late-hit/cold               B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/late-hit/cold               allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/late-hit/cold               ns/op           -           29206       no baseline yet
+new       BenchmarkLazyDFADense/rules-100/late-hit/cold               reserved-B      -           1123944     no baseline yet
+new       BenchmarkLazyDFADense/rules-100/late-hit/saturated          B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/late-hit/saturated          allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-100/late-hit/saturated          ns/op           -           22704       no baseline yet
+new       BenchmarkLazyDFADense/rules-100/late-hit/saturated          reserved-B      -           1123944     no baseline yet
+new       BenchmarkLazyDFADense/rules-500/miss/warm                   B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/miss/warm                   allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/miss/warm                   ns/op           -           1720        no baseline yet
+new       BenchmarkLazyDFADense/rules-500/miss/warm                   reserved-B      -           5487384     no baseline yet
+new       BenchmarkLazyDFADense/rules-500/miss/cold                   B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/miss/cold                   allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/miss/cold                   ns/op           -           124369      no baseline yet
+new       BenchmarkLazyDFADense/rules-500/miss/cold                   reserved-B      -           5487384     no baseline yet
+new       BenchmarkLazyDFADense/rules-500/miss/saturated              B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/miss/saturated              allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/miss/saturated              ns/op           -           91257       no baseline yet
+new       BenchmarkLazyDFADense/rules-500/miss/saturated              reserved-B      -           5487384     no baseline yet
+new       BenchmarkLazyDFADense/rules-500/early-hit/warm              B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/early-hit/warm              allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/early-hit/warm              ns/op           -           530.3       no baseline yet
+new       BenchmarkLazyDFADense/rules-500/early-hit/warm              reserved-B      -           5487384     no baseline yet
+new       BenchmarkLazyDFADense/rules-500/early-hit/cold              B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/early-hit/cold              allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/early-hit/cold              ns/op           -           25366       no baseline yet
+new       BenchmarkLazyDFADense/rules-500/early-hit/cold              reserved-B      -           5487384     no baseline yet
+new       BenchmarkLazyDFADense/rules-500/early-hit/saturated         B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/early-hit/saturated         allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/early-hit/saturated         ns/op           -           15527       no baseline yet
+new       BenchmarkLazyDFADense/rules-500/early-hit/saturated         reserved-B      -           5487384     no baseline yet
+new       BenchmarkLazyDFADense/rules-500/late-hit/warm               B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/late-hit/warm               allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/late-hit/warm               ns/op           -           2093        no baseline yet
+new       BenchmarkLazyDFADense/rules-500/late-hit/warm               reserved-B      -           5487384     no baseline yet
+new       BenchmarkLazyDFADense/rules-500/late-hit/cold               B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/late-hit/cold               allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/late-hit/cold               ns/op           -           139436      no baseline yet
+new       BenchmarkLazyDFADense/rules-500/late-hit/cold               reserved-B      -           5487384     no baseline yet
+new       BenchmarkLazyDFADense/rules-500/late-hit/saturated          B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/late-hit/saturated          allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-500/late-hit/saturated          ns/op           -           104506      no baseline yet
+new       BenchmarkLazyDFADense/rules-500/late-hit/saturated          reserved-B      -           5487384     no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/miss/warm                  B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/miss/warm                  allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/miss/warm                  ns/op           -           3189        no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/miss/warm                  reserved-B      -           10974704    no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/miss/cold                  B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/miss/cold                  allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/miss/cold                  ns/op           -           287950      no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/miss/cold                  reserved-B      -           10974704    no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/miss/saturated             B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/miss/saturated             allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/miss/saturated             ns/op           -           224506      no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/miss/saturated             reserved-B      -           10974704    no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/early-hit/warm             B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/early-hit/warm             allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/early-hit/warm             ns/op           -           531.4       no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/early-hit/warm             reserved-B      -           10974704    no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/early-hit/cold             B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/early-hit/cold             allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/early-hit/cold             ns/op           -           32629       no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/early-hit/cold             reserved-B      -           10974704    no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/early-hit/saturated        B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/early-hit/saturated        allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/early-hit/saturated        ns/op           -           15190       no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/early-hit/saturated        reserved-B      -           10974704    no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/late-hit/warm              B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/late-hit/warm              allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/late-hit/warm              ns/op           -           3730        no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/late-hit/warm              reserved-B      -           10974704    no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/late-hit/cold              B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/late-hit/cold              allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/late-hit/cold              ns/op           -           322106      no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/late-hit/cold              reserved-B      -           10974704    no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/late-hit/saturated         B/op            -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/late-hit/saturated         allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/late-hit/saturated         ns/op           -           237682      no baseline yet
+new       BenchmarkLazyDFADense/rules-1000/late-hit/saturated         reserved-B      -           10974704    no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/warm                    B/op            -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/warm                    MB/s            -           97.74       no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/warm                    allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/warm                    ns/op           -           2619        no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/warm                    reserved-B      -           311198      no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/cold                    B/op            -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/cold                    MB/s            -           5.1         no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/cold                    allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/cold                    ns/op           -           50179       no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/cold                    reserved-B      -           311198      no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/saturated               B/op            -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/saturated               MB/s            -           0.3         no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/saturated               allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/saturated               ns/op           -           858982      no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-256/saturated               reserved-B      -           311198      no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/warm                   B/op            -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/warm                   MB/s            -           108.0       no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/warm                   allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/warm                   ns/op           -           37932       no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/warm                   reserved-B      -           311198      no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/cold                   B/op            -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/cold                   MB/s            -           46.89       no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/cold                   allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/cold                   ns/op           -           87357       no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/cold                   reserved-B      -           311198      no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/saturated              B/op            -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/saturated              MB/s            -           0.29        no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/saturated              allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/saturated              ns/op           -           13943507    no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-4096/saturated              reserved-B      -           311198      no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/warm                  B/op            -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/warm                  MB/s            -           109.4       no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/warm                  allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/warm                  ns/op           -           149754      no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/warm                  reserved-B      -           311198      no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/cold                  B/op            -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/cold                  MB/s            -           82.39       no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/cold                  allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/cold                  ns/op           -           198870      no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/cold                  reserved-B      -           311198      no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/saturated             B/op            -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/saturated             MB/s            -           0.3         no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/saturated             allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/saturated             ns/op           -           55237564    no baseline yet
+new       BenchmarkLazyDFALongInput/bytes-16384/saturated             reserved-B      -           311198      no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-512/cold-to-saturation    B/op            -           0           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-512/cold-to-saturation    allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-512/cold-to-saturation    names/op        -           2048        no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-512/cold-to-saturation    ns/op           -           2696186     no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-512/cold-to-saturation    reserved-B      -           3488        no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-512/cold-to-saturation    transitions/op  -           3           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-512/saturated             B/op            -           0           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-512/saturated             allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-512/saturated             names/op        -           2048        no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-512/saturated             ns/op           -           2653385     no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-512/saturated             reserved-B      -           3488        no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-512/saturated             transitions/op  -           0           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-4096/cold-to-saturation   B/op            -           0           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-4096/cold-to-saturation   allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-4096/cold-to-saturation   names/op        -           2048        no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-4096/cold-to-saturation   ns/op           -           2630232     no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-4096/cold-to-saturation   reserved-B      -           7072        no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-4096/cold-to-saturation   transitions/op  -           55          no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-4096/saturated            B/op            -           0           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-4096/saturated            allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-4096/saturated            names/op        -           2048        no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-4096/saturated            ns/op           -           2642719     no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-4096/saturated            reserved-B      -           7072        no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-4096/saturated            transitions/op  -           0           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-65536/cold-to-saturation  B/op            -           0           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-65536/cold-to-saturation  allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-65536/cold-to-saturation  names/op        -           2048        no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-65536/cold-to-saturation  ns/op           -           2653928     no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-65536/cold-to-saturation  reserved-B      -           68512       no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-65536/cold-to-saturation  transitions/op  -           762         no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-65536/saturated           B/op            -           0           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-65536/saturated           allocs/op       -           0           no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-65536/saturated           names/op        -           2048        no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-65536/saturated           ns/op           -           2312542     no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-65536/saturated           reserved-B      -           68512       no baseline yet
+new       BenchmarkLazyDFAStateGrowth/cache-65536/saturated           transitions/op  -           0           no baseline yet
+benchgate: ok

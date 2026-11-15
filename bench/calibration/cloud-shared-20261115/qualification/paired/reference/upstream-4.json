@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "go",
+    "test",
+    "-run",
+    "^$",
+    "-bench",
+    "^BenchmarkStrategies$",
+    "-benchmem",
+    "-benchtime",
+    "1s",
+    "-count",
+    "1",
+    "-timeout",
+    "30m",
+    "./internal/upstream"
+  ],
+  "child_exit_code": 0,
+  "stop_reason": null,
+  "minimum_free_bytes": 11279126528,
+  "pid": 631972,
+  "wall_seconds": 15.42831061400102,
+  "post_free_bytes": 11292774400,
+  "output_bytes": 1965,
+  "group_reaped": true
+}

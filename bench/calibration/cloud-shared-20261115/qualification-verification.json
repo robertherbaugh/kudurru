@@ -1,0 +1,90 @@
+{
+  "performance_pass": true,
+  "runtime_source": "5e19a32bfb4d62f8524218f0e1cec3df6806eaa0",
+  "candidate_source": "3ff60b9f21f9d2abe114eed418b2179d6f28032d",
+  "reference_source": "0cc9565e9a878f8223fc1cee5201eb7eca8aacd2",
+  "runner_class": "shared-cloud-sandbox-v1",
+  "calibration_manifest_sha256": "3b38bf0389bb04e2ed9b0546d79e276ffdbf70090ae8588afa7c5fb2a0bf7266",
+  "approval_sha256": "291c461fd91bfc3a2e235b79f6f133e368ce7249a7342d7c1e301878adaa03e5",
+  "qualification_evidence_manifest_sha256": "2da1492cdb2c523561bb4995796b5188e23e0394c5ab25e7159890570987184f",
+  "files_verified": 165,
+  "source_paths_verified": {
+    "reference": 406,
+    "candidate": 5349
+  },
+  "native_commands": 60,
+  "native_failures": [],
+  "minimum_disk_free_bytes": 10982465536,
+  "absolute_gates": [
+    {
+      "role": "reference",
+      "report": "blocking-zone",
+      "exit_code": 0
+    },
+    {
+      "role": "reference",
+      "report": "cache",
+      "exit_code": 0
+    },
+    {
+      "role": "reference",
+      "report": "upstream",
+      "exit_code": 0
+    },
+    {
+      "role": "candidate",
+      "report": "blocking-zone",
+      "exit_code": 0
+    },
+    {
+      "role": "candidate",
+      "report": "cache",
+      "exit_code": 0
+    },
+    {
+      "role": "candidate",
+      "report": "upstream",
+      "exit_code": 0
+    },
+    {
+      "role": "candidate",
+      "report": "udp",
+      "exit_code": 0
+    },
+    {
+      "role": "candidate",
+      "report": "dot",
+      "exit_code": 0
+    },
+    {
+      "role": "candidate",
+      "report": "quic",
+      "exit_code": 0
+    },
+    {
+      "role": "candidate",
+      "report": "persist",
+      "exit_code": 0
+    }
+  ],
+  "comparison_eligible": true,
+  "relative_checks": {
+    "blocking-zone": 0,
+    "cache": 0,
+    "upstream": 0
+  },
+  "metric_counts": {
+    "reference/blocking-zone": 139,
+    "reference/cache": 20,
+    "reference/upstream": 60,
+    "candidate/blocking-zone": 439,
+    "candidate/cache": 35,
+    "candidate/upstream": 60,
+    "candidate/udp": 10,
+    "candidate/dot": 20,
+    "candidate/quic": 12,
+    "candidate/persist": 16
+  },
+  "exit_code": 0,
+  "release_qualified": false
+}

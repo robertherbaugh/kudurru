@@ -1,0 +1,50 @@
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache/persist
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkPersist200k/gzip=true/save-6    	       1	1010919554 ns/op	   8739782 bytes	    197015 entries	170876520 B/op	  591529 allocs/op
+BenchmarkPersist200k/gzip=true/restore-6 	       1	1719290717 ns/op	189818864 B/op	 1316622 allocs/op
+BenchmarkPersist200k/gzip=false/save-6   	       1	1292058005 ns/op	  87331459 bytes	    197105 entries	484671832 B/op	  591661 allocs/op
+BenchmarkPersist200k/gzip=false/restore-6         	       1	1566916454 ns/op	344063664 B/op	 1278674 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache/persist	6.690s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache/persist
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkPersist200k/gzip=true/save-6    	       1	1002756893 ns/op	   8737320 bytes	    197110 entries	170976760 B/op	  591803 allocs/op
+BenchmarkPersist200k/gzip=true/restore-6 	       1	1679430292 ns/op	189986720 B/op	 1318120 allocs/op
+BenchmarkPersist200k/gzip=false/save-6   	       1	1312834940 ns/op	  87409363 bytes	    197282 entries	484800136 B/op	  592182 allocs/op
+BenchmarkPersist200k/gzip=false/restore-6         	       1	1582905793 ns/op	344366560 B/op	 1279812 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache/persist	6.582s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache/persist
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkPersist200k/gzip=true/save-6    	       1	1013886309 ns/op	   8747682 bytes	    197170 entries	170979256 B/op	  591989 allocs/op
+BenchmarkPersist200k/gzip=true/restore-6 	       1	1778085693 ns/op	190012624 B/op	 1317792 allocs/op
+BenchmarkPersist200k/gzip=false/save-6   	       1	1410268822 ns/op	  87377127 bytes	    197209 entries	484775272 B/op	  591943 allocs/op
+BenchmarkPersist200k/gzip=false/restore-6         	       1	1705754730 ns/op	344246032 B/op	 1279353 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache/persist	7.002s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache/persist
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkPersist200k/gzip=true/save-6    	       1	1052102890 ns/op	   8758653 bytes	    197271 entries	171079960 B/op	  592287 allocs/op
+BenchmarkPersist200k/gzip=true/restore-6 	       1	1839672333 ns/op	190077880 B/op	 1318551 allocs/op
+BenchmarkPersist200k/gzip=false/save-6   	       1	1340695172 ns/op	  87302768 bytes	    197040 entries	484660392 B/op	  591447 allocs/op
+BenchmarkPersist200k/gzip=false/restore-6         	       1	1620431071 ns/op	343966416 B/op	 1278355 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache/persist	6.951s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/cache/persist
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkPersist200k/gzip=true/save-6    	       2	 961655041 ns/op	   8740228 bytes	    197059 entries	170924168 B/op	  591568 allocs/op
+BenchmarkPersist200k/gzip=true/restore-6 	       1	1703159689 ns/op	189887040 B/op	 1317432 allocs/op
+BenchmarkPersist200k/gzip=false/save-6   	       1	1295474873 ns/op	  87333480 bytes	    197110 entries	484687336 B/op	  591646 allocs/op
+BenchmarkPersist200k/gzip=false/restore-6         	       1	1613677095 ns/op	344066800 B/op	 1278632 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/cache/persist	7.566s

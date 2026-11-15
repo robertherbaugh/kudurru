@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "go",
+    "test",
+    "-run",
+    "^$",
+    "-bench",
+    ".",
+    "-benchmem",
+    "-benchtime",
+    "1s",
+    "-count",
+    "1",
+    "-timeout",
+    "30m",
+    "./internal/blocking/..."
+  ],
+  "child_exit_code": 0,
+  "stop_reason": null,
+  "minimum_free_bytes": 11187163136,
+  "pid": 624307,
+  "wall_seconds": 127.84662195000055,
+  "post_free_bytes": 11292864512,
+  "output_bytes": 13967,
+  "group_reaped": true
+}

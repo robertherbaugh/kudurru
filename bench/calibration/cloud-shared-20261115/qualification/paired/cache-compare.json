@@ -1,0 +1,27 @@
+{
+  "argv": [
+    "go",
+    "run",
+    "./hack/benchgate",
+    "-samples",
+    "5",
+    "-procs",
+    "6",
+    "-strict-cpu",
+    "-threshold",
+    "20",
+    "-limits",
+    "/home/vercel-sandbox/kudurru/.context/release-cloud-calibration-20261115/calibration/cache-limits.txt",
+    "-baseline",
+    "/home/vercel-sandbox/kudurru/.context/release-cloud-calibration-20261115/qualification/paired/reference/cache.txt",
+    "/home/vercel-sandbox/kudurru/.context/release-cloud-calibration-20261115/qualification/paired/candidate/cache.txt"
+  ],
+  "child_exit_code": 0,
+  "stop_reason": null,
+  "minimum_free_bytes": 11262095360,
+  "pid": 645851,
+  "wall_seconds": 0.2035936819993367,
+  "post_free_bytes": 11262095360,
+  "output_bytes": 3948,
+  "group_reaped": true
+}

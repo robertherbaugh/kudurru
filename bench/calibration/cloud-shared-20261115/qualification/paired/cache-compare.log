@@ -1,0 +1,37 @@
+STATUS  BENCHMARK                                    UNIT                  BASELINE    CURRENT     DETAIL
+ok      BenchmarkGet/hit                             B/op                  0           0           +0.0%
+ok      BenchmarkGet/hit                             allocs/op             0           0           +0.0%
+ok      BenchmarkGet/hit                             ns/op                 676.8       672.6       -0.6%
+ok      BenchmarkGet/miss                            B/op                  0           0           +0.0%
+ok      BenchmarkGet/miss                            allocs/op             0           0           +0.0%
+ok      BenchmarkGet/miss                            ns/op                 133.7       138.9       +3.9%
+ok      BenchmarkGet/hit-parallel                    B/op                  0           0           +0.0%
+ok      BenchmarkGet/hit-parallel                    allocs/op             0           0           +0.0%
+ok      BenchmarkGet/hit-parallel                    ns/op                 152.9       181.2       +18.5%
+ok      BenchmarkMakeKey                             B/op                  24          24          +0.0%
+ok      BenchmarkMakeKey                             allocs/op             1           1           +0.0%
+ok      BenchmarkMakeKey                             ns/op                 47.97       48.3        +0.7%
+ok      BenchmarkSet                                 B/op                  112         112         +0.0%
+ok      BenchmarkSet                                 allocs/op             1           1           +0.0%
+ok      BenchmarkSet                                 ns/op                 707.8       791.2       +11.8%
+ok      BenchmarkMemory/1000k                        B/op                  375258176   375313104   +0.0%
+ok      BenchmarkMemory/1000k                        allocs/op             4012171     4012178     +0.0%
+ok      BenchmarkMemory/1000k                        bytes/entry           292.7       292.7       +0.0%
+ok      BenchmarkMemory/1000k                        ns/op                 1232068466  1392879351  +13.1%
+ok      BenchmarkMemory/1000k                        overhead-bytes/entry  173.8       173.8       +0.0%
+new     BenchmarkGrowth/entries=200000/grown=false   B/op                  -           0           no baseline yet
+new     BenchmarkGrowth/entries=200000/grown=false   allocs/op             -           0           no baseline yet
+new     BenchmarkGrowth/entries=200000/grown=false   ns/op                 -           136.5       no baseline yet
+new     BenchmarkGrowth/entries=200000/grown=true    B/op                  -           0           no baseline yet
+new     BenchmarkGrowth/entries=200000/grown=true    allocs/op             -           0           no baseline yet
+new     BenchmarkGrowth/entries=200000/grown=true    ns/op                 -           132.5       no baseline yet
+new     BenchmarkGrowth/entries=1000000/grown=false  B/op                  -           0           no baseline yet
+new     BenchmarkGrowth/entries=1000000/grown=false  allocs/op             -           0           no baseline yet
+new     BenchmarkGrowth/entries=1000000/grown=false  ns/op                 -           176.5       no baseline yet
+new     BenchmarkGrowth/entries=1000000/grown=true   B/op                  -           0           no baseline yet
+new     BenchmarkGrowth/entries=1000000/grown=true   allocs/op             -           0           no baseline yet
+new     BenchmarkGrowth/entries=1000000/grown=true   ns/op                 -           169.2       no baseline yet
+new     BenchmarkGrowth/reshard-8k-to-1m             B/op                  -           501806      no baseline yet
+new     BenchmarkGrowth/reshard-8k-to-1m             allocs/op             -           1856        no baseline yet
+new     BenchmarkGrowth/reshard-8k-to-1m             ns/op                 -           1246057     no baseline yet
+benchgate: ok

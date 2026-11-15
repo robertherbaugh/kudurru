@@ -1,0 +1,15 @@
+{
+  "mode": "candidate-interleaved",
+  "measurement_complete": true,
+  "release_qualified": false,
+  "exit_code": 0,
+  "reports": {
+    "blocking-zone": "8981b6501f11588b2e3493aaaa83650f0f1bfd9958137b36920beb995108c9e6",
+    "cache": "39f542b70caad9d30072bb064eaff8c59ad68c0be8fb701b707c55d314c8b878",
+    "upstream": "bc2b1a03b632b1fcdf6c14cabf231aa58d09ad011bad1175fcc1b46d8bd30158",
+    "udp": "0d0fe009bf21b854baea71f14b394635f437afc9f27452a7cf7d3bccbbf11b17",
+    "dot": "85800b4d7a5c7e74e4542fe7913f207fdb6ee2be3d2ede32303f82029ed9162b",
+    "quic": "34b2b331459ec3692fae43df232ce1e0a5da00487d0f5fe9d8b7b3bfaec57126",
+    "persist": "e7b26863b5e5c32b8507effb7f6c2a928982a5247bc19adacc2c154345b6c59a"
+  }
+}

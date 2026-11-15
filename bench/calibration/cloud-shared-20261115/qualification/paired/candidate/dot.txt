@@ -1,0 +1,50 @@
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkDoTSockets/sockets=1/churn=false-6         	  206421	      5184 ns/op	         0 failed	    192890 q/s	    2368 B/op	      34 allocs/op
+BenchmarkDoTSockets/sockets=1/churn=true-6          	    4148	    315004 ns/op	         0 failed	      3175 q/s	  129603 B/op	     919 allocs/op
+BenchmarkDoTSockets/sockets=6/churn=false-6         	  143270	      7106 ns/op	         0 failed	    140732 q/s	    2374 B/op	      34 allocs/op
+BenchmarkDoTSockets/sockets=6/churn=true-6          	    4584	    242376 ns/op	         0 failed	      4126 q/s	  129566 B/op	     919 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	4.986s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkDoTSockets/sockets=1/churn=false-6         	  227648	      5358 ns/op	         0 failed	    186649 q/s	    2367 B/op	      34 allocs/op
+BenchmarkDoTSockets/sockets=1/churn=true-6          	    4717	    242728 ns/op	         0 failed	      4120 q/s	  129604 B/op	     919 allocs/op
+BenchmarkDoTSockets/sockets=6/churn=false-6         	  227806	      5272 ns/op	         0 failed	    189672 q/s	    2366 B/op	      34 allocs/op
+BenchmarkDoTSockets/sockets=6/churn=true-6          	    4287	    246397 ns/op	         0 failed	      4059 q/s	  129571 B/op	     919 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	7.058s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkDoTSockets/sockets=1/churn=false-6         	  217254	      5512 ns/op	         0 failed	    181416 q/s	    2367 B/op	      34 allocs/op
+BenchmarkDoTSockets/sockets=1/churn=true-6          	    4520	    261751 ns/op	         0 failed	      3820 q/s	  129587 B/op	     919 allocs/op
+BenchmarkDoTSockets/sockets=6/churn=false-6         	  198848	      5234 ns/op	         0 failed	    191047 q/s	    2369 B/op	      34 allocs/op
+BenchmarkDoTSockets/sockets=6/churn=true-6          	    4840	    243646 ns/op	         0 failed	      4104 q/s	  129576 B/op	     919 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	6.043s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkDoTSockets/sockets=1/churn=false-6         	  209877	      5562 ns/op	         0 failed	    179804 q/s	    2368 B/op	      34 allocs/op
+BenchmarkDoTSockets/sockets=1/churn=true-6          	    4186	    253754 ns/op	         0 failed	      3941 q/s	  129609 B/op	     919 allocs/op
+BenchmarkDoTSockets/sockets=6/churn=false-6         	  202674	      5191 ns/op	         0 failed	    192650 q/s	    2368 B/op	      34 allocs/op
+BenchmarkDoTSockets/sockets=6/churn=true-6          	    4600	    243560 ns/op	         0 failed	      4106 q/s	  130439 B/op	     920 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	5.859s
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/dnsserver
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkDoTSockets/sockets=1/churn=false-6         	  192244	      5691 ns/op	         0 failed	    175702 q/s	    2369 B/op	      34 allocs/op
+BenchmarkDoTSockets/sockets=1/churn=true-6          	    4680	    237055 ns/op	         0 failed	      4218 q/s	  129592 B/op	     919 allocs/op
+BenchmarkDoTSockets/sockets=6/churn=false-6         	  196610	      5463 ns/op	         0 failed	    183042 q/s	    2369 B/op	      34 allocs/op
+BenchmarkDoTSockets/sockets=6/churn=true-6          	    4400	    245695 ns/op	         0 failed	      4070 q/s	  129578 B/op	     919 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/dnsserver	5.484s

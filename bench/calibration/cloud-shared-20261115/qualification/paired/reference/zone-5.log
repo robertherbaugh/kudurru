@@ -1,0 +1,11 @@
+goos: linux
+goarch: amd64
+pkg: github.com/robertherbaugh/kudurru/internal/zone
+cpu: Intel(R) Xeon(R) Processor @ 2.50GHz
+BenchmarkLookup100k/hit-6         	 2320228	       542.6 ns/op	       429.0 p50-ns	       822.0 p99-ns	      42 B/op	       1 allocs/op
+BenchmarkLookup100k/cname-6       	 1144378	      1012 ns/op	       833.0 p50-ns	      1962 p99-ns	      57 B/op	       2 allocs/op
+BenchmarkLookup100k/wildcard-6    	 1736919	       700.9 ns/op	       565.0 p50-ns	      1311 p99-ns	     119 B/op	       3 allocs/op
+BenchmarkLookup100k/nodata-6      	 2836237	       438.6 ns/op	       350.0 p50-ns	       594.0 p99-ns	      30 B/op	       0 allocs/op
+BenchmarkLookup100k/nxdomain-6    	 3214056	       387.7 ns/op	       300.0 p50-ns	       520.0 p99-ns	      36 B/op	       0 allocs/op
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/zone	7.493s
