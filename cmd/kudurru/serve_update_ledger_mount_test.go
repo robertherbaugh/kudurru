@@ -128,11 +128,13 @@ func TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger(t *testing.T) {
 	// commit whose own publication was superseded, or the ledger's rate
 	// bound) is followed by a newly signed request for the same change. A
 	// concurrent publication can also withhold the original mutation response
-	// and close its TCP connection. Retry that ambiguous EOF under the same
+	// and close its TCP connection. The client and pipeline both expire after
+	// five seconds, so a withheld answer can also reach the client as a read
+	// timeout before the close. Retry these ambiguous outcomes under the same
 	// deadline too; replacing this RRset is idempotent. Neither refusal counts
 	// as success, and every logical change still needs an actual NOERROR.
 	const workers = 4
-	var next, noerror, servfail, eof, other atomic.Int64
+	var next, noerror, servfail, eof, readTimeout, other atomic.Int64
 	var wg sync.WaitGroup
 	errs := make(chan error, workers)
 	began := time.Now()
@@ -151,6 +153,7 @@ func TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger(t *testing.T) {
 				deadline := time.Now().Add(3 * time.Minute)
 				for {
 					answer, _, err := c.Exchange(ledgerSigned(name, target, ledgerMountedFudge, false), address)
+					var transport *net.OpError
 					switch {
 					case err == nil && answer != nil && answer.Rcode == dns.RcodeSuccess:
 						noerror.Add(1)
@@ -158,6 +161,8 @@ func TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger(t *testing.T) {
 						servfail.Add(1)
 					case errors.Is(err, io.EOF):
 						eof.Add(1)
+					case errors.As(err, &transport) && transport.Op == "read" && transport.Timeout():
+						readTimeout.Add(1)
 					default:
 						other.Add(1)
 						errs <- fmt.Errorf("UPDATE %d: answer %v: %v", i, answer, err)
@@ -167,7 +172,7 @@ func TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger(t *testing.T) {
 						break
 					}
 					if !time.Now().Before(deadline) {
-						errs <- fmt.Errorf("UPDATE %d did not complete for three minutes (%d NOERROR, %d EOF retries so far)", i, noerror.Load(), eof.Load())
+						errs <- fmt.Errorf("UPDATE %d did not complete for three minutes (%d NOERROR, %d EOF and %d read-timeout retries so far)", i, noerror.Load(), eof.Load(), readTimeout.Load())
 						return
 					}
 					time.Sleep(20 * time.Millisecond)
@@ -181,7 +186,7 @@ func TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger(t *testing.T) {
 		t.Error(err)
 	}
 	elapsed := time.Since(began)
-	t.Logf("in %s: %d signed UPDATEs answered NOERROR (%.1f a second), %d answers SERVFAIL, %d EOF retries, %d other", elapsed.Round(time.Millisecond), noerror.Load(), float64(noerror.Load())/elapsed.Seconds(), servfail.Load(), eof.Load(), other.Load())
+	t.Logf("in %s: %d signed UPDATEs answered NOERROR (%.1f a second), %d answers SERVFAIL, %d EOF retries, %d read-timeout retries, %d other", elapsed.Round(time.Millisecond), noerror.Load(), float64(noerror.Load())/elapsed.Seconds(), servfail.Load(), eof.Load(), readTimeout.Load(), other.Load())
 	if noerror.Load() != ledgerMountedUpdates {
 		t.Fatalf("%d of %d UPDATEs committed", noerror.Load(), ledgerMountedUpdates)
 	}
