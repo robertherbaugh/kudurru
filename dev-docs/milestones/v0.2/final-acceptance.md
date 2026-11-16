@@ -20,7 +20,7 @@ specific finding it exercises, not a package's complete acceptance criteria.
 | #94 | Implemented per-group `cache: true`, default off for non-default groups. Default group caching and the global cache switch retain their existing precedence. The route plan is bound before lookup and partitions by group, routing and trust configuration. Covers conditional suffixes, forward-zone/Policy hints, TTL bounds/countdown, stale/prefetch, reload flushes and cache inspection. The dashboard saves the toggle immediately. Focused Go race suites, dashboard type checking, 40 upstream tests, lint and bundle build pass. |
 | Packaged upgrade | Released v0.1.0 Linux archive and RPM downloaded and checked against published SHA256 checksums. The existing upgrade test now takes a stopped-volume backup and restores it under the released old binary, checking DNS, credentials, schemas and history. Candidate package execution and exact hashes/results are recorded below. |
 | Performance | Earlier approval and pass bind runtime `5e19a32b`, not this source. Calibration manifest `3b38bf0389bb04e2ed9b0546d79e276ffdbf70090ae8588afa7c5fb2a0bf7266` remains immutable. This sandbox has a new VM/boot/CPU identity. On November 16 the owner approved the disclosed host-continuity amendment, retaining all limits and historical calibration. Qualification uses a new guarded host record and fresh same-host original-reference/candidate interleaving; its exact outcome is recorded below. |
-| Hosted checks | PR #54's last reported source run `43770178234` failed the two observer tests and `ci-ok`; its other 23 jobs passed. Required checks for this follow-up must pass on its own head. |
+| Hosted checks | PR #54's last reported source run `43770178234` failed the two observer tests and `ci-ok`; its other 23 jobs passed. Follow-up run `43775954528` passes both observer shards but exposed the schema-contract, cleanup-setup, UPDATE EOF and rollback test failures recorded below. Required checks must pass on the corrected source head. |
 | Manual UI and production license | Earlier HTTP/browser and synthetic-license proofs retain their exact scope. They do not establish human visual approval or production entitlement issuance/signing. Final-artifact browser/deployment checks below have their own scope. Remaining owner checks are tracked in [#133](https://github.com/robertherbaugh/kudurru/issues/133). |
 | Review and publication | Required CI/security/review checks govern merge. Publishing v0.2.0 is a separate release-branch milestone. |
 
@@ -97,7 +97,7 @@ while cold cross-platform builds and lint competed for the sandbox
 (`tsig-after.log`, 465.992s). Those results remain failed and retained.
 
 After every unrelated local build/test finished, the final repetition **passed
-all 30 expiry, cancellation and original-deadline cases** in 185.696 seconds:
+30 repetitions of each expiry, cancellation and original-deadline case** in 185.696 seconds:
 
 ```sh
 CGO_ENABLED=1 GOTOOLCHAIN=go1.27.4 go test -race -v ./cmd/kudurru \
@@ -109,6 +109,43 @@ authentication/commit, observation budget, quiet publication/authority channels,
 original lifetime, committed-image/audit checks and writer-eligibility assertions
 are unchanged. No production observer code changed. Evidence:
 `tsig-final-quiet.log`. Hosted checks still govern merge on the final PR head.
+
+### Additional hosted findings and source corrections
+
+Run [43775954528](https://github.com/robertherbaugh/kudurru/actions/runs/43775954528)
+on `ed293dca` completed with **22 source jobs passed** and four failed jobs:
+packages, command shard 4/4, e2e and `ci-ok`. Both original observer shards
+(1/4 and 2/4) passed. The failed run is retained; it is not green CI.
+
+- `TestSettingsSchemaMetadata` still expected five upstream-group fields.
+  It now checks all six, including the new boolean cache field's false default
+  and help, while retaining the existing field/option assertions. Its focused
+  race check passes.
+- The cleanup fixture's one-second resync and repeated budgeted provider Check
+  preflight prevented setup convergence before its direct-store delete
+  challenge. This reproduced three times locally. Setup now observes the
+  integration's Ready phase and protected serving publication without
+  dispatching another command. All original cleanup bounds, purge fencing,
+  late-delivery/finalizer refusal and no-provider-request assertions remain;
+  **20 race repetitions pass in 179.898s**. This does not accept command
+  starvation under sustained writes; #124 retains that separate scope.
+- The 1,100-update receipt-ledger test received 1,099 NOERROR replies and one
+  EOF. Native mutation output deliberately retains full generation currency
+  and closes TCP when the original response cannot be emitted
+  (`internal/dnsserver/native_capture.go`). Its idempotent bulk replacements
+  already retry ambiguous SERVFAIL; they now count and retry specifically EOF
+  under the same original three-minute change deadline. EOF never counts as
+  success; all 1,100 actual NOERROR replies and the original exact replay,
+  signature expiry and restart assertions remain required. Other transport
+  errors and terminal DNS errors still fail. The full local/hosted outcome
+  remains to be recorded.
+- Hosted e2e failed only the new rollback's immediate v0.1.0 DNS probe, already
+  corrected by the convergence check and successful packaged run above.
+
+Evidence: `ci-ed293dca-packages.log`, `ci-ed293dca-commands-4.log`,
+`ci-ed293dca-e2e.log`, `settings-schema-cache.log`, `cleanup-before.log`,
+`cleanup-after.log` and `update-ledger-after.log`. The cleanup reproduction
+was stopped after three failures; it was not a completed 20-repeat run.
 
 ### Final runtime candidate
 
@@ -260,5 +297,16 @@ the original pending proposal. On November 16, 2026, Robert Herbaugh replied
 "Approve this host-continuity amendment" to that exact proposal. The replacement
 host and transition records bind this decision and both host identities before
 the fresh qualification. Its results must pass before D383/D412 can close.
+The first guarded sequence on `7a642715` completed 20 of 60 native processes,
+all with exit zero, before the hosted failures required final-source test
+corrections. Applying the diagnosed API schema fix caused the source guard to
+hold the next measurement: `reference and control checkouts must be clean`.
+The incomplete record and explicit source-correction hold are retained under
+`.context/performance-final-20261116/`. It supplies no qualification pass and
+no samples for the fresh complete sequence on the corrected source. Limits,
+calibration, host and approval are unchanged. Full results belong in a small
+follow-up documentation PR based on #134; this keeps source CI tied to its
+actual code head while preserving independently reviewable evidence.
+
 Production-license/human checks, issue dispositions and required PR review
 remain separate decisions. D353 and D358 retain exactly the future scope above.

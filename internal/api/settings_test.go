@@ -146,13 +146,16 @@ func TestSettingsSchemaMetadata(t *testing.T) {
 		t.Fatalf("ipv4Prefix %+v", p)
 	}
 	g := byPath["upstreams.groups"].Values
-	if g == nil || g.Type != "object" || len(g.Fields) != 5 {
+	if g == nil || g.Type != "object" || len(g.Fields) != 6 {
 		t.Fatalf("upstreams.groups values %+v", g)
 	}
-	if last := g.Fields[4]; last.Name != "tracePropagation" || last.Type != "bool" {
-		t.Fatalf("upstreams.groups fifth field %+v", last)
+	if cache := g.Fields[0]; cache.Name != "cache" || cache.Type != "bool" || cache.Default != false || cache.Help == "" {
+		t.Fatalf("upstreams.groups cache field %+v", cache)
 	}
-	mode, servers, strategy := g.Fields[0], g.Fields[1], g.Fields[2]
+	if last := g.Fields[5]; last.Name != "tracePropagation" || last.Type != "bool" {
+		t.Fatalf("upstreams.groups sixth field %+v", last)
+	}
+	mode, servers, strategy := g.Fields[1], g.Fields[2], g.Fields[3]
 	if mode.Name != "mode" || mode.Default != "forward" || len(mode.Enum) != 2 || mode.Enum[1].Value != "recursive" {
 		t.Fatalf("mode %+v", mode)
 	}
