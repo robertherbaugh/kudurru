@@ -1,0 +1,10 @@
+=== RUN   TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger
+    serve_update_ledger_mount_test.go:181: UPDATE 32: answer <nil> MsgHdr: read tcp 127.0.0.1:35780->127.0.0.1:31486: i/o timeout
+    serve_update_ledger_mount_test.go:181: UPDATE 37: answer <nil> MsgHdr: read tcp 127.0.0.1:35800->127.0.0.1:31486: i/o timeout
+    serve_update_ledger_mount_test.go:181: UPDATE 109: answer <nil> MsgHdr: read tcp 127.0.0.1:44444->127.0.0.1:31486: i/o timeout
+    serve_update_ledger_mount_test.go:184: in 19m33.324s: 1097 signed UPDATEs answered NOERROR (0.9 a second), 10 answers SERVFAIL, 16 EOF retries, 3 other
+    serve_update_ledger_mount_test.go:186: 1097 of 1100 UPDATEs committed
+--- FAIL: TestRunServeSQLiteSignedUpdatesBeyondTheReceiptLedger (1182.23s)
+FAIL
+FAIL	github.com/robertherbaugh/kudurru/cmd/kudurru	1182.577s
+FAIL

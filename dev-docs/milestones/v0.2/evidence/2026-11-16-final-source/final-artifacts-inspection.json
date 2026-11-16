@@ -1,0 +1,59 @@
+{
+  "snapshot": "0.2.0-rc.1-SNAPSHOT-d1725c59",
+  "declaredRuntimeSource": "d1725c59",
+  "runtimeDiffToFollowupHead": "",
+  "artifacts": {
+    "kudurru-0.2.0~rc.1_SNAPSHOT_d1725c59-1.aarch64.rpm": "771705ccaf4f134ee4e794a797980ee79c16e37056ef60f4cb54bbaf56a6954b",
+    "kudurru-0.2.0~rc.1_SNAPSHOT_d1725c59-1.aarch64.rpm.sbom.json": "fcbf4b3654e8533bf62f2a969663c92775a9aefe0869a04346f6a11022868cf0",
+    "kudurru-0.2.0~rc.1_SNAPSHOT_d1725c59-1.x86_64.rpm": "cbbb65123344813651c7bfe61735862e6e540c1c054d98a96eb238ea4ededc9f",
+    "kudurru-0.2.0~rc.1_SNAPSHOT_d1725c59-1.x86_64.rpm.sbom.json": "c557cd11b2ae59e74ff8cf78bcdd6e93e42b6fd5778a306594bf649530de3c08",
+    "kudurru_0.2.0-rc.1-SNAPSHOT-d1725c59_compose.tar.gz": "97d6cbe0b8cd8f2b5f82381b63fba14a740cbd43b88c520a006534a4be62d202",
+    "kudurru_0.2.0-rc.1-SNAPSHOT-d1725c59_compose.tar.gz.sbom.json": "f34660b471feef2c541a5128dcd72f9a291490d2fc39d541636d7af0e44ab90c",
+    "kudurru_0.2.0-rc.1-SNAPSHOT-d1725c59_darwin_amd64.tar.gz": "f25b94a90ce5230c8130e5c864c63de35548cc22048cf8a50c60d170afe33678",
+    "kudurru_0.2.0-rc.1-SNAPSHOT-d1725c59_darwin_amd64.tar.gz.sbom.json": "bdd3e5fa66d3895b15d0155da8214f28bb4e7aaf4d2a55c362f641146b0bf271",
+    "kudurru_0.2.0-rc.1-SNAPSHOT-d1725c59_darwin_arm64.tar.gz": "d16b7bef804f4eda99284d64df934d36eb511061904a9f5d63d5df4ab5f0c23a",
+    "kudurru_0.2.0-rc.1-SNAPSHOT-d1725c59_darwin_arm64.tar.gz.sbom.json": "cbddcb84f02cdd0c78f6049eb9654c6899842fda28f997ae899206a07e2dee4e",
+    "kudurru_0.2.0-rc.1-SNAPSHOT-d1725c59_linux_amd64.tar.gz": "5a869018fa270e701ec353454d63104fbecfd8ba78b282cd8768865cc0a6db36",
+    "kudurru_0.2.0-rc.1-SNAPSHOT-d1725c59_linux_amd64.tar.gz.sbom.json": "b8fe591cdccc1c59568f787252e62f03dc79bde20a0681be1bea76d1a2cd7ee9",
+    "kudurru_0.2.0-rc.1-SNAPSHOT-d1725c59_linux_arm64.tar.gz": "065a661997e2fafe38114586ca57be58c39d55339ad2b5ae7f0cd6c2cc9d578b",
+    "kudurru_0.2.0-rc.1-SNAPSHOT-d1725c59_linux_arm64.tar.gz.sbom.json": "4c1ba11b72b9310d07b02f73c8d9ffca1e1d234f4f543c7bad946c2130976917",
+    "kudurru_0.2.0_rc.1-SNAPSHOT-d1725c59_aarch64.apk": "c55b1373824ef67a976756c55c2541b6e610cdd34014d848d73888504be073d4",
+    "kudurru_0.2.0_rc.1-SNAPSHOT-d1725c59_aarch64.apk.sbom.json": "db9f57a01eea0dbffc6f9129e1474f581153becce739d24ff30e6e4349780afc",
+    "kudurru_0.2.0_rc.1-SNAPSHOT-d1725c59_x86_64.apk": "55583bed612c8d56e3a7a8e92be9f8e63977ff41d3a6d0f7e751f2f65e8039bd",
+    "kudurru_0.2.0_rc.1-SNAPSHOT-d1725c59_x86_64.apk.sbom.json": "c57b965d4badc7b307dc255fd250baafa75dbfc6caceb8644d488fed4268b8cf",
+    "kudurru_0.2.0~rc.1-SNAPSHOT-d1725c59_amd64.deb": "c1c59c19e0e85e22e5c77a94ad30e025d66237c61fac4b2002dda017ac373c4d",
+    "kudurru_0.2.0~rc.1-SNAPSHOT-d1725c59_amd64.deb.sbom.json": "3f5fe48447514ec2b122a8c7dbe29dc80c26829ba74d24795b10e3094bc81815",
+    "kudurru_0.2.0~rc.1-SNAPSHOT-d1725c59_arm64.deb": "2616174a29e6131460260ab2b1e0b47114c910805ab735792c5a4e9e4a268654",
+    "kudurru_0.2.0~rc.1-SNAPSHOT-d1725c59_arm64.deb.sbom.json": "509cf49e681ec9900e35919a2acdc59ac3420fb454960ae1667fa746be2ea605"
+  },
+  "binaries": [
+    {
+      "path": "dist/kudurru_linux_arm64_v8.0/kudurru",
+      "bytes": 78184608,
+      "sha256": "66fd49bf18bf76cb73af7ca61b68e175374006443691b12b7630dc374449cce8",
+      "cgoDisabled": true
+    },
+    {
+      "path": "dist/kudurru_linux_amd64_v1/kudurru",
+      "bytes": 85688480,
+      "sha256": "b2207adfdb849dab8f26ec2c0544d1a10a9b9fbb274b62c1e22ac9cf4ecb2cfe",
+      "cgoDisabled": true
+    },
+    {
+      "path": "dist/kudurru_darwin_amd64_v1/kudurru",
+      "bytes": 87162048,
+      "sha256": "6588806fa93590a89dca4b27127a5a1253cb4e81a95fb54e5da609774c95852f",
+      "cgoDisabled": true
+    },
+    {
+      "path": "dist/kudurru_darwin_arm64_v8.0/kudurru",
+      "bytes": 80250898,
+      "sha256": "983d664ff28c620c94388a4ba12580b28726d1fe0e81548498b7e64bc715b163",
+      "cgoDisabled": true
+    }
+  ],
+  "checksumCount": 22,
+  "archiveCount": 5,
+  "packageCount": 6,
+  "published": false
+}

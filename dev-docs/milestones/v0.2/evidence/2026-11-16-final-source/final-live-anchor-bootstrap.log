@@ -1,0 +1,32 @@
+=== RUN   TestLiveRootManagedBootstrap
+    serving_anchor_live_test.go:90: 198.41.0.4:53: 1139 bytes, NSCOUNT 0, ARCOUNT 1, KSKs [20326 38696], signed by [38696], authenticated by seeds [38696]
+    serving_anchor_live_test.go:48: [2001:503:ba3e::2:30]:53: unreachable (no complete reply)
+    serving_anchor_live_test.go:90: 170.247.170.2:53: 1139 bytes, NSCOUNT 0, ARCOUNT 1, KSKs [20326 38696], signed by [38696], authenticated by seeds [38696]
+    serving_anchor_live_test.go:48: [2801:1b8:10::b]:53: unreachable (no complete reply)
+    serving_anchor_live_test.go:90: 192.33.4.12:53: 1139 bytes, NSCOUNT 0, ARCOUNT 1, KSKs [20326 38696], signed by [38696], authenticated by seeds [38696]
+    serving_anchor_live_test.go:48: [2001:500:2::c]:53: unreachable (no complete reply)
+    serving_anchor_live_test.go:90: 199.7.91.13:53: 1139 bytes, NSCOUNT 0, ARCOUNT 1, KSKs [20326 38696], signed by [38696], authenticated by seeds [38696]
+    serving_anchor_live_test.go:48: [2001:500:2d::d]:53: unreachable (no complete reply)
+    serving_anchor_live_test.go:90: 192.203.230.10:53: 1139 bytes, NSCOUNT 0, ARCOUNT 1, KSKs [20326 38696], signed by [38696], authenticated by seeds [38696]
+    serving_anchor_live_test.go:48: [2001:500:a8::e]:53: unreachable (no complete reply)
+    serving_anchor_live_test.go:90: 192.5.5.241:53: 1139 bytes, NSCOUNT 0, ARCOUNT 1, KSKs [20326 38696], signed by [38696], authenticated by seeds [38696]
+    serving_anchor_live_test.go:48: [2001:500:2f::f]:53: unreachable (no complete reply)
+    serving_anchor_live_test.go:90: 192.112.36.4:53: 1139 bytes, NSCOUNT 0, ARCOUNT 1, KSKs [38696 20326], signed by [38696], authenticated by seeds [38696]
+    serving_anchor_live_test.go:48: [2001:500:12::d0d]:53: unreachable (no complete reply)
+    serving_anchor_live_test.go:90: 198.97.190.53:53: 1139 bytes, NSCOUNT 0, ARCOUNT 1, KSKs [20326 38696], signed by [38696], authenticated by seeds [38696]
+    serving_anchor_live_test.go:48: [2001:500:1::53]:53: unreachable (no complete reply)
+    serving_anchor_live_test.go:90: 192.36.148.17:53: 1139 bytes, NSCOUNT 0, ARCOUNT 1, KSKs [20326 38696], signed by [38696], authenticated by seeds [38696]
+    serving_anchor_live_test.go:48: [2001:7fe::53]:53: unreachable (no complete reply)
+    serving_anchor_live_test.go:90: 192.58.128.30:53: 1139 bytes, NSCOUNT 0, ARCOUNT 1, KSKs [20326 38696], signed by [38696], authenticated by seeds [38696]
+    serving_anchor_live_test.go:48: [2001:503:c27::2:30]:53: unreachable (no complete reply)
+    serving_anchor_live_test.go:90: 193.0.14.129:53: 1139 bytes, NSCOUNT 0, ARCOUNT 1, KSKs [20326 38696], signed by [38696], authenticated by seeds [38696]
+    serving_anchor_live_test.go:48: [2001:7fd::1]:53: unreachable (no complete reply)
+    serving_anchor_live_test.go:90: 199.7.83.42:53: 1139 bytes, NSCOUNT 0, ARCOUNT 1, KSKs [20326 38696], signed by [38696], authenticated by seeds [38696]
+    serving_anchor_live_test.go:48: [2001:500:9f::42]:53: unreachable (no complete reply)
+    serving_anchor_live_test.go:90: 202.12.27.33:53: 1141 bytes, NSCOUNT 0, ARCOUNT 1, KSKs [20326 38696], signed by [38696], authenticated by seeds [38696]
+    serving_anchor_live_test.go:48: [2001:dc3::35]:53: unreachable (no complete reply)
+    serving_anchor_live_test.go:97: shipped seed 20326 authenticated the DNSKEY set on 0 of 13 reachable endpoints
+    serving_anchor_live_test.go:97: shipped seed 38696 authenticated the DNSKEY set on 13 of 13 reachable endpoints
+--- PASS: TestLiveRootManagedBootstrap (0.52s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/cmd/kudurru	0.591s

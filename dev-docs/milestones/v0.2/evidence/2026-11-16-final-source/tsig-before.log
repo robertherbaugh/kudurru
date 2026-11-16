@@ -1,0 +1,124 @@
+2026/11/15 23:30:58 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:30:59 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:00 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:03 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:04 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:05 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:07 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:31:07 INFO complete serving generation published again component=serving
+2026/11/15 23:31:08 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:09 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:11 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:13 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:14 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:16 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- FAIL: TestServingTSIGObserverOriginalCancellationAndDeadline (3.76s)
+    --- FAIL: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.22s)
+        serving_tsig_observation_test.go:275: original observer outcome or unnotified pending-window premises failed: committed=true observer=context deadline exceeded command=context deadline exceeded window=false publisher=false authority=true pending=true writer=true
+2026/11/15 23:31:18 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- FAIL: TestServingTSIGObserverQuietOriginalExpiry (1.39s)
+    serving_tsig_observation_test.go:270: original observer outcome or unnotified pending-window premises failed: committed=true observer=servingauth: credential rejected command=servingauth: credential rejected window=false publisher=false authority=true pending=true writer=true
+2026/11/15 23:31:19 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:21 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:23 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:24 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:26 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:28 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:30 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:31 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:34 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- FAIL: TestServingTSIGObserverQuietOriginalExpiry (1.61s)
+    serving_tsig_observation_test.go:270: original observer outcome or unnotified pending-window premises failed: committed=true observer=servingauth: credential rejected command=servingauth: credential rejected window=false publisher=false authority=true pending=true writer=true
+2026/11/15 23:31:35 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:36 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:38 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:40 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:41 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- FAIL: TestServingTSIGObserverOriginalCancellationAndDeadline (3.65s)
+    --- FAIL: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.19s)
+        serving_tsig_observation_test.go:275: original observer outcome or unnotified pending-window premises failed: committed=true observer=context deadline exceeded command=context deadline exceeded window=false publisher=false authority=true pending=true writer=true
+2026/11/15 23:31:43 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:45 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:46 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:48 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:31:48 INFO complete serving generation published again component=serving
+2026/11/15 23:31:48 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:50 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:51 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:54 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:55 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:56 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:31:59 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- FAIL: TestServingTSIGObserverQuietOriginalExpiry (1.38s)
+    serving_tsig_observation_test.go:270: original observer outcome or unnotified pending-window premises failed: committed=true observer=servingauth: credential rejected command=servingauth: credential rejected window=false publisher=false authority=true pending=true writer=true
+2026/11/15 23:32:00 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:01 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:04 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:05 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:06 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:32:07 INFO complete serving generation published again component=serving
+2026/11/15 23:32:07 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- FAIL: TestServingTSIGObserverOriginalCancellationAndDeadline (3.71s)
+    --- FAIL: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.35s)
+        serving_tsig_observation_test.go:275: original observer outcome or unnotified pending-window premises failed: committed=true observer=context deadline exceeded command=context deadline exceeded window=false publisher=false authority=true pending=true writer=true
+2026/11/15 23:32:09 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:10 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:32:10 INFO complete serving generation published again component=serving
+2026/11/15 23:32:10 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:12 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:14 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:16 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:17 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:20 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:21 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:23 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:25 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:26 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:28 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:30 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:32 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:33 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:36 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:37 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:39 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:40 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:32:41 INFO complete serving generation published again component=serving
+2026/11/15 23:32:41 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- FAIL: TestServingTSIGObserverQuietOriginalExpiry (1.43s)
+    serving_tsig_observation_test.go:270: original observer outcome or unnotified pending-window premises failed: committed=true observer=servingauth: credential rejected command=servingauth: credential rejected window=false publisher=false authority=true pending=true writer=true
+2026/11/15 23:32:42 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:43 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:32:44 INFO complete serving generation published again component=serving
+2026/11/15 23:32:44 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:46 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:48 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:49 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:51 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:52 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:54 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:56 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:58 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:32:59 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:01 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:03 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:04 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:06 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:08 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:10 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:12 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:13 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:15 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:17 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:19 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:20 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:22 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:24 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:26 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:27 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:33:27 INFO complete serving generation published again component=serving
+2026/11/15 23:33:28 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:29 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+2026/11/15 23:33:31 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+FAIL
+FAIL	github.com/robertherbaugh/kudurru/cmd/kudurru	155.366s
+FAIL

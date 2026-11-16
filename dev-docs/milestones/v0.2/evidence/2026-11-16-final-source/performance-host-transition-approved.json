@@ -1,0 +1,14 @@
+{
+  "purpose": "qualification-host-transition",
+  "decision": "accepted",
+  "calibration_manifest_sha256": "3b38bf0389bb04e2ed9b0546d79e276ffdbf70090ae8588afa7c5fb2a0bf7266",
+  "calibration_approval_sha256": "291c461fd91bfc3a2e235b79f6f133e368ce7249a7342d7c1e301878adaa03e5",
+  "previous_host_sha256": "6acfbdc3cd40cfff44fa8b471aa2c7ef81e49c13ed902ee480fec8c19258594a",
+  "proposal_sha256": "8df8213e13f4b8d0cb67298ae64fda245613530c29fa8bec1814873dc9a0a804",
+  "qualification_host_sha256": "b25d0316a2f5c06087a821aa55fccbf38726fec11b9de8c7e2a9231bc4543123",
+  "reviewed_by": "Robert Herbaugh",
+  "reviewed_at": "2026-11-16T00:01:58.893987+00:00",
+  "review_evidence": "Workspace owner Robert Herbaugh reply in Conductor on 2026-11-16: \"Approve this host-continuity amendment\", replying to the exact restarted-host proposal and disclosure in .context/performance-host-proposal.json.",
+  "unchanged": "Approved limits, Go 1.27.4, six processors, five samples, 60 interleaved native commands, fixed product gates, 20 percent relative gate, noise floors, retained failures and immutable calibration.",
+  "unknowns": "Physical host identity, pinning, SMT placement and competing tenants remain unavailable."
+}

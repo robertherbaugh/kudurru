@@ -1,0 +1,19 @@
+{
+  "source": "ed293dcab47f6d373479156b0d37f84d3bf5bbf6",
+  "artifactSource": "d1725c59",
+  "archive": "kudurru_0.2.0-rc.1-SNAPSHOT-d1725c59_linux_amd64.tar.gz",
+  "archive_sha256": "5a869018fa270e701ec353454d63104fbecfd8ba78b282cd8768865cc0a6db36",
+  "binary_sha256": "b2207adfdb849dab8f26ec2c0544d1a10a9b9fbb274b62c1e22ac9cf4ecb2cfe",
+  "previous_binary_sha256": "e4e73e53cf7bd965ad1e5eb3f66b9bf450ab9e4e81f25efb9aa93db8b510512a",
+  "argv": [
+    "go",
+    "test",
+    "-v",
+    "-count=1",
+    "-timeout=30m",
+    "./test/e2e",
+    "-run",
+    "^(TestUpgradeFromV01DataDirectory|TestUpgradeFromV01RefusesLegacyObjects|TestBuiltBinaryRefusesNewerDatabases|TestKubeUpgradeFromV01|TestBuiltBinaryRefusesNewerAuditSpool|TestAnchorUpgradeFromReleasedV010|TestAnchorUpgradeStaticTwinV010|TestMixedVersionStaticPeerV01|TestMixedVersionCentralDatabaseV01)$"
+  ],
+  "syntheticLicenseSubtests": true
+}

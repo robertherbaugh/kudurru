@@ -1,0 +1,36 @@
+{
+  "binarySha256": "b2207adfdb849dab8f26ec2c0544d1a10a9b9fbb274b62c1e22ac9cf4ecb2cfe",
+  "productionTrustRoot": true,
+  "issuedKeyProvidedByOwner": true,
+  "checks": [
+    "normal unmodified artifact trusts issued signature and matches signed plan/node/features",
+    "license UI displays every included and excluded feature correctly",
+    "issued key lifts policy limit and applies audit/history entitlement gates",
+    "Enterprise branding saves and renders through production entitlement",
+    "restart preserves issued entitlement, authenticated session and DNS",
+    "minute watcher rejects tampered production signature; policy refused and DNS continues",
+    "minute watcher restores original valid production entitlement",
+    "minute watcher returns to Community and default branding; existing policy/session/DNS survive"
+  ],
+  "humanVisualApproval": false,
+  "productionExpiryClockTest": false,
+  "startedAt": "2026-11-16T00:39:51.405Z",
+  "entitlement": {
+    "state": "active",
+    "plan": "enterprise",
+    "nodes": 3,
+    "features": [
+      "audit",
+      "branding",
+      "edge",
+      "integrations",
+      "longterm",
+      "oidc",
+      "rbac",
+      "requests"
+    ],
+    "matchesSignedClaims": true
+  },
+  "passed": true,
+  "completedAt": "2026-11-16T00:43:02.435Z"
+}
