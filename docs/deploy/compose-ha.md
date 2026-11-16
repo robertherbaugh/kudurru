@@ -112,9 +112,13 @@ to all three hosts. Objects re-apply on file change; keys flagged `R` in
 `kudurru config schema` need `docker compose restart kudurru` (one host at a
 time). Cluster settings are the exception: each twin copies them from
 `kudurru.yaml` into its database on its first 0.2 start and keeps them, so a
-later edit of a cluster key in the file is not applied (the start logs a
-warning naming the keys whose file value differs), and the API refuses
-settings writes. Set the cluster settings you need
+later file edit does not update the stored settings object, and the API
+refuses settings writes. Reloadable settings use the stored values; components
+whose keys require a restart keep the values they read at process startup.
+The start logs separate warnings for these two cases. Do not assume every
+restart-required component has the same file-override behavior as a hot setting;
+check the effective configuration and diagnostics after restarting. Set the
+stored cluster settings you need
 before a host's first 0.2 start
 ([Upgrading from 0.1.x](runbooks.md#upgrading-from-01x)); changing them
 afterwards is not supported in 0.2.0. Zone serials are

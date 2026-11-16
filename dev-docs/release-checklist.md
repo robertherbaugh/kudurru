@@ -171,6 +171,12 @@ goreleaser v2 (a downloaded release binary, checksum verified, or
 
 ### v0.2 preparation dry run, November 15, 2026
 
+The [current v0.2 follow-up acceptance](milestones/v0.2/final-acceptance.md)
+records the later #94/TSIG source, packaged upgrade and rollback rehearsal,
+artifact hashes, browser/live-service checks and remaining performance,
+production-license and review gates. The historical dry run below accepts
+only its named source; it does not qualify the follow-up or publish v0.2.0.
+
 Source `21018c6c` passed all 20 local release steps, including the full
 snapshot, live recursion and managed-root checks, and cleanup to a clean tree.
 The commands match `hack/release-local-checks.sh --full-snapshot --live`, using

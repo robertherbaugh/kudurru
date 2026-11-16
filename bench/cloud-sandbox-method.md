@@ -65,10 +65,10 @@ owner decision are retained with the recording. Before timing, capture the
 accepted guest identity after unrelated work finishes. No calibration limit,
 candidate timing or release acceptance is supplied by this decision.
 
-## Restarted sandbox proposal (pending review)
+## Restarted sandbox amendment — owner accepted November 16, 2026
 
 The follow-up workspace has a different VM/boot/CPU identity. The historical
-acceptance above applies only to its named host. A proposed extension lets
+acceptance above applies only to its named host. The approved extension lets
 `hack/bench-dedicated.py qualify --host-transition-approval PATH` accept a new
 host only when a separate human-reviewed record binds the previous host hash,
 new host hash, immutable calibration manifest and original calibration approval.
@@ -78,6 +78,15 @@ approval and source files. Without that record the same-host rejection remains.
 No limits, workloads, process counts, reference eligibility, 20% relative gate
 or failure-retention rules change. The fresh original/candidate measurements
 must run on the same newly approved host, after unrelated builds/tests finish.
-The proposal does not grant approval or convert the earlier runtime pass into
-final-source qualification. The actual owner response must be recorded before
-candidate timing; until then performance remains pending.
+On November 16, 2026, the owner replied to the exact proposal and replacement
+host disclosure: "Approve this host-continuity amendment". This approves use of
+the existing approved limits on the restarted sandbox, a newly guarded host
+record and fresh interleaved original-reference/candidate measurements. The
+historical calibration and every limit remain unchanged. Physical-host
+placement, pinning, SMT placement and competing tenants remain unavailable.
+
+Record this actual decision in the new host record and a separate transition
+record binding both host hashes, the immutable calibration and its original
+approval. Preserve the pending proposal as evidence. This decision authorizes
+one fresh qualification; it does not convert the earlier runtime pass into
+final-source qualification or accept a release. Every failure remains retained.

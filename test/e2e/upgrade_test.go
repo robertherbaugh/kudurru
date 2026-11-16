@@ -1096,9 +1096,21 @@ func TestUpgradeFromV01DataDirectory(t *testing.T) {
 		}
 		n := kudurrutest.StartReady(t, d.previous, spec, kudurrutest.Options{Env: d.env, Args: []string{"serve", "--config", spec.Config}})
 		defer n.Stop(20 * time.Second)
-		got := answers(t, spec.Ports.DNS)
-		if !maps.Equal(got, d.answers) {
-			t.Fatal("restored release did not retain the original DNS answers")
+		// The released binary reports readiness before its restored policies
+		// finish compiling, just as on the upgrade and restart paths above.
+		var diff []string
+		if !kudurrutest.Eventually(30*time.Second, 200*time.Millisecond, func() bool {
+			got := answers(t, spec.Ports.DNS)
+			diff = nil
+			for q, want := range d.answers {
+				if got[q] != want {
+					diff = append(diff, fmt.Sprintf("%s: %q, want %q", q, got[q], want))
+				}
+			}
+			return len(diff) == 0
+		}) {
+			sort.Strings(diff)
+			t.Fatalf("restored release changed the original DNS answers:\n%s", strings.Join(diff, "\n"))
 		}
 		for label, token := range map[string]string{"break-glass": d.breakGlass, "personal": d.personal, "bootstrap": d.bootstrap} {
 			if d.api(token).principal(t) != d.principals[label] {
