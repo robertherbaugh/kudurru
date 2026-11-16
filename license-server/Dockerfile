@@ -29,7 +29,7 @@
 # JavaScript (no native npm modules), so arm64 needs no QEMU; the runtime
 # stage only copies files.
 
-FROM --platform=$BUILDPLATFORM oven/bun:1.4.3@sha256:ec06c3b6cea04192ae6770c434f668ca41d343ad19fa6472216c7b48be39c598 AS build
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d AS build
 WORKDIR /src/license-server
 # The manifest and the lockfile first, so the dependency layer is reused
 # until they change. Lifecycle scripts of dependencies stay blocked (no
@@ -47,7 +47,7 @@ RUN bun run build
 # single layer: the server and health-check bundles, the UI, the trusted
 # public keys and the image's notices. Root-owned and not writable by the
 # runtime user.
-FROM --platform=$BUILDPLATFORM oven/bun:1.4.3@sha256:ec06c3b6cea04192ae6770c434f668ca41d343ad19fa6472216c7b48be39c598 AS out
+FROM --platform=$BUILDPLATFORM oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d AS out
 COPY --from=build /src/license-server/dist/server.js /src/license-server/dist/healthcheck.js /out/
 COPY --from=build /src/license-server/dist/ui/ /out/ui/
 COPY --from=build /src/internal/license/keys/ /out/trusted-keys/
@@ -61,7 +61,7 @@ RUN set -eu; \
     chown -R 0:0 /out; \
     chmod -R a+rX,go-w /out
 
-FROM oven/bun:1.4.3-distroless@sha256:1aaa515018b0b37d95dbdebd55d1b7f37ad258a6289ba63e4bc3b9c9e3038697
+FROM oven/bun:1.4.4-distroless@sha256:153a951ae40106e125898103e6e990ee0f38e6aee7f561029e26cf9fbed23470
 # Empty unless the build passes them (make license-server-image and the
 # publish job do); config.ts then reports commit and version "dev".
 ARG VERSION=
