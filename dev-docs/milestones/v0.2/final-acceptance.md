@@ -20,7 +20,7 @@ specific finding it exercises, not a package's complete acceptance criteria.
 | #94 | Implemented per-group `cache: true`, default off for non-default groups. Default group caching and the global cache switch retain their existing precedence. The route plan is bound before lookup and partitions by group, routing and trust configuration. Covers conditional suffixes, forward-zone/Policy hints, TTL bounds/countdown, stale/prefetch, reload flushes and cache inspection. The dashboard saves the toggle immediately. Focused Go race suites, dashboard type checking, 40 upstream tests, lint and bundle build pass. |
 | Packaged upgrade | Released v0.1.0 Linux archive and RPM downloaded and checked against published SHA256 checksums. The existing upgrade test now takes a stopped-volume backup and restores it under the released old binary, checking DNS, credentials, schemas and history. Candidate package execution and exact hashes/results are recorded below. |
 | Performance | **Final-source qualification failed** on `a22255a2`: 60 native processes succeeded, but all ten absolute report gates failed. Original-reference / candidate CNAME lookup p99 medians are 2,187 / 2,363 ns against the unchanged 2,000 ns product maximum. The reference is ineligible, so relative comparisons were refused. The owner-approved restarted-host amendment, calibration and limits were honored. Complete evidence below; release-blocking [#143](https://github.com/robertherbaugh/kudurru/issues/143). |
-| Hosted checks | PR #54's last reported source run `43770178234` failed the two observer tests and `ci-ok`; its other 23 jobs passed. Follow-up run `43775954528` passes both observer shards but exposed the schema-contract, cleanup-setup, UPDATE EOF and rollback test failures recorded below. Both observer shards and the corrected receipt-ledger shard pass on final source `a22255a2`; the final full run is recorded below. Required checks still govern merge. |
+| Hosted checks | PR #54's last reported source run `43770178234` failed the two observer tests and `ci-ok`; its other 23 jobs passed. Follow-up run `43775954528` passes both observer shards but exposed the schema-contract, cleanup-setup, UPDATE EOF and rollback test failures recorded below. **All 26 jobs passed** in final-source run `43781940600` on `a22255a2`, including both observer shards, the corrected ledger shard, e2e and `ci-ok`. `security-ok` also passed. Required review still governs merge. |
 | Manual UI and production license | The normal archive executable accepted the owner-supplied issued Enterprise key through its production trust root. All eight entitlement, branding, restart, tampered-signature, minute-reload and no-key fallback checks passed. Earlier synthetic proofs keep their separate scope. Human visual approval, license-server issuance workflow and actual production-key expiry/grace acceptance remain in [#133](https://github.com/robertherbaugh/kudurru/issues/133). |
 | Review and publication | Required CI/security/review checks govern merge. Publishing v0.2.0 is a separate release-branch milestone. |
 
@@ -73,6 +73,14 @@ status in the audit, rather than becoming invented current failures.
 | EDGE: restore-hold continuity and temporarily unreachable backend behavior | [#128](https://github.com/robertherbaugh/kudurru/issues/128) |
 | OPS: manual UI, production entitlement/branding, package/deployment and release protection checks | [#133](https://github.com/robertherbaugh/kudurru/issues/133), [#140](https://github.com/robertherbaugh/kudurru/issues/140) |
 
+The current report closes the specific final-source ClickHouse/Loki and
+issued-production-signature gaps within #131/#133. GitHub denied attempts to
+update the existing issue bodies with HTTP 403 (`Resource not accessible by
+integration`); those issue texts may still name the original uncompleted scope.
+No issue body or issue state was changed. This report and its committed
+evidence record the specific completed checks; remaining requirements in those
+issues stay open.
+
 ## Explicit future acceptance
 
 AD/Windows production acceptance remains future work under **D353**. The
@@ -86,7 +94,8 @@ The [portable evidence bundle](evidence/2026-11-16-final-source/README.md) retai
 raw qualification archives, input/receipt hashes, all metric vectors and selected
 artifact/test records. Local supplementary logs remain under `.context/`. The source follow-up is
 [PR #134](https://github.com/robertherbaugh/kudurru/pull/134). A fresh checkout
-can review the committed bundle without local logs. No GA tag or release was published.
+can review the committed bundle in [PR #144](https://github.com/robertherbaugh/kudurru/pull/144),
+stacked on #134, without local logs. No GA tag or release was published.
 
 ### TSIG observer verification
 
@@ -343,9 +352,9 @@ hold the next measurement: `reference and control checkouts must be clean`.
 The incomplete record and explicit source-correction hold are retained under
 `.context/performance-final-20261116/`. It supplies no qualification pass and
 no samples for the fresh complete sequence on the corrected source. Limits,
-calibration, host and approval are unchanged. Full results belong in a small
-follow-up documentation PR based on #134; this keeps source CI tied to its
-actual code head while preserving independently reviewable evidence.
+calibration, host and approval are unchanged. The complete corrected-source
+result below is retained in documentation PR #144, based on #134; this keeps
+source CI tied to its actual code head.
 
 ### Complete final-source performance result
 
@@ -382,11 +391,15 @@ no such approval after a failure. D383/D412/G23 remain open.
 ### Final hosted CI and release disposition
 
 Run [43781940600](https://github.com/robertherbaugh/kudurru/actions/runs/43781940600)
-is on final source `a22255a2`. Both observer shards and corrected receipt-ledger
-shard passed; the final full outcome is updated with the evidence PR. Security
+**passed all 26 jobs** on final source `a22255a2`, including `ci-ok`, both
+observer shards, the corrected complete ledger test and e2e/BIND interop. Security
 run [43781940738](https://github.com/robertherbaugh/kudurru/actions/runs/43781940738)
 has passed `security-ok`. The earlier `50006070` run was superseded by the
-read-timeout test correction and is not claimed as final green CI.
+read-timeout test correction and is not claimed as final green CI. Final source
+check/job snapshots are committed in the evidence bundle. Hosted Compose,
+KIND/MetalLB and development-image checks also passed on `a22255a2`; their
+exact URLs are in the check snapshot. These retain their single-environment
+scope and do not close D358.
 
 The issued-key checks close their exact missing-production-signature proof.
 Human UI, license-server issuance/production-key expiry, package maintainer

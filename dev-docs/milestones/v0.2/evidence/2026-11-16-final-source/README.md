@@ -2,7 +2,8 @@
 
 The qualification **failed**. The normal packaged candidate passed the issued
 production-key checks. Neither result grants overall release acceptance.
-Source PR [#134](https://github.com/robertherbaugh/kudurru/pull/134) contains
+Documentation PR [#144](https://github.com/robertherbaugh/kudurru/pull/144)
+is stacked on source PR [#134](https://github.com/robertherbaugh/kudurru/pull/134) at
 `a22255a2bc981a8fa12afcd2778267d7b681de1b`; this documentation stack records its
 outcomes without changing that measured source. The
 [acceptance report](../../final-acceptance.md) keeps all remaining gates explicit.
@@ -103,9 +104,10 @@ all 1,100 real NOERROR, four workers, client timeout and original
 replay/expiry/restart assertions remain required. This test checks ledger
 capacity/correctness, not a guarantee that each first attempt answers.
 
-Hosted command shard 4/4 passed that corrected full test. Both original observer
-shards passed on `a22255a2`. The JSON snapshots retain the source run/check
-state at capture; the main acceptance report records final CI status. Green CI
+Hosted command shard 4/4 passed that corrected full test. All **26 jobs** in
+source run `43781940600` passed on `a22255a2`, including both original observer
+shards, e2e and `ci-ok`; `security-ok` also passed. The JSON snapshots retain
+that final source run/check state. Green CI
 does not waive performance, code-owner review or release protection. The ruleset
 mismatch remains [#140](https://github.com/robertherbaugh/kudurru/issues/140).
 
