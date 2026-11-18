@@ -56,7 +56,7 @@ describeDb('migrations against Postgres', () => {
   test('a second run is a no-op', async () => {
     expect(await migrate(db)).toEqual([]);
     const rows = await db<{ version: number; name: string }[]>`select version, name from schema_migrations order by version`;
-    expect(rows).toEqual(MIGRATIONS.map((m) => ({ version: m.version, name: m.name })));
+    expect([...rows]).toEqual(MIGRATIONS.map((m) => ({ version: m.version, name: m.name })));
   });
 
   test('every table of spec §4 exists', async () => {
@@ -108,7 +108,7 @@ describeDb('migrations against Postgres', () => {
     await expect(run(db`delete from audit_events`)).rejects.toMatchObject({ errno: '42501' });
     await expect(run(db`truncate audit_events`)).rejects.toMatchObject({ errno: '42501' });
     const rows = await db<{ action: string }[]>`select action from audit_events`;
-    expect(rows).toEqual([{ action: 'customer.created' }]);
+    expect([...rows]).toEqual([{ action: 'customer.created' }]);
   });
 
   test('the schema keeps the invariants', async () => {

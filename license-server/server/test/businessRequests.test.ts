@@ -69,7 +69,7 @@ describeDb('POST /api/v1/public/business-requests', () => {
     expect(res.status).toBe(202);
     expect(res.body).toEqual({ status: 'sent' });
     const rows = await stored(email);
-    expect(rows).toEqual([
+    expect([...rows]).toEqual([
       { id: expect.stringMatching(/^brq_/) as string, name: 'Ada Admin', company: 'Example GmbH', edition: 'enterprise', nodes: 12, details: 'OIDC and edge.\nBy Q3.', status: 'open', ip: '127.0.0.1', user_agent: 'Firefox' },
     ]);
 

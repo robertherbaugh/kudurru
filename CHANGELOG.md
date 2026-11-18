@@ -1923,6 +1923,15 @@ hints to peers so every replica transfers independently.
   protocol spike to address CVE-2026-78661, together with its required Go
   dependency versions.
 
+- Build with Go 1.27.4 or later (GO-2026-6859, a `net/http` HTTP/1 server
+  crash from a `MaxBytesReader` header race), and upgrade `cel-go` to v0.31.0
+  (GO-2026-6094) and `golang.org/x/crypto` to v0.59.0, together with the other Go modules
+  (`govulncheck` reports none). The dashboard, license portal, website and
+  documentation site packages, Bun 1.4.4 and the pinned GitHub Actions are
+  current. `bun audit` still reports one transitive development-only
+  `picomatch` advisory (GHSA-fc5q-39xc-vjpf, ReDoS in glob matching during
+  linting and builds) for which no patched release exists yet.
+
 ### Upgrade notes
 
 - SQLite (verified with the released 0.1.0 binary): back up first. An upgrade

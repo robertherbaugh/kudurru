@@ -116,7 +116,7 @@ export async function migrate(db: Db, opts: MigrateOptions = {}): Promise<number
       await conn`select pg_advisory_unlock(${MIGRATION_LOCK})`;
     }
   } finally {
-    conn.release();
+    await conn.release();
   }
   return applied;
 }

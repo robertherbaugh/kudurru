@@ -170,7 +170,7 @@ Cloudflare dashboard:
    | Deploy command | `bunx wrangler deploy` |
    | Preview command | `bunx wrangler preview` (a preview URL per branch and pull request) |
    | Build watch paths, include | `website/*`, `branding/*`, `docs/guide/images/*`, `VERSION`, `LICENSE`, `LICENSING.md`, `COMMERCIAL_LICENSE_AGREEMENT.md` |
-   | Build variables | `BUN_VERSION=1.4.3`, `SKIP_DEPENDENCY_INSTALL=1` (the build command installs from `bun.lock`) |
+   | Build variables | `BUN_VERSION=1.4.4`, `SKIP_DEPENDENCY_INSTALL=1` (the build command installs from `bun.lock`) |
 
    The build reads `../VERSION`, `../branding` and `../docs/guide/images`
    outside the root directory; Workers Builds clones the whole repository.

@@ -41,7 +41,7 @@ test('a used or expired link is explained, with the way to ask again', async () 
   fireEvent.click(await screen.findByRole('button', { name: 'Confirm my request' }));
   expect(await screen.findByText('This confirmation link no longer works')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: /Request a key/ })).toHaveAttribute('href', 'https://kudurru.io/license');
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm my request' })).toBeDisabled());
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Confirm my request' })).toHaveAttribute('aria-disabled', 'true'));
 });
 
 test('a rate limit says when to try again and keeps the button', async () => {

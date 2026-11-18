@@ -163,7 +163,7 @@ test('a 409 on a request still open says why approving failed and keeps Reject',
   expect(screen.getByRole('link', { name: 'Open the requests in the portal' })).toHaveAttribute('href', '/requests');
   expect(screen.getByText('Approving renews')).toBeInTheDocument();
   // Approving with the default terms cannot work; rejecting, as the server suggests, still can.
-  expect(screen.getByRole('button', { name: 'Approve and send the key' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Approve and send the key' })).toHaveAttribute('aria-disabled', 'true');
   const reject = screen.getByRole('button', { name: 'Reject' });
   expect(reject).toBeEnabled();
   fireEvent.click(reject);

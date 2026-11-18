@@ -127,7 +127,7 @@ the second one. `kudurru.io` must be a zone on the same Cloudflare account.
    | Deploy command | `bunx wrangler deploy` |
    | Preview command | `bunx wrangler preview` (a preview URL per branch and pull request) |
    | Build watch paths, include | `docs-site/*`, `docs/*`, `branding/*`, `api/openapi.json`, `internal/api/scalar/*`, `CHANGELOG.md`, `SECURITY.md`, `CONTRIBUTING.md` |
-   | Build variables | `HUGO_PARAMS_REPOREF=release`, `BUN_VERSION=1.4.3`, `SKIP_DEPENDENCY_INSTALL=1` (the build command installs from `bun.lock`) |
+   | Build variables | `HUGO_PARAMS_REPOREF=release`, `BUN_VERSION=1.4.4`, `SKIP_DEPENDENCY_INSTALL=1` (the build command installs from `bun.lock`) |
 
    A build of any other branch, including `main` when production is `release`,
    runs the Preview command against that branch's commit. The command does

@@ -24,7 +24,7 @@
 # (the ENTRYPOINT takes them as arguments).
 #
 # Both stages are pinned by their multi-arch index digest; bump them
-# together, and with bun-version in the workflows (1.4.3). The build stage
+# together, and with bun-version in the workflows (1.4.4). The build stage
 # runs on the build platform and produces only architecture-independent
 # JavaScript (no native npm modules), so arm64 needs no QEMU; the runtime
 # stage only copies files.

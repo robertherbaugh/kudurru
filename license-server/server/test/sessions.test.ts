@@ -102,7 +102,7 @@ describeDb('sessions and audit in Postgres', () => {
     });
     const rows = await t.db<{ actor_id: string | null; actor_label: string; details: unknown; ip: string | null; user_agent: string | null }[]>`
       select actor_id, actor_label, details, ip, user_agent from audit_events where target_id in ('lic_x', 'pkr_x') order by id`;
-    expect(rows).toEqual([
+    expect([...rows]).toEqual([
       { actor_id: user.id, actor_label: 'Ada (ada@example.org)', details: { plan: 'business', nodes: 5, licensee: 'MoneyJar.co.uk' }, ip: '192.0.2.7', user_agent: null },
       { actor_id: null, actor_label: 'p@example.org', details: {}, ip: '2001:db8::1', user_agent: 'curl' },
     ]);

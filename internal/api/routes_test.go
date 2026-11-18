@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -146,19 +147,37 @@ func TestLintVerbUseCatchesUnusedAndStale(t *testing.T) {
 }
 
 // TestHandlerPermissionScanCreditsOnlyChecks: the reverse lint's source
-// scan credits a verb only for the known check helpers and permission
-// literal types, and reports a resource/verb pair of the same shape
-// anywhere else instead of counting it as a use.
+// scan credits a verb only for the approved check helpers and permission
+// literal types of their own packages, and reports a resource/verb pair of
+// the same shape anywhere else instead of counting it as a use. The
+// negative controls are the point: an unrelated helper or type that shares
+// an approved bare name must not bypass permission-use accounting.
 func TestHandlerPermissionScanCreditsOnlyChecks(t *testing.T) {
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "pkg"), 0o750); err != nil {
-		t.Fatal(err)
-	}
-	src := `package pkg
+	perms := &rbac.Permissions{Resources: map[string][]string{
+		"zones":   {"read", "write", "delete", "transfer", "sign"},
+		"records": {"read", "write"},
+		"cache":   {"flush"},
+		"tokens":  {"revoke"},
+		"users":   {"disable"},
+	}}
+	const rbacImport = `import "github.com/robertherbaugh/kudurru/internal/rbac"
+`
+	for _, tc := range []struct {
+		name         string
+		files        map[string]string
+		found        string
+		unrecognized string
+		where        map[string]string // permission to a substring of its first location
+	}{{
+		name: "approved shapes in their own package",
+		files: map[string]string{"internal/api/x.go": `package api
 
+` + rbacImport + `
 var routes = []perm{{Resource: "zones", Verb: "transfer"}}
 
 var hint = Missing{Resource: "zones", Verb: "sign"}
+
+func (s *Server) require(ctx context.Context, resource, verb string) error { return nil }
 
 func f(s *Server) {
 	_ = s.require(ctx, "zones", "write", clusterScope, "")
@@ -167,58 +186,174 @@ func f(s *Server) {
 	cacheGet("zones", "delete")
 	_ = Missing{Resource: "zones", Verb: dynamic}
 }
-`
-	if err := os.WriteFile(filepath.Join(root, "pkg", "x.go"), []byte(src), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	perms := &rbac.Permissions{Resources: map[string][]string{
-		"zones":   {"read", "write", "delete", "transfer", "sign"},
-		"records": {"read"},
-	}}
-	found, unrecognized := handlerPermissionChecks(t, perms, root, "pkg")
-	keys := func(m map[string][]string) string {
-		var out []string
-		for k := range m {
-			out = append(out, k)
-		}
-		sort.Strings(out)
-		return strings.Join(out, ",")
-	}
-	if got, want := keys(found), "records.read,zones.read,zones.transfer,zones.write"; got != want {
-		t.Errorf("credited %s, want %s", got, want)
-	}
-	if got, want := keys(unrecognized), "zones.delete,zones.sign"; got != want {
-		t.Errorf("unrecognized %s, want %s", got, want)
-	}
-	if w := strings.Join(unrecognized["zones.sign"], ""); !strings.Contains(w, "pkg/x.go:5") || !strings.Contains(w, "literal Missing{}") {
-		t.Errorf("zones.sign location %q", w)
-	}
-	if w := strings.Join(unrecognized["zones.delete"], ""); !strings.Contains(w, "call cacheGet()") {
-		t.Errorf("zones.delete location %q", w)
+`},
+		found:        "records.read,zones.read,zones.transfer,zones.write",
+		unrecognized: "zones.delete,zones.sign",
+		where: map[string]string{
+			"zones.sign":   "internal/api/x.go:7 (literal Missing{})",
+			"zones.delete": "call cacheGet()",
+		},
+	}, {
+		// The bare names require, allowed and authorize are approved only
+		// for internal/api's Server (and permission for cmd/kudurru's
+		// servingHTTP); the same names elsewhere are unrelated helpers.
+		name: "same bare name in another package",
+		files: map[string]string{
+			"internal/other/y.go": `package other
+
+func (h *H) require(ctx context.Context, resource, verb string) error { return nil }
+
+func (h *H) permission(ctx context.Context, resource, verb string) {}
+
+func g(h *H) {
+	_ = h.require(ctx, "cache", "flush")
+	h.permission(ctx, "tokens", "revoke")
+}
+`,
+			"cmd/kudurru/z.go": `package kudurru
+
+func (h *servingHTTP) permission(ctx context.Context, resource, verb string) {}
+
+func (s *Server) require(ctx context.Context, resource, verb string) error { return nil }
+
+func k(h *servingHTTP, s *Server) {
+	h.permission(ctx, "records", "write")
+	_ = s.require(ctx, "users", "disable")
+}
+`},
+		found:        "records.write",
+		unrecognized: "cache.flush,tokens.revoke,users.disable",
+		where:        map[string]string{"cache.flush": "internal/other/y.go:8 (call require())"},
+	}, {
+		// A second declaration of an approved name in the approved package
+		// is ambiguous for a scan that does not resolve receiver types.
+		name: "approved name declared twice in its package",
+		files: map[string]string{"internal/api/a.go": `package api
+
+func (s *Server) allowed(ctx context.Context, resource, verb string) bool { return true }
+
+func (c *cacheView) allowed(resource, verb string) bool { return true }
+
+func h(s *Server) {
+	_ = s.allowed(ctx, "zones", "write")
+}
+`},
+		found:        "",
+		unrecognized: "zones.write",
+	}, {
+		name: "approved name declared on the wrong receiver",
+		files: map[string]string{"internal/api/a.go": `package api
+
+func (c *cacheView) authorize(resource, verb string) bool { return true }
+
+func h(c *cacheView) {
+	_ = c.authorize("zones", "sign")
+}
+`},
+		found:        "",
+		unrecognized: "zones.sign",
+	}, {
+		name: "same type name from another package or a local type",
+		files: map[string]string{
+			"internal/other/y.go": `package other
+
+import fake "example.com/fake/rbac"
+
+type perm struct{ Resource, Verb string }
+
+var a = perm{Resource: "tokens", Verb: "revoke"}
+var b = fake.Attributes{Resource: "users", Verb: "disable"}
+var c = []fake.Route{{Resource: "cache", Verb: "flush"}}
+`,
+			"internal/auth/stack/r.go": `package stack
+
+import "github.com/robertherbaugh/kudurru/internal/rbac"
+
+type Route struct{ Resource, Verb string }
+
+var routes = []Route{{Resource: "zones", Verb: "read"}}
+var attrs = map[string]rbac.Attributes{"x": {Resource: "records", Verb: "write"}}
+`},
+		found:        "records.write,zones.read",
+		unrecognized: "cache.flush,tokens.revoke,users.disable",
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			for name, src := range tc.files {
+				path := filepath.Join(root, filepath.FromSlash(name))
+				if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			found, unrecognized := handlerPermissionChecks(t, perms, root, ".")
+			keys := func(m map[string][]string) string {
+				var out []string
+				for k := range m {
+					out = append(out, k)
+				}
+				sort.Strings(out)
+				return strings.Join(out, ",")
+			}
+			if got := keys(found); got != tc.found {
+				t.Errorf("credited %q, want %q", got, tc.found)
+			}
+			if got := keys(unrecognized); got != tc.unrecognized {
+				t.Errorf("unrecognized %q, want %q", got, tc.unrecognized)
+			}
+			for perm, want := range tc.where {
+				if w := strings.Join(append(found[perm], unrecognized[perm]...), ""); !strings.Contains(w, want) {
+					t.Errorf("%s location %q, want it to contain %q", perm, w, want)
+				}
+			}
+		})
 	}
 }
+
+// checkSymbol names one approved permission-check helper by the package
+// directory that declares it (slash-separated, relative to the repository
+// root), its receiver type ("" for a function) and its name. The scan
+// credits a call only inside that package, and only when the package
+// declares exactly one symbol of that name: a same-named helper in another
+// package, or a second declaration of the name in the same package, is
+// ambiguous and is reported instead of credited.
+type checkSymbol struct{ pkg, recv, name string }
 
 // permissionCheckCallees are the functions and methods whose adjacent
 // string-literal resource and verb arguments are authorization checks:
 // Server.require, Server.allowed, Server.listAllowed and Server.authorize
-// (internal/api),
-// zoneRequirement (zone command plans), servingHTTP.permission and
-// servingHTTPCluster (cmd/kudurru). A method is matched by its name on any
-// receiver.
-var permissionCheckCallees = map[string]bool{
-	"require": true, "allowed": true, "listAllowed": true, "authorize": true, "zoneRequirement": true,
-	"permission": true, "servingHTTPCluster": true,
+// (internal/api), zoneRequirement (zone command plans),
+// servingHTTP.permission and servingHTTPCluster (cmd/kudurru). A method
+// call is matched by name on any receiver inside its declaring package; the
+// scan reads syntax only, so it cannot tell two receivers of one package
+// apart, which is why a second declaration of the name there is refused.
+var permissionCheckCallees = []checkSymbol{
+	{"internal/api", "Server", "require"},
+	{"internal/api", "Server", "allowed"},
+	{"internal/api", "Server", "listAllowed"},
+	{"internal/api", "Server", "authorize"},
+	{"internal/api", "", "zoneRequirement"},
+	{"cmd/kudurru", "servingHTTP", "permission"},
+	{"cmd/kudurru", "", "servingHTTPCluster"},
 }
 
-// permissionCheckTypes are the composite literal types whose
-// string-literal Resource and Verb fields are a permission check or a
-// mounted route declaration: perm (internal/api route permissions),
-// rbac.Attributes (an authorization request) and stack.Route (the auth
-// stack's route table, written as Route inside its package). An elided
-// literal counts when the slice or map it sits in has one of these
-// element types.
-var permissionCheckTypes = map[string]bool{
-	"perm": true, "rbac.Attributes": true, "Attributes": true, "Route": true, "stack.Route": true,
+// permissionCheckTypes are the composite literal types, named by declaring
+// package directory, whose string-literal Resource and Verb fields are a
+// permission check or a mounted route declaration: perm (internal/api route
+// permissions), rbac.Attributes (an authorization request), rbac.Route and
+// stack.Route (the route tables of internal/rbac and the auth stack). A
+// type is written unqualified inside its own package and qualified by an
+// import of that package elsewhere; the scan resolves the qualifier through
+// the file's imports, so a local variable or another package's type of the
+// same name is not credited. An elided literal counts when the slice or map
+// it sits in has one of these element types.
+var permissionCheckTypes = []checkSymbol{
+	{"internal/api", "", "perm"},
+	{"internal/rbac", "", "Attributes"},
+	{"internal/rbac", "", "Route"},
+	{"internal/auth/stack", "", "Route"},
 }
 
 // handlerPermissionChecks finds the permissions that production code
@@ -226,16 +361,22 @@ var permissionCheckTypes = map[string]bool{
 // permissionCheckTypes with string-literal Resource and Verb fields, or a
 // call to a function in permissionCheckCallees with two adjacent
 // string-literal arguments naming a declared resource and one of its
-// verbs. Test files are skipped, so a check only a test performs does not
-// count. A literal or call of the same shape outside the allowlists (a
-// Missing{} hint, an unrelated f("cache", "read")) is not credited and is
-// returned in unrecognized, so the caller fails until the new helper or
-// type is added here on purpose. Limitations: the scan does not prove the
-// checking code is reachable (a perm{} in a registration function nobody
-// calls still counts), and a check whose resource or verb is computed is
-// not seen and needs a route declaration or a reservation.
+// verbs. Both allowlists are qualified by package and symbol: a helper or
+// type of the same bare name in another package, or a helper name declared
+// twice in its own package, is not credited. Test files are skipped, so a
+// check only a test performs does not count. A literal or call of the same
+// shape outside the allowlists (a Missing{} hint, an unrelated
+// f("cache", "read"), an unrelated allowed("zones", "write")) is not
+// credited and is returned in unrecognized, so the caller fails until the
+// new helper or type is added here on purpose. Limitations: the scan does
+// not prove the checking code is reachable (a perm{} in a registration
+// function nobody calls still counts), a check whose resource or verb is
+// computed is not seen and needs a route declaration or a reservation, and
+// it reads syntax, not types, so a method is identified by its name within
+// its package.
 func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string, dirs ...string) (found, unrecognized map[string][]string) {
 	t.Helper()
+	const modulePrefix = "github.com/robertherbaugh/kudurru/"
 	found, unrecognized = map[string][]string{}, map[string][]string{}
 	fset := token.NewFileSet()
 	str := func(e ast.Expr) (string, bool) {
@@ -246,29 +387,31 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 		v, err := strconv.Unquote(lit.Value)
 		return v, err == nil
 	}
-	var typeName func(e ast.Expr) string
-	typeName = func(e ast.Expr) string {
+	// typeRef splits a type expression into its package qualifier (empty
+	// for an unqualified name) and name.
+	var typeRef func(e ast.Expr) (qual, name string)
+	typeRef = func(e ast.Expr) (string, string) {
 		switch e := e.(type) {
 		case *ast.Ident:
-			return e.Name
+			return "", e.Name
 		case *ast.SelectorExpr:
 			if x, ok := e.X.(*ast.Ident); ok {
-				return x.Name + "." + e.Sel.Name
+				return x.Name, e.Sel.Name
 			}
 		case *ast.StarExpr:
-			return typeName(e.X)
+			return typeRef(e.X)
 		}
-		return ""
+		return "", ""
 	}
 	// elementType is the type an elided literal inside lit has.
-	elementType := func(lit *ast.CompositeLit) string {
+	elementType := func(lit *ast.CompositeLit) (string, string) {
 		switch tt := lit.Type.(type) {
 		case *ast.ArrayType:
-			return typeName(tt.Elt)
+			return typeRef(tt.Elt)
 		case *ast.MapType:
-			return typeName(tt.Value)
+			return typeRef(tt.Value)
 		}
-		return ""
+		return "", ""
 	}
 	callee := func(e ast.Expr) string {
 		switch e := e.(type) {
@@ -279,6 +422,37 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 		}
 		return ""
 	}
+	// receiver is the receiver type name of a method declaration, or ""
+	// for a function.
+	receiver := func(fd *ast.FuncDecl) string {
+		if fd.Recv == nil || len(fd.Recv.List) != 1 {
+			return ""
+		}
+		e := fd.Recv.List[0].Type
+		for {
+			switch x := e.(type) {
+			case *ast.StarExpr:
+				e = x.X
+			case *ast.IndexExpr:
+				e = x.X
+			case *ast.IndexListExpr:
+				e = x.X
+			case *ast.Ident:
+				return x.Name
+			default:
+				return "?"
+			}
+		}
+	}
+
+	type source struct {
+		rel, pkg string
+		file     *ast.File
+	}
+	var sources []source
+	// declared[pkg][name] lists the receivers of every top-level function
+	// or method of that name in the package ("" for a function).
+	declared := map[string]map[string][]string{}
 	for _, dir := range dirs {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -294,73 +468,144 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 			if err != nil {
 				return err
 			}
-			add := func(res, verb string, at token.Pos, shape string, ok bool) {
-				if !perms.Has(res, verb) {
-					return
-				}
-				p := fset.Position(at)
-				rel, _ := filepath.Rel(root, p.Filename)
-				where := "handler " + filepath.ToSlash(rel) + ":" + strconv.Itoa(p.Line)
-				if ok {
-					found[res+"."+verb] = append(found[res+"."+verb], where)
-				} else {
-					unrecognized[res+"."+verb] = append(unrecognized[res+"."+verb], where+" ("+shape+")")
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			rel = filepath.ToSlash(rel)
+			pkg := pathpkg.Dir(rel)
+			sources = append(sources, source{rel, pkg, f})
+			for _, decl := range f.Decls {
+				if fd, ok := decl.(*ast.FuncDecl); ok {
+					if declared[pkg] == nil {
+						declared[pkg] = map[string][]string{}
+					}
+					declared[pkg][fd.Name.Name] = append(declared[pkg][fd.Name.Name], receiver(fd))
 				}
 			}
-			var stack []ast.Node
-			ast.Inspect(f, func(n ast.Node) bool {
-				if n == nil {
-					stack = stack[:len(stack)-1]
-					return true
-				}
-				switch n := n.(type) {
-				case *ast.CompositeLit:
-					var res, verb string
-					for _, el := range n.Elts {
-						kv, ok := el.(*ast.KeyValueExpr)
-						if !ok {
-							continue
-						}
-						key, ok := kv.Key.(*ast.Ident)
-						if !ok {
-							continue
-						}
-						switch v, _ := str(kv.Value); strings.ToLower(key.Name) {
-						case "resource":
-							res = v
-						case "verb":
-							verb = v
-						}
-					}
-					name := typeName(n.Type)
-					if n.Type == nil {
-						name = "elided"
-						for i := len(stack) - 1; i >= 0; i-- {
-							if outer, ok := stack[i].(*ast.CompositeLit); ok && outer.Type != nil {
-								name = elementType(outer)
-								break
-							}
-						}
-					}
-					add(res, verb, n.Pos(), "literal "+name+"{}", permissionCheckTypes[name])
-				case *ast.CallExpr:
-					name := callee(n.Fun)
-					for i := 0; i+1 < len(n.Args); i++ {
-						res, ok1 := str(n.Args[i])
-						verb, ok2 := str(n.Args[i+1])
-						if ok1 && ok2 {
-							add(res, verb, n.Args[i].Pos(), "call "+name+"()", permissionCheckCallees[name])
-						}
-					}
-				}
-				stack = append(stack, n)
-				return true
-			})
 			return nil
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+	// approvedCallee: the package declares exactly one symbol of the name
+	// and it is the approved one.
+	approvedCallee := func(pkg, name string) bool {
+		recvs := declared[pkg][name]
+		if len(recvs) != 1 {
+			return false
+		}
+		for _, c := range permissionCheckCallees {
+			if c.pkg == pkg && c.name == name && c.recv == recvs[0] {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, src := range sources {
+		// importPkg maps a file-local import name to the module-relative
+		// package directory of a module import ("" for any other import).
+		importPkg := map[string]string{}
+		for _, imp := range src.file.Imports {
+			path, err := strconv.Unquote(imp.Path.Value)
+			if err != nil {
+				continue
+			}
+			name := pathpkg.Base(path)
+			if imp.Name != nil {
+				name = imp.Name.Name
+			}
+			if rest, ok := strings.CutPrefix(path, modulePrefix); ok {
+				importPkg[name] = rest
+			} else {
+				importPkg[name] = ""
+			}
+		}
+		approvedType := func(qual, name string) bool {
+			pkg := src.pkg
+			if qual != "" {
+				var ok bool
+				if pkg, ok = importPkg[qual]; !ok {
+					return false
+				}
+			}
+			for _, c := range permissionCheckTypes {
+				if c.pkg == pkg && c.name == name {
+					return true
+				}
+			}
+			return false
+		}
+		add := func(res, verb string, at token.Pos, shape string, ok bool) {
+			if !perms.Has(res, verb) {
+				return
+			}
+			p := fset.Position(at)
+			rel, _ := filepath.Rel(root, p.Filename)
+			where := "handler " + filepath.ToSlash(rel) + ":" + strconv.Itoa(p.Line)
+			if ok {
+				found[res+"."+verb] = append(found[res+"."+verb], where)
+			} else {
+				unrecognized[res+"."+verb] = append(unrecognized[res+"."+verb], where+" ("+shape+")")
+			}
+		}
+		var stack []ast.Node
+		ast.Inspect(src.file, func(n ast.Node) bool {
+			if n == nil {
+				stack = stack[:len(stack)-1]
+				return true
+			}
+			switch n := n.(type) {
+			case *ast.CompositeLit:
+				var res, verb string
+				for _, el := range n.Elts {
+					kv, ok := el.(*ast.KeyValueExpr)
+					if !ok {
+						continue
+					}
+					key, ok := kv.Key.(*ast.Ident)
+					if !ok {
+						continue
+					}
+					switch v, _ := str(kv.Value); strings.ToLower(key.Name) {
+					case "resource":
+						res = v
+					case "verb":
+						verb = v
+					}
+				}
+				var qual, name string
+				if n.Type != nil {
+					qual, name = typeRef(n.Type)
+				} else {
+					name = "elided"
+					for i := len(stack) - 1; i >= 0; i-- {
+						if outer, ok := stack[i].(*ast.CompositeLit); ok && outer.Type != nil {
+							qual, name = elementType(outer)
+							break
+						}
+					}
+				}
+				shown := name
+				if qual != "" {
+					shown = qual + "." + name
+				}
+				add(res, verb, n.Pos(), "literal "+shown+"{}", approvedType(qual, name))
+			case *ast.CallExpr:
+				name := callee(n.Fun)
+				for i := 0; i+1 < len(n.Args); i++ {
+					res, ok1 := str(n.Args[i])
+					verb, ok2 := str(n.Args[i+1])
+					if ok1 && ok2 {
+						add(res, verb, n.Args[i].Pos(), "call "+name+"()", approvedCallee(src.pkg, name))
+					}
+				}
+			}
+			stack = append(stack, n)
+			return true
+		})
 	}
 	return found, unrecognized
 }

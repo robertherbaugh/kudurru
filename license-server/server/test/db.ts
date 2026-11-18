@@ -104,7 +104,7 @@ export async function createTestDatabase(): Promise<TestDatabase> {
         await conn`select pg_advisory_unlock(${TEMPLATE_LOCK})`;
       }
     } finally {
-      conn.release();
+      await conn.release();
     }
   } finally {
     await admin.close();
