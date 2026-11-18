@@ -31,9 +31,45 @@ func TestNoTemplateExecution(t *testing.T) {
 	if err != nil {
 		t.Fatalf("go build: %v\n%s", err, tail(dump))
 	}
-	for _, sym := range [][]byte{[]byte("text/template.(*state).evalField"), []byte("text/template.(*state).evalCall")} {
-		if bytes.Contains(dump, sym) {
+	for _, sym := range []string{"text/template.(*state).evalField", "text/template.(*state).evalCall"} {
+		if dumpMentions(dump, sym) {
 			t.Errorf("%s is reachable: something executes a template; render by hand (see internal/blockpage/page.go)", sym)
+		}
+	}
+}
+
+// dumpMentions reports whether a -dumpdep line ("from -> to") names sym
+// exactly. A substring match is wrong: the linker shares argument-info
+// data symbols between functions, and one can be named after a different
+// function that merely starts with sym (for example
+// "text/template.(*state).evalFieldNode.arginfo1" is not evalField).
+func dumpMentions(dump []byte, sym string) bool {
+	for _, line := range bytes.Split(dump, []byte("\n")) {
+		from, to, ok := bytes.Cut(line, []byte(" -> "))
+		if !ok {
+			continue
+		}
+		if string(from) == sym || string(to) == sym {
+			return true
+		}
+	}
+	return false
+}
+
+func TestDumpMentionsMatchesWholeSymbols(t *testing.T) {
+	const sym = "text/template.(*state).evalField"
+	for _, tc := range []struct {
+		name, dump string
+		want       bool
+	}{
+		{"callee", "pkg.f -> " + sym + "\n", true},
+		{"caller", sym + " -> reflect.Value.MethodByName\n", true},
+		{"data symbol of a longer name", "pkg.g -> text/template.(*state).evalFieldNode.arginfo1\n", false},
+		{"longer function", "pkg.g -> text/template.(*state).evalFieldChain\n", false},
+		{"unrelated", "pkg.f -> pkg.g\n", false},
+	} {
+		if got := dumpMentions([]byte(tc.dump), sym); got != tc.want {
+			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
 		}
 	}
 }

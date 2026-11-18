@@ -181,7 +181,7 @@ type Keyring map[string]ed25519.PublicKey
 // does that against its clock.
 func Verify(raw string, ring Keyring) (Claims, error) {
 	raw = clean(raw)
-	sig, err := jose.ParseSigned(raw, []jose.SignatureAlgorithm{jose.EdDSA})
+	sig, err := jose.ParseSignedCompact(raw, []jose.SignatureAlgorithm{jose.EdDSA})
 	if err != nil || len(sig.Signatures) != 1 {
 		return Claims{}, ErrMalformed
 	}

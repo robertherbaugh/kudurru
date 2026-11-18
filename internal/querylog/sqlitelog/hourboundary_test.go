@@ -14,10 +14,10 @@ import (
 func TestSummaryAcrossHourBoundary(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		step func(fc interface{ Step(time.Duration) }, w *Writer)
+		step func(fc interface{ Step(time.Duration) })
 	}{
 		{name: "no ticks between writes and read"},
-		{name: "after a flush tick", step: func(fc interface{ Step(time.Duration) }, w *Writer) {
+		{name: "after a flush tick", step: func(fc interface{ Step(time.Duration) }) {
 			fc.Step(time.Second)
 			time.Sleep(50 * time.Millisecond)
 		}},
@@ -33,7 +33,7 @@ func TestSummaryAcrossHourBoundary(t *testing.T) {
 			fc.Step(2*time.Minute + 5*time.Second) // 13:00:05
 			mustWrite(t, w, event(fc.Now().Add(-time.Second), "10.0.0.3", "d.example"))
 			if tc.step != nil {
-				tc.step(fc, w)
+				tc.step(fc)
 			}
 			until := time.Date(2026, 10, 11, 13, 0, 30, 0, time.UTC)
 			fc.Step(until.Sub(fc.Now()))
