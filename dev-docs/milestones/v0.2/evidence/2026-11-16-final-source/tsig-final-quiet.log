@@ -1,0 +1,420 @@
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:58:11 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.70s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:58:12 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:58:12 INFO complete serving generation published again component=serving
+2026/11/15 23:58:13 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:58:14 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (3.63s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.42s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.21s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:58:16 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:58:16 INFO complete serving generation published again component=serving
+2026/11/15 23:58:16 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.58s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:58:17 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:58:18 INFO complete serving generation published again component=serving
+2026/11/15 23:58:18 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:58:19 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:58:19 INFO complete serving generation published again component=serving
+2026/11/15 23:58:20 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (3.81s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.59s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.23s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:58:22 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.57s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:58:23 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:58:25 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:58:25 INFO complete serving generation published again component=serving
+2026/11/15 23:58:25 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (3.97s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.56s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.41s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:58:27 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.68s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:58:29 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:58:29 INFO complete serving generation published again component=serving
+2026/11/15 23:58:29 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:58:31 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.18s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.60s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.59s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:58:34 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.90s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:58:35 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:58:35 INFO complete serving generation published again component=serving
+2026/11/15 23:58:35 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:58:37 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (3.70s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.57s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.13s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:58:38 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:58:39 INFO complete serving generation published again component=serving
+2026/11/15 23:58:39 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.57s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:58:40 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:58:42 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (3.80s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.50s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.30s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:58:44 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.67s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:58:46 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:58:47 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:58:47 INFO complete serving generation published again component=serving
+2026/11/15 23:58:48 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.09s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.61s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.47s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:58:49 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:58:50 INFO complete serving generation published again component=serving
+2026/11/15 23:58:50 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.55s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:58:51 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:58:53 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (3.65s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.48s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.18s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:58:55 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:58:55 INFO complete serving generation published again component=serving
+2026/11/15 23:58:55 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.51s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:58:57 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:58:58 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (3.56s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.32s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.24s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:59:00 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:59:00 INFO complete serving generation published again component=serving
+2026/11/15 23:59:00 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.56s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:59:02 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:59:03 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:59:03 INFO complete serving generation published again component=serving
+2026/11/15 23:59:03 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (3.67s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.41s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.26s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:59:05 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.44s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:59:07 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:59:08 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (3.50s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.37s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.13s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:59:10 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.64s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:59:12 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:59:12 INFO complete serving generation published again component=serving
+2026/11/15 23:59:12 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:59:14 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.27s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.72s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.55s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:59:16 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:59:16 INFO complete serving generation published again component=serving
+2026/11/15 23:59:17 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.86s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:59:18 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:59:20 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.28s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.70s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.58s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:59:23 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (2.11s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:59:26 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:59:28 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:59:28 INFO complete serving generation published again component=serving
+2026/11/15 23:59:28 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (5.97s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (2.57s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (3.40s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:59:31 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:59:32 INFO complete serving generation published again component=serving
+2026/11/15 23:59:32 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (3.10s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:59:35 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:59:37 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (5.05s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (2.39s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.67s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:59:39 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (2.05s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:59:41 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:59:42 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:59:43 INFO complete serving generation published again component=serving
+2026/11/15 23:59:43 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.44s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (2.00s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.43s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:59:45 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.79s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:59:47 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:59:48 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:59:48 INFO complete serving generation published again component=serving
+2026/11/15 23:59:49 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (3.95s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.59s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.36s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:59:51 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:59:51 INFO complete serving generation published again component=serving
+2026/11/15 23:59:51 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.78s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:59:52 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:59:53 INFO complete serving generation published again component=serving
+2026/11/15 23:59:53 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/15 23:59:54 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:59:54 INFO complete serving generation published again component=serving
+2026/11/15 23:59:54 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (3.86s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.58s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.29s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/15 23:59:57 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.73s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/15 23:59:58 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/15 23:59:58 INFO complete serving generation published again component=serving
+2026/11/15 23:59:59 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/16 00:00:00 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:00 INFO complete serving generation published again component=serving
+2026/11/16 00:00:00 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.33s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.88s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.43s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/16 00:00:03 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.95s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/16 00:00:04 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:04 INFO complete serving generation published again component=serving
+2026/11/16 00:00:05 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/16 00:00:06 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:06 INFO complete serving generation published again component=serving
+2026/11/16 00:00:07 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.17s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.59s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.57s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/16 00:00:09 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (2.13s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/16 00:00:11 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/16 00:00:13 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.18s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.77s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.41s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/16 00:00:15 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:15 INFO complete serving generation published again component=serving
+2026/11/16 00:00:15 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.76s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/16 00:00:18 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/16 00:00:19 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.79s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (2.24s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.55s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/16 00:00:21 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:22 INFO complete serving generation published again component=serving
+2026/11/16 00:00:22 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.67s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/16 00:00:23 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:23 INFO complete serving generation published again component=serving
+2026/11/16 00:00:24 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/16 00:00:25 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.33s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.78s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.55s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/16 00:00:27 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:28 INFO complete serving generation published again component=serving
+2026/11/16 00:00:28 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (2.01s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/16 00:00:29 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:30 INFO complete serving generation published again component=serving
+2026/11/16 00:00:30 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/16 00:00:31 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:32 INFO complete serving generation published again component=serving
+2026/11/16 00:00:32 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.44s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.90s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.54s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/16 00:00:34 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.95s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/16 00:00:36 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:36 INFO complete serving generation published again component=serving
+2026/11/16 00:00:36 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/16 00:00:38 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:38 INFO complete serving generation published again component=serving
+2026/11/16 00:00:38 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.57s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.88s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.69s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/16 00:00:40 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:41 INFO complete serving generation published again component=serving
+2026/11/16 00:00:41 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (2.00s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/16 00:00:42 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:43 INFO complete serving generation published again component=serving
+2026/11/16 00:00:43 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/16 00:00:45 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.30s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.71s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.59s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/16 00:00:47 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:47 INFO complete serving generation published again component=serving
+2026/11/16 00:00:48 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (2.37s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/16 00:00:49 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:50 INFO complete serving generation published again component=serving
+2026/11/16 00:00:50 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/16 00:00:51 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:52 INFO complete serving generation published again component=serving
+2026/11/16 00:00:52 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.94s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (2.16s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.77s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/16 00:00:55 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (1.86s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/16 00:00:56 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/16 00:00:58 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:00:59 INFO complete serving generation published again component=serving
+2026/11/16 00:00:59 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (5.10s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (1.87s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (3.23s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/16 00:01:01 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:01:02 INFO complete serving generation published again component=serving
+2026/11/16 00:01:02 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (2.32s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/16 00:01:04 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/16 00:01:06 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (5.01s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (2.07s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.93s)
+=== RUN   TestServingTSIGObserverQuietOriginalExpiry
+2026/11/16 00:01:08 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:01:09 INFO complete serving generation published again component=serving
+2026/11/16 00:01:09 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverQuietOriginalExpiry (2.18s)
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation
+2026/11/16 00:01:11 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:01:11 INFO complete serving generation published again component=serving
+2026/11/16 00:01:11 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+=== RUN   TestServingTSIGObserverOriginalCancellationAndDeadline/deadline
+2026/11/16 00:01:13 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/16 00:01:13 INFO complete serving generation published again component=serving
+2026/11/16 00:01:13 WARN complete serving generation not published component=serving reason=candidate_changed error="serving: dependency changed"
+--- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline (4.78s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/cancellation (2.11s)
+    --- PASS: TestServingTSIGObserverOriginalCancellationAndDeadline/deadline (2.66s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/cmd/kudurru	185.696s

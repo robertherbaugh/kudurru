@@ -1,0 +1,73 @@
+[
+  {
+    "endpoint": "/rulesets",
+    "exit_code": 0,
+    "data": [
+      {
+        "id": 25103326,
+        "name": "protect default",
+        "target": "branch",
+        "source_type": "Repository",
+        "source": "robertherbaugh/kudurru",
+        "enforcement": "active",
+        "node_id": "RRS_lACqUmVwb3NpdG9yec5UQos_zgF_C94",
+        "_links": {
+          "self": {
+            "href": "https://api.github.com/repos/robertherbaugh/kudurru/rulesets/25103326"
+          },
+          "html": {
+            "href": "https://github.com/robertherbaugh/kudurru/rules/25103326"
+          }
+        },
+        "created_at": "2026-10-14T12:57:13.312-05:00",
+        "updated_at": "2026-10-18T00:32:43.862-05:00"
+      },
+      {
+        "id": 24898698,
+        "name": "protect releases",
+        "target": "branch",
+        "source_type": "Repository",
+        "source": "robertherbaugh/kudurru",
+        "enforcement": "active",
+        "node_id": "RRS_lACqUmVwb3NpdG9yec5UQos_zgF77Io",
+        "_links": {
+          "self": {
+            "href": "https://api.github.com/repos/robertherbaugh/kudurru/rulesets/24898698"
+          },
+          "html": {
+            "href": "https://github.com/robertherbaugh/kudurru/rules/24898698"
+          }
+        },
+        "created_at": "2026-10-11T17:59:52.782-05:00",
+        "updated_at": "2026-10-18T22:48:33.459-05:00"
+      }
+    ]
+  },
+  {
+    "endpoint": "/branches/main/protection",
+    "exit_code": 1,
+    "data": {
+      "message": "Resource not accessible by integration",
+      "documentation_url": "https://docs.github.com/rest/branches/branch-protection#get-branch-protection",
+      "status": "403"
+    }
+  },
+  {
+    "endpoint": "/branches/release-candidate/protection",
+    "exit_code": 1,
+    "data": {
+      "message": "Resource not accessible by integration",
+      "documentation_url": "https://docs.github.com/rest/branches/branch-protection#get-branch-protection",
+      "status": "403"
+    }
+  },
+  {
+    "endpoint": "/branches/release/protection",
+    "exit_code": 1,
+    "data": {
+      "message": "Resource not accessible by integration",
+      "documentation_url": "https://docs.github.com/rest/branches/branch-protection#get-branch-protection",
+      "status": "403"
+    }
+  }
+]

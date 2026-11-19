@@ -1,0 +1,12 @@
+{
+  "old_rpm_sha256": "ddd5aec37db4a17050d1c0f5629a6566012e2eabe6a88b0ba0229addfba06437",
+  "candidate_rpm": "kudurru-0.2.0~rc.1_SNAPSHOT_d1725c59-1.x86_64.rpm",
+  "candidate_rpm_sha256": "cbbb65123344813651c7bfe61735862e6e540c1c054d98a96eb238ea4ededc9f",
+  "configAndEnvironmentPreserved": true,
+  "binaryMatchesArchive": true,
+  "systemdUnitPresent": true,
+  "version": "kudurru 0.2.0-rc.1-SNAPSHOT-d1725c59 (d1725c59, go1.27.4, linux/amd64)",
+  "maintainerScriptsRun": false,
+  "systemdLifecycleRun": false,
+  "scope": "isolated rpm database and filesystem; process restart covered separately"
+}

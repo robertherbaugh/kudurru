@@ -1,0 +1,143 @@
+Candidate archive checksum and extracted binary verified
+kudurrutest: KUDURRU_E2E_BINARY names the prebuilt /home/vercel-sandbox/kudurru/.context/artifacts/v0.2.0-candidate/kudurru
+kudurrutest: binary /home/vercel-sandbox/kudurru/.context/artifacts/v0.2.0-candidate/kudurru: kudurru 0.2.0-rc.1-SNAPSHOT-d1725c59 (d1725c59, go1.27.4, linux/amd64); sha256 b2207adfdb849dab8f26ec2c0544d1a10a9b9fbb274b62c1e22ac9cf4ecb2cfe; tags none; CGO_ENABLED=0; built from commit d1725c592be0ecf5857f3d8013b5287a318f61a9 with uncommitted changes
+=== RUN   TestAnchorUpgradeFromReleasedV010
+    anchor_upgrade_test.go:133: previous release binary /home/vercel-sandbox/kudurru/.context/artifacts/v0.1.0/kudurru: kudurru 0.1.0 (89c59f89, go1.27.2, linux/amd64); sha256 e4e73e53cf7bd965ad1e5eb3f66b9bf450ab9e4e81f25efb9aa93db8b510512a; tags none; CGO_ENABLED=0; built from commit 89c59f899d7bfc061e697a563c25732f5ea97985 with uncommitted changes
+=== RUN   TestAnchorUpgradeFromReleasedV010/StaticServingUnchanged
+    anchor_upgrade_test.go:180: after the upgrade: owner "dormant", local carrier "dormant"
+    anchor_upgrade_test.go:185: anchors status --offline: {Version:{Generation:1 Digest:2b93610ed4c76d6e8ef14b49c459f68386d8272aba0ff0bf271761f3f22206bd} Quarantined:false Recoveries:0 Outcome:read-only}
+=== RUN   TestAnchorUpgradeFromReleasedV010/EdgeWithoutObservationRouteRefused
+=== RUN   TestAnchorUpgradeFromReleasedV010/DirectBootstrapsOnce
+    anchor_upgrade_test.go:247: timing: settled 1.033s after readiness, at store revision 27
+    anchor_upgrade_test.go:260: timing: settled 1.033s after readiness, at store revision 29
+    anchor_upgrade_test.go:269: run 0: owner "managed", local carrier "managed", status {Version:{Generation:2 Digest:e5ea24321f36ef96a3d6ac72944efff8eef4bde92dd0a8861a28cf0b482b5cea} Quarantined:false Recoveries:0 Outcome:read-only}
+    anchor_upgrade_test.go:247: timing: settled 1.026s after readiness, at store revision 29
+    anchor_upgrade_test.go:269: run 1: owner "managed", local carrier "managed", status {Version:{Generation:2 Digest:e5ea24321f36ef96a3d6ac72944efff8eef4bde92dd0a8861a28cf0b482b5cea} Quarantined:false Recoveries:0 Outcome:read-only}
+=== RUN   TestAnchorUpgradeFromReleasedV010/PreviousReleaseRefuses
+--- PASS: TestAnchorUpgradeFromReleasedV010 (18.57s)
+    --- PASS: TestAnchorUpgradeFromReleasedV010/StaticServingUnchanged (3.14s)
+    --- PASS: TestAnchorUpgradeFromReleasedV010/EdgeWithoutObservationRouteRefused (2.83s)
+    --- PASS: TestAnchorUpgradeFromReleasedV010/DirectBootstrapsOnce (9.63s)
+    --- PASS: TestAnchorUpgradeFromReleasedV010/PreviousReleaseRefuses (0.32s)
+=== RUN   TestAnchorUpgradeStaticTwinV010
+    anchor_upgrade_test.go:319: previous release binary /home/vercel-sandbox/kudurru/.context/artifacts/v0.1.0/kudurru: kudurru 0.1.0 (89c59f89, go1.27.2, linux/amd64); sha256 e4e73e53cf7bd965ad1e5eb3f66b9bf450ab9e4e81f25efb9aa93db8b510512a; tags none; CGO_ENABLED=0; built from commit 89c59f899d7bfc061e697a563c25732f5ea97985 with uncommitted changes
+=== RUN   TestAnchorUpgradeStaticTwinV010/FileBeforeFirstStartBootstrapsOnce
+    anchor_upgrade_test.go:387: blocking.refreshInterval after the first start: 12h0m0s
+    anchor_upgrade_test.go:394: timing: settled 1.448s after readiness, at store revision 28
+    anchor_upgrade_test.go:401: run 0: owner "managed", status {Version:{Generation:2 Digest:6f5f10943d35a40ef21fdeb5fd4de6ff6a122928e0674543819b054132c1cd2c} Quarantined:false Recoveries:0 Outcome:read-only}
+    anchor_upgrade_test.go:394: timing: settled 1.023s after readiness, at store revision 28
+    anchor_upgrade_test.go:401: run 1: owner "managed", status {Version:{Generation:2 Digest:6f5f10943d35a40ef21fdeb5fd4de6ff6a122928e0674543819b054132c1cd2c} Quarantined:false Recoveries:0 Outcome:read-only}
+=== RUN   TestAnchorUpgradeStaticTwinV010/LaterFileEditNotApplied
+    anchor_upgrade_test.go:417: timing: settled 1.031s after readiness, at store revision 28
+--- PASS: TestAnchorUpgradeStaticTwinV010 (14.70s)
+    --- PASS: TestAnchorUpgradeStaticTwinV010/FileBeforeFirstStartBootstrapsOnce (8.55s)
+    --- PASS: TestAnchorUpgradeStaticTwinV010/LaterFileEditNotApplied (3.88s)
+=== RUN   TestMixedVersionStaticPeerV01
+    mixed_version_test.go:261: previous release binary /home/vercel-sandbox/kudurru/.context/artifacts/v0.1.0/kudurru: kudurru 0.1.0 (89c59f89, go1.27.2, linux/amd64); sha256 e4e73e53cf7bd965ad1e5eb3f66b9bf450ab9e4e81f25efb9aa93db8b510512a; tags none; CGO_ENABLED=0; built from commit 89c59f899d7bfc061e697a563c25732f5ea97985 with uncommitted changes
+    mixed_version_test.go:262: previous release program internal-probe, built from v0.1.0
+    mixed_version_test.go:304: timing: settled 1.328s after readiness, at store revision 29
+=== RUN   TestMixedVersionStaticPeerV01/NodesReportTheOldTwin
+=== RUN   TestMixedVersionStaticPeerV01/OldTwinHasNoHealthRoute
+=== RUN   TestMixedVersionStaticPeerV01/PreviousClientReadsTheNewTwin
+=== RUN   TestMixedVersionStaticPeerV01/NewClientReadsTheOldTwin
+=== RUN   TestMixedVersionStaticPeerV01/OldTwinStops
+--- PASS: TestMixedVersionStaticPeerV01 (8.62s)
+    --- PASS: TestMixedVersionStaticPeerV01/NodesReportTheOldTwin (0.01s)
+    --- PASS: TestMixedVersionStaticPeerV01/OldTwinHasNoHealthRoute (0.01s)
+    --- PASS: TestMixedVersionStaticPeerV01/PreviousClientReadsTheNewTwin (0.03s)
+    --- PASS: TestMixedVersionStaticPeerV01/NewClientReadsTheOldTwin (0.01s)
+    --- PASS: TestMixedVersionStaticPeerV01/OldTwinStops (2.02s)
+=== RUN   TestMixedVersionCentralDatabaseV01
+    mixed_version_test.go:503: previous release binary /home/vercel-sandbox/kudurru/.context/artifacts/v0.1.0/kudurru: kudurru 0.1.0 (89c59f89, go1.27.2, linux/amd64); sha256 e4e73e53cf7bd965ad1e5eb3f66b9bf450ab9e4e81f25efb9aa93db8b510512a; tags none; CGO_ENABLED=0; built from commit 89c59f899d7bfc061e697a563c25732f5ea97985 with uncommitted changes
+--- PASS: TestMixedVersionCentralDatabaseV01 (35.72s)
+=== RUN   TestBuiltBinaryRefusesNewerAuditSpool
+[controller-runtime] log.SetLogger(...) was never called; logs will not be displayed.
+Detected at:
+	>  goroutine 724 [running]:
+	>  runtime/debug.Stack()
+	>  	/home/vercel-sandbox/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64/src/runtime/debug/stack.go:26 +0x5e
+	>  sigs.k8s.io/controller-runtime/pkg/log.eventuallyFulfillRoot()
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.2/pkg/log/log.go:60 +0xcd
+	>  sigs.k8s.io/controller-runtime/pkg/log.(*delegatingLogSink).Enabled(0x2b1aa340fa40, 0x1)
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.2/pkg/log/deleg.go:111 +0x32
+	>  github.com/go-logr/logr.Logger.Info({{0x3fddd60?, 0x2b1aa340fa40?}, 0x196?}, {0x2109191, 0x16}, {0x0, 0x0, 0x0})
+	>  	/home/vercel-sandbox/go/pkg/mod/github.com/go-logr/logr@v1.4.3/logr.go:276 +0x6e
+	>  sigs.k8s.io/controller-runtime/pkg/envtest.(*Environment).Start(0x2b1aa368f348)
+	>  	/home/vercel-sandbox/go/pkg/mod/sigs.k8s.io/controller-runtime@v0.25.2/pkg/envtest/server.go:303 +0x3d2
+	>  github.com/robertherbaugh/kudurru/test/e2e.startEnvtest(0x2b1aa363e908, {0x2b1aa3614b08, 0x2, 0xb?})
+	>  	/home/vercel-sandbox/kudurru/test/e2e/upgrade_kube_test.go:80 +0x51e
+	>  github.com/robertherbaugh/kudurru/test/e2e.envtestKubeconfig(0x2b1aa363e908)
+	>  	/home/vercel-sandbox/kudurru/test/e2e/upgrade_kube_test.go:45 +0x5a
+	>  github.com/robertherbaugh/kudurru/test/e2e.TestBuiltBinaryRefusesNewerAuditSpool(0x2b1aa363e908)
+	>  	/home/vercel-sandbox/kudurru/test/e2e/upgrade_kube_test.go:111 +0x45
+	>  testing.tRunner(0x2b1aa363e908, 0x3ff0f38)
+	>  	/home/vercel-sandbox/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64/src/testing/testing.go:2195 +0xea
+	>  created by testing.(*T).Run in goroutine 1
+	>  	/home/vercel-sandbox/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.27.4.linux-amd64/src/testing/testing.go:2260 +0x4d4
+--- PASS: TestBuiltBinaryRefusesNewerAuditSpool (8.17s)
+=== RUN   TestKubeUpgradeFromV01
+    upgrade_kube_test.go:317: previous release binary /home/vercel-sandbox/kudurru/.context/artifacts/v0.1.0/kudurru: kudurru 0.1.0 (89c59f89, go1.27.2, linux/amd64); sha256 e4e73e53cf7bd965ad1e5eb3f66b9bf450ab9e4e81f25efb9aa93db8b510512a; tags none; CGO_ENABLED=0; built from commit 89c59f899d7bfc061e697a563c25732f5ea97985 with uncommitted changes
+    upgrade_kube_test.go:319: licensed fixture binary /tmp/kudurru-e2e-licensed-3391139518/kudurru-licensetest: kudurru dev (unknown, go1.27.4, linux/amd64); sha256 e5deaab727b218f1e55291df21aa73f775d7b37c400982195bab8272d4d6d001; tags licensetest; CGO_ENABLED=0; built from commit ed293dcab47f6d373479156b0d37f84d3bf5bbf6 with uncommitted changes
+    upgrade_kube_test.go:463: iam migrate [status]: {"State":"required","RemoteAllowed":false,"JournalResourceVersion":"","MigrationID":"","Counts":{"Sources":5,"Public":0,"Authorities":0,"BoundTokens":0,"UnboundTokens":0},"Problem":null}
+    upgrade_kube_test.go:466: iam migrate [plan]: {"Sources":5,"Public":1,"Authorities":1,"BoundTokens":2,"UnboundTokens":1}
+    upgrade_kube_test.go:467: iam migrate [begin --offline]: {"State":"complete","RemoteAllowed":true,"JournalResourceVersion":"320","MigrationID":"8bd8efa5-82d2-4cd9-9a86-631613e39980","Counts":{"Sources":5,"Public":1,"Authorities":1,"BoundTokens":2,"UnboundTokens":1},"Problem":null}
+    upgrade_kube_test.go:468: iam migrate [status]: {"State":"complete","RemoteAllowed":true,"JournalResourceVersion":"320","MigrationID":"8bd8efa5-82d2-4cd9-9a86-631613e39980","Counts":{"Sources":5,"Public":1,"Authorities":1,"BoundTokens":2,"UnboundTokens":1},"Problem":null}
+    upgrade_kube_test.go:542: upgraded: 12 answers unchanged, 1 AuditLog batches of 0.1.0 verified; {
+          "verified": true,
+          "checkedAt": "2026-11-15T23:55:54.661483391Z"
+        }
+--- PASS: TestKubeUpgradeFromV01 (41.41s)
+=== RUN   TestUpgradeFromV01DataDirectory
+    upgrade_test.go:774: previous release binary /home/vercel-sandbox/kudurru/.context/artifacts/v0.1.0/kudurru: kudurru 0.1.0 (89c59f89, go1.27.2, linux/amd64); sha256 e4e73e53cf7bd965ad1e5eb3f66b9bf450ab9e4e81f25efb9aa93db8b510512a; tags none; CGO_ENABLED=0; built from commit 89c59f899d7bfc061e697a563c25732f5ea97985 with uncommitted changes
+    upgrade_test.go:787: timing: upgraded and ready in 6.052s
+    upgrade_test.go:788: timing: settled 3.167s after readiness, at store revision 113
+=== RUN   TestUpgradeFromV01DataDirectory/NoFirstBoot
+=== RUN   TestUpgradeFromV01DataDirectory/SameAnswers
+=== RUN   TestUpgradeFromV01DataDirectory/OneDNAMETargetKept
+=== RUN   TestUpgradeFromV01DataDirectory/SerialsContinue
+    upgrade_test.go:831: file.test. serial 1794786964 on 0.1.0, 1794786964 after the upgrade
+    upgrade_test.go:831: api.test. serial 1794786965 on 0.1.0, 1794786965 after the upgrade
+=== RUN   TestUpgradeFromV01DataDirectory/ObjectIdentities
+=== RUN   TestUpgradeFromV01DataDirectory/CredentialsOfThePreviousRelease
+=== RUN   TestUpgradeFromV01DataDirectory/SavedSetting
+=== RUN   TestUpgradeFromV01DataDirectory/WritesAfterTheUpgrade
+=== RUN   TestUpgradeFromV01DataDirectory/Schemas
+=== RUN   TestUpgradeFromV01DataDirectory/QueryLogContinuity
+=== RUN   TestUpgradeFromV01DataDirectory/Restart2
+    upgrade_test.go:962: timing: settled 1.023s after readiness, at store revision 126
+=== RUN   TestUpgradeFromV01DataDirectory/Restart3
+    upgrade_test.go:962: timing: settled 1.029s after readiness, at store revision 126
+=== RUN   TestUpgradeFromV01DataDirectory/AuditTrailAcrossTheUpgrade
+    upgrade_test.go:1008: licensed fixture binary /tmp/kudurru-e2e-licensed-3391139518/kudurru-licensetest: kudurru dev (unknown, go1.27.4, linux/amd64); sha256 e5deaab727b218f1e55291df21aa73f775d7b37c400982195bab8272d4d6d001; tags licensetest; CGO_ENABLED=0; built from commit ed293dcab47f6d373479156b0d37f84d3bf5bbf6 with uncommitted changes
+=== RUN   TestUpgradeFromV01DataDirectory/PreviousReleaseRefusesTheUpgradedDirectory
+=== RUN   TestUpgradeFromV01DataDirectory/BackupRestoresReleasedBinaryForRollback
+--- PASS: TestUpgradeFromV01DataDirectory (31.97s)
+    --- PASS: TestUpgradeFromV01DataDirectory/NoFirstBoot (0.00s)
+    --- PASS: TestUpgradeFromV01DataDirectory/SameAnswers (0.01s)
+    --- PASS: TestUpgradeFromV01DataDirectory/OneDNAMETargetKept (0.00s)
+    --- PASS: TestUpgradeFromV01DataDirectory/SerialsContinue (0.00s)
+    --- PASS: TestUpgradeFromV01DataDirectory/ObjectIdentities (0.01s)
+    --- PASS: TestUpgradeFromV01DataDirectory/CredentialsOfThePreviousRelease (0.36s)
+    --- PASS: TestUpgradeFromV01DataDirectory/SavedSetting (0.05s)
+    --- PASS: TestUpgradeFromV01DataDirectory/WritesAfterTheUpgrade (1.05s)
+    --- PASS: TestUpgradeFromV01DataDirectory/Schemas (0.00s)
+    --- PASS: TestUpgradeFromV01DataDirectory/QueryLogContinuity (0.00s)
+    --- PASS: TestUpgradeFromV01DataDirectory/Restart2 (3.68s)
+    --- PASS: TestUpgradeFromV01DataDirectory/Restart3 (3.66s)
+    --- PASS: TestUpgradeFromV01DataDirectory/AuditTrailAcrossTheUpgrade (2.67s)
+    --- PASS: TestUpgradeFromV01DataDirectory/PreviousReleaseRefusesTheUpgradedDirectory (2.67s)
+    --- PASS: TestUpgradeFromV01DataDirectory/BackupRestoresReleasedBinaryForRollback (2.55s)
+=== RUN   TestUpgradeFromV01RefusesLegacyObjects
+    upgrade_test.go:1140: previous release binary /home/vercel-sandbox/kudurru/.context/artifacts/v0.1.0/kudurru: kudurru 0.1.0 (89c59f89, go1.27.2, linux/amd64); sha256 e4e73e53cf7bd965ad1e5eb3f66b9bf450ab9e4e81f25efb9aa93db8b510512a; tags none; CGO_ENABLED=0; built from commit 89c59f899d7bfc061e697a563c25732f5ea97985 with uncommitted changes
+    upgrade_test.go:1214: timing: settled 2.251s after readiness, at store revision 134
+--- PASS: TestUpgradeFromV01RefusesLegacyObjects (13.10s)
+=== RUN   TestBuiltBinaryRefusesNewerDatabases
+=== RUN   TestBuiltBinaryRefusesNewerDatabases/state.db
+=== RUN   TestBuiltBinaryRefusesNewerDatabases/local.db
+=== RUN   TestBuiltBinaryRefusesNewerDatabases/querylog.db
+--- PASS: TestBuiltBinaryRefusesNewerDatabases (12.76s)
+    --- PASS: TestBuiltBinaryRefusesNewerDatabases/state.db (2.64s)
+    --- PASS: TestBuiltBinaryRefusesNewerDatabases/local.db (2.73s)
+    --- PASS: TestBuiltBinaryRefusesNewerDatabases/querylog.db (2.66s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/test/e2e	185.446s

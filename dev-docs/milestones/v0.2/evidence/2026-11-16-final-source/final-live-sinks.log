@@ -1,0 +1,143 @@
+docker rm -f kudurru-test-clickhouse kudurru-test-loki >/dev/null 2>&1 || true
+docker run -d --rm --name kudurru-test-clickhouse -e CLICKHOUSE_PASSWORD=kudurru -p 58123:8123 clickhouse/clickhouse-server:25.8 >/dev/null
+Unable to find image 'clickhouse/clickhouse-server:25.8' locally
+25.8: Pulling from clickhouse/clickhouse-server
+d544298cabd5: Pulling fs layer
+c618665d9400: Pulling fs layer
+4f4fb700ef54: Pulling fs layer
+2447d1ea97a9: Pulling fs layer
+6067b2e694e9: Pulling fs layer
+6758d633e4ed: Pulling fs layer
+b536acbdff8b: Pulling fs layer
+55a9d9f35847: Pulling fs layer
+15de63af15a5: Pulling fs layer
+6067b2e694e9: Waiting
+6758d633e4ed: Waiting
+b536acbdff8b: Waiting
+55a9d9f35847: Waiting
+2447d1ea97a9: Waiting
+15de63af15a5: Waiting
+4f4fb700ef54: Verifying Checksum
+4f4fb700ef54: Download complete
+c618665d9400: Verifying Checksum
+c618665d9400: Download complete
+6067b2e694e9: Download complete
+6758d633e4ed: Download complete
+b536acbdff8b: Verifying Checksum
+b536acbdff8b: Download complete
+d544298cabd5: Verifying Checksum
+d544298cabd5: Download complete
+15de63af15a5: Verifying Checksum
+15de63af15a5: Download complete
+55a9d9f35847: Download complete
+d544298cabd5: Pull complete
+2447d1ea97a9: Verifying Checksum
+2447d1ea97a9: Download complete
+c618665d9400: Pull complete
+4f4fb700ef54: Pull complete
+2447d1ea97a9: Pull complete
+6067b2e694e9: Pull complete
+6758d633e4ed: Pull complete
+b536acbdff8b: Pull complete
+55a9d9f35847: Pull complete
+15de63af15a5: Pull complete
+Digest: sha256:0152dd511befe6a2c2ef53e930726179669b08116da78500b37c51c96ff5ee77
+Status: Downloaded newer image for clickhouse/clickhouse-server:25.8
+docker run -d --rm --name kudurru-test-loki -p 53100:3100 grafana/loki:3.7.9 >/dev/null
+Unable to find image 'grafana/loki:3.7.9' locally
+3.7.9: Pulling from grafana/loki
+b84bc69f1cbd: Pulling fs layer
+5b3013706a46: Pulling fs layer
+7e7bfd057be8: Pulling fs layer
+bf8083c5c1ec: Pulling fs layer
+9d2753d762cc: Pulling fs layer
+2780920e5dbf: Pulling fs layer
+7c12895b777b: Pulling fs layer
+3214acf345c0: Pulling fs layer
+52630fc75a18: Pulling fs layer
+dd64bf2dd177: Pulling fs layer
+b839dfae01f6: Pulling fs layer
+411e1c946a02: Pulling fs layer
+bf8083c5c1ec: Waiting
+f769d9bdcbc2: Pulling fs layer
+9d2753d762cc: Waiting
+aea7a685aae6: Pulling fs layer
+2780920e5dbf: Waiting
+a9782e5a7e37: Pulling fs layer
+7c12895b777b: Waiting
+3214acf345c0: Waiting
+52630fc75a18: Waiting
+e6add121e26c: Pulling fs layer
+3961ae489acc: Pulling fs layer
+6a428f5075bc: Pulling fs layer
+dd64bf2dd177: Waiting
+b839dfae01f6: Waiting
+e6add121e26c: Waiting
+411e1c946a02: Waiting
+f769d9bdcbc2: Waiting
+aea7a685aae6: Waiting
+a9782e5a7e37: Waiting
+3961ae489acc: Waiting
+6a428f5075bc: Waiting
+5b3013706a46: Verifying Checksum
+5b3013706a46: Download complete
+b84bc69f1cbd: Verifying Checksum
+b84bc69f1cbd: Download complete
+7e7bfd057be8: Verifying Checksum
+7e7bfd057be8: Download complete
+b84bc69f1cbd: Pull complete
+bf8083c5c1ec: Download complete
+5b3013706a46: Pull complete
+2780920e5dbf: Verifying Checksum
+2780920e5dbf: Download complete
+9d2753d762cc: Verifying Checksum
+9d2753d762cc: Download complete
+3214acf345c0: Download complete
+7c12895b777b: Verifying Checksum
+7c12895b777b: Download complete
+52630fc75a18: Download complete
+dd64bf2dd177: Download complete
+b839dfae01f6: Verifying Checksum
+b839dfae01f6: Download complete
+411e1c946a02: Download complete
+7e7bfd057be8: Pull complete
+f769d9bdcbc2: Download complete
+a9782e5a7e37: Verifying Checksum
+a9782e5a7e37: Download complete
+e6add121e26c: Verifying Checksum
+e6add121e26c: Download complete
+3961ae489acc: Verifying Checksum
+3961ae489acc: Download complete
+6a428f5075bc: Verifying Checksum
+6a428f5075bc: Download complete
+bf8083c5c1ec: Pull complete
+9d2753d762cc: Pull complete
+2780920e5dbf: Pull complete
+7c12895b777b: Pull complete
+3214acf345c0: Pull complete
+52630fc75a18: Pull complete
+dd64bf2dd177: Pull complete
+b839dfae01f6: Pull complete
+411e1c946a02: Pull complete
+f769d9bdcbc2: Pull complete
+aea7a685aae6: Verifying Checksum
+aea7a685aae6: Download complete
+aea7a685aae6: Pull complete
+a9782e5a7e37: Pull complete
+e6add121e26c: Pull complete
+3961ae489acc: Pull complete
+6a428f5075bc: Pull complete
+Digest: sha256:0db216b630ae1f348a1584c67f3cead8b4c1fc839169a39501db664744158e28
+Status: Downloaded newer image for grafana/loki:3.7.9
+until curl -fsS http://127.0.0.1:58123/ping >/dev/null 2>&1; do sleep 1; done
+until curl -fsS http://127.0.0.1:53100/ready >/dev/null 2>&1; do sleep 1; done
+KUDURRU_TEST_CLICKHOUSE_URL=http://127.0.0.1:58123 KUDURRU_TEST_CLICKHOUSE_USER=default KUDURRU_TEST_CLICKHOUSE_PASSWORD=kudurru \
+	KUDURRU_TEST_LOKI_URL=http://127.0.0.1:53100 KUDURRU_REQUIRE_SINK_SERVERS=1 \
+	go test -count=1 -run TestLive -v ./internal/querylog/sinks/; \
+	status=$?; docker rm -f kudurru-test-clickhouse kudurru-test-loki >/dev/null; exit $status
+=== RUN   TestLiveClickHouseReadsTheDocumentedTable
+--- PASS: TestLiveClickHouseReadsTheDocumentedTable (0.12s)
+=== RUN   TestLiveLokiServesTheDocumentedMapping
+--- PASS: TestLiveLokiServesTheDocumentedMapping (0.15s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/internal/querylog/sinks	0.308s

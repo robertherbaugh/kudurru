@@ -1,0 +1,86 @@
+{
+  "performance_pass": false,
+  "runtime_source": "d1725c592be0ecf5857f3d8013b5287a318f61a9",
+  "candidate_source": "a22255a2bc981a8fa12afcd2778267d7b681de1b",
+  "reference_source": "0cc9565e9a878f8223fc1cee5201eb7eca8aacd2",
+  "runner_class": "shared-cloud-sandbox-v1",
+  "calibration_manifest_sha256": "3b38bf0389bb04e2ed9b0546d79e276ffdbf70090ae8588afa7c5fb2a0bf7266",
+  "approval_sha256": "291c461fd91bfc3a2e235b79f6f133e368ce7249a7342d7c1e301878adaa03e5",
+  "qualification_evidence_manifest_sha256": "e61801285bef4b5477b6094ea6290c7b9f35e5e2f9ffe10984cd2aa100b3fb9c",
+  "files_verified": 159,
+  "source_paths_verified": {
+    "reference": 406,
+    "candidate": 5352
+  },
+  "native_commands": 60,
+  "native_failures": [],
+  "minimum_disk_free_bytes": 38834327552,
+  "absolute_gates": [
+    {
+      "role": "reference",
+      "report": "blocking-zone",
+      "exit_code": 1
+    },
+    {
+      "role": "reference",
+      "report": "cache",
+      "exit_code": 1
+    },
+    {
+      "role": "reference",
+      "report": "upstream",
+      "exit_code": 1
+    },
+    {
+      "role": "candidate",
+      "report": "blocking-zone",
+      "exit_code": 1
+    },
+    {
+      "role": "candidate",
+      "report": "cache",
+      "exit_code": 1
+    },
+    {
+      "role": "candidate",
+      "report": "upstream",
+      "exit_code": 1
+    },
+    {
+      "role": "candidate",
+      "report": "udp",
+      "exit_code": 1
+    },
+    {
+      "role": "candidate",
+      "report": "dot",
+      "exit_code": 1
+    },
+    {
+      "role": "candidate",
+      "report": "quic",
+      "exit_code": 1
+    },
+    {
+      "role": "candidate",
+      "report": "persist",
+      "exit_code": 1
+    }
+  ],
+  "comparison_eligible": false,
+  "relative_checks": {},
+  "metric_counts": {
+    "reference/blocking-zone": 139,
+    "reference/cache": 20,
+    "reference/upstream": 60,
+    "candidate/blocking-zone": 439,
+    "candidate/cache": 35,
+    "candidate/upstream": 60,
+    "candidate/udp": 10,
+    "candidate/dot": 20,
+    "candidate/quic": 12,
+    "candidate/persist": 16
+  },
+  "exit_code": 1,
+  "release_qualified": false
+}

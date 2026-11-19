@@ -19,9 +19,9 @@ specific finding it exercises, not a package's complete acceptance criteria.
 | TSIG observers | Thirty race repetitions reproduced both historical failures: the expected credential/deadline errors and committed image were correct, while the publisher notification channel closed. The fixture issued a redundant Wake and included an unrelated retrying provider. The follow-up removes those notification sources only; expiry, original cancellation/deadline, quiet channels, publication, writer eligibility, audit and durable-image assertions remain. Final repeated results and hosted CI are recorded below. |
 | #94 | Implemented per-group `cache: true`, default off for non-default groups. Default group caching and the global cache switch retain their existing precedence. The route plan is bound before lookup and partitions by group, routing and trust configuration. Covers conditional suffixes, forward-zone/Policy hints, TTL bounds/countdown, stale/prefetch, reload flushes and cache inspection. The dashboard saves the toggle immediately. Focused Go race suites, dashboard type checking, 40 upstream tests, lint and bundle build pass. |
 | Packaged upgrade | Released v0.1.0 Linux archive and RPM downloaded and checked against published SHA256 checksums. The existing upgrade test now takes a stopped-volume backup and restores it under the released old binary, checking DNS, credentials, schemas and history. Candidate package execution and exact hashes/results are recorded below. |
-| Performance | Earlier approval and pass bind runtime `5e19a32b`, not this source. Calibration manifest `3b38bf0389bb04e2ed9b0546d79e276ffdbf70090ae8588afa7c5fb2a0bf7266` remains immutable. This sandbox has a new VM/boot/CPU identity. On November 16 the owner approved the disclosed host-continuity amendment, retaining all limits and historical calibration. Qualification uses a new guarded host record and fresh same-host original-reference/candidate interleaving; its exact outcome is recorded below. |
-| Hosted checks | PR #54's last reported source run `43770178234` failed the two observer tests and `ci-ok`; its other 23 jobs passed. Follow-up run `43775954528` passes both observer shards but exposed the schema-contract, cleanup-setup, UPDATE EOF and rollback test failures recorded below. Required checks must pass on the corrected source head. |
-| Manual UI and production license | Earlier HTTP/browser and synthetic-license proofs retain their exact scope. They do not establish human visual approval or production entitlement issuance/signing. Final-artifact browser/deployment checks below have their own scope. Remaining owner checks are tracked in [#133](https://github.com/robertherbaugh/kudurru/issues/133). |
+| Performance | **Final-source qualification failed** on `a22255a2`: 60 native processes succeeded, but all ten absolute report gates failed. Original-reference / candidate CNAME lookup p99 medians are 2,187 / 2,363 ns against the unchanged 2,000 ns product maximum. The reference is ineligible, so relative comparisons were refused. The owner-approved restarted-host amendment, calibration and limits were honored. Complete evidence below; release-blocking [#143](https://github.com/robertherbaugh/kudurru/issues/143). |
+| Hosted checks | PR #54's last reported source run `43770178234` failed the two observer tests and `ci-ok`; its other 23 jobs passed. Follow-up run `43775954528` passes both observer shards but exposed the schema-contract, cleanup-setup, UPDATE EOF and rollback test failures recorded below. **All 26 jobs passed** in final-source run `43781940600` on `a22255a2`, including both observer shards, the corrected ledger shard, e2e and `ci-ok`. `security-ok` also passed. Required review still governs merge. |
+| Manual UI and production license | The normal archive executable accepted the owner-supplied issued Enterprise key through its production trust root. All eight entitlement, branding, restart, tampered-signature, minute-reload and no-key fallback checks passed. Earlier synthetic proofs keep their separate scope. Human visual approval, license-server issuance workflow and actual production-key expiry/grace acceptance remain in [#133](https://github.com/robertherbaugh/kudurru/issues/133). |
 | Review and publication | Required CI/security/review checks govern merge. Publishing v0.2.0 is a separate release-branch milestone. |
 
 ## Historical findings reconciled
@@ -59,7 +59,7 @@ status in the audit, rather than becoming invented current failures.
 | ZONE: view ownership parity, shared caps, transfer/signing limitations | [#136](https://github.com/robertherbaugh/kudurru/issues/136) |
 | ZONE / DNS / EDGE: hosted pinned interop, signed SOA-only IXFR without AA, dnsdist 2.1.3 empty-FIN limitation | [#127](https://github.com/robertherbaugh/kudurru/issues/127) |
 | UPDATE / HA: bounded failures after admission, long apply partial outcomes, member retirement and D395 ordinary-answer grace decision | [#129](https://github.com/robertherbaugh/kudurru/issues/129); D409 remains implemented |
-| DNS: final performance qualification; managed-anchor residual metric/refusal/abandoned-term coverage | Performance gate above; [#135](https://github.com/robertherbaugh/kudurru/issues/135) tracks residual F28 coverage |
+| DNS: failed final performance qualification; managed-anchor residual metric/refusal/abandoned-term coverage | [#143](https://github.com/robertherbaugh/kudurru/issues/143); [#135](https://github.com/robertherbaugh/kudurru/issues/135) tracks residual F28 coverage |
 | RPZ / OPS: explanation projection, offline signed-feed restart, compile window and multi-port CoreDNS loss reporting | [#130](https://github.com/robertherbaugh/kudurru/issues/130) |
 | INTEGRATIONS: whole-image capture/cleanup scale and original time bounds | [#124](https://github.com/robertherbaugh/kudurru/issues/124) |
 | INTEGRATIONS / IDENTITY: partial UniFi update/delete recovery, actual live providers and unexplained partial-create stall | [#125](https://github.com/robertherbaugh/kudurru/issues/125) |
@@ -73,6 +73,14 @@ status in the audit, rather than becoming invented current failures.
 | EDGE: restore-hold continuity and temporarily unreachable backend behavior | [#128](https://github.com/robertherbaugh/kudurru/issues/128) |
 | OPS: manual UI, production entitlement/branding, package/deployment and release protection checks | [#133](https://github.com/robertherbaugh/kudurru/issues/133), [#140](https://github.com/robertherbaugh/kudurru/issues/140) |
 
+The current report closes the specific final-source ClickHouse/Loki and
+issued-production-signature gaps within #131/#133. GitHub denied attempts to
+update the existing issue bodies with HTTP 403 (`Resource not accessible by
+integration`); those issue texts may still name the original uncompleted scope.
+No issue body or issue state was changed. This report and its committed
+evidence record the specific completed checks; remaining requirements in those
+issues stay open.
+
 ## Explicit future acceptance
 
 AD/Windows production acceptance remains future work under **D353**. The
@@ -82,10 +90,12 @@ containers, a single VM, envtest and KIND/MetalLB cannot close that requirement.
 
 ## Final execution record
 
-The local evidence directory is `.context/`; the identities, outcomes and
-limitations below are the portable record. The follow-up is
+The [portable evidence bundle](evidence/2026-11-16-final-source/README.md) retains
+raw qualification archives, input/receipt hashes, all metric vectors and selected
+artifact/test records. Local supplementary logs remain under `.context/`. The source follow-up is
 [PR #134](https://github.com/robertherbaugh/kudurru/pull/134). A fresh checkout
-cannot rely on local logs. No GA tag or release was published.
+can review the committed bundle in [PR #144](https://github.com/robertherbaugh/kudurru/pull/144),
+stacked on #134, without local logs. No GA tag or release was published.
 
 ### TSIG observer verification
 
@@ -137,8 +147,21 @@ packages, command shard 4/4, e2e and `ci-ok`. Both original observer shards
   under the same original three-minute change deadline. EOF never counts as
   success; all 1,100 actual NOERROR replies and the original exact replay,
   signature expiry and restart assertions remain required. Other transport
-  errors and terminal DNS errors still fail. The full local/hosted outcome
-  remains to be recorded.
+  errors and terminal DNS errors still fail except the narrowly classified
+  read timeout described next. The final hosted shard passed on `a22255a2`.
+- The EOF-only local ledger rerun failed in 1,182.577s: 1,097/1,100 real
+  NOERROR, ten SERVFAIL, 16 EOF retries and three TCP read timeouts. That failed
+  log is retained. The client and server pipeline both have five-second
+  deadlines (`internal/dnsserver/handler.go`), so a withheld original response
+  may expire at the reader before TCP closes. The bulk test now separately
+  counts/retries only a `net.OpError` whose operation is `read` and whose
+  `Timeout()` is true. It keeps four workers, the five-second client timeout,
+  the original three-minute logical-change deadline, all 1,100 real NOERROR and
+  every replay/signature-expiry/restart assertion. Other transport/DNS errors
+  still fail. This test qualifies ledger capacity/correctness, not success of
+  every first attempt. The corrected test compiles with race instrumentation;
+  hosted command shard 4/4 passes the complete test. No production response
+  authorization or request deadline changed.
 - Hosted e2e failed only the new rollback's immediate v0.1.0 DNS probe, already
   corrected by the convergence check and successful packaged run above.
 
@@ -241,7 +264,32 @@ HTTP 402. All checks passed with no uncaught browser exceptions. The binary was
 then confirmed byte-identical to the extracted archive. Screenshots
 `upstream-cache-artifact.png` and `community-license-artifact.png`, plus
 `artifact-browser-result.json`, retain the agent's browser/visual evidence.
-Human visual approval and an actual production key remain open in #133.
+Human visual approval stays open in #133. The later issued production-key
+check below supersedes only the missing real-key proof.
+
+The owner then supplied an issued key from the Mac for the disposable normal
+candidate. The encrypted transfer and private test copies were removed afterward;
+the original Downloads file was retained. The archive-identical binary accepted
+its embedded production trust root and reported **active Enterprise, three nodes
+and all eight features**, matching the signed claims. All **eight checks passed**:
+
+- License UI feature states, additional Policy creation, audit API and unlocked
+  long-term history.
+- Enterprise branding save/render and restart persistence of entitlement,
+  authenticated session and DNS.
+- The normal minute watcher rejects a tampered production signature, refuses
+  new policies and keeps DNS answering; restoring the original key reactivates
+  the entitlement.
+- Removing the disposable copy returns to Community/default branding and locks
+  licensed history, while preserving the existing Policy, session and DNS.
+
+The [issued-key result](evidence/2026-11-16-final-source/production-license-result.json),
+[cleanup record](evidence/2026-11-16-final-source/production-license-cleanup.json)
+and agent-inspected screenshot are committed without the key, licensee or
+license ID. This accepts an already-issued signature on the normal artifact;
+it does not test license-server issuance or actual production-key expiration/
+grace. The latter retains only its separate synthetic clock-controlled proof.
+The full human UI matrix remains open under #133.
 
 Both mandatory live sink tests passed on final source:
 `TestLiveClickHouseReadsTheDocumentedTable` and
@@ -304,9 +352,57 @@ hold the next measurement: `reference and control checkouts must be clean`.
 The incomplete record and explicit source-correction hold are retained under
 `.context/performance-final-20261116/`. It supplies no qualification pass and
 no samples for the fresh complete sequence on the corrected source. Limits,
-calibration, host and approval are unchanged. Full results belong in a small
-follow-up documentation PR based on #134; this keeps source CI tied to its
-actual code head while preserving independently reviewable evidence.
+calibration, host and approval are unchanged. The complete corrected-source
+result below is retained in documentation PR #144, based on #134; this keeps
+source CI tied to its actual code head.
 
-Production-license/human checks, issue dispositions and required PR review
-remain separate decisions. D353 and D358 retain exactly the future scope above.
+### Complete final-source performance result
+
+The one fresh corrected sequence ran on `a22255a2bc981a8fa12afcd2778267d7b681de1b`
+from **00:43:41 to 01:10:32 UTC on November 16, 2026**, using the newly guarded
+approved host and unchanged historical calibration/limits. All **60 native
+processes completed with exit zero**, with no resource stop or source/host/input
+guard failure. Independent verification checks 159 raw files, exact process
+order, original/candidate source maps (406/5,352 paths), report concatenation,
+receipt hashes and the immutable approved inputs.
+
+Qualification nevertheless **failed**: all **ten absolute report gates failed**.
+CNAME lookup p99 medians are **2,187 ns reference / 2,363 ns candidate** against
+the unchanged **2,000 ns** fixed maximum. The other 40 matched fixed-product
+checks pass, but calibrated cache/upstream and candidate transport/persistence
+limits also fail. Because the original reference is ineligible, the collector
+correctly refuses all three relative comparisons. There is no valid relative
+regression verdict and no performance pass to transfer to this source.
+
+The [complete evidence](evidence/2026-11-16-final-source/README.md) contains every
+five-value vector, raw process/gate output, input/host/approval hashes and the
+earlier source-correction hold. Raw-artifact manifest SHA256:
+`e61801285bef4b5477b6094ea6290c7b9f35e5e2f9ffe10984cd2aa100b3fb9c`.
+Collector exit 1 and `performance_pass: false` remain explicit. The independent
+verifier exits 0 because it confirms this failed outcome. The original failed
+homelab/calibration history is unchanged. No timing was repeated after this
+failure, no sample replaced and no limit relaxed.
+
+[#143](https://github.com/robertherbaugh/kudurru/issues/143) tracks the blocking
+result. A further attempt requires a diagnosed fix or separately reviewed
+method change under the existing protocol. The host amendment itself supplies
+no such approval after a failure. D383/D412/G23 remain open.
+
+### Final hosted CI and release disposition
+
+Run [43781940600](https://github.com/robertherbaugh/kudurru/actions/runs/43781940600)
+**passed all 26 jobs** on final source `a22255a2`, including `ci-ok`, both
+observer shards, the corrected complete ledger test and e2e/BIND interop. Security
+run [43781940738](https://github.com/robertherbaugh/kudurru/actions/runs/43781940738)
+has passed `security-ok`. The earlier `50006070` run was superseded by the
+read-timeout test correction and is not claimed as final green CI. Final source
+check/job snapshots are committed in the evidence bundle. Hosted Compose,
+KIND/MetalLB and development-image checks also passed on `a22255a2`; their
+exact URLs are in the check snapshot. These retain their single-environment
+scope and do not close D358.
+
+The issued-key checks close their exact missing-production-signature proof.
+Human UI, license-server issuance/production-key expiry, package maintainer
+scripts/actual systemd lifecycle, issue dispositions, performance and required
+PR review retain their exact open scope. D353 and D358 retain the future scope
+above. No release or production deployment occurred.
