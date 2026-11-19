@@ -370,3 +370,22 @@ retry. It reads no baseline, runs no qualification gate and always records
 `release_qualified: false`. A diagnostic success cannot close D383/D412, reset a
 baseline or supersede a failed formal recording. A causal fix or a separately
 reviewed method change remains necessary before another formal measurement.
+
+## Cluster tests in the homelab
+
+Go benchmarks run on the fixed runner class above. Tests that need a real
+multi-node Kubernetes cluster (load through a Service, replica spread, rolling
+upgrades, the kube store under load) run in the homelab test cluster instead,
+because hosted runners cannot provide one. The cluster is a vCluster with its own
+API server, etcd and `kudurru.io` CRDs, so it never reads or writes the
+production homelab install. It is defined in the homelab repository at
+`kubernetes/apps/kudurru-test/`, and that directory's README is the runbook.
+
+`kudurru.sh install --src <this checkout> --tag dev-<PR>` installs both charts
+from the checkout with a `dev-image` build of the pull request, one replica on
+each of three workers. `kudurru.sh dnsperf cached|miss` runs dnsperf 2.14
+against a no-cache dnsmasq upstream from a pod in the same cluster, and prints
+the image digests and nodes with the result. The hosts are shared with
+production workloads: compare results only with other runs in that cluster.
+They are not release qualification, and they do not change any baseline or
+limit in this directory.
