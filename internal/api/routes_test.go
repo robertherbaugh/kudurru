@@ -241,6 +241,40 @@ func h(s *Server) {
 		found:        "",
 		unrecognized: "zones.write",
 	}, {
+		name: "approved name also an interface method, func field or closure",
+		files: map[string]string{
+			"internal/api/a.go": `package api
+
+func (s *Server) allowed(ctx context.Context, resource, verb string) bool { return true }
+
+type checker interface {
+	allowed(ctx context.Context, resource, verb string) bool
+}
+
+func h(c checker) {
+	_ = c.allowed(ctx, "zones", "write")
+}
+`,
+			"internal/api/b.go": `package api
+
+func (s *Server) listAllowed(ctx context.Context, resource, verb string) (bool, error) { return true, nil }
+
+type hooks struct {
+	listAllowed func(ctx context.Context, resource, verb string) (bool, error)
+}
+`,
+			"internal/api/c.go": `package api
+
+func (s *Server) authorize(ctx context.Context, resource, verb string) bool { return true }
+
+func k() {
+	authorize := func(resource, verb string) bool { return true }
+	_ = authorize("zones", "sign")
+}
+`},
+		found:        "",
+		unrecognized: "zones.sign,zones.write",
+	}, {
 		name: "approved name declared on the wrong receiver",
 		files: map[string]string{"internal/api/a.go": `package api
 
@@ -373,7 +407,8 @@ var permissionCheckTypes = []checkSymbol{
 // function nobody calls still counts), a check whose resource or verb is
 // computed is not seen and needs a route declaration or a reservation, and
 // it reads syntax, not types, so a method is identified by its name within
-// its package.
+// its package (interface methods and func-typed fields count as further declarations
+// for selector calls, closures for bare calls).
 func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string, dirs ...string) (found, unrecognized map[string][]string) {
 	t.Helper()
 	const modulePrefix = "github.com/robertherbaugh/kudurru/"
@@ -451,7 +486,8 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 	}
 	var sources []source
 	// declared[pkg][name] lists the receivers of every top-level function
-	// or method of that name in the package ("" for a function).
+	// or method of that name in the package ("" for a function), plus "?"
+	// (interface method, func field) and "!" (closure) look-alikes.
 	declared := map[string]map[string][]string{}
 	for _, dir := range dirs {
 		err := filepath.WalkDir(filepath.Join(root, dir), func(path string, d fs.DirEntry, err error) error {
@@ -475,24 +511,81 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 			rel = filepath.ToSlash(rel)
 			pkg := pathpkg.Dir(rel)
 			sources = append(sources, source{rel, pkg, f})
+			declare := func(name, recv string) {
+				if declared[pkg] == nil {
+					declared[pkg] = map[string][]string{}
+				}
+				declared[pkg][name] = append(declared[pkg][name], recv)
+			}
 			for _, decl := range f.Decls {
 				if fd, ok := decl.(*ast.FuncDecl); ok {
-					if declared[pkg] == nil {
-						declared[pkg] = map[string][]string{}
-					}
-					declared[pkg][fd.Name.Name] = append(declared[pkg][fd.Name.Name], receiver(fd))
+					declare(fd.Name.Name, receiver(fd))
 				}
 			}
+			// Look-alikes that are not top-level functions also count as a
+			// declaration of the name, with a receiver no approved symbol has:
+			// "?" for an interface method or a func-typed struct field (reached
+			// by a selector call, like a method) and "!" for a local closure
+			// (name := func(...) {...}, reached by a bare call). A call such as
+			// c.allowed(...) on an interface cannot be told from the approved
+			// helper by syntax, so the name becomes ambiguous for that call
+			// form.
+			ast.Inspect(f, func(n ast.Node) bool {
+				switch n := n.(type) {
+				case *ast.InterfaceType:
+					for _, m := range n.Methods.List {
+						if _, ok := m.Type.(*ast.FuncType); ok {
+							for _, id := range m.Names {
+								declare(id.Name, "?")
+							}
+						}
+					}
+				case *ast.StructType:
+					for _, fld := range n.Fields.List {
+						if _, ok := fld.Type.(*ast.FuncType); ok {
+							for _, id := range fld.Names {
+								declare(id.Name, "?")
+							}
+						}
+					}
+				case *ast.AssignStmt:
+					for i, rhs := range n.Rhs {
+						if _, ok := rhs.(*ast.FuncLit); ok && i < len(n.Lhs) {
+							if id, ok := n.Lhs[i].(*ast.Ident); ok {
+								declare(id.Name, "!")
+							}
+						}
+					}
+				case *ast.ValueSpec:
+					for i, v := range n.Values {
+						if _, ok := v.(*ast.FuncLit); ok && i < len(n.Names) {
+							declare(n.Names[i].Name, "!")
+						}
+					}
+				}
+				return true
+			})
 			return nil
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	// approvedCallee: the package declares exactly one symbol of the name
-	// and it is the approved one.
-	approvedCallee := func(pkg, name string) bool {
-		recvs := declared[pkg][name]
+	// approvedCallee: among the declarations a call of this form can reach,
+	// the package has exactly one of the name and it is the approved one. A
+	// selector call (x.name) reaches methods, interface methods and func
+	// fields; a bare call (name) reaches functions and local closures.
+	approvedCallee := func(pkg, name string, viaSelector bool) bool {
+		var recvs []string
+		for _, r := range declared[pkg][name] {
+			reachable := r != "" && r != "!"
+			if !viaSelector {
+				reachable = r == "" || r == "!"
+			}
+			if reachable {
+				recvs = append(recvs, r)
+			}
+		}
 		if len(recvs) != 1 {
 			return false
 		}
@@ -595,11 +688,12 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 				add(res, verb, n.Pos(), "literal "+shown+"{}", approvedType(qual, name))
 			case *ast.CallExpr:
 				name := callee(n.Fun)
+				_, viaSelector := n.Fun.(*ast.SelectorExpr)
 				for i := 0; i+1 < len(n.Args); i++ {
 					res, ok1 := str(n.Args[i])
 					verb, ok2 := str(n.Args[i+1])
 					if ok1 && ok2 {
-						add(res, verb, n.Args[i].Pos(), "call "+name+"()", approvedCallee(src.pkg, name))
+						add(res, verb, n.Args[i].Pos(), "call "+name+"()", approvedCallee(src.pkg, name, viaSelector))
 					}
 				}
 			}

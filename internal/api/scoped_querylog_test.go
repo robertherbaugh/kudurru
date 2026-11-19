@@ -248,8 +248,9 @@ func TestClusterStatsMerge(t *testing.T) {
 	testClusterStatsMerge(t, newClusterLogFixture(t))
 }
 
-// TestClusterStatsMergeAtHourBoundary pins the clock 30 seconds into an hour,
-// so the two-minute-old events of the fixture straddle or follow the hour.
+// TestClusterStatsMergeAtHourBoundary pins both node logs and the API clock at
+// several offsets past an hour (0 s to 59 m 59 s), so the fixture's
+// two-minute-old events straddle, sit on or follow the hour boundary.
 func TestClusterStatsMergeAtHourBoundary(t *testing.T) {
 	for _, offset := range []time.Duration{0, 30 * time.Second, 119 * time.Second, 121 * time.Second, 5 * time.Minute, 59*time.Minute + 59*time.Second} {
 		t.Run(offset.String(), func(t *testing.T) {
