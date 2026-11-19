@@ -178,7 +178,7 @@ describe('QueryLogPage live tail', () => {
     expect(screen.getByText('Partial results: 1 node delayed or unavailable')).toBeInTheDocument();
     expect(screen.queryByText(/old-pod/)).toBeNull();
     const toggle = screen.getByRole('switch', { name: 'Live tail' });
-    expect(toggle).not.toBeDisabled();
+    expect(toggle).not.toBeInteractionDisabled();
     fireEvent.click(toggle);
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     const stream = FakeEventSource.instances[0]!;
@@ -277,7 +277,7 @@ describe('QueryLogPage policy filter', () => {
     renderWithApp(<QueryLogPage />, { route: '/queries?policy=default%2Fiot-strict' });
     await screen.findByTestId('log-totals');
     expect(seen[0]?.get('policy')).toBe('default/iot-strict');
-    expect(screen.getByText('default/iot-strict')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Policy default/iot-strict' })).toBeVisible();
   });
 });
 

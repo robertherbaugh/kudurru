@@ -72,12 +72,12 @@ describe('DHCP setup', () => {
     mockDHCP().config.management = 'file';
     const view = renderWithApp(<DHCPScopePage params={{ scope: 'default' }} />);
     try {
-      expect(await screen.findByRole('textbox', { name: 'Router' })).toBeDisabled();
+      expect(await screen.findByRole('textbox', { name: 'Router' })).toBeInteractionDisabled();
       mockDHCP().config.management = 'api';
       mockDHCP().config.revision = '2';
       mockDHCP().config.etag = '"adopted-2"';
       await act(() => vi.advanceTimersByTimeAsync(15_000));
-      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Router' })).not.toBeDisabled());
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Router' })).not.toBeInteractionDisabled());
       fireEvent.click(screen.getByRole('button', { name: 'Reload saved values' }));
       expect(screen.getByRole('button', { name: 'Save network options' })).not.toHaveAttribute('aria-disabled', 'true');
     } finally { view.unmount(); vi.useRealTimers(); }
@@ -143,7 +143,7 @@ describe('DHCP setup', () => {
     renderWithApp(<DHCPScopePage params={{ scope: 'default' }} />);
     expect(await screen.findByText('DHCP could not start')).toBeInTheDocument();
     expect(screen.getByText('listen eth0: permission denied')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save setup for restart' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save setup for restart' })).not.toBeInteractionDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Remove scope' }));
     const dialog = within(await screen.findByRole('dialog', { name: 'Remove scope default' }));
     expect(dialog.getByText(/lease database is retained/)).toBeInTheDocument();
@@ -169,7 +169,7 @@ describe('DHCP setup in Kubernetes mode', () => {
     mockKubeDHCP();
     renderWithApp(<DHCPPage />);
     const toggle = await screen.findByRole('switch', { name: 'DHCP enabled' });
-    expect(toggle).toBeDisabled();
+    expect(toggle).toBeInteractionDisabled();
     expect(screen.getByText('Set dhcp.enabled in the Helm values.')).toBeInTheDocument();
     expect(screen.queryByRole('switch', { name: 'Enable DHCP after restart' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Configure failover' })).not.toBeInTheDocument();
@@ -230,14 +230,14 @@ describe('DHCP setup in Kubernetes mode', () => {
     mockDHCP().config.management = 'file';
     mockDHCP().config.managedBy = 'gitops:argocd';
     renderWithApp(<DHCPScopePage params={{ scope: 'default' }} />);
-    expect(await screen.findByRole('textbox', { name: 'Router' })).toBeDisabled();
+    expect(await screen.findByRole('textbox', { name: 'Router' })).toBeInteractionDisabled();
     expect(screen.getAllByText('Managed by gitops:argocd; change it there.').length).toBeGreaterThan(0);
     expect(screen.queryByText('Managed by the configuration file')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Remove scope' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add reservation' })).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
     const form = within(screen.getByRole('form', { name: 'Saved scope setup' }));
-    expect(form.getByRole('textbox', { name: 'Client subnet' })).toBeDisabled();
+    expect(form.getByRole('textbox', { name: 'Client subnet' })).toBeInteractionDisabled();
     expect(form.getByRole('button', { name: 'Save scope' })).toHaveAttribute('aria-disabled', 'true');
   });
 });

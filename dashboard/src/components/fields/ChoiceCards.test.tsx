@@ -35,7 +35,11 @@ describe('ChoiceCards', () => {
     expect(screen.getByRole('radio', { name: /Alpha/ })).toBeChecked();
     fireEvent.click(screen.getByRole('radio', { name: /Beta/ }));
     expect(screen.getByRole('radio', { name: /Beta/ })).toBeChecked();
-    expect(screen.getByRole('radio', { name: /Gamma/ })).toBeDisabled();
+    const disabledChoice = screen.getByRole('radio', { name: /Gamma/ });
+    expect(disabledChoice).toBeInteractionDisabled();
+    fireEvent.click(disabledChoice);
+    expect(disabledChoice).not.toBeChecked();
+    expect(screen.getByRole('radio', { name: /Beta/ })).toBeChecked();
     expect(screen.getByText('The first one')).toBeInTheDocument();
     expect(group.getAttribute('aria-describedby') ?? '').not.toBe('');
     expect(document.getElementById((group.getAttribute('aria-describedby') ?? '').split(' ').pop() ?? '')).toHaveTextContent('Pick one.');

@@ -259,7 +259,7 @@ describe('UpstreamWizardDialog', () => {
     expect(await screen.findByRole('radio', { name: /^Forward/ })).toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     const quad9 = await screen.findByRole('radio', { name: /^Quad9/ });
-    await waitFor(() => expect(quad9).toBeEnabled());
+    await waitFor(() => expect(quad9).not.toBeInteractionDisabled());
     // Icons from the C4 index where the server has one, monograms elsewhere.
     await waitFor(() => expect(document.querySelector('[data-choice="cloudflare"] img')?.getAttribute('src')).toContain('/catalogue/icons/cloudflare.svg'));
     expect(document.querySelector('[data-choice="opendns"] img')?.getAttribute('src')).toContain('/catalogue/icons/cisco.svg');

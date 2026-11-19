@@ -97,7 +97,7 @@ describe('DHCP dashboard', () => {
     fireEvent.click(table.getByRole('button', { name: 'Reserve 192.0.2.100' }));
     const dialog = within(screen.getByRole('dialog', { name: 'Add reservation' }));
     expect(dialog.getByRole('textbox', { name: 'MAC address' })).toHaveValue('02:00:00:00:00:20');
-    expect(dialog.getByRole('textbox', { name: 'MAC address' })).toBeDisabled();
+    expect(dialog.getByRole('textbox', { name: 'MAC address' })).toBeInteractionDisabled();
     expect(dialog.getByRole('textbox', { name: 'Hostname' })).toHaveValue('laptop');
     fireEvent.change(dialog.getByRole('textbox', { name: 'Reserved address' }), { target: { value: '192.0.2.40' } });
     fireEvent.click(dialog.getByRole('button', { name: 'Save reservation' }));
@@ -110,7 +110,7 @@ describe('DHCP dashboard', () => {
     mockDHCP().config.envLocked = ['dnsServers'];
     renderWithApp(scopePage());
     expect((await screen.findAllByText('Managed by the configuration file')).length).toBeGreaterThan(0);
-    expect(screen.getByRole('textbox', { name: 'Router' })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: 'Router' })).toBeInteractionDisabled();
     expect(screen.getByRole('button', { name: 'Add reservation' })).toHaveAttribute('aria-disabled', 'true');
   });
 
@@ -118,7 +118,7 @@ describe('DHCP dashboard', () => {
     mockDHCP().config.management = 'file';
     renderWithApp(<DHCPLeasesPage />, { route: '/leases' });
     await screen.findByRole('table', { name: 'DHCP leases' });
-    expect(screen.getByRole('button', { name: 'Import leases' })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Import leases' })).not.toBeInteractionDisabled();
   });
 
   it('explains a requested scope that is not running', async () => {

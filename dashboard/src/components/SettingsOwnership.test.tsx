@@ -11,12 +11,12 @@ describe('upstreams ownership', () => {
     const before = structuredClone(db.settings.upstreams);
     renderWithApp(<UpstreamsPage />, { route: '/upstreams' });
     const adopt = await screen.findByRole('button', { name: 'Adopt into UI management' });
-    expect(screen.getByRole('button', { name: 'New group' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'New group' })).toBeInteractionDisabled();
     fireEvent.click(adopt);
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Adopt upstreams' }));
     await screen.findByText('Managed in the UI');
-    expect(screen.getByRole('button', { name: 'New group' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'New group' })).not.toBeInteractionDisabled();
     expect(db.settings.upstreams).toEqual(before);
     expect(db.settingsOwner).toBe('ui');
   });
@@ -36,7 +36,7 @@ describe('upstreams ownership', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Return to GitOps' }));
     fireEvent.click(screen.getByRole('button', { name: 'Generate preview' }));
     const release = await screen.findByRole('button', { name: 'Release to GitOps' });
-    expect(release).toBeDisabled();
+    expect(release).toBeInteractionDisabled();
     fireEvent.click(screen.getByRole('checkbox', { name: 'I committed and applied these Helm values' }));
     fireEvent.click(release);
     await screen.findByText('Managed by GitOps');
@@ -47,8 +47,8 @@ describe('upstreams ownership', () => {
   it('shows ownership to viewers and prevents them from adopting', async () => {
     mockDB().settingsOwner = 'gitops';
     renderWithApp(<UpstreamsPage />, { route: '/upstreams', user: 'viewer' });
-    expect(await screen.findByRole('button', { name: 'Adopt into UI management' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Generate YAML' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Adopt into UI management' })).toBeInteractionDisabled();
+    expect(screen.getByRole('button', { name: 'Generate YAML' })).not.toBeInteractionDisabled();
   });
 
   it('keeps the reviewed adoption revision when settings refresh during confirmation', async () => {
@@ -61,6 +61,6 @@ describe('upstreams ownership', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Adopt upstreams' }));
     expect(await within(dialog).findByText(/Settings changed\. Refresh and review\./)).toBeInTheDocument();
     expect(db.settingsOwner).toBe('gitops');
-    expect(screen.getByRole('button', { name: 'New group' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'New group' })).toBeInteractionDisabled();
   });
 });

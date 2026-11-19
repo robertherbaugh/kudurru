@@ -24,10 +24,10 @@ describe('DHCP automatic failover', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Automatic failover' }));
     change('Failover cluster ID', 'home-dhcp');change('This node ID', 'node2');change('Peer listen address', '0.0.0.0:7447');
     for (let i = 1; i <= 3; i++) { change(`Voter ${i} ID`, `node${i}`);change(`Voter ${i} peer address`, `192.0.2.${i + 1}:7447`); }
-    expect(screen.getByRole('checkbox', { name: 'Bootstrap this new cluster' })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: 'Bootstrap this new cluster' })).toBeInteractionDisabled();
     change('This node ID', 'node1');
     const bootstrap = screen.getByRole('checkbox', { name: 'Bootstrap this new cluster' });
-    expect(bootstrap).not.toBeChecked();expect(bootstrap).not.toBeDisabled();
+    expect(bootstrap).not.toBeChecked();expect(bootstrap).not.toBeInteractionDisabled();
     for (let i = 1; i <= 3; i++) change(`default: node${i} server address`, `192.0.2.${i + 1}`);
     fireEvent.click(bootstrap);
     fireEvent.click(screen.getByRole('button', { name: 'Save failover for restart' }));
@@ -42,8 +42,8 @@ describe('DHCP automatic failover', () => {
     configure();mockDHCP().setup!.failoverInitialized = true;
     const expected = structuredClone(mockDHCP().setup!.failover);
     renderWithApp(<DHCPPage />);await openEditor();
-    expect(screen.getByRole('switch', { name: 'Automatic failover' })).toBeDisabled();
-    expect(screen.getByRole('textbox', { name: 'Voter 1 peer address' })).toBeDisabled();
+    expect(screen.getByRole('switch', { name: 'Automatic failover' })).toBeInteractionDisabled();
+    expect(screen.getByRole('textbox', { name: 'Voter 1 peer address' })).toBeInteractionDisabled();
     expect(screen.getByRole('button', { name: 'New scope' })).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(screen.getByRole('switch', { name: 'Enable DHCP after restart' }));
     await waitFor(() => expect(mockDHCP().setup?.enabled).toBe(false));
@@ -69,8 +69,8 @@ describe('DHCP automatic failover', () => {
     const reload = await screen.findByRole('button', { name: 'Reload failover settings' });
     expect(screen.getByRole('textbox', { name: 'Failover cluster ID' })).toHaveValue('draft-cluster');
     expect(mockDHCP().setup?.failover.clusterID).toBe('home-dhcp');
-    expect(screen.getByRole('button', { name: 'Save failover for restart' })).toBeDisabled();
-    await waitFor(() => expect(reload).not.toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Save failover for restart' })).toBeInteractionDisabled();
+    await waitFor(() => expect(reload).not.toBeInteractionDisabled());
     fireEvent.click(reload);
     expect(screen.getByRole('textbox', { name: 'Failover cluster ID' })).toHaveValue('home-dhcp');
     change('Peer listen address', '127.0.0.1:7447');
@@ -110,10 +110,10 @@ describe('DHCP automatic failover', () => {
   it('keeps credential fields read-only for environment locks and viewer permission', async () => {
     configure();mockDHCP().setup!.environmentLocked = true;
     const view = renderWithApp(<DHCPPage />);await openEditor();
-    expect(screen.getByRole('textbox', { name: 'Peer listen address' })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: 'Peer listen address' })).toBeInteractionDisabled();
     view.unmount();mockDHCP().setup!.environmentLocked = false;
     renderWithApp(<DHCPPage />, { user: 'viewer' });await openEditor();
-    expect(screen.getByRole('textbox', { name: 'Peer listen address' })).toBeDisabled();
+    expect(screen.getByRole('textbox', { name: 'Peer listen address' })).toBeInteractionDisabled();
     expect(screen.getByText('Changing failover requires dhcp.write permission.')).toBeInTheDocument();
   });
 

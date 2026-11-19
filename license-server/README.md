@@ -47,6 +47,10 @@ make license-server-dev     # server and Vite on the host (http://localhost:5174
 
 Or inside `license-server/`: `bun install`, `bun run dev`, `bun run test`,
 `bun run build`, `bun run lint`, `bun run typecheck`, `bunx playwright test`.
+
+`bun run typecheck` runs TypeScript 7 via `typescript-native`. The `typescript`
+package stays on 6 for type-aware ESLint until `typescript-eslint` supports 7.
+
 Development users and secrets: [dev/README.md](dev/README.md). How it
 works, with diagrams: [docs/architecture.md](docs/architecture.md).
 Hosting on Cloudflare Containers: [cloudflare/README.md](cloudflare/README.md).

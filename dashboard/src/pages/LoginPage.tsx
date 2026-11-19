@@ -130,8 +130,7 @@ export function LoginPage() {
                   help="Enter the six-digit code if you have enabled an authenticator."
                 />
               ) : null}
-              {/* An error Banner is role="alert": announced, and what the e2e looks for. */}
-              {error ? <Banner status="error" title={error} /> : null}
+              {error ? <Banner role="alert" status="error" title={error} /> : null}
               <Button type="submit" label="Sign in" variant="primary" isLoading={busy} width="100%" />
             </VStack>
           ) : (

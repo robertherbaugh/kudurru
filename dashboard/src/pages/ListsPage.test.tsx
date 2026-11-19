@@ -19,7 +19,7 @@ describe('ListsPage', () => {
     renderWithApp(<ListsPage />, { route: '/lists' });
     const file = await screen.findByTestId('row-regex-trackers');
     expect(within(file).getByLabelText('Managed by file:objects.d/lists.yaml')).toBeInTheDocument();
-    expect(within(file).getByRole('checkbox', { name: 'Select regex-trackers' })).toBeDisabled();
+    expect(within(file).getByRole('checkbox', { name: 'Select regex-trackers' })).toBeInteractionDisabled();
     expect(within(screen.getByTestId('row-oisd-small')).getByText('unavailable, cached')).toBeInTheDocument();
     expect(within(screen.getByTestId('row-ui-deny')).getByText('invalid')).toBeInTheDocument();
     expect(within(screen.getByTestId('row-starter')).getByText('OK')).toBeInTheDocument();
@@ -96,7 +96,7 @@ describe('ListsPage', () => {
     const domains = within(dialog).getByRole('textbox', { name: /^Domains/ });
     fireEvent.change(domains, { target: { value: 'not_a..domain' } });
     expect(await within(dialog).findByText(/is not a domain name/)).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Add' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Add' })).toBeInteractionDisabled();
     fireEvent.change(domains, { target: { value: 'ads.example.com\ntracking.example-shop.com' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Add 2' }));
     // The duplicate stays in the box with the reason; the new one is added.

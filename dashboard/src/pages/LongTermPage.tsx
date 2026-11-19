@@ -126,7 +126,7 @@ function LongTermView() {
               label="From"
               size="sm"
               width="100%"
-              className="k-compact-datetime"
+              controlClassName="k-compact-datetime"
               value={(toLocalInput(from) || undefined) as ISODateTimeString | undefined}
               onChange={(v) => setParams({ from: fromLocalInput(v ?? '') || null, to })}
             />
@@ -136,7 +136,7 @@ function LongTermView() {
               label="To"
               size="sm"
               width="100%"
-              className="k-compact-datetime"
+              controlClassName="k-compact-datetime"
               value={(toLocalInput(to) || undefined) as ISODateTimeString | undefined}
               onChange={(v) => setParams({ to: fromLocalInput(v ?? '') || null, from })}
             />
