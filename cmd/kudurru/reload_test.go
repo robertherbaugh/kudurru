@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/netip"
 	"path/filepath"
@@ -25,6 +26,44 @@ import (
 	upstreamstage "github.com/robertherbaugh/kudurru/internal/stages/upstream"
 	"github.com/robertherbaugh/kudurru/internal/upstream"
 )
+
+func TestConditionalCacheReloadFlushesPolicyAndRuleChanges(t *testing.T) {
+	cfg, err := config.Load("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Upstreams.Groups["lan"] = config.UpstreamGroup{Servers: []string{"127.0.0.1:10002"}}
+	cfg.Upstreams.Conditional = map[string]string{"corp.example.": "lan"}
+	set, err := upstream.New(upstream.ConfigFrom(cfg.Upstreams), upstream.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fwd := upstreamstage.NewStage(set)
+	t.Cleanup(func() { _ = fwd.Set().Close() })
+	rc := cache.New(cache.OptionsFrom(cfg.Cache, nil))
+	r := config.NewReloadable(cfg)
+	subscribeReload(t.Context(), r, reloadTargets{logger: slog.New(slog.DiscardHandler), upstreams: fwd, cache: rc})
+	k := cache.MakeKey("host.corp.example.", dns.TypeA, dns.ClassINET, false, false, netip.Prefix{})
+	for _, mode := range []string{"enable", "disable", "rule"} {
+		next := *r.Current()
+		next.Upstreams.Groups = maps.Clone(next.Upstreams.Groups)
+		g := next.Upstreams.Groups["lan"]
+		g.Cache = mode != "disable"
+		next.Upstreams.Groups["lan"] = g
+		if mode == "rule" {
+			next.Upstreams.Conditional = map[string]string{"other.example.": "lan"}
+		}
+		rc.Set(k, []byte{1}, cache.Positive, time.Minute)
+		old := fwd.Set()
+		r.Set(&next)
+		if fwd.Set() == old || fwd.Set().GroupCaches("lan") != g.Cache {
+			t.Fatalf("%s did not replace the upstream policy", mode)
+		}
+		if _, ok := rc.Peek(k); ok {
+			t.Fatalf("%s retained an old cached answer", mode)
+		}
+	}
+}
 
 func TestDNSSECReloadPinsTrustAndRoutesTogether(t *testing.T) {
 	cfg, err := config.Load("", nil)

@@ -1,0 +1,102 @@
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:19:23 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:19:24 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:19:26 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (8.61s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:19:31 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:19:33 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:19:34 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (8.34s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:19:40 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:19:42 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:19:44 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (9.38s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:19:50 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:19:52 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:19:53 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (9.64s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:19:58 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:20:00 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:20:02 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (8.96s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:20:08 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:20:10 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:20:12 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (9.37s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:20:18 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:20:20 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:20:21 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (9.64s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:20:26 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:20:28 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:20:30 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (8.16s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:20:35 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:20:37 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:20:39 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (9.10s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:20:44 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:20:46 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:20:47 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (8.62s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:20:53 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:20:55 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:20:57 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (9.44s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:21:02 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:21:04 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:21:06 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (9.29s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:21:11 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:21:13 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:21:14 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (8.23s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:21:19 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:21:21 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:21:23 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (8.62s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:21:28 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:21:30 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:21:32 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (8.66s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:21:37 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:21:39 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:21:40 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (8.86s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:21:46 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:21:48 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:21:50 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (9.09s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:21:55 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:21:57 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:21:59 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (9.33s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:22:04 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:22:06 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:22:08 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (8.91s)
+=== RUN   TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers
+2026/11/16 00:22:13 INFO integration terminating integration=default/inventory reason=AuthorityChanged remaining=0 blocked=0 pending=0
+2026/11/16 00:22:14 INFO integration terminating integration=default/inventory reason=LocalStateRemains remaining=0 blocked=0 pending=0
+2026/11/16 00:22:16 INFO integration finalized integration=default/inventory released=false recordSetsDeleted=0 recordsForgotten=0 runs=3
+--- PASS: TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers (8.18s)
+PASS
+ok  	github.com/robertherbaugh/kudurru/cmd/kudurru	179.898s

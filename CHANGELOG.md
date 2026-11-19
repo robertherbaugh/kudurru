@@ -10,6 +10,12 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Added
 
+- Optional response caching for non-default upstream groups (`cache: true`),
+  including conditional forwarding, forward zones and Policy routes. The
+  group editor saves the Cache answers toggle immediately. Entries stay
+  isolated by group and routing/trust configuration, retain upstream labels,
+  and use the normal TTL, prefetch and serve-stale rules (#94).
+
 - Offline `anchors status` and `anchors recover` for complete managed-root loss,
   with explicit replacement trust, retained revocations and recovery history,
   exact expected-version checks, and an audit committed with the recovery.
@@ -1352,6 +1358,10 @@ and [Semantic Versioning](https://semver.org/). Until v1.0, the
 
 ### Fixed
 
+- TSIG observer tests retain their original expiry, cancellation, deadline and
+  publication assertions while isolating the quiet fixture from unrelated
+  provider retries and redundant publisher wakeups.
+
 - SQLite IAM revocation history compacts transactionally instead of exhausting
   sign-in and account deletion after about 4,000 historical changes. A checkpoint
   requires fresh proof from older OIDC tokens while preserving unaffected stored
@@ -1912,6 +1922,15 @@ hints to peers so every replica transfers independently.
 - Upgrade `golang.org/x/net` to v0.62.0 in the product and isolated AD
   protocol spike to address CVE-2026-78661, together with its required Go
   dependency versions.
+
+- Build with Go 1.27.4 or later (GO-2026-6859, a `net/http` HTTP/1 server
+  crash from a `MaxBytesReader` header race), and upgrade `cel-go` to v0.31.0
+  (GO-2026-6094) and `golang.org/x/crypto` to v0.59.0, together with the other Go modules
+  (`govulncheck` reports none). The dashboard, license portal, website and
+  documentation site packages, Bun 1.4.4 and the pinned GitHub Actions are
+  current. `bun audit` still reports one transitive development-only
+  `picomatch` advisory (GHSA-fc5q-39xc-vjpf, ReDoS in glob matching during
+  linting and builds) for which no patched release exists yet.
 
 ### Upgrade notes
 

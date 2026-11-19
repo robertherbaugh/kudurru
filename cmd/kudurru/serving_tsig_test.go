@@ -44,7 +44,12 @@ type tsigCommandFixture struct {
 // Build the original source before workers; never race a live opts.TSIG assignment.
 func newTSIGCommandFixture(t *testing.T) *tsigCommandFixture {
 	t.Helper()
-	f := &servingCommandFixture{s: newServingRuntimeFixture(t), now: time.Now().UTC().Truncate(time.Second)}
+	return newTSIGCommandFixtureProviders(t, true)
+}
+
+func newTSIGCommandFixtureProviders(t *testing.T, identityProvider bool) *tsigCommandFixture {
+	t.Helper()
+	f := &servingCommandFixture{s: newServingRuntimeFixtureProviders(t, identityProvider), now: time.Now().UTC().Truncate(time.Second)}
 	f.expires = f.now.Add(time.Hour)
 	f.installClock(func() time.Time { return f.now.Add(time.Duration(f.offset.Load())) })
 	var id string

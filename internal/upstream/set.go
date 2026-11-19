@@ -114,7 +114,7 @@ func New(cfg Config, opts Options) (*Set, error) {
 	sort.Strings(names)
 	for _, name := range names {
 		gc := cfg.Groups[name]
-		g := &Group{name: name, strategy: gc.Strategy, timeout: gc.Timeout, now: now}
+		g := &Group{name: name, strategy: gc.Strategy, timeout: gc.Timeout, now: now, cache: gc.Cache}
 		if g.strategy == "" {
 			g.strategy = ParallelBest
 		}
@@ -204,7 +204,7 @@ func (s *Set) Group(name string) (*Group, bool) {
 // Route chooses the group for qname: the hint (pipeline.Request's
 // UpstreamGroup) when set, else the longest conditional suffix, else
 // DefaultGroup. conditional is true for a hint and for a suffix that maps
-// to a group other than DefaultGroup; such answers must not be cached. A
+// to a group other than DefaultGroup; those groups cache only when opted in. A
 // suffix mapped to DefaultGroup itself (dnsmasq's "#": use the normal
 // servers, an exception carved out of a wider conditional suffix) is
 // ordinary forwarding. An unknown hint is an error so that a forward zone
@@ -223,6 +223,12 @@ func (s *Set) Route(qname, hint string) (group string, conditional bool, err err
 		return g, g != DefaultGroup, nil
 	}
 	return DefaultGroup, false, nil
+}
+
+// GroupCaches reports the response-cache policy for a known group.
+func (s *Set) GroupCaches(name string) bool {
+	g, ok := s.groups[name]
+	return ok && (name == DefaultGroup || g.cache)
 }
 
 // Exchange sends m to group following the group's strategy and returns the

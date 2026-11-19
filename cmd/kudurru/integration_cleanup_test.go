@@ -918,7 +918,21 @@ func TestIntegrationDeletePurgeFencesAChangedObjectAndFinalizeRefusesLeftovers(t
 		record, err := generated(t.Context())
 		return err == nil && record != nil
 	})
-	integrationReadyCommand(t, s, owner)
+	// This test deletes directly in the store. A budgeted provider Check is
+	// unrelated setup and can repeatedly invalidate its own serving capture
+	// while this fixture's one-second observations are publishing. Observe
+	// readiness without dispatching another command before the challenge.
+	awaitServingRuntime(t, s, func() bool {
+		if !s.publisher.Status().ProtectedReady {
+			return false
+		}
+		for _, status := range s.integrations.host.Statuses() {
+			if status.Owner == owner && status.Phase == "Ready" {
+				return true
+			}
+		}
+		return false
+	})
 	if err := deliver(t.Context(), "queued while the instance lived"); err != nil {
 		t.Fatal(err)
 	}

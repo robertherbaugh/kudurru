@@ -587,7 +587,7 @@ restarts the service only if it was running.
 order before the first 0.2 process starts; the steps that do not apply to an
 installation say so.
 
-1. **Back up, because there is no way back.** The first 0.2 start migrates
+1. **Back up; rollback requires restoring the pre-upgrade data.** The first 0.2 start migrates
    `state.db` from schema 1 to 9, `querylog.db` from 2 to 3 and stamps
    `local.db` with 9. 0.1.0 then refuses every one of these files
    (`state.db was written by a newer kudurru`) and changes nothing, so a
@@ -595,6 +595,11 @@ installation say so.
    directory (Docker volume, PVC or `/var/lib/kudurru`). On Kubernetes also
    back up the release namespace's private Secrets and the `kudurru.io`
    objects ([iam-upgrade.md](iam-upgrade.md#prepare-an-offline-upgrade)).
+   Retain the matching encryption key, configuration and old artifact. Rehearse
+   restoration into an empty disposable volume, including DNS, credential
+   identity, query/audit history and restart checks. Do not overlay old files
+   onto upgraded databases. Writes made after the backup are absent after
+   rollback ([restore procedure](../guide/admin/11-maintenance.md#roll-back-to-010)).
 2. **SQLite (Docker, systemd, the chart's `standalone` mode): stored objects
    0.2 refuses stop the upgrade.** Before it migrates `state.db`, 0.2 checks
    every stored object and, if one fails, exits naming it and leaves the file
@@ -663,7 +668,7 @@ declare the ingress in the node file (`upstreams.recursion.managedTopology`,
 `trustAnchors` with `kudurru settings set` or the Settings page. On SQLite the
 first 0.2 start copies the cluster settings of `kudurru.yaml` into the
 cluster settings object, and later edits of those keys in the file do not
-change it ([configuration-and-store.md](../architecture/configuration-and-store.md#cluster-settings-object-foundation)).
+update that object ([configuration-and-store.md](../architecture/configuration-and-store.md#cluster-settings-object-foundation)).
 The node then fetches the root keys once and keeps them across restarts.
 A declared edge that still runs 0.1 has no observation route, so a start with
 `edges` is refused with `managed edge observation is unsupported` until that
@@ -672,21 +677,25 @@ edge is upgraded.
 **Static twins (Compose HA) cannot use that settings write.** A twin with
 `cluster.role: static` refuses settings writes (`503 read_only`), and after
 its first 0.2 start it keeps the cluster settings that start copied from
-`kudurru.yaml`: a later edit of a cluster key in the file is not applied.
-The start then logs the warning `cluster settings in kudurru.yaml are not in
+`kudurru.yaml`: a later file edit does not update that stored object.
+Reloadable settings use the stored values. Components whose keys require a
+restart keep the values read at process startup; this is a separate lifecycle,
+so do not infer identical file-override behavior for every cluster key.
+The start logs the warning `cluster settings in kudurru.yaml are not in
 effect` for the differing keys that reload without a restart, with the
 stored values now in effect (list and object values are left out; read them
 with `kudurru settings get` or `GET /api/v1/settings`). Differing keys that
 need a restart get a second warning, `cluster settings in kudurru.yaml
 differ from the cluster settings object`, which names them and says the
-process keeps the values it started with. This is a known gap of 0.2.0,
-and it applies to every cluster setting, not only the anchor keys. On
+process keeps the values it started with. Verify effective configuration
+and diagnostics after a restart. The absence of a supported stored-settings
+writer on static twins is a known gap of 0.2.0. On
 static twins, put the managed anchor settings (`anchorMode: managed`,
 `dnssec: true`, `trustAnchors` and, if you use them, `rootHints`) and every
 other cluster setting you want into `kudurru.yaml` **before** that host's
 first 0.2 start; `managedTopology` is a host key and can also be declared
-then. There is no supported way in 0.2.0 to change a cluster setting of a
-static twin after that start. Host keys (listeners, `cluster.*`,
+then. There is no supported API in 0.2.0 to persist a changed cluster setting
+for a static twin after that start. Host keys (listeners, `cluster.*`,
 `managedTopology`) and the objects in `kudurru.yaml` and `objects.d/` still
 follow the file.
 

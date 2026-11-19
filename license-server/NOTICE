@@ -26,10 +26,10 @@ license texts are in /app/third-party-licenses.txt, which
 license-server/scripts/licenses.ts writes at build time and which fails the
 build on a copyleft license.
 
-2. The Bun runtime (/usr/local/bin/bun, from oven/bun:1.4.3-distroless)
+2. The Bun runtime (/usr/local/bin/bun, from oven/bun:1.4.4-distroless)
 -----------------------------------------------------------------------
 
-Bun 1.4.3 (https://bun.sh), Copyright Oven and the Bun contributors, MIT
+Bun 1.4.4 (https://bun.sh), Copyright Oven and the Bun contributors, MIT
 License. The bun executable statically links further libraries under their
 own licenses, listed at https://bun.sh/docs/project/licensing; among them
 JavaScriptCore and other parts of WebKit under the GNU Lesser General Public

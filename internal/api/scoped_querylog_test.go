@@ -24,6 +24,8 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/querylog"
 	"github.com/robertherbaugh/kudurru/internal/querylog/sqlitelog"
+
+	testclock "k8s.io/utils/clock/testing"
 )
 
 type clusterLogFixture struct {
@@ -58,15 +60,31 @@ func openNodeLog(t *testing.T, node string, events []*querylog.Event, mutate ...
 }
 func newClusterLogFixture(t *testing.T, mutate ...func(*Options)) *clusterLogFixture {
 	t.Helper()
+	return newClusterLogFixtureAt(t, time.Time{}, mutate...)
+}
+
+// newClusterLogFixtureAt is newClusterLogFixture with both node logs and the
+// API server on a fake clock at the given time (the wall clock when zero), so
+// a test can sit exactly on an hour boundary.
+func newClusterLogFixtureAt(t *testing.T, at time.Time, mutate ...func(*Options)) *clusterLogFixture {
+	t.Helper()
 	f := &clusterLogFixture{}
-	now := time.Now().Add(-2 * time.Minute)
+	var nodeOpts []func(*sqlitelog.Options)
+	if !at.IsZero() {
+		fc := testclock.NewFakeClock(at)
+		nodeOpts = append(nodeOpts, func(o *sqlitelog.Options) { o.Clock = fc })
+		mutate = append([]func(*Options){func(o *Options) { o.Now = fc.Now }}, mutate...)
+	} else {
+		at = time.Now()
+	}
+	now := at.Add(-2 * time.Minute)
 	a := []*querylog.Event{qev(1, now, "10.0.0.1", "shared.test", pipeline.StatusForwarded, ""), qev(2, now.Add(6*time.Second), "10.0.0.1", "ads.test", pipeline.StatusBlockedList, "ads"), qev(3, now.Add(3*time.Second), "10.0.0.1", "only-a.test", pipeline.StatusCached, "")}
 	b := []*querylog.Event{qev(1, now.Add(time.Second), "10.0.0.1", "shared.test", pipeline.StatusForwarded, ""), qev(2, now.Add(6*time.Second), "10.0.0.1", "ads.test", pipeline.StatusBlockedList, "ads"), qev(3, now.Add(4*time.Second), "10.0.0.1", "only-b.test", pipeline.StatusCached, "")}
 	for _, ev := range b {
 		ev.Latency = 100 * time.Millisecond
 	}
-	f.a, f.atail = openNodeLog(t, "node-a", a)
-	f.b, f.btail = openNodeLog(t, "node-b", b)
+	f.a, f.atail = openNodeLog(t, "node-a", a, nodeOpts...)
+	f.b, f.btail = openNodeLog(t, "node-b", b, nodeOpts...)
 	creds, err := internalapi.NewCredentials(internalapi.CredentialOptions{Key: bytes.Repeat([]byte{7}, 32), NodeName: "node-b"})
 	if err != nil {
 		t.Fatal(err)
@@ -227,7 +245,22 @@ func TestClusterSummaryAllowsSlowLocalRead(t *testing.T) {
 	}
 }
 func TestClusterStatsMerge(t *testing.T) {
-	f := newClusterLogFixture(t)
+	testClusterStatsMerge(t, newClusterLogFixture(t))
+}
+
+// TestClusterStatsMergeAtHourBoundary pins both node logs and the API clock at
+// several offsets past an hour (0 s to 59 m 59 s), so the fixture's
+// two-minute-old events straddle, sit on or follow the hour boundary.
+func TestClusterStatsMergeAtHourBoundary(t *testing.T) {
+	for _, offset := range []time.Duration{0, 30 * time.Second, 119 * time.Second, 121 * time.Second, 5 * time.Minute, 59*time.Minute + 59*time.Second} {
+		t.Run(offset.String(), func(t *testing.T) {
+			testClusterStatsMerge(t, newClusterLogFixtureAt(t, time.Date(2026, 11, 18, 13, 0, 0, 0, time.UTC).Add(offset)))
+		})
+	}
+}
+
+func testClusterStatsMerge(t *testing.T, f *clusterLogFixture) {
+	t.Helper()
 	var summary SummaryBody
 	f.h.do("GET", "/api/v1/stats/summary?scope=cluster&window=1h", "viewer", nil).want(200).json(&summary)
 	if summary.Queries.Total != 6 || summary.Queries.Blocked != 2 || summary.Queries.UniqueDomains != 4 || summary.Clients.Active != 1 || summary.Clients.Total != 1 || summary.Latency.AvgMS != 50.5 || summary.Latency.P50MS != 1 || summary.Latency.P95MS != 100 {

@@ -11,6 +11,7 @@ import { Link } from '@astryxdesign/core/Link';
 import { List, ListItem } from '@astryxdesign/core/List';
 import { HStack } from '@astryxdesign/core/Stack';
 import { StatusDot } from '@astryxdesign/core/StatusDot';
+import { Switch } from '@astryxdesign/core/Switch';
 import { Text } from '@astryxdesign/core/Text';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -69,7 +70,9 @@ export default function UpstreamGroupPage({ params }: PageProps) {
   const [deleteErr, setDeleteErr] = useState<string>();
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [creating, setCreating] = useState(false);
-  const gKey = JSON.stringify(g ?? null);
+  // The Cache answers switch saves on its own, so a change of `cache` must not
+  // reset the draft: it would throw away unsaved edits to the other fields.
+  const gKey = JSON.stringify(g ? { ...g, cache: undefined } : null);
   useEffect(() => {
     setDraft(g ? { ...g, strategy: g.strategy || 'parallel_best', timeout: timeoutOf(g) } : null);
     setErrors({});
@@ -204,6 +207,23 @@ export default function UpstreamGroupPage({ params }: PageProps) {
       </Panel>
 
       <Panel title="Settings">
+        <Switch
+          label="Cache answers"
+          description={name === DEFAULT_GROUP ? 'The default group always uses the response cache.' : 'Cache this group’s answers using the normal TTL, prefetch and serve-stale settings. Changes apply immediately.'}
+          value={name === DEFAULT_GROUP || !!g.cache}
+          isDisabled={!u.canWrite || name === DEFAULT_GROUP}
+          disabledMessage={name === DEFAULT_GROUP ? 'The default group always uses the response cache' : u.readOnlyReason ?? undefined}
+          changeAction={async (cache) => {
+            setSaveErr(undefined);
+            try {
+              await u.save({ groups: { [name]: { cache } } }, `Group ${name}`);
+              setDraft((d) => (d ? { ...d, cache } : d));
+            } catch (err) {
+              setSaveErr(errorText(err));
+              throw err;
+            }
+          }}
+        />
         <GroupFields value={draft} onChange={setDraft} errors={errors} isDisabled={!u.canWrite} />
         {draft.mode === 'recursive' ? (
           <Text as="p" type="supporting">

@@ -1,0 +1,23 @@
+kudurru 0.2.0-rc.1-SNAPSHOT-d1725c59 (d1725c59, go1.27.4, linux/amd64)
+ready: /healthz/ready answered 200
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 7596
+;; flags: qr rd ra ad; QUERY: 1, ANSWER: 3, AUTHORITY: 0, ADDITIONAL: 1
+; EDNS: version: 0, flags: do; udp: 1232
+example.com.		300	IN	A	104.20.23.154
+example.com.		300	IN	A	172.66.147.243
+example.com.		300	IN	RRSIG	A 13 2 300 20261117005540 20261114225540 34505 example.com. etCSAQin344c/CHkmsSSiXRwyJdaPcGVTgPe1GqqwuzA54yvfacfUbqF 3QntA5i+TKbilMMkqinys8+snhi7ig==
+ok   example.com has the AD flag
+;; ->>HEADER<<- opcode: QUERY, status: SERVFAIL, id: 63022
+; EDE: 6 (DNSSEC Bogus): (no DNSKEY of dnssec-failed.org. matching its DS signs the key set)
+ok   dnssec-failed.org is SERVFAIL
+ok   dnssec-failed.org carries EDE 6
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 19732
+dnssec-failed.org.	300	IN	A	96.99.227.255
+dnssec-failed.org.	300	IN	RRSIG	A 13 2 300 20261119015706 20261111225206 32784 dnssec-failed.org. LnmLDawUQqppXtgSDzvakmpKLTxJ0PUMl2Ckna47Ulxy4SLPUMD4V2Gp u7SgEjwgH3dpOG2DwZEmt3UmR1tPZg==
+ok   dnssec-failed.org +cd returns the data
+kudurru_recursor_outgoing_queries_total{result="error"} 0
+kudurru_recursor_outgoing_queries_total{result="ok"} 18
+kudurru_recursor_outgoing_queries_total{result="timeout"} 0
+outgoing queries 18, timeouts 0
+ok   outgoing queries were counted
+ok   timeouts at most 10% of outgoing queries

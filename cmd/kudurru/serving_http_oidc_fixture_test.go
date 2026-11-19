@@ -266,7 +266,7 @@ func (p *servingBrowserOP) endSession(w http.ResponseWriter, r *http.Request, is
 		w.WriteHeader(400)
 		return
 	}
-	signed, err := jose.ParseSigned(token, []jose.SignatureAlgorithm{jose.EdDSA})
+	signed, err := jose.ParseSignedCompact(token, []jose.SignatureAlgorithm{jose.EdDSA})
 	if err != nil {
 		w.WriteHeader(400)
 		return

@@ -1,0 +1,12 @@
+{
+  "binary": "/home/vercel-sandbox/kudurru/dist/kudurru_linux_amd64_v1/kudurru",
+  "checks": [
+    "normal release archive dashboard: group toggle persists immediately",
+    "default group toggle checked and disabled",
+    "normal artifact community license page and locked history; second policy refused 402",
+    "process restart preserves stored group cache choice, original session and DNS"
+  ],
+  "productionLicense": false,
+  "humanVisualApproval": false,
+  "passed": true
+}

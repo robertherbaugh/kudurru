@@ -64,13 +64,13 @@ describeDb('cleanup', () => {
     expect(idle.idHash.length).toBe(32);
     expect((await t.db<{ state: string }[]>`select state from oidc_logins order by state`).map((r) => r.state)).toEqual(['fresh']);
     const pkr = await t.db<{ id: string; ip: string | null; user_agent: string | null }[]>`select id, host(ip) as ip, user_agent from public_key_requests order by created_at`;
-    expect(pkr).toEqual([
+    expect([...pkr]).toEqual([
       { id: oldVerified, ip: null, user_agent: null },
       { id: recentUnverified, ip: '192.0.2.1', user_agent: 'Firefox' },
     ]);
     expect(pkr.find((p) => p.id === oldUnverified)).toBeUndefined();
     const brq = await t.db<{ id: string; ip: string | null; user_agent: string | null }[]>`select id, host(ip) as ip, user_agent from business_requests order by created_at`;
-    expect(brq).toEqual([
+    expect([...brq]).toEqual([
       { id: oldBusiness, ip: null, user_agent: null },
       { id: recentBusiness, ip: '192.0.2.7', user_agent: 'Firefox' },
     ]);
@@ -87,7 +87,7 @@ describeDb('cleanup', () => {
     const r = await cleanup(t.db, now);
     expect(r.anonymizedSessions).toBe(1);
     const rows = await t.db<{ ip: string | null; user_agent: string | null }[]>`select host(ip) as ip, user_agent from sessions where user_id = ${user.id}`;
-    expect(rows).toEqual([{ ip: null, user_agent: null }]);
+    expect([...rows]).toEqual([{ ip: null, user_agent: null }]);
   });
 
   test('the timer: runs at start, one pass at a time, failures logged, stop waits', async () => {

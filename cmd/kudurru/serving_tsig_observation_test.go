@@ -292,7 +292,9 @@ type tsigABQObserverOutcome struct {
 
 func tsigABQObserver(t *testing.T, mode string) {
 	t.Helper()
-	f := newTSIGCommandFixture(t)
+	// An unavailable identity provider retries independently of this command.
+	// Quiet observer causality needs a fixture without that unrelated source.
+	f := newTSIGCommandFixtureProviders(t, false)
 	f.stopSource()
 	ctx, cancel := context.WithTimeout(t.Context(), 4*time.Second)
 	defer cancel()
@@ -398,7 +400,9 @@ func tsigABQObserver(t *testing.T, mode string) {
 			}
 			return tx.RequireCommitCheck(func(ctx context.Context) error { return target.checkOriginal(ctx, f.s.opts.Now()) })
 		}, func(ctx context.Context, writer serving.TermActivation) error {
-			f.s.publisher.Wake()
+			// The committed generation already wakes the publisher. A second
+			// Wake can queue another preparation after the pending prerequisite,
+			// invalidating the quiet window this observer is intended to prove.
 			image, readErr := f.s.opts.Store.ReadGeneration(ctx)
 			if readErr != nil {
 				outcome.failure = "actual committed observer image unavailable"
@@ -490,7 +494,7 @@ func tsigABQObserver(t *testing.T, mode string) {
 		t.Fatal(result.failure)
 	}
 	if !result.committed || !errors.Is(result.observerErr, want) || !errors.Is(result.commandErr, want) || !result.windowOpen || !tsigABQChannelOpen(result.publisherChanged) || !tsigABQChannelOpen(result.authorityChanged) || !result.pendingUnchanged || !result.writerEligible {
-		t.Fatal("original observer outcome or unnotified pending-window premises failed")
+		t.Fatalf("original observer outcome or unnotified pending-window premises failed: committed=%t observer=%v command=%v window=%t publisher=%t authority=%t pending=%t writer=%t", result.committed, result.observerErr, result.commandErr, result.windowOpen, tsigABQChannelOpen(result.publisherChanged), tsigABQChannelOpen(result.authorityChanged), result.pendingUnchanged, result.writerEligible)
 	}
 	if mode == "expiry" && (!result.contextAlive || requestCtx.Err() != nil || clockCalls.Load() < 2 || lastSample.Load() != f.now.Add(time.Hour).UnixNano()) {
 		t.Fatal("quiet expiry lacked a later invalid sample under the still-live original context")

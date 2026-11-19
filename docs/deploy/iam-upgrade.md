@@ -27,6 +27,14 @@ restore that assigns new UIDs cannot preserve old UID-bound credentials; reissue
 them after such a restore. A full rollback must restore the matching pre-upgrade
 identity state, not mix old readers with partially migrated objects.
 
+Rehearse restoration on an isolated cluster or namespace before the upgrade
+window. Stop all writers, restore the complete pre-upgrade backup using a
+procedure that preserves the required identity bindings, and start the retained
+v0.1.0 image with its matching configuration and encryption keys. Verify DNS,
+credential identities, query/audit history and a restart. A restore that changes
+object UIDs requires credential reissuance; it is not proof that the original
+credentials survived. Post-backup writes are absent after rollback.
+
 Install the new CRDs before running the migration. Use the node's server
 configuration with `store.driver: kube`; add any legacy provider file path to
 the exact host `credentials.allowedFiles` grant. The migrator checks the grant

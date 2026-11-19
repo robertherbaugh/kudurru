@@ -2086,6 +2086,7 @@
         "properties": {
           "architecture": {
             "format": "int32",
+            "maximum": 65535,
             "minimum": 0,
             "type": "integer"
           },
@@ -3172,6 +3173,7 @@
           },
           "sourcePort": {
             "format": "int32",
+            "maximum": 65535,
             "minimum": 0,
             "type": "integer"
           }
@@ -9310,6 +9312,7 @@
           },
           "keyTag": {
             "format": "int32",
+            "maximum": 65535,
             "minimum": 0,
             "type": "integer"
           },
@@ -9333,6 +9336,7 @@
           },
           "algorithm": {
             "format": "int32",
+            "maximum": 255,
             "minimum": 0,
             "type": "integer"
           },
@@ -9349,6 +9353,7 @@
           },
           "keyTag": {
             "format": "int32",
+            "maximum": 65535,
             "minimum": 0,
             "type": "integer"
           },
@@ -9513,6 +9518,7 @@
           "refusedKeyTags": {
             "items": {
               "format": "int32",
+              "maximum": 65535,
               "minimum": 0,
               "type": "integer"
             },

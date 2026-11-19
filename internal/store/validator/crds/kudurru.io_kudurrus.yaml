@@ -1382,7 +1382,8 @@ spec:
                           local device names resolve. Each entry maps a domain suffix
                           to a group name; the longest matching suffix wins, and a
                           key may list several suffixes in dnsmasq form, "[/corp.example/10.in-addr.arpa/]".
-                          These answers are never cached.
+                          Non-default groups skip the response cache unless that group
+                          enables cache; default always uses the cache.
                         maxProperties: 10000
                         type: object
                       ecs:
@@ -1422,6 +1423,14 @@ spec:
                       groups:
                         additionalProperties:
                           properties:
+                            cache:
+                              description: Cache answers from this group using the
+                                normal TTL, prefetch and serve-stale settings. Non-default
+                                groups skip the response cache unless enabled. The
+                                default group always uses the cache; this option has
+                                no effect on it. Answers stay isolated by group and
+                                routing configuration.
+                              type: boolean
                             mode:
                               description: forward (default) sends queries to the
                                 servers below; recursive resolves names itself from
