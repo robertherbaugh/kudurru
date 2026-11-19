@@ -8,43 +8,57 @@ import (
 
 // TestSummaryAcrossHourBoundary writes events in the hour before a boundary
 // and in the first seconds after it, then reads a rolling one-hour window
-// that ends 30 seconds into the new hour. Every event must be counted:
-// the previous hour's pending accumulators must not be dropped from the
-// summary, client count or unique-domain count.
+// that ends shortly after it. Every event must be counted whichever
+// maintenance has run: the previous hour's pending accumulators must not be
+// dropped from the summary, client count or unique-domain count. Maintenance
+// is driven by calling Maintain at a chosen clock time (the writer's Run
+// ticker is not started here), and each case checks the rollup rows it
+// should have produced, so a case cannot pass by testing nothing.
 func TestSummaryAcrossHourBoundary(t *testing.T) {
+	boundary := time.Date(2026, 10, 11, 13, 0, 0, 0, time.UTC)
 	for _, tc := range []struct {
-		name string
-		step func(fc interface{ Step(time.Duration) })
+		name     string
+		maintain time.Time // clock time of one Maintain call before the read; zero for none
+		readAt   time.Time
+		want1m   bool // minute rollups must be on disk
+		want1h   bool // the 12:00 hourly rollup must be on disk
 	}{
-		{name: "no ticks between writes and read"},
-		{name: "after a flush tick", step: func(fc interface{ Step(time.Duration) }) {
-			fc.Step(time.Second)
-			time.Sleep(50 * time.Millisecond)
-		}},
+		{name: "no maintenance before the read", readAt: boundary.Add(30 * time.Second)},
+		{name: "minutes flushed before the read", maintain: boundary.Add(30 * time.Second), readAt: boundary.Add(30 * time.Second), want1m: true},
+		{name: "previous hour derived before the read", maintain: boundary.Add(95 * time.Second), readAt: boundary.Add(95 * time.Second), want1m: true, want1h: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			prev := time.Date(2026, 10, 11, 12, 58, 0, 0, time.UTC)
+			prev := boundary.Add(-2 * time.Minute) // 12:58:00
 			w, fc := newWriter(t, prev)
 			mustWrite(t, w,
 				event(prev, "10.0.0.1", "a.example"),
 				event(prev.Add(30*time.Second), "10.0.0.2", "b.example"),
 				event(prev.Add(60*time.Second), "10.0.0.1", "c.example"),
 			)
-			fc.Step(2*time.Minute + 5*time.Second) // 13:00:05
-			mustWrite(t, w, event(fc.Now().Add(-time.Second), "10.0.0.3", "d.example"))
-			if tc.step != nil {
-				tc.step(fc)
+			fc.SetTime(boundary.Add(5 * time.Second))
+			mustWrite(t, w, event(boundary.Add(4*time.Second), "10.0.0.3", "d.example"))
+			if !tc.maintain.IsZero() {
+				fc.SetTime(tc.maintain)
+				if err := w.Maintain(context.Background()); err != nil {
+					t.Fatal(err)
+				}
 			}
-			until := time.Date(2026, 10, 11, 13, 0, 30, 0, time.UTC)
-			fc.Step(until.Sub(fc.Now()))
-			s, err := w.Reader().Summary(context.Background(), SummaryQuery{Window: Window{From: until.Add(-time.Hour), Until: until}})
+			fc.SetTime(tc.readAt)
+			if got := queryInt(t, w.w, `SELECT count(*) FROM rollup_1m`) > 0; got != tc.want1m {
+				t.Fatalf("minute rollups on disk = %v, want %v", got, tc.want1m)
+			}
+			if got := queryInt(t, w.w, `SELECT count(*) FROM rollup_1h WHERE ts=?`, prev.Truncate(time.Hour).Unix()) > 0; got != tc.want1h {
+				t.Fatalf("12:00 hourly rollup on disk = %v, want %v", got, tc.want1h)
+			}
+			win := Window{From: tc.readAt.Add(-time.Hour), Until: tc.readAt}
+			s, err := w.Reader().Summary(context.Background(), SummaryQuery{Window: win})
 			if err != nil {
 				t.Fatal(err)
 			}
 			if s.Queries.Total != 4 || s.Clients.Active != 3 || s.Queries.UniqueDomains != 4 {
 				t.Fatalf("total %d, active clients %d, unique domains %d; want 4, 3, 4", s.Queries.Total, s.Clients.Active, s.Queries.UniqueDomains)
 			}
-			sh, err := w.Reader().SummaryShard(context.Background(), SummaryQuery{Window: Window{From: until.Add(-time.Hour), Until: until}})
+			sh, err := w.Reader().SummaryShard(context.Background(), SummaryQuery{Window: win})
 			if err != nil {
 				t.Fatal(err)
 			}
