@@ -45,7 +45,7 @@ describe('Enterprise branding editor', () => {
   });
   it('rejects controls, surrounding whitespace and incomplete accents before a request', async () => {
     let calls = 0; server.use(http.patch(`${API}/settings`, () => { calls++; return new HttpResponse(null, { status: 500 }); }));
-    await open(); input('Organization name', ' spaced '); expect(screen.getByRole('button', { name: 'Save branding' })).toBeDisabled(); input('Organization name', 'Example'); input('Accent color', '#fff'); expect(screen.getByRole('button', { name: 'Save branding' })).toBeDisabled(); expect(calls).toBe(0);
+    await open(); input('Organization name', ' spaced '); expect(screen.getByRole('button', { name: 'Save branding' })).toBeInteractionDisabled(); input('Organization name', 'Example'); input('Accent color', '#fff'); expect(screen.getByRole('button', { name: 'Save branding' })).toBeInteractionDisabled(); expect(calls).toBe(0);
   });
   it('denies editing without Enterprise, settings.write, or with environment locks', async () => {
     const rendered = renderWithApp(<SettingsPage />, { route: '/settings' });
@@ -63,7 +63,7 @@ describe('Enterprise branding editor', () => {
     Object.defineProperty(file, 'arrayBuffer', { value: () => new Promise<ArrayBuffer>((r) => { finish = r; }) });
     const picker = screen.getByLabelText('Light logo', { selector: 'input' });
     fireEvent.change(picker, { target: { files: [file] } });
-    expect(screen.getByRole('button', { name: 'Save branding' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save branding' })).toBeInteractionDisabled();
     click('Cancel branding'); click('Edit branding');
     await act(async () => { finish(Uint8Array.from(atob(PNG.split(',')[1]!), (c) => c.charCodeAt(0)).buffer); await Promise.resolve(); });
     expect(screen.queryByRole('img', { name: 'Light logo preview' })).not.toBeInTheDocument();

@@ -116,7 +116,7 @@ export async function startRPZPrimary(zone: string, opts: { serial: number; expi
     flushes.add(drain);
     sock.on('close', () => flushes.delete(drain));
     sock.on('data', (chunk) => {
-      buf = Buffer.concat([buf, chunk]);
+      buf = Buffer.concat([buf, typeof chunk === 'string' ? Buffer.from(chunk) : chunk]);
       drain();
     });
   });

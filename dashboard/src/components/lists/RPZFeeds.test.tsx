@@ -276,7 +276,7 @@ describe('RPZ feeds on the list page', () => {
     server.use(http.get(`${API}/cluster`, () => HttpResponse.json({ readOnly: true })));
     renderThreats();
     await feedSection();
-    await waitFor(() => expect(screen.getByRole('switch', { name: 'Source vendor enabled' })).toBeDisabled());
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Source vendor enabled' })).toBeInteractionDisabled());
     expect(screen.queryByRole('button', { name: 'Add source' })).not.toBeInTheDocument();
     expect(within(screen.getByTestId('source-vendor')).queryByRole('button', { name: 'Edit vendor' })).not.toBeInTheDocument();
   });

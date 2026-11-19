@@ -185,7 +185,7 @@ describe('ClientDetailPage', () => {
   it('adds the client to a group with the typed picker and removes it again', async () => {
     renderWithApp(<ClientDetailPage params={{ key: '192.168.1.10' }} />, { route: '/clients/192.168.1.10' });
     const picker = await findSelector('Add to group');
-    await waitFor(() => expect(picker).not.toBeDisabled());
+    await waitFor(() => expect(picker).not.toBeInteractionDisabled());
     // Only groups the API may write and the client is not in yet.
     expect(optionLabels(picker)).toEqual(['Choose a group…', 'kids', 'servers']);
     pick(picker, 'kids');

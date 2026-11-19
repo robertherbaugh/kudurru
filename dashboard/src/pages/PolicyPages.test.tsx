@@ -97,7 +97,7 @@ describe('PolicyDetailPage', () => {
     renderWithApp(<PolicyDetailPage params={{ ns: 'default', name: 'social-media' }} />, { route: '/policies/default/social-media' });
     const sec = await screen.findByTestId('section-services');
     const netflix = await within(sec).findByRole('button', { name: /Netflix/ });
-    await waitFor(() => expect(netflix).not.toBeDisabled());
+    await waitFor(() => expect(netflix).not.toBeInteractionDisabled());
     fireEvent.click(netflix);
     fireEvent.click(within(sec).getByRole('button', { name: /TikTok/ }));
     expect(within(sec).getByText(/4 services, 0 categories/)).toBeInTheDocument();
@@ -110,7 +110,7 @@ describe('PolicyDetailPage', () => {
     const sec = await screen.findByTestId('section-services');
     const ai = within(await within(sec).findByTestId('category-ai'));
     const sw = ai.getByRole('switch', { name: 'Block the whole category' });
-    await waitFor(() => expect(sw).not.toBeDisabled());
+    await waitFor(() => expect(sw).not.toBeInteractionDisabled());
     fireEvent.click(sw);
     fireEvent.click(ai.getByRole('button', { name: /Perplexity/ }));
     expect(within(sec).getByText(/1 category, 1 exception/)).toBeInTheDocument();
@@ -156,7 +156,7 @@ describe('PolicyDetailPage', () => {
     expect(edit).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('button', { name: 'Delete' })).toHaveAttribute('aria-disabled', 'true');
     const sec = screen.getByTestId('section-services');
-    expect(await within(sec).findByRole('button', { name: /YouTube/ })).toBeDisabled();
+    expect(await within(sec).findByRole('button', { name: /YouTube/ })).toBeInteractionDisabled();
   });
 
   it('derives the state from the objects when the server has no state route', async () => {

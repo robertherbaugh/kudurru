@@ -18,7 +18,7 @@ const starter = () => mockDB().lists.find((l) => l.metadata.name === 'starter');
 async function sourceSwitch(name: string): Promise<HTMLElement> {
   const row = await screen.findByTestId(`source-${name}`);
   const sw = within(row).getByRole('switch', { name: `Source ${name} enabled` });
-  await waitFor(() => expect(sw).not.toBeDisabled());
+  await waitFor(() => expect(sw).not.toBeInteractionDisabled());
   return sw;
 }
 
@@ -183,8 +183,8 @@ describe('ListDetailPage', () => {
     renderList('regex-trackers');
     expect(await screen.findByText('Read-only: managed by file:objects.d/lists.yaml')).toBeInTheDocument();
     expect(screen.getByText('Managed by objects.d/lists.yaml; edit the file on the host.')).toBeInTheDocument();
-    expect(within(screen.getByTestId('source-patterns')).getByRole('switch')).toBeDisabled();
-    expect(screen.getByRole('switch', { name: 'Enabled' })).toBeDisabled();
+    expect(within(screen.getByTestId('source-patterns')).getByRole('switch')).toBeInteractionDisabled();
+    expect(screen.getByRole('switch', { name: 'Enabled' })).toBeInteractionDisabled();
     expect(screen.queryByRole('button', { name: 'Add source' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Save settings' })).toBeNull();
     expect(within(screen.getByTestId('source-patterns')).queryByRole('button', { name: 'Edit' })).toBeNull();
@@ -228,7 +228,7 @@ describe('ListDetailPage', () => {
   it('turns the whole list off from the header', async () => {
     renderList('family');
     const sw = await screen.findByRole('switch', { name: 'Enabled' });
-    await waitFor(() => expect(sw).not.toBeDisabled());
+    await waitFor(() => expect(sw).not.toBeInteractionDisabled());
     fireEvent.click(sw);
     await waitFor(() => expect(family()?.metadata.annotations?.['kudurru.io/enabled']).toBe('false'));
     expect(await screen.findByText('This list is disabled')).toBeInTheDocument();
@@ -269,7 +269,7 @@ describe('EntriesBrowser on every kind of source', () => {
     fireEvent.click(within(browser).getByRole('switch', { name: 'Show disabled only' }));
     expect(await within(browser).findByText('Showing 1–2 of 2 switched off')).toBeInTheDocument();
     const sw = within(within(browser).getByTestId('list-entry-ads.unified.example')).getByRole('switch', { name: 'ads.unified.example enabled' });
-    await waitFor(() => expect(sw).not.toBeDisabled());
+    await waitFor(() => expect(sw).not.toBeInteractionDisabled());
     expect(sw).not.toBeChecked();
     fireEvent.click(sw);
     await waitFor(() => expect(steven()?.spec.sources[0]?.exclude).not.toContain('ads.unified.example'));
@@ -288,7 +288,7 @@ describe('EntriesBrowser on every kind of source', () => {
     fireEvent.change(within(browser).getByRole('textbox', { name: /^Search entries/ }), { target: { value: 'pixel.unified' } });
     const r = await within(browser).findByTestId('list-entry-pixel.unified.example');
     const sw = within(r).getByRole('switch');
-    await waitFor(() => expect(sw).not.toBeDisabled());
+    await waitFor(() => expect(sw).not.toBeInteractionDisabled());
     expect(sw).toBeChecked();
     fireEvent.click(sw);
     await waitFor(() => expect(within(within(browser).getByTestId('list-entry-pixel.unified.example')).getByRole('switch')).not.toBeChecked());
@@ -317,7 +317,7 @@ describe('EntriesBrowser on every kind of source', () => {
     expect(within(browser).getByRole('link', { name: 'Allowlist' })).toHaveAttribute('href', '/allowlist');
     expect(within(browser).queryByRole('textbox', { name: /^Add entries/ })).toBeNull();
     const sw = within(within(browser).getByTestId('list-entry-s.youtube.com')).getByRole('switch');
-    await waitFor(() => expect(sw).not.toBeDisabled());
+    await waitFor(() => expect(sw).not.toBeInteractionDisabled());
     fireEvent.click(sw);
     await waitFor(() => expect(mockDB().lists.find((l) => l.metadata.name === 'ui-allow')?.spec.sources[0]?.entries?.[0]?.enabled).toBe(false));
   });
@@ -325,7 +325,7 @@ describe('EntriesBrowser on every kind of source', () => {
   it('switches inline lines off without removing them', async () => {
     const browser = await openBrowser('family', 'extra');
     const sw = within(await within(browser).findByTestId('list-entry-roblox.com')).getByRole('switch');
-    await waitFor(() => expect(sw).not.toBeDisabled());
+    await waitFor(() => expect(sw).not.toBeInteractionDisabled());
     fireEvent.click(sw);
     await waitFor(() => expect(family()?.spec.sources[3]?.exclude).toEqual(['roblox.com']));
     expect(family()?.spec.sources[3]?.inline).toContain('roblox.com');

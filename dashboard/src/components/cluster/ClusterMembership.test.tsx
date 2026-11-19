@@ -157,7 +157,7 @@ describe('cluster membership on the Nodes page', () => {
     await atStep(d, 'activate');
     click(d, 'Activate cluster');
     expect(await within(d).findByText('The reviewed state changed')).toBeInTheDocument();
-    expect(within(d).getByRole('button', { name: 'Activate cluster' })).toBeDisabled();
+    expect(within(d).getByRole('button', { name: 'Activate cluster' })).toBeInteractionDisabled();
     fireEvent.submit(within(d).getByRole('form', { name: 'Activate cluster' }));
     await new Promise((r) => setTimeout(r, 50));
     expect(posts).toBe(1);
@@ -182,7 +182,7 @@ describe('cluster membership on the Nodes page', () => {
     await atStep(d, 'activate');
     click(d, 'Activate cluster');
     expect(await within(d).findByText(/exact reviewed source, member name\/address and audit reason required/)).toBeInTheDocument();
-    expect(within(d).getByRole('button', { name: 'Activate cluster' })).toBeEnabled();
+    expect(within(d).getByRole('button', { name: 'Activate cluster' })).not.toBeInteractionDisabled();
     click(d, 'Activate cluster');
     expect(await screen.findByText('Cluster activated: restart kudurru on this node')).toBeInTheDocument();
     expect(posts).toBe(2);
@@ -278,7 +278,7 @@ describe('cluster membership on the Nodes page', () => {
     click(d, 'Issue invitation');
     expect(await within(d).findByText('Outcome unknown')).toBeInTheDocument();
     expect(within(d).getByText(/cannot tell whether the invitation happened\. It does not send it again/)).toBeInTheDocument();
-    expect(within(d).getByRole('button', { name: 'Issue invitation' })).toBeDisabled();
+    expect(within(d).getByRole('button', { name: 'Issue invitation' })).toBeInteractionDisabled();
     fireEvent.submit(within(d).getByRole('form', { name: 'Invite a member' }));
     await new Promise((r) => setTimeout(r, 50));
     expect(posts).toBe(1);
@@ -434,7 +434,7 @@ describe('cluster membership on the Nodes page', () => {
     expect(await within(d).findByText('The primary refused the invitation')).toBeInTheDocument();
     expect(within(d).getByText(/name or internal address is already used or reserved/)).toBeInTheDocument();
     expect(within(d).getByText(/clock/)).toBeInTheDocument();
-    expect(within(d).getByRole('button', { name: 'Issue invitation' })).toBeDisabled();
+    expect(within(d).getByRole('button', { name: 'Issue invitation' })).toBeInteractionDisabled();
   });
 
   it('cannot be closed while the invitation request is in flight', async () => {
@@ -455,7 +455,7 @@ describe('cluster membership on the Nodes page', () => {
     await atStep(d, 'issue');
     click(d, 'Issue invitation');
     await waitFor(() => expect(answer).toBeDefined());
-    expect(within(d).getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    expect(within(d).getByRole('button', { name: 'Cancel' })).toBeInteractionDisabled();
     fireEvent.keyDown(d, { key: 'Escape' });
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByRole('alertdialog')).toBeNull();
@@ -537,7 +537,7 @@ describe('cluster membership on the Nodes page', () => {
     await atStep(d, 'promote');
     click(d, 'Promote kudurru-0');
     expect(await within(d).findByText('Outcome unknown')).toBeInTheDocument();
-    expect(within(d).getByRole('button', { name: 'Promote kudurru-0' })).toBeDisabled();
+    expect(within(d).getByRole('button', { name: 'Promote kudurru-0' })).toBeInteractionDisabled();
     expect(posts).toBe(1);
   });
 

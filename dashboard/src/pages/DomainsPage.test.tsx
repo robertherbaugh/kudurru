@@ -26,7 +26,7 @@ async function row(value: string): Promise<HTMLElement> {
 /** A row's switch once the session has loaded and enabled it. */
 async function switchOf(value: string): Promise<HTMLElement> {
   const sw = within(await row(value)).getByRole('switch', { name: `${value} enabled` });
-  await waitFor(() => expect(sw).not.toBeDisabled());
+  await waitFor(() => expect(sw).not.toBeInteractionDisabled());
   return sw;
 }
 
@@ -85,7 +85,7 @@ describe('Regex impact', () => {
     renderWithApp(<RegexImpactDialog entry={entry('deny', expression)!} onClose={() => {}} />);
     const dialog = await inspect('other.example');
     expect(await within(dialog).findByText('other.example. does not match this expression.')).toBeInTheDocument();
-    await waitFor(() => expect(within(dialog).getByRole('textbox', { name: 'Domain' })).not.toBeDisabled());
+    await waitFor(() => expect(within(dialog).getByRole('textbox', { name: 'Domain' })).not.toBeInteractionDisabled());
     await inspect('*');
     expect(await within(dialog).findByText('name must be one concrete DNS domain')).toBeInTheDocument();
     expect(within(dialog).queryByText(/does not match this expression/)).toBeNull();
@@ -188,7 +188,7 @@ describe('AllowlistPage', () => {
     const box = within(dialog).getByRole('textbox', { name: /^Domains/ });
     fireEvent.change(box, { target: { value: '*.videos.example' } });
     expect(await within(dialog).findByText(/matches subdomains: use the type Wildcard/)).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Add' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Add' })).toBeInteractionDisabled();
     pick(getSelector(/^Type/, dialog), 'Wildcard');
     expect(await within(dialog).findByText('Saved as *.videos.example.')).toBeInTheDocument();
     fireEvent.change(within(dialog).getByRole('textbox', { name: /^Comment/ }), { target: { value: 'the video CDN' } });
@@ -262,7 +262,7 @@ describe('AllowlistPage', () => {
     await switchOf('s.youtube.com');
     fireEvent.click(within(await row('s.youtube.com')).getByRole('button', { name: 'Edit' }));
     const dialog = await screen.findByRole('dialog', { name: /Edit s\.youtube\.com/ });
-    expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Save' })).toBeInteractionDisabled();
     pick(getSelector(/^Type/, dialog), 'Wildcard');
     fireEvent.change(within(dialog).getByRole('textbox', { name: /^Domain/ }), { target: { value: 'youtube.com' } });
     pick(getSelector(/^Applies to/, dialog), 'Some client groups');
@@ -440,13 +440,13 @@ describe('list exceptions on the Allowlist', () => {
   it('switches the list entry back on and keeps the row to switch it off again', async () => {
     renderWithApp(<AllowlistPage />, { route: '/allowlist' });
     await row('ads.unified.example');
-    await waitFor(() => expect(exceptionSwitch('ads.unified.example')).not.toBeDisabled());
+    await waitFor(() => expect(exceptionSwitch('ads.unified.example')).not.toBeInteractionDisabled());
     fireEvent.click(exceptionSwitch('ads.unified.example'));
     await waitFor(() => expect(exclude()).not.toContain('ads.unified.example'));
     expect(await screen.findByText(/^ads\.unified\.example switched back on in stevenblack: that list blocks it again\./)).toBeInTheDocument();
     // GET no longer lists it; the row stays, switched off.
     await waitFor(() => expect(exceptionSwitch('ads.unified.example')).not.toBeChecked());
-    await waitFor(() => expect(exceptionSwitch('ads.unified.example')).not.toBeDisabled());
+    await waitFor(() => expect(exceptionSwitch('ads.unified.example')).not.toBeInteractionDisabled());
     fireEvent.click(exceptionSwitch('ads.unified.example'));
     await waitFor(() => expect(exclude()).toContain('ads.unified.example'));
   });
@@ -478,7 +478,7 @@ describe('list exceptions on the Allowlist', () => {
 
   it('switches several exceptions back on in one batch', async () => {
     renderWithApp(<AllowlistPage />, { route: '/allowlist?kind=exception' });
-    await waitFor(() => expect(exceptionSwitch('ads.unified.example')).not.toBeDisabled());
+    await waitFor(() => expect(exceptionSwitch('ads.unified.example')).not.toBeInteractionDisabled());
     fireEvent.click(within(screen.getByTestId('entry-ads.unified.example')).getByRole('checkbox', { name: 'Select ads.unified.example' }));
     fireEvent.click(within(screen.getByTestId('entry-track.unified.example')).getByRole('checkbox', { name: 'Select track.unified.example' }));
     fireEvent.click(within(screen.getByRole('toolbar', { name: 'Bulk actions' })).getByRole('button', { name: 'Disable' }));

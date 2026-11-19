@@ -33,11 +33,11 @@ describe('external account administration', () => {
     await screen.findByText(/snapshot still shows the earlier revision/);
     expect(calls).toBe(1); expect(body).toEqual({ uid: row.uid, revision: row.revision });
     expect(csrf).toBe(f.client.getQueryData<Me>(qk.me)!.csrf);
-    expect(screen.getByRole('button', { name: 'Disable account' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Disable account' })).toBeInteractionDisabled();
     server.use(http.get(`${API}/iam/external-users`, () => HttpResponse.json({ items: [{ ...row, disabled: true, revision: 'd'.repeat(64) }] })));
     click('Refresh accounts');
     await screen.findByRole('button', { name: 'Enable account' });
-    expect(screen.getByRole('button', { name: 'Enable account' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Enable account' })).not.toBeInteractionDisabled();
     expect(calls).toBe(1);
   });
   it.each([409, 503, 0])('never retries an uncertain or stale command (%s)', async (status) => {
@@ -45,10 +45,10 @@ describe('external account administration', () => {
     server.use(http.post(`${API}/iam/external-users/:name/logout`, () => { calls++; return status ? HttpResponse.json({ error: { key: 'conflict', message: 'Untrusted response detail' } }, { status }) : HttpResponse.error(); }));
     click('Log out everywhere'); confirm('Log out everywhere');
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(screen.getByRole('button', { name: 'Log out everywhere' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Log out everywhere' })).toBeInteractionDisabled();
     expect(screen.queryByText('Untrusted response detail')).not.toBeInTheDocument();
     click('Refresh accounts');
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Log out everywhere' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log out everywhere' })).not.toBeInteractionDisabled());
     expect(calls).toBe(1);
   });
   it('does not query without users.read and never exposes local password actions', async () => {
@@ -61,8 +61,8 @@ describe('external account administration', () => {
   it('refuses writes for a read-only caller', async () => {
     server.use(http.get(`${API}/auth/me`, () => HttpResponse.json({ principal: { id: 'reader', name: 'Reader', kind: 'User', groups: [], auth: 'cookie' }, csrf: 'fixture', roles: [], permissions: { users: ['read'] } })));
     await open();
-    expect(screen.getByRole('button', { name: 'Disable account' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Log out everywhere' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Disable account' })).toBeInteractionDisabled();
+    expect(screen.getByRole('button', { name: 'Log out everywhere' })).toBeInteractionDisabled();
   });
   it('shows explicit unsupported runtime without presenting an empty inventory', async () => {
     server.use(http.get(`${API}/iam/external-users`, () => HttpResponse.json({ error: { key: 'external_users_unavailable', message: 'private diagnostic' } }, { status: 503 })));
@@ -94,11 +94,11 @@ describe('external account administration', () => {
     await screen.findByText(second.uid);
     click('Log out everywhere'); confirm('Log out everywhere');
     await screen.findByText('Accounts could not be refreshed. No action was retried.');
-    expect(screen.getByRole('button', { name: 'First account page' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'First account page' })).not.toBeInteractionDisabled();
     click('First account page');
     await screen.findByText(row.uid);
     click('Refresh accounts');
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Log out everywhere' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Log out everywhere' })).not.toBeInteractionDisabled());
     expect(calls).toBe(1);
   });
 

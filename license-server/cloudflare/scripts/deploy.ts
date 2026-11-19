@@ -4,7 +4,6 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { parseConfigFileTextToJson } from 'typescript';
 import { SERVER_ENV } from '../src/env';
 
 const project = resolve(import.meta.dir, '..');
@@ -100,9 +99,12 @@ function git(args: string[], env: Environment): string {
 }
 
 function readTemplate(): WorkerConfig {
-  const parsed = parseConfigFileTextToJson('wrangler.jsonc', readFileSync(resolve(project, 'wrangler.jsonc'), 'utf8'));
-  if (parsed.error) throw new Error('Could not parse wrangler.jsonc');
-  return parsed.config as WorkerConfig;
+  const text = readFileSync(resolve(project, 'wrangler.jsonc'), 'utf8');
+  try {
+    return Bun.JSONC.parse(text) as WorkerConfig;
+  } catch {
+    throw new Error('Could not parse wrangler.jsonc');
+  }
 }
 
 interface DeployOptions {

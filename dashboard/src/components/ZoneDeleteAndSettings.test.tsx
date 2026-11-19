@@ -84,9 +84,9 @@ describe('ZoneDeleteDialog', () => {
     const dialog = await screen.findByRole('dialog');
     expect(await within(dialog).findByText(/1 records in 1 record sets are deleted/)).toBeInTheDocument();
     const del = within(dialog).getByRole('button', { name: 'Delete zone' });
-    expect(del).toBeDisabled();
+    expect(del).toBeInteractionDisabled();
     fireEvent.change(within(dialog).getByRole('textbox', { name: /Type the zone name/ }), { target: { value: 'lab.example' } });
-    await waitFor(() => expect(del).toBeEnabled());
+    await waitFor(() => expect(del).not.toBeInteractionDisabled());
     fireEvent.click(del);
     await waitFor(() => expect(onDeleted).toHaveBeenCalled());
     expect(mockDB().zones.some((z) => z.metadata.name === 'lab-example')).toBe(false);
@@ -96,7 +96,7 @@ describe('ZoneDeleteDialog', () => {
     renderWithApp(<ZoneDeleteDialog zone="home-arpa" zoneName="home.arpa." isOpen onClose={() => {}} />);
     const dialog = await screen.findByRole('dialog');
     expect(await within(dialog).findByText('This zone cannot be deleted here')).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Delete zone' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Delete zone' })).toBeInteractionDisabled();
   });
 });
 

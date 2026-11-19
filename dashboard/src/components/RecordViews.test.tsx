@@ -109,7 +109,7 @@ describe('record editor views', () => {
   it('keeps an existing record’s view fixed and offers only its namespace’s groups', () => {
     setup({ initial: { recordSet: 'default/api-example-internal', namespace: 'default', dnsName: 'www.example.internal', recordType: 'A', targets: ['10.0.0.10'], kudurru: { view: 'kids' } } });
     const picker = getSelector('Served to');
-    expect(picker).toBeDisabled();
+    expect(picker).toBeInteractionDisabled();
     expect(picker).toHaveTextContent('Client group kids');
     expect(optionLabels(picker)).not.toContain('Client group apps/lab');
   });
