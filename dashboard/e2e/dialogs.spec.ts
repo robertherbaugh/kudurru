@@ -44,7 +44,7 @@ test('Lists → New list: the wizard dialog keeps Next, Back and Cancel in view,
 
   // Next without a source stays on the step and says why.
   await next.click();
-  await expect(dialog.getByText(/Add at least one source/)).toBeVisible();
+  await expect(dialog.getByRole('form', { name: 'New list' }).getByText(/Add at least one source/)).toBeVisible();
   await dialog.getByRole('button', { name: 'Back' }).click();
   await expect(dialog.getByRole('radio', { name: /Block list/ })).toBeVisible();
 
