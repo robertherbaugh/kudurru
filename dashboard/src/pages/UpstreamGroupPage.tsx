@@ -70,7 +70,9 @@ export default function UpstreamGroupPage({ params }: PageProps) {
   const [deleteErr, setDeleteErr] = useState<string>();
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [creating, setCreating] = useState(false);
-  const gKey = JSON.stringify(g ?? null);
+  // The Cache answers switch saves on its own, so a change of `cache` must not
+  // reset the draft: it would throw away unsaved edits to the other fields.
+  const gKey = JSON.stringify(g ? { ...g, cache: undefined } : null);
   useEffect(() => {
     setDraft(g ? { ...g, strategy: g.strategy || 'parallel_best', timeout: timeoutOf(g) } : null);
     setErrors({});
@@ -215,6 +217,7 @@ export default function UpstreamGroupPage({ params }: PageProps) {
             setSaveErr(undefined);
             try {
               await u.save({ groups: { [name]: { cache } } }, `Group ${name}`);
+              setDraft((d) => (d ? { ...d, cache } : d));
             } catch (err) {
               setSaveErr(errorText(err));
               throw err;

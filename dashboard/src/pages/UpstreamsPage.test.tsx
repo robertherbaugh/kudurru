@@ -157,6 +157,22 @@ describe('UpstreamGroupPage', () => {
     await waitFor(() => expect(groups().filtered?.cache).toBe(false));
   });
 
+  it('keeps unsaved edits to the other settings when the cache switch is flipped', async () => {
+    renderWithApp(<UpstreamGroupPage params={{ group: 'filtered' }} />, { route: '/upstreams/filtered' });
+    const cache = await screen.findByRole('switch', { name: 'Cache answers' });
+    pick(getSelector('Timeout'), '5 seconds');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    fireEvent.click(cache);
+    await waitFor(() => expect(groups().filtered?.cache).toBe(true));
+    await waitFor(() => expect(cache).toBeChecked());
+    // The timeout edit was never saved, and the switch must not discard it.
+    expect(groups().filtered?.timeout).not.toBe('5s');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(groups().filtered?.timeout).toBe('5s'));
+    expect(groups().filtered?.cache).toBe(true);
+  });
+
   it('keeps the default group cache enabled and explains why its toggle is disabled', async () => {
     renderWithApp(<UpstreamGroupPage params={{ group: 'default' }} />, { route: '/upstreams/default' });
     const cache = await screen.findByRole('switch', { name: 'Cache answers' });
