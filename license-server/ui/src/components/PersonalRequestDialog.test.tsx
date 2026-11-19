@@ -64,8 +64,6 @@ test('without a verified email the dialog points at the public form', async () =
 test('the empty page offers the ways in', async () => {
   renderApp({ route: '/my/licenses', me: customerMe, handlers: empty });
   expect(await screen.findByText('No licenses yet')).toBeInTheDocument();
-  // Astryx also announces the empty state in a polite live region, so the
-  // sentence can appear twice; it must be on the page at least once.
-  expect(screen.getAllByText(/ask us \(hello@kudurru.io\) to add ada@example.org/).length).toBeGreaterThan(0);
+  expect(screen.getByText(/ask us \(hello@kudurru.io\) to add ada@example.org/)).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Ask about a business license' })).toHaveAttribute('href', 'mailto:hello@kudurru.io?subject=Business%20License');
 });

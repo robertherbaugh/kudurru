@@ -9,7 +9,9 @@ import { cleanup, configure } from '@testing-library/react';
 import { afterEach, beforeEach, vi } from 'vitest';
 
 // CI runners and the shared dev machine are slow; findBy* waits up to 5 s.
-configure({ asyncUtilTimeout: 5000 });
+// Astryx 0.7 also announces EmptyState and Banner text in a visually hidden
+// live region once it fills, so by-text queries must not see that copy.
+configure({ asyncUtilTimeout: 5000, defaultIgnore: 'script, style, [data-astryx-live-region]' });
 
 beforeEach(() => {
   window.localStorage.clear();
