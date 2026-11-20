@@ -36,8 +36,10 @@ job. Only the owner or an explicitly authorized operator can run it.
   did not replay the write.
 - [ ] UniFi DHCP: preview and apply the DNS server override on the disposable
   network. Verify the controller accepts the PUT without `id` or `metadata`.
-- [ ] UniFi station: block and unblock the disposable station; verify its
-  final state is unblocked.
+- [ ] UniFi station: with `legacy: true` and `push.clientActions: true`, run
+  kudurru's `block-client` and `unblock-client` actions on the disposable
+  station. Verify the controller accepts the legacy `cmd/stamgr` `block-sta`
+  and `unblock-sta` commands and the station's final state is unblocked.
 - [ ] Cloudflare: publish to the disposable zone, verify recovery after an
   approved partial failure, and demonstrate `deletionPolicy: Delete` cleanup.
 - [ ] Record the tested versions, exact permission names and scopes, date,
