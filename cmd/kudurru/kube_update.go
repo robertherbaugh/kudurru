@@ -198,6 +198,15 @@ func (u *kubeUpdate) attempt(ctx context.Context, keys *dnsserver.StaticKeyring,
 		}
 		return true
 	})
+	viewReservations := map[[2]any]bool{}
+	built.ViewRRsets(func(_ string, set *zone.RRset) bool {
+		key := [2]any{set.Name, set.Type}
+		if !reserved[key] && !viewReservations[key] {
+			viewReservations[key] = true
+			state.Reservations = append(state.Reservations, dynamicupdate.Reservation{Name: set.Name, Type: set.Type, Source: "kubernetes-view"})
+		}
+		return true
+	})
 	result, perr := dynamicupdate.Plan(state, tx, principal, u.now(), u.limits)
 	if perr != nil {
 		return perr.Rcode, false, nil
