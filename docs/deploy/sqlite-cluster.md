@@ -445,7 +445,8 @@ Use the [member replacement procedure](sqlite-join.md#replace-a-member-that-cann
 with a new name, internal address, and data directory. Take the old member
 offline permanently and do not reuse its identity. Replacement does not remove
 the old member: its name and address stay reserved, and it still counts toward
-the 64-member limit.
+the 64-member limit. Replacement is not revocation. An identity already
+recorded as revoked cannot rejoin, even with a new certificate for the same key.
 
 ## Answers of the cluster commands
 
