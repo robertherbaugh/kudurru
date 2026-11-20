@@ -130,6 +130,7 @@ spec:
   const [dns, api, ops, metrics, internal] = await loopbackAddresses();
   const upstream = await startUpstream();
   let child: { kill: (signal: NodeJS.Signals) => void; exited: Promise<number> } | undefined;
+  let apiCert: string | undefined;
   const stop = async () => {
     if (!child) return;
     const current = child;
@@ -142,9 +143,12 @@ spec:
       child = undefined;
     }
   };
-  const request = (route: string, options: RequestInit = {}) => fetch(`https://${api}/api/v1${route}`, {
-    ...options, redirect: 'error', proxy: '', tls: { rejectUnauthorized: false }, signal: AbortSignal.timeout(5_000),
-  });
+  const request = (route: string, options: RequestInit = {}) => {
+    requireCheck(apiCert);
+    return fetch(`https://${api}/api/v1${route}`, {
+      ...options, redirect: 'error', proxy: '', tls: { ca: apiCert, rejectUnauthorized: true }, signal: AbortSignal.timeout(5_000),
+    });
+  };
   const start = async () => {
     child = Bun.spawn([binary, 'serve', '--config', configFile], {
       cwd: work, stdin: 'ignore', stdout: 'ignore', stderr: 'ignore',
@@ -159,6 +163,11 @@ spec:
       const ready = await fetch(`http://${ops}/healthz/ready`, { proxy: '', signal: AbortSignal.timeout(1_000) });
       return ready.ok && await dnsAnswers();
     });
+    apiCert ??= fs.readFileSync(path.join(work, 'data', 'keys', 'api.crt'), 'utf8');
+  };
+  const restart = async () => {
+    await stop();
+    await start();
   };
   const dnsAnswers = async () => {
     const answer = await query(dns, host);
@@ -239,19 +248,22 @@ spec:
     await checkState('active', true);
     record('active signed entitlement, branding, audit gate, extra policy allowed, DNS answers');
     stage = 'archive restart';
-    await stop();
-    await start();
+    await restart();
     await checkState('active');
     record('active entitlement, branding, and policy persist across restart; DNS answers');
     if (sequence) {
       stage = 'grace clock confirmation';
       await pauseAt('grace', claims.exp + day);
+      stage = 'grace: archive restart';
+      await restart();
       await checkState('grace');
-      record('grace on running node, same entitlements and branding, extra policy allowed, DNS answers');
+      record('grace after restart, same entitlements and branding, extra policy allowed, DNS answers');
       stage = 'expired clock confirmation';
       await pauseAt('expired', claims.exp + 31 * day);
+      stage = 'expired: archive restart';
+      await restart();
       await checkState('expired');
-      record('expired on running node, Community limits and default branding, audit and new policy refused, existing policy retained, DNS answers');
+      record('expired after restart, Community limits and default branding, audit and new policy refused, existing policy retained, DNS answers');
     }
   } finally {
     await stop();

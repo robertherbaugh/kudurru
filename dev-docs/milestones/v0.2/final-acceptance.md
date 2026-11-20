@@ -289,9 +289,10 @@ and agent-inspected screenshot are committed without the key, licensee or
 license ID. This accepts an already-issued signature on the normal candidate
 archive; it does not test license-server issuance or a production-key expiry/
 grace transition. On November 20, 2026, the owner confirmed that an issued-key
-run in a disposable VM remains preferred, with a
+run in a disposable VM remains preferred. The runbook checks the final archive
+after a restart at each advanced guest time, not live wall-clock jumps. A
 [clock-controlled synthetic fallback](manual-acceptance.md#synthetic-fallback-for-expiry-and-grace-only)
-allowed for expiry/grace behavior only. Injected-clock tests on a source build
+is allowed for expiry/grace behavior only. Injected-clock tests on a source build
 do not add production trust, signing, or issuance evidence and are not a run
 of the final archive. The [manual runbook](manual-acceptance.md) also defines
 explicit human UI approval on the exact final artifact SHA256 values; merging

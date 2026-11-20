@@ -113,21 +113,22 @@ override.
    The checker starts the archive executable on loopback with disposable SQLite
    data, verifies `active`, the effective signed entitlement, branding, audit,
    an additional Policy, and an authoritative DNS answer, then restarts it on
-   the same state and verifies persistence. It keeps the restarted process
-   running through both clock jumps. It discards the process logs and prints
-   only a sanitized result on success. Do not retrieve raw `/api/v1/license`
+   the same state and verifies persistence. It pins the node's generated API
+   certificate across restarts, discards the process logs, and prints only a
+   sanitized result on success. Do not retrieve raw `/api/v1/license`
    responses, report the key path, or run `kudurru license status` into evidence.
 4. At the first prompt, in the **second disposable VM console only**, set guest
    UTC to **signed expiry + 1 day**. On a GNU/Linux guest, use
    `sudo date -u --set="@<Unix seconds printed in the prompt>"` (replace the
    placeholder with the number). Verify with `date -u` and press Enter at the
-   checker prompt. Expect `grace`, `graceEndsAt = exp + 30 × 24 hours`, the
-   same features, limits, branding, audit and Policy access as `active`, and
-   the same DNS answer. The checker requires confirmation within one guest
-   hour of the target. Do not restart the node or replace the key to force the
-   transition.
+   checker prompt. The checker requires confirmation within one guest hour of
+   the target, then restarts the same executable with the same data and key.
+   Expect `grace`, `graceEndsAt = exp + 30 × 24 hours`, the same features,
+   limits, branding, audit and Policy access as `active`, and the same DNS
+   answer after restart. Do not replace the key or reset the data.
 5. At the next prompt, set guest UTC the same way to **signed expiry + 31 days**
-   (not 31 days after the grace test) and confirm. Expect `expired` with
+   (not 31 days after the grace test) and confirm. The checker restarts the
+   same executable with the same data and key again. Expect `expired` with
    Community limits (one node, one Policy, no licensed features), default
    branding, audit and new Policies refused, the existing Policy retained, and
    the same DNS answer. The API may still name the original plan; the effective
@@ -146,6 +147,12 @@ override.
    key and destroy the isolated VM and its disposable storage even on failure.
    Never reconnect a clock-advanced guest to a live network.
 
+This is **restart-based boundary validation on the final archive**. A wall-clock
+jump does not advance the monotonic clock used by deadlines already captured
+in a running process. Restarting checks startup and serving behavior at each
+advanced guest time without relying on those held deadlines. It does not prove
+live wall-clock-jump behavior or uninterrupted DNS during the restarts.
+
 ### Synthetic fallback for expiry and grace only
 
 Use the exact source revision that produced the final release artifacts. Run
@@ -162,15 +169,18 @@ These tests check the active-to-grace and grace-to-expired boundaries,
 continued entitlements in grace, Community limits after expiry, the branding
 gate on the serving HTTP fixture, and authoritative DNS over loopback UDP and
 TCP with the expired entitlement. These are source-built test binaries and
-fixtures, not a final archive process left running through guest clock jumps.
+fixtures, not checks of the final archive after guest clock jumps and restarts.
 
 Label the evidence **Synthetic (injected clock) — expiry/grace only**. Record
 the source commit, its link to the final artifact build provenance, Go version,
 OS/architecture, exact commands, real UTC test date, and sanitized results.
 Do not use the final archive SHA256 as an identity for the executed test
 binaries. Record this fallback separately from issued-key runtime evidence;
-it does **not** prove the final archive's live expiry transition, production
+it does **not** prove the final archive's runtime behavior at expiry, production
 trust or signing, authorized portal issuance, or human UI acceptance. The
 release record must cite the applicable production trust/signing and issuance
 evidence separately. The checker's `active` and `community` modes are local
 smoke checks without transitions; they are not the clock-controlled fallback.
+The dashboard end-to-end CI job runs those smoke checks with a synthetic key.
+Use `make production-license-check-typecheck` with the repository's pinned Bun
+version for a focused local typecheck.
