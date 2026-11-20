@@ -437,20 +437,6 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 		t.Fatal("the reviewed sync did not commit a successor head", before, sequence())
 	}
 
-	kubeAwait(t, 10*time.Second, "a current review is refused when the live Lease read fails", func() bool {
-		if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "inventory"}, &current); err != nil {
-			t.Fatal(err)
-		}
-		checkCalls, blockedBefore := calls.Load(), blockedLeaseReads.Load()
-		blockLeaseRead.Store(true)
-		defer blockLeaseRead.Store(false)
-		status, body := env.api(t, byName[first], http.MethodPost, "/integrations/default/inventory/check", map[string]any{"uid": string(current.UID), "revision": current.ResourceVersion})
-		if status == http.StatusOK || calls.Load() != checkCalls {
-			t.Fatal("a reviewed check reached the provider without verified authority", status, body, calls.Load()-checkCalls)
-		}
-		return status == http.StatusConflict && blockedLeaseReads.Load() > blockedBefore
-	})
-
 	// setPoll changes the poll interval, and so the spec digest every head
 	// carries, and waits until both replicas grant from a head committed
 	// under the new spec.
@@ -525,6 +511,23 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 	if sequence() != atRestart || holder() != holderNow {
 		t.Fatal("the restart was served by a new commit or a holder change, not from the committed head", atRestart, sequence(), holderNow, holder())
 	}
+	kubeAwait(t, 10*time.Second, "a current review is refused when the live Lease read fails", func() bool {
+		cfg := byName[holder()]
+		if cfg == nil {
+			return false
+		}
+		if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "inventory"}, &current); err != nil {
+			t.Fatal(err)
+		}
+		checkCalls, blockedBefore := calls.Load(), blockedLeaseReads.Load()
+		blockLeaseRead.Store(true)
+		defer blockLeaseRead.Store(false)
+		status, body := env.api(t, cfg, http.MethodPost, "/integrations/default/inventory/check", map[string]any{"uid": string(current.UID), "revision": current.ResourceVersion})
+		if status == http.StatusOK || calls.Load() != checkCalls {
+			t.Fatal("a reviewed check reached the provider without verified authority", status, body, calls.Load()-checkCalls)
+		}
+		return status == http.StatusConflict && blockedLeaseReads.Load() > blockedBefore
+	})
 	setPoll(5 * time.Second)
 
 	// Suspension closes the source on both replicas without a new commit.
@@ -653,18 +656,21 @@ func TestRunServeKubeUniFiSourcesTwoReplicasAndPartition(t *testing.T) {
 		}
 		return chunks.Items
 	}
-	time.Sleep(time.Second)
-	if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "inventory"}, &current); err != nil || current.DeletionTimestamp.IsZero() || !store.HasFinalizer(&current, store.IntegrationCleanupFinalizer) || len(heads()) != 0 || len(readChunks()) == 0 {
-		t.Fatal("Lease loss did not stop purge between the head and its chunks with the finalizer intact", err)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "inventory"}, &current); err != nil || current.DeletionTimestamp.IsZero() || !store.HasFinalizer(&current, store.IntegrationCleanupFinalizer) || len(heads()) != 0 || len(readChunks()) == 0 {
+			t.Fatal("Lease loss did not stop purge between the head and its chunks with the finalizer intact", err)
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 	var displaced coordinationv1.Lease
 	if err := env.admin.Get(ctx, leaseKey, &displaced); err != nil || displaced.Spec.HolderIdentity == nil || *displaced.Spec.HolderIdentity != "cleanup-fault" {
 		t.Fatal("read the displaced Lease before allowing cleanup to resume", err)
 	}
-	if err := env.admin.Delete(ctx, &displaced, client.Preconditions{UID: &displaced.UID, ResourceVersion: &displaced.ResourceVersion}); err != nil {
-		t.Fatal(err)
-	}
-	kubeAwait(t, 90*time.Second, "the cleanup purges the source and removes the object", func() bool {
+	kubeAwait(t, 90*time.Second, "the cleanup resumes after Lease expiry, purges the source and removes the object", func() bool {
 		err := env.admin.Get(ctx, client.ObjectKey{Namespace: "default", Name: "inventory"}, &current)
 		return err != nil && strings.Contains(err.Error(), "not found") && len(heads()) == 0
 	})
