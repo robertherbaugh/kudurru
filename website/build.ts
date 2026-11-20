@@ -27,6 +27,8 @@ const SHOTS_DIR = join(REPO, "docs/guide/images");
 
 // Brand files the pages reference by hashed name.
 const BRAND_FILES = [
+  "kudurru-logo-mixed.png",
+  "kudurru-logo-mixed-tagline.png",
   "kudurru-logo-mixed-paper.png",
   "kudurru-logo-mixed-paper-tagline.png",
   "kudurru-mark-clay.png",
@@ -77,7 +79,7 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
   await mkdir(join(outDir, "assets"), { recursive: true });
 
   const bundle = await Bun.build({
-    entrypoints: [join(ROOT, "src/client/main.ts"), join(ROOT, "src/styles/site.css")],
+    entrypoints: [join(ROOT, "src/client/main.ts"), join(ROOT, "src/client/theme-init.ts"), join(ROOT, "src/styles/site.css")],
     outdir: join(outDir, "assets"),
     publicPath: "/assets/",
     naming: { entry: "[name]-[hash].[ext]", asset: "[name]-[hash].[ext]", chunk: "[name]-[hash].[ext]" },
@@ -92,10 +94,9 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
     throw new Error("bundling failed");
   }
   const url = (path: string) => "/assets/" + basename(path);
-  const entry = (ext: string) => {
-    // Bun reports the CSS entry point as an asset; match on the extension.
-    const out = bundle.outputs.find((o) => o.path.endsWith(ext));
-    if (!out) throw new Error(`no ${ext} entry point in the bundle`);
+  const entry = (name: string, ext: string) => {
+    const out = bundle.outputs.find((o) => basename(o.path).startsWith(`${name}-`) && o.path.endsWith(ext));
+    if (!out) throw new Error(`no ${name}${ext} entry point in the bundle`);
     return url(out.path);
   };
 
@@ -110,8 +111,9 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
 
   // Fonts: hashed copies, then the stylesheet points at them and is renamed
   // after its final content.
-  let css = await readFile(join(outDir, entry(".css")), "utf8");
-  await rm(join(outDir, entry(".css")));
+  const bundledCss = join(outDir, entry("site", ".css"));
+  let css = await readFile(bundledCss, "utf8");
+  await rm(bundledCss);
   for (const font of FONTS) {
     const path = await copyHashed(join(ROOT, "node_modules", font.pkg, "files"), font.file);
     css = css.replaceAll(`/fonts/${font.file}`, path);
@@ -132,7 +134,8 @@ export async function build({ outDir, version, licenseApi = process.env.WWW_LICE
 
   const assets: Assets = {
     css: "/assets/" + cssName,
-    js: entry(".js"),
+    js: entry("main", ".js"),
+    themeInit: entry("theme-init", ".js"),
     preload,
     file: (name) => {
       const path = files.get(name);
