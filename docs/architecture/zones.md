@@ -284,9 +284,13 @@ Rules and limits:
   records): the view endpoints are refused as `Invalid` and the group gets the
   default data.
 - A refused view endpoint is reported on its record set like any other
-  dropped endpoint. On SQLite a record set's projection carries one outcome,
-  so the refusal is visible only when nothing else in the record set is
-  served; a record set that serves other data stays `served`.
+  dropped endpoint. On SQLite a record set that serves other endpoints stays
+  `served`. Its existing projection reason summarizes refused view endpoints
+  with their name, type, namespaced view and refusal reason (up to 512 bytes,
+  with a count when entries are omitted). The record set GET exposes it as the
+  `ViewEndpointsRefused` status condition when the served source matches the
+  current record set. Open the editor on a served row with that proven record
+  set to see the warning; the refused endpoints themselves are not served rows.
 - AXFR, IXFR, the IXFR journal, NOTIFY serials, `GET .../export` and
   integration sinks (Cloudflare, UniFi) carry the default data only. A
   secondary never receives group data, and there is no per-key view transfer.

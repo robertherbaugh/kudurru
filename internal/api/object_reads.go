@@ -13,6 +13,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -157,7 +160,7 @@ func (s *Server) getCapturedObject(ctx context.Context, k kindInfo, namespace, n
 	if err := s.require(ctx, k.resource, "read", objectScope(k, obj), name); err != nil {
 		return nil, err
 	}
-	m, err := objectMap(k, obj)
+	m, err := s.capturedObjectMap(ctx, k, obj)
 	if err != nil {
 		return nil, err
 	}
@@ -165,4 +168,27 @@ func (s *Server) getCapturedObject(ctx context.Context, k kindInfo, namespace, n
 		return nil, objectReadUnavailable()
 	}
 	return &objectOutput{ETag: obj.GetResourceVersion(), Body: m, Status: http.StatusOK}, nil
+}
+
+type recordSetReasonReader interface {
+	ServedRecordSetReason(context.Context, *v1alpha1.DNSRecordSet) string
+}
+
+func (s *Server) capturedObjectMap(ctx context.Context, k kindInfo, obj store.Object) (Object, error) {
+	const condition = "ViewEndpointsRefused"
+	if rs, ok := obj.(*v1alpha1.DNSRecordSet); ok {
+		if reader, ok := s.opts.ZoneReads.(recordSetReasonReader); ok {
+			message := reader.ServedRecordSetReason(ctx, rs)
+			if message != "" || meta.FindStatusCondition(rs.Status.Conditions, condition) != nil {
+				rs = rs.DeepCopy()
+				obj = rs
+				meta.RemoveStatusCondition(&rs.Status.Conditions, condition)
+				if message != "" {
+					meta.SetStatusCondition(&rs.Status.Conditions, metav1.Condition{Type: condition, Status: metav1.ConditionTrue,
+						Reason: condition, Message: message, ObservedGeneration: rs.Generation, LastTransitionTime: metav1.NewTime(s.opts.Now().UTC())})
+				}
+			}
+		}
+	}
+	return objectMap(k, obj)
 }

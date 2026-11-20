@@ -205,10 +205,16 @@ describe('record list views', () => {
     expect(within(kids.closest('tr')!).getByRole('button', { name: 'Edit' })).toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('on a served list, edits a view of a non-default namespace in the record set that holds it', async () => {
+  it('reads refused views from the proven record set and edits in that namespace', async () => {
     const soa: ZoneRecord = { recordSet: '', dnsName: '@', recordType: 'SOA', targets: ['ns1.example.internal. hostmaster.example.internal. 1 3600 600 86400 300'] };
     const kids: ZoneRecord = { recordSet: 'kids/kids-views', namespace: 'kids', dnsName: 'nas.example.internal', recordType: 'A', targets: ['10.9.0.20'], recordTTL: 300, kudurru: { view: 'lan', comment: 'kids NAS' } };
-    server.use(http.get(`${API}/zones/:zone/records`, () => HttpResponse.json({ items: [soa, kids], source: 'served', took_ms: 1 })));
+    const message = 'Refused view endpoints: printer.example.internal. A (view kids/lan): Duplicated';
+    server.use(
+      http.get(`${API}/zones/:zone/records`, () => HttpResponse.json({ items: [soa, kids], source: 'served', took_ms: 1 })),
+      http.get(`${API}/objects/dnsrecordsets/kids/kids-views`, () => HttpResponse.json({
+        status: { conditions: [{ type: 'ViewEndpointsRefused', status: 'True', message }] },
+      })),
+    );
     const posts: { recordSet: string | null; namespace: string | null; body: unknown }[] = [];
     server.use(
       http.post(`${API}/zones/:zone/records`, async ({ request }) => {
@@ -225,6 +231,7 @@ describe('record list views', () => {
     expect(within(screen.getByText('SOA').closest('tr')!).getByRole('button', { name: 'Edit' })).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(edit);
     const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByText(message)).toBeVisible();
     expect(dialog).toHaveTextContent('client group kids/lan');
     expect(within(dialog).getByRole('textbox', { name: /^Record set/ })).toHaveValue('kids/kids-views');
     fireEvent.change(within(dialog).getByRole('textbox', { name: /IPv4 address/ }), { target: { value: '10.9.0.21' } });
