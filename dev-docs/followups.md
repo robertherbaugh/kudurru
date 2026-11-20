@@ -57,6 +57,8 @@ projection or the envelope format. Evidence: `TestCompilerSummarizesRefusedViews
 `TestCompilerSummarizesSharedViewBudgetAcrossNamespaces`, the mounted SQLite
 `TestRunServeSQLiteReadPartialViewRefusal`, and the namespaced editor test in
 `dashboard/src/components/RecordViews.test.tsx`.
+This does not change the SQLite takeover behavior, which is now documented in
+[Zones and transfers](../docs/architecture/zones.md#client-group-views-split-horizon).
 
 | Item | Source | Target |
 |---|---|---|
