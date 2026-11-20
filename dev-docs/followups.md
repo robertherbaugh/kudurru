@@ -191,6 +191,7 @@ term (F28-HISTORY-RECHECK, D369).
 
 | Item | Source | Target |
 |---|---|---|
+| Define what `kudurru integrations list/get -o name` should print. The current list prints a table and get prints YAML; #154 preserves both formats. | PR #192 review | Integration CLI follow-up |
 | Readiness under CPU starvation: the readiness budget of `startStaticMount` has no run that turns a failing condition into a pass (under the reproducing condition the test fails at its own 5 s HTTP timeout), the multi-P credit is not exercised, and the other mounted tests keep fixed 20 s readiness loops | CI-RED verify; FLAKE-CLOCK-AND-READINESS verify | v0.2 |
 | Long multi-item request on SQLite: an unexplained 1.39 s DNS gap in about one run in a hundred without race (and one refused read in 1 of 15 runs on one CPU); under race on a loaded machine most of a second caller's reads are refused with `generation_pending`; the non-race run is a CI gate with thin margin; `TestRunServeSQLiteLongApplyKeepsServingDNSAndReads` fails about half the time without race on the loaded lab machine on its read assertion | CORE-APPLY-OPEN and CORE-OPEN3 verify; integrator | v0.2 |
 | Status-write SERVFAIL fix: the silent-probe bound of `serve_status_write_test.go` has less headroom than its comment states (10 of 24 seen); the fixer's mounted and lint evidence is incomplete (`fix-03-mounted.log`, `fix-04-lint.log`) | CORE-STATUS-WRITE-SERVFAIL verify | v0.2 |
