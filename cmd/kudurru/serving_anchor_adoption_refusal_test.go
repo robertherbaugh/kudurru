@@ -212,13 +212,13 @@ func TestAnchorRefusalsThroughMountedStatus(t *testing.T) {
 	}
 }
 
-func assertAnchorRefusal(t *testing.T, err error, want sqlite.AnchorRefusalReason) *sqlite.AnchorRefusal {
+func assertAnchorRefusal(t *testing.T, err error, want sqlite.AnchorRefusalReason) []string {
 	t.Helper()
 	var refusal *sqlite.AnchorRefusal
 	if !errors.As(err, &refusal) || refusal.Reason != want || !errors.Is(err, accepted.ErrCAS) {
 		t.Fatalf("pull refusal = %v, want %s", err, want)
 	}
-	return refusal
+	return refusal.Keys
 }
 
 func TestAnchorRefusalRetiredFollowerKeepsProtectedStatusClosed(t *testing.T) {
@@ -239,15 +239,16 @@ func TestAnchorRefusalRetiredFollowerKeepsProtectedStatusClosed(t *testing.T) {
 		return f.s.anchorStatus.snapshot().supervisor.state == anchorWorkerRetired
 	})
 	err := f.s.member.Pull(ctx)
-	refusal := assertAnchorRefusal(t, err, sqlite.AnchorRefusedCarriedRevocation)
-	if len(refusal.Keys) != 1 || !anchorFollowerSameImage(before, anchorFollowerImage(ctx, t, f.store)) {
+	reason := sqlite.AnchorRefusedCarriedRevocation
+	keys := assertAnchorRefusal(t, err, reason)
+	if len(keys) != 1 || !anchorFollowerSameImage(before, anchorFollowerImage(ctx, t, f.store)) {
 		t.Fatal("pull did not refuse exactly one key without changing the installed image")
 	}
-	if res := status(); res.Code != http.StatusServiceUnavailable || ready() != http.StatusServiceUnavailable || strings.Contains(res.Body.String(), string(refusal.Reason)) {
+	if res := status(); res.Code != http.StatusServiceUnavailable || ready() != http.StatusServiceUnavailable || strings.Contains(res.Body.String(), string(reason)) {
 		t.Fatalf("retired follower must close protected status and readiness without exposing the refusal: %d %s", res.Code, res.Body)
 	}
 	reg := anchorStatusMetrics(t, f.s)
-	if got := anchorStatusGauge(t, reg, "kudurru_root_anchor_adoption_refused", map[string]string{"reason": string(refusal.Reason)}); got != 1 {
+	if got := anchorStatusGauge(t, reg, "kudurru_root_anchor_adoption_refused", map[string]string{"reason": string(reason)}); got != 1 {
 		t.Fatal("retired follower refusal metric", got)
 	}
 	if got := root.reads.Load(); got != 3 {
