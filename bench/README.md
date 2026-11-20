@@ -497,19 +497,25 @@ Compare a result only with other runs in the same cluster.
 
 The cluster is defined in the private `homelab-docker-k8s` repository, in
 `kubernetes/apps/kudurru-test/`. That directory's README is the runbook,
-including access and placement. From a checkout of that repository:
+including access and placement. Run the helper from the root of a
+`homelab-docker-k8s` checkout. `--src` names a separate Kudurru checkout, not
+the homelab one; `/path/to/kudurru` and `dev-123` are examples:
 
 ```sh
-kubernetes/apps/kudurru-test/kudurru.sh install --src <this checkout> --tag dev-<PR>
+kubernetes/apps/kudurru-test/kudurru.sh install --src /path/to/kudurru --tag dev-123
 kubernetes/apps/kudurru-test/kudurru.sh dnsperf cached   # or: miss
 ```
 
 `install` installs `deploy/helm/kudurru-crds` and `deploy/helm/kudurru` from
-the checkout named by `--src`. The `dev-<PR>` tag comes from
+the Kudurru checkout named by `--src`. Check out the commit that matches the
+selected image, so the charts and the image come from the same source. The
+`dev-<PR>` tag comes from
 `.github/workflows/dev-image.yml`, which builds it only for pull requests from
 this repository that are not from Dependabot and that change a file outside
 `docs/`, `dev-docs/`, `docs-site/`, `website/`, `branding/` and
 `license-server/` (`hack/ci-changes.sh code`). Each push to the pull request
 overwrites the tag; `--digest sha256:...` selects a fixed image instead. Keep
 the image digests that `status` and `dnsperf` print with each result, not the
-tag.
+tag. Before a diagnosis depends on separate physical hosts, check where the
+replicas and the load client actually ran: the printed node names, and the
+host behind each worker.
