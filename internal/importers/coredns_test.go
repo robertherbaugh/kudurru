@@ -665,7 +665,14 @@ func TestCoreDNSOfflineSameNameOnTwoPorts(t *testing.T) {
 			t.Fatalf("port 53 answer missing: %v", rewriteNames(p))
 		}
 		report := strings.Join(p.Warnings, "\n")
-		want := "hosts and rewrite: 1 names have another local answer in a server block on a different port; kudurru keeps the answer of the block on the lowest port and omits the answers on port 5353 (names redacted)."
+		if strings.Contains(report, "Server block home.example:5353: 1 hosts or rewrite names are imported") {
+			t.Errorf("omitted answer reported as imported:\n%s", report)
+		}
+		kept := "Server block .:53: 1 hosts or rewrite names are imported, but on port 5353 CoreDNS sends those queries to another server block; kudurru gives them this block's answer on every listener (names redacted)."
+		if !strings.Contains(report, kept) {
+			t.Errorf("loss report lacks %q:\n%s", kept, report)
+		}
+		want := "hosts and rewrite: 1 name has another local answer in a server block on a different port; kudurru keeps the answer of the block on the lowest port and omits the answers on port 5353 (names redacted)."
 		if !strings.Contains(report, want) {
 			t.Errorf("loss report lacks %q:\n%s", want, report)
 		}
@@ -673,6 +680,33 @@ func TestCoreDNSOfflineSameNameOnTwoPorts(t *testing.T) {
 	_, err := PreviewCoreDNS(t.Context(), OfflineRequest{Namespace: "dns"}, strings.NewReader(". {\n hosts {\n  192.168.1.10 nas.home.example\n  no_reverse\n }\n rewrite name nas.home.example media.home.example\n}\n"))
 	if err == nil || !strings.Contains(err.Error(), "more than one local answer") {
 		t.Fatalf("same-port conflict not refused: %v", err)
+	}
+}
+
+func TestCoreDNSOfflineSameNameOnThreePorts(t *testing.T) {
+	p := corednsPreview(t, `nas.home.example:5354 {
+ rewrite name nas.home.example rewrite.example
+}
+home.example:5353 {
+ hosts {
+  192.0.2.13 nas.home.example
+  no_reverse
+ }
+}
+.:53 {
+ hosts {
+  192.0.2.10 nas.home.example
+  no_reverse
+ }
+}
+`)
+	report := strings.Join(p.Warnings, "\n")
+	want := "hosts and rewrite: 1 name has another local answer in a server block on a different port; kudurru keeps the answer of the block on the lowest port and omits the answers on port 5353, 5354 (names redacted)."
+	if !strings.Contains(report, want) {
+		t.Errorf("loss report lacks %q:\n%s", want, report)
+	}
+	if strings.Count(report, "gives them this block's answer on every listener") != 1 || !strings.Contains(report, "Server block .:53: 1 hosts or rewrite names are imported") {
+		t.Errorf("only the port 53 answer should be reported as imported:\n%s", report)
 	}
 }
 

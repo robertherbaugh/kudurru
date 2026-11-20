@@ -115,8 +115,10 @@ converted take part in that routing: a classless reverse prefix with the zones
 CoreDNS expands it to, and a block whose keys cannot be read makes the routing
 unknown, so no local answer is imported (imported conditional routes are
 reported as possibly taken by it). When blocks on different ports answer the
-same name, the block on the lowest port wins and the other answers are
-reported; on one port such a conflict is refused. Every emitted plan is checked in tests
+same name, the block on the lowest port wins. The report counts distinct names
+whose answers were omitted and lists the ports where those omitted answers were
+served. Only retained answers are reported as imported on every listener. On
+one port such a conflict is refused. Every emitted plan is checked in tests
 with the CRD validator and the configuration validation (D392). Every other plugin is named in the loss report;
 directive names that are not documented CoreDNS plugins are counted with the
 name redacted. The resulting `Plan` follows the same selection, size checks and

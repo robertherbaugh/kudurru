@@ -87,13 +87,12 @@ type corednsConverter struct {
 	// opaque counts server blocks whose keys cannot be read (environment
 	// placeholders, unsupported forms): CoreDNS may route any name to them.
 	opaque int
-	// blockPorts are the ports of each converted block and rewriteBlock the
-	// block that defined each local answer, by name. portDrops counts the
-	// answers omitted because a block on a lower port answers the same name,
-	// by the omitted block's lowest port.
+	// rewriteBlock is the block that defined each retained local answer.
 	blockPorts   map[int][]int
+	blockPaths   []string
 	rewriteBlock map[string]int
-	portDrops    map[int]int
+	droppedNames map[string]bool
+	droppedPorts map[int]bool
 }
 
 // route returns the zone of the plain DNS server block that CoreDNS sends a
@@ -119,15 +118,12 @@ func (c *corednsConverter) route(name string, port int) (string, int) {
 // sends to that block: shadowed names fall inside a more specific block
 // (named by zone), and other names reach no block or a different one.
 // opaque counts names omitted because a block with unreadable keys may
-// take them; ports counts imported names that another block answers on a
-// different port (named in otherPorts).
+// take them.
 type unserved struct {
-	zones      map[string]bool
-	n          int
-	other      int
-	opaque     int
-	ports      int
-	otherPorts map[int]bool
+	zones  map[string]bool
+	n      int
+	other  int
+	opaque int
 }
 
 // mine reports whether CoreDNS sends a query for name to the block being
@@ -151,18 +147,6 @@ func (c *corednsConverter) serves(name string, blockZones []string, u *unserved)
 		return false
 	}
 	if c.mine(name) {
-		// kudurru answers every port alike: name a port where another
-		// block takes the query.
-		for _, port := range c.ports {
-			if _, i := c.route(name, port); i >= 0 && i != c.current && !containsInt(c.curPorts, port) {
-				if u.otherPorts == nil {
-					u.otherPorts = map[int]bool{}
-				}
-				u.otherPorts[port] = true
-				u.ports++
-				break
-			}
-		}
 		return true
 	}
 	z := ""
@@ -208,17 +192,60 @@ func (c *corednsConverter) reportUnserved(path, what string, u *unserved) {
 	if u.opaque > 0 {
 		c.p.loss(fmt.Sprintf("%s: %d %s omitted; a server block whose keys cannot be read may receive those queries in CoreDNS (names redacted).", path, u.opaque, what))
 	}
-	if u.ports > 0 {
-		ports := make([]int, 0, len(u.otherPorts))
-		for p := range u.otherPorts {
-			ports = append(ports, p)
+}
+
+func formatPorts(set map[int]bool) string {
+	ports := make([]int, 0, len(set))
+	for port := range set {
+		ports = append(ports, port)
+	}
+	sort.Ints(ports)
+	values := make([]string, len(ports))
+	for index, port := range ports {
+		values[index] = strconv.Itoa(port)
+	}
+	return strings.Join(values, ", ")
+}
+
+func (c *corednsConverter) reportPortRewrites() {
+	type portReport struct {
+		count int
+		ports map[int]bool
+	}
+	type blockReport struct{ local, ptr portReport }
+	reports := make([]blockReport, len(c.blockPaths))
+	for _, rewrite := range c.rewrites {
+		block := c.rewriteBlock[rewrite.Name]
+		report := &reports[block].local
+		if rewrite.Type == "PTR" {
+			report = &reports[block].ptr
 		}
-		sort.Ints(ports)
-		list := make([]string, len(ports))
-		for i, p := range ports {
-			list[i] = strconv.Itoa(p)
+		for _, port := range c.ports {
+			if _, owner := c.route(dns.Fqdn(rewrite.Name), port); owner >= 0 && owner != block && !containsInt(c.blockPorts[block], port) {
+				if report.ports == nil {
+					report.ports = map[int]bool{}
+				}
+				report.ports[port] = true
+				report.count++
+				break
+			}
 		}
-		c.p.loss(fmt.Sprintf("%s: %d %s are imported, but on port %s CoreDNS sends those queries to another server block; kudurru gives them this block's answer on every listener (names redacted).", path, u.ports, what, strings.Join(list, ", ")))
+	}
+	reportImported := func(path, what string, report portReport) {
+		if report.count > 0 {
+			c.p.loss(fmt.Sprintf("%s: %d %s are imported, but on port %s CoreDNS sends those queries to another server block; kudurru gives them this block's answer on every listener (names redacted).", path, report.count, what, formatPorts(report.ports)))
+		}
+	}
+	for block, report := range reports {
+		reportImported(c.blockPaths[block], "hosts PTR answers", report.ptr)
+		reportImported(c.blockPaths[block], "hosts or rewrite names", report.local)
+	}
+	if distinct := len(c.droppedNames); distinct > 0 {
+		names := fmt.Sprintf("%d names have", distinct)
+		if distinct == 1 {
+			names = "1 name has"
+		}
+		c.p.loss(fmt.Sprintf("hosts and rewrite: %s another local answer in a server block on a different port; kudurru keeps the answer of the block on the lowest port and omits the answers on port %s (names redacted).", names, formatPorts(c.droppedPorts)))
 	}
 }
 
@@ -372,7 +399,9 @@ func (c *corednsConverter) convert(cf *corefile) error {
 		}
 	}
 	sort.Ints(c.ports)
-	c.blockPorts, c.rewriteBlock, c.portDrops = map[int][]int{}, map[string]int{}, map[int]int{}
+	c.blockPaths = make([]string, len(cf.blocks))
+	c.blockPorts, c.rewriteBlock = map[int][]int{}, map[string]int{}
+	c.droppedNames, c.droppedPorts = map[string]bool{}, map[int]bool{}
 	for i, blk := range cf.blocks {
 		if err := c.ctx.Err(); err != nil {
 			return err
@@ -384,20 +413,6 @@ func (c *corednsConverter) convert(cf *corefile) error {
 	}
 	if c.opaque > 0 && len(c.conditional) > 0 {
 		c.p.loss(fmt.Sprintf("Corefile: %d conditional forwarding routes are imported, but a server block whose keys cannot be read may receive those queries in CoreDNS (names redacted).", len(c.conditional)))
-	}
-	if len(c.portDrops) > 0 {
-		ports := make([]int, 0, len(c.portDrops))
-		n := 0
-		for port, count := range c.portDrops {
-			ports = append(ports, port)
-			n += count
-		}
-		sort.Ints(ports)
-		list := make([]string, len(ports))
-		for i, port := range ports {
-			list[i] = strconv.Itoa(port)
-		}
-		c.p.loss(fmt.Sprintf("hosts and rewrite: %d names have another local answer in a server block on a different port; kudurru keeps the answer of the block on the lowest port and omits the answers on port %s (names redacted).", n, strings.Join(list, ", ")))
 	}
 	if !c.rootSeen {
 		c.note("Corefile: no plain DNS server block serves the root zone; destination upstreams.groups.default, cache and access settings are kept.")
@@ -423,6 +438,7 @@ func (c *corednsConverter) convert(cf *corefile) error {
 		return nil
 	}
 	if len(c.rewrites) > 0 {
+		c.reportPortRewrites()
 		keys := make([]string, 0, len(c.rewrites))
 		for k := range c.rewrites {
 			keys = append(keys, k)
@@ -474,6 +490,7 @@ func (c *corednsConverter) block(blk *cfServerBlock) error {
 		names = append(names, z.name)
 	}
 	c.blockPorts[c.current] = append([]int{}, c.curPorts...)
+	c.blockPaths[c.current] = path
 	root := false
 	for _, n := range names {
 		root = root || n == "."
@@ -900,7 +917,7 @@ func containsString(list []string, s string) bool {
 // addRewrite records a local answer. A second answer for the same name is
 // refused, unless it comes from a block on other ports than the first one:
 // kudurru answers every listener alike, so the block on the lowest port
-// wins and the other answer is counted in portDrops.
+// wins and the other answer is recorded by name and serving ports.
 func (c *corednsConverter) addRewrite(r public.Rewrite) error {
 	for _, typ := range []string{"", "PTR", "CNAME"} {
 		key := r.Name + "/" + typ
@@ -912,10 +929,10 @@ func (c *corednsConverter) addRewrite(r public.Rewrite) error {
 			return errors.New("corefile gives the same name more than one local answer")
 		}
 		if minPort(c.blockPorts[prev]) <= minPort(c.curPorts) {
-			c.portDrops[minPort(c.curPorts)]++
+			c.recordPortDrop(r.Name, c.current)
 			return nil
 		}
-		c.portDrops[minPort(c.blockPorts[prev])]++
+		c.recordPortDrop(r.Name, prev)
 		delete(c.rewrites, key)
 		break
 	}
@@ -923,6 +940,15 @@ func (c *corednsConverter) addRewrite(r public.Rewrite) error {
 	c.rewrites[r.Name+"/"+r.Type] = r
 	c.rewriteBlock[r.Name] = c.current
 	return nil
+}
+
+func (c *corednsConverter) recordPortDrop(name string, block int) {
+	c.droppedNames[name] = true
+	for _, port := range c.blockPorts[block] {
+		if _, owner := c.route(dns.Fqdn(name), port); owner == block {
+			c.droppedPorts[port] = true
+		}
+	}
 }
 
 func sharesPort(a, b []int) bool {
