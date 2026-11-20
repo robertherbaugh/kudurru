@@ -195,11 +195,15 @@ not a guarantee that a capture or cleanup will fit its deadline.
 total objects with small records or 4 KiB of padding per seeded record
 finished capture, one changing command, and one Cloudflare-double record-set
 cleanup with and without two generation-reader load workers (without
-`-race`). The 32 KiB idle cell finalized, but took more than 30 seconds end
-to end; the operation deadline applies per cleanup run, not from the delete
-request to finalization. These are observations for that workload and host,
-not a production limit, a release qualification, or a guarantee at those
-sizes. The raw measurements and coverage gaps are in the
+`-race`). The 32 KiB idle cell finalized, but the loaded cell did not
+finalize within the two-minute observation window. The 10,000-object small
+cell finished at idle but hit the capture deadline under load. With
+`-race`, the 1,000-object small samples captured successfully but did not
+finalize within the observation window. The
+30-second operation deadline applies per cleanup run, not from the delete
+request to finalization. These results are specific to the workload and
+host; they do not establish a production limit or qualify a release. The
+raw measurements and coverage gaps are in the
 [SQLite integration scale evidence](../../dev-docs/milestones/v0.2/evidence/2026-11-20-integration-scale/README.md).
 
 To release an Integration that is `Terminating`, review it and run the
