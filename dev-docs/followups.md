@@ -189,6 +189,13 @@ the never-verified fixes of HA-REFUSAL and OBS-HTTP-SINKS were verified by HA-OP
 and OBS-OPEN, and a refusing member whose primary is lost can abandon the lost
 term (F28-HISTORY-RECHECK, D369).
 
+For #131/#164, the informational `sinks` job runs both mandatory live
+tests against pinned ClickHouse 25.8 and Loki 3.7.9 on code changes. Its
+logs identify the tested source and exact server versions. The earlier
+[final-source result](milestones/v0.2/final-acceptance.md) is evidence for
+`a22255a2`, not a hosted result for this job. Adding `sinks` to `ci-ok`
+requires owner approval.
+
 | Item | Source | Target |
 |---|---|---|
 | Readiness under CPU starvation: the readiness budget of `startStaticMount` has no run that turns a failing condition into a pass (under the reproducing condition the test fails at its own 5 s HTTP timeout), the multi-P credit is not exercised, and the other mounted tests keep fixed 20 s readiness loops | CI-RED verify; FLAKE-CLOCK-AND-READINESS verify | v0.2 |
