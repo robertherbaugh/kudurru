@@ -30,23 +30,23 @@
 }
 
 :root {
-  --bg: light-dark(var(--kudurru-paper), var(--kudurru-ink));
-  --surface: light-dark(#f0ebe1, #111b19);
-  --surface-raised: light-dark(#ebe4d8, #1f2f2b);
-  --fg: light-dark(var(--kudurru-ink), var(--kudurru-paper));
-  --fg-2: light-dark(rgb(24 37 34 / 0.82), rgb(247 243 234 / 0.7));
+  --bg: var(--kudurru-ink);
+  --surface: #111b19;
+  --surface-raised: #1f2f2b;
+  --fg: var(--kudurru-paper);
+  --fg-2: rgb(247 243 234 / 0.7);
   /* Muted text: at least 4.8:1 on raised surfaces in both themes. */
-  --fg-3: light-dark(rgb(24 37 34 / 0.72), rgb(247 243 234 / 0.54));
-  --line: light-dark(var(--kudurru-stone), rgb(217 209 194 / 0.13));
-  --line-2: light-dark(#b9ad9c, rgb(217 209 194 / 0.26));
-  --control-line: light-dark(#827568, #78827a);
-  --action: light-dark(var(--kudurru-ink), var(--kudurru-paper));
-  --action-hover: light-dark(#30423d, var(--kudurru-stone));
-  --on-action: light-dark(var(--kudurru-paper), var(--kudurru-ink));
+  --fg-3: rgb(247 243 234 / 0.54);
+  --line: rgb(217 209 194 / 0.13);
+  --line-2: rgb(217 209 194 / 0.26);
+  --control-line: #78827a;
+  --action: var(--kudurru-paper);
+  --action-hover: var(--kudurru-stone);
+  --on-action: var(--kudurru-ink);
 
   --clay: var(--kudurru-clay);
   /* Small accent text: 5.6:1 on Paper and 5.5:1 on Ink. */
-  --clay-hi: light-dark(#9a4a2c, #d9825e);
+  --clay-hi: #d9825e;
   --accent-wash: rgb(182 92 58 / 0.14);
   --accent-gradient: rgb(182 92 58 / 0.09);
   --accent-flash: rgb(182 92 58 / 0.22);
@@ -67,12 +67,12 @@
   --artwork-hover: rgb(24 37 34 / 0.05);
 
   /* Status text: at least 5.9:1 on Paper and 4.8:1 on dark raised surfaces. */
-  --st-blocked: light-dark(#8d4b39, #f07167);
-  --st-authoritative: light-dark(#62458e, #b49bff);
-  --st-cached: light-dark(#315ba1, #7fa8ff);
-  --st-forwarded: light-dark(#206954, #4fc6a8);
-  --st-rewritten: light-dark(#75590e, #e6c068);
-  --st-truncated: light-dark(#4d605b, #a9b4b0);
+  --st-blocked: #f07167;
+  --st-authoritative: #b49bff;
+  --st-cached: #7fa8ff;
+  --st-forwarded: #4fc6a8;
+  --st-rewritten: #e6c068;
+  --st-truncated: #a9b4b0;
 
   --sans: var(--kudurru-font-sans);
   --mono: var(--kudurru-font-mono);
@@ -87,12 +87,50 @@
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
+    --bg: var(--kudurru-paper);
+    --surface: #f0ebe1;
+    --surface-raised: #ebe4d8;
+    --fg: var(--kudurru-ink);
+    --fg-2: rgb(24 37 34 / 0.82);
+    --fg-3: rgb(24 37 34 / 0.72);
+    --line: var(--kudurru-stone);
+    --line-2: #b9ad9c;
+    --control-line: #827568;
+    --action: var(--kudurru-ink);
+    --action-hover: #30423d;
+    --on-action: var(--kudurru-paper);
+    --clay-hi: #9a4a2c;
+    --st-blocked: #8d4b39;
+    --st-authoritative: #62458e;
+    --st-cached: #315ba1;
+    --st-forwarded: #206954;
+    --st-rewritten: #75590e;
+    --st-truncated: #4d605b;
     color-scheme: light;
     --logo-light: block;
     --logo-dark: none;
   }
 }
 :root[data-theme="light"] {
+  --bg: var(--kudurru-paper);
+  --surface: #f0ebe1;
+  --surface-raised: #ebe4d8;
+  --fg: var(--kudurru-ink);
+  --fg-2: rgb(24 37 34 / 0.82);
+  --fg-3: rgb(24 37 34 / 0.72);
+  --line: var(--kudurru-stone);
+  --line-2: #b9ad9c;
+  --control-line: #827568;
+  --action: var(--kudurru-ink);
+  --action-hover: #30423d;
+  --on-action: var(--kudurru-paper);
+  --clay-hi: #9a4a2c;
+  --st-blocked: #8d4b39;
+  --st-authoritative: #62458e;
+  --st-cached: #315ba1;
+  --st-forwarded: #206954;
+  --st-rewritten: #75590e;
+  --st-truncated: #4d605b;
   color-scheme: light;
   --logo-light: block;
   --logo-dark: none;

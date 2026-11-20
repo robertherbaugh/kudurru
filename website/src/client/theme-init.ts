@@ -1,4 +1,6 @@
+import { THEME_KEY, readTheme } from "./theme-preference.ts";
+
 try {
-  const theme = localStorage.getItem("kudurru-theme");
-  if (theme === "light" || theme === "dark") document.documentElement.dataset.theme = theme;
+  const theme = readTheme(localStorage.getItem(THEME_KEY));
+  if (theme !== "system") document.documentElement.dataset.theme = theme;
 } catch {}

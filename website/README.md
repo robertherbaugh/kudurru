@@ -44,10 +44,11 @@ separate from the brand colors, as the kit asks. The dashboard screenshots
 are the guide's (`docs/guide/images`), so they stay current with it.
 
 The header's Color theme control (in Menu on narrow screens) offers **System**,
-**Light**, and **Dark**. Both public sites use the same contract: a `light` or
-`dark` value in the origin-local `kudurru-theme` storage key sets the matching
+**Light**, and **Dark**. A `light` or `dark` value in this site's
+`kudurru-theme` storage key sets the matching
 `data-theme` on `<html>`. System clears both and follows the OS live. With
 JavaScript disabled the control is hidden and the OS palette still applies.
+Saving a choice here does not change the theme on another origin.
 
 The sample traffic in the hero and the pipeline section is illustrative and
 says so on the page: names under `.example` and addresses from RFC 5737 and

@@ -38,8 +38,8 @@ function header(assets: Assets, home: boolean): Html {
   return html`<header class="top">
   <div class="wrap top-row">
     <a class="brand" href="/" aria-label="kudurru home">
-      <img class="logo-light" src="${assets.file("kudurru-logo-mixed.png")}" width="192" height="64" alt="kudurru">
-      <img class="logo-dark" src="${assets.file("kudurru-logo-mixed-paper.png")}" width="192" height="64" alt="kudurru">
+      <img class="logo-light" src="${assets.file("kudurru-logo-mixed.png")}" width="192" height="64" alt="kudurru" loading="lazy">
+      <img class="logo-dark" src="${assets.file("kudurru-logo-mixed-paper.png")}" width="192" height="64" alt="kudurru" loading="lazy">
     </a>
     <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="site-nav">${icon.menu}<span>Menu</span></button>
     <nav id="site-nav" class="nav" aria-label="Primary">
@@ -100,8 +100,8 @@ export function layout(page: Page, version: string): string {
 ${index ? html`<link rel="canonical" href="${url}">
 <meta name="robots" content="index, follow, max-image-preview:large">` : html`<meta name="robots" content="noindex">`}
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#F7F3EA" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#182522" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F7F3EA" media="(prefers-color-scheme: light)" data-scheme="light">
+<meta name="theme-color" content="#182522" media="(prefers-color-scheme: dark)" data-scheme="dark">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="kudurru">
 <meta property="og:locale" content="en_US">
