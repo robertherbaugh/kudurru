@@ -53,11 +53,19 @@ resolve or explicitly disposition the applicable gates before publication.
 Historical low-severity notes not independently reproduced retain their original
 status in the audit, rather than becoming invented current failures.
 
+The non-required hosted pinned interop workflow passed in [run 44803939665](https://github.com/robertherbaugh/kudurru/actions/runs/44803939665)
+at checked-out commit `ee08383e139ddd7c0be4ef848321066607fb53bd`. Its two
+artifacts retain the exact image identities, versions, and unskipped results
+for Knot DNS 3.6.2 (catalog, inbound secondary, managed root and RFC 5011)
+and dnsdist 2.1.3 (all live suites, including client IDs, cache isolation and
+managed anchors). The pass does not remove the dnsdist empty-FIN limitation
+or qualify a release.
+
 | Package / remaining scope | Follow-up |
 |---|---|
 | ZONE: enabled external-source RBAC failures and caps; TSIG CLI on Kubernetes | [#123](https://github.com/robertherbaugh/kudurru/issues/123), [#126](https://github.com/robertherbaugh/kudurru/issues/126) |
 | ZONE: view ownership parity, shared caps, transfer/signing limitations | [#136](https://github.com/robertherbaugh/kudurru/issues/136) |
-| ZONE / DNS / EDGE: hosted pinned interop, signed SOA-only IXFR without AA, dnsdist 2.1.3 empty-FIN limitation | [#127](https://github.com/robertherbaugh/kudurru/issues/127) |
+| ZONE / DNS / EDGE: signed SOA-only IXFR without AA and dnsdist 2.1.3 empty-FIN limitation | [#158](https://github.com/robertherbaugh/kudurru/issues/158), [#127](https://github.com/robertherbaugh/kudurru/issues/127) |
 | UPDATE / HA: bounded failures after admission and local follower apply cutoff qualification | [#129](https://github.com/robertherbaugh/kudurru/issues/129), [#159](https://github.com/robertherbaugh/kudurru/issues/159); D409 remains implemented |
 | DNS: failed final performance qualification; managed-anchor residual metric/refusal/abandoned-term coverage | [#143](https://github.com/robertherbaugh/kudurru/issues/143); [#135](https://github.com/robertherbaugh/kudurru/issues/135) tracks residual F28 coverage |
 | RPZ / OPS: explanation projection, offline signed-feed restart, compile window and multi-port CoreDNS loss reporting | [#130](https://github.com/robertherbaugh/kudurru/issues/130) |
