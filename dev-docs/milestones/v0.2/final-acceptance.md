@@ -21,7 +21,7 @@ specific finding it exercises, not a package's complete acceptance criteria.
 | Packaged upgrade | Released v0.1.0 Linux archive and RPM downloaded and checked against published SHA256 checksums. The existing upgrade test now takes a stopped-volume backup and restores it under the released old binary, checking DNS, credentials, schemas and history. Candidate package execution and exact hashes/results are recorded below. |
 | Performance | **Final-source qualification failed** on `a22255a2`: 60 native processes succeeded, but all ten absolute report gates failed. Original-reference / candidate CNAME lookup p99 medians are 2,187 / 2,363 ns against the unchanged 2,000 ns product maximum. The reference is ineligible, so relative comparisons were refused. The owner-approved restarted-host amendment, calibration and limits were honored. Complete evidence below; release-blocking [#143](https://github.com/robertherbaugh/kudurru/issues/143). |
 | Hosted checks | PR #54's last reported source run `43770178234` failed the two observer tests and `ci-ok`; its other 23 jobs passed. Follow-up run `43775954528` passes both observer shards but exposed the schema-contract, cleanup-setup, UPDATE EOF and rollback test failures recorded below. **All 26 jobs passed** in final-source run `43781940600` on `a22255a2`, including both observer shards, the corrected ledger shard, e2e and `ci-ok`. `security-ok` also passed. Required review still governs merge. |
-| Manual UI and production license | The normal archive executable accepted the owner-supplied issued Enterprise key through its production trust root. All eight entitlement, branding, restart, tampered-signature, minute-reload and no-key fallback checks passed. Earlier synthetic proofs keep their separate scope. Human visual approval, license-server issuance workflow and actual production-key expiry/grace acceptance remain in [#133](https://github.com/robertherbaugh/kudurru/issues/133). |
+| Manual UI and production license | The normal candidate archive executable accepted the owner-supplied issued Enterprise key through its production trust root. All eight entitlement, branding, restart, tampered-signature, minute-reload and no-key fallback checks passed on that candidate. Human visual approval on the exact final artifacts, evidence of authorized production issuance, and an expiry/grace acceptance record remain in [#133](https://github.com/robertherbaugh/kudurru/issues/133). |
 | Review and publication | Required CI/security/review checks govern merge. Publishing v0.2.0 is a separate release-branch milestone. |
 
 ## Historical findings reconciled
@@ -58,7 +58,7 @@ status in the audit, rather than becoming invented current failures.
 | ZONE: enabled external-source RBAC failures and caps; TSIG CLI on Kubernetes | [#123](https://github.com/robertherbaugh/kudurru/issues/123), [#126](https://github.com/robertherbaugh/kudurru/issues/126) |
 | ZONE: view ownership parity, shared caps, transfer/signing limitations | [#136](https://github.com/robertherbaugh/kudurru/issues/136) |
 | ZONE / DNS / EDGE: hosted pinned interop, signed SOA-only IXFR without AA, dnsdist 2.1.3 empty-FIN limitation | [#127](https://github.com/robertherbaugh/kudurru/issues/127) |
-| UPDATE / HA: bounded failures after admission, long apply partial outcomes, member retirement and D395 ordinary-answer grace decision | [#129](https://github.com/robertherbaugh/kudurru/issues/129); D409 remains implemented |
+| UPDATE / HA: bounded failures after admission and local follower apply cutoff qualification | [#129](https://github.com/robertherbaugh/kudurru/issues/129), [#159](https://github.com/robertherbaugh/kudurru/issues/159); D409 remains implemented |
 | DNS: failed final performance qualification; managed-anchor residual metric/refusal/abandoned-term coverage | [#143](https://github.com/robertherbaugh/kudurru/issues/143); [#135](https://github.com/robertherbaugh/kudurru/issues/135) tracks residual F28 coverage |
 | RPZ / OPS: explanation projection, offline signed-feed restart, compile window and multi-port CoreDNS loss reporting | [#130](https://github.com/robertherbaugh/kudurru/issues/130) |
 | INTEGRATIONS: whole-image capture/cleanup scale and original time bounds | [#124](https://github.com/robertherbaugh/kudurru/issues/124) |
@@ -80,6 +80,20 @@ integration`); those issue texts may still name the original uncompleted scope.
 No issue body or issue state was changed. This report and its committed
 evidence record the specific completed checks; remaining requirements in those
 issues stay open.
+
+### Owner disposition for #129
+
+On November 20, 2026, the owner accepted D395 as implemented (up to one second
+of grace for ordinary answers; strict paths remain strict) and D375 as
+implemented (one 30-second follower apply lifetime, honest per-document
+partial results and no replay; send large workloads to the primary). The
+[documented member replacement procedure](../../../docs/deploy/sqlite-join.md#replace-a-member-that-cannot-follow)
+is sufficient for v0.2; the #160 retirement command stays deferred.
+
+This is a product decision, not a test result. See the
+[local #159 evidence](../../followups.md#local-follower-apply-evidence-159) for
+the scope actually exercised. No release gate, including D358, is passed by
+this decision.
 
 ## Explicit future acceptance
 
@@ -286,10 +300,17 @@ and all eight features**, matching the signed claims. All **eight checks passed*
 The [issued-key result](evidence/2026-11-16-final-source/production-license-result.json),
 [cleanup record](evidence/2026-11-16-final-source/production-license-cleanup.json)
 and agent-inspected screenshot are committed without the key, licensee or
-license ID. This accepts an already-issued signature on the normal artifact;
-it does not test license-server issuance or actual production-key expiration/
-grace. The latter retains only its separate synthetic clock-controlled proof.
-The full human UI matrix remains open under #133.
+license ID. This accepts an already-issued signature on the normal candidate
+archive; it does not test license-server issuance or a production-key expiry/
+grace transition. On November 20, 2026, the owner confirmed that an issued-key
+run in a disposable VM remains preferred. The runbook checks the final archive
+after a restart at each advanced guest time, not live wall-clock jumps. A
+[clock-controlled synthetic fallback](manual-acceptance.md#synthetic-fallback-for-expiry-and-grace-only)
+is allowed for expiry/grace behavior only. Injected-clock tests on a source build
+do not add production trust, signing, or issuance evidence and are not a run
+of the final archive. The [manual runbook](manual-acceptance.md) also defines
+explicit human UI approval on the exact final artifact SHA256 values; merging
+code or the runbook does not supply approval. No new gate result is recorded.
 
 Both mandatory live sink tests passed on final source:
 `TestLiveClickHouseReadsTheDocumentedTable` and
@@ -401,8 +422,10 @@ KIND/MetalLB and development-image checks also passed on `a22255a2`; their
 exact URLs are in the check snapshot. These retain their single-environment
 scope and do not close D358.
 
-The issued-key checks close their exact missing-production-signature proof.
-Human UI, license-server issuance/production-key expiry, package maintainer
-scripts/actual systemd lifecycle, issue dispositions, performance and required
-PR review retain their exact open scope. D353 and D358 retain the future scope
-above. No release or production deployment occurred.
+The issued-key checks establish production-signature acceptance on the tested
+candidate only. Final-artifact human UI approval, authorized production
+issuance evidence, and expiry/grace evidence (preferred disposable VM or the
+labeled synthetic fallback) remain open. So do package maintainer scripts/
+actual systemd lifecycle, issue dispositions, performance, and required PR
+review. D353 and D358 retain the future scope above. No release or production
+deployment occurred.

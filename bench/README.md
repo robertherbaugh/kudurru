@@ -319,6 +319,59 @@ it does not erase the sequential failures or prove a product speedup. A failure
 keeps the release gate open. D383 still forbids a rerun just to obtain another
 VM or result. No baseline or acceptance limit is reset.
 
+#### Host-equivalence preflight (proposed)
+
+D416 proposes an extra check for dedicated-host `qualify`; it is off by
+default and not adopted. Do not use it for qualification or enable it in a
+workflow without owner approval. The command after adoption would be:
+
+```sh
+python3 -B hack/bench-dedicated.py qualify \
+  --reference "$ORIGINAL_CHECKOUT" --host-record "$REVIEWED_HOST" \
+  --calibration "$CALIBRATION_DIR" --approval "$CALIBRATION_APPROVAL" \
+  --host-equivalence-preflight "$PREFLIGHT_APPROVAL" --output "$NEW_OUTPUT_DIR"
+```
+
+When the qualification host differs from calibration, also supply the
+separately reviewed `--host-transition-approval`. The preflight approval needs
+`decision: accepted`, `reviewed_by`, `reviewed_at`, `review_evidence`, and
+`purpose: host-equivalence-preflight`. It binds `calibration_manifest_sha256`,
+`calibration_approval_sha256`, `qualification_host_sha256`, and `method_sha256`
+(the SHA-256 of `hack/bench-dedicated.py`). The approval is rehashed before and
+after each measured process.
+
+Only the original reference runs: one process each for blocking, zone, cache,
+and upstream at six processors. The native gate checks the combined
+blocking/zone report against `bench/limits.txt` and the other two reports
+against the reviewed calibration's `cache-limits.txt` and `upstream-limits.txt`.
+It uses `-samples 1 -procs 6 -strict-cpu` (a CPU header is required), with no
+baseline or relative comparison. The fixed-product file bounds matching
+metrics; it is not a complete metric inventory check. Preflight builds and
+runs the gate directly, so its exit codes distinguish bounds failures (1)
+from invalid or incomplete input (2).
+
+`<output>/preflight/` retains build, process, and gate logs and receipts, the
+gate binary if built, assembled reports, and `result.json` with
+`preflight_pass`, `held`, `outcome`, `gate_exits`, and `receipt_sha256`.
+Both `counted` and `release_qualified` are always false there.
+Only a pass starts the unchanged interleaved engine in `<output>/paired/`;
+preflight values never enter its five-process vectors. A bounds failure
+(`outside_bounds`) or benchmark or gate resource stop (`resource_stop`) holds
+without starting paired timing. Operator, tooling, or integrity failures are
+retained as `refused`, not a host hold; an interrupted run can remain
+`incomplete`. Neither outcome establishes anything about the host or authorizes
+a retry. Use a new output path outside the source checkouts; existing output is
+refused. The proposal retires a held host without counting the hold under D383;
+a new host requires a new reviewed transition record, not an automatic redraw
+or retry.
+
+A pass only shows these original-reference reports met the specified bounds.
+One process per scope is noisier than the five-process median used for
+calibration: a marginal host can pass or hold by chance. It does not establish
+host equivalence, physical isolation, candidate performance, or release
+qualification. The owner still needs to adopt the method, including deciding
+whether to retire held hosts and whether one process per scope is sufficient.
+
 
 ## Socket and persistence bounds
 

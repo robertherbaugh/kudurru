@@ -236,6 +236,17 @@ The separate AD/Windows deferral is D353.
 These gate the GA release (an rc may ship without them, listed as known
 gaps in the notes).
 
+- [ ] Complete and explicitly approve the [human UI acceptance matrix](milestones/v0.2/manual-acceptance.md#human-ui-acceptance-matrix)
+      on the exact final artifacts, recording the full hashes, approver, and UTC
+      date. An evidence PR can retain the explicit approval; merge is not acceptance.
+- [ ] Owner: record authorized production issuance and retain applicable
+      production trust/signing evidence separately from the expiry/grace result.
+- [ ] Record expiry/grace evidence and identify the path used. Prefer the
+      [issued-key disposable VM run](milestones/v0.2/manual-acceptance.md#production-key-expiry-and-grace)
+      with the [checker](../hack/production-license-check.ts). If that run is
+      not feasible, use the owner-agreed [synthetic fallback for expiry/grace only](milestones/v0.2/manual-acceptance.md#synthetic-fallback-for-expiry-and-grace-only).
+      It does not satisfy the separate production issuance or trust/signing gate.
+
 Checks on the CI runners (Ubicloud, Ubuntu 24.04):
 
 - [ ] **edge-check** (`edge` workflow, no `continue-on-error` since the v0.1
@@ -281,10 +292,12 @@ Checks on the CI runners (Ubicloud, Ubuntu 24.04):
       required check once it has a record of green runs. Not covered: the
       three-host `ha/` files (host networking and a VIP).
 - [ ] **packages** (`packages` workflow, `hack/package-lifecycle.sh`):
-      install checksum-verified v0.1.0, start, run `kudurru doctor` and
-      loopback DNS over UDP and TCP, restart, upgrade to the unsigned
-      snapshot with edited config, and remove. DEB runs on the Ubuntu VM
-      and also checks purge; RPM runs in a Rocky Linux systemd container
+      install checksum-verified v0.1.0, start, run `kudurru doctor` over
+      HTTPS using the generated local certificate, check loopback DNS over
+      UDP and TCP, restart, and upgrade to the unsigned snapshot with edited
+      config. Verify the snapshot serves a zone from `objects.d`, then
+      remove it. DEB runs on the Ubuntu VM and also checks purge; RPM runs
+      in a Rocky Linux systemd container
       and checks saved config after erase. Review the `package-lifecycle`
       artifact for both package hashes per format. Propose making the check
       required only after a record of green hosted runs (#167).
@@ -435,6 +448,11 @@ publish.yml does not change its result), or, for a scan finding, fix it on
       with the published packages on disposable guests; retain their exact
       hashes separately. The `packages` workflow tests unsigned snapshots,
       not the published artifacts.
+- [ ] Match the published asset and executable SHA256 to the
+      [artifact-bound manual acceptance records](milestones/v0.2/manual-acceptance.md).
+      If the bytes differ, verify the published bytes and repeat the affected
+      artifact checks; do not carry over approval from a different artifact.
+      Synthetic expiry/grace results identify test source, not tested release bytes.
 
 ## 6. After the release
 

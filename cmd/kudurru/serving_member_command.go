@@ -38,6 +38,9 @@ func (s *servingRuntime) executeMemberCommand(ctx context.Context, request *sqli
 	if s == nil || ctx == nil || request == nil || emit == nil {
 		return clusterreplica.ErrProtocol
 	}
+	if s.memberCommandSeen != nil {
+		s.memberCommandSeen(command)
+	}
 	switch {
 	case command.Version == 1 && command.Operation == memberLocalLogin:
 		// A login carries the password in its payload instead of a prior proof.

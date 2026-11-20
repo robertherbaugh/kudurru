@@ -104,6 +104,7 @@ func (s *servingRuntime) prepareMemberServices(ctx context.Context, credentials 
 		Served:       s.publisher.Pin,
 		WithOperator: s.withPromotionAuthorization,
 		Interval:     s.memberPullInterval,
+		MaxPullHold:  s.memberMaxPullHold,
 		ObservePull:  s.anchorStatus.observePull,
 	})
 	if err != nil {

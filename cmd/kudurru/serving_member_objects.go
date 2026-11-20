@@ -159,7 +159,11 @@ func (h *servingHTTP) boundMemberObjectWrites(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), memberForwardLifetime)
+		bound := memberForwardLifetime
+		if override := h.opts.Runtime.memberForwardBound; override > 0 {
+			bound = override
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), bound)
 		defer cancel()
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
