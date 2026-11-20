@@ -377,6 +377,32 @@ func h() {
 }
 `},
 		unrecognized: "zones.delete",
+	}, {
+		name: "approved function name shadowed by a range declaration",
+		files: map[string]string{"internal/api/a.go": `package api
+
+func zoneRequirement(resource, verb string) error { return nil }
+
+func h(checks []func(string, string) error) {
+	for _, zoneRequirement := range checks {
+		_ = zoneRequirement("zones", "sign")
+	}
+}
+`},
+		unrecognized: "zones.sign",
+	}, {
+		name: "approved function name shadowed by a method receiver",
+		files: map[string]string{"internal/api/a.go": `package api
+
+func zoneRequirement(resource, verb string) error { return nil }
+
+type requirementFunc func(string, string) error
+
+func (zoneRequirement requirementFunc) check() {
+	_ = zoneRequirement("zones", "delete")
+}
+`},
+		unrecognized: "zones.delete",
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
@@ -472,8 +498,9 @@ var permissionCheckTypes = []checkSymbol{
 // function nobody calls still counts), a check whose resource or verb is
 // computed is not seen and needs a route declaration or a reservation, and
 // it reads syntax, not types or lexical scope. Interface methods and named
-// struct fields can make selector calls ambiguous; parameters, named results,
-// short declarations, and var bindings can make bare calls ambiguous.
+// struct fields can make selector calls ambiguous; receivers, parameters,
+// named results, short declarations (including range), and var bindings
+// can make bare calls ambiguous.
 func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string, dirs ...string) (found, unrecognized map[string][]string) {
 	t.Helper()
 	const modulePrefix = "github.com/robertherbaugh/kudurru/"
@@ -601,9 +628,17 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 					}
 				}
 			}
+			declareBareNames := func(exprs ...ast.Expr) {
+				for _, expr := range exprs {
+					if id, ok := expr.(*ast.Ident); ok {
+						declare(id.Name, "!")
+					}
+				}
+			}
 			for _, decl := range f.Decls {
 				if fd, ok := decl.(*ast.FuncDecl); ok {
 					declare(fd.Name.Name, receiver(fd))
+					declareFields(fd.Recv, "!")
 				}
 			}
 			// Record look-alikes even when a field's type or a binding's value
@@ -619,13 +654,12 @@ func handlerPermissionChecks(t *testing.T, perms *rbac.Permissions, root string,
 					declareFields(n.Params, "!")
 					declareFields(n.Results, "!")
 				case *ast.AssignStmt:
-					if n.Tok != token.DEFINE {
-						break
+					if n.Tok == token.DEFINE {
+						declareBareNames(n.Lhs...)
 					}
-					for _, lhs := range n.Lhs {
-						if id, ok := lhs.(*ast.Ident); ok {
-							declare(id.Name, "!")
-						}
+				case *ast.RangeStmt:
+					if n.Tok == token.DEFINE {
+						declareBareNames(n.Key, n.Value)
 					}
 				case *ast.GenDecl:
 					if n.Tok != token.VAR {
