@@ -140,6 +140,7 @@ type terminatingLease struct {
 	providerCut bool
 	// forgetTook is how long the last Forget that committed took.
 	forgetTook time.Duration
+	deleteTook time.Duration
 }
 
 // forgetChunk is how many operations the next Forget of this lease carries.
@@ -178,7 +179,16 @@ var errYield = errors.New("integration cleanup: run yields")
 // progress always goes on, so a slow store still moves.
 func (h *Host) yields(ctx context.Context, st *terminatingLease) bool {
 	deadline, ok := ctx.Deadline()
-	return ok && st.progress && time.Until(deadline) < max(st.forgetTook*3/2, h.opts.OperationTimeout/8)
+	return ok && st.progress && time.Until(deadline) < h.cleanupCommitReserve(st)
+}
+
+func (h *Host) yieldsBeforeDelete(ctx context.Context, st *terminatingLease, applied int) bool {
+	deadline, ok := ctx.Deadline()
+	return ok && st != nil && applied > 0 && time.Until(deadline) < st.deleteTook+h.cleanupCommitReserve(st)
+}
+
+func (h *Host) cleanupCommitReserve(st *terminatingLease) time.Duration {
+	return max(st.forgetTook*3/2, h.opts.OperationTimeout/8)
 }
 
 // forget runs one Forget of the lease and notes whether the run's bound
@@ -646,7 +656,7 @@ func (h *Host) cleanupRecords(ctx context.Context, j *job, f frame, g ExecutionG
 	result.Applied, result.Pending = applied.Applied, applied.Pending
 	st.summary.RecordSetsDeleted += applied.Applied
 	st.progress = st.progress || applied.Applied > 0
-	if applyErr != nil {
+	if applyErr != nil && !errors.Is(applyErr, errYield) {
 		return false, failed(ctx, ReasonCleanupFailed, result, applyErr)
 	}
 	if result.Applied > 0 {

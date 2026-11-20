@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"reflect"
 	"slices"
 	"strconv"
@@ -21,6 +22,42 @@ import (
 	"github.com/robertherbaugh/kudurru/internal/store"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func TestTerminatingSlowCommandsMakeDurableProgress(t *testing.T) {
+	if os.Getenv("KUDURRU_INTEGRATION_SLOW_CLEANUP") != "1" {
+		t.Skip("set KUDURRU_INTEGRATION_SLOW_CLEANUP=1 for the production-deadline cleanup regression")
+	}
+	f := newCleanupFixture(t, cleanupObject("sink", "Delete", true), func(f *cleanupFixture) {
+		f.records = 2
+		f.productionCommandLatency = true
+		f.patience = 2 * time.Minute
+	})
+	if f.h.opts.CaptureTimeout != 10*time.Second || f.h.opts.OperationTimeout != 30*time.Second {
+		t.Fatal("diagnostic must run at production bounds")
+	}
+	f.awaitPublished()
+	if rows := f.rows(kinds.KindIntegrationLedger); len(rows) != 2 {
+		t.Fatalf("expected two starting ledger rows, got %d", len(rows))
+	}
+	f.requestDelete()
+	f.await("the first terminating run to report progress", func() bool {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		return slices.ContainsFunc(f.published, func(status InstanceStatus) bool { return status.Phase == PhaseTerminating })
+	})
+	if rows := f.rows(kinds.KindIntegrationLedger); len(rows) != 1 {
+		t.Fatalf("first bounded run: expected 2 -> 1 durable ledger rows, got 2 -> %d", len(rows))
+	}
+	t.Log("first bounded run: durable ledger rows 2 -> 1")
+	summary := f.awaitFinalized()
+	if rows := f.rows(kinds.KindIntegrationLedger); len(rows) != 0 || summary.Runs != 2 || summary.RecordsForgotten != 2 {
+		t.Fatalf("second bounded run: ledger rows=%d summary=%+v", len(rows), summary)
+	}
+	if _, _, deletes, _ := f.w.counts(); deletes != 2 || len(f.owned()) != 0 {
+		t.Fatalf("delete effects=%d, owned records still at provider=%d", deletes, len(f.owned()))
+	}
+	t.Log("second bounded run: durable ledger rows 1 -> 0, two owned deletes total")
+}
 
 // A terminating Integration with the reserved finalizer and policy Delete is
 // ended by one elected job after the ordinary job is joined: it deletes only

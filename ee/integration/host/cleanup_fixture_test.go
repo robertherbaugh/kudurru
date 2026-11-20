@@ -305,7 +305,8 @@ type cleanupFixture struct {
 	forgets  []int
 	// forgetCost is how long each delete of a ledger forget takes; a forget
 	// that its context ends first commits nothing.
-	forgetCost time.Duration
+	forgetCost               time.Duration
+	productionCommandLatency bool
 	// ledgerRefused makes the host's paged reads of ledger rows fail.
 	ledgerRefused atomic.Bool
 	// operationsStalled makes the host's paged reads of operations wait for
@@ -389,6 +390,12 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 	repository, err := ledger.New(ledger.Options{Reader: f.st, Now: f.now, Write: func(ctx context.Context, g ledger.Guard, o store.Object, a store.ApplyOptions) (store.Object, error) {
 		var out store.Object
 		err := f.h.WithLease(ctx, g, func(ctx context.Context) error {
+			switch o.(type) {
+			case *kinds.IntegrationLedger, *kinds.IntegrationOperation:
+				if err := f.delayCleanupCommand(ctx); err != nil {
+					return err
+				}
+			}
 			if _, operation := o.(*kinds.IntegrationOperation); operation && f.writesStalled.Load() {
 				<-ctx.Done()
 				return ctx.Err()
@@ -400,6 +407,9 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 		return out, err
 	}, Delete: func(ctx context.Context, g ledger.Guard, requests []store.DeleteRequest) error {
 		return f.h.WithLease(ctx, g, func(ctx context.Context) error {
+			if err := f.delayCleanupCommand(ctx); err != nil {
+				return err
+			}
 			if f.forgetCost > 0 {
 				select {
 				case <-time.After(f.forgetCost * time.Duration(len(requests))):
@@ -428,7 +438,7 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 	if f.slots == 0 {
 		f.slots = 2
 	}
-	if f.timeout == 0 {
+	if f.timeout == 0 && !f.productionCommandLatency {
 		f.timeout = 5 * time.Second
 	}
 	if f.records == 0 {
@@ -518,6 +528,26 @@ func newCleanupFixture(t *testing.T, object *public.Integration, configure func(
 		}
 	})
 	return f
+}
+
+func (f *cleanupFixture) delayCleanupCommand(ctx context.Context) error {
+	if !f.productionCommandLatency {
+		return nil
+	}
+	f.mu.Lock()
+	terminating := f.object != nil && !f.object.DeletionTimestamp.IsZero()
+	f.mu.Unlock()
+	if !terminating {
+		return nil
+	}
+	timer := time.NewTimer(f.h.opts.OperationTimeout / 8)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return ctx.Err()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // now is a strictly increasing clock: the ledger requires an observation to
