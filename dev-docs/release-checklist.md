@@ -125,10 +125,11 @@ options unchanged.
       `python3 -B hack/release-protection-check.py` and record a passing live
       check for both release branches (for v0.2.0, in the
       [release protection audit](milestones/v0.2/final-acceptance.md#release-protection-audit)).
-      A dry run does not count. If the detailed classic-protection API is
-      inaccessible, record the access gap and have the owner confirm classic
-      protection in Settings; `protected: true` alone does not distinguish
-      rulesets from classic protection.
+      The live check compares every editable ruleset field to the reviewed
+      proposal; a dry run does not count. If the detailed classic-protection
+      API is inaccessible, record the access gap and have the owner confirm
+      classic protection in Settings; `protected: true` alone does not
+      distinguish rulesets from classic protection.
 
 ## 1. Prepare the release commit
 

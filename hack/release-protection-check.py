@@ -126,10 +126,12 @@ def check_github(dry_run):
     if get().get("allow_merge_commit") is not True:
         errors.append("repository settings do not allow merge commits")
 
+    proposal = load(PROPOSAL)
     if dry_run:
-        proposal = load(PROPOSAL)
         if proposal != expected_proposal(live):
             errors.append("proposal differs from live ruleset beyond promotion and merge-only; review drift")
+    elif proposal != {field: live[field] for field in EDITABLE}:
+        errors.append("live ruleset differs from the reviewed proposal")
 
     for branch in BRANCHES:
         effective = get(f"/rules/branches/{branch}")

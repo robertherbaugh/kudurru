@@ -98,6 +98,15 @@ class ReleaseProtectionTest(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertIn("review drift", output)
 
+    def test_live_rejects_unreviewed_scope_even_when_both_branches_pass(self):
+        self.proposal["conditions"]["ref_name"]["exclude"].append("refs/heads/release-branch")
+        with self.fake_github(applied=True):
+            status, output = self.call()
+        for branch in checker.BRANCHES:
+            self.assertIn(f"{branch}: PASS (live policy)", output)
+        self.assertEqual(status, 1, output)
+        self.assertIn("live ruleset differs from the reviewed proposal", output)
+
     def test_live_fails_if_classic_protection_exists_or_has_an_unexpected_error(self):
         for classic_status in (200, 500):
             with self.subTest(classic_status=classic_status), self.fake_github(
