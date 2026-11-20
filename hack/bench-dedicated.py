@@ -31,6 +31,10 @@ CLASS = "shared-cloud-sandbox-v1"
 CALIBRATED = ("cache", "upstream", "udp", "dot", "quic", "persist")
 
 
+class PreflightRefused(ValueError):
+    """A preflight could not establish a host outcome."""
+
+
 def read(path):
     return json.loads(Path(path).read_text())
 
@@ -318,7 +322,108 @@ def validate_transition(host, calibration, approval, transition):
     return document
 
 
-def qualify(original, host, calibration, approval, output, transition=None):
+def validate_preflight_approval(path, host, calibration, approval_hash):
+    content = path.read_bytes()
+    document = json.loads(content)
+    approved(document, "host-equivalence preflight")
+    expected = {"purpose": "host-equivalence-preflight",
+                "calibration_manifest_sha256": runner.digest(calibration / "manifest.json"),
+                "calibration_approval_sha256": approval_hash,
+                "qualification_host_sha256": runner.digest(host),
+                "method_sha256": runner.digest(Path(__file__).resolve())}
+    if any(document.get(key) != value for key, value in expected.items()):
+        raise ValueError("host-equivalence preflight approval does not bind the calibration, approval, host and method")
+    return sha(content)
+
+
+def preflight(original, output, check_approvals):
+    """Screen the original reference only; never feed these reports into paired."""
+    output.mkdir()
+    result = {"preflight_pass": False, "held": False, "outcome": "incomplete",
+              "counted": False, "release_qualified": False,
+              "gate_exits": {}, "receipt_sha256": {}}
+    result_path = output / "result.json"
+    runner.save(result_path, result)
+
+    def measure_at(root, head, argv, label, **kwargs):
+        if reference.checkout_head(root) != head:
+            raise ValueError("source changed before host-equivalence preflight process")
+        with reference.at(root):
+            receipt = runner.measure(argv, output / label, reference.PROCS, **kwargs)
+        if reference.checkout_head(root) != head:
+            raise ValueError("source changed during host-equivalence preflight process")
+        return receipt
+
+    def hold(outcome, message):
+        result.update(held=True, outcome=outcome)
+        raise ValueError(message)
+
+    def require_complete(receipt, label):
+        if not receipt["group_reaped"]:
+            raise ValueError("host-equivalence preflight left descendants: " + label)
+        if receipt["stop_reason"] is not None:
+            hold("resource_stop", f"host-equivalence preflight resource stop: {label} ({receipt['stop_reason']})")
+
+    try:
+        if original == ROOT or reference.checkout_head(original) != reference.REFERENCE:
+            raise ValueError("reference must be the exact original baseline commit")
+        control_head = reference.checkout_head(ROOT)
+        with reference.at(ROOT):
+            version = subprocess.check_output(["go", "version"])
+        with reference.at(original):
+            if subprocess.check_output(["go", "version"]) != version:
+                raise ValueError("reference and control toolchains differ")
+
+        gate = output / "benchgate"
+        build = measure_at(ROOT, control_head, ["go", "build", "-o", str(gate), "./hack/benchgate"],
+                           "benchgate-build", timeout=300)
+        if build["child_exit_code"] != 0 or build["stop_reason"] is not None or not build["group_reaped"]:
+            raise ValueError("host-equivalence preflight could not build benchgate; see benchgate-build.log")
+        gate_hash = runner.digest(gate)
+
+        def check_gate():
+            if runner.digest(gate) != gate_hash:
+                raise ValueError("host-equivalence preflight gate binary changed")
+
+        commands = runner.commands()
+        for scope in reference.SCOPES:
+            receipt = measure_at(original, reference.REFERENCE, commands[scope], scope)
+            require_complete(receipt, scope)
+            if receipt["child_exit_code"] != 0:
+                raise ValueError(f"host-equivalence preflight reference process failed: {scope} "
+                                 f"(exit {receipt['child_exit_code']}); see {scope}.log")
+
+        for report, scopes in reference.REPORTS.items():
+            path = output / (report + ".txt")
+            with path.open("x") as stream:
+                for scope in scopes:
+                    stream.write((output / (scope + ".log")).read_text())
+            argv = [str(gate), "-samples", "1", "-procs", str(reference.PROCS), "-strict-cpu",
+                    "-distinguish-input-errors", "-limits", runner.LIMIT_FILES[report], str(path)]
+            label = report + "-gate"
+            check_gate()
+            receipt = measure_at(ROOT, control_head, argv, label, timeout=300)
+            code = result["gate_exits"][report] = receipt["child_exit_code"]
+            check_gate()
+            require_complete(receipt, label)
+            if code not in (0, 1):
+                raise ValueError(f"host-equivalence preflight gate unable to assess {report} (exit {code}); see {label}.log")
+        check_approvals()
+        if 1 in result["gate_exits"].values():
+            hold("outside_bounds", "host-equivalence preflight outside calibration bounds")
+        result.update(preflight_pass=True, outcome="pass")
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        if result["held"]:
+            raise
+        result["outcome"] = "refused"
+        raise PreflightRefused(str(error)) from error
+    finally:
+        result["receipt_sha256"] = {path.name: runner.digest(path) for path in sorted(output.glob("*.json"))
+                                    if path != result_path}
+        runner.save(result_path, result)
+
+
+def qualify(original, host, calibration, approval, output, transition=None, preflight_approval=None):
     verify_calibration(calibration)
     review = read(approval)
     approved(review, "calibration")
@@ -329,17 +434,25 @@ def qualify(original, host, calibration, approval, output, transition=None):
         raise ValueError("qualification host differs from calibration")
     approval_hash = runner.digest(approval)
     transition_hash = runner.digest(transition) if transition else None
+    preflight_hash = None
+    if preflight_approval is not None:
+        preflight_hash = validate_preflight_approval(preflight_approval, host, calibration, approval_hash)
+        if output == original or original in output.parents:
+            raise ValueError("artifacts must be outside the historical checkout")
     original_measure = runner.measure
 
+    def check_approvals():
+        if runner.digest(approval) != approval_hash:
+            raise ValueError("calibration approval changed")
+        if transition and runner.digest(transition) != transition_hash:
+            raise ValueError("host transition approval changed")
+        if preflight_approval is not None and runner.digest(preflight_approval) != preflight_hash:
+            raise ValueError("host-equivalence preflight approval changed")
+
     def measure(*args, **kwargs):
-        def check():
-            if runner.digest(approval) != approval_hash:
-                raise ValueError("calibration approval changed")
-            if transition and runner.digest(transition) != transition_hash:
-                raise ValueError("host transition approval changed")
-        check()
+        check_approvals()
         result = original_measure(*args, **kwargs)
-        check()
+        check_approvals()
         return result
 
     old_limits, old_class = runner.LIMIT_FILES, reference.RUNNER_CLASS
@@ -349,10 +462,15 @@ def qualify(original, host, calibration, approval, output, transition=None):
     runner.measure = measure
     try:
         output.mkdir(parents=True, exist_ok=False)
-        runner.save(output / "dedicated-review.json", {"approval": review, "approval_sha256": approval_hash,
+        dedicated_review = {"approval": review, "approval_sha256": approval_hash,
                     "calibration_manifest_sha256": review["calibration_manifest_sha256"], "host": read(host),
                     "host_transition": transition_review, "host_transition_sha256": transition_hash,
-                    "release_qualified": False})
+                    "release_qualified": False}
+        if preflight_approval is not None:
+            dedicated_review["host_equivalence_preflight_approval_sha256"] = preflight_hash
+        runner.save(output / "dedicated-review.json", dedicated_review)
+        if preflight_approval is not None:
+            preflight(original, output / "preflight", check_approvals)
         return paired.execute(original, output / "paired", "interleaved")
     finally:
         runner.LIMIT_FILES, reference.RUNNER_CLASS, runner.measure = old_limits, old_class, original_measure
@@ -368,6 +486,8 @@ def main():
     parser.add_argument("--approval", type=Path)
     parser.add_argument("--host-transition-approval", type=Path,
                         help="separate human approval binding both hosts and the unchanged calibration")
+    parser.add_argument("--host-equivalence-preflight", type=Path, metavar="APPROVAL.JSON",
+                        help="opt in to the proposed original-reference-only preflight (qualify only)")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
@@ -376,6 +496,8 @@ def main():
                 setattr(args, key, value.resolve())
         if args.output.exists():
             raise ValueError("existing output is refused; retain every attempt")
+        if args.host_equivalence_preflight is not None and args.phase != "qualify":
+            raise ValueError("--host-equivalence-preflight is only available with qualify")
         if args.phase == "inspect-host":
             runner.save(args.output, {"identity": host_identity(), "physical_host": "", "vm_id": "",
                         "cpu_reservation": "", "isolation_evidence": "", "guest_image": "",
@@ -390,7 +512,10 @@ def main():
             if args.phase == "calibrate":
                 return calibrate(args.reference, args.later_reference, args.host_record, args.output)
             return qualify(args.reference, args.host_record, args.calibration, args.approval, args.output,
-                           args.host_transition_approval)
+                           args.host_transition_approval, args.host_equivalence_preflight)
+    except PreflightRefused as error:
+        print("Dedicated benchmark refused:", error, file=sys.stderr)
+        return 1
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError) as error:
         print("Dedicated benchmark held:", error, file=sys.stderr)
         return 1

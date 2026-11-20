@@ -94,6 +94,7 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 | Item | Source | Target |
 |---|---|---|
 | Bench job on a fixed runner class: the class-parameterized workflow and collector are implemented and the owner chose Ubicloud 8-core (F63). Open: the paired and fixed-class runs on the final head (G23, D383); earlier paired runs failed cache hit and Set latency | blocking, store-kube spikes; hardening report; F63 | v0.2 |
+| G23: D416 proposes an opt-in, original-reference-only host preflight before D412 timing. Owner adoption is pending; workflows and qualification remain unchanged by default | [Host-equivalence preflight (proposed)](../bench/README.md#host-equivalence-preflight-proposed); #176 | v0.2 |
 
 ## Deployment (binary behavior the chart and compose files need)
 
