@@ -15472,6 +15472,11 @@ from that response to NXDOMAIN (112 probes, 56 SERVFAIL, no NOERROR). This
 measures the observed serving window, including RPZ rebind/publication, not
 the compiler in isolation or a hosted latency bound.
 
+Removing the append of `Decision.PendingBlockLists()` in
+`internal/servingbuild/dns.go` and running this test with `-count=3` also
+passed each time. The mounted result therefore does not independently test
+SQLite's pending-list selector; the production selector stays in place.
+
 `TestPendingBlockListsReachTheDecision` reproduces download-only and
 disabled-source lists making an uncompiled decision filter on `ce3ab6e2`.
 Only a list with an enabled RPZ source now counts as pending coverage; downloaded

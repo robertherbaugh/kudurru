@@ -55,8 +55,8 @@ type Decision struct {
 	// Selection holds the policy's lists resolved against the compiled
 	// lists of the same snapshot; nil when no policy applies.
 	Selection *blocking.Selection
-	// pending are referenced BlockLists that are not compiled yet, by
-	// object ID; see PendingBlockLists.
+	// pending holds object IDs for referenced BlockLists with an enabled RPZ
+	// source that are not compiled yet; see PendingBlockLists.
 	pending []string
 	filters bool
 	lists   map[string]*ListInfo
@@ -150,8 +150,8 @@ type compiledPolicy struct {
 	// allow and block are the resolved snapshot names of allowListRefs and
 	// blockListRefs.
 	allow, block []string
-	// pending are the blockListRefs ("namespace/name") that exist but are
-	// not compiled yet (Index.NotLoaded).
+	// pending holds the blockListRefs ("namespace/name") with an enabled RPZ
+	// source that are not compiled yet; a subset of Index.NotLoaded.
 	pending         []string
 	rewrites        []*responsepolicy.Rewrite
 	response        *responsepolicy.Overrides
