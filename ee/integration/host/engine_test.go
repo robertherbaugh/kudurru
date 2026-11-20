@@ -298,6 +298,65 @@ func TestWithLeasePinsExactGuardAndPropagatesLoss(t *testing.T) {
 	}
 }
 
+func TestReviewedRecoveryAbandonsOnlyWhenAcknowledgedEffectsAreGone(test *testing.T) {
+	for _, mode := range []string{"gone", "still-present", "resumable-provider"} {
+		test.Run(mode, func(test *testing.T) {
+			host, job, publisher, _, now := engineFixture(test)
+			ctx := test.Context()
+			frame, guard, _ := host.captured(job)
+			destination := publisher.pubs[0].Destination
+			var intent *kinds.IntegrationOperation
+			publisher.apply = func(_ context.Context, op *kinds.IntegrationOperation) (kinds.Receipt, error) {
+				intent = op
+				fact := kinds.TargetResult{Target: op.Spec.After.Targets[0], ProviderID: "acknowledged", Applied: true}
+				return kinds.Receipt{ObservedAt: *now, Targets: []kinds.TargetResult{fact}}, ErrProvider
+			}
+			if result, err := host.sync(ctx, job, frame, guard, ""); !errors.Is(err, ErrProvider) || result == nil || result.Pending != 1 {
+				test.Fatal("partial create was not reserved", result, err)
+			}
+			*now = now.Add(time.Second)
+			if mode == "still-present" {
+				row := intent.Spec.After.DeepCopy()
+				row.DNSName = "moved.example.com."
+				row.Targets = row.Targets[:1]
+				publisher.remote[destination] = RemoteSnapshot{Complete: true, Records: []plan.RemoteRecord{{Endpoint: *row, IDs: []string{"acknowledged"}}}}
+			}
+			if mode == "resumable-provider" {
+				job.provider = &fakeRecovery{fakePublisher: publisher, recover: func(context.Context, *kinds.IntegrationOperation, RemoteSnapshot) (kinds.Receipt, error) {
+					return kinds.Receipt{}, nil
+				}}
+			}
+			result, err := host.recoverPending(ctx, job, frame, guard)
+			if mode == "gone" {
+				if err != nil || result == nil || result.Pending != 0 {
+					test.Fatal("gone acknowledgment did not settle", result, err)
+				}
+			} else if !errors.Is(err, ledger.ErrPending) || result == nil || result.Pending != 1 {
+				test.Fatal("abandon accepted without the required proof", result, err)
+			}
+			if resume, ok := job.provider.(*fakeRecovery); ok && resume.recoveries != 1 {
+				test.Fatal("resumable provider did not get its recovery path", resume.recoveries)
+			}
+			row, err := host.opts.Ledger.ReadLedger(ctx, intent.Spec.Record)
+			if err != nil || (row.Spec.Pending == nil) != (mode == "gone") || publisher.calls != 1 {
+				test.Fatal("unexpected ledger state or replay", row, err, publisher.calls)
+			}
+			op, err := host.opts.Ledger.ReadOperation(ctx, intent.Spec.OperationID)
+			if err != nil {
+				test.Fatal(err)
+			}
+			fact := op.Spec.Receipt.Targets[0]
+			if mode == "gone" {
+				if op.Spec.AbandonedAt.IsZero() || fact.Applied || fact.ErrorClass != ledger.ErrorUndone || fact.ProviderID != "acknowledged" {
+					test.Fatal("gone acknowledgment was not recorded as undone", op.Spec)
+				}
+			} else if !op.Spec.AbandonedAt.IsZero() || !fact.Applied {
+				test.Fatal("pending acknowledgment was changed", op.Spec)
+			}
+		})
+	}
+}
+
 type fakeRecovery struct {
 	*fakePublisher
 	recover    func(context.Context, *kinds.IntegrationOperation, RemoteSnapshot) (kinds.Receipt, error)

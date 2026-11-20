@@ -683,23 +683,25 @@ is deleted. If a create is not acknowledged, the sync answers
 `integration_uncertain` and nothing is retried. The policy it may have made is
 never treated as owned (it shows as a conflict), and further reviewed syncs
 are refused until the next poll finds the site exactly as before the intent.
-Removing such a policy in UniFi lets that happen. A changed address that was
-not acknowledged settles by itself at the next poll, without a write. The same
-holds for a record with several addresses whose creation stopped part way (a
-failed, refused or timed-out second create): the policies already
-acknowledged are this Integration's unfinished work, so they are not
+Removing such a policy in UniFi lets that happen. If a multi-address create
+stops part way (for example, a failed, refused, or timed-out second create),
+the policies already acknowledged are this Integration's unfinished work, so they are not
 conflicts, but they keep the intent pending. Remove them in UniFi; the next
 poll, finding the site exactly as before and none of those policies left,
 settles the intent without a write, and the record previews as a create
-again. An update or delete that stopped part way (one policy of the record
-was changed or removed, and a later write failed) leaves no acknowledged
-policy for the poll to look for. The intent stays pending until the site
-shows either exactly the state before the intent, with the same policy IDs,
-or the state the intent was writing. A removed policy cannot come back with
-its ID, so finish such a change in UniFi instead: make the record's
-remaining policies what the preview showed (or remove them, for a delete),
-and the next poll confirms the intent without a write. Every failed write, including a definite refusal by the controller, is
-reported as `integration_uncertain`; a record the controller keeps refusing
+again. Updates and deletes operate on already-owned policy IDs. If the
+response is lost but the immediate reread shows the intended state, the
+ledger can confirm the change even though the command reports uncertainty.
+If that read is unavailable or the site shows a partial result, the intent
+stays pending. A later complete poll abandons it if the site shows the exact
+previous state with the same policy IDs, or confirms it if the site shows
+the intended state. A removed policy cannot come back with its ID, so finish
+that change in UniFi instead: make the remaining policies match the preview
+(or remove them, for a delete). A foreign policy at that record's name can
+block settlement; kudurru does not change it. The poll issues no writes, and
+a fresh preview is required for a new sync. Every failed write, including a
+definite refusal by the controller, is reported as `integration_uncertain`;
+a record the controller keeps refusing
 stops each sync at that record until you exclude it.
 
 **DHCP DNS servers.** With `dhcpDNSServers`, the `dhcp-dns-servers` action

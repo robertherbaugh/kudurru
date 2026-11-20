@@ -33,7 +33,23 @@ func TestIntegrationAdminActualUniFiTLSObservation(t *testing.T) {
 	review := api.IntegrationReview{UID: string(f.d.UID), Revision: f.d.ResourceVersion, Mode: "observe"}
 	w := integrationAdminCall(t, router, f, http.MethodPost, "/integrations/default/inventory/sync", review, f.token)
 	if w.Code != http.StatusOK {
-		t.Fatal("actual UniFi source operation refused", w.Code)
+		var failure struct {
+			Error struct {
+				Key  string
+				Hint json.RawMessage
+			}
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &failure); err != nil {
+			t.Fatalf("actual UniFi source operation refused: HTTP %d, invalid error JSON: %v", w.Code, err)
+		}
+		var hint api.IntegrationExecutionResult
+		if failure.Error.Key == "integration_uncertain" {
+			if err := json.Unmarshal(failure.Error.Hint, &hint); err != nil {
+				t.Fatalf("actual UniFi source operation refused: HTTP %d, invalid uncertain outcome: %v", w.Code, err)
+			}
+		}
+		t.Fatalf("actual UniFi source operation refused: HTTP %d key=%q requests=%d committed=%t published=%t clients=%d",
+			w.Code, failure.Error.Key, calls.Load()-before, hint.SourceCommitted, hint.SourcePublished, hint.Clients)
 	}
 	var result api.IntegrationExecutionResult
 	if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
