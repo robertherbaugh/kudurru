@@ -136,8 +136,8 @@ The deb, rpm and apk packages install `/usr/bin/kudurru`, the unit
 `/etc/kudurru/kudurru.env` (both kept on upgrade) and create the `kudurru`
 system user. The unit runs as that user with only `CAP_NET_BIND_SERVICE`,
 `ProtectSystem=strict`, `StateDirectory=kudurru` (`/var/lib/kudurru`) and
-`RuntimeDirectory=kudurru` (`/run/kudurru`). The package never starts the
-service by itself:
+`RuntimeDirectory=kudurru` (`/run/kudurru`). A fresh install does not start
+the service; an upgrade restarts it if it was already running. To start it:
 
 ```sh
 sudo sh -c 'umask 027; openssl rand -base64 32 > /etc/kudurru/encryption_key'
@@ -149,3 +149,10 @@ kudurru health --ready
 
 If systemd-resolved holds :53 on the host, disable its stub listener
 (`DNSStubListener=no` in `/etc/systemd/resolved.conf`) first.
+
+Removing a deb or rpm stops and disables the service. On Debian-based systems,
+`apt-get remove kudurru` keeps the packaged config files and `apt-get purge
+kudurru` deletes them. RPM has no purge step: `rpm -e kudurru` saves edited
+packaged config files with a `.rpmsave` suffix. Neither package manager removes
+the system account, `/var/lib/kudurru`, or operator-created files such as the
+encryption key. Back up and remove those separately if decommissioning the node.

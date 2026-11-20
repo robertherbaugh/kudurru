@@ -236,7 +236,7 @@ The separate AD/Windows deferral is D353.
 These gate the GA release (an rc may ship without them, listed as known
 gaps in the notes).
 
-Two former items here run on the CI runners (Ubicloud, Ubuntu 24.04) now:
+Checks on the CI runners (Ubicloud, Ubuntu 24.04):
 
 - [ ] **edge-check** (`edge` workflow, no `continue-on-error` since the v0.1
       fix round): `make edge-check` builds the kudurru image and both
@@ -280,6 +280,14 @@ Two former items here run on the CI runners (Ubicloud, Ubuntu 24.04) now:
       (PROXYv2). It skips docs-only changes the way `ci` does; make it a
       required check once it has a record of green runs. Not covered: the
       three-host `ha/` files (host networking and a VIP).
+- [ ] **packages** (`packages` workflow, `hack/package-lifecycle.sh`):
+      install checksum-verified v0.1.0, start, run `kudurru doctor` and
+      loopback DNS over UDP and TCP, restart, upgrade to the unsigned
+      snapshot with edited config, and remove. DEB runs on the Ubuntu VM
+      and also checks purge; RPM runs in a Rocky Linux systemd container
+      and checks saved config after erase. Review the `package-lifecycle`
+      artifact for both package hashes per format. Propose making the check
+      required only after a record of green hosted runs (#167).
 
 On the owner's hardware:
 
@@ -423,8 +431,10 @@ publish.yml does not change its result), or, for a scan finding, fix it on
       <version>` and `cosign verify` on the chart reference; `helm install` on
       the kind cluster from section 3.
 - [ ] CRDs: `kubectl apply --server-side -f crds.yaml` from the release assets.
-- [ ] Packages: install the deb or rpm on a VM, `systemctl start kudurru`,
-      `kudurru doctor`.
+- [ ] Packages: verify the release checksums and repeat the section 3 lifecycle
+      with the published packages on disposable guests; retain their exact
+      hashes separately. The `packages` workflow tests unsigned snapshots,
+      not the published artifacts.
 
 ## 6. After the release
 
