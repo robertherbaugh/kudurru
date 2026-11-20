@@ -475,19 +475,41 @@ qualification timings or a valid candidate-regression verdict.
 
 ## Cluster tests in the homelab
 
-Go benchmarks run on the fixed runner class above. Tests that need a real
-multi-node Kubernetes cluster (load through a Service, replica spread, rolling
-upgrades, the kube store under load) run in the homelab test cluster instead,
-because hosted runners cannot provide one. The cluster is a vCluster with its own
-API server, etcd and `kudurru.io` CRDs, so it never reads or writes the
-production homelab install. It is defined in the homelab repository at
-`kubernetes/apps/kudurru-test/`, and that directory's README is the runbook.
+Go benchmarks run on the fixed runner class above. Hosted functional coverage
+of a multi-node install already exists: the `kind-metallb` job
+(`.github/workflows/kind.yml`, `hack/kind-e2e.sh`) runs one control-plane node
+and three worker nodes (`hack/kind/cluster.yaml`) as containers on one runner
+VM. It installs both charts with three replicas and MetalLB, then checks DNS
+through the LoadBalancer and a rolling restart under load.
 
-`kudurru.sh install --src <this checkout> --tag dev-<PR>` installs both charts
-from the checkout with a `dev-image` build of the pull request, one replica on
-each of three workers. `kudurru.sh dnsperf cached|miss` runs dnsperf 2.14
-against a no-cache dnsmasq upstream from a pod in the same cluster, and prints
-the image digests and nodes with the result. The hosts are shared with
-production workloads: compare results only with other runs in that cluster.
-They are not release qualification, and they do not change any baseline or
-limit in this directory.
+The homelab test cluster is for scoped diagnostic and functional runs whose
+pods run on homelab Kubernetes workers instead of kind containers, such as a
+load run through a Service against a `dev-image` build. It is a vCluster with
+its own API server, etcd and `kudurru.io` CRDs, separate from the objects of
+the production homelab install. Its workers also run production workloads.
+The vCluster's logical isolation and scheduling do not prove physical host
+placement, and they do not make its numbers comparable with other hosts.
+
+Its runs are not counted. They are not release qualification, they do not
+substitute for cross-host or fixed-runner timing (#143 remains open), and they
+do not change any baseline, limit, calibration or evidence in this directory.
+Compare a result only with other runs in the same cluster.
+
+The cluster is defined in the private `homelab-docker-k8s` repository, in
+`kubernetes/apps/kudurru-test/`. That directory's README is the runbook,
+including access and placement. From a checkout of that repository:
+
+```sh
+kubernetes/apps/kudurru-test/kudurru.sh install --src <this checkout> --tag dev-<PR>
+kubernetes/apps/kudurru-test/kudurru.sh dnsperf cached   # or: miss
+```
+
+`install` installs `deploy/helm/kudurru-crds` and `deploy/helm/kudurru` from
+the checkout named by `--src`. The `dev-<PR>` tag comes from
+`.github/workflows/dev-image.yml`, which builds it only for pull requests from
+this repository that are not from Dependabot and that change a file outside
+`docs/`, `dev-docs/`, `docs-site/`, `website/`, `branding/` and
+`license-server/` (`hack/ci-changes.sh code`). Each push to the pull request
+overwrites the tag; `--digest sha256:...` selects a fixed image instead. Keep
+the image digests that `status` and `dnsperf` print with each result, not the
+tag.
