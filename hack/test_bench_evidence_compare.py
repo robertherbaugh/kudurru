@@ -119,6 +119,39 @@ class EvidenceCompare(unittest.TestCase):
                 self.assertIn(message, completed.stderr)
                 self.assertEqual(completed.stdout, "")
 
+    def test_invalid_cname_limit_rules_fail_without_a_partial_result(self):
+        rules = self.directory / "limits.txt"
+        for case, text in (
+            ("no matching rule", "limit ^BenchmarkLookup100k/ p50-ns 2000\n"),
+            ("overlapping rules", "limit ^BenchmarkLookup100k/ p99-ns 2000\nlimit cname p99-ns 1500\n"),
+            ("zero limit", "limit ^BenchmarkLookup100k/ p99-ns 0\n"),
+        ):
+            with self.subTest(case=case):
+                rules.write_text(text, encoding="utf-8")
+                completed = self.invoke(FINAL, FINAL, "--limits", rules)
+                self.assertEqual(completed.returncode, 1)
+                self.assertIn("expected one positive limit for BenchmarkLookup100k/cname p99-ns", completed.stderr)
+                self.assertEqual(completed.stdout, "")
+
+    def test_headroom_requires_cname_p99_in_both_recordings(self):
+        missing = self.write_csv("missing-cname-p99.csv", [
+            ["reference", "blocking-zone", CNAME, "p50-ns", 95, 97, 100, 103, 105, 100],
+        ])
+        for before, after in ((missing, FINAL), (FINAL, missing)):
+            with self.subTest(before=before.name, after=after.name):
+                completed = self.invoke(before, after, "--limits", LIMITS)
+                self.assertEqual(completed.returncode, 1)
+                self.assertIn("CNAME p99 is missing from one or both recordings", completed.stderr)
+                self.assertEqual(completed.stdout, "")
+
+    def test_historical_archive_rejects_candidate_role(self):
+        for before, after, option in ((ARCHIVE, FINAL, "--before-role"), (FINAL, ARCHIVE, "--after-role")):
+            with self.subTest(option=option):
+                completed = self.invoke(before, after, option, "candidate")
+                self.assertEqual(completed.returncode, 1)
+                self.assertIn("historical .tar.gz with role reference", completed.stderr)
+                self.assertEqual(completed.stdout, "")
+
     def write_archive(self, members):
         path = self.directory / "fixture.tar.gz"
         with tarfile.open(path, "w:gz") as archive:
