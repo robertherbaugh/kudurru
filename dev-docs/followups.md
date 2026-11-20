@@ -272,3 +272,38 @@ none is replayed. The held-pull refusals and the uncertain result name the
 primary; the existing lifetime-expiry refusals do not. No wording, production
 timing, or 200-document process-test expectation changed. These runs are
 local evidence only; no live or independent-host acceptance was run.
+
+### Tracing/cache failure attribution (#165)
+
+The [hosted failure](https://github.com/robertherbaugh/kudurru/actions/runs/43514296652/job/132192391544)
+on November 13, 2026, tested `531bffd0`. The `go test 1/2` log reported:
+
+```text
+--- FAIL: TestRunServeTracingThroughCacheAndRace (4.52s)
+    serve_tracing_cache_test.go:218: trace 7479c20d94664b9ce2cff08616a423c2: span kudurru.dnssec ends before it starts
+```
+
+The log has no raw OTLP timestamps to attribute that individual failure to
+a particular interleaving or clock change. A second failure mentioned in
+the audit has no attributable run or assertion in the retained evidence.
+
+On November 20, 2026, the unmodified race-enabled test passed 30/30 on
+`ce3ab6e2` with five available CPUs and 30/30 on CPU 0 with `GOMAXPROCS=1`.
+A temporary `go test -overlay` on the same source forced the detached
+prefetch to start its `kudurru.dnssec` span after the answer cutoff was
+captured but before `Trace.Finish`. The still-open span got an end before
+its start: wall delta −90,058 ns, monotonic delta −90.056 µs. The unchanged
+mounted test failed at the same assertion. The same forced ordering
+passed after clipping detached span timestamps to the answer. This is
+local, controlled reproduction of a mechanism, not a reconstruction of
+the original hosted timestamps. No deadline or observation was relaxed.
+
+The deterministic unit regression and the tracing and pipeline suites
+passed under race with the fix. The local `BenchmarkTracedChain` allocation
+remeasurement on `ce3ab6e2` and the fix is in the
+[tracing guide](../docs/deploy/tracing.md#what-tracing-costs-a-query).
+The four existing slow-exporter regressions also passed locally under race:
+`TestSlowExporterNeverBlocksFinish`,
+`TestSinkFanoutBlockedSinkNeverStallsPrimaryOrTail`,
+`TestHTTPSinkStalledDestinationLosesOnlyItsOwnQueries`, and
+`TestRunServeQuerylogSinksStalledFailingAndReload`.
