@@ -423,3 +423,52 @@ retry. It reads no baseline, runs no qualification gate and always records
 `release_qualified: false`. A diagnostic success cannot close D383/D412, reset a
 baseline or supersede a failed formal recording. A causal fix or a separately
 reviewed method change remains necessary before another formal measurement.
+
+## Final-source CNAME diagnosis (#175)
+
+**`release_qualified: false`.** The retained November 16, 2026 failure and the
+[static and local diagnostic results](../dev-docs/milestones/v0.2/final-acceptance.md#local-zone-hot-path-diagnosis-175)
+are distinct. The original reference's CNAME p99 went from 1,890 ns at
+calibration (5.5% headroom) to 2,187 ns in the failed run under the unchanged
+2,000 ns maximum. The local comparison did not isolate a source latency cost.
+
+From the repository root, reproduce the retained ratios without timing:
+
+```sh
+evidence=dev-docs/milestones/v0.2/evidence/2026-11-16-final-source
+vectors="$evidence/performance-corrected-metric-vectors.csv"
+python3 -I hack/bench-evidence-compare.py \
+  "$evidence/historical-calibration-inputs.tar.gz" "$vectors" --limits bench/limits.txt
+python3 -I hack/bench-evidence-compare.py \
+  "$vectors" "$vectors" --after-role candidate
+```
+
+The first command compares the same source across recordings, and the second
+compares reference and candidate within the final recording. The tool copies
+only the historical `blocking-zone.txt`, `cache.txt` and `upstream.txt` reports
+into a fresh temporary directory, removes it when done and writes JSON to
+stdout. It strips the native `-6` suffix, selects a CSV role before joining on
+`(report, name, unit)`, and divides medians, not individual samples. The
+`summary.ns_time` field covers only `ns/op`, `p50-ns` and `p99-ns`; zero reference
+medians have no defined ratio. The matched count and per-metric vectors include
+other units. `--limits` reads the CNAME p99 ceiling for descriptive headroom
+only. This is not a provenance verifier, gate, or replacement recording.
+
+The local comparison used a temporary detached worktree for `0cc9565e` and
+head `61916ce5`. In each tree, use Go 1.27.4 with `CGO_ENABLED=0` to compile
+`go test -c -o "$binary" ./internal/zone` and collect compiler diagnostics with
+`go build -gcflags=-m ./internal/zone`. Compare `go tool nm -size "$binary"`
+and `go tool objdump -s 'zone\.\(\*Zone\)\.(resolve|answer)$' "$binary"`. The
+local run used fresh processes in reference/head, head/reference,
+reference/head order, with separate logs and CPU profiles:
+
+```sh
+GOMAXPROCS=6 GODEBUG=gctrace=1 "$binary" -test.run '^$' \
+  -test.bench '^BenchmarkLookup100k$' -test.cpu 6 -test.benchmem \
+  -test.benchtime 500ms -test.v -test.cpuprofile "$profile"
+```
+
+Record `nproc`, `/proc/loadavg` and `/proc/pressure/cpu` before and after each
+process, and inspect the profiles with `go tool pprof`. The instrumentation,
+short duration and changing load make these diagnostic observations, not
+qualification timings or a valid candidate-regression verdict.

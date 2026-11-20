@@ -165,6 +165,13 @@ citing the commit.
 | Data race between `TestServingAdoptionActualHTTPFinalExpiryRollsBackAllZones`'s `opts.Now` replacement and the integration host's refresh | HA-FIX | v0.2 |
 | Paired benchmark and fixed-class run on the final head; PR body | G23, G25 | v0.2 |
 
+G23 diagnostic (#175, `release_qualified: false`): the
+[retained-vector diagnosis](milestones/v0.2/final-acceptance.md#retained-vector-diagnosis-175)
+confirms same-source drift beyond the CNAME limit; local profiling isolates
+no source cause. Hit p99 merits a source-isolating diagnostic before any
+separate performance fix. The failed recording stands and G23 remains open under
+[#143](https://github.com/robertherbaugh/kudurru/issues/143).
+
 ## v0.2 completion pass: open at 17b7c87a
 
 Open findings of the packages merged after 68a709e2, up to the qual lane head
