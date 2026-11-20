@@ -5,6 +5,13 @@ supersedes specific historical allegations below and links remaining work to
 issues #122–#133 and #135–#140. Original entries retain their historical evidence; issue
 creation does not waive release requirements.
 
+Package lifecycle (#167, part of #133): the optional `packages` workflow
+exercises maintainer scripts and systemd on an Ubuntu VM and in Rocky Linux.
+Retain a green hosted `package-lifecycle` artifact before proposing a required
+check. The November 16, 2026 RPM rehearsal did not run maintainer scripts or
+systemd, and snapshot results do not replace evidence for the published packages.
+See [the release checklist](release-checklist.md#3-checks-before-ga-ci-and-the-owners-hardware).
+
 For #133, use the [manual release acceptance runbook](milestones/v0.2/manual-acceptance.md)
 for open final-artifact human UI approval, authorized production issuance,
 and expiry/grace evidence. The November 20, 2026 owner decision prefers the

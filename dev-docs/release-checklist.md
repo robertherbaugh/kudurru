@@ -283,7 +283,7 @@ gaps in the notes).
       not feasible, use the owner-agreed [synthetic fallback for expiry/grace only](milestones/v0.2/manual-acceptance.md#synthetic-fallback-for-expiry-and-grace-only).
       It does not satisfy the separate production issuance or trust/signing gate.
 
-Two former items here run on the CI runners (Ubicloud, Ubuntu 24.04) now:
+Checks on the CI runners (Ubicloud, Ubuntu 24.04):
 
 - [ ] **edge-check** (`edge` workflow, no `continue-on-error` since the v0.1
       fix round): `make edge-check` builds the kudurru image and both
@@ -327,6 +327,16 @@ Two former items here run on the CI runners (Ubicloud, Ubuntu 24.04) now:
       (PROXYv2). It skips docs-only changes the way `ci` does; make it a
       required check once it has a record of green runs. Not covered: the
       three-host `ha/` files (host networking and a VIP).
+- [ ] **packages** (`packages` workflow, `hack/package-lifecycle.sh`):
+      install checksum-verified v0.1.0, start, run `kudurru doctor` over
+      HTTPS using the generated local certificate, check loopback DNS over
+      UDP and TCP, restart, and upgrade to the unsigned snapshot with edited
+      config. Verify the snapshot serves a zone from `objects.d`, then
+      remove it. DEB runs on the Ubuntu VM and also checks purge; RPM runs
+      in a Rocky Linux systemd container
+      and checks saved config after erase. Review the `package-lifecycle`
+      artifact for both package hashes per format. Propose making the check
+      required only after a record of green hosted runs (#167).
 
 On the owner's hardware:
 
@@ -470,8 +480,10 @@ publish.yml does not change its result), or, for a scan finding, fix it on
       <version>` and `cosign verify` on the chart reference; `helm install` on
       the kind cluster from section 3.
 - [ ] CRDs: `kubectl apply --server-side -f crds.yaml` from the release assets.
-- [ ] Packages: install the deb or rpm on a VM, `systemctl start kudurru`,
-      `kudurru doctor`.
+- [ ] Packages: verify the release checksums and repeat the section 3 lifecycle
+      with the published packages on disposable guests; retain their exact
+      hashes separately. The `packages` workflow tests unsigned snapshots,
+      not the published artifacts.
 - [ ] Match the published asset and executable SHA256 to the
       [artifact-bound manual acceptance records](milestones/v0.2/manual-acceptance.md).
       If the bytes differ, verify the published bytes and repeat the affected

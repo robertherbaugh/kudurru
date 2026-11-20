@@ -1,0 +1,89 @@
+name: packages
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: packages-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  changes:
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: filter
+        shell: bash
+        run: hack/ci-changes.sh code | tee -a "$GITHUB_OUTPUT"
+  package-lifecycle:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubicloud-standard-2-ubuntu-2404
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install package test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y adduser dnsutils jq make openssl podman shellcheck
+          shellcheck hack/package-lifecycle.sh
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.0
+      - id: version
+        run: printf 'tag=v%s\n' "$(cat VERSION)" >> "$GITHUB_OUTPUT"
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          distribution: goreleaser
+          version: v2.18.3
+          args: release --snapshot --clean --parallelism=2 --skip=publish,sign,ko,docker,sbom,archive
+        env:
+          GOMAXPROCS: '2'
+          GORELEASER_CURRENT_TAG: ${{ steps.version.outputs.tag }}
+      - name: Verify and stage released and candidate packages
+        id: prepare
+        run: |
+          hack/package-lifecycle.sh prepare "$GITHUB_WORKSPACE/dist" "$RUNNER_TEMP/package-inputs"
+          mkdir "$RUNNER_TEMP/package-evidence"
+      - name: DEB on the Ubuntu VM
+        run: |
+          sudo hack/package-lifecycle.sh deb "$RUNNER_TEMP/package-inputs" "$RUNNER_TEMP/package-evidence/deb.json" \
+            2>&1 | tee "$RUNNER_TEMP/package-evidence/deb.log"
+      - name: RPM in Rocky Linux with systemd PID 1
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        run: |
+          sudo hack/package-lifecycle.sh rocky "$RUNNER_TEMP/package-inputs" "$RUNNER_TEMP/package-evidence/rpm.json" \
+            2>&1 | tee "$RUNNER_TEMP/package-evidence/rpm.log"
+      - name: Record combined lifecycle result
+        run: |
+          cd "$RUNNER_TEMP/package-evidence"
+          jq -s --arg commit "$GITHUB_SHA" '{commit: $commit,
+            maintainerScriptsRun: all(.[]; .maintainerScriptsRun),
+            systemdLifecycleRun: all(.[]; .systemdLifecycleRun), packages: .}' \
+            deb.json rpm.json > package-lifecycle-result.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        with:
+          name: package-lifecycle
+          path: ${{ runner.temp }}/package-evidence/
+          if-no-files-found: error
