@@ -207,6 +207,12 @@ term (F28-HISTORY-RECHECK, D369).
 
 ## v0.2 completion pass: open at 7663c957
 
+The F09B-OPEN joined budget error and rotation timing now have
+[local envtest and host evidence](milestones/v0.2/evidence/2026-11-20-issue-138/174-integration.md)
+for #174. The host sync path still reports local contention as a provider
+failure despite no request being sent. This supersedes only the untested
+classification and timeout attribution notes, not K3/K7 live qualification.
+
 Open findings of the packages merged after 17b7c87a, up to the PR branch as
 pushed at 7663c957 (November 14, 2026). The
 [completion plan](milestones/v0.2/completion-plan.md) has each package's state

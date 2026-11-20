@@ -3,13 +3,17 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,11 +32,22 @@ import (
 // kubeCloudflarePeer starts the local TLS Cloudflare peer and routes only
 // the Cloudflare origin to it, so the replicas' plain-HTTP Kubernetes clients
 // keep reaching the API gate through the default transport.
-func kubeCloudflarePeer(t *testing.T) *integrationCloudflarePeer {
+func kubeCloudflarePeer(t *testing.T, listingContext ...func(context.Context)) *integrationCloudflarePeer {
 	t.Helper()
 	peer := integrationCloudflareTLS(t)
 	fixture := http.DefaultTransport.(*http.Transport)
 	routed := fixture.Clone()
+	if len(listingContext) != 0 {
+		routed.Proxy = func(request *http.Request) (*url.URL, error) {
+			if request.URL.Host == "api.cloudflare.com" && request.Method == http.MethodGet && request.URL.Path == "/client/v4/zones/"+integrationCloudflareZone+"/dns_records" {
+				listingContext[0](request.Context())
+			}
+			if fixture.Proxy != nil {
+				return fixture.Proxy(request)
+			}
+			return nil, nil
+		}
+	}
 	toPeer := fixture.DialContext
 	routed.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
 		if address == "api.cloudflare.com:443" {
@@ -83,7 +98,13 @@ func kubePeerCounts(peer *integrationCloudflarePeer) (requests, writes int) {
 func TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation(t *testing.T) {
 	env := newKubeIntegrationEnv(t)
 	ctx := t.Context()
-	peer := kubeCloudflarePeer(t)
+	var watchListing atomic.Bool
+	listing := make(chan context.Context, 1)
+	peer := kubeCloudflarePeer(t, func(ctx context.Context) {
+		if watchListing.CompareAndSwap(true, false) {
+			listing <- ctx
+		}
+	})
 	credential := kubeTestCredential(t)
 	for _, object := range []client.Object{
 		&public.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "home"}, Spec: public.DNSZoneSpec{Type: public.ZoneTypePrimary, ZoneName: "example.", Nameservers: []string{"ns.example."}}},
@@ -310,9 +331,13 @@ func TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation(t *testing.T) 
 	// first request; after that request none uses the old credential.
 	const rotated = "test-only-rotated-credential"
 	entered, release = make(chan struct{}), make(chan struct{})
+	releaseRead := sync.OnceFunc(func() { close(release) })
+	defer releaseRead()
 	peer.mu.Lock()
 	peer.accept = []string{"test-only-private-credential", rotated}
 	peer.holdRead, peer.readEntered = release, entered
+	peer.readCanceled, peer.readCanceledAt = false, 0
+	watchListing.Store(true)
 	peer.mu.Unlock()
 	setTarget("published", "192.0.2.85")
 	select {
@@ -320,9 +345,22 @@ func TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation(t *testing.T) 
 	case <-time.After(60 * time.Second):
 		t.Fatal("the source change did not start a sync of the old provider")
 	}
+	var requestCtx context.Context
+	select {
+	case requestCtx = <-listing:
+	default:
+		t.Fatal("no outbound listing context was captured for the held request")
+	}
+	deadline, bounded := requestCtx.Deadline()
+	if !bounded {
+		t.Fatal("the held request has no operation deadline")
+	}
 	staged := filepath.Join(filepath.Dir(credential), "credential.next")
 	if err := os.WriteFile(staged, []byte(rotated), 0600); err != nil {
 		t.Fatal(err)
+	}
+	if err := requestCtx.Err(); err != nil {
+		t.Fatalf("the old provider's held request ended before rotation: %v", err)
 	}
 	if err := os.Rename(staged, credential); err != nil {
 		t.Fatal(err)
@@ -332,7 +370,11 @@ func TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation(t *testing.T) 
 		defer peer.mu.Unlock()
 		return peer.readCanceled
 	})
-	close(release)
+	if cause := context.Cause(requestCtx); !errors.Is(cause, context.Canceled) {
+		t.Fatalf("rotation did not cancel the held request: cause=%v (deadline remaining: %s)", cause, time.Until(deadline))
+	}
+	t.Logf("credential replacement canceled the old provider's held request: cause=%v (deadline remaining: %s)", context.Cause(requestCtx), time.Until(deadline))
+	releaseRead()
 	kubeAwait(t, 60*time.Second, "the rotated credential replaces the provider", func() bool {
 		c, d := ready()
 		return c != nil && c.Status == metav1.ConditionTrue && d.Status.CredentialFingerprints["apiToken"] != "" && d.Status.CredentialFingerprints["apiToken"] != fingerprint
