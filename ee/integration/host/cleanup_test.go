@@ -29,12 +29,27 @@ func TestTerminatingSlowCommandsMakeDurableProgress(t *testing.T) {
 	}
 	f := newCleanupFixture(t, cleanupObject("sink", "Delete", true), func(f *cleanupFixture) {
 		f.records = 2
-		f.productionCommandLatency = true
+		f.commandLatencyDivisor = 8
 		f.patience = 2 * time.Minute
 	})
 	if f.h.opts.CaptureTimeout != 10*time.Second || f.h.opts.OperationTimeout != 30*time.Second {
 		t.Fatal("diagnostic must run at production bounds")
 	}
+	assertTerminatingDurableProgress(t, f)
+}
+
+func TestTerminatingSlowRereadMakesDurableProgress(t *testing.T) {
+	f := newCleanupFixture(t, cleanupObject("sink", "Delete", true), func(f *cleanupFixture) {
+		f.records = 2
+		f.timeout = 4 * time.Second
+		f.commandLatencyDivisor = 16
+		f.cleanupReadDelay = 1100 * time.Millisecond
+	})
+	assertTerminatingDurableProgress(t, f)
+}
+
+func assertTerminatingDurableProgress(t *testing.T, f *cleanupFixture) {
+	t.Helper()
 	f.awaitPublished()
 	if rows := f.rows(kinds.KindIntegrationLedger); len(rows) != 2 {
 		t.Fatalf("expected two starting ledger rows, got %d", len(rows))

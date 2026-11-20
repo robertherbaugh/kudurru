@@ -40,3 +40,16 @@ shared request budget.
 GOMAXPROCS=2 go test -p 2 -count=1 \
   -run '^TestIntegrationDelete(RestartWithHeldBatch|ResumesAfterRestart|FailoverFencesHeldBatchAndSuccessorFinishes)$' ./cmd/kudurru
 ```
+
+## Review regression: reserve the reread
+
+`TestTerminatingSlowRereadMakesDurableProgress` runs by default. It uses a
+four-second test deadline, 250 ms ledger commands, and 1.1-second provider
+reads. The initial fix at `0e6334c2` reserved a forget but not the reread;
+that version left both ledger rows at the cut. With the measured reread in
+the estimate it commits `2 -> 1 -> 0`. The opt-in test still runs at the
+unchanged production bounds and passed again after the review fix.
+
+To reproduce the review negative control, use the overlay command above
+with only `cleanup.go` replaced from `0e6334c2` and select
+`^TestTerminatingSlowRereadMakesDurableProgress$`.
