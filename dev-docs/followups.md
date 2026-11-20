@@ -94,6 +94,7 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 | Item | Source | Target |
 |---|---|---|
 | Repository settings for the release pipeline (cannot live in the repository): a branch ruleset refusing `v*` branch names, required review with CODEOWNERS on `release` and `release-candidate` (`.github/CODEOWNERS` for `/.github/` and `hack/release-tag.sh`), deployment branches for a `release` environment | dev-docs/milestones/m5/security-v0.1-round.md | release operations (verify for each release) |
+| Release promotion rules: owner applies the [reviewed settings proposal](release-checklist.md#release-pipeline) and records a passing read-only check of both branches, including any classic-protection access gap. The proposal and dry run do not verify applied settings. | [#140](https://github.com/robertherbaugh/kudurru/issues/140), part of [#133](https://github.com/robertherbaugh/kudurru/issues/133) | before v0.2.0 promotion or publication |
 
 ## Build, CI, docs
 
