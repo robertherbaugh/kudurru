@@ -14785,7 +14785,16 @@ RPZ-1). The full `./cmd/kudurru` suite (hack/go-test.py) was not run, and the fu
 mounted test still does not read `/info/messages`; Kubernetes nodes use the
 plain path, which the route test covers.
 
-**Review and verification state at 17b7c87a.** The review accepted the package with five findings (one major: the RPZ diagnoses on the SQLite production path of `/info/messages` and `kudurru doctor` had no committed test; two minor: the docs said a pending feed is not applied where the code fails closed, and `expired` also matched a copy discarded for another reason; two nits). The fixer resolved four; the verifier confirmed them and reported three new problems: a discarded copy still showed its serial, counts and ignored owners next to "no usable copy" (fixed at this head by RPZ-OPEN, `6931568c`); the fake API data and a golden file still carry the old pending message (open); and a trailer note. Merged and pushed at `b6e09f9d`. No dashboard view of RPZ feeds; no cluster-wide read; on Kubernetes the dig explanation and policy reads report no RPZ fields.
+**Review and verification state at 17b7c87a.** The review accepted the package with five findings (one major: the RPZ diagnoses on the SQLite production path of `/info/messages` and `kudurru doctor` had no committed test; two minor: the docs said a pending feed is not applied where the code fails closed, and `expired` also matched a copy discarded for another reason; two nits). The fixer resolved four; the verifier confirmed them and reported three new problems: a discarded copy still showed its serial, counts and ignored owners next to "no usable copy" (fixed at this head by RPZ-OPEN, `6931568c`); the fake API data and a golden file still carry the old pending message (open at that revision); and a trailer note. Merged and pushed at `b6e09f9d`. No dashboard view of RPZ feeds; no cluster-wide read; on Kubernetes the dig explanation and policy reads were reported to have no RPZ fields.
+
+**Current projection evidence (#162, November 20, 2026).** On `ce3ab6e2`,
+mounted `TestRunServeKubeRPZFeeds` passed the new HTTP dig assertions
+(`blocked_rpz`, `default/feed`, exact owner and action), but returned zero
+instead of five policy-state entries and reported an unavailable feed as
+ready. Kubernetes policy-state now reads the node-local serving binding.
+`TestRunServeKubeRPZFeeds` (local envtest) and
+`TestRunServeSQLiteRPZFeedDiagnostics` (local SQLite) pin the same dig fields
+and policy-state counts/readiness. This does not qualify hosted deployment.
 
 
 ### CI-RED-3 The four hosted failures of ecd633b1 — November 13, 2026 (no decision number assigned)
@@ -19013,6 +19022,41 @@ What remains open:
 
 **Verification state at 7663c957.** Merged with F28-REVOKE-HOSTED and pushed at `531bffd0`. The verifier resolved six findings (the DNS SERVFAIL while a fence is persisted, `91fca04a`; exact counts; the e2e managed suite passed under race; the live edge tests passed 4 of 4) and left **three unresolved**: (major) a fresh managed recursive node still takes about 9 s to become ready under race, so `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` and `TestOfflineAnchorRecoveredTrustServesAfterRestart` fail their 10 s bound on a loaded machine (a serial startup chain; the integrator has to accept it as load-bound, raise the bound with a reason or change the driver); (minor) the early `RunWriter` return in `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture` is not explained; (minor) the full `./cmd/kudurru` package had not been run with `2fd09d9c`'s fixture change (the integrator's baseline full run on `606a53a8` stopped after five of nine batches; no green full run is recorded). New, low: `settleBootstrap`'s raced count has no upper bound; the e2e `enrolledQuietReview(2 s)` quiet period hides the 503 window after a new zone; any error that is neither a race nor a failure counts as `refused` (F28-REVOKE-HOSTED added `canceled`); one log line lacks `-v`.
 
+
+### F28-OPEN7 retired promotion and abandoned-term return — November 20, 2026
+
+`TestAnchorHistoryPromotedRetiredFollowerKeepsRevocation` runs a signed root
+on loopback with mounted SQLite runtimes. It follows a deny-only REVOKE
+through actual promotion and reopen. Both the retired follower and its
+promoted writer answer empty SERVFAIL for the root DNSKEY. The writer
+rolls back one acquired reply omitting REVOKE without changing the local
+denial or installed owner. It then commits the canonical tombstone over
+that unchanged denial and the old primary installs it through the
+production puller. Both publications admit only the kept key. Six DNSKEY
+acquisitions are required exactly: bootstrap, initial local denial, rejected
+update, canonical revocation, and the two old-primary supervision checks.
+
+`TestClusterResolveAbandonedTermMemberReturnsThroughAnchorPuller` runs
+`cluster resolve --offline --abandon-term` on the stranded SQLite member,
+elects its kept branch, and returns a still-running lost-term primary. The
+lost primary first publishes its actual two-anchor branch. After observing
+the new term and before fetching a replacement, its fenced supervisor sees
+the signed REVOKE, retires that output, and the mounted DNS path answers empty
+SERVFAIL. The production member coordinator then pulls the kept primary's
+exact response. The test checks that the abandoned image is quarantined
+and that the returned follower publishes only the kept trust. Exactly four
+acquisitions occur: bootstrap, canonical REVOKE, fenced local denial, and
+one rejoined follower check. The restarted writer retains its committed
+schedule and exports no acquisition.
+
+`CGO_ENABLED=1 go test -p 2 ./cmd/kudurru -run 'AnchorHistory|ClusterResolve' -race -count=1`
+passed locally in 55.063 s before the mounted-return review follow-up. On
+the initial PR head `c0526a6b5b731aa297b2c84afd571b836753b813`, all 120
+`Anchor|ClusterResolve` command cases also passed under race (344.347 s).
+After review, the mounted-return regression and existing abandoned-member
+runtime test each passed twice under race (32.314 s total). Both new flows
+use a signed synthetic root and in-process runtimes; neither claims hosted,
+live root, or independent-host acceptance. No readiness bound was changed.
 
 ### F28-REVOKE-HOSTED Why the BIND revocation interop test failed on hosted CI — November 13, 2026 (D398)
 
