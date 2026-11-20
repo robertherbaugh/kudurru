@@ -69,17 +69,17 @@ func (d *Decision) SafeSearchOn() bool { return d != nil && d.SafeSearch != nil 
 func (d *Decision) Applies() bool { return d != nil && d.Policy != "" }
 
 // Filters reports whether the decision can block or rewrite anything: a
-// policy applies and it names at least one list or blocked service (a
-// referenced list that is not compiled yet counts), is allow-only, or
+// policy applies and it has a compiled list or blocked service, an
+// uncompiled list with an enabled RPZ source, is allow-only, or
 // enforces safe search. The blocking stage skips decisions
 // that do not filter.
 func (d *Decision) Filters() bool { return d != nil && d.filters }
 
 // PendingBlockLists returns the blockListRefs of the applied policies that
-// exist but are not compiled yet ("namespace/name"), in priority order. They
-// are not in Selection. An RPZ feed does not need the list resolver, so the
-// RPZ selectors require these lists' feeds at once; otherwise a just-started
-// node would forward unfiltered until the list is compiled (D390).
+// have an enabled RPZ source but are not compiled yet ("namespace/name"), in
+// priority order. They are not in Selection. An RPZ feed does not need the
+// list resolver, so the RPZ selectors require these feeds at once; otherwise
+// a just-started node would forward unfiltered until the list is compiled (D390).
 func (d *Decision) PendingBlockLists() []string {
 	if d == nil {
 		return nil
