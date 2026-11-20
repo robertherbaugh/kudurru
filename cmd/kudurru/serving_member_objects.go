@@ -464,16 +464,20 @@ const (
 	memberForwardUnavailable
 )
 
-func classifyMemberForwardRefusal(err error, received bool) memberForwardRefusal {
+// classifyMemberForwardRefusal gives an unverifiable outcome precedence over a
+// definite authorization refusal. sent means an authenticated outcome arrived,
+// not merely that the request was dispatched. Other failures after that outcome
+// are uncertain; without it, authority refusals are distinct from unavailability.
+func classifyMemberForwardRefusal(err error, sent bool) memberForwardRefusal {
 	switch {
 	case errors.Is(err, clusterreplica.ErrOutcomeUnknown):
 		return memberForwardUncertain
 	case errors.Is(err, clusterreplica.ErrForbidden), errors.Is(err, servingauth.ErrDenied):
 		return memberForwardForbidden
-	case received:
+	case sent:
 		return memberForwardUncertain
 	case errors.Is(err, clusterreplica.ErrUnauthorized), errors.Is(err, replication.ErrFenced), errors.Is(err, replication.ErrCAS),
-		errors.Is(err, replication.ErrReadOnly), errors.Is(err, replication.ErrPromotionConflict), errors.Is(err, clusterreplica.ErrExpired):
+		errors.Is(err, replication.ErrReadOnly), errors.Is(err, replication.ErrPromotionConflict):
 		return memberForwardAuthorityChanged
 	default:
 		return memberForwardUnavailable
