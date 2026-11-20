@@ -1464,6 +1464,16 @@ nothing. The controller advances `status.serial`, which drives NOTIFY. API, file
 and integration writers keep their own objects; an UPDATE cannot change their
 records, and the API cannot edit the `dns-update`-owned object.
 
+An upgrade does not remove pre-existing UPDATE records that collide with
+client-group views. The view reservation is used for planning, not for filtering
+what the UPDATE-owned object persists. A Kubernetes operator can inspect
+`rfc2136-<zone>` in the namespace described above and remove only the colliding
+endpoint from `spec.endpoints` through the Kubernetes API, preserving unrelated
+endpoints. Delete the object only if no endpoints should remain. Verify that the
+record set reconciles and that group and default clients receive the expected
+answers. A cross-namespace view can remain `Duplicated` until that collision is
+removed.
+
 ```mermaid
 sequenceDiagram
     participant C as nsupdate client

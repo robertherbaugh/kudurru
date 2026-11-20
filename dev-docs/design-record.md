@@ -2148,12 +2148,4 @@ Spike list for weeks 1-2 (before committing the v0.1 schedule): (a) dnsdist 2.1.
 
 | D416 | Host-equivalence preflight before qualification timing (proposed amendment to D412) | **Proposed, not adopted; requires owner approval.** Off by default. A separate approval binds the immutable calibration manifest, its approval, the qualification host record, and the exact method. Before D412 timing, run one original-reference process per scope at six processors and check the existing fixed-product and calibrated bounds. Pass into the unchanged interleaved engine without counting or reusing preflight values. Retain bounds and measurement resource holds as uncounted under D383 and retire the held host; any new host needs a new reviewed transition record. Operator, tooling, or integrity refusals retain artifacts without a host verdict or permission to retry. Owner adoption of host retirement and one process per scope remains pending. | Host identity alone does not establish that the original reference meets the reviewed bounds on the qualification host. Screening before candidate timing can avoid a full ineligible recording; a single-process result is noisier than the five-process calibration median and does not qualify a release. | Recalibrating from the new host; widening limits; counting preflight samples; auto-selecting another host after a hold. A same-host retry would weaken D383's no-redraw rule and requires explicit approval. |
 
-### D403 UPDATE ownership qualification (#136)
-
-Kubernetes reserves served static view names and types against RFC 2136
-UPDATE, even when the static record set belongs to the UPDATE namespace.
-An accepted default write otherwise displaces a view held by another namespace.
-Neither driver exposes view records to UPDATE prerequisites. SQLite reserves
-additional endpoints (including inactive and publish-only ones) and supports an
-explicitly authorized takeover of colliding dynamic data; Kubernetes neither
-reserves unserved views nor uses that takeover path.
+| D417 | UPDATE ownership qualification (amendment to D403, #136) | Reserve served static Kubernetes view RRsets against RFC 2136 UPDATE in both the UPDATE namespace and other namespaces. Prerequisites remain default-only on both drivers. SQLite also reserves inactive and publish-only endpoints and supports authorized takeovers. | A default write could displace another namespace's view. Keep view reservations separate from the persistence filter so an unrelated UPDATE cannot erase a pre-existing collision. | Automatically removing colliding dynamic records, reserving unserved Kubernetes views, or using SQLite takeovers on Kubernetes. |
