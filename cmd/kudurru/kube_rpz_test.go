@@ -11,6 +11,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/blocking"
+	"github.com/robertherbaugh/kudurru/internal/blocking/parser"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
@@ -28,7 +30,7 @@ func TestKubeRPZBindingReuseAndFailClosed(t *testing.T) {
 	st := memory.New()
 	t.Cleanup(func() { _ = st.Close() })
 	list := &public.BlockList{ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "feed"}, Spec: public.BlockListSpec{Mode: "block",
-		Sources: []public.ListSource{{Format: "rpz", RPZ: &public.RPZSource{ZoneName: "policy.test.", Primaries: []string{"127.0.0.1:5300"}}}}}}
+		Sources: []public.ListSource{{Name: "text", Inline: []string{"ads.example"}}, {Format: "rpz", RPZ: &public.RPZSource{ZoneName: "policy.test.", Primaries: []string{"127.0.0.1:5300"}}}}}}
 	applied, err := st.Apply(t.Context(), list, store.ApplyOptions{Manager: store.ManagerAPI})
 	if err != nil {
 		t.Fatal(err)
@@ -37,6 +39,16 @@ func TestKubeRPZBindingReuseAndFailClosed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	text, err := blocking.Compile(blocking.Spec{Name: "default/feed", Mode: blocking.ModeBlock,
+		Sources: []blocking.Source{blocking.LinesSource("text", parser.FormatAuto, []string{"ads.example"})}}, nil, blocking.CompileOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lists, err := blocking.NewSnapshot(1, text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache.SetLists(lists)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { defer close(done); _ = cache.Start(ctx) }()
@@ -87,6 +99,31 @@ func TestKubeRPZBindingReuseAndFailClosed(t *testing.T) {
 	}
 	if b := k.binding(); !b.available || b.config != live {
 		t.Fatal("a live configuration snapshot made the feed unavailable")
+	}
+	noConfig, err := newKubeRPZ(kubeRPZFixedConfig{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentList := applied.(*public.BlockList)
+	newGeneration, newUID := currentList.DeepCopy(), currentList.DeepCopy()
+	newGeneration.Generation++
+	newUID.UID = "replacement"
+	for _, example := range []struct {
+		name    string
+		binding *kubeRPZ
+		list    *public.BlockList
+		entries int
+	}{
+		{"current revision, unavailable feed", k, currentList, 1},
+		{"stale generation", k, newGeneration, 0},
+		{"stale UID", k, newUID, 0},
+		{"no installed configuration", noConfig, currentList, 0},
+	} {
+		t.Run(example.name, func(t *testing.T) {
+			if entries, ready, projected := example.binding.policyListState(example.list, time.Now()); entries != example.entries || ready || !projected {
+				t.Errorf("entries=%d ready=%t projected=%t; want entries=%d ready=false projected=true", entries, ready, projected, example.entries)
+			}
+		})
 	}
 	// A referenced RPZ list the resolver has not compiled yet is still
 	// selected: the policy decision carries it as pending, so the feed is
