@@ -18195,6 +18195,8 @@ Review fixes (evidence `fix-*.log`):
 
 **Verification state at 7663c957.** Merged and pushed at `2e15060e`. The verifier resolved three findings, including the major, and left **two minor findings unresolved**: with the adapter on but its RBAC missing an external zone is still Ready and empty (only a log warning); the page size is 64 but there is no smaller-page fallback, the 4,096-object and 32 MiB caps and the unfiltered Service list remain, and a refused kind has no metric or zone condition. New: the runbook's `object too large` line is wrong for a truncated page (a decode error, not `store.ErrTooLarge`; open); `SourcesNotRead` replaced a more specific Degraded reason, and its message named a setting that a non-Kubernetes store refuses (both fixed by INT-OPEN2).
 
+**#123 local regression coverage.** `TestRunServeExternalZonesFromKubernetesSources` uses an isolated envtest API server with a restricted identity and revocable source-reader grant. It checks `SourcesIncomplete` and denied-list metrics for all six kinds, retained record sets and DNS answers on two replicas, recovery after restoring the grant, and watch-driven updates. `TestExternalSourceWatchDeniedWithHealthyList` distinguishes denied watches from failed lists. `TestExternalSourceObjectCapReportsObservedObjects` and `TestExternalSourceTruncatedPageIsDecodeFailureNotKindCap` pin the two refusal classes, including the runbook distinction: an oversized page is truncated and fails to decode; it is not `store.ErrTooLarge`. Smaller-page retry and Service selector verification are tracked in #150.
+
 
 ### DASH-INTEGRATIONS Dashboard Integrations page — November 13, 2026 (no new decision; builds on D367, D384, D400)
 

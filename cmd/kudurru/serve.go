@@ -1537,7 +1537,7 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 			return errors.New("externalZones.enabled requires the Kubernetes store")
 		}
 		externalZones, err = k8ssource.New(kubeStore.RESTConfig(), k8ssource.Options{
-			Store: st, Validator: v, Logger: logger.With("component", "external-zones"),
+			Store: st, Validator: v, Registerer: reg, Logger: logger.With("component", "external-zones"),
 			Admit: func(term context.Context) error { return term.Err() },
 		})
 		if err != nil {
@@ -1546,7 +1546,10 @@ func runServe(ctx context.Context, cfg *config.Config, licenseKey string) error 
 	}
 
 	// Controller: leader-only reconcilers (status, serials, Events).
-	ctrlOpts := controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe(), ExternalZoneSources: externalZones != nil, ExternalZoneSourcesUnsupported: kubeStore == nil}
+	ctrlOpts := controller.Options{Events: controller.LogSink{Logger: logger}, Registerer: reg, Logger: logger, KnownService: catalogs.HasService, KnownCategory: catalogs.HasCategory, ServicesChanged: catalogs.Subscribe(), ExternalZoneSourcesUnsupported: kubeStore == nil}
+	if externalZones != nil {
+		ctrlOpts.ExternalZoneSources = externalZones
+	}
 	if complete != nil {
 		// complete.status also reports the endpoints left out for dynamic
 		// ownership on their record sets (committedDynamicOwnership).

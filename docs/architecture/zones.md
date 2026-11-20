@@ -387,6 +387,7 @@ The derived record set carries the source's labels, so the zone's
 flowchart LR
     Sources["Ingress, routes + Gateways, LoadBalancer Services (read-only list and watch)"] --> Adapter["Elected source adapter (bounded pass)"]
     Zones["DNSZones of type external"] --> Adapter
+    Adapter -->|"per-kind list health and watch denials"| Controller
     Adapter -->|"create-only or exact resourceVersion"| Sets["Source-owned DNSRecordSets (managedBy kubernetes-source:UID)"]
     Sets --> Controller["Zone controller: status, serial"]
     Sets --> Cache["Zone cache on every replica"]
@@ -406,6 +407,13 @@ RFC 2136 UPDATE finds no primary zone for the apex and is refused with
 zone controller reports an external zone `Degraded`, reason
 `SourcesNotRead`: it is still served, but only from record sets derived
 earlier, and source changes do not reach it.
+With the adapter enabled, health changes requeue external zones on the
+elected replica. `Degraded{SourcesIncomplete}` lists the problems for the
+source kinds each zone enables, including RBAC denials, unavailable API
+kinds, and exceeded list bounds. A more specific Degraded reason takes
+precedence. This does not change `Ready`, the records, or the serial.
+A new elected term observes sources again rather than publishing results from
+an interrupted pass. Until then, it does not report a new failure or recovery.
 
 Writes follow D303. A record set is written only after the zone and the
 source are confirmed unchanged since the list: the source by UID and
@@ -429,7 +437,8 @@ new pass; without events a pass runs every ten seconds. Passes start at least
 one second apart, so a burst of source events (controllers updating status)
 coalesces into one relist, and a pass that met a concurrent change
 (`conflict`) is retried after that second instead of after the full ten.
-Sources are never written.
+When watch access is denied, periodic lists still run; when access returns,
+watch-driven reconciliation resumes. Sources are never written.
 
 Kubernetes has no transaction across the source, the zone and the record
 sets, so the adapter converges eventually. When the elected replica loses
