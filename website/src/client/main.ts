@@ -2,6 +2,7 @@ import { initTabs, runVisiblePanels } from "./tabs.ts";
 import { initLicenseForm } from "./license.ts";
 import { initTrace } from "./trace.ts";
 import { initPricing } from "./pricing.ts";
+import { initTheme } from "./theme.ts";
 
 function initMenu(): void {
   const button = document.querySelector<HTMLButtonElement>(".menu-toggle");
@@ -16,7 +17,10 @@ function initMenu(): void {
     if ((e.target as Element).closest("a")) set(false);
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") set(false);
+    if (e.key === "Escape" && button.getAttribute("aria-expanded") === "true") {
+      if (nav.contains(document.activeElement)) button.focus();
+      set(false);
+    }
   });
 }
 
@@ -39,6 +43,7 @@ function initCopy(): void {
 
 document.documentElement.classList.add("js");
 initMenu();
+initTheme();
 initCopy();
 initTabs();
 runVisiblePanels();
