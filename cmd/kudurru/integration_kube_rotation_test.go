@@ -17,13 +17,14 @@ import (
 )
 
 type kubeRotationProvider struct {
-	integrationLifecycleSignals
+	*integrationLifecycleSignals
 	oldCredential bool
 }
 
 type integrationLifecycleSignals struct {
 	oldStarted, stopping, allowStop, stopped chan struct{}
 	newProvisioned                           chan bool
+	startedOnce, stoppingOnce, stoppedOnce   sync.Once
 }
 
 func (*kubeRotationProvider) Manifest() integration.Manifest {
@@ -59,7 +60,7 @@ func (*kubeRotationProvider) Check(context.Context) (integration.Status, error) 
 
 func (p *kubeRotationProvider) Start(ctx context.Context) error {
 	if p.oldCredential {
-		close(p.oldStarted)
+		p.startedOnce.Do(func() { close(p.oldStarted) })
 	}
 	<-ctx.Done()
 	return nil
@@ -69,10 +70,10 @@ func (p *kubeRotationProvider) Stop(ctx context.Context) error {
 	if !p.oldCredential {
 		return nil
 	}
-	close(p.stopping)
+	p.stoppingOnce.Do(func() { close(p.stopping) })
 	select {
 	case <-p.allowStop:
-		close(p.stopped)
+		p.stoppedOnce.Do(func() { close(p.stopped) })
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -85,7 +86,7 @@ func TestRunServeKubeCredentialRotationJoinsPreviousStop(t *testing.T) {
 	if err := os.WriteFile(credential, []byte("rotation-old"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	signals := integrationLifecycleSignals{oldStarted: make(chan struct{}), stopping: make(chan struct{}), allowStop: make(chan struct{}), stopped: make(chan struct{}), newProvisioned: make(chan bool, 8)}
+	signals := &integrationLifecycleSignals{oldStarted: make(chan struct{}), stopping: make(chan struct{}), allowStop: make(chan struct{}), stopped: make(chan struct{}), newProvisioned: make(chan bool, 8)}
 	release := sync.OnceFunc(func() { close(signals.allowStop) })
 	gate := newPartitionGate(t, env.rest)
 	cfg := env.replica(t, "rotation", gate, credential)
