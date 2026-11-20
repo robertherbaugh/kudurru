@@ -111,6 +111,13 @@ probe_service() {
   done
 }
 
+rpm_is_newer() {
+  local ordering
+  ordering=$(KUDURRU_RPM_CANDIDATE_EVR="$1" KUDURRU_RPM_RELEASED_EVR="$2" rpm --eval \
+    '%{lua: print(rpm.vercmp(os.getenv("KUDURRU_RPM_CANDIDATE_EVR"), os.getenv("KUDURRU_RPM_RELEASED_EVR")))}') || return
+  [[ $ordering == 1 ]]
+}
+
 lifecycle() {
   local format=$1 inputs=$2 result=$3 released candidate released_sha candidate_sha
   local old_version new_version account config_sha previous purge=false
@@ -138,11 +145,11 @@ lifecycle() {
       [[ $(dpkg-query -W -f='${Status} ${Version}' kudurru) == "install ok installed $old_version" ]] || die 'released DEB is not installed'
       ;;
     rpm)
-      old_version=$(rpm -qp --qf '%{VERSION}-%{RELEASE}' "$released")
-      new_version=$(rpm -qp --qf '%{VERSION}-%{RELEASE}' "$candidate")
-      [[ $new_version != "$old_version" ]] || die 'candidate has the same version as v0.1.0'
+      old_version=$(rpm -qp --qf '%{EVR}' "$released")
+      new_version=$(rpm -qp --qf '%{EVR}' "$candidate")
+      rpm_is_newer "$new_version" "$old_version" || die 'candidate is not newer than v0.1.0'
       rpm -i "$released"
-      [[ $(rpm -q --qf '%{VERSION}-%{RELEASE}' kudurru) == "$old_version" ]] || die 'released RPM is not installed'
+      [[ $(rpm -q --qf '%{EVR}' kudurru) == "$old_version" ]] || die 'released RPM is not installed'
       ;;
   esac
   account=$(id kudurru)
@@ -168,7 +175,7 @@ lifecycle() {
       ;;
     rpm)
       rpm -U "$candidate"
-      [[ $(rpm -q --qf '%{VERSION}-%{RELEASE}' kudurru) == "$new_version" ]] || die 'candidate RPM is not installed'
+      [[ $(rpm -q --qf '%{EVR}' kudurru) == "$new_version" ]] || die 'candidate RPM is not installed'
       ;;
   esac
   printf '%s\n' "$config_sha" | sha256sum --check --strict
