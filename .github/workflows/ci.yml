@@ -239,19 +239,30 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Wait for both sink servers and report versions
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           for url in "$KUDURRU_TEST_CLICKHOUSE_URL/ping" "$KUDURRU_TEST_LOKI_URL/ready"; do
             echo "Waiting for $url"
             curl -fsS --max-time 2 --retry 30 --retry-delay 2 --retry-all-errors --retry-max-time 70 "$url"
           done
-          echo "Sink qualification source: $(git rev-parse HEAD)"
+          echo "Sink qualification source: $(git rev-parse HEAD) (head $HEAD_SHA)"
           printf 'ClickHouse version: '
           curl -fsS --max-time 5 --user "$KUDURRU_TEST_CLICKHOUSE_USER:$KUDURRU_TEST_CLICKHOUSE_PASSWORD" \
             --data-binary 'SELECT version()' "$KUDURRU_TEST_CLICKHOUSE_URL/"
           printf 'Loki build info: '
           curl -fsS --max-time 5 "$KUDURRU_TEST_LOKI_URL/loki/api/v1/status/buildinfo"
       - name: Live query-log sink tests
-        run: go test -count=1 -run TestLive -v ./internal/querylog/sinks/
+        shell: bash
+        run: |
+          log="$RUNNER_TEMP/sinks-tests.log"
+          go test -count=1 -run '^TestLive(ClickHouseReadsTheDocumentedTable|LokiServesTheDocumentedMapping)$' -v ./internal/querylog/sinks/ | tee "$log"
+          for test in TestLiveClickHouseReadsTheDocumentedTable TestLiveLokiServesTheDocumentedMapping; do
+            if ! grep -q "^--- PASS: $test (" "$log"; then
+              echo "Mandatory sink qualification did not pass: $test" >&2
+              exit 1
+            fi
+          done
   # The dashboard SPA (dashboard/, D69): lint, typecheck, unit tests with MSW,
   # the production bundle with its size budget, and the Go embed test
   # against the real bundle.

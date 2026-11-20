@@ -191,7 +191,11 @@ term (F28-HISTORY-RECHECK, D369).
 
 For #131/#164, the informational `sinks` job runs both mandatory live
 tests against pinned ClickHouse 25.8 and Loki 3.7.9 on code changes. Its
-logs identify the tested source and exact server versions. The earlier
+logs identify the tested source and exact server versions. The first
+[hosted `sinks` job](https://github.com/robertherbaugh/kudurru/actions/runs/44802230354/job/136517302300)
+passed both tests with `KUDURRU_REQUIRE_SINK_SERVERS=1` on November 20,
+2026: PR #185 head `6b4b958b`, tested merge source `418f8ede`, ClickHouse
+`25.8.33.6`, and Loki `3.7.9` (`d3b4a2f7`). The earlier
 [final-source result](milestones/v0.2/final-acceptance.md) is evidence for
 `a22255a2`, not a hosted result for this job. Adding `sinks` to `ci-ok`
 requires owner approval.
