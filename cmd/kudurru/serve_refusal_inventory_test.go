@@ -24,6 +24,8 @@ import (
 // mounted fixtures run without DHCP, a VRRP address and a central database.
 func refusalInventorySession(t *testing.T, address, password string) refusalinventory.Client {
 	t.Helper()
+	load := mountedLoad()
+	defer load.logFailure(t)
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +36,7 @@ func refusalInventorySession(t *testing.T, address, password string) refusalinve
 	base := "http://" + address + api.BasePath
 	tsigMountAwaitRead(t, c, base+"/auth/status", nil)
 	var session api.SessionInfo
-	controlMountedRequest(t, c, base, http.MethodPost, "/auth/login", "", api.LoginRequest{Username: "admin", Password: password}, http.StatusOK, &session)
+	staticMountedRequest(t, c, base, http.MethodPost, "/auth/login", "", api.LoginRequest{Username: "admin", Password: password}, http.StatusOK, &session)
 	if session.CSRF == "" {
 		t.Fatal("admin session lacks CSRF")
 	}
@@ -45,6 +47,7 @@ func refusalInventorySession(t *testing.T, address, password string) refusalinve
 // on one shape and reports each answer that the inventory does not explain.
 func refusalInventoryWalk(t *testing.T, shape api.RuntimeShape, c refusalinventory.Client) {
 	t.Helper()
+	load := mountedLoad()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.Base+api.BasePath+"/openapi.json", nil)
@@ -53,16 +56,19 @@ func refusalInventoryWalk(t *testing.T, shape api.RuntimeShape, c refusalinvento
 	}
 	response, err := c.HTTP.Do(request)
 	if err != nil {
-		t.Fatal("served OpenAPI document:", err)
+		t.Fatalf("%s: served OpenAPI document: %v; %s", beforeMountedObservation(err), err, load.load())
 	}
 	document, err := io.ReadAll(response.Body)
 	_ = response.Body.Close()
-	if err != nil || response.StatusCode != http.StatusOK {
-		t.Fatal("served OpenAPI document unavailable", response.StatusCode, err)
+	if err != nil {
+		t.Fatalf("%s: served OpenAPI document body (status=%d): %v; %s", beforeMountedObservation(err), response.StatusCode, err, load.load())
+	}
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("%s: served OpenAPI document status=%d; %s", mountedHTTPOutcome(response.StatusCode), response.StatusCode, load.load())
 	}
 	operations, err := refusalinventory.Operations(document)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("unexpected product response: %v; %s", err, load.load())
 	}
 	refusalInventoryReport(t, shape, c, operations)
 }
@@ -71,15 +77,10 @@ func refusalInventoryWalk(t *testing.T, shape api.RuntimeShape, c refusalinvento
 // answer that the inventory does not explain.
 func refusalInventoryReport(t *testing.T, shape api.RuntimeShape, c refusalinventory.Client, operations []refusalinventory.Operation) {
 	t.Helper()
+	load := mountedLoad()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
 	defer cancel()
 	results, err := c.Walk(ctx, shape, operations)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(results) != len(operations) {
-		t.Fatalf("%s: walked %d of %d operations", shape, len(results), len(operations))
-	}
 	dump := os.Getenv("KUDURRU_REFUSAL_INVENTORY_DUMP") != ""
 	refused, validation, notFound := 0, 0, 0
 	for _, r := range results {
@@ -95,10 +96,16 @@ func refusalInventoryReport(t *testing.T, shape api.RuntimeShape, c refusalinven
 			t.Logf("DUMP %s %s %s %d %s %q %q", shape, r.Operation.ID, r.Operation.Method, r.Answer.Status, r.Answer.Key, r.Answer.Message, r.Answer.Hint)
 		}
 		for _, problem := range r.Problems {
-			t.Error(problem)
+			t.Errorf("%s: %s; %s", mountedHTTPOutcome(r.Answer.Status), problem, load.load())
 		}
 	}
-	t.Logf("%s: %d operations walked, %d answered a declared 501 or 503, %d stopped at request validation, %d answered 404", shape, len(results), refused, validation, notFound)
+	t.Logf("%s: %d/%d operations walked, %d answered 501 or 503, %d stopped at request validation, %d answered 404; %s", shape, len(results), len(operations), refused, validation, notFound, load.load())
+	if err != nil {
+		t.Fatalf("%s: %s: %v; %s", beforeMountedObservation(err), shape, err, load.load())
+	}
+	if len(results) != len(operations) {
+		t.Fatalf("harness failed before observation: %s: walked %d of %d operations; %s", shape, len(results), len(operations), load.load())
+	}
 }
 
 // refusalInventoryConfig is the mounted SQLite fixture with what an operator

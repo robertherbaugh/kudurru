@@ -43,6 +43,7 @@ func (s staticHTTPTrace) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func staticMountedRequest(t *testing.T, client *http.Client, base, method, path, csrf string, body any, want int, out any) {
 	t.Helper()
+	load := mountedLoad()
 	var encoded []byte
 	var err error
 	if body != nil {
@@ -63,22 +64,22 @@ func staticMountedRequest(t *testing.T, client *http.Client, base, method, path,
 	}
 	response, err := client.Do(req)
 	if err != nil {
-		t.Fatalf("static %s %s transport failed: %v", method, path, err)
+		t.Fatalf("%s: %s %s: %v; %s", beforeMountedObservation(err), method, path, err, load.load())
 	}
 	defer func() { _ = response.Body.Close() }()
 	data, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
 	if err != nil {
-		t.Fatal("static response read failed", err)
+		t.Fatalf("%s: %s %s response body (status=%d): %v; %s", beforeMountedObservation(err), method, path, response.StatusCode, err, load.load())
 	}
 	if response.StatusCode != want {
 		var refusal struct {
 			Error api.ErrorBody `json:"error"`
 		}
 		_ = json.Unmarshal(data, &refusal)
-		t.Fatalf("static %s %s status=%d want=%d error=%s message=%s", method, path, response.StatusCode, want, refusal.Error.Key, refusal.Error.Message)
+		t.Fatalf("%s: %s %s status=%d want=%d error=%s message=%s; %s", mountedHTTPOutcome(response.StatusCode), method, path, response.StatusCode, want, refusal.Error.Key, refusal.Error.Message, load.load())
 	}
 	if out != nil && json.Unmarshal(data, out) != nil {
-		t.Fatal("static response decode failed")
+		t.Fatalf("unexpected product response: %s %s status=%d decode failed; %s", method, path, response.StatusCode, load.load())
 	}
 }
 
@@ -123,6 +124,8 @@ func TestStaticClusterRefusesEnrolledDatabase(t *testing.T) {
 // Two actual serve assemblies have independent SQLite histories and local
 // leaders. Only observations poll; every command is dispatched once.
 func TestRunServeStaticTwinsReadOnlyPeerLossRestart(t *testing.T) {
+	load := mountedLoad()
+	defer load.logFailure(t)
 	signed := trustTestKey(t)(license.Claims{Plan: license.PlanPersonal, Nodes: 3})
 	t.Setenv(license.EnvKey, signed)
 	t.Setenv(license.EnvKeyFile, "")
@@ -224,7 +227,7 @@ func TestRunServeStaticTwinsReadOnlyPeerLossRestart(t *testing.T) {
 	defer cancel()
 	reader, _, err := peerClient.OpenList(ctx, b.Listeners.Internal.Address, hex.EncodeToString(digest[:]))
 	if err != nil {
-		t.Fatal("actual peer list body unavailable", err)
+		t.Fatalf("peer list observation failed: %v; %s", err, load.load())
 	}
 	got, readErr := io.ReadAll(reader)
 	closeErr := reader.Close()
@@ -299,6 +302,7 @@ func startLicensedMount(t *testing.T, cfg *config.Config, licenseKey string) fun
 	defer probeCancel()
 	client := &http.Client{Timeout: time.Second}
 	var last string
+	var lastStatus int
 	for {
 		req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, "http://"+cfg.Listeners.Ops.Address+"/healthz/ready", nil)
 		if err != nil {
@@ -309,19 +313,22 @@ func startLicensedMount(t *testing.T, cfg *config.Config, licenseKey string) fun
 			data, _ := io.ReadAll(io.LimitReader(response.Body, 16<<10))
 			_ = response.Body.Close()
 			last = string(data)
+			lastStatus = response.StatusCode
 			if response.StatusCode == http.StatusOK {
-				t.Logf("static server %s ready: %s", cfg.Node.Name, budget)
+				t.Logf("static server %s ready: %s readiness-credit-checks=%d", cfg.Node.Name, budget.load(), budget.creditChecks)
 				return stop
 			}
+		} else {
+			last, lastStatus = err.Error(), 0
 		}
 		if budget.expired(time.Now()) {
-			t.Fatal("static server never ready", cfg.Node.Name, last, budget)
+			t.Fatalf("harness timeout before observation: static server %s never ready; last status=%d detail=%q; %s readiness-credit-checks=%d", cfg.Node.Name, lastStatus, last, budget.load(), budget.creditChecks)
 		}
 		select {
 		case <-done:
-			t.Fatal("static server exited before readiness", cfg.Node.Name, runErr)
+			t.Fatalf("harness failed before observation: static server %s exited before readiness: %v; %s", cfg.Node.Name, runErr, budget.load())
 		case <-probeCtx.Done():
-			t.Fatal("static server never ready", cfg.Node.Name, last, budget)
+			t.Fatalf("harness timeout before observation: static server %s never ready; last status=%d detail=%q; %s readiness-credit-checks=%d", cfg.Node.Name, lastStatus, last, budget.load(), budget.creditChecks)
 		case <-time.After(20 * time.Millisecond):
 		}
 	}
@@ -331,6 +338,7 @@ func startLicensedMount(t *testing.T, cfg *config.Config, licenseKey string) fun
 // Status writes and login enrollment can briefly retire a previously ready cut.
 func awaitStaticPeerReadiness(t *testing.T, client *http.Client, base string) api.List[api.NodeInfo] {
 	t.Helper()
+	load := mountedLoad()
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
 	for {
@@ -353,12 +361,12 @@ func awaitStaticPeerReadiness(t *testing.T, client *http.Client, base string) ap
 				}
 			}
 			if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusServiceUnavailable {
-				t.Fatal("peer observation refused", response.StatusCode)
+				t.Fatalf("%s: GET /nodes status=%d; %s", mountedHTTPOutcome(response.StatusCode), response.StatusCode, load.load())
 			}
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatal("static peers never simultaneously ready", nodes)
+			t.Fatalf("harness timeout before observation: static peers never simultaneously ready; last nodes=%v error=%v; %s", nodes, err, load.load())
 		case <-time.After(20 * time.Millisecond):
 		}
 	}

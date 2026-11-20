@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -54,6 +56,7 @@ type readinessBudget struct {
 	start           time.Time
 	budget, ceiling time.Duration
 	procs           int
+	creditChecks    int
 	run, wait       time.Duration
 	ok              bool
 	stat            func() (run, wait time.Duration, ok bool)
@@ -92,6 +95,9 @@ func (b *readinessBudget) expired(now time.Time) bool {
 		return true
 	}
 	_, wait, ok := b.since()
+	if ok {
+		b.creditChecks++
+	}
 	return !ok || wall-wait/time.Duration(b.procs) > b.budget
 }
 
@@ -101,9 +107,42 @@ func (b *readinessBudget) String() string {
 	run, wait, ok := b.since()
 	wall := time.Since(b.start).Round(time.Millisecond)
 	if !ok {
-		return fmt.Sprintf("wall=%s (no scheduler statistics)", wall)
+		return fmt.Sprintf("wall=%s gomaxprocs=%d (no scheduler statistics)", wall, b.procs)
 	}
 	return fmt.Sprintf("wall=%s process-cpu=%s runqueue-wait=%s gomaxprocs=%d", wall, run.Round(time.Millisecond), wait.Round(time.Millisecond), b.procs)
+}
+
+func mountedLoad() *readinessBudget {
+	return newReadinessBudget(0, 0)
+}
+
+func beforeMountedObservation(err error) string {
+	var timeout interface{ Timeout() bool }
+	if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &timeout) && timeout.Timeout() {
+		return "harness timeout before observation"
+	}
+	return "harness failed before observation"
+}
+
+func mountedHTTPOutcome(status int) string {
+	if status >= 400 {
+		return "product refusal"
+	}
+	return "unexpected product response"
+}
+
+func (b *readinessBudget) load() string {
+	load, err := os.ReadFile("/proc/loadavg")
+	if err != nil {
+		return fmt.Sprintf("%s loadavg=unavailable", b)
+	}
+	return fmt.Sprintf("%s loadavg=%q", b, strings.TrimSpace(string(load)))
+}
+
+func (b *readinessBudget) logFailure(t *testing.T) {
+	if t.Failed() {
+		t.Logf("mounted failure load: %s", b.load())
+	}
 }
 
 func TestReadinessBudgetChargesOnlyRunnableTime(t *testing.T) {
