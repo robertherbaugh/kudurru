@@ -44,12 +44,6 @@ passed all three race repetitions (306 s); all three rotation legs recorded
 `context canceled` with over 29 s remaining. The compressed logs retain the full
 test output.
 
-[Envtest setup](174-envtest.log) succeeded. The [host suite](174-host-race.log.gz)
-passed all five race repetitions (350 s). The [envtest command suite](174-kube-race.log.gz)
-passed all three race repetitions (306 s); all three rotation legs recorded
-`context canceled` with over 29 s remaining. The compressed logs retain the full
-test output.
-
 The [focused smoke test](174-rotation-smoke.log) passed with about 29.74 s
 remaining on the deadline. For the [timeout-only control](174-rotation-negative.log),
 remove the staged file instead of renaming it over the original credential,
