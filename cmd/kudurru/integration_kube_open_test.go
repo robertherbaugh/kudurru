@@ -13,7 +13,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -98,12 +97,14 @@ func kubePeerCounts(peer *integrationCloudflarePeer) (requests, writes int) {
 func TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation(t *testing.T) {
 	env := newKubeIntegrationEnv(t)
 	ctx := t.Context()
-	var watchListing atomic.Bool
-	listing := make(chan context.Context, 1)
+	var listingMu sync.Mutex
+	var listingCount int
+	var lastListing context.Context
 	peer := kubeCloudflarePeer(t, func(ctx context.Context) {
-		if watchListing.CompareAndSwap(true, false) {
-			listing <- ctx
-		}
+		listingMu.Lock()
+		defer listingMu.Unlock()
+		listingCount++
+		lastListing = ctx
 	})
 	credential := kubeTestCredential(t)
 	for _, object := range []client.Object{
@@ -334,22 +335,30 @@ func TestRunServeKubeCloudflareConflictMidFlightReviewAndRotation(t *testing.T) 
 	releaseRead := sync.OnceFunc(func() { close(release) })
 	defer releaseRead()
 	peer.mu.Lock()
+	listingMu.Lock()
+	priorListings, priorPeerListings := listingCount, peer.listingRequests
+	listingMu.Unlock()
 	peer.accept = []string{"test-only-private-credential", rotated}
 	peer.holdRead, peer.readEntered = release, entered
 	peer.readCanceled, peer.readCanceledAt = false, 0
-	watchListing.Store(true)
 	peer.mu.Unlock()
+	if priorListings != priorPeerListings {
+		t.Fatalf("cannot identify the next listing: transport saw %d before the hold, peer saw %d", priorListings, priorPeerListings)
+	}
 	setTarget("published", "192.0.2.85")
 	select {
 	case <-entered:
 	case <-time.After(60 * time.Second):
 		t.Fatal("the source change did not start a sync of the old provider")
 	}
-	var requestCtx context.Context
-	select {
-	case requestCtx = <-listing:
-	default:
-		t.Fatal("no outbound listing context was captured for the held request")
+	peer.mu.Lock()
+	peerListings := peer.listingRequests
+	peer.mu.Unlock()
+	listingMu.Lock()
+	clientListings, requestCtx := listingCount, lastListing
+	listingMu.Unlock()
+	if requestCtx == nil || clientListings != priorListings+1 || peerListings != priorPeerListings+1 {
+		t.Fatalf("could not match one held listing to its transport context: %d outbound, %d arrived since arming the hold", clientListings-priorListings, peerListings-priorPeerListings)
 	}
 	deadline, bounded := requestCtx.Deadline()
 	if !bounded {

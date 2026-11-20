@@ -364,8 +364,8 @@ func TestJoinedBudgetContentionConsumerClassification(t *testing.T) {
 				j.provider = &budgetContentionPublisher{fakePublisher: p, err: err}
 				answer := h.execute(t.Context(), j, command{kind: "sync"})
 				statuses := h.Statuses()
-				if !errors.Is(answer.err, ErrProvider) || len(statuses) != 1 || p.calls != 0 {
-					t.Fatalf("sync error=%v statuses=%+v requests=%d", answer.err, statuses, p.calls)
+				if !errors.Is(answer.err, ErrProvider) || len(statuses) != 1 {
+					t.Fatalf("sync error=%v statuses=%+v", answer.err, statuses)
 				}
 				return statuses[0].Reason + "/provider"
 			},

@@ -26,7 +26,10 @@ It no longer assumes a fixed number of attempts fits into the 300 ms bound.
 ## Credential rotation
 
 The mounted test taps the old provider's actual outbound listing context and
-holds that request at the local TLS peer. It verifies the context is live
+holds that request at the local TLS peer. The client and peer listing counts
+must match before the hold, and each must grow by exactly one at the held
+request, so a different concurrent or outstanding listing cannot supply the
+context. The test verifies the context is live
 before replacing the credential, verifies the peer sees the disconnect, and
 requires `context.Canceled` from the client context (not a deadline). It
 still checks that the new provider starts after the old request is canceled.
@@ -51,3 +54,9 @@ then run `GOMAXPROCS=2 go test -p 2 ./cmd/kudurru -run '^TestRunServeKubeCloudfl
 with the same envtest assets. The peer saw the disconnect after the original
 deadline, but the test failed with `cause=context deadline exceeded`. Restore
 the rename for the positive run.
+
+After review, the [focused host regressions](174-review-host.log) passed five
+race repetitions. The updated [rotation regression](174-review-rotation.log)
+passed three race repetitions, each with `context canceled` and over 29 s
+remaining. Repeating the [timeout-only control](174-review-rotation-negative.log)
+with race detection failed with `context deadline exceeded`, as intended.
