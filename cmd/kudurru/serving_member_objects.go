@@ -440,6 +440,9 @@ func objectForwardUnavailable(message string) error {
 // cut item by this exact message, so both use the constant.
 const memberSourceChanged = "the follower's source changed; review current state before a new decision"
 
+// memberItemLifetimeEnded is memberCaptureError's answer when the request's
+// forwarding lifetime ended before the write was sent. memberItemRefusal
+// recognizes that unsent item by this exact message.
 const memberItemLifetimeEnded = "the request's 30-second forwarding lifetime ended before this write was sent; it was not applied"
 
 // memberCaptureError explains why a follower could not bind its request for

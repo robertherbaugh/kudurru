@@ -88,6 +88,26 @@ func TestMemberItemRefusalNamesThePrimary(t *testing.T) {
 	if got := memberItemRefusal(similar, "node-a"); got != similar {
 		t.Fatalf("a refusal that only starts like the cut changed: %v", got)
 	}
+	for _, tc := range []struct {
+		name    string
+		primary string
+		want    string
+	}{
+		{"named primary", "node-a", memberItemLifetimeEnded + "; send this item to the enrolled primary node-a"},
+		{"unnamed primary", "", memberItemLifetimeEnded + "; send this item to the enrolled primary"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var refusal *api.Error
+			if got := memberItemRefusal(objectForwardUnavailable(memberItemLifetimeEnded), tc.primary); !errors.As(got, &refusal) ||
+				refusal.Status != http.StatusServiceUnavailable || refusal.Body.Key != api.KeyUnavailable || refusal.Body.Message != tc.want {
+				t.Fatalf("item after the lifetime: %v", got)
+			}
+		})
+	}
+	similarLifetime := objectForwardUnavailable(memberItemLifetimeEnded + "; review current state")
+	if got := memberItemRefusal(similarLifetime, "node-a"); got != similarLifetime {
+		t.Fatalf("a refusal that only starts like the lifetime refusal changed: %v", got)
+	}
 	other := objectForwardUnavailable("the enrolled primary is unavailable; the write was not applied")
 	if got := memberItemRefusal(other, "node-a"); got != other {
 		t.Fatalf("an unrelated refusal changed: %v", got)
