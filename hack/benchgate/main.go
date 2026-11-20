@@ -44,6 +44,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	limitsPath := fs.String("limits", "", "limits file")
 	threshold := fs.Float64("threshold", 20, "allowed regression in percent")
 	strictCPU := fs.Bool("strict-cpu", false, "fail when the baseline was recorded on a different CPU")
+	distinguishInputErrors := fs.Bool("distinguish-input-errors", false, "exit 2 for invalid or incomplete reports instead of a gate failure")
 	samples := fs.Int("samples", 0, "require exactly this many samples per metric in both inputs (0 disables)")
 	procs := fs.Int("procs", 0, "require this GOMAXPROCS suffix on every result in both inputs (0 disables)")
 	if err := fs.Parse(args); err != nil {
@@ -145,11 +146,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
+	invalidInput := failed
 	tw := tabwriter.NewWriter(stdout, 0, 4, 2, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "STATUS\tBENCHMARK\tUNIT\tBASELINE\tCURRENT\tDETAIL")
 	for _, f := range Compare(baseline, current, rules, *threshold/100) {
 		if f.Failed() {
 			failed = true
+			invalidInput = invalidInput || f.Status == "missing"
 		}
 		b := "-"
 		if f.HasBaseline {
@@ -160,6 +163,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	_ = tw.Flush()
 	if failed {
 		_, _ = fmt.Fprintln(stdout, "benchgate: FAIL")
+		if *distinguishInputErrors && invalidInput {
+			return 2
+		}
 		return 1
 	}
 	_, _ = fmt.Fprintln(stdout, "benchgate: ok")

@@ -31,6 +31,10 @@ CLASS = "shared-cloud-sandbox-v1"
 CALIBRATED = ("cache", "upstream", "udp", "dot", "quic", "persist")
 
 
+class PreflightRefused(ValueError):
+    """A preflight could not establish a host outcome."""
+
+
 def read(path):
     return json.loads(Path(path).read_text())
 
@@ -335,11 +339,11 @@ def validate_preflight_approval(path, host, calibration, approval_hash):
 def preflight(original, output, check_approvals):
     """Screen the original reference only; never feed these reports into paired."""
     output.mkdir()
-    result = {"preflight_pass": False, "held": True, "counted": False, "release_qualified": False,
+    result = {"preflight_pass": False, "held": False, "outcome": "incomplete",
+              "counted": False, "release_qualified": False,
               "gate_exits": {}, "receipt_sha256": {}}
     result_path = output / "result.json"
     runner.save(result_path, result)
-    hold = "host-equivalence preflight outside calibration bounds"
 
     def measure_at(root, head, argv, label, **kwargs):
         if reference.checkout_head(root) != head:
@@ -349,6 +353,16 @@ def preflight(original, output, check_approvals):
         if reference.checkout_head(root) != head:
             raise ValueError("source changed during host-equivalence preflight process")
         return receipt
+
+    def hold(outcome, message):
+        result.update(held=True, outcome=outcome)
+        raise ValueError(message)
+
+    def require_complete(receipt, label):
+        if not receipt["group_reaped"]:
+            raise ValueError("host-equivalence preflight left descendants: " + label)
+        if receipt["stop_reason"] is not None:
+            hold("resource_stop", f"host-equivalence preflight resource stop: {label} ({receipt['stop_reason']})")
 
     try:
         if original == ROOT or reference.checkout_head(original) != reference.REFERENCE:
@@ -360,27 +374,49 @@ def preflight(original, output, check_approvals):
             if subprocess.check_output(["go", "version"]) != version:
                 raise ValueError("reference and control toolchains differ")
 
+        gate = output / "benchgate"
+        build = measure_at(ROOT, control_head, ["go", "build", "-o", str(gate), "./hack/benchgate"],
+                           "benchgate-build", timeout=300)
+        if build["child_exit_code"] != 0 or build["stop_reason"] is not None or not build["group_reaped"]:
+            raise ValueError("host-equivalence preflight could not build benchgate; see benchgate-build.log")
+        gate_hash = runner.digest(gate)
+
+        def check_gate():
+            if runner.digest(gate) != gate_hash:
+                raise ValueError("host-equivalence preflight gate binary changed")
+
         commands = runner.commands()
         for scope in reference.SCOPES:
             receipt = measure_at(original, reference.REFERENCE, commands[scope], scope)
-            if receipt["child_exit_code"] != 0 or receipt["stop_reason"] is not None or not receipt["group_reaped"]:
-                raise ValueError(hold)
+            require_complete(receipt, scope)
+            if receipt["child_exit_code"] != 0:
+                raise ValueError(f"host-equivalence preflight reference process failed: {scope} "
+                                 f"(exit {receipt['child_exit_code']}); see {scope}.log")
 
         for report, scopes in reference.REPORTS.items():
             path = output / (report + ".txt")
             with path.open("x") as stream:
                 for scope in scopes:
                     stream.write((output / (scope + ".log")).read_text())
-            argv = ["go", "run", "./hack/benchgate", "-samples", "1", "-procs", str(reference.PROCS),
-                    "-strict-cpu", "-limits", runner.LIMIT_FILES[report], str(path)]
-            receipt = measure_at(ROOT, control_head, argv, report + "-gate", timeout=300)
-            result["gate_exits"][report] = receipt["child_exit_code"]
-            if receipt["stop_reason"] is not None or not receipt["group_reaped"]:
-                raise ValueError(hold)
-        if any(code != 0 for code in result["gate_exits"].values()):
-            raise ValueError(hold)
+            argv = [str(gate), "-samples", "1", "-procs", str(reference.PROCS), "-strict-cpu",
+                    "-distinguish-input-errors", "-limits", runner.LIMIT_FILES[report], str(path)]
+            label = report + "-gate"
+            check_gate()
+            receipt = measure_at(ROOT, control_head, argv, label, timeout=300)
+            code = result["gate_exits"][report] = receipt["child_exit_code"]
+            check_gate()
+            require_complete(receipt, label)
+            if code not in (0, 1):
+                raise ValueError(f"host-equivalence preflight gate unable to assess {report} (exit {code}); see {label}.log")
         check_approvals()
-        result.update(preflight_pass=True, held=False)
+        if 1 in result["gate_exits"].values():
+            hold("outside_bounds", "host-equivalence preflight outside calibration bounds")
+        result.update(preflight_pass=True, outcome="pass")
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        if result["held"]:
+            raise
+        result["outcome"] = "refused"
+        raise PreflightRefused(str(error)) from error
     finally:
         result["receipt_sha256"] = {path.name: runner.digest(path) for path in sorted(output.glob("*.json"))
                                     if path != result_path}
@@ -477,6 +513,9 @@ def main():
                 return calibrate(args.reference, args.later_reference, args.host_record, args.output)
             return qualify(args.reference, args.host_record, args.calibration, args.approval, args.output,
                            args.host_transition_approval, args.host_equivalence_preflight)
+    except PreflightRefused as error:
+        print("Dedicated benchmark refused:", error, file=sys.stderr)
+        return 1
     except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.CalledProcessError) as error:
         print("Dedicated benchmark held:", error, file=sys.stderr)
         return 1

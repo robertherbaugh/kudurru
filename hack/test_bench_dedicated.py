@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -288,7 +289,13 @@ class HostEquivalencePreflight(unittest.TestCase):
         self.assertEqual(procs, 6)
         self.assertEqual(stem.parent.name, "preflight")
         self.calls.append(stem.name)
-        if stem.name in self.rows:
+        gate_path = stem.parent / "benchgate"
+        if stem.name == "benchgate-build":
+            self.assertEqual(Path.cwd(), dedicated.ROOT)
+            self.assertEqual(timeout, 300)
+            self.assertEqual(argv, ["go", "build", "-o", str(gate_path), "./hack/benchgate"])
+            code, text = 0, "fixture gate build\n"
+        elif stem.name in self.rows:
             self.assertEqual(Path.cwd(), self.original)
             self.assertEqual(argv, dedicated.runner.commands()[stem.name])
             self.assertEqual(timeout, 1860)
@@ -300,14 +307,16 @@ class HostEquivalencePreflight(unittest.TestCase):
             report = stem.name.removesuffix("-gate")
             rules = dedicated.ROOT / "bench/limits.txt" if report == "blocking-zone" else self.calibration / (report + "-limits.txt")
             path = stem.parent / (report + ".txt")
-            self.assertEqual(argv, ["go", "run", "./hack/benchgate", "-samples", "1", "-procs", "6",
-                                    "-strict-cpu", "-limits", str(rules), str(path)])
+            self.assertEqual(argv, [str(gate_path), "-samples", "1", "-procs", "6",
+                                    "-strict-cpu", "-distinguish-input-errors", "-limits", str(rules), str(path)])
             self.assertEqual(path.read_text(), "".join("cpu: fixture\n" + self.rows[scope] + "\n"
                                                        for scope in dedicated.reference.REPORTS[report]))
-            gate = subprocess.run([str(self.gate), *argv[3:]], capture_output=True, text=True, check=False)
+            gate = subprocess.run(argv, capture_output=True, text=True, check=False)
             code, text = gate.returncode, gate.stdout + gate.stderr
         receipt = {"argv": argv, "child_exit_code": code, "stop_reason": None, "group_reaped": True}
         receipt.update(self.failures.get(stem.name, {}))
+        if stem.name == "benchgate-build" and receipt["child_exit_code"] == 0 and receipt["stop_reason"] is None:
+            shutil.copy(self.gate, gate_path)
         stem.with_suffix(".log").write_text(text)
         dedicated.runner.save(stem.with_suffix(".json"), receipt)
         if stem.name == self.mutate_after:
@@ -326,16 +335,18 @@ class HostEquivalencePreflight(unittest.TestCase):
         self.assertIs(dedicated.runner.measure, self.measure)
         return output, code, stderr.getvalue()
 
-    def assert_result(self, output, passed, gate_exits, measured):
+    def assert_result(self, output, outcome, gate_exits, measured, built=False):
         preflight = output / "preflight"
         receipts = {name + ".json": dedicated.runner.digest(preflight / (name + ".json")) for name in measured}
         self.assertEqual(dedicated.read(preflight / "result.json"), {
-            "preflight_pass": passed, "held": not passed, "counted": False, "release_qualified": False,
+            "preflight_pass": outcome == "pass", "held": outcome in ("outside_bounds", "resource_stop"),
+            "outcome": outcome, "counted": False, "release_qualified": False,
             "gate_exits": gate_exits, "receipt_sha256": receipts})
         reports = {name.removesuffix("-gate") + ".txt" for name in measured if name.endswith("-gate")}
+        binaries = {"benchgate"} if built else set()
         self.assertEqual({path.name for path in preflight.iterdir()},
-                         {"result.json", *receipts, *reports, *(name + ".log" for name in measured)})
-        if not passed:
+                         {"result.json", *binaries, *receipts, *reports, *(name + ".log" for name in measured)})
+        if outcome != "pass":
             self.paired.assert_not_called()
             self.assertFalse((output / "paired").exists())
 
@@ -373,19 +384,37 @@ class HostEquivalencePreflight(unittest.TestCase):
         self.heads[self.original] = "not-original"
         output, code, stderr = self.run_qualify()
         self.assertEqual(code, 1)
-        self.assertIn("exact original baseline commit", stderr)
+        self.assertIn("Dedicated benchmark refused: reference must be the exact original baseline commit", stderr)
         self.measure.assert_not_called()
-        self.assert_result(output, False, {}, [])
+        self.assert_result(output, "refused", {}, [])
+
+    def test_dirty_control_or_toolchain_mismatch_refuses_before_measurement(self):
+        def dirty_control(path):
+            if path == dedicated.ROOT:
+                raise ValueError("reference and control checkouts must be clean")
+            return self.heads[path]
+
+        with mock.patch.object(dedicated.reference, "checkout_head", side_effect=dirty_control):
+            output, code, stderr = self.run_qualify("dirty")
+            self.assertEqual(code, 1)
+            self.assertIn("Dedicated benchmark refused: reference and control checkouts must be clean", stderr)
+            self.assert_result(output, "refused", {}, [])
+        with mock.patch.object(dedicated.subprocess, "check_output", side_effect=[b"control", b"original"]):
+            output, code, stderr = self.run_qualify("toolchain")
+            self.assertEqual(code, 1)
+            self.assertIn("Dedicated benchmark refused: reference and control toolchains differ", stderr)
+            self.assert_result(output, "refused", {}, [])
+        self.measure.assert_not_called()
 
     def test_in_bounds_runs_original_scopes_and_gates_before_unchanged_paired_call(self):
         reports = dict.fromkeys(dedicated.reference.REPORTS, 0)
-        expected_calls = [*dedicated.reference.SCOPES, *(report + "-gate" for report in reports)]
+        expected_calls = ["benchgate-build", *dedicated.reference.SCOPES, *(report + "-gate" for report in reports)]
         paired_rows = "BenchmarkLookup100k/cname-6 1 900 p99-ns\n" * 5
 
         def execute(original, output, order):
             self.assertEqual(self.calls, expected_calls)
             self.assertEqual((original, order), (self.original, "interleaved"))
-            self.assert_result(output.parent, True, reports, expected_calls)
+            self.assert_result(output.parent, "pass", reports, expected_calls, built=True)
             self.assertFalse(output.exists())
             (output / "reference").mkdir(parents=True)
             (output / "reference/blocking-zone.txt").write_text(paired_rows)
@@ -411,35 +440,95 @@ class HostEquivalencePreflight(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertEqual(stderr, "Dedicated benchmark held: host-equivalence preflight outside calibration bounds\n")
                 reports = {key: int(key == report) for key in dedicated.reference.REPORTS}
-                self.assert_result(output, False, reports, [*dedicated.reference.SCOPES, *(key + "-gate" for key in reports)])
+                measured = ["benchgate-build", *dedicated.reference.SCOPES, *(key + "-gate" for key in reports)]
+                self.assert_result(output, "outside_bounds", reports, measured, built=True)
                 self.assertIn(finding, (output / "preflight" / (report + "-gate.log")).read_text())
 
-    def test_nonzero_exit_stop_or_unreaped_group_holds_even_with_zero_exit(self):
-        for label, key, value in (("zone", "child_exit_code", 2), ("zone", "stop_reason", "timeout"),
-                                  ("zone", "group_reaped", False), ("blocking-zone-gate", "stop_reason", "timeout")):
+    def test_failed_processes_and_resource_stops_have_distinct_outcomes(self):
+        for label, key, value, outcome, message in (
+                ("zone", "child_exit_code", 2, "refused", "reference process failed: zone (exit 2)"),
+                ("zone", "group_reaped", False, "refused", "left descendants: zone"),
+                ("zone", "stop_reason", "timeout", "resource_stop", "resource stop: zone (timeout)"),
+                ("blocking-zone-gate", "stop_reason", "timeout", "resource_stop", "resource stop: blocking-zone-gate (timeout)")):
             with self.subTest(label=label, key=key), mock.patch.dict(self.failures, {label: {key: value}}):
                 self.calls.clear()
                 output, code, stderr = self.run_qualify(label + "-" + key)
                 self.assertEqual(code, 1)
-                self.assertIn("host-equivalence preflight outside calibration bounds", stderr)
-                measured = [*dedicated.reference.SCOPES, label] if label.endswith("-gate") else ["blocking", "zone"]
+                prefix = "refused" if outcome == "refused" else "held"
+                self.assertIn(f"Dedicated benchmark {prefix}: host-equivalence preflight {message}", stderr)
+                measured = ["benchgate-build", *dedicated.reference.SCOPES, label] if label.endswith("-gate") else [
+                    "benchgate-build", "blocking", "zone"]
                 self.assertEqual(self.calls, measured)
-                self.assert_result(output, False, {"blocking-zone": 0} if label.endswith("-gate") else {}, measured)
+                exits = {"blocking-zone": 0} if label.endswith("-gate") else {}
+                self.assert_result(output, outcome, exits, measured, built=True)
                 self.assertEqual(dedicated.read(output / "preflight" / (label + ".json"))[key], value)
 
-    def test_approval_mutation_holds_and_refuses_reusing_retained_output(self):
+    def test_gate_build_failure_refuses_before_reference_scopes(self):
+        self.failures["benchgate-build"] = {"child_exit_code": 1}
+        output, code, stderr = self.run_qualify()
+        self.assertEqual(code, 1)
+        self.assertIn("Dedicated benchmark refused: host-equivalence preflight could not build benchgate", stderr)
+        self.assertEqual(self.calls, ["benchgate-build"])
+        self.assert_result(output, "refused", {}, self.calls)
+        self.assertEqual(dedicated.read(output / "preflight/benchgate-build.json")["child_exit_code"], 1)
+
+    def test_gate_input_errors_are_not_bounds_holds(self):
+        for name, row, finding in (
+                ("malformed", "BenchmarkStrategies/fast/strict-6 1 x p99-ns 80 q/s", "bad value"),
+                ("bad-shape", "BenchmarkStrategies/fast/strict-2 1 120 p99-ns 80 q/s", "expected GOMAXPROCS=6"),
+                ("missing", "BenchmarkStrategies/fast/strict-6 1 121 p99-ns", "required metric absent")):
+            with self.subTest(name=name), mock.patch.dict(self.rows, {
+                    "zone": "BenchmarkLookup100k/cname-6 1 2187 p99-ns", "upstream": row}):
+                output, code, stderr = self.run_qualify(name)
+                self.assertEqual(code, 1)
+                self.assertIn("Dedicated benchmark refused: host-equivalence preflight gate unable to assess upstream (exit 2)", stderr)
+                reports = {"blocking-zone": 1, "cache": 0, "upstream": 2}
+                measured = ["benchgate-build", *dedicated.reference.SCOPES, *(key + "-gate" for key in reports)]
+                self.assert_result(output, "refused", reports, measured, built=True)
+                self.assertIn(finding, (output / "preflight/upstream-gate.log").read_text())
+
+    def test_gate_binary_change_refuses_and_preserves_gate_receipt(self):
+        def collect(argv, stem, *args, **kwargs):
+            receipt = self.collect(argv, stem, *args, **kwargs)
+            if stem.name == "blocking-zone-gate":
+                (stem.parent / "benchgate").write_text("changed gate fixture")
+            return receipt
+
+        self.measure.side_effect = collect
+        output, code, stderr = self.run_qualify()
+        self.assertEqual(code, 1)
+        self.assertIn("Dedicated benchmark refused: host-equivalence preflight gate binary changed", stderr)
+        measured = ["benchgate-build", *dedicated.reference.SCOPES, "blocking-zone-gate"]
+        self.assertEqual(self.calls, measured)
+        self.assert_result(output, "refused", {"blocking-zone": 0}, measured, built=True)
+
+    def test_approval_mutation_refuses_and_preserves_receipts_and_output(self):
         self.mutate_after = "blocking"
         output, code, stderr = self.run_qualify()
         self.assertEqual(code, 1)
-        self.assertIn("host-equivalence preflight approval changed", stderr)
-        self.assertEqual(self.calls, ["blocking"])
-        self.assert_result(output, False, {}, ["blocking"])
+        self.assertIn("Dedicated benchmark refused: host-equivalence preflight approval changed", stderr)
+        self.assertEqual(self.calls, ["benchgate-build", "blocking"])
+        self.assert_result(output, "refused", {}, self.calls, built=True)
         retained = dedicated.inventory(output)
         _, code, stderr = self.run_qualify()
         self.assertEqual(code, 1)
         self.assertIn("existing output is refused", stderr)
-        self.assertEqual(self.calls, ["blocking"])
+        self.assertEqual(self.calls, ["benchgate-build", "blocking"])
         self.assertEqual(dedicated.inventory(output), retained)
+
+    def test_source_change_refuses_and_preserves_receipts(self):
+        def collect(argv, stem, *args, **kwargs):
+            receipt = self.collect(argv, stem, *args, **kwargs)
+            if stem.name == "blocking":
+                self.heads[self.original] = "changed"
+            return receipt
+
+        self.measure.side_effect = collect
+        output, code, stderr = self.run_qualify()
+        self.assertEqual(code, 1)
+        self.assertIn("Dedicated benchmark refused: source changed during host-equivalence preflight", stderr)
+        self.assertEqual(self.calls, ["benchgate-build", "blocking"])
+        self.assert_result(output, "refused", {}, self.calls, built=True)
 
 
 if __name__ == "__main__":
