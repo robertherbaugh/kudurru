@@ -7,6 +7,7 @@ readonly release_manifest_sha=8383e8b1d0721e82eadff82123e1817a057621494ce5e5f973
 readonly released_deb=kudurru_0.1.0_amd64.deb released_rpm=kudurru-0.1.0-1.x86_64.rpm
 readonly rocky_init_image=quay.io/rockylinux/rockylinux@sha256:f1879ea953baa37f34ede6862c41d471a1e891c77daa4ef5031b9aac37af5aa3
 readonly conf=/etc/kudurru yaml=/etc/kudurru/kudurru.yaml env_file=/etc/kudurru/kudurru.env
+readonly api_cert=/var/lib/kudurru/keys/api.crt objects_probe="$conf/objects.d/package-lifecycle.yaml"
 readonly unit=kudurru.service unit_file=/usr/lib/systemd/system/kudurru.service
 readonly enabled_link=/etc/systemd/system/multi-user.target.wants/kudurru.service
 
@@ -103,12 +104,41 @@ probe_service() {
   [[ -n $invocation && $invocation != 00000000000000000000000000000000 && $invocation != "${1:-}" ]] ||
     die 'expected a new systemd service invocation'
   echo "Active systemd invocation: $invocation"
-  kudurru doctor --config "$yaml" --server http://127.0.0.1:8080
+  kudurru doctor --config "$yaml" --server https://127.0.0.1:8080 --ca-file "$api_cert"
   for protocol in +notcp +tcp; do
     answer=$(dig -r @127.0.0.1 +time=2 +tries=1 +short "$protocol" health.kudurru.internal. TXT)
     [[ $answer =~ ^\"[^\"]+\ [0-9]+\"$ ]] || die "unexpected DNS health TXT ($protocol): $answer"
     printf 'DNS %s: %s\n' "$protocol" "$answer"
   done
+}
+
+stage_objects_probe() {
+  (umask 027; cat > "$objects_probe" <<'YAML'
+apiVersion: kudurru.io/v1alpha1
+kind: DNSZone
+metadata: { name: package-lifecycle }
+spec:
+  zoneName: package-lifecycle.test.
+  type: primary
+  soa: { mname: ns1.package-lifecycle.test., rname: hostmaster.package-lifecycle.test. }
+  nameservers: [ns1.package-lifecycle.test.]
+  policy: { queryAccess: allow }
+YAML
+  )
+  chgrp kudurru "$objects_probe"
+}
+
+probe_objects() {
+  local attempt answer
+  for ((attempt = 0; attempt < 20; attempt++)); do
+    if answer=$(dig -r @127.0.0.1 +time=1 +tries=1 +norecurse +short package-lifecycle.test. SOA) &&
+      [[ $answer == 'ns1.package-lifecycle.test. hostmaster.package-lifecycle.test. '* ]]; then
+      printf 'DNS from objects.d: %s\n' "$answer"
+      return
+    fi
+    sleep 1
+  done
+  die 'packaged service did not serve the zone from objects.d'
 }
 
 rpm_is_newer() {
@@ -165,6 +195,8 @@ lifecycle() {
   previous=$(systemctl show --property=InvocationID --value "$unit")
   systemctl restart "$unit"
   probe_service "$previous"
+  stat -c "${release_tag} objects.d: %U:%G %a" "$conf/objects.d"
+  stage_objects_probe
 
   echo "Upgrade $old_version -> $new_version"
   previous=$(systemctl show --property=InvocationID --value "$unit")
@@ -180,10 +212,13 @@ lifecycle() {
   esac
   printf '%s\n' "$config_sha" | sha256sum --check --strict
   check_config_permissions
+  [[ $(stat -c '%U:%G %a' "$conf/objects.d") == 'root:kudurru 750' ]] || die 'incorrect candidate objects.d permissions'
   probe_service "$previous"
+  probe_objects
   previous=$(systemctl show --property=InvocationID --value "$unit")
   systemctl restart "$unit"
   probe_service "$previous"
+  rm "$objects_probe"
 
   echo "Remove $new_version"
   case "$format" in
@@ -221,7 +256,7 @@ lifecycle() {
       candidate: {name: $candidate, sha256: $candidateSha, version: $newVersion},
       maintainerScriptsRun: true,
       systemdLifecycleRun: true,
-      checks: {install: true, doctor: true, dnsUdpAndTcp: true, restart: true, upgrade: true,
+      checks: {install: true, doctor: true, dnsUdpAndTcp: true, restart: true, upgrade: true, candidateObjectsDirectory: true,
         editedConfigPreserved: true, removeStoppedAndDisabled: true, purgeRun: $purge,
         accountStateAndUnmanagedSecretsRetained: true}
     }' > "$result"
