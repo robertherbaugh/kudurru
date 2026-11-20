@@ -824,6 +824,21 @@ not export stored secrets. A successful diagnostic confirms the authenticated
 packet path, not Kubernetes leadership or zone readiness. Pending or refused
 startup key inventory fails even when a local file key would otherwise match.
 
+## Secondary refresh reports a non-authoritative response
+
+Knot 3.6.2 can return a TSIG-signed IXFR reply with a single SOA at the
+secondary's stored serial, but without AA. Kudurru rejects it with
+`secondary: non-authoritative response`. A normal unchanged SOA poll does not
+send IXFR. If this happens repeatedly, check whether the poll and transfer
+reach different primary instances, or whether the primary rolls back between
+the two requests. Check serials on each primary and correct inconsistent
+routing or replication; do not disable TSIG.
+
+A refused reply neither changes the records nor extends the existing copy's
+expiry. If no other configured primary completes that refresh, the secondary
+keeps serving the last confirmed copy until its original expiry and retries
+normally.
+
 ## Recursive group gets no answers
 
 Symptoms: every name routed to a recursive group (`mode: recursive`) gets
