@@ -106,6 +106,9 @@ func (k *kubeRPZ) capture(req *pipeline.Request) (*rpz.Selection, error) {
 	return b.bound.Select(lists, b.available), nil
 }
 
+// policyListState reads an RPZ-backed list from the node's DNS binding.
+// projected is false only if shared status should be kept. An RPZ list with
+// no matching object revision is projected as empty and not ready.
 func (k *kubeRPZ) policyListState(list *v1alpha1.BlockList, now time.Time) (entries int, ready, projected bool) {
 	if !slices.ContainsFunc(list.Spec.Sources, func(source v1alpha1.ListSource) bool {
 		return source.IsEnabled() && blocking.IsRPZSource(source)
