@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -181,6 +182,7 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 	static := &zonestate.Aggregate{FormatVersion: zonekinds.FormatVersion, Zone: id, Policy: policy}
 	projections := map[string]string{}
 	reasons := map[string]string{}
+	viewRefusals := map[string]map[int]string{}
 	reserved := map[string]bool{}
 	var diagnostics []zonestate.SourceDiagnostic
 	for _, rs := range in.RecordSets {
@@ -210,6 +212,7 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 		parsedSet := builder.ParseRecordSet(rs)
 		for i := range rs.Spec.Endpoints {
 			ep := &rs.Spec.Endpoints[i]
+			groupView := zone.GroupView(ep) != "" && zone.Live(ep, now)
 			parsed, parseErrs := parsedSet.Records(i)
 			if len(parseErrs) > 0 {
 				continue
@@ -240,6 +243,9 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 						if projections[source] != "served" {
 							projections[source], reasons[source] = "duplicated", dynamicOwnerReason
 						}
+						if groupView {
+							addViewRefusal(viewRefusals, source, i, dynamicOwnerReason)
+						}
 						continue
 					}
 				}
@@ -254,6 +260,9 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 				// zone without a committed head (the first start after an
 				// upgrade) would otherwise never be served (D373).
 				reason := zone.ErrorReason(failures[0])
+				if groupView {
+					addViewRefusal(viewRefusals, source, i, viewRefusalDetail(failures[0]))
+				}
 				if projections[source] != "served" {
 					projections[source] = "duplicated"
 					if reason != public.ReasonDuplicated && reason != public.ReasonOccluded {
@@ -383,9 +392,19 @@ func (c *Compiler) Project(ctx context.Context, base *zonestate.View, in *zonest
 		source := store.KeyOf(rs).String()
 		if builder.ViewServed(source) {
 			projections[source], reasons[source] = "served", ""
-			continue
 		}
-		if failures := builder.ViewErrors()[source]; len(failures) > 0 && projections[source] != "served" {
+		failures := builder.ViewErrors()[source]
+		if projections[source] == "served" {
+			for _, failure := range failures {
+				path, ok := strings.CutPrefix(failure.Field, "spec.endpoints[")
+				if index, _, found := strings.Cut(path, "]"); ok && found {
+					if i, err := strconv.Atoi(index); err == nil && i >= 0 && i < len(rs.Spec.Endpoints) {
+						addViewRefusal(viewRefusals, source, i, viewRefusalDetail(failure))
+					}
+				}
+			}
+			reasons[source] = summarizeViewRefusals(rs, viewRefusals[source])
+		} else if len(failures) > 0 {
 			reason := zone.ErrorReason(failures[0])
 			projections[source] = "duplicated"
 			if reason != public.ReasonDuplicated && reason != public.ReasonOccluded {
@@ -641,13 +660,63 @@ const maxWithheldReason = 512
 // withheldReason is the reason of an endpoint the builder refused: the
 // reason code and the builder's message, bounded for the source envelope.
 func withheldReason(reason, detail string) string {
-	s := reason + ": " + detail
-	if len(s) <= maxWithheldReason {
+	return truncateReason(reason+": "+detail, maxWithheldReason)
+}
+
+func truncateReason(s string, limit int) string {
+	if len(s) <= limit {
 		return s
 	}
-	cut := maxWithheldReason - 3
+	cut := limit - 3
 	for cut > 0 && !utf8.RuneStart(s[cut]) {
 		cut--
 	}
 	return s[:cut] + "..."
+}
+
+func addViewRefusal(refusals map[string]map[int]string, source string, index int, reason string) {
+	if refusals[source] == nil {
+		refusals[source] = map[int]string{}
+	}
+	if _, exists := refusals[source][index]; !exists {
+		refusals[source][index] = truncateReason(reason, 160)
+	}
+}
+
+func viewRefusalDetail(failure *field.Error) string {
+	reason := zone.ErrorReason(failure)
+	if strings.HasPrefix(failure.Detail, reason+": ") {
+		return failure.Detail
+	}
+	return reason + ": " + failure.Detail
+}
+
+func summarizeViewRefusals(rs *public.DNSRecordSet, refusals map[int]string) string {
+	if len(refusals) == 0 {
+		return ""
+	}
+	summary := "Refused view endpoints: "
+	remaining := len(refusals)
+	for index, endpoint := range rs.Spec.Endpoints {
+		reason, exists := refusals[index]
+		if !exists {
+			continue
+		}
+		separator := ""
+		if remaining != len(refusals) {
+			separator = "; "
+		}
+		entry := fmt.Sprintf("%s%s %s (view %s): %s", separator, truncateReason(endpoint.DNSName, 160),
+			truncateReason(endpoint.RecordType, 16), truncateReason(zone.ViewGroupID(rs.Namespace, zone.GroupView(&endpoint)), 100), reason)
+		suffix := ""
+		if remaining > 1 {
+			suffix = fmt.Sprintf("; +%d more", remaining-1)
+		}
+		if len(summary)+len(entry)+len(suffix) > maxWithheldReason {
+			return fmt.Sprintf("%s; +%d more", summary, remaining)
+		}
+		summary += entry
+		remaining--
+	}
+	return summary
 }

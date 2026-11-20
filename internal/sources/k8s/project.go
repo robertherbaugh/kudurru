@@ -49,7 +49,7 @@ var sourceKinds = []*sourceKind{
 	{label: "service", kind: "Service", gvr: schema.GroupVersionResource{Version: "v1", Resource: "services"}, family: familyService},
 }
 
-var gatewayResource = schema.GroupVersionResource{Group: gatewayGroup, Version: "v1", Resource: "gateways"}
+var gatewayKind = &sourceKind{label: "gateway", kind: "Gateway", gvr: schema.GroupVersionResource{Group: gatewayGroup, Version: "v1", Resource: "gateways"}, family: familyGateway}
 
 // Annotation keys (external-dns compatible). The current prefix wins over
 // the legacy alpha prefix when both are set.
