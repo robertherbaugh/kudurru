@@ -27,8 +27,11 @@ cleanup() {
       sudo -n kill -TERM "$daemon_job" 2>/dev/null || true
     fi
     wait "$daemon_job" || true
+    if sudo -n mountpoint -q "$lab/exec/netns/default"; then
+      sudo -n umount "$lab/exec/netns/default"
+    fi
   fi
-  sudo -n rm -rf -- "$lab"
+  sudo -n rm -rf --one-file-system -- "$lab"
   if [[ ${locked:-} == 1 ]]; then
     sudo -n rmdir "$lock"
   fi
