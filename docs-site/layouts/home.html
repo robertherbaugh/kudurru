@@ -2,10 +2,8 @@
 <main id="main" class="home">
   <section class="hero">
     <div class="hero__intro">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="{{ "brand/kudurru-logo-mixed-paper-tagline.png" | relURL }}">
-      <img class="hero__logo" src="{{ "brand/kudurru-logo-mixed-tagline.png" | relURL }}" width="480" height="200" alt="kudurru: authority over every zone.">
-    </picture>
+    <img class="hero__logo logo-light" src="{{ "brand/kudurru-logo-mixed-tagline.png" | relURL }}" width="480" height="200" alt="kudurru: authority over every zone." loading="lazy">
+    <img class="hero__logo logo-dark" src="{{ "brand/kudurru-logo-mixed-paper-tagline.png" | relURL }}" width="480" height="200" alt="kudurru: authority over every zone." loading="lazy">
     <h1>Learn kudurru,<br>one step at a time.</h1>
     <p class="hero__lead">{{ .Description | markdownify }}</p>
     <p class="hero__actions">

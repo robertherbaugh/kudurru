@@ -17,7 +17,7 @@ import { VisuallyHidden } from '@astryxdesign/core/VisuallyHidden';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { qk, useApi, useCan, useCannotReason } from '../api/context';
-import type { ClientGroup, DNSZone, ZoneImportResult, ZoneRecord, ZoneRecordList } from '../api/types';
+import type { ClientGroup, DNSRecordSet, DNSZone, ZoneImportResult, ZoneRecord, ZoneRecordList } from '../api/types';
 import { ErrorBanner, errorText, Loading, useNotify } from '../components/Feedback';
 import { TextAreaField, TextField } from '../components/fields/TextField';
 import { FormDialog } from '../components/FormDialog';
@@ -225,6 +225,15 @@ function ZoneDetail({ zone }: { zone: string }) {
   const zoneObj = useQuery({ queryKey: [...qk.objects('dnszones'), zone], queryFn: () => api.objects.get<DNSZone>('dnszones', zone), enabled: primary });
   const groups = useQuery({ queryKey: qk.objects('clientgroups'), queryFn: () => api.objects.list<ClientGroup>('clientgroups'), enabled: primary && can('clientgroups', 'read') });
   const served = listsServed(recs.data);
+  const [editNamespace, editSet] = (editing && editing !== 'new' ? editing.recordSet : '').split('/');
+  const recordSet = useQuery({
+    queryKey: [...qk.objects('dnsrecordsets'), editNamespace, editSet],
+    queryFn: () => api.objects.get<DNSRecordSet>('dnsrecordsets', editSet ?? '', editNamespace),
+    enabled: served && !!editNamespace && !!editSet,
+  });
+  const viewRefusals = served && recordSet.isSuccess && !recordSet.isPlaceholderData ? recordSet.data.status?.conditions?.find(
+    (condition) => condition.type === 'ViewEndpointsRefused' && condition.status === 'True',
+  )?.message : undefined;
   const signed = zoneObj.data?.spec.dnssec?.enabled === true || (recs.data?.items ?? []).some((r) => SIGNED_TYPES.has(r.recordType.toUpperCase()) && !r.kudurru?.view);
   const own = ownership(z.data?.managedBy);
   const zoneEditable = own.editable && z.data?.type === 'primary';
@@ -452,6 +461,7 @@ function ZoneDetail({ zone }: { zone: string }) {
             groups={groups.data?.items}
             signed={signed}
             listsServed={served}
+            viewRefusals={viewRefusals}
             onCancel={() => setEditing(null)}
             onSubmit={async (ep, recordSet) => {
               try {
