@@ -300,6 +300,12 @@ Rules and limits:
   default endpoint would, although the view serves only its group. Default
   clients then lose that dynamic data; authorize a takeover only for record
   sets whose view endpoints are meant to replace it.
+- Kubernetes reserves the names and types of **served** static view RRsets
+  against UPDATE, in the UPDATE record set's namespace and any other namespace.
+  Unlike SQLite, a view that did not build does not acquire this reservation.
+  Reservations are not prerequisite data: a name only in a view still does not
+  exist in the default data. Kubernetes does not perform SQLite's authorized
+  takeover on a recompile.
 - The content hash covers the views, so a view change advances the serial.
   On SQLite the committed aggregate keeps views in their own `views` list,
   apart from the default `records`.
