@@ -368,6 +368,12 @@ dashboard-e2e: dashboard-build
 	$(MAKE) build GOFLAGS="$(GOFLAGS) -tags=licensetest"
 	cd dashboard && KUDURRU_BIN=../$(BIN) $(BUN) run e2e
 
+.PHONY: production-license-check-typecheck
+production-license-check-typecheck:
+	cd license-server && $(BUN) install --frozen-lockfile --ignore-scripts
+	node license-server/node_modules/typescript-native/bin/tsc --noEmit --strict --skipLibCheck --module preserve --target es2023 \
+	  --types bun --typeRoots license-server/node_modules/@types hack/production-license-check.ts
+
 ## Docs site (docs-site/, Hugo; docs-site/README.md). The Hugo extended release
 ## binary (Apache-2.0) is downloaded into bin/ at HUGO_VERSION and checked
 ## against the pinned SHA-256 of the linux tarball; on other platforms

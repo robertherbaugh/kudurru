@@ -236,6 +236,17 @@ The separate AD/Windows deferral is D353.
 These gate the GA release (an rc may ship without them, listed as known
 gaps in the notes).
 
+- [ ] Complete and explicitly approve the [human UI acceptance matrix](milestones/v0.2/manual-acceptance.md#human-ui-acceptance-matrix)
+      on the exact final artifacts, recording the full hashes, approver, and UTC
+      date. An evidence PR can retain the explicit approval; merge is not acceptance.
+- [ ] Owner: record authorized production issuance and retain applicable
+      production trust/signing evidence separately from the expiry/grace result.
+- [ ] Record expiry/grace evidence and identify the path used. Prefer the
+      [issued-key disposable VM run](milestones/v0.2/manual-acceptance.md#production-key-expiry-and-grace)
+      with the [checker](../hack/production-license-check.ts). If that run is
+      not feasible, use the owner-agreed [synthetic fallback for expiry/grace only](milestones/v0.2/manual-acceptance.md#synthetic-fallback-for-expiry-and-grace-only).
+      It does not satisfy the separate production issuance or trust/signing gate.
+
 Two former items here run on the CI runners (Ubicloud, Ubuntu 24.04) now:
 
 - [ ] **edge-check** (`edge` workflow, no `continue-on-error` since the v0.1
@@ -425,6 +436,11 @@ publish.yml does not change its result), or, for a scan finding, fix it on
 - [ ] CRDs: `kubectl apply --server-side -f crds.yaml` from the release assets.
 - [ ] Packages: install the deb or rpm on a VM, `systemctl start kudurru`,
       `kudurru doctor`.
+- [ ] Match the published asset and executable SHA256 to the
+      [artifact-bound manual acceptance records](milestones/v0.2/manual-acceptance.md).
+      If the bytes differ, verify the published bytes and repeat the affected
+      artifact checks; do not carry over approval from a different artifact.
+      Synthetic expiry/grace results identify test source, not tested release bytes.
 
 ## 6. After the release
 
