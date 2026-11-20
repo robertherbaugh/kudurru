@@ -339,9 +339,31 @@ rules had blocked are let through until they exceed the rate again.
 Each edge remembers the newest revision of the block set it applied, so a
 follower that lags behind cannot undo a block or revoke while the primary
 misses a poll. After restoring an older backup (or promoting a follower that
-had lagged), the edges keep the newer set for five minutes and then take the
-restored one; to apply it at once, restart the edges after deleting
-`edge-blocks.json` in their configuration directory.
+had lagged), each edge waits for five minutes of consecutive polls reporting
+only lower revisions for that owner. **New blocks added to the restored
+backend are also delayed** while its revision is below the remembered one.
+The edge applies the latest observed set on the first qualifying poll at or
+after the hold. A missed owner, an entirely failed poll, a current or higher
+revision, or a gap longer than three poll intervals (15 seconds by default)
+restarts the hold. A short restart can resume the saved observations within
+that gap; a longer restart starts a new hold. Interruptions can therefore
+make the total wait longer than five minutes. To bypass the hold, stop each
+edge, remove `edge-blocks.json` from its configuration directory, then
+restart it with the restored backend reachable. This also discards the saved
+blocks and revision floors, so verify which backends will answer first.
+
+If an independent backend misses a poll, its unexpired blocks stay in place.
+The edge drops them after five minutes of consecutive successful polls in
+which that owner is absent. An entirely failed poll breaks that sequence;
+it does not remove blocks. A reported empty set is not an absent owner: at
+the current or a higher revision it removes that owner's blocks immediately.
+The cache remembers at most eight absent owners, prioritizing owners with
+active blocks. Five minutes of retention is not guaranteed if more than
+eight owners disappear. Retention never extends an entry's expiry.
+
+On upgrade, the edge reads the previous version-2 cache but starts a new
+observation sequence. Older edge binaries cannot read the version-3 cache
+on downgrade; they must rebuild it from reachable backends.
 
 ## The primary of an enrolled SQLite cluster is lost
 
