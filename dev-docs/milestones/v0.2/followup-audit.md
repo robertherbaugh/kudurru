@@ -19026,11 +19026,17 @@ update, canonical revocation, and the two old-primary supervision checks.
 `TestClusterResolveAbandonedTermMemberReturnsThroughAnchorPuller` runs
 `cluster resolve --offline --abandon-term` on the stranded SQLite member,
 elects its kept branch, and returns the lost-term member through the actual
-puller. It verifies the quarantined image holds the abandoned trust, while
-the adopted and served generation retains the revocation. Its exact
-acquisition count excludes any bootstrap by the lost term. Both tests use
-a signed synthetic root and in-process runtimes; neither claims hosted,
-live root, or independent-host acceptance. No readiness bound was changed.
+puller. It compares the quarantined image to the actual promoted lost term
+and checks that the returned member first publishes only after installing
+the running kept primary's exact response. Three acquisitions are required:
+bootstrap, canonical REVOKE, and the returned follower's check. The restarted
+writer retains its committed schedule and exports no acquisition.
+
+`CGO_ENABLED=1 go test -p 2 ./cmd/kudurru -run 'AnchorHistory|ClusterResolve' -race -count=1`
+passed locally in 55.063 s on a checkout based on
+`ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61`. Both tests use a signed
+synthetic root and in-process runtimes; neither claims hosted, live root,
+or independent-host acceptance. No readiness bound was changed.
 
 ### F28-REVOKE-HOSTED Why the BIND revocation interop test failed on hosted CI — November 13, 2026 (D398)
 
