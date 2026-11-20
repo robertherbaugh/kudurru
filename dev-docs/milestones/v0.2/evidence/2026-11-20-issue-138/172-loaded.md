@@ -31,6 +31,22 @@ The corrected profiles run in `cmd/kudurru`. A [non-race smoke run after
 attribution refinements](172-final-smoke.log) passed long apply and both
 readiness unit tests.
 
+## Race observations
+
+- [Zero loops, one P](172-race-mounted-p1-load0.log): all six mounted cases
+  passed. Long apply had a 975 ms maximum DNS gap, zero SERVFAIL, and 52
+  failed reads alongside 11 successful reads; the last refusal was
+  `generation_pending`. The race variant requires some successful reads,
+  not zero failed reads. Status-write and refusal-walk counts are retained
+  in the log.
+- [Two-P readiness credit](172-race-readiness-credit.log): with one pinned
+  CPU, two busy loops, and the race test at `nice -n 7`, node A became ready at
+  72.734 s, after 598 scheduler-credit checks. Node B failed at the unchanged
+  two-minute wall ceiling after 509 credit checks. Its final readiness probe
+  timed out with no HTTP status. The fixture failed **before** the login
+  requests, not because the product returned a refusal. This exercised the
+  mounted multi-P budget without treating the run as a pass.
+
 ## Reproduction
 
 ```sh
@@ -49,13 +65,14 @@ done'` workers and stop them when the test exits. The two-loop case sets
 `GOMAXPROCS=2` while still pinned to one core. The race profiles use the
 race binary and CPU 2 for both the test and workers. The logs record the
 test exit, `nproc`, initial load, and per-case scheduler measurements.
+For the dedicated readiness-credit case, recompile the final race test,
+pin it to CPU 0 with two workers, and use `GOMAXPROCS=2 taskset -c 0 nice -n 7`
+with `-test.run='^TestRunServeStaticTwinsReadOnlyPeerLossRestart$'`.
 
 ## Still open
 
-- Finish recording the race profiles, the full 100-sample rate, and
-  a mounted run that reaches the multi-P readiness credit check. The
-  non-race two-P profile and unit arithmetic are not proof that a mounted
-  server crossed the 20-second charging threshold.
+- Finish recording the one- and two-loop race profiles and the full
+  100-sample rate. The synthetic VM does not establish an owner-lab rate.
 - The original 1.39 s DNS gap is not diagnosed. The older five-minute
   refusal-walk timeout remains an attributed failure; the current walk
   still uses its original five-minute context. The historical status-write
