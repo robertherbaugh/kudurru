@@ -18753,6 +18753,18 @@ parent retains the hosted run and startup load reconciliation.
 
 The five selected mounted command tests passed under race in 39.816 s
 on a sandbox checkout based on `ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61`.
+The final three refusal tests passed under race again in 10.076 s, and
+`make lint` reported zero issues. The enrolled promote/rejoin test and the
+scraper regression passed locally under race with E2E test source
+`01eed7c7c66d522bd347c8e469ac835b0c9c463e`. The fixture was a prebuilt
+`licensetest` binary from the same main baseline (SHA-256
+`458522bf519b4db2765a229cfdb66d19244a0c16441cb499dfd1d9ead9a9b366`).
+The two loopback SQLite members used exactly one bootstrap acquisition
+with zero races, and every existing phase count passed. The old primary
+exported `kudurru_cluster_fenced` at 1 and then 0; its startup SERVFAIL
+interval was 779 ms (36 samples), below the unchanged 5 s limit. The
+enrolled test took 249.69 s; this is local synthetic-root evidence, not a
+hosted PR result.
 
 ### F28-OPEN7 The held managed-anchor package, exact root-check counts and DNS across a persisted fence — November 13, 2026 (D369)
 
