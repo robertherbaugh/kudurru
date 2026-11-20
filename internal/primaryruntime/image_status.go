@@ -2,6 +2,7 @@ package primaryruntime
 
 import (
 	"slices"
+	"strings"
 	"time"
 
 	public "github.com/robertherbaugh/kudurru/api/v1alpha1"
@@ -49,6 +50,34 @@ func (p *PreparedImage) CommittedPrimaryStatus(objectName string) (PrimaryStatus
 	o, ok := p.status[objectName]
 	o.Member.Parents = slices.Clone(o.Member.Parents)
 	return o, ok
+}
+
+// ServedRecordSetReason reports a partial refusal from the admitted head only
+// when its source is the same record set and intent as the captured object.
+func (p *PreparedImage) ServedRecordSetReason(apex string, desired *public.DNSRecordSet, now time.Time) string {
+	if desired == nil || !p.Admitted(apex, now) {
+		return ""
+	}
+	entry := p.cut.entries[canonical(apex)]
+	if entry.view == nil || entry.member.Zone.ObjectName != desired.Spec.ZoneRef.Name {
+		return ""
+	}
+	token, err := primaryzone.SourceToken(desired)
+	if err != nil {
+		return ""
+	}
+	sources := entry.view.Aggregate.Sources
+	index, found := slices.BinarySearchFunc(sources, token.ID, func(source zonestate.Source, id string) int {
+		return strings.Compare(source.ID, id)
+	})
+	if !found || sources[index].UID != token.UID {
+		return ""
+	}
+	envelope, err := zonestate.DecodeSourceEnvelope(sources[index].Desired)
+	if err != nil || envelope.State != "present" || envelope.Projection != "served" || envelope.IntentDigest != token.IntentDigest {
+		return ""
+	}
+	return envelope.Reason
 }
 
 func imageStatus(e *entry, desired *public.DNSZone, raw primaryModelStatus) PrimaryStatusObservation {

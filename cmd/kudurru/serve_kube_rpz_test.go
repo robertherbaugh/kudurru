@@ -256,6 +256,9 @@ func TestRunServeKubeRPZFeeds(t *testing.T) {
 	await("feed update applied on both nodes", func() bool {
 		return kubeRPZRcode(cfgA, "later.rpzlab.net.", "udp", nil) == dns.RcodeNameError && kubeRPZRcode(cfgB, "later.rpzlab.net.", "tcp", nil) == dns.RcodeNameError
 	})
+	cliA := mountedCLIAs(t, cfgA, "rpz-a", "offline-test-password-1")
+	assertMountedRPZDig(t, cliA, "blocked.rpzlab.net.", "blocked.rpzlab.net.policy.test.")
+	assertMountedRPZPolicyList(t, cliA, "feed", 5, true)
 
 	// A selected feed that cannot be transferred is required coverage: every
 	// recursive query of the policy fails closed until it is deselected.
@@ -282,11 +285,11 @@ func TestRunServeKubeRPZFeeds(t *testing.T) {
 	})
 	// The feed state reaches the API, the CLI and /metrics on Kubernetes
 	// (D391): node A serves the updated feed and reports the missing one.
-	cliA := mountedCLIAs(t, cfgA, "rpz-a", "offline-test-password-1")
 	await("node A reports the missing feed", func() bool {
 		missing := kubeRPZFeeds(t, cliA, "missing")
 		return len(missing) == 1 && missing[0].State == "unavailable" && missing[0].Reason == "RPZTransfer" && missing[0].LastError != ""
 	})
+	assertMountedRPZPolicyList(t, cliA, "missing", 0, false)
 	if served := kubeRPZFeeds(t, cliA, "feed"); len(served) != 1 || served[0].State != "serving" || served[0].Node != "rpz-a" || served[0].Serial == nil || *served[0].Serial != 2 ||
 		served[0].Counts == nil || served[0].Counts.Rules != 5 || served[0].Rules == nil || served[0].Rules.ClientIP != 1 || served[0].Rules.ResponseIP != 1 || served[0].Rules.TCPOnly != 1 {
 		t.Fatalf("node A feed = %+v", served)

@@ -61,11 +61,15 @@ and dnsdist 2.1.3 (all live suites, including client IDs, cache isolation and
 managed anchors). The pass does not remove the dnsdist empty-FIN limitation
 or qualify a release.
 
+D417 ([#158](https://github.com/robertherbaugh/kudurru/issues/158)) keeps strict
+IXFR validation: a signed, same-serial, single-SOA reply without AA is refused
+without changing the stored copy or renewing its confirmation.
+
 | Package / remaining scope | Follow-up |
 |---|---|
 | ZONE: enabled external-source RBAC failures and caps; TSIG CLI on Kubernetes | [#123](https://github.com/robertherbaugh/kudurru/issues/123), [#126](https://github.com/robertherbaugh/kudurru/issues/126) |
 | ZONE: view ownership parity, shared caps, transfer/signing limitations | [#136](https://github.com/robertherbaugh/kudurru/issues/136) |
-| ZONE / DNS / EDGE: signed SOA-only IXFR without AA and dnsdist 2.1.3 empty-FIN limitation | [#158](https://github.com/robertherbaugh/kudurru/issues/158), [#127](https://github.com/robertherbaugh/kudurru/issues/127) |
+| DNS / EDGE: dnsdist 2.1.3 empty-FIN limitation | [#127](https://github.com/robertherbaugh/kudurru/issues/127) |
 | UPDATE / HA: owner-accepted publication grace, bounded follower apply, and member replacement | [#129 disposition and evidence](#owner-disposition-for-129); [#159](https://github.com/robertherbaugh/kudurru/issues/159) tracks the lifetime-refusal primary name. D409 remains implemented; loaded runtime and UPDATE findings remain in [#138](https://github.com/robertherbaugh/kudurru/issues/138). |
 | DNS: failed final performance qualification; managed-anchor residual metric/refusal/abandoned-term coverage | [#143](https://github.com/robertherbaugh/kudurru/issues/143); [#135](https://github.com/robertherbaugh/kudurru/issues/135) tracks residual F28 coverage |
 | RPZ / OPS: explanation projection, offline signed-feed restart, compile window and multi-port CoreDNS loss reporting | [#130](https://github.com/robertherbaugh/kudurru/issues/130) |
