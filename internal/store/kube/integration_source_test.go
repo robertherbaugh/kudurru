@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -12,8 +13,14 @@ import (
 	"github.com/robertherbaugh/kudurru/api/runtimekinds"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 )
 
 func integrationSourceStore(t *testing.T) (*Store, *IntegrationSourceBackend) {
@@ -61,6 +68,81 @@ func stageAll(t *testing.T, b *IntegrationSourceBackend, manager string, chunks 
 
 func uniqueOwner() integration.Owner {
 	return integration.Owner{ClusterID: "source-test", Namespace: "default", Name: "unifi", UID: fmt.Sprintf("uid-%d", time.Now().UnixNano())}
+}
+
+func TestIntegrationSourceHeadWriteClassification(t *testing.T) {
+	scheme, err := runtimekinds.NewScheme()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatal(err)
+	}
+	kinds, err := newRegistry(scheme)
+	if err != nil {
+		t.Fatal(err)
+	}
+	internal, err := splitInternal(kinds, []store.Kind{integration.KindIntegrationSourceHead, integration.KindIntegrationSourceChunk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		err  error
+		want error
+	}{
+		{"bad request", apierrors.NewBadRequest("rejected"), ErrSourceRejected},
+		{"forbidden", apierrors.NewForbidden(schema.GroupResource{Resource: "secrets"}, "head", errors.New("rejected")), ErrSourceRejected},
+		{"too large", apierrors.NewRequestEntityTooLargeError("rejected"), ErrSourceRejected},
+		{"invalid", apierrors.NewInvalid(schema.GroupKind{Kind: "Secret"}, "head", field.ErrorList{field.Required(field.NewPath("data"), "required")}), ErrSourceRejected},
+		{"unauthorized", apierrors.NewUnauthorized("unauthorized"), ErrSourceOutcomeUnknown},
+		{"method not supported", apierrors.NewMethodNotSupported(schema.GroupResource{Resource: "secrets"}, "update"), ErrSourceOutcomeUnknown},
+		{"timeout", apierrors.NewTimeoutError("timed out", 0), ErrSourceOutcomeUnknown},
+		{"deadline", context.DeadlineExceeded, ErrSourceOutcomeUnknown},
+		{"internal error", apierrors.NewInternalError(errors.New("server error")), ErrSourceOutcomeUnknown},
+		{"rate limited", apierrors.NewTooManyRequests("throttled", 1), ErrSourceOutcomeUnknown},
+		{"transport loss", io.ErrUnexpectedEOF, ErrSourceOutcomeUnknown},
+	} {
+		for _, operation := range []string{"create", "update"} {
+			t.Run(operation+"/"+tc.name, func(t *testing.T) {
+				var failure error
+				writes := 0
+				fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithInterceptorFuncs(interceptor.Funcs{
+					Create: func(ctx context.Context, inner client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+						writes++
+						if failure != nil {
+							return failure
+						}
+						obj.SetUID(types.UID(obj.GetName()))
+						return inner.Create(ctx, obj, opts...)
+					},
+					Update: func(context.Context, client.WithWatch, client.Object, ...client.UpdateOption) error {
+						writes++
+						return failure
+					},
+				}).Build()
+				backend := &IntegrationSourceBackend{s: &Store{opts: Options{Namespace: "default"}, c: fakeClient, internal: internal}}
+				owner := uniqueOwner()
+				head, chunks := sourceVersion(owner, 1, "source")
+				stageAll(t, backend, "test", chunks)
+				expected := ""
+				if operation == "update" {
+					created, err := backend.Commit(t.Context(), "", head, chunks, "test")
+					if err != nil || created.ResourceVersion == "" {
+						t.Fatal("seed source head", err)
+					}
+					expected = created.ResourceVersion
+					head, chunks = sourceVersion(owner, 2, "updated source")
+					stageAll(t, backend, "test", chunks)
+				}
+				failure, writes = tc.err, 0
+				_, err := backend.Commit(t.Context(), expected, head, chunks, "test")
+				if writes != 1 || !errors.Is(err, tc.want) || errors.Is(err, ErrSourceOutcomeUnknown) != (tc.want == ErrSourceOutcomeUnknown) || errors.Is(err, ErrSourceRejected) != (tc.want == ErrSourceRejected) {
+					t.Fatalf("%d head writes; error = %v, want only %v", writes, err, tc.want)
+				}
+			})
+		}
+	}
 }
 
 // TestEnvtestIntegrationSourceRootCAS proves the Kubernetes source root
