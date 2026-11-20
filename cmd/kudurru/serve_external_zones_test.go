@@ -366,17 +366,20 @@ func TestRunServeExternalZonesFromKubernetesSources(t *testing.T) {
 	setServiceAddress("192.0.2.61")
 	await(60*time.Second, "B acquires the Lease after A's partition", func() bool { return holder() == "external-b" })
 	var ready, degraded *metav1.Condition
-	await(30*time.Second, "the zone reports SourcesIncomplete on denied source reads", func() bool {
+	deniedKinds := []string{"Ingress", "Gateway", "HTTPRoute", "GRPCRoute", "TLSRoute", "Service"}
+	await(30*time.Second, "the zone reports SourcesIncomplete naming every denied source list", func() bool {
 		ready, degraded = conditions()
-		return degraded != nil && degraded.Status == metav1.ConditionTrue && degraded.Reason == public.ReasonSourcesIncomplete
+		if degraded == nil || degraded.Status != metav1.ConditionTrue || degraded.Reason != public.ReasonSourcesIncomplete {
+			return false
+		}
+		return !slices.ContainsFunc(deniedKinds, func(kind string) bool {
+			return !strings.Contains(degraded.Message, kind+": list denied")
+		})
 	})
 	if !isServing(ready) {
 		t.Fatalf("source RBAC failure changed readiness: %+v", ready)
 	}
-	for _, kind := range []string{"Ingress", "Gateway", "HTTPRoute", "GRPCRoute", "TLSRoute", "Service"} {
-		if !strings.Contains(degraded.Message, kind+": list denied") {
-			t.Errorf("source health does not name the denied %s list: %s", kind, degraded.Message)
-		}
+	for _, kind := range deniedKinds {
 		await(15*time.Second, "B counts the forbidden "+kind+" list", func() bool {
 			value, ok := mountedMetric(t, cfgB.Listeners.Metrics.Address, "kudurru_external_zone_source_list_total", `kind="`+strings.ToLower(kind)+`"`, `result="forbidden"`)
 			return ok && value > 0
