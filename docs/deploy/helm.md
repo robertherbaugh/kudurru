@@ -500,6 +500,15 @@ store, dnsdist, VIP); every query uses a metric the binary registers today
 supervisors' metrics listeners (:8084, :8085), which the `<release>-edge`
 PodMonitor scrapes (a `node` label names the node of hostNetwork pods).
 
+On the Kubernetes store, `kubectl describe dnszone <name>` shows controller
+Events such as `SerialBumped`. Cluster-scoped DNSZone Events are stored in
+`default`; namespaced DNSRecordSet Events are stored in the object's
+namespace. The leader also logs the same transitions. If
+`kudurru_controller_events_dropped_total` increases, check its `reason` label:
+`queue_full` means the API writer could not keep up, `write_failed` means the
+API write failed (see the warning log), and `invalid_event` means the Event
+could not be built. Delivery is best effort and never waits in a reconcile.
+
 ## Network policy
 
 `networkPolicy.enabled` restricts ingress to the kudurru pods: :5353 only

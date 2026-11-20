@@ -2,11 +2,16 @@ package kubeevents
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
 	"github.com/robertherbaugh/kudurru/internal/controller"
@@ -24,12 +29,14 @@ func TestSinkRecordsEvents(t *testing.T) {
 	zone := &v1alpha1.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "home", UID: "u2"}}
 	s.Event(rs, controller.EventWarning, controller.EventDuplicated, "www.example.com. A (held by team-a/web)")
 	s.Event(zone, controller.EventNormal, controller.EventSerialBumped, "serial 1 -> 2")
+	s.Event(zone, controller.EventNormal, controller.EventSerialBumped, "serial 1 -> 2")
 
 	tests := []struct {
-		ns, kind, name, reason, typ string
+		ns, kind, name, uid, reason, typ string
+		count                            int32
 	}{
-		{"apps", "DNSRecordSet", "web", controller.EventDuplicated, "Warning"},
-		{"default", "DNSZone", "home", controller.EventSerialBumped, "Normal"},
+		{"apps", "DNSRecordSet", "web", "u1", controller.EventDuplicated, "Warning", 1},
+		{"default", "DNSZone", "home", "u2", controller.EventSerialBumped, "Normal", 2},
 	}
 	for _, tt := range tests {
 		deadline := time.Now().Add(10 * time.Second)
@@ -38,19 +45,123 @@ func TestSinkRecordsEvents(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(list.Items) == 1 {
+			if len(list.Items) == 1 && list.Items[0].Count == tt.count {
 				ev := list.Items[0]
 				if ev.InvolvedObject.Kind != tt.kind || ev.InvolvedObject.Name != tt.name || ev.Reason != tt.reason || ev.Type != tt.typ ||
-					ev.InvolvedObject.APIVersion != v1alpha1.GroupVersion.String() || ev.Source.Component != DefaultComponent || ev.Source.Host != "pod-a" {
+					string(ev.InvolvedObject.UID) != tt.uid || ev.InvolvedObject.APIVersion != v1alpha1.GroupVersion.String() ||
+					ev.Source.Component != DefaultComponent || ev.Source.Host != "pod-a" {
 					t.Fatalf("event %+v", ev)
 				}
 				break
 			}
 			if time.Now().After(deadline) {
-				t.Fatalf("no event in %s (have %d)", tt.ns, len(list.Items))
+				t.Fatalf("no matching event in %s: %+v", tt.ns, list.Items)
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
+	}
+}
+
+func TestSinkFiltersRepeatSpam(t *testing.T) {
+	client := fake.NewClientset()
+	sink, err := New(client.CoreV1(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(sink.Shutdown)
+	zone := &v1alpha1.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "home", UID: "zone"}}
+	const offered = 40
+	for range offered {
+		sink.Event(zone, controller.EventNormal, controller.EventSerialBumped, "serial 1 -> 2")
+	}
+	marker := &v1alpha1.DNSRecordSet{ObjectMeta: metav1.ObjectMeta{Name: "marker", Namespace: "apps", UID: "marker"}}
+	sink.Event(marker, controller.EventWarning, controller.EventDuplicated, "marker")
+	for until := time.Now().Add(2 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		list, err := client.CoreV1().Events("apps").List(t.Context(), metav1.ListOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(list.Items) == 1 {
+			break
+		}
+		if time.Now().After(until) {
+			t.Fatal("worker did not process the marker after the repeated events")
+		}
+	}
+	writes := 0
+	for _, action := range client.Actions() {
+		if action.GetNamespace() == "default" && (action.Matches("create", "events") || action.Matches("patch", "events")) {
+			writes++
+		}
+	}
+	if writes <= 1 || writes >= offered {
+		t.Errorf("%d repeated Events produced %d writes; want aggregation followed by spam filtering", offered, writes)
+	}
+	if got := testutil.ToFloat64(sink.drops.WithLabelValues("queue_full")); got != 0 {
+		t.Errorf("spam filtering recorded %v queue drops, want 0", got)
+	}
+}
+
+type blockedEvents struct {
+	typedcorev1.EventInterface
+	first   sync.Once
+	entered chan struct{}
+}
+
+func (client *blockedEvents) Events(string) typedcorev1.EventInterface { return client }
+
+func (client *blockedEvents) Create(ctx context.Context, _ *corev1.Event, _ metav1.CreateOptions) (*corev1.Event, error) {
+	client.first.Do(func() { close(client.entered) })
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestBlockedClientDropsOnlyOverflowAndShutdownCancels(t *testing.T) {
+	client := &blockedEvents{entered: make(chan struct{})}
+	registry := prometheus.NewRegistry()
+	sink, err := New(client, Options{Registerer: registry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(sink.Shutdown)
+	zone := &v1alpha1.DNSZone{ObjectMeta: metav1.ObjectMeta{Name: "home", UID: "u2"}}
+	sink.Event(zone, controller.EventNormal, controller.EventSerialBumped, "in flight")
+	select {
+	case <-client.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("worker did not reach the client")
+	}
+	const overflow = 19
+	offered := make(chan struct{})
+	go func() {
+		defer close(offered)
+		for range queueCapacity + overflow {
+			sink.Event(zone, controller.EventNormal, controller.EventSerialBumped, "queued")
+		}
+	}()
+	select {
+	case <-offered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Event blocked behind the client")
+	}
+	if got := len(sink.queue); got != queueCapacity {
+		t.Errorf("queue length = %d, want %d", got, queueCapacity)
+	}
+	if got := testutil.ToFloat64(sink.drops.WithLabelValues("queue_full")); got != overflow {
+		t.Errorf("queue_full = %v, want %d", got, overflow)
+	}
+	if count, err := testutil.GatherAndCount(registry, "kudurru_controller_events_dropped_total"); err != nil || count != 3 {
+		t.Errorf("drop metrics = %d, %v; want three reason series", count, err)
+	}
+	stopped := make(chan struct{})
+	go func() {
+		sink.Shutdown()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Shutdown did not cancel the blocked write")
 	}
 }
 
