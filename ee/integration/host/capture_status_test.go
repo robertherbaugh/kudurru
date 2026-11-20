@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -14,7 +15,42 @@ import (
 	"github.com/robertherbaugh/kudurru/ee/integration/ledger"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/memory"
+	"github.com/robertherbaugh/kudurru/internal/store/replication"
 )
+
+func TestCaptureFailureReason(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"success", nil, ""},
+		{"deadline", context.DeadlineExceeded, "CaptureDeadlineExceeded"},
+		{"canceled", context.Canceled, "CaptureCanceled"},
+		{"capacity", ErrCapacity, "CaptureCapacityExceeded"},
+		{"replication capacity", replication.ErrTooLarge, "CaptureCapacityExceeded"},
+		{"invalid", ErrInvalid, "CaptureInvalid"},
+		{"replication invalid", replication.ErrInvalid, "CaptureInvalid"},
+		{"incompatible", replication.ErrIncompatible, "CaptureInvalid"},
+		{"credentials", ErrCredentials, "CaptureCredentialsUnavailable"},
+		{"fenced", ErrFenced, "CaptureFenced"},
+		{"replication fenced", replication.ErrFenced, "CaptureFenced"},
+		{"unavailable", ErrUnavailable, "CaptureUnavailable"},
+		{"read only", replication.ErrReadOnly, "CaptureUnavailable"},
+		{"unknown", errors.New("sensitive adapter detail"), "CaptureFailed"},
+		{"capacity before unavailable", errors.Join(ErrUnavailable, replication.ErrTooLarge), "CaptureCapacityExceeded"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.err
+			if err != nil {
+				err = fmt.Errorf("capture: %w", err)
+			}
+			if got := captureFailureReason(err); got != test.want {
+				t.Fatalf("captureFailureReason(%v) = %q; want %q", err, got, test.want)
+			}
+		})
+	}
+}
 
 func TestCaptureFailureDiagnosticsAndRecovery(t *testing.T) {
 	st := memory.New()

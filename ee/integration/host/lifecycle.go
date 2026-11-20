@@ -27,6 +27,7 @@ func (h *Host) Wake() {
 }
 
 // Statuses returns stable private copies of sanitized local diagnostics.
+// It is empty while the last capture failed; StatusSnapshot also reports why.
 func (h *Host) Statuses() []InstanceStatus {
 	statuses, _ := h.StatusSnapshot()
 	return statuses
