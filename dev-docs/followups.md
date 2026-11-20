@@ -5,6 +5,12 @@ supersedes specific historical allegations below and links remaining work to
 issues #122–#133 and #135–#140. Original entries retain their historical evidence; issue
 creation does not waive release requirements.
 
+For #133, use the [manual release acceptance runbook](milestones/v0.2/manual-acceptance.md)
+for open final-artifact human UI approval, authorized production issuance,
+and expiry/grace evidence. The November 20, 2026 owner decision prefers the
+issued-key disposable VM run and allows the labeled synthetic fallback for
+expiry/grace only.
+
 Open items that are not on the milestone exit criteria they came from. Each
 names its source (spike or milestone report) and the milestone where it should
 land. Close an item by deleting its row and citing the commit. Items that need
