@@ -124,6 +124,10 @@ type servingRuntime struct {
 	// memberPullInterval replaces the scheduled pull's default interval of an
 	// enrolled member; tests only. Zero keeps the default.
 	memberPullInterval time.Duration
+	memberPullStart    <-chan struct{}
+	memberMaxPullHold  time.Duration
+	memberForwardBound time.Duration
+	memberCommandSeen  func(clusterreplica.Command)
 	// memberForwardUpdateBound replaces memberForwardUpdateTimeout, the
 	// bound of a follower's forwarded UPDATE; tests only. Zero keeps the
 	// default.

@@ -46,7 +46,10 @@ type memberForwardHTTPFixture struct {
 	// scheduledPull runs the follower's own pull worker, as runServe does.
 	scheduledPull bool
 	// pullInterval replaces the worker's default interval when it is set.
-	pullInterval time.Duration
+	pullInterval      time.Duration
+	configureFollower func(*servingRuntime)
+	wrapObjectForward func(api.ObjectForward) api.ObjectForward
+	memberCommandSeen func(clusterreplica.Command)
 	// skipSelfPull, with selfPullHook, makes the explicit pull after a
 	// forwarded self-service command do nothing while it is true.
 	selfPullHook bool
@@ -103,6 +106,7 @@ func newMemberForwardHTTPFixture(t *testing.T, http2 bool, options ...func(*memb
 	var mirror *sqlite.Store
 	f.primary = newServingCommandFixture(t, func(s *servingRuntime) {
 		s.opts.Config.Node.DataDir = t.TempDir()
+		s.memberCommandSeen = f.memberCommandSeen
 		scheme, err := runtimekinds.NewScheme()
 		if err != nil {
 			t.Fatal(err)
@@ -186,6 +190,9 @@ func newMemberForwardHTTPFixture(t *testing.T, http2 bool, options ...func(*memb
 	}
 	t.Cleanup(func() { _ = f.follower.Close(context.Background()) })
 	f.follower.memberPullInterval = f.pullInterval
+	if f.configureFollower != nil {
+		f.configureFollower(f.follower)
+	}
 	if f.selfPullHook {
 		f.follower.memberSelfPull = func(ctx context.Context) error {
 			if f.skipSelfPull.Load() {
@@ -214,9 +221,13 @@ func newMemberForwardHTTPFixture(t *testing.T, http2 bool, options ...func(*memb
 	if err != nil {
 		t.Fatal(err)
 	}
+	objectForward := f.follower.ObjectForward
+	if f.wrapObjectForward != nil {
+		objectForward = f.wrapObjectForward(objectForward)
+	}
 	apiServer, err := api.New(api.Options{Store: mirror, Validator: opts.Validator, Config: opts.Config, CanonicalSettings: f.follower,
 		BlockingCommand: f.follower.BlockingCommand, BlockingReads: servingbuild.NewBlockingReads(),
-		ObjectCommand: f.follower.ObjectCommand, ObjectForward: f.follower.ObjectForward,
+		ObjectCommand: f.follower.ObjectCommand, ObjectForward: objectForward,
 		ZoneCommand: f.follower.ZoneCommand, ZoneForward: f.follower.ZoneForward, SettingsForward: f.follower.SettingsForward,
 		ClusterRole: f.follower.ClusterRole, CacheFlushCommand: flush, NodeName: opts.Config.Node.Name,
 		Membership:   cluster.Authority{SelfName: opts.Config.Node.Name, Elector: mirror.Elector(cluster.ElectionController)},
