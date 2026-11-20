@@ -63,6 +63,7 @@ const (
 	// statement well under maxConsoleCommand.
 	edgeBlocksPerStatement = 64
 	edgeBlockApplyTick     = 250 * time.Millisecond
+	edgeBlockPullTimeout   = 3 * time.Second
 )
 
 type edgeBlocksDocument struct {
@@ -274,7 +275,7 @@ func (s *Supervisor) pullEdgeBlocks(ctx context.Context, eps []cluster.Endpoint)
 	if len(eps) > maxResolverSources {
 		return nil, false
 	}
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, edgeBlockPullTimeout)
 	defer cancel()
 	var mu sync.Mutex
 	var lists []internalapi.EdgeBlockList
@@ -498,7 +499,8 @@ func (s *Supervisor) syncEdgeBlocks(ctx context.Context) {
 	var owners map[string]edgeBlockOwner
 	blocks := active
 	if ok {
-		owners, blocks = mergeEdgeBlocks(st.owners, lists, s.cfg.BlockRestoreHold, 3*s.cfg.BlockPoll, now)
+		maxGap := max(3*s.cfg.BlockPoll, 2*s.cfg.BlockPoll+edgeBlockPullTimeout)
+		owners, blocks = mergeEdgeBlocks(st.owners, lists, s.cfg.BlockRestoreHold, maxGap, now)
 		st.source, st.pulled = "backends", now
 	} else {
 		owners = interruptEdgeBlockStreaks(st.owners)

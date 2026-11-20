@@ -344,10 +344,11 @@ only lower revisions for that owner. **New blocks added to the restored
 backend are also delayed** while its revision is below the remembered one.
 The edge applies the latest observed set on the first qualifying poll at or
 after the hold. A missed owner, an entirely failed poll, a current or higher
-revision, or a gap longer than three poll intervals (15 seconds by default)
-restarts the hold. A short restart can resume the saved observations within
-that gap; a longer restart starts a new hold. Interruptions can therefore
-make the total wait longer than five minutes. To bypass the hold, stop each
+revision, or a gap beyond the limit (15 seconds by default) restarts the hold.
+With a short poll interval, the limit allows for the three-second pull timeout
+plus two poll intervals. A short restart can resume the saved observations
+within the limit; a longer restart starts a new hold. Interruptions can
+therefore make the total wait longer than five minutes. To bypass the hold, stop each
 edge, remove `edge-blocks.json` from its configuration directory, then
 restart it with the restored backend reachable. This also discards the saved
 blocks and revision floors, so verify which backends will answer first.

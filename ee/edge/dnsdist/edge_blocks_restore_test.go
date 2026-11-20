@@ -23,8 +23,9 @@ const (
 var restoreTestEpoch = time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
 
 type restoreTestPeer struct {
-	list atomic.Pointer[internalapi.EdgeBlockList]
-	hits atomic.Int64
+	list  atomic.Pointer[internalapi.EdgeBlockList]
+	hits  atomic.Int64
+	delay atomic.Int64
 }
 
 func (p *restoreTestPeer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -32,6 +33,7 @@ func (p *restoreTestPeer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		http.NotFound(w, req)
 		return
 	}
+	time.Sleep(time.Duration(p.delay.Load()))
 	list := p.list.Load()
 	p.hits.Add(1)
 	if list == nil {
@@ -169,6 +171,27 @@ func (h *restoreTestHarness) waitSaved(at time.Duration) {
 
 func restoreTestList(owner string, revision uint64, blocks ...internalapi.EdgeBlock) *internalapi.EdgeBlockList {
 	return &internalapi.EdgeBlockList{Owner: owner, Revision: revision, ObservedAt: restoreTestEpoch, Blocks: blocks}
+}
+
+func TestSupervisorEdgeBlockRestoreWithSlowPeer(t *testing.T) {
+	backends := newRestoreTestBackends(t, 2)
+	owner, slowPeer := backends.peers[0], backends.peers[1]
+	owner.list.Store(restoreTestList("owner", 10))
+	slowPeer.delay.Store(int64(120 * time.Millisecond))
+	h := newHarness(t, func(cfg *Config) {
+		cfg.Blocks, cfg.Source = backends.client, backends.source
+		cfg.BlockPoll, cfg.BlockRestoreHold = 25*time.Millisecond, 350*time.Millisecond
+	})
+	hasRevision := func(revision uint64) func() bool {
+		return func() bool {
+			h.sup.mu.Lock()
+			defer h.sup.mu.Unlock()
+			return h.sup.blocks.owners["owner"].Revision == revision
+		}
+	}
+	h.waitFor("initial block revision", hasRevision(10))
+	owner.list.Store(restoreTestList("owner", 2))
+	h.waitFor("restored revision despite the slow peer", hasRevision(2))
 }
 
 func TestSupervisorEdgeBlockRestoreContinuity(t *testing.T) {

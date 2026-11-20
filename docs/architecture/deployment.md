@@ -337,10 +337,13 @@ serves a lower revision than one already applied is ignored, so a lagging
 follower cannot bring back a revoked block or wipe a new one, also while the
 newer backend misses pulls. The edge accepts a deliberate step back only
 after consecutive polls report that owner with only lower revisions for five
-minutes (`BlockRestoreHold`). A gap greater than three poll intervals (15
-seconds by default), a backward clock step, a pull with no answer for that
-owner, or a current or higher revision breaks that streak. A short restart
-can continue the persisted streak within the same gap; a version-2 cache
+minutes (`BlockRestoreHold`). A backward clock step, a pull with no answer
+for that owner, a current or higher revision, or an observation gap beyond
+the limit breaks that streak. The limit is the greater of three poll intervals
+and two poll intervals plus the three-second pull timeout (15 seconds with
+the default intervals). This allows consecutive pulls to complete even with
+a short poll interval and a slow backend; longer stalls still reset the streak.
+A short restart can continue the persisted streak within the same gap; a version-2 cache
 keeps its blocks and floors but starts a new streak. A primary that stays
 unreachable while a follower consistently serves an older revision can
 still bring that revision back after the hold, bounded by each entry's expiry.
