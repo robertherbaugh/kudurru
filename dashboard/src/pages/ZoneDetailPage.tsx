@@ -231,7 +231,7 @@ function ZoneDetail({ zone }: { zone: string }) {
     queryFn: () => api.objects.get<DNSRecordSet>('dnsrecordsets', editSet ?? '', editNamespace),
     enabled: served && !!editNamespace && !!editSet,
   });
-  const viewRefusals = served && recordSet.isSuccess && !recordSet.isFetching ? recordSet.data.status?.conditions?.find(
+  const viewRefusals = served && recordSet.isSuccess && !recordSet.isPlaceholderData ? recordSet.data.status?.conditions?.find(
     (condition) => condition.type === 'ViewEndpointsRefused' && condition.status === 'True',
   )?.message : undefined;
   const signed = zoneObj.data?.spec.dnssec?.enabled === true || (recs.data?.items ?? []).some((r) => SIGNED_TYPES.has(r.recordType.toUpperCase()) && !r.kudurru?.view);
