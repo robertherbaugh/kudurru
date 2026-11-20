@@ -106,8 +106,8 @@ publication that is served, not to the latest commit (D378): after a canonical
 commit that the node has not published yet they are still sent, and once a
 successor is published they are withheld, except that a query whose
 publication was captured before the swap still gets its answer for up to one
-second after the swap that replaced that publication, however many swaps
-followed (`servedSuccessorGrace`, `Publisher.ServedWithin`, D395). Nothing
+second after the swap that replaced it, as long as it is among the last eight
+replaced publications (`servedSuccessorGrace`, `Publisher.ServedWithin`, D395). Nothing
 qualifies across a DNS-only (fenced) publication, and the DNS dependency and
 anchor checks still apply at the handoff. Before D395 the queries in flight
 across each publication (about one in a few thousand) got no reply at all.
