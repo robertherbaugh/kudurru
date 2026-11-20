@@ -38,6 +38,10 @@ feature ──PR──▶ main ──PR──▶ release-candidate ──PR─�
            image            pre-release, image         release, image + latest
 ```
 
+Cut final production releases (`v<VERSION>`) only from `release`. Keep
+`release-candidate` as the reviewed stage: it preserves `main`'s ancestry and
+continues to publish `v<VERSION>-rc.<N>` pre-releases, not final releases.
+
 | Step | Workflow | What it publishes |
 |---|---|---|
 | Push to a pull request against `main` (same repository, not Dependabot) | `dev-image.yml` | `ghcr.io/robertherbaugh/kudurru:dev-<PR number>` from the PR's head commit with the dashboard bundle, linux/amd64 and linux/arm64, unsigned. Every push overwrites the same tag; `kudurru version` reports `<VERSION>-dev.<PR>` and the commit. |
@@ -56,11 +60,12 @@ feature ──PR──▶ main ──PR──▶ release-candidate ──PR─�
   was open, wait for the new candidate to be tagged, then re-run the
   `promotion` check (or the `release` workflow).
 
-Re-running a workflow at the same commit reuses its tag. To re-publish an
-existing tag by hand, run `publish` with workflow_dispatch and the tag, on
-the `release` branch (a final tag) or `release-candidate` (a candidate);
-publish refuses other branches, because the branch is part of the signing
-identity that `cosign verify` checks (section 5).
+Re-running a workflow at the same commit reuses its tag. To republish an
+existing tag by hand, run `publish` with `workflow_dispatch` and the tag: use
+`release` for a final tag and `release-candidate` for a candidate tag.
+Confirm this pairing before dispatching. The manual workflow checks the tag
+format and the two allowed branch names separately; it does not enforce the
+pairing. The branch is part of the signing identity checked in section 5.
 
 The workflows push the tags with `GITHUB_TOKEN`; such tags start no other
 workflow, which is why the branch workflows call `publish.yml` themselves.
@@ -72,16 +77,16 @@ Repository settings the pipeline relies on (once):
 
 - [ ] Branches `release-candidate` and `release` exist (created from `main`
       before the first promotion; creating a branch publishes nothing) and
-      are protected: changes through pull requests only, `promotion` and the
-      `ci` checks required.
-- [ ] Promotion pull requests are merged with a merge commit, not squash or
-      rebase (a branch ruleset can restrict the merge method per branch):
-      `release-candidate` must keep `main`'s history, or the next promotion
-      conflicts and the release tree check fails.
-- [ ] Promotion pull requests need an approving review by a maintainer
-      (CODEOWNERS for `.github/` and `hack/release-tag.sh`): the `promotion`
-      check runs the workflow and script of the pull request itself, so a
-      pull request that edits them can pass its own check.
+      are protected by the `protect releases` ruleset (`24898698`): PRs only,
+      no deletions or force pushes, and `ci-ok`, `security-ok`, and `promotion`
+      required from GitHub Actions.
+- [ ] The release ruleset allows merge commits only, not squash or rebase.
+      `release-candidate` must keep `main`'s history, and `release` must keep
+      `release-candidate`'s history.
+- [ ] The ruleset requires at least one approval, code-owner review for owned
+      paths, approval of the last reviewable push, stale-review dismissal, and
+      resolved review threads. The `promotion` check runs the workflow and
+      scripts from the PR, so review changes to those files carefully.
 - [ ] Tag rulesets, if any, let GitHub Actions create `v*` tags.
 - [ ] A branch ruleset refuses branches named `v*`. publish.yml checks out
       `refs/tags/<tag>`, so a branch named like the next tag can no longer
@@ -94,6 +99,37 @@ Repository settings the pipeline relies on (once):
 - [ ] The `ghcr.io/robertherbaugh/kudurru` package grants this repository
       write access (it does when the first image was pushed by a workflow
       of this repository).
+
+**Release ruleset handoff ([#140](https://github.com/robertherbaugh/kudurru/issues/140)).**
+On November 20, 2026, the owner confirmed merge commits only for promotions,
+final production releases only from `release`, and retention of the repository
+admin role's PR-only bypass. The [proposal](../.github/rulesets/protect-releases.json)
+sets the merge method and retains the bypass; it does not change publishing
+workflows. The bypass is an exception to the ruleset on a PR, not just a review
+waiver or permission to push directly. It lets the sole code owner promote a PR
+they cannot approve; record any use and the reason in the promotion PR.
+
+Do not change candidate publishing without separate owner confirmation. Keep
+the existing `release*` ruleset scope unless the owner decides otherwise:
+`release-branch` remains protected, is not a publishing branch, and has no
+normal `promotion` check because the workflow does not run there.
+
+Before applying, run `python3 -B hack/release-protection-check.py --dry-run`
+with authenticated `gh`. This compares the proposal to the current ruleset
+using GET requests only. If it flags drift, review it before proceeding.
+Only the authorized owner updates the existing ruleset in GitHub **Settings →
+Rules → Rulesets**. Leave the default-branch ruleset and repository-wide merge
+options unchanged.
+
+- [ ] Before promoting or publishing, run
+      `python3 -B hack/release-protection-check.py` and record a passing live
+      check for both release branches (for v0.2.0, in the
+      [release protection audit](milestones/v0.2/final-acceptance.md#release-protection-audit)).
+      The live check compares every editable ruleset field to the reviewed
+      proposal; a dry run does not count. If the detailed classic-protection
+      API is inaccessible, record the access gap and have the owner confirm
+      classic protection in Settings; `protected: true` alone does not
+      distinguish rulesets from classic protection.
 
 ## 1. Prepare the release commit
 
@@ -236,7 +272,18 @@ The separate AD/Windows deferral is D353.
 These gate the GA release (an rc may ship without them, listed as known
 gaps in the notes).
 
-Two former items here run on the CI runners (Ubicloud, Ubuntu 24.04) now:
+- [ ] Complete and explicitly approve the [human UI acceptance matrix](milestones/v0.2/manual-acceptance.md#human-ui-acceptance-matrix)
+      on the exact final artifacts, recording the full hashes, approver, and UTC
+      date. An evidence PR can retain the explicit approval; merge is not acceptance.
+- [ ] Owner: record authorized production issuance and retain applicable
+      production trust/signing evidence separately from the expiry/grace result.
+- [ ] Record expiry/grace evidence and identify the path used. Prefer the
+      [issued-key disposable VM run](milestones/v0.2/manual-acceptance.md#production-key-expiry-and-grace)
+      with the [checker](../hack/production-license-check.ts). If that run is
+      not feasible, use the owner-agreed [synthetic fallback for expiry/grace only](milestones/v0.2/manual-acceptance.md#synthetic-fallback-for-expiry-and-grace-only).
+      It does not satisfy the separate production issuance or trust/signing gate.
+
+Checks on the CI runners (Ubicloud, Ubuntu 24.04):
 
 - [ ] **edge-check** (`edge` workflow, no `continue-on-error` since the v0.1
       fix round): `make edge-check` builds the kudurru image and both
@@ -280,6 +327,16 @@ Two former items here run on the CI runners (Ubicloud, Ubuntu 24.04) now:
       (PROXYv2). It skips docs-only changes the way `ci` does; make it a
       required check once it has a record of green runs. Not covered: the
       three-host `ha/` files (host networking and a VIP).
+- [ ] **packages** (`packages` workflow, `hack/package-lifecycle.sh`):
+      install checksum-verified v0.1.0, start, run `kudurru doctor` over
+      HTTPS using the generated local certificate, check loopback DNS over
+      UDP and TCP, restart, and upgrade to the unsigned snapshot with edited
+      config. Verify the snapshot serves a zone from `objects.d`, then
+      remove it. DEB runs on the Ubuntu VM and also checks purge; RPM runs
+      in a Rocky Linux systemd container
+      and checks saved config after erase. Review the `package-lifecycle`
+      artifact for both package hashes per format. Propose making the check
+      required only after a record of green hosted runs (#167).
 
 On the owner's hardware:
 
@@ -406,14 +463,14 @@ publish.yml does not change its result), or, for a scan finding, fix it on
 
 ## 5. Verify what was published
 
-- [ ] Checksums: `cosign verify-blob --certificate checksums.txt.pem
-      --signature checksums.txt.sig --certificate-identity-regexp
-      '^https://github\.com/robertherbaugh/kudurru/\.github/workflows/publish\.yml@refs/heads/release(-candidate)?$'
+- [ ] Checksums: for a final release, run `cosign verify-blob --certificate checksums.txt.pem
+      --signature checksums.txt.sig --certificate-identity
+      'https://github.com/robertherbaugh/kudurru/.github/workflows/publish.yml@refs/heads/release'
       --certificate-oidc-issuer https://token.actions.githubusercontent.com
       checksums.txt`, then `sha256sum -c checksums.txt` on the downloaded
-      artifacts. The identity is publish.yml run from a release branch;
-      a looser pattern (the whole repository) would also accept a signature
-      made by any other workflow or branch of the repository.
+      artifacts. For an `-rc.<N>` pre-release, use `refs/heads/release-candidate`
+      in the identity instead. Use the exact workflow and branch identity for
+      the artifact being verified.
 - [ ] Images: `cosign verify ghcr.io/robertherbaugh/kudurru:<version>` with the
       same identity flags (`publish.yml` already ran this for both ko
       images: `docker_signs` with `artifacts: manifests` signs the ko index
@@ -423,8 +480,15 @@ publish.yml does not change its result), or, for a scan finding, fix it on
       <version>` and `cosign verify` on the chart reference; `helm install` on
       the kind cluster from section 3.
 - [ ] CRDs: `kubectl apply --server-side -f crds.yaml` from the release assets.
-- [ ] Packages: install the deb or rpm on a VM, `systemctl start kudurru`,
-      `kudurru doctor`.
+- [ ] Packages: verify the release checksums and repeat the section 3 lifecycle
+      with the published packages on disposable guests; retain their exact
+      hashes separately. The `packages` workflow tests unsigned snapshots,
+      not the published artifacts.
+- [ ] Match the published asset and executable SHA256 to the
+      [artifact-bound manual acceptance records](milestones/v0.2/manual-acceptance.md).
+      If the bytes differ, verify the published bytes and repeat the affected
+      artifact checks; do not carry over approval from a different artifact.
+      Synthetic expiry/grace results identify test source, not tested release bytes.
 
 ## 6. After the release
 

@@ -21,7 +21,7 @@ specific finding it exercises, not a package's complete acceptance criteria.
 | Packaged upgrade | Released v0.1.0 Linux archive and RPM downloaded and checked against published SHA256 checksums. The existing upgrade test now takes a stopped-volume backup and restores it under the released old binary, checking DNS, credentials, schemas and history. Candidate package execution and exact hashes/results are recorded below. |
 | Performance | **Final-source qualification failed** on `a22255a2`: 60 native processes succeeded, but all ten absolute report gates failed. Original-reference / candidate CNAME lookup p99 medians are 2,187 / 2,363 ns against the unchanged 2,000 ns product maximum. The reference is ineligible, so relative comparisons were refused. The owner-approved restarted-host amendment, calibration and limits were honored. Complete evidence below; release-blocking [#143](https://github.com/robertherbaugh/kudurru/issues/143). |
 | Hosted checks | PR #54's last reported source run `43770178234` failed the two observer tests and `ci-ok`; its other 23 jobs passed. Follow-up run `43775954528` passes both observer shards but exposed the schema-contract, cleanup-setup, UPDATE EOF and rollback test failures recorded below. **All 26 jobs passed** in final-source run `43781940600` on `a22255a2`, including both observer shards, the corrected ledger shard, e2e and `ci-ok`. `security-ok` also passed. Required review still governs merge. |
-| Manual UI and production license | The normal archive executable accepted the owner-supplied issued Enterprise key through its production trust root. All eight entitlement, branding, restart, tampered-signature, minute-reload and no-key fallback checks passed. Earlier synthetic proofs keep their separate scope. Human visual approval, license-server issuance workflow and actual production-key expiry/grace acceptance remain in [#133](https://github.com/robertherbaugh/kudurru/issues/133). |
+| Manual UI and production license | The normal candidate archive executable accepted the owner-supplied issued Enterprise key through its production trust root. All eight entitlement, branding, restart, tampered-signature, minute-reload and no-key fallback checks passed on that candidate. Human visual approval on the exact final artifacts, evidence of authorized production issuance, and an expiry/grace acceptance record remain in [#133](https://github.com/robertherbaugh/kudurru/issues/133). |
 | Review and publication | Required CI/security/review checks govern merge. Publishing v0.2.0 is a separate release-branch milestone. |
 
 ## Historical findings reconciled
@@ -58,7 +58,7 @@ status in the audit, rather than becoming invented current failures.
 | ZONE: enabled external-source RBAC failures and caps; TSIG CLI on Kubernetes | [#123](https://github.com/robertherbaugh/kudurru/issues/123), [#126](https://github.com/robertherbaugh/kudurru/issues/126) |
 | ZONE: view ownership parity, shared caps, transfer/signing limitations | [#136](https://github.com/robertherbaugh/kudurru/issues/136) |
 | ZONE / DNS / EDGE: hosted pinned interop, signed SOA-only IXFR without AA, dnsdist 2.1.3 empty-FIN limitation | [#127](https://github.com/robertherbaugh/kudurru/issues/127) |
-| UPDATE / HA: bounded failures after admission, long apply partial outcomes, member retirement and D395 ordinary-answer grace decision | [#129](https://github.com/robertherbaugh/kudurru/issues/129); D409 remains implemented |
+| UPDATE / HA: owner-accepted publication grace, bounded follower apply, and member replacement | [#129 disposition and evidence](#owner-disposition-for-129); [#159](https://github.com/robertherbaugh/kudurru/issues/159) tracks the lifetime-refusal primary name. D409 remains implemented; loaded runtime and UPDATE findings remain in [#138](https://github.com/robertherbaugh/kudurru/issues/138). |
 | DNS: failed final performance qualification; managed-anchor residual metric/refusal/abandoned-term coverage | [#143](https://github.com/robertherbaugh/kudurru/issues/143); [#135](https://github.com/robertherbaugh/kudurru/issues/135) tracks residual F28 coverage |
 | RPZ / OPS: explanation projection, offline signed-feed restart, compile window and multi-port CoreDNS loss reporting | [#130](https://github.com/robertherbaugh/kudurru/issues/130) |
 | INTEGRATIONS: whole-image capture/cleanup scale and original time bounds | [#124](https://github.com/robertherbaugh/kudurru/issues/124) |
@@ -80,6 +80,42 @@ integration`); those issue texts may still name the original uncompleted scope.
 No issue body or issue state was changed. This report and its committed
 evidence record the specific completed checks; remaining requirements in those
 issues stay open.
+
+### Owner disposition for #129
+
+On November 20, 2026, the owner accepted D395 as implemented (up to one second
+of grace for ordinary answers; transfers still require the current publication,
+and UPDATE acknowledgments, API dig, and mutations remain strict) and D375 as
+implemented (one 30-second follower apply lifetime, honest per-document
+partial results and no replay; send large workloads to the primary). The
+[documented member replacement procedure](../../../docs/deploy/sqlite-join.md#replace-a-member-that-cannot-follow)
+is sufficient for v0.2; the #160 retirement command stays deferred.
+
+The owner decision is separate from the verification:
+
+- **Local grace and replacement regressions:** focused `-race` runs on
+  `ce3ab6e2` passed `TestPublisherServedWithinKeepsRecentlyReplacedPublications`,
+  `TestPublisherServedWithinHasNoGapAtTheSwap`,
+  `TestRootAnchorServedDNSFollowsThePublication`,
+  `TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation`,
+  `TestReplacementReceiverNeedsItsOwnNameAndAddress`,
+  `TestInvitationAndActiveMemberCapacityDoNotPrune`,
+  `TestRevokedKeyCannotReturnUnderNewCertificateAndUUID`, and
+  `TestRootMemberListenerTLSSeparationAndLiveRevocation`. Those tests check
+  grace expiry, strict AXFR and mutation behavior, and the member identity and
+  roster rules; they are not an operator replacement drill.
+- **Local cutoff regression:** [#159 evidence](../../followups.md#local-follower-apply-evidence-159)
+  covers both forced cutoffs, the durable per-document results, and no replay.
+- **Hosted single-runner process tests:** [CI run 44667589755](https://github.com/robertherbaugh/kudurru/actions/runs/44667589755/job/136061099846)
+  on `91b4f2c5` (merged in #184) passed `TestEnrolledClusterProcessesPartitionCatchupAndRestart`
+  and `TestEnrolledClusterProcessesPromoteAndRejoin` under `-race`. The
+  original 200-document follower applies each returned all 200 as created,
+  in 8.49 seconds and 8.37 seconds, respectively. These timings are one
+  runner's result, not a guarantee under load.
+
+These results do not qualify a final release artifact or independent two-VM VIP
+failover. The D358 deferral and other release gates are unchanged. Keep #129
+open while its deferred #160 sub-issue remains open.
 
 ## Explicit future acceptance
 
@@ -286,10 +322,17 @@ and all eight features**, matching the signed claims. All **eight checks passed*
 The [issued-key result](evidence/2026-11-16-final-source/production-license-result.json),
 [cleanup record](evidence/2026-11-16-final-source/production-license-cleanup.json)
 and agent-inspected screenshot are committed without the key, licensee or
-license ID. This accepts an already-issued signature on the normal artifact;
-it does not test license-server issuance or actual production-key expiration/
-grace. The latter retains only its separate synthetic clock-controlled proof.
-The full human UI matrix remains open under #133.
+license ID. This accepts an already-issued signature on the normal candidate
+archive; it does not test license-server issuance or a production-key expiry/
+grace transition. On November 20, 2026, the owner confirmed that an issued-key
+run in a disposable VM remains preferred. The runbook checks the final archive
+after a restart at each advanced guest time, not live wall-clock jumps. A
+[clock-controlled synthetic fallback](manual-acceptance.md#synthetic-fallback-for-expiry-and-grace-only)
+is allowed for expiry/grace behavior only. Injected-clock tests on a source build
+do not add production trust, signing, or issuance evidence and are not a run
+of the final archive. The [manual runbook](manual-acceptance.md) also defines
+explicit human UI approval on the exact final artifact SHA256 values; merging
+code or the runbook does not supply approval. No new gate result is recorded.
 
 Both mandatory live sink tests passed on final source:
 `TestLiveClickHouseReadsTheDocumentedTable` and
@@ -380,13 +423,97 @@ earlier source-correction hold. Raw-artifact manifest SHA256:
 `e61801285bef4b5477b6094ea6290c7b9f35e5e2f9ffe10984cd2aa100b3fb9c`.
 Collector exit 1 and `performance_pass: false` remain explicit. The independent
 verifier exits 0 because it confirms this failed outcome. The original failed
-homelab/calibration history is unchanged. No timing was repeated after this
-failure, no sample replaced and no limit relaxed.
+homelab/calibration history is unchanged. No qualification timing was repeated
+after this failure, no sample replaced and no limit relaxed.
 
 [#143](https://github.com/robertherbaugh/kudurru/issues/143) tracks the blocking
 result. A further attempt requires a diagnosed fix or separately reviewed
 method change under the existing protocol. The host amendment itself supplies
 no such approval after a failure. D383/D412/G23 remain open.
+
+#### Retained-vector diagnosis (#175)
+
+**`release_qualified: false` — descriptive comparisons only.** The
+[offline comparison](../../../bench/README.md#final-source-cname-diagnosis-175)
+joins five-process medians by report, benchmark and unit. Historical calibration
+`cloud-shared-20261115` and the final reference measured the same source,
+`0cc9565e`, before and after the sandbox restart. The final candidate was
+`a22255a2`. Both comparisons match 219 metrics; the 373 candidate metrics
+without a reference are excluded. The aggregate below uses only the 79
+matched `ns/op`, `p50-ns` and `p99-ns` metrics, not all units.
+
+| Metric | Calibration reference | Final reference | Final candidate | Final reference / calibration | Candidate / final reference |
+|---|---:|---:|---:|---:|---:|
+| CNAME p99 (ns) | 1,890 | 2,187 | 2,363 | 1.157 | 1.080 |
+| CNAME p50 (ns) | 825 | 1,087 | 1,102 | 1.318 | 1.014 |
+| CNAME ns/op | 974.2 | 1,289 | 1,402 | 1.323 | 1.088 |
+| Hit p99 (ns) | 901 | 1,078 | 1,295 | 1.196 | 1.201 |
+| Hit ns/op | 563.3 | 652.4 | 695.1 | 1.158 | 1.065 |
+| Median ratio, 79 metrics | — | — | — | 1.111 | 1.005 |
+
+The same-source ratios range from 0.930 to 1.881, with fast upstream `ns/op`
+up 46–53%. Within the final run, all three nanosecond ratios for nodata and
+nxdomain are at or below 1.00. The CNAME calibration median left just 110 ns
+(5.5% of the unchanged 2,000 ns maximum); the five processes ranged from
+1,706 to 2,602 ns. The final reference's median alone exceeded the limit by
+187 ns. Unchanged source drifted enough to fail the gate without the candidate.
+This does not identify the reason for the drift or establish physical-host
+contention. The final reference remains ineligible for a regression verdict.
+
+#### Local zone hot-path diagnosis (#175)
+
+**`release_qualified: false` — instrumented local microbenchmark only.** On
+November 20, 2026, detached `0cc9565e` and workspace head `61916ce5` were built
+with Go 1.27.4, `linux/amd64`, `CGO_ENABLED=0`. The benchmark body is identical
+and `internal/zone` is unchanged between `a22255a2` and `61916ce5`; the local
+binaries still represent different full checkouts and dependency sets.
+
+- `go tool nm -size`: `resolve` grew from 780 to 1,256 bytes and `answer` from
+  816 to 934 bytes. `go build -gcflags=-m`: neither became inlineable, the
+  outer `Lookup` remains inlineable, and `LookupFrom` now inlines into the call
+  to non-inlined `LookupWithin`. The callback does not escape; the two-slot
+  CNAME answer slice does.
+- `go tool objdump`: `resolve` reserves 368 → 392 stack bytes in its prologue
+  and adds the fallback check before `step`, the NXDOMAIN fallback check and
+  the post-alias `owns` nil check. The standalone benchmark passes nil for
+  `owns` and does not enable fallback, but still executes their guards on the
+  relevant paths. `answer` adds `runtime.makeslice` on the CNAME branch, not on
+  the direct hit path.
+
+Six interleaved 500 ms `BenchmarkLookup100k` processes at six Go processors
+finished with exit zero, each with a CPU profile and `GODEBUG=gctrace=1`.
+The table is in execution order. Each subbenchmark had one forced GC at
+startup; additional GC cycles below are those logged between the verbose
+start marker and the result line, not cycles attributed to a particular query.
+The VM exposed eight CPUs throughout. Full `/proc/loadavg` and
+`/proc/pressure/cpu` snapshots were taken before and after each process;
+`perf stat` was unavailable.
+
+| Process | CNAME p99 (ns) | Hit p99 (ns) | Extra GC, CNAME / hit | 1-minute load, before → after | CPU PSI `some avg10` %, before → after |
+|---|---:|---:|---:|---:|---:|
+| Reference 1 | 2,172 | 1,084 | 1 / 0 | 8.20 → 7.63 | 38.34 → 26.43 |
+| Head 1 | 1,585 | 924 | 0 / 0 | 7.63 → 7.10 | 26.43 → 14.87 |
+| Head 2 | 1,452 | 1,094 | 0 / 0 | 7.10 → 6.61 | 14.87 → 10.33 |
+| Reference 2 | 2,072 | 796 | 1 / 1 | 6.61 → 6.61 | 10.33 → 6.93 |
+| Reference 3 | 1,832 | 871 | 1 / 1 | 6.61 → 6.16 | 6.93 → 3.80 |
+| Head 3 | 2,153 | 1,028 | 0 / 0 | 6.16 → 5.75 | 3.80 → 2.55 |
+
+Median CNAME p99 went from 2,072 to 1,585 ns, in the opposite direction to
+the retained candidate comparison, and CNAME allocations fell from 2 to 1/op
+(48 to 32 B/op in each process). Median hit p99 rose from 871 to 1,028 ns,
+but the direction flipped across adjacent pairs, and hit allocations stayed
+at 1/op. The other median p99s were wildcard 1,637 → 1,477 ns, nodata
+690 → 808 ns, and nxdomain 552 → 596 ns. The pooled CPU profiles include zone
+construction, all lookup cases, timing, sorting and GC. `appendKey` accounted
+for 16.3% → 16.8% of flat samples; `resolve` 2.55% → 2.19% and `answer`
+0.90% → 0.58%. The profiles do not attribute the hit tail to an added guard.
+
+**No concrete source latency cost was isolated.** The static comparison
+confirms extra instructions on the lookup path, but neither it nor the
+profiled samples under changing CPU pressure explains the failed CNAME gate.
+The hit p99 signal in both datasets warrants a separate, source-isolating
+diagnostic if pursued; do not infer a fix from the broad source comparison.
+No source fix, qualification or method change is part of this diagnosis.
 
 ### Final hosted CI and release disposition
 
@@ -401,8 +528,10 @@ KIND/MetalLB and development-image checks also passed on `a22255a2`; their
 exact URLs are in the check snapshot. These retain their single-environment
 scope and do not close D358.
 
-The issued-key checks close their exact missing-production-signature proof.
-Human UI, license-server issuance/production-key expiry, package maintainer
-scripts/actual systemd lifecycle, issue dispositions, performance and required
-PR review retain their exact open scope. D353 and D358 retain the future scope
-above. No release or production deployment occurred.
+The issued-key checks establish production-signature acceptance on the tested
+candidate only. Final-artifact human UI approval, authorized production
+issuance evidence, and expiry/grace evidence (preferred disposable VM or the
+labeled synthetic fallback) remain open. So do package maintainer scripts/
+actual systemd lifecycle, issue dispositions, performance, and required PR
+review. D353 and D358 retain the future scope above. No release or production
+deployment occurred.

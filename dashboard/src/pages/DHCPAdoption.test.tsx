@@ -41,7 +41,7 @@ function recordSaves() {
 
 async function completeScope(prefix: string, domain: string) {
   await next('Subnet');
-  expect(screen.getByRole('textbox', { name: 'Scope name' })).toBeDisabled();
+  expect(screen.getByRole('textbox', { name: 'Scope name' })).toBeInteractionDisabled();
   change('Server address', `${prefix}.2`);
   change('Client subnet', `${prefix}.0/24`);
   await next('Addresses');

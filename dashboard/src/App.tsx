@@ -4,16 +4,17 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LinkProvider } from '@astryxdesign/core/Link';
 import { LayerProvider } from '@astryxdesign/core/Layer';
-import { useState, type ReactNode } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import { ApiError } from './api/client';
 import { ApiProvider, qk, ScopeProvider, useSession } from './api/context';
 import { apiBaseFor } from './lib/basePath';
 import { Link, RouterProvider } from './lib/router';
 import { BrandingProvider } from './lib/branding';
 import { AppearanceProvider } from './lib/theme';
-import { Shell } from './components/Shell';
 import { LoginPage } from './pages/LoginPage';
 import { FullPageSpinner } from './components/Feedback';
+
+const Shell = lazy(async () => ({ default: (await import('./components/Shell')).Shell }));
 
 /** A QueryClient with defaults suited to a dashboard polling one API. */
 export function makeQueryClient(): QueryClient {
@@ -68,7 +69,11 @@ function Gate() {
   const session = useSession();
   if (session.isPending) return <FullPageSpinner label="Connecting to kudurru" />;
   if (!session.data) return <LoginPage />;
-  return <Shell />;
+  return (
+    <Suspense fallback={<FullPageSpinner label="Loading dashboard" />}>
+      <Shell />
+    </Suspense>
+  );
 }
 
 export function App({ basePath, apiBase }: { basePath: string; apiBase?: string }) {

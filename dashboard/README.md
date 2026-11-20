@@ -31,9 +31,12 @@ app embedded into the binary with `go:embed` and served by `web.Handler`.
 make dashboard-install   # bun install --frozen-lockfile
 make dashboard-dev       # Vite dev server with the MSW mock API (no kudurru needed)
 make dashboard-test      # vitest run
-make dashboard-lint      # eslint (zero warnings) + built themes current + tsc --noEmit
+make dashboard-lint      # ESLint (zero warnings), theme drift, and TypeScript 7 typecheck
 make dashboard-build     # production bundle into dashboard/dist + license file + size budget + precompression
 ```
+
+`bun run typecheck` runs TypeScript 7 via `typescript-native`. The `typescript`
+package stays on 6 for type-aware ESLint until `typescript-eslint` supports 7.
 
 `make dashboard-e2e` requires Node 24 (also used in CI), builds the real binary,
 and runs Playwright with four workers. Each worker owns a temporary SQLite node,

@@ -2,12 +2,28 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, configure } from '@testing-library/react';
 import { setupServer } from 'msw/node';
-import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, expect } from 'vitest';
 import { handlers, resetDB } from '../mocks/handlers';
 import { installTestTransport } from './transport';
 
 // CI runners and the shared dev machine are slow; findBy* waits up to 5 s.
-configure({ asyncUtilTimeout: 5000 });
+configure({ asyncUtilTimeout: 5000, defaultIgnore: 'script, style, [data-astryx-live-region]' });
+
+declare module 'vitest' {
+  interface Matchers {
+    toBeInteractionDisabled(): void;
+  }
+}
+
+expect.extend({
+  toBeInteractionDisabled(element: unknown) {
+    if (!(element instanceof Element)) throw new TypeError('Expected a DOM element');
+    return {
+      pass: element.matches(':disabled') || element.closest('[aria-disabled="true"]') !== null,
+      message: () => `Expected ${element.outerHTML} ${this.isNot ? 'not ' : ''}to be disabled (native or ARIA)`,
+    };
+  },
+});
 
 /** The MSW server answering /api/v1 from the fixtures in every test. */
 export const server = setupServer(...handlers);
@@ -61,17 +77,18 @@ window.scrollTo = (() => undefined);
 Element.prototype.scrollTo = function scrollTo() {};
 Element.prototype.scrollIntoView = function scrollIntoView() {};
 
-// jsdom does no layout, so every offset size is 0 and TanStack Virtual
-// would render no rows. Give the query-log scroller a viewport and each
-// virtual row (one <tbody>) a fixed height.
-const offsetSize = (axis: 'w' | 'h') =>
+// jsdom does no layout. Give TanStack Virtual a client-sized query-log
+// viewport and an offset size for each virtual row (one <tbody>).
+const queryLogSize = (target: 'viewport' | 'row', axis: 'w' | 'h') =>
   function (this: HTMLElement): number {
-    if (this.dataset.testid === 'query-log-scroll') return axis === 'h' ? 800 : 1200;
-    if (this.tagName === 'TBODY' && this.dataset.index !== undefined) return axis === 'h' ? 34 : 1200;
+    if (target === 'viewport' && this.dataset.testid === 'query-log-scroll') return axis === 'h' ? 800 : 1200;
+    if (target === 'row' && this.tagName === 'TBODY' && this.dataset.index !== undefined) return axis === 'h' ? 34 : 1200;
     return 0;
   };
-Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: offsetSize('h') });
-Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get: offsetSize('w') });
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: queryLogSize('viewport', 'h') });
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: queryLogSize('viewport', 'w') });
+Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: queryLogSize('row', 'h') });
+Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get: queryLogSize('row', 'w') });
 
 // No canvas in jsdom: charts detect the null context and skip drawing
 // (their data tables and legends still render).

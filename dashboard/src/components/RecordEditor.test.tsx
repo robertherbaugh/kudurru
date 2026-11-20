@@ -71,7 +71,7 @@ describe('RecordEditor', () => {
     expect(field(/^Name/)).toHaveValue('_sip._udp');
     expect(field(/Port/)).toHaveValue('5060');
     expect(field(/Target host/)).toHaveValue('sip.example.internal.');
-    expect(getSelector('Type')).toBeDisabled();
+    expect(getSelector('Type')).toBeInteractionDisabled();
   });
 
   it('shows the server error verbatim', async () => {

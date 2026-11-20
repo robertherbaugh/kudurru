@@ -65,7 +65,12 @@ func (s *servingRuntime) Run(ctx context.Context) error {
 	g.Go(func() error { return s.publisher.Run(ctx) })
 	g.Go(func() error { return s.providers.Run(ctx) })
 	if s.member != nil {
-		g.Go(func() error { return s.member.Run(ctx) })
+		g.Go(func() error {
+			if s.memberPullStart != nil {
+				return afterInitialized(ctx, s.memberPullStart, s.member.Run)
+			}
+			return s.member.Run(ctx)
+		})
 	}
 	if s.anchors != nil {
 		g.Go(func() error { return s.anchors.watch(ctx, s.publisher.Wake) })

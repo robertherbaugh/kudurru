@@ -84,7 +84,7 @@ describe('IntegrationsPage', () => {
     const table = await screen.findByRole('table', { name: 'Integrations' });
     await screen.findByTestId('integration-lab/lab');
     // The file-managed instance cannot be selected.
-    expect(within(screen.getByTestId('integration-default/office')).getByRole('checkbox')).toBeDisabled();
+    expect(within(screen.getByTestId('integration-default/office')).getByRole('checkbox')).toBeInteractionDisabled();
     for (const key of ['default/public-dns', 'default/peer', 'lab/lab']) fireEvent.click(within(screen.getByTestId(`integration-${key}`)).getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: 'Delete 3 selected' }));
     const d = await screen.findByRole('dialog');
@@ -139,7 +139,7 @@ describe('IntegrationsPage', () => {
     renderWithApp(<IntegrationsPage />, { route: '/integrations?new=1' });
     // Provider: every type of the build.
     expect(await screen.findByRole('radio', { name: /Cloudflare/ })).toBeChecked();
-    expect(screen.getByRole('radio', { name: /Webhook/ })).not.toBeDisabled();
+    expect(screen.getByRole('radio', { name: /Webhook/ })).not.toBeInteractionDisabled();
     next();
     // Settings: from the configuration schema.
     const name = await screen.findByRole('textbox', { name: /^Name(?!space)/ });
@@ -174,7 +174,7 @@ describe('IntegrationsPage', () => {
     mockIntegrations().driver = 'kube';
     renderWithApp(<IntegrationsPage />, { route: '/integrations?new=1' });
     const webhook = await screen.findByRole('radio', { name: /Webhook/ });
-    expect(webhook).toBeDisabled();
+    expect(webhook).toBeInteractionDisabled();
     expect(screen.getByText('This provider does not run on Kubernetes.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('radio', { name: /UniFi/ }));
     next();

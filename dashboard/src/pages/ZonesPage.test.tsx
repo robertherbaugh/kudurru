@@ -39,7 +39,7 @@ describe('zone import', () => {
     const dialog = await screen.findByRole('dialog');
     fireEvent.change(within(dialog).getByRole('textbox', { name: /paste the zone text/ }), { target: { value: 'nas2 300 IN A 192.168.1.60\n' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Import' }));
-    expect(await within(dialog).findByText('1 record imported into default/import-example-internal-1')).toBeInTheDocument();
+    expect(await within(dialog).findByText('1 record imported into default/import-example-internal-1', { selector: '.astryx-banner *' })).toBeVisible();
     expect(within(dialog).getByText('no SOA record; defaults apply')).toBeInTheDocument();
     expect(dialog.textContent).not.toMatch(/undefined/);
   });
@@ -53,7 +53,7 @@ describe('zone import', () => {
     fireEvent.change(within(dialog).getByRole('textbox', { name: /^Zone apex/ }), { target: { value: 'lab.example' } });
     fireEvent.change(within(dialog).getByRole('textbox', { name: /paste the zone text/ }), { target: { value: FILE } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Import' }));
-    expect(await within(dialog).findByText('Created zone lab.example.: 2 records imported into default/import-lab.example-1')).toBeInTheDocument();
+    expect(await within(dialog).findByText('Created zone lab.example.: 2 records imported into default/import-lab.example-1', { selector: '.astryx-banner *' })).toBeVisible();
     expect(mockDB().zones.find((z) => z.metadata.name === 'lab.example')?.spec.zoneName).toBe('lab.example.');
   });
 

@@ -460,7 +460,7 @@ describe('role bindings', () => {
     fireEvent.click(within(table).getByRole('button', { name: 'Edit default/home-admin' }));
     let d = await reviewed();
     const user = within(d).getByLabelText(/^User name/);
-    expect(within(d).getByLabelText(/^Name(?!space)/)).toBeDisabled();
+    expect(within(d).getByLabelText(/^Name(?!space)/)).toBeInteractionDisabled();
     fireEvent.change(user, { target: { value: 'alice' } });
     fireEvent.click(within(d).getByRole('button', { name: 'Save changes' }));
     await closed();

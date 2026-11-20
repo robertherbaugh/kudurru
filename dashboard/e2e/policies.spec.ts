@@ -120,7 +120,8 @@ test('the group wizard creates a group with typed matchers', async ({ page }) =>
   const value = main(page).getByRole('textbox', { name: 'Matcher 1 CIDR range' });
   await value.fill('10.99.0.0/33');
   await main(page).getByRole('button', { name: 'Next' }).click();
-  await expect(main(page).getByText('Matcher 1: IPv4 prefix length is at most 32')).toBeVisible();
+  const form = page.getByRole('form', { name: 'New group' });
+  await expect(form.getByText('Matcher 1: IPv4 prefix length is at most 32')).toBeVisible();
   await value.fill('10.99.0.0/16');
   for (const step of ['Policies', 'Review']) {
     await main(page).getByRole('button', { name: 'Next' }).click();

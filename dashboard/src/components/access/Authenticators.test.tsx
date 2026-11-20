@@ -227,7 +227,7 @@ describe('Access authenticators', () => {
     const button = await screen.findByRole('button', { name: 'Recover authenticator for viewer' });
     await waitFor(() => expect(button).not.toHaveAttribute('aria-disabled', 'true')); fireEvent.click(button);
     await screen.findByText(/account UID changed or is missing/);
-    expect(screen.getByRole('button', { name: 'Recover authenticator' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Recover authenticator' })).toBeInteractionDisabled();
     expect(document.body.textContent).not.toContain('uid-new');
   });
 
@@ -286,7 +286,7 @@ describe('Access authenticators', () => {
     const { client } = renderWithApp(<RecoverAuthenticatorButton user={{ name: 'viewer', uid: restriction === 'missingUID' ? '' : 'mock-user-viewer', disabled: false, builtinAdmin: false, mustChangePassword: false }} />);
     const button = await screen.findByRole('button', { name: 'Recover authenticator for viewer' });
     await waitFor(() => expect(client.getQueryData(qk.me)).toBeDefined());
-    expect(button).toBeDisabled();
+    expect(button).toBeInteractionDisabled();
   });
 
   it('does not let a canceled older session read restore CSRF after disable', async () => {

@@ -251,7 +251,7 @@ export default function UpstreamGroupPage({ params }: PageProps) {
         ) : null}
         {usersLoading ? <Loading /> : null}
         {users.length || conditional.length ? (
-          <List density="compact" hasDividers edgeCompensation="inline" aria-label={`What uses ${name}`}>
+          <List density="compact" hasDividers edge="outset" aria-label={`What uses ${name}`}>
             {users.map((x) => (
               <ListItem key={`${x.kind}/${x.name}`} label={x.name} href={x.href} endContent={<Text type="supporting">{x.kind === 'policy' ? 'Policy' : 'Forward zone'}</Text>} />
             ))}

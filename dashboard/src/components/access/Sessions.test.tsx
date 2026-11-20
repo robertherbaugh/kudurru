@@ -61,7 +61,7 @@ describe('Access own browser sessions', () => {
       const row = within(table).getByText(s.id).closest('tr')!;
       for (const at of [s.issuedAt, s.expiresAt, s.idleExpiresAt]) expect(within(row).getByText(at, { exact: true })).toBeVisible();
     }
-    expect(within(table).getByRole('button', { name: 'Revoke session revoked' })).toBeDisabled();
+    expect(within(table).getByRole('button', { name: 'Revoke session revoked' })).toBeInteractionDisabled();
     expect(table).not.toHaveTextContent(/last (seen|activity)|device|ip address|active|account.?uid/i);
     expect(JSON.stringify(client.getQueryCache().getAll().map((q) => q.queryKey))).not.toContain(client.getQueryData<Me>(qk.me)!.csrf);
     expect(client.getMutationCache().getAll()).toHaveLength(0);
@@ -71,7 +71,7 @@ describe('Access own browser sessions', () => {
     const me: Me = { principal: { id: `${provider}:owner`, kind: 'User', name: 'owner', provider, authMethod: 'cookie', groups: [] }, csrf: 'test-cookie-csrf', roles: [], permissions: {} };
     server.use(http.get(`${API}/auth/me`, () => HttpResponse.json(me)));
     await open();
-    expect(screen.getByRole('button', { name: 'Revoke this session' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Revoke this session' })).not.toBeInteractionDisabled();
   });
 
   it.each(['token', 'service-account', 'password-change', 'missing-csrf'])('does not query sessions for %s', async (restriction) => {
@@ -110,12 +110,12 @@ describe('Access own browser sessions', () => {
     const revoke = vi.spyOn(f.ctx.api.auth, 'revokeSession').mockResolvedValue();
     click(`Revoke session ${rows[0]!.id}`); confirm();
     await screen.findByText(/This snapshot has not shown the change yet/);
-    expect(screen.getByRole('button', { name: 'Revoke this session' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Revoke this session' })).toBeInteractionDisabled();
     expect(revoke).toHaveBeenCalledTimes(1);
     server.use(http.get(`${API}/auth/sessions`, () => HttpResponse.json({ items: rows.map((r, i) => i ? r : { ...r, revoked: true }) })));
     click('Refresh sessions');
     await screen.findByText('Session revocation is reflected in this snapshot.');
-    expect(screen.getByRole('button', { name: 'Revoke this session' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Revoke this session' })).not.toBeInteractionDisabled();
     expect(revoke).toHaveBeenCalledTimes(1);
   });
 
@@ -210,7 +210,7 @@ describe('Access own browser sessions', () => {
     const revoke = vi.spyOn(f.ctx.api.auth, 'revokeSession').mockRejectedValue(new ApiError(status, 'test', 'Untrusted details', undefined, status === 429 ? 5 : undefined));
     click(`Revoke session ${rows[0]!.id}`); confirm();
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(screen.getByRole('button', { name: 'Revoke this session' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Revoke this session' })).toBeInteractionDisabled();
     expect(screen.queryByText('Untrusted details')).not.toBeInTheDocument();
     if (status === 429) expect(screen.getByText(/Retry after 5 seconds/)).toBeVisible();
     if (status === 0 || status === 503) expect(screen.getByText(/revocation outcome is unknown/)).toBeVisible();
@@ -218,7 +218,7 @@ describe('Access own browser sessions', () => {
     click('Refresh sessions');
     await screen.findByText(/Session inventory refreshed/);
     expect(revoke).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button', { name: 'Revoke this session' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Revoke this session' })).not.toBeInteractionDisabled();
   });
 
   it('clears the still-original session on revoke401', async () => {
@@ -270,6 +270,6 @@ describe('Access own browser sessions', () => {
     await screen.findByText('Session revocation is reflected in this snapshot.');
     f.unmount(); resetDB(); signIn();
     renderWithApp(<SessionsPanel />);
-    expect(await screen.findByRole('button', { name: 'Revoke session mock-session-admin-other' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Revoke session mock-session-admin-other' })).not.toBeInteractionDisabled();
   });
 });

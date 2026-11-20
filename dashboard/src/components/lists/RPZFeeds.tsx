@@ -206,6 +206,7 @@ export function FeedSection({ feed: f }: { feed: RPZFeed }) {
 
       {view.servfail ? (
         <Banner
+          role="alert"
           status={f.state === 'pending' ? 'warning' : 'error'}
           title={f.state === 'pending' ? 'Pending: clients get SERVFAIL' : `${view.label[0]?.toUpperCase() ?? ''}${view.label.slice(1)}: clients get SERVFAIL`}
           description={

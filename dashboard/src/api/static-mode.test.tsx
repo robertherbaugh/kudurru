@@ -37,7 +37,7 @@ describe('static host capabilities', () => {
     expect(changePassword).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(changePassword);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sign out' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Sign out' })).not.toBeInteractionDisabled();
     expect(screen.queryByRole('button', { name: 'Set up authenticator' })).not.toBeInTheDocument();
   });
 });

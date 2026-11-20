@@ -30,7 +30,7 @@ describe('API migration wizard' , () => {
     );
     renderWithApp(<TestFlow />);
     const launch = await screen.findByRole('button', { name: 'Import from DNS server' });
-    await waitFor(() => { expect(launch).toBeEnabled(); expect(launch).not.toHaveAttribute('aria-disabled', 'true'); });
+    await waitFor(() => { expect(launch).not.toBeInteractionDisabled(); expect(launch).not.toHaveAttribute('aria-disabled', 'true'); });
     fireEvent.click(launch);
     const dialog = await screen.findByRole('dialog', { name: 'Import from DNS server' });
     fireEvent.change(within(dialog).getByLabelText('Server URL'), { target: { value: 'http://source.test:5380' } });
@@ -60,7 +60,7 @@ describe('API migration wizard' , () => {
     );
     renderWithApp(<TestFlow />);
     const launch = await screen.findByRole('button', { name: 'Import from DNS server' });
-    await waitFor(() => { expect(launch).toBeEnabled(); expect(launch).not.toHaveAttribute('aria-disabled', 'true'); });
+    await waitFor(() => { expect(launch).not.toBeInteractionDisabled(); expect(launch).not.toHaveAttribute('aria-disabled', 'true'); });
     fireEvent.click(launch);
     const dialog = await screen.findByRole('dialog', { name: 'Import from DNS server' });
     fireEvent.change(within(dialog).getByLabelText('Server URL'), { target: { value: 'http://dns.local:5380' } });
@@ -89,7 +89,7 @@ describe('API migration wizard' , () => {
     server.use(http.post('/api/v1/imports/preview', () => HttpResponse.json({ error: { key: 'invalid', message: 'Source authentication failed' } }, { status: 400 })));
     renderWithApp(<TestFlow />);
     const launch = await screen.findByRole('button', { name: 'Import from DNS server' });
-    await waitFor(() => { expect(launch).toBeEnabled(); expect(launch).not.toHaveAttribute('aria-disabled', 'true'); });
+    await waitFor(() => { expect(launch).not.toBeInteractionDisabled(); expect(launch).not.toHaveAttribute('aria-disabled', 'true'); });
     fireEvent.click(launch);
     const dialog = await screen.findByRole('dialog', { name: 'Import from DNS server' });
     fireEvent.change(within(dialog).getByLabelText('Server URL'), { target: { value: 'http://dns.local:5380' } });

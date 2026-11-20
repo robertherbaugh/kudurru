@@ -4,6 +4,7 @@
 set -e
 chown root:kudurru /etc/kudurru /etc/kudurru/kudurru.yaml /etc/kudurru/kudurru.env 2>/dev/null || true
 chmod 0750 /etc/kudurru 2>/dev/null || true
+chown root:kudurru /etc/kudurru/objects.d
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
 	systemctl daemon-reload || true
 	if systemctl is-active --quiet kudurru; then

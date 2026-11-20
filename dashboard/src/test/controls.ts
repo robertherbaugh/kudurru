@@ -8,17 +8,16 @@ import { expect } from 'vitest';
 
 /**
  * A Selector's trigger by its label: a combobox, or a button opening a
- * listbox when the Selector has a search box (hasSearch).
+ * listbox when the Selector has a search box (hasSearch). A searchable
+ * button can include its current value in its accessible name.
  */
 export function getSelector(name: string | RegExp, root: HTMLElement = document.body): HTMLElement {
-  const found = [
-    ...within(root).queryAllByRole('combobox', { name }),
-    ...within(root)
-      .queryAllByRole('button', { name })
-      .filter((b) => b.getAttribute('aria-haspopup') === 'listbox'),
-  ];
-  if (!found[0]) throw new Error(`no selector named ${String(name)}`);
-  return found[0];
+  const scope = within(root);
+  const trigger = scope.queryAllByRole('combobox', { name })[0]
+    ?? scope.queryAllByRole('button', { name }).find((button) => button.getAttribute('aria-haspopup') === 'listbox')
+    ?? scope.queryAllByLabelText(name, { selector: 'button[aria-haspopup="listbox"]' })[0];
+  if (!trigger) throw new Error(`no selector named ${String(name)}`);
+  return trigger;
 }
 
 /** Like getSelector, waiting for it to appear. */
