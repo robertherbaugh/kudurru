@@ -4,18 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"path/filepath"
+	"fmt"
 	"reflect"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/robertherbaugh/kudurru/api/runtimekinds"
+	clusterreplica "github.com/robertherbaugh/kudurru/internal/cluster/replica"
 	"github.com/robertherbaugh/kudurru/internal/config"
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime"
 	"github.com/robertherbaugh/kudurru/internal/primaryruntime/currentguard"
-	"github.com/robertherbaugh/kudurru/internal/runtimeowners"
 	"github.com/robertherbaugh/kudurru/internal/serving"
 	"github.com/robertherbaugh/kudurru/internal/servingbuild"
 	"github.com/robertherbaugh/kudurru/internal/store/follower"
@@ -27,12 +26,7 @@ import (
 
 func newClusterResolveAnchorRuntime(t *testing.T, r resolutionReceiver, st *sqlite.Store, root *anchorHistoryAuthority) *servingRuntime {
 	t.Helper()
-	cfg, err := config.FromFlat(config.Flatten(r.primary.opts.Config))
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg.Auth.IdentityProviders = nil
-	cfg.Node.Name, cfg.Node.DataDir = "receiver", r.dir
+	cfg := resolvedMemberConfig(t, r)
 	cfg.Upstreams.Recursion.ManagedTopology = "direct"
 	cfg.Upstreams.Recursion.AnchorMode = config.RootAnchorsManaged
 	cfg.Upstreams.Recursion.TrustAnchors = root.seeds
@@ -92,22 +86,29 @@ func electClusterResolveAnchorWriter(t *testing.T, s *servingRuntime) (*anchorHi
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 25*time.Second)
 	ready := make(chan *anchorHistoryWriter, 1)
+	failed := make(chan error, 1)
 	done := make(chan error, 1)
+	reportSetupFailure := func(err error) {
+		select {
+		case failed <- err:
+		default:
+		}
+	}
 	go func() {
 		done <- s.opts.Store.Elector("cluster-resolve-anchor-test").Run(ctx, func(writer context.Context) {
 			carried, ok := sqlite.WriterTokenFromContext(writer)
 			if !ok {
-				t.Error("elector omitted writer token")
+				reportSetupFailure(errors.New("elector omitted writer token"))
 				return
 			}
 			target := serving.TermActivation{Term: carried.Term(), Incarnation: carried.Incarnation()}
 			if _, err := s.opts.Store.BindAnchorLifecycle(writer); err != nil {
-				t.Error(err)
+				reportSetupFailure(fmt.Errorf("bind anchor lifecycle: %w", err))
 				return
 			}
 			host, err := s.resetWriter(writer, target)
 			if err != nil {
-				t.Error(err)
+				reportSetupFailure(fmt.Errorf("reset writer: %w", err))
 				return
 			}
 			if host.Release != nil {
@@ -125,7 +126,7 @@ func electClusterResolveAnchorWriter(t *testing.T, s *servingRuntime) (*anchorHi
 				}
 				select {
 				case <-writer.Done():
-					t.Error("writer dependency pin unavailable", err)
+					reportSetupFailure(fmt.Errorf("writer dependency pin: %w", err))
 					return
 				case <-time.After(10 * time.Millisecond):
 				}
@@ -151,6 +152,9 @@ func electClusterResolveAnchorWriter(t *testing.T, s *servingRuntime) (*anchorHi
 	select {
 	case writer := <-ready:
 		return writer, stop
+	case err := <-failed:
+		t.Fatal("anchor writer setup failed", err)
+		return nil, stop
 	case <-ctx.Done():
 		t.Fatal("anchor writer did not start", ctx.Err())
 		return nil, stop
@@ -210,9 +214,31 @@ func TestClusterResolveAbandonedTermMemberReturnsThroughAnchorPuller(t *testing.
 		t.Fatal("kept branch did not revoke exactly the abandoned trust")
 	}
 	abandoned := anchorHistoryPromote(ctx, t, lost)
+	lost.reopen(ctx, t)
+	source := &recordedAnchorHistorySource{source: anchorHistorySource{primary: func() *sqlite.Store { return st }}}
+	lost.s.member, err = clusterreplica.NewCoordinator(clusterreplica.CoordinatorOptions{
+		Store: lost.store, Source: source, NodeName: lost.store.Authority().MemberID, Served: lost.s.publisher.Pin,
+		WithOperator: lost.s.withPromotionAuthorization, ObservePull: lost.s.anchorStatus.observePull,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lost.s.memberPullStart = make(chan struct{})
+	runClusterResolveAnchorRuntime(t, lost.s)
+	_, stopLostWriter := electClusterResolveAnchorWriter(t, lost.s)
 	lostBranch := anchorFollowerImage(ctx, t, lost.store)
 	if !lostBranch.Term.Same(abandoned.Term) {
 		t.Fatal("promoted branch is not the abandoned term", lostBranch.Term.Epoch, abandoned.Term.Epoch)
+	}
+	anchorHistoryAwait(t, "lost term did not publish its branch before returning", lost.s, root, func() bool {
+		status := lost.s.publisher.Status()
+		return status.ProtectedReady && status.Served.Base.Same(lostBranch.Generation())
+	})
+	if seal, dnsOnly, err := anchorHistoryPublished(ctx, t, lost.s); err != nil || dnsOnly || seal == nil || !seal.base.Same(lostBranch.Generation()) {
+		t.Fatal("lost primary did not admit its own published branch before fencing", err)
+	}
+	if projection := anchorHistoryProjection(ctx, t, lost.s); len(projection.RevokedIDs()) != 0 || len(projection.DS()) != 2 {
+		t.Fatal("lost primary did not start with both anchors")
 	}
 	// End the writer and runtime before fencing the member. A running fenced
 	// runtime deliberately starts its deny-only supervisor; that is a separate
@@ -242,18 +268,7 @@ func TestClusterResolveAbandonedTermMemberReturnsThroughAnchorPuller(t *testing.
 		t.Fatal("abandonment did not commit a new term", err, raw)
 	}
 
-	scheme, err := runtimekinds.NewScheme()
-	if err != nil {
-		t.Fatal(err)
-	}
-	opening, opened := context.WithTimeout(ctx, 10*time.Second)
-	st, err = sqlite.OpenExisting(opening, filepath.Join(r.dir, sqlite.FileName), sqlite.Options{Scheme: scheme, Validator: r.primary.opts.Validator,
-		InternalKinds: privateStoreKinds(), ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage})
-	opened()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = st.Close() })
+	st = openResolvedMember(ctx, t, r)
 	s = newClusterResolveAnchorRuntime(t, r, st, root)
 	run := runClusterResolveAnchorRuntime(t, s)
 	writerCtx, cancelWriter := context.WithCancel(ctx)
@@ -322,9 +337,16 @@ func TestClusterResolveAbandonedTermMemberReturnsThroughAnchorPuller(t *testing.
 	if _, err := lost.store.ObserveAuthority(ctx, receipt.Term); err != nil {
 		t.Fatal("lost primary did not observe the replacement term", err)
 	}
-	source := &recordedAnchorHistorySource{source: anchorHistorySource{primary: func() *sqlite.Store { return st }}}
-	puller := &follower.Puller{Mirror: lost.store, Source: source}
-	if err := puller.Pull(ctx); err != nil {
+	stopLostWriter()
+	anchorHistoryAwait(t, "fenced lost primary did not retire on signed REVOKE before pulling", lost.s, root, func() bool {
+		status := lost.s.publisher.Status()
+		return status.Authority.Mode == replication.Fenced && !status.ProtectedReady && lost.s.anchorStatus.snapshot().supervisor.state == anchorWorkerRetired && root.reads.Load() == 3
+	})
+	assertRetiredAnchorHistoryDNS(ctx, t, lost.s)
+	if source.image != nil || !anchorFollowerSameImage(anchorFollowerImage(ctx, t, lost.store), lostBranch) {
+		t.Fatal("fenced member did not retire its abandoned trust before pulling the replacement")
+	}
+	if err := lost.s.member.Pull(ctx); err != nil {
 		t.Fatal("lost primary did not return through the production puller", err)
 	}
 	adopted := anchorFollowerImage(ctx, t, lost.store)
@@ -360,9 +382,6 @@ func TestClusterResolveAbandonedTermMemberReturnsThroughAnchorPuller(t *testing.
 	if err != nil || len(abandonedTrust.RevokedIDs()) != 0 || len(abandonedTrust.DS()) != 2 {
 		t.Fatal("quarantined branch is not the trust-restoring abandoned branch", err)
 	}
-	if root.reads.Load() != 2 {
-		t.Fatal("production pull caused a root acquisition", root.reads.Load())
-	}
 	for outcome, count := range anchorAcquisitionCounts(t, primaryMetrics) {
 		if count != 0 {
 			t.Fatal("active primary acquired while serving the pull", outcome, count)
@@ -370,17 +389,12 @@ func TestClusterResolveAbandonedTermMemberReturnsThroughAnchorPuller(t *testing.
 	}
 
 	returningMetrics := anchorStatusMetrics(t, lost.s)
-	if anchorStatusGauge(t, returningMetrics, "kudurru_root_anchor_worker_state", map[string]string{"worker": "updater", "state": anchorWorkerNotRunning}) != 1 ||
-		anchorStatusGauge(t, returningMetrics, "kudurru_root_anchor_worker_state", map[string]string{"worker": "supervisor", "state": anchorWorkerNotRunning}) != 1 {
-		t.Fatal("unmounted returning member exported a running anchor worker")
-	}
-	runServingFixture(t, lost.s)
 	anchorHistoryAwait(t, "returning member did not publish the adopted revocation", lost.s, root, func() bool {
 		status := lost.s.publisher.Status()
-		return status.ProtectedReady && !status.DNSOnly && root.reads.Load() == 3
+		return status.ProtectedReady && !status.DNSOnly && status.Served.Base.Same(adopted.Generation()) && root.reads.Load() == 4
 	})
 	returningStatus, err := lost.s.rootAnchorStatus(ctx)
-	if err != nil || returningStatus.Updater.State != anchorWorkerNotRunning || returningStatus.Supervisor.State != anchorWorkerRunning {
+	if err != nil || returningStatus.Updater.State != anchorWorkerNotRunning || returningStatus.Supervisor.State != anchorWorkerRunning || returningStatus.Pull == nil || returningStatus.Pull.Result != "installed" {
 		t.Fatalf("returned follower mounted the wrong anchor worker: err=%v updater=%+v supervisor=%+v", err, returningStatus.Updater, returningStatus.Supervisor)
 	}
 	if anchorStatusGauge(t, returningMetrics, "kudurru_root_anchor_worker_state", map[string]string{"worker": "updater", "state": anchorWorkerNotRunning}) != 1 ||
@@ -391,7 +405,7 @@ func TestClusterResolveAbandonedTermMemberReturnsThroughAnchorPuller(t *testing.
 	if err != nil || seal == nil || seal.managed == nil || seal.static != nil || !seal.current() || dnsOnly || !seal.base.Same(adopted.Generation()) {
 		t.Fatal("returning member did not serve the adopted kept branch", err)
 	}
-	if root.reads.Load() != 3 {
+	if root.reads.Load() != 4 {
 		t.Fatal("abandon and return used an unexpected number of root acquisitions", root.reads.Load())
 	}
 }

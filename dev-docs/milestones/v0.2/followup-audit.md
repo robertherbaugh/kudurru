@@ -19025,18 +19025,25 @@ update, canonical revocation, and the two old-primary supervision checks.
 
 `TestClusterResolveAbandonedTermMemberReturnsThroughAnchorPuller` runs
 `cluster resolve --offline --abandon-term` on the stranded SQLite member,
-elects its kept branch, and returns the lost-term member through the actual
-puller. It compares the quarantined image to the actual promoted lost term
-and checks that the returned member first publishes only after installing
-the running kept primary's exact response. Three acquisitions are required:
-bootstrap, canonical REVOKE, and the returned follower's check. The restarted
-writer retains its committed schedule and exports no acquisition.
+elects its kept branch, and returns a still-running lost-term primary. The
+lost primary first publishes its actual two-anchor branch. After observing
+the new term and before fetching a replacement, its fenced supervisor sees
+the signed REVOKE, retires that output, and the mounted DNS path answers empty
+SERVFAIL. The production member coordinator then pulls the kept primary's
+exact response. The test checks that the abandoned image is quarantined
+and that the returned follower publishes only the kept trust. Exactly four
+acquisitions occur: bootstrap, canonical REVOKE, fenced local denial, and
+one rejoined follower check. The restarted writer retains its committed
+schedule and exports no acquisition.
 
 `CGO_ENABLED=1 go test -p 2 ./cmd/kudurru -run 'AnchorHistory|ClusterResolve' -race -count=1`
-passed locally in 55.063 s on a checkout based on
-`ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61`. Both tests use a signed
-synthetic root and in-process runtimes; neither claims hosted, live root,
-or independent-host acceptance. No readiness bound was changed.
+passed locally in 55.063 s before the mounted-return review follow-up. On
+the initial PR head `c0526a6b5b731aa297b2c84afd571b836753b813`, all 120
+`Anchor|ClusterResolve` command cases also passed under race (344.347 s).
+After review, the mounted-return regression and existing abandoned-member
+runtime test each passed twice under race (32.314 s total). Both new flows
+use a signed synthetic root and in-process runtimes; neither claims hosted,
+live root, or independent-host acceptance. No readiness bound was changed.
 
 ### F28-REVOKE-HOSTED Why the BIND revocation interop test failed on hosted CI — November 13, 2026 (D398)
 
