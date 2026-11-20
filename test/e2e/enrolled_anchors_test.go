@@ -219,6 +219,13 @@ func (e *enrolledAnchors) awaitValidated(node *kudurrutest.Node, why string) {
 	}
 }
 
+func (e *enrolledAnchors) assertClusterFenced(node *kudurrutest.Node, want float64, why string) {
+	e.t.Helper()
+	if got, exported := scrapeGauge(e.t, node.Ports.Metrics, "kudurru_cluster_fenced", ""); !exported || got != want {
+		e.t.Fatalf("%s: kudurru_cluster_fenced = %v (exported %v), want %v", why, got, exported, want)
+	}
+}
+
 // sampleValidated queries node for validated recursion over UDP and TCP every
 // 20 ms until the returned stop is called. It starts with the node's process,
 // before it is ready, and judges every sample from the node's first DNS

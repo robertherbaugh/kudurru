@@ -18719,6 +18719,41 @@ What remains open:
 **Verification state at 7663c957.** Backed out of the local PR branch before any push (with it `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` failed every run and three enrolled anchor e2e tests failed on root acquisition counts); its eleven commits were re-applied by F28-OPEN7 and are at this head. Its verifier resolved the REVOKE blocker, the red-suite part of finding 2, finding 5 (documentation) and finding 8, and left **four unresolved**: the acquisition-count flake at the partition check (major; "partition: 4 root acquisitions, want 3", an extra query before the settings change), a real store refusal driven through the status route (major; only the gauge is checked), the conflict-serving test failing on a lane without `6780f27d` (a cherry-pick condition), and three remaining items of finding 7. New: the 10 s SERVFAIL tolerance in the e2e samplers, a vacuous not-ready check when the ops listener is silent, a new timing dependency in `absorbSettings`. F28-OPEN7 took these up: it showed the count failure came from the integrator's merge, made the counts exact and removed the 10 s tolerance.
 
 
+### F28-OPEN6 mounted refusals and fenced metrics — November 20, 2026
+
+`TestAnchorRefusalsThroughMountedStatus` drives the production puller over
+SQLite with a synthetic same-term image source. A structurally valid image
+can be refused for `history`, `policy`, `dormant_owner`, or `not_successor`
+without invalidating the follower's already published complete generation.
+Each case preserves the installed image and authority, returns the exact
+`pull.result=refused` and `pull.refusal` on an authorized GET, remains ready,
+and exports only the matching reason as 1. The four cases together use
+three writer acquisitions and one follower acquisition. The real recovery
+transaction in `TestAnchorRefusalMissingRecoveryKeepsProtectedStatus` lets
+the same mounted path exercise `recovery_history` without changing the
+recovered generation: two original root acquisitions, one replacement
+acquisition for recovery, and one for follower supervision.
+
+`TestAnchorRefusalRetiredFollowerKeepsProtectedStatusClosed` exercises
+`carried_revocation`: after two writer acquisitions and one signed deny-only
+acquisition, the follower keeps its image but retires output. The matching
+gauge is 1; the authenticated status route and readiness both return 503.
+A fenced, DNS-only member also cannot open the protected status route. No
+diagnostic was added outside the read lease.
+
+`TestManagedAnchorFencedMetricClearsAfterPull` scrapes 1 then 0 from the
+same runtime and store across a fence and successful pull (one bootstrap,
+one fenced check, and one rejoined check). The existing mounted DNS-only
+restart covers both a fence and a conflict. The separate-process
+`TestEnrolledManagedAnchorsPromoteAndRejoin` scrapes the old primary before
+and after healing its member connection, without adding a readiness wait
+or changing the sampler or acquisition bounds. These are synthetic-root
+fixtures, not live authority or independent-host qualification. The #135
+parent retains the hosted run and startup load reconciliation.
+
+The five selected mounted command tests passed under race in 39.816 s
+on a sandbox checkout based on `ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61`.
+
 ### F28-OPEN7 The held managed-anchor package, exact root-check counts and DNS across a persisted fence — November 13, 2026 (D369)
 
 Lane `wip/v020/f28`, base `7b11a139`. The eleven held F28-OPEN6 commits were

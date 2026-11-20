@@ -52,6 +52,11 @@ func newServingRuntimeFixture(t *testing.T) *servingRuntime {
 // preparation to one cause builds the fixture without it.
 func newServingRuntimeFixtureProviders(t *testing.T, identityProvider bool) *servingRuntime {
 	t.Helper()
+	return newServingRuntimeFixtureProvidersWithMetrics(t, identityProvider, nil)
+}
+
+func newServingRuntimeFixtureProvidersWithMetrics(t *testing.T, identityProvider bool, metrics *sqlite.Metrics) *servingRuntime {
+	t.Helper()
 	scheme, err := runtimekinds.NewScheme()
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +65,7 @@ func newServingRuntimeFixtureProviders(t *testing.T, identityProvider bool) *ser
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err := sqlite.Open(filepath.Join(t.TempDir(), "state.db"), sqlite.Options{Scheme: scheme, Validator: v, InternalKinds: privateStoreKinds(), ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage})
+	st, err := sqlite.Open(filepath.Join(t.TempDir(), "state.db"), sqlite.Options{Scheme: scheme, Validator: v, InternalKinds: privateStoreKinds(), ValidateReplicaEntry: runtimeowners.ValidateEntry, ValidateReplicaImage: runtimeowners.ValidateImage, Metrics: metrics})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -90,6 +90,10 @@ forest; a read-only import or permanent DC forwarder does not satisfy it.
 | Automatic root trust-anchor updates (RFC 5011): managed anchors are integrated (D297, D315–D319, D369) and qualified against BIND and Knot authorities (D398). Open: F28-OPEN6 was backed out and F28-OPEN7 is in progress (writer-admission regression, exact acquisition counts, the 10 s SERVFAIL tolerance); see the open rows below | D170; F28 | v0.2 |
 | A local copy of the root zone (RFC 8806) for recursive groups | D170 | later |
 
+The [November 20 refusal and fencing regressions](milestones/v0.2/followup-audit.md#f28-open6-mounted-refusals-and-fenced-metrics--november-20-2026)
+cover all six refusal reasons and the fenced gauge transition (#169). The
+startup timing and historical ledger review remain separate in #135.
+
 ## Auth
 
 | Item | Source | Target |
