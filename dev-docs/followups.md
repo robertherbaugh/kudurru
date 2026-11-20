@@ -272,3 +272,10 @@ none is replayed. The held-pull refusals and the uncertain result name the
 primary; the existing lifetime-expiry refusals do not. No wording, production
 timing, or 200-document process-test expectation changed. These runs are
 local evidence only; no live or independent-host acceptance was run.
+
+### November 20 managed-anchor term-rejoin regressions (#170)
+
+The [mounted term-rejoin evidence](milestones/v0.2/followup-audit.md#f28-open7-retired-promotion-and-abandoned-term-return--november-20-2026)
+covers promotion with a pending local denial and the lost primary's return
+after explicit offline term abandonment. Startup/load and hosted evidence
+remain tracked separately in #135.
