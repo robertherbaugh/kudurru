@@ -81,6 +81,9 @@ func TestSummaryLateWritesIntoPreviousHour(t *testing.T) {
 		event(ts.Add(time.Second), "10.0.0.2", "b.example"),
 		event(ts.Add(2*time.Second), "10.0.0.1", "c.example"),
 	)
+	if err := w.Flush(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	s, err := w.Reader().Summary(context.Background(), SummaryQuery{Window: Window{From: now.Add(-time.Hour), Until: now}})
 	if err != nil {
 		t.Fatal(err)
