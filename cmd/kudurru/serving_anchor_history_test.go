@@ -12,9 +12,12 @@ import (
 
 	"github.com/miekg/dns"
 	"github.com/robertherbaugh/kudurru/internal/auth/providercoordinator"
+	"github.com/robertherbaugh/kudurru/internal/dnsserver"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/serving"
+	"github.com/robertherbaugh/kudurru/internal/servingbuild"
 	"github.com/robertherbaugh/kudurru/internal/servingdns"
+	"github.com/robertherbaugh/kudurru/internal/stages/upstream"
 	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/store/follower"
 	"github.com/robertherbaugh/kudurru/internal/store/replication"
@@ -237,6 +240,124 @@ func anchorHistoryProjection(ctx context.Context, t *testing.T, s *servingRuntim
 		t.Fatal(err)
 	}
 	return projection
+}
+
+func assertRetiredAnchorHistoryDNS(ctx context.Context, t *testing.T, s *servingRuntime) {
+	t.Helper()
+	if _, _, err := anchorHistoryPublished(ctx, t, s); err == nil {
+		t.Fatal("retired owner was admitted by the production DNS output guard")
+	}
+	resolution := upstream.NewStage(nil)
+	resolution.Capture = func(req *pipeline.Request) (*upstream.View, error) {
+		return servingdns.Component[*upstream.View](req, "resolution")
+	}
+	resolution.CaptureNative = captureRootNativeSource
+	handler := &dnsserver.Handler{Chain: pipeline.MustNew(resolution), Capture: servingdns.Capture(s.publisher), Keys: servingbuild.DNSKeys, Output: captureRootAnchorOutput}
+	registry, err := dnsserver.NewRegistry(dnsserver.Options{Handler: handler, Sockets: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Add(dnsserver.Spec{Protocol: dnsserver.ProtoUDP, Address: "127.0.0.1:0"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Bind(); err != nil {
+		t.Fatal(err)
+	}
+	run, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- registry.Run(run) }()
+	defer func() {
+		cancel()
+		if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+			t.Error(err)
+		}
+	}()
+	query := new(dns.Msg).SetQuestion(".", dns.TypeDNSKEY).SetEdns0(1232, true)
+	answer, _, err := (&dns.Client{Timeout: 5 * time.Second}).ExchangeContext(ctx, query, registry.Addr(dnsserver.ProtoUDP).String())
+	if err != nil || answer.Rcode != dns.RcodeServerFailure || answer.AuthenticatedData || len(answer.Answer) != 0 {
+		t.Fatalf("retired member must answer empty SERVFAIL for the root DNSKEY: %v %v", answer, err)
+	}
+}
+
+func TestAnchorHistoryPromotedRetiredFollowerKeepsRevocation(t *testing.T) {
+	root := newAnchorHistoryAuthority(t)
+	old, original, target, host := anchorOperationFixtureTopology(t, root.endpoint, root.seeds, "direct")
+	shared := newAnchorHistoryWriter(original, t, old, target, host).operate(t, root, false)
+	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	t.Cleanup(cancel)
+	f := newAnchorFollowerFixture(ctx, t, old)
+	root.revoke.Store(true)
+	runServingFixture(t, f.s)
+	anchorHistoryAwait(t, "follower did not retire after one signed REVOKE", f.s, root, func() bool {
+		return f.s.anchorStatus.snapshot().supervisor.state == anchorWorkerRetired && root.reads.Load() == 2
+	})
+	_, local, err := f.store.ReadAnchorStatus(ctx)
+	if err != nil || local == nil || local.RetiredThrough != shared.Generation || len(local.Denied) != 1 || len(anchorHistoryProjection(ctx, t, f.s).RevokedIDs()) != 0 {
+		t.Fatal("follower did not retain exactly one pending denial", err, local)
+	}
+	denied := local.Denied[0].ID
+	assertRetiredAnchorHistoryDNS(ctx, t, f.s)
+
+	promoted := anchorHistoryPromote(ctx, t, f)
+	successor := anchorHistoryElect(ctx, t, f, promoted)
+	assertRetiredAnchorHistoryDNS(ctx, t, f.s)
+	before := anchorFollowerImage(ctx, t, f.store)
+	root.revoke.Store(false)
+	op, err := successor.s.captureAnchorOperation(successor.ctx, successor.target, successor.host, successor.clock, 0)
+	if err != nil || op == nil {
+		t.Fatal("promoted writer could not capture its original observation", err)
+	}
+	ignored, err := op.run()
+	if !errors.Is(err, accepted.ErrCAS) || ignored.Update.Outcome() != sqlite.AnchorRolledBack || ignored.Denial.Outcome() == sqlite.AnchorCommitted || root.reads.Load() != 3 {
+		t.Fatal("observation that omitted the signed REVOKE did not roll back exactly once", err, ignored.Update.Outcome(), root.reads.Load())
+	}
+	_, retained, err := f.store.ReadAnchorStatus(ctx)
+	if err != nil || !reflect.DeepEqual(local, retained) || !anchorFollowerSameImage(before, anchorFollowerImage(ctx, t, f.store)) {
+		t.Fatal("promotion or refused observation changed the pending denial or installed owner", err)
+	}
+	assertRetiredAnchorHistoryDNS(ctx, t, f.s)
+
+	root.revoke.Store(true)
+	op, err = successor.s.captureAnchorOperation(successor.ctx, successor.target, successor.host, successor.clock, 0)
+	if err != nil || op == nil {
+		t.Fatal("promoted writer could not reacquire the signed REVOKE", err)
+	}
+	observed, err := op.run()
+	tombstone, committed := observed.Update.Version()
+	if err != nil || !committed || observed.Update.Outcome() != sqlite.AnchorCommitted || observed.Denial.Outcome() != sqlite.AnchorUnchanged || root.reads.Load() != 4 {
+		t.Fatal("canonical revocation did not commit over the existing denial in one acquisition", err, observed, root.reads.Load())
+	}
+	canonical := anchorFollowerImage(ctx, t, f.store)
+	anchorHistoryAwait(t, "promoted writer did not publish its canonical revocation", f.s, root, func() bool {
+		return f.s.publisher.Status().ProtectedReady && f.s.publisher.Status().Served.Base.Same(canonical.Generation())
+	})
+
+	if _, err := old.opts.Store.ObserveAuthority(ctx, promoted.Term); err != nil {
+		t.Fatal(err)
+	}
+	anchorHistoryAwait(t, "fenced old primary did not independently deny the same key", old, root, func() bool {
+		return old.anchorStatus.snapshot().supervisor.state == anchorWorkerRetired && root.reads.Load() == 5
+	})
+	assertRetiredAnchorHistoryDNS(ctx, t, old)
+	puller := &follower.Puller{Mirror: old.opts.Store, Source: anchorHistorySource{primary: func() *sqlite.Store { return f.store }}}
+	if err := puller.Pull(ctx); err != nil {
+		t.Fatal("old primary did not adopt the promoted writer's revocation", err)
+	}
+	anchorHistoryAwait(t, "old primary did not publish the adopted revocation after one follower check", old, root, func() bool {
+		status := old.publisher.Status()
+		return status.ProtectedReady && !status.DNSOnly && status.Served.Base.Same(canonical.Generation()) && root.reads.Load() == 6
+	})
+	for _, runtime := range []*servingRuntime{f.s, old} {
+		view := anchorHistoryProjection(ctx, t, runtime)
+		seal, dnsOnly, err := anchorHistoryPublished(ctx, t, runtime)
+		if anchorOperationOwner(ctx, t, runtime).Version() != tombstone || !reflect.DeepEqual(view.RevokedIDs(), []string{denied}) || !reflect.DeepEqual(view.DS(), []string{root.kept}) ||
+			err != nil || dnsOnly || seal == nil || seal.managed == nil || !seal.base.Same(canonical.Generation()) {
+			t.Fatal("member did not publish only the kept trust", err, view.DS(), view.RevokedIDs())
+		}
+	}
+	if old.opts.Store.Authority().Mode != replication.Follower || root.reads.Load() != 6 {
+		t.Fatal("old primary did not rejoin with exactly six root acquisitions across the flow", root.reads.Load())
+	}
 }
 
 // The mounted form of the store-level history tests. An old primary runs one
