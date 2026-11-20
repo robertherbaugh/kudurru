@@ -14,8 +14,8 @@
 // Watches only wake a fresh bounded reconciliation; their payloads grant no
 // write. Sources are never written: no status, finalizer or annotation. A
 // record set is written only after its zone and its source are confirmed
-// unchanged, and removed only after the source is confirmed absent or
-// replaced. Kubernetes has no transaction across these objects, so the
+// unchanged, and removed only after the source is confirmed absent, replaced,
+// or no longer selected. Kubernetes has no transaction across these objects, so the
 // adapter converges eventually instead of claiming atomic updates.
 package k8s
 
@@ -70,8 +70,10 @@ const (
 	defaultMinInterval = time.Second
 	// listPageSize keeps one list page well under the 4 MiB response
 	// bound (64 KiB per object on average).
-	listPageSize     = 64
-	maxResponseBytes = 4 << 20
+	listPageSize         = 64
+	smallListPageSize    = 8
+	maxResponseBytes     = 4 << 20
+	loadBalancerSelector = "spec.type=LoadBalancer"
 )
 
 // Options configures the adapter.
@@ -99,7 +101,8 @@ type Controller struct {
 	// conflicted records that the running pass met a concurrent change
 	// (store.ErrConflict); Run then retries after MinInterval. Only the
 	// Run goroutine touches it.
-	conflicted bool
+	conflicted                 bool
+	serviceSelectorUnsupported bool
 }
 
 // New requires the Kubernetes driver's guarded RESTConfig.
@@ -178,6 +181,7 @@ func (t limitTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // replayed); otherwise the next pass waits for a watch event or Resync.
 func (c *Controller) Run(ctx context.Context) error {
 	c.publishListHealth(nil)
+	c.serviceSelectorUnsupported = false
 	for ctx.Err() == nil {
 		started := time.Now()
 		c.conflicted = false
@@ -219,8 +223,9 @@ func (c *Controller) noteConflict(err error) {
 
 // watchFrom is one resource and the list resourceVersion to watch from.
 type watchFrom struct {
-	kind *sourceKind
-	rv   string
+	kind     *sourceKind
+	rv       string
+	selector string
 }
 
 // wait returns on the first watch event of any watched list, or after the
@@ -238,7 +243,7 @@ func (c *Controller) wait(ctx context.Context, watched []watchFrom) {
 		wg.Add(1)
 		go func(w watchFrom) {
 			defer wg.Done()
-			stream, err := c.client.Resource(w.kind.gvr).Watch(wctx, metav1.ListOptions{ResourceVersion: w.rv, TimeoutSeconds: &seconds})
+			stream, err := c.client.Resource(w.kind.gvr).Watch(wctx, metav1.ListOptions{ResourceVersion: w.rv, FieldSelector: w.selector, TimeoutSeconds: &seconds})
 			if err != nil {
 				if accessDenied(err) {
 					c.health.setWatchDenied(w.kind, true)
@@ -271,15 +276,53 @@ func (c *Controller) wait(ctx context.Context, watched []watchFrom) {
 	wg.Wait()
 }
 
-// list reads one complete, bounded list of gvr in all namespaces.
-func (c *Controller) list(ctx context.Context, gvr schema.GroupVersionResource) ([]unstructured.Unstructured, string, int, error) {
+// list returns only a complete bounded snapshot. A truncated page restarts
+// from the beginning once at a smaller page size; unsupported Service field
+// selectors also restart from the beginning, without the selector.
+func (c *Controller) list(ctx context.Context, kind *sourceKind) ([]unstructured.Unstructured, watchFrom, error) {
+	opts := metav1.ListOptions{Limit: listPageSize}
+	if kind.family == familyService && !c.serviceSelectorUnsupported {
+		opts.FieldSelector = loadBalancerSelector
+	}
+	for {
+		items, rv, observed, err := c.listPages(ctx, kind.gvr, opts)
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return nil, watchFrom{}, ctx.Err()
+		}
+		if opts.FieldSelector != "" && serviceSelectorRejected(err) {
+			c.metrics.recordList(kind, listUnsupportedSelector, observed)
+			c.serviceSelectorUnsupported = true
+			opts.FieldSelector = ""
+			continue
+		}
+		c.metrics.recordList(kind, classifyList(err), observed)
+		if errors.Is(err, errTruncatedPage) && opts.Limit == listPageSize {
+			opts.Limit = smallListPageSize
+			continue
+		}
+		if err != nil {
+			return nil, watchFrom{}, err
+		}
+		return items, watchFrom{kind: kind, rv: rv, selector: opts.FieldSelector}, nil
+	}
+}
+
+func serviceSelectorRejected(err error) bool {
+	if !apierrors.IsBadRequest(err) {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, `"spec.type" is not a known field selector`) || strings.Contains(message, "field label not supported: spec.type")
+}
+
+func (c *Controller) listPages(ctx context.Context, gvr schema.GroupVersionResource, opts metav1.ListOptions) ([]unstructured.Unstructured, string, int, error) {
 	var all []unstructured.Unstructured
-	var rv, cont string
+	var rv string
 	size := 0
 	for {
 		truncated := false
 		pageCtx := context.WithValue(ctx, pageReadKey{}, &truncated)
-		page, err := c.client.Resource(gvr).List(pageCtx, metav1.ListOptions{Limit: listPageSize, Continue: cont})
+		page, err := c.client.Resource(gvr).List(pageCtx, opts)
 		if truncated {
 			return nil, "", len(all), errors.Join(errTruncatedPage, err)
 		}
@@ -301,7 +344,7 @@ func (c *Controller) list(ctx context.Context, gvr schema.GroupVersionResource) 
 			}
 			all = append(all, item)
 		}
-		if cont = page.GetContinue(); cont == "" {
+		if opts.Continue = page.GetContinue(); opts.Continue == "" {
 			return all, rv, len(all), nil
 		}
 	}
@@ -398,16 +441,12 @@ func (c *Controller) reconcile(term context.Context) ([]watchFrom, error) {
 		}
 	}()
 	read := func(k *sourceKind) ([]unstructured.Unstructured, error) {
-		items, rv, observed, err := c.list(ctx, k.gvr)
-		result := classifyList(err)
-		lists[k] = result
-		if term.Err() == nil {
-			c.metrics.recordList(k, result, observed)
-		}
+		items, observation, err := c.list(ctx, k)
+		lists[k] = classifyList(err)
 		if err != nil {
 			keep(c.listError(k, err))
 		} else {
-			watched = append(watched, watchFrom{k, rv})
+			watched = append(watched, observation)
 		}
 		return items, err
 	}
@@ -508,12 +547,12 @@ func (c *Controller) reconcileKind(ctx context.Context, k *sourceKind, items []u
 		}
 		for _, rs := range rows {
 			// A complete list alone is not a delete capability: confirm the
-			// exact source UID is gone immediately before cleanup.
+			// source is gone or no longer selected immediately before cleanup.
 			now, err := c.client.Resource(k.gvr).Namespace(rs.Namespace).Get(ctx, rs.Annotations[zonemodel.ExternalSourceNameAnnotation], metav1.GetOptions{})
-			if !apierrors.IsNotFound(err) && (err != nil || string(now.GetUID()) == uid) {
-				if err == nil {
-					err = store.ErrConflict
-				}
+			if err == nil && string(now.GetUID()) == uid && (k.family != familyService || isLoadBalancer(now)) {
+				err = store.ErrConflict
+			}
+			if err != nil && !apierrors.IsNotFound(err) {
 				c.noteConflict(err)
 				if firstError == nil {
 					firstError = err

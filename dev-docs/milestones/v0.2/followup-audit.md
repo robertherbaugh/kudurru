@@ -18197,6 +18197,8 @@ Review fixes (evidence `fix-*.log`):
 
 **#123 local regression coverage.** `TestRunServeExternalZonesFromKubernetesSources` uses an isolated envtest API server with a restricted identity and revocable source-reader grant. It checks `SourcesIncomplete` and denied-list metrics for all six kinds, retained record sets and DNS answers on two replicas, recovery after restoring the grant, and watch-driven updates. `TestExternalSourceWatchDeniedWithHealthyList` distinguishes denied watches from failed lists. `TestExternalSourceObjectCapReportsObservedObjects` and `TestExternalSourceTruncatedPageIsDecodeFailureNotKindCap` pin the two refusal classes, including the runbook distinction: an oversized page is truncated and fails to decode; it is not `store.ErrTooLarge`. Smaller-page retry and Service selector verification are tracked in #150.
 
+**#150 local regression coverage.** `TestExternalSourceLargePageRestartsWithSmallerPages` proves a 64-object page exceeding 4 MiB triggers a fresh, complete eight-object-page snapshot. `TestExternalSourceSmallPageRetryStillEnforcesByteCapAndKeepsLastGood` verifies the 32 MiB refusal does not authorize cleanup; the 4,096-object limit remains pinned by `TestExternalSourceObjectCapReportsObservedObjects`. `TestExternalSourceServiceSelectorEnvtest` exercises filtered list/watch on Kubernetes 1.37 and unfiltered fallback on Kubernetes 1.30. The fallback still does not publish ClusterIP Services, and a Service changing from LoadBalancer to ClusterIP withdraws its records even though its UID is unchanged.
+
 
 ### DASH-INTEGRATIONS Dashboard Integrations page — November 13, 2026 (no new decision; builds on D367, D384, D400)
 

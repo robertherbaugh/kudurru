@@ -424,14 +424,18 @@ every record set a pass writes;
 creation requires absence and an update requires the observed
 resourceVersion. A record set with the derived name that someone else owns is
 never taken over. A record set is removed only when its source is confirmed
-absent or replaced (a fresh read by name), when its zone no longer takes it,
+absent, replaced or no longer a LoadBalancer Service (a fresh read by name),
+when its zone no longer takes it,
 or when no external zone enables its kind any more; the delete carries the
 observed UID and resourceVersion. A failed or refused list (a missing
-Gateway API CRD, RBAC, a list over 4,096 objects or 32 MiB, or a list page
-of 64 objects over the 4 MiB response bound) never authorizes cleanup: the
-kind keeps the record sets of the last complete pass, which are no longer
-updated. Every Service in the cluster counts toward the 4,096-object bound of
-its kind, not only LoadBalancer Services. Invalid source data (an unusable TTL
+Gateway API CRD, RBAC, or a list over 4,096 objects or 32 MiB) never authorizes
+cleanup: the kind keeps the record sets of the last complete pass. If a
+64-object page exceeds the 4 MiB response cap, the adapter discards the
+partial list and tries once more at eight objects per page under the same
+bounds. Only a complete list can start reconciliation. The adapter lists and
+watches Services with `spec.type=LoadBalancer` when supported; otherwise,
+every Service counts toward the caps, and only LoadBalancer Services publish.
+Invalid source data (an unusable TTL
 annotation) withdraws only that source's records. Watch events only wake a
 new pass; without events a pass runs every ten seconds. Passes start at least
 one second apart, so a burst of source events (controllers updating status)
