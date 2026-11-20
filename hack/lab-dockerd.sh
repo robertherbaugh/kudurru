@@ -20,6 +20,7 @@ docker=(docker --host "$host")
 lab=$(mktemp -d)
 lock=/tmp/kudurru-lab-docker.lock
 cleanup() {
+  local status=0
   if [[ -n ${daemon_job:-} ]]; then
     if sudo -n test -s "$lab/docker.pid"; then
       sudo -n kill -TERM "$(sudo -n cat "$lab/docker.pid")" 2>/dev/null || true
@@ -28,18 +29,27 @@ cleanup() {
     fi
     wait "$daemon_job" || true
     if sudo -n mountpoint -q "$lab/exec/netns/default"; then
-      sudo -n umount "$lab/exec/netns/default"
+      sudo -n umount "$lab/exec/netns/default" || status=1
     fi
   fi
-  sudo -n rm -rf --one-file-system -- "$lab"
+  sudo -n rm -rf --one-file-system -- "$lab" || status=1
   if [[ ${locked:-} == 1 ]]; then
-    sudo -n rmdir "$lock"
+    sudo -n rmdir "$lock" || status=1
   fi
+  return "$status"
 }
-trap cleanup EXIT
+finish() {
+  local status=$?
+  cleanup || status=1
+  exit "$status"
+}
+trap finish EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-sudo -n mkdir "$lock"
+if ! sudo -n mkdir "$lock"; then
+  echo "Private daemon lock $lock is unavailable; check for another lab run" >&2
+  exit 1
+fi
 locked=1
 if [[ -e $socket || -L $socket ]]; then
   echo "Refusing to replace existing $socket" >&2

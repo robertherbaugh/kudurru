@@ -41,7 +41,8 @@ interop_test() (
     shift
   done
   shift
-  pattern=$(IFS='|'; echo "${tests[*]}")
+  pattern=$(printf '%s|' "${tests[@]}")
+  pattern=${pattern%|}
   if [[ -n ${KUDURRU_INTEROP_RESULTS_DIR:-} ]]; then
     mkdir -p "$KUDURRU_INTEROP_RESULTS_DIR"
     log="$KUDURRU_INTEROP_RESULTS_DIR/$suite.jsonl"
