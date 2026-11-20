@@ -184,8 +184,8 @@ func (s *Server) capturedObjectMap(ctx context.Context, k kindInfo, obj store.Ob
 				obj = rs
 				meta.RemoveStatusCondition(&rs.Status.Conditions, condition)
 				if message != "" {
-					meta.SetStatusCondition(&rs.Status.Conditions, metav1.Condition{Type: condition, Status: metav1.ConditionTrue,
-						Reason: condition, Message: message, ObservedGeneration: rs.Generation, LastTransitionTime: metav1.NewTime(s.opts.Now().UTC())})
+					rs.Status.Conditions = append(rs.Status.Conditions, metav1.Condition{Type: condition, Status: metav1.ConditionTrue,
+						Reason: condition, Message: message, ObservedGeneration: rs.Generation, LastTransitionTime: rs.CreationTimestamp})
 				}
 			}
 		}

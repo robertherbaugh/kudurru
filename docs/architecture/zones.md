@@ -287,10 +287,13 @@ Rules and limits:
   dropped endpoint. On SQLite a record set that serves other endpoints stays
   `served`. Its existing projection reason summarizes refused view endpoints
   with their name, type, namespaced view and refusal reason (up to 512 bytes,
-  with a count when entries are omitted). The record set GET exposes it as the
-  `ViewEndpointsRefused` status condition when the served source matches the
-  current record set. Open the editor on a served row with that proven record
-  set to see the warning; the refused endpoints themselves are not served rows.
+  with a count when entries are omitted). Only the single-record-set GET
+  (not the record set list) exposes the `ViewEndpointsRefused` status condition
+  when the served source matches the current record set. The source envelope
+  does not store a transition time, so this projected condition uses the
+  record set's stable creation timestamp. Open the editor on a served row
+  with that proven record set to see the warning; refused endpoints are not
+  served rows.
 - AXFR, IXFR, the IXFR journal, NOTIFY serials, `GET .../export` and
   integration sinks (Cloudflare, UniFi) carry the default data only. A
   secondary never receives group data, and there is no per-key view transfer.
