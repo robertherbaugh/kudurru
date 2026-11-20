@@ -85,12 +85,12 @@ func (r *integrationRuntime) IntegrationList(ctx context.Context, namespace stri
 	if len(definitions) > ih.MaxInstances {
 		return nil, integrationAdminError(ih.ErrCapacity)
 	}
-	statuses := r.host.Statuses()
+	statuses, captureFailure := r.host.StatusSnapshot()
 	out := make([]api.IntegrationSummary, 0, len(definitions))
 	for _, obj := range definitions {
 		d := obj.(*public.Integration)
 		if d.Namespace == namespace {
-			out = append(out, r.integrationSummary(d, statuses))
+			out = append(out, r.integrationSummary(d, statuses, captureFailure))
 		}
 	}
 	slices.SortFunc(out, func(a, b api.IntegrationSummary) int { return strings.Compare(a.Name, b.Name) })
@@ -109,11 +109,12 @@ func (r *integrationRuntime) IntegrationGet(ctx context.Context, namespace, name
 	if !ok {
 		return nil, integrationAdminError(store.ErrNotFound)
 	}
-	out := r.integrationSummary(obj.(*public.Integration), r.host.Statuses())
+	statuses, captureFailure := r.host.StatusSnapshot()
+	out := r.integrationSummary(obj.(*public.Integration), statuses, captureFailure)
 	return &out, nil
 }
 
-func (r *integrationRuntime) integrationSummary(d *public.Integration, statuses []ih.InstanceStatus) api.IntegrationSummary {
+func (r *integrationRuntime) integrationSummary(d *public.Integration, statuses []ih.InstanceStatus, captureFailure string) api.IntegrationSummary {
 	out := api.IntegrationSummary{Namespace: d.Namespace, Name: d.Name, UID: string(d.UID), Revision: d.ResourceVersion, Type: d.Spec.Type, Suspended: d.Spec.Suspend, DeletionPolicy: d.Spec.DeletionPolicy, Phase: "Unknown", Reason: "NoMatchingObservation"}
 	out.InventorySource = ih.SourceID(kinds.Owner{ClusterID: r.s.opts.Store.Info().ClusterID, Namespace: d.Namespace, Name: d.Name, UID: string(d.UID)})
 	if out.DeletionPolicy == "" {
@@ -124,6 +125,10 @@ func (r *integrationRuntime) integrationSummary(d *public.Integration, statuses 
 		// without one the store would have removed it in the same write.
 		at := d.DeletionTimestamp.UTC()
 		out.Terminating, out.DeletionRequestedAt = true, &at
+	}
+	if captureFailure != "" {
+		out.Reason = captureFailure
+		return out
 	}
 	for _, status := range statuses {
 		if status.Owner.ClusterID != r.s.opts.Store.Info().ClusterID || status.Owner.UID != out.UID || status.Owner.Namespace != out.Namespace || status.Owner.Name != out.Name || status.Revision != out.Revision {

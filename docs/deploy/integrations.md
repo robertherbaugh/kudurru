@@ -179,6 +179,29 @@ removed `Retain` Integrations, have stored close to 100,000 record changes
 is near the limit. The purge and the finalization have their own scan bound
 of 200,000 rows of one kind, which this store limit always reaches first.
 
+SQLite capture has a 10-second deadline. A failed capture stops local jobs,
+including cleanup, until a complete capture can start them again. Integration
+list and get report the local capture reason (for example,
+`CaptureDeadlineExceeded` or `CaptureCapacityExceeded`) rather than claiming
+a current instance observation. The server logs transitions into a failed
+capture with the reason, elapsed time, and deadline. Use
+`kudurru_integration_captures_total` and `kudurru_integration_capture_seconds`
+by `result` to distinguish persistent failure from a single failed capture.
+Capacity failures call for inspecting total generation size; deadline failures
+also warrant checking CPU and storage contention. The generation limits are
+not a guarantee that a capture or cleanup will fit its deadline.
+
+**Observed SQLite scale.** In the November 20, 2026 sandbox runs, 1,000
+total objects with small records or 4 KiB of padding per seeded record
+finished capture, one changing command, and one Cloudflare-double record-set
+cleanup with and without two generation-reader load workers (without
+`-race`). The 32 KiB idle cell finalized, but took more than 30 seconds end
+to end; the operation deadline applies per cleanup run, not from the delete
+request to finalization. These are observations for that workload and host,
+not a production limit, a release qualification, or a guarantee at those
+sizes. The raw measurements and coverage gaps are in the
+[SQLite integration scale evidence](../../dev-docs/milestones/v0.2/evidence/2026-11-20-integration-scale/README.md).
+
 To release an Integration that is `Terminating`, review it and run the
 release command with the exact UID and revision you reviewed:
 

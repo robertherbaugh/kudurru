@@ -1,0 +1,50 @@
+
+=== 1000-32k-idle-norace.log ===
+=== RUN   TestIntegrationScale
+    integration_scale_test.go:61: integration scale cell=1000:32k:idle host=c2a5eab6-78c go=go1.27.4 revision=ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61+diagnostics-fixture
+2026/11/20 19:35:48 WARN integration capture failed reason=CaptureUnavailable duration=2.880545ms bound=10s
+2026/11/20 19:36:30 INFO integration finalized integration=default/publisher released=false recordSetsDeleted=1 recordsForgotten=1 runs=1
+    integration_scale_test.go:133: integration scale result cell=1000:32k:idle objects_before=11 objects_seeded=989 capture=4.865s/finished apply=804ms/finished cleanup=35.088s/finished cleanup_cutoff=2m0s cloudflare_requests=13 cloudflare_writes=1 cloudflare_provider_ids=[00000000000000000000000000000001 00000000000000000000000000000002]
+2026/11/20 19:36:30 WARN integration capture failed reason=CaptureUnavailable duration=590.781428ms bound=10s
+--- PASS: TestIntegrationScale (43.21s)
+PASS
+
+=== 1000-4k-idle-norace.log ===
+=== RUN   TestIntegrationScale
+    integration_scale_test.go:61: integration scale cell=1000:4k:idle host=c2a5eab6-78c go=go1.27.4 revision=ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61+diagnostics-fixture
+2026/11/20 19:35:15 WARN complete serving generation not published component=serving reason=prepare_failed error="providerresources: owner closed"
+2026/11/20 19:35:15 INFO complete serving generation published again component=serving
+2026/11/20 19:35:15 WARN integration capture failed reason=CaptureUnavailable duration=2.91106ms bound=10s
+2026/11/20 19:35:26 INFO integration finalized integration=default/publisher released=false recordSetsDeleted=1 recordsForgotten=1 runs=1
+    integration_scale_test.go:133: integration scale result cell=1000:4k:idle objects_before=11 objects_seeded=989 capture=1.175s/finished apply=97ms/finished cleanup=5.703s/finished cleanup_cutoff=2m0s cloudflare_requests=13 cloudflare_writes=1 cloudflare_provider_ids=[00000000000000000000000000000001 00000000000000000000000000000002]
+--- PASS: TestIntegrationScale (11.85s)
+PASS
+
+=== 1000-4k-loaded-norace.log ===
+=== RUN   TestIntegrationScale
+    integration_scale_test.go:61: integration scale cell=1000:4k:loaded host=c2a5eab6-78c go=go1.27.4 revision=ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61+diagnostics-fixture
+2026/11/20 19:35:27 WARN integration capture failed reason=CaptureUnavailable duration=1.85918ms bound=10s
+2026/11/20 19:35:47 INFO integration finalized integration=default/publisher released=false recordSetsDeleted=1 recordsForgotten=1 runs=1
+    integration_scale_test.go:133: integration scale result cell=1000:4k:loaded objects_before=11 objects_seeded=989 capture=1.112s/finished apply=116ms/finished cleanup=16.661s/finished cleanup_cutoff=2m0s cloudflare_requests=13 cloudflare_writes=1 cloudflare_provider_ids=[00000000000000000000000000000001 00000000000000000000000000000002]
+--- PASS: TestIntegrationScale (21.16s)
+PASS
+
+=== 1000-small-idle-norace.log ===
+=== RUN   TestIntegrationScale
+    integration_scale_test.go:61: integration scale cell=1000:small:idle host=c2a5eab6-78c go=go1.27.4 revision=ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61+diagnostics-fixture
+2026/11/20 19:35:02 WARN integration capture failed reason=CaptureUnavailable duration=1.843472ms bound=10s
+2026/11/20 19:35:08 INFO integration finalized integration=default/publisher released=false recordSetsDeleted=1 recordsForgotten=1 runs=1
+    integration_scale_test.go:133: integration scale result cell=1000:small:idle objects_before=11 objects_seeded=989 capture=468ms/finished apply=46ms/finished cleanup=2.602s/finished cleanup_cutoff=2m0s cloudflare_requests=13 cloudflare_writes=1 cloudflare_provider_ids=[00000000000000000000000000000001 00000000000000000000000000000002]
+2026/11/20 19:35:08 WARN integration capture failed reason=CaptureUnavailable duration=5.995267ms bound=10s
+--- PASS: TestIntegrationScale (5.85s)
+PASS
+
+=== 1000-small-loaded-norace.log ===
+=== RUN   TestIntegrationScale
+    integration_scale_test.go:61: integration scale cell=1000:small:loaded host=c2a5eab6-78c go=go1.27.4 revision=ce3ab6e2e28ad11663f1659f9e19fa74e5a33e61+diagnostics-fixture
+2026/11/20 19:35:08 WARN integration capture failed reason=CaptureUnavailable duration=3.768618ms bound=10s
+2026/11/20 19:35:14 INFO integration finalized integration=default/publisher released=false recordSetsDeleted=1 recordsForgotten=1 runs=1
+    integration_scale_test.go:133: integration scale result cell=1000:small:loaded objects_before=11 objects_seeded=989 capture=548ms/finished apply=91ms/finished cleanup=5.011s/finished cleanup_cutoff=2m0s cloudflare_requests=13 cloudflare_writes=1 cloudflare_provider_ids=[00000000000000000000000000000001 00000000000000000000000000000002]
+2026/11/20 19:35:15 WARN integration capture failed reason=CaptureUnavailable duration=27.008121ms bound=10s
+--- PASS: TestIntegrationScale (6.39s)
+PASS
