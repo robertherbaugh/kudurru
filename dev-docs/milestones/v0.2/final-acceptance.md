@@ -66,7 +66,7 @@ or qualify a release.
 | ZONE: enabled external-source RBAC failures and caps; TSIG CLI on Kubernetes | [#123](https://github.com/robertherbaugh/kudurru/issues/123), [#126](https://github.com/robertherbaugh/kudurru/issues/126) |
 | ZONE: view ownership parity, shared caps, transfer/signing limitations | [#136](https://github.com/robertherbaugh/kudurru/issues/136) |
 | ZONE / DNS / EDGE: signed SOA-only IXFR without AA and dnsdist 2.1.3 empty-FIN limitation | [#158](https://github.com/robertherbaugh/kudurru/issues/158), [#127](https://github.com/robertherbaugh/kudurru/issues/127) |
-| UPDATE / HA: bounded failures after admission and local follower apply cutoff qualification | [#129](https://github.com/robertherbaugh/kudurru/issues/129), [#159](https://github.com/robertherbaugh/kudurru/issues/159); D409 remains implemented |
+| UPDATE / HA: owner-accepted publication grace, bounded follower apply, and member replacement | [#129 disposition and evidence](#owner-disposition-for-129); [#159](https://github.com/robertherbaugh/kudurru/issues/159) tracks the lifetime-refusal primary name. D409 remains implemented; loaded runtime and UPDATE findings remain in [#138](https://github.com/robertherbaugh/kudurru/issues/138). |
 | DNS: failed final performance qualification; managed-anchor residual metric/refusal/abandoned-term coverage | [#143](https://github.com/robertherbaugh/kudurru/issues/143); [#135](https://github.com/robertherbaugh/kudurru/issues/135) tracks residual F28 coverage |
 | RPZ / OPS: explanation projection, offline signed-feed restart, compile window and multi-port CoreDNS loss reporting | [#130](https://github.com/robertherbaugh/kudurru/issues/130) |
 | INTEGRATIONS: whole-image capture/cleanup scale and original time bounds | [#124](https://github.com/robertherbaugh/kudurru/issues/124) |
@@ -92,16 +92,38 @@ issues stay open.
 ### Owner disposition for #129
 
 On November 20, 2026, the owner accepted D395 as implemented (up to one second
-of grace for ordinary answers; strict paths remain strict) and D375 as
+of grace for ordinary answers; transfers still require the current publication,
+and UPDATE acknowledgments, API dig, and mutations remain strict) and D375 as
 implemented (one 30-second follower apply lifetime, honest per-document
 partial results and no replay; send large workloads to the primary). The
 [documented member replacement procedure](../../../docs/deploy/sqlite-join.md#replace-a-member-that-cannot-follow)
 is sufficient for v0.2; the #160 retirement command stays deferred.
 
-This is a product decision, not a test result. See the
-[local #159 evidence](../../followups.md#local-follower-apply-evidence-159) for
-the scope actually exercised. No release gate, including D358, is passed by
-this decision.
+The owner decision is separate from the verification:
+
+- **Local grace and replacement regressions:** focused `-race` runs on
+  `ce3ab6e2` passed `TestPublisherServedWithinKeepsRecentlyReplacedPublications`,
+  `TestPublisherServedWithinHasNoGapAtTheSwap`,
+  `TestRootAnchorServedDNSFollowsThePublication`,
+  `TestRootAnchorRetainedDNSDoesNotGrantDataOrCacheMutation`,
+  `TestReplacementReceiverNeedsItsOwnNameAndAddress`,
+  `TestInvitationAndActiveMemberCapacityDoNotPrune`,
+  `TestRevokedKeyCannotReturnUnderNewCertificateAndUUID`, and
+  `TestRootMemberListenerTLSSeparationAndLiveRevocation`. Those tests check
+  grace expiry, strict AXFR and mutation behavior, and the member identity and
+  roster rules; they are not an operator replacement drill.
+- **Local cutoff regression:** [#159 evidence](../../followups.md#local-follower-apply-evidence-159)
+  covers both forced cutoffs, the durable per-document results, and no replay.
+- **Hosted single-runner process tests:** [CI run 44667589755](https://github.com/robertherbaugh/kudurru/actions/runs/44667589755/job/136061099846)
+  on `91b4f2c5` (merged in #184) passed `TestEnrolledClusterProcessesPartitionCatchupAndRestart`
+  and `TestEnrolledClusterProcessesPromoteAndRejoin` under `-race`. The
+  original 200-document follower applies each returned all 200 as created,
+  in 8.49 seconds and 8.37 seconds, respectively. These timings are one
+  runner's result, not a guarantee under load.
+
+These results do not qualify a final release artifact or independent two-VM VIP
+failover. The D358 deferral and other release gates are unchanged. Keep #129
+open while its deferred #160 sub-issue remains open.
 
 ## Explicit future acceptance
 
