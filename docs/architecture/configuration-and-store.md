@@ -1340,8 +1340,14 @@ secret. A revocation keeps the owner or `tokens.delete` rule and its retained
 `404`, and is emitted under the command scope only, because it may revoke the
 token that sent it. For both commands a credential that the primary no longer
 accepts or authorizes is a retained `401` or `403`, with the same dedup guard
-as `auth.logout`. After a commit the follower pulls once and answers after its
-own view serves the result: it seals the new cookie, or waits (at most five
+as `auth.logout`. A member transport refusal is different: if the primary
+rejects the member exchange before command execution (`401` or an authority
+`409`), a forwarded password, token, session, or object mutation answers
+`503 unavailable` with "cluster authority changed," not a user credential
+error. If the primary may have run the command and the outcome cannot be
+relayed, the follower answers `503 completion_unknown`; it does not replay
+the request. After a commit the follower pulls once and answers after its own
+view serves the result: it seals the new cookie, or waits (at most five
 seconds) until its view carries the new password hash, authenticates the new
 token, or no longer lists the revoked one. A token caller's password change is
 answered for the original principal with `mustChangePassword` cleared, as the
@@ -1356,9 +1362,9 @@ is answered `503 committed_output_unavailable` (the password changed; sign in
 with the new one), and the message names the cause: the route's bound ran out,
 the cookie settings changed before the session could be issued, or another
 refusal of the seal. Every such refusal comes before the cookie and the answer
-are written. A committed change is never answered `unavailable`, which means that
-nothing was sent. Every one of these routes gets the 30-second bound before
-body read. A mutation without a typed command is
+are written. A committed change is never answered `unavailable`, which means
+that the change did not run. Every one of these routes gets the 30-second
+bound before body read. A mutation without a typed command is
 refused on a follower, as described under
 [What a follower does with a mutation](#what-a-follower-does-with-a-mutation).
 
@@ -1370,9 +1376,14 @@ sequenceDiagram
     C->>F: PUT /objects/dnsrecordsets/default/www
     F->>F: Normalize document, early admission, capture source (30 s)
     F->>P: objects.write (member mTLS, raw credential proof)
-    P->>P: Same command body, exact reauthorization, effect + audit + dedup
-    P-->>F: Outcome before the writer lock is released: committed object or exact refusal
-    F-->>C: Primary's public result (served locally after the next pull)
+    alt Member exchange rejected before execution
+        P-->>F: Member transport 401 or authority 409
+        F-->>C: 503 unavailable (cluster authority changed)
+    else Command accepted
+        P->>P: Same command body, exact reauthorization, effect + audit + dedup
+        P-->>F: Outcome before the writer lock is released: committed object or exact refusal
+        F-->>C: Primary's public result (served locally after the next pull)
+    end
 ```
 
 ### What a follower does with a mutation

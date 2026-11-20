@@ -21802,3 +21802,39 @@ Full hosted validation of the corrected source is pending. The passing
 performance recording remains attributed to its exact earlier source; updated
 source qualification must be recorded separately. GitHub review stays outside
 the owner's requested work, and other documented scope/deferrals remain.
+
+### Follower self-service refusal evidence (#137)
+
+On November 20, 2026, `TestRootMemberForwardPasswordTransportRefusalActualHTTP`
+reproduced a transport `401 unauthenticated` on `ce3ab6e2`. The mounted
+follower requested a password change with its valid bearer credential; the
+fixture fenced the primary while the follower held the original request at
+body read. The primary refused the member exchange before its command
+executor. The follower now answers `503 unavailable` and says the password
+was not changed. The same test checks that a wrong current password still
+gets the primary's retained `401 unauthenticated`. Neither refusal changed
+the password or left a durable mutation audit row.
+
+The HA-OPEN5 fixes (`7bae1238`, `532a5cd7`, `1737eb2e`) are integrated.
+`TestRootMemberForwardPasswordAndTokensActualHTTP` checks the durable
+attribution of successful commands and the absence of mutation audit rows
+for refused commands. `TestRootMemberForwardTokenCallerPasswordActualHTTP`
+pins the original principal for a committed password change, and
+`TestRootMemberForwardCookiePasswordUnservedActualHTTP` and
+`TestMemberSessionUnservedNamesTheCause` pin committed-but-unavailable output.
+The shared failure matrix in `TestMemberSelfError`, `TestMemberLogoutError`,
+and `TestObjectForwardError` distinguishes authority refusals, other definite
+refusals, authorization denials, and uncertain completion, including joined
+errors. No request bound, subject, deduplication check, or replay rule changed.
+
+Local checks used mounted loopback TLS and synthetic SQLite fixtures only.
+The baseline reproduction failed as expected in `.context/gh137-before.log`
+(1-minute load average 0.42). The focused `CGO_ENABLED=1 go test -p 4 -race
+-count=1 -run ... ./cmd/kudurru` suite passed in 138.398 seconds, including
+the refusal matrix, mounted password/token/sign-out and audit tests, the
+unforwarded mutation test, and the cut-apply regression
+(`.context/gh137-forward-refusal-race.log`, 1-minute load average 0.90 at start).
+`go vet -p 3 ./cmd/kudurru/...` passed (147.791 seconds wall time, load
+0.92), and `golangci-lint run --concurrency 3 ./cmd/kudurru/...` (v2.15.0)
+reported zero issues (76.095 seconds wall time, load 7.70). See
+`.context/gh137-vet-lint.log`. `make docs-site docs-check-links` also passed.
