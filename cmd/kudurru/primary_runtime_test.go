@@ -54,6 +54,7 @@ type primaryNetworkFixture struct {
 	listeners       *dnsserver.Registry
 	pause           atomic.Bool
 	pauseNotify     atomic.Bool
+	updateOutcomes  atomic.Int32
 	entered, resume chan struct{}
 	// timeout replaces the client's five-second exchange timeout when set.
 	timeout time.Duration
@@ -150,7 +151,10 @@ func newPrimaryNetworkFixtureWithOutput(t *testing.T, observer pipeline.Observer
 		t.Fatal(err)
 	}
 	pin := servingbuild.NewTransferredRuntime(nil, nil, nil).PrimaryPin(f.keyrings.PrimaryPin(f.publisher))
-	f.runtime, err = newPrimaryRuntime(t.Context(), primaryRuntimeOptions{Store: f.store, Publisher: f.publisher, Schema: schema, Pin: pin, Observe: func(out pr.UpdateOutcome) { t.Logf("UPDATE outcome: %+v", out) }})
+	f.runtime, err = newPrimaryRuntime(t.Context(), primaryRuntimeOptions{Store: f.store, Publisher: f.publisher, Schema: schema, Pin: pin, Observe: func(out pr.UpdateOutcome) {
+		f.updateOutcomes.Add(1)
+		t.Logf("UPDATE outcome: %+v", out)
+	}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,26 +410,20 @@ func TestPrimaryRuntimeNativeUpdateForRetiringZoneIsAnsweredAtOnce(t *testing.T)
 	})
 	defer lease.Release()
 	message := primaryUpdateMessage("example.", "late.example.", true)
-	request := &pipeline.Request{Ctx: t.Context(), Msg: message, Client: pipeline.Client{Proto: pipeline.ProtoTCP}, Serving: servingdns.Wrap(lease)}
 	marker := &nativeUpdateRecapture{}
 	writer := fixture.runtime.driver.Status().Writer
-	capture := *request
-	capture.Ctx = context.WithValue(pr.WithPublicationFence(t.Context(), writer), nativeUpdateRecaptureKey{}, marker)
-	_, err := fixture.runtime.captureUpdate(&capture, "example.")
+	ctx := context.WithValue(pr.WithPublicationFence(t.Context(), writer), nativeUpdateRecaptureKey{}, marker)
+	capture := &pipeline.Request{Ctx: ctx, Msg: message, Client: pipeline.Client{Proto: pipeline.ProtoTCP}, Serving: servingdns.Wrap(lease)}
+	_, err := fixture.runtime.captureUpdate(capture, "example.")
 	var rejected *network.UpdateReject
 	if !errors.As(err, &rejected) || rejected.Rcode != dns.RcodeServerFailure || marker.stale {
 		t.Fatalf("retiring-zone capture must refuse without requesting recapture: stale=%t err=%v", marker.stale, err)
 	}
-	applied := false
-	request.Ctx = network.WithOutcome(t.Context(), func(pr.UpdateOutcome) { applied = true })
-	response, err := fixture.runtime.Update(request)
-	if response != nil {
-		defer response.Close()
+	answer, err := fixture.exchange(message, true)
+	if out := fixture.updateOutcomes.Load(); err != nil || answer == nil || answer.Rcode != dns.RcodeServerFailure || answer.IsTsig() == nil || out != 0 {
+		t.Fatalf("signed native UPDATE for a retiring zone must fail before Apply: answer=%v outcomes=%d err=%v", answer, out, err)
 	}
-	if err != nil || response == nil || response.Msg == nil || response.Msg.Rcode != dns.RcodeServerFailure || applied {
-		t.Fatalf("native UPDATE for a retiring zone must fail before Apply: response=%v applied=%t err=%v", response, applied, err)
-	}
-	t.Log("retiring-zone native UPDATE returned SERVFAIL without recapture or Apply")
+	t.Log("native capture was terminal; the signed TCP UPDATE returned SERVFAIL without reaching Apply")
 }
 
 func TestPrimaryRuntimeHeldNativeRequestCannotAdoptNewKeyring(t *testing.T) {
