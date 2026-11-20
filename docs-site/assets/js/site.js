@@ -4,6 +4,40 @@
 (() => {
   'use strict';
 
+  const root = document.documentElement;
+  const control = document.querySelector('.theme-switch');
+  root.classList.add('js');
+  if (control) {
+    const options = control.querySelectorAll('input[type="radio"]');
+    const system = matchMedia('(prefers-color-scheme: dark)');
+    const colors = document.querySelectorAll('meta[name="theme-color"][data-scheme]');
+    const effective = () => root.dataset.theme ?? (system.matches ? 'dark' : 'light');
+    const announce = () => document.dispatchEvent(new CustomEvent('kudurru:themechange', { detail: effective() }));
+    const update = (theme) => {
+      const before = effective();
+      if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
+      else delete root.dataset.theme;
+      for (const option of options) option.checked = option.value === theme;
+      for (const meta of colors) {
+        const scheme = meta.dataset.scheme;
+        meta.media = theme === 'system' ? `(prefers-color-scheme: ${scheme})` : theme === scheme ? 'all' : 'not all';
+      }
+      if (effective() !== before) announce();
+    };
+    update(root.dataset.theme ?? 'system');
+    control.addEventListener('change', (event) => {
+      if (!(event.target instanceof HTMLInputElement)) return;
+      const theme = event.target.value;
+      update(theme);
+      try {
+        if (theme === 'system') localStorage.removeItem('kudurru-theme');
+        else localStorage.setItem('kudurru-theme', theme);
+      } catch {}
+    });
+    system.addEventListener('change', () => { if (!root.dataset.theme) announce(); });
+    control.hidden = false;
+  }
+
   const sidebar = document.querySelector('.sidebar__tree');
   if (sidebar) {
     const narrow = window.matchMedia('(max-width: 900px)');
@@ -15,10 +49,15 @@
   const toggle = document.querySelector('.nav-toggle');
   const nav = document.getElementById('site-nav');
   if (toggle && nav) {
-    toggle.addEventListener('click', () => {
-      const open = toggle.getAttribute('aria-expanded') !== 'true';
+    const setOpen = (open) => {
       toggle.setAttribute('aria-expanded', String(open));
       document.body.classList.toggle('nav-open', open);
+    };
+    toggle.addEventListener('click', () => setOpen(toggle.getAttribute('aria-expanded') !== 'true'));
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || toggle.getAttribute('aria-expanded') !== 'true') return;
+      if (nav.contains(document.activeElement)) toggle.focus();
+      setOpen(false);
     });
   }
 

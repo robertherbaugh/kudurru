@@ -1,5 +1,5 @@
 {{- /* Tables scroll sideways on narrow screens instead of the page. */ -}}
-<div class="table-wrap">
+<div class="table-wrap" tabindex="0">
 <table
   {{- range $k, $v := .Attributes }}
     {{- if $v }} {{ $k }}="{{ $v }}"{{ end }}
