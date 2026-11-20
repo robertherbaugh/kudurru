@@ -272,3 +272,13 @@ none is replayed. The held-pull refusals and the uncertain result name the
 primary; the existing lifetime-expiry refusals do not. No wording, production
 timing, or 200-document process-test expectation changed. These runs are
 local evidence only; no live or independent-host acceptance was run.
+
+On `ce3ab6e2` with the primary-name assertion added, the lifetime case failed
+for both unsent items. With the wording fix, those items also name the
+original primary. The cutoff gates, durable SQLite checks, original command
+deadline, and pre-deduplication counts are unchanged. Local checks:
+
+| Command | Result | Log |
+|---|---|---|
+| `CGO_ENABLED=1 go test -p 4 ./cmd/kudurru -run 'TestRootMember.*Apply\|TestMemberItemRefusal' -race -count=3` | Pass, 112.574 s | `.context/gh159-primary-race.log` |
+| `CGO_ENABLED=1 go test -p 3 ./internal/cluster/replica -run Hold -race -count=1` | Pass, 3.049 s | `.context/gh159-primary-checks.log` |
