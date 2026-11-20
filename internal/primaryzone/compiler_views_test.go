@@ -28,10 +28,12 @@ func TestCompilerSummarizesRefusedViewsInServedSets(t *testing.T) {
 		want     string
 		signed   bool
 		viewOnly bool
+		dynamic  string
 	}{
-		{"duplicate", []*public.DNSRecordSet{desiredSet("first", viewEndpoint("printer", "192.0.2.1", "lan"))}, viewEndpoint("printer", "192.0.2.2", "lan"), "Duplicated", false, true},
-		{"occluded", []*public.DNSRecordSet{desiredSet("first", public.Endpoint{DNSName: "child.example.", RecordType: "NS", Targets: []string{"ns.other.test."}})}, viewEndpoint("printer.child", "192.0.2.2", "lan"), "Occluded", false, false},
-		{"signed", nil, viewEndpoint("printer", "192.0.2.2", "lan"), "Invalid: client-group views are not served in a DNSSEC-signed zone", true, false},
+		{"duplicate", []*public.DNSRecordSet{desiredSet("first", viewEndpoint("printer", "192.0.2.1", "lan"))}, viewEndpoint("printer", "192.0.2.2", "lan"), "Duplicated", false, true, ""},
+		{"occluded", []*public.DNSRecordSet{desiredSet("first", public.Endpoint{DNSName: "child.example.", RecordType: "NS", Targets: []string{"ns.other.test."}})}, viewEndpoint("printer.child", "192.0.2.2", "lan"), "Occluded", false, false, ""},
+		{"signed", nil, viewEndpoint("printer", "192.0.2.2", "lan"), "Invalid: client-group views are not served in a DNSSEC-signed zone", true, false, ""},
+		{"dynamic owner", nil, viewEndpoint("printer", "192.0.2.2", "lan"), dynamicOwnerReason, false, false, "printer.example. 300 IN A 192.0.2.1"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			z := desiredZone()
@@ -44,7 +46,12 @@ func TestCompilerSummarizesRefusedViewsInServedSets(t *testing.T) {
 			}
 			mixed := desiredSet("mixed", tc.refused, kept)
 			in := &zonestate.DesiredInputs{Zone: z, RecordSets: append(tc.blockers, mixed), Complete: true}
-			compiled := compile(t, NewCompiler(CompilerOptions{}), blank(z), in, fixedNow)
+			compiler := NewCompiler(CompilerOptions{})
+			base := blank(z)
+			if tc.dynamic != "" {
+				base = withDynamic(t, compiler, z, &zonestate.DesiredInputs{Zone: z, Complete: true}, tc.dynamic)
+			}
+			compiled := compile(t, compiler, base, in, fixedNow)
 			if got := built(t, compiled).ForGroups([]string{"dns/lan"}).Lookup("kept.example.", dns.TypeA); got.Kind != zone.Success {
 				t.Fatalf("other endpoint was lost: %+v", got)
 			}
