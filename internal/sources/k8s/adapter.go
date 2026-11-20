@@ -177,12 +177,11 @@ func (t limitTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 // after MinInterval (a fresh pass recomputes everything; nothing refused is
 // replayed); otherwise the next pass waits for a watch event or Resync.
 func (c *Controller) Run(ctx context.Context) error {
+	c.publishListHealth(nil)
 	for ctx.Err() == nil {
 		started := time.Now()
-		rctx, cancel := context.WithTimeout(ctx, reconcileTimeout)
 		c.conflicted = false
-		watched, err := c.reconcile(rctx)
-		cancel()
+		watched, err := c.reconcile(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
@@ -374,10 +373,9 @@ func enabled(spec *v1alpha1.ExternalSpec, f family) bool {
 
 // reconcile is one bounded pass over every source kind. It returns the
 // lists to watch for the next wake-up.
-func (c *Controller) reconcile(ctx context.Context) ([]watchFrom, error) {
-	if _, ok := ctx.Deadline(); !ok {
-		return nil, errors.New("external zones: reconciliation must be bounded")
-	}
+func (c *Controller) reconcile(term context.Context) ([]watchFrom, error) {
+	ctx, cancel := context.WithTimeout(term, reconcileTimeout)
+	defer cancel()
 	if err := c.opts.Admit(ctx); err != nil {
 		return nil, err
 	}
@@ -394,12 +392,18 @@ func (c *Controller) reconcile(ctx context.Context) ([]watchFrom, error) {
 		}
 	}
 	lists := make(map[*sourceKind]listResult)
-	defer func() { c.health.replaceLists(lists) }()
+	defer func() {
+		if term.Err() == nil {
+			c.publishListHealth(lists)
+		}
+	}()
 	read := func(k *sourceKind) ([]unstructured.Unstructured, error) {
 		items, rv, observed, err := c.list(ctx, k.gvr)
 		result := classifyList(err)
 		lists[k] = result
-		c.metrics.recordList(k, result, observed)
+		if term.Err() == nil {
+			c.metrics.recordList(k, result, observed)
+		}
 		if err != nil {
 			keep(c.listError(k, err))
 		} else {

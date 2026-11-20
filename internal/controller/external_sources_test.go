@@ -16,13 +16,13 @@ type externalSourceFixture struct {
 	changed chan struct{}
 }
 
-func (f *externalSourceFixture) Problems(spec *v1alpha1.ExternalSpec) []string {
+func (f *externalSourceFixture) Problems(spec *v1alpha1.ExternalSpec) ([]string, bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if spec != nil && spec.Ingress && f.problem != "" {
-		return []string{f.problem}
+		return []string{f.problem}, true
 	}
-	return nil
+	return nil, true
 }
 
 func (f *externalSourceFixture) HealthChanged() <-chan struct{} {
@@ -105,8 +105,22 @@ func TestWithoutSourcesNamesTheStoreAndKeepsSpecificReasons(t *testing.T) {
 	if !specific.Degraded || specific.DegradedRsn != v1alpha1.ReasonDuplicated || !strings.HasPrefix(specific.DegradedMsg, "two record sets claim web; ") || !strings.Contains(specific.DegradedMsg, "externalZones.enabled is off") {
 		t.Fatalf("specific reason: %+v", specific)
 	}
-	incomplete := withSourceProblems(verdict{Degraded: true, DegradedRsn: v1alpha1.ReasonDuplicated, DegradedMsg: "two record sets claim web"}, []string{"Ingress: list denied"})
+	incomplete := withSourceProblems(verdict{Degraded: true, DegradedRsn: v1alpha1.ReasonDuplicated, DegradedMsg: "two record sets claim web"}, []string{"Ingress: list denied"}, true, nil)
 	if !incomplete.Degraded || incomplete.DegradedRsn != v1alpha1.ReasonDuplicated || !strings.HasPrefix(incomplete.DegradedMsg, "two record sets claim web; ") || !strings.Contains(incomplete.DegradedMsg, "Ingress: list denied") {
 		t.Fatalf("sources incomplete with a specific reason: %+v", incomplete)
+	}
+}
+
+func TestExternalSourceStatusWaitsForObservedHealth(t *testing.T) {
+	healthy := serving("3 records")
+	if got := withSourceProblems(healthy, nil, false, nil); got.Degraded {
+		t.Fatalf("new leader reported a failure without an observation: %+v", got)
+	}
+	previous := &metav1.Condition{Status: metav1.ConditionTrue, Reason: v1alpha1.ReasonSourcesIncomplete, Message: "Ingress: list denied"}
+	if got := withSourceProblems(healthy, nil, false, previous); !got.Degraded || got.DegradedRsn != previous.Reason || got.DegradedMsg != previous.Message {
+		t.Fatalf("new leader reported recovery without an observation: %+v", got)
+	}
+	if got := withSourceProblems(healthy, nil, true, previous); got.Degraded {
+		t.Fatalf("complete healthy observation did not clear the condition: %+v", got)
 	}
 }

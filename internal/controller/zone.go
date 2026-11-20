@@ -106,7 +106,8 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 		if sources := c.opts.ExternalZoneSources; sources == nil {
 			v = withoutSources(v, c.opts.ExternalZoneSourcesUnsupported)
 		} else if !v1alpha1.IsDisabled(cur) {
-			v = withSourceProblems(v, sources.Problems(cur.Spec.External))
+			problems, checked := sources.Problems(cur.Spec.External)
+			v = withSourceProblems(v, problems, checked, meta.FindStatusCondition(cur.Status.Conditions, v1alpha1.ConditionDegraded))
 		}
 	}
 	v.observedGen, v.transitionNow = cur.Generation, now
@@ -128,7 +129,7 @@ func (c *Controller) reconcileZone(ctx context.Context, key store.Key) (bool, er
 // ExternalZoneSources is the adapter's in-process health snapshot and
 // close-and-replace signal. Neither method reads the Kubernetes API.
 type ExternalZoneSources interface {
-	Problems(*v1alpha1.ExternalSpec) []string
+	Problems(*v1alpha1.ExternalSpec) (problems []string, checked bool)
 	HealthChanged() <-chan struct{}
 }
 
@@ -147,8 +148,11 @@ func (c *Controller) requeueExternalZones(ctx context.Context, sources ExternalZ
 	}
 }
 
-func withSourceProblems(v verdict, problems []string) verdict {
+func withSourceProblems(v verdict, problems []string, checked bool, previous *metav1.Condition) verdict {
 	if len(problems) == 0 {
+		if !checked && !v.Degraded && previous != nil && previous.Status == metav1.ConditionTrue && previous.Reason == v1alpha1.ReasonSourcesIncomplete {
+			v.Degraded, v.DegradedRsn, v.DegradedMsg = true, previous.Reason, previous.Message
+		}
 		return v
 	}
 	msg := "Kubernetes sources incomplete: " + strings.Join(problems, "; ") + ". Failed lists do not remove previously derived record sets."

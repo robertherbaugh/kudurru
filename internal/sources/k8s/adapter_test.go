@@ -64,7 +64,8 @@ func TestExternalSourceDeniedListsAreScopedAndRecover(t *testing.T) {
 		list.SetResourceVersion("1")
 		return true, list, nil
 	})
-	metrics, err := registerSourceMetrics(prometheus.NewRegistry())
+	reg := prometheus.NewRegistry()
+	metrics, err := registerSourceMetrics(reg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,10 +74,10 @@ func TestExternalSourceDeniedListsAreScopedAndRecover(t *testing.T) {
 	if watched, err := controller.reconcile(ctx); !apierrors.IsForbidden(err) || len(watched) != 0 {
 		t.Fatalf("denied pass: watches=%v err=%v", watched, err)
 	}
-	if problems := controller.Problems(zone.Spec.External); len(problems) != len(healthKinds) {
+	if problems, checked := controller.Problems(zone.Spec.External); !checked || len(problems) != len(healthKinds) {
 		t.Fatalf("denied kinds: %v", problems)
 	}
-	if problems := controller.Problems(&v1alpha1.ExternalSpec{LoadBalancerServices: true}); len(problems) != 1 || !strings.HasPrefix(problems[0], "Service: list denied; allow list on services") {
+	if problems, checked := controller.Problems(&v1alpha1.ExternalSpec{LoadBalancerServices: true}); !checked || len(problems) != 1 || !strings.HasPrefix(problems[0], "Service: list denied; allow list on services") {
 		t.Fatalf("Service-only zone: %v", problems)
 	}
 	select {
@@ -93,8 +94,63 @@ func TestExternalSourceDeniedListsAreScopedAndRecover(t *testing.T) {
 	if watched, err := controller.reconcile(ctx); err != nil || len(watched) != len(healthKinds) {
 		t.Fatalf("recovered pass: watches=%v err=%v", watched, err)
 	}
-	if problems := controller.Problems(zone.Spec.External); len(problems) != 0 {
+	if problems, checked := controller.Problems(zone.Spec.External); !checked || len(problems) != 0 {
 		t.Fatalf("source did not recover: %v", problems)
+	}
+	zone.Spec.External = &v1alpha1.ExternalSpec{Ingress: true}
+	if _, err := st.Apply(ctx, zone, store.ApplyOptions{Manager: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, family := range families {
+		if family.GetName() == "kudurru_external_zone_source_objects" {
+			series := family.GetMetric()
+			if len(series) != 1 || series[0].GetLabel()[0].GetValue() != "ingress" {
+				t.Fatalf("object gauge retained deselected kinds: %v", series)
+			}
+			return
+		}
+	}
+	t.Fatal("object gauge lost its selected kind")
+}
+
+func TestExternalSourceCanceledTermDoesNotPublishHealth(t *testing.T) {
+	st := memory.New()
+	zone := externalZone()
+	if _, err := st.Apply(t.Context(), zone, store.ApplyOptions{Manager: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	kind := kindOf("ingress")
+	client := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{kind.gvr: "IngressList"})
+	term, cancelTerm := context.WithCancel(t.Context())
+	defer cancelTerm()
+	cancelListTerm := cancelTerm
+	client.PrependReactor("list", kind.gvr.Resource, func(k8stesting.Action) (bool, runtime.Object, error) {
+		cancelListTerm()
+		return true, nil, context.Canceled
+	})
+	controller := &Controller{opts: Options{Store: st, Admit: func(context.Context) error { return nil }}, client: client}
+	controller.publishListHealth(map[*sourceKind]listResult{kind: listOK})
+	if _, err := controller.reconcile(term); !errors.Is(err, context.Canceled) {
+		t.Fatalf("interrupted pass: %v", err)
+	}
+	if problems, checked := controller.Problems(zone.Spec.External); !checked || len(problems) != 0 {
+		t.Fatalf("interrupted pass replaced observed health: %v", problems)
+	}
+	nextTerm, cancelNext := context.WithCancel(t.Context())
+	defer cancelNext()
+	cancelListTerm = cancelNext
+	if err := controller.Run(nextTerm); err != nil {
+		t.Fatal(err)
+	}
+	if problems, checked := controller.Problems(zone.Spec.External); checked || len(problems) != 0 {
+		t.Fatalf("new term does not have an observation: checked=%t problems=%v", checked, problems)
 	}
 }
 
@@ -115,12 +171,12 @@ func TestExternalSourceWatchDeniedWithHealthyList(t *testing.T) {
 	watches := []watchFrom{{kind: kind, rv: "1"}}
 	controller.wait(t.Context(), watches)
 	spec := externalZone().Spec.External
-	if problems := controller.Problems(spec); len(problems) != 1 || !strings.Contains(problems[0], "Ingress: watch denied") {
+	if problems, _ := controller.Problems(spec); len(problems) != 1 || !strings.Contains(problems[0], "Ingress: watch denied") {
 		t.Fatalf("watch denial disappeared behind the healthy list: %v", problems)
 	}
 	denied = false
 	controller.wait(t.Context(), watches)
-	if problems := controller.Problems(spec); len(problems) != 0 {
+	if problems, _ := controller.Problems(spec); len(problems) != 0 {
 		t.Fatalf("watch did not recover: %v", problems)
 	}
 }
@@ -151,7 +207,7 @@ func TestExternalSourceObjectCapReportsObservedObjects(t *testing.T) {
 	if watches, err := controller.reconcile(ctx); !errors.Is(err, store.ErrTooLarge) || len(watches) != 0 {
 		t.Fatalf("over-cap pass: watches=%v err=%v", watches, err)
 	}
-	if problems := controller.Problems(zone.Spec.External); len(problems) != 1 || !strings.Contains(problems[0], "4,096-object or 32 MiB") {
+	if problems, _ := controller.Problems(zone.Spec.External); len(problems) != 1 || !strings.Contains(problems[0], "4,096-object or 32 MiB") {
 		t.Fatalf("cap diagnosis: %v", problems)
 	}
 	if got := testutil.ToFloat64(metrics.lists.WithLabelValues(kind.label, string(listTooLarge))); got != 1 {
@@ -195,7 +251,7 @@ func TestExternalSourceTruncatedPageIsDecodeFailureNotKindCap(t *testing.T) {
 	if !errors.Is(err, errTruncatedPage) || errors.Is(err, store.ErrTooLarge) || !strings.Contains(err.Error(), "unexpected end of JSON input") || len(watches) != 0 {
 		t.Fatalf("truncated pass: watches=%v err=%v", watches, err)
 	}
-	if problems := controller.Problems(zone.Spec.External); len(problems) != 1 || !strings.Contains(problems[0], "4 MiB response bound") {
+	if problems, _ := controller.Problems(zone.Spec.External); len(problems) != 1 || !strings.Contains(problems[0], "4 MiB response bound") {
 		t.Fatalf("truncation diagnosis: %v", problems)
 	}
 	if got := testutil.ToFloat64(controller.metrics.lists.WithLabelValues("ingress", string(listTruncated))); got != 1 {

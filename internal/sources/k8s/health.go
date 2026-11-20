@@ -96,12 +96,24 @@ func (h *sourceHealth) setWatchDenied(kind *sourceKind, denied bool) {
 
 var healthKinds = slices.Concat([]*sourceKind{gatewayKind}, sourceKinds)
 
-// Problems reports list failures and watch denials for only the kinds the
-// zone requests. Neither this snapshot nor changes to it affect serving.
-func (c *Controller) Problems(spec *v1alpha1.ExternalSpec) []string {
+func (c *Controller) publishListHealth(lists map[*sourceKind]listResult) {
+	if c.metrics != nil {
+		for _, kind := range healthKinds {
+			if _, selected := lists[kind]; !selected {
+				c.metrics.objects.DeleteLabelValues(kind.label)
+			}
+		}
+	}
+	c.health.replaceLists(lists)
+}
+
+// Problems reports list failures and watch denials for the kinds the zone
+// requests, and whether all of those kinds have been checked this term.
+func (c *Controller) Problems(spec *v1alpha1.ExternalSpec) ([]string, bool) {
 	c.health.mu.Lock()
 	defer c.health.mu.Unlock()
 	var problems []string
+	checked := true
 	for _, kind := range healthKinds {
 		if !enabled(spec, kind.family) {
 			continue
@@ -123,13 +135,13 @@ func (c *Controller) Problems(spec *v1alpha1.ExternalSpec) []string {
 		case listError:
 			reason = "list failed; see the elected replica's logs"
 		default:
-			reason = "waiting for the first list"
+			checked = false
 		}
 		if reason != "" {
 			problems = append(problems, kind.kind+": "+reason)
 		}
 	}
-	return problems
+	return problems, checked
 }
 
 // HealthChanged returns the current close-and-replace notification channel.

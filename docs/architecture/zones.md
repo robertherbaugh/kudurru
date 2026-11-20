@@ -412,6 +412,8 @@ elected replica. `Degraded{SourcesIncomplete}` lists the problems for the
 source kinds each zone enables, including RBAC denials, unavailable API
 kinds, and exceeded list bounds. A more specific Degraded reason takes
 precedence. This does not change `Ready`, the records, or the serial.
+A new elected term observes sources again rather than publishing results from
+an interrupted pass. Until then, it does not report a new failure or recovery.
 
 Writes follow D303. A record set is written only after the zone and the
 source are confirmed unchanged since the list: the source by UID and
