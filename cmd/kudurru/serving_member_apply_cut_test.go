@@ -144,14 +144,14 @@ func cutApplyAtHeldPull(test *testing.T, fixture *memberForwardHTTPFixture, firs
 		return func(ctx context.Context, input api.ForwardedObject) (api.ForwardedObjectResult, bool, error) {
 			result, handled, err := forward(ctx, input)
 			if input.Name == first && handled && err == nil && result.Result == api.ResultCreated {
-				startOnce.Do(func() { awaitCutApplyPull(test, ctx, fixture.follower, first, maxPullHold, startPull) })
+				startOnce.Do(func() { awaitCutApplyPull(ctx, test, fixture.follower, first, maxPullHold, startPull) })
 			}
 			return result, handled, err
 		}
 	}
 }
 
-func awaitCutApplyPull(test *testing.T, ctx context.Context, follower *servingRuntime, name string, maxHold time.Duration, startPull chan struct{}) {
+func awaitCutApplyPull(ctx context.Context, test *testing.T, follower *servingRuntime, name string, maxHold time.Duration, startPull chan struct{}) {
 	test.Helper()
 	mirror := follower.opts.Store
 	before := mirror.Authority().InstallSequence

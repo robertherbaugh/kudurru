@@ -46,9 +46,13 @@ type memberForwardHTTPFixture struct {
 	// scheduledPull runs the follower's own pull worker, as runServe does.
 	scheduledPull bool
 	// pullInterval replaces the worker's default interval when it is set.
-	pullInterval      time.Duration
+	pullInterval time.Duration
+	// configureFollower adjusts the constructed follower before member services
+	// are prepared and the follower API server is wired.
 	configureFollower func(*servingRuntime)
+	// wrapObjectForward wraps only the follower API server's ObjectForward.
 	wrapObjectForward func(api.ObjectForward) api.ObjectForward
+	// memberCommandSeen installs an observer on the primary's member executor.
 	memberCommandSeen func(clusterreplica.Command)
 	// skipSelfPull, with selfPullHook, makes the explicit pull after a
 	// forwarded self-service command do nothing while it is true.
