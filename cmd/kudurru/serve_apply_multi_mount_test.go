@@ -190,10 +190,10 @@ func mountedCLIOutcome(err error, stderr string) string {
 	if errors.As(err, &response) {
 		return fmt.Sprintf("product refusal (HTTP %d)", response.StatusCode)
 	}
-	if strings.Contains(err.Error(), "generation_pending:") || strings.Contains(stderr, "generation_pending:") {
+	if strings.Contains(err.Error(), "generation_pending") || strings.Contains(stderr, "generation_pending") {
 		return "product refusal"
 	}
-	return beforeMountedObservation(err)
+	return mountedRequestFailure(err)
 }
 
 // mountedRequestDone logs how many whole requests that applied nothing were
@@ -342,7 +342,7 @@ func TestRunServeSQLiteMultiFileApplyAndRestoreIntoNewNode(t *testing.T) {
 // budget: an apply of 120 documents left the record unanswered for 80 s and
 // refused 41 of 43 reads. The CLI's own default timeout of apply is used.
 func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
-	load := mountedLoad()
+	load := mountedLoadSnapshot()
 	defer load.logFailure(t)
 	cfg, _ := mountedTestConfig(t)
 	startMountedServe(t, cfg)
@@ -388,7 +388,7 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 			mu.Lock()
 			switch {
 			case err != nil:
-				missed = append(missed, miss{sent, beforeMountedObservation(err) + ": " + err.Error()})
+				missed = append(missed, miss{sent, mountedRequestFailure(err) + ": " + err.Error()})
 			case answer.Rcode == dns.RcodeServerFailure:
 				servfail = append(servfail, time.Now())
 				missed = append(missed, miss{sent, "product refusal: SERVFAIL"})
@@ -452,7 +452,7 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 			gap, gapFrom = d, edges[i-1]
 		}
 	}
-	t.Logf("apply of %d documents took %s: %d correct DNS answers, %d SERVFAIL, longest time without one %s, %d reads ok, %d reads failed; last failed read: %s; %s", count, ended.Sub(began), len(answers), servfails, gap, len(reads), failed, readError, load.load())
+	t.Logf("apply of %d documents took %s: %d correct DNS answers, %d SERVFAIL, longest time without one %s, %d reads ok, %d reads failed; last failed read: %s; %s", count, ended.Sub(began), len(answers), servfails, gap, len(reads), failed, readError, load.loadSummary())
 	// The zone answers its committed data across every status write of a new
 	// serial that follows each commit (D378 and the status-write row): a
 	// publication that lands while the zone's lifecycle receipt still names
@@ -461,7 +461,7 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	// lifecycle caught up, for up to 0.8 s, which left the gap bound below
 	// with little margin.
 	if servfails != 0 {
-		t.Errorf("product refusal: the zone answered SERVFAIL %d times for an existing record during one request; %s", servfails, load.load())
+		t.Errorf("product refusal: the zone answered SERVFAIL %d times for an existing record during one request; %s", servfails, load.loadSummary())
 	}
 	// DNS answers the served publication throughout (D378): a commit that is
 	// not published yet, and a replaced provider resource set, withhold
@@ -479,7 +479,7 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 			}
 		}
 		mu.Unlock()
-		t.Errorf("DNS observation gap %s, %s after the request began, during one request of %s; probes in the gap: %q; %s", gap, gapFrom.Sub(began).Round(time.Millisecond), ended.Sub(began), inGap, load.load())
+		t.Errorf("DNS observation gap %s, %s after the request began, during one request of %s; probes in the gap: %q; %s", gap, gapFrom.Sub(began).Round(time.Millisecond), ended.Sub(began), inGap, load.loadSummary())
 	}
 	// A waiting read makes the request let the node publish at its next item,
 	// so a read is served within its two-second capture wait whenever the
@@ -492,10 +492,10 @@ func TestRunServeSQLiteLongApplyKeepsServingDNSAndReads(t *testing.T) {
 	// `make test` (hack/go-test.py, NORACE_TESTS) runs this test a second
 	// time without the race detector, so CI asserts the strict bound.
 	if !raceEnabled && failed > 0 {
-		t.Fatalf("%d reads of a second caller failed during one request (%d answered); last: %s; %s", failed, len(reads), readError, load.load())
+		t.Fatalf("%d reads of a second caller failed during one request (%d answered); last: %s; %s", failed, len(reads), readError, load.loadSummary())
 	}
 	if elapsed := ended.Sub(began); elapsed > 5*defaultItemPace.work && len(reads) == 0 {
-		t.Fatalf("no read of a second caller was answered during the %s of one request; last failure: %s; %s", elapsed, readError, load.load())
+		t.Fatalf("no read of a second caller was answered during the %s of one request; last failure: %s; %s", elapsed, readError, load.loadSummary())
 	}
 }
 

@@ -15,12 +15,13 @@ hosted CI. The original v0.2 audit logs are not in this checkout.
 
 The long apply returned all 120 creates in each profile, and no DNS probe
 saw SERVFAIL. The failing reads received a product refusal, not an HTTP
-client timeout. The [first 17 completions](172-norace-long-rates-checkpoint.log)
-of a separate one-core, zero-loop `-count=100` series had one failing sample
-(one in-window `generation_pending`), zero SERVFAIL, and no one-second DNS
-gap breach (longest 356 ms). Only count read failures within the logged
-apply window in these early runs; the early diagnostic's last failed read
-could be outside that window. The final test code ties it to the window.
+client timeout. In the [full one-core, zero-loop series](172-norace-long-rates-p1-load0.log.gz),
+98 of 100 repetitions passed; two failed with one in-window
+`generation_pending` each. There was no SERVFAIL and no one-second DNS gap
+breach (longest 356.228 ms). The [original 17-run checkpoint](172-norace-long-rates-checkpoint.log)
+is retained. Only count read failures within the logged apply window in these
+early runs; the early diagnostic's last failed read could be outside that
+window. The final test code ties it to the window.
 
 The [first zero-loop invocation](172-norace-mounted-p1-load0.log) and the
 [interrupted one-loop invocation](172-norace-mounted-p1-load1.log) ran the
@@ -39,6 +40,24 @@ readiness unit tests.
   `generation_pending`. The race variant requires some successful reads,
   not zero failed reads. Status-write and refusal-walk counts are retained
   in the log.
+- [One loop, one P](172-race-mounted-p1-load1.log): long apply passed its race
+  gate with 12 successful reads, 94 failed reads, an 869 ms maximum DNS gap,
+  and zero SERVFAIL. The standalone and static refusal walks each reached
+  16 of 212 operations. Both received an undeclared `503 generation_pending`
+  on `prepareCLILogin` (product refusal) and also exhausted the unchanged
+  five-minute walk context (harness timeout). The Kubernetes walk, static
+  twins, and status-write probes passed.
+- [Two loops, two Ps](172-race-mounted-p2-load2.log): long apply passed its
+  race gate with 16 successful reads, 114 failed reads, a 355 ms maximum
+  DNS gap, and zero SERVFAIL. The standalone and static walks reached
+  19 of 212 operations each before the five-minute walk deadline. They
+  also observed undeclared `503 generation_pending` on `oidcCallback` and
+  `prepareCLILogin`, respectively. Both static twins started (24.340 s
+  and 32.742 s), but the login request had no answer within the unchanged
+  five-second client timeout. The Kubernetes walk and status-write probes
+  passed. The original log used the same timeout label for both the walk
+  deadline and login; the reviewed diagnostics distinguish the two and
+  do not infer where an unanswered request stalled.
 - [Two-P readiness credit](172-race-readiness-credit.log): with one pinned
   CPU, two busy loops, and the race test at `nice -n 7`, node A became ready at
   72.734 s, after 598 scheduler-credit checks. Node B failed at the unchanged
@@ -71,8 +90,9 @@ with `-test.run='^TestRunServeStaticTwinsReadOnlyPeerLossRestart$'`.
 
 ## Still open
 
-- Finish recording the one- and two-loop race profiles and the full
-  100-sample rate. The synthetic VM does not establish an owner-lab rate.
+- The synthetic VM does not establish an owner-lab rate. The undeclared
+  accounting of `generation_pending` on the auth operations remains a
+  product finding; this change does not modify the refusal inventory.
 - The original 1.39 s DNS gap is not diagnosed. The older five-minute
   refusal-walk timeout remains an attributed failure; the current walk
   still uses its original five-minute context. The historical status-write

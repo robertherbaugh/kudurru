@@ -33,7 +33,7 @@ import (
 // between the status write and the realignment answered the zone with
 // SERVFAIL (servfail_unsynced) for up to about half a second.
 func TestRunServeSQLitePrimaryAnswersAcrossStatusWrites(t *testing.T) {
-	load := mountedLoad()
+	load := mountedLoadSnapshot()
 	defer load.logFailure(t)
 	t.Setenv(license.EnvKey, "")
 	t.Setenv(license.EnvKeyFile, "")
@@ -103,12 +103,12 @@ func TestRunServeSQLitePrimaryAnswersAcrossStatusWrites(t *testing.T) {
 		for deadline := time.Now().Add(30 * time.Second); ; {
 			response, err := client.http.Get(client.base + "/objects/dnszones/home")
 			if err != nil {
-				t.Fatalf("%s: GET /objects/dnszones/home: %v", beforeMountedObservation(err), err)
+				t.Fatalf("%s: GET /objects/dnszones/home: %v", mountedRequestFailure(err), err)
 			}
 			raw, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
 			_ = response.Body.Close()
 			if err != nil {
-				t.Fatalf("%s: GET /objects/dnszones/home body (status=%d): %v", beforeMountedObservation(err), response.StatusCode, err)
+				t.Fatalf("%s: GET /objects/dnszones/home body (status=%d): %v", mountedRequestFailure(err), response.StatusCode, err)
 			}
 			if response.StatusCode == http.StatusOK {
 				if err := json.Unmarshal(raw, &zone); err != nil {
@@ -219,7 +219,7 @@ func TestRunServeSQLitePrimaryAnswersAcrossStatusWrites(t *testing.T) {
 				if (err == nil && answer.Rcode != dns.RcodeServerFailure) || !time.Now().Before(deadline) {
 					outcome := "product refusal"
 					if err != nil {
-						outcome = beforeMountedObservation(err)
+						outcome = mountedRequestFailure(err)
 					}
 					t.Fatalf("%s: UPDATE %d failed after %s: %v %v", outcome, i, time.Since(started), err, answer)
 				}
@@ -257,7 +257,7 @@ func TestRunServeSQLitePrimaryAnswersAcrossStatusWrites(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	t.Logf("%d status writes of %d new serials; probe: %d answered, %d SERVFAIL, %d other, %d without an answer within 200 ms; %d UPDATE retries after SERVFAIL or no answer; %d status reads asked again after generation_pending; %s", statusWrites, len(serials)-1, seen.answered, seen.servfail, seen.wrong, seen.silent, updateRetries, statusPending, load.load())
+	t.Logf("%d status writes of %d new serials; probe: %d answered, %d SERVFAIL, %d other, %d without an answer within 200 ms; %d UPDATE retries after SERVFAIL or no answer; %d status reads asked again after generation_pending; %s", statusWrites, len(serials)-1, seen.answered, seen.servfail, seen.wrong, seen.silent, updateRetries, statusPending, load.loadSummary())
 	if statusWrites < 20 || len(serials)-1 < 20 {
 		t.Errorf("harness did not reach intended observation: only %d status writes and %d serial advances observed", statusWrites, len(serials)-1)
 	}
@@ -275,6 +275,6 @@ func TestRunServeSQLitePrimaryAnswersAcrossStatusWrites(t *testing.T) {
 	// gate; TestRunServeSQLiteZonesAnswerAcrossCommits, which runs without
 	// the race detector as well, requires every probe to be answered.
 	if seen.silent > changes {
-		t.Errorf("harness timeout before observation: probe got no answer to %d queries across %d changes (%d answered)", seen.silent, changes, seen.answered)
+		t.Errorf("no DNS answer within client timeout: %d queries across %d changes (%d answered)", seen.silent, changes, seen.answered)
 	}
 }
