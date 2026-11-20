@@ -359,6 +359,11 @@ func TestRunServeKubeViewUpdateOwnership(t *testing.T) {
 		return inserted == "192.0.2.31" && same == "10.0.0.10" && sameDefaultCode == dns.RcodeNameError && sameDefault == ""
 	})
 
+	updateKey := client.ObjectKey{Namespace: "default", Name: "rfc2136-view-update"}
+	var before public.DNSRecordSet
+	if err := admin.Get(t.Context(), updateKey, &before); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		name, target string
 	}{
@@ -370,6 +375,13 @@ func TestRunServeKubeViewUpdateOwnership(t *testing.T) {
 		}); rc != dns.RcodeRefused {
 			t.Fatalf("view-name UPDATE for %s returned %s, want REFUSED", tc.name, dns.RcodeToString[rc])
 		}
+	}
+	var after public.DNSRecordSet
+	if err := admin.Get(t.Context(), updateKey, &after); err != nil {
+		t.Fatal(err)
+	}
+	if after.UID != before.UID || after.Generation != before.Generation {
+		t.Fatalf("refused UPDATE modified the stored record set: before=%+v, after=%+v", before.Spec.Endpoints, after.Spec.Endpoints)
 	}
 	await("refused UPDATEs leave both view and default answers unchanged", func() bool {
 		_, same := answer("same.view-update.test.", "127.0.0.2")
