@@ -14785,7 +14785,16 @@ RPZ-1). The full `./cmd/kudurru` suite (hack/go-test.py) was not run, and the fu
 mounted test still does not read `/info/messages`; Kubernetes nodes use the
 plain path, which the route test covers.
 
-**Review and verification state at 17b7c87a.** The review accepted the package with five findings (one major: the RPZ diagnoses on the SQLite production path of `/info/messages` and `kudurru doctor` had no committed test; two minor: the docs said a pending feed is not applied where the code fails closed, and `expired` also matched a copy discarded for another reason; two nits). The fixer resolved four; the verifier confirmed them and reported three new problems: a discarded copy still showed its serial, counts and ignored owners next to "no usable copy" (fixed at this head by RPZ-OPEN, `6931568c`); the fake API data and a golden file still carry the old pending message (open); and a trailer note. Merged and pushed at `b6e09f9d`. No dashboard view of RPZ feeds; no cluster-wide read; on Kubernetes the dig explanation and policy reads report no RPZ fields.
+**Review and verification state at 17b7c87a.** The review accepted the package with five findings (one major: the RPZ diagnoses on the SQLite production path of `/info/messages` and `kudurru doctor` had no committed test; two minor: the docs said a pending feed is not applied where the code fails closed, and `expired` also matched a copy discarded for another reason; two nits). The fixer resolved four; the verifier confirmed them and reported three new problems: a discarded copy still showed its serial, counts and ignored owners next to "no usable copy" (fixed at this head by RPZ-OPEN, `6931568c`); the fake API data and a golden file still carry the old pending message (open at that revision); and a trailer note. Merged and pushed at `b6e09f9d`. No dashboard view of RPZ feeds; no cluster-wide read; on Kubernetes the dig explanation and policy reads were reported to have no RPZ fields.
+
+**Current projection evidence (#162, November 20, 2026).** On `ce3ab6e2`,
+mounted `TestRunServeKubeRPZFeeds` passed the new HTTP dig assertions
+(`blocked_rpz`, `default/feed`, exact owner and action), but returned zero
+instead of five policy-state entries and reported an unavailable feed as
+ready. Kubernetes policy-state now reads the node-local serving binding.
+`TestRunServeKubeRPZFeeds` (local envtest) and
+`TestRunServeSQLiteRPZFeedDiagnostics` (local SQLite) pin the same dig fields
+and policy-state counts/readiness. This does not qualify hosted deployment.
 
 
 ### CI-RED-3 The four hosted failures of ecd633b1 — November 13, 2026 (no decision number assigned)

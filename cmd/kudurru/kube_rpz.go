@@ -3,12 +3,16 @@ package main
 import (
 	"slices"
 	"sync/atomic"
+	"time"
 
 	"github.com/robertherbaugh/kudurru/api/v1alpha1"
+	"github.com/robertherbaugh/kudurru/internal/blocking"
 	"github.com/robertherbaugh/kudurru/internal/dnsserver"
+	"github.com/robertherbaugh/kudurru/internal/listfetcher"
 	"github.com/robertherbaugh/kudurru/internal/pipeline"
 	"github.com/robertherbaugh/kudurru/internal/policy"
 	"github.com/robertherbaugh/kudurru/internal/rpz"
+	"github.com/robertherbaugh/kudurru/internal/store"
 	"github.com/robertherbaugh/kudurru/internal/zonecache"
 )
 
@@ -100,6 +104,31 @@ func (k *kubeRPZ) capture(req *pipeline.Request) (*rpz.Selection, error) {
 	}
 	b := k.binding()
 	return b.bound.Select(lists, b.available), nil
+}
+
+func (k *kubeRPZ) policyListState(list *v1alpha1.BlockList, now time.Time) (entries int, ready, projected bool) {
+	if !slices.ContainsFunc(list.Spec.Sources, func(source v1alpha1.ListSource) bool {
+		return source.IsEnabled() && blocking.IsRPZSource(source)
+	}) {
+		return 0, false, false
+	}
+	binding := k.binding()
+	if binding.config == nil {
+		return 0, false, true
+	}
+	objects := binding.config.Objects
+	object, _ := objects.Get(store.Key{Kind: "BlockList", Namespace: list.Namespace, Name: list.Name})
+	cached, _ := object.(*v1alpha1.BlockList)
+	if cached == nil || cached.UID != list.UID || cached.Generation != list.Generation || v1alpha1.IsDisabled(cached) {
+		return 0, false, true
+	}
+	rules, available := binding.bound.Select([]*v1alpha1.BlockList{list}, binding.available).Summary(now)
+	if lists := objects.Lists(); lists != nil {
+		if text := lists.List(listfetcher.ListName(list.Namespace, list.Name)); text != nil {
+			return text.Stats().Entries + rules, available, true
+		}
+	}
+	return rules, false, true
 }
 
 func (k *kubeRPZ) binding() *kubeRPZBinding {
