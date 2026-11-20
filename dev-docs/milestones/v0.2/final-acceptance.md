@@ -380,13 +380,97 @@ earlier source-correction hold. Raw-artifact manifest SHA256:
 `e61801285bef4b5477b6094ea6290c7b9f35e5e2f9ffe10984cd2aa100b3fb9c`.
 Collector exit 1 and `performance_pass: false` remain explicit. The independent
 verifier exits 0 because it confirms this failed outcome. The original failed
-homelab/calibration history is unchanged. No timing was repeated after this
-failure, no sample replaced and no limit relaxed.
+homelab/calibration history is unchanged. No qualification timing was repeated
+after this failure, no sample replaced and no limit relaxed.
 
 [#143](https://github.com/robertherbaugh/kudurru/issues/143) tracks the blocking
 result. A further attempt requires a diagnosed fix or separately reviewed
 method change under the existing protocol. The host amendment itself supplies
 no such approval after a failure. D383/D412/G23 remain open.
+
+#### Retained-vector diagnosis (#175)
+
+**`release_qualified: false` — descriptive comparisons only.** The
+[offline comparison](../../../bench/README.md#final-source-cname-diagnosis-175)
+joins five-process medians by report, benchmark and unit. Historical calibration
+`cloud-shared-20261115` and the final reference measured the same source,
+`0cc9565e`, before and after the sandbox restart. The final candidate was
+`a22255a2`. Both comparisons match 219 metrics; the 373 candidate metrics
+without a reference are excluded. The aggregate below uses only the 79
+matched `ns/op`, `p50-ns` and `p99-ns` metrics, not all units.
+
+| Metric | Calibration reference | Final reference | Final candidate | Final reference / calibration | Candidate / final reference |
+|---|---:|---:|---:|---:|---:|
+| CNAME p99 (ns) | 1,890 | 2,187 | 2,363 | 1.157 | 1.080 |
+| CNAME p50 (ns) | 825 | 1,087 | 1,102 | 1.318 | 1.014 |
+| CNAME ns/op | 974.2 | 1,289 | 1,402 | 1.323 | 1.088 |
+| Hit p99 (ns) | 901 | 1,078 | 1,295 | 1.196 | 1.201 |
+| Hit ns/op | 563.3 | 652.4 | 695.1 | 1.158 | 1.065 |
+| Median ratio, 79 metrics | — | — | — | 1.111 | 1.005 |
+
+The same-source ratios range from 0.930 to 1.881, with fast upstream `ns/op`
+up 46–53%. Within the final run, all three nanosecond ratios for nodata and
+nxdomain are at or below 1.00. The CNAME calibration median left just 110 ns
+(5.5% of the unchanged 2,000 ns maximum); the five processes ranged from
+1,706 to 2,602 ns. The final reference's median alone exceeded the limit by
+187 ns. Unchanged source drifted enough to fail the gate without the candidate.
+This does not identify the reason for the drift or establish physical-host
+contention. The final reference remains ineligible for a regression verdict.
+
+#### Local zone hot-path diagnosis (#175)
+
+**`release_qualified: false` — instrumented local microbenchmark only.** On
+November 20, 2026, detached `0cc9565e` and workspace head `61916ce5` were built
+with Go 1.27.4, `linux/amd64`, `CGO_ENABLED=0`. The benchmark body is identical
+and `internal/zone` is unchanged between `a22255a2` and `61916ce5`; the local
+binaries still represent different full checkouts and dependency sets.
+
+- `go tool nm -size`: `resolve` grew from 780 to 1,256 bytes and `answer` from
+  816 to 934 bytes. `go build -gcflags=-m`: neither became inlineable, the
+  outer `Lookup` remains inlineable, and `LookupFrom` now inlines into the call
+  to non-inlined `LookupWithin`. The callback does not escape; the two-slot
+  CNAME answer slice does.
+- `go tool objdump`: `resolve` reserves 368 → 392 stack bytes in its prologue
+  and adds the fallback check before `step`, the NXDOMAIN fallback check and
+  the post-alias `owns` nil check. The standalone benchmark passes nil for
+  `owns` and does not enable fallback, but still executes their guards on the
+  relevant paths. `answer` adds `runtime.makeslice` on the CNAME branch, not on
+  the direct hit path.
+
+Six interleaved 500 ms `BenchmarkLookup100k` processes at six Go processors
+finished with exit zero, each with a CPU profile and `GODEBUG=gctrace=1`.
+The table is in execution order. Each subbenchmark had one forced GC at
+startup; additional GC cycles below are those logged between the verbose
+start marker and the result line, not cycles attributed to a particular query.
+The VM exposed eight CPUs throughout. Full `/proc/loadavg` and
+`/proc/pressure/cpu` snapshots were taken before and after each process;
+`perf stat` was unavailable.
+
+| Process | CNAME p99 (ns) | Hit p99 (ns) | Extra GC, CNAME / hit | 1-minute load, before → after | CPU PSI `some avg10` %, before → after |
+|---|---:|---:|---:|---:|---:|
+| Reference 1 | 2,172 | 1,084 | 1 / 0 | 8.20 → 7.63 | 38.34 → 26.43 |
+| Head 1 | 1,585 | 924 | 0 / 0 | 7.63 → 7.10 | 26.43 → 14.87 |
+| Head 2 | 1,452 | 1,094 | 0 / 0 | 7.10 → 6.61 | 14.87 → 10.33 |
+| Reference 2 | 2,072 | 796 | 1 / 1 | 6.61 → 6.61 | 10.33 → 6.93 |
+| Reference 3 | 1,832 | 871 | 1 / 1 | 6.61 → 6.16 | 6.93 → 3.80 |
+| Head 3 | 2,153 | 1,028 | 0 / 0 | 6.16 → 5.75 | 3.80 → 2.55 |
+
+Median CNAME p99 went from 2,072 to 1,585 ns, in the opposite direction to
+the retained candidate comparison, and CNAME allocations fell from 2 to 1/op
+(48 to 32 B/op in each process). Median hit p99 rose from 871 to 1,028 ns,
+but the direction flipped across adjacent pairs, and hit allocations stayed
+at 1/op. The other median p99s were wildcard 1,637 → 1,477 ns, nodata
+690 → 808 ns, and nxdomain 552 → 596 ns. The pooled CPU profiles include zone
+construction, all lookup cases, timing, sorting and GC. `appendKey` accounted
+for 16.3% → 16.8% of flat samples; `resolve` 2.55% → 2.19% and `answer`
+0.90% → 0.58%. The profiles do not attribute the hit tail to an added guard.
+
+**No concrete source latency cost was isolated.** The static comparison
+confirms extra instructions on the lookup path, but neither it nor the
+profiled samples under changing CPU pressure explains the failed CNAME gate.
+The hit p99 signal in both datasets warrants a separate, source-isolating
+diagnostic if pursued; do not infer a fix from the broad source comparison.
+No source fix, qualification or method change is part of this diagnosis.
 
 ### Final hosted CI and release disposition
 
