@@ -705,8 +705,25 @@ home.example:5353 {
 	if !strings.Contains(report, want) {
 		t.Errorf("loss report lacks %q:\n%s", want, report)
 	}
-	if strings.Count(report, "gives them this block's answer on every listener") != 1 || !strings.Contains(report, "Server block .:53: 1 hosts or rewrite names are imported") {
+	if strings.Count(report, "gives them this block's answer on every listener") != 1 || !strings.Contains(report, "Server block .:53: 1 hosts or rewrite names are imported, but on port 5353, 5354 CoreDNS sends those queries to another server block") {
 		t.Errorf("only the port 53 answer should be reported as imported:\n%s", report)
+	}
+}
+
+func TestCoreDNSOfflineReportsRetainedPTRAcrossPorts(t *testing.T) {
+	p := corednsPreview(t, `. {
+ hosts {
+  192.168.1.10 nas.home.example
+ }
+}
+in-addr.arpa:5353 {
+ forward . 192.0.2.53
+}
+`)
+	report := strings.Join(p.Warnings, "\n")
+	want := "Server block .:53: 1 hosts PTR answers are imported, but on port 5353 CoreDNS sends those queries to another server block; kudurru gives them this block's answer on every listener (names redacted)."
+	if !strings.Contains(report, want) || strings.Contains(report, "hosts or rewrite names are imported") {
+		t.Errorf("only the PTR answer should report different routing:\n%s", report)
 	}
 }
 

@@ -87,7 +87,10 @@ type corednsConverter struct {
 	// opaque counts server blocks whose keys cannot be read (environment
 	// placeholders, unsupported forms): CoreDNS may route any name to them.
 	opaque int
-	// rewriteBlock is the block that defined each retained local answer.
+	// blockPorts and blockPaths describe each converted block. rewriteBlock
+	// identifies the block of each retained answer by name. droppedNames
+	// counts distinct names and droppedPorts records where an omitted block
+	// originally served any of those names.
 	blockPorts   map[int][]int
 	blockPaths   []string
 	rewriteBlock map[string]int
@@ -220,15 +223,19 @@ func (c *corednsConverter) reportPortRewrites() {
 		if rewrite.Type == "PTR" {
 			report = &reports[block].ptr
 		}
+		name := dns.Fqdn(rewrite.Name)
+		differentPort := false
 		for _, port := range c.ports {
-			if _, owner := c.route(dns.Fqdn(rewrite.Name), port); owner >= 0 && owner != block && !containsInt(c.blockPorts[block], port) {
+			if _, owner := c.route(name, port); owner >= 0 && owner != block && !containsInt(c.blockPorts[block], port) {
 				if report.ports == nil {
 					report.ports = map[int]bool{}
 				}
 				report.ports[port] = true
-				report.count++
-				break
+				differentPort = true
 			}
+		}
+		if differentPort {
+			report.count++
 		}
 	}
 	reportImported := func(path, what string, report portReport) {
