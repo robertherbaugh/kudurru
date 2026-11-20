@@ -152,7 +152,7 @@ citing the commit.
 | Review nits with no recorded state (the fixer neither addressed nor rebutted them): DOCS-ARCH, three (the `cliClientID` CRD field comment still says "`kudurru login` (v0.2)"; the corrected group tooltip and host-name help have no asserting test; `cmd/kudurru/doctor_notify_kube.go` still calls the credential source an immutable startup inventory); QUAL-KUBE-UPGRADE, two (`TestEnvtestCRDUpgradeFromV01` creates no legacy IAM Secret, so that path is covered at process level only; its ledger named a base commit that its first three commits precede); INT-DEL-C, one (`docs/deploy/integrations.md` "When the license expires or is suspended" mixes `LicenseUnavailable` with the Integration's own `Suspended`) | completion-pass journals | v0.2 |
 | Fix commits never verified: DOCS-ARCH | completion-pass journals | v0.2 |
 | Observed by the docs lane on November 10 and not rechecked at 68a709e2: on SQLite a signed update is answered `SERVFAIL` instead of `REFUSED` when the zone or the key's grants do not allow it; `nsupdate` reports a wrong TSIG key as "clocks are unsynchronized" (zero signing time in the error answer); `cluster status`, `nodes` and the license node count describe only the answering node; an enrolled cluster issues at most 64 invitations in its lifetime; a Kubernetes backup and restore recreates `rfc2136-<zone>` as API-owned (from the code) | DOCS-OPS | v0.2 |
-| No command removes an enrolled member; no audited operator revocation on the primary for a root-key revocation it can never record | F28-HISTORY-RECHECK | owner decision |
+| No audited operator revocation on the primary for a root-key revocation it can never record | F28-HISTORY-RECHECK | owner decision |
 | An unpinned Kubernetes node exits during an API-server outage instead of staying up and unready (G22-WP4 item 2); the fencing loop in `kube_cluster_test.go` counts a failed `/healthz` as not leader | QUAL-KUBE-UPGRADE (D373) | v0.2 |
 | Data race between `TestServingAdoptionActualHTTPFinalExpiryRollsBackAllZones`'s `opts.Now` replacement and the integration host's refresh | HA-FIX | v0.2 |
 | Paired benchmark and fixed-class run on the final head; PR body | G23, G25 | v0.2 |
@@ -211,7 +211,6 @@ remains.
 |---|---|---|
 | Hosted CI: the `ci` workflow passed once, on `bae1c9df` (run 43532858454); the `docs` and `security` workflows failed on that head (fixed by `cb04067b` and `7663c957`, SAST annotation not rerun locally); no result is recorded for `81c2d3af` or `7663c957`. Every other pushed head after 17b7c87a failed (`d063f929`, `daff96e5`, `a3b5a1d0`, `c5b0637c`, `95c57113`, `2e15060e`, `531bffd0`); the tests are in the completion plan | integrator's log | v0.2 |
 | The 503 right after a node reports ready: a sign-in, read or write on a ready node can be refused before dispatch with `503 generation_pending` or "current writable serving generation unavailable" while a publication is prepared (publication restarts its preparation on every generation or Wake). D399 (command recapture) was merged and reverted (`827a6ebe`, `07f56d53`) because seven command tests that require a stale command to be refused failed with it; D405's first five commits were reverted (`bae1c9df`) because they broke every enrolled cluster process test. Redo both so that the full `./cmd/kudurru` suite and the enrolled e2e tests pass; decide whether a POST answered with that 503 is truly effect-free (CORE-OPEN4's test accepts a later 409 already-exists) or must be `outcome unknown`; remove the test-side retries in `serve_zone_change_mount_test.go` and `serve_commit_gap_test.go` and the e2e quiet period `enrolledQuietReview` | D399-REDO, PUBLISH-STARVATION (D405), CORE-OPEN4, F28-OPEN7 verify | v0.2 |
-| Owner confirmation of three integrator decisions: D395's serving semantics and the seven assertions CORE-COMMIT-GAP inverted or loosened; D399's rule as it will be redone; D375 standing (a large apply through a follower is cut at the follower's next pull: 40 documents completed 5 of 18 times, 160 never) | integrator's log | owner decision |
 | Through an enrolled follower, one signed UPDATE sent once was answered SERVFAIL after 330 ms (fixer's `fix-e2e02.log`, `TestEnrolledClusterProcessesPartitionCatchupAndRestart`), cause unknown; through a newly promoted primary the bound SERVFAIL is tolerated by up to four test resends per update; no `./cmd/kudurru` test exercises the production four-second bound under race; the retiring-zone branch of `captureUpdate` has no test; a replay whose admission keeps failing waits out the bound | HA-OPEN6 and HA-OPEN5 verify | v0.2 |
 | `TestRunServeUniFiHostnamePolicyLifecycle` fails under the race detector since the ID-INVENTORY commits (bisect: passes at `2e15060e`, fails at `e0bddb72`) | ID-INVENTORY verify; integrator; INVENTORY-REGRESS | v0.2 |
 | Managed root anchors: a fresh managed recursive node takes about 9 s to become ready under race, so `TestRunServeDirectAnchorsActualRecursiveDNSKEYAndRestart` and `TestOfflineAnchorRecoveredTrustServesAfterRestart` miss their 10 s bound on a loaded machine (accept as load-bound, raise the bound with a reason, or change the startup chain); the early writer return in `TestDirectAnchorRestartedWriterStartsServicesBeforeFirstCapture` is unexplained; `settleBootstrap`'s raced count has no upper bound and the raced bootstrap cap of 2 has no hosted evidence; a real store refusal is not driven through the status route; refused-adoption and fenced status have no scraped-metric test; the retire-on-REVOKE-then-promote sequence is not run; a member of the abandoned term is not brought back through the production puller (only its own runtime is started); the SERVFAIL a node answers before its first publication is a product gap that the samplers only bound at 5 s | F28-OPEN6, F28-OPEN7, F28-REVOKE-HOSTED verify | v0.2 |
@@ -229,3 +228,32 @@ remains.
 | Dangling D399 and D405 references: no decision row exists for either at 7663c957, yet `docs/deploy/sqlite-join.md` (line 193, "a command superseded before its dispatch (D399)", restored with HA-OPEN6 by `832dab99`) and the comments of `cmd/kudurru/serve_zone_change_mount_test.go` (line 106, D399) and `cmd/kudurru/serving_member_update_stale_test.go` (lines 326 and 334, D405) cite them as if they existed. Reword them, or keep them and add the rows when D399-REDO and PUBLISH-STARVATION land | LEDGER-SPLICE-3 review; integrator | v0.2 |
 | Import step dispatch: the re-capture before a step's body (`57cef0e6`) refines the dispatch-once rule without a decision row (D399 was to generalize it and is not at this head); a later import step is no longer bounded by 5 s | FLAKE-CLOCK-AND-READINESS verify | v0.2 |
 | Intermittent tests seen at least once in this pass, not skipped: see the third-splice section of the completion plan (the 503 family, managed-anchor readiness, integration tests, `TestCLIOIDCBrowserActualTLSProofRefusals`, `TestServingHTTPTOTPLoginPasswordConsumeExactlyOnce`, `TestRunServeSQLiteLongApplyKeepsServingDNSAndReads`, `TestRunServeKubeRPZFeeds`, `TestRunServeSQLiteTOTPEnrollmentRestartRecovery`, `TestRunServeSQLiteCompoundZoneCommands` and others) | integrator; verify results | v0.2 |
+
+### Owner disposition for #129
+
+On November 20, 2026, the owner accepted D395 and D375 as implemented and
+selected documented member replacement for v0.2. The retirement command
+(#160) stays deferred. See the [release disposition](milestones/v0.2/final-acceptance.md#owner-disposition-for-129).
+This does not change the independent root-key revocation follow-up or the
+D358 deferral.
+
+### Local follower apply evidence (#159)
+
+On November 20, 2026, at `61916ce557be788f5731955405dad014743fd9e3` with the
+#159 test changes, the following local race runs passed (logs in the workspace):
+
+| Command | Result | Log |
+|---|---|---|
+| `CGO_ENABLED=1 go test ./cmd/kudurru -run 'TestRootMember.*Apply' -race -count=3` | Pass, 78.906 s | `.context/gh159-apply-race.log` |
+| `CGO_ENABLED=1 go test ./cmd/kudurru -run 'TestRootMember.*Apply\|TestMemberItemRefusal' -race -count=3 -v` | Pass, 79.359 s | `.context/gh159-apply-refusal-race.log` |
+| `CGO_ENABLED=1 go test ./internal/cluster/replica -run Hold -race -count=1 -v` | Pass, 2.762 s | `.context/gh159-replica-hold-race.log` |
+
+The lifetime case reports `created`, `completion_unknown` for a committed
+document whose receipt was not relayed, and two `unavailable` items that
+are absent on the primary. The held-pull case reports `created` followed
+by three `unavailable` items that are absent on the primary. Both cases
+check the original primary and count member commands before deduplication;
+none is replayed. The held-pull refusals and the uncertain result name the
+primary; the existing lifetime-expiry refusals do not. No wording, production
+timing, or 200-document process-test expectation changed. These runs are
+local evidence only; no live or independent-host acceptance was run.

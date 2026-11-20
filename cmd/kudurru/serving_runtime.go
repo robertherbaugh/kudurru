@@ -124,6 +124,20 @@ type servingRuntime struct {
 	// memberPullInterval replaces the scheduled pull's default interval of an
 	// enrolled member; tests only. Zero keeps the default.
 	memberPullInterval time.Duration
+	// memberPullStart delays the scheduled pull worker until the channel is
+	// closed; tests only. Nil starts the worker with the runtime.
+	memberPullStart <-chan struct{}
+	// memberMaxPullHold bounds how long a scheduled pull waits for forwarded
+	// requests to release their holds; tests only. Zero uses the coordinator's
+	// default, its Timeout.
+	memberMaxPullHold time.Duration
+	// memberForwardBound replaces memberForwardLifetime for follower write
+	// requests; tests only. Zero keeps the 30-second default, which the
+	// refusal text still names.
+	memberForwardBound time.Duration
+	// memberCommandSeen observes commands entering the primary executor before
+	// authorization and deduplication; tests only. Nil does nothing.
+	memberCommandSeen func(clusterreplica.Command)
 	// memberForwardUpdateBound replaces memberForwardUpdateTimeout, the
 	// bound of a follower's forwarded UPDATE; tests only. Zero keeps the
 	// default.

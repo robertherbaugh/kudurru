@@ -58,7 +58,7 @@ status in the audit, rather than becoming invented current failures.
 | ZONE: enabled external-source RBAC failures and caps; TSIG CLI on Kubernetes | [#123](https://github.com/robertherbaugh/kudurru/issues/123), [#126](https://github.com/robertherbaugh/kudurru/issues/126) |
 | ZONE: view ownership parity, shared caps, transfer/signing limitations | [#136](https://github.com/robertherbaugh/kudurru/issues/136) |
 | ZONE / DNS / EDGE: hosted pinned interop, signed SOA-only IXFR without AA, dnsdist 2.1.3 empty-FIN limitation | [#127](https://github.com/robertherbaugh/kudurru/issues/127) |
-| UPDATE / HA: bounded failures after admission, long apply partial outcomes, member retirement and D395 ordinary-answer grace decision | [#129](https://github.com/robertherbaugh/kudurru/issues/129); D409 remains implemented |
+| UPDATE / HA: bounded failures after admission and local follower apply cutoff qualification | [#129](https://github.com/robertherbaugh/kudurru/issues/129), [#159](https://github.com/robertherbaugh/kudurru/issues/159); D409 remains implemented |
 | DNS: failed final performance qualification; managed-anchor residual metric/refusal/abandoned-term coverage | [#143](https://github.com/robertherbaugh/kudurru/issues/143); [#135](https://github.com/robertherbaugh/kudurru/issues/135) tracks residual F28 coverage |
 | RPZ / OPS: explanation projection, offline signed-feed restart, compile window and multi-port CoreDNS loss reporting | [#130](https://github.com/robertherbaugh/kudurru/issues/130) |
 | INTEGRATIONS: whole-image capture/cleanup scale and original time bounds | [#124](https://github.com/robertherbaugh/kudurru/issues/124) |
@@ -80,6 +80,20 @@ integration`); those issue texts may still name the original uncompleted scope.
 No issue body or issue state was changed. This report and its committed
 evidence record the specific completed checks; remaining requirements in those
 issues stay open.
+
+### Owner disposition for #129
+
+On November 20, 2026, the owner accepted D395 as implemented (up to one second
+of grace for ordinary answers; strict paths remain strict) and D375 as
+implemented (one 30-second follower apply lifetime, honest per-document
+partial results and no replay; send large workloads to the primary). The
+[documented member replacement procedure](../../../docs/deploy/sqlite-join.md#replace-a-member-that-cannot-follow)
+is sufficient for v0.2; the #160 retirement command stays deferred.
+
+This is a product decision, not a test result. See the
+[local #159 evidence](../../followups.md#local-follower-apply-evidence-159) for
+the scope actually exercised. No release gate, including D358, is passed by
+this decision.
 
 ## Explicit future acceptance
 
